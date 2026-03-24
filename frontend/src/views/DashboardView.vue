@@ -115,14 +115,48 @@
     <!-- Year Wrapped Banner -->
     <YearWrappedBanner />
 
-    <!-- Guided onboarding: contextual card for this page (first-time only; hide once they have imported) -->
+    <!-- Guided onboarding: step 1 of tour -->
     <OnboardingCard
-      v-if="authStore.showOnboardingModal && !onboardingStatus?.has_activated"
+      v-if="authStore.onboardingStep === 0 || authStore.onboardingStep === 1"
+      :step="1"
+      :total-steps="5"
+      :next-step="2"
       title="Welcome to TradeTally"
-      description="Import your first trades to see your performance, win rate, and analytics here."
-      cta-label="Go to Import"
+      description="We've loaded sample trades so you can see your dashboard in action. Let's take a quick tour of the key features."
+      cta-label="Next: Import Trades"
       cta-route="import"
     />
+
+    <!-- Sample data banner: shown when user has sample trades -->
+    <div
+      v-if="!initialLoading && hasSampleData && authStore.onboardingStep >= 6"
+      class="card bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 mb-6"
+    >
+      <div class="card-body">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm font-medium text-amber-900 dark:text-amber-100">You're exploring with sample data.</p>
+            <p class="mt-0.5 text-sm text-amber-700 dark:text-amber-300">Import your own trades or remove the sample data when you're ready.</p>
+          </div>
+          <div class="flex items-center gap-2 flex-shrink-0 ml-4">
+            <RouterLink
+              :to="{ name: 'import' }"
+              class="btn-primary text-sm"
+            >
+              Import Trades
+            </RouterLink>
+            <button
+              type="button"
+              class="btn-secondary text-sm text-red-600 dark:text-red-400 border-red-300 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+              :disabled="removingSampleData"
+              @click="removeSampleData"
+            >
+              {{ removingSampleData ? 'Removing...' : 'Remove Sample Data' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- First-value onboarding banner: new users who have not imported yet (hidden while guided onboarding card is shown) -->
     <div
@@ -1378,6 +1412,8 @@ const isCustomizing = ref(false)
 const showLayoutSettings = ref(false)
 const onboardingStatus = ref(null)
 const onboardingBannerDismissed = ref(false)
+const hasSampleData = ref(false)
+const removingSampleData = ref(false)
 const billingAvailable = ref(false)
 const subscription = ref(null)
 const trialBannerDismissed = ref(false)
@@ -1700,6 +1736,31 @@ async function fetchOnboardingStatus() {
     onboardingStatus.value = response.data
   } catch (err) {
     console.warn('[Dashboard] Could not fetch onboarding status:', err?.message)
+  }
+}
+
+async function checkSampleData() {
+  try {
+    const response = await api.get('/trades/sample-data/check')
+    hasSampleData.value = response.data.has_sample_data
+  } catch (err) {
+    console.warn('[Dashboard] Could not check sample data:', err?.message)
+  }
+}
+
+async function removeSampleData() {
+  removingSampleData.value = true
+  try {
+    await api.delete('/trades/sample-data')
+    hasSampleData.value = false
+    // Refresh dashboard data
+    fetchAnalytics()
+    fetchOpenPositions()
+    fetchOpenTradeQuotes()
+  } catch (err) {
+    console.error('[Dashboard] Failed to remove sample data:', err)
+  } finally {
+    removingSampleData.value = false
   }
 }
 
@@ -2473,6 +2534,9 @@ onMounted(async () => {
 
   // Onboarding status for first-value banner (non-blocking)
   fetchOnboardingStatus()
+
+  // Check for sample data (non-blocking)
+  checkSampleData()
 
   // Billing/subscription for trial countdown and post-trial banner (non-blocking)
   fetchBillingAndSubscription()

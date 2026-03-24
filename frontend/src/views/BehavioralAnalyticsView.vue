@@ -31,6 +31,19 @@
             </p>
         </div>
 
+        <!-- Pro onboarding: step 1 -->
+        <OnboardingCard
+            v-if="authStore.proOnboardingStep === 1"
+            :step="1"
+            :total-steps="3"
+            :next-step="2"
+            tour-type="pro"
+            title="Behavioral Analytics"
+            description="Detect revenge trading, overtrading, and FOMO patterns. Understand your psychological edge."
+            cta-label="Next: Watchlists"
+            cta-route="markets"
+        />
+
         <!-- Pro Tier Gate -->
         <ProUpgradePrompt
             v-if="!hasAccess"
@@ -5676,6 +5689,7 @@ import { useRouter, useRoute } from "vue-router";
 import api from "@/services/api";
 import { useNotification } from "@/composables/useNotification";
 import { useAuthStore } from "@/stores/auth";
+import OnboardingCard from "@/components/onboarding/OnboardingCard.vue";
 import { useGlobalAccountFilter } from "@/composables/useGlobalAccountFilter";
 import { useUserTimezone } from "@/composables/useUserTimezone";
 import ProUpgradePrompt from "@/components/ProUpgradePrompt.vue";

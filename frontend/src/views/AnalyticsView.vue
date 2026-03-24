@@ -7,14 +7,7 @@
       </p>
     </div>
 
-    <!-- Guided onboarding: contextual card for this page (first-time only) -->
-    <OnboardingCard
-      v-if="authStore.showOnboardingModal"
-      title="Explore Analytics"
-      description="Dive into advanced metrics, behavioral insights, and performance over time. Use the filters and charts below to analyze your trading."
-      cta-label="Next: Try the Journal"
-      cta-route="diary"
-    />
+    <!-- Onboarding card removed - Analytics is no longer in the tour flow -->
 
     <div class="space-y-8">
       <!-- Filters -->

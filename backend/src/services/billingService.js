@@ -418,6 +418,18 @@ class BillingService {
     await this.createOrUpdateSubscription(userId, subscriptionData);
     console.log('Subscription updated in database');
 
+    // Trigger pro onboarding tour when subscription becomes active
+    if (subscription.status === 'active') {
+      try {
+        await db.query(
+          `UPDATE user_settings SET pro_onboarding_step = 1 WHERE user_id = $1 AND pro_onboarding_step = 0`,
+          [userId]
+        );
+      } catch (onboardErr) {
+        console.log('[BILLING] Pro onboarding trigger failed (non-blocking):', onboardErr.message);
+      }
+    }
+
     // Update user tier
     console.log('Updating user tier for subscription:', subscription.id, 'status:', subscription.status);
     try {

@@ -409,11 +409,37 @@ class User {
   static async markOnboardingCompleted(userId) {
     const query = `
       UPDATE user_settings
-      SET onboarding_completed_at = NOW()
+      SET onboarding_completed_at = NOW(), onboarding_step = 6
       WHERE user_id = $1
-      RETURNING onboarding_completed_at
+      RETURNING onboarding_completed_at, onboarding_step
     `;
     const result = await db.query(query, [userId]);
+    return result.rows[0];
+  }
+
+  static async setOnboardingStep(userId, step) {
+    const updates = ['onboarding_step = $2'];
+    if (step >= 6) {
+      updates.push('onboarding_completed_at = NOW()');
+    }
+    const query = `
+      UPDATE user_settings
+      SET ${updates.join(', ')}
+      WHERE user_id = $1
+      RETURNING onboarding_step
+    `;
+    const result = await db.query(query, [userId, step]);
+    return result.rows[0];
+  }
+
+  static async setProOnboardingStep(userId, step) {
+    const query = `
+      UPDATE user_settings
+      SET pro_onboarding_step = $2
+      WHERE user_id = $1
+      RETURNING pro_onboarding_step
+    `;
+    const result = await db.query(query, [userId, step]);
     return result.rows[0];
   }
 

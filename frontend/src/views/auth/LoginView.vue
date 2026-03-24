@@ -57,10 +57,10 @@
               v-model="form.email"
               name="email"
               type="email"
+              autocomplete="email"
               required
               class="input rounded-t-md"
               placeholder="Email address"
-              @keydown.enter="handleLogin"
             />
           </div>
           <div>
@@ -70,10 +70,10 @@
               v-model="form.password"
               name="password"
               type="password"
+              autocomplete="current-password"
               required
               class="input rounded-b-md"
               placeholder="Password"
-              @keydown.enter="handleLogin"
             />
           </div>
         </div>

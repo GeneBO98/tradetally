@@ -19,6 +19,23 @@ const userController = {
     }
   },
 
+  async setOnboardingStep(req, res, next) {
+    try {
+      const { step, type } = req.body;
+      if (typeof step !== 'number' || step < 0) {
+        return res.status(400).json({ error: 'Invalid step value' });
+      }
+      if (type === 'pro') {
+        const result = await User.setProOnboardingStep(req.user.id, step);
+        return res.json({ success: true, pro_onboarding_step: result.pro_onboarding_step });
+      }
+      const result = await User.setOnboardingStep(req.user.id, step);
+      res.json({ success: true, onboarding_step: result.onboarding_step });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   /**
    * Get onboarding status for first-value banner (is user new and not yet activated?)
    * GET /api/users/onboarding-status

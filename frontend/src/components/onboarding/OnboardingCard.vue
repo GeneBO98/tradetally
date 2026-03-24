@@ -7,6 +7,19 @@
     <div class="card-body">
       <div class="flex items-start gap-3">
         <div class="flex-1 min-w-0">
+          <!-- Step indicator -->
+          <div v-if="step && totalSteps" class="flex items-center gap-3 mb-2">
+            <span class="text-xs font-medium text-primary-600 dark:text-primary-400">
+              Step {{ step }} of {{ totalSteps }}
+            </span>
+            <div class="flex-1 max-w-[200px] h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+              <div
+                class="h-full bg-primary-600 dark:bg-primary-500 rounded-full transition-all duration-300"
+                :style="{ width: `${(step / totalSteps) * 100}%` }"
+              ></div>
+            </div>
+          </div>
+
           <h2 id="onboarding-card-title" class="text-base font-semibold text-gray-900 dark:text-white">
             {{ title }}
           </h2>
@@ -35,7 +48,7 @@
               class="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
               @click="handleSkip"
             >
-              Skip for now
+              Skip tour
             </button>
           </div>
         </div>
@@ -62,23 +75,35 @@ const props = defineProps({
   title: { type: String, required: true },
   description: { type: String, required: true },
   ctaLabel: { type: String, required: true },
-  ctaRoute: { type: String, default: null }
+  ctaRoute: { type: String, default: null },
+  step: { type: Number, default: null },
+  totalSteps: { type: Number, default: null },
+  nextStep: { type: Number, default: null },
+  tourType: { type: String, default: 'free' } // 'free' or 'pro'
 })
 
 const router = useRouter()
 const authStore = useAuthStore()
 
-function goToRoute() {
+async function goToRoute() {
+  // Advance to next step before navigating
+  if (props.nextStep) {
+    await authStore.advanceOnboardingStep(props.nextStep, props.tourType)
+  }
   if (props.ctaRoute) {
     router.push({ name: props.ctaRoute })
   }
 }
 
 async function handleDone() {
-  await authStore.completeOnboarding()
+  if (props.nextStep) {
+    await authStore.advanceOnboardingStep(props.nextStep, props.tourType)
+  } else {
+    await authStore.skipOnboarding(props.tourType)
+  }
 }
 
 async function handleSkip() {
-  await authStore.completeOnboarding()
+  await authStore.skipOnboarding(props.tourType)
 }
 </script>
