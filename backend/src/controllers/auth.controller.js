@@ -7,6 +7,8 @@ const TierService = require('../services/tierService');
 const YearWrappedService = require('../services/yearWrappedService');
 const refreshTokenService = require('../services/refreshToken.service');
 const SampleDataService = require('../services/sampleDataService');
+const activityTrackingService = require('../services/activityTrackingService');
+const { getClientIp } = require('../utils/clientIp');
 
 // Check if email configuration is available
 function isEmailConfigured() {
@@ -136,6 +138,41 @@ const authController = {
       });
       await User.createSettings(user.id);
 
+      // Record acquisition data (UTM params, referral source, IP, user agent)
+      try {
+        const db = require('../config/database');
+        const { utm_source, utm_medium, utm_campaign, utm_term, utm_content, referral_source, landing_page } = req.body;
+        await db.query(`
+          INSERT INTO user_acquisition (user_id, utm_source, utm_medium, utm_campaign, utm_term, utm_content, referral_source, registration_method, landing_page, registration_ip, registration_user_agent)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          ON CONFLICT (user_id) DO NOTHING
+        `, [
+          user.id,
+          utm_source || null,
+          utm_medium || null,
+          utm_campaign || null,
+          utm_term || null,
+          utm_content || null,
+          referral_source || req.headers.referer || null,
+          'direct',
+          landing_page || null,
+          (marketing_consent) ? getClientIp(req) : null,
+          (marketing_consent) ? (req.headers['user-agent'] || null) : null
+        ]);
+      } catch (acqErr) {
+        console.log('[REGISTER] Acquisition tracking failed (non-blocking):', acqErr.message);
+      }
+
+      // Track registration event
+      activityTrackingService.trackEvent(user.id, 'auth.register', 'auth', {
+        registration_method: 'direct',
+        has_utm: !!(req.body.utm_source || req.body.utm_campaign)
+      }, {
+        ip: getClientIp(req),
+        userAgent: req.headers['user-agent'],
+        marketingConsent: marketing_consent
+      });
+
       // Create sample data for new users on billing-enabled instances
       try {
         const billingEnabled = await TierService.isBillingEnabled(req.headers.host);
@@ -171,24 +208,73 @@ const authController = {
         message = 'Registration successful. Your account is ready to use.';
       }
 
-      res.status(201).json({
-        message,
-        requiresVerification: emailConfigured,
-        requiresApproval: !adminApproved,
-        registrationMode,
-        isFirstUser,
-        emailConfigured,
-        user: {
-          id: user.id,
-          email: user.email,
-          username: user.username,
-          fullName: user.full_name,
-          avatarUrl: user.avatar_url,
-          role: user.role,
-          isVerified: user.is_verified,
-          adminApproved: user.admin_approved
-        }
-      });
+      // Auto-login: generate token and sign user in immediately (unless approval-pending)
+      if (adminApproved) {
+        await User.updateLastLogin(user.id);
+
+        YearWrappedService.recordLogin(user.id).catch(err => {
+          console.warn('[AUTH] Failed to record login for year wrapped:', err.message);
+        });
+
+        const authToken = generateToken(user);
+
+        res.cookie('token', authToken, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          maxAge: 7 * 24 * 60 * 60 * 1000
+        });
+
+        const { tier: userTier, billingEnabled: billingStatus } = await TierService.getUserTierWithBillingStatus(user.id, req.headers.host);
+        const regSettings = await User.getSettings(user.id);
+
+        res.status(201).json({
+          message,
+          requiresVerification: emailConfigured,
+          requiresApproval: false,
+          registrationMode,
+          isFirstUser,
+          emailConfigured,
+          is_first_login: true,
+          token: authToken,
+          user: {
+            id: user.id,
+            email: user.email,
+            username: user.username,
+            fullName: user.full_name,
+            avatarUrl: user.avatar_url,
+            role: user.role,
+            tier: userTier,
+            billingEnabled: billingStatus,
+            isVerified: user.is_verified,
+            adminApproved: user.admin_approved,
+            twoFactorEnabled: false,
+            createdAt: user.created_at,
+            onboarding_step: (regSettings && regSettings.onboarding_step) || 0,
+            pro_onboarding_step: (regSettings && regSettings.pro_onboarding_step) || 0
+          }
+        });
+      } else {
+        // Approval-pending: no auto-login
+        res.status(201).json({
+          message,
+          requiresVerification: emailConfigured,
+          requiresApproval: true,
+          registrationMode,
+          isFirstUser,
+          emailConfigured,
+          user: {
+            id: user.id,
+            email: user.email,
+            username: user.username,
+            fullName: user.full_name,
+            avatarUrl: user.avatar_url,
+            role: user.role,
+            isVerified: user.is_verified,
+            adminApproved: user.admin_approved
+          }
+        });
+      }
 
       if (emailConfigured && !isFirstUser) {
         sendVerificationEmailInBackground(email, verificationToken);
@@ -249,6 +335,16 @@ const authController = {
       // Record login for Year Wrapped streak tracking
       YearWrappedService.recordLogin(user.id).catch(err => {
         console.warn('[AUTH] Failed to record login for year wrapped:', err.message);
+      });
+
+      // Track login event for activity analytics
+      activityTrackingService.trackEvent(user.id, 'auth.login', 'auth', {
+        is_first_login: isFirstLogin,
+        method: 'password'
+      }, {
+        ip: getClientIp(req),
+        userAgent: req.headers['user-agent'],
+        marketingConsent: user.marketing_consent
       });
 
       const token = generateToken(user);
@@ -345,6 +441,16 @@ const authController = {
       // Record login for Year Wrapped streak tracking
       YearWrappedService.recordLogin(user.id).catch(err => {
         console.warn('[AUTH] Failed to record login for year wrapped:', err.message);
+      });
+
+      // Track 2FA login event for activity analytics
+      activityTrackingService.trackEvent(user.id, 'auth.login', 'auth', {
+        is_first_login: isFirstLogin,
+        method: '2fa'
+      }, {
+        ip: getClientIp(req),
+        userAgent: req.headers['user-agent'],
+        marketingConsent: user.marketing_consent
       });
 
       // Generate full access token

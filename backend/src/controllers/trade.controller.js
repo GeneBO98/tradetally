@@ -1369,34 +1369,57 @@ const tradeController = {
         
         try {
           logger.logImport(`Starting import for user ${fileUserId}, broker: ${broker}, file: ${fileName}`);
-          
+
+          // Resolve selected account identifier early so we can scope duplicate detection per account
+          let selectedAccountId = null;
+          if (accountId) {
+            const Account = require('../models/Account');
+            const selectedAccount = await Account.findById(accountId, req.user.id);
+            if (selectedAccount) {
+              selectedAccountId = selectedAccount.account_identifier;
+              logger.logImport(`Using selected account: ${selectedAccount.account_name} (${selectedAccountId})`);
+            }
+          }
+
           // Fetch existing open positions for context-aware parsing
           // Include option fields to properly distinguish different option contracts
+          // Scope to selected account when importing into a specific account
           logger.logImport(`Fetching existing open positions for context-aware import...`);
-          const openPositionsQuery = `
+          const openPositionsParams = [fileUserId];
+          let openPositionsQuery = `
             SELECT id, symbol, side, quantity, entry_price, entry_time, trade_date, commission, broker, executions,
                    instrument_type, strike_price, expiration_date, option_type, conid
             FROM trades
             WHERE user_id = $1
             AND exit_price IS NULL
             AND exit_time IS NULL
-            ORDER BY symbol, entry_time
           `;
-          const openPositionsResult = await db.query(openPositionsQuery, [fileUserId]);
-          logger.logImport(`Found ${openPositionsResult.rows.length} existing open positions`);
+          if (selectedAccountId) {
+            openPositionsQuery += ` AND account_identifier = $2`;
+            openPositionsParams.push(selectedAccountId);
+          }
+          openPositionsQuery += ` ORDER BY symbol, entry_time`;
+          const openPositionsResult = await db.query(openPositionsQuery, openPositionsParams);
+          logger.logImport(`Found ${openPositionsResult.rows.length} existing open positions${selectedAccountId ? ` for account ${selectedAccountId}` : ''}`);
 
           // Also fetch completed trades to check for duplicate executions
+          // Scope to selected account to allow same trades in different accounts
           logger.logImport(`Fetching completed trades for duplicate detection...`);
-          const completedTradesQuery = `
+          const completedTradesParams = [fileUserId];
+          let completedTradesQuery = `
             SELECT id, symbol, executions, instrument_type, strike_price, expiration_date, option_type, conid
             FROM trades
             WHERE user_id = $1
             AND exit_price IS NOT NULL
             AND executions IS NOT NULL
-            ORDER BY symbol, entry_time
           `;
-          const completedTradesResult = await db.query(completedTradesQuery, [fileUserId]);
-          logger.logImport(`Found ${completedTradesResult.rows.length} completed trades for duplicate checking`);
+          if (selectedAccountId) {
+            completedTradesQuery += ` AND account_identifier = $2`;
+            completedTradesParams.push(selectedAccountId);
+          }
+          completedTradesQuery += ` ORDER BY symbol, entry_time`;
+          const completedTradesResult = await db.query(completedTradesQuery, completedTradesParams);
+          logger.logImport(`Found ${completedTradesResult.rows.length} completed trades for duplicate checking${selectedAccountId ? ` for account ${selectedAccountId}` : ''}`);
 
           // Helper function to build composite key for options
           // For options: symbol_strike_expiration_type (e.g., "DG_7.5_2024-02-16_put")
@@ -1536,17 +1559,6 @@ const tradeController = {
               logger.logImport(`Using custom mapping: ${customMapping.mapping_name}`);
             } else {
               logger.logWarn(`Custom mapping ${mappingId} not found for user ${fileUserId}`);
-            }
-          }
-
-          // Look up selected account identifier if accountId was provided
-          let selectedAccountId = null;
-          if (accountId) {
-            const Account = require('../models/Account');
-            const selectedAccount = await Account.findById(accountId, req.user.id);
-            if (selectedAccount) {
-              selectedAccountId = selectedAccount.account_identifier;
-              logger.logImport(`Using selected account: ${selectedAccount.account_name} (${selectedAccountId})`);
             }
           }
 
@@ -1999,16 +2011,15 @@ const tradeController = {
           clearTimeout(importTimeout);
 
           // Check for existing trades to avoid duplicates
-          // Note: We don't filter by broker as the same trade could be imported from different broker files
+          // Scope to selected account so the same trade can exist in different accounts
           // Include executions data to check for exact execution timestamp matches
           // Include instrument_type and conid to distinguish stock trades from options on same underlying
-          const existingTradesQuery = `
+          const existingTradesParams = [req.user.id];
+          let existingTradesQuery = `
             SELECT id, symbol, entry_time, entry_price, exit_price, pnl, quantity, side, executions,
                    instrument_type, conid
             FROM trades
             WHERE user_id = $1
-            AND trade_date >= $2
-            AND trade_date <= $3
           `;
 
           // Get date range from trades
@@ -2016,13 +2027,17 @@ const tradeController = {
           const minDate = tradeDates.length > 0 ? new Date(Math.min(...tradeDates)) : new Date();
           const maxDate = tradeDates.length > 0 ? new Date(Math.max(...tradeDates)) : new Date();
 
-          const existingTrades = await db.query(existingTradesQuery, [
-            req.user.id, 
-            minDate.toISOString().split('T')[0],
-            maxDate.toISOString().split('T')[0]
-          ]);
+          existingTradesParams.push(minDate.toISOString().split('T')[0], maxDate.toISOString().split('T')[0]);
+          existingTradesQuery += ` AND trade_date >= $2 AND trade_date <= $3`;
 
-          logger.logImport(`Found ${existingTrades.rows.length} existing trades in date range`);
+          if (selectedAccountId) {
+            existingTradesQuery += ` AND account_identifier = $4`;
+            existingTradesParams.push(selectedAccountId);
+          }
+
+          const existingTrades = await db.query(existingTradesQuery, existingTradesParams);
+
+          logger.logImport(`Found ${existingTrades.rows.length} existing trades in date range${selectedAccountId ? ` for account ${selectedAccountId}` : ''}`);
 
           logger.logImport(`Processing ${trades.length} trades for import...`);
           

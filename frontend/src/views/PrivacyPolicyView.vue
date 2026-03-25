@@ -95,11 +95,29 @@
                         <ul
                             class="list-disc list-inside text-gray-700 dark:text-gray-300 mb-4 ml-4"
                         >
-                            <li>IP address</li>
-                            <li>Browser type and version</li>
-                            <li>Pages visited and time spent</li>
-                            <li>Features used</li>
-                            <li>Login timestamps</li>
+                            <li>IP address (only if you have given marketing consent)</li>
+                            <li>Browser type and version (user agent)</li>
+                            <li>Pages visited and features used</li>
+                            <li>Login timestamps and frequency</li>
+                            <li>API request activity and response times</li>
+                            <li>Trade import and broker sync activity</li>
+                        </ul>
+
+                        <h3
+                            class="text-xl font-semibold text-gray-900 dark:text-white mb-3 mt-6"
+                        >
+                            Acquisition Data
+                        </h3>
+                        <p class="text-gray-700 dark:text-gray-300 mb-4">
+                            When you register, we may collect information about how you found us:
+                        </p>
+                        <ul
+                            class="list-disc list-inside text-gray-700 dark:text-gray-300 mb-4 ml-4"
+                        >
+                            <li>UTM campaign parameters from the registration URL (source, medium, campaign)</li>
+                            <li>Referring website (if applicable)</li>
+                            <li>Landing page URL</li>
+                            <li>Registration IP address and user agent (only if you have given marketing consent)</li>
                         </ul>
                     </section>
 
@@ -131,6 +149,11 @@
                             </li>
                             <li>Responding to support requests</li>
                             <li>Complying with legal obligations</li>
+                            <li>Computing engagement scores and user lifecycle stages to personalize your experience</li>
+                            <li>Segmenting users for targeted product communications and marketing (with your consent)</li>
+                            <li>Syncing user profile and engagement data to our CRM for customer relationship management</li>
+                            <li>Tracking email open and click-through rates to improve the relevance of our communications</li>
+                            <li>Analyzing acquisition channels and marketing campaign effectiveness</li>
                         </ul>
                     </section>
 
@@ -222,7 +245,10 @@
                                 Trading data: Until you delete specific trades
                                 or your account
                             </li>
-                            <li>Usage logs: Typically retained for 90 days</li>
+                            <li>Activity event logs: Automatically deleted after 90 days</li>
+                            <li>Engagement summaries: Retained for the lifetime of your account (aggregated, non-PII)</li>
+                            <li>Acquisition data (UTM parameters): Retained for the lifetime of your account</li>
+                            <li>Email engagement records (open/click tracking): Automatically deleted after 1 year</li>
                             <li>
                                 Backup data: May be retained for up to 30 days
                                 after deletion
@@ -339,6 +365,9 @@
                                 Email service providers (for transactional
                                 emails)
                             </li>
+                            <li>
+                                CRM platforms (to manage customer relationships and support)
+                            </li>
                         </ul>
                         <p class="text-gray-700 dark:text-gray-300">
                             These third-party services have their own privacy
@@ -350,7 +379,37 @@
                         <h2
                             class="text-2xl font-semibold text-gray-900 dark:text-white mb-4"
                         >
-                            11. Changes to This Privacy Policy
+                            11. Email Tracking and Marketing Analytics
+                        </h2>
+                        <p class="text-gray-700 dark:text-gray-300 mb-4">
+                            To improve the relevance of our communications, we use the following tracking technologies in our emails:
+                        </p>
+                        <ul
+                            class="list-disc list-inside text-gray-700 dark:text-gray-300 mb-4 ml-4"
+                        >
+                            <li>
+                                <strong>Tracking pixels:</strong> Our marketing and digest emails may contain a small, invisible image (1x1 pixel) that notifies us when an email has been opened. This does not collect personal information beyond the fact that you opened the email.
+                            </li>
+                            <li>
+                                <strong>Click tracking:</strong> Links in our emails may be routed through our servers so we can record which links are clicked. You are immediately redirected to the intended destination.
+                            </li>
+                            <li>
+                                <strong>Engagement scoring:</strong> We compute an aggregate engagement score based on your activity (login frequency, features used, trades imported) to personalize your experience and ensure we send relevant communications.
+                            </li>
+                        </ul>
+                        <p class="text-gray-700 dark:text-gray-300 mb-4">
+                            You can opt out of marketing emails at any time using the unsubscribe link included in every email. Transactional emails (password resets, security alerts) are not affected by your marketing preferences.
+                        </p>
+                        <p class="text-gray-700 dark:text-gray-300">
+                            If you did not consent to marketing during registration, we will not store your IP address or user agent in activity logs. You can update your marketing consent preference in your account settings at any time.
+                        </p>
+                    </section>
+
+                    <section class="mb-8">
+                        <h2
+                            class="text-2xl font-semibold text-gray-900 dark:text-white mb-4"
+                        >
+                            12. Changes to This Privacy Policy
                         </h2>
                         <p class="text-gray-700 dark:text-gray-300">
                             We may update our Privacy Policy from time to time.
@@ -365,7 +424,7 @@
                         <h2
                             class="text-2xl font-semibold text-gray-900 dark:text-white mb-4"
                         >
-                            12. Contact Us
+                            13. Contact Us
                         </h2>
                         <p class="text-gray-700 dark:text-gray-300 mb-4">
                             If you have any questions about this Privacy Policy
@@ -402,7 +461,7 @@
 import { computed, onMounted } from "vue";
 
 const lastUpdated = computed(() => {
-    const date = new Date("2025-01-07");
+    const date = new Date("2026-03-25");
     return date.toLocaleDateString("en-US", {
         year: "numeric",
         month: "long",

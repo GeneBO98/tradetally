@@ -144,6 +144,10 @@ const form = ref({
   marketing_consent: false
 })
 
+// Capture UTM parameters from URL for acquisition tracking
+const utmParams = ref({})
+
+
 const registrationDisabled = computed(() => registrationConfig.value?.allowRegistration === false)
 const billingEnabled = computed(() => registrationConfig.value?.billingEnabled === true)
 let redirectTimeoutId = null
@@ -153,6 +157,19 @@ onMounted(async () => {
   if (route.query.email) {
     form.value.email = route.query.email
   }
+
+  // Capture UTM parameters for acquisition tracking
+  const params = new URLSearchParams(window.location.search)
+  const utmKeys = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content']
+  utmKeys.forEach(key => {
+    if (params.get(key)) {
+      utmParams.value[key] = params.get(key)
+    }
+  })
+  if (document.referrer && !document.referrer.includes(window.location.hostname)) {
+    utmParams.value.referral_source = document.referrer
+  }
+  utmParams.value.landing_page = window.location.pathname
 
   fetchRegistrationConfig().catch((error) => {
     console.error('Failed to fetch registration config:', error)
@@ -180,20 +197,19 @@ onUnmounted(() => {
 
 async function handleRegister() {
   try {
-    const response = await authStore.register(form.value)
+    const response = await authStore.register({ ...form.value, ...utmParams.value })
 
-    // Show success message
+    // If auto-logged in (token returned), the store already navigated to dashboard
+    if (response.token) {
+      return
+    }
+
+    // Approval-pending: redirect to login with message
     showSuccess('Registration Successful', response.message)
-    
-    // Check if email verification or admin approval is required
-    if (response.requiresVerification && response.requiresApproval) {
-      router.push({ name: 'login', query: { message: 'Registration successful! Please check your email to verify your account and wait for admin approval.' } })
-    } else if (response.requiresVerification) {
-      router.push({ name: 'login', query: { message: 'Registration successful! Please check your email to verify your account.' } })
-    } else if (response.requiresApproval) {
-      router.push({ name: 'login', query: { message: 'Your account is pending admin approval' } })
-    } else {
-      router.push({ name: 'login', query: { message: 'You can now sign in to your account' } })
+    if (response.requiresApproval) {
+      router.push({ name: 'login', query: { message: response.requiresVerification
+        ? 'Registration successful! Please check your email to verify your account and wait for admin approval.'
+        : 'Your account is pending admin approval' } })
     }
   } catch (error) {
     showError('Registration failed', authStore.error)

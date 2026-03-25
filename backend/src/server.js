@@ -67,6 +67,10 @@ const earningsScheduler = require('./services/earningsScheduler');
 const symbolCategoryScheduler = require('./services/symbolCategoryScheduler');
 const webhookEventBridge = require('./services/webhookEventBridge');
 const crmSyncScheduler = require('./services/crmSyncScheduler');
+const activityTrackingService = require('./services/activityTrackingService');
+const engagementScheduler = require('./services/engagementScheduler');
+const activityTrackingMiddleware = require('./middleware/activityTracking');
+const emailTrackingRoutes = require('./routes/emailTracking.routes');
 const backgroundWorker = require('./workers/backgroundWorker');
 const jobRecoveryService = require('./services/jobRecoveryService');
 const pushNotificationService = require('./services/pushNotificationService');
@@ -94,20 +98,7 @@ const rateLimitMax = parseInt(process.env.RATE_LIMIT_MAX) || 1000;
 const rateLimitWindowMs = parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000;
 
 // Custom key generator to properly identify clients behind proxies
-const getClientIp = (req) => {
-  // Try X-Forwarded-For header first (set by nginx/proxies)
-  const forwarded = req.headers['x-forwarded-for'];
-  if (forwarded) {
-    // X-Forwarded-For can contain multiple IPs; the first one is the client
-    return forwarded.split(',')[0].trim();
-  }
-  // Fall back to X-Real-IP (also set by nginx)
-  if (req.headers['x-real-ip']) {
-    return req.headers['x-real-ip'];
-  }
-  // Finally fall back to connection remote address
-  return req.ip || req.connection?.remoteAddress || 'unknown';
-};
+const { getClientIp } = require('./utils/clientIp');
 
 const limiter = rateLimit({
   windowMs: rateLimitWindowMs,
@@ -218,6 +209,12 @@ app.use((req, res, next) => {
 });
 app.use(express.urlencoded({ extended: true }));
 app.use('/api', skipRateLimit);
+
+// Activity tracking middleware (auto-logs user actions to user_activity_events)
+app.use(activityTrackingMiddleware);
+
+// Email tracking routes (public, no auth - triggered by email clients)
+app.use('/api/email-track', emailTrackingRoutes);
 
 // V1 API routes (mobile-optimized)
 app.use('/api/v1', v1Routes);
@@ -502,6 +499,24 @@ async function startServer() {
       console.log('[SUCCESS] CRM sync scheduler started');
     } else {
       console.log('CRM sync disabled (ENABLE_CRM_SYNC=false)');
+    }
+
+    // Start activity tracking service (buffered event logging)
+    if (process.env.ENABLE_ACTIVITY_TRACKING !== 'false') {
+      console.log('Starting activity tracking service...');
+      activityTrackingService.start();
+      console.log('[SUCCESS] Activity tracking service started');
+    } else {
+      console.log('Activity tracking disabled (ENABLE_ACTIVITY_TRACKING=false)');
+    }
+
+    // Start engagement scheduler (recomputes engagement scores every 2 hours)
+    if (process.env.ENABLE_ENGAGEMENT_TRACKING !== 'false') {
+      console.log('Starting engagement scheduler...');
+      engagementScheduler.start();
+      console.log('[SUCCESS] Engagement scheduler started');
+    } else {
+      console.log('Engagement tracking disabled (ENABLE_ENGAGEMENT_TRACKING=false)');
     }
 
     // Initialize push notification service

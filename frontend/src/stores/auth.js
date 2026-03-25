@@ -95,27 +95,27 @@ export const useAuthStore = defineStore('auth', () => {
   async function register(userData) {
     loading.value = true
     error.value = null
-    
+
     try {
       const response = await api.post('/auth/register', userData)
-      
-      // Check if email verification or admin approval is required (new flow)
-      if (response.data.requiresVerification || response.data.requiresApproval) {
-        // Don't auto-login, just return the response
-        return response.data
-      }
-      
-      // Legacy flow for existing users (if any)
-      const { user: newUser, token: authToken } = response.data
-      
+
+      // Auto-login: if backend returned a token, sign in immediately
+      const { token: authToken } = response.data
       if (authToken) {
-        user.value = newUser
         token.value = authToken
         localStorage.setItem('token', authToken)
         api.defaults.headers.common['Authorization'] = `Bearer ${authToken}`
-        router.push({ name: 'dashboard' })
+
+        if (response.data.is_first_login) {
+          pendingOnboarding.value = true
+        }
+
+        await fetchUser()
+        navigateAfterLogin(null)
+        return response.data
       }
-      
+
+      // No token means approval-pending — return for the view to handle
       return response.data
     } catch (err) {
       error.value = err.response?.data?.error || 'Registration failed'

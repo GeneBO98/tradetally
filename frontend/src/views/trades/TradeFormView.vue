@@ -2189,7 +2189,7 @@ async function handleSubmit() {
               exitTime: exec.exitTime ? toUTC(exec.exitTime) : null,
               commission: parseFloat(exec.commission) || 0,  // Can be negative for rebates
               fees: parseFloat(exec.fees) || 0,  // Can be negative for rebates
-              pnl: exec.pnl || 0,
+              pnl: exec.pnl != null ? parseFloat(exec.pnl) : null,
               stopLoss: exec.stopLoss && exec.stopLoss !== '' ? parseFloat(exec.stopLoss) : null,
               takeProfit: exec.takeProfit && exec.takeProfit !== '' ? parseFloat(exec.takeProfit) : null,
               takeProfitTargets: (() => {
@@ -2919,12 +2919,38 @@ function handleAccountSelect(event) {
   }
 }
 
+async function createAccountRecord(identifier) {
+  try {
+    // Check if an account with this identifier already exists
+    const existing = await api.get('/accounts')
+    const accounts = existing.data.data || []
+    if (accounts.some(a => a.accountIdentifier === identifier)) {
+      console.log('[TRADE FORM] Account record already exists for:', identifier)
+      return
+    }
+
+    await api.post('/accounts', {
+      accountName: identifier,
+      accountIdentifier: identifier,
+      broker: form.value.broker || null,
+      initialBalance: 0,
+      initialBalanceDate: new Date().toISOString().split('T')[0],
+      isPrimary: false,
+      notes: null
+    })
+    console.log('[TRADE FORM] Created account record for:', identifier)
+  } catch (err) {
+    console.log('[TRADE FORM] Account record creation skipped:', err.response?.data?.error || err.message)
+  }
+}
+
 function handleAccountInputEnter() {
   const newAccount = form.value.account_identifier.trim()
   if (newAccount) {
     // Add to the list if it's not already there
     if (!accountsList.value.includes(newAccount)) {
       accountsList.value.push(newAccount)
+      createAccountRecord(newAccount)
       showSuccess('Added', `Account "${newAccount}" added`)
     }
     showAccountInput.value = false
@@ -2937,6 +2963,7 @@ function handleAccountInputBlur() {
     // Add to the list if it's not already there
     if (!accountsList.value.includes(newAccount)) {
       accountsList.value.push(newAccount)
+      createAccountRecord(newAccount)
     }
   }
   showAccountInput.value = false
