@@ -182,18 +182,17 @@ async function handleRegister() {
   try {
     const response = await authStore.register(form.value)
 
-    // Show success message
+    // If auto-logged in (token returned), the store already navigated to dashboard
+    if (response.token) {
+      return
+    }
+
+    // Approval-pending: redirect to login with message
     showSuccess('Registration Successful', response.message)
-    
-    // Check if email verification or admin approval is required
-    if (response.requiresVerification && response.requiresApproval) {
-      router.push({ name: 'login', query: { message: 'Registration successful! Please check your email to verify your account and wait for admin approval.' } })
-    } else if (response.requiresVerification) {
-      router.push({ name: 'login', query: { message: 'Registration successful! Please check your email to verify your account.' } })
-    } else if (response.requiresApproval) {
-      router.push({ name: 'login', query: { message: 'Your account is pending admin approval' } })
-    } else {
-      router.push({ name: 'login', query: { message: 'You can now sign in to your account' } })
+    if (response.requiresApproval) {
+      router.push({ name: 'login', query: { message: response.requiresVerification
+        ? 'Registration successful! Please check your email to verify your account and wait for admin approval.'
+        : 'Your account is pending admin approval' } })
     }
   } catch (error) {
     showError('Registration failed', authStore.error)

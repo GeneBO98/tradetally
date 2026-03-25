@@ -21,17 +21,25 @@
             </div>
         </div>
 
-        <!-- Loading -->
-        <div v-if="loading" class="flex justify-center py-12">
+        <!-- Loading (initial only) -->
+        <div v-if="initialLoading" class="flex justify-center py-12">
             <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
         </div>
 
         <!-- Error -->
-        <div v-else-if="error" class="rounded-md bg-red-50 dark:bg-red-900/20 p-4">
+        <div v-else-if="error && !users.length" class="rounded-md bg-red-50 dark:bg-red-900/20 p-4">
             <p class="text-sm text-red-800 dark:text-red-400">{{ error }}</p>
         </div>
 
         <template v-else>
+            <!-- Subtle refresh indicator -->
+            <div v-if="loading" class="flex justify-end mb-2">
+                <div class="flex items-center space-x-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm border border-gray-200 dark:border-gray-700">
+                    <div class="animate-spin rounded-full h-4 w-4 border-2 border-primary-600 border-t-transparent"></div>
+                    <span class="text-xs text-gray-600 dark:text-gray-400">Updating...</span>
+                </div>
+            </div>
+
             <!-- Filters & Table Card -->
             <div class="card">
                 <!-- Filters -->
@@ -440,6 +448,7 @@ const authStore = useAuthStore();
 
 const users = ref([]);
 const loading = ref(true);
+const initialLoading = ref(true);
 const error = ref(null);
 const isUpdating = ref(false);
 const showDeleteConfirm = ref(false);
@@ -720,6 +729,7 @@ async function fetchUsers(page = 1) {
         showError("Error", error.value);
     } finally {
         loading.value = false;
+        initialLoading.value = false;
     }
 }
 

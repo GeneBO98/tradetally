@@ -171,24 +171,73 @@ const authController = {
         message = 'Registration successful. Your account is ready to use.';
       }
 
-      res.status(201).json({
-        message,
-        requiresVerification: emailConfigured,
-        requiresApproval: !adminApproved,
-        registrationMode,
-        isFirstUser,
-        emailConfigured,
-        user: {
-          id: user.id,
-          email: user.email,
-          username: user.username,
-          fullName: user.full_name,
-          avatarUrl: user.avatar_url,
-          role: user.role,
-          isVerified: user.is_verified,
-          adminApproved: user.admin_approved
-        }
-      });
+      // Auto-login: generate token and sign user in immediately (unless approval-pending)
+      if (adminApproved) {
+        await User.updateLastLogin(user.id);
+
+        YearWrappedService.recordLogin(user.id).catch(err => {
+          console.warn('[AUTH] Failed to record login for year wrapped:', err.message);
+        });
+
+        const authToken = generateToken(user);
+
+        res.cookie('token', authToken, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          maxAge: 7 * 24 * 60 * 60 * 1000
+        });
+
+        const { tier: userTier, billingEnabled: billingStatus } = await TierService.getUserTierWithBillingStatus(user.id, req.headers.host);
+        const regSettings = await User.getSettings(user.id);
+
+        res.status(201).json({
+          message,
+          requiresVerification: emailConfigured,
+          requiresApproval: false,
+          registrationMode,
+          isFirstUser,
+          emailConfigured,
+          is_first_login: true,
+          token: authToken,
+          user: {
+            id: user.id,
+            email: user.email,
+            username: user.username,
+            fullName: user.full_name,
+            avatarUrl: user.avatar_url,
+            role: user.role,
+            tier: userTier,
+            billingEnabled: billingStatus,
+            isVerified: user.is_verified,
+            adminApproved: user.admin_approved,
+            twoFactorEnabled: false,
+            createdAt: user.created_at,
+            onboarding_step: (regSettings && regSettings.onboarding_step) || 0,
+            pro_onboarding_step: (regSettings && regSettings.pro_onboarding_step) || 0
+          }
+        });
+      } else {
+        // Approval-pending: no auto-login
+        res.status(201).json({
+          message,
+          requiresVerification: emailConfigured,
+          requiresApproval: true,
+          registrationMode,
+          isFirstUser,
+          emailConfigured,
+          user: {
+            id: user.id,
+            email: user.email,
+            username: user.username,
+            fullName: user.full_name,
+            avatarUrl: user.avatar_url,
+            role: user.role,
+            isVerified: user.is_verified,
+            adminApproved: user.admin_approved
+          }
+        });
+      }
 
       if (emailConfigured && !isFirstUser) {
         sendVerificationEmailInBackground(email, verificationToken);
