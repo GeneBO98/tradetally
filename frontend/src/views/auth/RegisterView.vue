@@ -144,6 +144,10 @@ const form = ref({
   marketing_consent: false
 })
 
+// Capture UTM parameters from URL for acquisition tracking
+const utmParams = ref({})
+
+
 const registrationDisabled = computed(() => registrationConfig.value?.allowRegistration === false)
 const billingEnabled = computed(() => registrationConfig.value?.billingEnabled === true)
 let redirectTimeoutId = null
@@ -153,6 +157,19 @@ onMounted(async () => {
   if (route.query.email) {
     form.value.email = route.query.email
   }
+
+  // Capture UTM parameters for acquisition tracking
+  const params = new URLSearchParams(window.location.search)
+  const utmKeys = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content']
+  utmKeys.forEach(key => {
+    if (params.get(key)) {
+      utmParams.value[key] = params.get(key)
+    }
+  })
+  if (document.referrer && !document.referrer.includes(window.location.hostname)) {
+    utmParams.value.referral_source = document.referrer
+  }
+  utmParams.value.landing_page = window.location.pathname
 
   fetchRegistrationConfig().catch((error) => {
     console.error('Failed to fetch registration config:', error)
@@ -180,7 +197,7 @@ onUnmounted(() => {
 
 async function handleRegister() {
   try {
-    const response = await authStore.register(form.value)
+    const response = await authStore.register({ ...form.value, ...utmParams.value })
 
     // If auto-logged in (token returned), the store already navigated to dashboard
     if (response.token) {

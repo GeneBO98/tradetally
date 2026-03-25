@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const crypto = require('crypto');
 const unsubscribeService = require('./unsubscribeService');
 const escapeHtml = require('../utils/escapeHtml');
 const { loadTemplate, renderTemplate } = require('../utils/emailTemplateLoader');
@@ -166,6 +167,49 @@ class EmailService {
         <a href="${unsubscribeUrl}" style="color: #71717a; text-decoration: underline;">Unsubscribe</a>
       </p>
     `;
+  }
+
+  /**
+   * Record an email send in the email_engagement table and return tracking ID
+   */
+  static async recordEmailEngagement(userId, emailType, metadata = {}) {
+    try {
+      const trackingId = crypto.randomUUID();
+      await db.query(`
+        INSERT INTO email_engagement (user_id, email_type, tracking_id, metadata)
+        VALUES ($1, $2, $3, $4)
+      `, [userId, emailType, trackingId, JSON.stringify(metadata)]);
+      return trackingId;
+    } catch (err) {
+      console.error('[EMAIL_TRACKING] Failed to record email engagement:', err.message);
+      return null;
+    }
+  }
+
+  /**
+   * Inject tracking pixel into email HTML (before closing </body> or at end)
+   */
+  static injectTrackingPixel(html, trackingId) {
+    if (!trackingId) return html;
+    const baseUrl = process.env.FRONTEND_URL || process.env.BASE_URL || '';
+    if (!baseUrl) return html;
+
+    const pixel = `<img src="${baseUrl}/api/email-track/open/${trackingId}" width="1" height="1" style="display:none;width:1px;height:1px;" alt="" />`;
+
+    if (html.includes('</body>')) {
+      return html.replace('</body>', `${pixel}</body>`);
+    }
+    return html + pixel;
+  }
+
+  /**
+   * Wrap a CTA URL with click tracking redirect
+   */
+  static wrapClickUrl(url, trackingId) {
+    if (!trackingId || !url) return url;
+    const baseUrl = process.env.FRONTEND_URL || process.env.BASE_URL || '';
+    if (!baseUrl) return url;
+    return `${baseUrl}/api/email-track/click/${trackingId}?url=${encodeURIComponent(url)}`;
   }
 
   static async sendVerificationEmail(email, token) {
@@ -448,11 +492,16 @@ class EmailService {
       </div>
       ${this.getMarketingFooter(unsubscribeUrl)}
     `;
+    // Record email engagement and inject tracking
+    const trackingId = userId ? await this.recordEmailEngagement(userId, 'weekly_digest', { tradeCount, totalPnL }) : null;
+    let html = this.getBaseTemplate('Your Week in Trades', content);
+    html = this.injectTrackingPixel(html, trackingId);
+
     const mailOptions = {
       from: { name: 'TradeTally', address: process.env.EMAIL_FROM || 'noreply@tradetally.io' },
       to: email,
       subject: `${tradeCount} trades this week - TradeTally`,
-      html: this.getBaseTemplate('Your Week in Trades', content),
+      html,
       text: `Your week: ${tradeCount} trades, P&L ${pnlFormatted}. View dashboard: ${url}. Unsubscribe: ${unsubscribeUrl}`,
       headers: {
         'List-Unsubscribe': `<${unsubscribeUrl}>`,
@@ -501,11 +550,16 @@ class EmailService {
       </div>
       ${this.getMarketingFooter(unsubscribeUrl)}
     `;
+    // Record email engagement and inject tracking
+    const trackingId = userId ? await this.recordEmailEngagement(userId, 'reengagement', { daysInactive }) : null;
+    let html = this.getBaseTemplate('Your journal is waiting', content);
+    html = this.injectTrackingPixel(html, trackingId);
+
     const mailOptions = {
       from: { name: 'TradeTally', address: process.env.EMAIL_FROM || 'noreply@tradetally.io' },
       to: email,
       subject: `Your journal is waiting - TradeTally`,
-      html: this.getBaseTemplate('Your journal is waiting', content),
+      html,
       text: `You haven't logged in for ${daysInactive} days. Log in: ${loginUrl}. Unsubscribe: ${unsubscribeUrl}`,
       headers: {
         'List-Unsubscribe': `<${unsubscribeUrl}>`,
@@ -642,11 +696,16 @@ class EmailService {
       `;
     }
 
+    // Record email engagement and inject tracking
+    const trackingId = userId ? await this.recordEmailEngagement(userId, 'trial_conversion', { tier }) : null;
+    let finalHtml = this.getBaseTemplate(headline, content);
+    finalHtml = this.injectTrackingPixel(finalHtml, trackingId);
+
     const mailOptions = {
       from: { name: 'TradeTally', address: process.env.EMAIL_FROM || 'noreply@tradetally.io' },
       to: email,
       subject,
-      html: this.getBaseTemplate(headline, content),
+      html: finalHtml,
       text: `${greeting} ${bodyText} Upgrade: ${upgradeUrl} Unsubscribe: ${unsubscribeUrl}`,
       headers: {
         'List-Unsubscribe': `<${unsubscribeUrl}>`,

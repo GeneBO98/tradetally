@@ -118,6 +118,17 @@ class TwentySyncService {
       lastLoginAt: userData.last_login_at ? new Date(userData.last_login_at).toISOString() : null,
       stripeCustomerId: userData.stripe_customer_id || '',
       subscriptionStatus: userData.subscription_status || 'none',
+      // Engagement data (from user_engagement_summary)
+      engagementScore: parseInt(userData.engagement_score) || 0,
+      engagementTier: userData.engagement_tier || 'new',
+      daysActiveLast30: parseInt(userData.days_active_last_30) || 0,
+      mostUsedFeature: userData.most_used_feature || '',
+      diaryEntryCount: parseInt(userData.total_diary_entries) || 0,
+      brokerSyncCount: parseInt(userData.total_broker_syncs) || 0,
+      // Acquisition data (from user_acquisition)
+      utmSource: userData.utm_source || '',
+      utmMedium: userData.utm_medium || '',
+      utmCampaign: userData.utm_campaign || '',
     };
   }
 
@@ -203,10 +214,22 @@ class TwentySyncService {
         s.canceled_at,
         (SELECT COUNT(*) FROM trades WHERE user_id = u.id) AS trade_count,
         (SELECT COUNT(*) FROM import_logs WHERE user_id = u.id) AS import_count,
-        (SELECT MAX(created_at) FROM trades WHERE user_id = u.id) AS last_trade_at
+        (SELECT MAX(created_at) FROM trades WHERE user_id = u.id) AS last_trade_at,
+        ues.engagement_score,
+        ues.engagement_tier,
+        ues.days_active_last_30,
+        ues.most_used_feature,
+        ues.total_diary_entries,
+        ues.total_broker_syncs,
+        ues.lifecycle_stage AS engagement_lifecycle,
+        ua.utm_source,
+        ua.utm_medium,
+        ua.utm_campaign
       FROM users u
       LEFT JOIN subscriptions s ON s.user_id = u.id
         AND s.status IN ('active', 'trialing', 'canceled')
+      LEFT JOIN user_engagement_summary ues ON ues.user_id = u.id
+      LEFT JOIN user_acquisition ua ON ua.user_id = u.id
       WHERE u.is_active = true
         AND u.role != 'admin'
         AND u.email != 'demo@example.com'
