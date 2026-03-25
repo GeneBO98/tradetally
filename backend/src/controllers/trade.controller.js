@@ -788,6 +788,18 @@ const tradeController = {
           ? totalExitFees * (exec.quantity / totalSplitQty)
           : totalExitFees;
 
+        // Build executions array for the new trade: entry fill + proportional exit fill
+        const splitExecutions = [
+          { ...exec },
+          {
+            action: exitAction,
+            price: avgExitPrice,
+            quantity: exec.quantity,
+            datetime: exitTime || trade.exit_time,
+            fees: feeShare,
+          }
+        ];
+
         const tradeData = {
           symbol: trade.symbol,
           side: trade.side,
@@ -815,6 +827,7 @@ const tradeController = {
           quantity: exec.quantity,
           commission: 0,
           fees: (exec.fees || 0) + feeShare,
+          executions: splitExecutions,
         };
 
         const newTrade = await Trade.create(req.user.id, tradeData, { skipAchievements: true, skipApiCalls: true });
