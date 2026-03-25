@@ -1291,12 +1291,61 @@ const processedExecutions = computed(() => {
       exitTime: trade.value.exit_time || null,
       commission: trade.value.commission || 0,
       fees: trade.value.fees || 0,
-      pnl: trade.value.pnl || 0
+      pnl: trade.value.pnl ?? 0
     }]
   }
 
   const tradeSide = trade.value.side
   let runningPosition = 0
+
+  // Check if these are grouped executions (round-trips with entryPrice/exitPrice)
+  // vs individual fills (action/price/datetime)
+  const isGroupedFormat = trade.value.executions.some(e =>
+    e && (e.entryPrice !== undefined || e.entry_price !== undefined || e.entryTime !== undefined || e.entry_time !== undefined)
+  )
+
+  // For grouped executions, compute P&L directly instead of using FIFO matching
+  if (isGroupedFormat) {
+    return trade.value.executions.map((execution) => {
+      if (!execution) return { action: 'N/A', quantity: 0, price: 0, value: 0, commission: 0, fees: 0, runningPosition: 0, avgCost: null, datetime: null, pnl: null }
+
+      const quantity = parseFloat(execution.quantity) || 0
+      const entryPrice = parseFloat(execution.entryPrice ?? execution.entry_price) || 0
+      const exitPrice = execution.exitPrice ?? execution.exit_price
+      const parsedExitPrice = exitPrice != null ? parseFloat(exitPrice) : null
+      const side = execution.side || tradeSide
+      const commission = parseFloat(execution.commission) || 0
+      const fees = parseFloat(execution.fees) || 0
+      const totalCost = commission + fees
+
+      let executionPnl = null
+      if (parsedExitPrice != null && quantity > 0) {
+        if (side === 'long') {
+          executionPnl = (parsedExitPrice - entryPrice) * quantity * valueMultiplier - totalCost
+        } else {
+          executionPnl = (entryPrice - parsedExitPrice) * quantity * valueMultiplier - totalCost
+        }
+      }
+
+      return {
+        ...execution,
+        action: side,
+        quantity,
+        price: entryPrice,
+        value: quantity * entryPrice * valueMultiplier,
+        commission,
+        fees: parseFloat(execution.fees) || fees,
+        datetime: execution.entryTime ?? execution.entry_time,
+        runningPosition: 0,
+        avgCost: entryPrice,
+        entryPrice,
+        exitPrice: parsedExitPrice,
+        entryTime: execution.entryTime ?? execution.entry_time,
+        exitTime: execution.exitTime ?? execution.exit_time,
+        pnl: executionPnl
+      }
+    })
+  }
 
   // FIFO queue of entry executions: [{quantity, price, remainingQty}]
   // This allows proper matching of exits to entries
@@ -1479,7 +1528,7 @@ const executionDerivedPnl = computed(() => {
 // Use execution-derived P&L when available, otherwise fall back to trade.pnl
 const displayPnl = computed(() => {
   if (executionDerivedPnl.value !== null) return executionDerivedPnl.value
-  return trade.value?.pnl || null
+  return trade.value?.pnl ?? null
 })
 
 const executionSummary = computed(() => {
