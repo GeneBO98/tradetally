@@ -34,6 +34,13 @@
                 <option v-for="n in 10" :key="n" :value="n">{{ n }}</option>
               </select>
             </div>
+            <div class="flex items-center gap-2">
+              <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Min Eligible Trades:</label>
+              <select v-model="minEligibleTrades" class="input text-sm w-20">
+                <option :value="0">Any</option>
+                <option v-for="n in [2, 3, 5, 10, 15, 20, 25, 50]" :key="n" :value="n">{{ n }}</option>
+              </select>
+            </div>
           </div>
         </div>
       </div>
@@ -70,15 +77,17 @@
           <div class="text-sm text-gray-600 dark:text-gray-400">Max Partial Levels</div>
         </div>
         <div class="card p-4 text-center">
-          <div class="text-2xl font-bold text-gray-900 dark:text-white">{{ analytics.partials?.length || 0 }}</div>
+          <div class="text-2xl font-bold text-gray-900 dark:text-white">{{ filteredPartials.length }}</div>
           <div class="text-sm text-gray-600 dark:text-gray-400">Partial Indices</div>
         </div>
       </div>
 
       <!-- No data state -->
-      <div v-if="!analytics.partials || analytics.partials.length === 0" class="card p-8 text-center">
+      <div v-if="filteredPartials.length === 0" class="card p-8 text-center">
         <p class="text-gray-500 dark:text-gray-400">
-          No partial exit data found. This analysis requires trades with at least 2 exit executions.
+          {{ analytics.partials?.length > 0 && minEligibleTrades > 0
+            ? `No partial levels have ${minEligibleTrades}+ eligible trades. Try lowering the threshold.`
+            : 'No partial exit data found. This analysis requires trades with at least 2 exit executions.' }}
         </p>
       </div>
 
@@ -125,7 +134,7 @@
             </thead>
             <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
               <tr
-                v-for="partial in analytics.partials"
+                v-for="partial in filteredPartials"
                 :key="partial.index"
                 class="hover:bg-gray-50 dark:hover:bg-gray-700"
               >
@@ -210,7 +219,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import api from '@/services/api'
 import TradeFilters from '@/components/trades/TradeFilters.vue'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
@@ -224,6 +233,13 @@ const analytics = ref({ partials: [], total_trades: 0, max_partials: 0 })
 const filters = ref({})
 const minPartials = ref('')
 const maxPartials = ref('')
+const minEligibleTrades = ref(0)
+
+const filteredPartials = computed(() => {
+  if (!analytics.value.partials) return []
+  if (minEligibleTrades.value <= 0) return analytics.value.partials
+  return analytics.value.partials.filter(p => p.eligible_trades >= minEligibleTrades.value)
+})
 
 const handleFilter = (newFilters) => {
   filters.value = newFilters
