@@ -6,6 +6,7 @@ const { flexibleAuth, flexibleOptionalAuth, requireApiScope } = require('../midd
 const { validate, schemas } = require('../middleware/validation');
 const multer = require('multer');
 const imageUpload = require('../middleware/upload');
+const { requiresTier } = require('../middleware/tierAuth');
 
 /**
  * @swagger
@@ -375,7 +376,7 @@ router.get('/analytics', flexibleAuth, requireApiScope('trades:read'), tradeCont
  *         description: Monthly performance metrics
  */
 router.get('/analytics/monthly', flexibleAuth, requireApiScope('trades:read'), tradeController.getMonthlyPerformance);
-router.get('/analytics/partial-exits', flexibleAuth, requireApiScope('trades:read'), tradeController.getPartialExitAnalytics);
+router.get('/analytics/partial-exits', flexibleAuth, requireApiScope('trades:read'), requiresTier('pro'), tradeController.getPartialExitAnalytics);
 
 /**
  * @swagger

@@ -1,7 +1,31 @@
 const db = require('../config/database');
 const BehavioralAnalyticsService = require('./behavioralAnalyticsService');
+const TierService = require('./tierService');
 
 class LeaderboardService {
+  static async getParticipantFilter(alias = 'u') {
+    const billingEnabled = await TierService.isBillingEnabled();
+    if (!billingEnabled) {
+      return '1=1';
+    }
+
+    return `(${alias}.role IN ('admin', 'owner') OR ${alias}.tier = 'pro')`;
+  }
+
+  static async getLeaderboardLimitForUser(userId, requestedLimit = 100) {
+    const billingEnabled = await TierService.isBillingEnabled();
+    if (!billingEnabled || !userId) {
+      return requestedLimit;
+    }
+
+    const userTier = await TierService.getUserTier(userId);
+    if (userTier !== 'pro') {
+      return 10;
+    }
+
+    return requestedLimit;
+  }
+
   
   // Update all active leaderboards
   static async updateLeaderboards() {
@@ -63,6 +87,7 @@ class LeaderboardService {
   // Calculate P&L scores (total, monthly, weekly)
   static async calculatePnLScores(leaderboard) {
     const dateFilter = this.getDateFilter(leaderboard);
+    const participantFilter = await this.getParticipantFilter('u');
     
     const query = `
       SELECT 
@@ -75,8 +100,10 @@ class LeaderboardService {
           'avg_trade', ROUND(COALESCE(AVG(t.pnl), 0)::numeric, 2)
         ) as metadata
       FROM trades t
+      JOIN users u ON u.id = t.user_id
       LEFT JOIN gamification_privacy gp ON gp.user_id = t.user_id
       WHERE COALESCE(gp.show_on_leaderboards, true) = true
+        AND ${participantFilter}
         AND t.exit_time IS NOT NULL
         AND t.pnl IS NOT NULL
         ${dateFilter}
@@ -92,6 +119,7 @@ class LeaderboardService {
   
   // Calculate best single trades
   static async calculateBestTrades(leaderboard) {
+    const participantFilter = await this.getParticipantFilter('u');
     const query = `
       SELECT 
         t.user_id,
@@ -110,8 +138,10 @@ class LeaderboardService {
           )
         ) as metadata
       FROM trades t
+      JOIN users u ON u.id = t.user_id
       LEFT JOIN gamification_privacy gp ON gp.user_id = t.user_id
       WHERE COALESCE(gp.show_on_leaderboards, true) = true
+        AND ${participantFilter}
         AND t.exit_time IS NOT NULL
         AND t.pnl IS NOT NULL
         AND t.pnl > 0
@@ -126,6 +156,7 @@ class LeaderboardService {
   
   // Calculate worst single trades
   static async calculateWorstTrades(leaderboard) {
+    const participantFilter = await this.getParticipantFilter('u');
     const query = `
       SELECT 
         t.user_id,
@@ -144,8 +175,10 @@ class LeaderboardService {
           )
         ) as metadata
       FROM trades t
+      JOIN users u ON u.id = t.user_id
       LEFT JOIN gamification_privacy gp ON gp.user_id = t.user_id
       WHERE COALESCE(gp.show_on_leaderboards, true) = true
+        AND ${participantFilter}
         AND t.exit_time IS NOT NULL
         AND t.pnl IS NOT NULL
         AND t.pnl < 0
@@ -160,6 +193,7 @@ class LeaderboardService {
   
   // Calculate revenge-free streaks
   static async calculateRevengeFreeStreaks(leaderboard) {
+    const participantFilter = await this.getParticipantFilter('u');
     const query = `
       WITH user_streaks AS (
         SELECT 
@@ -172,6 +206,7 @@ class LeaderboardService {
         LEFT JOIN gamification_privacy gp ON gp.user_id = u.id
         LEFT JOIN revenge_trading_events rte ON rte.user_id = u.id
         WHERE COALESCE(gp.show_on_leaderboards, true) = true
+          AND ${participantFilter}
           AND EXISTS (
             SELECT 1 FROM trades t 
             WHERE t.user_id = u.id
@@ -198,6 +233,7 @@ class LeaderboardService {
   // Calculate consistency scores
   static async calculateConsistencyScores(leaderboard) {
     const dateFilter = this.getDateFilter(leaderboard);
+    const participantFilter = await this.getParticipantFilter('u');
     
     const query = `
       WITH daily_results AS (
@@ -207,8 +243,10 @@ class LeaderboardService {
           SUM(t.pnl) as daily_pnl,
           COUNT(*) as daily_trades
         FROM trades t
+        JOIN users u ON u.id = t.user_id
         LEFT JOIN gamification_privacy gp ON gp.user_id = t.user_id
         WHERE COALESCE(gp.show_on_leaderboards, true) = true
+          AND ${participantFilter}
           AND t.exit_time IS NOT NULL
           ${dateFilter}
         GROUP BY t.user_id, DATE(t.exit_time)
@@ -253,6 +291,7 @@ class LeaderboardService {
   // Calculate risk adherence scores
   static async calculateRiskAdherenceScores(leaderboard) {
     const dateFilter = this.getDateFilter(leaderboard);
+    const participantFilter = await this.getParticipantFilter('u');
     
     const query = `
       WITH user_avg_position AS (
@@ -260,9 +299,11 @@ class LeaderboardService {
           t.user_id,
           AVG(ABS(t.quantity * t.entry_price)) as avg_position_size
         FROM trades t
+        JOIN users u ON u.id = t.user_id
         JOIN user_settings us ON us.user_id = t.user_id
         JOIN gamification_privacy gp ON gp.user_id = t.user_id
         WHERE gp.show_on_leaderboards = true
+          AND ${participantFilter}
           AND t.exit_time IS NOT NULL
           AND t.quantity IS NOT NULL
           AND t.entry_price IS NOT NULL
@@ -281,10 +322,12 @@ class LeaderboardService {
             THEN 1 
           END) as within_risk_trades
         FROM trades t
+        JOIN users u ON u.id = t.user_id
         JOIN user_settings us ON us.user_id = t.user_id
         JOIN gamification_privacy gp ON gp.user_id = t.user_id
         JOIN user_avg_position uap ON uap.user_id = t.user_id
         WHERE gp.show_on_leaderboards = true
+          AND ${participantFilter}
           AND t.exit_time IS NOT NULL
           AND t.quantity IS NOT NULL
           AND t.entry_price IS NOT NULL
@@ -312,6 +355,7 @@ class LeaderboardService {
   
   // Calculate achievement points
   static async calculateAchievementPoints(leaderboard) {
+    const participantFilter = await this.getParticipantFilter('u');
     const dateFilter = this.getDateFilter(leaderboard);
     
     const query = `
@@ -325,8 +369,10 @@ class LeaderboardService {
           'badges', gs.badges
         ) as metadata
       FROM user_gamification_stats gs
+      JOIN users u ON u.id = gs.user_id
       LEFT JOIN gamification_privacy gp ON gp.user_id = gs.user_id
       WHERE COALESCE(gp.show_on_leaderboards, true) = true
+        AND ${participantFilter}
         AND gs.total_points > 0
       ORDER BY gs.total_points DESC
       LIMIT 100
@@ -409,6 +455,9 @@ class LeaderboardService {
   // Get leaderboard entries
   static async getLeaderboard(leaderboardKey, userId = null, limit = 100) {
     try {
+      const participantFilter = await this.getParticipantFilter('u');
+      const effectiveLimit = await this.getLeaderboardLimitForUser(userId, limit);
+
       // Get leaderboard info
       const leaderboardResult = await db.query(
         'SELECT * FROM leaderboards WHERE key = $1 AND is_active = true',
@@ -439,8 +488,9 @@ class LeaderboardService {
         LEFT JOIN gamification_privacy gp ON gp.user_id = le.user_id
         WHERE le.leaderboard_id = $1
           AND DATE(le.recorded_at) = CURRENT_DATE
+          AND ${participantFilter}
         ORDER BY le.rank
-        ${limit > 0 ? `LIMIT ${limit}` : ''}
+        ${effectiveLimit > 0 ? `LIMIT ${effectiveLimit}` : ''}
       `;
       
       const entriesResult = await db.query(entriesQuery, [leaderboard.id, userId]);
@@ -450,10 +500,12 @@ class LeaderboardService {
       if (userId && !entriesResult.rows.some(e => e.is_current_user)) {
         const userRankResult = await db.query(`
           SELECT rank, score, metadata
-          FROM leaderboard_entries
+          FROM leaderboard_entries le
+          JOIN users u ON u.id = le.user_id
           WHERE leaderboard_id = $1 
             AND user_id = $2
             AND DATE(recorded_at) = CURRENT_DATE
+            AND ${participantFilter}
         `, [leaderboard.id, userId]);
         
         if (userRankResult.rows.length > 0) {
@@ -476,6 +528,14 @@ class LeaderboardService {
   
   // Get user's rankings across all leaderboards
   static async getUserRankings(userId, filters = {}) {
+    const billingEnabled = await TierService.isBillingEnabled();
+    if (billingEnabled) {
+      const userTier = await TierService.getUserTier(userId);
+      if (userTier !== 'pro') {
+        return [];
+      }
+    }
+
     const query = `
       SELECT 
         l.key,
@@ -507,6 +567,7 @@ class LeaderboardService {
   // Get filtered user IDs based on strategy, volume, and P&L criteria
   static async getFilteredUserIds(filters = {}) {
     try {
+      const participantFilter = await this.getParticipantFilter('u');
       const { strategy, minVolume, maxVolume, minPnl, maxPnl } = filters;
       
       console.log('Getting filtered user IDs with filters:', filters);
@@ -520,8 +581,10 @@ class LeaderboardService {
       // Base condition - only users who are on leaderboards
       whereConditions.push(`t.user_id IN (
         SELECT DISTINCT user_id 
-        FROM leaderboard_entries 
+        FROM leaderboard_entries le
+        JOIN users u ON u.id = le.user_id
         WHERE DATE(recorded_at) = CURRENT_DATE
+          AND ${participantFilter}
       )`);
       
       // Strategy filter goes in WHERE clause (before grouping)
@@ -570,7 +633,9 @@ class LeaderboardService {
       const userFilterQuery = `
         SELECT DISTINCT t.user_id
         FROM trades t
+        JOIN users u ON u.id = t.user_id
         WHERE ${whereClause}
+          AND ${participantFilter}
         GROUP BY t.user_id
         HAVING ${havingClause}
       `;
@@ -587,6 +652,15 @@ class LeaderboardService {
   // Get filtered rankings based on strategy, volume, and P&L criteria
   static async getFilteredRankings(userId, filters = {}) {
     try {
+      const billingEnabled = await TierService.isBillingEnabled();
+      if (billingEnabled) {
+        const userTier = await TierService.getUserTier(userId);
+        if (userTier !== 'pro') {
+          return [];
+        }
+      }
+
+      const participantFilter = await this.getParticipantFilter('u');
       const { strategy, minVolume, maxVolume, minPnl, maxPnl } = filters;
       
       console.log('Getting filtered rankings with filters:', filters);
@@ -638,8 +712,10 @@ class LeaderboardService {
       // Build the WHERE clause
       let whereClause = `t.user_id IN (
         SELECT DISTINCT user_id 
-        FROM leaderboard_entries 
+        FROM leaderboard_entries le
+        JOIN users u ON u.id = le.user_id
         WHERE DATE(recorded_at) = CURRENT_DATE
+          AND ${participantFilter}
       )`;
       
       if (whereConditions.length > 0) {
@@ -656,7 +732,9 @@ class LeaderboardService {
       const userFilterQuery = `
         SELECT DISTINCT t.user_id
         FROM trades t
+        JOIN users u ON u.id = t.user_id
         WHERE ${whereClause}
+          AND ${participantFilter}
         GROUP BY t.user_id
         HAVING ${havingClause}
       `;
@@ -747,17 +825,22 @@ class LeaderboardService {
   // Get available filter options for rankings
   static async getRankingFilterOptions() {
     try {
+      const participantFilter = await this.getParticipantFilter('u');
       // Get all unique strategies from trades
       const strategiesQuery = `
         SELECT DISTINCT strategy 
-        FROM trades 
+        FROM trades t
+        JOIN users u ON u.id = t.user_id
         WHERE strategy IS NOT NULL 
           AND strategy != '' 
-          AND user_id IN (
-            SELECT DISTINCT user_id 
-            FROM leaderboard_entries 
+          AND t.user_id IN (
+            SELECT DISTINCT le.user_id 
+            FROM leaderboard_entries le
+            JOIN users u ON u.id = le.user_id
             WHERE DATE(recorded_at) = CURRENT_DATE
+              AND ${participantFilter}
           )
+          AND ${participantFilter}
         ORDER BY strategy
       `;
       
@@ -774,11 +857,15 @@ class LeaderboardService {
             t.user_id,
             AVG(ABS(t.quantity * t.entry_price)) as avg_volume
           FROM trades t
+          JOIN users u ON u.id = t.user_id
           WHERE t.user_id IN (
-            SELECT DISTINCT user_id 
-            FROM leaderboard_entries 
+            SELECT DISTINCT le.user_id 
+            FROM leaderboard_entries le
+            JOIN users u ON u.id = le.user_id
             WHERE DATE(recorded_at) = CURRENT_DATE
+              AND ${participantFilter}
           )
+            AND ${participantFilter}
           GROUP BY t.user_id
           HAVING COUNT(*) >= 5  -- Users with at least 5 trades
         ) user_volumes
@@ -797,11 +884,15 @@ class LeaderboardService {
             t.user_id,
             AVG(t.pnl) as avg_pnl
           FROM trades t
+          JOIN users u ON u.id = t.user_id
           WHERE t.user_id IN (
-            SELECT DISTINCT user_id 
-            FROM leaderboard_entries 
+            SELECT DISTINCT le.user_id 
+            FROM leaderboard_entries le
+            JOIN users u ON u.id = le.user_id
             WHERE DATE(recorded_at) = CURRENT_DATE
+              AND ${participantFilter}
           )
+            AND ${participantFilter}
           GROUP BY t.user_id
           HAVING COUNT(*) >= 5  -- Users with at least 5 trades
         ) user_pnls
@@ -907,6 +998,7 @@ class LeaderboardService {
   
   // Calculate trading consistency based on volume and average P&L
   static async calculateTradingConsistency(leaderboard) {
+    const participantFilter = await this.getParticipantFilter('u');
     const query = `
       WITH user_stats AS (
         SELECT 
@@ -917,8 +1009,10 @@ class LeaderboardService {
           STDDEV(t.pnl) as pnl_stddev,
           COUNT(CASE WHEN t.pnl > 0 THEN 1 END)::float / NULLIF(COUNT(*), 0) * 100 as win_rate
         FROM trades t
+        JOIN users u ON u.id = t.user_id
         LEFT JOIN gamification_privacy gp ON gp.user_id = t.user_id
         WHERE COALESCE(gp.show_on_leaderboards, true) = true
+          AND ${participantFilter}
           AND t.exit_time IS NOT NULL
           AND t.pnl IS NOT NULL
           AND t.quantity IS NOT NULL
