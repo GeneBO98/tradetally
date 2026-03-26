@@ -25,6 +25,7 @@ class RetentionEmailScheduler {
       }
       await this.sendReengagementEmails();
       await this.sendTrialConversionEmails();
+      await this.sendReviewRequestEmails();
       console.log('[SUCCESS] Retention email tasks completed');
     } catch (error) {
       console.error('[ERROR] Error running retention email tasks:', error);
@@ -215,6 +216,90 @@ class RetentionEmailScheduler {
       console.log(`Trial conversion emails sent: ${result.rows.length}`);
     } catch (error) {
       console.error('Error sending trial conversion emails:', error);
+    }
+  }
+
+  /**
+   * Send review request emails to Pro subscribers ~30 days after subscription start.
+   * Sends once per user. Only targets users with meaningful recent activity.
+   *
+   * Activity filter (at least one of):
+   *   - 3+ logins in the last 30 days
+   *   - 1+ trade import
+   *   - 10+ trades added/edited
+   *   - 1+ AI/analytics session
+   */
+  static async sendReviewRequestEmails() {
+    try {
+      console.log('[EMAIL] Checking for Pro subscribers eligible for review request...');
+
+      const reviewUrl = process.env.REVIEW_URL || `${process.env.FRONTEND_URL || 'https://tradetally.io'}/review`;
+
+      const query = `
+        SELECT
+          u.id AS user_id,
+          u.email,
+          u.username,
+          u.full_name
+        FROM subscriptions s
+        INNER JOIN users u ON u.id = s.user_id
+          AND u.is_active = true
+          AND u.marketing_consent = true
+        WHERE s.status IN ('active', 'trialing')
+          AND s.created_at <= NOW() - INTERVAL '30 days'
+          AND s.review_email_sent_at IS NULL
+          AND (
+            -- At least 3 logins in the last 30 days
+            (SELECT COUNT(*) FROM user_activity_events ae
+             WHERE ae.user_id = u.id
+               AND ae.event_type = 'auth.login'
+               AND ae.created_at > NOW() - INTERVAL '30 days') >= 3
+            OR
+            -- At least 1 import
+            (SELECT COUNT(*) FROM user_activity_events ae
+             WHERE ae.user_id = u.id
+               AND ae.event_type = 'trade.imported'
+               AND ae.created_at > NOW() - INTERVAL '30 days') >= 1
+            OR
+            -- At least 10 trades added/edited
+            (SELECT COUNT(*) FROM user_activity_events ae
+             WHERE ae.user_id = u.id
+               AND ae.event_type IN ('trade.created', 'trade.updated')
+               AND ae.created_at > NOW() - INTERVAL '30 days') >= 10
+            OR
+            -- At least 1 AI/analytics session
+            (SELECT COUNT(*) FROM user_activity_events ae
+             WHERE ae.user_id = u.id
+               AND ae.event_category = 'ai'
+               AND ae.created_at > NOW() - INTERVAL '30 days') >= 1
+          )
+      `;
+
+      const result = await db.query(query);
+      if (result.rows.length === 0) {
+        console.log('No review request emails to send');
+        return;
+      }
+
+      for (const row of result.rows) {
+        try {
+          await EmailService.sendReviewRequestEmail(
+            row.email,
+            row.username || row.full_name || 'there',
+            reviewUrl,
+            row.user_id
+          );
+          await db.query(
+            'UPDATE subscriptions SET review_email_sent_at = NOW() WHERE user_id = $1',
+            [row.user_id]
+          );
+        } catch (err) {
+          console.error(`Failed to send review request to ${maskEmail(row.email)}:`, err.message);
+        }
+      }
+      console.log(`Review request emails sent: ${result.rows.length}`);
+    } catch (error) {
+      console.error('Error sending review request emails:', error);
     }
   }
 

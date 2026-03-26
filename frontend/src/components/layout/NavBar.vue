@@ -358,7 +358,8 @@ const baseNavigation = [
         name: 'Partial Exit Analytics',
         to: '/metrics/partial-exits',
         route: 'partial-exit-analytics',
-        description: 'Analyze hit rates and performance per partial exit level'
+        description: 'Analyze hit rates and performance per partial exit level',
+        badge: { type: 'pro', text: 'Pro' }
       },
       {
         name: 'Behavioral Analytics',
@@ -457,6 +458,12 @@ const navigation = computed(() => {
           to: '/admin/backups',
           route: 'admin-backups',
           description: 'Full site backups and restore'
+        },
+        {
+          name: 'Testimonials',
+          to: '/admin/testimonials',
+          route: 'admin-testimonials',
+          description: 'Manage user reviews for homepage'
         }
       ]
     })
