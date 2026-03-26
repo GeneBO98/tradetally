@@ -252,6 +252,7 @@ const gamificationController = {
   async getAllLeaderboards(req, res, next) {
     try {
       const userId = req.user?.id;
+      const participantFilter = await LeaderboardService.getParticipantFilter('u');
       
       // Extract filter parameters from query string
       const filters = {};
@@ -334,9 +335,11 @@ const gamificationController = {
                 le.score,
                 ROW_NUMBER() OVER (ORDER BY le.score DESC) as filtered_rank
               FROM leaderboard_entries le
+              JOIN users u ON u.id = le.user_id
               WHERE le.leaderboard_id = $1
                 AND DATE(le.recorded_at) = CURRENT_DATE
                 AND le.user_id = ANY($2::uuid[])
+                AND ${participantFilter}
             )
             SELECT 
               fe.filtered_rank as rank,
@@ -361,6 +364,7 @@ const gamificationController = {
             LEFT JOIN gamification_privacy gp ON gp.user_id = le.user_id
             WHERE le.leaderboard_id = $1
               AND DATE(le.recorded_at) = CURRENT_DATE
+              AND ${participantFilter}
             ORDER BY le.rank
             LIMIT 10
           `, [lb.id, userId]);

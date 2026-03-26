@@ -105,7 +105,7 @@ const router = createRouter({
       path: '/metrics/partial-exits',
       name: 'partial-exit-analytics',
       component: () => import('@/views/PartialExitAnalyticsView.vue'),
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: true, requiresTier: 'pro' }
     },
     {
       path: '/metrics/behavioral',
@@ -222,6 +222,18 @@ const router = createRouter({
       meta: { requiresAuth: true, requiresAdmin: true }
     },
     {
+      path: '/admin/testimonials',
+      name: 'admin-testimonials',
+      component: () => import('@/views/admin/TestimonialManagementView.vue'),
+      meta: { requiresAuth: true, requiresAdmin: true }
+    },
+    {
+      path: '/review',
+      name: 'review',
+      component: () => import('@/views/ReviewView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/oauth/authorize',
       name: 'oauth-authorize',
       component: () => import('@/views/OAuth/AuthorizeView.vue')
@@ -329,13 +341,13 @@ const router = createRouter({
       path: '/price-alerts',
       name: 'price-alerts',
       component: () => import('@/views/PriceAlertsView.vue'),
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: true, requiresTier: 'pro' }
     },
     {
       path: '/notifications',
       name: 'notifications',
       component: () => import('@/views/NotificationsView.vue'),
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: true, requiresTier: 'pro' }
     },
     {
       path: '/leaderboard',

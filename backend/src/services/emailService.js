@@ -727,6 +727,101 @@ class EmailService {
     }
   }
   /**
+   * Send review request email to Pro subscribers ~30 days after subscribing.
+   * Personal tone from Brennon. Sent once only.
+   * @param {string} email - Recipient email
+   * @param {string} username - Username for greeting
+   * @param {string} reviewUrl - URL where user can leave a review
+   * @param {number} userId - User ID for unsubscribe link and tracking
+   */
+  static async sendReviewRequestEmail(email, username, reviewUrl, userId) {
+    if (!this.isConfigured()) {
+      console.log('Email not configured, skipping review request email');
+      return;
+    }
+
+    const unsubscribeUrl = userId ? this.getUnsubscribeUrl(userId) : `${process.env.FRONTEND_URL || 'https://tradetally.io'}/settings`;
+    const safeUsername = escapeHtml(username);
+    const footer = this.getMarketingFooter(unsubscribeUrl);
+
+    // Try custom template, fall back to inline
+    const templateHtml = loadTemplate('review-request.html');
+    let content;
+    if (templateHtml) {
+      content = renderTemplate(templateHtml, {
+        greeting: `Hi ${safeUsername},`,
+        reviewUrl,
+        buttonStyle: this.getButtonStyle(),
+        footer
+      });
+    } else {
+      content = `
+        <p style="color: #71717a; font-size: 15px; line-height: 1.6; margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+          Hi ${safeUsername},
+        </p>
+        <p style="color: #52525b; font-size: 15px; line-height: 1.6; margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+          You've been on TradeTally Pro for about a month now, so I wanted to check in.
+        </p>
+        <p style="color: #18181b; font-size: 15px; line-height: 1.6; margin: 0 0 24px 0; font-weight: 600; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+          How's it been for you so far?
+        </p>
+        <p style="color: #52525b; font-size: 15px; line-height: 1.6; margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+          If TradeTally has been helpful, I'd love if you left a short review here:
+        </p>
+        <div style="text-align: center; margin: 0 0 8px 0;">
+          <a href="${reviewUrl}" style="${this.getButtonStyle()}">Leave a Review</a>
+        </div>
+        <p style="color: #a1a1aa; font-size: 13px; line-height: 1.5; margin: 0 0 24px 0; text-align: center; word-break: break-all; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+          ${reviewUrl}
+        </p>
+        <p style="color: #52525b; font-size: 15px; line-height: 1.6; margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+          Even a sentence or two goes a long way.
+        </p>
+        <p style="color: #52525b; font-size: 15px; line-height: 1.6; margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+          If you have feedback, feature requests, or anything that feels missing, just reply to this email. I read every response.
+        </p>
+        <p style="color: #52525b; font-size: 15px; line-height: 1.6; margin: 0 0 4px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+          Thanks,<br>
+          Brennon<br>
+          <span style="color: #a1a1aa;">TradeTally</span>
+        </p>
+        ${footer}
+      `;
+    }
+
+    // Record email engagement and inject tracking
+    const trackingId = userId ? await this.recordEmailEngagement(userId, 'review_request') : null;
+    let html = this.getBaseTemplate('How\'s TradeTally Pro?', content);
+    html = this.injectTrackingPixel(html, trackingId);
+
+    const mailOptions = {
+      from: { name: 'Brennon from TradeTally', address: process.env.EMAIL_FROM || 'noreply@tradetally.io' },
+      replyTo: process.env.SUPPORT_EMAIL || 'support@tradetally.io',
+      to: email,
+      subject: 'How\'s TradeTally Pro been for you?',
+      html,
+      text: `Hi ${username}, you've been on TradeTally Pro for about a month now, so I wanted to check in. How's it been for you so far? If TradeTally has been helpful, I'd love if you left a short review here: ${reviewUrl}. Even a sentence or two goes a long way. If you have feedback, feature requests, or anything that feels missing, just reply to this email. I read every response. Thanks, Brennon. Unsubscribe: ${unsubscribeUrl}`,
+      headers: {
+        'List-Unsubscribe': `<${unsubscribeUrl}>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        'X-Entity-Ref-ID': `review-request-${Date.now()}`,
+        'Message-ID': `<review-request-${Date.now()}@tradetally.io>`
+      }
+    };
+
+    try {
+      const transporter = this.createTransporter();
+      await transporter.sendMail(mailOptions);
+      console.log('[SUCCESS] Review request email sent to', maskEmail(email));
+      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'review_request', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent', userId });
+    } catch (error) {
+      console.error('[ERROR] Error sending review request email to', maskEmail(email), error);
+      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'review_request', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'failed', errorMessage: error.message, userId });
+      throw error;
+    }
+  }
+
+  /**
    * Send welcome email when a user subscribes to a paid plan
    * @param {string} email - Recipient email
    * @param {string} username - Username for greeting

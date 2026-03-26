@@ -52,6 +52,7 @@ const aiRoutes = require('./routes/ai.routes');
 const symbolsRoutes = require('./routes/symbols.routes');
 const unsubscribeRoutes = require('./routes/unsubscribe.routes');
 const passkeyRoutes = require('./routes/passkey.routes');
+const testimonialsRoutes = require('./routes/testimonials.routes');
 const BillingService = require('./services/billingService');
 const priceMonitoringService = require('./services/priceMonitoringService');
 const backupScheduler = require('./services/backupScheduler.service');
@@ -259,6 +260,7 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/symbols', symbolsRoutes);
 app.use('/api/unsubscribe', unsubscribeRoutes);
 app.use('/api/auth/passkey', passkeyRoutes);
+app.use('/api/testimonials', testimonialsRoutes);
 
 // OAuth2 Provider endpoints
 app.use('/oauth', oauth2Routes);

@@ -526,8 +526,17 @@
                         them.
                     </p>
 
+                    <div
+                        v-if="billingStatus.billing_available && !canManageApiKeys"
+                        class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200"
+                    >
+                        API keys are available with a Pro subscription.
+                        Upgrade to create personal integrations and external
+                        automations.
+                    </div>
+
                     <!-- API Keys List -->
-                    <div v-if="apiKeys.length > 0" class="mb-6">
+                    <div v-else-if="apiKeys.length > 0" class="mb-6">
                         <div class="space-y-4">
                             <div
                                 v-for="apiKey in apiKeys"
@@ -624,7 +633,7 @@
                     </div>
 
                     <!-- Create API Key Button -->
-                    <div class="flex justify-end">
+                    <div v-if="canManageApiKeys" class="flex justify-end">
                         <button
                             @click="showCreateApiKeyModal = true"
                             :disabled="apiKeysLoading"
@@ -1731,6 +1740,14 @@ const shouldShowUpgradeButton = computed(() => {
     );
 });
 
+const canManageApiKeys = computed(() => {
+    if (!billingStatus.value.billing_available) {
+        return true;
+    }
+
+    return subscription.value.tier === "pro";
+});
+
 // Profile methods
 async function updateProfile() {
     profileLoading.value = true;
@@ -1940,6 +1957,11 @@ async function deletePasskey(id) {
 
 // API Key methods
 async function fetchApiKeys() {
+    if (!canManageApiKeys.value) {
+        apiKeys.value = [];
+        return;
+    }
+
     try {
         apiKeysLoading.value = true;
         const response = await api.get("/api-keys");
@@ -2216,16 +2238,16 @@ onMounted(async () => {
         };
     }
 
-    // Load all data
+    // Load billing/subscription first so Pro-only sections can render correctly.
+    await loadBillingStatus();
+    await loadSubscription();
+
+    // Load remaining data
     await Promise.all([
         fetch2FAStatus(),
         fetchPasskeys(),
         fetchApiKeys(),
         fetchTradingProfile(),
-        loadBillingStatus(),
     ]);
-
-    // Load subscription data after billing status
-    await loadSubscription();
 });
 </script>

@@ -107,6 +107,10 @@ Protected routes (require Pro tier):
 - `/api/health/*` - Health Analytics
 - `/api/watchlist/*` - All watchlist features
 - `/api/price-alerts/*` - All price alerts
+- `/api/investments/*` - 8 Pillars, DCF, holdings, and scanner-linked investment tooling
+- `/api/trade-management/*` - R-multiple and target-hit analysis
+- `/api/api-keys/*` - Personal API keys for integrations
+- `/api/v1/webhooks/*` - Webhook subscriptions and deliveries
 
 ### Frontend - Route Protection
 
@@ -202,8 +206,6 @@ const comparison = TierService.getTierComparison();
 
 ### Free Tier Features:
 - `dashboard`
-- `news_feed`
-- `earnings_calendar`
 - `basic_journaling`
 - `trade_import`
 - `trade_tagging`
@@ -213,6 +215,8 @@ const comparison = TierService.getTierComparison();
 - `leaderboard_view`
 
 ### Pro Tier Features:
+- `news_feed`
+- `earnings_calendar`
 - `unlimited_trades`
 - `unlimited_journals`
 - `advanced_analytics`

@@ -240,7 +240,7 @@
             <div>
               <h3 class="font-semibold text-gray-900 dark:text-white">Free Tier with Unlimited Storage</h3>
               <p class="text-gray-600 dark:text-gray-400">
-                The free plan includes unlimited trade storage, basic analytics, R-Multiple tracking, earnings calendar, and CSV import. No time limit, no trial -- it stays free.
+                The free plan includes unlimited trade storage, core metrics, journaling, calendar view, and CSV import. No time limit, no trial -- it stays free.
               </p>
             </div>
           </div>
