@@ -23,9 +23,23 @@ class PriceMonitoringService {
     this.intervalMs = 30000; // 30 seconds
     this.emailTransporter = null;
     this.failedSymbols = new Map(); // Track failed symbols to reduce log spam
+    this.skippedSymbols = new Set();
     this.symbolOffset = 0; // Round-robin offset for batching
     this.maxSymbolsPerCycle = parseInt(process.env.PRICE_MONITOR_MAX_SYMBOLS, 10) || 25;
     this.initializeEmailTransporter();
+  }
+
+  getUnsupportedQuoteReason(symbol) {
+    const normalized = typeof symbol === 'string' ? symbol.trim().toUpperCase() : '';
+    if (!normalized) return 'blank symbol';
+
+    // These formats repeatedly fail against Finnhub/Schwab quote providers and should not count as API outages.
+    if (normalized.length > 20) return 'symbol exceeds supported quote length';
+    if (/\s/.test(normalized)) return 'composite or option-style symbol';
+    if (/[:_!/]/.test(normalized)) return 'qualified or derivative symbol';
+    if (/(USDT|USDC|BUSD)$/.test(normalized) && normalized.length > 6) return 'crypto pair not supported by quote providers';
+
+    return null;
   }
 
   initializeEmailTransporter() {
@@ -137,6 +151,15 @@ class PriceMonitoringService {
 
       // Update prices for all symbols
       for (const symbol of symbols) {
+        const skipReason = this.getUnsupportedQuoteReason(symbol);
+        if (skipReason) {
+          if (!this.skippedSymbols.has(symbol)) {
+            logger.warn(`Skipping price monitoring for ${symbol}: ${skipReason}.`);
+            this.skippedSymbols.add(symbol);
+          }
+          continue;
+        }
+
         const success = await this.updateSymbolPrice(symbol);
         
         if (success) {

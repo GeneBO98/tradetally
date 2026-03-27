@@ -164,6 +164,7 @@ const unreadCount = ref(0)
 const loading = ref(false)
 const markingAsRead = ref(false)
 const pollInterval = ref(null)
+const pollingDisabled = ref(false)
 
 // Computed
 const isAuthenticated = computed(() => authStore.isAuthenticated)
@@ -182,8 +183,20 @@ const closeDropdown = () => {
   isOpen.value = false
 }
 
+const stopPolling = () => {
+  if (pollInterval.value) {
+    clearInterval(pollInterval.value)
+    pollInterval.value = null
+  }
+}
+
+const disablePolling = () => {
+  pollingDisabled.value = true
+  stopPolling()
+}
+
 const fetchNotifications = async () => {
-  if (!isAuthenticated.value) return
+  if (!isAuthenticated.value || pollingDisabled.value) return
   
   try {
     loading.value = true
@@ -197,6 +210,11 @@ const fetchNotifications = async () => {
     if (response.ok) {
       const data = await response.json()
       notifications.value = data.data || []
+    } else if (response.status === 401 || response.status === 403) {
+      notifications.value = []
+      unreadCount.value = 0
+      isOpen.value = false
+      disablePolling()
     }
   } catch (error) {
     console.error('Error fetching notifications:', error)
@@ -206,7 +224,7 @@ const fetchNotifications = async () => {
 }
 
 const fetchUnreadCount = async () => {
-  if (!isAuthenticated.value) return
+  if (!isAuthenticated.value || pollingDisabled.value) return
   
   try {
     const response = await fetch('/api/notifications/unread-count', {
@@ -218,6 +236,9 @@ const fetchUnreadCount = async () => {
     if (response.ok) {
       const data = await response.json()
       unreadCount.value = data.unread_count || 0
+    } else if (response.status === 401 || response.status === 403) {
+      unreadCount.value = 0
+      disablePolling()
     }
   } catch (error) {
     console.error('Error fetching unread count:', error)
@@ -312,6 +333,7 @@ const formatTime = (timestamp) => {
 // Lifecycle
 onMounted(() => {
   if (isAuthenticated.value) {
+    pollingDisabled.value = false
     fetchUnreadCount()
     // Poll for unread count every 30 seconds
     pollInterval.value = setInterval(fetchUnreadCount, 30000)
@@ -319,24 +341,21 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  if (pollInterval.value) {
-    clearInterval(pollInterval.value)
-  }
+  stopPolling()
 })
 
 // Watch for auth changes
 import { watch } from 'vue'
 watch(isAuthenticated, (newValue) => {
   if (newValue) {
+    pollingDisabled.value = false
     fetchUnreadCount()
     if (!pollInterval.value) {
       pollInterval.value = setInterval(fetchUnreadCount, 30000)
     }
   } else {
-    if (pollInterval.value) {
-      clearInterval(pollInterval.value)
-      pollInterval.value = null
-    }
+    pollingDisabled.value = false
+    stopPolling()
     notifications.value = []
     unreadCount.value = 0
     isOpen.value = false
