@@ -338,6 +338,12 @@ const router = createRouter({
       meta: { requiresAuth: true, requiresTier: 'pro' }
     },
     {
+      path: '/analysis/playbooks',
+      name: 'playbooks',
+      component: () => import('@/views/PlaybooksView.vue'),
+      meta: { requiresAuth: true, requiresTier: 'pro' }
+    },
+    {
       path: '/price-alerts',
       name: 'price-alerts',
       component: () => import('@/views/PriceAlertsView.vue'),
@@ -387,6 +393,10 @@ const router = createRouter({
     {
       path: '/investments/holdings/:id',
       redirect: to => `/analysis/holdings/${to.params.id}`
+    },
+    {
+      path: '/playbooks',
+      redirect: '/analysis/playbooks'
     }
   ]
 })

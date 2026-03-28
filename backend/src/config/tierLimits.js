@@ -134,6 +134,7 @@ const TIER_LIMITS = {
       aiInsights: true,
       aiTradeAnalysis: true,
       aiConversations: true, // Multi-turn AI conversations with follow-ups
+      playbookAdherence: true,
       advancedFiltering: true,
       customMetrics: true,
       exportReports: true,

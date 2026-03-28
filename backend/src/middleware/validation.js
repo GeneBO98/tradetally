@@ -527,7 +527,61 @@ const schemas = {
     tags: Joi.array().items(Joi.string().max(50)),
     followedPlan: Joi.boolean().allow(null),
     lessonsLearned: Joi.string().allow(null, '')
-  }).min(1)
+  }).min(1),
+
+  createPlaybook: Joi.object({
+    name: Joi.string().trim().max(120).required(),
+    description: Joi.string().allow('', null),
+    market: Joi.string().trim().max(50).allow('', null),
+    timeframe: Joi.string().valid('scalper', 'day_trading', 'swing', 'position').allow(null, ''),
+    side: Joi.string().valid('long', 'short', 'both').default('both'),
+    requiredStrategy: Joi.string().trim().max(100).allow('', null),
+    requiredSetup: Joi.string().trim().max(100).allow('', null),
+    requiredTags: Joi.array().items(Joi.string().trim().max(50)).default([]),
+    requireStopLoss: Joi.boolean().default(false),
+    minimumTargetR: Joi.number().min(0).max(100).allow(null),
+    checklistItems: Joi.array().items(
+      Joi.object({
+        label: Joi.string().trim().max(255).required(),
+        itemOrder: Joi.number().integer().min(0).allow(null),
+        weight: Joi.number().positive().max(100).default(1),
+        isRequired: Joi.boolean().default(false)
+      })
+    ).min(1).required()
+  }),
+
+  updatePlaybook: Joi.object({
+    name: Joi.string().trim().max(120).required(),
+    description: Joi.string().allow('', null),
+    market: Joi.string().trim().max(50).allow('', null),
+    timeframe: Joi.string().valid('scalper', 'day_trading', 'swing', 'position').allow(null, ''),
+    side: Joi.string().valid('long', 'short', 'both').default('both'),
+    requiredStrategy: Joi.string().trim().max(100).allow('', null),
+    requiredSetup: Joi.string().trim().max(100).allow('', null),
+    requiredTags: Joi.array().items(Joi.string().trim().max(50)).default([]),
+    requireStopLoss: Joi.boolean().default(false),
+    minimumTargetR: Joi.number().min(0).max(100).allow(null),
+    checklistItems: Joi.array().items(
+      Joi.object({
+        label: Joi.string().trim().max(255).required(),
+        itemOrder: Joi.number().integer().min(0).allow(null),
+        weight: Joi.number().positive().max(100).default(1),
+        isRequired: Joi.boolean().default(false)
+      })
+    ).min(1).required()
+  }),
+
+  submitPlaybookReview: Joi.object({
+    playbookId: Joi.string().uuid().required(),
+    checklistResponses: Joi.array().items(
+      Joi.object({
+        checklistItemId: Joi.string().uuid().required(),
+        checked: Joi.boolean().required()
+      })
+    ).required(),
+    followedPlan: Joi.boolean().allow(null),
+    reviewNotes: Joi.string().allow('', null)
+  })
 };
 
 module.exports = { validate, schemas };

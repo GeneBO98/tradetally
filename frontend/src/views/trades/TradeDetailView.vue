@@ -217,7 +217,7 @@
                   </dd>
                 </div>
                 <div class="sm:col-span-2">
-                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Quality Grade</dt>
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Setup Quality</dt>
                   <dd class="mt-1">
                     <div v-if="trade.qualityGrade" class="flex items-center space-x-3">
                       <span class="px-3 py-1 inline-flex text-sm font-semibold rounded"
@@ -241,7 +241,7 @@
                         :disabled="calculatingQuality"
                         class="text-xs px-3 py-1 bg-primary-600 text-white rounded hover:bg-primary-700 disabled:opacity-50"
                       >
-                        {{ calculatingQuality ? 'Calculating...' : 'Calculate Quality' }}
+                        {{ calculatingQuality ? 'Calculating...' : 'Calculate Setup Quality' }}
                       </button>
                     </div>
                   </dd>
@@ -288,10 +288,10 @@
             </div>
           </div>
 
-          <!-- Quality Metrics Breakdown -->
+          <!-- Setup Quality Breakdown -->
           <div v-if="trade.qualityGrade && trade.qualityMetrics" class="card">
             <div class="card-body">
-              <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Quality Metrics Breakdown</h3>
+              <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Setup Quality Breakdown</h3>
 
               <div class="space-y-4">
                 <!-- News Sentiment (35% weight) -->
@@ -504,7 +504,7 @@
               <div class="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
                 <div class="flex items-center justify-between">
                   <div>
-                    <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Overall Quality Score</h4>
+                    <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Overall Setup Quality</h4>
                     <p class="text-xs text-gray-500 dark:text-gray-400">Weighted average of all metrics</p>
                   </div>
                   <div class="text-right">
@@ -522,6 +522,198 @@
                       Grade {{ trade.qualityGrade }}
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-body">
+              <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-5">
+                <div>
+                  <h3 class="text-lg font-medium text-gray-900 dark:text-white">Playbook Adherence</h3>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    Review this trade against a structured setup and measure whether you followed plan.
+                  </p>
+                </div>
+                <router-link to="/analysis/playbooks" class="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400">
+                  Manage playbooks
+                </router-link>
+              </div>
+
+              <div class="mb-5 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                <div class="flex flex-wrap items-center gap-3">
+                  <div class="text-sm font-medium text-gray-700 dark:text-gray-300">Setup Quality</div>
+                  <span
+                    v-if="trade.setupQuality?.grade"
+                    class="inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold"
+                    :class="{
+                      'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400': trade.setupQuality.grade === 'A',
+                      'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400': trade.setupQuality.grade === 'B',
+                      'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400': trade.setupQuality.grade === 'C',
+                      'bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400': trade.setupQuality.grade === 'D',
+                      'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400': trade.setupQuality.grade === 'F'
+                    }"
+                  >
+                    Grade {{ trade.setupQuality.grade }}
+                  </span>
+                  <span v-if="trade.setupQuality?.score" class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ Number(trade.setupQuality.score).toFixed(1) }}/5.0
+                  </span>
+                  <span v-else class="text-sm text-gray-500 dark:text-gray-400">
+                    Calculate setup quality to pair setup context with adherence.
+                  </span>
+                </div>
+              </div>
+
+              <ProUpgradePrompt
+                v-if="authStore.user && !isPlaybookFeatureAvailable"
+                variant="banner"
+                description="Structured playbooks and adherence reviews are available on Pro."
+              />
+
+              <div v-else-if="loadingPlaybooks" class="text-sm text-gray-500 dark:text-gray-400">
+                Loading playbooks...
+              </div>
+
+              <div v-else-if="playbooks.length === 0" class="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-5 text-sm text-gray-500 dark:text-gray-400">
+                Create a structured playbook first, then return here to score this trade against it.
+              </div>
+
+              <div v-else class="space-y-5">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Playbook</label>
+                  <select v-model="selectedPlaybookId" @change="onPlaybookChange" class="input">
+                    <option value="">Select a playbook</option>
+                    <option
+                      v-for="playbook in playbooks"
+                      :key="playbook.id"
+                      :value="playbook.id"
+                      :disabled="playbook.isActive === false && playbook.id !== trade.playbookId"
+                    >
+                      {{ playbook.name }}{{ playbook.isActive === false ? ' (Archived)' : '' }}
+                    </option>
+                  </select>
+                </div>
+
+                <div v-if="selectedPlaybook" class="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+                  <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                    <div class="flex items-center justify-between mb-3">
+                      <div>
+                        <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Checklist</h4>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">
+                          {{ checklistCompletion.checked }}/{{ checklistCompletion.total }} items checked
+                        </p>
+                      </div>
+                      <span
+                        v-if="selectedReview"
+                        class="inline-flex rounded-full px-3 py-1 text-sm font-semibold"
+                        :class="selectedReview.adherenceScore >= 80
+                          ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                          : selectedReview.adherenceScore >= 60
+                          ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400'
+                          : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'"
+                      >
+                        {{ Number(selectedReview.adherenceScore || 0).toFixed(2) }} adherence
+                      </span>
+                    </div>
+
+                    <div class="space-y-3">
+                      <label
+                        v-for="item in reviewForm.checklistResponses"
+                        :key="item.checklistItemId"
+                        class="flex items-start gap-3 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-3"
+                      >
+                        <input
+                          v-model="item.checked"
+                          type="checkbox"
+                          class="mt-1 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        />
+                        <div class="flex-1">
+                          <div class="text-sm font-medium text-gray-900 dark:text-white">
+                            {{ item.label }}
+                          </div>
+                          <div class="mt-1 flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400">
+                            <span>Weight {{ Number(item.weight || 1).toFixed(2) }}</span>
+                            <span v-if="item.isRequired" class="text-orange-600 dark:text-orange-400">Required</span>
+                          </div>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Followed plan?</label>
+                      <select v-model="reviewForm.followedPlan" class="input">
+                        <option value="">Not set</option>
+                        <option value="true">Yes</option>
+                        <option value="false">No</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Review notes</label>
+                      <textarea
+                        v-model="reviewForm.reviewNotes"
+                        rows="5"
+                        class="input"
+                        placeholder="What matched the playbook? What broke down?"
+                      ></textarea>
+                    </div>
+
+                    <button
+                      @click="savePlaybookReview"
+                      :disabled="savingPlaybookReview || selectedPlaybook?.isActive === false"
+                      class="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {{ savingPlaybookReview ? 'Saving...' : 'Save Review' }}
+                    </button>
+                    <p v-if="selectedPlaybook?.isActive === false" class="text-xs text-amber-600 dark:text-amber-400">
+                      Archived playbooks remain visible on old reviews but cannot be used for new submissions.
+                    </p>
+                  </div>
+                </div>
+
+                <div v-if="selectedPlaybook" class="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                  <div class="flex items-center justify-between mb-3">
+                    <div>
+                      <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Hard Rule Results</h4>
+                      <p class="text-xs text-gray-500 dark:text-gray-400">
+                        Fixed checks run when a review is saved.
+                      </p>
+                    </div>
+                    <div v-if="selectedReview?.reviewedAt" class="text-xs text-gray-500 dark:text-gray-400">
+                      Reviewed {{ formatDateTime(selectedReview.reviewedAt) }}
+                    </div>
+                  </div>
+
+                  <div v-if="selectedReview?.ruleResults?.length" class="space-y-3">
+                    <div
+                      v-for="rule in selectedReview.ruleResults"
+                      :key="rule.key"
+                      class="rounded-lg border px-3 py-3"
+                      :class="rule.passed
+                        ? 'border-green-200 bg-green-50 dark:border-green-900/40 dark:bg-green-900/10'
+                        : 'border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-900/10'"
+                    >
+                      <div class="flex items-center justify-between gap-4">
+                        <div class="text-sm font-medium text-gray-900 dark:text-white">{{ rule.label }}</div>
+                        <span :class="rule.passed ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'" class="text-xs font-semibold uppercase tracking-wide">
+                          {{ rule.passed ? 'Passed' : 'Failed' }}
+                        </span>
+                      </div>
+                      <div class="mt-2 text-xs text-gray-600 dark:text-gray-400">
+                        <div><span class="font-medium">Expected:</span> {{ Array.isArray(rule.expected) ? rule.expected.join(', ') : (rule.expected || 'N/A') }}</div>
+                        <div><span class="font-medium">Actual:</span> {{ Array.isArray(rule.actual) ? rule.actual.join(', ') : (rule.actual || 'N/A') }}</div>
+                        <div v-if="rule.violationMessage" class="mt-1 text-red-700 dark:text-red-300">{{ rule.violationMessage }}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <p v-else class="text-sm text-gray-500 dark:text-gray-400">
+                    Save a review to evaluate stop loss, target R, side, timeframe, and any configured strategy/setup/tag rules.
+                  </p>
                 </div>
               </div>
             </div>
@@ -1157,7 +1349,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, reactive } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
@@ -1169,6 +1361,7 @@ import { useAuthStore } from '@/stores/auth'
 import TradeChartVisualization from '@/components/trades/TradeChartVisualization.vue'
 import TradeImages from '@/components/trades/TradeImages.vue'
 import TradeCharts from '@/components/trades/TradeCharts.vue'
+import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -1183,6 +1376,40 @@ const calculatingQuality = ref(false)
 const splittingTrade = ref(false)
 const splitMode = ref(false)
 const selectedExecutions = ref(new Set())
+const playbooks = ref([])
+const loadingPlaybooks = ref(false)
+const savingPlaybookReview = ref(false)
+const selectedPlaybookId = ref('')
+const reviewForm = reactive({
+  checklistResponses: [],
+  followedPlan: '',
+  reviewNotes: ''
+})
+
+const isPlaybookFeatureAvailable = computed(() => {
+  if (!authStore.user) return false
+  return authStore.user.billingEnabled === false || authStore.user.tier === 'pro' || authStore.user.role === 'admin'
+})
+
+const selectedPlaybook = computed(() => {
+  return playbooks.value.find(playbook => playbook.id === selectedPlaybookId.value) || null
+})
+
+const selectedReview = computed(() => {
+  const review = trade.value?.playbookReview
+  if (!review || review.playbookId !== selectedPlaybookId.value) {
+    return null
+  }
+  return review
+})
+
+const checklistCompletion = computed(() => {
+  const total = reviewForm.checklistResponses.length
+  if (total === 0) return { checked: 0, total: 0 }
+
+  const checked = reviewForm.checklistResponses.filter(item => item.checked).length
+  return { checked, total }
+})
 
 // Helper function to safely get numeric score value
 const getScore = (value) => {
@@ -1239,6 +1466,102 @@ const hasIncompleteQuality = computed(() => {
 
   return hasNullMetrics
 })
+
+function buildChecklistResponses(playbook, existingReview = null) {
+  const storedResponses = new Map(
+    (existingReview?.checklistResponses || []).map(response => [response.checklistItemId, response])
+  )
+
+  return (playbook?.checklistItems || []).map(item => ({
+    checklistItemId: item.id,
+    label: item.label,
+    checked: storedResponses.get(item.id)?.checked === true,
+    isRequired: item.isRequired === true,
+    weight: item.weight ?? 1
+  }))
+}
+
+function syncReviewForm() {
+  const playbook = selectedPlaybook.value
+  const review = selectedReview.value
+
+  if (!playbook) {
+    reviewForm.checklistResponses = []
+    reviewForm.followedPlan = ''
+    reviewForm.reviewNotes = ''
+    return
+  }
+
+  reviewForm.checklistResponses = buildChecklistResponses(playbook, review)
+  reviewForm.followedPlan = review?.followedPlan === true ? 'true' : review?.followedPlan === false ? 'false' : ''
+  reviewForm.reviewNotes = review?.reviewNotes || ''
+}
+
+async function loadPlaybooks() {
+  if (!isPlaybookFeatureAvailable.value) {
+    playbooks.value = []
+    selectedPlaybookId.value = ''
+    syncReviewForm()
+    return
+  }
+
+  try {
+    loadingPlaybooks.value = true
+    const response = await api.get('/playbooks', { params: { includeArchived: true } })
+    playbooks.value = response.data.playbooks || []
+
+    if (trade.value?.playbookReview?.playbookId) {
+      selectedPlaybookId.value = trade.value.playbookReview.playbookId
+    } else if (selectedPlaybookId.value && playbooks.value.some(playbook => playbook.id === selectedPlaybookId.value)) {
+      selectedPlaybookId.value = selectedPlaybookId.value
+    } else {
+      selectedPlaybookId.value = ''
+    }
+
+    syncReviewForm()
+  } catch (error) {
+    console.error('Failed to load playbooks:', error)
+    showError('Error', 'Failed to load playbooks')
+  } finally {
+    loadingPlaybooks.value = false
+  }
+}
+
+function onPlaybookChange() {
+  syncReviewForm()
+}
+
+async function savePlaybookReview() {
+  if (!trade.value?.id || !selectedPlaybookId.value) {
+    showError('Validation', 'Select a playbook before saving a review')
+    return
+  }
+
+  try {
+    savingPlaybookReview.value = true
+    const response = await api.put(`/playbooks/trades/${trade.value.id}/review`, {
+      playbookId: selectedPlaybookId.value,
+      checklistResponses: reviewForm.checklistResponses.map(item => ({
+        checklistItemId: item.checklistItemId,
+        checked: item.checked === true
+      })),
+      followedPlan: reviewForm.followedPlan === ''
+        ? null
+        : reviewForm.followedPlan === 'true',
+      reviewNotes: reviewForm.reviewNotes?.trim() || null
+    })
+
+    trade.value.playbookId = response.data.review.playbookId
+    trade.value.playbookReview = response.data.review
+    syncReviewForm()
+    showSuccess('Success', 'Playbook review saved')
+  } catch (error) {
+    console.error('Failed to save playbook review:', error)
+    showError('Error', error.response?.data?.error || 'Failed to save playbook review')
+  } finally {
+    savingPlaybookReview.value = false
+  }
+}
 
 // Ref to track if chart image failed to load
 const chartImageFailed = ref(false)
@@ -1935,13 +2258,19 @@ async function calculateQuality() {
       trade.value.qualityScore = response.data.quality.score
       trade.value.qualityMetrics = response.data.quality.metrics
 
-      showSuccess('Success', `Quality grade calculated: ${response.data.quality.grade}`)
+      trade.value.setupQuality = {
+        grade: response.data.quality.grade,
+        score: response.data.quality.score,
+        metrics: response.data.quality.metrics
+      }
+
+      showSuccess('Success', `Setup quality calculated: ${response.data.quality.grade}`)
     } else {
-      showError('Error', 'Failed to calculate quality grade')
+      showError('Error', 'Failed to calculate setup quality')
     }
   } catch (error) {
     console.error('Error calculating quality:', error)
-    showError('Error', error.response?.data?.error || 'Failed to calculate quality grade')
+    showError('Error', error.response?.data?.error || 'Failed to calculate setup quality')
   } finally {
     calculatingQuality.value = false
   }
@@ -1952,6 +2281,14 @@ async function loadTrade() {
     loading.value = true
     chartImageFailed.value = false // Reset chart image state for new trade
     trade.value = await tradesStore.fetchTrade(route.params.id)
+    if (!trade.value.setupQuality) {
+      trade.value.setupQuality = {
+        grade: trade.value.qualityGrade || null,
+        score: trade.value.qualityScore || null,
+        metrics: trade.value.qualityMetrics || null
+      }
+    }
+    await loadPlaybooks()
     
     // Load comments after trade is loaded
     if (trade.value) {

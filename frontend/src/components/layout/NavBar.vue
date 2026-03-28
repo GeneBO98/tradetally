@@ -401,6 +401,13 @@ const baseNavigation = [
         route: 'trade-management',
         description: 'Analyze trade execution with R-Multiple performance metrics',
         badge: { type: 'pro', text: 'Pro' }
+      },
+      {
+        name: 'Playbooks',
+        to: '/analysis/playbooks',
+        route: 'playbooks',
+        description: 'Create structured setups and review trade adherence',
+        badge: { type: 'pro', text: 'Pro' }
       }
     ]
   },

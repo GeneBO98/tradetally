@@ -17,6 +17,29 @@ const ChartService = require('../services/chartService');
 const axios = require('axios');
 const { sendV1NotImplemented } = require('../utils/apiResponse');
 const { getUserTimezone } = require('../utils/timezone');
+const Playbook = require('../models/Playbook');
+
+function buildSetupQuality(trade) {
+  return {
+    grade: trade.quality_grade ?? trade.qualityGrade ?? null,
+    score: trade.quality_score ?? trade.qualityScore ?? null,
+    metrics: trade.quality_metrics ?? trade.qualityMetrics ?? null
+  };
+}
+
+function mapTradeReviewSummary(review) {
+  if (!review) return null;
+
+  return {
+    playbookId: review.playbook_id,
+    playbookName: review.playbook_name,
+    adherenceScore: review.adherence_score !== null && review.adherence_score !== undefined
+      ? Number(review.adherence_score)
+      : null,
+    followedPlan: review.followed_plan,
+    reviewedAt: review.reviewed_at
+  };
+}
 
 // Helper function to invalidate analytics cache for a user
 function invalidateAnalyticsCache(userId) {
@@ -116,6 +139,19 @@ const tradeController = {
         if (trade.quality_grade !== undefined) trade.qualityGrade = trade.quality_grade;
         if (trade.quality_score !== undefined) trade.qualityScore = trade.quality_score;
         if (trade.quality_metrics !== undefined) trade.qualityMetrics = trade.quality_metrics;
+      });
+
+      const tradeReviewRows = await Playbook.getTradeReviewSummaries(
+        req.user.id,
+        trades.map(trade => trade.id)
+      );
+      const tradeReviewMap = new Map(tradeReviewRows.map(review => [review.trade_id, review]));
+
+      trades.forEach(trade => {
+        const review = tradeReviewMap.get(trade.id);
+        trade.playbookId = review?.playbook_id || null;
+        trade.playbookReview = mapTradeReviewSummary(review);
+        trade.setupQuality = buildSetupQuality(trade);
       });
 
       // Prepare response with trades immediately
@@ -582,6 +618,35 @@ const tradeController = {
       if (trade.quality_grade !== undefined) trade.qualityGrade = trade.quality_grade;
       if (trade.quality_score !== undefined) trade.qualityScore = trade.quality_score;
       if (trade.quality_metrics !== undefined) trade.qualityMetrics = trade.quality_metrics;
+
+      if (req.user?.id) {
+        const review = await Playbook.getTradeReviewByTradeId(tradeId, req.user.id);
+        trade.playbookId = review?.playbook_id || null;
+        trade.playbookReview = review ? {
+          id: review.id,
+          tradeId: review.trade_id,
+          playbookId: review.playbook_id,
+          playbookName: review.playbook_name,
+          adherenceScore: review.adherence_score !== null && review.adherence_score !== undefined
+            ? Number(review.adherence_score)
+            : null,
+          checklistScore: review.checklist_score !== null && review.checklist_score !== undefined
+            ? Number(review.checklist_score)
+            : null,
+          followedPlan: review.followed_plan,
+          reviewNotes: review.review_notes,
+          checklistResponses: review.checklist_responses || [],
+          ruleResults: review.rule_results || [],
+          violationSummary: review.violation_summary || [],
+          reviewedAt: review.reviewed_at,
+          updatedAt: review.updated_at
+        } : null;
+      } else {
+        trade.playbookId = null;
+        trade.playbookReview = null;
+      }
+
+      trade.setupQuality = buildSetupQuality(trade);
 
       res.json({ trade });
     } catch (error) {
