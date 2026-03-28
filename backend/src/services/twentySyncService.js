@@ -14,6 +14,8 @@ class TwentySyncService {
     this.apiUrl = process.env.TWENTY_API_URL;
     this.apiKey = process.env.TWENTY_API_KEY;
     this.enabled = false;
+    this.unsupportedCreateFields = new Set();
+    this.unsupportedUpdateFields = new Set();
   }
 
   initialize() {
@@ -48,7 +50,40 @@ class TwentySyncService {
         body: JSON.stringify({ query, variables }),
       });
 
-      const result = await response.json();
+      const responseText = await response.text();
+      let result;
+
+      try {
+        result = JSON.parse(responseText);
+      } catch (error) {
+        const isRetryableResponse = response.status >= 500 || responseText.startsWith('<!DOCTYPE');
+
+        if (isRetryableResponse && attempt < retries) {
+          const delay = Math.pow(2, attempt + 1) * 1000;
+          console.log(
+            `[TWENTY SYNC] Received non-JSON response (${response.status}), retrying in ${delay / 1000}s...`
+          );
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
+
+        const snippet = responseText.slice(0, 120).replace(/\s+/g, ' ').trim();
+        throw new Error(`Twenty API returned non-JSON response (${response.status}): ${snippet}`);
+      }
+
+      if (!response.ok) {
+        const errorMessage = result?.errors?.[0]?.message || `HTTP ${response.status}`;
+        const isRetryableStatus = response.status >= 500;
+
+        if (isRetryableStatus && attempt < retries) {
+          const delay = Math.pow(2, attempt + 1) * 1000;
+          console.log(`[TWENTY SYNC] HTTP ${response.status}, retrying in ${delay / 1000}s...`);
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
+
+        throw new Error(`Twenty GraphQL error: ${errorMessage}`);
+      }
 
       if (result.errors?.length) {
         const msg = result.errors[0].message;
@@ -132,6 +167,52 @@ class TwentySyncService {
     };
   }
 
+  filterUnsupportedFields(personData, unsupportedFields) {
+    return Object.fromEntries(
+      Object.entries(personData).filter(([field]) => !unsupportedFields.has(field))
+    );
+  }
+
+  extractUnsupportedInputField(errorMessage, inputType) {
+    const escapedInputType = inputType.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = errorMessage.match(
+      new RegExp(`Field "([^"]+)" is not defined by type "${escapedInputType}"`)
+    );
+
+    return match?.[1] || null;
+  }
+
+  async executePersonMutation({ query, variables, resultKey, inputType, unsupportedFields }) {
+    const filteredVariables = {
+      ...variables,
+      data: this.filterUnsupportedFields(variables.data, unsupportedFields),
+    };
+
+    try {
+      const data = await this.graphql(query, filteredVariables);
+      return data?.[resultKey];
+    } catch (error) {
+      const unsupportedField = this.extractUnsupportedInputField(error.message, inputType);
+
+      if (!unsupportedField || unsupportedFields.has(unsupportedField)) {
+        throw error;
+      }
+
+      unsupportedFields.add(unsupportedField);
+      console.warn(
+        `[TWENTY SYNC] Ignoring unsupported ${inputType} field "${unsupportedField}" for future syncs`
+      );
+
+      const retriedVariables = {
+        ...variables,
+        data: this.filterUnsupportedFields(variables.data, unsupportedFields),
+      };
+
+      const data = await this.graphql(query, retriedVariables);
+      return data?.[resultKey];
+    }
+  }
+
   /**
    * Execute a mutation, auto-stripping fields Twenty doesn't recognize
    */
@@ -160,7 +241,8 @@ class TwentySyncService {
    * Create a person in Twenty
    */
   async createPerson(userData) {
-    return this.graphqlWithFieldStripping(`
+    return this.executePersonMutation({
+      query: `
       mutation CreatePerson($data: PersonCreateInput!) {
         createPerson(data: $data) {
           id
@@ -168,7 +250,14 @@ class TwentySyncService {
           emails { primaryEmail }
         }
       }
-    `, { data: this.buildPersonData(userData) }, 'createPerson');
+    `,
+      variables: {
+        data: this.buildPersonData(userData),
+      },
+      resultKey: 'createPerson',
+      inputType: 'PersonCreateInput',
+      unsupportedFields: this.unsupportedCreateFields,
+    });
   }
 
   /**
@@ -179,7 +268,8 @@ class TwentySyncService {
     // Don't overwrite emails on update
     delete personData.emails;
 
-    return this.graphqlWithFieldStripping(`
+    return this.executePersonMutation({
+      query: `
       mutation UpdatePerson($id: ID!, $data: PersonUpdateInput!) {
         updatePerson(id: $id, data: $data) {
           id
@@ -187,7 +277,15 @@ class TwentySyncService {
           emails { primaryEmail }
         }
       }
-    `, { id: personId, data: personData }, 'updatePerson');
+    `,
+      variables: {
+        id: personId,
+        data: personData,
+      },
+      resultKey: 'updatePerson',
+      inputType: 'PersonUpdateInput',
+      unsupportedFields: this.unsupportedUpdateFields,
+    });
   }
 
   /**
