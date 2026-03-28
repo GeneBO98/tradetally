@@ -19,6 +19,7 @@ class BrokerConnection {
       schwabRefreshToken,
       schwabTokenExpiresAt,
       schwabAccountId,
+      accountLabel = null,
       autoSyncEnabled = false,
       syncFrequency = 'daily',
       syncTime = '06:00:00'
@@ -29,44 +30,65 @@ class BrokerConnection {
     const encryptedSchwabAccess = schwabAccessToken ? encryptionService.encrypt(schwabAccessToken) : null;
     const encryptedSchwabRefresh = schwabRefreshToken ? encryptionService.encrypt(schwabRefreshToken) : null;
 
-    const query = `
-      INSERT INTO broker_connections (
-        user_id, broker_type, connection_status,
-        ibkr_flex_token, ibkr_flex_query_id,
-        schwab_access_token, schwab_refresh_token, schwab_token_expires_at, schwab_account_id,
-        auto_sync_enabled, sync_frequency, sync_time
-      )
-      VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11)
-      ON CONFLICT (user_id, broker_type) DO UPDATE SET
-        ibkr_flex_token = EXCLUDED.ibkr_flex_token,
-        ibkr_flex_query_id = EXCLUDED.ibkr_flex_query_id,
-        schwab_access_token = EXCLUDED.schwab_access_token,
-        schwab_refresh_token = EXCLUDED.schwab_refresh_token,
-        schwab_token_expires_at = EXCLUDED.schwab_token_expires_at,
-        schwab_account_id = EXCLUDED.schwab_account_id,
-        auto_sync_enabled = EXCLUDED.auto_sync_enabled,
-        sync_frequency = EXCLUDED.sync_frequency,
-        sync_time = EXCLUDED.sync_time,
-        connection_status = 'pending',
-        consecutive_failures = 0,
-        updated_at = CURRENT_TIMESTAMP
-      RETURNING *
-    `;
+    let query;
+    let params;
 
-    const result = await db.query(query, [
-      userId,
-      brokerType,
-      encryptedIbkrToken,
-      ibkrFlexQueryId,
-      encryptedSchwabAccess,
-      encryptedSchwabRefresh,
-      schwabTokenExpiresAt,
-      schwabAccountId,
-      autoSyncEnabled,
-      syncFrequency,
-      syncTime
-    ]);
+    if (brokerType === 'ibkr') {
+      // IBKR: allow multiple connections (different query IDs)
+      // Unique constraint on (user_id, ibkr_flex_query_id) prevents duplicates
+      query = `
+        INSERT INTO broker_connections (
+          user_id, broker_type, connection_status,
+          ibkr_flex_token, ibkr_flex_query_id, account_label,
+          auto_sync_enabled, sync_frequency, sync_time
+        )
+        VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (user_id, ibkr_flex_query_id) WHERE broker_type = 'ibkr' AND ibkr_flex_query_id IS NOT NULL DO UPDATE SET
+          ibkr_flex_token = EXCLUDED.ibkr_flex_token,
+          account_label = EXCLUDED.account_label,
+          auto_sync_enabled = EXCLUDED.auto_sync_enabled,
+          sync_frequency = EXCLUDED.sync_frequency,
+          sync_time = EXCLUDED.sync_time,
+          connection_status = 'pending',
+          consecutive_failures = 0,
+          updated_at = CURRENT_TIMESTAMP
+        RETURNING *
+      `;
+      params = [
+        userId, brokerType, encryptedIbkrToken, ibkrFlexQueryId,
+        accountLabel, autoSyncEnabled, syncFrequency, syncTime
+      ];
+    } else {
+      // Schwab: keep single connection per user (upsert via partial unique index)
+      query = `
+        INSERT INTO broker_connections (
+          user_id, broker_type, connection_status,
+          schwab_access_token, schwab_refresh_token, schwab_token_expires_at, schwab_account_id,
+          account_label, auto_sync_enabled, sync_frequency, sync_time
+        )
+        VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10)
+        ON CONFLICT (user_id) WHERE broker_type = 'schwab' DO UPDATE SET
+          schwab_access_token = EXCLUDED.schwab_access_token,
+          schwab_refresh_token = EXCLUDED.schwab_refresh_token,
+          schwab_token_expires_at = EXCLUDED.schwab_token_expires_at,
+          schwab_account_id = EXCLUDED.schwab_account_id,
+          account_label = EXCLUDED.account_label,
+          auto_sync_enabled = EXCLUDED.auto_sync_enabled,
+          sync_frequency = EXCLUDED.sync_frequency,
+          sync_time = EXCLUDED.sync_time,
+          connection_status = 'pending',
+          consecutive_failures = 0,
+          updated_at = CURRENT_TIMESTAMP
+        RETURNING *
+      `;
+      params = [
+        userId, brokerType, encryptedSchwabAccess, encryptedSchwabRefresh,
+        schwabTokenExpiresAt, schwabAccountId, accountLabel,
+        autoSyncEnabled, syncFrequency, syncTime
+      ];
+    }
 
+    const result = await db.query(query, params);
     return this.formatConnection(result.rows[0], false);
   }
 
@@ -107,6 +129,20 @@ class BrokerConnection {
       SELECT * FROM broker_connections
       WHERE user_id = $1
       ORDER BY created_at DESC
+    `;
+
+    const result = await db.query(query, [userId]);
+    return result.rows.map(row => this.formatConnection(row, false));
+  }
+
+  /**
+   * Find all IBKR connections for a user
+   */
+  static async findIBKRByUser(userId) {
+    const query = `
+      SELECT * FROM broker_connections
+      WHERE user_id = $1 AND broker_type = 'ibkr'
+      ORDER BY created_at ASC
     `;
 
     const result = await db.query(query, [userId]);
@@ -204,7 +240,7 @@ class BrokerConnection {
    * Update connection settings
    */
   static async update(connectionId, updates) {
-    const allowedFields = ['auto_sync_enabled', 'sync_frequency', 'sync_time'];
+    const allowedFields = ['auto_sync_enabled', 'sync_frequency', 'sync_time', 'account_label'];
     const setClauses = [];
     const values = [];
     let paramCount = 1;
@@ -360,6 +396,7 @@ class BrokerConnection {
       id: row.id,
       userId: row.user_id,
       brokerType: row.broker_type,
+      accountLabel: row.account_label,
       connectionStatus: row.connection_status,
       autoSyncEnabled: row.auto_sync_enabled,
       syncFrequency: row.sync_frequency,

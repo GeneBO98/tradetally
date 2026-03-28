@@ -82,6 +82,7 @@ const brokerSyncController = {
       const {
         flexToken,
         flexQueryId,
+        accountLabel = '',
         autoSyncEnabled = false,
         syncFrequency = 'daily',
         syncTime = '06:00:00'
@@ -106,11 +107,12 @@ const brokerSyncController = {
         });
       }
 
-      // Create or update connection
+      // Create or update connection (duplicate query IDs handled by DB unique constraint)
       const connection = await BrokerConnection.create(userId, {
         brokerType: 'ibkr',
         ibkrFlexToken: flexToken,
         ibkrFlexQueryId: flexQueryId,
+        accountLabel: accountLabel || null,
         autoSyncEnabled,
         syncFrequency,
         syncTime

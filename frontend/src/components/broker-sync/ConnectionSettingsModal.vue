@@ -69,6 +69,21 @@
                         </div>
                     </div>
 
+                    <!-- Account Label -->
+                    <div>
+                        <label for="settingsAccountLabel" class="label">Account Label</label>
+                        <input
+                            id="settingsAccountLabel"
+                            v-model="form.accountLabel"
+                            type="text"
+                            class="input"
+                            placeholder="e.g., Main Account, Paper Trading"
+                        />
+                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                            Optional name to identify this connection
+                        </p>
+                    </div>
+
                     <!-- Auto-Sync Toggle -->
                     <div class="flex items-center justify-between">
                         <div>
@@ -252,6 +267,7 @@ const props = defineProps({
 const emit = defineEmits(["close", "save"]);
 
 const form = ref({
+    accountLabel: props.connection.accountLabel || "",
     autoSyncEnabled: props.connection.autoSyncEnabled,
     syncFrequency: props.connection.syncFrequency,
     syncTime: props.connection.syncTime?.substring(0, 5) || "06:00",
@@ -262,6 +278,7 @@ watch(
     () => props.connection,
     (newConnection) => {
         form.value = {
+            accountLabel: newConnection.accountLabel || "",
             autoSyncEnabled: newConnection.autoSyncEnabled,
             syncFrequency: newConnection.syncFrequency,
             syncTime: newConnection.syncTime?.substring(0, 5) || "06:00",
@@ -317,6 +334,7 @@ function formatDate(date) {
 
 function handleSave() {
     emit("save", {
+        accountLabel: form.value.accountLabel,
         autoSyncEnabled: form.value.autoSyncEnabled,
         syncFrequency: form.value.syncFrequency,
         syncTime: form.value.syncTime + ":00",

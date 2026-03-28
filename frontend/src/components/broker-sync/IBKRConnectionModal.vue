@@ -52,6 +52,20 @@
 
           <form @submit.prevent="handleSubmit" class="space-y-4">
             <div>
+              <label for="accountLabel" class="label">Account Label</label>
+              <input
+                id="accountLabel"
+                v-model="form.accountLabel"
+                type="text"
+                class="input"
+                placeholder="e.g., Main Account, Paper Trading"
+              />
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Optional name to identify this account
+              </p>
+            </div>
+
+            <div>
               <label for="flexToken" class="label">Flex Token</label>
               <input
                 id="flexToken"
@@ -159,6 +173,7 @@ const props = defineProps({
 const emit = defineEmits(['close', 'save'])
 
 const form = ref({
+  accountLabel: '',
   flexToken: '',
   flexQueryId: '',
   autoSyncEnabled: true,
@@ -174,6 +189,7 @@ function handleSubmit() {
   if (!isValid.value) return
 
   emit('save', {
+    accountLabel: form.value.accountLabel,
     flexToken: form.value.flexToken,
     flexQueryId: form.value.flexQueryId,
     autoSyncEnabled: form.value.autoSyncEnabled,

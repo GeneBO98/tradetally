@@ -17,8 +17,8 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     connections.value.filter(c => c.connectionStatus === 'active')
   )
 
-  const ibkrConnection = computed(() =>
-    connections.value.find(c => c.brokerType === 'ibkr')
+  const ibkrConnections = computed(() =>
+    connections.value.filter(c => c.brokerType === 'ibkr')
   )
 
   const schwabConnection = computed(() =>
@@ -54,6 +54,7 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
       const response = await api.post('/broker-sync/connections/ibkr', {
         flexToken: credentials.flexToken,
         flexQueryId: credentials.flexQueryId,
+        accountLabel: credentials.accountLabel || '',
         autoSyncEnabled: credentials.autoSyncEnabled || false,
         syncFrequency: credentials.syncFrequency || 'daily',
         syncTime: credentials.syncTime || '06:00:00'
@@ -247,7 +248,7 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     // Getters
     hasConnections,
     activeConnections,
-    ibkrConnection,
+    ibkrConnections,
     schwabConnection,
     isConnectionSyncing,
 

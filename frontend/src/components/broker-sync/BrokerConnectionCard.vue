@@ -14,7 +14,12 @@
           </div>
 
           <div>
-            <h4 class="font-medium text-gray-900 dark:text-white">{{ brokerStyles.name }}</h4>
+            <h4 class="font-medium text-gray-900 dark:text-white">
+              {{ brokerStyles.name }}
+              <span v-if="connection.accountLabel" class="text-sm font-normal text-gray-500 dark:text-gray-400">
+                - {{ connection.accountLabel }}
+              </span>
+            </h4>
             <div class="flex items-center space-x-2 mt-1">
               <span
                 class="px-2 py-0.5 text-xs rounded-full"

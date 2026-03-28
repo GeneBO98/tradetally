@@ -59,13 +59,8 @@
           <div class="grid gap-6 md:grid-cols-2">
             <!-- IBKR Card -->
             <div
-              class="p-6 border-2 rounded-lg transition-colors cursor-pointer"
-              :class="[
-                store.ibkrConnection
-                  ? 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 opacity-50 cursor-not-allowed'
-                  : 'border-dashed border-gray-300 dark:border-gray-600 hover:border-primary-500 dark:hover:border-primary-400'
-              ]"
-              @click="!store.ibkrConnection && openIBKRModal()"
+              class="p-6 border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-primary-500 dark:hover:border-primary-400 rounded-lg transition-colors cursor-pointer"
+              @click="openIBKRModal()"
             >
               <div class="flex items-center space-x-4">
                 <div class="flex-shrink-0 w-12 h-12 bg-red-100 dark:bg-red-900/30 rounded-lg flex items-center justify-center">
@@ -74,7 +69,7 @@
                 <div>
                   <h4 class="font-medium text-gray-900 dark:text-white">Interactive Brokers</h4>
                   <p class="text-sm text-gray-500 dark:text-gray-400">
-                    {{ store.ibkrConnection ? 'Already connected' : 'Connect via Flex Query' }}
+                    {{ store.ibkrConnections.length > 0 ? 'Add another IBKR account' : 'Connect via Flex Query' }}
                   </p>
                 </div>
               </div>
