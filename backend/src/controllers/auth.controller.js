@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const jwt = require('jsonwebtoken');
 const { generateToken, TOKEN_PURPOSES, verifyJwtToken } = require('../middleware/auth');
 const crypto = require('crypto');
 const EmailService = require('../services/emailService');
@@ -396,8 +397,8 @@ const authController = {
 
   async verify2FA(req, res, next) {
     try {
-      const tempToken = req.body.tempToken || req.body.token;
-      const twoFactorCode = req.body.twoFactorCode || req.body.code;
+      const tempToken = (req.body.tempToken || req.body.temp_token || req.body.token || '').trim();
+      const twoFactorCode = String(req.body.twoFactorCode || req.body.two_factor_code || req.body.code || '').trim();
 
       if (!tempToken || !twoFactorCode) {
         return res.status(400).json({ error: 'Temporary token and 2FA code are required' });
@@ -410,10 +411,19 @@ const authController = {
       try {
         decoded = verifyJwtToken(tempToken, { requiredPurpose: TOKEN_PURPOSES.PRE_2FA });
       } catch (error) {
-        return res.status(401).json({ error: 'Invalid or expired temporary token' });
+        try {
+          // Accept legacy temp tokens minted before token-purpose enforcement.
+          const legacyDecoded = jwt.verify(tempToken, process.env.JWT_SECRET);
+          if (legacyDecoded.purpose) {
+            throw error;
+          }
+          decoded = legacyDecoded;
+        } catch (_) {
+          return res.status(401).json({ error: 'Invalid or expired temporary token' });
+        }
       }
 
-      const user = await User.findById(decoded.id);
+      const user = await User.findById(decoded.id || decoded.userId);
       if (!user || !user.two_factor_enabled) {
         return res.status(400).json({ error: 'Invalid request' });
       }
@@ -459,6 +469,13 @@ const authController = {
 
       // Generate full access token
       const token = generateToken(user, { purpose: TOKEN_PURPOSES.ACCESS });
+
+      res.cookie('token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+      });
 
       // Get tier and billing status
       const TierService = require('../services/tierService');

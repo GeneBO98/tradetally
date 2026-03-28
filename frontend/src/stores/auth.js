@@ -230,9 +230,14 @@ export const useAuthStore = defineStore('auth', () => {
     error.value = null
     
     try {
+      const normalizedToken = typeof tempToken === 'string' ? tempToken.trim() : tempToken
+      const normalizedCode = typeof twoFactorCode === 'string'
+        ? twoFactorCode.replace(/[\s-]+/g, '').trim().toUpperCase()
+        : twoFactorCode
+
       const response = await api.post('/auth/verify-2fa', { 
-        tempToken,
-        twoFactorCode 
+        tempToken: normalizedToken,
+        twoFactorCode: normalizedCode
       })
       
       const { user: userData, token: authToken } = response.data
