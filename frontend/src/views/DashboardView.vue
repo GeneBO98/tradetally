@@ -8,6 +8,12 @@
           <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
             Trading performance analytics and insights
           </p>
+          <div
+            v-if="selectedAccount"
+            class="mt-2 inline-flex max-w-full items-center rounded-full bg-primary-50 px-3 py-1 text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+          >
+            Viewing: <span class="ml-1 truncate">{{ selectedAccountLabel }}</span>
+          </div>
           
           <!-- Market Status and Refresh Indicator -->
           <div class="mt-2 flex items-center space-x-4 text-xs">
@@ -1268,7 +1274,7 @@ import draggable from 'vuedraggable'
 
 const authStore = useAuthStore()
 const { formatTime: formatTimeTz } = useUserTimezone()
-const { selectedAccount } = useGlobalAccountFilter()
+const { selectedAccount, selectedAccountLabel } = useGlobalAccountFilter()
 const yearWrappedStore = useYearWrappedStore()
 const router = useRouter()
 

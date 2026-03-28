@@ -36,7 +36,7 @@
     >
       <div
         v-if="isOpen"
-        class="absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 dark:ring-gray-700 z-50"
+        class="absolute right-0 mt-2 w-72 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 dark:ring-gray-700 z-50"
       >
         <div class="py-1" role="menu">
           <!-- Header -->
@@ -83,14 +83,19 @@
           <template v-else>
             <button
               v-for="account in accounts"
-              :key="account"
-              @click="handleSelectAccount(account)"
+              :key="account.value"
+              @click="handleSelectAccount(account.value)"
               class="w-full text-left px-4 py-2 text-sm flex items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-              :class="selectedAccount === account ? 'text-primary-600 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300'"
+              :class="selectedAccount === account.value ? 'text-primary-600 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300'"
               role="menuitem"
             >
-              <span class="truncate">{{ account }}</span>
-              <CheckIcon v-if="selectedAccount === account" class="h-4 w-4 flex-shrink-0" />
+              <div class="min-w-0 pr-3">
+                <div class="truncate">{{ account.label }}</div>
+                <div v-if="account.secondaryLabel" class="truncate text-xs text-gray-500 dark:text-gray-400">
+                  {{ account.secondaryLabel }}
+                </div>
+              </div>
+              <CheckIcon v-if="selectedAccount === account.value" class="h-4 w-4 flex-shrink-0" />
             </button>
           </template>
         </div>

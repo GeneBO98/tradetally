@@ -12,6 +12,29 @@ const accounts = ref([])
 const loading = ref(false)
 const initialized = ref(false)
 
+function redactAccountId(accountId) {
+  if (!accountId) return null
+
+  const str = String(accountId).trim()
+  if (str.length <= 4) return str
+
+  const withoutSeparators = str.replace(/[-.\s]/g, '')
+  const digitCount = (withoutSeparators.match(/\d/g) || []).length
+  const letterCount = (withoutSeparators.match(/[a-zA-Z]/g) || []).length
+  const totalAlphanumeric = digitCount + letterCount
+
+  const isAccountNumber = totalAlphanumeric > 0 && (
+    (digitCount / totalAlphanumeric) > 0.5 ||
+    /^[A-Za-z]{1,2}\d{4,}/.test(withoutSeparators)
+  )
+
+  if (isAccountNumber) {
+    return `****${str.slice(-4)}`
+  }
+
+  return str
+}
+
 export function useGlobalAccountFilter() {
   // Initialize from localStorage on first use
   if (!initialized.value) {
@@ -26,7 +49,13 @@ export function useGlobalAccountFilter() {
     if (selectedAccount.value === UNSORTED_ACCOUNT) {
       return 'Unsorted'
     }
-    return selectedAccount.value || 'All Accounts'
+
+    if (!selectedAccount.value) {
+      return 'All Accounts'
+    }
+
+    const matchingAccount = accounts.value.find(account => account.value === selectedAccount.value)
+    return matchingAccount?.label || redactAccountId(selectedAccount.value) || selectedAccount.value
   })
 
   const isFiltered = computed(() => {
@@ -37,11 +66,48 @@ export function useGlobalAccountFilter() {
     if (loading.value) return
     loading.value = true
     try {
-      const response = await api.get('/trades/accounts')
-      accounts.value = response.data.accounts || []
+      const [tradeAccountsResult, managedAccountsResult] = await Promise.allSettled([
+        api.get('/trades/accounts'),
+        api.get('/accounts')
+      ])
+
+      const tradeAccounts = tradeAccountsResult.status === 'fulfilled'
+        ? (tradeAccountsResult.value.data.accounts || [])
+        : []
+      const managedAccounts = managedAccountsResult.status === 'fulfilled'
+        ? (managedAccountsResult.value.data.data || [])
+        : []
+
+      const managedAccountMap = new Map(
+        managedAccounts
+          .filter(account => account.accountIdentifier)
+          .map(account => [account.accountIdentifier, account])
+      )
+
+      const accountIdentifiers = tradeAccounts.length > 0
+        ? tradeAccounts
+        : managedAccounts
+          .map(account => account.accountIdentifier)
+          .filter(Boolean)
+
+      accounts.value = accountIdentifiers.map(identifier => {
+        const managedAccount = managedAccountMap.get(identifier)
+        const redactedIdentifier = redactAccountId(identifier)
+
+        return {
+          value: identifier,
+          label: managedAccount?.accountName || redactedIdentifier || identifier,
+          secondaryLabel: managedAccount?.accountName && managedAccount.accountName !== identifier
+            ? redactedIdentifier
+            : null,
+          isPrimary: Boolean(managedAccount?.isPrimary)
+        }
+      })
+
+      const hasAccountData = tradeAccountsResult.status === 'fulfilled' || managedAccountsResult.status === 'fulfilled'
 
       // Validate stored selection still exists (allow special UNSORTED_ACCOUNT value)
-      if (selectedAccount.value && selectedAccount.value !== UNSORTED_ACCOUNT && !accounts.value.includes(selectedAccount.value)) {
+      if (hasAccountData && selectedAccount.value && selectedAccount.value !== UNSORTED_ACCOUNT && !accounts.value.some(account => account.value === selectedAccount.value)) {
         console.log('[GLOBAL ACCOUNT] Stored account no longer exists, clearing filter')
         clearAccount()
       }
