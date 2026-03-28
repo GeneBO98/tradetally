@@ -188,7 +188,7 @@
                         Manage Subscription
                     </h3>
 
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <button
                             @click="openCustomerPortal"
                             :disabled="portalLoading"
@@ -204,11 +204,32 @@
                         <router-link to="/pricing" class="btn btn-outline">
                             Change Plan
                         </router-link>
+
+                        <button
+                            v-if="subscription.subscription && !subscription.subscription.cancel_at_period_end && (subscription.subscription.status === 'active' || subscription.subscription.status === 'trialing')"
+                            @click="showCancelModal = true"
+                            class="btn btn-outline border-red-300 text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
+                        >
+                            Cancel Subscription
+                        </button>
+
+                        <button
+                            v-if="subscription.subscription && subscription.subscription.cancel_at_period_end"
+                            @click="reactivateSubscription"
+                            :disabled="reactivateLoading"
+                            class="btn btn-primary"
+                        >
+                            <span
+                                v-if="reactivateLoading"
+                                class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"
+                            ></span>
+                            Reactivate Subscription
+                        </button>
                     </div>
 
                     <p class="mt-4 text-sm text-gray-600 dark:text-gray-400">
                         Use the customer portal to update payment methods,
-                        download invoices, and manage your subscription.
+                        download invoices, and view billing history.
                     </p>
                 </div>
             </div>
@@ -256,6 +277,51 @@
                 </div>
             </div>
         </div>
+
+        <!-- Cancel Confirmation Modal -->
+        <div
+            v-if="showCancelModal"
+            class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+            @click.self="showCancelModal = false"
+        >
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                    Cancel Subscription
+                </h3>
+                <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                    Are you sure you want to cancel your subscription? You will
+                    continue to have access to Pro features until the end of your
+                    current billing period on
+                    <strong>{{
+                        formatDate(
+                            subscription.subscription?.current_period_end,
+                        )
+                    }}</strong>.
+                </p>
+                <p class="text-sm text-gray-500 dark:text-gray-500 mb-6">
+                    You can reactivate at any time before the billing period ends.
+                </p>
+                <div class="flex justify-end space-x-3">
+                    <button
+                        @click="showCancelModal = false"
+                        class="btn btn-outline"
+                    >
+                        Keep Subscription
+                    </button>
+                    <button
+                        @click="cancelSubscription"
+                        :disabled="cancelLoading"
+                        class="btn bg-red-600 text-white hover:bg-red-700"
+                    >
+                        <span
+                            v-if="cancelLoading"
+                            class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"
+                        ></span>
+                        Confirm Cancellation
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 </template>
 
@@ -271,6 +337,9 @@ export default {
         const router = useRouter();
         const loading = ref(true);
         const portalLoading = ref(false);
+        const cancelLoading = ref(false);
+        const reactivateLoading = ref(false);
+        const showCancelModal = ref(false);
         const billingStatus = ref({
             billing_enabled: false,
             billing_available: false,
@@ -320,6 +389,41 @@ export default {
                 alert("Failed to open customer portal. Please try again.");
             } finally {
                 portalLoading.value = false;
+            }
+        };
+
+        const cancelSubscription = async () => {
+            cancelLoading.value = true;
+            try {
+                await api.post("/billing/cancel");
+                showCancelModal.value = false;
+                // Reload subscription to reflect cancellation state
+                await loadSubscription();
+            } catch (error) {
+                console.error("Error canceling subscription:", error);
+                alert(
+                    error.response?.data?.message ||
+                        "Failed to cancel subscription. Please try again.",
+                );
+            } finally {
+                cancelLoading.value = false;
+            }
+        };
+
+        const reactivateSubscription = async () => {
+            reactivateLoading.value = true;
+            try {
+                await api.post("/billing/reactivate");
+                // Reload subscription to reflect reactivation
+                await loadSubscription();
+            } catch (error) {
+                console.error("Error reactivating subscription:", error);
+                alert(
+                    error.response?.data?.message ||
+                        "Failed to reactivate subscription. Please try again.",
+                );
+            } finally {
+                reactivateLoading.value = false;
             }
         };
 
@@ -419,11 +523,16 @@ export default {
         return {
             loading,
             portalLoading,
+            cancelLoading,
+            reactivateLoading,
+            showCancelModal,
             billingStatus,
             subscription,
             checkoutSuccess,
             redirectMessage,
             openCustomerPortal,
+            cancelSubscription,
+            reactivateSubscription,
             getStatusBadgeClass,
             formatStatus,
             formatDate,

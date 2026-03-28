@@ -317,6 +317,70 @@ const billingController = {
     }
   },
 
+  // Cancel subscription at period end
+  async cancelSubscription(req, res, next) {
+    try {
+      const userId = req.user.id;
+      console.log('[BILLING] Cancel subscription request for user:', userId);
+
+      const result = await BillingService.cancelSubscription(userId);
+
+      console.log('[BILLING] Subscription set to cancel at period end:', result.id);
+      res.json({
+        success: true,
+        message: 'Subscription will be canceled at the end of the current billing period',
+        data: result
+      });
+    } catch (error) {
+      console.error('[ERROR] Error canceling subscription:', error);
+      if (error.message === 'Billing not available') {
+        return res.status(400).json({
+          error: 'billing_unavailable',
+          message: 'Billing is not enabled on this instance'
+        });
+      }
+      if (error.message === 'No active subscription found' || error.message === 'Subscription is not active') {
+        return res.status(400).json({
+          error: 'invalid_subscription',
+          message: error.message
+        });
+      }
+      next(error);
+    }
+  },
+
+  // Reactivate a subscription set to cancel
+  async reactivateSubscription(req, res, next) {
+    try {
+      const userId = req.user.id;
+      console.log('[BILLING] Reactivate subscription request for user:', userId);
+
+      const result = await BillingService.reactivateSubscription(userId);
+
+      console.log('[BILLING] Subscription reactivated:', result.id);
+      res.json({
+        success: true,
+        message: 'Subscription has been reactivated',
+        data: result
+      });
+    } catch (error) {
+      console.error('[ERROR] Error reactivating subscription:', error);
+      if (error.message === 'Billing not available') {
+        return res.status(400).json({
+          error: 'billing_unavailable',
+          message: 'Billing is not enabled on this instance'
+        });
+      }
+      if (error.message === 'No subscription found' || error.message === 'Subscription is not set to cancel') {
+        return res.status(400).json({
+          error: 'invalid_subscription',
+          message: error.message
+        });
+      }
+      next(error);
+    }
+  },
+
   // Create customer portal session
   async createPortalSession(req, res, next) {
     try {

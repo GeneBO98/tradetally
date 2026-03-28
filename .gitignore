@@ -4,6 +4,7 @@ docker-compose.yaml
 *bom.json
 *test.js
 !backend/tests/services/brokerSync.service.test.js
+!backend/tests/controllers/billing.cancel.test.js
 # Security scan configs
 zap.yaml
 

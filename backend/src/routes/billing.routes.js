@@ -20,6 +20,8 @@ router.get('/subscription', billingController.getSubscription);
 router.post('/checkout', billingController.createCheckoutSession);
 router.post('/trial', billingController.startTrial);
 router.post('/portal', billingController.createPortalSession);
+router.post('/cancel', billingController.cancelSubscription);
+router.post('/reactivate', billingController.reactivateSubscription);
 router.get('/checkout/:sessionId', billingController.getCheckoutSession);
 
 // Apple In-App Purchase routes

@@ -200,6 +200,80 @@ class BillingService {
     }
   }
 
+  // Cancel subscription at period end
+  static async cancelSubscription(userId) {
+    const billingAvailable = await this.isBillingAvailable();
+    if (!billingAvailable) {
+      throw new Error('Billing not available');
+    }
+
+    const subscription = await User.getSubscription(userId);
+    if (!subscription || !subscription.stripe_subscription_id) {
+      throw new Error('No active subscription found');
+    }
+
+    if (subscription.status !== 'active' && subscription.status !== 'trialing') {
+      throw new Error('Subscription is not active');
+    }
+
+    // Cancel at period end so user keeps access until billing cycle ends
+    const updatedSubscription = await stripe.subscriptions.update(
+      subscription.stripe_subscription_id,
+      { cancel_at_period_end: true }
+    );
+
+    // Update local database
+    await this.createOrUpdateSubscription(userId, {
+      stripe_subscription_id: updatedSubscription.id,
+      cancel_at_period_end: true,
+      status: updatedSubscription.status
+    });
+
+    return {
+      id: updatedSubscription.id,
+      status: updatedSubscription.status,
+      cancel_at_period_end: true,
+      current_period_end: new Date(updatedSubscription.current_period_end * 1000)
+    };
+  }
+
+  // Reactivate a subscription that was set to cancel at period end
+  static async reactivateSubscription(userId) {
+    const billingAvailable = await this.isBillingAvailable();
+    if (!billingAvailable) {
+      throw new Error('Billing not available');
+    }
+
+    const subscription = await User.getSubscription(userId);
+    if (!subscription || !subscription.stripe_subscription_id) {
+      throw new Error('No subscription found');
+    }
+
+    if (!subscription.cancel_at_period_end) {
+      throw new Error('Subscription is not set to cancel');
+    }
+
+    // Remove the cancel_at_period_end flag
+    const updatedSubscription = await stripe.subscriptions.update(
+      subscription.stripe_subscription_id,
+      { cancel_at_period_end: false }
+    );
+
+    // Update local database
+    await this.createOrUpdateSubscription(userId, {
+      stripe_subscription_id: updatedSubscription.id,
+      cancel_at_period_end: false,
+      canceled_at: null,
+      status: updatedSubscription.status
+    });
+
+    return {
+      id: updatedSubscription.id,
+      status: updatedSubscription.status,
+      cancel_at_period_end: false
+    };
+  }
+
   // Get subscription details
   static async getSubscriptionDetails(userId) {
     const subscription = await User.getSubscription(userId);
