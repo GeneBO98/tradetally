@@ -9,9 +9,10 @@
   >
     <div
       v-if="showBanner"
-      class="fixed bottom-0 inset-x-0 z-50 p-4"
+      ref="bannerShell"
+      class="fixed bottom-0 inset-x-0 z-50 p-4 pointer-events-none"
     >
-      <div class="max-w-4xl mx-auto bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-4 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+      <div class="max-w-4xl mx-auto bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-4 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center gap-4 pointer-events-auto">
         <p class="text-sm text-gray-700 dark:text-gray-300 flex-1">
           We use cookies for analytics and session recordings to improve your experience.
           <router-link to="/privacy" class="text-primary-600 dark:text-primary-400 hover:underline ml-1">
@@ -38,7 +39,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRegistrationMode } from '@/composables/useRegistrationMode'
 import { useAnalytics } from '@/composables/useAnalytics'
 
@@ -46,12 +47,34 @@ const { isBillingEnabled } = useRegistrationMode()
 const analytics = useAnalytics()
 
 const showBanner = ref(false)
+const bannerShell = ref(null)
+
+function syncBodyPadding() {
+  if (typeof document === 'undefined') return
+
+  document.body.style.paddingBottom = showBanner.value && bannerShell.value
+    ? `${bannerShell.value.offsetHeight}px`
+    : ''
+}
 
 onMounted(() => {
   const consent = localStorage.getItem('cookie_consent')
   if (isBillingEnabled.value && !consent) {
     showBanner.value = true
   }
+
+  window.addEventListener('resize', syncBodyPadding)
+  nextTick(syncBodyPadding)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', syncBodyPadding)
+  document.body.style.paddingBottom = ''
+})
+
+watch(showBanner, async () => {
+  await nextTick()
+  syncBodyPadding()
 })
 
 function accept() {

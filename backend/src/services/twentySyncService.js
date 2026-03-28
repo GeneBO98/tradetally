@@ -133,10 +133,34 @@ class TwentySyncService {
   }
 
   /**
+   * Execute a mutation, auto-stripping fields Twenty doesn't recognize
+   */
+  async graphqlWithFieldStripping(query, variables, dataKey) {
+    let data = { ...variables.data };
+    const maxStrips = 10;
+
+    for (let i = 0; i < maxStrips; i++) {
+      try {
+        const result = await this.graphql(query, { ...variables, data });
+        return result?.[dataKey];
+      } catch (error) {
+        const match = error.message.match(/Field "(\w+)" is not defined by type/);
+        if (match) {
+          const field = match[1];
+          console.log(`[TWENTY SYNC] Stripping unrecognized field "${field}" and retrying`);
+          delete data[field];
+          continue;
+        }
+        throw error;
+      }
+    }
+  }
+
+  /**
    * Create a person in Twenty
    */
   async createPerson(userData) {
-    const data = await this.graphql(`
+    return this.graphqlWithFieldStripping(`
       mutation CreatePerson($data: PersonCreateInput!) {
         createPerson(data: $data) {
           id
@@ -144,11 +168,7 @@ class TwentySyncService {
           emails { primaryEmail }
         }
       }
-    `, {
-      data: this.buildPersonData(userData),
-    });
-
-    return data?.createPerson;
+    `, { data: this.buildPersonData(userData) }, 'createPerson');
   }
 
   /**
@@ -159,7 +179,7 @@ class TwentySyncService {
     // Don't overwrite emails on update
     delete personData.emails;
 
-    const data = await this.graphql(`
+    return this.graphqlWithFieldStripping(`
       mutation UpdatePerson($id: ID!, $data: PersonUpdateInput!) {
         updatePerson(id: $id, data: $data) {
           id
@@ -167,12 +187,7 @@ class TwentySyncService {
           emails { primaryEmail }
         }
       }
-    `, {
-      id: personId,
-      data: personData,
-    });
-
-    return data?.updatePerson;
+    `, { id: personId, data: personData }, 'updatePerson');
   }
 
   /**

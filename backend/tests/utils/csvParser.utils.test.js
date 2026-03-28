@@ -84,6 +84,10 @@ describe('parseDate', () => {
     // Should convert number to string and parse
     expect(result).toBe('2025-07-04');
   });
+
+  test('parses month name dates when the time is glued to the year', () => {
+    expect(parseDate('February 23, 202607:11 PM')).toBe('2026-02-23');
+  });
 });
 
 // ──────────────────────────────────────────────
@@ -144,6 +148,10 @@ describe('parseDateTime', () => {
   test('returns null for out-of-range IBKR dates', () => {
     // Month 13 is invalid
     expect(parseDateTime('20251304;093015')).toBeNull();
+  });
+
+  test('parses month name datetimes with AM/PM when the time is glued to the year', () => {
+    expect(parseDateTime('February 23, 202607:11 PM')).toBe('2026-02-23T19:11:00');
   });
 });
 

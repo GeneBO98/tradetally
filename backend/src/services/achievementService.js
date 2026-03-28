@@ -239,6 +239,7 @@ class AchievementService {
     const query = `
       INSERT INTO user_achievements (user_id, achievement_id, metadata, earned_at)
       VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+      ON CONFLICT (user_id, achievement_id) DO NOTHING
       RETURNING *
     `;
     
