@@ -909,6 +909,50 @@ class EmailService {
       throw error;
     }
   }
+  static async sendSupportRequest({ to, userEmail, username, tier, subject, message }) {
+    const safeUsername = escapeHtml(username || 'Unknown');
+    const safeEmail = escapeHtml(userEmail);
+    const safeTier = escapeHtml(tier);
+    const safeSubject = escapeHtml(subject);
+    const safeMessage = escapeHtml(message).replace(/\n/g, '<br>');
+
+    const content = `
+      <h2 style="color: #18181b; font-size: 20px; margin: 0 0 16px 0;">Support Request</h2>
+      <div style="background: #f4f4f5; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 8px 0; color: #52525b;"><strong>From:</strong> ${safeUsername} (${safeEmail})</p>
+        <p style="margin: 0 0 8px 0; color: #52525b;"><strong>Plan:</strong> ${safeTier}</p>
+        <p style="margin: 0; color: #52525b;"><strong>Subject:</strong> ${safeSubject}</p>
+      </div>
+      <div style="color: #3f3f46; line-height: 1.6;">
+        ${safeMessage}
+      </div>
+    `;
+
+    const html = this.getBaseTemplate(`[Support] ${subject}`, content);
+
+    const mailOptions = {
+      from: {
+        name: 'TradeTally Support',
+        address: process.env.EMAIL_FROM || 'noreply@tradetally.io'
+      },
+      replyTo: userEmail,
+      to: to,
+      subject: `[Support] [${tier}] ${subject}`,
+      html: html,
+      text: `Support Request\n\nFrom: ${username} (${userEmail})\nPlan: ${tier}\nSubject: ${subject}\n\n${message}`
+    };
+
+    try {
+      const transporter = this.createTransporter();
+      await transporter.sendMail(mailOptions);
+      console.log('[SUCCESS] Support request email sent from', maskEmail(userEmail));
+      await this.logEmail({ recipient: to, subject: mailOptions.subject, emailType: 'support_request', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent', metadata: { userEmail, tier } });
+    } catch (error) {
+      console.error('[ERROR] Error sending support request email:', error);
+      await this.logEmail({ recipient: to, subject: mailOptions.subject, emailType: 'support_request', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'failed', errorMessage: error.message });
+      throw error;
+    }
+  }
 }
 
 module.exports = EmailService;

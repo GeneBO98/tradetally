@@ -25,16 +25,16 @@
               <span class="sm:hidden">Docs</span>
             </a>
             <span>•</span>
-            <a
-              :href="supportMailtoUrl"
-              class="inline-flex items-center hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+            <button
+              @click="showSupportModal = true"
+              class="inline-flex items-center hover:text-primary-600 dark:hover:text-primary-400 transition-colors cursor-pointer"
             >
               <svg class="w-4 h-4 sm:mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
               </svg>
               <span class="hidden sm:inline">Contact Support</span>
               <span class="sm:hidden">Support</span>
-            </a>
+            </button>
             <span>•</span>
             <a
               href="https://forum.tradetally.io"
@@ -110,6 +110,61 @@
         </div>
       </div>
     </div>
+
+    <!-- Contact Support Modal -->
+    <div v-if="showSupportModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="showSupportModal = false">
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-lg w-full mx-4 p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white">Contact Support</h3>
+          <button @click="showSupportModal = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div v-if="supportSent" class="text-center py-6">
+          <svg class="w-12 h-12 mx-auto text-green-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <h4 class="text-lg font-medium text-gray-900 dark:text-white mb-1">Message Sent</h4>
+          <p class="text-sm text-gray-600 dark:text-gray-400">We'll get back to you as soon as possible.</p>
+          <button @click="showSupportModal = false; supportSent = false" class="mt-4 btn btn-primary">Close</button>
+        </div>
+
+        <form v-else @submit.prevent="submitSupportRequest">
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Subject</label>
+              <input
+                v-model="supportSubject"
+                type="text"
+                required
+                placeholder="Brief description of your issue"
+                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-primary-500 focus:border-primary-500"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Message</label>
+              <textarea
+                v-model="supportMessage"
+                required
+                rows="5"
+                placeholder="Describe your issue or question in detail..."
+                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-primary-500 focus:border-primary-500"
+              ></textarea>
+            </div>
+          </div>
+          <div class="flex justify-end space-x-3 mt-6">
+            <button type="button" @click="showSupportModal = false" class="btn btn-outline">Cancel</button>
+            <button type="submit" :disabled="supportSending" class="btn btn-primary">
+              <span v-if="supportSending" class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></span>
+              {{ supportSending ? 'Sending...' : 'Send Message' }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -147,14 +202,29 @@ const isAuthRoute = computed(() => {
   return ['login', 'register'].includes(route.name)
 })
 
-const supportMailtoUrl = computed(() => {
-  const user = authStore.user
-  if (!user) return 'mailto:support@tradetally.io'
-  const tier = (user.tier || 'free').charAt(0).toUpperCase() + (user.tier || 'free').slice(1)
-  const subject = encodeURIComponent(`[${tier}] Support Request`)
-  const body = encodeURIComponent(`Account: ${user.email}\nPlan: ${tier}\n\nPlease describe your issue:\n\n`)
-  return `mailto:support@tradetally.io?subject=${subject}&body=${body}`
-})
+const showSupportModal = ref(false)
+const supportSubject = ref('')
+const supportMessage = ref('')
+const supportSending = ref(false)
+const supportSent = ref(false)
+
+async function submitSupportRequest() {
+  supportSending.value = true
+  try {
+    await api.post('/support/contact', {
+      subject: supportSubject.value,
+      message: supportMessage.value
+    })
+    supportSent.value = true
+    supportSubject.value = ''
+    supportMessage.value = ''
+  } catch (error) {
+    console.error('[ERROR] Failed to send support request:', error)
+    showError(error.response?.data?.message || 'Failed to send message. Please try again.')
+  } finally {
+    supportSending.value = false
+  }
+}
 
 // Watch for authentication changes and user tier changes
 let lastConnectionState = false
