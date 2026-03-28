@@ -4,6 +4,7 @@ const aiService = require('./aiService');
 const historicalPriceCache = require('./historicalPriceCache');
 const ApiUsageService = require('../services/apiUsageService');
 const TierService = require('../services/tierService');
+const { validateAiProviderUrl } = require('./urlSecurity');
 
 class FinnhubClient {
   constructor() {
@@ -796,10 +797,13 @@ class FinnhubClient {
         return response;
       } else if (settings.default_ai_provider === 'openai') {
         const { OpenAI } = await import('openai');
+        const validatedBaseUrl = settings.default_ai_api_url
+          ? (await validateAiProviderUrl('openai', settings.default_ai_api_url)).toString()
+          : undefined;
         
         const openai = new OpenAI({ 
           apiKey: settings.default_ai_api_key,
-          baseURL: settings.default_ai_api_url || undefined
+          baseURL: validatedBaseUrl || undefined
         });
         
         // Note: Some OpenAI models (like o1-preview) don't support temperature parameter
@@ -835,6 +839,7 @@ class FinnhubClient {
         
       } else if (settings.default_ai_provider === 'ollama') {
         const { default: fetch } = await import('node-fetch');
+        const validatedApiUrl = await validateAiProviderUrl('ollama', settings.default_ai_api_url);
         
         const headers = {
           'Content-Type': 'application/json'
@@ -845,7 +850,7 @@ class FinnhubClient {
           headers['Authorization'] = `Bearer ${settings.default_ai_api_key}`;
         }
         
-        const response = await fetch(`${settings.default_ai_api_url}/api/generate`, {
+        const response = await fetch(`${validatedApiUrl.toString().replace(/\/$/, '')}/api/generate`, {
           method: 'POST',
           headers,
           body: JSON.stringify({
@@ -889,11 +894,12 @@ class FinnhubClient {
         
         // LM Studio defaults to localhost:1234
         const apiUrl = settings.default_ai_api_url || 'http://localhost:1234';
+        const validatedApiUrl = await validateAiProviderUrl('lmstudio', apiUrl);
         
-        console.log('[LMSTUDIO] Using LM Studio for system AI at:', apiUrl);
+        console.log('[LMSTUDIO] Using LM Studio for system AI at:', validatedApiUrl.toString());
         
         try {
-          const response = await fetch(`${apiUrl}/v1/chat/completions`, {
+          const response = await fetch(`${validatedApiUrl.toString().replace(/\/$/, '')}/v1/chat/completions`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -960,6 +966,7 @@ class FinnhubClient {
         }
       } else if (settings.default_ai_provider === 'local') {
         const { default: fetch } = await import('node-fetch');
+        const validatedApiUrl = await validateAiProviderUrl('local', settings.default_ai_api_url);
         
         const headers = {
           'Content-Type': 'application/json'
@@ -969,7 +976,7 @@ class FinnhubClient {
           headers['Authorization'] = `Bearer ${settings.default_ai_api_key}`;
         }
         
-        const response = await fetch(settings.default_ai_api_url, {
+        const response = await fetch(validatedApiUrl.toString(), {
           method: 'POST',
           headers,
           body: JSON.stringify({

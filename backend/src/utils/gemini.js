@@ -1,4 +1,5 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { sanitizeErrorForLogging } = require('./logSanitizer');
 
 class GeminiRecommendations {
   constructor() {
@@ -40,12 +41,7 @@ class GeminiRecommendations {
       console.log('[SUCCESS] Received response from Gemini, length:', text.length, 'characters');
       return text;
     } catch (error) {
-      console.error('[ERROR] Gemini API error:', error);
-      console.error('Error details:', {
-        message: error.message,
-        stack: error.stack,
-        response: error.response?.data
-      });
+      console.error('[ERROR] Gemini API error:', sanitizeErrorForLogging(error));
       throw new Error(`Failed to generate recommendations: ${error.message}`);
     }
   }
@@ -203,7 +199,7 @@ Keep recommendations highly specific and personalized. Use bullet points for cla
       const response = await result.response;
       return response.text();
     } catch (error) {
-      console.error('Gemini API error:', error);
+      console.error('Gemini API error:', sanitizeErrorForLogging(error));
       throw new Error(`Failed to generate response: ${error.message}`);
     }
   }

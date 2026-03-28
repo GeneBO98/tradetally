@@ -40,6 +40,9 @@ const webhookV1Controller = {
       if (error.code === 'INVALID_EVENT_TYPES') {
         return sendV1Error(res, 400, 'BAD_REQUEST', error.message);
       }
+      if (error.code === 'INVALID_OUTBOUND_URL') {
+        return sendV1Error(res, 400, 'BAD_REQUEST', error.message);
+      }
       return next(error);
     }
   },
@@ -54,6 +57,9 @@ const webhookV1Controller = {
       return res.json({ webhook });
     } catch (error) {
       if (error.code === 'INVALID_EVENT_TYPES') {
+        return sendV1Error(res, 400, 'BAD_REQUEST', error.message);
+      }
+      if (error.code === 'INVALID_OUTBOUND_URL') {
         return sendV1Error(res, 400, 'BAD_REQUEST', error.message);
       }
       return next(error);

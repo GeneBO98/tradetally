@@ -1,4 +1,5 @@
 const logger = require('./utils/logger');
+const { sanitizeErrorForLogging, sanitizeForLogging } = require('./utils/logSanitizer');
 const os = require('os');
 const { LoggerProvider, BatchLogRecordProcessor } = require('@opentelemetry/sdk-logs');
 const { OTLPLogExporter } = require('@opentelemetry/exporter-logs-otlp-http');
@@ -120,12 +121,14 @@ function emitLog(level, message, category = 'general', errorObj = null) {
   };
 
   if (errorObj && errorObj instanceof Error) {
-    attributes['error.message'] = errorObj.message;
-    attributes['error.stack'] = errorObj.stack;
+    const sanitizedError = sanitizeErrorForLogging(errorObj);
+    attributes['error.message'] = sanitizedError.message;
+    attributes['error.stack'] = sanitizedError.stack;
     attributes['error.type'] = errorObj.constructor.name;
   }
 
-  const body = typeof message === 'object' ? JSON.stringify(message) : String(message);
+  const sanitizedMessage = sanitizeForLogging(message);
+  const body = typeof sanitizedMessage === 'object' ? JSON.stringify(sanitizedMessage) : String(sanitizedMessage);
 
   otelLogger.emit({
     severityNumber: SEVERITY_MAP[level] || SeverityNumber.INFO,

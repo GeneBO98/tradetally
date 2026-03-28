@@ -85,11 +85,24 @@ const { isV1Request, sendV1Error } = require('./utils/apiResponse');
 const app = express();
 const PORT = process.env.PORT || 5001;
 
+function parseTrustProxySetting(value) {
+  if (value === undefined || value === null || value === '') {
+    return false;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  if (normalized === 'true') return true;
+  if (normalized === 'false') return false;
+  if (/^\d+$/.test(normalized)) return parseInt(normalized, 10);
+  return value;
+}
+
 // Disable X-Powered-By header to prevent server fingerprinting
 app.disable('x-powered-by');
 
-// Trust proxy headers for rate limiting and forwarded headers
-app.set('trust proxy', 1);
+// Trust proxy headers only when explicitly configured.
+const trustProxySetting = parseTrustProxySetting(process.env.TRUST_PROXY);
+app.set('trust proxy', trustProxySetting);
 
 // Rate limiting configuration - can be disabled or adjusted via environment variables
 // RATE_LIMIT_ENABLED=false disables rate limiting entirely (useful for self-hosted instances)
@@ -128,6 +141,7 @@ if (rateLimitEnabled) {
 } else {
   logger.info('Rate limiting is disabled via RATE_LIMIT_ENABLED=false', 'rate-limit');
 }
+logger.info(`Express trust proxy setting: ${String(trustProxySetting)}`, 'security');
 
 // Skip rate limiting for certain paths (legacy function kept for compatibility)
 const skipRateLimit = (req, res, next) => {

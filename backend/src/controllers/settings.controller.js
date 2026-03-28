@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const db = require('../config/database');
 const adminSettingsService = require('../services/adminSettings');
+const { validateAiProviderUrl } = require('../utils/urlSecurity');
 
 // Helper function to convert snake_case to camelCase
 function toCamelCase(obj) {
@@ -243,6 +244,10 @@ const settingsController = {
         });
       }
 
+      if (aiApiUrl) {
+        await validateAiProviderUrl(aiProvider, aiApiUrl);
+      }
+
       const aiSettings = {
         ai_provider: aiProvider,
         ai_api_key: aiApiKey,
@@ -260,6 +265,9 @@ const settingsController = {
         aiModel: settings.ai_model
       });
     } catch (error) {
+      if (error.code === 'INVALID_OUTBOUND_URL') {
+        return res.status(400).json({ error: error.message });
+      }
       next(error);
     }
   },
@@ -335,6 +343,10 @@ const settingsController = {
         });
       }
 
+      if (cusipAiApiUrl) {
+        await validateAiProviderUrl(cusipAiProvider, cusipAiApiUrl);
+      }
+
       const cusipAiSettings = {
         cusip_ai_provider: cusipAiProvider,
         cusip_ai_api_key: cusipAiApiKey,
@@ -353,6 +365,9 @@ const settingsController = {
         useMainProvider: false
       });
     } catch (error) {
+      if (error.code === 'INVALID_OUTBOUND_URL') {
+        return res.status(400).json({ error: error.message });
+      }
       next(error);
     }
   },
@@ -690,11 +705,17 @@ const settingsController = {
       });
 
       // Create export data - Version 3.0 with dynamic field mapping
+      const nameParts = (user.full_name || '').trim().split(/\s+/);
+      const firstName = nameParts[0] || '';
+      const lastName = nameParts.slice(1).join(' ') || '';
+
       const exportData = {
         exportVersion: '3.0',
         exportDate: new Date().toISOString(),
         user: {
           username: user.username,
+          firstName,
+          lastName,
           fullName: user.full_name,
           email: user.email,
           timezone: user.timezone
@@ -1674,6 +1695,10 @@ const settingsController = {
         });
       }
 
+      if (aiApiUrl) {
+        await validateAiProviderUrl(aiProvider, aiApiUrl);
+      }
+
       const aiSettings = {
         provider: aiProvider,
         apiKey: aiApiKey,
@@ -1695,6 +1720,9 @@ const settingsController = {
         aiModel: aiModel
       });
     } catch (error) {
+      if (error.code === 'INVALID_OUTBOUND_URL') {
+        return res.status(400).json({ error: error.message });
+      }
       next(error);
     }
   },
@@ -1769,6 +1797,10 @@ const settingsController = {
         });
       }
 
+      if (cusipAiApiUrl) {
+        await validateAiProviderUrl(cusipAiProvider, cusipAiApiUrl);
+      }
+
       const success = await adminSettingsService.updateDefaultCusipAISettings({
         provider: cusipAiProvider,
         apiKey: cusipAiApiKey,
@@ -1789,6 +1821,9 @@ const settingsController = {
         useMainProvider: false
       });
     } catch (error) {
+      if (error.code === 'INVALID_OUTBOUND_URL') {
+        return res.status(400).json({ error: error.message });
+      }
       next(error);
     }
   },

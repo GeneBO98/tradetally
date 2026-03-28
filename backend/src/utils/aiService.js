@@ -1,6 +1,8 @@
 const gemini = require('./gemini');
 const User = require('../models/User');
 const adminSettingsService = require('../services/adminSettings');
+const { validateAiProviderUrl } = require('./urlSecurity');
+const { sanitizeErrorForLogging, summarizeUrlForLogging } = require('./logSanitizer');
 
 class AIService {
   constructor() {
@@ -117,7 +119,7 @@ class AIService {
     const settings = await this.getUserSettings(userId);
     console.log('[AI] AI Service - Provider:', settings.provider);
     console.log('[AI] AI Service - Has API Key:', !!settings.apiKey);
-    console.log('[AI] AI Service - API URL:', settings.apiUrl || 'Not set');
+    console.log('[AI] AI Service - API URL:', summarizeUrlForLogging(settings.apiUrl));
     console.log('[AI] AI Service - Model:', settings.model || 'Default');
     
     // Validate configuration before attempting to call provider
@@ -133,7 +135,7 @@ class AIService {
 
     const result = await provider(prompt, settings, options);
     console.log('[AI] AI Service - Response type:', typeof result);
-    console.log('[AI] AI Service - Response preview:', result ? (result.substring ? result.substring(0, 100) : JSON.stringify(result).substring(0, 100)) : 'undefined/null');
+    console.log('[AI] AI Service - Response length:', typeof result === 'string' ? result.length : 0);
     
     if (!result) {
       throw new Error(`AI provider ${settings.provider} returned no response`);
@@ -247,7 +249,7 @@ Your response:`;
       console.log('[GEMINI] Gemini response received:', response ? 'SUCCESS' : 'EMPTY');
       return response;
     } catch (error) {
-      console.error('[GEMINI] Gemini provider error:', error.message);
+      console.error('[GEMINI] Gemini provider error:', sanitizeErrorForLogging(error));
       throw error;
     }
   }
@@ -284,8 +286,13 @@ Your response:`;
       throw new Error('OpenAI API key not configured');
     }
 
+    const validatedBaseUrl = settings.apiUrl
+      ? (await validateAiProviderUrl('openai', settings.apiUrl)).toString()
+      : undefined;
+
     const openai = new OpenAI({
       apiKey: settings.apiKey,
+      baseURL: validatedBaseUrl
     });
 
     const model = settings.model || 'gpt-4o';
@@ -313,8 +320,6 @@ Your response:`;
       
       const response = await openai.chat.completions.create(requestParams);
 
-      console.log('[OPENAI] OpenAI raw response:', JSON.stringify(response, null, 2).substring(0, 500));
-      
       if (!response) {
         throw new Error('No response received from OpenAI API');
       }
@@ -328,12 +333,12 @@ Your response:`;
       }
       
       const content = response.choices[0].message.content;
-      console.log('[OPENAI] OpenAI extracted content:', content ? `${content.substring(0, 100)}...` : 'undefined/null');
+      console.log('[OPENAI] OpenAI completion received:', content ? 'SUCCESS' : 'EMPTY');
       
       return content;
     } catch (error) {
       console.error('[ERROR] OpenAI API error:', error.message);
-      console.error('[ERROR] OpenAI error details:', error.response?.data || error);
+      console.error('[ERROR] OpenAI error details:', sanitizeErrorForLogging(error));
       throw error;
     }
   }
@@ -347,13 +352,14 @@ Your response:`;
 
     // Log the settings for debugging
     console.log('[OLLAMA] Ollama settings:', {
-      apiUrl: settings.apiUrl,
+      apiUrl: summarizeUrlForLogging(settings.apiUrl),
       hasApiKey: !!settings.apiKey,
       model: settings.model || 'llama3.1'
     });
 
+    const validatedApiUrl = await validateAiProviderUrl('ollama', settings.apiUrl);
     const model = settings.model || 'llama3.1';
-    const url = `${settings.apiUrl}/api/generate`;
+    const url = `${validatedApiUrl.toString().replace(/\/$/, '')}/api/generate`;
 
     const headers = {
       'Content-Type': 'application/json'
@@ -378,16 +384,14 @@ Your response:`;
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[OLLAMA] Ollama API error response:', errorText);
-      throw new Error(`Ollama API error: ${response.status} ${response.statusText} - ${errorText}`);
+      throw new Error(`Ollama API error: ${response.status} ${response.statusText}`);
     }
 
     const data = await response.json();
     
     // Ollama returns the response in the 'response' field
     if (!data.response) {
-      console.error('Ollama response missing expected "response" field:', data);
+      console.error('Ollama response missing expected "response" field');
       throw new Error('Invalid response format from Ollama API');
     }
     
@@ -399,13 +403,14 @@ Your response:`;
     
     // LM Studio defaults to localhost:1234
     const apiUrl = settings.apiUrl || 'http://localhost:1234';
+    const validatedApiUrl = await validateAiProviderUrl('lmstudio', apiUrl);
     
-    console.log('[LMSTUDIO] Using LM Studio at:', apiUrl);
+    console.log('[LMSTUDIO] Using LM Studio at:', summarizeUrlForLogging(validatedApiUrl.toString()));
     console.log('[LMSTUDIO] Model:', settings.model || 'auto-detect');
 
     try {
       // LM Studio uses OpenAI-compatible API at /v1/chat/completions
-      const response = await fetch(`${apiUrl}/v1/chat/completions`, {
+      const response = await fetch(`${validatedApiUrl.toString().replace(/\/$/, '')}/v1/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -426,21 +431,19 @@ Your response:`;
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[LMSTUDIO] LM Studio API error:', errorText);
-        throw new Error(`LM Studio API error: ${response.status} - ${errorText}`);
+        throw new Error(`LM Studio API error: ${response.status}`);
       }
 
       const data = await response.json();
       
       if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-        console.error('[LMSTUDIO] Unexpected response format:', data);
+        console.error('[LMSTUDIO] Unexpected response format');
         throw new Error('Invalid response format from LM Studio');
       }
       
       return data.choices[0].message.content;
     } catch (error) {
-      console.error('[LMSTUDIO] LM Studio request failed:', error.message);
+      console.error('[LMSTUDIO] LM Studio request failed:', sanitizeErrorForLogging(error));
       throw new Error(`LM Studio connection failed: ${error.message}. Make sure LM Studio is running with a loaded model.`);
     }
   }
@@ -475,15 +478,13 @@ Your response:`;
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[PERPLEXITY] API error:', errorText);
-        throw new Error(`Perplexity API error: ${response.status} - ${errorText}`);
+        throw new Error(`Perplexity API error: ${response.status}`);
       }
 
       const data = await response.json();
       
       if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-        console.error('[PERPLEXITY] Unexpected response format:', data);
+        console.error('[PERPLEXITY] Unexpected response format');
         throw new Error('Invalid response format from Perplexity API');
       }
       
@@ -491,7 +492,7 @@ Your response:`;
       console.log('[PERPLEXITY] Response received:', result ? 'SUCCESS' : 'EMPTY');
       return result;
     } catch (error) {
-      console.error('[PERPLEXITY] Request failed:', error.message);
+      console.error('[PERPLEXITY] Request failed:', sanitizeErrorForLogging(error));
       throw new Error(`Perplexity API failed: ${error.message}`);
     }
   }
@@ -503,7 +504,9 @@ Your response:`;
       throw new Error('Local API URL not configured');
     }
 
-    const response = await fetch(settings.apiUrl, {
+    const validatedApiUrl = await validateAiProviderUrl('local', settings.apiUrl);
+
+    const response = await fetch(validatedApiUrl.toString(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -545,7 +548,6 @@ Your response:`;
     
     // Pattern 1: Direct response (just the ticker symbol)
     if (/^[A-Z]{1,10}$/.test(text)) {
-      console.log(`[AI] Direct ticker response: ${text}`);
       return text;
     }
     
@@ -556,7 +558,6 @@ Your response:`;
       // Avoid common words that aren't tickers
       const commonWords = ['THE', 'FOR', 'AND', 'WITH', 'NYSE', 'NASDAQ', 'STOCK', 'SYMBOL', 'TICKER', 'CUSIP', 'INC', 'CORP', 'LLC', 'LTD', 'NOT', 'FOUND'];
       if (!commonWords.includes(ticker)) {
-        console.log(`[AI] Found standalone ticker: ${ticker}`);
         return ticker;
       }
     }
@@ -564,11 +565,10 @@ Your response:`;
     // Pattern 3: Look for markdown bold text like **AKYA**
     const markdownMatch = text.match(/\*\*([A-Z]{1,10})\*\*/);
     if (markdownMatch) {
-      console.log(`[AI] Found ticker in markdown: ${markdownMatch[1]}`);
       return markdownMatch[1];
     }
-    
-    console.log(`[AI] Could not extract ticker from: ${text}`);
+
+    console.log('[AI] Could not extract ticker from provider response');
     return null;
   }
 }

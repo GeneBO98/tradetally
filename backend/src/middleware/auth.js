@@ -2,6 +2,29 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { isV1Request, sendV1Error } = require('../utils/apiResponse');
 
+const TOKEN_PURPOSES = Object.freeze({
+  ACCESS: 'access',
+  PRE_2FA: 'pre_2fa'
+});
+
+class InvalidTokenPurposeError extends Error {
+  constructor(expectedPurpose, actualPurpose) {
+    super(`Invalid token purpose: expected ${expectedPurpose}, received ${actualPurpose || 'none'}`);
+    this.name = 'InvalidTokenPurposeError';
+    this.code = 'INVALID_TOKEN_PURPOSE';
+  }
+}
+
+function verifyJwtToken(token, { requiredPurpose = TOKEN_PURPOSES.ACCESS } = {}) {
+  const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+  if (requiredPurpose && decoded.purpose !== requiredPurpose) {
+    throw new InvalidTokenPurposeError(requiredPurpose, decoded.purpose);
+  }
+
+  return decoded;
+}
+
 const authenticate = async (req, res, next) => {
   try {
     const token = req.header('Authorization')?.replace('Bearer ', '');
@@ -11,7 +34,7 @@ const authenticate = async (req, res, next) => {
     }
 
     // Verify JWT token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = verifyJwtToken(token, { requiredPurpose: TOKEN_PURPOSES.ACCESS });
     const user = await User.findById(decoded.id);
 
     if (!user || !user.is_active) {
@@ -36,7 +59,7 @@ const authenticate = async (req, res, next) => {
         code: 'TOKEN_EXPIRED',
         message: 'Access token has expired. Please refresh your token.'
       });
-    } else if (error.name === 'JsonWebTokenError') {
+    } else if (error.name === 'JsonWebTokenError' || error.name === 'InvalidTokenPurposeError') {
       if (isV1Request(req)) {
         return sendV1Error(res, 401, 'INVALID_TOKEN', 'Invalid token');
       }
@@ -66,7 +89,7 @@ const optionalAuth = async (req, res, next) => {
     }
 
     if (token) {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const decoded = verifyJwtToken(token, { requiredPurpose: TOKEN_PURPOSES.ACCESS });
       const user = await User.findById(decoded.id);
 
       if (user && user.is_active) {
@@ -109,19 +132,30 @@ const requireAdmin = async (req, res, next) => {
   }
 };
 
-const generateToken = (user) => {
+const generateToken = (user, options = {}) => {
+  const purpose = options.purpose || TOKEN_PURPOSES.ACCESS;
+  const expiresIn = options.expiresIn || (purpose === TOKEN_PURPOSES.PRE_2FA ? '15m' : (process.env.JWT_EXPIRE || '7d'));
+
   return jwt.sign(
     { 
       id: user.id, 
       email: user.email,
       username: user.username,
-      role: user.role
+      role: user.role,
+      purpose
     },
     process.env.JWT_SECRET,
     { 
-      expiresIn: process.env.JWT_EXPIRE || '7d' 
+      expiresIn
     }
   );
 };
 
-module.exports = { authenticate, optionalAuth, requireAdmin, generateToken };
+module.exports = {
+  TOKEN_PURPOSES,
+  authenticate,
+  optionalAuth,
+  requireAdmin,
+  generateToken,
+  verifyJwtToken
+};

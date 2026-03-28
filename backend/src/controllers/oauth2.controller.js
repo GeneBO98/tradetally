@@ -484,12 +484,32 @@ const userinfo = async (req, res) => {
 const revoke = async (req, res) => {
   try {
     const { token } = req.body;
+    let client_id = req.body.client_id;
+    let client_secret = req.body.client_secret;
 
     if (!token) {
       return res.status(400).json({ error: 'invalid_request' });
     }
 
-    await oauth2Service.revokeToken(token);
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Basic ')) {
+      const base64Credentials = authHeader.substring(6);
+      const credentials = Buffer.from(base64Credentials, 'base64').toString('utf-8');
+      const [basicClientId, basicClientSecret] = credentials.split(':');
+      client_id = basicClientId || client_id;
+      client_secret = basicClientSecret || client_secret;
+    }
+
+    if (!client_id || !client_secret) {
+      return res.status(401).json({ error: 'invalid_client' });
+    }
+
+    const client = await oauth2Service.verifyClientCredentials(client_id, client_secret);
+    if (!client) {
+      return res.status(401).json({ error: 'invalid_client' });
+    }
+
+    await oauth2Service.revokeToken(token, client.client_id);
 
     res.status(200).json({ success: true });
   } catch (error) {

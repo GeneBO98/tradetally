@@ -3110,7 +3110,9 @@ const tradeController = {
       const pageNum = parseInt(page);
       const limitNum = parseInt(limit);
       
-      const result = logger.getLogFiles(showAllBool, pageNum, limitNum);
+      const result = logger.getLogFiles(showAllBool, pageNum, limitNum, {
+        allowedPrefixes: ['import']
+      });
       
       res.json({ 
         logFiles: result.files.map(f => ({ name: f.name })),
@@ -3129,7 +3131,9 @@ const tradeController = {
       const pageNum = parseInt(page);
       const limitNum = parseInt(limit);
       
-      const result = logger.readLogFile(filename, pageNum, limitNum, showAllBool, search);
+      const result = logger.readLogFile(filename, pageNum, limitNum, showAllBool, search, {
+        allowedPrefixes: ['import']
+      });
       
       if (!result) {
         return res.status(404).json({ error: 'Log file not found' });
@@ -3141,6 +3145,9 @@ const tradeController = {
         pagination: result.pagination
       });
     } catch (error) {
+      if (error.code === 'INVALID_LOG_FILENAME') {
+        return res.status(400).json({ error: error.message });
+      }
       next(error);
     }
   },

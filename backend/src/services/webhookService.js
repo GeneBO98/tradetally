@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const fetch = require('node-fetch');
 const WebhookSubscription = require('../models/WebhookSubscription');
+const { fetchWithValidatedRedirects, ensureValidatedOutboundUrl, OutboundUrlValidationError } = require('../utils/urlSecurity');
 
 const ALLOWED_EVENT_TYPES = Object.freeze([
   'trade.created',
@@ -85,6 +86,8 @@ class WebhookService {
       throw error;
     }
 
+    await ensureValidatedOutboundUrl(payload.url, { mode: 'public' });
+
     const created = await WebhookSubscription.create({
       userId,
       url: payload.url,
@@ -101,7 +104,10 @@ class WebhookService {
   async updateWebhook(userId, webhookId, payload = {}) {
     const updates = {};
 
-    if (payload.url !== undefined) updates.url = payload.url;
+    if (payload.url !== undefined) {
+      await ensureValidatedOutboundUrl(payload.url, { mode: 'public' });
+      updates.url = payload.url;
+    }
     if (payload.description !== undefined) updates.description = payload.description;
     if (payload.isActive !== undefined) updates.isActive = payload.isActive;
     if (payload.customHeaders !== undefined) updates.customHeaders = payload.customHeaders;
@@ -240,12 +246,20 @@ class WebhookService {
     let errorMessage = null;
 
     try {
-      const response = await fetch(webhook.url, {
-        method: 'POST',
-        headers: requestHeaders,
-        body: payloadText,
-        signal: controller.signal
-      });
+      const response = await fetchWithValidatedRedirects(
+        webhook.url,
+        fetch,
+        {
+          method: 'POST',
+          headers: requestHeaders,
+          body: payloadText,
+          signal: controller.signal
+        },
+        {
+          mode: 'public',
+          maxRedirects: 3
+        }
+      );
 
       responseStatus = response.status;
       responseBody = await response.text();
@@ -257,6 +271,9 @@ class WebhookService {
       errorMessage = error.name === 'AbortError'
         ? `Webhook delivery timed out after ${timeoutMs}ms`
         : error.message;
+      if (error instanceof OutboundUrlValidationError) {
+        errorMessage = `Webhook delivery blocked: ${error.message}`;
+      }
     } finally {
       clearTimeout(timer);
     }

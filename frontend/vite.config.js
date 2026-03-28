@@ -5,6 +5,11 @@ import pkg from './package.json'
 
 export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
+  const exposeDevServer = env.VITE_DEV_SERVER_EXPOSE === 'true'
+  const devHost = exposeDevServer ? true : (env.VITE_DEV_HOST || '127.0.0.1')
+  const allowedHosts = exposeDevServer
+    ? (env.VITE_DEV_ALLOWED_HOSTS ? env.VITE_DEV_ALLOWED_HOSTS.split(',').map(host => host.trim()).filter(Boolean) : ['dev.tradetally.io'])
+    : ['127.0.0.1', 'localhost', '[::1]']
 
   return {
   define: {
@@ -20,8 +25,10 @@ export default defineConfig(({ command, mode }) => {
   },
   server: {
     port: 5173,
-    host: true,
-    allowedHosts: process.env.NODE_ENV === 'development' ? ['dev.tradetally.io'] : 'auto',
+    host: devHost,
+    strictPort: true,
+    cors: false,
+    allowedHosts,
     proxy: {
       '/api': {
         // Extract base URL from VITE_API_URL (remove /api suffix if present)

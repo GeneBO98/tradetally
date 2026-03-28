@@ -1,6 +1,6 @@
 const db = require('../config/database');
 const challengeStore = require('../utils/webauthnChallengeStore');
-const { generateToken } = require('../middleware/auth');
+const { generateToken, TOKEN_PURPOSES } = require('../middleware/auth');
 const User = require('../models/User');
 const crypto = require('crypto');
 
@@ -269,7 +269,7 @@ async function loginVerify(req, res, next) {
       YearWrappedService.recordLogin(user.id).catch(() => {});
     } catch (e) { /* optional service */ }
 
-    const token = generateToken(user);
+    const token = generateToken(user, { purpose: TOKEN_PURPOSES.ACCESS });
 
     res.cookie('token', token, {
       httpOnly: true,

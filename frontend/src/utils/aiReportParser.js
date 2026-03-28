@@ -1,4 +1,5 @@
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 
 /**
  * Parse markdown content and split into sections by H1 headers
@@ -104,7 +105,9 @@ export function parseSectionContent(content) {
   // Configure marked for cleaner output
   marked.setOptions({
     breaks: true,
-    gfm: true
+    gfm: true,
+    headerIds: false,
+    mangle: false
   })
 
   let html = marked.parse(content)
@@ -126,5 +129,10 @@ export function parseSectionContent(content) {
     // Style emphasis
     .replace(/<strong>/g, '<strong class="ai-emphasis">')
 
-  return html
+  const sanitized = DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['h3', 'h4', 'p', 'ul', 'ol', 'li', 'strong', 'em', 'a', 'blockquote', 'code', 'pre', 'br'],
+    ALLOWED_ATTR: ['class', 'href', 'target', 'rel']
+  })
+
+  return sanitized.replace(/<a\b(?![^>]*\brel=)([^>]*)>/gi, '<a rel="noopener noreferrer"$1>')
 }

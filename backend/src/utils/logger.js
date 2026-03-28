@@ -1,9 +1,11 @@
 const fs = require('fs');
 const path = require('path');
+const { sanitizeForLogging, sanitizeErrorForLogging } = require('./logSanitizer');
 
 class Logger {
   constructor() {
     this.logDir = path.join(__dirname, '../logs');
+    this.allowedLogFilenamePattern = /^[a-z0-9-]+_\d{4}-\d{2}-\d{2}\.log$/i;
     this.ensureLogDirectory();
     
     // Log levels: DEBUG=0, INFO=1, WARN=2, ERROR=3
@@ -23,11 +25,6 @@ class Logger {
       console.log(`Logger initialized with level: DEBUG (${this.currentLevel})`);
     }
 
-    // In DEBUG mode, intercept all console methods to capture everything
-    if (this.currentLevel === this.levels.DEBUG) {
-      this.interceptConsole();
-    }
-
     // Colors for console output
     this.colors = {
       DEBUG: '\x1b[36m',    // Cyan
@@ -36,6 +33,9 @@ class Logger {
       ERROR: '\x1b[31m',    // Red
       RESET: '\x1b[0m'      // Reset
     };
+
+    // Always sanitize console output. DEBUG mode also captures everything to file.
+    this.interceptConsole(this.currentLevel === this.levels.DEBUG);
   }
 
   ensureLogDirectory() {
@@ -44,8 +44,8 @@ class Logger {
     }
   }
 
-  // Intercept all console methods to capture everything in DEBUG mode
-  interceptConsole() {
+  // Intercept console methods to sanitize output; optionally capture everything in DEBUG mode.
+  interceptConsole(captureToDebugLog = false) {
     const self = this;
 
     // Store original methods
@@ -58,19 +58,24 @@ class Logger {
     // Helper to format arguments into a string
     const formatArgs = (args) => {
       return args.map(arg => {
-        if (typeof arg === 'object') {
+        const sanitizedArg = sanitizeForLogging(arg);
+        if (typeof sanitizedArg === 'object') {
           try {
-            return JSON.stringify(arg, null, 2);
+            return JSON.stringify(sanitizedArg, null, 2);
           } catch {
-            return String(arg);
+            return String(sanitizedArg);
           }
         }
-        return String(arg);
+        return String(sanitizedArg);
       }).join(' ');
     };
 
     // Helper to write to debug log file
     const writeToDebugLog = (level, args) => {
+      if (!captureToDebugLog) {
+        return;
+      }
+
       const timestamp = new Date().toISOString();
       const message = formatArgs(args);
       const logMessage = `[${timestamp}] [${level}] ${message}\n`;
@@ -83,40 +88,90 @@ class Logger {
 
     // Override console.log
     console.log = function(...args) {
-      originalLog(...args);
+      originalLog(...sanitizeForLogging(args));
       writeToDebugLog('LOG', args);
     };
 
     // Override console.info
     console.info = function(...args) {
-      originalInfo(...args);
+      originalInfo(...sanitizeForLogging(args));
       writeToDebugLog('INFO', args);
     };
 
     // Override console.warn
     console.warn = function(...args) {
-      originalWarn(...args);
+      originalWarn(...sanitizeForLogging(args));
       writeToDebugLog('WARN', args);
     };
 
     // Override console.error
     console.error = function(...args) {
-      originalError(...args);
+      originalError(...sanitizeForLogging(args));
       writeToDebugLog('ERROR', args);
     };
 
     // Override console.debug
     console.debug = function(...args) {
-      originalDebug(...args);
+      originalDebug(...sanitizeForLogging(args));
       writeToDebugLog('DEBUG', args);
     };
 
-    originalLog('Console interception enabled - all logs will be written to debug log file');
+    if (captureToDebugLog) {
+      originalLog('Console interception enabled - all logs will be written to debug log file');
+    }
   }
 
   getLogFileName(type = 'import') {
     const date = new Date().toISOString().split('T')[0];
     return path.join(this.logDir, `${type}_${date}.log`);
+  }
+
+  validateLogFilename(filename, options = {}) {
+    const normalized = typeof filename === 'string' ? filename.trim() : '';
+    const { allowedPrefixes = null } = options;
+
+    if (!normalized) {
+      const error = new Error('Log filename is required');
+      error.code = 'INVALID_LOG_FILENAME';
+      throw error;
+    }
+
+    if (path.basename(normalized) !== normalized || path.isAbsolute(normalized) || normalized.includes('..')) {
+      const error = new Error('Invalid log filename');
+      error.code = 'INVALID_LOG_FILENAME';
+      throw error;
+    }
+
+    if (!this.allowedLogFilenamePattern.test(normalized)) {
+      const error = new Error('Invalid log filename');
+      error.code = 'INVALID_LOG_FILENAME';
+      throw error;
+    }
+
+    if (Array.isArray(allowedPrefixes) && allowedPrefixes.length > 0) {
+      const hasAllowedPrefix = allowedPrefixes.some(prefix => normalized.toLowerCase().startsWith(`${prefix.toLowerCase()}_`));
+      if (!hasAllowedPrefix) {
+        const error = new Error('Log filename is not allowed for this endpoint');
+        error.code = 'INVALID_LOG_FILENAME';
+        throw error;
+      }
+    }
+
+    return normalized;
+  }
+
+  resolveLogFilePath(filename, options = {}) {
+    const safeFilename = this.validateLogFilename(filename, options);
+    const filePath = path.resolve(this.logDir, safeFilename);
+    const logDirPath = path.resolve(this.logDir);
+
+    if (!filePath.startsWith(`${logDirPath}${path.sep}`)) {
+      const error = new Error('Invalid log filename');
+      error.code = 'INVALID_LOG_FILENAME';
+      throw error;
+    }
+
+    return filePath;
   }
 
   shouldLog(level) {
@@ -125,12 +180,15 @@ class Logger {
 
   writeLog(message, level = 'INFO', type = 'app') {
     const timestamp = new Date().toISOString();
-    const logMessage = `[${timestamp}] [${level}] ${message}\n`;
+    const sanitizedMessage = typeof message === 'string'
+      ? sanitizeForLogging(message)
+      : JSON.stringify(sanitizeForLogging(message));
+    const logMessage = `[${timestamp}] [${level}] ${sanitizedMessage}\n`;
     
     // Only output to console if the log level permits
     if (this.shouldLog(level)) {
       const color = this.colors[level] || this.colors.RESET;
-      console.log(`${color}[${level}]${this.colors.RESET} ${message}`);
+      console.log(`${color}[${level}]${this.colors.RESET} ${sanitizedMessage}`);
     }
     
     // Only write to file if the log level permits
@@ -159,7 +217,8 @@ class Logger {
   error(message, error = null, type = 'app') {
     let logMessage = message;
     if (error) {
-      logMessage += `\nError: ${error.message}\nStack: ${error.stack}`;
+      const sanitizedError = sanitizeErrorForLogging(error);
+      logMessage += `\nError: ${sanitizedError.message}\nStack: ${sanitizedError.stack}`;
     }
     this.writeLog(logMessage, 'ERROR', type);
   }
@@ -167,7 +226,8 @@ class Logger {
   // Legacy methods for backward compatibility
   logImport(message) {
     const timestamp = new Date().toISOString();
-    const logMessage = `[${timestamp}] [INFO] [IMPORT] ${message}\n`;
+    const sanitizedMessage = sanitizeForLogging(message);
+    const logMessage = `[${timestamp}] [INFO] [IMPORT] ${sanitizedMessage}\n`;
     
     // Always write to file for UI display
     try {
@@ -179,7 +239,7 @@ class Logger {
     // Only log to console if level permits
     if (this.shouldLog('INFO')) {
       const color = this.colors.INFO || this.colors.RESET;
-      console.log(`${color}[INFO]${this.colors.RESET} [IMPORT] ${message}`);
+      console.log(`${color}[INFO]${this.colors.RESET} [IMPORT] ${sanitizedMessage}`);
     }
   }
 
@@ -193,9 +253,11 @@ class Logger {
 
   logError(message, error = null) {
     const timestamp = new Date().toISOString();
-    let logMessage = `[${timestamp}] [ERROR] ${message}`;
+    const sanitizedMessage = sanitizeForLogging(message);
+    let logMessage = `[${timestamp}] [ERROR] ${sanitizedMessage}`;
     if (error) {
-      logMessage += `\nError: ${error.message}\nStack: ${error.stack}`;
+      const sanitizedError = sanitizeErrorForLogging(error);
+      logMessage += `\nError: ${sanitizedError.message}\nStack: ${sanitizedError.stack}`;
     }
     logMessage += '\n';
     
@@ -212,9 +274,9 @@ class Logger {
     
     // Always log errors to console (errors should always be visible)
     const color = this.colors.ERROR || this.colors.RESET;
-    console.error(`${color}[ERROR]${this.colors.RESET} ${message}`);
+    console.error(`${color}[ERROR]${this.colors.RESET} ${sanitizedMessage}`);
     if (error) {
-      console.error(error);
+      console.error(sanitizeErrorForLogging(error));
     }
   }
 
@@ -226,12 +288,21 @@ class Logger {
     this.warn(message, 'warn');
   }
 
-  getLogFiles(showAll = false, page = 1, limit = 10) {
+  getLogFiles(showAll = false, page = 1, limit = 10, options = {}) {
     try {
       const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+      const { allowedPrefixes = null } = options;
       
       const allFiles = fs.readdirSync(this.logDir)
         .filter(file => file.endsWith('.log'))
+        .filter(file => {
+          try {
+            this.validateLogFilename(file, { allowedPrefixes });
+            return true;
+          } catch (_) {
+            return false;
+          }
+        })
         .map(file => ({
           name: file,
           path: path.join(this.logDir, file),
@@ -283,9 +354,10 @@ class Logger {
     }
   }
 
-  readLogFile(filename, page = 1, limit = 100, showAll = false, searchQuery = '') {
+  readLogFile(filename, page = 1, limit = 100, showAll = false, searchQuery = '', options = {}) {
     try {
-      const filePath = path.join(this.logDir, filename);
+      const safeFilename = this.validateLogFilename(filename, options);
+      const filePath = this.resolveLogFilePath(safeFilename, options);
       const content = fs.readFileSync(filePath, 'utf8');
       const lines = content.split('\n').filter(line => line.trim());
       
@@ -351,6 +423,9 @@ class Logger {
         }
       };
     } catch (error) {
+      if (error.code === 'INVALID_LOG_FILENAME') {
+        throw error;
+      }
       return null;
     }
   }

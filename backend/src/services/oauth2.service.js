@@ -17,6 +17,23 @@ class OAuth2Service {
     return crypto.randomBytes(length).toString('hex');
   }
 
+  splitOpaqueToken(token) {
+    if (typeof token !== 'string') return null;
+    const separatorIndex = token.indexOf('.');
+    if (separatorIndex <= 0 || separatorIndex === token.length - 1) {
+      return null;
+    }
+
+    return {
+      id: token.slice(0, separatorIndex),
+      secret: token.slice(separatorIndex + 1)
+    };
+  }
+
+  isOpaqueTokenId(id) {
+    return /^[0-9a-f-]{36}$/i.test(id);
+  }
+
   /**
    * Hash a token using bcrypt
    */
@@ -214,8 +231,8 @@ class OAuth2Service {
    * Create access token
    */
   async createAccessToken(data) {
-    const token = this.generateSecureToken(32);
-    const tokenHash = await this.hashToken(token);
+    const secret = this.generateSecureToken(32);
+    const tokenHash = await this.hashToken(secret);
 
     // Parse expiry time (e.g., '1h', '30m')
     const expiresAt = this.parseExpiry(this.ACCESS_TOKEN_EXPIRE);
@@ -237,7 +254,7 @@ class OAuth2Service {
     ]);
 
     return {
-      access_token: token,
+      access_token: `${result.rows[0].id}.${secret}`,
       token_type: 'Bearer',
       expires_in: Math.floor((expiresAt - Date.now()) / 1000),
       scope: data.scopes.join(' '),
@@ -249,8 +266,8 @@ class OAuth2Service {
    * Create refresh token
    */
   async createRefreshToken(data) {
-    const token = this.generateSecureToken(32);
-    const tokenHash = await this.hashToken(token);
+    const secret = this.generateSecureToken(32);
+    const tokenHash = await this.hashToken(secret);
 
     const expiresAt = this.parseExpiry(this.REFRESH_TOKEN_EXPIRE);
 
@@ -271,13 +288,42 @@ class OAuth2Service {
       expiresAt
     ]);
 
-    return token;
+    return `${result.rows[0].id}.${secret}`;
   }
 
   /**
    * Verify access token
    */
   async verifyAccessToken(token) {
+    const tokenParts = this.splitOpaqueToken(token);
+
+    if (tokenParts) {
+      if (!this.isOpaqueTokenId(tokenParts.id)) {
+        return null;
+      }
+
+      const directResult = await db.query(
+        `
+          SELECT at.*, u.email, u.username, u.full_name, u.role
+          FROM oauth_access_tokens at
+          JOIN users u ON at.user_id = u.id
+          WHERE at.id = $1
+            AND at.revoked_at IS NULL
+            AND at.expires_at > NOW()
+          LIMIT 1
+        `,
+        [tokenParts.id]
+      );
+
+      const directMatch = directResult.rows[0];
+      if (!directMatch) {
+        return null;
+      }
+
+      const isValidDirectToken = await this.verifyToken(tokenParts.secret, directMatch.token_hash);
+      return isValidDirectToken ? directMatch : null;
+    }
+
     const query = `
       SELECT at.*, u.email, u.username, u.full_name, u.role
       FROM oauth_access_tokens at
@@ -302,6 +348,51 @@ class OAuth2Service {
    * Verify refresh token and create new access token
    */
   async refreshAccessToken(refreshToken, clientId) {
+    const tokenParts = this.splitOpaqueToken(refreshToken);
+
+    if (tokenParts) {
+      if (!this.isOpaqueTokenId(tokenParts.id)) {
+        throw new Error('Invalid refresh token');
+      }
+
+      const directResult = await db.query(
+        `
+          SELECT rt.*, c.client_id
+          FROM oauth_refresh_tokens rt
+          JOIN oauth_clients c ON rt.client_id = c.id
+          WHERE rt.id = $1
+            AND c.client_id = $2
+            AND rt.revoked_at IS NULL
+            AND rt.expires_at > NOW()
+          LIMIT 1
+        `,
+        [tokenParts.id, clientId]
+      );
+
+      const directMatch = directResult.rows[0];
+      if (!directMatch) {
+        throw new Error('Invalid refresh token');
+      }
+
+      const isValidDirectToken = await this.verifyToken(tokenParts.secret, directMatch.token_hash);
+      if (!isValidDirectToken) {
+        throw new Error('Invalid refresh token');
+      }
+
+      const accessToken = await this.createAccessToken({
+        clientId: directMatch.client_id,
+        userId: directMatch.user_id,
+        scopes: directMatch.scopes
+      });
+
+      await db.query(
+        'UPDATE oauth_refresh_tokens SET access_token_id = $1 WHERE id = $2',
+        [accessToken.token_id, directMatch.id]
+      );
+
+      return accessToken;
+    }
+
     const query = `
       SELECT rt.*, c.client_id
       FROM oauth_refresh_tokens rt
@@ -339,36 +430,125 @@ class OAuth2Service {
   /**
    * Revoke token
    */
-  async revokeToken(token) {
-    // Try to revoke as access token
-    const accessQuery = `
-      UPDATE oauth_access_tokens
-      SET revoked_at = NOW()
-      WHERE revoked_at IS NULL
-    `;
-    const accessResult = await db.query(accessQuery);
+  async revokeToken(token, clientId) {
+    const tokenParts = this.splitOpaqueToken(token);
 
-    if (accessResult.rowCount > 0) {
-      // Also revoke associated refresh tokens
-      await db.query(`
-        UPDATE oauth_refresh_tokens
-        SET revoked_at = NOW()
-        WHERE access_token_id IN (
-          SELECT id FROM oauth_access_tokens WHERE revoked_at IS NOT NULL
-        ) AND revoked_at IS NULL
-      `);
-      return true;
+    if (tokenParts) {
+      if (!this.isOpaqueTokenId(tokenParts.id)) {
+        return false;
+      }
+
+      const accessResult = await db.query(
+        `
+          SELECT at.id, at.token_hash
+          FROM oauth_access_tokens at
+          JOIN oauth_clients c ON at.client_id = c.id
+          WHERE at.id = $1
+            AND c.client_id = $2
+            AND at.revoked_at IS NULL
+          LIMIT 1
+        `,
+        [tokenParts.id, clientId]
+      );
+
+      const accessToken = accessResult.rows[0];
+      if (accessToken && await this.verifyToken(tokenParts.secret, accessToken.token_hash)) {
+        await db.query(
+          'UPDATE oauth_access_tokens SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL',
+          [accessToken.id]
+        );
+        await db.query(
+          'UPDATE oauth_refresh_tokens SET revoked_at = NOW() WHERE access_token_id = $1 AND revoked_at IS NULL',
+          [accessToken.id]
+        );
+        return true;
+      }
+
+      const refreshResult = await db.query(
+        `
+          SELECT rt.id, rt.token_hash, rt.access_token_id
+          FROM oauth_refresh_tokens rt
+          JOIN oauth_clients c ON rt.client_id = c.id
+          WHERE rt.id = $1
+            AND c.client_id = $2
+            AND rt.revoked_at IS NULL
+          LIMIT 1
+        `,
+        [tokenParts.id, clientId]
+      );
+
+      const refreshToken = refreshResult.rows[0];
+      if (refreshToken && await this.verifyToken(tokenParts.secret, refreshToken.token_hash)) {
+        await db.query(
+          'UPDATE oauth_refresh_tokens SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL',
+          [refreshToken.id]
+        );
+        if (refreshToken.access_token_id) {
+          await db.query(
+            'UPDATE oauth_access_tokens SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL',
+            [refreshToken.access_token_id]
+          );
+        }
+        return true;
+      }
+
+      return false;
     }
 
-    // Try to revoke as refresh token
-    const refreshQuery = `
-      UPDATE oauth_refresh_tokens
-      SET revoked_at = NOW()
-      WHERE revoked_at IS NULL
-    `;
-    const refreshResult = await db.query(refreshQuery);
+    // Legacy token fallback: scan only the requesting client's active tokens.
+    const legacyAccessResult = await db.query(
+      `
+        SELECT at.id, at.token_hash
+        FROM oauth_access_tokens at
+        JOIN oauth_clients c ON at.client_id = c.id
+        WHERE c.client_id = $1
+          AND at.revoked_at IS NULL
+      `,
+      [clientId]
+    );
 
-    return refreshResult.rowCount > 0;
+    for (const row of legacyAccessResult.rows) {
+      if (await this.verifyToken(token, row.token_hash)) {
+        await db.query(
+          'UPDATE oauth_access_tokens SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL',
+          [row.id]
+        );
+        await db.query(
+          'UPDATE oauth_refresh_tokens SET revoked_at = NOW() WHERE access_token_id = $1 AND revoked_at IS NULL',
+          [row.id]
+        );
+        return true;
+      }
+    }
+
+    const legacyRefreshResult = await db.query(
+      `
+        SELECT rt.id, rt.token_hash, rt.access_token_id
+        FROM oauth_refresh_tokens rt
+        JOIN oauth_clients c ON rt.client_id = c.id
+        WHERE c.client_id = $1
+          AND rt.revoked_at IS NULL
+      `,
+      [clientId]
+    );
+
+    for (const row of legacyRefreshResult.rows) {
+      if (await this.verifyToken(token, row.token_hash)) {
+        await db.query(
+          'UPDATE oauth_refresh_tokens SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL',
+          [row.id]
+        );
+        if (row.access_token_id) {
+          await db.query(
+            'UPDATE oauth_access_tokens SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL',
+            [row.access_token_id]
+          );
+        }
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /**

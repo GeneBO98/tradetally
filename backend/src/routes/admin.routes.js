@@ -149,6 +149,9 @@ router.get('/logs/files', requireAdmin, async (req, res, next) => {
     const result = logger.getLogFiles(showAll === 'true', parseInt(page), parseInt(limit));
     res.json(result);
   } catch (error) {
+    if (error.code === 'INVALID_LOG_FILENAME') {
+      return res.status(400).json({ error: error.message });
+    }
     next(error);
   }
 });
@@ -173,6 +176,9 @@ router.get('/logs/files/:filename', requireAdmin, async (req, res, next) => {
 
     res.json(result);
   } catch (error) {
+    if (error.code === 'INVALID_LOG_FILENAME') {
+      return res.status(400).json({ error: error.message });
+    }
     next(error);
   }
 });
@@ -192,6 +198,9 @@ router.get('/logs/recent', requireAdmin, async (req, res, next) => {
 
     res.json(result);
   } catch (error) {
+    if (error.code === 'INVALID_LOG_FILENAME') {
+      return res.status(400).json({ error: error.message });
+    }
     next(error);
   }
 });

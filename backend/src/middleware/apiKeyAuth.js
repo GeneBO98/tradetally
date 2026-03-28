@@ -2,6 +2,7 @@ const ApiKey = require('../models/ApiKey');
 const logger = require('../utils/logger');
 const { hasScope, resolveEffectiveScopes } = require('../utils/apiScopes');
 const { isV1Request, sendV1Error } = require('../utils/apiResponse');
+const { TOKEN_PURPOSES, verifyJwtToken } = require('./auth');
 
 function sendAuthError(req, res, status, code, message, extra = {}) {
   if (isV1Request(req)) {
@@ -32,7 +33,7 @@ const apiKeyAuth = async (req, res, next) => {
     const keyData = await ApiKey.verifyKey(apiKey);
     
     if (!keyData) {
-      console.warn(`Invalid API key attempted: ${apiKey.substring(0, 8)}...`);
+      console.warn('Invalid API key attempted');
       return sendAuthError(req, res, 401, 'INVALID_API_KEY', 'Invalid API key');
     }
 
@@ -123,7 +124,6 @@ const requireApiScope = (scope) => {
  */
 const flexibleAuth = async (req, res, next) => {
   // First try JWT authentication
-  const jwt = require('jsonwebtoken');
   const User = require('../models/User');
   
   try {
@@ -141,7 +141,7 @@ const flexibleAuth = async (req, res, next) => {
       
       // Otherwise, try JWT authentication
       try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const decoded = verifyJwtToken(token, { requiredPurpose: TOKEN_PURPOSES.ACCESS });
         const user = await User.findById(decoded.id || decoded.userId);
         
         if (user && user.is_active) {
@@ -176,7 +176,6 @@ const flexibleAuth = async (req, res, next) => {
  * Supports JWT, API key, and unauthenticated access (for public trades).
  */
 const flexibleOptionalAuth = async (req, res, next) => {
-  const jwt = require('jsonwebtoken');
   const User = require('../models/User');
 
   try {
@@ -202,7 +201,7 @@ const flexibleOptionalAuth = async (req, res, next) => {
 
       // JWT token
       try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const decoded = verifyJwtToken(token, { requiredPurpose: TOKEN_PURPOSES.ACCESS });
         const user = await User.findById(decoded.id || decoded.userId);
         if (user && user.is_active) {
           req.user = user;
@@ -228,7 +227,7 @@ const flexibleOptionalAuth = async (req, res, next) => {
     // Check for cookie-based JWT (same as optionalAuth)
     if (req.cookies && req.cookies.token) {
       try {
-        const decoded = jwt.verify(req.cookies.token, process.env.JWT_SECRET);
+        const decoded = verifyJwtToken(req.cookies.token, { requiredPurpose: TOKEN_PURPOSES.ACCESS });
         const user = await User.findById(decoded.id || decoded.userId);
         if (user && user.is_active) {
           req.user = user;

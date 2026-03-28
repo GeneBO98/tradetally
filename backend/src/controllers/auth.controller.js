@@ -1,5 +1,5 @@
 const User = require('../models/User');
-const { generateToken } = require('../middleware/auth');
+const { generateToken, TOKEN_PURPOSES, verifyJwtToken } = require('../middleware/auth');
 const crypto = require('crypto');
 const EmailService = require('../services/emailService');
 const bcrypt = require('bcryptjs');
@@ -17,7 +17,8 @@ function isEmailConfigured() {
 
 // Check if detailed error messages are enabled (for self-hosted setups)
 function useDetailedErrors() {
-  return process.env.DETAILED_AUTH_ERRORS === 'true' || !isEmailConfigured();
+  return process.env.NODE_ENV !== 'production' &&
+    (process.env.DETAILED_AUTH_ERRORS === 'true' || !isEmailConfigured());
 }
 
 // Get registration mode from environment
@@ -216,7 +217,7 @@ const authController = {
           console.warn('[AUTH] Failed to record login for year wrapped:', err.message);
         });
 
-        const authToken = generateToken(user);
+        const authToken = generateToken(user, { purpose: TOKEN_PURPOSES.ACCESS });
 
         res.cookie('token', authToken, {
           httpOnly: true,
@@ -320,7 +321,10 @@ const authController = {
       // Check if 2FA is enabled for this user
       if (user.two_factor_enabled) {
         // Generate a temporary token for 2FA verification
-        const tempToken = generateToken(user, '15m'); // Short-lived token
+        const tempToken = generateToken(user, {
+          purpose: TOKEN_PURPOSES.PRE_2FA,
+          expiresIn: '15m'
+        });
         return res.json({
           requires2FA: true,
           tempToken: tempToken,
@@ -347,7 +351,7 @@ const authController = {
         marketingConsent: user.marketing_consent
       });
 
-      const token = generateToken(user);
+      const token = generateToken(user, { purpose: TOKEN_PURPOSES.ACCESS });
 
       // Set HTTP-only cookie for OAuth flow
       res.cookie('token', token, {
@@ -392,24 +396,24 @@ const authController = {
 
   async verify2FA(req, res, next) {
     try {
-      const { tempToken, twoFactorCode } = req.body;
+      const tempToken = req.body.tempToken || req.body.token;
+      const twoFactorCode = req.body.twoFactorCode || req.body.code;
 
       if (!tempToken || !twoFactorCode) {
         return res.status(400).json({ error: 'Temporary token and 2FA code are required' });
       }
 
       // Verify the temporary token
-      const jwt = require('jsonwebtoken');
       const speakeasy = require('speakeasy');
       
       let decoded;
       try {
-        decoded = jwt.verify(tempToken, process.env.JWT_SECRET);
+        decoded = verifyJwtToken(tempToken, { requiredPurpose: TOKEN_PURPOSES.PRE_2FA });
       } catch (error) {
         return res.status(401).json({ error: 'Invalid or expired temporary token' });
       }
 
-      const user = await User.findByEmail(decoded.email);
+      const user = await User.findById(decoded.id);
       if (!user || !user.two_factor_enabled) {
         return res.status(400).json({ error: 'Invalid request' });
       }
@@ -454,7 +458,7 @@ const authController = {
       });
 
       // Generate full access token
-      const token = generateToken(user);
+      const token = generateToken(user, { purpose: TOKEN_PURPOSES.ACCESS });
 
       // Get tier and billing status
       const TierService = require('../services/tierService');
@@ -683,6 +687,10 @@ const authController = {
 
   async sendTestEmail(req, res, next) {
     try {
+      if (process.env.NODE_ENV === 'production' && (!req.user || req.user.role !== 'admin')) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+
       const testEmail = 'boverton@tradetally.io';
       
       // Send a test branded email using the verification template

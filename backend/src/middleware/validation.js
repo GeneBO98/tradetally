@@ -1,6 +1,7 @@
 const Joi = require('joi');
 const { isV1Request, sendV1Error } = require('../utils/apiResponse');
 const { ALL_SCOPES } = require('../utils/apiScopes');
+const { sanitizeForLogging } = require('../utils/logSanitizer');
 
 const WEBHOOK_EVENT_TYPES = Object.freeze([
   'trade.created',
@@ -11,17 +12,6 @@ const WEBHOOK_EVENT_TYPES = Object.freeze([
   'price_alert.triggered',
   'enrichment.completed'
 ]);
-
-// Sanitize sensitive fields from request body for logging
-const sanitizeForLogging = (body) => {
-  if (!body || typeof body !== 'object') return body;
-  const sanitized = { ...body };
-  const sensitiveFields = ['password', 'currentPassword', 'newPassword', 'confirmPassword', 'token', 'refreshToken', 'secret', 'apiKey', 'api_key'];
-  sensitiveFields.forEach(field => {
-    if (sanitized[field]) sanitized[field] = '[REDACTED]';
-  });
-  return sanitized;
-};
 
 // Normalize snake_case fields to camelCase for API compatibility
 const normalizeFieldNames = (body) => {
@@ -62,14 +52,19 @@ const validate = (schema) => {
     
     const { error } = schema.validate(req.body);
     if (error) {
-      console.log('[VALIDATION ERROR] Details:', JSON.stringify(error.details, null, 2));
       const fields = error.details.map(d => ({
         field: d.path.join('.'),
         message: d.message,
         type: d.type
       }));
       const errorMessages = error.details.map(d => `${d.path.join('.')}: ${d.message}`);
-      console.log('[VALIDATION ERROR] Messages:', errorMessages);
+
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[VALIDATION ERROR]', {
+          fields,
+          body: sanitizeForLogging(req.body)
+        });
+      }
 
       if (isV1Request(req)) {
         return sendV1Error(res, 400, 'VALIDATION_ERROR', 'Request validation failed', fields);

@@ -3,6 +3,7 @@ const Trade = require('../models/Trade');
 const AICreditService = require('./aiCreditService');
 const AIProvider = require('../utils/aiProvider');
 const TierService = require('./tierService');
+const { validateAiProviderUrl } = require('../utils/urlSecurity');
 
 /**
  * AI Session Service
@@ -632,6 +633,10 @@ Please provide a helpful, specific response to the user's question. Reference th
       if (provider === 'lmstudio') apiUrl = 'http://localhost:1234/v1';
       else if (provider === 'ollama') apiUrl = 'http://localhost:11434/v1';
       else apiUrl = 'http://localhost:1234/v1'; // generic local
+    }
+
+    if (apiUrl) {
+      apiUrl = (await validateAiProviderUrl(provider, apiUrl)).toString();
     }
 
     // Set default model names if not specified

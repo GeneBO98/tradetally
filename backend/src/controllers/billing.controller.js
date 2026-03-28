@@ -2,6 +2,7 @@ const BillingService = require('../services/billingService');
 const TierService = require('../services/tierService');
 const User = require('../models/User');
 const db = require('../config/database');
+const { verifyAppleSignedTransaction, AppleTransactionVerificationError } = require('../utils/appleIapVerification');
 
 const billingController = {
   
@@ -350,7 +351,6 @@ const billingController = {
     console.log('Webhook received:', {
       method: req.method,
       url: req.originalUrl,
-      headers: req.headers,
       bodyType: typeof req.body,
       bodyIsBuffer: Buffer.isBuffer(req.body),
       signature: req.headers['stripe-signature'] ? 'present' : 'missing'
@@ -562,49 +562,10 @@ const billingController = {
         });
       }
 
-      // For Xcode/testing environment, skip Apple verification
-      if (environment === 'Xcode') {
-        console.log('🍎 Xcode environment detected, granting Pro access without Apple verification');
-
-        await TierService.setUserTier(userId, 'pro', 'Apple IAP (Xcode Test)');
-
-        await db.query(`
-          INSERT INTO apple_transactions
-          (user_id, transaction_id, product_id, purchase_date, environment)
-          VALUES ($1, $2, $3, NOW(), $4)
-        `, [userId, transaction_id, product_id, environment]);
-
-        return res.json({
-          success: true,
-          message: 'Test subscription verified (Xcode environment)',
-          subscription: {
-            tier: 'pro',
-            is_active: true
-          }
-        });
-      }
-
-      // ---- App Store Server API v2: Verify JWS signed transaction ----
-      const { decodeProtectedHeader, importX509, jwtVerify, base64url } = require('jose');
-
       // receipt_data is the JWS signed transaction from StoreKit 2
-      const jws = receipt_data;
-
-      // Decode the JWS header to get the x5c certificate chain
-      const header = decodeProtectedHeader(jws);
-
-      if (!header.x5c || header.x5c.length === 0) {
-        throw new Error('JWS header missing x5c certificate chain');
-      }
-
-      // Extract and verify the certificate chain
-      // x5c[0] is the leaf certificate Apple used to sign the transaction
-      const leafCertPem = `-----BEGIN CERTIFICATE-----\n${header.x5c[0]}\n-----END CERTIFICATE-----`;
-      const publicKey = await importX509(leafCertPem, header.alg);
-
-      // Verify the JWS signature using the leaf certificate
-      const { payload } = await jwtVerify(jws, publicKey, {
-        algorithms: [header.alg]
+      const payload = await verifyAppleSignedTransaction(receipt_data, {
+        expectedTransactionId: transaction_id,
+        expectedProductId: product_id
       });
 
       console.log('🍎 JWS verified. Transaction payload:', {
@@ -616,26 +577,12 @@ const billingController = {
         type: payload.type
       });
 
-      // Validate the transaction matches what the client sent
-      if (String(payload.transactionId) !== String(transaction_id)) {
-        throw new Error(`Transaction ID mismatch: expected ${transaction_id}, got ${payload.transactionId}`);
-      }
-
-      if (payload.productId !== product_id) {
-        throw new Error(`Product ID mismatch: expected ${product_id}, got ${payload.productId}`);
-      }
-
       // Extract expiration date (milliseconds since epoch)
       const expiresDate = payload.expiresDate
         ? new Date(payload.expiresDate)
         : null;
 
       const isTrialPeriod = payload.offerType === 2; // 2 = free trial
-
-      // Verify the transaction hasn't been revoked
-      if (payload.revocationDate) {
-        throw new Error('Transaction has been revoked by Apple');
-      }
 
       // Grant Pro tier
       await TierService.setUserTier(userId, 'pro', 'Apple In-App Purchase');
@@ -670,7 +617,10 @@ const billingController = {
       });
     } catch (error) {
       console.error('🍎 Error verifying Apple transaction:', error);
-      res.status(500).json({
+      const statusCode = error instanceof AppleTransactionVerificationError
+        ? error.statusCode
+        : 500;
+      res.status(statusCode).json({
         success: false,
         error: 'verification_failed',
         message: error.message || 'Failed to verify transaction with Apple'
