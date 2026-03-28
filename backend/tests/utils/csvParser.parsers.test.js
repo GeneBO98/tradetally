@@ -531,6 +531,37 @@ describe('Generic parser', () => {
     const result = await parseCSV(buf(actionCSV), 'generic', {});
     expectValidResult(result);
   });
+
+  test('parses month name timestamps with entry and exit price columns', async () => {
+    const monthNameCSV = [
+      'Symbol,Date,Entry Price,Exit Price,Quantity,Side,Commission,Fees',
+      'XAUUSD,"February 23, 202607:11 PM",5203.02,5203.02,0.1,Sell,0.7,0',
+      'XAUUSD,"February 23, 202607:35 PM",5207.03,5207.03,0.1,Sell,0.7,0'
+    ].join('\n');
+    const result = await parseCSV(buf(monthNameCSV), 'generic', {});
+    expectValidResult(result);
+    expect(result.trades.length).toBeGreaterThanOrEqual(1);
+    expect(result.diagnostics.invalidRows).toBe(0);
+  });
+
+  test('records diagnostics when generic rows fail validation', async () => {
+    const invalidGenericCSV = [
+      'Symbol,Date,Price,Quantity',
+      'AAPL,not-a-date,150.00,100'
+    ].join('\n');
+    const result = await parseCSV(buf(invalidGenericCSV), 'generic', {});
+    expectValidResult(result);
+    expect(result.trades).toHaveLength(0);
+    expect(result.diagnostics.invalidRows).toBe(1);
+    expect(result.diagnostics.skippedReasons).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          row: 1,
+          reason: expect.stringContaining('Invalid trade')
+        })
+      ])
+    );
+  });
 });
 
 // ──────────────────────────────────────────────
@@ -546,5 +577,74 @@ describe('Auto-detect broker', () => {
     const result = await parseCSV(buf(csv), 'auto', {});
     expectValidResult(result);
     expect(result.diagnostics.detectedBroker).toBe('lightspeed');
+  });
+
+  test('auto-detects AvaTrade German CSV', async () => {
+    const csv = [
+      'Symbol,Seite,Typ,Anz.,Limit Preis,Stopp-Preis,Aktiv bei,Erfüllungsmenge,Durchschnittlicher Erfüllungspreis,Kommission,Platzierungszeit,Status,Status Zeit,Order-Nummer,Dauer',
+      'F.US.MESM26,Buy,Markt,1,,,,1,6525,,2026-03-27 10:42:02,Ausgeführt,2026-03-27 10:42:02,244412225,GTC',
+      'F.US.MESM26,Sell,Markt,1,,,,1,6530,,2026-03-27 11:00:00,Ausgeführt,2026-03-27 11:00:00,244412226,GTC'
+    ].join('\n');
+    const result = await parseCSV(buf(csv), 'auto', {});
+    expectValidResult(result);
+    expect(result.diagnostics.detectedBroker).toBe('avatrade');
+  });
+});
+
+// ──────────────────────────────────────────────
+// AvaTrade Parser
+// ──────────────────────────────────────────────
+describe('AvaTrade parser', () => {
+  const avatradeCSV = [
+    'Symbol,Seite,Typ,Anz.,Limit Preis,Stopp-Preis,Aktiv bei,Erfüllungsmenge,Durchschnittlicher Erfüllungspreis,Kommission,Platzierungszeit,Status,Status Zeit,Order-Nummer,Dauer',
+    'F.US.MESM26,Buy,Markt,1,,,,1,6525,,2026-03-27 10:42:02,Ausgeführt,2026-03-27 10:42:02,244412225,GTC',
+    'F.US.MESM26,Sell,Markt,1,,,,1,6530,,2026-03-27 11:00:00,Ausgeführt,2026-03-27 11:00:00,244412226,GTC'
+  ].join('\n');
+
+  test('returns valid result with trades array', async () => {
+    const result = await parseCSV(buf(avatradeCSV), 'avatrade', {});
+    expectValidResult(result);
+    expect(result.trades.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test('creates round-trip trade from buy+sell', async () => {
+    const result = await parseCSV(buf(avatradeCSV), 'avatrade', {});
+    expect(result.trades.length).toBe(1);
+    const trade = result.trades[0];
+    expect(trade.broker).toBe('avatrade');
+    expect(trade.side).toBe('long');
+    expect(trade.symbol).toBe('MESM26');
+  });
+
+  test('skips cancelled/rejected German status orders', async () => {
+    const csv = [
+      'Symbol,Seite,Typ,Anz.,Limit Preis,Stopp-Preis,Aktiv bei,Erfüllungsmenge,Durchschnittlicher Erfüllungspreis,Kommission,Platzierungszeit,Status,Status Zeit,Order-Nummer,Dauer',
+      'F.US.MESM26,Buy,Markt,1,,,,1,6525,,2026-03-27 10:42:02,Ausgeführt,2026-03-27 10:42:02,244412225,GTC',
+      'F.US.MESM26,Buy,Stop-Loss,1,,6520,,0,,,2026-03-27 10:42:10,Storniert,2026-03-27 10:43:00,244412230,GTC',
+      'F.US.MESM26,Buy,Take-Profit,1,6540,,,0,,,2026-03-27 10:42:10,Abgelehnt,2026-03-27 10:43:00,244412231,GTC',
+      'F.US.MESM26,Sell,Markt,1,,,,1,6530,,2026-03-27 11:00:00,Ausgeführt,2026-03-27 11:00:00,244412226,GTC'
+    ].join('\n');
+    const result = await parseCSV(buf(csv), 'avatrade', {});
+    expectValidResult(result);
+    // Should produce 1 trade from 2 filled orders, skipping 2 cancelled/rejected
+    expect(result.trades.length).toBe(1);
+  });
+});
+
+// ──────────────────────────────────────────────
+// Localization layer
+// ──────────────────────────────────────────────
+describe('Localization layer', () => {
+  test('translates German TradingView headers and status values', async () => {
+    // A hypothetical German-language TradingView-like export
+    const csv = [
+      'Symbol,Seite,Typ,Anz.,Erfüllungsmenge,Durchschnittlicher Erfüllungspreis,Kommission,Platzierungszeit,Status,Status Zeit,Order-Nummer,Dauer',
+      'AAPL,Buy,Markt,100,100,150.00,,2025-01-01 09:30:00,Ausgeführt,2025-01-01 09:30:00,1001,GTC',
+      'AAPL,Sell,Markt,100,100,155.00,,2025-01-02 10:00:00,Ausgeführt,2025-01-02 10:00:00,1002,GTC'
+    ].join('\n');
+    // When passed as tradingview (user-selected), localization normalizes headers
+    const result = await parseCSV(buf(csv), 'tradingview', {});
+    expectValidResult(result);
+    expect(result.trades.length).toBeGreaterThanOrEqual(1);
   });
 });

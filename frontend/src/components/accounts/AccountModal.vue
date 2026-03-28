@@ -181,6 +181,7 @@ const form = ref({
 })
 
 const brokerOptions = [
+  'AvaTrade',
   'Interactive Brokers',
   'Charles Schwab',
   'TD Ameritrade',

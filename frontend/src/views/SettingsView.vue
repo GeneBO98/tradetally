@@ -1957,6 +1957,9 @@
                                             <option value="">
                                                 Select a broker
                                             </option>
+                                            <option value="avatrade">
+                                                AvaTrade
+                                            </option>
                                             <option value="tradovate">
                                                 Tradovate
                                             </option>

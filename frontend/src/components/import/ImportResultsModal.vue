@@ -254,6 +254,7 @@ const brokerNames = {
   webull: 'Webull',
   etrade: 'E*TRADE',
   papermoney: 'PaperMoney',
+  avatrade: 'AvaTrade',
   tradingview: 'TradingView',
   tradingview_performance: 'TradingView',
   tradingview_paper: 'TradingView',
@@ -266,7 +267,7 @@ const brokerNames = {
 
 const supportedBrokers = [
   'lightspeed', 'schwab', 'thinkorswim', 'ibkr', 'ibkr_trade_confirmation',
-  'webull', 'etrade', 'papermoney', 'tradingview', 'tradovate', 'questrade',
+  'webull', 'etrade', 'papermoney', 'avatrade', 'tradingview', 'tradovate', 'questrade',
   'projectx', 'tradestation', 'tastytrade'
 ]
 

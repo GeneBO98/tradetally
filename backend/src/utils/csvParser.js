@@ -8,6 +8,189 @@ const db = require('../config/database');
 const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('./futuresUtils');
 const { localToUTC } = require('./timezone');
 
+// ---------------------------------------------------------------------------
+// Localization layer – normalizes non-English CSV headers & cell values so
+// that existing broker parsers work regardless of the export language.
+// ---------------------------------------------------------------------------
+
+// Map of non-English column headers → canonical English header.
+// Keys MUST be lowercase.  Add new languages / brokers here.
+const HEADER_LOCALE_MAP = {
+  // German (AvaTrade, TradingView DE, etc.)
+  'seite': 'Side',
+  'typ': 'Type',
+  'anz.': 'Qty',
+  'anzahl': 'Qty',
+  'menge': 'Qty',
+  'limit preis': 'Limit Price',
+  'stopp-preis': 'Stop Price',
+  'aktiv bei': 'Trigger Price',
+  'erfüllungsmenge': 'Filled Qty',
+  'durchschnittlicher erfüllungspreis': 'Avg Fill Price',
+  'durchschn. erfüllungspreis': 'Avg Fill Price',
+  'kommission': 'Commission',
+  'provision': 'Commission',
+  'gebühr': 'Commission',
+  'platzierungszeit': 'Placing Time',
+  'status zeit': 'Closing Time',
+  'order-nummer': 'Order ID',
+  'dauer': 'Duration',
+  'gewinn': 'PnL',
+  'verlust': 'PnL',
+  'beschreibung': 'Description',
+  // French
+  'côté': 'Side',
+  'quantité': 'Qty',
+  'prix limite': 'Limit Price',
+  'prix stop': 'Stop Price',
+  'prix de remplissage': 'Fill Price',
+  'prix moyen de remplissage': 'Avg Fill Price',
+  'quantité remplie': 'Filled Qty',
+  'heure de placement': 'Placing Time',
+  'numéro de commande': 'Order ID',
+  'durée': 'Duration',
+  // Spanish
+  'lado': 'Side',
+  'cantidad': 'Qty',
+  'precio límite': 'Limit Price',
+  'precio stop': 'Stop Price',
+  'precio de llenado': 'Fill Price',
+  'precio promedio de llenado': 'Avg Fill Price',
+  'cantidad llenada': 'Filled Qty',
+  'comisión': 'Commission',
+  'hora de colocación': 'Placing Time',
+  'número de orden': 'Order ID',
+  'duración': 'Duration',
+};
+
+// Cell-value translations – keyed by canonical column, then lowercase
+// source value → English value.
+const VALUE_LOCALE_MAP = {
+  'Status': {
+    // German
+    'ausgeführt': 'Filled',
+    'storniert': 'Cancelled',
+    'abgelehnt': 'Rejected',
+    'ausstehend': 'Pending',
+    'teilweise ausgeführt': 'Partially Filled',
+    // French
+    'exécuté': 'Filled',
+    'annulé': 'Cancelled',
+    'rejeté': 'Rejected',
+    'en attente': 'Pending',
+    // Spanish
+    'ejecutado': 'Filled',
+    'cancelado': 'Cancelled',
+    'rechazado': 'Rejected',
+    'pendiente': 'Pending',
+  },
+  'Side': {
+    // German
+    'kaufen': 'Buy',
+    'verkaufen': 'Sell',
+    'kauf': 'Buy',
+    'verkauf': 'Sell',
+    // French
+    'achat': 'Buy',
+    'vente': 'Sell',
+    'acheter': 'Buy',
+    'vendre': 'Sell',
+    // Spanish
+    'compra': 'Buy',
+    'venta': 'Sell',
+    'comprar': 'Buy',
+    'vender': 'Sell',
+  },
+  'Type': {
+    // German
+    'markt': 'Market',
+    'stop-loss': 'Stop-Loss',
+    'take-profit': 'Take-Profit',
+    // French
+    'marché': 'Market',
+    // Spanish
+    'mercado': 'Market',
+  },
+};
+
+/**
+ * Detect whether a set of CSV records contain non-English headers that we
+ * know how to translate, and if so remap every record in-place.
+ *
+ * Returns an object { records, localized } where `localized` is true when
+ * at least one header was translated.
+ */
+function localizeRecords(records) {
+  if (!records || records.length === 0) return { records, localized: false };
+
+  const sample = records[0];
+  if (!sample || typeof sample !== 'object' || Array.isArray(sample)) {
+    return { records, localized: false };
+  }
+
+  // Build a rename map for the headers actually present
+  const renameMap = {};  // originalKey → englishKey
+  for (const key of Object.keys(sample)) {
+    const lower = key.toLowerCase().trim();
+    if (HEADER_LOCALE_MAP[lower]) {
+      renameMap[key] = HEADER_LOCALE_MAP[lower];
+    }
+  }
+
+  if (Object.keys(renameMap).length === 0) {
+    return { records, localized: false };
+  }
+
+  console.log('[LOCALIZE] Detected non-English headers, translating:', renameMap);
+
+  // Build the set of columns that need value translation
+  // Map englishColumnName → lookup table
+  const valueColumns = {};
+  for (const englishCol of Object.values(renameMap)) {
+    if (VALUE_LOCALE_MAP[englishCol]) {
+      valueColumns[englishCol] = VALUE_LOCALE_MAP[englishCol];
+    }
+  }
+  // Also check columns that already have the English name (e.g. "Status" is
+  // the same in German) but whose values may still be non-English.
+  for (const key of Object.keys(sample)) {
+    const english = key.trim();
+    if (VALUE_LOCALE_MAP[english] && !renameMap[key]) {
+      valueColumns[english] = VALUE_LOCALE_MAP[english];
+    }
+  }
+
+  const localized = records.map(record => {
+    const newRecord = {};
+    for (const [origKey, value] of Object.entries(record)) {
+      const englishKey = renameMap[origKey] || origKey;
+      let translatedValue = value;
+
+      // Translate known cell values
+      const valueLookup = valueColumns[englishKey];
+      if (valueLookup && typeof value === 'string') {
+        const lower = value.toLowerCase().trim();
+        if (valueLookup[lower]) {
+          translatedValue = valueLookup[lower];
+        }
+      }
+
+      newRecord[englishKey] = translatedValue;
+    }
+    return newRecord;
+  });
+
+  return { records: localized, localized: true };
+}
+
+// AvaTrade symbol format: F.US.MESM26 → MESM26 (futures), S.US.AAPL → AAPL (stock)
+function normalizeAvaTradeSymbol(symbol) {
+  if (!symbol) return symbol;
+  // Match F.<region>.<contract> or S.<region>.<ticker> patterns
+  const match = symbol.match(/^[A-Z]\.[A-Z]{2,}\.(.+)$/);
+  return match ? match[1] : symbol;
+}
+
 // CUSIP resolution is now handled by the cusipQueue module
 
 /**
@@ -261,6 +444,36 @@ function detectBrokerFormat(fileBuffer) {
         headers.includes('ref #') && headers.includes('description')) {
       console.log('[AUTO-DETECT] Detected: ThinkorSwim');
       return 'thinkorswim';
+    }
+
+    // AvaTrade detection – German-language futures/stock order export
+    // Distinctive headers: Seite (Side), Erfüllungsmenge (Filled Qty), Order-Nummer (Order ID)
+    if (headers.includes('seite') && headers.includes('erfüllungsmenge') &&
+        headers.includes('order-nummer') && headers.includes('platzierungszeit')) {
+      console.log('[AUTO-DETECT] Detected: AvaTrade (German order export)');
+      return 'avatrade';
+    }
+
+    // Localized CSV detection – if we recognise enough translated headers,
+    // try to figure out which English broker format they map to.  This lets
+    // e.g. a German TradingView export auto-detect correctly after header
+    // normalisation happens later in the pipeline.
+    {
+      const translatedHeaders = [];
+      for (const [foreign, english] of Object.entries(HEADER_LOCALE_MAP)) {
+        if (headers.includes(foreign)) {
+          translatedHeaders.push(english.toLowerCase());
+        }
+      }
+      if (translatedHeaders.length >= 3) {
+        // Re-run detection logic against the *translated* header set
+        const joined = translatedHeaders.join(',');
+        if (joined.includes('side') && joined.includes('order id') &&
+            (joined.includes('fill price') || joined.includes('avg fill price'))) {
+          console.log('[AUTO-DETECT] Detected: TradingView (localized futures format, translated headers)');
+          return 'tradingview';
+        }
+      }
     }
 
     // TradingView detection - covers all 3 sub-formats (futures transactions, performance, paper trading)
@@ -534,7 +747,7 @@ const brokerParsers = {
     );
 
     // Quantity mapping
-    const quantity = Math.abs(parseInteger(
+    const quantity = Math.abs(parseNumeric(
       row.Quantity || row.quantity || row.Qty || row.qty ||
       row.Shares || row.shares || row.Size || row.size ||
       row.Volume || row.volume || row.Amount || row.amount ||
@@ -1897,6 +2110,15 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     // Store diagnostics in context for broker parsers to use
     context.diagnostics = diagnostics;
 
+    // Localize non-English headers & cell values before any parser logic
+    {
+      const locResult = localizeRecords(records);
+      if (locResult.localized) {
+        records = locResult.records;
+        console.log(`[LOCALIZE] Translated ${records.length} records to English headers/values`);
+      }
+    }
+
     // Normalize records for case-insensitive column access
     // This handles CSVs where headers differ in casing from what parsers expect
     if (records.length > 0 && !Array.isArray(records[0])) {
@@ -1994,6 +2216,36 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       console.log('Finished PaperMoney transaction parsing');
 
       // Apply trade grouping if enabled
+      const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
+      let finalTrades = result;
+      if (tradeGroupingSettings.enabled && result.length > 0) {
+        finalTrades = applyTradeGrouping(result, tradeGroupingSettings);
+      }
+
+      return wrapResultWithDiagnostics(finalTrades, diagnostics, [], userTimezone);
+    }
+
+    if (broker === 'avatrade') {
+      console.log('Starting AvaTrade transaction parsing (via TradingView transaction engine)');
+      // Normalize AvaTrade symbols: F.US.MESM26 → MESM26, S.US.AAPL → AAPL
+      for (const record of records) {
+        const sym = record.Symbol || record.symbol;
+        if (sym) {
+          const normalized = normalizeAvaTradeSymbol(sym);
+          if (normalized !== sym) {
+            record.Symbol = normalized;
+            if (record.symbol) record.symbol = normalized;
+          }
+        }
+      }
+      // Headers have already been localized to English; reuse TradingView transaction parser
+      const result = await parseTradingViewTransactions(records, existingPositions, context);
+      // Tag trades as avatrade instead of tradingview
+      for (const trade of result) {
+        trade.broker = 'avatrade';
+      }
+      console.log('Finished AvaTrade transaction parsing');
+
       const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
       let finalTrades = result;
       if (tradeGroupingSettings.enabled && result.length > 0) {
@@ -2316,7 +2568,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       });
 
       parser = (row) => {
-        const quantity = parseInteger(row[mapping.quantity_column]);
+        const quantity = parseNumeric(row[mapping.quantity_column]);
 
         // Infer side from quantity if no side column specified
         let side;
@@ -2440,9 +2692,13 @@ function parseDate(dateStr) {
 
   // Remove leading and trailing quotes/apostrophes (including Unicode curly quotes), then trim
   const cleanDateStr = dateStr.toString().replace(/^[\x27\x22\u2018\u2019\u201C\u201D]|[\x27\x22\u2018\u2019\u201C\u201D]$/g, '').trim();
+  const normalizedDateStr = cleanDateStr.replace(
+    /^([A-Za-z]+ \d{1,2}, \d{4})(\d{1,2}:\d{2}(?::\d{2})?\s*[AP]M)$/i,
+    '$1 $2'
+  );
 
   // Try to parse IBKR format XX-XX-YY (could be MM-DD-YY or DD-MM-YY)
-  const xxyyMatch = cleanDateStr.match(/^(\d{1,2})-(\d{1,2})-(\d{2})/);
+  const xxyyMatch = normalizedDateStr.match(/^(\d{1,2})-(\d{1,2})-(\d{2})/);
   if (xxyyMatch) {
     const [_, first, second, shortYear] = xxyyMatch;
     const firstNum = parseInt(first);
@@ -2482,7 +2738,7 @@ function parseDate(dateStr) {
 
   // Try to parse IBKR Flex Query format: YYYYMMDD or YYYYMMDD;HHMMSS
   // This format is used in IBKR Japan and other regional Flex Query exports
-  const ibkrFlexMatch = cleanDateStr.match(/^(\d{4})(\d{2})(\d{2})(;(\d{2})(\d{2})(\d{2}))?$/);
+  const ibkrFlexMatch = normalizedDateStr.match(/^(\d{4})(\d{2})(\d{2})(;(\d{2})(\d{2})(\d{2}))?$/);
   if (ibkrFlexMatch) {
     const [, year, month, day] = ibkrFlexMatch;
     const yearNum = parseInt(year);
@@ -2498,7 +2754,7 @@ function parseDate(dateStr) {
   }
 
   // Try to parse MM/DD/YYYY format
-  const mmddyyyyMatch = cleanDateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  const mmddyyyyMatch = normalizedDateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if (mmddyyyyMatch) {
     const [_, month, day, year] = mmddyyyyMatch;
     const monthNum = parseInt(month);
@@ -2524,7 +2780,7 @@ function parseDate(dateStr) {
 
   // Try to parse MM/DD/YY format (2-digit year with slashes, used in some IBKR Flex Query exports)
   // Also handles MM/DD/YY;HHMMSS by matching only the date portion
-  const mmddyySlashMatch = cleanDateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})(?:;|$|\s)/);
+  const mmddyySlashMatch = normalizedDateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})(?:;|$|\s)/);
   if (mmddyySlashMatch) {
     const [_, month, day, shortYear] = mmddyySlashMatch;
     const monthNum = parseInt(month);
@@ -2539,10 +2795,24 @@ function parseDate(dateStr) {
     const dayPadded = dayNum.toString().padStart(2, '0');
     return `${yearNum}-${monthPadded}-${dayPadded}`;
   }
+
+  const monthNameMatch = normalizedDateStr.match(/^([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})/);
+  if (monthNameMatch) {
+    const [, monthName, day, year] = monthNameMatch;
+    const date = new Date(`${monthName} ${day}, ${year}`);
+    if (isNaN(date.getTime())) return null;
+
+    const yearNum = date.getFullYear();
+    if (yearNum < 1900 || yearNum > 2100) return null;
+
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    return `${yearNum}-${mm}-${dd}`;
+  }
   
   // Fall back to default date parsing with validation
   try {
-    const date = new Date(cleanDateStr);
+    const date = new Date(normalizedDateStr);
     if (isNaN(date.getTime())) return null;
 
     // Additional validation for PostgreSQL 16
@@ -2565,6 +2835,10 @@ function parseDateTime(dateTimeStr) {
 
   // Remove leading and trailing quotes/apostrophes (including Unicode curly quotes), then trim
   const cleanDateTimeStr = dateTimeStr.toString().replace(/^[\x27\x22\u2018\u2019\u201C\u201D]|[\x27\x22\u2018\u2019\u201C\u201D]$/g, '').trim();
+  const normalizedDateTimeStr = cleanDateTimeStr.replace(
+    /^([A-Za-z]+ \d{1,2}, \d{4})(\d{1,2}:\d{2}(?::\d{2})?\s*[AP]M)$/i,
+    '$1 $2'
+  );
 
   const normalizeTimezoneOffset = (offset) => {
     if (!offset || offset === 'Z') return 'Z';
@@ -2575,7 +2849,7 @@ function parseDateTime(dateTimeStr) {
 
   try {
     // Preserve ISO timestamps that already include timezone information.
-    const isoWithTimezoneMatch = cleanDateTimeStr.match(
+    const isoWithTimezoneMatch = normalizedDateTimeStr.match(
       /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?(Z|[+-]\d{2}:?\d{2})$/i
     );
     if (isoWithTimezoneMatch) {
@@ -2584,7 +2858,7 @@ function parseDateTime(dateTimeStr) {
     }
 
     // Check for MM/DD/YYYY HH:MM:SS +TZ format (ProjectX with timezone)
-    const mmddyyyyTimeWithTzMatch = cleanDateTimeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})\s+([+-]\d{2}:?\d{2})$/);
+    const mmddyyyyTimeWithTzMatch = normalizedDateTimeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})\s+([+-]\d{2}:?\d{2})$/);
     if (mmddyyyyTimeWithTzMatch) {
       const [, month, day, year, hour, minute, second, offset] = mmddyyyyTimeWithTzMatch;
       const monthPadded = month.padStart(2, '0');
@@ -2594,7 +2868,7 @@ function parseDateTime(dateTimeStr) {
     }
 
     // Check for MM/DD/YYYY HH:MM:SS format (common in many CSVs)
-    const mmddyyyyTimeMatch = cleanDateTimeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/);
+    const mmddyyyyTimeMatch = normalizedDateTimeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/);
     if (mmddyyyyTimeMatch) {
       const [, month, day, year, hour, minute, second] = mmddyyyyTimeMatch;
       const monthPadded = month.padStart(2, '0');
@@ -2604,7 +2878,7 @@ function parseDateTime(dateTimeStr) {
     }
 
     // Check for MM/DD/YYYY HH:MM format (without seconds)
-    const mmddyyyyTimeNoSecMatch = cleanDateTimeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})$/);
+    const mmddyyyyTimeNoSecMatch = normalizedDateTimeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})$/);
     if (mmddyyyyTimeNoSecMatch) {
       const [, month, day, year, hour, minute] = mmddyyyyTimeNoSecMatch;
       const monthPadded = month.padStart(2, '0');
@@ -2614,7 +2888,7 @@ function parseDateTime(dateTimeStr) {
     }
 
     // Check for IBKR Flex Query format: YYYYMMDD;HHMMSS (used in IBKR Japan and other regional exports)
-    const ibkrFlexDateTimeMatch = cleanDateTimeStr.match(/^(\d{4})(\d{2})(\d{2});(\d{2})(\d{2})(\d{2})$/);
+    const ibkrFlexDateTimeMatch = normalizedDateTimeStr.match(/^(\d{4})(\d{2})(\d{2});(\d{2})(\d{2})(\d{2})$/);
     if (ibkrFlexDateTimeMatch) {
       const [, year, month, day, hour, minute, second] = ibkrFlexDateTimeMatch;
       const yearNum = parseInt(year);
@@ -2630,7 +2904,7 @@ function parseDateTime(dateTimeStr) {
     }
 
     // Check for MM/DD/YY;HHMMSS format (IBKR Flex Query with slash-separated dates)
-    const mmddyyFlexMatch = cleanDateTimeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2});(\d{2})(\d{2})(\d{2})$/);
+    const mmddyyFlexMatch = normalizedDateTimeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2});(\d{2})(\d{2})(\d{2})$/);
     if (mmddyyFlexMatch) {
       const [, month, day, shortYear, hour, minute, second] = mmddyyFlexMatch;
       const yearNum = 2000 + parseInt(shortYear);
@@ -2647,7 +2921,7 @@ function parseDateTime(dateTimeStr) {
     }
 
     // Check for IBKR format "XX-XX-YY H:MM" or "XX-XX-YY HH:MM" (could be MM-DD-YY or DD-MM-YY)
-    const ibkrDateTimeMatch = cleanDateTimeStr.match(/^(\d{1,2})-(\d{1,2})-(\d{2})\s+(\d{1,2}):(\d{2})$/);
+    const ibkrDateTimeMatch = normalizedDateTimeStr.match(/^(\d{1,2})-(\d{1,2})-(\d{2})\s+(\d{1,2}):(\d{2})$/);
     if (ibkrDateTimeMatch) {
       const [, first, second, shortYear, hour, minute] = ibkrDateTimeMatch;
       const year = 2000 + parseInt(shortYear); // Convert YY to YYYY
@@ -2678,7 +2952,7 @@ function parseDateTime(dateTimeStr) {
     }
 
     // Check if the string is in format "YYYY-MM-DD HH:MM:SS" (local time without timezone)
-    const localDateTimeMatch = cleanDateTimeStr.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})$/);
+    const localDateTimeMatch = normalizedDateTimeStr.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})$/);
     if (localDateTimeMatch) {
       const [, year, month, day, hour, minute, second] = localDateTimeMatch;
       // Return as-is without timezone conversion
@@ -2686,7 +2960,7 @@ function parseDateTime(dateTimeStr) {
     }
 
     // Check if just a date is provided (no time component)
-    const dateOnlyMatch = cleanDateTimeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    const dateOnlyMatch = normalizedDateTimeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if (dateOnlyMatch) {
       const [, month, day, year] = dateOnlyMatch;
       const monthPadded = month.padStart(2, '0');
@@ -2695,9 +2969,27 @@ function parseDateTime(dateTimeStr) {
       return `${year}-${monthPadded}-${dayPadded}T09:30:00`;
     }
 
+    const monthNameDateTimeMatch = normalizedDateTimeStr.match(
+      /^([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)$/i
+    );
+    if (monthNameDateTimeMatch) {
+      let [, monthName, day, year, hour, minute, second = '00', ampm] = monthNameDateTimeMatch;
+      let hourNum = parseInt(hour, 10);
+      if (ampm.toUpperCase() === 'PM' && hourNum !== 12) hourNum += 12;
+      if (ampm.toUpperCase() === 'AM' && hourNum === 12) hourNum = 0;
+
+      const date = new Date(`${monthName} ${day}, ${year}`);
+      if (isNaN(date.getTime())) return null;
+
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const normalizedDay = String(date.getDate()).padStart(2, '0');
+      const normalizedHour = String(hourNum).padStart(2, '0');
+      return `${year}-${month}-${normalizedDay}T${normalizedHour}:${minute}:${second}`;
+    }
+
     // Otherwise, parse manually to avoid timezone issues
     // Try to extract date and time components without Date object conversion
-    const spaceSplit = cleanDateTimeStr.split(' ');
+    const spaceSplit = normalizedDateTimeStr.split(' ');
     if (spaceSplit.length >= 2) {
       const datePart = spaceSplit[0];
       const timePart = spaceSplit[1];
@@ -2728,7 +3020,7 @@ function parseDateTime(dateTimeStr) {
     }
 
     // Last resort: use Date parsing but extract components carefully
-    const date = new Date(cleanDateTimeStr);
+    const date = new Date(normalizedDateTimeStr);
     if (isNaN(date.getTime())) return null;
 
     // Additional validation for PostgreSQL 16
@@ -3073,7 +3365,8 @@ function parseInstrumentData(symbol) {
   const futuresPatterns = [
     /^([A-Z]{1,3})([FGHJKMNQUVXZ])(\d{1,2})$/,  // Standard: ESM4, NQU24, CLZ23
     /^([A-Z_]+):([A-Z0-9]+)!?$/,                 // TradingView: NYMEX_MINI:QG1!
-    /^\/([A-Z]{1,3})([FGHJKMNQUVXZ])(\d{2})$/    // Slash notation: /ESM24
+    /^\/([A-Z]{1,3})([FGHJKMNQUVXZ])(\d{2})$/,   // Slash notation: /ESM24
+    /^F\.[A-Z]{2,}\.([A-Z]{1,3})([FGHJKMNQUVXZ])(\d{1,2})$/  // AvaTrade: F.US.MESM26
   ];
 
   for (const pattern of futuresPatterns) {
@@ -6905,9 +7198,12 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
   const transactions = [];
   const completedTrades = [];
   const lastTradeEndTime = {}; // Track last trade end time for each symbol
+  const diagnostics = context.diagnostics;
 
   // First, parse all records into transactions
+  let rowIndex = 0;
   for (const record of records) {
+    rowIndex++;
     try {
       // Use custom mapping parser if provided, otherwise use generic parser
       let parser;
@@ -6916,7 +7212,7 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
         parser = (row) => {
           // Parse quantity preserving sign (don't use parseInteger as it returns absolute value)
           const rawQuantityStr = (row[mapping.quantity_column] || '0').toString().trim().replace(/[,]/g, '');
-          const rawQuantity = parseInt(rawQuantityStr) || 0;
+          const rawQuantity = parseFloat(rawQuantityStr) || 0;
           const rawPrice = parseNumeric(row[mapping.entry_price_column]);
 
           // Infer side from quantity sign if no side column specified
@@ -6950,6 +7246,13 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
       const trade = parser(record);
 
       if (!isValidTrade(trade)) {
+        if (diagnostics) {
+          diagnostics.invalidRows++;
+          diagnostics.skippedReasons.push({
+            row: rowIndex,
+            reason: 'Invalid trade: missing required fields (symbol, date, price, or quantity)'
+          });
+        }
         continue;
       }
 
@@ -7006,6 +7309,10 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
       });
     } catch (error) {
       console.error('Error parsing generic transaction:', error, record);
+      if (diagnostics) {
+        diagnostics.invalidRows++;
+        diagnostics.skippedReasons.push({ row: rowIndex, reason: `Parse error: ${error.message}` });
+      }
     }
   }
 

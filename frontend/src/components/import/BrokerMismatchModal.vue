@@ -146,6 +146,7 @@ const brokerNames = {
   webull: 'Webull',
   etrade: 'E*TRADE',
   papermoney: 'PaperMoney',
+  avatrade: 'AvaTrade',
   tradingview: 'TradingView',
   tradovate: 'Tradovate',
   questrade: 'Questrade',

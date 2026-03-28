@@ -78,6 +78,7 @@
                   <option value="lightspeed">Lightspeed</option>
                   <option value="webull">Webull</option>
                   <option value="etrade">E*TRADE</option>
+                  <option value="avatrade">AvaTrade</option>
                   <option value="tradingview">TradingView</option>
                   <option value="tradovate">Tradovate</option>
                   <option value="other">Other</option>
@@ -316,6 +317,7 @@ const brokerLabels = {
   lightspeed: 'Lightspeed',
   webull: 'Webull',
   etrade: 'E*TRADE',
+  avatrade: 'AvaTrade',
   tradingview: 'TradingView',
   tradovate: 'Tradovate',
   other: 'Other'

@@ -89,6 +89,7 @@
                 <option value="etrade">E*TRADE</option>
                 <option value="papermoney">PaperMoney</option>
                 <option value="tradingview">TradingView</option>
+                <option value="avatrade">AvaTrade</option>
                 <option value="tradovate">Tradovate</option>
                 <option value="questrade">Questrade</option>
                 <option value="tradestation">TradeStation</option>
@@ -1419,6 +1420,7 @@ function formatBrokerName(broker) {
     tradingview: 'TradingView',
     tradingview_performance: 'TradingView',
     tradingview_paper: 'TradingView',
+    avatrade: 'AvaTrade',
     tradovate: 'Tradovate',
     questrade: 'Questrade',
     tradestation: 'TradeStation',
@@ -1580,6 +1582,12 @@ function detectBrokerFromHeaders(headers) {
     return 'thinkorswim'
   }
 
+  // AvaTrade detection (German-language order export)
+  if (headersStr.includes('seite') && headersStr.includes('erfüllungsmenge') &&
+      headersStr.includes('order-nummer') && headersStr.includes('platzierungszeit')) {
+    return 'avatrade'
+  }
+
   // TradingView detection
   if (headersStr.includes('symbol') && headersStr.includes('side') &&
       headersStr.includes('fill price') && headersStr.includes('status') &&
@@ -1666,10 +1674,14 @@ function detectBrokerFromHeaders(headers) {
   }
 
   // Generic CSV detection - check if it has basic required fields
+  // Include common non-English equivalents for broader detection
   const hasSymbol = lowerHeaders.some(h => h.includes('symbol') || h.includes('ticker') || h.includes('stock'))
-  const hasSide = lowerHeaders.some(h => h.includes('side') || h.includes('direction') || h.includes('type') || h.includes('action'))
-  const hasQuantity = lowerHeaders.some(h => h.includes('quantity') || h.includes('qty') || h.includes('shares') || h.includes('size'))
-  const hasPrice = lowerHeaders.some(h => h.includes('price') || h.includes('fill'))
+  const hasSide = lowerHeaders.some(h => h.includes('side') || h.includes('direction') || h.includes('type') || h.includes('action') ||
+    h.includes('seite') || h.includes('côté') || h.includes('lado'))
+  const hasQuantity = lowerHeaders.some(h => h.includes('quantity') || h.includes('qty') || h.includes('shares') || h.includes('size') ||
+    h.includes('anzahl') || h.includes('menge') || h.includes('anz.') || h.includes('quantité') || h.includes('cantidad'))
+  const hasPrice = lowerHeaders.some(h => h.includes('price') || h.includes('fill') ||
+    h.includes('preis') || h.includes('prix') || h.includes('precio'))
 
   // If it has these basic fields, consider it a generic format
   if (hasSymbol && hasSide && hasQuantity && hasPrice) {
