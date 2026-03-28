@@ -50,6 +50,9 @@ const cache = {
     const actualKey = keyOrUndefined !== undefined ? `${namespaceOrKey}:${keyOrUndefined}` : namespaceOrKey;
     delete this.data[actualKey];
   },
+  invalidate(namespaceOrKey, keyOrUndefined) {
+    this.del(namespaceOrKey, keyOrUndefined);
+  },
   flush() {
     this.data = {};
   },

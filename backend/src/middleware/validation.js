@@ -86,7 +86,22 @@ const schemas = {
     username: Joi.string().pattern(/^[a-zA-Z0-9_-]+$/).min(3).max(30).optional(),
     password: Joi.string().min(8).required(),
     fullName: Joi.string().max(255).allow(''),
-    marketing_consent: Joi.boolean().default(false)
+    marketing_consent: Joi.boolean().default(false),
+    utm_source: Joi.string().max(255).allow('', null),
+    utm_medium: Joi.string().max(255).allow('', null),
+    utm_campaign: Joi.string().max(255).allow('', null),
+    utm_term: Joi.string().max(255).allow('', null),
+    utm_content: Joi.string().max(255).allow('', null),
+    referral_source: Joi.string().max(2048).allow('', null),
+    landing_page: Joi.string().max(2048).allow('', null),
+    deviceInfo: Joi.object({
+      name: Joi.string().max(255).required(),
+      type: Joi.string().valid('ios', 'android', 'web', 'desktop').required(),
+      model: Joi.string().max(255).allow(''),
+      fingerprint: Joi.string().max(255).allow(''),
+      platformVersion: Joi.string().max(50).allow(''),
+      appVersion: Joi.string().max(50).allow('')
+    }).optional()
   }),
 
   login: Joi.object({

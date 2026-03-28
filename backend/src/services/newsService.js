@@ -19,6 +19,18 @@ const CACHE_MAX_AGE_MS = 60 * 60 * 1000;
 const API_DELAY_MS = 300;
 
 class NewsService {
+  static isUnsupportedNewsSymbol(symbol) {
+    const normalized = typeof symbol === 'string' ? symbol.trim().toUpperCase() : '';
+    if (!normalized) return true;
+
+    // Finnhub company news is reliable for equity-style symbols, not option/futures/qualified market pairs.
+    return normalized.length > 20 ||
+      /\s/.test(normalized) ||
+      /[:_!/]/.test(normalized) ||
+      /(USDT|USDC|BUSD)$/.test(normalized) ||
+      finnhub.isCryptoSymbol(normalized);
+  }
+
   /**
    * Get all distinct symbols with open trades or in watchlists across all users
    */
@@ -60,6 +72,17 @@ class NewsService {
    */
   static async fetchAndCacheSymbol(symbol) {
     try {
+      if (this.isUnsupportedNewsSymbol(symbol)) {
+        await db.query(
+          `INSERT INTO dashboard_news_cache (symbol, news_items, fetched_at)
+           VALUES ($1, '[]'::jsonb, NOW())
+           ON CONFLICT (symbol)
+           DO UPDATE SET news_items = '[]'::jsonb, fetched_at = NOW()`,
+          [symbol]
+        );
+        return [];
+      }
+
       const news = await finnhub.getCompanyNews(symbol);
 
       // Filter to last 7 days and limit to 5 per symbol

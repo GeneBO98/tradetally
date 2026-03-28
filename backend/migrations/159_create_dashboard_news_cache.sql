@@ -3,7 +3,7 @@
 
 CREATE TABLE IF NOT EXISTS dashboard_news_cache (
   id SERIAL PRIMARY KEY,
-  symbol VARCHAR(20) NOT NULL,
+  symbol VARCHAR(128) NOT NULL,
   news_items JSONB NOT NULL DEFAULT '[]',
   fetched_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
   CONSTRAINT dashboard_news_cache_symbol_unique UNIQUE (symbol)
