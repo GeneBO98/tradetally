@@ -35,16 +35,22 @@
             <!-- File Upload Drop Zone -->
             <div>
               <div
-                class="flex justify-center px-6 pt-8 pb-8 border-2 border-dashed rounded-xl transition-colors cursor-pointer"
+                class="flex justify-center px-6 pt-8 pb-8 border-2 border-dashed rounded-xl transition-colors"
                 :class="[
-                  dragOver ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-gray-300 dark:border-gray-600 hover:border-primary-400 dark:hover:border-primary-500'
+                  isAnalyzingFile ? 'border-primary-400 bg-primary-50/50 dark:bg-primary-900/10 cursor-wait' :
+                  dragOver ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20 cursor-pointer' : 'border-gray-300 dark:border-gray-600 hover:border-primary-400 dark:hover:border-primary-500 cursor-pointer'
                 ]"
                 @dragover.prevent="handleDragOver"
                 @dragleave.prevent="handleDragLeave"
                 @drop.prevent="handleDrop"
-                @click="$refs.fileInput && $refs.fileInput.click()"
+                @click="!isAnalyzingFile && $refs.fileInput && $refs.fileInput.click()"
               >
-                <div class="space-y-2 text-center">
+                <div v-if="isAnalyzingFile" class="space-y-3 text-center">
+                  <div class="animate-spin mx-auto h-12 w-12 rounded-full border-4 border-primary-200 border-t-primary-600"></div>
+                  <p class="text-base font-medium text-gray-900 dark:text-white">Analyzing file...</p>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">Checking headers and row count</p>
+                </div>
+                <div v-else class="space-y-2 text-center">
                   <ArrowUpTrayIcon class="mx-auto h-16 w-16 text-gray-400" />
                   <p class="text-base font-medium text-gray-900 dark:text-white">Drop your broker CSV here</p>
                   <div class="flex text-sm text-gray-600 dark:text-gray-400">
@@ -68,10 +74,17 @@
                   <p class="text-xs text-gray-500 dark:text-gray-400">CSV files only (up to 50MB)</p>
                 </div>
               </div>
-              <div v-if="selectedFile" class="mt-2">
+              <div v-if="selectedFile" class="mt-2 flex items-center justify-between">
                 <p class="text-sm text-gray-900 dark:text-white">
                   Selected: {{ selectedFile.name }} ({{ formatFileSize(selectedFile.size) }})
                 </p>
+                <button
+                  type="button"
+                  class="text-sm text-gray-400 hover:text-red-500 transition-colors"
+                  @click.prevent="clearSelectedFile"
+                >
+                  Clear
+                </button>
               </div>
             </div>
 
@@ -1742,6 +1755,14 @@ async function analyzeSelectedFile(file) {
     if (analysisId === activeFileAnalysisId) {
       isAnalyzingFile.value = false
     }
+  }
+}
+
+function clearSelectedFile() {
+  selectedFile.value = null
+  resetFileAnalysis()
+  if (document.getElementById('file-upload')) {
+    document.getElementById('file-upload').value = ''
   }
 }
 

@@ -192,7 +192,7 @@
                         <button
                             @click="openCustomerPortal"
                             :disabled="portalLoading"
-                            class="btn btn-outline"
+                            class="btn btn-secondary"
                         >
                             <span
                                 v-if="portalLoading"
@@ -201,14 +201,14 @@
                             Customer Portal
                         </button>
 
-                        <router-link to="/pricing" class="btn btn-outline">
+                        <router-link to="/pricing" class="btn btn-secondary text-center">
                             Change Plan
                         </router-link>
 
                         <button
                             v-if="subscription.subscription && !subscription.subscription.cancel_at_period_end && (subscription.subscription.status === 'active' || subscription.subscription.status === 'trialing')"
                             @click="showCancelModal = true"
-                            class="btn btn-outline border-red-300 text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
+                            class="btn btn-secondary border-red-300 text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
                         >
                             Cancel Subscription
                         </button>
@@ -231,6 +231,53 @@
                         Use the customer portal to update payment methods,
                         download invoices, and view billing history.
                     </p>
+                </div>
+            </div>
+
+            <!-- Billing Error -->
+            <div
+                v-if="billingError"
+                class="card border-red-200 bg-red-50 dark:bg-red-900/20"
+            >
+                <div class="card-body">
+                    <p class="text-sm font-medium text-red-800 dark:text-red-200">{{ billingError }}</p>
+                </div>
+            </div>
+
+            <!-- Checkout Verifying -->
+            <div
+                v-if="checkoutVerifying"
+                class="card border-primary-200 bg-primary-50 dark:bg-primary-900/20"
+            >
+                <div class="card-body">
+                    <div class="flex items-center">
+                        <div class="animate-spin rounded-full h-6 w-6 border-2 border-primary-200 border-t-primary-600 mr-3"></div>
+                        <p class="text-primary-800 dark:text-primary-200 font-medium">
+                            Verifying your payment...
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Checkout Error -->
+            <div
+                v-if="checkoutError"
+                class="card border-amber-200 bg-amber-50 dark:bg-amber-900/20"
+            >
+                <div class="card-body">
+                    <div class="flex items-start">
+                        <svg class="w-6 h-6 text-amber-500 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                        </svg>
+                        <div>
+                            <h4 class="text-sm font-medium text-amber-800 dark:text-amber-200">
+                                Payment Verification
+                            </h4>
+                            <p class="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                                {{ checkoutError }}
+                            </p>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -304,7 +351,7 @@
                 <div class="flex justify-end space-x-3">
                     <button
                         @click="showCancelModal = false"
-                        class="btn btn-outline"
+                        class="btn btn-secondary"
                     >
                         Keep Subscription
                     </button>
@@ -349,7 +396,10 @@ export default {
             tier: { tier_name: "free" },
         });
         const checkoutSuccess = ref(false);
+        const checkoutError = ref("");
+        const checkoutVerifying = ref(false);
         const redirectMessage = ref("");
+        const billingError = ref("");
 
         const loadBillingStatus = async () => {
             try {
@@ -386,7 +436,8 @@ export default {
                 window.location.href = response.data.data.portal_url;
             } catch (error) {
                 console.error("Error opening customer portal:", error);
-                alert("Failed to open customer portal. Please try again.");
+                billingError.value = "Failed to open customer portal. Please try again.";
+                setTimeout(() => { billingError.value = ""; }, 8000);
             } finally {
                 portalLoading.value = false;
             }
@@ -401,10 +452,8 @@ export default {
                 await loadSubscription();
             } catch (error) {
                 console.error("Error canceling subscription:", error);
-                alert(
-                    error.response?.data?.message ||
-                        "Failed to cancel subscription. Please try again.",
-                );
+                billingError.value = error.response?.data?.message || "Failed to cancel subscription. Please try again.";
+                setTimeout(() => { billingError.value = ""; }, 8000);
             } finally {
                 cancelLoading.value = false;
             }
@@ -418,10 +467,8 @@ export default {
                 await loadSubscription();
             } catch (error) {
                 console.error("Error reactivating subscription:", error);
-                alert(
-                    error.response?.data?.message ||
-                        "Failed to reactivate subscription. Please try again.",
-                );
+                billingError.value = error.response?.data?.message || "Failed to reactivate subscription. Please try again.";
+                setTimeout(() => { billingError.value = ""; }, 8000);
             } finally {
                 reactivateLoading.value = false;
             }
@@ -432,6 +479,7 @@ export default {
             const redirectUrl = route.query.redirect;
 
             if (sessionId) {
+                checkoutVerifying.value = true;
                 try {
                     const response = await api.get(
                         `/billing/checkout/${sessionId}`,
@@ -447,11 +495,18 @@ export default {
                                 "Redirecting you back to your requested page...";
                             setTimeout(() => {
                                 router.push(redirectUrl);
-                            }, 2000); // Give user 2 seconds to see success message
+                            }, 2000);
                         }
+                    } else {
+                        checkoutError.value =
+                            "Your payment is still being processed. Please refresh in a moment.";
                     }
                 } catch (error) {
                     console.error("Error checking checkout session:", error);
+                    checkoutError.value =
+                        "Unable to verify your payment. If you were charged, your subscription will activate shortly. Please refresh the page.";
+                } finally {
+                    checkoutVerifying.value = false;
                 }
             }
         };
@@ -529,7 +584,10 @@ export default {
             billingStatus,
             subscription,
             checkoutSuccess,
+            checkoutError,
+            checkoutVerifying,
             redirectMessage,
+            billingError,
             openCustomerPortal,
             cancelSubscription,
             reactivateSubscription,

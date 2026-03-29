@@ -77,22 +77,25 @@
 
             <!-- Schwab Card -->
             <div
-              class="p-6 border-2 rounded-lg transition-colors cursor-pointer"
+              class="p-6 border-2 rounded-lg transition-colors"
               :class="[
                 store.schwabConnection
                   ? 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 opacity-50 cursor-not-allowed'
-                  : 'border-dashed border-gray-300 dark:border-gray-600 hover:border-primary-500 dark:hover:border-primary-400'
+                  : schwabConnecting
+                    ? 'border-primary-300 dark:border-primary-700 bg-primary-50/50 dark:bg-primary-900/10 cursor-wait'
+                    : 'border-dashed border-gray-300 dark:border-gray-600 hover:border-primary-500 dark:hover:border-primary-400 cursor-pointer'
               ]"
-              @click="!store.schwabConnection && handleSchwabConnect()"
+              @click="!store.schwabConnection && !schwabConnecting && handleSchwabConnect()"
             >
               <div class="flex items-center space-x-4">
                 <div class="flex-shrink-0 w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-lg flex items-center justify-center">
-                  <span class="text-primary-600 dark:text-primary-400 font-bold text-lg">CS</span>
+                  <div v-if="schwabConnecting" class="animate-spin h-6 w-6 rounded-full border-2 border-primary-200 border-t-primary-600"></div>
+                  <span v-else class="text-primary-600 dark:text-primary-400 font-bold text-lg">CS</span>
                 </div>
                 <div>
                   <h4 class="font-medium text-gray-900 dark:text-white">Charles Schwab</h4>
                   <p class="text-sm text-gray-500 dark:text-gray-400">
-                    {{ store.schwabConnection ? 'Already connected' : 'Connect via OAuth' }}
+                    {{ store.schwabConnection ? 'Already connected' : schwabConnecting ? 'Connecting...' : 'Connect via OAuth' }}
                   </p>
                 </div>
               </div>
@@ -209,6 +212,7 @@ const showIBKRModal = ref(false)
 const showSettingsModal = ref(false)
 const selectedConnection = ref(null)
 const successMessage = ref('')
+const schwabConnecting = ref(false)
 
 onMounted(async () => {
   await Promise.all([
@@ -267,10 +271,12 @@ async function handleIBKRSave(credentials) {
 
 async function handleSchwabConnect() {
   try {
+    schwabConnecting.value = true
     const authUrl = await store.initSchwabOAuth()
     // Redirect to Schwab OAuth
     window.location.href = authUrl
   } catch (error) {
+    schwabConnecting.value = false
     // Error is handled by store
   }
 }

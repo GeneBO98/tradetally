@@ -11,6 +11,18 @@
         </p>
       </div>
 
+      <!-- Success / Error Messages -->
+      <div v-if="successMessage" class="mt-6 max-w-2xl mx-auto">
+        <div class="rounded-lg border border-green-200 bg-green-50 dark:bg-green-900/20 dark:border-green-800 p-4">
+          <p class="text-sm font-medium text-green-800 dark:text-green-200">{{ successMessage }}</p>
+        </div>
+      </div>
+      <div v-if="errorMessage" class="mt-6 max-w-2xl mx-auto">
+        <div class="rounded-lg border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800 p-4">
+          <p class="text-sm font-medium text-red-800 dark:text-red-200">{{ errorMessage }}</p>
+        </div>
+      </div>
+
       <!-- Billing Not Available -->
       <div v-if="!billingStatus.billing_available" class="mt-12">
         <div class="max-w-2xl mx-auto">
@@ -341,6 +353,8 @@ export default {
     const trialInfo = ref(null)
     const hasUsedTrial = ref(false)
     const redirectUrl = ref(route.query.redirect || null)
+    const errorMessage = ref('')
+    const successMessage = ref('')
 
     const loadBillingStatus = async () => {
       try {
@@ -392,7 +406,6 @@ export default {
 
       // Check if user is authenticated
       if (!authStore.token || !authStore.isAuthenticated) {
-        alert('Please log in to subscribe to Pro features.')
         router.push('/login?redirect=' + encodeURIComponent('/pricing'))
         return
       }
@@ -426,17 +439,16 @@ export default {
       } catch (error) {
         console.error('Error creating checkout session:', error)
         
-        let errorMessage = 'Failed to start checkout process. Please try again.'
-        
+        errorMessage.value = 'Failed to start checkout process. Please try again.'
+
         if (error.response?.status === 401) {
-          errorMessage = 'Please log in to subscribe to Pro features.'
-          // Redirect to login page
           router.push('/login?redirect=' + encodeURIComponent('/pricing'))
+          return
         } else if (error.response?.data?.error) {
-          errorMessage = error.response.data.error
+          errorMessage.value = error.response.data.error
         }
-        
-        alert(errorMessage)
+
+        setTimeout(() => { errorMessage.value = '' }, 8000)
       } finally {
         subscribing.value = false
       }
@@ -449,23 +461,26 @@ export default {
         const response = await api.post('/billing/trial')
         
         if (response.data.success) {
-          alert('14-day trial started successfully! You now have access to Pro features.')
-          // Refresh the page or redirect to dashboard
-          window.location.reload()
+          successMessage.value = '14-day trial started! You now have access to Pro features.'
+          // Redirect to dashboard after brief delay
+          setTimeout(() => {
+            router.push('/dashboard')
+          }, 1500)
+          return
         }
       } catch (error) {
         console.error('Error starting trial:', error)
-        
-        let errorMessage = 'Failed to start trial. Please try again.'
-        
+
+        errorMessage.value = 'Failed to start trial. Please try again.'
+
         if (error.response?.status === 401) {
-          errorMessage = 'Please log in to start your trial.'
           router.push('/login?redirect=' + encodeURIComponent('/pricing'))
+          return
         } else if (error.response?.data?.message) {
-          errorMessage = error.response.data.message
+          errorMessage.value = error.response.data.message
         }
-        
-        alert(errorMessage)
+
+        setTimeout(() => { errorMessage.value = '' }, 8000)
       } finally {
         subscribing.value = false
       }
@@ -553,7 +568,9 @@ export default {
       getSubscribeButtonClass,
       getSubscribeButtonText,
       getTrialButtonClass,
-      getTrialButtonText
+      getTrialButtonText,
+      errorMessage,
+      successMessage
     }
   }
 }

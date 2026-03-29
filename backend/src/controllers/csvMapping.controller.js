@@ -98,6 +98,8 @@ const csvMappingController = {
         pnl_column,
         fees_column,
         notes_column,
+        stop_loss_column,
+        take_profit_column,
         date_format,
         delimiter,
         has_header_row,
@@ -127,7 +129,7 @@ const csvMappingController = {
 
       // Validate that at least symbol, quantity, and entry_price are mapped
       // Side column is optional - if not provided, it will be inferred from quantity sign
-      if (!symbol_column || !quantity_column || !entry_price_column) {
+      if (!symbol_column || !symbol_column.trim() || !quantity_column || !quantity_column.trim() || !entry_price_column || !entry_price_column.trim()) {
         return res.status(400).json({
           success: false,
           error: 'At minimum, symbol, quantity, and entry price columns must be mapped'
