@@ -20,6 +20,9 @@ router.post('/:id/items', watchlistController.addSymbolToWatchlist);
 router.put('/:id/items/:itemId', watchlistController.updateWatchlistItem);
 router.delete('/:id/items/:itemId', watchlistController.removeSymbolFromWatchlist);
 
+// 8 Pillars analysis for watchlist
+router.get('/:id/pillars', watchlistController.getWatchlistPillars);
+
 // News and earnings for watchlist
 router.get('/:id/news', watchlistController.getWatchlistNews);
 router.get('/:id/earnings', watchlistController.getWatchlistEarnings);

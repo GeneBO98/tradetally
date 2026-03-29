@@ -5,6 +5,7 @@ const alphaVantage = require('../utils/alphaVantage');
 const { v4: uuidv4 } = require('uuid');
 const NewsService = require('../services/newsService');
 const EarningsService = require('../services/earningsService');
+const EightPillarsService = require('../services/eightPillarsService');
 
 const watchlistController = {
   // Get all watchlists for a user
@@ -576,6 +577,54 @@ const watchlistController = {
       }
     } catch (error) {
       logger.logError('Error in getSymbolNews:', error);
+      next(error);
+    }
+  },
+
+  // Get cached 8 Pillars analysis for all symbols in a watchlist
+  async getWatchlistPillars(req, res, next) {
+    try {
+      const { id } = req.params;
+      const userId = req.user.id;
+
+      // Verify watchlist belongs to user
+      const watchlistResult = await db.query(
+        'SELECT id FROM watchlists WHERE id = $1 AND user_id = $2',
+        [id, userId]
+      );
+
+      if (watchlistResult.rows.length === 0) {
+        return res.status(404).json({ success: false, error: 'Watchlist not found' });
+      }
+
+      // Get all symbols in this watchlist
+      const itemsResult = await db.query(
+        'SELECT symbol FROM watchlist_items WHERE watchlist_id = $1',
+        [id]
+      );
+
+      if (itemsResult.rows.length === 0) {
+        return res.json({ success: true, data: [] });
+      }
+
+      const symbols = itemsResult.rows.map(r => r.symbol.toUpperCase());
+
+      // Fetch cached analysis for all symbols in one query
+      const placeholders = symbols.map((_, i) => `$${i + 1}`).join(',');
+      const analysisResult = await db.query(`
+        SELECT DISTINCT ON (symbol) *
+        FROM eight_pillars_analysis
+        WHERE symbol IN (${placeholders})
+          AND analysis_date > NOW() - INTERVAL '24 hours'
+        ORDER BY symbol, analysis_date DESC
+      `, symbols);
+
+      // Convert rows to analysis objects
+      const analyses = analysisResult.rows.map(row => EightPillarsService.rowToAnalysis(row));
+
+      res.json({ success: true, data: analyses });
+    } catch (error) {
+      logger.logError('Error fetching watchlist pillars:', error);
       next(error);
     }
   }

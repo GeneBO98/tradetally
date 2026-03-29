@@ -517,19 +517,12 @@
                     </h2>
                     <div class="flex items-center space-x-2">
                         <button
-                            v-if="!pillarsLoaded && !loadingPillars"
-                            @click="loadWatchlistPillars"
-                            class="text-sm text-primary-600 hover:text-primary-800"
-                        >
-                            Load Analysis
-                        </button>
-                        <button
-                            v-else-if="pillarsLoaded"
+                            v-if="pillarsLoaded"
                             @click="loadWatchlistPillars"
                             :disabled="loadingPillars"
                             class="text-sm text-primary-600 hover:text-primary-800 disabled:opacity-50"
                         >
-                            {{ loadingPillars ? "Loading..." : "Refresh" }}
+                            {{ loadingPillars ? "Analyzing..." : "Refresh" }}
                         </button>
                     </div>
                 </div>
@@ -547,7 +540,7 @@
                 </div>
 
                 <div
-                    v-else-if="!pillarsLoaded"
+                    v-else-if="pillarsLoaded && watchlistPillars.length === 0"
                     class="p-6 text-center text-gray-500 dark:text-gray-400"
                 >
                     <svg
@@ -564,13 +557,13 @@
                         ></path>
                     </svg>
                     <p class="text-sm mb-2">
-                        Run fundamental analysis on your watchlist symbols
+                        No cached analysis available. Run analysis to compute pillars for your symbols.
                     </p>
                     <button
                         @click="loadWatchlistPillars"
                         class="btn-primary text-sm"
                     >
-                        Load 8 Pillars Analysis
+                        Analyze All Symbols
                     </button>
                 </div>
 
@@ -891,6 +884,7 @@ export default {
                     await Promise.all([
                         loadWatchlistNews(),
                         loadWatchlistEarnings(),
+                        loadCachedPillars(),
                     ]);
                 }
             } catch (error) {
@@ -949,6 +943,25 @@ export default {
             }
         };
 
+        // Load cached pillars from bulk endpoint (fast, no computation)
+        const loadCachedPillars = async () => {
+            if (!watchlist.value?.items?.length) return;
+
+            try {
+                loadingPillars.value = true;
+                const response = await api.get(
+                    `/watchlists/${route.params.id}/pillars`,
+                );
+                watchlistPillars.value = response.data.data || [];
+                pillarsLoaded.value = true;
+            } catch (error) {
+                console.error("Error loading cached pillars:", error);
+            } finally {
+                loadingPillars.value = false;
+            }
+        };
+
+        // Compute pillars for all symbols (sequential to avoid rate limiting)
         const loadWatchlistPillars = async () => {
             if (!watchlist.value?.items?.length) return;
 

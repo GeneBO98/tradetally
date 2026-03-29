@@ -59,6 +59,7 @@ const BillingService = require('./services/billingService');
 const priceMonitoringService = require('./services/priceMonitoringService');
 const backupScheduler = require('./services/backupScheduler.service');
 const stockScannerScheduler = require('./services/stockScannerScheduler');
+const watchlistPillarsScheduler = require('./services/watchlistPillarsScheduler');
 const GamificationScheduler = require('./services/gamificationScheduler');
 const TrialScheduler = require('./services/trialScheduler');
 const RetentionEmailScheduler = require('./services/retentionEmailScheduler');
@@ -620,6 +621,9 @@ async function startServer() {
       
       stockScannerScheduler.initialize();
       console.log('✓ Stock scanner scheduler initialized (Russell 2000 scan runs quarterly at 3 AM)');
+
+      watchlistPillarsScheduler.initialize();
+      console.log('✓ Watchlist pillars scheduler initialized (daily at 4 AM)');
     } else {
       console.log('Stock scanner disabled (ENABLE_STOCK_SCANNER=false)');
     }
@@ -658,6 +662,7 @@ process.on('SIGTERM', async () => {
   globalEnrichmentCacheCleanupService.stop();
   backupScheduler.stopAll();
   stockScannerScheduler.stop();
+  watchlistPillarsScheduler.stop();
   await backgroundWorker.stop();
   await shutdownPostHogTelemetry();
   process.exit(0);
@@ -679,6 +684,7 @@ process.on('SIGINT', async () => {
   globalEnrichmentCacheCleanupService.stop();
   backupScheduler.stopAll();
   stockScannerScheduler.stop();
+  watchlistPillarsScheduler.stop();
   await backgroundWorker.stop();
   await shutdownPostHogTelemetry();
   process.exit(0);
