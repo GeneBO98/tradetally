@@ -101,6 +101,7 @@
                 <option value="webull">Webull</option>
                 <option value="etrade">E*TRADE</option>
                 <option value="papermoney">PaperMoney</option>
+                <option value="tradervue">TraderVue</option>
                 <option value="tradingview">TradingView</option>
                 <option value="avatrade">AvaTrade</option>
                 <option value="tradovate">Tradovate</option>
@@ -1433,6 +1434,7 @@ function formatBrokerName(broker) {
     tradingview: 'TradingView',
     tradingview_performance: 'TradingView',
     tradingview_paper: 'TradingView',
+    tradervue: 'TraderVue',
     avatrade: 'AvaTrade',
     tradovate: 'Tradovate',
     questrade: 'Questrade',
@@ -1655,6 +1657,14 @@ function detectBrokerFromHeaders(headers) {
       headersStr.includes('exitedat') && headersStr.includes('pnl') &&
       headersStr.includes('tradeduration')) {
     return 'projectx'
+  }
+
+  // Tradervue detection
+  if (headersStr.includes('open datetime') && headersStr.includes('close datetime') &&
+      headersStr.includes('symbol') && headersStr.includes('side') &&
+      headersStr.includes('volume') && headersStr.includes('entry price') &&
+      headersStr.includes('exit price') && headersStr.includes('gross p&l')) {
+    return 'tradervue'
   }
 
   // Tradovate detection

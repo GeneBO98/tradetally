@@ -46,7 +46,7 @@
           <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
             <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Can I import my data from TraderVue?</h3>
             <p class="text-gray-600 dark:text-gray-400">
-              Yes, you can migrate from TraderVue using our Generic CSV import option. Export your trades from TraderVue as CSV, then ensure the columns match our expected format: Symbol, Date, Entry Price, Exit Price, Quantity, Side, Commission, Fees. You may need to adjust column names or format to match our Generic CSV template.
+              Yes. TradeTally now supports direct TraderVue CSV imports, including completed-trade exports with open/close datetimes, side, volume, entry price, exit price, P&L, notes, and tags. If your export is customized beyond the standard TraderVue layout, you can still fall back to our Generic CSV importer or custom column mapping.
             </p>
           </div>
           
@@ -67,7 +67,7 @@
           <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
             <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Which brokers does TradeTally support?</h3>
             <p class="text-gray-600 dark:text-gray-400">
-              TradeTally supports auto-sync with Charles Schwab/ThinkorSwim and Interactive Brokers (IBKR), plus dedicated CSV parsers for Lightspeed, Webull, TradingView, TradeStation, Tradovate, Questrade, and more. For other brokers, you can use our Generic CSV import option with custom column mapping. <strong>Need support for your specific broker?</strong> Send us a sample CSV file from your broker and we'll add dedicated support for it in a future update.
+              TradeTally supports auto-sync with Charles Schwab/ThinkorSwim and Interactive Brokers (IBKR), plus dedicated CSV parsers for TraderVue, Lightspeed, Webull, TradingView, TradeStation, Tradovate, Questrade, and more. For other brokers, you can use our Generic CSV import option with custom column mapping. <strong>Need support for your specific broker?</strong> Send us a sample CSV file from your broker and we'll add dedicated support for it in a future update.
             </p>
           </div>
           

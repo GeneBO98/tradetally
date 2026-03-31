@@ -590,6 +590,19 @@ function detectBrokerFormat(fileBuffer) {
       return 'projectx';
     }
 
+    // Tradervue detection - completed trades export
+    if (headers.includes('open datetime') &&
+        headers.includes('close datetime') &&
+        headers.includes('symbol') &&
+        headers.includes('side') &&
+        headers.includes('volume') &&
+        headers.includes('entry price') &&
+        headers.includes('exit price') &&
+        headers.includes('gross p&l')) {
+      console.log('[AUTO-DETECT] Detected: Tradervue');
+      return 'tradervue';
+    }
+
     // Tradovate detection - look for B/S, Contract, Product, Fill Time, avgPrice, filledQty columns
     // Note: Don't rely on first column (orderId) due to potential BOM issues
     if (headers.includes('b/s') &&
@@ -1138,6 +1151,32 @@ const brokerParsers = {
       broker: 'projectx',
       notes: `Trade #${tradeId} - Duration: ${tradeDuration}`,
       ...instrumentData  // Add futures/options metadata
+    };
+  },
+
+  tradervue: (row) => {
+    const openDateTime = row['Open Datetime'] || row.OpenDatetime || row['Open Date/Time'] || '';
+    const closeDateTime = row['Close Datetime'] || row.CloseDatetime || row['Close Date/Time'] || '';
+    const pnl = parseNumeric(row['Gross P&L']);
+    const pnlPercent = parseNumeric(row['Gross P&L (%)']);
+
+    return {
+      symbol: cleanString(row.Symbol),
+      tradeDate: parseDate(openDateTime || closeDateTime),
+      entryTime: parseDateTime(openDateTime),
+      exitTime: parseDateTime(closeDateTime),
+      entryPrice: parseNumeric(row['Entry Price']),
+      exitPrice: parseNumeric(row['Exit Price']),
+      quantity: Math.abs(parseNumeric(row.Volume)),
+      side: parseTradervueSide(row.Side),
+      commission: 0,
+      fees: 0,
+      pnl: pnl,
+      profitLoss: pnl,
+      pnlPercent: pnlPercent,
+      broker: 'tradervue',
+      notes: cleanString(row.Notes),
+      tags: parseTagList(row.Tags || row.tags)
     };
   },
 
@@ -2300,6 +2339,13 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       return wrapResultWithDiagnostics(finalTrades, diagnostics, [], userTimezone);
     }
 
+    if (broker === 'tradervue') {
+      console.log('Starting Tradervue completed trade parsing');
+      const result = await parseTradervueCompletedTrades(records, context);
+      console.log('Finished Tradervue completed trade parsing');
+      return wrapResultWithDiagnostics(result, diagnostics, [], userTimezone);
+    }
+
     if (broker === 'tradovate') {
       // Check if this is a Performance Report format (pre-matched round-trip trades)
       // vs the standard Order/Fill History format
@@ -3155,9 +3201,25 @@ function isDaylightSavingTime(date) {
 
 function parseSide(sideStr) {
   if (!sideStr) return 'long';
-  const normalized = sideStr.toLowerCase();
-  if (normalized.includes('short') || normalized.includes('sell')) return 'short';
+  const normalized = sideStr.toString().trim().toLowerCase();
+  if (
+    normalized === 's' ||
+    normalized === 'short' ||
+    normalized === 'sell' ||
+    normalized === 'sold' ||
+    normalized === 'sto' ||
+    normalized === 'stc' ||
+    normalized.includes('short') ||
+    normalized.includes('sell')
+  ) return 'short';
   return 'long';
+}
+
+function parseTradervueSide(sideStr) {
+  const normalized = cleanString(sideStr).toUpperCase();
+  if (normalized === 'S') return 'short';
+  if (normalized === 'L') return 'long';
+  return parseSide(sideStr);
 }
 
 function parseLightspeedSide(sideCode, buySell, principalAmount, netAmount, quantity) {
@@ -3204,6 +3266,15 @@ function parseLightspeedSide(sideCode, buySell, principalAmount, netAmount, quan
 function cleanString(str) {
   if (!str) return '';
   return str.toString().trim();
+}
+
+function parseTagList(tagValue) {
+  const raw = cleanString(tagValue);
+  if (!raw) return [];
+  return raw
+    .split(/[;,|]/)
+    .map(tag => cleanString(tag))
+    .filter(Boolean);
 }
 
 /**
@@ -5887,6 +5958,38 @@ async function parseTradingViewPaperTrades(records, context = {}) {
 
   console.log(`[SUCCESS] Parsed ${completedTrades.length} TradingView paper trades from ${records.length} records`);
   return completedTrades;
+}
+
+async function parseTradervueCompletedTrades(records, context = {}) {
+  const trades = [];
+
+  for (const record of records) {
+    const trade = brokerParsers.tradervue(record);
+    if (!isValidTrade(trade)) {
+      continue;
+    }
+
+    if (trade.symbol) {
+      const instrumentData = parseInstrumentData(trade.symbol);
+      if (instrumentData.instrumentType === 'future' || instrumentData.instrumentType === 'option') {
+        Object.assign(trade, instrumentData);
+      }
+    }
+
+    const accountIdentifier = context.selectedAccountId
+      ? context.selectedAccountId
+      : context.accountColumnName
+        ? extractAccountFromRecord(record, context.accountColumnName)
+        : null;
+
+    if (accountIdentifier) {
+      trade.accountIdentifier = accountIdentifier;
+    }
+
+    trades.push(trade);
+  }
+
+  return trades;
 }
 
 async function parseIBKRTransactions(records, existingPositions = {}, tradeGroupingSettings = { enabled: true, timeGapMinutes: 60 }, context = {}) {
