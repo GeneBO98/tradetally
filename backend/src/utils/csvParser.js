@@ -2255,9 +2255,30 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       }
 
       if (headerIndex >= 0) {
-        // Keep only the header line and data rows
-        csvString = lines.slice(headerIndex).join('\n');
-        console.log(`Skipped ${headerIndex} header rows in thinkorswim CSV`);
+        // Find where the Cash Balance section ends
+        // TOS CSVs have multiple sections separated by blank lines and new headers
+        // (e.g., "Futures Statements", "Forex Statements", "Account Order History")
+        let endIndex = lines.length;
+        for (let i = headerIndex + 1; i < lines.length; i++) {
+          const trimmed = lines[i].trim().replace(/,+$/, '').trim();
+          // Stop at blank lines followed by a new section header, or at known section boundaries
+          if (!trimmed) {
+            // Check if the next non-empty line is a section header (no commas in the meaningful part)
+            for (let j = i + 1; j < lines.length; j++) {
+              const nextTrimmed = lines[j].trim().replace(/,+$/, '').trim();
+              if (nextTrimmed) {
+                // Section headers like "Futures Statements" or "Account Order History" have no data columns
+                if (!nextTrimmed.includes(',') || /^[A-Za-z\s#()]+$/.test(nextTrimmed)) {
+                  endIndex = i;
+                }
+                break;
+              }
+            }
+            if (endIndex !== lines.length) break;
+          }
+        }
+        csvString = lines.slice(headerIndex, endIndex).join('\n');
+        console.log(`Skipped ${headerIndex} header rows, using ${endIndex - headerIndex} lines from Cash Balance section`);
       } else {
         console.log('Warning: Could not find thinkorswim header pattern, trying to parse as-is');
       }
