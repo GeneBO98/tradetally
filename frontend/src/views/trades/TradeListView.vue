@@ -42,14 +42,25 @@
           <div class="flex items-start justify-between">
             <div class="flex-1">
               <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
-                Total P&L ({{ tradesStore.totalTrades }} {{ tradesStore.totalTrades === 1 ? 'trade' : 'trades' }})
+                P&L Summary ({{ tradesStore.totalTrades }} {{ tradesStore.totalTrades === 1 ? 'trade' : 'trades' }})
               </h3>
-              <div class="text-lg font-semibold" :class="[
-                tradesStore.totalPnL >= 0
+              <div class="space-y-1">
+                <div class="text-xs text-gray-500 dark:text-gray-400">Gross</div>
+                <div class="text-lg font-semibold" :class="[
+                tradesStore.totalGrossPnL >= 0
                   ? 'text-green-600 dark:text-green-400'
                   : 'text-red-600 dark:text-red-400'
-              ]">
-                {{ tradesStore.totalPnL >= 0 ? '+' : '' }}${{ formatNumber(Math.abs(tradesStore.totalPnL)) }}
+                ]">
+                  {{ formatSignedCurrency(tradesStore.totalGrossPnL) }}
+                </div>
+                <div class="text-xs text-gray-500 dark:text-gray-400">Net</div>
+                <div class="text-sm font-medium" :class="[
+                tradesStore.totalNetPnL >= 0
+                  ? 'text-green-600 dark:text-green-400'
+                  : 'text-red-600 dark:text-red-400'
+                ]">
+                  {{ formatSignedCurrency(tradesStore.totalNetPnL) }}
+                </div>
               </div>
             </div>
             <!-- Fullwidth Toggle (Mobile) -->
@@ -76,14 +87,29 @@
         <div class="hidden sm:flex items-center justify-between">
           <div class="flex items-center space-x-4">
             <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-              Total P&L ({{ tradesStore.totalTrades }} {{ tradesStore.totalTrades === 1 ? 'trade' : 'trades' }})
+              P&L Summary ({{ tradesStore.totalTrades }} {{ tradesStore.totalTrades === 1 ? 'trade' : 'trades' }})
             </h3>
-            <div class="text-lg font-semibold" :class="[
-              tradesStore.totalPnL >= 0
-                ? 'text-green-600 dark:text-green-400'
-                : 'text-red-600 dark:text-red-400'
-            ]">
-              {{ tradesStore.totalPnL >= 0 ? '+' : '' }}${{ formatNumber(Math.abs(tradesStore.totalPnL)) }}
+            <div class="flex items-center gap-4">
+              <div>
+                <div class="text-xs text-gray-500 dark:text-gray-400">Gross</div>
+                <div class="text-lg font-semibold" :class="[
+                  tradesStore.totalGrossPnL >= 0
+                    ? 'text-green-600 dark:text-green-400'
+                    : 'text-red-600 dark:text-red-400'
+                ]">
+                  {{ formatSignedCurrency(tradesStore.totalGrossPnL) }}
+                </div>
+              </div>
+              <div>
+                <div class="text-xs text-gray-500 dark:text-gray-400">Net</div>
+                <div class="text-lg font-semibold" :class="[
+                  tradesStore.totalNetPnL >= 0
+                    ? 'text-green-600 dark:text-green-400'
+                    : 'text-red-600 dark:text-red-400'
+                ]">
+                  {{ formatSignedCurrency(tradesStore.totalNetPnL) }}
+                </div>
+              </div>
             </div>
           </div>
           <div class="flex items-center gap-6">
@@ -228,13 +254,32 @@
               </div>
             </div>
             <div>
-              <div class="text-gray-500 dark:text-gray-400">P&L</div>
+              <div class="text-gray-500 dark:text-gray-400">Net P&L</div>
               <div class="font-medium" :class="[
                 trade.pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
               ]">
-                {{ trade.pnl ? `$${formatNumber(trade.pnl)}` : '-' }}
+                {{ formatSignedCurrency(trade.pnl) }}
                 <span v-if="trade.pnl_percent" class="text-xs ml-1">
                   ({{ trade.pnl_percent > 0 ? '+' : '' }}{{ formatNumber(trade.pnl_percent) }}%)
+                </span>
+              </div>
+            </div>
+            <div>
+              <div class="text-gray-500 dark:text-gray-400">Gross P&L</div>
+              <div class="font-medium" :class="[
+                getTradeGrossPnl(trade) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+              ]">
+                {{ formatSignedCurrency(getTradeGrossPnl(trade)) }}
+              </div>
+            </div>
+            <div v-if="trade.unrealizedPnl !== null && trade.unrealizedPnl !== undefined">
+              <div class="text-gray-500 dark:text-gray-400">Unrealized</div>
+              <div class="font-medium" :class="[
+                trade.unrealizedPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
+              ]">
+                {{ formatSignedCurrency(trade.unrealizedPnl) }}
+                <span v-if="trade.unrealizedPnlPercent !== null && trade.unrealizedPnlPercent !== undefined" class="text-xs ml-1">
+                  ({{ trade.unrealizedPnlPercent > 0 ? '+' : '' }}{{ formatNumber(trade.unrealizedPnlPercent) }}%)
                 </span>
               </div>
             </div>
@@ -434,18 +479,46 @@
                   {{ trade.exit_price ? `$${formatNumber(trade.exit_price)}` : '-' }}
                 </td>
                 
-                <!-- P&L Column -->
+                <!-- Net P&L Column -->
                 <td v-else-if="column.visible && column.key === 'pnl'" 
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']" 
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div class="text-sm font-medium" :class="[
                     trade.pnl >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
-                    {{ trade.pnl ? `$${formatNumber(trade.pnl)}` : '-' }}
+                    {{ formatSignedCurrency(trade.pnl) }}
                   </div>
                   <div v-if="trade.pnl_percent" class="text-xs text-gray-500 dark:text-gray-400">
                     {{ trade.pnl_percent > 0 ? '+' : '' }}{{ formatNumber(trade.pnl_percent) }}%
                   </div>
+                </td>
+
+                <!-- Gross P&L Column -->
+                <td v-else-if="column.visible && column.key === 'grossPnl'"
+                    :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  <div class="text-sm font-medium" :class="[
+                    getTradeGrossPnl(trade) >= 0 ? 'text-green-600' : 'text-red-600'
+                  ]">
+                    {{ formatSignedCurrency(getTradeGrossPnl(trade)) }}
+                  </div>
+                </td>
+
+                <!-- Unrealized P&L Column -->
+                <td v-else-if="column.visible && column.key === 'unrealizedPnl'"
+                    :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  <div v-if="trade.unrealizedPnl !== null && trade.unrealizedPnl !== undefined">
+                    <div class="text-sm font-medium" :class="[
+                      trade.unrealizedPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
+                    ]">
+                      {{ formatSignedCurrency(trade.unrealizedPnl) }}
+                    </div>
+                    <div v-if="trade.unrealizedPnlPercent !== null && trade.unrealizedPnlPercent !== undefined" class="text-xs text-gray-500 dark:text-gray-400">
+                      {{ trade.unrealizedPnlPercent > 0 ? '+' : '' }}{{ formatNumber(trade.unrealizedPnlPercent) }}%
+                    </div>
+                  </div>
+                  <div v-else class="text-sm text-gray-400 dark:text-gray-500">-</div>
                 </td>
                 
                 <!-- Confidence Column -->
@@ -1054,6 +1127,20 @@ function formatNumber(num) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   }).format(num || 0)
+}
+
+function formatSignedCurrency(num) {
+  if (num === null || num === undefined) return '-'
+  const value = Number(num || 0)
+  const sign = value > 0 ? '+' : value < 0 ? '-' : ''
+  return `${sign}$${formatNumber(Math.abs(value))}`
+}
+
+function getTradeGrossPnl(trade) {
+  const pnl = parseFloat(trade?.pnl) || 0
+  const commission = parseFloat(trade?.commission) || 0
+  const fees = parseFloat(trade?.fees) || 0
+  return pnl + commission + fees
 }
 
 // Redact account identifier for privacy (show only last 4 characters)

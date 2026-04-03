@@ -195,7 +195,7 @@
 
 <script setup>
 import { ref, onMounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useBrokerSyncStore } from '@/stores/brokerSync'
 import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
@@ -206,6 +206,7 @@ import ConnectionSettingsModal from '@/components/broker-sync/ConnectionSettings
 const store = useBrokerSyncStore()
 const tradesStore = useTradesStore()
 const route = useRoute()
+const router = useRouter()
 const { showConfirmation, showDangerConfirmation } = useNotification()
 
 const showIBKRModal = ref(false)
@@ -213,34 +214,59 @@ const showSettingsModal = ref(false)
 const selectedConnection = ref(null)
 const successMessage = ref('')
 const schwabConnecting = ref(false)
+const SCHWAB_PENDING_STORAGE_KEY = 'broker_sync_schwab_pending'
+
+function scheduleSuccessMessage(message) {
+  successMessage.value = message
+  setTimeout(() => { successMessage.value = '' }, 5000)
+}
+
+async function consumeOAuthCallbackState(query) {
+  const hasCallbackState = query.success === 'schwab' || Boolean(query.error)
+
+  if (!hasCallbackState) {
+    if (typeof window !== 'undefined' && window.sessionStorage.getItem(SCHWAB_PENDING_STORAGE_KEY) === 'true') {
+      schwabConnecting.value = true
+    }
+    return
+  }
+
+  schwabConnecting.value = false
+
+  if (typeof window !== 'undefined') {
+    window.sessionStorage.removeItem(SCHWAB_PENDING_STORAGE_KEY)
+  }
+
+  await Promise.all([
+    store.fetchConnections(),
+    store.fetchSyncLogs()
+  ])
+
+  if (query.success === 'schwab') {
+    scheduleSuccessMessage('Schwab account connected successfully. Ready to sync trades.')
+  }
+
+  if (query.error) {
+    const detail = typeof query.details === 'string' ? decodeURIComponent(query.details) : ''
+    store.error = detail
+      ? `Connection failed: ${detail}`
+      : `Connection failed: ${query.error}`
+  }
+
+  await router.replace({ query: {} })
+}
 
 onMounted(async () => {
   await Promise.all([
     store.fetchConnections(),
     store.fetchSyncLogs()
   ])
-
-  // Check for OAuth callback success
-  if (route.query.success === 'schwab') {
-    successMessage.value = 'Schwab account connected successfully!'
-    setTimeout(() => { successMessage.value = '' }, 5000)
-  }
-
-  if (route.query.error) {
-    store.error = `Connection failed: ${route.query.error}`
-  }
+  await consumeOAuthCallbackState(route.query)
 })
 
 // Watch for route changes (OAuth callback)
 watch(() => route.query, async (newQuery) => {
-  if (newQuery.success === 'schwab') {
-    await Promise.all([
-      store.fetchConnections(),
-      store.fetchSyncLogs()
-    ])
-    successMessage.value = 'Schwab account connected successfully!'
-    setTimeout(() => { successMessage.value = '' }, 5000)
-  }
+  await consumeOAuthCallbackState(newQuery)
 })
 
 function openIBKRModal() {
@@ -262,8 +288,7 @@ async function handleIBKRSave(credentials) {
   try {
     await store.addIBKRConnection(credentials)
     showIBKRModal.value = false
-    successMessage.value = 'IBKR connection added successfully!'
-    setTimeout(() => { successMessage.value = '' }, 5000)
+    scheduleSuccessMessage('IBKR connection added successfully!')
   } catch (error) {
     // Error is handled by store
   }
@@ -272,11 +297,17 @@ async function handleIBKRSave(credentials) {
 async function handleSchwabConnect() {
   try {
     schwabConnecting.value = true
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem(SCHWAB_PENDING_STORAGE_KEY, 'true')
+    }
     const authUrl = await store.initSchwabOAuth()
     // Redirect to Schwab OAuth
     window.location.href = authUrl
   } catch (error) {
     schwabConnecting.value = false
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.removeItem(SCHWAB_PENDING_STORAGE_KEY)
+    }
     // Error is handled by store
   }
 }
@@ -284,8 +315,7 @@ async function handleSchwabConnect() {
 async function handleSync(connection) {
   try {
     await store.triggerSync(connection.id)
-    successMessage.value = 'Sync started! Check the history below for results.'
-    setTimeout(() => { successMessage.value = '' }, 5000)
+    scheduleSuccessMessage('Sync started. Check the history below for results.')
 
     // Poll for updates until sync completes
     const pollInterval = 3000

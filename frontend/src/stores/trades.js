@@ -4,6 +4,26 @@ import api from '@/services/api'
 import requestManager from '@/utils/requestManager'
 import { STORAGE_KEY as GLOBAL_ACCOUNT_KEY } from '@/composables/useGlobalAccountFilter'
 
+function normalizeStoredAccount(value) {
+  if (value == null) return ''
+  const normalized = String(value).trim()
+  if (!normalized || normalized === 'null' || normalized === 'undefined') {
+    return ''
+  }
+  return normalized
+}
+
+function normalizeAccountsFilter(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => normalizeStoredAccount(item))
+      .filter(Boolean)
+      .join(',')
+  }
+
+  return normalizeStoredAccount(value)
+}
+
 export const useTradesStore = defineStore('trades', () => {
   const trades = ref([])
   const currentTrade = ref(null)
@@ -38,17 +58,45 @@ export const useTradesStore = defineStore('trades', () => {
   // Store analytics data for consistent P&L calculations
   const analytics = ref(null)
 
+  const totalCosts = computed(() => {
+    if (analytics.value?.summary?.totalCosts !== undefined && !(trades.value.length > 0 && Number(analytics.value.summary.totalTrades || 0) === 0)) {
+      return parseFloat(analytics.value.summary.totalCosts) || 0
+    }
+
+    return trades.value.reduce((sum, trade) => {
+      const commission = parseFloat(trade.commission) || 0
+      const fees = parseFloat(trade.fees) || 0
+      return sum + commission + fees
+    }, 0)
+  })
+
   const totalPnL = computed(() => {
     // Use analytics data if available, otherwise fall back to trade summation
-    if (analytics.value?.summary?.totalPnL !== undefined) {
+    if (analytics.value?.summary?.totalPnL !== undefined && !(trades.value.length > 0 && Number(analytics.value.summary.totalTrades || 0) === 0)) {
       return parseFloat(analytics.value.summary.totalPnL)
     }
     return trades.value.reduce((sum, trade) => sum + (parseFloat(trade.pnl) || 0), 0)
   })
 
+  const totalNetPnL = computed(() => {
+    if (analytics.value?.summary?.totalNetPnL !== undefined && !(trades.value.length > 0 && Number(analytics.value.summary.totalTrades || 0) === 0)) {
+      return parseFloat(analytics.value.summary.totalNetPnL) || 0
+    }
+
+    return totalPnL.value
+  })
+
+  const totalGrossPnL = computed(() => {
+    if (analytics.value?.summary?.totalGrossPnL !== undefined && !(trades.value.length > 0 && Number(analytics.value.summary.totalTrades || 0) === 0)) {
+      return parseFloat(analytics.value.summary.totalGrossPnL) || 0
+    }
+
+    return totalNetPnL.value + totalCosts.value
+  })
+
   const winRate = computed(() => {
     // Use analytics data if available, otherwise fall back to trade calculation
-    if (analytics.value?.summary?.winRate !== undefined) {
+    if (analytics.value?.summary?.winRate !== undefined && !(trades.value.length > 0 && Number(analytics.value.summary.totalTrades || 0) === 0)) {
       return parseFloat(analytics.value.summary.winRate).toFixed(2)
     }
     const winning = trades.value.filter(t => t.pnl > 0).length
@@ -58,31 +106,57 @@ export const useTradesStore = defineStore('trades', () => {
 
   const totalTrades = computed(() => {
     // Use analytics data if available for total trades count
-    if (analytics.value?.summary?.totalTrades !== undefined) {
+    if (analytics.value?.summary?.totalTrades !== undefined && !(trades.value.length > 0 && Number(analytics.value.summary.totalTrades || 0) === 0)) {
       return analytics.value.summary.totalTrades
+    }
+    if (trades.value.length > 0) {
+      return trades.value.length
     }
     // Fall back to pagination total
     return pagination.value.total
   })
+
+  function buildRequestParams(params = {}, options = {}) {
+    const merged = {
+      ...filters.value,
+      ...params
+    }
+
+    const normalizedAccounts = normalizeAccountsFilter(merged.accounts)
+    if (normalizedAccounts) {
+      merged.accounts = normalizedAccounts
+    } else {
+      delete merged.accounts
+    }
+
+    if (options.includePagination) {
+      merged.limit = pagination.value.limit
+      merged.offset = (pagination.value.page - 1) * pagination.value.limit
+    }
+
+    if (options.includeSkipCount) {
+      merged.skipCount = options.skipCount ? 'true' : 'false'
+    }
+
+    return merged
+  }
 
   async function fetchTrades(params = {}) {
     loading.value = true
     error.value = null
 
     try {
-      const offset = (pagination.value.page - 1) * pagination.value.limit
       const skipCount = params.skipCount !== false // Default to true for faster initial load
+      const requestParams = buildRequestParams(params, {
+        includePagination: true,
+        includeSkipCount: true,
+        skipCount
+      })
 
       // Fetch trades with request cancellation support
       const tradesResponse = await requestManager.request('fetchTrades', (cancelToken) =>
         api.get('/trades', {
-          params: {
-            ...filters.value,
-            ...params,
-            limit: pagination.value.limit,
-            offset: offset,
-            skipCount: skipCount ? 'true' : 'false'
-          },
+          params: requestParams,
           cancelToken
         })
       )
@@ -114,11 +188,7 @@ export const useTradesStore = defineStore('trades', () => {
         // Fetch count if it wasn't included
         skipCount && tradesResponse.data.total === null
           ? api.get('/trades/count', {
-              params: {
-                ...filters.value,
-                ...params,
-                limit: pagination.value.limit
-              }
+              params: buildRequestParams(params)
             }).then(response => {
               pagination.value.total = response.data.total
               pagination.value.totalPages = response.data.totalPages
@@ -128,10 +198,7 @@ export const useTradesStore = defineStore('trades', () => {
           : Promise.resolve(),
         // Fetch analytics (non-blocking)
         api.get('/trades/analytics', {
-          params: {
-            ...filters.value,
-            ...params
-          }
+          params: buildRequestParams(params)
         }).then(response => {
           analytics.value = response.data
         }).catch(err => {
@@ -156,23 +223,17 @@ export const useTradesStore = defineStore('trades', () => {
     error.value = null
 
     try {
-      const offset = (pagination.value.page - 1) * pagination.value.limit
+      const requestParams = buildRequestParams(params, {
+        includePagination: true
+      })
 
       // Fetch both trades and analytics in parallel for better performance
       const [tradesResponse, analyticsResponse] = await Promise.all([
         api.get('/trades/round-trip', {
-          params: {
-            ...filters.value,
-            ...params,
-            limit: pagination.value.limit,
-            offset: offset
-          }
+          params: requestParams
         }),
         api.get('/trades/analytics', {
-          params: {
-            ...filters.value,
-            ...params
-          }
+          params: buildRequestParams(params)
         })
       ])
 
@@ -206,10 +267,7 @@ export const useTradesStore = defineStore('trades', () => {
   async function fetchAnalytics(params = {}) {
     try {
       const analyticsResponse = await api.get('/trades/analytics', {
-        params: {
-          ...filters.value,
-          ...params
-        }
+        params: buildRequestParams(params)
       })
 
       // Store analytics data for consistent P&L calculations
@@ -374,7 +432,7 @@ export const useTradesStore = defineStore('trades', () => {
   function setFilters(newFilters) {
     // Check for global account filter from localStorage
     // This ensures the global account filter is ALWAYS respected, even on reset
-    const globalAccount = localStorage.getItem(GLOBAL_ACCOUNT_KEY)
+    const globalAccount = normalizeStoredAccount(localStorage.getItem(GLOBAL_ACCOUNT_KEY))
 
     // If newFilters is empty object, reset all filters
     if (Object.keys(newFilters).length === 0) {
@@ -433,7 +491,7 @@ export const useTradesStore = defineStore('trades', () => {
 
   function resetFilters() {
     // Check for global account filter from localStorage
-    const globalAccount = localStorage.getItem(GLOBAL_ACCOUNT_KEY)
+    const globalAccount = normalizeStoredAccount(localStorage.getItem(GLOBAL_ACCOUNT_KEY))
 
     filters.value = {
       symbol: '',
@@ -482,6 +540,9 @@ export const useTradesStore = defineStore('trades', () => {
     pagination,
     analytics,
     totalPnL,
+    totalNetPnL,
+    totalGrossPnL,
+    totalCosts,
     winRate,
     totalTrades,
     fetchTrades,

@@ -1,14 +1,13 @@
-# TradeTally - .gitignore
-docker-test
-docker-compose.yaml
-*bom.json
-*test.js
-!backend/tests/services/brokerSync.service.test.js
-!backend/tests/controllers/billing.cancel.test.js
-# Security scan configs
-zap.yaml
+# TradeTally
 
-# Security - NEVER commit sensitive files
+# Local Docker/dev files
+docker-compose.yaml
+docker-compose.override.yml
+docker-test
+*dev.yaml
+*dev2.yaml
+
+# Secrets and local environment
 .env
 .env.*
 !.env.example
@@ -17,238 +16,106 @@ zap.yaml
 *.p12
 *.pfx
 *.jks
-backend/src/keys/*.pem
-backend/src/keys/*.key
-secrets/
-config/secrets/
-*dev2.yaml
-*dev.yaml
-*.json
-# OS-specific files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Desktop.ini
-Thumbs.db
-.cursor/
-.agents/
-.claude/
-# Node.js dependencies
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# Runtime data
-pids
-*.pid
-*.seed
-*.pid.lock
-
-# Coverage directory used by tools like istanbul
-coverage/
-*.lcov
-
-# nyc test coverage
-.nyc_output
-
-# Grunt intermediate storage
-.grunt
-
-# Bower dependency directory
-bower_components
-
-# node-waf configuration
-.lock-wscript
-
-# Compiled binary addons
-build/Release
-
-# Dependency directories
-jspm_packages/
-
-# TypeScript cache
-*.tsbuildinfo
-
-# Optional npm cache directory
-.npm
-
-# Optional eslint cache
-.eslintcache
-
-# Microbundle cache
-.rpt2_cache/
-.rts2_cache_cjs/
-.rts2_cache_es/
-.rts2_cache_umd/
-
-# Optional REPL history
-.node_repl_history
-
-# Output of 'npm pack'
-*.tgz
-
-# Yarn Integrity file
-.yarn-integrity
-
-# parcel-bundler cache
-.cache
-.parcel-cache
-
-# Vite build output
-dist/
-dist-ssr/
-
-# Vue.js specific
-.vuepress/dist
-
-# Serverless directories
-.serverless/
-
-# FuseBox cache
-.fusebox/
-
-# DynamoDB Local files
-.dynamodb/
-
-# TernJS port file
-.tern-port
-
-# Stores VSCode versions used for testing VSCode extensions
-.vscode-test
-
-# yarn v2
-.yarn/cache
-.yarn/unplugged
-.yarn/build-state.yml
-.yarn/install-state.gz
-.pnp.*
-
-# IDE files
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# Logs
-logs/
-*.log
-lerna-debug.log*
-
-# Application specific logs
-backend/src/logs/
-backend/server.log
-
-# Database files (if using SQLite locally)
-*.sqlite
-*.sqlite3
-*.db
-
-# Backup files
-*.bak
-*.backup
-*.sql.bak
-
-# Temporary files
-tmp/
-temp/
-.tmp/
-
-# PM2 files
-ecosystem.config.js.backup
-.pm2/
-
-# SSL certificates and push notification keys (if stored locally)
-*.pem
-*.key
 *.crt
 *.cert
 *.p8
+secrets/
+config/secrets/
+keys/
+certificates/
 
-# Uploads directory (if storing files locally)
-uploads/
-backend/uploads/
+# Local key material
+backend/src/keys/*
+!backend/src/keys/
+!backend/src/keys/README.md
 
-# CUSIP cache files
-backend/src/data/cusip_cache*.json
+# Dependencies
+node_modules/
+backend/node_modules/
+frontend/node_modules/
 
-# Backup data files
-backend/src/data/backups/
-
-# Build artifacts
+# Build output and caches
+frontend/dist/
+backend/dist/
+dist/
+dist-ssr/
 build/
 out/
-
-# Test files
-test-results/
 coverage/
+.nyc_output/
+.parcel-cache/
+.cache/
+.eslintcache
+.sass-cache/
+.npm/
+.yarn/cache/
+.yarn/unplugged/
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+*.tsbuildinfo
 
-# Webpack bundles
-*.bundle.js
-*.bundle.js.map
+# Logs and runtime files
+logs/
+backend/logs/
+backend/src/logs/
+backend/server.log
+update.log
+*.log
+*.pid
+*.pid.lock
+*.seed
+.pm2/
+pids/
 
-# Local development files
-.local
-local.json
+# Local data, uploads, backups
+backend/tmp/
+tmp/
+temp/
+.tmp/
+uploads/
+backend/uploads/
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+*.bak
+*.backup
+*.sql.bak
+database_backup_*.sql
 
-# Docker files (if using Docker)
-docker-compose.override.yml
-
-# Package lock files (choose one based on your package manager)
-# package-lock.json  # Uncomment if using yarn
-# yarn.lock          # Uncomment if using npm
-
-# Generated documentation
+# App-specific local/generated files
+backend/src/email-templates/
+backend/src/data/backups/
+backend/src/data/cusip_cache*.json
 docs/generated/
-
-# Local configuration overrides
+local.json
 config/local.json
 config/local.js
+.local
 
-# Sentry files
-.sentryclirc
-
-# MacOS
+# Editor and OS files
+.DS_Store
+.DS_Store?
+._*
 .AppleDouble
 .LSOverride
-
-# Windows
+.Spotlight-V100
+.Trashes
+Thumbs.db
 Desktop.ini
 $RECYCLE.BIN/
-
-# Linux
-*~
-
-# JetBrains IDEs
+.vscode/
+.vscode-test
 .idea/
 *.iml
 *.iws
 *.ipr
-
-# Sublime Text
+*.code-workspace
 *.sublime-project
 *.sublime-workspace
-
-# Vim
 *.swp
 *.swo
-.vimrc.local
-
-# Emacs
 *~
 \#*\#
 /.emacs.desktop
@@ -257,35 +124,9 @@ $RECYCLE.BIN/
 auto-save-list
 tramp
 .\#*
+.cursor/
+.claude/
 
-# Visual Studio Code
-.vscode/
-*.code-workspace
-
-# Temporary directories
-.sass-cache/
-.tmp/
-
-# Production build files that shouldn't be committed
-frontend/dist/
-backend/dist/
-
-# Local development database dumps
-*.dump
-database_backup_*.sql
-
-# API keys and secrets (double-check these are in .env)
-secrets/
-keys/
-certificates/
-!backend/src/keys/
-!backend/src/keys/README.md
-
-*claude.md*
-*CLAUDE.md*
-.claude/*
+# Misc local files
+.sentryclirc
 performance-test.js
-backend/TELEMETRY.md
-
-# Customizable email templates (use email-templates.example/ as starting point)
-backend/src/email-templates/

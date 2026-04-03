@@ -312,6 +312,49 @@ describe('Webull parser', () => {
     const result = await parseCSV(buf(altCSV), 'webull', {});
     expectValidResult(result);
   });
+
+  test('parses production-style Webull option export with dollar-prefixed prices', async () => {
+    const optionCSV = [
+      'Option Level,Symbol,Market,Place Time,Filled Time,B/S,Side Type,Order Type,Option Type,Combo Type,Filled Avg Price,Filled Qty,Traded Value,Commission,Fee,Submitted Quantity,Amount,Limit Price,Stop Price,Time in Force,Extended Hours,Is Partial Filled',
+      '2,SPY250321C00570000,OPRA,03/01/2026 09:31:00 EST,03/01/2026 09:31:05 EST,Buy,Open,Limit,Call,Single,$1.25,2,$250.00,$0.00,$0.00,2,$250.00,$1.25,$0.00,DAY,N,No',
+      '2,SPY250321C00570000,OPRA,03/01/2026 10:01:00 EST,03/01/2026 10:01:05 EST,Sell,Close,Limit,Call,Single,$1.55,2,$310.00,$0.00,$0.00,2,$310.00,$1.55,$0.00,DAY,N,No'
+    ].join('\n');
+
+    const result = await parseCSV(buf(optionCSV), 'webull', {});
+
+    expectValidResult(result);
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0]).toMatchObject({
+      symbol: 'SPY',
+      side: 'long',
+      quantity: 2,
+      entryPrice: 1.25,
+      exitPrice: 1.55,
+      instrumentType: 'option',
+      underlyingSymbol: 'SPY',
+      optionType: 'call'
+    });
+    expect(result.diagnostics.skippedRows).toBe(0);
+    expect(result.diagnostics.invalidRows).toBe(0);
+  });
+
+  test('does not merge distinct Webull round trips during post-parse grouping', async () => {
+    const csv = [
+      'Name,Symbol,Side,Status,Filled,Total Qty,Price,Avg Price,Time-in-Force,Placed Time,Filled Time',
+      'ASTC,ASTC,Buy,Filled,5,5,5.00,5.00,DAY,03/30/2026 09:31:00 EDT,03/30/2026 09:31:05 EDT',
+      'ASTC,ASTC,Sell,Filled,5,5,5.10,5.10,DAY,03/30/2026 09:33:00 EDT,03/30/2026 09:33:05 EDT',
+      'ASTC,ASTC,Buy,Filled,5,5,5.20,5.20,DAY,03/30/2026 09:40:00 EDT,03/30/2026 09:40:05 EDT',
+      'ASTC,ASTC,Sell,Filled,5,5,5.30,5.30,DAY,03/30/2026 09:45:00 EDT,03/30/2026 09:45:05 EDT'
+    ].join('\n');
+
+    const result = await parseCSV(buf(csv), 'webull', {});
+
+    expectValidResult(result);
+    expect(result.trades).toHaveLength(2);
+    expect(result.trades.map((trade) => trade.quantity)).toEqual([5, 5]);
+    expect(result.trades.map((trade) => trade.entryPrice)).toEqual([5, 5.2]);
+    expect(result.trades.map((trade) => trade.exitPrice)).toEqual([5.1, 5.3]);
+  });
 });
 
 // ──────────────────────────────────────────────
@@ -588,6 +631,20 @@ describe('Auto-detect broker', () => {
     const result = await parseCSV(buf(csv), 'auto', {});
     expectValidResult(result);
     expect(result.diagnostics.detectedBroker).toBe('avatrade');
+  });
+
+  test('auto-detects Webull newer option export', async () => {
+    const csv = [
+      'Option Level,Symbol,Market,Place Time,Filled Time,B/S,Side Type,Order Type,Option Type,Combo Type,Filled Avg Price,Filled Qty,Traded Value,Commission,Fee,Submitted Quantity,Amount,Limit Price,Stop Price,Time in Force,Extended Hours,Is Partial Filled',
+      '2,SPY250321C00570000,OPRA,03/01/2026 09:31:00 EST,03/01/2026 09:31:05 EST,Buy,Open,Limit,Call,Single,$1.25,2,$250.00,$0.00,$0.00,2,$250.00,$1.25,$0.00,DAY,N,No',
+      '2,SPY250321C00570000,OPRA,03/01/2026 10:01:00 EST,03/01/2026 10:01:05 EST,Sell,Close,Limit,Call,Single,$1.55,2,$310.00,$0.00,$0.00,2,$310.00,$1.55,$0.00,DAY,N,No'
+    ].join('\n');
+
+    const result = await parseCSV(buf(csv), 'auto', {});
+
+    expectValidResult(result);
+    expect(result.diagnostics.detectedBroker).toBe('webull');
+    expect(result.trades).toHaveLength(1);
   });
 });
 
