@@ -69,7 +69,7 @@
             />
             <span class="w-2 h-2 rounded-full bg-green-500 shrink-0"></span>
             <span class="text-sm text-gray-700 dark:text-gray-300">
-              TP{{ index + 1 }} (${{ formatPrice(target.price) }})
+              TP{{ index + 1 }} ({{ currencySymbol }}{{ formatPrice(target.price) }})
             </span>
             <span v-if="target.rValue" class="text-xs text-primary-600 dark:text-primary-400 font-medium">
               {{ target.rValue }}R
@@ -95,7 +95,7 @@
             />
             <span class="w-2 h-2 rounded-full bg-red-500 shrink-0"></span>
             <span class="text-sm text-gray-700 dark:text-gray-300">
-              Stop Loss (${{ formatPrice(trade.stop_loss) }})
+              Stop Loss ({{ currencySymbol }}{{ formatPrice(trade.stop_loss) }})
             </span>
           </label>
           <span v-if="slHit" class="px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
@@ -209,7 +209,7 @@
           <div class="flex items-center justify-between p-2 rounded bg-gray-50 dark:bg-gray-700/50">
             <div class="flex items-center">
               <span class="w-2 h-2 rounded-full bg-red-500 mr-2"></span>
-              <span class="text-sm text-gray-700 dark:text-gray-300">Stop Loss (${{ formatPrice(analysis.analysis_result?.stop_loss_analysis?.price) }})</span>
+              <span class="text-sm text-gray-700 dark:text-gray-300">Stop Loss ({{ currencySymbol }}{{ formatPrice(analysis.analysis_result?.stop_loss_analysis?.price) }})</span>
             </div>
             <div class="text-right">
               <span v-if="analysis.analysis_result?.stop_loss_analysis?.was_crossed" class="text-xs text-red-600 dark:text-red-400">
@@ -229,7 +229,7 @@
           >
             <div class="flex items-center">
               <span class="w-2 h-2 rounded-full bg-green-500 mr-2"></span>
-              <span class="text-sm text-gray-700 dark:text-gray-300">{{ tp.label }} (${{ formatPrice(tp.price) }})</span>
+              <span class="text-sm text-gray-700 dark:text-gray-300">{{ tp.label }} ({{ currencySymbol }}{{ formatPrice(tp.price) }})</span>
             </div>
             <div class="text-right">
               <span v-if="tp.was_crossed" class="text-xs text-green-600 dark:text-green-400">
@@ -267,8 +267,10 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import api from '@/services/api'
 import { useUserTimezone } from '@/composables/useUserTimezone'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 
 const { formatTime: formatTimeTz } = useUserTimezone()
+const { currencySymbol } = useCurrencyFormatter()
 
 const props = defineProps({
   trade: {

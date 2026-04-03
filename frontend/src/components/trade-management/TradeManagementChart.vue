@@ -67,21 +67,21 @@
             <svg class="w-4 h-4 mr-1 text-emerald-600 dark:text-emerald-500" fill="currentColor" viewBox="0 0 24 24">
               <path d="M12 4l-8 8h5v8h6v-8h5z"/>
             </svg>
-            <span class="text-gray-600 dark:text-gray-400">Entry: ${{ formatPrice(trade.entry_price) }}</span>
+            <span class="text-gray-600 dark:text-gray-400">Entry: {{ formatCurrency(trade.entry_price) }}</span>
           </div>
           <div class="flex items-center">
             <svg class="w-4 h-4 mr-1 text-red-600 dark:text-red-500" fill="currentColor" viewBox="0 0 24 24">
               <path d="M12 20l8-8h-5V4H9v8H4z"/>
             </svg>
-            <span class="text-gray-600 dark:text-gray-400">Exit: ${{ formatPrice(trade.exit_price) }}</span>
+            <span class="text-gray-600 dark:text-gray-400">Exit: {{ formatCurrency(trade.exit_price) }}</span>
           </div>
           <div class="flex items-center">
             <span class="w-3 h-3 rounded-full bg-red-600 dark:bg-red-500 mr-2"></span>
-            <span class="text-gray-600 dark:text-gray-400">Stop Loss: ${{ formatPrice(trade.stop_loss) }}</span>
+            <span class="text-gray-600 dark:text-gray-400">Stop Loss: {{ formatCurrency(trade.stop_loss) }}</span>
           </div>
           <div v-if="trade.take_profit" class="flex items-center">
             <span class="w-3 h-3 rounded-full bg-primary-600 dark:bg-primary-500 mr-2"></span>
-            <span class="text-gray-600 dark:text-gray-400">Take Profit: ${{ formatPrice(trade.take_profit) }}</span>
+            <span class="text-gray-600 dark:text-gray-400">Take Profit: {{ formatCurrency(trade.take_profit) }}</span>
             <!-- Achievability indicator -->
             <span
               v-if="takeProfitAchievable !== null"
@@ -105,6 +105,7 @@
 import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import * as LightweightCharts from 'lightweight-charts'
 import api from '@/services/api'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 
 const props = defineProps({
   trade: {
@@ -122,6 +123,8 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['chart-loaded'])
+
+const { formatCurrency, currencySymbol } = useCurrencyFormatter()
 
 const chartContainer = ref(null)
 const showChart = ref(false)
@@ -200,12 +203,12 @@ function validatePriceLevels(candles, trade) {
   if (side === 'long' && stopLoss >= entryPrice) {
     warnings.push({
       type: 'error',
-      message: `Stop loss ($${formatPrice(stopLoss)}) should be below entry price ($${formatPrice(entryPrice)}) for a long trade`
+      message: `Stop loss (${formatCurrency(stopLoss)}) should be below entry price (${formatCurrency(entryPrice)}) for a long trade`
     })
   } else if (side === 'short' && stopLoss <= entryPrice) {
     warnings.push({
       type: 'error',
-      message: `Stop loss ($${formatPrice(stopLoss)}) should be above entry price ($${formatPrice(entryPrice)}) for a short trade`
+      message: `Stop loss (${formatCurrency(stopLoss)}) should be above entry price (${formatCurrency(entryPrice)}) for a short trade`
     })
   }
 
@@ -215,13 +218,13 @@ function validatePriceLevels(candles, trade) {
     if (side === 'long' && takeProfit <= entryPrice) {
       warnings.push({
         type: 'error',
-        message: `Take profit ($${formatPrice(takeProfit)}) should be above entry price ($${formatPrice(entryPrice)}) for a long trade`
+        message: `Take profit (${formatCurrency(takeProfit)}) should be above entry price (${formatCurrency(entryPrice)}) for a long trade`
       })
       takeProfitAchievable.value = false
     } else if (side === 'short' && takeProfit >= entryPrice) {
       warnings.push({
         type: 'error',
-        message: `Take profit ($${formatPrice(takeProfit)}) should be below entry price ($${formatPrice(entryPrice)}) for a short trade`
+        message: `Take profit (${formatCurrency(takeProfit)}) should be below entry price (${formatCurrency(entryPrice)}) for a short trade`
       })
       takeProfitAchievable.value = false
     } else {
@@ -231,7 +234,7 @@ function validatePriceLevels(candles, trade) {
         if (!takeProfitAchievable.value) {
           warnings.push({
             type: 'warning',
-            message: `Take profit ($${formatPrice(takeProfit)}) was never reached - highest price was $${formatPrice(highestPrice)}`
+            message: `Take profit (${formatCurrency(takeProfit)}) was never reached - highest price was ${formatCurrency(highestPrice)}`
           })
         }
       } else if (side === 'short') {
@@ -239,7 +242,7 @@ function validatePriceLevels(candles, trade) {
         if (!takeProfitAchievable.value) {
           warnings.push({
             type: 'warning',
-            message: `Take profit ($${formatPrice(takeProfit)}) was never reached - lowest price was $${formatPrice(lowestPrice)}`
+            message: `Take profit (${formatCurrency(takeProfit)}) was never reached - lowest price was ${formatCurrency(lowestPrice)}`
           })
         }
       }
@@ -451,7 +454,7 @@ function addTradeMarkers(candles) {
       position: 'belowBar',
       color: '#059669',  // emerald-600
       shape: 'arrowUp',
-      text: `${isLong ? 'BUY' : 'SELL'} @ $${formatPrice(entryPrice)}`,
+      text: `${isLong ? 'BUY' : 'SELL'} @ ${formatCurrency(entryPrice)}`,
       size: 2
     })
   }
@@ -462,14 +465,14 @@ function addTradeMarkers(candles) {
     const pnl = parseFloat(chartTrade?.pnl || trade.pnl)
     const isProfit = pnl >= 0
     const isLong = (chartTrade?.side || trade.side) === 'long'
-    const pnlText = isProfit ? `+$${formatPrice(pnl)}` : `-$${formatPrice(Math.abs(pnl))}`
+    const pnlText = isProfit ? `+${formatCurrency(pnl)}` : `-${formatCurrency(Math.abs(pnl))}`
 
     markers.push({
       time: exitCandle.time,
       position: 'aboveBar',
       color: '#dc2626',  // red-600
       shape: 'arrowDown',
-      text: `${isLong ? 'SELL' : 'BUY'} @ $${formatPrice(exitPrice)} (${pnlText})`,
+      text: `${isLong ? 'SELL' : 'BUY'} @ ${formatCurrency(exitPrice)} (${pnlText})`,
       size: 2
     })
 
@@ -492,7 +495,7 @@ function addTradeMarkers(candles) {
         position: isLong ? 'belowBar' : 'aboveBar',
         color: '#b91c1c',  // red-700 - slightly darker for visibility
         shape: 'circle',
-        text: `SL: $${formatPrice(stopLoss)}`,
+        text: `SL: ${formatCurrency(stopLoss)}`,
         size: 1
       })
     }
@@ -504,7 +507,7 @@ function addTradeMarkers(candles) {
         position: isLong ? 'aboveBar' : 'belowBar',
         color: '#4f46e5',  // indigo-600
         shape: 'circle',
-        text: `TP: $${formatPrice(takeProfit)}`,
+        text: `TP: ${formatCurrency(takeProfit)}`,
         size: 1
       })
     }
@@ -548,11 +551,6 @@ function addPriceLines() {
       title: '',
     })
   }
-}
-
-function formatPrice(value) {
-  if (!value) return '-'
-  return parseFloat(value).toFixed(2)
 }
 
 // Handle resize

@@ -57,7 +57,7 @@
             <span class="text-red-500">*</span>
           </label>
           <div class="relative">
-            <span class="absolute left-3 top-2 text-gray-500 dark:text-gray-400">$</span>
+            <span class="absolute left-3 top-2 text-gray-500 dark:text-gray-400">{{ currencySymbol }}</span>
             <input
               v-model="stopLoss"
               type="number"
@@ -111,7 +111,7 @@
             <span class="text-gray-400">(optional)</span>
           </label>
           <div class="relative">
-            <span class="absolute left-3 top-2 text-gray-500 dark:text-gray-400">$</span>
+            <span class="absolute left-3 top-2 text-gray-500 dark:text-gray-400">{{ currencySymbol }}</span>
             <input
               v-model="takeProfit"
               type="number"
@@ -221,7 +221,10 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import api from '@/services/api'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import TakeProfitTargetsForm from './TakeProfitTargetsForm.vue'
+
+const { formatCurrency, currencySymbol } = useCurrencyFormatter()
 
 const props = defineProps({
   trade: {
@@ -340,16 +343,6 @@ async function saveLevels() {
 function formatPrice(value) {
   if (!value) return '-'
   return parseFloat(value).toFixed(2)
-}
-
-function formatCurrency(value) {
-  if (value === null || value === undefined) return '-'
-  const num = parseFloat(value)
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2
-  }).format(num)
 }
 
 // Reset form when trade changes

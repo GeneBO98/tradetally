@@ -107,13 +107,13 @@
                   <div>
                     <div class="text-gray-500 dark:text-gray-400">Avg P&L</div>
                     <div class="font-medium" :class="data.avg_pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
-                      ${{ formatNumber(data.avg_pnl) }}
+                      {{ formatCurrency(data.avg_pnl) }}
                     </div>
                   </div>
                   <div>
                     <div class="text-gray-500 dark:text-gray-400">Total P&L</div>
                     <div class="font-medium" :class="data.total_pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
-                      ${{ formatNumber(data.total_pnl) }}
+                      {{ formatCurrency(data.total_pnl) }}
                     </div>
                   </div>
                   <div>
@@ -131,7 +131,7 @@
                         <span class="font-medium">{{ sideData.win_rate }}%</span>
                       </div>
                       <div class="text-xs text-gray-500 dark:text-gray-400">
-                        {{ sideData.trade_count }} trades, ${{ formatNumber(sideData.avg_pnl) }} avg
+                        {{ sideData.trade_count }} trades, {{ formatCurrency(sideData.avg_pnl) }} avg
                       </div>
                     </div>
                   </div>
@@ -253,7 +253,7 @@
                     {{ performer.win_rate }}%
                   </td>
                   <td class="px-4 py-4 whitespace-nowrap text-sm font-medium" :class="performer.total_pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
-                    ${{ formatNumber(performer.total_pnl) }}
+                    {{ formatCurrency(performer.total_pnl) }}
                   </td>
                   <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                     {{ performer.avg_return_pct }}%
@@ -337,7 +337,7 @@
             <div>
               <div class="text-sm text-gray-500 dark:text-gray-400">Total P&L</div>
               <div class="text-lg font-semibold" :class="selectedPerformer.total_pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
-                ${{ formatNumber(selectedPerformer.total_pnl) }}
+                {{ formatCurrency(selectedPerformer.total_pnl) }}
               </div>
             </div>
             <div>
@@ -373,11 +373,11 @@
                     </span>
                     <span class="px-2 py-1 text-xs font-semibold rounded-full"
                       :class="trade.pnl >= 0 ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400' : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'">
-                      {{ trade.pnl >= 0 ? '+' : '' }}${{ formatNumber(trade.pnl) }}
+                      {{ formatCurrency(trade.pnl) }}
                     </span>
                   </div>
                   <div class="text-sm text-gray-500 dark:text-gray-400">
-                    {{ trade.quantity }} shares @ ${{ formatNumber(trade.entry_price) }} → ${{ formatNumber(trade.exit_price) }}
+                    {{ trade.quantity }} shares @ {{ formatCurrency(trade.entry_price) }} → {{ formatCurrency(trade.exit_price) }}
                   </div>
                 </div>
 
@@ -412,9 +412,12 @@
 import { ref, onMounted } from 'vue'
 import { format } from 'date-fns'
 import { formatTradeDate } from '@/utils/date'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import MdiIcon from '@/components/MdiIcon.vue'
 import { mdiRefresh, mdiAlertCircle, mdiLock, mdiLightbulb, mdiChartLine, mdiClose } from '@mdi/js'
 import api from '@/services/api'
+
+const { formatCurrency } = useCurrencyFormatter()
 
 // Icons
 const refreshIcon = mdiRefresh
@@ -437,13 +440,6 @@ const performerDetailsLoading = ref(false)
 const performerDetailsError = ref(null)
 
 // Methods
-function formatNumber(num) {
-  return new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(num || 0)
-}
-
 function formatDate(date) {
   return formatTradeDate(date, 'MMM dd, yyyy')
 }

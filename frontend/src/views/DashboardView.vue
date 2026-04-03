@@ -398,7 +398,7 @@
                     <div class="text-lg font-bold" :class="[
                       getOptionPnL(position).unrealizedPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                     ]">
-                      {{ getOptionPnL(position).unrealizedPnL >= 0 ? '+' : '' }}${{ formatCurrency(Math.abs(getOptionPnL(position).unrealizedPnL)) }}
+                      {{ formatSignedCurrency(getOptionPnL(position).unrealizedPnL) }}
                     </div>
                     <div class="text-xs font-medium" :class="[
                       getOptionPnL(position).unrealizedPnLPercent >= 0 ? 'text-green-500' : 'text-red-500'
@@ -412,7 +412,7 @@
                   <div class="text-lg font-bold" :class="[
                     position.unrealizedPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                   ]">
-                    {{ position.unrealizedPnL >= 0 ? '+' : '' }}${{ formatCurrency(Math.abs(position.unrealizedPnL)) }}
+                    {{ formatSignedCurrency(position.unrealizedPnL) }}
                   </div>
                   <div class="text-xs font-medium" :class="[
                     position.unrealizedPnLPercent >= 0 ? 'text-green-500' : 'text-red-500'
@@ -442,18 +442,18 @@
                 </div>
                 <div class="table-card-row">
                   <span class="table-card-label">Avg Price</span>
-                  <span class="table-card-value">${{ formatCurrency(position.avgPrice) }}</span>
+                  <span class="table-card-value">{{ formatCurrency(position.avgPrice) }}</span>
                 </div>
                 <div class="table-card-row">
                   <span class="table-card-label">Total Cost</span>
-                  <span class="table-card-value">${{ formatCurrency(position.totalCost) }}</span>
+                  <span class="table-card-value">{{ formatCurrency(position.totalCost) }}</span>
                 </div>
                 <div class="table-card-row">
                   <span class="table-card-label">{{ position.requires_manual_price ? 'Premium' : 'Current Price' }}<span v-if="position.quoteSource === 'alpaca'" class="ml-1 text-gray-400 font-normal">(via Alpaca)</span></span>
                   <span class="table-card-value">
                     <template v-if="position.requires_manual_price">
                       <div class="flex items-center space-x-1">
-                        <span class="text-xs text-gray-400">$</span>
+                        <span class="text-xs text-gray-400">{{ currencySymbol }}</span>
                         <input
                           type="number"
                           step="0.01"
@@ -466,7 +466,7 @@
                       </div>
                     </template>
                     <template v-else>
-                      <span v-if="position.currentPrice !== null">${{ formatCurrency(position.currentPrice) }}</span>
+                      <span v-if="position.currentPrice !== null">{{ formatCurrency(position.currentPrice) }}</span>
                       <span v-else-if="quotesLoading" class="inline-block h-4 w-14 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></span>
                       <span v-else class="text-xs text-gray-400">No quote</span>
                     </template>
@@ -493,7 +493,7 @@
                         {{ trade.side }}
                       </span>
                       <span class="text-xs text-gray-600 dark:text-gray-400">
-                        {{ (trade.quantity || 0).toLocaleString() }} @ ${{ formatCurrency(trade.entry_price) }}
+                        {{ (trade.quantity || 0).toLocaleString() }} @ {{ formatCurrency(trade.entry_price) }}
                       </span>
                     </div>
                     <router-link
@@ -522,12 +522,12 @@
                 <div class="text-sm font-bold text-gray-900 dark:text-white">Total Position</div>
                 <div class="text-right">
                   <div class="text-sm font-bold text-gray-900 dark:text-white">
-                    ${{ formatCurrency(totalOpenCost) }}
+                    {{ formatCurrency(totalOpenCost) }}
                   </div>
                   <div v-if="totalUnrealizedPnL !== null" class="text-sm font-bold" :class="[
                     totalUnrealizedPnL >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
-                    {{ totalUnrealizedPnL >= 0 ? '+' : '' }}${{ formatCurrency(Math.abs(totalUnrealizedPnL)) }}
+                    {{ formatSignedCurrency(totalUnrealizedPnL) }}
                   </div>
                 </div>
               </div>
@@ -600,16 +600,16 @@
                       {{ position.totalQuantity === 0 ? 'Hedged' : (position.totalQuantity || 0).toLocaleString() }}
                     </td>
                     <td class="px-3 py-2 text-sm font-bold text-gray-900 dark:text-white text-right">
-                      ${{ formatCurrency(position.avgPrice) }}
+                      {{ formatCurrency(position.avgPrice) }}
                     </td>
                     <td class="px-3 py-2 text-sm font-bold text-gray-900 dark:text-white text-right">
-                      ${{ formatCurrency(position.totalCost) }}
+                      {{ formatCurrency(position.totalCost) }}
                     </td>
                     <td class="px-3 py-2 text-sm text-right">
                       <!-- Option: manual premium input -->
                       <template v-if="position.requires_manual_price">
                         <div class="flex items-center justify-end space-x-1">
-                          <span class="text-xs text-gray-400">$</span>
+                          <span class="text-xs text-gray-400">{{ currencySymbol }}</span>
                           <input
                             type="number"
                             step="0.01"
@@ -624,11 +624,11 @@
                       <!-- Stock/Future: Finnhub price -->
                       <template v-else>
                         <div v-if="position.currentPrice !== null" class="font-bold text-gray-900 dark:text-white">
-                          ${{ formatCurrency(position.currentPrice) }}
+                          {{ formatCurrency(position.currentPrice) }}
                           <div v-if="position.dayChange !== undefined" class="text-xs" :class="[
                             position.dayChange >= 0 ? 'text-green-600' : 'text-red-600'
                           ]">
-                            {{ position.dayChange >= 0 ? '+' : '' }}{{ formatCurrency(position.dayChange) }}
+                            {{ formatSignedCurrency(position.dayChange) }}
                             ({{ position.dayChangePercent >= 0 ? '+' : '' }}{{ formatNumber(position.dayChangePercent) }}%)
                           </div>
                           <div v-if="position.quoteSource === 'alpaca'" class="text-xs text-gray-400">via Alpaca</div>
@@ -640,13 +640,13 @@
                     <td class="px-3 py-2 text-sm font-bold text-right">
                       <template v-if="position.requires_manual_price">
                         <span v-if="getOptionPnL(position).currentValue !== null" class="text-gray-900 dark:text-white">
-                          ${{ formatCurrency(getOptionPnL(position).currentValue) }}
+                          {{ formatCurrency(getOptionPnL(position).currentValue) }}
                         </span>
                         <span v-else class="text-xs text-gray-400">-</span>
                       </template>
                       <template v-else>
                         <span v-if="position.currentValue !== null" class="text-gray-900 dark:text-white">
-                          ${{ formatCurrency(position.currentValue) }}
+                          {{ formatCurrency(position.currentValue) }}
                         </span>
                         <div v-else-if="quotesLoading" class="h-4 w-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse ml-auto"></div>
                         <span v-else class="text-xs text-gray-400">-</span>
@@ -658,7 +658,7 @@
                           <div :class="[
                             getOptionPnL(position).unrealizedPnL >= 0 ? 'text-green-600' : 'text-red-600'
                           ]">
-                            {{ getOptionPnL(position).unrealizedPnL >= 0 ? '+' : '' }}${{ formatCurrency(Math.abs(getOptionPnL(position).unrealizedPnL)) }}
+                            {{ formatSignedCurrency(getOptionPnL(position).unrealizedPnL) }}
                           </div>
                           <div class="text-xs" :class="[
                             getOptionPnL(position).unrealizedPnLPercent >= 0 ? 'text-green-500' : 'text-red-500'
@@ -673,7 +673,7 @@
                           <div :class="[
                             position.unrealizedPnL >= 0 ? 'text-green-600' : 'text-red-600'
                           ]">
-                            {{ position.unrealizedPnL >= 0 ? '+' : '' }}${{ formatCurrency(Math.abs(position.unrealizedPnL)) }}
+                            {{ formatSignedCurrency(position.unrealizedPnL) }}
                           </div>
                           <div class="text-xs" :class="[
                             position.unrealizedPnLPercent >= 0 ? 'text-green-500' : 'text-red-500'
@@ -722,10 +722,10 @@
                       {{ (trade.quantity || 0).toLocaleString() }}
                     </td>
                     <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 text-right">
-                      ${{ formatCurrency(trade.entry_price) }}
+                      {{ formatCurrency(trade.entry_price) }}
                     </td>
                     <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 text-right">
-                      ${{ formatCurrency(trade.entry_price * trade.quantity) }}
+                      {{ formatCurrency(trade.entry_price * trade.quantity) }}
                     </td>
                     <td class="px-3 py-2 text-sm text-gray-400 text-right">
                       <span class="text-xs">-</span>
@@ -756,7 +756,7 @@
                     Total:
                   </td>
                   <td class="px-3 py-3 text-sm font-bold text-gray-900 dark:text-white text-right">
-                    ${{ formatCurrency(totalOpenCost) }}
+                    {{ formatCurrency(totalOpenCost) }}
                   </td>
                   <td colspan="2" class="px-3 py-3"></td>
                   <td class="px-3 py-3 text-sm font-bold text-right">
@@ -764,7 +764,7 @@
                       <div :class="[
                         totalUnrealizedPnL >= 0 ? 'text-green-600' : 'text-red-600'
                       ]">
-                        {{ totalUnrealizedPnL >= 0 ? '+' : '' }}${{ formatCurrency(Math.abs(totalUnrealizedPnL)) }}
+                        {{ formatSignedCurrency(totalUnrealizedPnL) }}
                       </div>
                       <div class="text-xs" :class="[
                         totalUnrealizedPnLPercent >= 0 ? 'text-green-500' : 'text-red-500'
@@ -820,10 +820,10 @@
                     <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="[
                       analytics.summary.totalPnL >= 0 ? 'text-green-600' : 'text-red-600'
                     ]">
-                      ${{ formatCurrency(analytics.summary.totalPnL) }}
+                      {{ formatCurrency(analytics.summary.totalPnL) }}
                     </dd>
                     <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                      {{ calculationMethod }}: ${{ formatCurrency(analytics.summary.avgPnL) }}
+                      {{ calculationMethod }}: {{ formatCurrency(analytics.summary.avgPnL) }}
                     </div>
                   </div>
                 </div>
@@ -866,7 +866,7 @@
                       Max Drawdown
                     </dt>
                     <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold text-red-600 whitespace-nowrap">
-                      ${{ formatCurrency(Math.abs(analytics.summary.maxDrawdown)) }}
+                      {{ formatCurrency(analytics.summary.maxDrawdown, { abs: true }) }}
                     </dd>
                     <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
                       Peak decline
@@ -893,7 +893,7 @@
                       {{ calculationMethod }} Win
                     </dt>
                     <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-green-600 whitespace-nowrap">
-                      ${{ formatCurrency(analytics.summary.avgWin) }}
+                      {{ formatCurrency(analytics.summary.avgWin) }}
                     </dd>
                   </div>
                 </div>
@@ -904,7 +904,7 @@
                       {{ calculationMethod }} Loss
                     </dt>
                     <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-red-600 whitespace-nowrap">
-                      ${{ formatCurrency(Math.abs(analytics.summary.avgLoss)) }}
+                      {{ formatCurrency(analytics.summary.avgLoss, { abs: true }) }}
                     </dd>
                   </div>
                 </div>
@@ -915,7 +915,7 @@
                       Best Trade
                     </dt>
                     <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-green-600 whitespace-nowrap">
-                      ${{ formatCurrency(analytics.summary.bestTrade) }}
+                      {{ formatCurrency(analytics.summary.bestTrade) }}
                     </dd>
                   </div>
                 </div>
@@ -926,7 +926,7 @@
                       Worst Trade
                     </dt>
                     <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-red-600 whitespace-nowrap">
-                      ${{ formatCurrency(analytics.summary.worstTrade) }}
+                      {{ formatCurrency(analytics.summary.worstTrade) }}
                     </dd>
                   </div>
                 </div>
@@ -1067,10 +1067,10 @@
                             <td class="px-3 py-2 text-sm text-right" :class="[
                               symbol.total_pnl >= 0 ? 'text-green-600' : 'text-red-600'
                             ]">
-                              ${{ formatCurrency(symbol.total_pnl) }}
+                              {{ formatCurrency(symbol.total_pnl) }}
                             </td>
                             <td class="px-3 py-2 text-sm text-gray-500 dark:text-gray-400 text-right">
-                              ${{ formatCurrency(symbol.avg_pnl) }}
+                              {{ formatCurrency(symbol.avg_pnl) }}
                             </td>
                           </tr>
                         </tbody>
@@ -1097,7 +1097,7 @@
                               {{ trade.symbol }} {{ formatDate(trade.trade_date) }}
                             </span>
                             <span class="text-green-600 font-medium">
-                              ${{ formatCurrency(trade.pnl) }}
+                              {{ formatCurrency(trade.pnl) }}
                             </span>
                           </div>
                         </div>
@@ -1117,7 +1117,7 @@
                               trade.pnl >= 0 ? 'text-green-600' : 'text-red-600',
                               'font-medium'
                             ]">
-                              ${{ formatCurrency(trade.pnl) }}
+                              {{ formatCurrency(trade.pnl) }}
                             </span>
                           </div>
                           <div v-else class="text-sm text-gray-500 dark:text-gray-400 italic py-2 flex items-center">
@@ -1132,7 +1132,7 @@
                         <div class="flex justify-between items-center px-2">
                           <span class="text-sm font-semibold text-gray-900 dark:text-white">Net Difference</span>
                           <span class="text-sm font-semibold" :class="topTradesNetPnl >= 0 ? 'text-green-600' : 'text-red-600'">
-                            {{ topTradesNetPnl >= 0 ? '' : '-' }}${{ formatCurrency(topTradesNetPnl) }}
+                            {{ formatCurrency(topTradesNetPnl) }}
                           </span>
                         </div>
                       </div>
@@ -1163,7 +1163,7 @@
                         Total Commissions
                       </dt>
                       <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
-                        ${{ formatCurrency(analytics.summary.totalCosts) }}
+                        {{ formatCurrency(analytics.summary.totalCosts) }}
                       </dd>
                     </div>
                     <div>
@@ -1270,10 +1270,12 @@ import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
 import { useYearWrappedStore } from '@/stores/yearWrapped'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { useUserTimezone } from '@/composables/useUserTimezone'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import draggable from 'vuedraggable'
 
 const authStore = useAuthStore()
 const { formatTime: formatTimeTz } = useUserTimezone()
+const { formatCurrency, currencySymbol, formatSignedCurrency } = useCurrencyFormatter()
 const { selectedAccount, selectedAccountLabel } = useGlobalAccountFilter()
 const yearWrappedStore = useYearWrappedStore()
 const router = useRouter()
@@ -1585,14 +1587,6 @@ const topTradesNetPnl = computed(() => {
   const worstTotal = (analytics.value?.topTrades?.worst || []).reduce((sum, t) => sum + (parseFloat(t.pnl) || 0), 0)
   return bestTotal + worstTotal
 })
-
-function formatCurrency(amount) {
-  if (!amount && amount !== 0) return '0.00'
-  return Math.abs(amount).toLocaleString('en-US', { 
-    minimumFractionDigits: 2, 
-    maximumFractionDigits: 2 
-  })
-}
 
 function formatNumber(num) {
   if (!num && num !== 0) return '0.00'
@@ -1931,7 +1925,7 @@ function createPnLChart() {
             },
             ticks: {
               callback: function(value) {
-                return '$' + value.toLocaleString();
+                return currencySymbol.value + value.toLocaleString();
               }
             }
           },

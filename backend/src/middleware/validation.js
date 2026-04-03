@@ -375,7 +375,8 @@ const schemas = {
       id: Joi.string().required(),
       visible: Joi.boolean().required(),
       size: Joi.string().valid('full', 'half').optional()
-    })).allow(null)
+    })).allow(null),
+    displayCurrency: Joi.string().max(10)
   }).min(1),
 
   // Mobile-specific validation schemas

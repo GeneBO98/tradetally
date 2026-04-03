@@ -452,7 +452,9 @@
                                 "
                             >
                                 {{
-                                    showRValue ? "Show P&L ($)" : "Show R-Value"
+                                    showRValue
+                                        ? `Show P&L (${currencySymbol})`
+                                        : "Show R-Value"
                                 }}
                             </button>
                         </div>
@@ -490,11 +492,13 @@ import { ref, onMounted, computed, nextTick, watch } from "vue";
 import { useTradesStore } from "@/stores/trades";
 import { Chart, registerables } from "chart.js";
 import { useGlobalAccountFilter } from "@/composables/useGlobalAccountFilter";
+import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
 
 Chart.register(...registerables);
 
 const tradesStore = useTradesStore();
 const { selectedAccount } = useGlobalAccountFilter();
+const { formatCurrency, currencySymbol } = useCurrencyFormatter();
 
 const loading = ref(false);
 const initialLoading = ref(true); // Track initial load separately to preserve scroll on refresh
@@ -693,7 +697,7 @@ const createPnLChart = () => {
                         callback: (value) =>
                             showRValue.value
                                 ? `${value.toFixed(1)}R`
-                                : formatCurrency(value, true),
+                                : formatCurrency(value, { compact: true }),
                     },
                 },
             },
@@ -772,28 +776,6 @@ const createWinRateChart = () => {
 };
 
 // Formatting helpers
-const formatCurrency = (value, compact = false) => {
-    if (value === null || value === undefined) return "-";
-
-    const absValue = Math.abs(value);
-    const sign = value < 0 ? "-" : "";
-
-    if (compact && absValue >= 1000) {
-        const formatted =
-            absValue >= 1000000
-                ? `${(absValue / 1000000).toFixed(1)}M`
-                : `${(absValue / 1000).toFixed(1)}K`;
-        return `${sign}$${formatted}`;
-    }
-
-    return new Intl.NumberFormat("en-US", {
-        style: "currency",
-        currency: "USD",
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-    }).format(value);
-};
-
 const formatPercentage = (value) => {
     if (value === null || value === undefined) return "-";
     return `${value.toFixed(1)}%`;

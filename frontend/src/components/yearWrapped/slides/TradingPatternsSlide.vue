@@ -63,6 +63,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 
 const props = defineProps({
   data: {
@@ -70,6 +71,12 @@ const props = defineProps({
     required: true
   }
 })
+
+const { formatCurrency: _formatCurrency } = useCurrencyFormatter()
+
+function formatCurrency(value) {
+  return _formatCurrency(value, { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+}
 
 const hasPatternData = computed(() => {
   const p = props.data.patterns
@@ -96,15 +103,6 @@ function formatHoldTime(hours) {
   }
   const days = Math.round(hours / 24)
   return `${days}d`
-}
-
-function formatCurrency(value) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
-  }).format(value)
 }
 </script>
 

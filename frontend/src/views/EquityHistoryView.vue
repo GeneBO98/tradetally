@@ -106,7 +106,7 @@
                                 <div
                                     class="text-xs font-medium text-green-600 dark:text-green-400"
                                 >
-                                    ${{ formatNumber(day.equity) }}
+                                    {{ formatCurrency(day.equity) }}
                                 </div>
                             </div>
 
@@ -140,7 +140,7 @@
                         >
                             {{
                                 monthStartEquity
-                                    ? `$${formatNumber(monthStartEquity)}`
+                                    ? formatCurrency(monthStartEquity)
                                     : "N/A"
                             }}
                         </dd>
@@ -159,7 +159,7 @@
                         >
                             {{
                                 monthEndEquity
-                                    ? `$${formatNumber(monthEndEquity)}`
+                                    ? formatCurrency(monthEndEquity)
                                     : "N/A"
                             }}
                         </dd>
@@ -212,7 +212,7 @@
                                 >
                                     <span
                                         class="text-gray-500 dark:text-gray-400"
-                                        >$</span
+                                        >{{ currencySymbol }}</span
                                     >
                                 </div>
                                 <input
@@ -280,6 +280,9 @@
 import { ref, onMounted } from "vue";
 import { useNotification } from "@/composables/useNotification";
 import api from "@/services/api";
+import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
+
+const { formatCurrency, currencySymbol } = useCurrencyFormatter();
 
 const { showSuccess, showError, showDangerConfirmation } = useNotification();
 
@@ -309,12 +312,6 @@ const dayHeaders = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 // Current date state
 let currentDate = new Date();
 
-function formatNumber(number) {
-    return parseFloat(number).toLocaleString("en-US", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-    });
-}
 
 function isToday(date) {
     const today = new Date();
@@ -444,7 +441,7 @@ function updateMonthlyStats() {
     if (monthStartEquity.value && monthEndEquity.value) {
         const change = monthEndEquity.value - monthStartEquity.value;
         const percentage = ((change / monthStartEquity.value) * 100).toFixed(2);
-        monthlyChange.value = `$${formatNumber(change)} (${percentage}%)`;
+        monthlyChange.value = `${formatCurrency(change)} (${percentage}%)`;
         monthlyChangeClass.value =
             change >= 0 ? "text-green-600" : "text-red-600";
     } else {

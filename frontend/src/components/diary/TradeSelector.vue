@@ -46,9 +46,9 @@
             </div>
             <div class="mt-1 flex items-center space-x-4 text-xs text-gray-500 dark:text-gray-400">
               <span>Qty: {{ Math.abs(trade.quantity) }}</span>
-              <span v-if="trade.entry_price">Entry: ${{ formatPrice(trade.entry_price) }}</span>
+              <span v-if="trade.entry_price">Entry: {{ formatCurrency(trade.entry_price, { abs: true }) }}</span>
               <span v-if="trade.pnl !== null && trade.pnl !== undefined" :class="trade.pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
-                P/L: ${{ formatPrice(trade.pnl) }}
+                P/L: {{ formatCurrency(trade.pnl, { abs: true }) }}
               </span>
             </div>
           </div>
@@ -66,6 +66,7 @@
 <script setup>
 import { ref, watch, computed } from 'vue'
 import api from '@/services/api'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 
 const props = defineProps({
   modelValue: {
@@ -79,6 +80,8 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:modelValue'])
+
+const { formatCurrency } = useCurrencyFormatter()
 
 const loading = ref(false)
 const availableTrades = ref([])
@@ -102,14 +105,6 @@ const toggleTrade = (tradeId) => {
     // Add
     selectedTrades.value = [...selectedTrades.value, tradeId]
   }
-}
-
-const formatPrice = (price) => {
-  if (price === null || price === undefined) return '0.00'
-  return Math.abs(price).toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  })
 }
 
 const fetchTrades = async () => {
