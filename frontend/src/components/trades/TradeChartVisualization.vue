@@ -177,7 +177,8 @@ let candleSeries = null
 // Computed properties
 const userTier = computed(() => authStore.user?.tier?.tier_name || 'free')
 const isBillingEnabled = computed(() => authStore.user?.billingEnabled !== false)
-const requiresProUpgrade = computed(() => isBillingEnabled.value && userTier.value !== 'pro')
+const isAdmin = computed(() => authStore.user?.role === 'admin' || authStore.user?.role === 'owner')
+const requiresProUpgrade = computed(() => isBillingEnabled.value && userTier.value !== 'pro' && !isAdmin.value)
 
 // Helper methods for source display
 const getSourceLabel = (source) => {
