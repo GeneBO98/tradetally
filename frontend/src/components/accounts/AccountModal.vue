@@ -50,6 +50,7 @@
               <select
                 v-if="unlinkedIdentifiers.length > 0"
                 v-model="form.accountIdentifier"
+                @change="onIdentifierSelected"
                 class="input w-full"
               >
                 <option value="">Select from existing trades or enter manually</option>
@@ -197,6 +198,13 @@ const brokerOptions = [
   'Binance',
   'Other'
 ]
+
+function onIdentifierSelected() {
+  const selected = unlinkedIdentifiers.value.find(i => i.accountIdentifier === form.value.accountIdentifier)
+  if (selected?.earliestTradeDate) {
+    form.value.initialBalanceDate = selected.earliestTradeDate
+  }
+}
 
 async function handleSubmit() {
   loading.value = true

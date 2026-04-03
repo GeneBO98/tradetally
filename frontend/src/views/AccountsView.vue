@@ -390,7 +390,7 @@ function createFromUnlinked(item) {
     accountIdentifier: item.accountIdentifier,
     broker: item.broker || '',
     initialBalance: 0,
-    initialBalanceDate: new Date().toISOString().split('T')[0],
+    initialBalanceDate: item.earliestTradeDate || new Date().toISOString().split('T')[0],
     isPrimary: false,
     notes: ''
   }

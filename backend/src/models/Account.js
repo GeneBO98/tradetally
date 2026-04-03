@@ -107,7 +107,8 @@ class Account {
    */
   static async getUnlinkedAccountIdentifiers(userId) {
     const query = `
-      SELECT DISTINCT t.account_identifier, t.broker
+      SELECT DISTINCT t.account_identifier, t.broker,
+        MIN(COALESCE(t.entry_time::date, t.trade_date)) as earliest_trade_date
       FROM trades t
       WHERE t.user_id = $1
         AND t.account_identifier IS NOT NULL
@@ -118,11 +119,29 @@ class Account {
           WHERE user_id = $1
             AND account_identifier IS NOT NULL
         )
+      GROUP BY t.account_identifier, t.broker
       ORDER BY t.account_identifier
     `;
 
     const result = await db.query(query, [userId]);
     return result.rows;
+  }
+
+  /**
+   * Get the earliest trade date for a given account identifier
+   */
+  static async getEarliestTradeDate(userId, accountIdentifier) {
+    if (!accountIdentifier) return null;
+
+    const query = `
+      SELECT MIN(COALESCE(entry_time::date, trade_date)) as earliest_trade_date
+      FROM trades
+      WHERE user_id = $1
+        AND account_identifier = $2
+    `;
+
+    const result = await db.query(query, [userId, accountIdentifier]);
+    return result.rows[0]?.earliest_trade_date || null;
   }
 
   /**
