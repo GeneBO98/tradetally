@@ -219,9 +219,29 @@ function isExecutionDuplicate(execution, symbol, context) {
       return false;
     }
 
-    // Check by trade number if available (most reliable for Lightspeed)
+    // Lightspeed sequence numbers are execution-level identifiers and are more
+    // reliable than trade numbers, which can span multiple fills.
+    if (execution.sequenceNumber && existingExec.sequenceNumber) {
+      return String(existingExec.sequenceNumber) === String(execution.sequenceNumber);
+    }
+
+    // Trade numbers alone are not unique enough for Lightspeed fills.
+    // Only treat them as duplicates when the fill details also align.
     if (execution.tradeNumber && existingExec.tradeNumber) {
-      return existingExec.tradeNumber === execution.tradeNumber;
+      const existingDatetime = existingExec.datetime || existingExec.entryTime;
+      const existingPrice = existingExec.price ?? existingExec.entryPrice;
+      const existingTime = existingDatetime ? new Date(existingDatetime).getTime() : NaN;
+      const newTime = new Date(execution.datetime).getTime();
+
+      if (String(existingExec.tradeNumber) !== String(execution.tradeNumber)) {
+        return false;
+      }
+
+      return !isNaN(existingTime) &&
+             !isNaN(newTime) &&
+             Math.abs(existingTime - newTime) <= 1000 &&
+             Number(existingExec.quantity) === Number(execution.quantity) &&
+             Math.abs((existingPrice || 0) - (execution.price || 0)) < 0.01;
     }
 
     // Check by order ID if available (for Interactive Brokers)
@@ -1574,6 +1594,7 @@ function convertTradeDatetimesToUTC(trades, timezone) {
 
   const datetimeFields = ['entryTime', 'exitTime', 'entry_time', 'exit_time'];
   const executionDatetimeFields = ['datetime', 'time', 'entry_time', 'exit_time', 'entryTime', 'exitTime'];
+  const executionFields = ['executions', 'executionData', 'execution'];
 
   for (const trade of trades) {
     for (const field of datetimeFields) {
@@ -1583,12 +1604,14 @@ function convertTradeDatetimesToUTC(trades, timezone) {
     }
 
     // Also convert execution datetimes if present
-    const executions = trade.executions || trade.execution;
-    if (Array.isArray(executions)) {
-      for (const exec of executions) {
-        for (const field of executionDatetimeFields) {
-          if (exec[field] && typeof exec[field] === 'string') {
-            exec[field] = localToUTC(exec[field], timezone);
+    for (const executionField of executionFields) {
+      const executions = trade[executionField];
+      if (Array.isArray(executions)) {
+        for (const exec of executions) {
+          for (const field of executionDatetimeFields) {
+            if (exec[field] && typeof exec[field] === 'string') {
+              exec[field] = localToUTC(exec[field], timezone);
+            }
           }
         }
       }
@@ -1598,12 +1621,301 @@ function convertTradeDatetimesToUTC(trades, timezone) {
   return trades;
 }
 
+function normalizeExecutionCollections(trades) {
+  if (!Array.isArray(trades) || trades.length === 0) {
+    return trades;
+  }
+
+  const executionFields = ['executions', 'executionData', 'execution'];
+
+  for (const trade of trades) {
+    for (const field of executionFields) {
+      if (!Array.isArray(trade[field])) continue;
+
+      const seen = new Set();
+      trade[field] = trade[field]
+        .filter(Boolean)
+        .sort((left, right) => {
+          const leftTime = new Date(left.datetime || left.entryTime || left.entry_time || 0).getTime();
+          const rightTime = new Date(right.datetime || right.entryTime || right.entry_time || 0).getTime();
+          return leftTime - rightTime;
+        })
+        .filter((execution) => {
+          const dedupeKey = [
+            execution.action || execution.side || '',
+            execution.quantity ?? '',
+            execution.price ?? execution.entryPrice ?? execution.exitPrice ?? '',
+            execution.datetime || execution.entryTime || execution.entry_time || execution.exitTime || execution.exit_time || '',
+            execution.fees ?? '',
+            execution.commission ?? ''
+          ].join('|');
+
+          if (seen.has(dedupeKey)) {
+            return false;
+          }
+
+          seen.add(dedupeKey);
+          return true;
+        });
+    }
+  }
+
+  return trades;
+}
+
+function getExecutionSignedQuantity(execution) {
+  const action = String(execution.action || execution.side || '').toLowerCase();
+  const quantity = Number(execution.quantity || 0);
+  if (!quantity) return 0;
+  if (action === 'buy' || action === 'cover') return quantity;
+  if (action === 'sell' || action === 'short') return -quantity;
+  return 0;
+}
+
+function getTradeValueMultiplier(trade) {
+  if (trade?.instrumentType === 'future' || trade?.instrument_type === 'future') {
+    return Number(trade.pointValue || trade.point_value || 1);
+  }
+  if (trade?.instrumentType === 'option' || trade?.instrument_type === 'option') {
+    return Number(trade.contractSize || trade.contract_size || 100);
+  }
+  return 1;
+}
+
+function cloneTradeMetadata(trade) {
+  return {
+    symbol: trade.symbol,
+    tradeDate: trade.tradeDate || trade.trade_date,
+    broker: trade.broker,
+    accountIdentifier: trade.accountIdentifier || trade.account_identifier,
+    instrumentType: trade.instrumentType || trade.instrument_type,
+    strikePrice: trade.strikePrice || trade.strike_price,
+    expirationDate: trade.expirationDate || trade.expiration_date,
+    optionType: trade.optionType || trade.option_type,
+    contractSize: trade.contractSize || trade.contract_size,
+    pointValue: trade.pointValue || trade.point_value,
+    underlyingSymbol: trade.underlyingSymbol || trade.underlying_symbol,
+    contractMonth: trade.contractMonth || trade.contract_month,
+    contractYear: trade.contractYear || trade.contract_year,
+    tickSize: trade.tickSize || trade.tick_size,
+    underlyingAsset: trade.underlyingAsset || trade.underlying_asset,
+    brokerConnectionId: trade.brokerConnectionId || trade.broker_connection_id
+  };
+}
+
+function finalizeRepairedTrade(trade, valueMultiplier) {
+  if (!trade) return null;
+
+  trade.entryPrice = trade.totalQuantity > 0
+    ? trade.entryValue / (trade.totalQuantity * valueMultiplier)
+    : null;
+  trade.quantity = trade.currentPosition === 0 ? trade.totalQuantity : Math.abs(trade.currentPosition);
+  trade.commission = trade.totalFees;
+  trade.fees = 0;
+  trade.executionData = trade.executions;
+
+  let entryCommission = 0;
+  let exitCommission = 0;
+  trade.executions.forEach((exec) => {
+    if ((trade.side === 'long' && exec.action === 'buy') || (trade.side === 'short' && exec.action === 'sell')) {
+      entryCommission += Number(exec.fees || exec.commission || 0);
+    } else {
+      exitCommission += Number(exec.fees || exec.commission || 0);
+    }
+  });
+  trade.entryCommission = entryCommission;
+  trade.exitCommission = exitCommission;
+
+  const { entryTime, exitTime } = getExecutionTimeBounds(trade.executions);
+  trade.entryTime = entryTime || trade.entryTime;
+
+  if (trade.currentPosition === 0) {
+    trade.exitPrice = trade.totalQuantity > 0
+      ? trade.exitValue / (trade.totalQuantity * valueMultiplier)
+      : null;
+    trade.exitTime = exitTime || trade.exitTime;
+    trade.pnl = trade.side === 'long'
+      ? trade.exitValue - trade.entryValue - trade.totalFees
+      : trade.entryValue - trade.exitValue - trade.totalFees;
+    trade.pnlPercent = trade.entryValue > 0 ? (trade.pnl / trade.entryValue) * 100 : 0;
+    trade.notes = trade.notes || `Round trip: ${trade.executions.length} executions`;
+  } else {
+    trade.exitPrice = null;
+    trade.exitTime = null;
+    trade.pnl = 0;
+    trade.pnlPercent = 0;
+    trade.notes = trade.notes || `Open position: ${trade.executions.length} executions`;
+  }
+
+  delete trade.currentPosition;
+  delete trade.entryValue;
+  delete trade.exitValue;
+  delete trade.totalFees;
+  delete trade.totalQuantity;
+  return trade;
+}
+
+function rebuildTradeFromExecutions(trade) {
+  const executions = Array.isArray(trade.executions) ? trade.executions.filter(Boolean) : [];
+  if (executions.length === 0) {
+    return [trade];
+  }
+
+  const valueMultiplier = getTradeValueMultiplier(trade);
+  const metadata = cloneTradeMetadata(trade);
+  const rebuilt = [];
+  let current = null;
+  let currentPosition = 0;
+
+  const startTrade = (execution, signedQty, feePortion, explicitQuantity = null) => {
+    const quantity = explicitQuantity ?? Math.abs(signedQty);
+    current = {
+      ...metadata,
+      side: signedQty > 0 ? 'long' : 'short',
+      tradeDate: trade.tradeDate || trade.trade_date || (execution.datetime || execution.entryTime || '').split('T')[0],
+      entryTime: execution.datetime || execution.entryTime || execution.entry_time || null,
+      executions: [{
+        ...execution,
+        quantity,
+        fees: feePortion
+      }],
+      totalQuantity: quantity,
+      totalFees: feePortion,
+      entryValue: quantity * Number(execution.price ?? execution.entryPrice ?? 0) * valueMultiplier,
+      exitValue: 0,
+      currentPosition: signedQty > 0 ? quantity : -quantity
+    };
+    currentPosition = current.currentPosition;
+  };
+
+  for (const execution of executions) {
+    const signedQty = getExecutionSignedQuantity(execution);
+    if (!signedQty) continue;
+
+    const execPrice = Number(execution.price ?? execution.entryPrice ?? execution.exitPrice ?? 0);
+    const execFees = Number(execution.fees ?? execution.commission ?? 0);
+
+    if (!current || currentPosition === 0) {
+      startTrade(execution, signedQty, execFees);
+      continue;
+    }
+
+    const sameDirection = (currentPosition > 0 && signedQty > 0) || (currentPosition < 0 && signedQty < 0);
+    if (sameDirection) {
+      current.executions.push({ ...execution, fees: execFees });
+      current.totalFees += execFees;
+      current.totalQuantity += Math.abs(signedQty);
+      current.entryValue += Math.abs(signedQty) * execPrice * valueMultiplier;
+      currentPosition += signedQty;
+      current.currentPosition = currentPosition;
+      continue;
+    }
+
+    const closeQty = Math.min(Math.abs(currentPosition), Math.abs(signedQty));
+    const reversalQty = Math.abs(signedQty) - closeQty;
+    const closeFee = Math.abs(signedQty) > 0 ? execFees * (closeQty / Math.abs(signedQty)) : 0;
+    const openFee = execFees - closeFee;
+    const closeAction = current.side === 'long' ? 'sell' : 'buy';
+
+    current.executions.push({
+      ...execution,
+      action: closeAction,
+      quantity: closeQty,
+      fees: closeFee
+    });
+    current.totalFees += closeFee;
+    current.exitValue += closeQty * execPrice * valueMultiplier;
+    currentPosition += signedQty > 0 ? closeQty : -closeQty;
+    current.currentPosition = currentPosition;
+
+    if (currentPosition === 0) {
+      rebuilt.push(finalizeRepairedTrade(current, valueMultiplier));
+      current = null;
+    }
+
+    if (reversalQty > 0) {
+      const reversalSignedQty = signedQty > 0 ? reversalQty : -reversalQty;
+      startTrade(execution, reversalSignedQty, openFee, reversalQty);
+    }
+  }
+
+  if (current) {
+    rebuilt.push(finalizeRepairedTrade(current, valueMultiplier));
+  }
+
+  return rebuilt.length > 0 ? rebuilt : [trade];
+}
+
+function repairTradeReversals(trades, diagnostics) {
+  if (!Array.isArray(trades) || trades.length === 0) {
+    return trades;
+  }
+
+  const repairedTrades = [];
+
+  for (const trade of trades) {
+    const executions = Array.isArray(trade.executions) ? trade.executions : [];
+    if (executions.length === 0) {
+      repairedTrades.push(trade);
+      continue;
+    }
+
+    let position = 0;
+    let sawFlip = false;
+    for (const execution of executions) {
+      const signedQty = getExecutionSignedQuantity(execution);
+      if (!signedQty) continue;
+      const previous = position;
+      position += signedQty;
+      if (previous !== 0 && position !== 0 && Math.sign(previous) !== Math.sign(position)) {
+        sawFlip = true;
+        break;
+      }
+    }
+
+    const storedQuantity = Number(trade.quantity || 0);
+    const storedSide = String(trade.side || '').toLowerCase();
+    const isStoredOpen = !trade.exitPrice && !trade.exit_price && !trade.exitTime && !trade.exit_time;
+    const netQuantity = Math.abs(position);
+    const sideMismatch =
+      position !== 0 &&
+      storedSide &&
+      ((position > 0 && storedSide !== 'long') || (position < 0 && storedSide !== 'short'));
+    const quantityMismatch =
+      position !== 0 &&
+      storedQuantity > 0 &&
+      Math.abs(netQuantity - storedQuantity) > 1e-9;
+    const statusMismatch =
+      (position === 0 && isStoredOpen) ||
+      (position !== 0 && !isStoredOpen);
+
+    if (!sawFlip && !sideMismatch && !quantityMismatch && !statusMismatch) {
+      repairedTrades.push(trade);
+      continue;
+    }
+
+    const rebuilt = rebuildTradeFromExecutions(trade);
+    const reasons = [];
+    if (sawFlip) reasons.push('reversal');
+    if (sideMismatch) reasons.push('side mismatch');
+    if (quantityMismatch) reasons.push('quantity mismatch');
+    if (statusMismatch) reasons.push('status mismatch');
+    diagnostics.warnings.push(`Repaired inconsistent trade for ${trade.symbol} into ${rebuilt.length} trades (${reasons.join(', ')})`);
+    repairedTrades.push(...rebuilt);
+  }
+
+  return repairedTrades;
+}
+
 function wrapResultWithDiagnostics(trades, diagnostics, unresolvedCusips = [], userTimezone = null) {
   // Convert naive datetimes to UTC using the user's timezone
   if (userTimezone && userTimezone !== 'UTC') {
     console.log(`[TIMEZONE] Converting trade datetimes from ${userTimezone} to UTC`);
     convertTradeDatetimesToUTC(trades, userTimezone);
   }
+
+  normalizeExecutionCollections(trades);
+  trades = repairTradeReversals(trades, diagnostics);
 
   // Update diagnostics with final counts
   diagnostics.parsedRows = trades.length;
@@ -2329,14 +2641,12 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       const result = await parseWebullTransactions(records, existingPositions, { ...context, diagnostics });
       console.log('Finished Webull transaction parsing');
 
-      // Apply trade grouping if enabled
-      const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
-      let finalTrades = result;
-      if (tradeGroupingSettings.enabled && result.length > 0) {
-        finalTrades = applyTradeGrouping(result, tradeGroupingSettings);
-      }
+      // IMPORTANT: Do NOT apply trade grouping for Webull transactions.
+      // The Webull parser already creates round-trip trades from executions.
+      // Grouping here incorrectly merges distinct scalps on the same symbol.
+      console.log('[INFO] Skipping trade grouping for Webull (already grouped by round-trip logic)');
 
-      return wrapResultWithDiagnostics(finalTrades, diagnostics, [], userTimezone);
+      return wrapResultWithDiagnostics(result, diagnostics, [], userTimezone);
     }
 
     if (broker === 'tradervue') {
@@ -2578,10 +2888,12 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
 
     // Generic parser - Use transaction-based processing for better position tracking
     // Check for user preference or use enhanced mode by default when context is available
-    // Custom mappings now support position tracking!
+    // Custom mappings represent complete trade rows. Routing them through the
+    // transaction parser drops row-level exit fields and can produce "0 trades
+    // imported" after a successful mapping step.
     const useEnhancedMode = context.usePositionTracking !== false; // Default to true
 
-    if (useEnhancedMode && existingPositions && Object.keys(existingPositions).length >= 0) {
+    if (useEnhancedMode && !context.customMapping) {
       console.log('Using enhanced generic parser with position tracking');
       const result = await parseGenericTransactions(records, existingPositions, context.customMapping, context);
       console.log('Finished generic transaction-based parsing');
@@ -2597,7 +2909,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     }
 
     // Fallback to simple row-by-row parsing (legacy mode)
-    // Used when position tracking is disabled, no context available, OR custom mapping is used
+    // Used when position tracking is disabled or when a custom mapping is used.
     console.log('Using simple generic parser (legacy mode - no position tracking)');
     // Create custom parser if custom mapping is provided
     let parser;
@@ -2885,6 +3197,26 @@ function parseDateTime(dateTimeStr) {
     /^([A-Za-z]+ \d{1,2}, \d{4})(\d{1,2}:\d{2}(?::\d{2})?\s*[AP]M)$/i,
     '$1 $2'
   );
+  const timezoneAbbreviationOffsets = {
+    UTC: 'Z',
+    GMT: 'Z',
+    EST: '-05:00',
+    EDT: '-04:00',
+    CST: '-06:00',
+    CDT: '-05:00',
+    MST: '-07:00',
+    MDT: '-06:00',
+    PST: '-08:00',
+    PDT: '-07:00'
+  };
+  const trailingTimezoneMatch = normalizedDateTimeStr.match(/^(.*?)(?:\s+([A-Z]{2,4}))$/);
+  const trailingTimezone = trailingTimezoneMatch?.[2]?.toUpperCase();
+  const trailingTimezoneOffset = trailingTimezone && timezoneAbbreviationOffsets[trailingTimezone]
+    ? timezoneAbbreviationOffsets[trailingTimezone]
+    : null;
+  const dateTimeBody = trailingTimezoneOffset
+    ? trailingTimezoneMatch[1].trim()
+    : normalizedDateTimeStr;
 
   const normalizeTimezoneOffset = (offset) => {
     if (!offset || offset === 'Z') return 'Z';
@@ -2892,10 +3224,14 @@ function parseDateTime(dateTimeStr) {
       ? `${offset.slice(0, 3)}:${offset.slice(3)}`
       : offset;
   };
+  const withTrailingTimezone = (value) => {
+    if (!value || !trailingTimezoneOffset) return value;
+    return `${value}${normalizeTimezoneOffset(trailingTimezoneOffset)}`;
+  };
 
   try {
     // Preserve ISO timestamps that already include timezone information.
-    const isoWithTimezoneMatch = normalizedDateTimeStr.match(
+    const isoWithTimezoneMatch = dateTimeBody.match(
       /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?(Z|[+-]\d{2}:?\d{2})$/i
     );
     if (isoWithTimezoneMatch) {
@@ -2904,7 +3240,7 @@ function parseDateTime(dateTimeStr) {
     }
 
     // Check for MM/DD/YYYY HH:MM:SS +TZ format (ProjectX with timezone)
-    const mmddyyyyTimeWithTzMatch = normalizedDateTimeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})\s+([+-]\d{2}:?\d{2})$/);
+    const mmddyyyyTimeWithTzMatch = dateTimeBody.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})\s+([+-]\d{2}:?\d{2})$/);
     if (mmddyyyyTimeWithTzMatch) {
       const [, month, day, year, hour, minute, second, offset] = mmddyyyyTimeWithTzMatch;
       const monthPadded = month.padStart(2, '0');
@@ -2914,27 +3250,27 @@ function parseDateTime(dateTimeStr) {
     }
 
     // Check for MM/DD/YYYY HH:MM:SS format (common in many CSVs)
-    const mmddyyyyTimeMatch = normalizedDateTimeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/);
+    const mmddyyyyTimeMatch = dateTimeBody.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/);
     if (mmddyyyyTimeMatch) {
       const [, month, day, year, hour, minute, second] = mmddyyyyTimeMatch;
       const monthPadded = month.padStart(2, '0');
       const dayPadded = day.padStart(2, '0');
       const hourPadded = hour.padStart(2, '0');
-      return `${year}-${monthPadded}-${dayPadded}T${hourPadded}:${minute}:${second}`;
+      return withTrailingTimezone(`${year}-${monthPadded}-${dayPadded}T${hourPadded}:${minute}:${second}`);
     }
 
     // Check for MM/DD/YYYY HH:MM format (without seconds)
-    const mmddyyyyTimeNoSecMatch = normalizedDateTimeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})$/);
+    const mmddyyyyTimeNoSecMatch = dateTimeBody.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})$/);
     if (mmddyyyyTimeNoSecMatch) {
       const [, month, day, year, hour, minute] = mmddyyyyTimeNoSecMatch;
       const monthPadded = month.padStart(2, '0');
       const dayPadded = day.padStart(2, '0');
       const hourPadded = hour.padStart(2, '0');
-      return `${year}-${monthPadded}-${dayPadded}T${hourPadded}:${minute}:00`;
+      return withTrailingTimezone(`${year}-${monthPadded}-${dayPadded}T${hourPadded}:${minute}:00`);
     }
 
     // Check for IBKR Flex Query format: YYYYMMDD;HHMMSS (used in IBKR Japan and other regional exports)
-    const ibkrFlexDateTimeMatch = normalizedDateTimeStr.match(/^(\d{4})(\d{2})(\d{2});(\d{2})(\d{2})(\d{2})$/);
+    const ibkrFlexDateTimeMatch = dateTimeBody.match(/^(\d{4})(\d{2})(\d{2});(\d{2})(\d{2})(\d{2})$/);
     if (ibkrFlexDateTimeMatch) {
       const [, year, month, day, hour, minute, second] = ibkrFlexDateTimeMatch;
       const yearNum = parseInt(year);
@@ -2946,11 +3282,11 @@ function parseDateTime(dateTimeStr) {
       if (dayNum < 1 || dayNum > 31) return null;
       if (yearNum < 1900 || yearNum > 2100) return null;
 
-      return `${year}-${month}-${day}T${hour}:${minute}:${second}`;
+      return withTrailingTimezone(`${year}-${month}-${day}T${hour}:${minute}:${second}`);
     }
 
     // Check for MM/DD/YY;HHMMSS format (IBKR Flex Query with slash-separated dates)
-    const mmddyyFlexMatch = normalizedDateTimeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2});(\d{2})(\d{2})(\d{2})$/);
+    const mmddyyFlexMatch = dateTimeBody.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2});(\d{2})(\d{2})(\d{2})$/);
     if (mmddyyFlexMatch) {
       const [, month, day, shortYear, hour, minute, second] = mmddyyFlexMatch;
       const yearNum = 2000 + parseInt(shortYear);
@@ -2963,11 +3299,11 @@ function parseDateTime(dateTimeStr) {
 
       const monthPadded = monthNum.toString().padStart(2, '0');
       const dayPadded = dayNum.toString().padStart(2, '0');
-      return `${yearNum}-${monthPadded}-${dayPadded}T${hour}:${minute}:${second}`;
+      return withTrailingTimezone(`${yearNum}-${monthPadded}-${dayPadded}T${hour}:${minute}:${second}`);
     }
 
     // Check for IBKR format "XX-XX-YY H:MM" or "XX-XX-YY HH:MM" (could be MM-DD-YY or DD-MM-YY)
-    const ibkrDateTimeMatch = normalizedDateTimeStr.match(/^(\d{1,2})-(\d{1,2})-(\d{2})\s+(\d{1,2}):(\d{2})$/);
+    const ibkrDateTimeMatch = dateTimeBody.match(/^(\d{1,2})-(\d{1,2})-(\d{2})\s+(\d{1,2}):(\d{2})$/);
     if (ibkrDateTimeMatch) {
       const [, first, second, shortYear, hour, minute] = ibkrDateTimeMatch;
       const year = 2000 + parseInt(shortYear); // Convert YY to YYYY
@@ -2994,28 +3330,28 @@ function parseDateTime(dateTimeStr) {
       const monthPadded = monthNum.toString().padStart(2, '0');
       const dayPadded = dayNum.toString().padStart(2, '0');
       const hourPadded = hour.padStart(2, '0');
-      return `${year}-${monthPadded}-${dayPadded}T${hourPadded}:${minute}:00`;
+      return withTrailingTimezone(`${year}-${monthPadded}-${dayPadded}T${hourPadded}:${minute}:00`);
     }
 
     // Check if the string is in format "YYYY-MM-DD HH:MM:SS" (local time without timezone)
-    const localDateTimeMatch = normalizedDateTimeStr.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})$/);
+    const localDateTimeMatch = dateTimeBody.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})$/);
     if (localDateTimeMatch) {
       const [, year, month, day, hour, minute, second] = localDateTimeMatch;
       // Return as-is without timezone conversion
-      return `${year}-${month}-${day}T${hour}:${minute}:${second}`;
+      return withTrailingTimezone(`${year}-${month}-${day}T${hour}:${minute}:${second}`);
     }
 
     // Check if just a date is provided (no time component)
-    const dateOnlyMatch = normalizedDateTimeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    const dateOnlyMatch = dateTimeBody.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if (dateOnlyMatch) {
       const [, month, day, year] = dateOnlyMatch;
       const monthPadded = month.padStart(2, '0');
       const dayPadded = day.padStart(2, '0');
       // Default to 09:30 (market open) if no time provided
-      return `${year}-${monthPadded}-${dayPadded}T09:30:00`;
+      return withTrailingTimezone(`${year}-${monthPadded}-${dayPadded}T09:30:00`);
     }
 
-    const monthNameDateTimeMatch = normalizedDateTimeStr.match(
+    const monthNameDateTimeMatch = dateTimeBody.match(
       /^([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)$/i
     );
     if (monthNameDateTimeMatch) {
@@ -3030,12 +3366,12 @@ function parseDateTime(dateTimeStr) {
       const month = String(date.getMonth() + 1).padStart(2, '0');
       const normalizedDay = String(date.getDate()).padStart(2, '0');
       const normalizedHour = String(hourNum).padStart(2, '0');
-      return `${year}-${month}-${normalizedDay}T${normalizedHour}:${minute}:${second}`;
+      return withTrailingTimezone(`${year}-${month}-${normalizedDay}T${normalizedHour}:${minute}:${second}`);
     }
 
     // Otherwise, parse manually to avoid timezone issues
     // Try to extract date and time components without Date object conversion
-    const spaceSplit = normalizedDateTimeStr.split(' ');
+    const spaceSplit = dateTimeBody.split(' ');
     if (spaceSplit.length >= 2) {
       const datePart = spaceSplit[0];
       const timePart = spaceSplit[1];
@@ -3061,12 +3397,12 @@ function parseDateTime(dateTimeStr) {
         const monthPadded = month.padStart(2, '0');
         const dayPadded = day.padStart(2, '0');
         const hourPadded = hour.padStart(2, '0');
-        return `${year}-${monthPadded}-${dayPadded}T${hourPadded}:${minute}:${second}`;
+        return withTrailingTimezone(`${year}-${monthPadded}-${dayPadded}T${hourPadded}:${minute}:${second}`);
       }
     }
 
     // Last resort: use Date parsing but extract components carefully
-    const date = new Date(normalizedDateTimeStr);
+    const date = new Date(dateTimeBody);
     if (isNaN(date.getTime())) return null;
 
     // Additional validation for PostgreSQL 16
@@ -3080,7 +3416,7 @@ function parseDateTime(dateTimeStr) {
     const hh = String(date.getHours()).padStart(2, '0');
     const min = String(date.getMinutes()).padStart(2, '0');
     const ss = String(date.getSeconds()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}T${hh}:${min}:${ss}`;
+    return withTrailingTimezone(`${yyyy}-${mm}-${dd}T${hh}:${min}:${ss}`);
   } catch (error) {
     console.warn(`Invalid datetime format: ${cleanDateTimeStr}`);
     return null;
@@ -3761,6 +4097,7 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
     for (const transaction of symbolTransactions) {
       const qty = transaction.quantity;
       const prevPosition = currentPosition;
+      let pendingReversalTrade = null;
       
       console.log(`\n${transaction.side} ${qty} @ $${transaction.entryPrice} | Position: ${currentPosition}`);
       
@@ -3813,14 +4150,28 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
         // For fresh imports, we trust each CSV row is a unique execution
         // Only deduplicate if we have unique identifiers (tradeNumber/sequenceNumber)
         const executionExists = existsGlobally || currentTrade.executions.some(exec => {
-          // If both have trade numbers, use that for comparison (most reliable)
-          if (exec.tradeNumber && newExecution.tradeNumber) {
-            return exec.tradeNumber === newExecution.tradeNumber;
-          }
-          // If both have sequence numbers, use that
+          // Sequence number is execution-level and should take priority.
           if (exec.sequenceNumber && newExecution.sequenceNumber) {
-            return exec.sequenceNumber === newExecution.sequenceNumber;
+            return String(exec.sequenceNumber) === String(newExecution.sequenceNumber);
           }
+
+          // Trade number alone is not unique enough for Lightspeed partial fills.
+          if (exec.tradeNumber && newExecution.tradeNumber) {
+            if (String(exec.tradeNumber) !== String(newExecution.tradeNumber)) {
+              return false;
+            }
+
+            const existingTime = new Date(exec.datetime || exec.entryTime || 0).getTime();
+            const newTime = new Date(newExecution.datetime).getTime();
+            const existingPrice = exec.price ?? exec.entryPrice;
+
+            return !isNaN(existingTime) &&
+              !isNaN(newTime) &&
+              Math.abs(existingTime - newTime) <= 1000 &&
+              Number(exec.quantity) === Number(newExecution.quantity) &&
+              Math.abs((existingPrice || 0) - (newExecution.price || 0)) < 0.01;
+          }
+
           // Without unique identifiers, don't deduplicate within the current import
           // This allows multiple identical executions from the same CSV (legitimate fills)
           // The global check (existsGlobally) still prevents re-importing existing trades
@@ -3831,16 +4182,17 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
           console.log(`  [SKIP] Execution already exists in a completed or open trade: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
         }
 
-        if (!executionExists) {
-          currentTrade.executions.push(newExecution);
-          if (currentTrade.isExistingPosition) {
-            currentTrade.newExecutionsAdded++;
-          }
-          if (symbol === 'PYXS' || symbol === 'CURR') {
-            console.log(`  [SUCCESS] Added new execution (${currentTrade.newExecutionsAdded} new total)`);
-          }
-        } else {
+        if (executionExists) {
           console.log(`  → Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+          continue;
+        }
+
+        currentTrade.executions.push(newExecution);
+        if (currentTrade.isExistingPosition) {
+          currentTrade.newExecutionsAdded++;
+        }
+        if (symbol === 'PYXS' || symbol === 'CURR') {
+          console.log(`  [SUCCESS] Added new execution (${currentTrade.newExecutionsAdded} new total)`);
         }
         
         // Accumulate total fees for this trade
@@ -3879,6 +4231,55 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
               console.log(`  → [PARTIAL COVER] Covered ${qty} @ $${transaction.entryPrice.toFixed(2)}, Entry avg: $${avgEntryPrice.toFixed(2)}, P&L: $${netPartialPnl.toFixed(2)}, Remaining: ${Math.abs(currentPosition)} shares short`);
             }
           }
+
+          if (prevPosition < 0 && currentPosition > 0) {
+            const closeQty = Math.abs(prevPosition);
+            const reversalQty = currentPosition;
+            const totalTxnFees = (transaction.commission || 0) + (transaction.fees || 0);
+            const closeFees = qty > 0 ? totalTxnFees * (closeQty / qty) : 0;
+            const openFees = totalTxnFees - closeFees;
+            const avgEntryPrice = currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier);
+            const closingExec = currentTrade.executions[currentTrade.executions.length - 1];
+
+            if (closingExec && closingExec.action === 'buy') {
+              closingExec.quantity = closeQty;
+              closingExec.fees = closeFees;
+              closingExec.entryTime = currentTrade.entryTime;
+              closingExec.exitTime = transaction.entryTime;
+              closingExec.exitPrice = transaction.entryPrice;
+              closingExec.entryPrice = avgEntryPrice;
+              closingExec.pnl = ((avgEntryPrice - transaction.entryPrice) * closeQty * valueMultiplier) - closeFees;
+            }
+
+            currentTrade.totalFees -= openFees;
+            currentTrade.exitValue -= reversalQty * transaction.entryPrice * valueMultiplier;
+            currentPosition = 0;
+
+            pendingReversalTrade = {
+              symbol,
+              entryTime: transaction.entryTime,
+              tradeDate: transaction.tradeDate,
+              side: 'long',
+              executions: [{
+                action: 'buy',
+                quantity: reversalQty,
+                price: transaction.entryPrice,
+                datetime: transaction.entryTime,
+                fees: openFees,
+                tradeNumber: transaction.tradeNumber,
+                sequenceNumber: transaction.sequenceNumber
+              }],
+              totalQuantity: reversalQty,
+              totalFees: openFees,
+              totalFeesForSymbol: totalCommissions + totalFees,
+              entryValue: reversalQty * transaction.entryPrice * valueMultiplier,
+              exitValue: 0,
+              broker: 'lightspeed',
+              accountIdentifier: transaction.accountIdentifier
+            };
+
+            console.log(`  → [REVERSAL] Closed short ${closeQty} and opened long ${reversalQty} @ $${transaction.entryPrice.toFixed(2)}`);
+          }
         }
 
       } else if (transaction.side === 'sell') {
@@ -3911,6 +4312,55 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
               lastExec.pnl = netPartialPnl;
               console.log(`  → [PARTIAL CLOSE] Sold ${qty} @ $${transaction.entryPrice.toFixed(2)}, Entry avg: $${avgEntryPrice.toFixed(2)}, P&L: $${netPartialPnl.toFixed(2)}, Remaining: ${currentPosition} shares`);
             }
+          }
+
+          if (prevPosition > 0 && currentPosition < 0) {
+            const closeQty = prevPosition;
+            const reversalQty = Math.abs(currentPosition);
+            const totalTxnFees = (transaction.commission || 0) + (transaction.fees || 0);
+            const closeFees = qty > 0 ? totalTxnFees * (closeQty / qty) : 0;
+            const openFees = totalTxnFees - closeFees;
+            const avgEntryPrice = currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier);
+            const closingExec = currentTrade.executions[currentTrade.executions.length - 1];
+
+            if (closingExec && closingExec.action === 'sell') {
+              closingExec.quantity = closeQty;
+              closingExec.fees = closeFees;
+              closingExec.entryTime = currentTrade.entryTime;
+              closingExec.exitTime = transaction.entryTime;
+              closingExec.exitPrice = transaction.entryPrice;
+              closingExec.entryPrice = avgEntryPrice;
+              closingExec.pnl = ((transaction.entryPrice - avgEntryPrice) * closeQty * valueMultiplier) - closeFees;
+            }
+
+            currentTrade.totalFees -= openFees;
+            currentTrade.exitValue -= reversalQty * transaction.entryPrice * valueMultiplier;
+            currentPosition = 0;
+
+            pendingReversalTrade = {
+              symbol,
+              entryTime: transaction.entryTime,
+              tradeDate: transaction.tradeDate,
+              side: 'short',
+              executions: [{
+                action: 'sell',
+                quantity: reversalQty,
+                price: transaction.entryPrice,
+                datetime: transaction.entryTime,
+                fees: openFees,
+                tradeNumber: transaction.tradeNumber,
+                sequenceNumber: transaction.sequenceNumber
+              }],
+              totalQuantity: reversalQty,
+              totalFees: openFees,
+              totalFeesForSymbol: totalCommissions + totalFees,
+              entryValue: reversalQty * transaction.entryPrice * valueMultiplier,
+              exitValue: 0,
+              broker: 'lightspeed',
+              accountIdentifier: transaction.accountIdentifier
+            };
+
+            console.log(`  → [REVERSAL] Closed long ${closeQty} and opened short ${reversalQty} @ $${transaction.entryPrice.toFixed(2)}`);
           }
         }
       }
@@ -3979,6 +4429,14 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
           console.log(`  [SKIP] Trade has no executions (all were duplicates), not creating trade`);
         }
         currentTrade = null;
+      }
+
+      if (pendingReversalTrade) {
+        currentTrade = pendingReversalTrade;
+        currentPosition = currentTrade.side === 'long'
+          ? currentTrade.totalQuantity
+          : -currentTrade.totalQuantity;
+        console.log(`  → Started new reversal ${currentTrade.side} trade with ${currentTrade.totalQuantity} shares`);
       }
     }
     
@@ -6929,10 +7387,8 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
       let tradeDate = null;
       let entryTime = null;
       if (filledTime) {
-        // Remove timezone abbreviation and parse
-        const cleanedTime = filledTime.replace(/\s+(EST|EDT|CST|CDT|MST|MDT|PST|PDT)$/, '').trim();
-        tradeDate = parseDate(cleanedTime);
-        entryTime = parseDateTime(cleanedTime);
+        tradeDate = parseDate(filledTime);
+        entryTime = parseDateTime(filledTime);
       }
 
       if (!tradeDate || !entryTime) {
@@ -7072,14 +7528,17 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
 
     let currentPosition = existingPosition ?
       (existingPosition.side === 'long' ? existingPosition.quantity : -existingPosition.quantity) : 0;
+    const existingExecutions = normalizeExecutionCollections([{
+      executions: Array.isArray(existingPosition?.executions)
+        ? existingPosition.executions
+        : (existingPosition?.executions ? JSON.parse(existingPosition.executions) : [])
+    }])[0].executions;
     let currentTrade = existingPosition ? {
       symbol: symbol,
       entryTime: existingPosition.entryTime,
       tradeDate: existingPosition.tradeDate,
       side: existingPosition.side,
-      executions: Array.isArray(existingPosition.executions)
-        ? existingPosition.executions
-        : (existingPosition.executions ? JSON.parse(existingPosition.executions) : []),
+      executions: existingExecutions,
       totalQuantity: existingPosition.quantity,
       totalFees: existingPosition.commission || 0,
       entryValue: existingPosition.quantity * existingPosition.entryPrice * valueMultiplier,
@@ -8058,93 +8517,28 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
       console.log(`  Starting with existing ${existingPosition.side} position: ${existingPosition.quantity} contracts @ $${existingPosition.entryPrice}`);
     }
 
-    for (const transaction of symbolTransactions) {
-      const qty = transaction.quantity;
-      const prevPosition = currentPosition;
+    const startTradovateTrade = (transaction, actionOverride = transaction.action) => {
+      currentTrade = {
+        symbol: symbol,
+        entryTime: transaction.datetime,
+        tradeDate: transaction.date,
+        side: actionOverride === 'buy' ? 'long' : 'short',
+        executions: [],
+        totalQuantity: 0,
+        totalFees: 0,
+        entryValue: 0,
+        exitValue: 0,
+        broker: 'tradovate',
+        accountIdentifier: transaction.accountIdentifier
+      };
+      console.log(`  Started new ${currentTrade.side} trade`);
+    };
 
-      console.log(`\n${transaction.action} ${qty} @ $${transaction.price} | Position: ${currentPosition}`);
-
-      // Start new trade if going from flat to position
-      if (currentPosition === 0) {
-        currentTrade = {
-          symbol: symbol,
-          entryTime: transaction.datetime,
-          tradeDate: transaction.date,
-          side: transaction.action === 'buy' ? 'long' : 'short',
-          executions: [],
-          totalQuantity: 0,
-          totalFees: 0,
-          entryValue: 0,
-          exitValue: 0,
-          broker: 'tradovate',
-          accountIdentifier: transaction.accountIdentifier
-        };
-        console.log(`  Started new ${currentTrade.side} trade`);
+    const finalizeTradovateTrade = (transaction) => {
+      if (!(currentPosition === 0 && currentTrade && currentTrade.totalQuantity > 0)) {
+        return;
       }
 
-      // Add execution to current trade
-      if (currentTrade) {
-        const newExecution = {
-          action: transaction.action,
-          quantity: qty,
-          price: transaction.price,
-          datetime: transaction.datetime,
-          fees: transaction.fees,
-          orderId: transaction.orderId
-        };
-
-        // Check for duplicate executions
-        // For fresh imports, we trust each CSV row is a unique execution
-        // Only deduplicate if we have unique identifiers
-        const existsGlobally = isExecutionDuplicate(newExecution, symbol, context);
-        const executionExists = existsGlobally || currentTrade.executions.some(exec => {
-          // If both have order IDs, use that for comparison
-          if (exec.orderId && newExecution.orderId) {
-            return exec.orderId === newExecution.orderId;
-          }
-          // Without unique identifiers, don't deduplicate within the current import
-          return false;
-        });
-
-        if (!executionExists) {
-          currentTrade.executions.push(newExecution);
-          currentTrade.totalFees += transaction.fees;
-          if (currentTrade.isExistingPosition) {
-            currentTrade.newExecutionsAdded++;
-          }
-        } else {
-          console.log(`  Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
-          // Skip position and value updates for duplicate transactions
-          console.log(`  Position: ${currentPosition} (unchanged - duplicate)`);
-          continue;
-        }
-      }
-
-      // Update position and values (only for non-duplicate transactions)
-      if (transaction.action === 'buy') {
-        currentPosition += qty;
-
-        if (currentTrade && currentTrade.side === 'long') {
-          currentTrade.entryValue += qty * transaction.price * valueMultiplier;
-          currentTrade.totalQuantity += qty;
-        } else if (currentTrade && currentTrade.side === 'short') {
-          currentTrade.exitValue += qty * transaction.price * valueMultiplier;
-        }
-      } else if (transaction.action === 'sell') {
-        currentPosition -= qty;
-
-        if (currentTrade && currentTrade.side === 'short') {
-          currentTrade.entryValue += qty * transaction.price * valueMultiplier;
-          currentTrade.totalQuantity += qty;
-        } else if (currentTrade && currentTrade.side === 'long') {
-          currentTrade.exitValue += qty * transaction.price * valueMultiplier;
-        }
-      }
-
-      console.log(`  Position: ${prevPosition} -> ${currentPosition}`);
-
-      // Close trade if position goes to zero
-      if (currentPosition === 0 && currentTrade && currentTrade.totalQuantity > 0) {
         // Calculate weighted average prices (divide by multiplier to get per-contract price)
         currentTrade.entryPrice = currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier);
         currentTrade.exitPrice = currentTrade.exitValue / (currentTrade.totalQuantity * valueMultiplier);
@@ -8197,6 +8591,113 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
         completedTrades.push(currentTrade);
         lastTradeEndTime[symbol] = transaction.datetime;
         currentTrade = null;
+    };
+
+    const appendTradovateExecution = (transaction, quantity, feesForExecution) => {
+      if (!currentTrade || quantity <= 0) {
+        return;
+      }
+
+      const newExecution = {
+        action: transaction.action,
+        quantity,
+        price: transaction.price,
+        datetime: transaction.datetime,
+        fees: feesForExecution,
+        orderId: transaction.orderId
+      };
+
+      const existsGlobally = isExecutionDuplicate(newExecution, symbol, context);
+      const executionExists = existsGlobally || currentTrade.executions.some(exec => {
+        if (exec.orderId && newExecution.orderId) {
+          return exec.orderId === newExecution.orderId;
+        }
+        return false;
+      });
+
+      if (executionExists) {
+        console.log(`  Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+        return false;
+      }
+
+      currentTrade.executions.push(newExecution);
+      currentTrade.totalFees += feesForExecution;
+      if (currentTrade.isExistingPosition) {
+        currentTrade.newExecutionsAdded++;
+      }
+      return true;
+    };
+
+    const applyTradovateExecution = (transaction, quantity) => {
+      const valueDelta = quantity * transaction.price * valueMultiplier;
+      if (transaction.action === 'buy') {
+        currentPosition += quantity;
+        if (currentTrade && currentTrade.side === 'long') {
+          currentTrade.entryValue += valueDelta;
+          currentTrade.totalQuantity += quantity;
+        } else if (currentTrade && currentTrade.side === 'short') {
+          currentTrade.exitValue += valueDelta;
+        }
+      } else if (transaction.action === 'sell') {
+        currentPosition -= quantity;
+        if (currentTrade && currentTrade.side === 'short') {
+          currentTrade.entryValue += valueDelta;
+          currentTrade.totalQuantity += quantity;
+        } else if (currentTrade && currentTrade.side === 'long') {
+          currentTrade.exitValue += valueDelta;
+        }
+      }
+    };
+
+    for (const transaction of symbolTransactions) {
+      const qty = transaction.quantity;
+      const totalFees = transaction.fees || 0;
+      let remainingQty = qty;
+      let remainingFees = totalFees;
+
+      console.log(`\n${transaction.action} ${qty} @ $${transaction.price} | Position: ${currentPosition}`);
+
+      while (remainingQty > 0) {
+        if (currentPosition === 0) {
+          startTradovateTrade(transaction);
+        }
+
+        const sameDirection =
+          (currentPosition > 0 && transaction.action === 'buy') ||
+          (currentPosition < 0 && transaction.action === 'sell') ||
+          currentPosition === 0;
+
+        const consumeQty = sameDirection
+          ? remainingQty
+          : Math.min(Math.abs(currentPosition), remainingQty);
+        const feesForExecution = remainingQty === consumeQty
+          ? remainingFees
+          : totalFees * (consumeQty / qty);
+        const previousPosition = currentPosition;
+
+        if (!appendTradovateExecution(transaction, consumeQty, feesForExecution)) {
+          console.log(`  Position: ${currentPosition} (unchanged - duplicate)`);
+          remainingQty = 0;
+          remainingFees = 0;
+          continue;
+        }
+
+        applyTradovateExecution(transaction, consumeQty);
+        remainingQty -= consumeQty;
+        remainingFees -= feesForExecution;
+
+        console.log(`  Position: ${previousPosition} -> ${currentPosition}`);
+
+        if (!sameDirection) {
+          finalizeTradovateTrade(transaction);
+
+          if (remainingQty > 0) {
+            startTradovateTrade(transaction);
+          }
+          continue;
+        }
+
+        finalizeTradovateTrade(transaction);
       }
     }
 

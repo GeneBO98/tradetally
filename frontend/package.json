@@ -1,6 +1,6 @@
 {
   "name": "tradetally-frontend",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@growthbook/growthbook": "^1.6.5",
     "@heroicons/vue": "^2.0.18",
     "@mdi/js": "^7.4.47",
     "@simplewebauthn/browser": "^13.2.2",

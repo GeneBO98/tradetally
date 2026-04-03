@@ -161,7 +161,9 @@ const defaultColumns = [
   { key: 'side', label: 'Side', visible: true, width: 'auto' },
   { key: 'entry', label: 'Entry', visible: true, width: 'auto' },
   { key: 'exit', label: 'Exit', visible: true, width: 'auto' },
-  { key: 'pnl', label: 'P&L', visible: true, width: 'auto' },
+  { key: 'pnl', label: 'Net P&L', visible: true, width: 'auto' },
+  { key: 'grossPnl', label: 'Gross P&L', visible: true, width: 'auto' },
+  { key: 'unrealizedPnl', label: 'Unrealized', visible: false, width: 'auto' },
   { key: 'confidence', label: 'Confidence', visible: true, width: 'auto' },
   { key: 'quality', label: 'Quality', visible: true, width: 'auto' },
   { key: 'sector', label: 'Sector', visible: true, width: 'auto' },
@@ -253,6 +255,31 @@ const loadSavedColumns = () => {
         // Save the updated columns back to localStorage
         localStorage.setItem('tradeListColumns', JSON.stringify(savedColumns))
         console.log('[COLUMNS] MIGRATION: Quality column added and saved')
+      }
+
+      const pnlColumn = savedColumns.find(c => c.key === 'pnl')
+      if (pnlColumn && pnlColumn.label !== 'Net P&L') {
+        pnlColumn.label = 'Net P&L'
+      }
+
+      const hasGrossPnlColumn = savedColumns.some(c => c.key === 'grossPnl')
+      if (!hasGrossPnlColumn) {
+        const pnlIndex = savedColumns.findIndex(c => c.key === 'pnl')
+        const grossPnlColumn = {
+          key: 'grossPnl',
+          label: 'Gross P&L',
+          visible: true,
+          width: 'auto'
+        }
+
+        if (pnlIndex !== -1) {
+          savedColumns.splice(pnlIndex + 1, 0, grossPnlColumn)
+        } else {
+          savedColumns.push(grossPnlColumn)
+        }
+
+        localStorage.setItem('tradeListColumns', JSON.stringify(savedColumns))
+        console.log('[COLUMNS] MIGRATION: Gross P&L column added and saved')
       }
 
       // Merge saved preferences with default columns to handle new columns

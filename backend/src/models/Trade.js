@@ -1290,6 +1290,7 @@ class Trade {
     const mainQuery = `
       SELECT t.*,
         t.strategy, t.setup,
+        pm.current_price,
         array_agg(DISTINCT ta.file_url) FILTER (WHERE ta.id IS NOT NULL) as attachment_urls,
         (SELECT array_agg(tch.chart_url ORDER BY tch.uploaded_at ASC) FROM trade_charts tch WHERE tch.trade_id = t.id) as chart_urls,
         count(DISTINCT tc.id)::integer as comment_count,
@@ -1297,10 +1298,11 @@ class Trade {
         sc.company_name as company_name
       FROM (${subquery}) AS trade_ids
       INNER JOIN trades t ON t.id = trade_ids.id
+      LEFT JOIN price_monitoring pm ON pm.symbol = t.symbol
       LEFT JOIN trade_attachments ta ON t.id = ta.trade_id
       LEFT JOIN trade_comments tc ON t.id = tc.trade_id
       LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
-      GROUP BY t.id, sc.finnhub_industry, sc.company_name
+      GROUP BY t.id, pm.current_price, sc.finnhub_industry, sc.company_name
       ORDER BY t.trade_date DESC, t.entry_time DESC
     `;
 
@@ -3180,7 +3182,11 @@ class Trade {
         losingTrades: parseInt(analytics.losing_trades) || 0,
         breakevenTrades: parseInt(analytics.breakeven_trades) || 0,
         totalPnL: parseFloat(analytics.total_pnl) || 0,
+        totalNetPnL: parseFloat(analytics.total_pnl) || 0,
+        totalGrossPnL: (parseFloat(analytics.total_pnl) || 0) + (parseFloat(analytics.total_costs) || 0),
         avgPnL: parseFloat(analytics.avg_pnl) || 0,
+        avgNetPnL: parseFloat(analytics.avg_pnl) || 0,
+        avgGrossPnL: (parseFloat(analytics.avg_pnl) || 0) + ((parseFloat(analytics.total_costs) || 0) / Math.max(parseInt(analytics.total_trades) || 0, 1)),
         avgWin: parseFloat(analytics.avg_win) || 0,
         avgLoss: parseFloat(analytics.avg_loss) || 0,
         bestTrade: parseFloat(analytics.best_trade) || 0,

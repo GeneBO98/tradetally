@@ -908,6 +908,7 @@ const defaultFilters = {
   holdTime: '',
   broker: '', // Keep for backward compatibility
   brokers: [], // New multi-select array
+  accounts: '',
   daysOfWeek: [], // New multi-select array for days
   instrumentTypes: [], // New multi-select array for instrument types
   optionTypes: [], // New multi-select array for option types (call/put)
@@ -939,6 +940,7 @@ function loadInitialFilters() {
       if (parsed.brokers && typeof parsed.brokers === 'string') {
         parsed.brokers = parsed.brokers.split(',').filter(Boolean)
       }
+      delete parsed.accounts
       if (parsed.daysOfWeek && typeof parsed.daysOfWeek === 'string') {
         parsed.daysOfWeek = parsed.daysOfWeek.split(',').filter(Boolean).map(Number)
       }
@@ -1181,6 +1183,7 @@ const activeAdvancedCount = computed(() => {
 
 function applyFilters() {
   console.log('[TradeFilters] applyFilters called')
+  filters.value.accounts = selectedAccount.value || ''
   console.log('[TradeFilters] Current filters.value:', JSON.stringify(filters.value))
   console.log('[TradeFilters] Current selectedPeriod:', selectedPeriod.value)
 
@@ -1257,6 +1260,7 @@ function applyFilters() {
     // Create a clean object with only non-empty values to save
     const filtersToSave = {}
     Object.keys(filters.value).forEach(key => {
+      if (key === 'accounts') return
       const value = filters.value[key]
       // Only save non-empty values
       if (value !== '' && value !== null && value !== undefined) {
@@ -1487,6 +1491,7 @@ function handleClickOutside(event) {
 // Watch for global account filter changes and re-apply filters
 watch(selectedAccount, () => {
   console.log('[TradeFilters] Global account filter changed to:', selectedAccount.value || 'All Accounts')
+  filters.value.accounts = selectedAccount.value || ''
   applyFilters()
 })
 
