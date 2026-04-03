@@ -131,7 +131,8 @@ const accountController = {
         success: true,
         data: identifiers.map(row => ({
           accountIdentifier: row.account_identifier,
-          broker: row.broker
+          broker: row.broker,
+          earliestTradeDate: row.earliest_trade_date ? new Date(row.earliest_trade_date).toISOString().split('T')[0] : null
         }))
       });
     } catch (error) {
@@ -174,12 +175,25 @@ const accountController = {
         });
       }
 
+      // Auto-adjust initialBalanceDate if trades exist before it
+      let effectiveBalanceDate = initialBalanceDate;
+      if (accountIdentifier) {
+        const earliestTradeDate = await Account.getEarliestTradeDate(req.user.id, accountIdentifier);
+        if (earliestTradeDate) {
+          const earliest = new Date(earliestTradeDate).toISOString().split('T')[0];
+          if (earliest < effectiveBalanceDate) {
+            console.log(`[ACCOUNTS] Auto-adjusting initialBalanceDate from ${effectiveBalanceDate} to ${earliest} (earliest trade date for identifier "${accountIdentifier}")`);
+            effectiveBalanceDate = earliest;
+          }
+        }
+      }
+
       const account = await Account.create(req.user.id, {
         accountName: accountName.trim(),
         accountIdentifier: accountIdentifier || null,
         broker: broker || null,
         initialBalance: parseFloat(initialBalance) || 0,
-        initialBalanceDate,
+        initialBalanceDate: effectiveBalanceDate,
         isPrimary: isPrimary || false,
         notes: notes || null
       });
