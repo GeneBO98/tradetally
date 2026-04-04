@@ -2278,6 +2278,10 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
           }
         }
         csvString = lines.slice(headerIndex, endIndex).join('\n');
+        // Strip Excel formula notation for numeric fields: ="1005762914435" → 1005762914435
+        // Some TOS exports don't properly CSV-quote these, causing csv-parse to misinterpret
+        // the bare quotes as field delimiters and silently drop rows
+        csvString = csvString.replace(/(^|,)="(\d+)"(?=,|$)/gm, '$1$2');
         console.log(`Skipped ${headerIndex} header rows, using ${endIndex - headerIndex} lines from Cash Balance section`);
       } else {
         console.log('Warning: Could not find thinkorswim header pattern, trying to parse as-is');
