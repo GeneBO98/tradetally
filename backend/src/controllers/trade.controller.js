@@ -18,6 +18,56 @@ const axios = require('axios');
 const { sendV1NotImplemented } = require('../utils/apiResponse');
 const { getUserTimezone } = require('../utils/timezone');
 const Playbook = require('../models/Playbook');
+const MAEEstimator = require('../utils/maeEstimator');
+const TierService = require('../services/tierService');
+
+/**
+ * Auto-calculate MAE/MFE for a closed trade using Finnhub candle data.
+ * Runs async (fire-and-forget) so it doesn't block the API response.
+ * Only runs for Pro users and closed trades without existing MAE/MFE values.
+ */
+async function autoCalculateMAEMFE(userId, trade) {
+  try {
+    // Only Pro users get auto-calculation
+    const tier = await TierService.getUserTier(userId);
+    if (tier !== 'pro') return;
+
+    // Need a closed trade with entry/exit data and no existing MAE/MFE
+    const exitTime = trade.exit_time || trade.exitTime;
+    const exitPrice = trade.exit_price || trade.exitPrice;
+    const entryTime = trade.entry_time || trade.entryTime;
+    const entryPrice = trade.entry_price || trade.entryPrice;
+    const existingMAE = trade.mae;
+    const existingMFE = trade.mfe;
+
+    if (!exitTime || !exitPrice || !entryTime || !entryPrice) return;
+    if (existingMAE && existingMFE) return;
+
+    // Build trade object in the format MAEEstimator expects
+    const tradeData = {
+      symbol: trade.symbol,
+      entry_time: entryTime,
+      exit_time: exitTime,
+      entry_price: entryPrice,
+      exit_price: exitPrice,
+      side: trade.side,
+      pnl: trade.pnl || trade.profit_loss || 0,
+      commission: trade.commission || 0,
+      fees: trade.fees || 0
+    };
+
+    if (!MAEEstimator.isValidTradeForEstimation(tradeData)) return;
+
+    console.log(`[MAE/MFE] Auto-calculating for trade ${trade.id} (${trade.symbol})`);
+    const { mae, mfe } = await MAEEstimator.calculateFromCandleData(tradeData);
+
+    // Update the trade with calculated values
+    await Trade.update(trade.id, userId, { mae, mfe });
+    console.log(`[MAE/MFE] Updated trade ${trade.id}: MAE=$${mae.toFixed(2)}, MFE=$${mfe.toFixed(2)}`);
+  } catch (error) {
+    console.warn(`[MAE/MFE] Auto-calculation failed for trade ${trade.id}: ${error.message}`);
+  }
+}
 
 function buildSetupQuality(trade) {
   return {
@@ -552,6 +602,9 @@ const tradeController = {
       invalidateAnalyticsCache(req.user.id);
 
       res.status(201).json({ trade });
+
+      // Fire-and-forget: auto-calculate MAE/MFE for closed trades (Pro only)
+      autoCalculateMAEMFE(req.user.id, trade).catch(() => {});
     } catch (error) {
       next(error);
     }
@@ -792,6 +845,13 @@ const tradeController = {
       invalidateAnalyticsCache(req.user.id);
 
       res.json({ trade });
+
+      // Fire-and-forget: auto-calculate MAE/MFE if not manually provided (Pro only)
+      const manualMAE = normalizedBody.mae !== undefined && normalizedBody.mae !== null && normalizedBody.mae !== '';
+      const manualMFE = normalizedBody.mfe !== undefined && normalizedBody.mfe !== null && normalizedBody.mfe !== '';
+      if (!manualMAE || !manualMFE) {
+        autoCalculateMAEMFE(req.user.id, trade).catch(() => {});
+      }
     } catch (error) {
       next(error);
     }
@@ -2504,6 +2564,47 @@ const tradeController = {
             });
           } catch (error) {
             console.warn('[WARNING] Failed to start background symbol categorization:', error.message);
+          }
+
+          // Background MAE/MFE calculation for imported trades (Pro only)
+          try {
+            if (imported > 0) {
+              const tier = await TierService.getUserTier(fileUserId);
+              if (tier === 'pro') {
+                console.log(`[MAE/MFE] Scheduling background calculation for ${imported} imported trades...`);
+                const importedClosedTrades = await db.query(`
+                  SELECT id, symbol, side, entry_time, exit_time, entry_price, exit_price, pnl, commission, fees, mae, mfe
+                  FROM trades
+                  WHERE user_id = $1 AND import_id = $2
+                  AND exit_time IS NOT NULL AND exit_price IS NOT NULL
+                  AND (mae IS NULL OR mfe IS NULL)
+                `, [fileUserId, importId]);
+
+                if (importedClosedTrades.rows.length > 0) {
+                  console.log(`[MAE/MFE] Found ${importedClosedTrades.rows.length} closed trades needing MAE/MFE calculation`);
+                  // Process in background with rate limiting (max 30 per minute for Finnhub basic plan)
+                  (async () => {
+                    let calculated = 0;
+                    for (const trade of importedClosedTrades.rows) {
+                      try {
+                        if (!MAEEstimator.isValidTradeForEstimation(trade)) continue;
+                        const { mae, mfe } = await MAEEstimator.calculateFromCandleData(trade);
+                        await Trade.update(trade.id, fileUserId, { mae, mfe });
+                        calculated++;
+                        console.log(`[MAE/MFE] Calculated for ${trade.symbol} (${calculated}/${importedClosedTrades.rows.length})`);
+                        // Rate limit: ~2 seconds between calls
+                        await new Promise(resolve => setTimeout(resolve, 2000));
+                      } catch (err) {
+                        console.warn(`[MAE/MFE] Failed for ${trade.symbol}: ${err.message}`);
+                      }
+                    }
+                    console.log(`[MAE/MFE] Background calculation complete: ${calculated}/${importedClosedTrades.rows.length} trades`);
+                  })().catch(err => console.warn('[MAE/MFE] Background batch failed:', err.message));
+                }
+              }
+            }
+          } catch (maeError) {
+            console.warn('[WARNING] Failed to start MAE/MFE background calculation:', maeError.message);
           }
 
           // Background news enrichment for imported trades
