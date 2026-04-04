@@ -102,7 +102,7 @@
                   <div class="text-lg font-semibold" :class="[
                     trade.pnl >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
-                    {{ trade.pnl ? `$${formatNumber(trade.pnl)}` : 'Open' }}
+                    {{ trade.pnl ? formatCurrency(trade.pnl) : 'Open' }}
                   </div>
                   <div v-if="trade.pnl_percent" class="text-sm text-gray-500 dark:text-gray-400">
                     {{ trade.pnl_percent > 0 ? '+' : '' }}{{ formatNumber(trade.pnl_percent) }}%
@@ -114,13 +114,13 @@
                 <div>
                   <span class="text-gray-500 dark:text-gray-400">Entry:</span>
                   <span class="ml-1 font-medium text-gray-900 dark:text-white">
-                    ${{ formatNumber(trade.entry_price) }}
+                    {{ formatCurrency(trade.entry_price) }}
                   </span>
                 </div>
                 <div>
                   <span class="text-gray-500 dark:text-gray-400">Exit:</span>
                   <span class="ml-1 font-medium text-gray-900 dark:text-white">
-                    {{ trade.exit_price ? `$${formatNumber(trade.exit_price)}` : 'Open' }}
+                    {{ trade.exit_price ? formatCurrency(trade.exit_price) : 'Open' }}
                   </span>
                 </div>
                 <div>
@@ -171,6 +171,9 @@ import { useRoute } from 'vue-router'
 import { formatTradeDate } from '@/utils/date'
 import { DocumentTextIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+
+const { formatCurrency } = useCurrencyFormatter()
 
 const route = useRoute()
 const loading = ref(true)

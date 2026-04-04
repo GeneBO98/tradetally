@@ -111,7 +111,7 @@
                 </div>
                 <div v-if="trade.instrument_type === 'option' && trade.strike_price">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Strike Price</dt>
-                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">${{ formatNumber(trade.strike_price) }}</dd>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">{{ formatCurrency(trade.strike_price) }}</dd>
                 </div>
                 <div v-if="trade.instrument_type === 'option' && trade.expiration_date">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Expiration Date</dt>
@@ -125,30 +125,30 @@
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
                     {{ trade.instrument_type === 'option' ? 'Entry Price (per share)' : 'Entry Price' }}
                   </dt>
-                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">${{ formatNumber(trade.entry_price) }}</dd>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">{{ formatCurrency(trade.entry_price) }}</dd>
                 </div>
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
                     {{ trade.instrument_type === 'option' ? 'Exit Price (per share)' : 'Exit Price' }}
                   </dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">
-                    {{ trade.exit_time ? `$${formatNumber(trade.exit_price)}` : 'Open' }}
+                    {{ trade.exit_time ? formatCurrency(trade.exit_price) : 'Open' }}
                   </dd>
                 </div>
                 <div v-if="trade.stopLoss || trade.stop_loss">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Stop Loss</dt>
-                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">${{ formatNumber(trade.stop_loss || trade.stopLoss) }}</dd>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">{{ formatCurrency(trade.stop_loss || trade.stopLoss) }}</dd>
                 </div>
                 <div v-if="trade.takeProfit || trade.take_profit || (trade.take_profit_targets && trade.take_profit_targets.length > 0)">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Take Profit</dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono flex flex-wrap gap-x-4 gap-y-1">
                     <!-- Show single take_profit as TP1 only when NO take_profit_targets exist -->
                     <span v-if="(trade.take_profit || trade.takeProfit) && (!trade.take_profit_targets || trade.take_profit_targets.length === 0)">
-                      <span class="text-xs text-gray-400 mr-1">TP1:</span>${{ formatNumber(trade.take_profit || trade.takeProfit) }}
+                      <span class="text-xs text-gray-400 mr-1">TP1:</span>{{ formatCurrency(trade.take_profit || trade.takeProfit) }}
                     </span>
                     <!-- Show all targets from take_profit_targets as TP1, TP2, etc. -->
                     <span v-for="(target, index) in (trade.take_profit_targets || [])" :key="index">
-                      <span class="text-xs text-gray-400 mr-1">TP{{ index + 1 }}:</span>${{ formatNumber(target.price) }}
+                      <span class="text-xs text-gray-400 mr-1">TP{{ index + 1 }}:</span>{{ formatCurrency(target.price) }}
                       <span v-if="target.shares" class="text-xs text-gray-400 ml-0.5">({{ target.shares }})</span>
                     </span>
                   </dd>
@@ -277,12 +277,12 @@
                       ? 'text-red-600 dark:text-red-400'
                       : 'text-gray-900 dark:text-white'
                   ]">
-                    {{ trade.commission < 0 ? '+' : '-' }}${{ formatNumber(Math.abs(trade.commission)) }}
+                    {{ formatSignedCurrency(-trade.commission) }}
                   </dd>
                 </div>
                 <div v-if="trade.fees">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Fees</dt>
-                  <dd class="mt-1 text-sm text-gray-900 dark:text-white">${{ formatNumber(trade.fees) }}</dd>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white">{{ formatCurrency(trade.fees) }}</dd>
                 </div>
               </dl>
             </div>
@@ -482,7 +482,7 @@
                         {{ (getScore(trade.qualityMetrics.priceScore) * 100).toFixed(0) }}%
                       </div>
                       <div class="text-xs text-gray-500 dark:text-gray-400">
-                        {{ trade.qualityMetrics.price !== null && trade.qualityMetrics.price !== undefined ? '$' + Number(trade.qualityMetrics.price).toFixed(2) : 'N/A' }}
+                        {{ trade.qualityMetrics.price !== null && trade.qualityMetrics.price !== undefined ? formatCurrency(trade.qualityMetrics.price) : 'N/A' }}
                       </div>
                     </div>
                   </div>
@@ -821,10 +821,10 @@
                         {{ formatQuantity(execution.quantity) }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-white">
-                        {{ execution.entryPrice !== null && execution.entryPrice !== undefined ? `$${formatNumber(execution.entryPrice)}` : '-' }}
+                        {{ execution.entryPrice !== null && execution.entryPrice !== undefined ? formatCurrency(execution.entryPrice) : '-' }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-white">
-                        {{ execution.exitPrice !== null && execution.exitPrice !== undefined ? `$${formatNumber(execution.exitPrice)}` : '-' }}
+                        {{ execution.exitPrice !== null && execution.exitPrice !== undefined ? formatCurrency(execution.exitPrice) : '-' }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono"
                           :class="[
@@ -834,7 +834,7 @@
                               ? 'text-red-600 dark:text-red-400'
                               : 'text-gray-900 dark:text-white'
                           ]">
-                        {{ execution.pnl !== undefined && execution.pnl !== null ? `$${formatNumber(execution.pnl)}` : '-' }}
+                        {{ execution.pnl !== undefined && execution.pnl !== null ? formatCurrency(execution.pnl) : '-' }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono"
                           :class="[
@@ -844,10 +844,10 @@
                               ? 'text-red-600 dark:text-red-400'
                               : 'text-gray-600 dark:text-gray-400'
                           ]">
-                        {{ execution.commission ? (execution.commission < 0 ? '+' : '-') + `$${formatNumber(Math.abs(execution.commission))}` : '-' }}
+                        {{ execution.commission ? formatSignedCurrency(-execution.commission) : '-' }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-600 dark:text-gray-400">
-                        {{ execution.fees ? `$${formatNumber(execution.fees)}` : '-' }}
+                        {{ execution.fees ? formatCurrency(execution.fees) : '-' }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
                         {{ execution.entryTime ? formatDateTime(execution.entryTime) : '-' }}
@@ -899,13 +899,13 @@
                     <div v-if="execution.entryPrice !== null && execution.entryPrice !== undefined">
                       <div class="text-gray-500 dark:text-gray-400 text-xs">Entry Price</div>
                       <div class="font-mono text-gray-900 dark:text-white">
-                        ${{ formatNumber(execution.entryPrice) }}
+                        {{ formatCurrency(execution.entryPrice) }}
                       </div>
                     </div>
                     <div v-if="execution.exitPrice !== null && execution.exitPrice !== undefined">
                       <div class="text-gray-500 dark:text-gray-400 text-xs">Exit Price</div>
                       <div class="font-mono text-gray-900 dark:text-white">
-                        ${{ formatNumber(execution.exitPrice) }}
+                        {{ formatCurrency(execution.exitPrice) }}
                       </div>
                     </div>
                     <div v-if="execution.exitTime">
@@ -924,7 +924,7 @@
                                ? 'text-red-600 dark:text-red-400'
                                : 'text-gray-900 dark:text-white'
                            ]">
-                        ${{ formatNumber(execution.pnl) }}
+                        {{ formatCurrency(execution.pnl) }}
                       </div>
                     </div>
                     <div v-if="execution.commission">
@@ -938,13 +938,13 @@
                           ? 'text-red-600 dark:text-red-400'
                           : 'text-gray-600 dark:text-gray-400'
                       ]">
-                        {{ execution.commission < 0 ? '+' : '-' }}${{ formatNumber(Math.abs(execution.commission)) }}
+                        {{ formatSignedCurrency(-execution.commission) }}
                       </div>
                     </div>
                     <div v-if="execution.fees">
                       <div class="text-gray-500 dark:text-gray-400 text-xs">Fees</div>
                       <div class="font-mono text-gray-600 dark:text-gray-400">
-                        ${{ formatNumber(execution.fees) }}
+                        {{ formatCurrency(execution.fees) }}
                       </div>
                     </div>
                   </div>
@@ -961,13 +961,13 @@
                   <div>
                     <div class="text-gray-500 dark:text-gray-400 text-xs">Total Volume</div>
                     <div class="font-semibold font-mono text-gray-900 dark:text-white">
-                      ${{ formatNumber(executionSummary.totalVolume) }}
+                      {{ formatCurrency(executionSummary.totalVolume) }}
                     </div>
                   </div>
                   <div>
                     <div class="text-gray-500 dark:text-gray-400 text-xs">Total Fees</div>
                     <div class="font-semibold font-mono text-gray-900 dark:text-white">
-                      ${{ formatNumber(executionSummary.totalFees) }}
+                      {{ formatCurrency(executionSummary.totalFees) }}
                     </div>
                   </div>
                   <div>
@@ -1209,7 +1209,7 @@
                   <dd class="mt-1 text-2xl font-semibold" :class="[
                     displayPnl >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
-                    {{ trade.exit_time ? `$${formatNumber(displayPnl)}` : 'Open' }}
+                    {{ trade.exit_time ? formatCurrency(displayPnl) : 'Open' }}
                   </dd>
                 </div>
                 <div v-if="trade.pnl_percent">
@@ -1229,7 +1229,7 @@
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Value</dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white">
-                    ${{ formatNumber(trade.entry_price * trade.quantity) }}
+                    {{ formatCurrency(trade.entry_price * trade.quantity) }}
                   </dd>
                 </div>
               </dl>
@@ -1356,6 +1356,7 @@ import { useNotification } from '@/composables/useNotification'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { format, formatDistanceToNow, formatDistance } from 'date-fns'
 import { DocumentIcon, ChatBubbleLeftIcon } from '@heroicons/vue/24/outline'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 import TradeChartVisualization from '@/components/trades/TradeChartVisualization.vue'
@@ -1369,6 +1370,7 @@ const tradesStore = useTradesStore()
 const authStore = useAuthStore()
 const { showSuccess, showError, showConfirmation } = useNotification()
 const { formatDateTime: formatDateTimeTz, formatTime: formatTimeTz, timezoneLabel } = useUserTimezone()
+const { formatCurrency, currencySymbol, formatSignedCurrency } = useCurrencyFormatter()
 
 const loading = ref(true)
 const trade = ref(null)

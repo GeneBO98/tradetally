@@ -205,9 +205,11 @@
 import { ref, watch, onMounted } from 'vue'
 import { format } from 'date-fns'
 import { useUserTimezone } from '@/composables/useUserTimezone'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import SymbolAutocomplete from '@/components/common/SymbolAutocomplete.vue'
 
 const { formatDateTime: formatDateTimeTz } = useUserTimezone()
+const { formatCurrency } = useCurrencyFormatter()
 
 const props = defineProps({
   trades: {
@@ -303,16 +305,6 @@ function formatDateWithTime(trade) {
   } catch {
     return formatDate(trade?.trade_date) || ''
   }
-}
-
-function formatCurrency(value) {
-  if (value === null || value === undefined) return '-'
-  const num = parseFloat(value)
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2
-  }).format(num)
 }
 
 function formatPercent(value) {

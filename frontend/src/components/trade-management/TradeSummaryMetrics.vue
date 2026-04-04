@@ -40,7 +40,7 @@
           </div>
           <div v-if="editingStopLoss" class="space-y-2">
             <div class="relative">
-              <span class="absolute left-2 top-1.5 text-gray-500 text-sm">$</span>
+              <span class="absolute left-2 top-1.5 text-gray-500 text-sm">{{ currencySymbol }}</span>
               <input
                 ref="stopLossInput"
                 v-model="editStopLoss"
@@ -84,7 +84,7 @@
             <div v-if="editingTakeProfit" class="space-y-2">
               <div class="flex items-center gap-2">
                 <div class="relative flex-1 min-w-0">
-                  <span class="absolute left-2 top-1.5 text-gray-500 text-sm">$</span>
+                  <span class="absolute left-2 top-1.5 text-gray-500 text-sm">{{ currencySymbol }}</span>
                   <input
                     ref="takeProfitInput"
                     v-model="editTakeProfit"
@@ -160,7 +160,7 @@
             </div>
             <div class="flex items-center gap-2">
               <div class="relative flex-1 min-w-0">
-                <span class="absolute left-2 top-1 text-gray-500 text-sm">$</span>
+                <span class="absolute left-2 top-1 text-gray-500 text-sm">{{ currencySymbol }}</span>
                 <input
                   v-model.number="target.price"
                   type="number"
@@ -215,7 +215,7 @@
             {{ formatCurrency(analysis.risk_amount) }}
           </div>
           <div class="text-xs text-gray-500 dark:text-gray-400">
-            ${{ formatNumber(analysis.risk_per_share) }} per share
+            {{ formatCurrency(analysis.risk_per_share) }} per share
           </div>
         </div>
 
@@ -323,9 +323,11 @@ import { ref, computed, nextTick, watch } from 'vue'
 import { format } from 'date-fns'
 import api from '@/services/api'
 import { useUserTimezone } from '@/composables/useUserTimezone'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import TargetHitFirstIndicator from './TargetHitFirstIndicator.vue'
 
 const { formatDateTime: formatDateTimeTz } = useUserTimezone()
+const { formatCurrency, currencySymbol } = useCurrencyFormatter()
 
 const props = defineProps({
   trade: {
@@ -865,20 +867,6 @@ function handleTargetHitUpdated(data) {
   emit('target-hit-updated', data)
 }
 
-function formatCurrency(value) {
-  if (value === null || value === undefined) return '-'
-  const num = parseFloat(value)
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2
-  }).format(num)
-}
-
-function formatNumber(value) {
-  if (value === null || value === undefined) return '-'
-  return parseFloat(value).toFixed(2)
-}
 
 function formatPercent(value) {
   if (value === null || value === undefined) return '-'

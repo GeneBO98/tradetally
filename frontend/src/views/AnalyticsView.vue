@@ -163,7 +163,7 @@
             <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold whitespace-nowrap" :class="[
               displayOverview.total_pnl >= 0 ? 'text-green-600' : 'text-red-600'
             ]">
-              ${{ formatNumber(displayOverview.total_pnl) }}
+              {{ formatCurrency(displayOverview.total_pnl) }}
             </dd>
           </div>
         </div>
@@ -198,7 +198,7 @@
             <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold whitespace-nowrap" :class="[
               displayOverview.avg_pnl >= 0 ? 'text-green-600' : 'text-red-600'
             ]">
-              ${{ formatNumber(displayOverview.avg_pnl) }}
+              {{ formatCurrency(displayOverview.avg_pnl) }}
             </dd>
           </div>
         </div>
@@ -406,7 +406,7 @@
                 Total Commissions
               </dt>
               <dd class="mt-1 text-lg font-semibold text-red-600">
-                ${{ formatNumber(overview.total_commissions ?? 0) }} <span class="text-sm text-gray-500">(USD)</span>
+                {{ formatCurrency(overview.total_commissions ?? 0) }}
               </dd>
             </div>
             
@@ -415,7 +415,7 @@
                 Total Fees
               </dt>
               <dd class="mt-1 text-lg font-semibold text-red-600">
-                ${{ formatNumber(overview.total_fees ?? 0) }} <span class="text-sm text-gray-500">(USD)</span>
+                {{ formatCurrency(overview.total_fees ?? 0) }}
               </dd>
             </div>
             
@@ -424,7 +424,7 @@
                 {{ calculationMethod }} Position MAE
               </dt>
               <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
-                <span v-if="overview.avg_mae !== 'N/A'">${{ overview.avg_mae }} <span class="text-sm text-gray-500">(USD)</span></span>
+                <span v-if="overview.avg_mae !== 'N/A'">{{ formatCurrency(overview.avg_mae) }}</span>
                 <span v-else>{{ overview.avg_mae }}</span>
               </dd>
               <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
@@ -445,7 +445,7 @@
                 {{ calculationMethod }} Position MFE
               </dt>
               <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
-                <span v-if="overview.avg_mfe !== 'N/A'">${{ overview.avg_mfe }} <span class="text-sm text-gray-500">(USD)</span></span>
+                <span v-if="overview.avg_mfe !== 'N/A'">{{ formatCurrency(overview.avg_mfe) }}</span>
                 <span v-else>{{ overview.avg_mfe }}</span>
               </dd>
               <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
@@ -500,25 +500,25 @@
                 <div class="flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-1 -m-1">
                   <span class="text-sm text-gray-500 dark:text-gray-400">{{ calculationMethod }} Win</span>
                   <span class="text-sm font-medium text-green-600">
-                    ${{ formatNumber(displayOverview.avg_win) }}
+                    {{ formatCurrency(displayOverview.avg_win) }}
                   </span>
                 </div>
                 <div class="flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-1 -m-1">
                   <span class="text-sm text-gray-500 dark:text-gray-400">{{ calculationMethod }} Loss</span>
                   <span class="text-sm font-medium text-red-600">
-                    ${{ formatNumber(Math.abs(displayOverview.avg_loss)) }}
+                    {{ formatCurrency(displayOverview.avg_loss, { abs: true }) }}
                   </span>
                 </div>
                 <div class="flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-1 -m-1">
                   <span class="text-sm text-gray-500 dark:text-gray-400">Best Trade</span>
                   <span class="text-sm font-medium text-green-600">
-                    ${{ formatNumber(overview.best_trade) }}
+                    {{ formatCurrency(overview.best_trade) }}
                   </span>
                 </div>
                 <div class="flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-1 -m-1">
                   <span class="text-sm text-gray-500 dark:text-gray-400">Worst Trade</span>
                   <span class="text-sm font-medium text-red-600">
-                    ${{ formatNumber(overview.worst_trade) }}
+                    {{ formatCurrency(overview.worst_trade) }}
                   </span>
                 </div>
               </div>
@@ -564,7 +564,7 @@
                     <div class="text-sm font-medium w-20 text-right" :class="[
                       symbol.total_pnl >= 0 ? 'text-green-600' : 'text-red-600'
                     ]">
-                      ${{ formatNumber(symbol.total_pnl) }}
+                      {{ formatCurrency(symbol.total_pnl) }}
                     </div>
                     <div class="text-xs text-gray-500 dark:text-gray-400 w-12 text-right">
                       {{ (symbol.winning_trades / symbol.total_trades * 100).toFixed(0) }}%
@@ -672,7 +672,7 @@
                   class="text-xs font-semibold px-2 py-1 rounded whitespace-nowrap"
                   :class="sector.total_pnl >= 0 ? 'text-green-700 bg-green-100 dark:text-green-400 dark:bg-green-900/30' : 'text-red-700 bg-red-100 dark:text-red-400 dark:bg-red-900/30'"
                 >
-                  ${{ formatNumber(sector.total_pnl) }}
+                  {{ formatCurrency(sector.total_pnl) }}
                 </span>
               </div>
               
@@ -693,14 +693,14 @@
                     v-for="symbol in sector.symbols.slice(0, 6)" 
                     :key="symbol.symbol"
                     class="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
-                    :title="`${symbol.trades} trades, $${formatNumber(symbol.pnl)} P&L`"
+                    :title="`${symbol.trades} trades, ${formatCurrency(symbol.pnl)} P&L`"
                   >
                     {{ symbol.symbol }}
                     <span 
                       class="ml-1 text-xs"
                       :class="symbol.pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
                     >
-                      ${{ Math.abs(symbol.pnl) >= 1000 ? (symbol.pnl/1000).toFixed(1) + 'k' : symbol.pnl.toFixed(0) }}
+                      {{ formatCurrency(symbol.pnl, { compact: true, maximumFractionDigits: 0 }) }}
                     </span>
                   </span>
                   <span v-if="sector.symbols.length > 6" class="text-xs text-gray-500 dark:text-gray-400 px-1">
@@ -952,13 +952,13 @@
                     (rValueMode ? tag.total_r_value : tag.total_pnl) >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
                     <span v-if="rValueMode">{{ formatNumber(tag.total_r_value) }}R</span>
-                    <span v-else>${{ formatNumber(tag.total_pnl) }}</span>
+                    <span v-else>{{ formatCurrency(tag.total_pnl) }}</span>
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap text-sm" :class="[
                     (rValueMode ? tag.avg_r_value : tag.avg_pnl) >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
                     <span v-if="rValueMode">{{ formatNumber(tag.avg_r_value) }}R</span>
-                    <span v-else>${{ formatNumber(tag.avg_pnl) }}</span>
+                    <span v-else>{{ formatCurrency(tag.avg_pnl) }}</span>
                   </td>
                 </tr>
               </tbody>
@@ -1011,13 +1011,13 @@
                     (rValueMode ? strategy.total_r_value : strategy.total_pnl) >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
                     <span v-if="rValueMode">{{ formatNumber(strategy.total_r_value) }}R</span>
-                    <span v-else>${{ formatNumber(strategy.total_pnl) }}</span>
+                    <span v-else>{{ formatCurrency(strategy.total_pnl) }}</span>
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap text-sm" :class="[
                     (rValueMode ? strategy.avg_r_value : strategy.avg_pnl) >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
                     <span v-if="rValueMode">{{ formatNumber(strategy.avg_r_value) }}R</span>
-                    <span v-else>${{ formatNumber(strategy.avg_pnl) }}</span>
+                    <span v-else>{{ formatCurrency(strategy.avg_pnl) }}</span>
                   </td>
                 </tr>
               </tbody>
@@ -1070,13 +1070,13 @@
                     (rValueMode ? hour.total_r_value : hour.total_pnl) >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
                     <span v-if="rValueMode">{{ formatNumber(hour.total_r_value) }}R</span>
-                    <span v-else>${{ formatNumber(hour.total_pnl) }}</span>
+                    <span v-else>{{ formatCurrency(hour.total_pnl) }}</span>
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap text-sm" :class="[
                     (rValueMode ? hour.avg_r_value : hour.avg_pnl) >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
                     <span v-if="rValueMode">{{ formatNumber(hour.avg_r_value) }}R</span>
-                    <span v-else>${{ formatNumber(hour.avg_pnl) }}</span>
+                    <span v-else>{{ formatCurrency(hour.avg_pnl) }}</span>
                   </td>
                 </tr>
               </tbody>
@@ -1222,9 +1222,11 @@ import AIConversationPanel from '@/components/ai/AIConversationPanel.vue'
 import { useAIStore } from '@/stores/ai'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { useUserTimezone } from '@/composables/useUserTimezone'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import Chart from 'chart.js/auto'
 
 const { use12Hour } = useUserTimezone()
+const { formatCurrency, currencySymbol } = useCurrencyFormatter()
 import draggable from 'vuedraggable'
 import {
   mdiCheckCircle,
@@ -1904,7 +1906,7 @@ function createPerformanceByPriceChart() {
               if (rValueMode.value) {
                 return `Total R-Multiple: ${context.parsed.x.toFixed(2)}R (${tradeCount} trades)`
               }
-              return `Total P&L: $${context.parsed.x.toFixed(2)} (${tradeCount} trades)`
+              return `Total P&L: ${currencySymbol.value}${context.parsed.x.toFixed(2)} (${tradeCount} trades)`
             }
           }
         }
@@ -1988,7 +1990,7 @@ function createPerformanceByVolumeChart() {
               if (rValueMode.value) {
                 return `Total R-Multiple: ${context.parsed.x.toFixed(2)}R (${tradeCount} trades)`
               }
-              return `Total P&L: $${context.parsed.x.toFixed(2)} (${tradeCount} trades)`
+              return `Total P&L: ${currencySymbol.value}${context.parsed.x.toFixed(2)} (${tradeCount} trades)`
             }
           }
         }
@@ -2072,7 +2074,7 @@ function createPerformanceByPositionSizeChart() {
               if (rValueMode.value) {
                 return `Total R-Multiple: ${context.parsed.x.toFixed(2)}R (${tradeCount} trades)`
               }
-              return `Total P&L: $${context.parsed.x.toFixed(2)} (${tradeCount} trades)`
+              return `Total P&L: ${currencySymbol.value}${context.parsed.x.toFixed(2)} (${tradeCount} trades)`
             }
           }
         }
@@ -2161,7 +2163,7 @@ function createDayOfWeekChart() {
               if (rValueMode.value) {
                 return `R-Multiple: ${context.parsed.x.toFixed(2)}R`
               }
-              return `P&L: $${context.parsed.x.toFixed(2)}`
+              return `P&L: ${currencySymbol.value}${context.parsed.x.toFixed(2)}`
             }
           }
         }
@@ -2255,7 +2257,7 @@ function createPerformanceByHoldTimeChart() {
               if (rValueMode.value) {
                 return `Total R-Multiple: ${context.parsed.x.toFixed(2)}R (${tradeCount} trades)`
               }
-              return `Total P&L: $${context.parsed.x.toFixed(2)} (${tradeCount} trades)`
+              return `Total P&L: ${currencySymbol.value}${context.parsed.x.toFixed(2)} (${tradeCount} trades)`
             }
           }
         }
@@ -2451,7 +2453,7 @@ function createDrawdownChart() {
               if (rValueMode.value) {
                 return `Drawdown: ${context.parsed.y.toFixed(2)}R`
               }
-              return `Drawdown: $${context.parsed.y.toFixed(2)}`
+              return `Drawdown: ${currencySymbol.value}${context.parsed.y.toFixed(2)}`
             },
             title: function(context) {
               const originalDate = drawdownData.value[context[0].dataIndex].trade_date

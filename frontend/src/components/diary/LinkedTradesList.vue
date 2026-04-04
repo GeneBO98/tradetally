@@ -33,7 +33,7 @@
           {{ (trade.side || '').toUpperCase() }}
         </span>
         <span v-if="trade.pnl !== null && trade.pnl !== undefined" class="text-xs font-medium" :class="trade.pnl >= 0 ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'">
-          {{ trade.pnl >= 0 ? '+' : '' }}${{ formatPrice(trade.pnl) }}
+          {{ formatSignedCurrency(trade.pnl) }}
         </span>
       </div>
     </router-link>
@@ -48,6 +48,7 @@
 <script setup>
 import { ref, watch, onMounted } from 'vue'
 import api from '@/services/api'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 
 const props = defineProps({
   tradeIds: {
@@ -56,16 +57,10 @@ const props = defineProps({
   }
 })
 
+const { formatSignedCurrency } = useCurrencyFormatter()
+
 const loading = ref(false)
 const trades = ref([])
-
-const formatPrice = (price) => {
-  if (price === null || price === undefined) return '0.00'
-  return Math.abs(price).toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  })
-}
 
 const fetchTrades = async () => {
   if (!props.tradeIds || props.tradeIds.length === 0) {

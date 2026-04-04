@@ -83,6 +83,35 @@
                                 </p>
                             </div>
 
+                            <div>
+                                <label for="displayCurrency" class="label"
+                                    >Display Currency</label
+                                >
+                                <select
+                                    id="displayCurrency"
+                                    v-model="
+                                        analyticsForm.displayCurrency
+                                    "
+                                    class="input"
+                                >
+                                    <option
+                                        v-for="c in currencyOptions"
+                                        :key="c.code"
+                                        :value="c.code"
+                                    >
+                                        {{ c.code }} - {{ c.name }}
+                                    </option>
+                                </select>
+                                <p
+                                    class="mt-1 text-sm text-gray-500 dark:text-gray-400"
+                                >
+                                    Sets the currency symbol shown for your trade
+                                    data (P&L, prices, commissions). Market data
+                                    such as watchlist prices and stock quotes
+                                    remains in USD.
+                                </p>
+                            </div>
+
                             <div
                                 class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg"
                             >
@@ -2527,6 +2556,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useVersionStore } from "@/stores/version";
 import { useNotification } from "@/composables/useNotification";
 import api from "@/services/api";
+import { CURRENCY_OPTIONS } from "@/composables/useCurrencyFormatter";
 import MdiIcon from "@/components/MdiIcon.vue";
 import { mdiApi } from "@mdi/js";
 import {
@@ -2572,6 +2602,8 @@ const aiForm = ref({
 
 const aiLoading = ref(false);
 
+const currencyOptions = CURRENCY_OPTIONS;
+
 // CUSIP AI Provider Settings
 const cusipAiForm = ref({
     provider: "gemini",
@@ -2591,6 +2623,7 @@ const analyticsForm = ref({
     defaultStopLossPercent: null,
     defaultStopLossDollars: null,
     defaultTakeProfitPercent: null,
+    displayCurrency: "USD",
 });
 
 const analyticsLoading = ref(false);
@@ -2902,6 +2935,8 @@ async function loadAnalyticsSettings() {
                 response.data.settings.defaultStopLossDollars ?? null,
             defaultTakeProfitPercent:
                 response.data.settings.defaultTakeProfitPercent || null,
+            displayCurrency:
+                response.data.settings.displayCurrency || "USD",
         };
     } catch (error) {
         console.error("Failed to load analytics settings:", error);
@@ -2912,6 +2947,7 @@ async function loadAnalyticsSettings() {
         analyticsForm.value.defaultStopLossPercent = null;
         analyticsForm.value.defaultStopLossDollars = null;
         analyticsForm.value.defaultTakeProfitPercent = null;
+        analyticsForm.value.displayCurrency = "USD";
     }
 }
 
@@ -2930,7 +2966,11 @@ async function updateAnalyticsSettings() {
                 analyticsForm.value.defaultStopLossDollars ?? null,
             defaultTakeProfitPercent:
                 analyticsForm.value.defaultTakeProfitPercent || null,
+            displayCurrency:
+                analyticsForm.value.displayCurrency || "USD",
         });
+        // Re-fetch user so the auth store picks up the new display_currency
+        await authStore.fetchUser();
         showSuccess("Success", "Analytics preferences updated successfully");
     } catch (error) {
         console.error("Failed to update analytics settings:", error);

@@ -149,7 +149,7 @@
                     <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700/50 p-5">
                         <p class="text-xs font-medium uppercase tracking-wider text-gray-400 dark:text-gray-500">Monthly Revenue</p>
                         <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1.5">
-                            ${{ formatCurrency(analytics.subscriptionMetrics.mrr) }}
+                            {{ formatCurrency(analytics.subscriptionMetrics.mrr) }}
                         </p>
                         <div class="flex items-center gap-1.5 mt-2">
                             <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-primary-50 dark:bg-primary-900/30">
@@ -721,6 +721,9 @@
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import api from "@/services/api";
 import AdminLineChart from "@/components/admin/AdminLineChart.vue";
+import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
+
+const { formatCurrency } = useCurrencyFormatter();
 
 const REFRESH_INTERVAL = 60000; // 60 seconds
 
@@ -773,11 +776,6 @@ function startLastUpdatedTimer() {
 function formatNumber(num) {
     if (num === null || num === undefined) return "0";
     return num.toLocaleString();
-}
-
-function formatCurrency(num) {
-    if (num === null || num === undefined) return "0.00";
-    return Number(num).toFixed(2);
 }
 
 function formatShortDate(iso) {

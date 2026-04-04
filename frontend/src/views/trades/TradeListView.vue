@@ -245,12 +245,12 @@
             </div>
             <div>
               <div class="text-gray-500 dark:text-gray-400">Entry</div>
-              <div class="text-gray-900 dark:text-white">${{ formatNumber(trade.entry_price) }}</div>
+              <div class="text-gray-900 dark:text-white">{{ formatCurrency(trade.entry_price) }}</div>
             </div>
             <div>
               <div class="text-gray-500 dark:text-gray-400">Exit</div>
               <div class="text-gray-900 dark:text-white">
-                {{ trade.exit_price ? `$${formatNumber(trade.exit_price)}` : '-' }}
+                {{ trade.exit_price ? formatCurrency(trade.exit_price) : '-' }}
               </div>
             </div>
             <div>
@@ -401,7 +401,7 @@
                     <!-- Instrument type badge -->
                     <span v-if="trade.instrument_type === 'option'"
                       class="px-1.5 py-0.5 text-xs font-semibold rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400 whitespace-nowrap flex-shrink-0"
-                      :title="`${trade.option_type?.toUpperCase()} - Strike: $${trade.strike_price} - Exp: ${trade.expiration_date}`">
+                      :title="`${trade.option_type?.toUpperCase()} - Strike: ${formatCurrency(trade.strike_price)} - Exp: ${trade.expiration_date}`">
                       OPT
                     </span>
                     <span v-else-if="trade.instrument_type === 'future'"
@@ -469,16 +469,16 @@
                 <td v-else-if="column.visible && column.key === 'entry'" 
                     :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']" 
                     @click="$router.push(`/trades/${trade.id}`)">
-                  ${{ formatNumber(trade.entry_price) }}
+                  {{ formatCurrency(trade.entry_price) }}
                 </td>
-                
+
                 <!-- Exit Column -->
                 <td v-else-if="column.visible && column.key === 'exit'" 
                     :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']" 
                     @click="$router.push(`/trades/${trade.id}`)">
-                  {{ trade.exit_price ? `$${formatNumber(trade.exit_price)}` : '-' }}
+                  {{ trade.exit_price ? formatCurrency(trade.exit_price) : '-' }}
                 </td>
-                
+
                 <!-- Net P&L Column -->
                 <td v-else-if="column.visible && column.key === 'pnl'" 
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']" 
@@ -599,13 +599,13 @@
                 <td v-else-if="column.visible && column.key === 'commission'" 
                     :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']" 
                     @click="$router.push(`/trades/${trade.id}`)">
-                  {{ trade.commission ? `$${formatNumber(trade.commission)}` : '-' }}
+                  {{ trade.commission ? formatCurrency(trade.commission) : '-' }}
                 </td>
                 
                 <td v-else-if="column.visible && column.key === 'fees'" 
                     :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']" 
                     @click="$router.push(`/trades/${trade.id}`)">
-                  {{ trade.fees ? `$${formatNumber(trade.fees)}` : '-' }}
+                  {{ trade.fees ? formatCurrency(trade.fees) : '-' }}
                 </td>
                 
                 <td v-else-if="column.visible && column.key === 'strategy'" 
@@ -667,7 +667,7 @@
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div class="text-sm text-gray-900 dark:text-white font-mono">
-                    {{ (trade.stop_loss || trade.stopLoss) ? `$${formatNumber(trade.stop_loss || trade.stopLoss)}` : '-' }}
+                    {{ (trade.stop_loss || trade.stopLoss) ? formatCurrency(trade.stop_loss || trade.stopLoss) : '-' }}
                   </div>
                 </td>
 
@@ -675,7 +675,7 @@
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div class="text-sm text-gray-900 dark:text-white font-mono">
-                    {{ (trade.take_profit || trade.takeProfit) ? `$${formatNumber(trade.take_profit || trade.takeProfit)}` : '-' }}
+                    {{ (trade.take_profit || trade.takeProfit) ? formatCurrency(trade.take_profit || trade.takeProfit) : '-' }}
                   </div>
                 </td>
 
@@ -724,7 +724,7 @@
                 <td v-else-if="column.visible && column.key === 'strikePrice'"
                     :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  {{ trade.strike_price ? `$${formatNumber(trade.strike_price)}` : '-' }}
+                  {{ trade.strike_price ? formatCurrency(trade.strike_price) : '-' }}
                 </td>
 
                 <td v-else-if="column.visible && column.key === 'expirationDate'"
@@ -952,8 +952,10 @@ import TagManagement from '@/components/trades/TagManagement.vue'
 import MdiIcon from '@/components/MdiIcon.vue'
 import { mdiNewspaper } from '@mdi/js'
 import api from '@/services/api'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 
 const tradesStore = useTradesStore()
+const { formatCurrency, currencySymbol, formatSignedCurrency } = useCurrencyFormatter()
 const { formatTime: formatTimeTz } = useUserTimezone()
 const route = useRoute()
 const router = useRouter()
@@ -1127,13 +1129,6 @@ function formatNumber(num) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   }).format(num || 0)
-}
-
-function formatSignedCurrency(num) {
-  if (num === null || num === undefined) return '-'
-  const value = Number(num || 0)
-  const sign = value > 0 ? '+' : value < 0 ? '-' : ''
-  return `${sign}$${formatNumber(Math.abs(value))}`
 }
 
 function getTradeGrossPnl(trade) {

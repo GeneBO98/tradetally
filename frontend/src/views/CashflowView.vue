@@ -57,7 +57,7 @@
                 YTD Deposits
               </dt>
               <dd class="mt-1 text-lg font-semibold text-green-600 dark:text-green-400">
-                +${{ formatNumber(cashflow.summary.ytdDeposits) }}
+                {{ formatSignedCurrency(cashflow.summary.ytdDeposits) }}
               </dd>
             </div>
           </div>
@@ -67,7 +67,7 @@
                 YTD Withdrawals
               </dt>
               <dd class="mt-1 text-lg font-semibold text-red-600 dark:text-red-400">
-                -${{ formatNumber(cashflow.summary.ytdWithdrawals) }}
+                {{ formatSignedCurrency(-cashflow.summary.ytdWithdrawals) }}
               </dd>
             </div>
           </div>
@@ -77,7 +77,7 @@
                 Current Balance
               </dt>
               <dd class="mt-1 text-lg font-semibold" :class="balanceClass">
-                ${{ formatNumber(cashflow.summary.currentBalance) }}
+                {{ formatCurrency(cashflow.summary.currentBalance) }}
               </dd>
             </div>
           </div>
@@ -87,7 +87,7 @@
                 Total Inflow
               </dt>
               <dd class="mt-1 text-lg font-semibold text-green-600 dark:text-green-400">
-                +${{ formatNumber(cashflow.summary.totalInflow) }}
+                {{ formatSignedCurrency(cashflow.summary.totalInflow) }}
               </dd>
             </div>
           </div>
@@ -97,7 +97,7 @@
                 Total Outflow
               </dt>
               <dd class="mt-1 text-lg font-semibold text-red-600 dark:text-red-400">
-                -${{ formatNumber(cashflow.summary.totalOutflow) }}
+                {{ formatSignedCurrency(-cashflow.summary.totalOutflow) }}
               </dd>
             </div>
           </div>
@@ -136,18 +136,18 @@
                       {{ formatDate(row.date) }}
                     </td>
                     <td class="px-4 py-3 text-sm text-right text-green-600 dark:text-green-400 whitespace-nowrap">
-                      <span v-if="row.inflow > 0">+${{ formatNumber(row.inflow) }}</span>
+                      <span v-if="row.inflow > 0">{{ formatSignedCurrency(row.inflow) }}</span>
                       <span v-else class="text-gray-400">-</span>
                     </td>
                     <td class="px-4 py-3 text-sm text-right text-red-600 dark:text-red-400 whitespace-nowrap">
-                      <span v-if="row.outflow > 0">-${{ formatNumber(row.outflow) }}</span>
+                      <span v-if="row.outflow > 0">{{ formatSignedCurrency(-row.outflow) }}</span>
                       <span v-else class="text-gray-400">-</span>
                     </td>
                     <td class="px-4 py-3 text-sm text-right font-medium whitespace-nowrap" :class="row.net >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
-                      {{ row.net >= 0 ? '+' : '' }}${{ formatNumber(row.net) }}
+                      {{ formatSignedCurrency(row.net) }}
                     </td>
                     <td class="px-4 py-3 text-sm text-right font-semibold text-gray-900 dark:text-white whitespace-nowrap">
-                      ${{ formatNumber(row.balance) }}
+                      {{ formatCurrency(row.balance) }}
                     </td>
                   </tr>
                 </tbody>
@@ -197,7 +197,7 @@
                       {{ account.broker }}
                     </div>
                     <div class="text-sm text-gray-500 dark:text-gray-400">
-                      Initial: ${{ formatNumber(account.initialBalance) }}
+                      Initial: {{ formatCurrency(account.initialBalance) }}
                     </div>
                     <div v-if="account.tradeCount > 0" class="text-xs text-gray-400 dark:text-gray-500 mt-1">
                       {{ account.tradeCount }} linked trade{{ account.tradeCount !== 1 ? 's' : '' }}
@@ -257,7 +257,7 @@
                 <label class="label">Amount</label>
                 <div class="relative">
                   <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <span class="text-gray-500 dark:text-gray-400">$</span>
+                    <span class="text-gray-500 dark:text-gray-400">{{ currencySymbol }}</span>
                   </div>
                   <input
                     v-model="transactionForm.amount"
@@ -309,7 +309,7 @@
               >
                 <div>
                   <div class="text-sm font-medium" :class="tx.transactionType === 'deposit' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
-                    {{ tx.transactionType === 'deposit' ? '+' : '-' }}${{ formatNumber(tx.amount) }}
+                    {{ formatSignedCurrency(tx.transactionType === 'deposit' ? tx.amount : -tx.amount) }}
                   </div>
                   <div class="text-xs text-gray-500 dark:text-gray-400">
                     {{ formatDate(tx.transactionDate) }}
@@ -347,6 +347,9 @@ import { ref, computed, onMounted } from 'vue'
 import { useAccountsStore } from '@/stores/accounts'
 import { useNotification } from '@/composables/useNotification'
 import AccountModal from '@/components/accounts/AccountModal.vue'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+
+const { formatCurrency, formatSignedCurrency, currencySymbol } = useCurrencyFormatter()
 
 const store = useAccountsStore()
 const { showSuccess, showError, showDangerConfirmation } = useNotification()
@@ -387,12 +390,6 @@ const balanceClass = computed(() => {
 })
 
 // Methods
-function formatNumber(num) {
-  return parseFloat(num || 0).toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  })
-}
 
 function formatDate(dateStr) {
   if (!dateStr) return ''

@@ -62,6 +62,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 
 const props = defineProps({
   data: {
@@ -69,6 +70,9 @@ const props = defineProps({
     required: true
   }
 })
+
+const { formatCurrency: _formatCurrency } = useCurrencyFormatter()
+
 
 const monthAbbrs = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D']
 
@@ -114,12 +118,7 @@ const activeMonths = computed(() => {
 })
 
 function formatCurrency(value) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
-  }).format(value)
+  return _formatCurrency(value, { minimumFractionDigits: 0, maximumFractionDigits: 0 })
 }
 </script>
 

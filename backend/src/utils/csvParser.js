@@ -868,32 +868,59 @@ const brokerParsers = {
     // Parse the DESCRIPTION field to extract trade details
     const description = row.DESCRIPTION || row.Description || '';
     const type = row.TYPE || row.Type || '';
-    
+
     // Skip non-trade rows
     if (type !== 'TRD') {
       return null;
     }
-    
-    // Parse trade details from description (e.g., "BOT +1,000 82655M107 @.77")
-    const tradeMatch = description.match(/(BOT|SOLD)\s+([\+\-]?[\d,]+)\s+(\S+)\s+@([\d.]+)/);
+
+    // Parse trade details from description
+    // Stock format:  "BOT +1,000 82655M107 @.77"
+    // Option format: "BOT +5 CRM 100 (Weeklys) 2 APR 26 175 PUT @1.44 CBOE"
+    const tradeMatch = description.match(/(BOT|SOLD)\s+([\+\-]?[\d,]+)\s+(.+?)\s+@([\d.]+)/);
     if (!tradeMatch) {
       return null;
     }
-    
-    const [_, action, quantityStr, symbol, priceStr] = tradeMatch;
+
+    const [_, action, quantityStr, symbolPart, priceStr] = tradeMatch;
     const quantity = Math.abs(parseFloat(quantityStr.replace(/,/g, '')));
     const price = parseFloat(priceStr);
     const side = action === 'BOT' ? 'long' : 'short';
-    
+
+    // Detect options: "CRM 100 (Weeklys) 2 APR 26 175 PUT"
+    let symbol;
+    let optionData = {};
+    const optionMatch = symbolPart.match(/^(\S+)\s+\d+\s+(?:\(.*?\)\s+)?(\d{1,2})\s+([A-Z]{3})\s+(\d{2,4})\s+([\d.]+)\s+(PUT|CALL)$/i);
+    if (optionMatch) {
+      const [, underlying, day, monthStr, yearStr, strike, optType] = optionMatch;
+      const months = {
+        'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04', 'MAY': '05', 'JUN': '06',
+        'JUL': '07', 'AUG': '08', 'SEP': '09', 'OCT': '10', 'NOV': '11', 'DEC': '12'
+      };
+      const month = months[monthStr.toUpperCase()];
+      const fullYear = yearStr.length === 2 ? 2000 + parseInt(yearStr) : parseInt(yearStr);
+      symbol = underlying;
+      optionData = {
+        instrumentType: 'option',
+        underlyingSymbol: underlying,
+        strikePrice: parseFloat(strike),
+        expirationDate: `${fullYear}-${month}-${day.padStart(2, '0')}`,
+        optionType: optType.toLowerCase(),
+        contractSize: 100
+      };
+    } else {
+      symbol = symbolPart.trim();
+    }
+
     // Parse date and time
     const date = row.DATE || row.Date || '';
     const time = row.TIME || row.Time || '';
     const dateTime = `${date} ${time}`;
-    
+
     // Parse fees
     const miscFees = parseFloat((row['Misc Fees'] || '0').replace(/[$,]/g, '')) || 0;
     const commissionsFees = parseFloat((row['Commissions & Fees'] || '0').replace(/[$,]/g, '')) || 0;
-    
+
     return {
       symbol: symbol,
       tradeDate: parseDate(date),
@@ -903,7 +930,8 @@ const brokerParsers = {
       side: side,
       commission: commissionsFees,
       fees: miscFees,
-      broker: 'thinkorswim'
+      broker: 'thinkorswim',
+      ...optionData
     };
   },
 
@@ -2227,9 +2255,30 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       }
 
       if (headerIndex >= 0) {
-        // Keep only the header line and data rows
-        csvString = lines.slice(headerIndex).join('\n');
-        console.log(`Skipped ${headerIndex} header rows in thinkorswim CSV`);
+        // Find where the Cash Balance section ends
+        // TOS CSVs have multiple sections separated by blank lines and new headers
+        // (e.g., "Futures Statements", "Forex Statements", "Account Order History")
+        let endIndex = lines.length;
+        for (let i = headerIndex + 1; i < lines.length; i++) {
+          const trimmed = lines[i].trim().replace(/,+$/, '').trim();
+          // Stop at blank lines followed by a new section header, or at known section boundaries
+          if (!trimmed) {
+            // Check if the next non-empty line is a section header (no commas in the meaningful part)
+            for (let j = i + 1; j < lines.length; j++) {
+              const nextTrimmed = lines[j].trim().replace(/,+$/, '').trim();
+              if (nextTrimmed) {
+                // Section headers like "Futures Statements" or "Account Order History" have no data columns
+                if (!nextTrimmed.includes(',') || /^[A-Za-z\s#()]+$/.test(nextTrimmed)) {
+                  endIndex = i;
+                }
+                break;
+              }
+            }
+            if (endIndex !== lines.length) break;
+          }
+        }
+        csvString = lines.slice(headerIndex, endIndex).join('\n');
+        console.log(`Skipped ${headerIndex} header rows, using ${endIndex - headerIndex} lines from Cash Balance section`);
       } else {
         console.log('Warning: Could not find thinkorswim header pattern, trying to parse as-is');
       }
@@ -5053,13 +5102,6 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
 async function parseThinkorswimTransactions(records, existingPositions = {}, context = {}) {
   console.log(`Processing ${records.length} thinkorswim transaction records`);
 
-  // Thinkorswim is stock trading, so contract multiplier is always 1
-  const contractMultiplier = 1;
-  const valueMultiplier = 1; // For stocks, value multiplier is 1
-  const instrumentData = {
-    instrumentType: 'stock'
-  };
-
   const transactions = [];
   const completedTrades = [];
   
@@ -5116,13 +5158,14 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
       const time = record.TIME || record.Time || '';
       const refNum = record['REF #'] || record['Ref #'] || record.REF || '';
 
-      // Parse trade details from description (e.g., "BOT +1,000 82655M107 @.77")
-      const tradeMatch = description.match(/(BOT|SOLD)\s+([\+\-]?[\d,]+)\s+(\S+)\s+@([\d.]+)/);
+      // Parse trade details from description
+      // Stock format:  "BOT +1,000 82655M107 @.77"
+      // Option format: "BOT +5 CRM 100 (Weeklys) 2 APR 26 175 PUT @1.44 CBOE"
+      const tradeMatch = description.match(/(BOT|SOLD)\s+([\+\-]?[\d,]+)\s+(.+?)\s+@([\d.]+)/);
       if (!tradeMatch) {
         console.log(`Skipping unparseable trade description: ${description}`);
         if (diagnostics) {
           diagnostics.skippedRows++;
-          // Provide helpful message about what format is expected
           const truncatedDesc = description ? description.substring(0, 40) : '(empty)';
           const reason = description
             ? `Unexpected description format: "${truncatedDesc}..." - ThinkorSwim expects "BOT/SOLD +qty SYMBOL @price"`
@@ -5132,9 +5175,37 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
         continue;
       }
 
-      const [_, action, quantityStr, symbol, priceStr] = tradeMatch;
+      const [_, action, quantityStr, symbolPart, priceStr] = tradeMatch;
       const quantity = Math.abs(parseFloat(quantityStr.replace(/,/g, '')));
       const price = parseFloat(priceStr);
+
+      // Detect options: "CRM 100 (Weeklys) 2 APR 26 175 PUT" or "CRM 100 2 APR 26 175 CALL"
+      // Pattern: UNDERLYING MULTIPLIER [optional (series)] DAY MONTH YEAR STRIKE PUT/CALL
+      let symbol;
+      let instrumentData = { instrumentType: 'stock' };
+      const optionMatch = symbolPart.match(/^(\S+)\s+\d+\s+(?:\(.*?\)\s+)?(\d{1,2})\s+([A-Z]{3})\s+(\d{2,4})\s+([\d.]+)\s+(PUT|CALL)$/i);
+      if (optionMatch) {
+        const [, underlying, day, monthStr, yearStr, strike, optType] = optionMatch;
+        const months = {
+          'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04', 'MAY': '05', 'JUN': '06',
+          'JUL': '07', 'AUG': '08', 'SEP': '09', 'OCT': '10', 'NOV': '11', 'DEC': '12'
+        };
+        const month = months[monthStr.toUpperCase()];
+        const fullYear = yearStr.length === 2 ? 2000 + parseInt(yearStr) : parseInt(yearStr);
+        symbol = underlying;
+        instrumentData = {
+          instrumentType: 'option',
+          underlyingSymbol: underlying,
+          strikePrice: parseFloat(strike),
+          expirationDate: `${fullYear}-${month}-${day.padStart(2, '0')}`,
+          optionType: optType.toLowerCase(),
+          contractSize: 100
+        };
+        console.log(`[TOS] Detected option: ${underlying} ${strike} ${optType} exp ${instrumentData.expirationDate}`);
+      } else {
+        // Stock - symbolPart is just the ticker
+        symbol = symbolPart.trim();
+      }
 
       // Parse fees
       const miscFees = parseFloat((record['Misc Fees'] || '0').replace(/[$,]/g, '')) || 0;
@@ -5159,10 +5230,11 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
         description,
         refNum,
         raw: record,
-        accountIdentifier
+        accountIdentifier,
+        instrumentData
       });
 
-      console.log(`Parsed transaction: ${action} ${quantity} ${symbol} @ $${price}`);
+      console.log(`Parsed transaction: ${action} ${quantity} ${symbol} @ $${price}${instrumentData.instrumentType === 'option' ? ` (${instrumentData.optionType} ${instrumentData.strikePrice})` : ''}`);
     } catch (error) {
       console.error('Error parsing thinkorswim transaction:', error, record);
     }
@@ -5238,25 +5310,37 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
 
   console.log(`After REF # grouping: ${mergedTransactions.length} transactions (from ${transactions.length})`);
 
-  // Group transactions by symbol
+  // Group transactions by symbol (and option contract details for options)
   const transactionsBySymbol = {};
   for (const transaction of mergedTransactions) {
-    if (!transactionsBySymbol[transaction.symbol]) {
-      transactionsBySymbol[transaction.symbol] = [];
+    // For options, group by underlying+strike+expiry+type to keep different contracts separate
+    let groupKey = transaction.symbol;
+    if (transaction.instrumentData && transaction.instrumentData.instrumentType === 'option') {
+      const d = transaction.instrumentData;
+      groupKey = `${transaction.symbol}_${d.strikePrice}${d.optionType === 'put' ? 'P' : 'C'}_${d.expirationDate}`;
     }
-    transactionsBySymbol[transaction.symbol].push(transaction);
+    transaction._groupKey = groupKey;
+    if (!transactionsBySymbol[groupKey]) {
+      transactionsBySymbol[groupKey] = [];
+    }
+    transactionsBySymbol[groupKey].push(transaction);
   }
   
   // Process transactions using round-trip trade grouping
-  for (const symbol in transactionsBySymbol) {
-    const symbolTransactions = transactionsBySymbol[symbol];
-    
-    console.log(`\n=== Processing ${symbolTransactions.length} transactions for ${symbol} ===`);
-    
+  for (const groupKey in transactionsBySymbol) {
+    const symbolTransactions = transactionsBySymbol[groupKey];
+    const firstTx = symbolTransactions[0];
+    const symbol = firstTx.symbol;
+    const instrumentData = firstTx.instrumentData || { instrumentType: 'stock' };
+    const isOption = instrumentData.instrumentType === 'option';
+    const valueMultiplier = isOption ? 100 : 1;
+
+    console.log(`\n=== Processing ${symbolTransactions.length} transactions for ${groupKey} ===`);
+
     // Track position and round-trip trades
     // Start with existing position if we have one for this symbol
     const existingPosition = existingPositions[symbol];
-    let currentPosition = existingPosition ? 
+    let currentPosition = existingPosition ?
       (existingPosition.side === 'long' ? existingPosition.quantity : -existingPosition.quantity) : 0;
     let currentTrade = existingPosition ? {
       symbol: symbol,
@@ -5368,22 +5452,25 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
       }
 
       console.log(`  Position: ${prevPosition} → ${currentPosition}`);
-      
+
       // Close trade if position goes to zero
       if (currentPosition === 0 && currentTrade && currentTrade.totalQuantity > 0) {
         // Calculate weighted average prices
+        // For options, prices in the CSV are per-share; multiply by valueMultiplier for actual dollar value
+        const entryTotal = currentTrade.entryValue * valueMultiplier;
+        const exitTotal = currentTrade.exitValue * valueMultiplier;
         currentTrade.entryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
         currentTrade.exitPrice = currentTrade.exitValue / currentTrade.totalQuantity;
-        
-        // Calculate P/L
+
+        // Calculate P/L using actual dollar values
         if (currentTrade.side === 'long') {
-          currentTrade.pnl = currentTrade.exitValue - currentTrade.entryValue - currentTrade.totalFees;
+          currentTrade.pnl = exitTotal - entryTotal - currentTrade.totalFees;
         } else {
-          currentTrade.pnl = currentTrade.entryValue - currentTrade.exitValue - currentTrade.totalFees;
+          currentTrade.pnl = entryTotal - exitTotal - currentTrade.totalFees;
         }
-        
-        currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
-        currentTrade.quantity = currentTrade.totalQuantity * (typeof contractMultiplier !== 'undefined' ? contractMultiplier : 1);
+
+        currentTrade.pnlPercent = (currentTrade.pnl / entryTotal) * 100;
+        currentTrade.quantity = currentTrade.totalQuantity;
         currentTrade.commission = currentTrade.totalFees;
         currentTrade.fees = 0;
 
@@ -5397,25 +5484,19 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
         currentTrade.executionData = currentTrade.executions;
         // Add instrument data for options/futures
         Object.assign(currentTrade, instrumentData);
-        
-        // For options, update symbol to use underlying symbol instead of the full option symbol
-        if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol) {
-          currentTrade.symbol = instrumentData.underlyingSymbol;
-        }
-        
+
         // Mark as update if this was an existing position
         if (currentTrade.isExistingPosition) {
           currentTrade.isUpdate = currentTrade.newExecutionsAdded > 0;
           currentTrade.notes = `Closed existing position: ${currentTrade.executions.length} closing executions`;
-          console.log(`  [SUCCESS] CLOSED existing ${currentTrade.side} position: ${currentTrade.totalQuantity} shares, P/L: $${currentTrade.pnl.toFixed(2)}`);
+          console.log(`  [SUCCESS] CLOSED existing ${currentTrade.side} position: ${currentTrade.totalQuantity} ${isOption ? 'contracts' : 'shares'}, P/L: $${currentTrade.pnl.toFixed(2)}`);
         } else {
           currentTrade.notes = `Round trip: ${currentTrade.executions.length} executions`;
-          console.log(`  [SUCCESS] Completed ${currentTrade.side} trade: ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions, P/L: $${currentTrade.pnl.toFixed(2)}`);
+          console.log(`  [SUCCESS] Completed ${currentTrade.side} trade: ${currentTrade.totalQuantity} ${isOption ? 'contracts' : 'shares'}, ${currentTrade.executions.length} executions, P/L: $${currentTrade.pnl.toFixed(2)}`);
         }
-        
+
         // Only add trade if it has executions (skip if all were duplicates)
         if (currentTrade.executions.length > 0) {
-          // Map executions to executionData for Trade.create
           currentTrade.executionData = currentTrade.executions;
           completedTrades.push(currentTrade);
         } else {
@@ -5424,14 +5505,14 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
         currentTrade = null;
       }
     }
-    
-    console.log(`\n${symbol} Final Position: ${currentPosition} shares`);
+
+    console.log(`\n${symbol} Final Position: ${currentPosition} ${isOption ? 'contracts' : 'shares'}`);
     if (currentTrade) {
-      console.log(`Active trade: ${currentTrade.side} ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions`);
-      
+      console.log(`Active trade: ${currentTrade.side} ${currentTrade.totalQuantity} ${isOption ? 'contracts' : 'shares'}, ${currentTrade.executions.length} executions`);
+
       // Add open position as incomplete trade
       // Divide by multiplier to get per-contract/per-share price
-      currentTrade.entryPrice = currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier);
+      currentTrade.entryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
       currentTrade.exitPrice = null;
       currentTrade.quantity = currentTrade.totalQuantity;
       currentTrade.commission = currentTrade.totalFees;
@@ -5445,19 +5526,13 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
       // Add instrument data for options/futures
       Object.assign(currentTrade, instrumentData);
 
-      // For options, update symbol to use underlying symbol instead of the full option symbol
-      if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol) {
-        currentTrade.symbol = instrumentData.underlyingSymbol;
-      }
-
       // Mark as update if this was an existing position with new executions
       if (currentTrade.isExistingPosition && currentTrade.newExecutionsAdded > 0) {
         currentTrade.isUpdate = true;
         currentTrade.notes = `Updated open position: ${currentTrade.newExecutionsAdded} new executions added`;
-        console.log(`  [SUCCESS] UPDATED open ${currentTrade.side} position: ${currentTrade.totalQuantity} shares, ${currentTrade.newExecutionsAdded} new executions`);
+        console.log(`  [SUCCESS] UPDATED open ${currentTrade.side} position: ${currentTrade.totalQuantity} ${isOption ? 'contracts' : 'shares'}, ${currentTrade.newExecutionsAdded} new executions`);
       }
 
-      // Map executions to executionData for Trade.create
       currentTrade.executionData = currentTrade.executions;
       completedTrades.push(currentTrade);
     }

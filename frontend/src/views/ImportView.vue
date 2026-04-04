@@ -1548,14 +1548,30 @@ async function parseCSVHeaders(file) {
         const text = e.target.result
         const lines = text.split('\n')
 
-        // Find first non-empty line (should be headers)
+        // Find the header line - prefer lines that look like actual column headers
+        // (e.g., containing "date", "time", "type") over title/section rows
+        // This handles ThinkorSwim CSVs that start with "Account Statement for..."
         let headerLine = ''
-        for (let i = 0; i < Math.min(10, lines.length); i++) {
+        let fallbackLine = ''
+        for (let i = 0; i < Math.min(15, lines.length); i++) {
           const line = lines[i].trim()
-          if (line) {
+          if (!line || !line.includes(',')) continue
+          const lower = line.toLowerCase()
+          // Check if this looks like a real header row with column names
+          if ((lower.includes('date') && lower.includes('time') && lower.includes('type')) ||
+              (lower.includes('symbol') && (lower.includes('quantity') || lower.includes('qty') || lower.includes('price'))) ||
+              (lower.includes('action') && lower.includes('description')) ||
+              (lower.includes('trade number') || lower.includes('order id'))) {
             headerLine = line
             break
           }
+          // Keep the first non-empty line as a fallback
+          if (!fallbackLine) {
+            fallbackLine = line
+          }
+        }
+        if (!headerLine) {
+          headerLine = fallbackLine
         }
 
         if (!headerLine) {

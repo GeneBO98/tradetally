@@ -118,19 +118,19 @@
           <div>
             <dt class="text-gray-500 dark:text-gray-400">Entry</dt>
             <dd class="font-medium text-gray-900 dark:text-white">
-              ${{ formatNumber(chartData.trade.entryPrice) }}
+              {{ formatCurrency(chartData.trade.entryPrice) }}
             </dd>
           </div>
           <div>
             <dt class="text-gray-500 dark:text-gray-400">Exit</dt>
             <dd class="font-medium text-gray-900 dark:text-white">
-              ${{ formatNumber(chartData.trade.exitPrice) }}
+              {{ formatCurrency(chartData.trade.exitPrice) }}
             </dd>
           </div>
           <div>
             <dt class="text-gray-500 dark:text-gray-400">P&L</dt>
             <dd class="font-medium" :class="chartData.trade.pnl >= 0 ? 'text-green-600' : 'text-red-600'">
-              {{ chartData.trade.pnl >= 0 ? '+' : '' }}${{ formatNumber(Math.abs(chartData.trade.pnl)) }}
+              {{ formatCurrency(chartData.trade.pnl) }}
             </dd>
           </div>
           <div>
@@ -150,6 +150,7 @@ import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
 import * as LightweightCharts from 'lightweight-charts'
 import api from '@/services/api'
 import { useNotification } from '@/composables/useNotification'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { useAuthStore } from '@/stores/auth'
 import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
 
@@ -161,6 +162,7 @@ const props = defineProps({
 })
 
 const { showError, showWarning } = useNotification()
+const { formatCurrency, currencySymbol } = useCurrencyFormatter()
 const authStore = useAuthStore()
 
 const chartContainer = ref(null)
@@ -175,7 +177,8 @@ let candleSeries = null
 // Computed properties
 const userTier = computed(() => authStore.user?.tier?.tier_name || 'free')
 const isBillingEnabled = computed(() => authStore.user?.billingEnabled !== false)
-const requiresProUpgrade = computed(() => isBillingEnabled.value && userTier.value !== 'pro')
+const isAdmin = computed(() => authStore.user?.role === 'admin' || authStore.user?.role === 'owner')
+const requiresProUpgrade = computed(() => isBillingEnabled.value && userTier.value !== 'pro' && !isAdmin.value)
 
 // Helper methods for source display
 const getSourceLabel = (source) => {
@@ -653,7 +656,7 @@ const createTradeChart = () => {
           position: 'belowBar',
           color: '#10b981',
           shape: 'arrowUp',
-          text: `BUY @ $${formatNumber(entryPrice)}`,
+          text: `BUY @ ${currencySymbol.value}${formatNumber(entryPrice)}`,
           size: 2
         }
         
@@ -702,7 +705,7 @@ const createTradeChart = () => {
         const pnl = parseFloat(trade.pnl)
         const isProfit = pnl >= 0
         const exitColor = '#ef4444' // Always red for SELL
-        const pnlText = isProfit ? `+$${formatNumber(pnl)}` : `-$${formatNumber(Math.abs(pnl))}`
+        const pnlText = isProfit ? `+${currencySymbol.value}${formatNumber(pnl)}` : `-${currencySymbol.value}${formatNumber(Math.abs(pnl))}`
         
         // Create exit execution marker - append to existing markers
         const exitMarker = {
@@ -710,7 +713,7 @@ const createTradeChart = () => {
           position: 'aboveBar',
           color: exitColor,
           shape: 'arrowDown',
-          text: `SELL @ $${formatNumber(exitPriceValue)} (${pnlText})`,
+          text: `SELL @ ${currencySymbol.value}${formatNumber(exitPriceValue)} (${pnlText})`,
           size: 2
         }
         

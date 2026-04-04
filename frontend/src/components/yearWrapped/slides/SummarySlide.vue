@@ -70,6 +70,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 
 const props = defineProps({
   data: {
@@ -78,17 +79,10 @@ const props = defineProps({
   }
 })
 
-function formatCurrencyShort(value) {
-  const absValue = Math.abs(value)
-  const sign = value >= 0 ? '+' : '-'
+const { formatSignedCurrency } = useCurrencyFormatter()
 
-  if (absValue >= 1000000) {
-    return sign + '$' + (absValue / 1000000).toFixed(1) + 'M'
-  }
-  if (absValue >= 1000) {
-    return sign + '$' + (absValue / 1000).toFixed(1) + 'K'
-  }
-  return sign + '$' + absValue.toFixed(0)
+function formatCurrencyShort(value) {
+  return formatSignedCurrency(value, { minimumFractionDigits: 0, maximumFractionDigits: 0, compact: true })
 }
 
 const closingMessage = computed(() => {

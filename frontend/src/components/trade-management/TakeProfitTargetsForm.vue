@@ -92,7 +92,7 @@
             Target Price
           </label>
           <div class="relative">
-            <span class="absolute left-2 top-1.5 text-gray-500 dark:text-gray-400 text-sm">$</span>
+            <span class="absolute left-2 top-1.5 text-gray-500 dark:text-gray-400 text-sm">{{ currencySymbol }}</span>
             <input
               v-model="target.price"
               type="number"
@@ -159,7 +159,7 @@
       <div class="text-xs text-primary-700 dark:text-primary-300 font-medium mb-2">R-Multiple Preview</div>
       <div class="space-y-1">
         <div v-for="(target, index) in targets" :key="target.id" class="flex justify-between text-sm">
-          <span class="text-gray-600 dark:text-gray-400">TP{{ index + 1 }} (${{ formatNumber(target.price) }}):</span>
+          <span class="text-gray-600 dark:text-gray-400">TP{{ index + 1 }} ({{ formatCurrency(target.price) }}):</span>
           <span class="font-medium text-primary-600 dark:text-primary-400">
             {{ calculateTargetR(target.price) }}R
           </span>
@@ -177,6 +177,9 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+
+const { formatCurrency, currencySymbol } = useCurrencyFormatter()
 
 // Simple unique ID generator
 function generateId() {
@@ -419,8 +422,4 @@ function calculateWeightedR() {
   return (weightedSum / totalWeight).toFixed(2)
 }
 
-function formatNumber(value) {
-  if (!value) return '-'
-  return parseFloat(value).toFixed(2)
-}
 </script>

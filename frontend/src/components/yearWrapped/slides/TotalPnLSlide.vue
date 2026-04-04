@@ -43,6 +43,8 @@
 </template>
 
 <script setup>
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+
 defineProps({
   data: {
     type: Object,
@@ -50,14 +52,7 @@ defineProps({
   }
 })
 
-function formatCurrency(value) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(value)
-}
+const { formatCurrency } = useCurrencyFormatter()
 
 function formatNumber(num) {
   return new Intl.NumberFormat().format(num)

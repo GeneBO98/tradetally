@@ -90,7 +90,7 @@
               <div class="text-lg font-semibold" :class="[
                 trade.pnl >= 0 ? 'text-green-600' : 'text-red-600'
               ]">
-                {{ trade.pnl ? `$${formatNumber(trade.pnl)}` : 'Open' }}
+                {{ trade.pnl ? formatCurrency(trade.pnl) : 'Open' }}
               </div>
               <div v-if="trade.pnl_percent" class="text-sm text-gray-500 dark:text-gray-400">
                 {{ trade.pnl_percent > 0 ? '+' : '' }}{{ formatNumber(trade.pnl_percent) }}%
@@ -104,7 +104,7 @@
                 Entry Price
               </dt>
               <dd class="mt-1 text-sm font-medium text-gray-900 dark:text-white">
-                ${{ formatNumber(trade.entry_price) }}
+                {{ formatCurrency(trade.entry_price) }}
               </dd>
             </div>
             <div>
@@ -112,7 +112,7 @@
                 Exit Price
               </dt>
               <dd class="mt-1 text-sm font-medium text-gray-900 dark:text-white">
-                {{ trade.exit_price ? `$${formatNumber(trade.exit_price)}` : 'Open' }}
+                {{ trade.exit_price ? formatCurrency(trade.exit_price) : 'Open' }}
               </dd>
             </div>
             <div>
@@ -128,7 +128,7 @@
                 Value
               </dt>
               <dd class="mt-1 text-sm font-medium text-gray-900 dark:text-white">
-                ${{ formatNumber(trade.entry_price * trade.quantity) }}
+                {{ formatCurrency(trade.entry_price * trade.quantity) }}
               </dd>
             </div>
           </div>
@@ -232,6 +232,9 @@ import TradeCommentsDialog from '@/components/trades/TradeCommentsDialog.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
 import { useUserTimezone } from '@/composables/useUserTimezone'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+
+const { formatCurrency } = useCurrencyFormatter()
 
 const { formatDateTime: formatDateTimeTz } = useUserTimezone()
 const loading = ref(true)
@@ -254,6 +257,7 @@ function formatNumber(num, decimals = 2) {
     maximumFractionDigits: decimals
   }).format(num || 0)
 }
+
 
 function formatDate(date) {
   return formatTradeDate(date, 'MMM dd, yyyy')

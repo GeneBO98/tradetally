@@ -213,7 +213,7 @@
                                 class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100"
                             >
                                 <span v-if="alert.target_price">{{
-                                    formatPrice(alert.target_price)
+                                    formatCurrency(alert.target_price)
                                 }}</span>
                                 <span v-else-if="alert.change_percent"
                                     >{{ alert.change_percent }}%</span
@@ -224,7 +224,7 @@
                             >
                                 {{
                                     alert.current_price
-                                        ? formatPrice(alert.current_price)
+                                        ? formatCurrency(alert.current_price)
                                         : "N/A"
                                 }}
                             </td>
@@ -531,6 +531,7 @@ import MdiIcon from "@/components/MdiIcon.vue";
 import { mdiBell, mdiRepeat } from "@mdi/js";
 import { getMarketStatus } from "@/utils/marketStatus";
 import SymbolAutocomplete from "@/components/common/SymbolAutocomplete.vue";
+import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
 
 export default {
     name: "PriceAlertsView",
@@ -546,6 +547,7 @@ export default {
         const authStore = useAuthStore();
         const { isConnected, notifications, requestNotificationPermission } =
             usePriceAlertNotifications();
+        const { formatCurrency } = useCurrencyFormatter();
 
         const alerts = ref([]);
         const loading = ref(true);
@@ -715,14 +717,6 @@ export default {
             };
         };
 
-        const formatPrice = (price) => {
-            return new Intl.NumberFormat("en-US", {
-                style: "currency",
-                currency: "USD",
-                minimumFractionDigits: 2,
-            }).format(price);
-        };
-
         const formatDate = (dateString) => {
             return new Date(dateString).toLocaleDateString("en-US", {
                 year: "numeric",
@@ -809,7 +803,7 @@ export default {
             testAlert,
             saveAlert,
             cancelEdit,
-            formatPrice,
+            formatCurrency,
             formatDate,
             isConnected,
             notifications,

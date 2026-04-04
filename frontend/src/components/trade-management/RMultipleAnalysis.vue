@@ -136,6 +136,9 @@
 
 <script setup>
 import { computed } from 'vue'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+
+const { formatSignedCurrency } = useCurrencyFormatter()
 
 const props = defineProps({
   analysis: {
@@ -475,12 +478,6 @@ function formatR(value) {
 
 function formatCurrency(value) {
   if (value === null || value === undefined) return '-'
-  const num = parseFloat(value)
-  const prefix = num >= 0 ? '+' : ''
-  return `${prefix}${new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2
-  }).format(Math.abs(num))}`
+  return formatSignedCurrency(parseFloat(value))
 }
 </script>
