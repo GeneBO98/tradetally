@@ -13,8 +13,8 @@ export RUN_MIGRATIONS="${RUN_MIGRATIONS:-true}"
 
 # Ensure upload directories exist and are writable by appuser
 # (bind-mounted volumes may have root-only permissions)
-mkdir -p /app/backend/uploads/trades /app/backend/uploads/diary /app/backend/uploads/avatars /app/backend/backups
-chown -R appuser:appgroup /app/backend/uploads /app/backend/backups
+mkdir -p /app/backend/uploads/trades /app/backend/uploads/diary /app/backend/uploads/avatars /app/backend/backups /app/backend/src/logs
+chown -R appuser:appgroup /app/backend/uploads /app/backend/backups /app/backend/src/logs
 
 # Start backend as non-root user (migrations will run automatically)
 echo "[START] Starting TradeTally backend..."
