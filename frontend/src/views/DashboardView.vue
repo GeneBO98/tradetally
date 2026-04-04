@@ -823,7 +823,7 @@
                         <dd class="text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="[
                           dashboardGrossPnl >= 0 ? 'text-green-600' : 'text-red-600'
                         ]">
-                          ${{ formatCurrency(dashboardGrossPnl) }}
+                          {{ formatCurrency(dashboardGrossPnl) }}
                         </dd>
                       </div>
                       <div>
@@ -831,12 +831,12 @@
                         <dd class="text-base sm:text-lg font-semibold whitespace-nowrap" :class="[
                           dashboardNetPnl >= 0 ? 'text-green-600' : 'text-red-600'
                         ]">
-                          ${{ formatCurrency(dashboardNetPnl) }}
+                          {{ formatCurrency(dashboardNetPnl) }}
                         </dd>
                       </div>
                     </div>
                     <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                      {{ calculationMethod }} net avg: ${{ formatCurrency(dashboardAvgNetPnl) }}
+                      {{ calculationMethod }} net avg: {{ formatCurrency(dashboardAvgNetPnl) }}
                     </div>
                   </div>
                 </div>
@@ -1604,14 +1604,6 @@ const topTradesNetPnl = computed(() => {
 const dashboardNetPnl = computed(() => parseFloat(analytics.value?.summary?.totalNetPnL ?? analytics.value?.summary?.totalPnL ?? 0) || 0)
 const dashboardGrossPnl = computed(() => parseFloat(analytics.value?.summary?.totalGrossPnl ?? (dashboardNetPnl.value + (parseFloat(analytics.value?.summary?.totalCosts) || 0))) || 0)
 const dashboardAvgNetPnl = computed(() => parseFloat(analytics.value?.summary?.avgNetPnL ?? analytics.value?.summary?.avgPnL ?? 0) || 0)
-
-function formatCurrency(amount) {
-  if (!amount && amount !== 0) return '0.00'
-  return Math.abs(amount).toLocaleString('en-US', { 
-    minimumFractionDigits: 2, 
-    maximumFractionDigits: 2 
-  })
-}
 function formatNumber(num) {
   if (!num && num !== 0) return '0.00'
   return parseFloat(num).toFixed(2)

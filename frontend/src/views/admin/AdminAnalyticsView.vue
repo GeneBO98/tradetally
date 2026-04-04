@@ -860,11 +860,6 @@ function formatNumber(num) {
     return num.toLocaleString();
 }
 
-function formatCurrency(num) {
-    if (num === null || num === undefined) return "0.00";
-    return Number(num).toFixed(2);
-}
-
 function growthTextClass(delta, invert = false) {
     if (delta === 0) {
         return "text-gray-500 dark:text-gray-400";
