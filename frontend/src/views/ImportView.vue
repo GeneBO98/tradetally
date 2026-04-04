@@ -1154,13 +1154,17 @@
       :selected-broker="selectedBroker"
       :file-name="selectedFile?.name || ''"
       :user-email="authStore.user?.email || ''"
+      :show-demo-data-cta="showDemoDataCta"
+      :demo-data-loading="creatingDemoData"
       @close="handleImportResultsClose"
+      @load-demo-data="handleLoadDemoData"
     />
   </Teleport>
 </template>
 
 <script setup>
 import { ref, defineAsyncComponent, onMounted, onBeforeUnmount, computed, nextTick, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
@@ -1170,6 +1174,7 @@ import { useUserTimezone } from '@/composables/useUserTimezone'
 import { ArrowUpTrayIcon, XMarkIcon, ExclamationTriangleIcon, Cog6ToothIcon, MagnifyingGlassIcon } from '@heroicons/vue/24/outline'
 import { useAnalytics } from '@/composables/useAnalytics'
 import api from '@/services/api'
+import { useGrowthBook } from '@/composables/useGrowthBook'
 
 const { formatDateTime: formatDateTimeTz } = useUserTimezone()
 // Lazy-load modal components - only parsed/executed when first shown
@@ -1183,9 +1188,11 @@ import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotificat
 
 const tradesStore = useTradesStore()
 const authStore = useAuthStore()
+const router = useRouter()
 const { showSuccess, showError, showImportantWarning, showSuccessModal, clearModalAlert } = useNotification()
 const { celebrationQueue } = usePriceAlertNotifications()
 const { track } = useAnalytics()
+const { getFeatureValue } = useGrowthBook()
 
 const loading = ref(false)
 const error = ref(null)
@@ -1261,6 +1268,7 @@ const lookupForm = ref({
   cusip: ''
 })
 const lookupResult = ref(null)
+const creatingDemoData = ref(false)
 // Removed cusipMappings ref since it's no longer displayed in the UI
 const unmappedCusipsCount = ref(0)
 const unmappedCusips = ref([])
@@ -1311,6 +1319,8 @@ const importResultsData = ref({
   failedTrades: []
 })
 let activeFileAnalysisId = 0
+
+const showDemoDataCta = computed(() => getFeatureValue('import_zero_trades_demo_data_cta', true))
 
 const popularBrokerOptions = [
   { value: 'auto', label: 'Auto-Detect' },
@@ -2107,6 +2117,30 @@ function handleImportResultsClose() {
     duplicatesSkipped: 0,
     diagnostics: null,
     failedTrades: []
+  }
+}
+
+async function handleLoadDemoData() {
+  if (creatingDemoData.value) {
+    return
+  }
+
+  creatingDemoData.value = true
+
+  try {
+    await api.post('/trades/sample-data')
+    track('demo_data_loaded_after_zero_import', {
+      broker: selectedBroker.value,
+      detected_broker: importResultsData.value.diagnostics?.detectedBroker || 'unknown'
+    })
+    handleImportResultsClose()
+    showSuccess('Demo Data Ready', 'Sample trades were added so you can explore the product while you sort out your CSV.')
+    await router.push({ name: 'dashboard' })
+  } catch (err) {
+    console.error('[IMPORT] Failed to load demo data:', err)
+    showError('Demo Data Failed', err.response?.data?.error || 'Failed to load demo data')
+  } finally {
+    creatingDemoData.value = false
   }
 }
 

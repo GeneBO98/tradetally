@@ -85,6 +85,33 @@ function getMidnightCST(date = new Date()) {
   return getMidnightInTimezone('America/Chicago', date);
 }
 
+function getTimezoneDateParts(timezone = 'America/Chicago', date = new Date()) {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  const [year, month, day] = formatter.format(date).split('-').map(Number);
+  return { year, month, day };
+}
+
+function getMonthStartInTimezone(timezone = 'America/Chicago', monthOffset = 0) {
+  const now = new Date();
+  const { year, month } = getTimezoneDateParts(timezone, now);
+  const targetMonthIndex = month - 1 + monthOffset;
+  const targetDate = new Date(Date.UTC(year, targetMonthIndex, 1, 12, 0, 0));
+  return getMidnightInTimezone(timezone, targetDate);
+}
+
+function getMonthLabel(date, timezone = 'America/Chicago') {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    month: 'short',
+    year: 'numeric'
+  }).format(date);
+}
+
 class AdminAnalytics {
   /**
    * Get summary statistics for the admin analytics dashboard
@@ -496,6 +523,59 @@ class AdminAnalytics {
   }
 
   /**
+   * Get month-on-month growth metrics using calendar month boundaries in the admin timezone
+   * @param {string} timezone - Timezone to use for month boundary calculations
+   * @returns {Object} Current vs previous month metrics and growth deltas
+   */
+  static async getMonthOverMonthMetrics(timezone = 'America/Chicago') {
+    const currentMonthStart = getMonthStartInTimezone(timezone, 0);
+    const previousMonthStart = getMonthStartInTimezone(timezone, -1);
+    const nextMonthStart = getMonthStartInTimezone(timezone, 1);
+
+    const query = `
+      SELECT
+        (SELECT COUNT(*) FROM users WHERE created_at >= $1 AND created_at < $2 AND is_active = true) as current_signups,
+        (SELECT COUNT(*) FROM users WHERE created_at >= $3 AND created_at < $1 AND is_active = true) as previous_signups,
+        (SELECT COUNT(*) FROM users WHERE last_login_at >= $1 AND last_login_at < $2 AND is_active = true) as current_active_users,
+        (SELECT COUNT(*) FROM users WHERE last_login_at >= $3 AND last_login_at < $1 AND is_active = true) as previous_active_users,
+        (SELECT COALESCE(SUM(trades_imported), 0) FROM import_logs WHERE created_at >= $1 AND created_at < $2 AND status = 'completed') as current_trades_imported,
+        (SELECT COALESCE(SUM(trades_imported), 0) FROM import_logs WHERE created_at >= $3 AND created_at < $1 AND status = 'completed') as previous_trades_imported,
+        (SELECT COUNT(*) FROM account_deletions WHERE deleted_at >= $1 AND deleted_at < $2) as current_account_deletions,
+        (SELECT COUNT(*) FROM account_deletions WHERE deleted_at >= $3 AND deleted_at < $1) as previous_account_deletions
+    `;
+
+    const result = await db.query(query, [
+      currentMonthStart.toISOString(),
+      nextMonthStart.toISOString(),
+      previousMonthStart.toISOString()
+    ]);
+    const row = result.rows[0];
+
+    const buildMetric = (currentValue, previousValue) => {
+      const delta = currentValue - previousValue;
+      const growthPercent = previousValue > 0
+        ? Number((((currentValue - previousValue) / previousValue) * 100).toFixed(1))
+        : (currentValue > 0 ? null : 0);
+
+      return {
+        current: currentValue,
+        previous: previousValue,
+        delta,
+        growthPercent
+      };
+    };
+
+    return {
+      currentMonthLabel: getMonthLabel(currentMonthStart, timezone),
+      previousMonthLabel: getMonthLabel(previousMonthStart, timezone),
+      signups: buildMetric(parseInt(row.current_signups) || 0, parseInt(row.previous_signups) || 0),
+      activeUsers: buildMetric(parseInt(row.current_active_users) || 0, parseInt(row.previous_active_users) || 0),
+      tradesImported: buildMetric(parseInt(row.current_trades_imported) || 0, parseInt(row.previous_trades_imported) || 0),
+      accountDeletions: buildMetric(parseInt(row.current_account_deletions) || 0, parseInt(row.previous_account_deletions) || 0)
+    };
+  }
+
+  /**
    * Get all analytics data for a given period
    * @param {string} period - Period identifier (today, 7d, 30d, 90d, all)
    * @param {string} timezone - Timezone to use for "today" calculation (defaults to 'America/Chicago' for admin analytics)
@@ -513,7 +593,8 @@ class AdminAnalytics {
       deletionTrend,
       brokerSyncStats,
       subscriptionMetrics,
-      activation
+      activation,
+      monthOverMonth
     ] = await Promise.all([
       this.getSummary(startDate, timezone),
       this.getSignupTrend(startDate, timezone),
@@ -523,7 +604,8 @@ class AdminAnalytics {
       this.getDeletionTrend(startDate, timezone),
       this.getBrokerSyncStats(startDate),
       this.getSubscriptionMetrics(startDate),
-      this.getActivationRate(startDate)
+      this.getActivationRate(startDate),
+      this.getMonthOverMonthMetrics(timezone)
     ]);
 
     return {
@@ -532,6 +614,7 @@ class AdminAnalytics {
       summary,
       subscriptionMetrics,
       activation,
+      monthOverMonth,
       trends: {
         signups: signupTrend,
         logins: loginTrend,

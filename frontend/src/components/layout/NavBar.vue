@@ -437,7 +437,7 @@ const navigation = computed(() => {
   const nav = [...baseNavigation]
 
   // Add admin navigation for admin users
-  if (authStore.user?.role === 'admin') {
+  if (authStore.user?.role === 'admin' || authStore.user?.role === 'owner') {
     nav.push({
       name: 'Admin',
       type: 'dropdown',

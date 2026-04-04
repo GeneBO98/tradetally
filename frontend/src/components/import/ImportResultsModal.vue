@@ -141,6 +141,30 @@
           </div>
         </div>
 
+        <div v-if="showDemoDataCta && tradesImported === 0" class="mt-4">
+          <div class="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg p-4">
+            <div class="flex items-start">
+              <InformationCircleIcon class="h-5 w-5 text-emerald-600 dark:text-emerald-400 mr-2 flex-shrink-0 mt-0.5" />
+              <div class="flex-1">
+                <p class="text-sm font-medium text-emerald-800 dark:text-emerald-200">
+                  Explore with demo data instead
+                </p>
+                <p class="mt-1 text-sm text-emerald-700 dark:text-emerald-300">
+                  If this CSV is blocking you, load sample trades and explore the dashboard and analytics flow right now.
+                </p>
+                <button
+                  type="button"
+                  class="mt-3 inline-flex items-center justify-center px-3 py-1.5 text-sm font-medium text-white bg-emerald-600 border border-transparent rounded-md hover:bg-emerald-700 disabled:opacity-60"
+                  :disabled="demoDataLoading"
+                  @click="$emit('load-demo-data')"
+                >
+                  {{ demoDataLoading ? 'Loading Demo Data...' : 'Load Demo Data' }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Need Help? Section (for supported brokers with 0 trades) -->
         <div v-if="showNeedHelp" class="mt-4">
           <div class="bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg p-4">
@@ -234,10 +258,18 @@ const props = defineProps({
   userEmail: {
     type: String,
     default: ''
+  },
+  showDemoDataCta: {
+    type: Boolean,
+    default: false
+  },
+  demoDataLoading: {
+    type: Boolean,
+    default: false
   }
 })
 
-defineEmits(['close'])
+defineEmits(['close', 'load-demo-data'])
 
 const showSkippedDetails = ref(false)
 const showFailedDetails = ref(false)

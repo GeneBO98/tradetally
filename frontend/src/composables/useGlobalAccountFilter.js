@@ -12,6 +12,17 @@ const accounts = ref([])
 const loading = ref(false)
 const initialized = ref(false)
 
+function normalizeStoredAccount(value) {
+  if (value == null) return null
+
+  const normalized = String(value).trim()
+  if (!normalized || normalized === 'null' || normalized === 'undefined') {
+    return null
+  }
+
+  return normalized
+}
+
 function redactAccountId(accountId) {
   if (!accountId) return null
 
@@ -38,9 +49,11 @@ function redactAccountId(accountId) {
 export function useGlobalAccountFilter() {
   // Initialize from localStorage on first use
   if (!initialized.value) {
-    const stored = localStorage.getItem(STORAGE_KEY)
+    const stored = normalizeStoredAccount(localStorage.getItem(STORAGE_KEY))
     if (stored) {
       selectedAccount.value = stored
+    } else {
+      localStorage.removeItem(STORAGE_KEY)
     }
     initialized.value = true
   }
@@ -120,13 +133,14 @@ export function useGlobalAccountFilter() {
   }
 
   function setAccount(accountId) {
-    selectedAccount.value = accountId
-    if (accountId) {
-      localStorage.setItem(STORAGE_KEY, accountId)
+    const normalized = normalizeStoredAccount(accountId)
+    selectedAccount.value = normalized
+    if (normalized) {
+      localStorage.setItem(STORAGE_KEY, normalized)
     } else {
       localStorage.removeItem(STORAGE_KEY)
     }
-    console.log('[GLOBAL ACCOUNT] Set to:', accountId || 'All Accounts')
+    console.log('[GLOBAL ACCOUNT] Set to:', normalized || 'All Accounts')
   }
 
   function clearAccount() {

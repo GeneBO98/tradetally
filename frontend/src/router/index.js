@@ -464,7 +464,7 @@ router.beforeEach(async (to, from, next) => {
       }
     }
 
-    if (authStore.user?.role !== 'admin') {
+    if (authStore.user?.role !== 'admin' && authStore.user?.role !== 'owner') {
       next({ name: 'dashboard' })
     } else {
       next()

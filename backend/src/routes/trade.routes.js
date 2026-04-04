@@ -739,6 +739,7 @@ router.post('/expired-options/auto-close', authenticate, tradeController.autoClo
 router.post('/repair-inconsistent', authenticate, tradeController.repairInconsistentTrades);
 
 // Sample data management - remove all sample trades/journal/account
+router.post('/sample-data', authenticate, tradeController.createSampleData);
 router.delete('/sample-data', authenticate, tradeController.deleteSampleData);
 
 // Check if user has sample data

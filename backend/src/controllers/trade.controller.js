@@ -41,6 +41,78 @@ function mapTradeReviewSummary(review) {
   };
 }
 
+function isUuid(value) {
+  return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function getTradeMultiplier(trade) {
+  if ((trade.instrument_type || trade.instrumentType) === 'future') {
+    return Number(trade.point_value || trade.pointValue || 1);
+  }
+
+  if ((trade.instrument_type || trade.instrumentType) === 'option') {
+    return Number(trade.contract_size || trade.contractSize || 100);
+  }
+
+  return 1;
+}
+
+function calculateRemainingOpenQuantity(trade) {
+  const executions = Array.isArray(trade.executions) ? trade.executions : [];
+  const side = String(trade.side || '').toLowerCase();
+
+  if (executions.length === 0) {
+    return trade.exit_price ? 0 : Number(trade.quantity || 0);
+  }
+
+  const { entryQty, exitQty } = executions.reduce((totals, execution) => {
+    const action = String(execution.action || execution.side || '').toLowerCase();
+    const quantity = Number(execution.quantity || 0);
+
+    if (!quantity) return totals;
+
+    if (side === 'long') {
+      if (action === 'buy') totals.entryQty += quantity;
+      if (action === 'sell') totals.exitQty += quantity;
+    } else if (side === 'short') {
+      if (action === 'sell' || action === 'short') totals.entryQty += quantity;
+      if (action === 'buy' || action === 'cover') totals.exitQty += quantity;
+    }
+
+    return totals;
+  }, { entryQty: 0, exitQty: 0 });
+
+  return Math.max(0, entryQty - exitQty);
+}
+
+function enrichOpenTradePnL(trade) {
+  const isOpen = !trade.exit_price && !trade.exit_time;
+  trade.currentPrice = trade.current_price != null ? Number(trade.current_price) : null;
+  trade.remainingQuantity = isOpen ? calculateRemainingOpenQuantity(trade) : 0;
+  trade.unrealizedPnl = null;
+  trade.unrealizedPnlPercent = null;
+
+  if (!isOpen || trade.currentPrice == null || !Number.isFinite(trade.currentPrice) || !trade.remainingQuantity) {
+    return;
+  }
+
+  const entryPrice = Number(trade.entry_price || 0);
+  if (!Number.isFinite(entryPrice) || entryPrice <= 0) {
+    return;
+  }
+
+  const multiplier = getTradeMultiplier(trade);
+  const side = String(trade.side || '').toLowerCase();
+  const direction = side === 'short' ? -1 : 1;
+  const unrealizedPnl = (trade.currentPrice - entryPrice) * trade.remainingQuantity * multiplier * direction;
+  const costBasis = entryPrice * trade.remainingQuantity * multiplier;
+
+  trade.unrealizedPnl = unrealizedPnl;
+  trade.unrealizedPnlPercent = costBasis > 0
+    ? (unrealizedPnl / costBasis) * 100
+    : null;
+}
+
 // Helper function to invalidate analytics cache for a user
 function invalidateAnalyticsCache(userId) {
   // Clear all analytics cache entries for this user
@@ -139,6 +211,7 @@ const tradeController = {
         if (trade.quality_grade !== undefined) trade.qualityGrade = trade.quality_grade;
         if (trade.quality_score !== undefined) trade.qualityScore = trade.quality_score;
         if (trade.quality_metrics !== undefined) trade.qualityMetrics = trade.quality_metrics;
+        enrichOpenTradePnL(trade);
       });
 
       const tradeReviewRows = await Playbook.getTradeReviewSummaries(
@@ -3047,8 +3120,10 @@ const tradeController = {
         return res.status(400).json({ error: 'Cannot delete more than 50 imports at once' });
       }
 
-      // Validate all IDs are integers to prevent SQL injection
-      const safeImportIds = importIds.map(id => parseInt(id, 10)).filter(id => Number.isFinite(id));
+      // Validate UUID import log IDs
+      const safeImportIds = importIds
+        .map(id => String(id || '').trim())
+        .filter(isUuid);
       if (safeImportIds.length === 0) {
         return res.status(400).json({ error: 'No valid import IDs provided' });
       }
@@ -5195,6 +5270,27 @@ const tradeController = {
       });
     } catch (error) {
       logger.logError('Error deleting sample data:', error);
+      next(error);
+    }
+  },
+
+  async createSampleData(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const SampleDataService = require('../services/sampleDataService');
+      const hasSample = await SampleDataService.hasSampleData(userId);
+
+      if (hasSample) {
+        return res.json({ message: 'Sample data already available' });
+      }
+
+      const result = await SampleDataService.createForUser(userId);
+      res.status(201).json({
+        message: 'Sample data created successfully',
+        ...result
+      });
+    } catch (error) {
+      logger.logError('Error creating sample data:', error);
       next(error);
     }
   },

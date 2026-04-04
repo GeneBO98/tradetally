@@ -139,6 +139,88 @@
                 </div>
             </div>
 
+            <div v-if="analytics.monthOverMonth" class="mb-8">
+                <div class="flex items-center justify-between mb-4 gap-3">
+                    <div>
+                        <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                            Month on Month Growth
+                        </h2>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">
+                            {{ analytics.monthOverMonth.currentMonthLabel }} vs {{ analytics.monthOverMonth.previousMonthLabel }}
+                        </p>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700/50 p-5">
+                        <p class="text-xs font-medium uppercase tracking-wider text-gray-400 dark:text-gray-500">Signups</p>
+                        <div class="mt-2 flex items-end justify-between gap-3">
+                            <div>
+                                <p class="text-2xl font-bold text-gray-900 dark:text-white">
+                                    {{ formatNumber(analytics.monthOverMonth.signups.current) }}
+                                </p>
+                                <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                                    {{ formatNumber(analytics.monthOverMonth.signups.previous) }} last month
+                                </p>
+                            </div>
+                            <span :class="growthTextClass(analytics.monthOverMonth.signups.delta)" class="text-sm font-semibold whitespace-nowrap">
+                                {{ formatGrowth(analytics.monthOverMonth.signups) }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700/50 p-5">
+                        <p class="text-xs font-medium uppercase tracking-wider text-gray-400 dark:text-gray-500">Active Users</p>
+                        <div class="mt-2 flex items-end justify-between gap-3">
+                            <div>
+                                <p class="text-2xl font-bold text-gray-900 dark:text-white">
+                                    {{ formatNumber(analytics.monthOverMonth.activeUsers.current) }}
+                                </p>
+                                <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                                    {{ formatNumber(analytics.monthOverMonth.activeUsers.previous) }} last month
+                                </p>
+                            </div>
+                            <span :class="growthTextClass(analytics.monthOverMonth.activeUsers.delta)" class="text-sm font-semibold whitespace-nowrap">
+                                {{ formatGrowth(analytics.monthOverMonth.activeUsers) }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700/50 p-5">
+                        <p class="text-xs font-medium uppercase tracking-wider text-gray-400 dark:text-gray-500">Trades Imported</p>
+                        <div class="mt-2 flex items-end justify-between gap-3">
+                            <div>
+                                <p class="text-2xl font-bold text-gray-900 dark:text-white">
+                                    {{ formatNumber(analytics.monthOverMonth.tradesImported.current) }}
+                                </p>
+                                <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                                    {{ formatNumber(analytics.monthOverMonth.tradesImported.previous) }} last month
+                                </p>
+                            </div>
+                            <span :class="growthTextClass(analytics.monthOverMonth.tradesImported.delta)" class="text-sm font-semibold whitespace-nowrap">
+                                {{ formatGrowth(analytics.monthOverMonth.tradesImported) }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700/50 p-5">
+                        <p class="text-xs font-medium uppercase tracking-wider text-gray-400 dark:text-gray-500">Account Deletions</p>
+                        <div class="mt-2 flex items-end justify-between gap-3">
+                            <div>
+                                <p class="text-2xl font-bold text-gray-900 dark:text-white">
+                                    {{ formatNumber(analytics.monthOverMonth.accountDeletions.current) }}
+                                </p>
+                                <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                                    {{ formatNumber(analytics.monthOverMonth.accountDeletions.previous) }} last month
+                                </p>
+                            </div>
+                            <span :class="growthTextClass(analytics.monthOverMonth.accountDeletions.delta, true)" class="text-sm font-semibold whitespace-nowrap">
+                                {{ formatGrowth(analytics.monthOverMonth.accountDeletions) }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Revenue & Subscriptions Section -->
             <div v-if="analytics.subscriptionMetrics" class="mb-8">
                 <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
@@ -778,6 +860,36 @@ function formatNumber(num) {
     return num.toLocaleString();
 }
 
+function formatCurrency(num) {
+    if (num === null || num === undefined) return "0.00";
+    return Number(num).toFixed(2);
+}
+
+function growthTextClass(delta, invert = false) {
+    if (delta === 0) {
+        return "text-gray-500 dark:text-gray-400";
+    }
+
+    const positiveClass = "text-green-600 dark:text-green-400";
+    const negativeClass = "text-red-600 dark:text-red-400";
+
+    if (invert) {
+        return delta > 0 ? negativeClass : positiveClass;
+    }
+
+    return delta > 0 ? positiveClass : negativeClass;
+}
+
+function formatGrowth(metric) {
+    if (!metric) return "0%";
+
+    if (metric.growthPercent === null) {
+        return metric.current > 0 ? "New" : "0%";
+    }
+
+    const sign = metric.delta > 0 ? "+" : "";
+    return `${sign}${metric.growthPercent}%`;
+}
 function formatShortDate(iso) {
     if (!iso) return "-";
     try {
