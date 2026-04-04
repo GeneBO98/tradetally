@@ -175,7 +175,7 @@ let chart = null
 let candleSeries = null
 
 // Computed properties
-const userTier = computed(() => authStore.user?.tier?.tier_name || 'free')
+const userTier = computed(() => authStore.user?.tier || 'free')
 const isBillingEnabled = computed(() => authStore.user?.billingEnabled !== false)
 const isAdmin = computed(() => authStore.user?.role === 'admin' || authStore.user?.role === 'owner')
 const requiresProUpgrade = computed(() => isBillingEnabled.value && userTier.value !== 'pro' && !isAdmin.value)
