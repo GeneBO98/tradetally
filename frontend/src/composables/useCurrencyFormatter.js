@@ -31,6 +31,18 @@ const CURRENCY_OPTIONS = [
 
 export { CURRENCY_OPTIONS }
 
+function normalizeFractionDigits(minimumFractionDigits = 2, maximumFractionDigits = 2) {
+  const min = Number.isFinite(minimumFractionDigits) ? Math.trunc(minimumFractionDigits) : 2
+  const max = Number.isFinite(maximumFractionDigits) ? Math.trunc(maximumFractionDigits) : 2
+  const clampedMin = Math.min(Math.max(min, 0), 20)
+  const clampedMax = Math.min(Math.max(max, 0), 20)
+
+  return {
+    minimumFractionDigits: Math.min(clampedMin, clampedMax),
+    maximumFractionDigits: Math.max(clampedMin, clampedMax)
+  }
+}
+
 export function useCurrencyFormatter() {
   const authStore = useAuthStore()
 
@@ -69,6 +81,7 @@ export function useCurrencyFormatter() {
       compact = false,
       abs = false
     } = options
+    const digits = normalizeFractionDigits(minimumFractionDigits, maximumFractionDigits)
 
     const num = abs ? Math.abs(value) : value
 
@@ -76,17 +89,18 @@ export function useCurrencyFormatter() {
       const absVal = Math.abs(num)
       const sign = num < 0 ? '-' : ''
       const sym = currencySymbol.value
-      if (absVal >= 1e12) return `${sign}${sym}${(absVal / 1e12).toFixed(1)}T`
-      if (absVal >= 1e9) return `${sign}${sym}${(absVal / 1e9).toFixed(1)}B`
-      if (absVal >= 1e6) return `${sign}${sym}${(absVal / 1e6).toFixed(1)}M`
-      if (absVal >= 1e3) return `${sign}${sym}${(absVal / 1e3).toFixed(1)}K`
+      const compactDigits = digits.maximumFractionDigits
+      if (absVal >= 1e12) return `${sign}${sym}${(absVal / 1e12).toFixed(compactDigits)}T`
+      if (absVal >= 1e9) return `${sign}${sym}${(absVal / 1e9).toFixed(compactDigits)}B`
+      if (absVal >= 1e6) return `${sign}${sym}${(absVal / 1e6).toFixed(compactDigits)}M`
+      if (absVal >= 1e3) return `${sign}${sym}${(absVal / 1e3).toFixed(compactDigits)}K`
     }
 
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: currencyCode.value,
-      minimumFractionDigits,
-      maximumFractionDigits
+      minimumFractionDigits: digits.minimumFractionDigits,
+      maximumFractionDigits: digits.maximumFractionDigits
     }).format(num)
   }
 
@@ -107,7 +121,8 @@ export function useCurrencyFormatter() {
    */
   function formatNumber(value, { minimumFractionDigits = 2, maximumFractionDigits = 2 } = {}) {
     if (value === null || value === undefined || isNaN(value)) return '0.00'
-    return Math.abs(value).toLocaleString('en-US', { minimumFractionDigits, maximumFractionDigits })
+    const digits = normalizeFractionDigits(minimumFractionDigits, maximumFractionDigits)
+    return Math.abs(value).toLocaleString('en-US', digits)
   }
 
   return {

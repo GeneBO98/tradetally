@@ -700,7 +700,7 @@
                       class="ml-1 text-xs"
                       :class="symbol.pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
                     >
-                      {{ formatCurrency(symbol.pnl, { compact: true, maximumFractionDigits: 0 }) }}
+                      {{ formatCurrency(symbol.pnl, { compact: true, minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}
                     </span>
                   </span>
                   <span v-if="sector.symbols.length > 6" class="text-xs text-gray-500 dark:text-gray-400 px-1">
