@@ -367,6 +367,12 @@ describe('PaperMoney parser', () => {
     '1/15/25 10:00:00,SINGLE,SELL,100,TO CLOSE,AAPL,,,STOCK,155.00,155.00,LIMIT'
   ].join('\n');
 
+  const paperMoneyFuturesCSV = [
+    'Exec Time,Spread,Side,Qty,Pos Effect,Symbol,Exp,Strike,Type,Price,Net Price,Order Type',
+    '4/6/26 09:15:49,FUTURE,BUY,1,TO OPEN,/NQM26,JUN 26,,FUTURE,24363.00,24363.00,MKT',
+    '4/6/26 09:16:12,FUTURE,SELL,1,TO CLOSE,/NQM26,JUN 26,,FUTURE,24369.25,24369.25,MKT'
+  ].join('\n');
+
   test('returns valid result with trades array (regression)', async () => {
     const result = await parseCSV(buf(paperMoneyCSV), 'papermoney', {});
     expectValidResult(result);
@@ -383,6 +389,18 @@ describe('PaperMoney parser', () => {
     if (result.trades.length > 0) {
       expect(result.trades[0].tradeDate).toBeDefined();
     }
+  });
+
+  test('applies futures point value when calculating pnl', async () => {
+    const result = await parseCSV(buf(paperMoneyFuturesCSV), 'papermoney', {});
+
+    expectValidResult(result);
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0].instrumentType).toBe('future');
+    expect(result.trades[0].pointValue).toBe(20);
+    expect(result.trades[0].entryPrice).toBe(24363);
+    expect(result.trades[0].exitPrice).toBe(24369.25);
+    expect(result.trades[0].pnl).toBe(125);
   });
 });
 

@@ -5662,6 +5662,8 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
   for (const symbol in transactionsBySymbol) {
     const symbolTransactions = transactionsBySymbol[symbol];
     const instrumentData = parseInstrumentData(symbol);
+    const valueMultiplier = instrumentData.instrumentType === 'option' ? 100 :
+                            instrumentData.instrumentType === 'future' ? (instrumentData.pointValue || 1) : 1;
 
     console.log(`\n=== Processing ${symbolTransactions.length} PaperMoney transactions for ${symbol} ===`);
     
@@ -5678,7 +5680,7 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
       executions: existingPosition.executions || [],
       totalQuantity: existingPosition.quantity,
       totalFees: existingPosition.commission || 0,
-      entryValue: existingPosition.quantity * existingPosition.entryPrice,
+      entryValue: existingPosition.quantity * existingPosition.entryPrice * valueMultiplier,
       exitValue: 0,
       broker: existingPosition.broker || 'papermoney',
       isExistingPosition: true,
@@ -5763,19 +5765,19 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
         currentPosition += qty;
 
         if (currentTrade && currentTrade.side === 'long') {
-          currentTrade.entryValue += qty * transaction.price;
+          currentTrade.entryValue += qty * transaction.price * valueMultiplier;
           currentTrade.totalQuantity += qty;
         } else if (currentTrade && currentTrade.side === 'short') {
-          currentTrade.exitValue += qty * transaction.price;
+          currentTrade.exitValue += qty * transaction.price * valueMultiplier;
         }
       } else if (transaction.action === 'sell') {
         currentPosition -= qty;
 
         if (currentTrade && currentTrade.side === 'short') {
-          currentTrade.entryValue += qty * transaction.price;
+          currentTrade.entryValue += qty * transaction.price * valueMultiplier;
           currentTrade.totalQuantity += qty;
         } else if (currentTrade && currentTrade.side === 'long') {
-          currentTrade.exitValue += qty * transaction.price;
+          currentTrade.exitValue += qty * transaction.price * valueMultiplier;
         }
       }
 
@@ -5784,8 +5786,8 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
       // Close trade if position goes to zero
       if (currentPosition === 0 && currentTrade && currentTrade.totalQuantity > 0) {
         // Calculate weighted average prices
-        currentTrade.entryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
-        currentTrade.exitPrice = currentTrade.exitValue / currentTrade.totalQuantity;
+        currentTrade.entryPrice = currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier);
+        currentTrade.exitPrice = currentTrade.exitValue / (currentTrade.totalQuantity * valueMultiplier);
         
         // Calculate P/L
         if (currentTrade.side === 'long') {
@@ -5795,7 +5797,7 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
         }
         
         currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
-        currentTrade.quantity = currentTrade.totalQuantity * (typeof contractMultiplier !== 'undefined' ? contractMultiplier : 1);
+        currentTrade.quantity = currentTrade.totalQuantity;
         currentTrade.commission = currentTrade.totalFees;
         currentTrade.fees = 0;
 
