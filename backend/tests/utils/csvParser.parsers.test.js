@@ -210,6 +210,51 @@ describe('IBKR parser', () => {
     }
   });
 
+  test('uses order id to break same-timestamp IBKR executions', async () => {
+    const sameTimestampCSV = [
+      'Symbol,Date/Time,Quantity,Price,Commission,Fees,Order ID',
+      'AAPL,20250101;093000,100,150.00,-1.00,0.00,1',
+      'AAPL,20250101;100000,-100,155.00,-1.00,0.00,2',
+      'AAPL,20250101;100000,100,154.00,-1.00,0.00,4',
+      'AAPL,20250101;100000,-100,156.00,-1.00,0.00,3'
+    ].join('\n');
+
+    const result = await parseCSV(buf(sameTimestampCSV), 'ibkr', {});
+
+    expect(result.trades).toHaveLength(2);
+    expect(result.trades[1].side).toBe('short');
+    expect(result.trades[1].executions.map(exec => exec.orderId)).toEqual(['3', '4']);
+  });
+
+  test('preserves duplicate same-second fills from IBKR activity CSV', async () => {
+    const screenshotCSV = [
+      'Account,Symbol,Date/Time,Quantity,Price',
+      'U1234567,ADVB,2026-04-07 06:39:53,100,8.23',
+      'U1234567,ADVB,2026-04-07 06:40:25,-100,8.05',
+      'U1234567,ADVB,2026-04-07 06:40:26,100,8.10',
+      'U1234567,ADVB,2026-04-07 06:40:26,100,8.10',
+      'U1234567,ADVB,2026-04-07 06:40:54,-100,8.41',
+      'U1234567,ADVB,2026-04-07 06:41:26,100,8.45',
+      'U1234567,ADVB,2026-04-07 06:42:12,-200,8.28'
+    ].join('\n');
+
+    const result = await parseCSV(buf(screenshotCSV), 'ibkr', {});
+
+    expect(result.trades).toHaveLength(2);
+    expect(result.trades[0].symbol).toBe('ADVB');
+    expect(result.trades[0].executions).toHaveLength(2);
+    expect(result.trades[1].symbol).toBe('ADVB');
+    expect(result.trades[1].quantity).toBe(300);
+    expect(result.trades[1].executions).toHaveLength(5);
+    expect(result.trades[1].executions).toEqual([
+      expect.objectContaining({ action: 'buy', quantity: 100, price: 8.1, datetime: '2026-04-07T06:40:26' }),
+      expect.objectContaining({ action: 'buy', quantity: 100, price: 8.1, datetime: '2026-04-07T06:40:26' }),
+      expect.objectContaining({ action: 'sell', quantity: 100, price: 8.41, datetime: '2026-04-07T06:40:54' }),
+      expect.objectContaining({ action: 'buy', quantity: 100, price: 8.45, datetime: '2026-04-07T06:41:26' }),
+      expect.objectContaining({ action: 'sell', quantity: 200, price: 8.28, datetime: '2026-04-07T06:42:12' })
+    ]);
+  });
+
   test('parses trade confirmation format', async () => {
     const tradeConfCSV = [
       'Symbol,UnderlyingSymbol,Strike,Expiry,Put/Call,Multiplier,Buy/Sell,Date/Time,Quantity,Price,Commission',
