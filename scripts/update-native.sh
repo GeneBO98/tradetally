@@ -21,7 +21,7 @@ send_failure_email() {
 
   # Use curl to send via SMTP (requires curl with smtp support)
   # Fall back to node if available
-  node -e "
+  (cd backend && node -e "
     const nodemailer = require('nodemailer');
     const transporter = nodemailer.createTransport({
       host: process.env.EMAIL_HOST,
@@ -36,7 +36,7 @@ send_failure_email() {
       text: $(printf '%s' "$body" | node -e "process.stdout.write(JSON.stringify(require('fs').readFileSync('/dev/stdin','utf8')))")
     }).then(() => console.log('[UPDATE] Failure notification sent to ' + process.env.ADMIN_EMAIL))
       .catch(e => console.error('[UPDATE] Failed to send notification:', e.message));
-  " 2>&1 || echo "[UPDATE] Could not send failure email"
+  ") 2>&1 || echo "[UPDATE] Could not send failure email"
 }
 
 echo "[UPDATE] Pulling latest changes..."

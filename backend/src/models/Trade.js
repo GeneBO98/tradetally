@@ -3,6 +3,7 @@ const AchievementService = require('../services/achievementService');
 const { getUserLocalDate } = require('../utils/timezone');
 const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('../utils/futuresUtils');
 const logger = require('../utils/logger');
+const SAMPLE_DATA_EXCLUSION_WHERE = ` AND NOT COALESCE('sample' = ANY(t.tags), false)`;
 
 /**
  * Round a numeric value to fit database precision
@@ -1010,7 +1011,7 @@ class Trade {
     // Build the WHERE clause and filter values first
     const values = [userId];
     let paramCount = 2;
-    let whereClause = 'WHERE t.user_id = $1';
+    let whereClause = `WHERE t.user_id = $1${filters.includeSampleData ? '' : SAMPLE_DATA_EXCLUSION_WHERE}`;
     let needsSectorJoin = false;
 
     if (filters.symbol) {
@@ -3219,7 +3220,7 @@ class Trade {
     console.log('[PARTIAL-EXIT] Getting partial exit analytics for user:', userId);
 
     // Build WHERE clause using the same filter pattern as getAnalytics
-    let whereClause = 'WHERE t.user_id = $1 AND t.exit_price IS NOT NULL';
+    let whereClause = `WHERE t.user_id = $1${filters.includeSampleData ? '' : SAMPLE_DATA_EXCLUSION_WHERE} AND t.exit_price IS NOT NULL`;
     const values = [userId];
     let paramCount = 2;
 

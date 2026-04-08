@@ -428,6 +428,11 @@ router.beforeEach(async (to, from, next) => {
       }
       return
     }
+
+    if (to.name === 'oauth-clients' || to.name === 'admin-testimonials') {
+      next({ name: 'dashboard' })
+      return
+    }
   }
 
   // Handle closed mode - redirect home to login

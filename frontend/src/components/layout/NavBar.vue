@@ -444,31 +444,32 @@ const navigation = computed(() => {
         to: '/admin/users',
         route: 'admin-users',
         description: 'Manage users and permissions'
-      },
-      {
-        name: 'Backup Management',
-        to: '/admin/backups',
-        route: 'admin-backups',
-        description: 'Full site backups and restore'
       }
     ]
 
     if (isBillingEnabled.value) {
-      adminItems.splice(1, 0, {
-        name: 'OAuth Applications',
-        to: '/admin/oauth',
-        route: 'oauth-clients',
-        description: 'Manage OAuth2 clients and integrations'
-      })
-
-      adminItems.push({
-        name: 'Testimonials',
-        to: '/admin/testimonials',
-        route: 'admin-testimonials',
-        description: 'Manage user reviews for homepage'
-      })
+      adminItems.push(
+        {
+          name: 'OAuth Applications',
+          to: '/admin/oauth',
+          route: 'oauth-clients',
+          description: 'Manage OAuth2 clients and integrations'
+        },
+        {
+          name: 'Testimonials',
+          to: '/admin/testimonials',
+          route: 'admin-testimonials',
+          description: 'Manage user reviews for homepage'
+        }
+      )
     }
 
+    adminItems.push({
+      name: 'Backup Management',
+      to: '/admin/backups',
+      route: 'admin-backups',
+      description: 'Full site backups and restore'
+    })
     nav.push({
       name: 'Admin',
       type: 'dropdown',

@@ -9,6 +9,7 @@ const MAEEstimator = require('../utils/maeEstimator');
 const symbolCategories = require('../utils/symbolCategories');
 const { sendV1NotImplemented } = require('../utils/apiResponse');
 const ensureString = require('../utils/ensureString');
+const SAMPLE_DATA_EXCLUSION_SQL = ` AND NOT COALESCE('sample' = ANY(tags), false)`;
 
 // Helper function to create a short but collision-resistant hash for cache keys
 function createFilterHash(filters) {
@@ -153,7 +154,8 @@ function convertQueryToTradeFilters(query) {
     optionTypes: toArray(query.optionTypes),
     holdTime: validHoldTimes.includes(holdTimeVal) ? holdTimeVal : undefined,
     hasRValue: query.hasRValue,
-    accounts: toArray(query.accounts)
+    accounts: toArray(query.accounts),
+    includeSampleData: query.includeSampleData === 'true' || query.includeSampleData === true
   };
 }
 
@@ -214,6 +216,10 @@ function buildFilterConditions(query) {
   let filterConditions = '';
   const params = [];
   let paramIndex = 2; // $1 is reserved for user_id in callers
+
+  if (!filters.includeSampleData) {
+    filterConditions += SAMPLE_DATA_EXCLUSION_SQL;
+  }
 
   // Date filters
   if (filters.startDate) {
