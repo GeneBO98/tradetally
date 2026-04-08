@@ -204,12 +204,6 @@ const router = createRouter({
       meta: { requiresAuth: true, requiresAdmin: true }
     },
     {
-      path: '/admin/analytics',
-      name: 'admin-analytics',
-      component: () => import('@/views/admin/AdminAnalyticsView.vue'),
-      meta: { requiresAuth: true, requiresAdmin: true }
-    },
-    {
       path: '/admin/oauth',
       name: 'oauth-clients',
       component: () => import('@/views/OAuth/ClientManagementView.vue'),
@@ -467,6 +461,10 @@ router.beforeEach(async (to, from, next) => {
     if (authStore.user?.role !== 'admin' && authStore.user?.role !== 'owner') {
       next({ name: 'dashboard' })
     } else {
+      if (!isBillingEnabled.value && (to.name === 'oauth-clients' || to.name === 'admin-testimonials')) {
+        next({ name: 'dashboard' })
+        return
+      }
       next()
     }
   } else if (to.meta.requiresTier) {

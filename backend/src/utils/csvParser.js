@@ -1655,6 +1655,17 @@ function normalizeExecutionCollections(trades) {
   }
 
   const executionFields = ['executions', 'executionData', 'execution'];
+  const compareExecutionOrderIds = (left, right) => {
+    if (!left || !right) return 0;
+    const leftOrderId = left.orderId ?? left.orderID ?? left.tradeId ?? left.tradeID ?? '';
+    const rightOrderId = right.orderId ?? right.orderID ?? right.tradeId ?? right.tradeID ?? '';
+    if (!leftOrderId || !rightOrderId) return 0;
+
+    return String(leftOrderId).localeCompare(String(rightOrderId), undefined, {
+      numeric: true,
+      sensitivity: 'base'
+    });
+  };
 
   for (const trade of trades) {
     for (const field of executionFields) {
@@ -1666,17 +1677,40 @@ function normalizeExecutionCollections(trades) {
         .sort((left, right) => {
           const leftTime = new Date(left.datetime || left.entryTime || left.entry_time || 0).getTime();
           const rightTime = new Date(right.datetime || right.entryTime || right.entry_time || 0).getTime();
-          return leftTime - rightTime;
+          if (leftTime !== rightTime) {
+            return leftTime - rightTime;
+          }
+
+          const orderDiff = compareExecutionOrderIds(left, right);
+          if (orderDiff !== 0) {
+            return orderDiff;
+          }
+
+          const leftSourceIndex = Number(left.sourceIndex ?? left.source_index ?? 0);
+          const rightSourceIndex = Number(right.sourceIndex ?? right.source_index ?? 0);
+          if (leftSourceIndex !== rightSourceIndex) {
+            return leftSourceIndex - rightSourceIndex;
+          }
+
+          return 0;
         })
         .filter((execution) => {
-          const dedupeKey = [
-            execution.action || execution.side || '',
-            execution.quantity ?? '',
-            execution.price ?? execution.entryPrice ?? execution.exitPrice ?? '',
-            execution.datetime || execution.entryTime || execution.entry_time || execution.exitTime || execution.exit_time || '',
-            execution.fees ?? '',
-            execution.commission ?? ''
-          ].join('|');
+          const identifierKey =
+            execution.sequenceNumber ??
+            execution.sequence_number ??
+            execution.orderId ??
+            execution.orderID ??
+            execution.tradeId ??
+            execution.tradeID ??
+            execution.sourceIndex ??
+            execution.source_index ??
+            null;
+
+          if (identifierKey === null || identifierKey === undefined || identifierKey === '') {
+            return true;
+          }
+
+          const dedupeKey = String(identifierKey);
 
           if (seen.has(dedupeKey)) {
             return false;
@@ -2278,6 +2312,10 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
           }
         }
         csvString = lines.slice(headerIndex, endIndex).join('\n');
+        // Strip Excel formula notation for numeric fields: ="1005762914435" → 1005762914435
+        // Some TOS exports don't properly CSV-quote these, causing csv-parse to misinterpret
+        // the bare quotes as field delimiters and silently drop rows
+        csvString = csvString.replace(/(^|,)="(\d+)"(?=,|$)/gm, '$1$2');
         console.log(`Skipped ${headerIndex} header rows, using ${endIndex - headerIndex} lines from Cash Balance section`);
       } else {
         console.log('Warning: Could not find thinkorswim header pattern, trying to parse as-is');
@@ -5658,6 +5696,8 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
   for (const symbol in transactionsBySymbol) {
     const symbolTransactions = transactionsBySymbol[symbol];
     const instrumentData = parseInstrumentData(symbol);
+    const valueMultiplier = instrumentData.instrumentType === 'option' ? 100 :
+                            instrumentData.instrumentType === 'future' ? (instrumentData.pointValue || 1) : 1;
 
     console.log(`\n=== Processing ${symbolTransactions.length} PaperMoney transactions for ${symbol} ===`);
     
@@ -5674,7 +5714,7 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
       executions: existingPosition.executions || [],
       totalQuantity: existingPosition.quantity,
       totalFees: existingPosition.commission || 0,
-      entryValue: existingPosition.quantity * existingPosition.entryPrice,
+      entryValue: existingPosition.quantity * existingPosition.entryPrice * valueMultiplier,
       exitValue: 0,
       broker: existingPosition.broker || 'papermoney',
       isExistingPosition: true,
@@ -5759,19 +5799,19 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
         currentPosition += qty;
 
         if (currentTrade && currentTrade.side === 'long') {
-          currentTrade.entryValue += qty * transaction.price;
+          currentTrade.entryValue += qty * transaction.price * valueMultiplier;
           currentTrade.totalQuantity += qty;
         } else if (currentTrade && currentTrade.side === 'short') {
-          currentTrade.exitValue += qty * transaction.price;
+          currentTrade.exitValue += qty * transaction.price * valueMultiplier;
         }
       } else if (transaction.action === 'sell') {
         currentPosition -= qty;
 
         if (currentTrade && currentTrade.side === 'short') {
-          currentTrade.entryValue += qty * transaction.price;
+          currentTrade.entryValue += qty * transaction.price * valueMultiplier;
           currentTrade.totalQuantity += qty;
         } else if (currentTrade && currentTrade.side === 'long') {
-          currentTrade.exitValue += qty * transaction.price;
+          currentTrade.exitValue += qty * transaction.price * valueMultiplier;
         }
       }
 
@@ -5780,8 +5820,8 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
       // Close trade if position goes to zero
       if (currentPosition === 0 && currentTrade && currentTrade.totalQuantity > 0) {
         // Calculate weighted average prices
-        currentTrade.entryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
-        currentTrade.exitPrice = currentTrade.exitValue / currentTrade.totalQuantity;
+        currentTrade.entryPrice = currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier);
+        currentTrade.exitPrice = currentTrade.exitValue / (currentTrade.totalQuantity * valueMultiplier);
         
         // Calculate P/L
         if (currentTrade.side === 'long') {
@@ -5791,7 +5831,7 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
         }
         
         currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
-        currentTrade.quantity = currentTrade.totalQuantity * (typeof contractMultiplier !== 'undefined' ? contractMultiplier : 1);
+        currentTrade.quantity = currentTrade.totalQuantity;
         currentTrade.commission = currentTrade.totalFees;
         currentTrade.fees = 0;
 
@@ -6551,7 +6591,9 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
   const isTradeConfirmation = records.length > 0 && records[0].hasOwnProperty('Buy/Sell');
 
   // First, parse all transactions
+  let rowIndex = 0;
   for (const record of records) {
+    rowIndex++;
     try {
       let symbol, quantity, absQuantity, price, commission, dateTime, action, multiplierFromCSV;
 
@@ -6704,6 +6746,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         symbol,
         conid, // Contract ID for reliable options grouping
         orderId,
+        sourceIndex: rowIndex,
         date: tradeDate,
         datetime: entryTime,
         action: action,
@@ -6730,11 +6773,28 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
 
   // Sort transactions by grouping key (conid if available, otherwise symbol) and datetime
   // Using Conid ensures options contracts are grouped correctly even if symbol parsing has issues
+  const compareIBKROrderIds = (a, b) => {
+    if (!a.orderId || !b.orderId) {
+      return 0;
+    }
+
+    return a.orderId.localeCompare(b.orderId, undefined, {
+      numeric: true,
+      sensitivity: 'base'
+    });
+  };
+
   transactions.sort((a, b) => {
     const keyA = a.conid || a.symbol;
     const keyB = b.conid || b.symbol;
     if (keyA !== keyB) return keyA.localeCompare(keyB);
-    return new Date(a.datetime) - new Date(b.datetime);
+    const timeDiff = new Date(a.datetime) - new Date(b.datetime);
+    if (timeDiff !== 0) return timeDiff;
+
+    const orderDiff = compareIBKROrderIds(a, b);
+    if (orderDiff !== 0) return orderDiff;
+
+    return a.sourceIndex - b.sourceIndex;
   });
 
   console.log(`Parsed ${transactions.length} valid IBKR trade transactions`);
@@ -7110,7 +7170,8 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
           datetime: transaction.datetime,
           fees: transaction.fees,
           conid: transaction.conid, // Include Conid for duplicate detection
-          orderId: transaction.orderId || null
+          orderId: transaction.orderId || null,
+          sourceIndex: transaction.sourceIndex
         };
 
         // First, check if this execution exists in ANY existing trade (complete or open)
