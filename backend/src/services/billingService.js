@@ -447,10 +447,16 @@ class BillingService {
             const interval = item?.price?.recurring?.interval;
             const planName = interval === 'year' ? 'Pro Yearly' : 'Pro Monthly';
             await EmailService.sendSubscriptionWelcomeEmail(user.email, user.username, planName);
+            await EmailService.sendNewSubscriberNotification({
+              userEmail: user.email,
+              username: user.username,
+              planName,
+              billingInterval: interval || 'month'
+            });
           }
         }
       } catch (emailError) {
-        console.error('[ERROR] Failed to send subscription welcome email:', emailError);
+        console.error('[ERROR] Failed to send subscription email notifications:', emailError);
         // Don't fail the webhook for email errors
       }
     }
