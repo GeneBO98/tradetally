@@ -289,7 +289,7 @@ import NotificationBell from '@/components/common/NotificationBell.vue'
 import GlobalAccountSelector from '@/components/layout/GlobalAccountSelector.vue'
 
 const authStore = useAuthStore()
-const { showSEOPages } = useRegistrationMode()
+const { showSEOPages, isBillingEnabled } = useRegistrationMode()
 const isDark = ref(false)
 const isMobileMenuOpen = ref(false)
 const expandedSections = ref({})
@@ -438,41 +438,41 @@ const navigation = computed(() => {
 
   // Add admin navigation for admin users
   if (authStore.user?.role === 'admin' || authStore.user?.role === 'owner') {
+    const adminItems = [
+      {
+        name: 'User Management',
+        to: '/admin/users',
+        route: 'admin-users',
+        description: 'Manage users and permissions'
+      },
+      {
+        name: 'Backup Management',
+        to: '/admin/backups',
+        route: 'admin-backups',
+        description: 'Full site backups and restore'
+      }
+    ]
+
+    if (isBillingEnabled.value) {
+      adminItems.splice(1, 0, {
+        name: 'OAuth Applications',
+        to: '/admin/oauth',
+        route: 'oauth-clients',
+        description: 'Manage OAuth2 clients and integrations'
+      })
+
+      adminItems.push({
+        name: 'Testimonials',
+        to: '/admin/testimonials',
+        route: 'admin-testimonials',
+        description: 'Manage user reviews for homepage'
+      })
+    }
+
     nav.push({
       name: 'Admin',
       type: 'dropdown',
-      items: [
-        {
-          name: 'User Management',
-          to: '/admin/users',
-          route: 'admin-users',
-          description: 'Manage users and permissions'
-        },
-        {
-          name: 'Platform Analytics',
-          to: '/admin/analytics',
-          route: 'admin-analytics',
-          description: 'View platform usage analytics'
-        },
-        {
-          name: 'OAuth Applications',
-          to: '/admin/oauth',
-          route: 'oauth-clients',
-          description: 'Manage OAuth2 clients and integrations'
-        },
-        {
-          name: 'Backup Management',
-          to: '/admin/backups',
-          route: 'admin-backups',
-          description: 'Full site backups and restore'
-        },
-        {
-          name: 'Testimonials',
-          to: '/admin/testimonials',
-          route: 'admin-testimonials',
-          description: 'Manage user reviews for homepage'
-        }
-      ]
+      items: adminItems
     })
   }
 
