@@ -32,6 +32,10 @@ function createResponse() {
 
 describe('billing controller cancel/reactivate', () => {
   let consoleLogSpy, consoleErrorSpy;
+  const validCancelBody = {
+    cancellationReason: 'too_expensive',
+    feedbackText: 'Need to reduce costs for now.'
+  };
 
   beforeAll(() => {
     consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
@@ -57,13 +61,16 @@ describe('billing controller cancel/reactivate', () => {
       };
       BillingService.cancelSubscription.mockResolvedValue(mockResult);
 
-      const req = { user: { id: 'user-1' } };
+      const req = { user: { id: 'user-1' }, body: validCancelBody };
       const res = createResponse();
       const next = jest.fn();
 
       await billingController.cancelSubscription(req, res, next);
 
-      expect(BillingService.cancelSubscription).toHaveBeenCalledWith('user-1');
+      expect(BillingService.cancelSubscription).toHaveBeenCalledWith('user-1', {
+        cancellationReason: 'too_expensive',
+        feedbackText: 'Need to reduce costs for now.'
+      });
       expect(res.payload.success).toBe(true);
       expect(res.payload.data.cancel_at_period_end).toBe(true);
     });
@@ -73,7 +80,7 @@ describe('billing controller cancel/reactivate', () => {
         new Error('No active subscription found')
       );
 
-      const req = { user: { id: 'user-1' } };
+      const req = { user: { id: 'user-1' }, body: validCancelBody };
       const res = createResponse();
       const next = jest.fn();
 
@@ -88,7 +95,7 @@ describe('billing controller cancel/reactivate', () => {
         new Error('Subscription is not active')
       );
 
-      const req = { user: { id: 'user-1' } };
+      const req = { user: { id: 'user-1' }, body: validCancelBody };
       const res = createResponse();
       const next = jest.fn();
 
@@ -103,7 +110,7 @@ describe('billing controller cancel/reactivate', () => {
         new Error('Billing not available')
       );
 
-      const req = { user: { id: 'user-1' } };
+      const req = { user: { id: 'user-1' }, body: validCancelBody };
       const res = createResponse();
       const next = jest.fn();
 
@@ -117,13 +124,29 @@ describe('billing controller cancel/reactivate', () => {
       const unexpectedError = new Error('Stripe API down');
       BillingService.cancelSubscription.mockRejectedValue(unexpectedError);
 
-      const req = { user: { id: 'user-1' } };
+      const req = { user: { id: 'user-1' }, body: validCancelBody };
       const res = createResponse();
       const next = jest.fn();
 
       await billingController.cancelSubscription(req, res, next);
 
       expect(next).toHaveBeenCalledWith(unexpectedError);
+    });
+
+    it('should return 400 when cancellation reason is invalid', async () => {
+      const req = {
+        user: { id: 'user-1' },
+        body: { cancellationReason: 'invalid_reason' }
+      };
+      const res = createResponse();
+      const next = jest.fn();
+
+      await billingController.cancelSubscription(req, res, next);
+
+      expect(res.statusCode).toBe(400);
+      expect(res.payload.error).toBe('invalid_cancellation_reason');
+      expect(BillingService.cancelSubscription).not.toHaveBeenCalled();
+      expect(next).not.toHaveBeenCalled();
     });
   });
 

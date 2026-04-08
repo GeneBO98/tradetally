@@ -212,7 +212,7 @@ class BillingService {
   }
 
   // Cancel subscription at period end
-  static async cancelSubscription(userId) {
+  static async cancelSubscription(userId, feedback = {}) {
     const billingAvailable = await this.isBillingAvailable();
     if (!billingAvailable) {
       throw new Error('Billing not available');
@@ -239,6 +239,35 @@ class BillingService {
       cancel_at_period_end: true,
       status: updatedSubscription.status
     });
+
+    const normalizedReason = typeof feedback.cancellationReason === 'string'
+      ? feedback.cancellationReason.trim().slice(0, 100)
+      : '';
+    const normalizedFeedbackText = typeof feedback.feedbackText === 'string'
+      ? feedback.feedbackText.trim().slice(0, 2000)
+      : '';
+
+    if (normalizedReason) {
+      await db.query(
+        `
+          INSERT INTO subscription_cancellation_feedback (
+            user_id,
+            subscription_id,
+            stripe_subscription_id,
+            cancellation_reason,
+            feedback_text
+          )
+          VALUES ($1, $2, $3, $4, $5)
+        `,
+        [
+          userId,
+          subscription.id || null,
+          updatedSubscription.id,
+          normalizedReason,
+          normalizedFeedbackText || null
+        ]
+      );
+    }
 
     return {
       id: updatedSubscription.id,

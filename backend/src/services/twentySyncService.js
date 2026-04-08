@@ -18,6 +18,10 @@ class TwentySyncService {
     this.unsupportedUpdateFields = new Set();
   }
 
+  normalizeEmail(email) {
+    return typeof email === 'string' ? email.trim().toLowerCase() : '';
+  }
+
   initialize() {
     if (!this.apiUrl || !this.apiKey) {
       console.log('[TWENTY SYNC] Disabled - TWENTY_API_URL or TWENTY_API_KEY not configured');
@@ -104,28 +108,103 @@ class TwentySyncService {
    * Find a person in Twenty by email
    */
   async findPersonByEmail(email) {
-    try {
-      const data = await this.graphql(`
-        query FindPerson($email: String!) {
-          people(filter: { emails: { primaryEmail: { eq: $email } } }, first: 1) {
-            edges {
-              node {
-                id
-                name { firstName lastName }
-                emails { primaryEmail }
-                city
-                jobTitle
+    const normalizedEmail = this.normalizeEmail(email);
+    if (!normalizedEmail) {
+      return null;
+    }
+
+    const queries = [
+      {
+        label: 'nested_email_filter',
+        query: `
+          query FindPerson($email: String!) {
+            people(filter: { emails: { primaryEmail: { eq: $email } } }, first: 10) {
+              edges {
+                node {
+                  id
+                  name { firstName lastName }
+                  emails { primaryEmail }
+                  city
+                  jobTitle
+                }
               }
             }
           }
-        }
-      `, { email });
+        `
+      },
+      {
+        label: 'flattened_primary_email_filter',
+        query: `
+          query FindPersonByPrimaryEmail($email: String!) {
+            people(filter: { emailsPrimaryEmail: { eq: $email } }, first: 10) {
+              edges {
+                node {
+                  id
+                  name { firstName lastName }
+                  emails { primaryEmail }
+                  city
+                  jobTitle
+                }
+              }
+            }
+          }
+        `
+      }
+    ];
 
-      return data?.people?.edges?.[0]?.node || null;
-    } catch (error) {
-      console.error('[TWENTY SYNC] Error finding person by email:', email, error.message);
-      return null;
+    for (const candidate of queries) {
+      try {
+        const data = await this.graphql(candidate.query, { email: normalizedEmail });
+        const matches = data?.people?.edges
+          ?.map(edge => edge?.node)
+          .filter(Boolean)
+          .filter((person) => this.normalizeEmail(person?.emails?.primaryEmail) === normalizedEmail) || [];
+
+        if (matches.length > 0) {
+          return matches[0];
+        }
+      } catch (error) {
+        console.warn(
+          `[TWENTY SYNC] Email lookup attempt "${candidate.label}" failed for ${normalizedEmail}: ${error.message}`
+        );
+      }
     }
+
+    return null;
+  }
+
+  async getMappedPersonId(userId) {
+    if (!userId) return null;
+
+    const result = await db.query(
+      `SELECT twenty_person_id FROM twenty_person_sync_map WHERE user_id = $1`,
+      [userId]
+    );
+
+    return result.rows[0]?.twenty_person_id || null;
+  }
+
+  async savePersonMapping(userId, personId, email) {
+    if (!userId || !personId) return;
+
+    await db.query(
+      `
+        INSERT INTO twenty_person_sync_map (user_id, twenty_person_id, email)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (user_id)
+        DO UPDATE SET
+          twenty_person_id = EXCLUDED.twenty_person_id,
+          email = EXCLUDED.email,
+          updated_at = CURRENT_TIMESTAMP
+      `,
+      [userId, personId, this.normalizeEmail(email) || null]
+    );
+  }
+
+  async clearPersonMapping(userId) {
+    if (!userId) return;
+
+    await db.query(`DELETE FROM twenty_person_sync_map WHERE user_id = $1`, [userId]);
   }
 
   /**
@@ -141,7 +220,7 @@ class TwentySyncService {
         lastName: userData.full_name?.split(' ').slice(1).join(' ') || '',
       },
       emails: {
-        primaryEmail: userData.email,
+        primaryEmail: this.normalizeEmail(userData.email),
       },
       city: userData.timezone || '',
       tier: userData.tier || 'free',
@@ -292,13 +371,34 @@ class TwentySyncService {
    * Create or update a person in Twenty
    */
   async upsertPerson(userData) {
+    const mappedPersonId = await this.getMappedPersonId(userData.id);
+
+    if (mappedPersonId) {
+      try {
+        return await this.updatePerson(mappedPersonId, userData);
+      } catch (error) {
+        console.warn(
+          `[TWENTY SYNC] Stored mapping for ${userData.email} failed (${mappedPersonId}): ${error.message}`
+        );
+
+        if (!/not found|record not found|cannot query field/i.test(error.message)) {
+          throw error;
+        }
+
+        await this.clearPersonMapping(userData.id);
+      }
+    }
+
     const existing = await this.findPersonByEmail(userData.email);
 
     if (existing) {
+      await this.savePersonMapping(userData.id, existing.id, userData.email);
       return this.updatePerson(existing.id, userData);
-    } else {
-      return this.createPerson(userData);
     }
+
+    const created = await this.createPerson(userData);
+    await this.savePersonMapping(userData.id, created?.id, userData.email);
+    return created;
   }
 
   /**

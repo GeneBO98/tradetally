@@ -4,6 +4,17 @@ const User = require('../models/User');
 const db = require('../config/database');
 const { verifyAppleSignedTransaction, AppleTransactionVerificationError } = require('../utils/appleIapVerification');
 
+const VALID_CANCELLATION_REASONS = new Set([
+  'too_expensive',
+  'not_using_enough',
+  'missing_features',
+  'bugs_or_reliability',
+  'switching_tools',
+  'temporary_break',
+  'other',
+  'prefer_not_to_say'
+]);
+
 const billingController = {
   
   // Get billing status
@@ -324,9 +335,24 @@ const billingController = {
   async cancelSubscription(req, res, next) {
     try {
       const userId = req.user.id;
+      const {
+        cancellationReason = null,
+        feedbackText = null
+      } = req.body || {};
+
+      if (!cancellationReason || !VALID_CANCELLATION_REASONS.has(cancellationReason)) {
+        return res.status(400).json({
+          error: 'invalid_cancellation_reason',
+          message: 'A valid cancellation reason is required'
+        });
+      }
+
       console.log('[BILLING] Cancel subscription request for user:', userId);
 
-      const result = await BillingService.cancelSubscription(userId);
+      const result = await BillingService.cancelSubscription(userId, {
+        cancellationReason,
+        feedbackText
+      });
 
       console.log('[BILLING] Subscription set to cancel at period end:', result.id);
       res.json({
