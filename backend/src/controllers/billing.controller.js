@@ -55,10 +55,13 @@ const billingController = {
         userTier,
         tierOverride: tierOverride ? 'exists' : 'null'
       });
+
+      const hasPaidSubscription = subscription &&
+        (subscription.status === 'active' || subscription.status === 'trialing');
       
       // Check if user has an active trial
       let trial = null;
-      if (tierOverride && tierOverride.reason && tierOverride.reason.includes('trial')) {
+      if (!hasPaidSubscription && tierOverride && tierOverride.reason && tierOverride.reason.includes('trial')) {
         const isActive = !tierOverride.expires_at || new Date(tierOverride.expires_at) > new Date();
         trial = {
           active: isActive,

@@ -7,6 +7,17 @@ const EmailService = require('./emailService');
 let stripe = null;
 
 class BillingService {
+  static async clearTrialOverride(userId) {
+    const deleteQuery = `
+      DELETE FROM tier_overrides
+      WHERE user_id = $1
+        AND reason ILIKE '%trial%'
+    `;
+
+    const result = await db.query(deleteQuery, [userId]);
+    return result.rowCount;
+  }
+
   // Initialize Stripe with conditional loading
   static async initialize() {
     const billingEnabled = await TierService.isBillingEnabled();
@@ -491,6 +502,13 @@ class BillingService {
     
     await this.createOrUpdateSubscription(userId, subscriptionData);
     console.log('Subscription updated in database');
+
+    if (subscription.status === 'active' || subscription.status === 'trialing') {
+      const clearedTrialOverrides = await this.clearTrialOverride(userId);
+      if (clearedTrialOverrides > 0) {
+        console.log('Cleared trial override(s) after paid subscription activation:', clearedTrialOverrides);
+      }
+    }
 
     // Trigger pro onboarding tour when subscription becomes active
     if (subscription.status === 'active') {
