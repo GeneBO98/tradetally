@@ -2669,7 +2669,6 @@ class Trade {
   static async getAnalytics(userId, filters = {}) {
     const { getUserTimezone } = require('../utils/timezone');
     console.log('Getting analytics for user:', userId, 'with filters:', filters);
-    const includeOpenPositions = filters.includeOpenPositions === true;
     
     // Get user's preference for average vs median calculations
     const User = require('./User');
@@ -2937,71 +2936,6 @@ class Trade {
           AND exit_price IS NOT NULL
           AND pnl IS NOT NULL
       ),
-      open_trade_stats AS (
-        SELECT
-          COUNT(*)::integer as open_trades,
-          COALESCE(SUM(
-            (
-              (COALESCE(pm.current_price, t.entry_price) - t.entry_price)
-              * t.quantity
-              * CASE
-                  WHEN t.instrument_type = 'future' THEN COALESCE(t.point_value, 1)
-                  WHEN t.instrument_type = 'option' THEN COALESCE(t.contract_size, 100)
-                  ELSE 1
-                END
-              * CASE
-                  WHEN LOWER(COALESCE(t.side, '')) = 'short' THEN -1
-                  ELSE 1
-                END
-            )
-          ), 0)::numeric as total_open_gross_pnl,
-          COALESCE(SUM(
-            CASE
-              WHEN ${includeOpenPositions ? 'true' : 'false'} THEN
-                (
-                  (
-                    (COALESCE(pm.current_price, t.entry_price) - t.entry_price)
-                    * t.quantity
-                    * CASE
-                        WHEN t.instrument_type = 'future' THEN COALESCE(t.point_value, 1)
-                        WHEN t.instrument_type = 'option' THEN COALESCE(t.contract_size, 100)
-                        ELSE 1
-                      END
-                    * CASE
-                        WHEN LOWER(COALESCE(t.side, '')) = 'short' THEN -1
-                        ELSE 1
-                      END
-                  )
-                  - (
-                    CASE
-                      WHEN COALESCE(t.entry_commission, 0) != 0 THEN COALESCE(t.entry_commission, 0)
-                      ELSE COALESCE(t.commission, 0)
-                    END
-                    + COALESCE(t.fees, 0)
-                  )
-                )
-              ELSE 0
-            END
-          ), 0)::numeric as total_open_net_pnl,
-          COALESCE(SUM(
-            CASE
-              WHEN ${includeOpenPositions ? 'true' : 'false'} THEN
-                (
-                  CASE
-                    WHEN COALESCE(t.entry_commission, 0) != 0 THEN COALESCE(t.entry_commission, 0)
-                    ELSE COALESCE(t.commission, 0)
-                  END
-                  + COALESCE(t.fees, 0)
-                )
-              ELSE 0
-            END
-          ), 0)::numeric as total_open_costs
-        FROM trades t
-        LEFT JOIN price_monitoring pm ON pm.symbol = t.symbol
-        ${whereClause}
-          AND t.entry_price IS NOT NULL
-          AND t.exit_price IS NULL
-      ),
       trade_stats AS (
         SELECT
           COUNT(*)::integer as total_trades,
@@ -3077,11 +3011,6 @@ class Trade {
       )
       SELECT 
         ts.*,
-        COALESCE(ots.open_trades, 0) as open_trades,
-        (COALESCE(ts.total_trades, 0) + COALESCE(ots.open_trades, 0))::integer as total_trades_including_open,
-        (COALESCE(ts.total_pnl, 0) + COALESCE(ots.total_open_net_pnl, 0))::numeric as total_net_pnl,
-        ((COALESCE(ts.total_pnl, 0) + COALESCE(ts.total_costs, 0)) + COALESCE(ots.total_open_gross_pnl, 0))::numeric as total_gross_pnl,
-        (COALESCE(ts.total_costs, 0) + COALESCE(ots.total_open_costs, 0))::numeric as total_costs_including_open,
         COALESCE(dp.max_daily_gain, 0) as max_daily_gain,
         COALESCE(dp.max_daily_loss, 0) as max_daily_loss,
         COALESCE(dd.max_drawdown, 0) as max_drawdown,
@@ -3112,7 +3041,6 @@ class Trade {
           MIN(daily_pnl) as max_daily_loss
         FROM daily_pnl
       ) dp ON true
-      LEFT JOIN open_trade_stats ots ON true
       LEFT JOIN (
         SELECT 
           MIN(drawdown) as max_drawdown,
@@ -3245,18 +3173,10 @@ class Trade {
     });
     const bestTrade = bestWorstResult.rows.find(t => t.type === 'best') || null;
     const worstTrade = bestWorstResult.rows.find(t => t.type === 'worst') || null;
-    const totalTrades = includeOpenPositions
-      ? (parseInt(analytics.total_trades_including_open) || 0)
-      : (parseInt(analytics.total_trades) || 0);
-    const totalNetPnL = includeOpenPositions
-      ? (parseFloat(analytics.total_net_pnl) || 0)
-      : (parseFloat(analytics.total_pnl) || 0);
-    const totalGrossPnL = includeOpenPositions
-      ? (parseFloat(analytics.total_gross_pnl) || 0)
-      : ((parseFloat(analytics.total_pnl) || 0) + (parseFloat(analytics.total_costs) || 0));
-    const totalCosts = includeOpenPositions
-      ? (parseFloat(analytics.total_costs_including_open) || 0)
-      : (parseFloat(analytics.total_costs) || 0);
+    const totalTrades = parseInt(analytics.total_trades) || 0;
+    const totalNetPnL = parseFloat(analytics.total_pnl) || 0;
+    const totalGrossPnL = (parseFloat(analytics.total_pnl) || 0) + (parseFloat(analytics.total_costs) || 0);
+    const totalCosts = parseFloat(analytics.total_costs) || 0;
     const avgNetPnL = totalTrades > 0 ? totalNetPnL / totalTrades : 0;
     const avgGrossPnL = totalTrades > 0 ? totalGrossPnL / totalTrades : 0;
 
@@ -3267,7 +3187,7 @@ class Trade {
         winningTrades: parseInt(analytics.winning_trades) || 0,
         losingTrades: parseInt(analytics.losing_trades) || 0,
         breakevenTrades: parseInt(analytics.breakeven_trades) || 0,
-        totalPnL: parseFloat(analytics.total_pnl) || 0,
+        totalPnL: totalNetPnL,
         totalNetPnL,
         totalGrossPnL,
         avgPnL: parseFloat(analytics.avg_pnl) || 0,

@@ -20,9 +20,10 @@ class FinnhubClient {
       this.maxCallsPerSecond = parseInt(process.env.FINNHUB_RATE_LIMIT_PER_SECOND, 10) || 1;
       console.log(`[FINNHUB] Using custom rate limits: ${this.maxCallsPerMinute}/min, ${this.maxCallsPerSecond}/sec`);
     } else if (this.apiKey) {
-      // Default to Free plan limits (60/min, 1/sec) - most conservative for API key users
+      // Default to Free plan limits (60/min)
+      // Per-second limit set to 10 to allow fast bursts while staying under 60/min
       this.maxCallsPerMinute = 60;
-      this.maxCallsPerSecond = 1;
+      this.maxCallsPerSecond = 10;
     } else {
       // No API key - very conservative limits
       this.maxCallsPerMinute = 10;
@@ -30,6 +31,23 @@ class FinnhubClient {
     }
     this.callTimestamps = [];
     this.secondTimestamps = [];
+
+    // Track symbols that have never returned a successful quote and got rate-limited (429).
+    // Key: symbol, Value: timestamp when blacklisted. Expires after 1 hour.
+    this.rateLimitedSymbols = new Map();
+    // Track symbols that have ever returned a successful quote (never blacklist these).
+    this.knownGoodSymbols = new Set();
+    this.RATE_LIMIT_BLACKLIST_TTL = 60 * 60 * 1000; // 1 hour
+  }
+
+  isSymbolBlacklisted(symbol) {
+    const entry = this.rateLimitedSymbols.get(symbol);
+    if (!entry) return false;
+    if (Date.now() - entry > this.RATE_LIMIT_BLACKLIST_TTL) {
+      this.rateLimitedSymbols.delete(symbol);
+      return false;
+    }
+    return true;
   }
 
   isConfigured() {
@@ -45,24 +63,23 @@ class FinnhubClient {
     this.callTimestamps = this.callTimestamps.filter(timestamp => timestamp > oneMinuteAgo);
     this.secondTimestamps = this.secondTimestamps.filter(timestamp => timestamp > oneSecondAgo);
     
-    // Check per-second limit first (30 calls per second)
+    // Check per-second limit
     if (this.secondTimestamps.length >= this.maxCallsPerSecond) {
       const oldestSecondCall = this.secondTimestamps[0];
       const waitTime = 1000 - (now - oldestSecondCall) + 50; // Add 50ms buffer
-      
+
       if (waitTime > 0) {
-        console.log(`Rate limit (per second) reached, waiting ${waitTime}ms`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
       }
     }
-    
-    // Check per-minute limit (150 calls per minute)
+
+    // Check per-minute limit
     if (this.callTimestamps.length >= this.maxCallsPerMinute) {
       const oldestCall = this.callTimestamps[0];
       const waitTime = 60000 - (now - oldestCall) + 100; // Add 100ms buffer
-      
+
       if (waitTime > 0) {
-        console.log(`Rate limit (per minute) reached, waiting ${waitTime}ms`);
+        console.log(`[FINNHUB] Throttling: ${this.maxCallsPerMinute}/min limit reached, waiting ${Math.round(waitTime / 1000)}s`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
       }
     }
@@ -132,6 +149,11 @@ class FinnhubClient {
       }
     }
 
+    // Skip symbols that got 429'd and have never returned a successful quote
+    if (this.isSymbolBlacklisted(symbolUpper)) {
+      throw new Error(`Skipping ${symbol}: rate-limited and no prior successful quote`);
+    }
+
     // Check cache first
     const cached = await cache.get('quote', symbolUpper);
     if (cached) {
@@ -145,6 +167,9 @@ class FinnhubClient {
       if (!quote || quote.c === undefined || quote.c === 0) {
         throw new Error(`No quote data available for ${symbol}`);
       }
+
+      // Mark as known good - never blacklist this symbol in the future
+      this.knownGoodSymbols.add(symbolUpper);
 
       // Cache the result
       await cache.set('quote', symbolUpper, quote);
@@ -163,6 +188,11 @@ class FinnhubClient {
 
       return quote;
     } catch (error) {
+      // Blacklist symbol on 429 if it has never returned a successful quote
+      if (error.message && error.message.includes('rate limit') && !this.knownGoodSymbols.has(symbolUpper)) {
+        this.rateLimitedSymbols.set(symbolUpper, Date.now());
+        console.warn(`[FINNHUB] Blacklisted ${symbolUpper} for ${this.RATE_LIMIT_BLACKLIST_TTL / 60000} min (429, no prior success)`);
+      }
       console.warn(`Failed to get quote for ${symbol}: ${error.message}`);
       throw error;
     }
@@ -352,18 +382,12 @@ class FinnhubClient {
       return results;
     }
 
-    // Process symbols in chunks to respect rate limits while parallelizing
-    // Chunk size matches maxCallsPerSecond (1 for free tier, more for paid)
-    const chunkSize = this.maxCallsPerSecond;
-    console.log(`Getting quotes for ${validSymbols.length} symbols (chunk size: ${chunkSize})`);
+    // Fetch quotes concurrently up to maxCallsPerSecond, throttled by waitForRateLimit() in makeRequest
+    const chunkSize = Math.max(this.maxCallsPerSecond, 1);
+    console.log(`Getting quotes for ${validSymbols.length} symbols (concurrency: ${chunkSize})`);
 
     for (let i = 0; i < validSymbols.length; i += chunkSize) {
       const chunk = validSymbols.slice(i, i + chunkSize);
-
-      // Wait between chunks (not before the first one)
-      if (i > 0) {
-        await new Promise(resolve => setTimeout(resolve, 1050));
-      }
 
       const settled = await Promise.allSettled(
         chunk.map(async (symbol) => {
@@ -373,7 +397,6 @@ class FinnhubClient {
             return { symbol, quote };
           } else {
             const quote = await this.getQuote(symbol);
-            console.log(`Got quote for ${symbol}:`, quote);
             return { symbol, quote };
           }
         })

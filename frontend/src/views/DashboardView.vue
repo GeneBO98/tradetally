@@ -298,14 +298,7 @@
     </div>
 
     <!-- Content with optional refresh indicator -->
-    <div v-else class="space-y-8 relative">
-      <!-- Subtle refresh indicator overlay -->
-      <div v-if="loading" class="absolute top-0 right-0 z-10">
-        <div class="flex items-center space-x-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm border border-gray-200 dark:border-gray-700">
-          <div class="animate-spin rounded-full h-4 w-4 border-2 border-primary-600 border-t-transparent"></div>
-          <span class="text-xs text-gray-600 dark:text-gray-400">Updating...</span>
-        </div>
-      </div>
+    <div v-else class="space-y-8">
       
       <!-- Customization Mode Message -->
       <div v-if="isCustomizing" class="card bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
@@ -369,9 +362,15 @@
                         View all →
                       </button>
                     </div>
-                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400">
-                      {{ openTrades.length }} {{ openTrades.length === 1 ? 'position' : 'positions' }}
-                    </span>
+                    <div class="flex items-center gap-2">
+                      <div v-if="loading" class="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
+                        <div class="animate-spin rounded-full h-3 w-3 border-[1.5px] border-primary-600 border-t-transparent"></div>
+                        <span>Updating...</span>
+                      </div>
+                      <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400">
+                        {{ openTrades.length }} {{ openTrades.length === 1 ? 'position' : 'positions' }}
+                      </span>
+                    </div>
                   </div>
                   <!-- Mobile Card View -->
                   <div class="block lg:hidden space-y-3">
@@ -420,10 +419,6 @@
                     {{ position.unrealizedPnLPercent >= 0 ? '+' : '' }}{{ formatNumber(position.unrealizedPnLPercent) }}%
                   </div>
                 </div>
-                <div v-else-if="quotesLoading" class="text-right space-y-1">
-                  <div class="h-5 w-20 bg-gray-200 dark:bg-gray-700 rounded animate-pulse ml-auto"></div>
-                  <div class="h-3 w-12 bg-gray-200 dark:bg-gray-700 rounded animate-pulse ml-auto"></div>
-                </div>
               </div>
 
               <!-- Key Metrics Grid -->
@@ -467,8 +462,7 @@
                     </template>
                     <template v-else>
                       <span v-if="position.currentPrice !== null">{{ formatCurrency(position.currentPrice) }}</span>
-                      <span v-else-if="quotesLoading" class="inline-block h-4 w-14 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></span>
-                      <span v-else class="text-xs text-gray-400">No quote</span>
+                      <span v-else class="text-xs text-gray-400">-</span>
                     </template>
                   </span>
                 </div>
@@ -633,8 +627,7 @@
                           </div>
                           <div v-if="position.quoteSource === 'alpaca'" class="text-xs text-gray-400">via Alpaca</div>
                         </div>
-                        <div v-else-if="quotesLoading" class="h-4 w-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse ml-auto"></div>
-                        <span v-else class="text-xs text-gray-400">No quote</span>
+                        <span v-else class="text-xs text-gray-400">-</span>
                       </template>
                     </td>
                     <td class="px-3 py-2 text-sm font-bold text-right">
@@ -648,7 +641,6 @@
                         <span v-if="position.currentValue !== null" class="text-gray-900 dark:text-white">
                           {{ formatCurrency(position.currentValue) }}
                         </span>
-                        <div v-else-if="quotesLoading" class="h-4 w-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse ml-auto"></div>
                         <span v-else class="text-xs text-gray-400">-</span>
                       </template>
                     </td>
@@ -680,10 +672,6 @@
                           ]">
                             {{ position.unrealizedPnLPercent >= 0 ? '+' : '' }}{{ formatNumber(position.unrealizedPnLPercent) }}%
                           </div>
-                        </div>
-                        <div v-else-if="quotesLoading" class="space-y-1">
-                          <div class="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded animate-pulse ml-auto"></div>
-                          <div class="h-3 w-12 bg-gray-200 dark:bg-gray-700 rounded animate-pulse ml-auto"></div>
                         </div>
                         <span v-else class="text-xs text-gray-400">-</span>
                       </template>
@@ -721,6 +709,9 @@
                     <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 text-right">
                       {{ (trade.quantity || 0).toLocaleString() }}
                     </td>
+                    <td class="px-3 py-2 text-sm text-gray-400 text-right">
+                      <span class="text-xs">-</span>
+                    </td>
                     <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 text-right">
                       {{ formatCurrency(trade.entry_price) }}
                     </td>
@@ -752,14 +743,18 @@
               </tbody>
               <tfoot class="bg-gray-50 dark:bg-gray-800 border-t-2 border-gray-300 dark:border-gray-600">
                 <tr>
-                  <td colspan="4" class="px-3 py-3 text-sm font-bold text-gray-900 dark:text-white text-right">
+                  <td colspan="5" class="px-3 py-3 text-sm font-bold text-gray-900 dark:text-white text-right">
                     Total:
                   </td>
-                  <td class="px-3 py-3 text-sm font-bold text-gray-900 dark:text-white text-right">
+                  <td class="px-3 py-3 text-sm font-bold text-gray-900 dark:text-white text-right tabular-nums">
                     {{ formatCurrency(totalOpenCost) }}
                   </td>
-                  <td colspan="2" class="px-3 py-3"></td>
-                  <td class="px-3 py-3 text-sm font-bold text-right">
+                  <td class="px-3 py-3"></td>
+                  <td class="px-3 py-3 text-sm font-bold text-gray-900 dark:text-white text-right tabular-nums">
+                    <span v-if="totalCurrentValue !== null">{{ formatCurrency(totalCurrentValue) }}</span>
+                    <span v-else class="text-xs text-gray-400">-</span>
+                  </td>
+                  <td class="px-3 py-3 text-sm font-bold text-right tabular-nums">
                     <div v-if="totalUnrealizedPnL !== null">
                       <div :class="[
                         totalUnrealizedPnL >= 0 ? 'text-green-600' : 'text-red-600'
@@ -1579,6 +1574,24 @@ const totalUnrealizedPnL = computed(() => {
   return hasAny ? total : null
 })
 
+const totalCurrentValue = computed(() => {
+  let total = 0
+  let hasAny = false
+  openTrades.value.forEach(position => {
+    if (position.requires_manual_price) {
+      const optPnL = getOptionPnL(position)
+      if (optPnL.currentValue !== null) {
+        total += optPnL.currentValue
+        hasAny = true
+      }
+    } else if (position.currentValue !== null) {
+      total += position.currentValue
+      hasAny = true
+    }
+  })
+  return hasAny ? total : null
+})
+
 const totalUnrealizedPnLPercent = computed(() => {
   if (totalUnrealizedPnL.value === null || totalOpenCost.value === 0) return 0
   return (totalUnrealizedPnL.value / totalOpenCost.value) * 100
@@ -1771,8 +1784,7 @@ async function removeSampleData() {
     hasSampleData.value = false
     // Refresh dashboard data
     fetchAnalytics()
-    fetchOpenPositions()
-    fetchOpenTradeQuotes()
+    fetchOpenTrades()
   } catch (err) {
     console.error('[Dashboard] Failed to remove sample data:', err)
   } finally {
@@ -1794,62 +1806,50 @@ async function fetchBillingAndSubscription() {
   }
 }
 
-// Phase 1: Fast DB-only fetch (no Finnhub calls) - used for initial render
-async function fetchOpenPositions() {
-  try {
-    console.log('Fetching open positions (DB only, no quotes)...')
-    const params = { skipQuotes: 'true' }
-    if (selectedAccount.value) {
-      params.accounts = selectedAccount.value
-    }
-    const response = await api.get('/trades/open-positions-quotes', { params })
-    openTrades.value = response.data.positions || []
-    quotesLoading.value = openTrades.value.length > 0
-    console.log(`Set ${openTrades.value.length} open positions (quotes pending)`)
+function getOpenPositionsCacheKey() {
+  return 'dashboard_open_positions_' + (selectedAccount.value || 'all')
+}
 
-    // Clean up stale manual option prices
-    const openSymbols = new Set(openTrades.value.filter(p => p.requires_manual_price).map(p => p.symbol))
-    let cleaned = false
-    Object.keys(manualOptionPrices.value).forEach(sym => {
-      if (!openSymbols.has(sym)) {
-        delete manualOptionPrices.value[sym]
-        cleaned = true
-      }
-    })
-    if (cleaned) saveManualOptionPrices()
-  } catch (error) {
-    console.error('Failed to fetch open positions:', error)
-    openTrades.value = []
-    quotesLoading.value = false
+function loadCachedOpenPositions() {
+  try {
+    const key = getOpenPositionsCacheKey()
+    const stored = sessionStorage.getItem(key)
+    if (stored) {
+      const data = JSON.parse(stored)
+      openTrades.value = data
+      quotesLoading.value = false
+      console.log(`Restored ${data.length} cached open positions`)
+      return true
+    }
+  } catch (e) {
+    // sessionStorage read failed
+  }
+  return false
+}
+
+function cacheOpenPositions(positions) {
+  try {
+    const key = getOpenPositionsCacheKey()
+    sessionStorage.setItem(key, JSON.stringify(positions))
+  } catch (e) {
+    // sessionStorage write failed (quota, private mode, etc.)
   }
 }
 
-// Phase 2: Full fetch with Finnhub quotes - fired non-blocking after initial render
-async function fetchOpenTradeQuotes() {
-  try {
-    console.log('Fetching open positions with quotes...')
-    const params = {}
-    if (selectedAccount.value) {
-      params.accounts = selectedAccount.value
+function cleanupManualOptionPrices() {
+  const openSymbols = new Set(openTrades.value.filter(p => p.requires_manual_price).map(p => p.symbol))
+  let cleaned = false
+  Object.keys(manualOptionPrices.value).forEach(sym => {
+    if (!openSymbols.has(sym)) {
+      delete manualOptionPrices.value[sym]
+      cleaned = true
     }
-    const response = await api.get('/trades/open-positions-quotes', { params })
-
-    if (response.data.error) {
-      console.warn('Real-time quotes not available:', response.data.error)
-    }
-
-    openTrades.value = response.data.positions || []
-    console.log('Updated openTrades with quotes:', openTrades.value.length)
-  } catch (error) {
-    console.error('Failed to fetch open trade quotes:', error)
-    // Keep positions from phase 1 - just won't have quotes
-  } finally {
-    quotesLoading.value = false
-  }
+  })
+  if (cleaned) saveManualOptionPrices()
 }
 
-// Combined fetch (used by auto-refresh and fallback paths)
 async function fetchOpenTrades() {
+  quotesLoading.value = true
   try {
     const params = {}
     if (selectedAccount.value) {
@@ -1862,20 +1862,13 @@ async function fetchOpenTrades() {
     }
 
     openTrades.value = response.data.positions || []
-
-    // Clean up stale manual option prices
-    const openSymbols = new Set(openTrades.value.filter(p => p.requires_manual_price).map(p => p.symbol))
-    let cleaned = false
-    Object.keys(manualOptionPrices.value).forEach(sym => {
-      if (!openSymbols.has(sym)) {
-        delete manualOptionPrices.value[sym]
-        cleaned = true
-      }
-    })
-    if (cleaned) saveManualOptionPrices()
+    cacheOpenPositions(openTrades.value)
+    cleanupManualOptionPrices()
   } catch (error) {
     console.error('Failed to fetch open trades:', error)
-    openTrades.value = []
+    // Keep existing positions on refresh failure - don't wipe what we have
+  } finally {
+    quotesLoading.value = false
   }
 }
 
@@ -2145,7 +2138,7 @@ function saveFiltersToStorage() {
 function applyFilters() {
   saveFiltersToStorage()
   fetchAnalytics()
-  fetchOpenPositions().then(() => fetchOpenTradeQuotes())
+  fetchOpenTrades()
 }
 
 function navigateToTradesWithSymbol(symbol) {
@@ -2332,7 +2325,7 @@ watch(() => filters.value.endDate, (newDate) => {
 watch(selectedAccount, () => {
   console.log('Dashboard: Global account filter changed to:', selectedAccount.value || 'All Accounts')
   fetchAnalytics()
-  fetchOpenPositions().then(() => fetchOpenTradeQuotes())
+  fetchOpenTrades()
 })
 
 async function fetchUserSettings() {
@@ -2527,22 +2520,19 @@ onMounted(async () => {
     // localStorage load failed
   }
 
-  // Try to restore analytics from sessionStorage for instant chart rendering
+  // Try to restore cached data from sessionStorage for instant rendering
   const hasCachedAnalytics = loadCachedAnalytics()
+  const hasCachedPositions = loadCachedOpenPositions()
 
-  // Phase 1: Fetch settings + positions in parallel (both fast) to show dashboard shell ASAP
-  await Promise.all([
-    fetchUserSettings(),
-    fetchOpenPositions()
-  ])
+  // Fetch settings (fast) - positions may already be restored from cache
+  await fetchUserSettings()
 
   // Dashboard shell is ready - drop the full-page spinner
   initialLoading.value = false
 
-  // Phase 2: Fire all remaining data fetches non-blocking
-  // If we had cached analytics, this silently refreshes in background; otherwise it loads fresh
+  // Silently refresh all data in background
   fetchAnalytics()
-  fetchOpenTradeQuotes()
+  fetchOpenTrades()
   fetchExpiredOptionsCount()
 
   // Check Year Wrapped banner status (non-blocking)
