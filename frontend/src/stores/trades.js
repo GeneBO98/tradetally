@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '@/services/api'
 import requestManager from '@/utils/requestManager'
+import { getTradeCosts, getTradeGrossPnl, getTradeNetPnl } from '@/utils/tradePnl'
 import { STORAGE_KEY as GLOBAL_ACCOUNT_KEY } from '@/composables/useGlobalAccountFilter'
 
 function normalizeStoredAccount(value) {
@@ -63,11 +64,7 @@ export const useTradesStore = defineStore('trades', () => {
       return parseFloat(analytics.value.summary.totalCosts) || 0
     }
 
-    return trades.value.reduce((sum, trade) => {
-      const commission = parseFloat(trade.commission) || 0
-      const fees = parseFloat(trade.fees) || 0
-      return sum + commission + fees
-    }, 0)
+    return trades.value.reduce((sum, trade) => sum + getTradeCosts(trade), 0)
   })
 
   const totalPnL = computed(() => {
@@ -83,7 +80,7 @@ export const useTradesStore = defineStore('trades', () => {
       return parseFloat(analytics.value.summary.totalNetPnL) || 0
     }
 
-    return totalPnL.value
+    return trades.value.reduce((sum, trade) => sum + getTradeNetPnl(trade), 0)
   })
 
   const totalGrossPnL = computed(() => {
@@ -91,7 +88,7 @@ export const useTradesStore = defineStore('trades', () => {
       return parseFloat(analytics.value.summary.totalGrossPnL) || 0
     }
 
-    return totalNetPnL.value + totalCosts.value
+    return trades.value.reduce((sum, trade) => sum + getTradeGrossPnl(trade), 0)
   })
 
   const winRate = computed(() => {
@@ -198,7 +195,10 @@ export const useTradesStore = defineStore('trades', () => {
           : Promise.resolve(),
         // Fetch analytics (non-blocking)
         api.get('/trades/analytics', {
-          params: buildRequestParams(params)
+          params: {
+            ...buildRequestParams(params),
+            includeOpenPositions: 'true'
+          }
         }).then(response => {
           analytics.value = response.data
         }).catch(err => {
@@ -266,8 +266,13 @@ export const useTradesStore = defineStore('trades', () => {
 
   async function fetchAnalytics(params = {}) {
     try {
+      const analyticsParams = buildRequestParams(params)
+      if (params.includeOpenPositions !== false) {
+        analyticsParams.includeOpenPositions = 'true'
+      }
+
       const analyticsResponse = await api.get('/trades/analytics', {
-        params: buildRequestParams(params)
+        params: analyticsParams
       })
 
       // Store analytics data for consistent P&L calculations
