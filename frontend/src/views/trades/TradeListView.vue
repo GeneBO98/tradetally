@@ -46,7 +46,7 @@
               </h3>
               <div class="space-y-1">
                 <div class="text-xs text-gray-500 dark:text-gray-400">Gross</div>
-                <div class="text-lg font-semibold" :class="[
+                <div class="text-lg font-semibold tabular-nums" :class="[
                 tradesStore.totalGrossPnL >= 0
                   ? 'text-green-600 dark:text-green-400'
                   : 'text-red-600 dark:text-red-400'
@@ -54,13 +54,23 @@
                   {{ formatSignedCurrency(tradesStore.totalGrossPnL) }}
                 </div>
                 <div class="text-xs text-gray-500 dark:text-gray-400">Net</div>
-                <div class="text-sm font-medium" :class="[
+                <div class="text-sm font-medium tabular-nums" :class="[
                 tradesStore.totalNetPnL >= 0
                   ? 'text-green-600 dark:text-green-400'
                   : 'text-red-600 dark:text-red-400'
                 ]">
                   {{ formatSignedCurrency(tradesStore.totalNetPnL) }}
                 </div>
+                <template v-if="isUnrealizedColumnVisible">
+                  <div class="text-xs text-gray-500 dark:text-gray-400">Unrealized</div>
+                  <div class="text-sm font-medium tabular-nums" :class="[
+                  totalUnrealizedPnl >= 0
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : 'text-amber-600 dark:text-amber-400'
+                  ]">
+                    {{ formatSignedCurrency(totalUnrealizedPnl) }}
+                  </div>
+                </template>
               </div>
             </div>
             <!-- Fullwidth Toggle (Mobile) -->
@@ -85,14 +95,14 @@
         
         <!-- Desktop Layout: Side by side -->
         <div class="hidden sm:flex items-center justify-between">
-          <div class="flex items-center space-x-4">
+          <div class="flex items-center space-x-6">
             <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
               P&L Summary ({{ tradesStore.totalTrades }} {{ tradesStore.totalTrades === 1 ? 'trade' : 'trades' }})
             </h3>
-            <div class="flex items-center gap-4">
-              <div>
-                <div class="text-xs text-gray-500 dark:text-gray-400">Gross</div>
-                <div class="text-lg font-semibold" :class="[
+            <div class="flex items-baseline gap-6">
+              <div class="text-center">
+                <div class="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Gross</div>
+                <div class="text-lg font-semibold tabular-nums" :class="[
                   tradesStore.totalGrossPnL >= 0
                     ? 'text-green-600 dark:text-green-400'
                     : 'text-red-600 dark:text-red-400'
@@ -100,14 +110,24 @@
                   {{ formatSignedCurrency(tradesStore.totalGrossPnL) }}
                 </div>
               </div>
-              <div>
-                <div class="text-xs text-gray-500 dark:text-gray-400">Net</div>
-                <div class="text-lg font-semibold" :class="[
+              <div class="text-center">
+                <div class="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Net</div>
+                <div class="text-lg font-semibold tabular-nums" :class="[
                   tradesStore.totalNetPnL >= 0
                     ? 'text-green-600 dark:text-green-400'
                     : 'text-red-600 dark:text-red-400'
                 ]">
                   {{ formatSignedCurrency(tradesStore.totalNetPnL) }}
+                </div>
+              </div>
+              <div v-if="isUnrealizedColumnVisible" class="text-center">
+                <div class="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Unrealized</div>
+                <div class="text-lg font-semibold tabular-nums" :class="[
+                  totalUnrealizedPnl >= 0
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : 'text-amber-600 dark:text-amber-400'
+                ]">
+                  {{ formatSignedCurrency(totalUnrealizedPnl) }}
                 </div>
               </div>
             </div>
@@ -136,11 +156,11 @@
     </div>
 
     <div class="mt-8">
-      <div v-if="tradesStore.loading" class="flex justify-center py-12">
+      <div v-if="tradesStore.initialLoading" class="flex justify-center py-12">
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
       </div>
 
-      <div v-else-if="tradesStore.trades.length === 0" class="text-center py-12">
+      <div v-else-if="tradesStore.trades.length === 0 && !tradesStore.loading" class="text-center py-12">
         <DocumentTextIcon class="mx-auto h-12 w-12 text-gray-400" />
         <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-white">No trades</h3>
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -1020,6 +1040,17 @@ const bulkTagsToAdd = ref([])
 
 // Column management
 const tableColumns = ref([])
+
+const isUnrealizedColumnVisible = computed(() => {
+  return tableColumns.value.some(c => c.key === 'unrealizedPnl' && c.visible)
+})
+
+const totalUnrealizedPnl = computed(() => {
+  return tradesStore.trades.reduce((sum, trade) => {
+    const unrealized = parseFloat(trade.unrealizedPnl) || 0
+    return sum + unrealized
+  }, 0)
+})
 
 const handleColumnsUpdate = (columns) => {
   tableColumns.value = columns
