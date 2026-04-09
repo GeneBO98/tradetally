@@ -3340,7 +3340,8 @@ const tradeController = {
         strategies, sectors, // Add multi-select parameters
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, brokers, accounts, hasNews,
-        holdTime, minHoldTime, maxHoldTime, daysOfWeek, instrumentTypes, optionTypes, qualityGrades
+        holdTime, minHoldTime, maxHoldTime, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
+        includeOpenPositions
       } = req.query;
 
       const filters = {
@@ -3371,7 +3372,8 @@ const tradeController = {
         daysOfWeek: daysOfWeek ? ensureString(daysOfWeek).split(',').map(d => parseInt(d)) : undefined,
         instrumentTypes: instrumentTypes ? ensureString(instrumentTypes).split(',') : undefined,
         optionTypes: optionTypes ? ensureString(optionTypes).split(',') : undefined,
-        qualityGrades: qualityGrades ? ensureString(qualityGrades).split(',') : undefined
+        qualityGrades: qualityGrades ? ensureString(qualityGrades).split(',') : undefined,
+        includeOpenPositions: includeOpenPositions === 'true' || includeOpenPositions === '1'
       };
 
       console.log('[ANALYTICS] Raw query:', req.query);

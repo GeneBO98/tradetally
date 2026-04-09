@@ -953,6 +953,7 @@ import MdiIcon from '@/components/MdiIcon.vue'
 import { mdiNewspaper } from '@mdi/js'
 import api from '@/services/api'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { getTradeGrossPnl } from '@/utils/tradePnl'
 
 const tradesStore = useTradesStore()
 const { formatCurrency, currencySymbol, formatSignedCurrency } = useCurrencyFormatter()
@@ -1129,13 +1130,6 @@ function formatNumber(num) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   }).format(num || 0)
-}
-
-function getTradeGrossPnl(trade) {
-  const pnl = parseFloat(trade?.pnl) || 0
-  const commission = parseFloat(trade?.commission) || 0
-  const fees = parseFloat(trade?.fees) || 0
-  return pnl + commission + fees
 }
 
 // Redact account identifier for privacy (show only last 4 characters)
