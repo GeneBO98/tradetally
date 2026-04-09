@@ -1,0 +1,35 @@
+id: tradetally_invoice_ninja_sync
+namespace: tradetally.crm
+
+description: >
+  Scheduled Invoice Ninja-only reconciliation for TradeTally.
+  Uses the backend as the source of truth for client and product sync behavior.
+
+triggers:
+  - id: every_six_hours_offset
+    type: io.kestra.plugin.core.trigger.Schedule
+    cron: "15 */6 * * *"
+
+tasks:
+  - id: crm_sync_status
+    type: io.kestra.plugin.core.http.Request
+    uri: "{{secret('TRADETALLY_API_BASE_URL')}}/api/internal/kestra/crm-sync/status"
+    method: GET
+    headers:
+      X-Internal-Service-Secret: "{{secret('KESTRA_INTERNAL_API_SECRET')}}"
+      X-Internal-Service-Name: "kestra"
+
+  - id: invoice_ninja_sync
+    type: io.kestra.plugin.core.http.Request
+    uri: "{{secret('TRADETALLY_API_BASE_URL')}}/api/internal/kestra/crm-sync/invoice-ninja"
+    method: POST
+    contentType: application/json
+    options:
+      readTimeout: PT20M
+    headers:
+      X-Internal-Service-Secret: "{{secret('KESTRA_INTERNAL_API_SECRET')}}"
+      X-Internal-Service-Name: "kestra"
+    body: |
+      {
+        "reason": "kestra_scheduled_invoice_ninja_sync"
+      }
