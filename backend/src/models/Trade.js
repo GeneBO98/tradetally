@@ -19,6 +19,19 @@ function roundToDbPrecision(value, decimals = 8) {
   return Math.round(num * multiplier) / multiplier;
 }
 
+async function timedDbQuery(label, query, values = []) {
+  const startedAt = Date.now();
+
+  try {
+    const result = await db.query(query, values);
+    console.log(`[PERF] ${label} took ${Date.now() - startedAt}ms (${result.rowCount ?? result.rows?.length ?? 0} rows)`);
+    return result;
+  } catch (error) {
+    console.warn(`[PERF] ${label} failed after ${Date.now() - startedAt}ms: ${error.message}`);
+    throw error;
+  }
+}
+
 class Trade {
   /**
    * Ensure tags exist in the tags table
@@ -1311,6 +1324,55 @@ class Trade {
     const queryEndTime = Date.now();
     console.log('[PERF] findByUser query took:', queryEndTime - queryStartTime, 'ms, returned', result.rows.length, 'rows');
     console.log('[PERF] findByUser total time:', queryEndTime - startTime, 'ms');
+    return result.rows;
+  }
+
+  static async findOpenPositionsByUser(userId, filters = {}) {
+    const startTime = Date.now();
+    const values = [userId];
+    let paramCount = 2;
+    let whereClause = 'WHERE t.user_id = $1 AND t.entry_price IS NOT NULL AND t.exit_price IS NULL';
+
+    if (filters.accounts && filters.accounts.length > 0) {
+      console.log('[OPEN_POSITIONS] Applying account filter:', filters.accounts);
+      if (filters.accounts.includes('__unsorted__')) {
+        whereClause += ` AND (t.account_identifier IS NULL OR t.account_identifier = '')`;
+      } else {
+        whereClause += ` AND t.account_identifier = ANY($${paramCount}::text[])`;
+        values.push(filters.accounts);
+        paramCount++;
+      }
+    }
+
+    let query = `
+      SELECT
+        t.id,
+        t.symbol,
+        t.side,
+        t.quantity,
+        t.entry_price,
+        t.executions,
+        t.instrument_type,
+        t.contract_size,
+        t.point_value,
+        t.underlying_symbol,
+        t.expiration_date,
+        t.option_type,
+        t.strike_price,
+        t.trade_date,
+        t.entry_time
+      FROM trades t
+      ${whereClause}
+      ORDER BY t.trade_date DESC, t.entry_time DESC
+    `;
+
+    if (filters.limit) {
+      query += ` LIMIT $${paramCount}`;
+      values.push(filters.limit);
+    }
+
+    const result = await timedDbQuery('findOpenPositionsByUser query', query, values);
+    console.log('[PERF] findOpenPositionsByUser total time:', Date.now() - startTime, 'ms');
     return result.rows;
   }
 
@@ -2667,6 +2729,7 @@ class Trade {
   }
 
   static async getAnalytics(userId, filters = {}) {
+    const analyticsStartedAt = Date.now();
     const { getUserTimezone } = require('../utils/timezone');
     console.log('Getting analytics for user:', userId, 'with filters:', filters);
     
@@ -3061,9 +3124,9 @@ class Trade {
       topTradesResult,
       bestWorstResult
     ] = await Promise.all([
-      db.query(executionCountQuery, values),
-      db.query(analyticsQuery, values),
-        db.query(`
+      timedDbQuery('analytics.executionCountQuery', executionCountQuery, values),
+      timedDbQuery('analytics.analyticsQuery', analyticsQuery, values),
+      timedDbQuery('analytics.symbolBreakdownQuery', `
         WITH symbol_trades AS (
           SELECT 
             symbol,
@@ -3089,7 +3152,7 @@ class Trade {
         LIMIT 10
       `, values),
       // Get daily P&L for charting - simplified to work with any data
-      db.query(`
+      timedDbQuery('analytics.dailyPnLQuery', `
         SELECT 
           trade_date,
           SUM(COALESCE(pnl, 0)) as daily_pnl,
@@ -3102,7 +3165,7 @@ class Trade {
         ORDER BY trade_date
       `, values),
       // Get daily win rate data - simplified
-      db.query(`
+      timedDbQuery('analytics.dailyWinRateQuery', `
         SELECT 
           trade_date,
           COUNT(*) FILTER (WHERE COALESCE(pnl, 0) > 0) as wins,
@@ -3120,7 +3183,7 @@ class Trade {
         ORDER BY trade_date
       `, values),
       // Get best and worst individual trades (not grouped)
-      db.query(`
+      timedDbQuery('analytics.topTradesQuery', `
         (
           SELECT 'best' as type, id, symbol, entry_price, exit_price, 
                  quantity, pnl, trade_date
@@ -3140,7 +3203,7 @@ class Trade {
         )
       `, values),
       // Get individual best and worst trades for the metric cards
-      db.query(`
+      timedDbQuery('analytics.bestWorstCardsQuery', `
         (
           SELECT 'best' as type, id, symbol, pnl, trade_date
           FROM trades t
@@ -3163,6 +3226,7 @@ class Trade {
     const analytics = analyticsResult.rows[0];
     
     console.log('Analytics main query result:', analytics);
+    console.log('[PERF] getAnalytics total time:', Date.now() - analyticsStartedAt, 'ms');
     console.log(`Executions: ${executionCount}, Trades: ${analytics.total_trades}, Win Rate: ${parseFloat(analytics.win_rate || 0).toFixed(2)}%`);
     console.log('Analytics: Summary stats calculated:', {
       totalTrades: analytics.total_trades,

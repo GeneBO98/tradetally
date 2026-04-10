@@ -107,6 +107,50 @@ function getTradeMultiplier(trade) {
   return 1;
 }
 
+function getPositiveIntEnv(name, fallback) {
+  const parsed = parseInt(process.env[name] || '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+const OPEN_POSITIONS_ALPACA_TIMEOUT_MS = getPositiveIntEnv('OPEN_POSITIONS_ALPACA_TIMEOUT_MS', 3000);
+const OPEN_POSITIONS_FINNHUB_TIMEOUT_MS = getPositiveIntEnv('OPEN_POSITIONS_FINNHUB_TIMEOUT_MS', 3000);
+
+async function timeAsyncOperation(label, operation) {
+  const startedAt = Date.now();
+
+  try {
+    const result = await operation();
+    console.log(`[PERF] ${label} took ${Date.now() - startedAt}ms`);
+    return result;
+  } catch (error) {
+    console.warn(`[PERF] ${label} failed after ${Date.now() - startedAt}ms: ${error.message}`);
+    throw error;
+  }
+}
+
+async function withTimeout(promise, timeoutMs, label) {
+  if (!timeoutMs || timeoutMs <= 0) {
+    return promise;
+  }
+
+  let timeoutId;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+          const error = new Error(`${label} timed out after ${timeoutMs}ms`);
+          error.code = 'ETIMEOUT';
+          reject(error);
+        }, timeoutMs);
+      })
+    ]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 function calculateRemainingOpenQuantity(trade) {
   const executions = Array.isArray(trade.executions) ? trade.executions : [];
   const side = String(trade.side || '').toLowerCase();
@@ -2717,11 +2761,12 @@ const tradeController = {
   },
 
   async getOpenPositionsWithQuotes(req, res, next) {
+    const requestStartedAt = Date.now();
     try {
       console.log('getOpenPositionsWithQuotes called for user:', req.user.id);
-      const finnhub = require('../utils/finnhub');
       const alpacaMarketData = require('../utils/alpacaMarketData');
       const { accounts, skipQuotes } = req.query;
+      const accountFilters = accounts ? ensureString(accounts).split(',') : undefined;
       
       // Check if Finnhub is configured
       if (!finnhub.isConfigured()) {
@@ -2730,15 +2775,15 @@ const tradeController = {
 
       // Get open trades
       console.log('Fetching open trades...');
-      const openTrades = await Trade.findByUser(req.user.id, {
-        status: 'open',
+      const openTrades = await timeAsyncOperation('openPositions.loadOpenTrades', () => Trade.findOpenPositionsByUser(req.user.id, {
         limit: 200,
-        accounts: accounts ? ensureString(accounts).split(',') : undefined
-      });
+        accounts: accountFilters
+      }));
 
       console.log(`Found ${openTrades.length} open trades`);
 
       if (openTrades.length === 0) {
+        console.log('[PERF] getOpenPositionsWithQuotes total time:', Date.now() - requestStartedAt, 'ms');
         return res.json({ positions: [] });
       }
 
@@ -2841,23 +2886,23 @@ const tradeController = {
         const posKey = getPositionKey(trade);
 
         if (!Object.hasOwn(positionMap, posKey)) {
-        positionMap[posKey] = {
-          symbol: trade.symbol,
-          side: null, // Will be determined by net position
-          trades: [],
-          totalQuantity: 0,        // Net position (shares still held)
-          totalSharesTraded: 0,    // Total shares traded (all executions count positive)
-          totalCost: 0,
-          avgPrice: 0,
-          instrumentType: trade.instrument_type || 'stock',
-          contractSize: trade.contract_size || (trade.instrument_type === 'option' ? 100 : 1),
-          pointValue: trade.point_value || null,
-          // Option metadata for Alpaca pricing
-          underlying_symbol: trade.underlying_symbol || null,
-          expiration_date: trade.expiration_date || null,
-          option_type: trade.option_type || null,
-          strike_price: trade.strike_price || null
-        };
+          positionMap[posKey] = {
+            symbol: trade.symbol,
+            side: null, // Will be determined by net position
+            trades: [],
+            totalQuantity: 0,        // Net position (shares still held)
+            totalSharesTraded: 0,    // Total shares traded (all executions count positive)
+            totalCost: 0,
+            avgPrice: 0,
+            instrumentType: trade.instrument_type || 'stock',
+            contractSize: trade.contract_size || (trade.instrument_type === 'option' ? 100 : 1),
+            pointValue: trade.point_value || null,
+            // Option metadata for Alpaca pricing
+            underlying_symbol: trade.underlying_symbol || null,
+            expiration_date: trade.expiration_date || null,
+            option_type: trade.option_type || null,
+            strike_price: trade.strike_price || null
+          };
         }
 
         positionMap[posKey].trades.push(trade);
@@ -2973,6 +3018,7 @@ const tradeController = {
           }
           return { ...position, currentPrice: null, currentValue: null, unrealizedPnL: null, unrealizedPnLPercent: null, quotePending: true };
         });
+        console.log('[PERF] getOpenPositionsWithQuotes total time:', Date.now() - requestStartedAt, 'ms');
         return res.json({ positions, quotePending: true });
       }
 
@@ -2983,18 +3029,33 @@ const tradeController = {
 
       // Fetch Alpaca quotes for option positions (independent of Finnhub)
       let alpacaQuotes = {};
+      let pendingOptionPositionKeys = new Set();
       const optionPositions = Object.values(positionMap).filter(p => p.instrumentType === 'option');
       if (optionPositions.length > 0 && alpacaMarketData.isConfigured()) {
+        const positionsWithKeys = optionPositions.map(p => ({
+          ...p,
+          _positionKey: getPositionKey({
+            instrument_type: p.instrumentType,
+            underlying_symbol: p.underlying_symbol,
+            strike_price: p.strike_price,
+            expiration_date: p.expiration_date,
+            option_type: p.option_type,
+            symbol: p.symbol
+          })
+        }));
+
         try {
           console.log(`[ALPACA] Fetching quotes for ${optionPositions.length} option positions`);
-          // Pass positions with unique keys for mapping quotes back per contract
-          const positionsWithKeys = optionPositions.map(p => ({
-            ...p,
-            _positionKey: `${p.underlying_symbol}_${p.strike_price}_${normalizeExpDate(p.expiration_date)}_${p.option_type}`
-          }));
-          alpacaQuotes = await alpacaMarketData.getOptionSnapshots(positionsWithKeys);
+          alpacaQuotes = await timeAsyncOperation('openPositions.alpacaQuoteFetch', () => withTimeout(
+            alpacaMarketData.getOptionSnapshots(positionsWithKeys),
+            OPEN_POSITIONS_ALPACA_TIMEOUT_MS,
+            'Open positions Alpaca quote fetch'
+          ));
           console.log(`[ALPACA] Received quotes for ${Object.keys(alpacaQuotes).length} options`);
         } catch (alpacaError) {
+          if (alpacaError.code === 'ETIMEOUT') {
+            pendingOptionPositionKeys = new Set(positionsWithKeys.map(position => position._positionKey));
+          }
           console.error('[ALPACA] Failed to fetch option quotes:', alpacaError.message);
         }
       } else if (optionPositions.length > 0) {
@@ -3003,18 +3064,19 @@ const tradeController = {
 
       // Fetch stock/futures quotes from Finnhub
       let quotes = {};
+      let pendingStockSymbols = new Set();
       if (symbols.length > 0 && finnhub.isConfigured()) {
         try {
           // Try cached prices from price_monitoring first, fallback to Finnhub for uncached
           console.log('Checking price_monitoring cache for position quotes...');
-          const cacheResult = await db.query(
+          const cacheResult = await timeAsyncOperation('openPositions.priceMonitoringCacheLookup', () => db.query(
             `SELECT symbol, current_price, previous_price, price_change, percent_change,
                     high_of_day, low_of_day, open_price
              FROM price_monitoring
              WHERE symbol = ANY($1)
                AND last_updated > NOW() - INTERVAL '2 minutes'`,
             [symbols]
-          );
+          ));
 
           for (const row of cacheResult.rows) {
             quotes[row.symbol] = {
@@ -3035,8 +3097,20 @@ const tradeController = {
           // Fallback to Finnhub for any uncached symbols
           if (uncachedSymbols.length > 0) {
             console.log('Fetching uncached symbols from Finnhub:', uncachedSymbols);
-            const freshQuotes = await finnhub.getBatchQuotes(uncachedSymbols);
-            Object.assign(quotes, freshQuotes);
+            try {
+              const freshQuotes = await timeAsyncOperation('openPositions.finnhubQuoteFetch', () => withTimeout(
+                finnhub.getBatchQuotes(uncachedSymbols),
+                OPEN_POSITIONS_FINNHUB_TIMEOUT_MS,
+                'Open positions Finnhub quote fetch'
+              ));
+              Object.assign(quotes, freshQuotes);
+            } catch (quoteError) {
+              if (quoteError.code === 'ETIMEOUT') {
+                pendingStockSymbols = new Set(uncachedSymbols);
+              } else {
+                console.error('Failed to get stock quotes:', quoteError.message);
+              }
+            }
           }
           console.log('Received quotes:', quotes);
         } catch (quoteError) {
@@ -3080,7 +3154,8 @@ const tradeController = {
             currentValue: null,
             unrealizedPnL: null,
             unrealizedPnLPercent: null,
-            requires_manual_price: true
+            requires_manual_price: true,
+            quotePending: pendingOptionPositionKeys.has(posKey)
           };
         }
 
@@ -3123,7 +3198,8 @@ const tradeController = {
             currentValue: null,
             unrealizedPnL: null,
             unrealizedPnLPercent: null,
-            error: `No quote available for ${position.symbol}`
+            quotePending: pendingStockSymbols.has(position.symbol),
+            error: pendingStockSymbols.has(position.symbol) ? null : `No quote available for ${position.symbol}`
           };
         }
       });
@@ -3135,13 +3211,19 @@ const tradeController = {
         return Math.abs(b.unrealizedPnL) - Math.abs(a.unrealizedPnL);
       });
 
+      const quotePending = pendingStockSymbols.size > 0 || pendingOptionPositionKeys.size > 0;
+
+      console.log('[PERF] getOpenPositionsWithQuotes total time:', Date.now() - requestStartedAt, 'ms');
+
       res.json({
         positions: enhancedPositions,
         quotesAvailable: Object.keys(quotes).length + Object.keys(alpacaQuotes).length,
-        totalPositions: enhancedPositions.length
+        totalPositions: enhancedPositions.length,
+        quotePending
       });
 
     } catch (error) {
+      console.log('[PERF] getOpenPositionsWithQuotes total time before error:', Date.now() - requestStartedAt, 'ms');
       console.error('Failed to get open positions:', error);
       next(error);
     }
