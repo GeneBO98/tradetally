@@ -7,9 +7,17 @@ export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const exposeDevServer = env.VITE_DEV_SERVER_EXPOSE === 'true'
   const devHost = exposeDevServer ? true : (env.VITE_DEV_HOST || '127.0.0.1')
-  const allowedHosts = exposeDevServer
-    ? (env.VITE_DEV_ALLOWED_HOSTS ? env.VITE_DEV_ALLOWED_HOSTS.split(',').map(host => host.trim()).filter(Boolean) : ['dev.tradetally.io'])
-    : ['127.0.0.1', 'localhost', '[::1]']
+  const configuredAllowedHosts = env.VITE_DEV_ALLOWED_HOSTS
+    ? env.VITE_DEV_ALLOWED_HOSTS.split(',').map(host => host.trim()).filter(Boolean)
+    : []
+  const allowedHosts = Array.from(new Set([
+    '127.0.0.1',
+    'localhost',
+    '[::1]',
+    'dev.tradetally.io',
+    env.VITE_DEV_HOST,
+    ...configuredAllowedHosts
+  ].filter(Boolean)))
 
   return {
   define: {
