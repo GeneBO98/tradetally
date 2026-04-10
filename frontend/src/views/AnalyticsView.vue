@@ -554,7 +554,11 @@
                   class="flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-1 -m-1 cursor-pointer transition-colors"
                   @click="navigateToSymbolTrades(symbol.symbol)"
                 >
-                  <div class="flex items-baseline">
+                  <div class="flex items-center gap-2 min-w-0">
+                    <StockLogo
+                      :symbol="symbol.symbol"
+                      size-class="w-8 h-8"
+                    />
                     <span class="font-medium text-gray-900 dark:text-white hover:text-primary-600 dark:hover:text-primary-400 w-16">{{ symbol.symbol }}</span>
                     <span class="text-xs text-gray-500 dark:text-gray-400">
                       {{ symbol.total_trades }}
@@ -695,6 +699,13 @@
                     class="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
                     :title="`${symbol.trades} trades, ${formatCurrency(symbol.pnl)} P&L`"
                   >
+                    <StockLogo
+                      :symbol="symbol.symbol"
+                      size-class="w-5 h-5"
+                      rounded-class="rounded-sm"
+                      fallback-text-class="text-[9px] font-semibold"
+                      class="mr-1"
+                    />
                     {{ symbol.symbol }}
                     <span 
                       class="ml-1 text-xs"
@@ -1219,6 +1230,7 @@ import TradeFilters from '@/components/trades/TradeFilters.vue'
 import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
 import AIReportRenderer from '@/components/ai/AIReportRenderer.vue'
 import AIConversationPanel from '@/components/ai/AIConversationPanel.vue'
+import StockLogo from '@/components/common/StockLogo.vue'
 import { useAIStore } from '@/stores/ai'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { useUserTimezone } from '@/composables/useUserTimezone'

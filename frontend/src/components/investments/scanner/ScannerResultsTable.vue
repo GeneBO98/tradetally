@@ -59,9 +59,16 @@
             class="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors"
           >
             <td class="px-4 py-3 whitespace-nowrap">
-              <span class="text-sm font-medium text-primary-600 dark:text-primary-400">
-                {{ stock.symbol }}
-              </span>
+              <div class="flex items-center gap-2">
+                <StockLogo
+                  :symbol="stock.symbol"
+                  :logo-url="stock.logo"
+                  size-class="w-8 h-8"
+                />
+                <span class="text-sm font-medium text-primary-600 dark:text-primary-400">
+                  {{ stock.symbol }}
+                </span>
+              </div>
             </td>
             <td class="px-4 py-3 whitespace-nowrap hidden sm:table-cell">
               <span class="text-sm text-gray-900 dark:text-white truncate max-w-[200px] block">
@@ -156,6 +163,7 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useScannerStore } from '@/stores/scanner'
+import StockLogo from '@/components/common/StockLogo.vue'
 
 const router = useRouter()
 const scannerStore = useScannerStore()

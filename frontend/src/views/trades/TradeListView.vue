@@ -415,6 +415,10 @@
                     :class="[getSymbolPadding, 'cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div class="flex items-center gap-1.5 flex-wrap max-w-xs">
+                    <StockLogo
+                      :symbol="trade.symbol"
+                      size-class="w-8 h-8"
+                    />
                     <div class="text-sm font-medium text-gray-900 dark:text-white truncate max-w-[200px]" :title="trade.symbol">
                       {{ trade.symbol }}
                     </div>
@@ -970,6 +974,7 @@ import EnrichmentStatus from '@/components/trades/EnrichmentStatus.vue'
 import ColumnCustomizer from '@/components/trades/ColumnCustomizer.vue'
 import TagManagement from '@/components/trades/TagManagement.vue'
 import MdiIcon from '@/components/MdiIcon.vue'
+import StockLogo from '@/components/common/StockLogo.vue'
 import { mdiNewspaper } from '@mdi/js'
 import api from '@/services/api'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'

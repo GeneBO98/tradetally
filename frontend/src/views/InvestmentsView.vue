@@ -186,16 +186,19 @@
                         class="px-6 py-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
                         @click="analyzeFromHistory(item.symbol)"
                     >
-                        <div>
-                            <span
-                                class="font-medium text-gray-900 dark:text-white"
-                                >{{ item.symbol }}</span
-                            >
-                            <span
-                                v-if="item.companyName"
-                                class="ml-2 text-gray-500 dark:text-gray-400"
-                                >{{ item.companyName }}</span
-                            >
+                        <div class="flex items-center gap-3 min-w-0">
+                            <StockLogo :symbol="item.symbol" size-class="w-8 h-8" />
+                            <div class="min-w-0">
+                                <span
+                                    class="font-medium text-gray-900 dark:text-white"
+                                    >{{ item.symbol }}</span
+                                >
+                                <span
+                                    v-if="item.companyName"
+                                    class="ml-2 text-gray-500 dark:text-gray-400"
+                                    >{{ item.companyName }}</span
+                                >
+                            </div>
                         </div>
                         <div class="flex items-center space-x-3">
                             <button
@@ -391,6 +394,11 @@
                             >
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     <div class="flex items-center">
+                                        <StockLogo
+                                            :symbol="holding.symbol"
+                                            size-class="w-8 h-8"
+                                            class="mr-3"
+                                        />
                                         <span
                                             class="text-sm font-medium text-gray-900 dark:text-white"
                                             >{{ holding.symbol }}</span
@@ -708,11 +716,11 @@
             >
                 <div class="flex items-center justify-between">
                     <div class="flex items-center">
-                        <img
-                            v-if="analyzerStockInfo.logo"
-                            :src="analyzerStockInfo.logo"
-                            :alt="analyzerStockInfo.symbol"
-                            class="w-12 h-12 rounded-lg mr-4"
+                        <StockLogo
+                            :symbol="analyzerStockInfo.symbol"
+                            :logo-url="analyzerStockInfo.logo"
+                            size-class="w-12 h-12"
+                            class="mr-4"
                         />
                         <div>
                             <h2
@@ -928,6 +936,7 @@ import ScannerResultsTable from "@/components/investments/scanner/ScannerResults
 import ScanStatusBadge from "@/components/investments/scanner/ScanStatusBadge.vue";
 import StockAnalyzerSection from "@/components/investments/dcf/StockAnalyzerSection.vue";
 import { useScannerStore } from "@/stores/scanner";
+import StockLogo from "@/components/common/StockLogo.vue";
 
 const router = useRouter();
 const route = useRoute();

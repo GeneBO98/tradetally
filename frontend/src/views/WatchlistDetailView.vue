@@ -109,10 +109,16 @@
                     >
                         <tr v-for="item in watchlist.items" :key="item.id">
                             <td class="px-6 py-4 whitespace-nowrap">
-                                <div
-                                    class="text-sm font-medium text-gray-900 dark:text-white"
-                                >
-                                    {{ item.symbol }}
+                                <div class="flex items-center gap-3">
+                                    <StockLogo
+                                        :symbol="item.symbol"
+                                        size-class="w-8 h-8"
+                                    />
+                                    <div
+                                        class="text-sm font-medium text-gray-900 dark:text-white"
+                                    >
+                                        {{ item.symbol }}
+                                    </div>
                                 </div>
                                 <div
                                     v-if="item.notes"
@@ -291,7 +297,12 @@
                         class="p-6 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                     >
                         <div class="flex items-start space-x-3">
-                            <div class="flex-shrink-0">
+                            <div class="flex-shrink-0 flex items-center gap-2">
+                                <StockLogo
+                                    :symbol="article.symbol"
+                                    size-class="w-8 h-8"
+                                    rounded-class="rounded-full"
+                                />
                                 <span
                                     class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 dark:bg-primary-900 text-primary-800 dark:text-primary-200"
                                 >
@@ -420,6 +431,11 @@
                     >
                         <div class="flex items-center justify-between">
                             <div class="flex items-center space-x-3">
+                                <StockLogo
+                                    :symbol="earnings.symbol"
+                                    size-class="w-8 h-8"
+                                    rounded-class="rounded-full"
+                                />
                                 <span
                                     class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200"
                                 >
@@ -821,11 +837,13 @@ import { useNotification } from "@/composables/useNotification";
 import { useInvestmentsStore } from "@/stores/investments";
 import api from "@/services/api";
 import SymbolAutocomplete from "@/components/common/SymbolAutocomplete.vue";
+import StockLogo from "@/components/common/StockLogo.vue";
 
 export default {
     name: "WatchlistDetailView",
     components: {
         SymbolAutocomplete,
+        StockLogo,
     },
     setup() {
         const route = useRoute();
