@@ -130,3 +130,7 @@ tramp
 # Misc local files
 .sentryclirc
 performance-test.js
+.mcp.json
+CLAUDE.md
+backend/.envy
+zap.yaml
