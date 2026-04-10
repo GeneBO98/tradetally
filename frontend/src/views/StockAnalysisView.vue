@@ -22,11 +22,11 @@
             </button>
             <div class="flex-1">
                 <div class="flex items-center">
-                    <img
-                        v-if="analysis?.logo"
-                        :src="analysis.logo"
-                        :alt="symbol"
-                        class="w-10 h-10 rounded-lg mr-3"
+                    <StockLogo
+                        :symbol="symbol"
+                        :logo-url="analysis?.logo"
+                        size-class="w-10 h-10"
+                        class="mr-3"
                     />
                     <div>
                         <h1 class="heading-page">{{ symbol }}</h1>
@@ -250,6 +250,7 @@ import { useInvestmentsStore } from "@/stores/investments";
 import { format } from "date-fns";
 import { useUserTimezone } from "@/composables/useUserTimezone";
 import PillarRow from "@/components/investments/PillarRow.vue";
+import StockLogo from "@/components/common/StockLogo.vue";
 
 const { formatDateTime: formatDateTimeTz } = useUserTimezone();
 import AddHoldingModal from "@/components/investments/AddHoldingModal.vue";

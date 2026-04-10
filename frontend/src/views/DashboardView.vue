@@ -377,20 +377,26 @@
             <div v-for="position in openTrades" :key="position.symbol" class="table-card-item">
               <!-- Position Header -->
               <div class="flex justify-between items-start mb-3 pb-3 border-b border-gray-200 dark:border-gray-700">
-                <div>
-                  <div class="text-lg font-bold text-gray-900 dark:text-white">
-                    {{ position.symbol }}
+                <div class="flex items-center gap-3">
+                  <StockLogo
+                    :symbol="position.symbol"
+                    size-class="w-10 h-10"
+                  />
+                  <div>
+                    <div class="text-lg font-bold text-gray-900 dark:text-white">
+                      {{ position.symbol }}
+                    </div>
+                    <span class="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full mt-1"
+                      :class="[
+                        position.side === 'long'
+                          ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                          : position.side === 'short'
+                          ? 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+                          : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                      ]">
+                      {{ position.side === 'neutral' ? 'hedged' : position.side }}
+                    </span>
                   </div>
-                  <span class="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full mt-1"
-                    :class="[
-                      position.side === 'long'
-                        ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
-                        : position.side === 'short'
-                        ? 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
-                        : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
-                    ]">
-                    {{ position.side === 'neutral' ? 'hedged' : position.side }}
-                  </span>
                 </div>
                 <div v-if="position.requires_manual_price" class="text-right">
                   <template v-if="getOptionPnL(position).unrealizedPnL !== null">
@@ -573,7 +579,13 @@
                   <!-- Position Summary Row -->
                   <tr class="bg-gray-50 dark:bg-gray-800/50 font-medium">
                     <td class="px-3 py-2 text-sm font-bold text-gray-900 dark:text-white">
-                      {{ position.symbol }}
+                      <div class="flex items-center gap-2">
+                        <StockLogo
+                          :symbol="position.symbol"
+                          size-class="w-8 h-8"
+                        />
+                        <span>{{ position.symbol }}</span>
+                      </div>
                     </td>
                     <td class="px-3 py-2 text-sm">
                       <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
@@ -1067,7 +1079,13 @@
                               @click="navigateToTradesWithSymbol(symbol.symbol)"
                               class="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                             <td class="px-3 py-2 text-sm font-medium text-gray-900 dark:text-white">
-                              {{ symbol.symbol }}
+                              <div class="flex items-center gap-2">
+                                <StockLogo
+                                  :symbol="symbol.symbol"
+                                  size-class="w-8 h-8"
+                                />
+                                <span>{{ symbol.symbol }}</span>
+                              </div>
                             </td>
                             <td class="px-3 py-2 text-sm text-gray-500 dark:text-gray-400 text-right">
                               {{ symbol.trades }}
@@ -1275,6 +1293,7 @@ import { getRefreshInterval, shouldRefreshPrices, getMarketStatus } from '@/util
 import YearWrappedBanner from '@/components/yearWrapped/YearWrappedBanner.vue'
 import YearWrappedModal from '@/components/yearWrapped/YearWrappedModal.vue'
 import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
+import StockLogo from '@/components/common/StockLogo.vue'
 import { useYearWrappedStore } from '@/stores/yearWrapped'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { useUserTimezone } from '@/composables/useUserTimezone'
