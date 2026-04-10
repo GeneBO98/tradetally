@@ -191,6 +191,75 @@ function normalizeAvaTradeSymbol(symbol) {
   return match ? match[1] : symbol;
 }
 
+function normalizeWholeLineQuotedCsvRows(csvString) {
+  if (!csvString) return csvString;
+
+  const lines = csvString.split('\n');
+  if (lines.length < 2) return csvString;
+
+  const headerLine = lines.find(line => line.trim().length > 0);
+  if (!headerLine) return csvString;
+
+  let expectedColumnCount;
+  try {
+    const [headerFields] = parse(headerLine, {
+      columns: false,
+      delimiter: ',',
+      quote: '"',
+      escape: '"',
+      trim: true,
+      relax: true,
+      relax_column_count: true
+    });
+    expectedColumnCount = Array.isArray(headerFields) ? headerFields.length : 0;
+  } catch (error) {
+    return csvString;
+  }
+
+  if (!expectedColumnCount) {
+    return csvString;
+  }
+
+  let normalizedRows = 0;
+  const normalizedLines = lines.map((line, index) => {
+    if (index === 0) return line;
+
+    const trimmedLine = line.trim();
+    if (!trimmedLine || !(trimmedLine.startsWith('"') && trimmedLine.endsWith('"'))) {
+      return line;
+    }
+
+    const unwrappedLine = trimmedLine.slice(1, -1).replace(/""/g, '"');
+
+    try {
+      const [fields] = parse(unwrappedLine, {
+        columns: false,
+        delimiter: ',',
+        quote: '"',
+        escape: '"',
+        trim: true,
+        relax: true,
+        relax_column_count: true
+      });
+
+      if (Array.isArray(fields) && fields.length === expectedColumnCount) {
+        normalizedRows += 1;
+        return unwrappedLine;
+      }
+    } catch (error) {
+      return line;
+    }
+
+    return line;
+  });
+
+  if (normalizedRows > 0) {
+    console.log(`[CSV] Normalized ${normalizedRows} whole-line quoted CSV row(s)`);
+  }
+
+  return normalizedLines.join('\n');
+}
+
 // CUSIP resolution is now handled by the cusipQueue module
 
 /**
@@ -2155,7 +2224,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
         }
       }
     }
-    
+
     // Detect delimiter - check if it's tab-separated (common for Schwab)
     let delimiter = ',';
     let parseOptions = {
@@ -2164,6 +2233,21 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       trim: true,
       delimiter: delimiter
     };
+
+    if (broker === 'tradovate') {
+      csvString = normalizeWholeLineQuotedCsvRows(csvString);
+      parseOptions = {
+        columns: true,
+        skip_empty_lines: true,
+        trim: true,
+        delimiter: ',',
+        relax: true,
+        relax_column_count: true,
+        quote: '"',
+        escape: '"'
+      };
+      console.log('Using special parsing options for Tradovate CSV');
+    }
     
     if (broker === 'schwab') {
       const firstLine = csvString.split('\n')[0];
