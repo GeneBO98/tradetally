@@ -507,6 +507,30 @@
         </div>
       </div>
     </section>
+
+    <!-- Mobile App -->
+    <section data-reveal class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700/50 py-12">
+      <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+        <p class="text-sm font-medium text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-4">
+          Now on iOS
+        </p>
+        <h3 class="text-2xl font-bold text-gray-900 dark:text-white">
+          Your Journal, Always With You
+        </h3>
+        <p class="mt-2 text-gray-500 dark:text-gray-400">
+          Log trades, review your stats, and stay accountable from your phone.
+        </p>
+        <div class="mt-6">
+          <a href="https://apps.apple.com/us/app/tradetally/id6748022992" target="_blank" rel="noopener noreferrer">
+            <img
+              src="/images/app-store-badge.svg"
+              alt="Download TradeTally on the App Store"
+              class="h-12 mx-auto hover:opacity-80 transition-opacity"
+            />
+          </a>
+        </div>
+      </div>
+    </section>
   </div>
 </template>
 
