@@ -1631,7 +1631,18 @@ const tradeController = {
             const Account = require('../models/Account');
             const selectedAccount = await Account.findById(accountId, req.user.id);
             if (selectedAccount) {
-              selectedAccountId = selectedAccount.account_identifier;
+              selectedAccountId = selectedAccount.account_identifier || selectedAccount.account_name?.trim() || null;
+
+              // Trades are keyed by account_identifier throughout analytics and filtering.
+              // If a managed account exists without an identifier, persist a stable fallback
+              // based on the account name so imports remain filterable.
+              if (!selectedAccount.account_identifier && selectedAccountId) {
+                await Account.update(accountId, req.user.id, {
+                  accountIdentifier: selectedAccountId
+                });
+                logger.logImport(`Backfilled missing account identifier for selected account: ${selectedAccountId}`);
+              }
+
               logger.logImport(`Using selected account: ${selectedAccount.account_name} (${selectedAccountId})`);
             }
           }
