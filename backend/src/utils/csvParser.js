@@ -983,9 +983,6 @@ const brokerParsers = {
       row.SEC || row.TAF || row.NSCC
     ) || 0;
 
-    // Total fees if commission and fees are separate
-    const totalFees = commission + fees;
-
     // Currency mapping
     const currency = (
       row.Currency || row.currency || row.Curr || row.curr ||
@@ -1018,8 +1015,8 @@ const brokerParsers = {
       exitPrice: exitPrice,
       quantity: quantity,
       side: side,
-      commission: totalFees,
-      fees: totalFees,
+      commission: commission,
+      fees: fees,
       currency: currency,
       stopLoss: stopLoss,
       takeProfit: takeProfit,
@@ -8143,8 +8140,21 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
       }
 
       const trade = parser(record);
+      const transactionPriceCandidates = [
+        trade.entryPrice,
+        trade.exitPrice,
+        trade.price
+      ].map(value => parseNumeric(value, 0));
+      const transactionPrice = transactionPriceCandidates.find(value => value > 0) || 0;
+      const hasGenericTransactionFields = Boolean(
+        trade.symbol &&
+        trade.tradeDate &&
+        trade.entryTime &&
+        transactionPrice > 0 &&
+        Number(trade.quantity) > 0
+      );
 
-      if (!isValidTrade(trade)) {
+      if (!hasGenericTransactionFields) {
         if (diagnostics) {
           diagnostics.invalidRows++;
           diagnostics.skippedReasons.push({
@@ -8199,7 +8209,7 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
         tradeDate: trade.tradeDate,
         side: transactionSide,
         quantity: Math.abs(trade.quantity),
-        price: trade.entryPrice,
+        price: transactionPrice,
         commission: trade.commission || 0,
         fees: trade.fees || 0,
         broker: trade.broker || 'generic',
