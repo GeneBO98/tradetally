@@ -1834,26 +1834,6 @@ const tradeController = {
             selectedAccountId
           };
 
-          // Track auto-detection if broker is 'auto'
-          let detectedBrokerForTracking = null;
-          if (broker === 'auto') {
-            detectedBrokerForTracking = detectBrokerFormat(fileBuffer);
-            if (detectedBrokerForTracking === 'generic') {
-              const headerLine = getCsvHeaderLine(fileBuffer);
-              if (headerLine) {
-                try {
-                  const sampleData = getCsvSampleRows(fileBuffer);
-                  await db.query(`
-                    INSERT INTO unknown_csv_headers (user_id, header_line, broker_attempted, outcome, file_name, detected_broker, selected_broker, sample_data)
-                    VALUES ($1, $2, 'auto', 'no_parser_match', $3, $4, 'auto', $5)
-                  `, [fileUserId, headerLine.substring(0, 10000), fileName, 'generic', sampleData?.substring(0, 10000) || null]);
-                } catch (recordErr) {
-                  logger.logWarn(`[CSV] Failed to record unknown headers: ${recordErr.message}`);
-                }
-              }
-            }
-          }
-
           const parseResult = await parseCSV(fileBuffer, broker, context);
 
           // Handle both old format (array) and new format (object with trades, unresolvedCusips, diagnostics)
