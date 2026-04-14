@@ -263,6 +263,28 @@ describe('IBKR parser', () => {
     const result = await parseCSV(buf(tradeConfCSV), 'ibkr_trade_confirmation', {});
     expectValidResult(result);
   });
+
+  test('parses IBKR trade confirmation futures using AssetClass and Multiplier', async () => {
+    const tradeConfFuturesCSV = [
+      'AssetClass,Symbol,UnderlyingSymbol,Strike,Expiry,Put/Call,Multiplier,Buy/Sell,Date/Time,Quantity,Price,Commission',
+      'FUT,MESM6,MES,,,,5,BUY,20260323;122919,1,6622.00,-1.24',
+      'FUT,MESM6,MES,,,,5,SELL,20260323;123019,1,6627.00,-1.24'
+    ].join('\n');
+
+    const result = await parseCSV(buf(tradeConfFuturesCSV), 'ibkr_trade_confirmation', {});
+
+    expectValidResult(result);
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0]).toEqual(expect.objectContaining({
+      symbol: 'MESM6',
+      instrumentType: 'future',
+      underlyingAsset: 'MES',
+      pointValue: 5,
+      entryPrice: 6622,
+      exitPrice: 6627
+    }));
+    expect(result.trades[0].pnl).toBeCloseTo(22.52, 2);
+  });
 });
 
 // ──────────────────────────────────────────────

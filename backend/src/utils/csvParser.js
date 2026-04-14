@@ -811,6 +811,50 @@ function getCsvSampleRows(fileBuffer, maxRows = 5) {
   }
 }
 
+function parseIBKRTradeConfirmationInstrumentData(record, fallbackSymbol = '') {
+  const symbol = cleanString(record.Symbol || fallbackSymbol);
+  const underlyingSymbol = cleanString(record.UnderlyingSymbol);
+  const strike = parseNumeric(record.Strike, NaN);
+  const expiry = cleanString(record.Expiry);
+  const putCall = cleanString(record['Put/Call']);
+  const assetClass = cleanString(record.AssetClass || record.assetClass).toUpperCase();
+  const multiplier = parseNumeric(record.Multiplier, NaN);
+  const parsedSymbolData = parseInstrumentData(symbol);
+
+  if (underlyingSymbol && Number.isFinite(strike) && expiry && putCall) {
+    const expirationDate = `${expiry.substring(0, 4)}-${expiry.substring(4, 6)}-${expiry.substring(6, 8)}`;
+
+    return {
+      instrumentType: 'option',
+      underlyingSymbol,
+      strikePrice: strike,
+      expirationDate,
+      optionType: putCall.toLowerCase() === 'c' ? 'call' : 'put',
+      contractSize: Number.isFinite(multiplier) ? multiplier : 100
+    };
+  }
+
+  if (assetClass === 'FUT' || parsedSymbolData.instrumentType === 'future') {
+    const underlyingAsset =
+      underlyingSymbol ||
+      parsedSymbolData.underlyingAsset ||
+      extractUnderlyingFromFuturesSymbol(symbol) ||
+      symbol;
+
+    return {
+      instrumentType: 'future',
+      underlyingAsset,
+      contractMonth: parsedSymbolData.contractMonth || null,
+      contractYear: parsedSymbolData.contractYear || null,
+      pointValue: Number.isFinite(multiplier) && multiplier > 0
+        ? multiplier
+        : (parsedSymbolData.pointValue || getFuturesPointValue(underlyingAsset))
+    };
+  }
+
+  return parsedSymbolData.instrumentType !== 'stock' ? parsedSymbolData : { instrumentType: 'stock' };
+}
+
 const brokerParsers = {
   generic: (row) => {
     // Enhanced generic parser with flexible column mapping
@@ -1048,12 +1092,7 @@ const brokerParsers = {
     // Columns: Symbol, UnderlyingSymbol, Strike, Expiry, Date/Time, Put/Call, Quantity, Multiplier, Buy/Sell, Price, Commission
 
     const symbol = cleanString(row.Symbol);
-    const underlyingSymbol = cleanString(row.UnderlyingSymbol);
-    const strike = parseFloat(row.Strike);
-    const expiry = row.Expiry; // Format: YYYYMMDD
-    const putCall = cleanString(row['Put/Call']);
     const quantity = parseNumeric(row.Quantity, NaN);
-    const multiplier = parseNumeric(row.Multiplier || 100, 100);
     const buySell = cleanString(row['Buy/Sell']).toUpperCase();
     const price = parseNumeric(row.Price, NaN);
     // IBKR commission: negative = fee paid, positive = rebate received
@@ -1072,28 +1111,7 @@ const brokerParsers = {
     const time = timeStr ? `${timeStr.substring(0,2)}:${timeStr.substring(2,4)}:${timeStr.substring(4,6)}` : '09:30:00';
     const entryTime = tradeDate ? `${tradeDate}T${time}` : null;
 
-    // Parse expiry date from YYYYMMDD to YYYY-MM-DD
-    const expirationDate = expiry ? `${expiry.substring(0,4)}-${expiry.substring(4,6)}-${expiry.substring(6,8)}` : null;
-
-    // Determine instrument type and build instrument data
-    let instrumentData = {};
-
-    if (underlyingSymbol && strike && expiry && putCall) {
-      // This is an option
-      instrumentData = {
-        instrumentType: 'option',
-        underlyingSymbol: underlyingSymbol,
-        strikePrice: strike,
-        expirationDate: expirationDate,
-        optionType: putCall.toLowerCase() === 'c' ? 'call' : 'put',
-        contractSize: multiplier
-      };
-    } else {
-      // Stock or other
-      instrumentData = {
-        instrumentType: 'stock'
-      };
-    }
+    const instrumentData = parseIBKRTradeConfirmationInstrumentData(row, symbol);
 
     return {
       symbol: symbol,
@@ -6935,28 +6953,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
 
     // Check if Trade Confirmation format with separate columns
     if (isTradeConfirmation && symbolTransactions[0].raw) {
-      const firstRecord = symbolTransactions[0].raw;
-      const underlyingSymbol = cleanString(firstRecord.UnderlyingSymbol);
-      const strike = parseFloat(firstRecord.Strike);
-      const expiry = firstRecord.Expiry; // Format: YYYYMMDD
-      const putCall = cleanString(firstRecord['Put/Call']);
-      const multiplier = parseFloat(firstRecord.Multiplier || 100);
-
-      if (underlyingSymbol && strike && expiry && putCall) {
-        // This is an option - use the columns directly
-        const expirationDate = expiry ? `${expiry.substring(0,4)}-${expiry.substring(4,6)}-${expiry.substring(6,8)}` : null;
-
-        instrumentData = {
-          instrumentType: 'option',
-          underlyingSymbol: underlyingSymbol,
-          strikePrice: strike,
-          expirationDate: expirationDate,
-          optionType: putCall.toLowerCase() === 'c' ? 'call' : 'put',
-          contractSize: multiplier
-        };
-      } else {
-        instrumentData = { instrumentType: 'stock' };
-      }
+      instrumentData = parseIBKRTradeConfirmationInstrumentData(symbolTransactions[0].raw, symbol);
     } else {
       // Activity Statement format - parse from symbol
       instrumentData = parseInstrumentData(symbol);

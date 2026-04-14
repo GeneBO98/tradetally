@@ -59,9 +59,15 @@ export const useTradesStore = defineStore('trades', () => {
   // Store analytics data for consistent P&L calculations
   const analytics = ref(null)
 
+  function getSummaryMetric(key) {
+    if (!analytics.value?.summary) return undefined
+    return analytics.value.summary[key]
+  }
+
   const totalCosts = computed(() => {
-    if (analytics.value?.summary?.totalCosts !== undefined && !(trades.value.length > 0 && Number(analytics.value.summary.totalTrades || 0) === 0)) {
-      return parseFloat(analytics.value.summary.totalCosts) || 0
+    const summaryTotalCosts = getSummaryMetric('totalCosts')
+    if (summaryTotalCosts !== undefined) {
+      return parseFloat(summaryTotalCosts) || 0
     }
 
     return trades.value.reduce((sum, trade) => {
@@ -73,23 +79,26 @@ export const useTradesStore = defineStore('trades', () => {
 
   const totalPnL = computed(() => {
     // Use analytics data if available, otherwise fall back to trade summation
-    if (analytics.value?.summary?.totalPnL !== undefined && !(trades.value.length > 0 && Number(analytics.value.summary.totalTrades || 0) === 0)) {
-      return parseFloat(analytics.value.summary.totalPnL)
+    const summaryTotalPnL = getSummaryMetric('totalPnL')
+    if (summaryTotalPnL !== undefined) {
+      return parseFloat(summaryTotalPnL) || 0
     }
     return trades.value.reduce((sum, trade) => sum + (parseFloat(trade.pnl) || 0), 0)
   })
 
   const totalNetPnL = computed(() => {
-    if (analytics.value?.summary?.totalNetPnL !== undefined && !(trades.value.length > 0 && Number(analytics.value.summary.totalTrades || 0) === 0)) {
-      return parseFloat(analytics.value.summary.totalNetPnL) || 0
+    const summaryTotalNetPnL = getSummaryMetric('totalNetPnL')
+    if (summaryTotalNetPnL !== undefined) {
+      return parseFloat(summaryTotalNetPnL) || 0
     }
 
     return totalPnL.value
   })
 
   const totalGrossPnL = computed(() => {
-    if (analytics.value?.summary?.totalGrossPnL !== undefined && !(trades.value.length > 0 && Number(analytics.value.summary.totalTrades || 0) === 0)) {
-      return parseFloat(analytics.value.summary.totalGrossPnL) || 0
+    const summaryTotalGrossPnL = getSummaryMetric('totalGrossPnL')
+    if (summaryTotalGrossPnL !== undefined) {
+      return parseFloat(summaryTotalGrossPnL) || 0
     }
 
     return totalNetPnL.value + totalCosts.value
@@ -97,8 +106,9 @@ export const useTradesStore = defineStore('trades', () => {
 
   const winRate = computed(() => {
     // Use analytics data if available, otherwise fall back to trade calculation
-    if (analytics.value?.summary?.winRate !== undefined && !(trades.value.length > 0 && Number(analytics.value.summary.totalTrades || 0) === 0)) {
-      return parseFloat(analytics.value.summary.winRate).toFixed(2)
+    const summaryWinRate = getSummaryMetric('winRate')
+    if (summaryWinRate !== undefined) {
+      return parseFloat(summaryWinRate).toFixed(2)
     }
     const winning = trades.value.filter(t => t.pnl > 0).length
     const total = trades.value.length

@@ -23,6 +23,10 @@ function normalizeStoredAccount(value) {
   return normalized
 }
 
+function getAccountFilterValue(account) {
+  return normalizeStoredAccount(account?.accountIdentifier || account?.account_name || account?.accountName)
+}
+
 function redactAccountId(accountId) {
   if (!accountId) return null
 
@@ -93,15 +97,14 @@ export function useGlobalAccountFilter() {
 
       const managedAccountMap = new Map(
         managedAccounts
-          .filter(account => account.accountIdentifier)
-          .map(account => [account.accountIdentifier, account])
+          .map(account => [getAccountFilterValue(account), account])
+          .filter(([value]) => Boolean(value))
       )
 
-      const accountIdentifiers = tradeAccounts.length > 0
-        ? tradeAccounts
-        : managedAccounts
-          .map(account => account.accountIdentifier)
-          .filter(Boolean)
+      const accountIdentifiers = Array.from(new Set([
+        ...tradeAccounts.map(normalizeStoredAccount).filter(Boolean),
+        ...managedAccounts.map(getAccountFilterValue).filter(Boolean)
+      ])).sort((a, b) => a.localeCompare(b))
 
       accounts.value = accountIdentifiers.map(identifier => {
         const managedAccount = managedAccountMap.get(identifier)
