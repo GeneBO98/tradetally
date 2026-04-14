@@ -448,12 +448,6 @@ class BillingService {
             const interval = item?.price?.recurring?.interval;
             const planName = interval === 'year' ? 'Pro Yearly' : 'Pro Monthly';
             await EmailService.sendSubscriptionWelcomeEmail(user.email, user.username, planName);
-            await EmailService.sendNewSubscriberNotification({
-              userEmail: user.email,
-              username: user.username,
-              planName,
-              billingInterval: interval || 'month'
-            });
           }
         }
       } catch (emailError) {

@@ -9,8 +9,7 @@ jest.mock('../../src/models/User', () => ({
   findById: jest.fn()
 }));
 jest.mock('../../src/services/emailService', () => ({
-  sendSubscriptionWelcomeEmail: jest.fn(),
-  sendNewSubscriberNotification: jest.fn()
+  sendSubscriptionWelcomeEmail: jest.fn()
 }));
 jest.mock('../../src/services/invoiceNinjaSyncService', () => ({
   initialize: jest.fn(),
