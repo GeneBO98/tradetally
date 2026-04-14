@@ -850,12 +850,15 @@ class User {
         status, current_period_start, current_period_end, cancel_at_period_end
       )
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      ON CONFLICT (stripe_subscription_id) 
+      ON CONFLICT (user_id)
       DO UPDATE SET
-        status = EXCLUDED.status,
-        current_period_start = EXCLUDED.current_period_start,
-        current_period_end = EXCLUDED.current_period_end,
-        cancel_at_period_end = EXCLUDED.cancel_at_period_end,
+        stripe_customer_id = COALESCE(EXCLUDED.stripe_customer_id, subscriptions.stripe_customer_id),
+        stripe_subscription_id = COALESCE(EXCLUDED.stripe_subscription_id, subscriptions.stripe_subscription_id),
+        stripe_price_id = COALESCE(EXCLUDED.stripe_price_id, subscriptions.stripe_price_id),
+        status = COALESCE(EXCLUDED.status, subscriptions.status),
+        current_period_start = COALESCE(EXCLUDED.current_period_start, subscriptions.current_period_start),
+        current_period_end = COALESCE(EXCLUDED.current_period_end, subscriptions.current_period_end),
+        cancel_at_period_end = COALESCE(EXCLUDED.cancel_at_period_end, subscriptions.cancel_at_period_end),
         updated_at = CURRENT_TIMESTAMP
       RETURNING *
     `;

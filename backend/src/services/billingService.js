@@ -2,6 +2,7 @@ const db = require('../config/database');
 const TierService = require('./tierService');
 const User = require('../models/User');
 const EmailService = require('./emailService');
+const invoiceNinjaSyncService = require('./invoiceNinjaSyncService');
 
 // Conditionally load Stripe only if billing is enabled
 let stripe = null;
@@ -447,10 +448,16 @@ class BillingService {
             const interval = item?.price?.recurring?.interval;
             const planName = interval === 'year' ? 'Pro Yearly' : 'Pro Monthly';
             await EmailService.sendSubscriptionWelcomeEmail(user.email, user.username, planName);
+            await EmailService.sendNewSubscriberNotification({
+              userEmail: user.email,
+              username: user.username,
+              planName,
+              billingInterval: interval || 'month'
+            });
           }
         }
       } catch (emailError) {
-        console.error('[ERROR] Failed to send subscription welcome email:', emailError);
+        console.error('[ERROR] Failed to send subscription email notifications:', emailError);
         // Don't fail the webhook for email errors
       }
     }
@@ -591,13 +598,112 @@ class BillingService {
   // Handle successful payment
   static async handlePaymentSucceeded(invoice) {
     console.log('Payment succeeded for invoice:', invoice.id);
-    // Could add logic for tracking successful payments, sending receipts, etc.
+    const userId = await this.resolveUserIdForInvoice(invoice);
+
+    if (!userId) {
+      console.warn('[BILLING] Unable to resolve user for paid invoice:', invoice.id);
+      return;
+    }
+
+    const initialized = invoiceNinjaSyncService.initialize();
+    if (!initialized) {
+      console.log('[BILLING] Invoice Ninja revenue sync skipped - integration not configured');
+      return;
+    }
+
+    try {
+      const result = await invoiceNinjaSyncService.syncStripeInvoiceRevenue(userId, invoice);
+      if (result?.skipped) {
+        console.log('[BILLING] Invoice Ninja revenue sync skipped:', invoice.id, result.reason);
+      } else if (result?.invoice?.id) {
+        console.log('[BILLING] Invoice Ninja revenue synced:', invoice.id, '->', result.invoice.id);
+      }
+    } catch (error) {
+      console.error('[BILLING] Invoice Ninja revenue sync failed for Stripe invoice:', invoice.id, error.message);
+    }
   }
 
   // Handle failed payment
   static async handlePaymentFailed(invoice) {
     console.log('Payment failed for invoice:', invoice.id);
     // Could add logic for handling failed payments, notifications, etc.
+  }
+
+  static async backfillInvoiceNinjaRevenue(userId) {
+    const billingAvailable = await this.isBillingAvailable();
+    if (!billingAvailable) {
+      throw new Error('Billing not available');
+    }
+
+    const subscription = await User.getSubscription(userId);
+    if (!subscription?.stripe_subscription_id && !subscription?.stripe_customer_id) {
+      return {
+        skipped: true,
+        reason: 'subscription_not_configured',
+      };
+    }
+
+    const initialized = invoiceNinjaSyncService.initialize();
+    if (!initialized) {
+      return {
+        skipped: true,
+        reason: 'invoice_ninja_not_configured',
+      };
+    }
+
+    const invoiceListParams = subscription.stripe_subscription_id
+      ? { subscription: subscription.stripe_subscription_id, limit: 20 }
+      : { customer: subscription.stripe_customer_id, limit: 20 };
+
+    const invoices = await stripe.invoices.list(invoiceListParams);
+    const paidInvoice = invoices.data.find((invoice) => invoice.paid && Number(invoice.amount_paid || 0) > 0);
+
+    if (!paidInvoice) {
+      return {
+        skipped: true,
+        reason: 'no_paid_invoice_found',
+      };
+    }
+
+    return invoiceNinjaSyncService.syncStripeInvoiceRevenue(userId, paidInvoice);
+  }
+
+  static async resolveUserIdForInvoice(invoice) {
+    const stripeSubscriptionId = invoice?.subscription || null;
+    const stripeCustomerId = invoice?.customer || null;
+
+    if (stripeSubscriptionId) {
+      const subscriptionResult = await db.query(
+        `SELECT user_id FROM subscriptions WHERE stripe_subscription_id = $1 LIMIT 1`,
+        [stripeSubscriptionId]
+      );
+
+      if (subscriptionResult.rows[0]?.user_id) {
+        return subscriptionResult.rows[0].user_id;
+      }
+    }
+
+    if (stripeCustomerId) {
+      const customerResult = await db.query(
+        `SELECT user_id FROM subscriptions WHERE stripe_customer_id = $1 LIMIT 1`,
+        [stripeCustomerId]
+      );
+
+      if (customerResult.rows[0]?.user_id) {
+        return customerResult.rows[0].user_id;
+      }
+
+      try {
+        const customer = await stripe.customers.retrieve(stripeCustomerId);
+        if (customer?.metadata?.user_id) {
+          return customer.metadata.user_id;
+        }
+      } catch (error) {
+        console.error('[BILLING] Failed to resolve Stripe customer for invoice:', invoice?.id, error.message);
+      }
+    }
+
+    return null;
   }
 
   // Create or update subscription record
@@ -608,11 +714,11 @@ class BillingService {
         status, current_period_start, current_period_end, cancel_at_period_end, canceled_at
       )
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      -- Ensure idempotency by de-duplicating on the Stripe subscription ID, which is unique per subscription.
-      ON CONFLICT (stripe_subscription_id)
+      -- Keep a single current subscription row per user and merge in new Stripe identifiers as they arrive.
+      ON CONFLICT (user_id)
       DO UPDATE SET
-        user_id = COALESCE(EXCLUDED.user_id, subscriptions.user_id),
         stripe_customer_id = COALESCE(EXCLUDED.stripe_customer_id, subscriptions.stripe_customer_id),
+        stripe_subscription_id = COALESCE(EXCLUDED.stripe_subscription_id, subscriptions.stripe_subscription_id),
         stripe_price_id = COALESCE(EXCLUDED.stripe_price_id, subscriptions.stripe_price_id),
         status = COALESCE(EXCLUDED.status, subscriptions.status),
         current_period_start = COALESCE(EXCLUDED.current_period_start, subscriptions.current_period_start),
@@ -625,14 +731,14 @@ class BillingService {
 
     const values = [
       userId,
-      subscriptionData.stripe_customer_id || null,
-      subscriptionData.stripe_subscription_id || null,
-      subscriptionData.stripe_price_id || null,
-      subscriptionData.status || null,
-      subscriptionData.current_period_start || null,
-      subscriptionData.current_period_end || null,
-      subscriptionData.cancel_at_period_end || null,
-      subscriptionData.canceled_at || null
+      subscriptionData.stripe_customer_id ?? null,
+      subscriptionData.stripe_subscription_id ?? null,
+      subscriptionData.stripe_price_id ?? null,
+      subscriptionData.status ?? null,
+      subscriptionData.current_period_start ?? null,
+      subscriptionData.current_period_end ?? null,
+      subscriptionData.cancel_at_period_end ?? null,
+      subscriptionData.canceled_at ?? null
     ];
 
     const result = await db.query(query, values);

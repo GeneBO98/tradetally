@@ -61,6 +61,10 @@ class InvoiceNinjaSyncService {
     return response.json();
   }
 
+  normalizeEntity(response) {
+    return response?.data || response || null;
+  }
+
   /**
    * Find a client in Invoice Ninja by email
    */
@@ -100,6 +104,236 @@ class InvoiceNinjaSyncService {
       return this.request('PUT', `/clients/${existing.id}`, clientData);
     } else {
       return this.request('POST', '/clients', clientData);
+    }
+  }
+
+  getSubscriptionProductKey(stripeInvoice, userData = {}) {
+    const interval = stripeInvoice?.lines?.data?.[0]?.price?.recurring?.interval;
+
+    if (interval === 'year') {
+      return 'tradetally_pro_annual';
+    }
+
+    if (interval === 'month') {
+      return 'tradetally_pro_monthly';
+    }
+
+    return userData.tier === 'free' ? 'tradetally_free' : 'tradetally_pro_monthly';
+  }
+
+  getSubscriptionLineNotes(stripeInvoice, userData = {}) {
+    const description = stripeInvoice?.lines?.data?.[0]?.description;
+    if (description) {
+      return description;
+    }
+
+    const interval = stripeInvoice?.lines?.data?.[0]?.price?.recurring?.interval;
+    if (interval === 'year') {
+      return 'TradeTally Pro annual subscription';
+    }
+
+    if (interval === 'month') {
+      return 'TradeTally Pro monthly subscription';
+    }
+
+    return `TradeTally ${userData.tier === 'free' ? 'Free' : 'Pro'} subscription`;
+  }
+
+  centsToAmount(value) {
+    const cents = Number(value || 0);
+    return Number((cents / 100).toFixed(2));
+  }
+
+  getInvoiceDate(stripeInvoice) {
+    const paidAt = stripeInvoice?.status_transitions?.paid_at;
+    const createdAt = stripeInvoice?.created;
+    const unix = paidAt || createdAt;
+
+    if (!unix) {
+      return new Date().toISOString().slice(0, 10);
+    }
+
+    return new Date(unix * 1000).toISOString().slice(0, 10);
+  }
+
+  async getRevenueSyncRecord(stripeInvoiceId) {
+    const result = await db.query(
+      `SELECT * FROM invoice_ninja_revenue_syncs WHERE stripe_invoice_id = $1`,
+      [stripeInvoiceId]
+    );
+
+    return result.rows[0] || null;
+  }
+
+  async upsertRevenueSyncRecord(stripeInvoice, values) {
+    const amount = this.centsToAmount(stripeInvoice?.amount_paid || stripeInvoice?.amount_due || 0);
+    const result = await db.query(
+      `
+        INSERT INTO invoice_ninja_revenue_syncs (
+          stripe_invoice_id,
+          stripe_payment_intent_id,
+          stripe_customer_id,
+          stripe_subscription_id,
+          user_id,
+          invoice_ninja_client_id,
+          invoice_ninja_invoice_id,
+          amount,
+          currency,
+          status,
+          error,
+          synced_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        ON CONFLICT (stripe_invoice_id)
+        DO UPDATE SET
+          stripe_payment_intent_id = COALESCE(EXCLUDED.stripe_payment_intent_id, invoice_ninja_revenue_syncs.stripe_payment_intent_id),
+          stripe_customer_id = COALESCE(EXCLUDED.stripe_customer_id, invoice_ninja_revenue_syncs.stripe_customer_id),
+          stripe_subscription_id = COALESCE(EXCLUDED.stripe_subscription_id, invoice_ninja_revenue_syncs.stripe_subscription_id),
+          user_id = COALESCE(EXCLUDED.user_id, invoice_ninja_revenue_syncs.user_id),
+          invoice_ninja_client_id = COALESCE(EXCLUDED.invoice_ninja_client_id, invoice_ninja_revenue_syncs.invoice_ninja_client_id),
+          invoice_ninja_invoice_id = COALESCE(EXCLUDED.invoice_ninja_invoice_id, invoice_ninja_revenue_syncs.invoice_ninja_invoice_id),
+          amount = EXCLUDED.amount,
+          currency = EXCLUDED.currency,
+          status = EXCLUDED.status,
+          error = EXCLUDED.error,
+          synced_at = COALESCE(EXCLUDED.synced_at, invoice_ninja_revenue_syncs.synced_at),
+          updated_at = CURRENT_TIMESTAMP
+        RETURNING *
+      `,
+      [
+        stripeInvoice.id,
+        stripeInvoice.payment_intent || null,
+        stripeInvoice.customer || null,
+        stripeInvoice.subscription || null,
+        values.userId || null,
+        values.clientId || null,
+        values.invoiceId || null,
+        amount,
+        String(stripeInvoice.currency || 'usd').toLowerCase(),
+        values.status || 'pending',
+        values.error || null,
+        values.syncedAt || null,
+      ]
+    );
+
+    return result.rows[0];
+  }
+
+  async fetchRevenueSyncUser(userId) {
+    const query = `
+      SELECT
+        u.id,
+        u.email,
+        u.username,
+        u.full_name,
+        u.tier,
+        u.created_at,
+        s.stripe_customer_id,
+        s.stripe_subscription_id,
+        s.status AS subscription_status,
+        (SELECT COUNT(*) FROM trades WHERE user_id = u.id) AS trade_count
+      FROM users u
+      LEFT JOIN subscriptions s ON s.user_id = u.id
+      WHERE u.id = $1
+      ORDER BY s.updated_at DESC NULLS LAST
+      LIMIT 1
+    `;
+
+    const result = await db.query(query, [userId]);
+    return result.rows[0] || null;
+  }
+
+  buildStripeRevenueInvoice(userData, stripeInvoice, clientId) {
+    const amount = this.centsToAmount(stripeInvoice.amount_paid || stripeInvoice.amount_due || 0);
+    const productKey = this.getSubscriptionProductKey(stripeInvoice, userData);
+    const notes = this.getSubscriptionLineNotes(stripeInvoice, userData);
+    const stripeInvoiceId = stripeInvoice.id || '';
+    const stripeSubscriptionId = stripeInvoice.subscription || userData.stripe_subscription_id || '';
+    const paymentIntentId = stripeInvoice.payment_intent || '';
+
+    return {
+      client_id: clientId,
+      date: this.getInvoiceDate(stripeInvoice),
+      due_date: this.getInvoiceDate(stripeInvoice),
+      private_notes: [
+        `Stripe invoice: ${stripeInvoiceId}`,
+        stripeSubscriptionId ? `Stripe subscription: ${stripeSubscriptionId}` : null,
+        paymentIntentId ? `Stripe payment intent: ${paymentIntentId}` : null,
+        `TradeTally user: ${userData.id}`,
+      ].filter(Boolean).join('\n'),
+      custom_value1: stripeInvoiceId,
+      custom_value2: stripeSubscriptionId,
+      custom_value3: paymentIntentId,
+      line_items: [
+        {
+          quantity: 1,
+          cost: amount,
+          product_key: productKey,
+          notes,
+        },
+      ],
+    };
+  }
+
+  async syncStripeInvoiceRevenue(userId, stripeInvoice) {
+    if (!this.enabled || !stripeInvoice?.id) {
+      return null;
+    }
+
+    const existingSync = await this.getRevenueSyncRecord(stripeInvoice.id);
+    if (existingSync?.status === 'synced' && existingSync.invoice_ninja_invoice_id) {
+      return {
+        skipped: true,
+        reason: 'already_synced',
+        sync: existingSync,
+      };
+    }
+
+    const userData = await this.fetchRevenueSyncUser(userId);
+    if (!userData) {
+      throw new Error(`User ${userId} not found for Invoice Ninja revenue sync`);
+    }
+
+    const amount = this.centsToAmount(stripeInvoice.amount_paid || stripeInvoice.amount_due || 0);
+    if (amount <= 0) {
+      return this.upsertRevenueSyncRecord(stripeInvoice, {
+        userId,
+        status: 'skipped',
+        error: 'Stripe invoice has no paid amount',
+      });
+    }
+
+    try {
+      const upsertClientResult = await this.upsertClient(userData);
+      const client = this.normalizeEntity(upsertClientResult);
+      const invoicePayload = this.buildStripeRevenueInvoice(userData, stripeInvoice, client.id);
+      const encodedAmount = encodeURIComponent(amount.toFixed(2));
+      const invoiceResult = await this.request(
+        'POST',
+        `/invoices?paid=true&amount_paid=${encodedAmount}`,
+        invoicePayload
+      );
+      const invoiceEntity = this.normalizeEntity(invoiceResult);
+      const syncRecord = await this.upsertRevenueSyncRecord(stripeInvoice, {
+        userId,
+        clientId: client.id,
+        invoiceId: invoiceEntity?.id || null,
+        status: 'synced',
+        syncedAt: new Date(),
+      });
+
+      return {
+        sync: syncRecord,
+        client,
+        invoice: invoiceEntity,
+      };
+    } catch (error) {
+      await this.upsertRevenueSyncRecord(stripeInvoice, {
+        userId,
+        status: 'failed',
+        error: error.message,
+      });
+      throw error;
     }
   }
 

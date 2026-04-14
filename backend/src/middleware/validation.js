@@ -109,6 +109,22 @@ const schemas = {
     password: Joi.string().required()
   }),
 
+  internalCrmSyncRun: Joi.object({
+    targets: Joi.array()
+      .items(Joi.string().valid('twenty', 'invoiceNinja'))
+      .min(1)
+      .optional(),
+    reason: Joi.string().max(255).allow('', null).optional()
+  }),
+
+  internalCrmSyncUserRun: Joi.object({
+    targets: Joi.array()
+      .items(Joi.string().valid('twenty', 'invoiceNinja'))
+      .min(1)
+      .optional(),
+    reason: Joi.string().max(255).allow('', null).optional()
+  }),
+
   createTrade: Joi.object({
     symbol: Joi.string().max(20).required(),
     entryTime: Joi.date().iso().required(),
