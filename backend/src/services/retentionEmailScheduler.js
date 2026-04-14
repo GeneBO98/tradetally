@@ -24,6 +24,8 @@ class RetentionEmailScheduler {
         await this.sendWeeklyDigests();
       }
       await this.sendReengagementEmails();
+      await this.sendAtRiskFollowupEmails();
+      await this.sendChurnedNoImportsEmails();
       await this.sendTrialConversionEmails();
       await this.sendReviewRequestEmails();
       console.log('[SUCCESS] Retention email tasks completed');
@@ -129,6 +131,148 @@ class RetentionEmailScheduler {
       console.log(`Re-engagement emails sent: ${result.rows.length}`);
     } catch (error) {
       console.error('Error sending re-engagement emails:', error);
+    }
+  }
+
+  /**
+   * Send feature-focused follow-up emails to users who are drifting toward churn.
+   * Targets users already classified as dormant/at-risk in user_engagement_summary.
+   * Throttled to once every 21 days per user.
+   */
+  static async sendAtRiskFollowupEmails() {
+    try {
+      console.log('[EMAIL] Checking for at-risk users to follow up...');
+
+      const query = `
+        SELECT
+          u.id,
+          u.email,
+          u.username,
+          u.full_name,
+          ues.days_active_last_30,
+          ues.total_trades,
+          ues.total_imports,
+          ues.total_diary_entries,
+          ues.total_broker_syncs,
+          ues.last_feature_used,
+          COALESCE(ues.features_used, '{}'::jsonb) AS features_used
+        FROM user_engagement_summary ues
+        INNER JOIN users u ON u.id = ues.user_id
+        WHERE u.is_active = true
+          AND u.marketing_consent = true
+          AND ues.engagement_tier = 'dormant'
+          AND ues.lifecycle_stage IN ('activated', 'customer')
+          AND COALESCE(ues.total_trades, 0) + COALESCE(ues.total_imports, 0) + COALESCE(ues.total_diary_entries, 0) + COALESCE(ues.total_broker_syncs, 0) > 0
+          AND NOT EXISTS (
+            SELECT 1
+            FROM email_log el
+            WHERE el.user_id = u.id
+              AND el.email_type = 'at_risk_followup'
+              AND el.status = 'sent'
+              AND el.sent_at > NOW() - INTERVAL '21 days'
+          )
+      `;
+
+      const result = await db.query(query);
+      if (result.rows.length === 0) {
+        console.log('No at-risk follow-up emails to send');
+        return;
+      }
+
+      for (const row of result.rows) {
+        try {
+          await EmailService.sendAtRiskFollowupEmail(
+            row.email,
+            row.username || row.full_name || 'there',
+            {
+              daysActiveLast30: row.days_active_last_30 || 0,
+              totalTrades: row.total_trades || 0,
+              totalImports: row.total_imports || 0,
+              totalDiaryEntries: row.total_diary_entries || 0,
+              totalBrokerSyncs: row.total_broker_syncs || 0,
+              lastFeatureUsed: row.last_feature_used || null,
+              featuresUsed: row.features_used || {}
+            },
+            row.id
+          );
+        } catch (err) {
+          console.error(`Failed to send at-risk follow-up to ${maskEmail(row.email)}:`, err.message);
+        }
+      }
+
+      console.log(`At-risk follow-up emails sent: ${result.rows.length}`);
+    } catch (error) {
+      console.error('Error sending at-risk follow-up emails:', error);
+    }
+  }
+
+  /**
+   * Send a win-back email to churned users who never got to a successful import.
+   * Focuses on parser improvements and import onboarding.
+   * Throttled to once every 45 days per user.
+   */
+  static async sendChurnedNoImportsEmails() {
+    try {
+      console.log('[EMAIL] Checking for churned users with no imports...');
+
+      const query = `
+        SELECT
+          u.id,
+          u.email,
+          u.username,
+          u.full_name,
+          ues.total_imports,
+          ues.total_trades,
+          ues.last_feature_used,
+          COALESCE((
+            SELECT COUNT(*)
+            FROM unknown_csv_headers uch
+            WHERE uch.user_id = u.id
+              AND uch.created_at > NOW() - INTERVAL '120 days'
+              AND uch.outcome IN ('parse_failed', 'zero_trades', 'zero_imported')
+          ), 0)::int AS recent_import_failures
+        FROM user_engagement_summary ues
+        INNER JOIN users u ON u.id = ues.user_id
+        WHERE u.is_active = true
+          AND u.marketing_consent = true
+          AND ues.lifecycle_stage = 'churned'
+          AND COALESCE(ues.total_imports, 0) = 0
+          AND COALESCE(ues.total_trades, 0) = 0
+          AND NOT EXISTS (
+            SELECT 1
+            FROM email_log el
+            WHERE el.user_id = u.id
+              AND el.email_type = 'churned_no_imports_followup'
+              AND el.status = 'sent'
+              AND el.sent_at > NOW() - INTERVAL '45 days'
+          )
+      `;
+
+      const result = await db.query(query);
+      if (result.rows.length === 0) {
+        console.log('No churned no-import follow-up emails to send');
+        return;
+      }
+
+      for (const row of result.rows) {
+        try {
+          await EmailService.sendChurnedNoImportsFollowupEmail(
+            row.email,
+            row.username || row.full_name || 'there',
+            {
+              recentImportFailures: row.recent_import_failures || 0,
+              lastFeatureUsed: row.last_feature_used || null
+            },
+            row.id
+          );
+        } catch (err) {
+          console.error(`Failed to send churned no-import follow-up to ${maskEmail(row.email)}:`, err.message);
+        }
+      }
+
+      console.log(`Churned no-import follow-up emails sent: ${result.rows.length}`);
+    } catch (error) {
+      console.error('Error sending churned no-import follow-up emails:', error);
     }
   }
 
