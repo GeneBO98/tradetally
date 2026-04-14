@@ -439,6 +439,314 @@ function buildCalendarRiskMetrics(rows = []) {
   return metricsByDate;
 }
 
+function parseNumericValue(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeExecutionAction(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ');
+}
+
+function isBuyAction(action) {
+  return /\b(buy|bot|long)\b/.test(action);
+}
+
+function isSellAction(action) {
+  return /\b(sell|sold|short|sld)\b/.test(action);
+}
+
+function getExecutionDateString(...candidates) {
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+
+    const match = String(candidate).match(/^(\d{4}-\d{2}-\d{2})/);
+    if (match) return match[1];
+
+    const parsed = new Date(candidate);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString().split('T')[0];
+    }
+  }
+
+  return null;
+}
+
+function getTradeValueMultiplier(trade) {
+  if (trade.instrument_type === 'future') {
+    const pointValue = parseNumericValue(trade.point_value);
+    return pointValue != null && pointValue > 0 ? pointValue : 1;
+  }
+
+  if (trade.instrument_type === 'option') {
+    const contractSize = parseNumericValue(trade.contract_size);
+    return contractSize != null && contractSize > 0 ? contractSize : 100;
+  }
+
+  return 1;
+}
+
+function hasGroupedExecutions(executions = []) {
+  return executions.some((execution) =>
+    execution && (
+      execution.entryPrice !== undefined ||
+      execution.entry_price !== undefined ||
+      execution.entryTime !== undefined ||
+      execution.entry_time !== undefined
+    )
+  );
+}
+
+function computeGroupedExecutionExitEvents(trade, executions) {
+  const valueMultiplier = getTradeValueMultiplier(trade);
+
+  return executions
+    .filter(Boolean)
+    .map((execution) => {
+      const quantity = Math.abs(parseNumericValue(execution.quantity) || 0);
+      const entryPrice = parseNumericValue(execution.entryPrice ?? execution.entry_price);
+      const exitPrice = parseNumericValue(execution.exitPrice ?? execution.exit_price);
+      const commission = parseNumericValue(execution.commission) || 0;
+      const fees = parseNumericValue(execution.fees ?? execution.fee) || 0;
+      const side = execution.side || trade.side;
+      const date = getExecutionDateString(
+        execution.exitTime,
+        execution.exit_time,
+        execution.datetime
+      );
+
+      if (!date || quantity <= 0 || exitPrice == null) {
+        return null;
+      }
+
+      let pnl = null;
+      if (entryPrice != null) {
+        if (side === 'long') {
+          pnl = (exitPrice - entryPrice) * quantity * valueMultiplier - commission - fees;
+        } else {
+          pnl = (entryPrice - exitPrice) * quantity * valueMultiplier - commission - fees;
+        }
+      } else {
+        pnl = parseNumericValue(execution.pnl ?? execution.p_l ?? execution.profit_loss);
+      }
+
+      return pnl == null ? null : { date, pnl };
+    })
+    .filter(Boolean);
+}
+
+function computeFillExecutionExitEvents(trade, executions) {
+  const valueMultiplier = getTradeValueMultiplier(trade);
+  const tradeSide = trade.side;
+  const tradeCommission = parseNumericValue(trade.commission) || 0;
+  const tradeFees = parseNumericValue(trade.fees) || 0;
+  const totalQuantity = executions.reduce((sum, execution) => {
+    const quantity = Math.abs(parseNumericValue(execution?.quantity) || 0);
+    return sum + quantity;
+  }, 0);
+  const entryQueue = [];
+
+  const sortedExecutions = [...executions]
+    .filter(Boolean)
+    .sort((a, b) => {
+      const left = Date.parse(
+        a.datetime || a.entry_time || a.exitTime || a.exit_time || a.entryTime || ''
+      );
+      const right = Date.parse(
+        b.datetime || b.entry_time || b.exitTime || b.exit_time || b.entryTime || ''
+      );
+
+      if (Number.isNaN(left) && Number.isNaN(right)) return 0;
+      if (Number.isNaN(left)) return 1;
+      if (Number.isNaN(right)) return -1;
+      return left - right;
+    });
+
+  const exitEvents = [];
+
+  sortedExecutions.forEach((execution) => {
+    const quantity = Math.abs(parseNumericValue(execution.quantity) || 0);
+    const price = parseNumericValue(
+      execution.price ??
+      execution.entryPrice ??
+      execution.entry_price ??
+      execution.exitPrice ??
+      execution.exit_price
+    );
+    const action = normalizeExecutionAction(execution.action || execution.side || execution.type);
+    const hasCommission = execution.commission !== undefined && execution.commission !== null;
+    const hasFees = execution.fees !== undefined && execution.fees !== null;
+    const proportion = totalQuantity > 0 ? quantity / totalQuantity : 0;
+
+    let commission = 0;
+    let fees = 0;
+
+    if (hasCommission && hasFees) {
+      commission = parseNumericValue(execution.commission) || 0;
+      fees = parseNumericValue(execution.fees) || 0;
+    } else if (hasCommission) {
+      commission = parseNumericValue(execution.commission) || 0;
+    } else if (hasFees) {
+      commission = parseNumericValue(execution.fees) || 0;
+    } else {
+      commission = tradeCommission * proportion;
+      fees = tradeFees * proportion;
+    }
+
+    const totalCost = commission + fees;
+    const isOpening =
+      (tradeSide === 'long' && isBuyAction(action)) ||
+      (tradeSide === 'short' && isSellAction(action));
+
+    if (isOpening) {
+      if (quantity > 0 && price != null) {
+        entryQueue.push({
+          quantity,
+          price,
+          commission: totalCost,
+          remainingQty: quantity
+        });
+      }
+      return;
+    }
+
+    let executionPnl = null;
+    let totalMatchedValue = 0;
+    let totalMatchedQty = 0;
+    let totalMatchedEntryCommission = 0;
+    let remainingExitQty = quantity;
+
+    while (remainingExitQty > 0 && entryQueue.length > 0) {
+      const entry = entryQueue[0];
+      const matchQty = Math.min(remainingExitQty, entry.remainingQty);
+
+      totalMatchedValue += matchQty * entry.price;
+      totalMatchedQty += matchQty;
+
+      if (entry.commission && entry.quantity > 0) {
+        totalMatchedEntryCommission += (entry.commission * matchQty) / entry.quantity;
+      }
+
+      remainingExitQty -= matchQty;
+      entry.remainingQty -= matchQty;
+
+      if (entry.remainingQty <= 0) {
+        entryQueue.shift();
+      }
+    }
+
+    if (totalMatchedQty > 0 && price != null) {
+      const matchedEntryPrice = totalMatchedValue / totalMatchedQty;
+
+      if (tradeSide === 'long') {
+        executionPnl =
+          (price - matchedEntryPrice) * totalMatchedQty * valueMultiplier -
+          totalCost -
+          totalMatchedEntryCommission;
+      } else {
+        executionPnl =
+          (matchedEntryPrice - price) * totalMatchedQty * valueMultiplier -
+          totalCost -
+          totalMatchedEntryCommission;
+      }
+    } else {
+      executionPnl = parseNumericValue(execution.pnl ?? execution.p_l ?? execution.profit_loss);
+    }
+
+    const date = getExecutionDateString(
+      execution.exitTime,
+      execution.exit_time,
+      execution.datetime
+    );
+
+    if (date && executionPnl != null) {
+      exitEvents.push({ date, pnl: executionPnl });
+    }
+  });
+
+  return exitEvents;
+}
+
+function computeTradeExitEvents(trade) {
+  const executions = Array.isArray(trade.executions) ? trade.executions : [];
+  if (executions.length === 0) return [];
+
+  if (hasGroupedExecutions(executions)) {
+    return computeGroupedExecutionExitEvents(trade, executions);
+  }
+
+  return computeFillExecutionExitEvents(trade, executions);
+}
+
+function buildCalendarDayContributions(trades, dateStr) {
+  return trades
+    .map((trade) => {
+      const exitEvents = computeTradeExitEvents(trade);
+      const exitEventsOnDay = exitEvents.filter((event) => event.date === dateStr);
+      const exactTradePnl = parseNumericValue(trade.pnl);
+      const computedTradePnl = exitEvents.reduce((sum, event) => sum + (event.pnl || 0), 0);
+      const uniqueExitDates = new Set(exitEvents.map((event) => event.date).filter(Boolean));
+      const shouldUseExactTradePnl =
+        uniqueExitDates.size === 1 &&
+        exactTradePnl != null &&
+        Math.abs(computedTradePnl - exactTradePnl) < 0.05;
+
+      let pnl = null;
+      let exitCount = 0;
+      let totalExitCount = exitEvents.length;
+
+      if (exitEventsOnDay.length > 0) {
+        pnl = shouldUseExactTradePnl
+          ? exactTradePnl
+          : exitEventsOnDay.reduce((sum, event) => sum + (event.pnl || 0), 0);
+        exitCount = exitEventsOnDay.length;
+      } else if (
+        totalExitCount === 0 &&
+        exactTradePnl != null &&
+        getExecutionDateString(trade.exit_time) === dateStr
+      ) {
+        pnl = exactTradePnl;
+        exitCount = 1;
+        totalExitCount = 1;
+      }
+
+      if (pnl == null || exitCount === 0) {
+        return null;
+      }
+
+      const riskAmount = Trade.calculateRiskAmount(
+        trade.entry_price,
+        trade.stop_loss,
+        trade.quantity,
+        trade.side,
+        trade.instrument_type,
+        trade.contract_size,
+        trade.point_value,
+        trade.symbol,
+        trade.underlying_asset
+      );
+
+      return {
+        trade_id: trade.trade_id,
+        symbol: trade.symbol,
+        side: trade.side,
+        pnl,
+        r_value: (exitCount === totalExitCount && trade.r_value != null && trade.stop_loss != null)
+          ? parseFloat(trade.r_value)
+          : null,
+        risk_amount: riskAmount != null ? Math.round(riskAmount * 100) / 100 : null,
+        exit_count: exitCount,
+        is_partial: exitCount < totalExitCount
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => (a.trade_id || '').localeCompare(b.trade_id || ''));
+}
+
 const analyticsController = {
   async getOverview(req, res, next) {
     try {
@@ -1181,157 +1489,66 @@ const analyticsController = {
       }
 
       const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
-      const params = [req.user.id, ...filterParams, dateStr, dateStr];
+      const params = [req.user.id, ...filterParams, dateStr];
       const paramLen = params.length;
       const fc = filterConditions ? filterConditions.replace(/\btrade_date\b/g, 't.trade_date').replace(/\bsymbol\b/g, 't.symbol').replace(/\bstrategy\b/g, 't.strategy').replace(/\bside\b/g, 't.side') : '';
 
       const dayQuery = `
-        WITH exit_execs AS (
-          SELECT t.id AS trade_id, t.symbol, t.side, t.pnl AS trade_pnl,
-            (exec->>'quantity')::numeric AS exec_qty
-          FROM trades t
-          CROSS JOIN LATERAL jsonb_array_elements(COALESCE(t.executions, '[]'::jsonb)) WITH ORDINALITY AS arr(exec, ord)
-          WHERE t.user_id = $1
-            AND t.pnl IS NOT NULL
-            AND (exec->>'datetime' IS NOT NULL OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL)
-            AND (
-              (t.side IN ('long','buy') AND (
-                (exec->>'action') IN ('sell','short') OR (exec->>'type') IN ('sell','short')
-                OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL
-              ))
-              OR (t.side IN ('short','sell') AND (
-                (exec->>'action') IN ('buy','long') OR (exec->>'type') IN ('buy','long')
-                OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL
-              ))
-            )
-            AND (COALESCE(exec->>'datetime', exec->>'exitTime', exec->>'exit_time'))::timestamp::date >= $${paramLen - 1}::date
-            AND (COALESCE(exec->>'datetime', exec->>'exitTime', exec->>'exit_time'))::timestamp::date <= $${paramLen}::date
-            ${fc}
-        ),
-        trade_exit_totals AS (
-          SELECT t.id AS trade_id,
-            SUM((exec->>'quantity')::numeric) AS total_exit_qty,
-            COUNT(*)::int AS total_exit_count
-          FROM trades t
-          CROSS JOIN LATERAL jsonb_array_elements(COALESCE(t.executions, '[]'::jsonb)) AS arr(exec)
-          WHERE t.user_id = $1
-            AND t.pnl IS NOT NULL
-            AND (exec->>'datetime' IS NOT NULL OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL)
-            AND (
-              (t.side IN ('long','buy') AND ((exec->>'action') IN ('sell','short') OR (exec->>'type') IN ('sell','short') OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL))
-              OR (t.side IN ('short','sell') AND ((exec->>'action') IN ('buy','long') OR (exec->>'type') IN ('buy','long') OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL))
-            )
-            ${fc}
-          GROUP BY t.id
-        ),
-        day_exit_summary AS (
-          SELECT trade_id, symbol, side, trade_pnl,
-            COUNT(*)::int AS exit_count,
-            SUM(exec_qty) AS day_exit_qty
-          FROM exit_execs
-          GROUP BY trade_id, symbol, side, trade_pnl
-        ),
-        grouped_by_trade AS (
-          SELECT d.trade_id, d.symbol, d.side,
-            CASE
-              WHEN d.day_exit_qty = t.total_exit_qty THEN d.trade_pnl
-              ELSE d.trade_pnl * (d.day_exit_qty / NULLIF(t.total_exit_qty, 0))
-            END AS total_pnl,
-            d.exit_count
-          FROM day_exit_summary d
-          JOIN trade_exit_totals t ON d.trade_id = t.trade_id
-          WHERE t.total_exit_qty > 0
-        )
-        SELECT g.trade_id, g.symbol, g.side, g.total_pnl AS exec_pnl, g.exit_count,
-               COALESCE(tt.total_exit_count, 1) AS total_exit_count,
-               tr.r_value, tr.stop_loss, tr.entry_price, tr.quantity,
-               tr.instrument_type, tr.contract_size, tr.point_value, tr.underlying_asset
-        FROM grouped_by_trade g
-        LEFT JOIN trade_exit_totals tt ON g.trade_id = tt.trade_id
-        LEFT JOIN trades tr ON g.trade_id = tr.id
-        ORDER BY g.trade_id
-      `;
-      const execResult = await db.query(dayQuery, params);
-
-      const rows = execResult.rows.map(r => {
-        const exitCountOnDay = r.exit_count != null ? parseInt(r.exit_count, 10) : 1;
-        const totalExitCount = r.total_exit_count != null ? parseInt(r.total_exit_count, 10) : 1;
-        const isPartial = exitCountOnDay < totalExitCount;
-        const riskAmount = Trade.calculateRiskAmount(
-          r.entry_price,
-          r.stop_loss,
-          r.quantity,
-          r.side,
-          r.instrument_type,
-          r.contract_size,
-          r.point_value,
-          r.symbol,
-          r.underlying_asset
-        );
-        return {
-          trade_id: r.trade_id,
-          symbol: r.symbol,
-          side: r.side,
-          pnl: r.exec_pnl != null ? parseFloat(r.exec_pnl) : null,
-          // Only show r_value for fully closed trades (not partial exits)
-          r_value: (!isPartial && r.r_value != null && r.stop_loss != null) ? parseFloat(r.r_value) : null,
-          risk_amount: riskAmount != null ? Math.round(riskAmount * 100) / 100 : null,
-          exit_count: exitCountOnDay,
-          // Only mark as partial if exits span multiple days (not all exits are on this day)
-          is_partial: isPartial
-        };
-      });
-
-      // Fallback: trades without exit executions (no executions array, or no exit execs with quantity)
-      const tradeLevelFallbackQuery = `
-        SELECT t.id AS trade_id, t.symbol, t.side, t.exit_time AS exec_datetime, t.pnl, t.quantity, t.exit_price AS price,
-               t.r_value, t.stop_loss, t.entry_price, t.instrument_type, t.contract_size, t.point_value, t.underlying_asset
+        SELECT
+          t.id AS trade_id,
+          t.symbol,
+          t.side,
+          t.pnl,
+          t.commission,
+          t.fees,
+          t.r_value,
+          t.stop_loss,
+          t.entry_price,
+          t.quantity,
+          t.instrument_type,
+          t.contract_size,
+          t.point_value,
+          t.underlying_asset,
+          t.exit_time,
+          t.executions
         FROM trades t
         WHERE t.user_id = $1
-          AND t.exit_time IS NOT NULL
           AND t.pnl IS NOT NULL
-          AND NOT EXISTS (
-            SELECT 1 FROM jsonb_array_elements(COALESCE(t.executions, '[]'::jsonb)) AS e(exec)
-            WHERE (exec->>'quantity') IS NOT NULL
-              AND (exec->>'datetime' IS NOT NULL OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL)
-              AND (
-                (t.side IN ('long','buy') AND ((exec->>'action') IN ('sell','short') OR (exec->>'type') IN ('sell','short') OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL))
-                OR (t.side IN ('short','sell') AND ((exec->>'action') IN ('buy','long') OR (exec->>'type') IN ('buy','long') OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL))
-              )
+          AND (
+            (t.exit_time::timestamp)::date = $${paramLen}::date
+            OR EXISTS (
+              SELECT 1
+              FROM jsonb_array_elements(COALESCE(t.executions, '[]'::jsonb)) AS arr(exec)
+              WHERE (exec->>'quantity') IS NOT NULL
+                AND COALESCE(exec->>'exitTime', exec->>'exit_time', exec->>'datetime') IS NOT NULL
+                AND (
+                  exec->>'exitTime' IS NOT NULL
+                  OR exec->>'exit_time' IS NOT NULL
+                  OR exec->>'exitPrice' IS NOT NULL
+                  OR exec->>'exit_price' IS NOT NULL
+                  OR (
+                    t.side IN ('long', 'buy')
+                    AND (
+                      (exec->>'action') IN ('sell', 'short')
+                      OR (exec->>'type') IN ('sell', 'short')
+                    )
+                  )
+                  OR (
+                    t.side IN ('short', 'sell')
+                    AND (
+                      (exec->>'action') IN ('buy', 'long')
+                      OR (exec->>'type') IN ('buy', 'long')
+                    )
+                  )
+                )
+                AND (COALESCE(exec->>'exitTime', exec->>'exit_time', exec->>'datetime'))::timestamp::date = $${paramLen}::date
+            )
           )
-          AND (t.exit_time::timestamp)::date >= $${paramLen - 1}::date
-          AND (t.exit_time::timestamp)::date <= $${paramLen}::date
           ${fc}
+        ORDER BY t.id
       `;
-      const tradeResult = await db.query(tradeLevelFallbackQuery, params);
-      const fallbackRows = tradeResult.rows.map(r => {
-        const riskAmount = Trade.calculateRiskAmount(
-          r.entry_price,
-          r.stop_loss,
-          r.quantity,
-          r.side,
-          r.instrument_type,
-          r.contract_size,
-          r.point_value,
-          r.symbol,
-          r.underlying_asset
-        );
-
-        return {
-          trade_id: r.trade_id,
-          symbol: r.symbol,
-          side: r.side,
-          pnl: r.pnl != null ? parseFloat(r.pnl) : null,
-          r_value: (r.r_value != null && r.stop_loss != null) ? parseFloat(r.r_value) : null,
-          risk_amount: riskAmount != null ? Math.round(riskAmount * 100) / 100 : null,
-          exit_count: 1,
-          is_partial: false
-        };
-      });
-
-      const contributions = [...rows, ...fallbackRows].sort((a, b) =>
-        (a.trade_id || '').localeCompare(b.trade_id || '')
-      );
+      const tradeResult = await db.query(dayQuery, params);
+      const contributions = buildCalendarDayContributions(tradeResult.rows, dateStr);
       res.json({ date: dateStr, contributions });
     } catch (error) {
       console.error('Calendar day detail error:', error);
