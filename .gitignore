@@ -88,7 +88,10 @@ database_backup_*.sql
 backend/src/email-templates/
 backend/src/data/backups/
 backend/src/data/cusip_cache*.json
+backend/src/data/data_tmp/
+backend/tests/services/targetHitAnalysisService.test.js
 docs/generated/
+documentation/PLAID_*
 local.json
 config/local.json
 config/local.js
