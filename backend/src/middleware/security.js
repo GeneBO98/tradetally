@@ -18,6 +18,7 @@ const securityMiddleware = () => {
             // Required for inline PostHog init and index.html bootstrap script.
             // TODO: Replace with nonces via generateCSPNonce middleware for full CWE-693 compliance.
             "'unsafe-inline'",
+            'https://cdn.plaid.com',
           ],
           styleSrc: [
             "'self'",
@@ -39,12 +40,16 @@ const securityMiddleware = () => {
             "https://api.finnhub.io", // Finnhub financial data API
             "https://www.alphavantage.co", // Alpha Vantage API
             "https://generativelanguage.googleapis.com", // Google Gemini AI API
+            "https://cdn.plaid.com",
+            "https://sandbox.plaid.com",
+            "https://development.plaid.com",
+            "https://production.plaid.com",
             ...(process.env.NODE_ENV !== 'production' ? ['ws:', 'wss:'] : []),
           ],
           // OWASP Anti-clickjacking directives (CWE-1021 & WSTG-v42-CLNT-09 mitigation)
-          frameSrc: ["'none'"], // Block all framing
+          frameSrc: ["'self'", "https://cdn.plaid.com", "https://sandbox.plaid.com", "https://development.plaid.com", "https://production.plaid.com"],
           frameAncestors: ["'none'"], // CSP Level 2 - Complete clickjacking protection
-          childSrc: ["'none'"], // CSP Level 3 - Prevent nested browsing contexts
+          childSrc: ["'self'", "https://cdn.plaid.com", "https://sandbox.plaid.com", "https://development.plaid.com", "https://production.plaid.com"],
           // OWASP Injection prevention directives (CWE-693 mitigation)  
           objectSrc: ["'none'"], // Block object/embed/applet tags
           embedSrc: ["'none'"], // CSP3 directive for embed tags
@@ -53,7 +58,7 @@ const securityMiddleware = () => {
           // OWASP CSP Level 3 directives for WASC-15 compliance
           manifestSrc: ["'self'"], // Web app manifest sources
           mediaSrc: ["'self'"], // Audio/video sources
-          childSrc: ["'none'"], // Child browsing context sources
+          childSrc: ["'self'", "https://cdn.plaid.com", "https://sandbox.plaid.com", "https://development.plaid.com", "https://production.plaid.com"], // Child browsing context sources
           workerSrc: ["'self'"], // Worker script sources
           // OWASP Transport Security (WASC-15 mitigation)
           upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null,

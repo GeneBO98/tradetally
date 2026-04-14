@@ -7,6 +7,7 @@
 const express = require('express');
 const router = express.Router();
 const accountController = require('../controllers/account.controller');
+const plaidController = require('../controllers/plaid.controller');
 const { authenticate } = require('../middleware/auth');
 
 // All routes require authentication
@@ -16,6 +17,23 @@ router.use(authenticate);
 router.get('/primary', accountController.getPrimaryAccount);
 router.get('/unlinked-identifiers', accountController.getUnlinkedIdentifiers);
 router.get('/debug/trade-identifiers', accountController.getTradeIdentifiersSummary);
+
+// Plaid funding sync
+router.post('/plaid/link-token', plaidController.createLinkToken);
+router.post('/plaid/exchange', plaidController.exchangePublicToken);
+router.get('/plaid/connections', plaidController.getConnections);
+router.put('/plaid/connections/:connectionId', plaidController.updateConnection);
+router.delete('/plaid/connections/:connectionId', plaidController.deleteConnection);
+router.post('/plaid/connections/:connectionId/sync', plaidController.syncConnection);
+router.put('/plaid/accounts/:plaidAccountId/link', plaidController.linkPlaidAccount);
+router.delete('/plaid/accounts/:plaidAccountId/link', plaidController.unlinkPlaidAccount);
+router.get('/:accountId/plaid/review', plaidController.getReviewQueue);
+router.post('/:accountId/plaid/review/bulk-approve', plaidController.bulkApproveTransactions);
+router.post('/:accountId/plaid/review/bulk-reject', plaidController.bulkRejectTransactions);
+router.post('/:accountId/plaid/review/bulk-revert', plaidController.bulkRevertTransactions);
+router.post('/:accountId/plaid/review/:transactionId/approve', plaidController.approveTransaction);
+router.post('/:accountId/plaid/review/:transactionId/reject', plaidController.rejectTransaction);
+router.post('/:accountId/plaid/review/:transactionId/revert', plaidController.revertTransaction);
 
 // Transaction routes (must come before /:id to avoid conflicts)
 router.get('/transactions/:transactionId', accountController.getTransactions);

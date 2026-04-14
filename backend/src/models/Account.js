@@ -211,7 +211,15 @@ class Account {
    * Add a transaction (deposit/withdrawal)
    */
   static async addTransaction(userId, accountId, transactionData) {
-    const { transactionType, amount, transactionDate, description } = transactionData;
+    const {
+      transactionType,
+      amount,
+      transactionDate,
+      description,
+      sourceType = 'manual',
+      sourceReferenceId = null,
+      approvedAt = null
+    } = transactionData;
 
     // Verify account belongs to user
     const account = await this.findById(accountId, userId);
@@ -221,9 +229,10 @@ class Account {
 
     const query = `
       INSERT INTO account_transactions (
-        user_id, account_id, transaction_type, amount, transaction_date, description
+        user_id, account_id, transaction_type, amount, transaction_date, description,
+        source_type, source_reference_id, approved_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *
     `;
 
@@ -233,7 +242,10 @@ class Account {
       transactionType,
       amount,
       transactionDate,
-      description || null
+      description || null,
+      sourceType,
+      sourceReferenceId,
+      approvedAt
     ]);
 
     console.log(`[ACCOUNTS] Added ${transactionType} of $${amount} for account ${accountId}`);
@@ -305,7 +317,7 @@ class Account {
     const query = `
       UPDATE account_transactions
       SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $${paramCount} AND user_id = $${paramCount + 1}
+      WHERE id = $${paramCount} AND user_id = $${paramCount + 1} AND source_type = 'manual'
       RETURNING *
     `;
 
@@ -320,7 +332,7 @@ class Account {
     const query = `
       DELETE FROM account_transactions
       WHERE id = $1 AND user_id = $2
-      RETURNING id
+      RETURNING id, source_type, source_reference_id
     `;
 
     const result = await db.query(query, [transactionId, userId]);
