@@ -158,4 +158,72 @@ describe('analyticsController.getCalendarDayDetail', () => {
     }));
     expect(payload.contributions[0].pnl).toBeCloseTo(118.68, 2);
   });
+
+  test('supports legacy executions that only stored side and type', async () => {
+    db.query.mockResolvedValueOnce({
+      rows: [
+        {
+          trade_id: 'trade-tsla-short',
+          symbol: 'TSLA',
+          side: 'short',
+          pnl: 998,
+          commission: 2,
+          fees: 0,
+          r_value: 2,
+          stop_loss: 105,
+          entry_price: 100,
+          quantity: 100,
+          instrument_type: 'stock',
+          contract_size: null,
+          point_value: null,
+          underlying_asset: null,
+          exit_time: '2026-04-03T14:45:00Z',
+          executions: [
+            {
+              side: 'short',
+              type: 'entry',
+              quantity: 100,
+              price: 100,
+              datetime: '2026-04-01T09:30:00Z',
+              commission: 1,
+              fees: 0
+            },
+            {
+              side: 'long',
+              type: 'exit',
+              quantity: 100,
+              price: 90,
+              datetime: '2026-04-03T14:45:00Z',
+              commission: 1,
+              fees: 0
+            }
+          ]
+        }
+      ]
+    });
+
+    const req = {
+      query: { date: '2026-04-03' },
+      user: { id: 'user-1' }
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await analyticsController.getCalendarDayDetail(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+
+    const payload = res.json.mock.calls[0][0];
+    expect(payload.contributions).toHaveLength(1);
+    expect(payload.contributions[0]).toEqual(expect.objectContaining({
+      trade_id: 'trade-tsla-short',
+      symbol: 'TSLA',
+      side: 'short',
+      r_value: 2,
+      risk_amount: 123.45,
+      exit_count: 1,
+      is_partial: false
+    }));
+    expect(payload.contributions[0].pnl).toBeCloseTo(998, 2);
+  });
 });
