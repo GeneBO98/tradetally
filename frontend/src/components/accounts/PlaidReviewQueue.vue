@@ -625,14 +625,14 @@ async function runAction(action, ids, sharedType) {
         if (result.errors?.length && result.approved === 0) {
           showError('Bulk approval failed', msg)
         } else {
-          showSuccess('Plaid approvals complete', msg)
+          showSuccess('Plaid approvals complete', `${msg} Future matching Plaid activity will auto-import.`)
         }
       } else {
         await store.approveTransaction(props.accountId, ids[0], {
           transactionType: transactionTypes[ids[0]],
           description: descriptions[ids[0]]
         })
-        showSuccess('Plaid transaction approved', 'The approved transfer now affects account cashflow.')
+        showSuccess('Plaid transaction approved', 'The approved transfer now affects account cashflow. Future matching Plaid activity will auto-import.')
       }
     } else if (action === 'reject') {
       if (isBulk) {
@@ -654,11 +654,11 @@ async function runAction(action, ids, sharedType) {
         if (result.errors?.length && result.reverted === 0) {
           showError('Untrack failed', msg)
         } else {
-          showSuccess('Plaid transactions untracked', msg)
+          showSuccess('Plaid transactions untracked', `${msg} Matching auto-import rules were removed.`)
         }
       } else {
         await store.revertTransaction(props.accountId, ids[0])
-        showSuccess('Plaid transaction untracked', 'The decision was reverted and the activity is back in the pending queue.')
+        showSuccess('Plaid transaction untracked', 'The decision was reverted, the activity is back in the pending queue, and the matching auto-import rule was removed.')
       }
     }
     emit('changed')

@@ -314,6 +314,83 @@ class PlaidConnection {
     return this.findAccountById(plaidAccountRowId, userId);
   }
 
+  static async upsertTransactionRule(userId, rule) {
+    const result = await db.query(`
+      INSERT INTO plaid_transaction_rules (
+        user_id,
+        plaid_account_row_id,
+        linked_account_id,
+        match_description,
+        match_description_normalized,
+        transaction_type,
+        description_override,
+        last_applied_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      ON CONFLICT (user_id, plaid_account_row_id, linked_account_id, match_description_normalized)
+      DO UPDATE SET
+        match_description = EXCLUDED.match_description,
+        transaction_type = EXCLUDED.transaction_type,
+        description_override = EXCLUDED.description_override,
+        last_applied_at = EXCLUDED.last_applied_at,
+        updated_at = CURRENT_TIMESTAMP
+      RETURNING *
+    `, [
+      userId,
+      rule.plaidAccountRowId,
+      rule.linkedAccountId,
+      rule.matchDescription,
+      rule.matchDescriptionNormalized,
+      rule.transactionType,
+      rule.descriptionOverride || null,
+      rule.lastAppliedAt || null
+    ]);
+
+    return this.formatTransactionRule(result.rows[0]);
+  }
+
+  static async findTransactionRule(userId, plaidAccountRowId, linkedAccountId, matchDescriptionNormalized) {
+    const result = await db.query(`
+      SELECT *
+      FROM plaid_transaction_rules
+      WHERE user_id = $1
+        AND plaid_account_row_id = $2
+        AND linked_account_id = $3
+        AND match_description_normalized = $4
+      LIMIT 1
+    `, [userId, plaidAccountRowId, linkedAccountId, matchDescriptionNormalized]);
+
+    if (result.rows.length === 0) return null;
+    return this.formatTransactionRule(result.rows[0]);
+  }
+
+  static async markTransactionRuleApplied(ruleId) {
+    const result = await db.query(`
+      UPDATE plaid_transaction_rules
+      SET last_applied_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+      RETURNING *
+    `, [ruleId]);
+
+    if (result.rows.length === 0) return null;
+    return this.formatTransactionRule(result.rows[0]);
+  }
+
+  static async deleteTransactionRule(userId, plaidAccountRowId, linkedAccountId, matchDescriptionNormalized) {
+    const result = await db.query(`
+      DELETE FROM plaid_transaction_rules
+      WHERE user_id = $1
+        AND plaid_account_row_id = $2
+        AND linked_account_id = $3
+        AND match_description_normalized = $4
+      RETURNING *
+    `, [userId, plaidAccountRowId, linkedAccountId, matchDescriptionNormalized]);
+
+    if (result.rows.length === 0) return null;
+    return this.formatTransactionRule(result.rows[0]);
+  }
+
   static async upsertTransaction(userId, transaction) {
     const result = await db.query(`
       INSERT INTO plaid_transactions (
@@ -698,6 +775,24 @@ class PlaidConnection {
       reviewReason: row.review_reason,
       pending: row.pending,
       metadata: row.metadata || {},
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+
+  static formatTransactionRule(row) {
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      userId: row.user_id,
+      plaidAccountRowId: row.plaid_account_row_id,
+      linkedAccountId: row.linked_account_id,
+      matchDescription: row.match_description,
+      matchDescriptionNormalized: row.match_description_normalized,
+      transactionType: row.transaction_type,
+      descriptionOverride: row.description_override || null,
+      lastAppliedAt: row.last_applied_at,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };

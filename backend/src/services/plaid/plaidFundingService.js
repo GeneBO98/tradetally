@@ -29,6 +29,13 @@ function normalizePlaidAccount(account) {
   };
 }
 
+function normalizeRuleDescription(description) {
+  return String(description || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
 class PlaidFundingService {
   ensureConfigured() {
     if (!plaidClient.isConfigured()) {
@@ -229,7 +236,15 @@ class PlaidFundingService {
         if (!plaidAccount) continue;
 
         const unified = this.buildBankTransaction(connection, plaidAccount, transaction);
-        await PlaidConnection.upsertTransaction(connection.userId, unified);
+        const storedTransaction = await PlaidConnection.upsertTransaction(connection.userId, unified);
+        try {
+          await this.applyAutoApprovalRule(connection.userId, {
+            ...storedTransaction,
+            linked_account_id: plaidAccount.linkedAccountId
+          });
+        } catch (error) {
+          console.warn(`[PLAID] Auto-approval failed for ${unified.externalTransactionId}:`, error.message);
+        }
         processedCount += 1;
       }
 
@@ -270,7 +285,15 @@ class PlaidFundingService {
         if (!plaidAccount) continue;
 
         const unified = this.buildInvestmentTransaction(connection, plaidAccount, transaction);
-        await PlaidConnection.upsertTransaction(connection.userId, unified);
+        const storedTransaction = await PlaidConnection.upsertTransaction(connection.userId, unified);
+        try {
+          await this.applyAutoApprovalRule(connection.userId, {
+            ...storedTransaction,
+            linked_account_id: plaidAccount.linkedAccountId
+          });
+        } catch (error) {
+          console.warn(`[PLAID] Auto-approval failed for ${unified.externalTransactionId}:`, error.message);
+        }
         processedCount += 1;
       }
 
@@ -436,6 +459,11 @@ class PlaidFundingService {
       transactionType
     );
 
+    await this.persistApprovalRule(userId, accountId, record, {
+      transactionType,
+      description: payload.description || record.description
+    });
+
     return accountTransaction;
   }
 
@@ -492,6 +520,8 @@ class PlaidFundingService {
       await Account.deleteTransaction(record.account_transaction_id, userId);
     }
 
+    await this.removeApprovalRule(userId, accountId, record);
+
     return PlaidConnection.markTransactionPending(plaidTransactionId, userId);
   }
 
@@ -510,6 +540,84 @@ class PlaidFundingService {
 
   async resetApprovedImportForAccountTransaction(userId, accountTransactionId) {
     return PlaidConnection.resetApprovedTransactionByAccountTransactionId(userId, accountTransactionId);
+  }
+
+  async persistApprovalRule(userId, accountId, record, payload = {}) {
+    const normalizedDescription = normalizeRuleDescription(record.description);
+    if (!normalizedDescription || !record.plaid_account_row_id || !accountId) {
+      return null;
+    }
+
+    const resolvedDescription = String(payload.description || '').trim() || record.description;
+    const descriptionOverride = resolvedDescription !== record.description
+      ? resolvedDescription
+      : null;
+
+    return PlaidConnection.upsertTransactionRule(userId, {
+      plaidAccountRowId: record.plaid_account_row_id,
+      linkedAccountId: accountId,
+      matchDescription: record.description,
+      matchDescriptionNormalized: normalizedDescription,
+      transactionType: payload.transactionType,
+      descriptionOverride,
+      lastAppliedAt: new Date().toISOString()
+    });
+  }
+
+  async removeApprovalRule(userId, accountId, record) {
+    const normalizedDescription = normalizeRuleDescription(record.description);
+    if (!normalizedDescription || !record.plaid_account_row_id || !accountId) {
+      return null;
+    }
+
+    return PlaidConnection.deleteTransactionRule(
+      userId,
+      record.plaid_account_row_id,
+      accountId,
+      normalizedDescription
+    );
+  }
+
+  async applyAutoApprovalRule(userId, record) {
+    if (!record || record.review_status !== 'pending' || record.pending) {
+      return null;
+    }
+
+    const linkedAccountId = record.linked_account_id;
+    const normalizedDescription = normalizeRuleDescription(record.description);
+    if (!linkedAccountId || !normalizedDescription || !record.plaid_account_row_id) {
+      return null;
+    }
+
+    const rule = await PlaidConnection.findTransactionRule(
+      userId,
+      record.plaid_account_row_id,
+      linkedAccountId,
+      normalizedDescription
+    );
+
+    if (!rule) {
+      return null;
+    }
+
+    const accountTransaction = await Account.addTransaction(userId, linkedAccountId, {
+      transactionType: rule.transactionType,
+      amount: Math.abs(parseFloat(record.amount)),
+      transactionDate: formatDate(record.transaction_date),
+      description: rule.descriptionOverride || record.description,
+      sourceType: 'plaid',
+      sourceReferenceId: record.external_transaction_id,
+      approvedAt: new Date().toISOString()
+    });
+
+    await PlaidConnection.markTransactionApproved(
+      record.id,
+      accountTransaction.id,
+      rule.transactionType
+    );
+    await PlaidConnection.markTransactionRuleApplied(rule.id);
+
+    return accountTransaction;
   }
 }
 
