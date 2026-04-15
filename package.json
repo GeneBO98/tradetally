@@ -4,5 +4,8 @@
     "@opentelemetry/exporter-logs-otlp-http": "^0.211.0",
     "@opentelemetry/resources": "^2.5.0",
     "@opentelemetry/sdk-node": "^0.211.0"
+  },
+  "overrides": {
+    "yaml": "^2.8.3"
   }
 }
