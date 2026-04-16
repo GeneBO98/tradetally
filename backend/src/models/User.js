@@ -1,5 +1,48 @@
 const db = require('../config/database');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
+const encryptionService = require('../services/brokerSync/encryptionService');
+
+// Reset and email-verification tokens are stored as sha256 hashes so a read-only
+// DB disclosure (backup dump, replica snapshot) can't be turned into live account-
+// takeover links. The plaintext is only ever in the email sent to the user.
+function hashLookupToken(token) {
+  if (!token) return null;
+  return crypto.createHash('sha256').update(String(token)).digest('hex');
+}
+
+// Transparent AES-256-GCM encryption for user-supplied third-party AI provider
+// keys stored in user_settings. Decrypt falls back to the raw value so legacy
+// plaintext rows continue to work; they get re-encrypted on next update.
+const ENCRYPTED_SETTINGS_FIELDS = ['ai_api_key', 'cusip_ai_api_key'];
+
+function decryptSettingsField(value) {
+  if (!value) return value;
+  if (!encryptionService.isEncrypted(value)) return value;
+  try {
+    return encryptionService.decrypt(value);
+  } catch (_) {
+    return value;
+  }
+}
+
+function decryptSettingsRow(row) {
+  if (!row) return row;
+  for (const field of ENCRYPTED_SETTINGS_FIELDS) {
+    if (row[field]) row[field] = decryptSettingsField(row[field]);
+  }
+  return row;
+}
+
+function encryptSettingsField(value) {
+  if (value === null || value === undefined || value === '') return value;
+  if (encryptionService.isEncrypted(value)) return value;
+  try {
+    return encryptionService.encrypt(String(value));
+  } catch (_) {
+    return value;
+  }
+}
 
 class User {
   static async create({ email, username, password, fullName, verificationToken, verificationExpires, role = 'user', isVerified = false, adminApproved = true, tier = 'free', marketingConsent = false }) {
@@ -16,7 +59,7 @@ class User {
       RETURNING id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, tier, marketing_consent, created_at
     `;
 
-    const values = [email.toLowerCase(), username, hashedPassword, fullName, verificationToken, verificationExpires, role, isVerified, adminApproved, tier, marketingConsent];
+    const values = [email.toLowerCase(), username, hashedPassword, fullName, hashLookupToken(verificationToken), verificationExpires, role, isVerified, adminApproved, tier, marketingConsent];
     const result = await db.query(query, values);
 
     return result.rows[0];
@@ -132,13 +175,13 @@ class User {
     
     try {
       const result = await db.query(query, [userId]);
-      const settings = result.rows[0];
-      
+      const settings = decryptSettingsRow(result.rows[0]);
+
       // Provide default for statisticsCalculation if column doesn't exist yet
       if (settings && !settings.hasOwnProperty('statistics_calculation')) {
         settings.statistics_calculation = 'average';
       }
-      
+
       return settings;
     } catch (error) {
       // If column doesn't exist, gracefully handle it
@@ -146,7 +189,7 @@ class User {
         console.warn('statistics_calculation column not yet migrated, using default');
         const query = `SELECT * FROM user_settings WHERE user_id = $1`;
         const result = await db.query(query, [userId]);
-        const settings = result.rows[0];
+        const settings = decryptSettingsRow(result.rows[0]);
         if (settings) {
           settings.statistics_calculation = 'average';
         }
@@ -201,7 +244,12 @@ class User {
           values.push(value ? JSON.stringify(value) : null);
         } else {
           fields.push(`${dbColumn} = $${paramCount}`);
-          values.push(value);
+          // Encrypt third-party AI provider keys at rest
+          values.push(
+            ENCRYPTED_SETTINGS_FIELDS.includes(dbColumn)
+              ? encryptSettingsField(value)
+              : value
+          );
         }
         paramCount++;
       }
@@ -258,7 +306,7 @@ class User {
           });
       }
 
-      return result.rows[0];
+      return decryptSettingsRow(result.rows[0]);
     } catch (error) {
       console.error('[SETTINGS] Error updating user settings:', error.message);
       // Check if error is related to missing column
@@ -318,7 +366,7 @@ class User {
               });
           }
 
-          return result.rows[0];
+          return decryptSettingsRow(result.rows[0]);
         }
       }
       throw error;
@@ -331,8 +379,8 @@ class User {
       FROM users
       WHERE verification_token = $1 AND is_active = true
     `;
-    
-    const result = await db.query(query, [token]);
+
+    const result = await db.query(query, [hashLookupToken(token)]);
     return result.rows[0];
   }
 
@@ -355,31 +403,31 @@ class User {
       WHERE id = $3
       RETURNING id, email
     `;
-    
-    const result = await db.query(query, [token, expires, userId]);
+
+    const result = await db.query(query, [hashLookupToken(token), expires, userId]);
     return result.rows[0];
   }
 
 
   static async updateResetToken(userId, resetToken, resetExpires) {
     const query = `
-      UPDATE users 
+      UPDATE users
       SET reset_token = $1, reset_expires = $2
       WHERE id = $3
       RETURNING *
     `;
-    
-    const result = await db.query(query, [resetToken, resetExpires, userId]);
+
+    const result = await db.query(query, [hashLookupToken(resetToken), resetExpires, userId]);
     return result.rows[0];
   }
 
   static async findByResetToken(token) {
     const query = `
-      SELECT * FROM users 
+      SELECT * FROM users
       WHERE reset_token = $1 AND reset_expires > NOW()
     `;
-    
-    const result = await db.query(query, [token]);
+
+    const result = await db.query(query, [hashLookupToken(token)]);
     return result.rows[0];
   }
 

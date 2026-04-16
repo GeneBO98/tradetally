@@ -76,9 +76,36 @@ const userController = {
       const user = await User.findById(req.user.id);
       const settings = await User.getSettings(req.user.id);
 
+      const safeUser = user ? {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        full_name: user.full_name,
+        avatar_url: user.avatar_url,
+        role: user.role,
+        is_verified: user.is_verified,
+        admin_approved: user.admin_approved,
+        is_active: user.is_active,
+        timezone: user.timezone,
+        two_factor_enabled: user.two_factor_enabled,
+        tier: user.tier,
+        marketing_consent: user.marketing_consent,
+        created_at: user.created_at,
+        updated_at: user.updated_at,
+        last_login_at: user.last_login_at
+      } : null;
+
+      const safeSettings = settings
+        ? {
+            ...settings,
+            ai_api_key: settings.ai_api_key ? '***' : '',
+            cusip_ai_api_key: settings.cusip_ai_api_key ? '***' : ''
+          }
+        : settings;
+
       res.json({
-        user,
-        settings
+        user: safeUser,
+        settings: safeSettings
       });
     } catch (error) {
       next(error);

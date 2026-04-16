@@ -25,11 +25,10 @@ const twoFactorController = {
       // Generate QR code
       const qrCodeUrl = await QRCode.toDataURL(secret.otpauth_url);
 
-      // Generate backup codes
+      // Generate backup codes using CSPRNG (Math.random is predictable)
       const backupCodes = [];
       for (let i = 0; i < 10; i++) {
-        const code = Math.random().toString(36).substr(2, 8).toUpperCase();
-        backupCodes.push(code);
+        backupCodes.push(crypto.randomBytes(4).toString('hex').toUpperCase());
       }
 
       // Store temporary secret (not enabled yet)

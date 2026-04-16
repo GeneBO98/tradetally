@@ -219,7 +219,7 @@ const authV1Controller = {
         const existingDevice = await deviceService.findDeviceByFingerprint(user.id, deviceInfo.fingerprint);
         
         if (existingDevice) {
-          device = await deviceService.updateDeviceInfo(existingDevice.id, deviceInfo);
+          device = await deviceService.updateDeviceInfo(existingDevice.id, user.id, deviceInfo);
         } else {
           device = await deviceService.registerDevice(user.id, deviceInfo);
         }
@@ -330,8 +330,8 @@ const authV1Controller = {
         return res.status(400).json({ error: 'Device ID is required' });
       }
 
-      await refreshTokenService.revokeDeviceTokens(deviceId, 'device_logout');
-      
+      await refreshTokenService.revokeDeviceTokens(deviceId, req.user.id, 'device_logout');
+
       res.json({ message: 'Device logout successful' });
     } catch (error) {
       next(error);

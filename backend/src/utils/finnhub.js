@@ -774,20 +774,10 @@ class FinnhubClient {
 
   async generateSystemAIResponse(prompt) {
     try {
-      const db = require('../config/database');
-      
-      // Get admin AI settings from database
-      const settingsQuery = `
-        SELECT setting_key, setting_value 
-        FROM admin_settings 
-        WHERE setting_key IN ('default_ai_provider', 'default_ai_api_key', 'default_ai_api_url', 'default_ai_model')
-      `;
-      const settingsResult = await db.query(settingsQuery);
-      
-      const settings = {};
-      settingsResult.rows.forEach(row => {
-        settings[row.setting_key] = row.setting_value;
-      });
+      // Route through the service layer so encrypted default_ai_api_key values
+      // are transparently decrypted.
+      const adminSettings = require('../services/adminSettings');
+      const settings = await adminSettings.getAllSettings();
       
       // Validate configuration based on provider type
       const provider = settings.default_ai_provider || 'gemini';

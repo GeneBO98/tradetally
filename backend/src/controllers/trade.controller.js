@@ -20,6 +20,8 @@ const { getUserTimezone } = require('../utils/timezone');
 const Playbook = require('../models/Playbook');
 const MAEEstimator = require('../utils/maeEstimator');
 const TierService = require('../services/tierService');
+const { verifyJwtToken, TOKEN_PURPOSES } = require('../middleware/auth');
+const { escapeCsv } = require('../utils/csvEscape');
 
 /**
  * Auto-calculate MAE/MFE for a closed trade using Finnhub candle data.
@@ -471,17 +473,6 @@ const tradeController = {
       ].join(',');
 
       const csvRows = trades.map(trade => {
-        // Helper function to escape CSV values
-        const escapeCsv = (value) => {
-          if (value === null || value === undefined) return '';
-          const str = String(value);
-          // If the value contains comma, newline, or quotes, wrap in quotes and escape quotes
-          if (str.includes(',') || str.includes('\n') || str.includes('"')) {
-            return `"${str.replace(/"/g, '""')}"`;
-          }
-          return str;
-        };
-
         // Format dates
         const formatDate = (date) => {
           if (!date) return '';
@@ -1289,7 +1280,7 @@ const tradeController = {
       }
 
       const trade = await Trade.findById(req.params.id, req.user.id);
-      if (!trade) {
+      if (!trade || trade.user_id !== req.user.id) {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
@@ -4337,9 +4328,9 @@ const tradeController = {
     try {
       const tradeId = req.params.id;
       
-      // Verify trade belongs to user
+      // Verify trade belongs to user (findById also returns public trades — reject those)
       const trade = await Trade.findById(tradeId, req.user.id);
-      if (!trade) {
+      if (!trade || trade.user_id !== req.user.id) {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
@@ -4423,12 +4414,12 @@ const tradeController = {
         userFromMiddleware: req.user?.id
       });
 
-      // Check if token is provided as query parameter
+      // Check if token is provided as query parameter. Require an access-purpose
+      // JWT so pre_2fa temp tokens cannot be used to pull private images.
       let user = req.user;
       if (!user && req.query.token) {
         try {
-          const jwt = require('jsonwebtoken');
-          const decoded = jwt.verify(req.query.token, process.env.JWT_SECRET);
+          const decoded = verifyJwtToken(req.query.token, { requiredPurpose: TOKEN_PURPOSES.ACCESS });
           user = { id: decoded.id };
         } catch (error) {
           console.log('JWT verification failed for query token:', error.message);
@@ -4546,9 +4537,9 @@ const tradeController = {
         return res.status(400).json({ error: 'Chart URL is required' });
       }
 
-      // Verify trade belongs to user
+      // Verify trade belongs to user (findById also returns public trades — reject those)
       const trade = await Trade.findById(tradeId, req.user.id);
-      if (!trade) {
+      if (!trade || trade.user_id !== req.user.id) {
         return res.status(404).json({ error: 'Trade not found' });
       }
 

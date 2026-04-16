@@ -2853,21 +2853,18 @@ Keep recommendations practical, specific, and actionable. Focus on data-driven i
   }
 };
 
+const { escapeCsv } = require('../utils/csvEscape');
+
 function convertToCSV(data) {
   if (data.length === 0) return '';
-  
+
   const headers = Object.keys(data[0]);
-  const csvHeaders = headers.join(',');
-  
-  const csvRows = data.map(row => {
-    return headers.map(header => {
-      const value = row[header];
-      return typeof value === 'string' && value.includes(',') 
-        ? `"${value}"` 
-        : value;
-    }).join(',');
-  });
-  
+  const csvHeaders = headers.map(escapeCsv).join(',');
+
+  const csvRows = data.map(row =>
+    headers.map(header => escapeCsv(row[header])).join(',')
+  );
+
   return [csvHeaders, ...csvRows].join('\n');
 }
 

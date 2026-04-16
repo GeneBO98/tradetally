@@ -1,7 +1,37 @@
 const db = require('../config/database');
+const encryptionService = require('./brokerSync/encryptionService');
+
+// Admin-provided default keys for third-party AI providers. Encrypted at rest
+// using the same AES-256-GCM service as broker credentials. Legacy plaintext
+// rows continue to work and get re-encrypted on next update.
+const ENCRYPTED_ADMIN_KEYS = new Set([
+  'default_ai_api_key',
+  'default_cusip_ai_api_key'
+]);
+
+function decryptAdminValue(key, value) {
+  if (!value || !ENCRYPTED_ADMIN_KEYS.has(key)) return value;
+  if (!encryptionService.isEncrypted(value)) return value;
+  try {
+    return encryptionService.decrypt(value);
+  } catch (_) {
+    return value;
+  }
+}
+
+function encryptAdminValue(key, value) {
+  if (value === null || value === undefined || value === '') return value;
+  if (!ENCRYPTED_ADMIN_KEYS.has(key)) return value;
+  if (encryptionService.isEncrypted(value)) return value;
+  try {
+    return encryptionService.encrypt(String(value));
+  } catch (_) {
+    return value;
+  }
+}
 
 class AdminSettingsService {
-  
+
   /**
    * Get admin setting by key
    * @param {string} key - The setting key
@@ -13,8 +43,9 @@ class AdminSettingsService {
         'SELECT setting_value FROM admin_settings WHERE setting_key = $1',
         [key]
       );
-      
-      return result.rows.length > 0 ? result.rows[0].setting_value : null;
+
+      if (result.rows.length === 0) return null;
+      return decryptAdminValue(key, result.rows[0].setting_value);
     } catch (error) {
       console.error(`Error getting admin setting ${key}:`, error);
       return null;
@@ -28,12 +59,12 @@ class AdminSettingsService {
   async getAllSettings() {
     try {
       const result = await db.query('SELECT setting_key, setting_value FROM admin_settings');
-      
+
       const settings = {};
       result.rows.forEach(row => {
-        settings[row.setting_key] = row.setting_value;
+        settings[row.setting_key] = decryptAdminValue(row.setting_key, row.setting_value);
       });
-      
+
       return settings;
     } catch (error) {
       console.error('Error getting all admin settings:', error);
@@ -50,13 +81,13 @@ class AdminSettingsService {
   async updateSetting(key, value) {
     try {
       await db.query(
-        `INSERT INTO admin_settings (setting_key, setting_value) 
-         VALUES ($1, $2) 
-         ON CONFLICT (setting_key) 
+        `INSERT INTO admin_settings (setting_key, setting_value)
+         VALUES ($1, $2)
+         ON CONFLICT (setting_key)
          DO UPDATE SET setting_value = $2, updated_at = CURRENT_TIMESTAMP`,
-        [key, value]
+        [key, encryptAdminValue(key, value)]
       );
-      
+
       return true;
     } catch (error) {
       console.error(`Error updating admin setting ${key}:`, error);
@@ -71,20 +102,20 @@ class AdminSettingsService {
    */
   async updateSettings(settings) {
     const client = await db.pool.connect();
-    
+
     try {
       await client.query('BEGIN');
-      
+
       for (const [key, value] of Object.entries(settings)) {
         await client.query(
-          `INSERT INTO admin_settings (setting_key, setting_value) 
-           VALUES ($1, $2) 
-           ON CONFLICT (setting_key) 
+          `INSERT INTO admin_settings (setting_key, setting_value)
+           VALUES ($1, $2)
+           ON CONFLICT (setting_key)
            DO UPDATE SET setting_value = $2, updated_at = CURRENT_TIMESTAMP`,
-          [key, value]
+          [key, encryptAdminValue(key, value)]
         );
       }
-      
+
       await client.query('COMMIT');
       return true;
     } catch (error) {

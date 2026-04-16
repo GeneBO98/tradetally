@@ -10,6 +10,10 @@ const brokerSyncService = require('../services/brokerSync');
 const AnalyticsCache = require('../services/analyticsCache');
 const cache = require('../utils/cache');
 const logger = require('../utils/logger');
+const db = require('../config/database');
+const crypto = require('crypto');
+
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 function redactAccountNumber(accountNumber) {
   if (!accountNumber) return null;
@@ -160,13 +164,17 @@ const brokerSyncController = {
         });
       }
 
-      // Generate state token for CSRF protection
-      const crypto = require('crypto');
-      const state = crypto.randomBytes(32).toString('hex');
+      // Generate a random state token and persist it server-side. The callback
+      // looks up the row to recover the initiating userId — never trusting the
+      // client-supplied state blob (which was forgeable in the legacy design).
+      const stateToken = crypto.randomBytes(32).toString('hex');
+      const expiresAt = new Date(Date.now() + OAUTH_STATE_TTL_MS);
 
-      // Store state in session or temporary storage
-      // For now, we'll encode user ID in the state
-      const encodedState = Buffer.from(JSON.stringify({ userId, nonce: state })).toString('base64');
+      await db.query(
+        `INSERT INTO oauth_pending_states (state_token, user_id, provider, expires_at)
+         VALUES ($1, $2, $3, $4)`,
+        [stateToken, userId, 'schwab', expiresAt]
+      );
 
       // Build authorization URL
       const authUrl = new URL('https://api.schwabapi.com/v1/oauth/authorize');
@@ -174,7 +182,7 @@ const brokerSyncController = {
       authUrl.searchParams.set('client_id', process.env.SCHWAB_CLIENT_ID);
       authUrl.searchParams.set('redirect_uri', process.env.SCHWAB_REDIRECT_URI);
       authUrl.searchParams.set('scope', 'api');
-      authUrl.searchParams.set('state', encodedState);
+      authUrl.searchParams.set('state', stateToken);
 
       console.log(`[BROKER-SYNC] Initiating Schwab OAuth for user ${userId}`);
 
@@ -205,15 +213,26 @@ const brokerSyncController = {
         return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=missing_params`);
       }
 
-      // Decode state to get user ID
-      let stateData;
-      try {
-        stateData = JSON.parse(Buffer.from(state, 'base64').toString());
-      } catch {
+      // Look up the state server-side. The row recovers the initiating userId;
+      // the client-supplied state payload is never trusted. Mark the row
+      // consumed atomically so the same state can't be replayed.
+      const stateLookup = await db.query(
+        `UPDATE oauth_pending_states
+            SET consumed_at = NOW()
+          WHERE state_token = $1
+            AND provider = 'schwab'
+            AND consumed_at IS NULL
+            AND expires_at > NOW()
+          RETURNING user_id`,
+        [state]
+      );
+
+      if (stateLookup.rows.length === 0) {
+        console.warn('[SCHWAB-OAUTH] Rejected callback with invalid, expired, or reused state');
         return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=invalid_state`);
       }
 
-      const { userId } = stateData;
+      const userId = stateLookup.rows[0].user_id;
 
       // Exchange code for tokens
       console.log('[SCHWAB-OAUTH] Exchanging authorization code for tokens...');

@@ -81,15 +81,19 @@ export const useAuthStore = defineStore('auth', () => {
 
   function navigateAfterLogin(returnUrl = null) {
     if (returnUrl) {
-      const decoded = decodeURIComponent(returnUrl)
-      if (decoded.startsWith('/')) {
-        router.push(decoded)
-      } else {
-        window.location.href = decoded
+      try {
+        const decoded = decodeURIComponent(returnUrl)
+        // Only accept absolute same-origin paths. Reject protocol-relative (//evil),
+        // absolute URLs (http://...), and dangerous schemes (javascript:, data:).
+        if (/^\/(?!\/)/.test(decoded)) {
+          router.push(decoded)
+          return
+        }
+      } catch (_) {
+        // fall through to dashboard on malformed URL
       }
-    } else {
-      router.push({ name: 'dashboard' })
     }
+    router.push({ name: 'dashboard' })
   }
 
   async function register(userData) {

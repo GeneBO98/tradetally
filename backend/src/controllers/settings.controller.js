@@ -2,6 +2,19 @@ const User = require('../models/User');
 const db = require('../config/database');
 const adminSettingsService = require('../services/adminSettings');
 const { validateAiProviderUrl } = require('../utils/urlSecurity');
+const encryptionService = require('../services/brokerSync/encryptionService');
+
+// Encrypt third-party AI provider keys on import paths that write to
+// user_settings directly. Safe with already-encrypted values.
+function encryptKeyIfPresent(value) {
+  if (!value) return value;
+  if (encryptionService.isEncrypted(value)) return value;
+  try {
+    return encryptionService.encrypt(String(value));
+  } catch (_) {
+    return value;
+  }
+}
 
 // Helper function to convert snake_case to camelCase
 function toCamelCase(obj) {
@@ -63,14 +76,22 @@ const settingsController = {
   async getSettings(req, res, next) {
     try {
       let settings = await User.getSettings(req.user.id);
-      
+
       if (!settings) {
         settings = await User.createSettings(req.user.id);
       }
 
+      const safeSettings = settings
+        ? {
+            ...settings,
+            ai_api_key: settings.ai_api_key ? '***' : '',
+            cusip_ai_api_key: settings.cusip_ai_api_key ? '***' : ''
+          }
+        : settings;
+
       // Convert snake_case to camelCase for frontend
-      const camelCaseSettings = toCamelCase(settings);
-      
+      const camelCaseSettings = toCamelCase(safeSettings);
+
       res.json({ settings: camelCaseSettings });
     } catch (error) {
       next(error);
@@ -79,9 +100,24 @@ const settingsController = {
 
   async updateSettings(req, res, next) {
     try {
-      const settings = await User.updateSettings(req.user.id, req.body);
+      // Strip masked placeholders so clients that echo back "***" don't overwrite the real key
+      const body = { ...req.body };
+      if (body.aiApiKey === '***') delete body.aiApiKey;
+      if (body.ai_api_key === '***') delete body.ai_api_key;
+      if (body.cusipAiApiKey === '***') delete body.cusipAiApiKey;
+      if (body.cusip_ai_api_key === '***') delete body.cusip_ai_api_key;
+
+      const settings = await User.updateSettings(req.user.id, body);
+      const safeSettings = settings
+        ? {
+            ...settings,
+            ai_api_key: settings.ai_api_key ? '***' : '',
+            cusip_ai_api_key: settings.cusip_ai_api_key ? '***' : ''
+          }
+        : settings;
+
       // Convert snake_case to camelCase for frontend
-      const camelCaseSettings = toCamelCase(settings);
+      const camelCaseSettings = toCamelCase(safeSettings);
       res.json({ settings: camelCaseSettings });
     } catch (error) {
       next(error);
@@ -210,7 +246,7 @@ const settingsController = {
 
       res.json({
         aiProvider: settings.ai_provider || 'gemini',
-        aiApiKey: settings.ai_api_key || '',
+        aiApiKey: settings.ai_api_key ? '***' : '',
         aiApiUrl: settings.ai_api_url || '',
         aiModel: settings.ai_model || ''
       });
@@ -250,10 +286,14 @@ const settingsController = {
 
       const aiSettings = {
         ai_provider: aiProvider,
-        ai_api_key: aiApiKey,
         ai_api_url: aiApiUrl,
         ai_model: aiModel
       };
+
+      // Preserve existing key when client echoes back the masked placeholder
+      if (aiApiKey !== undefined && aiApiKey !== '***') {
+        aiSettings.ai_api_key = aiApiKey;
+      }
 
       const settings = await User.updateSettings(req.user.id, aiSettings);
       
@@ -291,7 +331,7 @@ const settingsController = {
 
       res.json({
         cusipAiProvider: settings.cusip_ai_provider || '',
-        cusipAiApiKey: settings.cusip_ai_api_key || '',
+        cusipAiApiKey: settings.cusip_ai_api_key ? '***' : '',
         cusipAiApiUrl: settings.cusip_ai_api_url || '',
         cusipAiModel: settings.cusip_ai_model || '',
         useMainProvider
@@ -349,10 +389,14 @@ const settingsController = {
 
       const cusipAiSettings = {
         cusip_ai_provider: cusipAiProvider,
-        cusip_ai_api_key: cusipAiApiKey,
         cusip_ai_api_url: cusipAiApiUrl,
         cusip_ai_model: cusipAiModel
       };
+
+      // Preserve existing key when client echoes back the masked placeholder
+      if (cusipAiApiKey !== undefined && cusipAiApiKey !== '***') {
+        cusipAiSettings.cusip_ai_api_key = cusipAiApiKey;
+      }
 
       const settings = await User.updateSettings(req.user.id, cusipAiSettings);
 
@@ -1194,7 +1238,7 @@ const settingsController = {
                   s.tradeGroupingTimeGapMinutes || 60,
                   s.defaultBroker || null,
                   s.aiProvider || null,
-                  s.aiApiKey || null,
+                  encryptKeyIfPresent(s.aiApiKey) || null,
                   s.aiApiUrl || null,
                   s.aiModel || null,
                   s.defaultStopLossPercent || null,
@@ -1223,7 +1267,7 @@ const settingsController = {
               if (s.tradeGroupingTimeGapMinutes !== undefined) { updates.push(`trade_grouping_time_gap_minutes = $${paramCount++}`); values.push(s.tradeGroupingTimeGapMinutes); }
               if (s.defaultBroker) { updates.push(`default_broker = $${paramCount++}`); values.push(s.defaultBroker); }
               if (s.aiProvider) { updates.push(`ai_provider = $${paramCount++}`); values.push(s.aiProvider); }
-              if (s.aiApiKey) { updates.push(`ai_api_key = $${paramCount++}`); values.push(s.aiApiKey); }
+              if (s.aiApiKey) { updates.push(`ai_api_key = $${paramCount++}`); values.push(encryptKeyIfPresent(s.aiApiKey)); }
               if (s.aiApiUrl) { updates.push(`ai_api_url = $${paramCount++}`); values.push(s.aiApiUrl); }
               if (s.aiModel) { updates.push(`ai_model = $${paramCount++}`); values.push(s.aiModel); }
               if (s.defaultStopLossPercent !== undefined) { updates.push(`default_stop_loss_percent = $${paramCount++}`); values.push(s.defaultStopLossPercent); }

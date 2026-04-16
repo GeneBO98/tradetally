@@ -65,8 +65,8 @@ const deviceController = {
     try {
       const { id } = req.params;
       const updates = req.body;
-      
-      const device = await deviceService.updateDeviceInfo(id, updates);
+
+      const device = await deviceService.updateDeviceInfo(id, req.user.id, updates);
       
       res.json({
         message: 'Device updated successfully',
@@ -176,8 +176,8 @@ const deviceController = {
       
       // Verify device belongs to user
       await deviceService.getDevice(id, req.user.id);
-      
-      await refreshTokenService.revokeDeviceTokens(id, 'manual_revocation');
+
+      await refreshTokenService.revokeDeviceTokens(id, req.user.id, 'manual_revocation');
       
       res.json({ message: 'All device sessions revoked successfully' });
     } catch (error) {
@@ -222,7 +222,7 @@ const deviceController = {
       }
       
       const updates = req.body;
-      const device = await deviceService.updateDeviceInfo(deviceId, updates);
+      const device = await deviceService.updateDeviceInfo(deviceId, req.user.id, updates);
       
       res.json({
         message: 'Current device updated successfully',
@@ -253,7 +253,7 @@ const deviceController = {
       }
       
       // Update device fingerprint
-      await deviceService.updateDeviceInfo(deviceId, { fingerprint });
+      await deviceService.updateDeviceInfo(deviceId, req.user.id, { fingerprint });
       
       res.json({ message: 'Device fingerprint updated successfully' });
     } catch (error) {

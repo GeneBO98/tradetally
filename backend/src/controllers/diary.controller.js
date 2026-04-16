@@ -8,6 +8,7 @@ const db = require('../config/database');
 const imageProcessor = require('../utils/imageProcessor');
 const path = require('path');
 const fs = require('fs').promises;
+const { verifyJwtToken, TOKEN_PURPOSES } = require('../middleware/auth');
 
 
 // Get diary entries for user with filtering and pagination
@@ -343,12 +344,12 @@ const getDiaryImage = async (req, res) => {
       return res.status(400).json({ error: 'Invalid filename' });
     }
 
-    // Check if token is provided as query parameter (for direct image access)
+    // Check if token is provided as query parameter (for direct image access).
+    // Require an access-purpose JWT so pre_2fa temp tokens cannot unlock diary images.
     let user = req.user;
     if (!user && req.query.token) {
       try {
-        const jwt = require('jsonwebtoken');
-        const decoded = jwt.verify(req.query.token, process.env.JWT_SECRET);
+        const decoded = verifyJwtToken(req.query.token, { requiredPurpose: TOKEN_PURPOSES.ACCESS });
         user = { id: decoded.id };
       } catch (error) {
         return res.status(401).json({ error: 'Invalid token' });

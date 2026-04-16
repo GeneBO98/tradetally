@@ -598,14 +598,12 @@ Please provide a helpful, specific response to the user's question. Reference th
     let apiUrl = options.apiUrl;
 
     try {
-      // Check user settings
-      const userSettings = await db.query(
-        `SELECT ai_provider, ai_api_key, ai_api_url, ai_model FROM user_settings WHERE user_id = $1`,
-        [userId]
-      );
+      // Route through User.getSettings so the encrypted ai_api_key is
+      // transparently decrypted via the model layer.
+      const User = require('../models/User');
+      const settings = await User.getSettings(userId);
 
-      if (userSettings.rows[0]) {
-        const settings = userSettings.rows[0];
+      if (settings) {
         provider = provider || settings.ai_provider || 'gemini';
         apiKey = apiKey || settings.ai_api_key;
         apiUrl = apiUrl || settings.ai_api_url;

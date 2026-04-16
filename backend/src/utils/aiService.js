@@ -19,24 +19,12 @@ class AIService {
 
   async getUserSettings(userId) {
     try {
-      const db = require('../config/database');
-      
-      // Query user_settings table directly
-      const userSettingsQuery = `
-        SELECT ai_provider, ai_api_key, ai_api_url, ai_model
-        FROM user_settings 
-        WHERE user_id = $1
-      `;
-      const userSettingsResult = await db.query(userSettingsQuery, [userId]);
-      
-      let userSettings = null;
-      if (userSettingsResult.rows.length > 0) {
-        userSettings = userSettingsResult.rows[0];
-      }
-      
+      // Route through User.getSettings so encrypted ai_api_key is decrypted.
+      const userSettings = await User.getSettings(userId);
+
       // Get admin default settings as fallback
       const adminDefaults = await adminSettingsService.getDefaultAISettings();
-      
+
       return {
         provider: userSettings?.ai_provider || adminDefaults.provider,
         apiKey: userSettings?.ai_api_key || adminDefaults.apiKey,
@@ -67,21 +55,8 @@ class AIService {
    */
   async getCusipUserSettings(userId) {
     try {
-      const db = require('../config/database');
-
-      // Query user_settings table for CUSIP-specific AI settings
-      const userSettingsQuery = `
-        SELECT cusip_ai_provider, cusip_ai_api_key, cusip_ai_api_url, cusip_ai_model,
-               ai_provider, ai_api_key, ai_api_url, ai_model
-        FROM user_settings
-        WHERE user_id = $1
-      `;
-      const userSettingsResult = await db.query(userSettingsQuery, [userId]);
-
-      let userSettings = null;
-      if (userSettingsResult.rows.length > 0) {
-        userSettings = userSettingsResult.rows[0];
-      }
+      // Route through User.getSettings so encrypted AI keys are decrypted.
+      const userSettings = await User.getSettings(userId);
 
       // Get admin default CUSIP AI settings
       const adminCusipDefaults = await adminSettingsService.getDefaultCusipAISettings();

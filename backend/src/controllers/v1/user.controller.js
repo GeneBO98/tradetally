@@ -21,7 +21,14 @@ const userV1Controller = {
     try {
       const user = await User.findById(req.user.id);
       const rawSettings = await User.getSettings(req.user.id);
-      const settings = toCamelCaseRecord(rawSettings || {});
+      const safeRawSettings = rawSettings
+        ? {
+            ...rawSettings,
+            ai_api_key: rawSettings.ai_api_key ? '***' : '',
+            cusip_ai_api_key: rawSettings.cusip_ai_api_key ? '***' : ''
+          }
+        : {};
+      const settings = toCamelCaseRecord(safeRawSettings);
 
       res.json({
         profile: {

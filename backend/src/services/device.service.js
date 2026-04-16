@@ -91,9 +91,13 @@ class DeviceService {
   }
 
   /**
-   * Update device information
+   * Update device information.
+   * userId is required to prevent cross-user metadata edits via a known/guessed device UUID.
    */
-  async updateDeviceInfo(deviceId, updates) {
+  async updateDeviceInfo(deviceId, userId, updates) {
+    if (!userId) {
+      throw new Error('userId is required to update device info');
+    }
     const {
       name,
       model,
@@ -102,17 +106,17 @@ class DeviceService {
     } = updates;
 
     const result = await db.query(`
-      UPDATE devices 
-      SET device_name = COALESCE($2, device_name),
-          device_model = COALESCE($3, device_model),
-          platform_version = COALESCE($4, platform_version),
-          app_version = COALESCE($5, app_version),
+      UPDATE devices
+      SET device_name = COALESCE($3, device_name),
+          device_model = COALESCE($4, device_model),
+          platform_version = COALESCE($5, platform_version),
+          app_version = COALESCE($6, app_version),
           last_active = CURRENT_TIMESTAMP
-      WHERE id = $1
-      RETURNING id, device_name, device_type, device_model, 
-                device_fingerprint, platform_version, app_version, 
+      WHERE id = $1 AND user_id = $2
+      RETURNING id, device_name, device_type, device_model,
+                device_fingerprint, platform_version, app_version,
                 is_trusted, last_active, created_at
-    `, [deviceId, name, model, platformVersion, appVersion]);
+    `, [deviceId, userId, name, model, platformVersion, appVersion]);
 
     if (result.rows.length === 0) {
       throw new Error('Device not found');

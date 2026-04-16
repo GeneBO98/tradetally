@@ -145,14 +145,18 @@ class RefreshTokenService {
   }
 
   /**
-   * Revoke all refresh tokens for a device
+   * Revoke all refresh tokens for a device.
+   * userId is required to prevent cross-user revocation via a known/guessed device UUID.
    */
-  async revokeDeviceTokens(deviceId, reason = 'device_logout') {
+  async revokeDeviceTokens(deviceId, userId, reason = 'device_logout') {
+    if (!userId) {
+      throw new Error('userId is required to revoke device tokens');
+    }
     await db.query(`
-      UPDATE refresh_tokens 
-      SET revoked_at = CURRENT_TIMESTAMP, revoked_reason = $2
-      WHERE device_id = $1 AND revoked_at IS NULL
-    `, [deviceId, reason]);
+      UPDATE refresh_tokens
+      SET revoked_at = CURRENT_TIMESTAMP, revoked_reason = $3
+      WHERE device_id = $1 AND user_id = $2 AND revoked_at IS NULL
+    `, [deviceId, userId, reason]);
   }
 
   /**
