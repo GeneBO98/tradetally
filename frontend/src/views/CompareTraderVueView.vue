@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-6xl mx-auto py-8 px-4">
+  <div class="content-wrapper py-8">
     <div class="text-center mb-12">
       <h1 class="text-4xl font-bold text-gray-900 dark:text-white mb-4">
         TradeTally vs TraderVue 2026 -- Free Alternative Comparison
@@ -10,8 +10,8 @@
     </div>
 
     <!-- Comparison Table -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden mb-12">
-      <table class="w-full">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-x-auto mb-12">
+      <table class="w-full min-w-[600px]">
         <thead>
           <tr class="bg-gray-50 dark:bg-gray-900">
             <th class="px-6 py-4 text-left text-sm font-medium text-gray-900 dark:text-gray-200">Feature</th>

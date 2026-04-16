@@ -21,7 +21,7 @@
           </div>
 
           <!-- Summary Stats -->
-          <div class="mt-4 grid grid-cols-3 gap-4">
+          <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
             <div class="bg-green-50 dark:bg-green-900/20 rounded-lg p-3 text-center">
               <p class="text-2xl font-bold text-green-600 dark:text-green-400">{{ tradesImported }}</p>
               <p class="text-xs text-green-700 dark:text-green-300">Imported</p>
@@ -220,7 +220,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { CheckCircleIcon, ExclamationTriangleIcon, XCircleIcon, InformationCircleIcon } from '@heroicons/vue/24/outline'
 import { useAuthStore } from '@/stores/auth'
 
@@ -269,7 +269,26 @@ const props = defineProps({
   }
 })
 
-defineEmits(['close', 'load-demo-data'])
+const emit = defineEmits(['close', 'load-demo-data'])
+
+function handleEscape(e) {
+  if (e.key === 'Escape' && props.isOpen) {
+    emit('close')
+  }
+}
+
+watch(
+  () => props.isOpen,
+  (open) => {
+    if (open) window.addEventListener('keydown', handleEscape)
+    else window.removeEventListener('keydown', handleEscape)
+  },
+  { immediate: true }
+)
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleEscape)
+})
 
 const showSkippedDetails = ref(false)
 const showFailedDetails = ref(false)

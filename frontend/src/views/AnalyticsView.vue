@@ -277,7 +277,7 @@
                 To calculate your K-Ratio, you need to track your account equity over time. The K-Ratio requires at least 3 equity entries to calculate meaningful consistency metrics.
               </p>
               <div class="mt-2 flex flex-wrap gap-2">
-                <router-link to="/settings" class="inline-flex items-center px-3 py-1 text-xs font-medium text-blue-700 bg-blue-100 rounded-full hover:bg-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/40">
+                <router-link to="/settings" class="inline-flex items-center px-3 py-1 text-xs font-medium text-primary-700 bg-primary-100 rounded-full hover:bg-primary-200 dark:bg-primary-900/20 dark:text-primary-400 dark:hover:bg-primary-900/40">
                   Update Current Equity
                 </router-link>
                 <router-link to="/equity-history" class="inline-flex items-center px-3 py-1 text-xs font-medium text-green-700 bg-green-100 rounded-full hover:bg-green-200 dark:bg-green-900/20 dark:text-green-400 dark:hover:bg-green-900/40">
@@ -635,7 +635,7 @@
                 v-if="sectorStats.uncategorizedSymbols > 0"
                 @click="refreshSectorData"
                 :disabled="loadingSectorRefresh"
-                class="px-3 py-1 text-xs bg-blue-100 hover:bg-blue-200 dark:bg-blue-900 dark:hover:bg-blue-800 text-blue-700 dark:text-blue-300 rounded-md transition-colors disabled:opacity-50"
+                class="px-3 py-1 text-xs bg-primary-100 hover:bg-primary-200 dark:bg-primary-900 dark:hover:bg-primary-800 text-primary-700 dark:text-primary-300 rounded-md transition-colors disabled:opacity-50"
               >
                 <div v-if="loadingSectorRefresh" class="animate-spin rounded-full h-3 w-3 border-b border-current"></div>
                 <span v-else>Refresh</span>
@@ -1008,7 +1008,7 @@
               <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                 <tr v-for="strategy in filteredStrategyStats" :key="strategy.strategy">
                   <td class="px-6 py-4 whitespace-nowrap">
-                    <span class="px-2 py-1 bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400 text-xs rounded-full">
+                    <span class="px-2 py-1 bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400 text-xs rounded-full">
                       {{ strategy.strategy }}
                     </span>
                   </td>
@@ -1067,7 +1067,7 @@
               <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                 <tr v-for="hour in filteredHourOfDayStats" :key="hour.hour">
                   <td class="px-6 py-4 whitespace-nowrap">
-                    <span class="px-2 py-1 bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400 text-xs rounded-full">
+                    <span class="px-2 py-1 bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400 text-xs rounded-full">
                       {{ formatHour(hour.hour) }}
                     </span>
                   </td>

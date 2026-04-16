@@ -36,7 +36,7 @@
         <div>
           <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
             Stop Loss
-            <span v-if="!editingStopLoss" @click="startEditingStopLoss" class="ml-1 text-primary-500 hover:text-primary-600 cursor-pointer">(edit)</span>
+            <button v-if="!editingStopLoss" type="button" @click="startEditingStopLoss" class="ml-1 text-primary-500 hover:text-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500 rounded" aria-label="Edit stop loss">(edit)</button>
           </div>
           <div v-if="editingStopLoss" class="space-y-2">
             <div class="relative">
@@ -79,7 +79,7 @@
           <div v-if="!hasMultipleTpTargets && editableTakeProfitTargets.length === 0">
             <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
               Take Profit (TP1)
-              <span v-if="!editingTakeProfit" @click="startEditingTakeProfit" class="ml-1 text-primary-500 hover:text-primary-600 cursor-pointer">(edit)</span>
+              <button v-if="!editingTakeProfit" type="button" @click="startEditingTakeProfit" class="ml-1 text-primary-500 hover:text-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500 rounded" aria-label="Edit take profit">(edit)</button>
             </div>
             <div v-if="editingTakeProfit" class="space-y-2">
               <div class="flex items-center gap-2">

@@ -565,9 +565,12 @@
         <div
             v-if="showCreateWatchlistModal || editingWatchlist"
             class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
+            role="dialog"
+            aria-modal="true"
+            @click.self="cancelEditWatchlist"
         >
             <div
-                class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700"
+                class="relative top-20 mx-4 sm:mx-auto p-5 border w-full max-w-sm shadow-lg rounded-md bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700"
             >
                 <div class="mt-3">
                     <h3
@@ -653,9 +656,12 @@
         <div
             v-if="showCreateAlertModal || editingAlert"
             class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
+            role="dialog"
+            aria-modal="true"
+            @click.self="cancelEditAlert"
         >
             <div
-                class="relative top-20 mx-auto p-5 border w-[500px] shadow-lg rounded-md bg-white dark:bg-gray-800 dark:border-gray-700"
+                class="relative top-20 mx-4 sm:mx-auto p-5 border w-full max-w-lg shadow-lg rounded-md bg-white dark:bg-gray-800 dark:border-gray-700"
             >
                 <div class="mt-3">
                     <h3
@@ -817,7 +823,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import OnboardingCard from "@/components/onboarding/OnboardingCard.vue";
@@ -1194,10 +1200,24 @@ watch(
     { immediate: true },
 );
 
+const handleEscape = (e) => {
+    if (e.key !== "Escape") return;
+    if (showCreateAlertModal.value || editingAlert.value) {
+        cancelEditAlert();
+    } else if (editingWatchlist.value || showCreateWatchlistModal.value) {
+        cancelEditWatchlist();
+    }
+};
+
 onMounted(() => {
     if (!authLoading.value) {
         loadWatchlists();
         loadAlerts();
     }
+    window.addEventListener("keydown", handleEscape);
+});
+
+onBeforeUnmount(() => {
+    window.removeEventListener("keydown", handleEscape);
 });
 </script>

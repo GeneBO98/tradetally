@@ -90,7 +90,15 @@
             </div>
 
             <!-- Content -->
-            <div class="flex-1 min-w-0 cursor-pointer" @click="handleNotificationClick(notification)">
+            <div
+              class="flex-1 min-w-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 rounded"
+              role="button"
+              tabindex="0"
+              :aria-label="`Open notification: ${notification.symbol || 'Notification'}`"
+              @click="handleNotificationClick(notification)"
+              @keydown.enter.prevent="handleNotificationClick(notification)"
+              @keydown.space.prevent="handleNotificationClick(notification)"
+            >
               <div class="flex items-start justify-between">
                 <div class="flex-1">
                   <div class="flex items-center space-x-2 mb-1">

@@ -880,7 +880,15 @@
                   </div>
                 </div>
 
-                <div class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToAnalytics('drawdown')">
+                <div
+                  class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-shadow focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+                  role="button"
+                  tabindex="0"
+                  aria-label="View max drawdown trades"
+                  @click="navigateToAnalytics('drawdown')"
+                  @keydown.enter.prevent="navigateToAnalytics('drawdown')"
+                  @keydown.space.prevent="navigateToAnalytics('drawdown')"
+                >
                   <div class="card-body">
                     <dt class="text-data-secondary truncate">
                       Max Drawdown
@@ -907,7 +915,15 @@
                 </div>
               </div>
               <div v-else class="flex-card-container">
-                <div class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('avgWin')">
+                <div
+                  class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-shadow focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+                  role="button"
+                  tabindex="0"
+                  :aria-label="`View ${calculationMethod} winning trades`"
+                  @click="navigateToTradesFiltered('avgWin')"
+                  @keydown.enter.prevent="navigateToTradesFiltered('avgWin')"
+                  @keydown.space.prevent="navigateToTradesFiltered('avgWin')"
+                >
                   <div class="card-body">
                     <dt class="text-data-secondary truncate">
                       {{ calculationMethod }} Win
@@ -918,7 +934,15 @@
                   </div>
                 </div>
 
-                <div class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('avgLoss')">
+                <div
+                  class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-shadow focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+                  role="button"
+                  tabindex="0"
+                  :aria-label="`View ${calculationMethod} losing trades`"
+                  @click="navigateToTradesFiltered('avgLoss')"
+                  @keydown.enter.prevent="navigateToTradesFiltered('avgLoss')"
+                  @keydown.space.prevent="navigateToTradesFiltered('avgLoss')"
+                >
                   <div class="card-body">
                     <dt class="text-data-secondary truncate">
                       {{ calculationMethod }} Loss
@@ -929,7 +953,15 @@
                   </div>
                 </div>
 
-                <div class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('best')">
+                <div
+                  class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-shadow focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+                  role="button"
+                  tabindex="0"
+                  aria-label="View best trade"
+                  @click="navigateToTradesFiltered('best')"
+                  @keydown.enter.prevent="navigateToTradesFiltered('best')"
+                  @keydown.space.prevent="navigateToTradesFiltered('best')"
+                >
                   <div class="card-body">
                     <dt class="text-data-secondary truncate">
                       Best Trade
@@ -940,7 +972,15 @@
                   </div>
                 </div>
 
-                <div class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('worst')">
+                <div
+                  class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-shadow focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+                  role="button"
+                  tabindex="0"
+                  aria-label="View worst trade"
+                  @click="navigateToTradesFiltered('worst')"
+                  @keydown.enter.prevent="navigateToTradesFiltered('worst')"
+                  @keydown.space.prevent="navigateToTradesFiltered('worst')"
+                >
                   <div class="card-body">
                     <dt class="text-data-secondary truncate">
                       Worst Trade
@@ -1218,7 +1258,7 @@
     </div>
     
     <!-- Layout Settings Modal -->
-    <div v-if="showLayoutSettings" class="fixed inset-0 z-50 overflow-y-auto" @click="showLayoutSettings = false">
+    <div v-if="showLayoutSettings" class="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true" @click="showLayoutSettings = false">
       <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
         <div class="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" @click="showLayoutSettings = false"></div>
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen"></span>
@@ -1232,7 +1272,8 @@
             </h3>
             <button
               @click="showLayoutSettings = false"
-              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              aria-label="Close"
+              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500 rounded"
             >
               <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -2517,10 +2558,20 @@ function handleClickOutside(event) {
   }
 }
 
+function handleDashboardEscape(event) {
+  if (event.key !== 'Escape') return
+  if (showLayoutSettings.value) {
+    showLayoutSettings.value = false
+  } else if (showTimeRangeDropdown.value) {
+    showTimeRangeDropdown.value = false
+  }
+}
+
 onMounted(async () => {
   console.log('Dashboard: Component mounted')
 
   document.addEventListener('click', handleClickOutside)
+  document.addEventListener('keydown', handleDashboardEscape)
 
   // Load manual option prices from localStorage
   loadManualOptionPrices()
@@ -2580,6 +2631,7 @@ onUnmounted(() => {
   console.log('Dashboard: Component unmounting - cleaning up all intervals...')
 
   document.removeEventListener('click', handleClickOutside)
+  document.removeEventListener('keydown', handleDashboardEscape)
 
   // Stop auto-update (clears updateInterval and countdownInterval)
   stopAutoUpdate()

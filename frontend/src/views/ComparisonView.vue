@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-7xl mx-auto py-8 px-4">
+  <div class="content-wrapper py-8">
     <!-- Hero Section with SEO Keywords -->
     <div class="text-center mb-12">
       <h1 class="text-4xl font-bold text-gray-900 dark:text-white mb-4">
@@ -34,8 +34,9 @@
     </div>
 
     <!-- Comparison Table -->
+    <p class="md:hidden text-sm text-gray-500 dark:text-gray-400 mb-2 text-center">Swipe horizontally to see all platforms →</p>
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-x-auto mb-12">
-      <table class="w-full">
+      <table class="w-full min-w-[600px]">
         <thead>
           <tr class="bg-gray-50 dark:bg-gray-900">
             <th class="px-4 py-4 text-left text-sm font-medium text-gray-900 dark:text-gray-200 sticky left-0 bg-gray-50 dark:bg-gray-900 z-10">

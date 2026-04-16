@@ -356,9 +356,12 @@
         <div
             v-if="showCreateAlertModal || editingAlert"
             class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
+            role="dialog"
+            aria-modal="true"
+            @click.self="cancelEdit"
         >
             <div
-                class="relative top-20 mx-auto p-5 border w-[500px] shadow-lg rounded-md bg-white dark:bg-gray-800 dark:border-gray-700"
+                class="relative top-20 mx-4 sm:mx-auto p-5 border w-full max-w-lg shadow-lg rounded-md bg-white dark:bg-gray-800 dark:border-gray-700"
             >
                 <div class="mt-3">
                     <h3
@@ -520,7 +523,7 @@
 </template>
 
 <script>
-import { ref, onMounted, computed, watch } from "vue";
+import { ref, onMounted, onBeforeUnmount, computed, watch } from "vue";
 import { useRoute } from "vue-router";
 import { useNotification } from "@/composables/useNotification";
 import { usePriceAlertNotifications } from "@/composables/usePriceAlertNotifications";
@@ -783,8 +786,19 @@ export default {
             { deep: true },
         );
 
+        const handleEscape = (e) => {
+            if (e.key === "Escape" && (showCreateAlertModal.value || editingAlert.value)) {
+                cancelEdit();
+            }
+        };
+
         onMounted(() => {
             loadAlerts();
+            window.addEventListener("keydown", handleEscape);
+        });
+
+        onBeforeUnmount(() => {
+            window.removeEventListener("keydown", handleEscape);
         });
 
         return {

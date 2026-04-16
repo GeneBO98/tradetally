@@ -1830,7 +1830,7 @@
                                         >
                                         <span
                                             v-if="setting.instrument"
-                                            class="px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 rounded"
+                                            class="px-2 py-0.5 text-xs font-medium bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200 rounded"
                                         >
                                             {{ setting.instrument }}
                                         </span>
@@ -1912,8 +1912,9 @@
                                 <div class="flex items-center space-x-2 ml-4">
                                     <button
                                         @click="editBrokerFee(setting)"
-                                        class="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                                        class="text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
                                         title="Edit"
+                                        aria-label="Edit broker fee"
                                     >
                                         <svg
                                             class="h-5 w-5"

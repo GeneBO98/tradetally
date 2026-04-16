@@ -1,6 +1,6 @@
 <template>
     <div class="min-h-screen bg-gray-50 dark:bg-gray-900">
-        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div class="content-wrapper py-12">
             <div class="bg-white dark:bg-gray-800 rounded-lg shadow px-8 py-10">
                 <h1 class="heading-page mb-8">Privacy Policy</h1>
                 <p class="text-gray-700 dark:text-gray-300 mb-6">

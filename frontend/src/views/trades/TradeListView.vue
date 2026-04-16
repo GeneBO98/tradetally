@@ -221,7 +221,15 @@
               @click.stop
               class="mt-1 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
             />
-            <div class="flex-1 cursor-pointer" @click="$router.push(`/trades/${trade.id}`)">
+            <div
+              class="flex-1 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 rounded"
+              role="button"
+              tabindex="0"
+              :aria-label="`View trade details for ${trade.symbol}`"
+              @click="$router.push(`/trades/${trade.id}`)"
+              @keydown.enter.prevent="$router.push(`/trades/${trade.id}`)"
+              @keydown.space.prevent="$router.push(`/trades/${trade.id}`)"
+            >
             <div class="flex justify-between items-start mb-3">
               <div class="flex items-center space-x-2">
                 <div class="text-lg font-semibold text-gray-900 dark:text-white">

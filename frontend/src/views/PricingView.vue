@@ -1,6 +1,6 @@
 <template>
   <div class="min-h-screen bg-gray-50 dark:bg-gray-900 py-12">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="content-wrapper">
       <!-- Header -->
       <div class="text-center">
         <h1 class="text-4xl font-bold text-gray-900 dark:text-white">

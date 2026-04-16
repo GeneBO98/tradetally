@@ -283,7 +283,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import api from '@/services/api'
 import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -489,7 +489,18 @@ async function deleteAccount() {
   }
 }
 
+function handleEscape(e) {
+  if (e.key === 'Escape' && showDeleteModal.value) {
+    showDeleteModal.value = false
+  }
+}
+
 onMounted(() => {
   fetchAccounts()
+  window.addEventListener('keydown', handleEscape)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleEscape)
 })
 </script>

@@ -101,7 +101,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, watch, onBeforeUnmount } from 'vue'
 import { ExclamationTriangleIcon } from '@heroicons/vue/24/outline'
 
 const props = defineProps({
@@ -134,6 +134,23 @@ const props = defineProps({
 const emit = defineEmits(['close', 'use-detected', 'keep-selected'])
 
 const showHeaders = ref(false)
+
+function handleEscape(e) {
+  if (e.key === 'Escape' && props.isOpen) emit('close')
+}
+
+watch(
+  () => props.isOpen,
+  (open) => {
+    if (open) window.addEventListener('keydown', handleEscape)
+    else window.removeEventListener('keydown', handleEscape)
+  },
+  { immediate: true }
+)
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleEscape)
+})
 
 const brokerNames = {
   auto: 'Auto-Detect',

@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-4xl mx-auto py-8 px-4">
+  <div class="content-wrapper py-8">
     <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-8">Free Trading Journal FAQ: TradeTally vs TraderVue vs TraderSync</h1>
     
     <div class="space-y-8">

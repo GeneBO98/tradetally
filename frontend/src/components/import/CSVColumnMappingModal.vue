@@ -345,7 +345,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { XMarkIcon, ExclamationTriangleIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
 import { useNotification } from '@/composables/useNotification'
@@ -368,6 +368,23 @@ const props = defineProps({
 const emit = defineEmits(['close', 'mappingSaved'])
 
 const { showSuccess, showError } = useNotification()
+
+function handleEscape(e) {
+  if (e.key === 'Escape' && props.isOpen) emit('close')
+}
+
+watch(
+  () => props.isOpen,
+  (open) => {
+    if (open) window.addEventListener('keydown', handleEscape)
+    else window.removeEventListener('keydown', handleEscape)
+  },
+  { immediate: true }
+)
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleEscape)
+})
 
 const loading = ref(false)
 const error = ref(null)
