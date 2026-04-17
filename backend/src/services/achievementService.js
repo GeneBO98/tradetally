@@ -125,9 +125,21 @@ class AchievementService {
         
       case 'risk_adherence':
         return await AchievementService.checkRiskAdherence(userId, criteria.trades);
+
+      case 'active_playbooks':
+        return await AchievementService.checkActivePlaybooks(userId, criteria.count);
         
       case 'cooling_period_usage':
         return await AchievementService.checkCoolingPeriodUsage(userId, criteria.percentage);
+
+      case 'planned_trades':
+        return await AchievementService.checkPlannedTrades(userId, criteria.count);
+
+      case 'trade_data_hygiene':
+        return await AchievementService.checkTradeDataHygiene(userId, criteria.count, criteria.min_length);
+
+      case 'high_adherence_reviews':
+        return await AchievementService.checkHighAdherenceReviews(userId, criteria.count, criteria.threshold);
         
       case 'weekly_pnl':
         return await AchievementService.checkWeeklyPnL(userId, criteria.positive);
@@ -399,6 +411,27 @@ class AchievementService {
     
     return false;
   }
+
+  static async checkActivePlaybooks(userId, requiredCount) {
+    const result = await db.query(`
+      SELECT COUNT(*)::int AS active_playbook_count
+      FROM playbooks
+      WHERE user_id = $1
+        AND is_active = true
+    `, [userId]);
+
+    if (result.rows[0].active_playbook_count >= requiredCount) {
+      return {
+        earned: true,
+        metadata: {
+          active_playbook_count: result.rows[0].active_playbook_count,
+          required_count: requiredCount
+        }
+      };
+    }
+
+    return false;
+  }
   
   // Check cooling period usage
   static async checkCoolingPeriodUsage(userId, percentage) {
@@ -447,6 +480,87 @@ class AchievementService {
       };
     }
     
+    return false;
+  }
+
+  static async checkPlannedTrades(userId, requiredTrades) {
+    const result = await db.query(`
+      SELECT COUNT(*)::int AS qualifying_trades
+      FROM trades
+      WHERE user_id = $1
+        AND exit_time IS NOT NULL
+        AND stop_loss IS NOT NULL
+        AND take_profit IS NOT NULL
+    `, [userId]);
+
+    if (result.rows[0].qualifying_trades >= requiredTrades) {
+      return {
+        earned: true,
+        metadata: {
+          qualifying_trades: result.rows[0].qualifying_trades,
+          required_trades: requiredTrades
+        }
+      };
+    }
+
+    return false;
+  }
+
+  static async checkTradeDataHygiene(userId, requiredTrades, minLength = 20) {
+    const result = await db.query(`
+      SELECT COUNT(*)::int AS qualifying_trades
+      FROM trades t
+      LEFT JOIN trade_playbook_reviews r
+        ON r.trade_id = t.id
+       AND r.user_id = t.user_id
+      WHERE t.user_id = $1
+        AND t.exit_time IS NOT NULL
+        AND t.stop_loss IS NOT NULL
+        AND LENGTH(BTRIM(COALESCE(t.setup, ''))) > 0
+        AND (
+          LENGTH(BTRIM(COALESCE(t.notes, ''))) >= $2
+          OR LENGTH(BTRIM(COALESCE(r.review_notes, ''))) >= $2
+        )
+    `, [userId, minLength]);
+
+    if (result.rows[0].qualifying_trades >= requiredTrades) {
+      return {
+        earned: true,
+        metadata: {
+          qualifying_trades: result.rows[0].qualifying_trades,
+          required_trades: requiredTrades,
+          min_length: minLength
+        }
+      };
+    }
+
+    return false;
+  }
+
+  static async checkHighAdherenceReviews(userId, requiredReviews, threshold) {
+    const result = await db.query(`
+      SELECT COUNT(*)::int AS qualifying_reviews
+      FROM trade_playbook_reviews r
+      INNER JOIN trades t
+        ON t.id = r.trade_id
+       AND t.user_id = r.user_id
+      WHERE r.user_id = $1
+        AND t.exit_time IS NOT NULL
+        AND r.followed_plan = true
+        AND COALESCE(r.adherence_score, 0) >= $2
+    `, [userId, threshold]);
+
+    if (result.rows[0].qualifying_reviews >= requiredReviews) {
+      return {
+        earned: true,
+        metadata: {
+          qualifying_reviews: result.rows[0].qualifying_reviews,
+          required_reviews: requiredReviews,
+          threshold
+        }
+      };
+    }
+
     return false;
   }
   
