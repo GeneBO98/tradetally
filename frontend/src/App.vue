@@ -80,7 +80,7 @@
     <ModalAlert />
     <CookieConsentBanner v-if="isBillingEnabled" />
     <!-- Gamification celebration overlay -->
-    <CelebrationOverlay :queue="celebrationQueue" />
+    <CelebrationOverlay v-if="!isImportRoute" :queue="celebrationQueue" />
 
     <!-- Passkey registration prompt (shown after login if user has no passkeys) -->
     <div v-if="showPasskeyPrompt" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -202,6 +202,8 @@ const isAuthRoute = computed(() => {
   return ['login', 'register'].includes(route.name)
 })
 
+const isImportRoute = computed(() => route.name === 'import')
+
 const showSupportModal = ref(false)
 const supportSubject = ref('')
 const supportMessage = ref('')
@@ -243,6 +245,11 @@ watch(() => [authStore.user?.tier, authStore.token, authStore.user?.billingEnabl
       disconnect()
     }
   }
+}, { immediate: true })
+
+watch(isImportRoute, (onImportRoute) => {
+  if (!onImportRoute) return
+  celebrationQueue.value.splice(0, celebrationQueue.value.length)
 }, { immediate: true })
 
 // Passkey registration prompt

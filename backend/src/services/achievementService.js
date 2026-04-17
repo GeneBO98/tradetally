@@ -1,6 +1,7 @@
 const db = require('../config/database');
 const NotificationService = require('./notificationService');
 const LeaderboardService = require('./leaderboardService');
+const logger = require('../utils/logger');
 
 class AchievementService {
   
@@ -29,6 +30,13 @@ class AchievementService {
       
       // Update user stats if new achievements were earned
       if (newAchievements.length > 0) {
+        newAchievements.forEach(achievement => {
+          logger.info(
+            `[ACHIEVEMENT] Awarded "${achievement.name}" (${achievement.key}) to user ${userId} for ${achievement.points || 0} XP`,
+            'app'
+          );
+        });
+
         await this.updateUserStats(userId, newAchievements);
         // Re-fetch stats after update to compute delta
         const afterStats = await this.getUserStats(userId);

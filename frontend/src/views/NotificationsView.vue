@@ -48,7 +48,7 @@
           No notifications yet
         </h3>
         <p class="text-gray-500 dark:text-gray-400">
-          You'll see notifications here when someone comments on your trades or your price alerts are triggered.
+          You'll see notifications here for achievements, trade comments, price alerts, and other account activity.
         </p>
       </div>
 
@@ -79,6 +79,16 @@
                 />
                 <ChatBubbleLeftRightIcon
                   v-else-if="notification.type === 'trade_comment'"
+                  class="h-5 w-5"
+                  :class="getIconColorClass(notification.type)"
+                />
+                <TrophyIcon
+                  v-else-if="notification.type === 'achievement_earned'"
+                  class="h-5 w-5"
+                  :class="getIconColorClass(notification.type)"
+                />
+                <ArrowTrendingUpIcon
+                  v-else-if="notification.type === 'level_up'"
                   class="h-5 w-5"
                   :class="getIconColorClass(notification.type)"
                 />
@@ -177,7 +187,9 @@ import { useRouter } from 'vue-router'
 import { 
   BellIcon, 
   BellSlashIcon, 
-  ChatBubbleLeftRightIcon 
+  ChatBubbleLeftRightIcon,
+  TrophyIcon,
+  ArrowTrendingUpIcon
 } from '@heroicons/vue/24/outline'
 import { useAuthStore } from '@/stores/auth'
 import { useUserTimezone } from '@/composables/useUserTimezone'
@@ -297,6 +309,10 @@ const handleNotificationClick = (notification) => {
     router.push(`/trades/${notification.trade_id}`)
   } else if (notification.type === 'price_alert') {
     router.push('/price-alerts')
+  } else if (['achievement_earned', 'level_up', 'challenge_joined', 'challenge_completed', 'leaderboard_ranking'].includes(notification.type)) {
+    router.push('/leaderboard')
+  } else if (notification.type === 'behavioral_alert') {
+    router.push('/metrics/behavioral')
   }
 }
 
@@ -319,6 +335,12 @@ const getTypeLabel = (type) => {
   switch (type) {
     case 'price_alert': return 'Price Alert'
     case 'trade_comment': return 'Comment'
+    case 'achievement_earned': return 'Achievement'
+    case 'level_up': return 'Level Up'
+    case 'challenge_joined': return 'Challenge'
+    case 'challenge_completed': return 'Challenge'
+    case 'leaderboard_ranking': return 'Leaderboard'
+    case 'behavioral_alert': return 'Behavioral'
     default: return 'Notification'
   }
 }
@@ -329,6 +351,12 @@ const getTypeBadgeClass = (type) => {
       return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
     case 'trade_comment':
       return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+    case 'achievement_earned':
+      return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
+    case 'level_up':
+      return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200'
+    case 'behavioral_alert':
+      return 'bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200'
     default:
       return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
   }
@@ -340,6 +368,12 @@ const getIconBgClass = (type) => {
       return 'bg-yellow-50 dark:bg-yellow-900/20'
     case 'trade_comment':
       return 'bg-blue-50 dark:bg-blue-900/20'
+    case 'achievement_earned':
+      return 'bg-amber-50 dark:bg-amber-900/20'
+    case 'level_up':
+      return 'bg-emerald-50 dark:bg-emerald-900/20'
+    case 'behavioral_alert':
+      return 'bg-rose-50 dark:bg-rose-900/20'
     default:
       return 'bg-gray-50 dark:bg-gray-700'
   }
@@ -351,6 +385,12 @@ const getIconColorClass = (type) => {
       return 'text-yellow-600 dark:text-yellow-400'
     case 'trade_comment':
       return 'text-blue-600 dark:text-blue-400'
+    case 'achievement_earned':
+      return 'text-amber-600 dark:text-amber-400'
+    case 'level_up':
+      return 'text-emerald-600 dark:text-emerald-400'
+    case 'behavioral_alert':
+      return 'text-rose-600 dark:text-rose-400'
     default:
       return 'text-gray-400'
   }

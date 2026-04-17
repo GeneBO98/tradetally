@@ -89,6 +89,14 @@
                     v-else-if="notification.type === 'trade_comment'"
                     class="h-5 w-5 text-blue-500"
                   />
+                  <TrophyIcon
+                    v-else-if="notification.type === 'achievement_earned'"
+                    class="h-5 w-5 text-amber-500"
+                  />
+                  <ArrowTrendingUpIcon
+                    v-else-if="notification.type === 'level_up'"
+                    class="h-5 w-5 text-emerald-500"
+                  />
                   <BellIcon v-else class="h-5 w-5 text-gray-400" />
                 </div>
 
@@ -148,19 +156,30 @@ import { useRouter } from 'vue-router'
 import { 
   BellIcon, 
   BellSlashIcon, 
-  ChatBubbleLeftRightIcon 
+  ChatBubbleLeftRightIcon,
+  TrophyIcon,
+  ArrowTrendingUpIcon
 } from '@heroicons/vue/24/outline'
 import { useAuthStore } from '@/stores/auth'
 import { useUserTimezone } from '@/composables/useUserTimezone'
+import { useNotificationCenter } from '@/composables/useNotificationCenter'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const { formatDateTime: formatDateTimeTz } = useUserTimezone()
+const {
+  unreadCount,
+  recentUnreadNotifications,
+  addUnreadNotifications,
+  reconcileUnreadCount,
+  setRecentUnreadNotifications,
+  decrementUnreadCount,
+  clearUnreadState
+} = useNotificationCenter()
 
 // Component state
 const isOpen = ref(false)
 const notifications = ref([])
-const unreadCount = ref(0)
 const loading = ref(false)
 const markingAsRead = ref(false)
 const pollInterval = ref(null)
@@ -175,12 +194,37 @@ const toggleDropdown = async () => {
   
   isOpen.value = !isOpen.value
   if (isOpen.value) {
+    if (recentUnreadNotifications.value.length > 0) {
+      notifications.value = recentUnreadNotifications.value
+    }
     await fetchNotifications()
   }
 }
 
 const closeDropdown = () => {
   isOpen.value = false
+}
+
+const handleNotificationsUpdated = async (event) => {
+  if (!isAuthenticated.value || pollingDisabled.value) return
+
+  const unreadDelta = Number(event?.detail?.unreadDelta || 0)
+  const incomingNotifications = Array.isArray(event?.detail?.notifications)
+    ? event.detail.notifications
+    : []
+
+  addUnreadNotifications(unreadDelta, incomingNotifications)
+
+  if (incomingNotifications.length > 0 && isOpen.value) {
+    notifications.value = recentUnreadNotifications.value
+  }
+
+  window.setTimeout(async () => {
+    await fetchUnreadCount()
+    if (isOpen.value) {
+      await fetchNotifications()
+    }
+  }, 250)
 }
 
 const stopPolling = () => {
@@ -201,7 +245,8 @@ const fetchNotifications = async () => {
   try {
     loading.value = true
     // Only fetch unread notifications for the bell dropdown
-    const response = await fetch('/api/notifications?limit=10&unread_only=true', {
+    const response = await fetch(`/api/notifications?limit=10&unread_only=true&_t=${Date.now()}`, {
+      cache: 'no-store',
       headers: {
         'Authorization': `Bearer ${authStore.token}`
       }
@@ -209,10 +254,19 @@ const fetchNotifications = async () => {
     
     if (response.ok) {
       const data = await response.json()
-      notifications.value = data.data || []
+      const fetchedNotifications = data.data || []
+
+      if (fetchedNotifications.length > 0) {
+        notifications.value = fetchedNotifications
+        setRecentUnreadNotifications(fetchedNotifications)
+      } else if (recentUnreadNotifications.value.length > 0) {
+        notifications.value = recentUnreadNotifications.value
+      } else {
+        notifications.value = []
+      }
     } else if (response.status === 401 || response.status === 403) {
       notifications.value = []
-      unreadCount.value = 0
+      clearUnreadState()
       isOpen.value = false
       disablePolling()
     }
@@ -227,7 +281,8 @@ const fetchUnreadCount = async () => {
   if (!isAuthenticated.value || pollingDisabled.value) return
   
   try {
-    const response = await fetch('/api/notifications/unread-count', {
+    const response = await fetch(`/api/notifications/unread-count?_t=${Date.now()}`, {
+      cache: 'no-store',
       headers: {
         'Authorization': `Bearer ${authStore.token}`
       }
@@ -235,9 +290,9 @@ const fetchUnreadCount = async () => {
     
     if (response.ok) {
       const data = await response.json()
-      unreadCount.value = data.unread_count || 0
+      reconcileUnreadCount(data.unread_count || 0)
     } else if (response.status === 401 || response.status === 403) {
-      unreadCount.value = 0
+      clearUnreadState()
       disablePolling()
     }
   } catch (error) {
@@ -269,7 +324,7 @@ const markAllAsRead = async () => {
     
     // Update local state
     notifications.value = notifications.value.map(n => ({ ...n, is_read: true }))
-    unreadCount.value = 0
+    clearUnreadState()
     
     // Refresh the notifications and unread count to make sure they're accurate
     await Promise.all([fetchNotifications(), fetchUnreadCount()])
@@ -299,7 +354,8 @@ const handleNotificationClick = async (notification) => {
       notifications.value = notifications.value.filter(n => n.id !== notification.id)
       
       // Update unread count
-      unreadCount.value = Math.max(0, unreadCount.value - 1)
+      setRecentUnreadNotifications(notifications.value)
+      decrementUnreadCount()
     } catch (error) {
       console.error('Error marking notification as read:', error)
     }
@@ -310,6 +366,10 @@ const handleNotificationClick = async (notification) => {
     router.push(`/trades/${notification.trade_id}`)
   } else if (notification.type === 'price_alert') {
     router.push('/price-alerts')
+  } else if (['achievement_earned', 'level_up', 'challenge_joined', 'challenge_completed', 'leaderboard_ranking'].includes(notification.type)) {
+    router.push('/leaderboard')
+  } else if (notification.type === 'behavioral_alert') {
+    router.push('/metrics/behavioral')
   }
   
   closeDropdown()
@@ -338,10 +398,13 @@ onMounted(() => {
     // Poll for unread count every 30 seconds
     pollInterval.value = setInterval(fetchUnreadCount, 30000)
   }
+
+  window.addEventListener('notifications-updated', handleNotificationsUpdated)
 })
 
 onUnmounted(() => {
   stopPolling()
+  window.removeEventListener('notifications-updated', handleNotificationsUpdated)
 })
 
 // Watch for auth changes
@@ -357,7 +420,7 @@ watch(isAuthenticated, (newValue) => {
     pollingDisabled.value = false
     stopPolling()
     notifications.value = []
-    unreadCount.value = 0
+    clearUnreadState()
     isOpen.value = false
   }
 })

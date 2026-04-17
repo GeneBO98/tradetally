@@ -1106,7 +1106,14 @@ export default {
 
         // Load saved tab from localStorage
         const savedTab = localStorage.getItem("gamificationTab");
-        const activeTab = ref(savedTab || "overview");
+        const validTabs = new Set([
+            "overview",
+            "achievements",
+            "leaderboards",
+        ]);
+        const activeTab = ref(
+            validTabs.has(savedTab) ? savedTab : "overview",
+        );
 
         const tabs = [
             { key: "overview", name: "Overview", icon: mdiChartBox },
@@ -1998,7 +2005,7 @@ export default {
         watch(activeTab, (newTab) => {
             localStorage.setItem("gamificationTab", newTab);
             loadTabData();
-        });
+        }, { immediate: true });
 
         // Watch for showFilters changes to persist to localStorage
         watch(showFilters, (newValue) => {

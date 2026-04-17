@@ -54,6 +54,37 @@
             </p>
           </div>
 
+          <div v-if="props.achievements.length > 0" class="mt-4">
+            <div class="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
+              <div class="flex items-start gap-3">
+                <TrophyIcon class="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
+                <div class="min-w-0 flex-1">
+                  <p class="text-sm font-medium text-amber-900 dark:text-amber-100">
+                    {{ props.achievements.length === 1 ? 'Achievement unlocked' : `${props.achievements.length} achievements unlocked` }}
+                  </p>
+                  <p class="mt-1 text-sm text-amber-800 dark:text-amber-200">
+                    {{ achievementSummary }}
+                  </p>
+                  <div class="mt-3 flex flex-wrap gap-2">
+                    <span
+                      v-for="achievement in props.achievements.slice(0, 4)"
+                      :key="achievement.id || achievement.name"
+                      class="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-800"
+                    >
+                      {{ achievement.name }}
+                    </span>
+                    <span
+                      v-if="props.achievements.length > 4"
+                      class="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-800"
+                    >
+                      +{{ props.achievements.length - 4 }} more
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Warnings Section -->
           <div v-if="warnings && warnings.length > 0" class="mt-4">
             <div class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
@@ -204,14 +235,28 @@
           </div>
         </div>
 
-        <!-- Close Button -->
-        <div class="mt-5 sm:mt-6">
+        <div class="mt-5 sm:mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button
             type="button"
-            class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary-600 text-base font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:text-sm"
+            class="inline-flex w-full justify-center rounded-md border border-gray-300 px-4 py-2 text-base font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700 sm:w-auto sm:text-sm"
             @click="$emit('close')"
           >
             Close
+          </button>
+          <button
+            v-if="props.tradesImported > 0"
+            type="button"
+            class="inline-flex w-full justify-center rounded-md border border-primary-300 px-4 py-2 text-base font-medium text-primary-700 shadow-sm hover:bg-primary-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:border-primary-700 dark:text-primary-300 dark:hover:bg-primary-900/30 sm:w-auto sm:text-sm"
+            @click="$emit('view-trades')"
+          >
+            View Trades
+          </button>
+          <button
+            type="button"
+            class="inline-flex w-full justify-center rounded-md border border-transparent bg-primary-600 px-4 py-2 text-base font-medium text-white shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 sm:w-auto sm:text-sm"
+            @click="$emit('view-analytics')"
+          >
+            View Analytics
           </button>
         </div>
       </div>
@@ -221,7 +266,7 @@
 
 <script setup>
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
-import { CheckCircleIcon, ExclamationTriangleIcon, XCircleIcon, InformationCircleIcon } from '@heroicons/vue/24/outline'
+import { CheckCircleIcon, ExclamationTriangleIcon, XCircleIcon, InformationCircleIcon, TrophyIcon } from '@heroicons/vue/24/outline'
 import { useAuthStore } from '@/stores/auth'
 
 const authStore = useAuthStore()
@@ -247,6 +292,10 @@ const props = defineProps({
     type: Array,
     default: () => []
   },
+  achievements: {
+    type: Array,
+    default: () => []
+  },
   selectedBroker: {
     type: String,
     default: ''
@@ -269,7 +318,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['close', 'load-demo-data'])
+const emit = defineEmits(['close', 'load-demo-data', 'view-analytics', 'view-trades'])
 
 function handleEscape(e) {
   if (e.key === 'Escape' && props.isOpen) {
@@ -338,6 +387,15 @@ const skippedReasons = computed(() => {
 
 const warnings = computed(() => {
   return props.diagnostics?.warnings || []
+})
+
+const achievementSummary = computed(() => {
+  if (props.achievements.length === 0) return ''
+  if (props.achievements.length === 1) {
+    return props.achievements[0]?.description || props.achievements[0]?.name || ''
+  }
+
+  return 'Your latest import unlocked new milestones. You can review them from Notifications or the achievements page.'
 })
 
 const displayedSkippedReasons = computed(() => {

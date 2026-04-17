@@ -19,10 +19,39 @@ const reconnectTimeout = ref(null)
 const reconnectDelay = ref(3000) // Start at 3s, exponential backoff up to 60s
 // Ephemeral queue for achievement celebrations and xp updates
 const celebrationQueue = ref([])
+const DEFAULT_CELEBRATION_SUPPRESSION_MS = 30 * 1000
+const celebrationSuppressedUntil = ref(0)
 
 export function usePriceAlertNotifications() {
   const authStore = useAuthStore()
   const { showSuccess, showWarning } = useNotification()
+
+  const isSuppressingCelebrations = () => {
+    if (!celebrationSuppressedUntil.value) return false
+
+    if (Date.now() > celebrationSuppressedUntil.value) {
+      celebrationSuppressedUntil.value = 0
+      return false
+    }
+
+    return true
+  }
+
+  const suppressCelebrations = (durationMs = DEFAULT_CELEBRATION_SUPPRESSION_MS) => {
+    celebrationSuppressedUntil.value = Date.now() + durationMs
+  }
+
+  const clearCelebrationSuppression = () => {
+    celebrationSuppressedUntil.value = 0
+  }
+
+  const queueCelebrationItem = (item) => {
+    if (isSuppressingCelebrations()) {
+      return
+    }
+
+    celebrationQueue.value.push(item)
+  }
   
   const connect = () => {
     // Skip verbose logging - only log important state changes
@@ -156,15 +185,15 @@ export function usePriceAlertNotifications() {
 
       case 'achievement_earned':
         // Queue celebration items for UI overlay
-        celebrationQueue.value.push({ type: 'achievement', payload: data.data })
+        queueCelebrationItem({ type: 'achievement', payload: data.data })
         break
 
       case 'level_up':
-        celebrationQueue.value.push({ type: 'level_up', payload: data.data })
+        queueCelebrationItem({ type: 'level_up', payload: data.data })
         break
 
       case 'xp_update':
-        celebrationQueue.value.push({ type: 'xp_update', payload: data.data })
+        queueCelebrationItem({ type: 'xp_update', payload: data.data })
         break
     }
   }
@@ -261,7 +290,11 @@ export function usePriceAlertNotifications() {
     connect,
     disconnect,
     requestNotificationPermission,
-    celebrationQueue
+    celebrationQueue,
+    suppressCelebrations,
+    clearCelebrationSuppression,
+    queueCelebrationItem,
+    isSuppressingCelebrations
   }
 }
 

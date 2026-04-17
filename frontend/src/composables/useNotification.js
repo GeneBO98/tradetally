@@ -4,20 +4,26 @@ const notification = ref(null)
 const modalAlert = ref(null)
 
 export function useNotification() {
-  function showNotification(type, title, message = '') {
-    notification.value = { type, title, message }
+  function showNotification(type, title, message = '', options = {}) {
+    notification.value = {
+      type,
+      title,
+      message,
+      actions: options.actions || [],
+      duration: options.duration
+    }
   }
 
-  function showSuccess(title, message) {
-    showNotification('success', title, message)
+  function showSuccess(title, message, options = {}) {
+    showNotification('success', title, message, options)
   }
 
-  function showError(title, message) {
-    showNotification('error', title, message)
+  function showError(title, message, options = {}) {
+    showNotification('error', title, message, options)
   }
 
-  function showWarning(title, message) {
-    showNotification('warning', title, message)
+  function showWarning(title, message, options = {}) {
+    showNotification('warning', title, message, options)
   }
 
   // New method for critical errors that need immediate attention

@@ -1151,6 +1151,7 @@
       :duplicates-skipped="importResultsData.duplicatesSkipped"
       :diagnostics="importResultsData.diagnostics"
       :failed-trades="importResultsData.failedTrades"
+      :achievements="importResultsData.achievements"
       :selected-broker="selectedBroker"
       :file-name="selectedFile?.name || ''"
       :user-email="authStore.user?.email || ''"
@@ -1158,6 +1159,8 @@
       :demo-data-loading="creatingDemoData"
       @close="handleImportResultsClose"
       @load-demo-data="handleLoadDemoData"
+      @view-analytics="handleImportResultsViewAnalytics"
+      @view-trades="handleImportResultsViewTrades"
     />
   </Teleport>
 </template>
@@ -1175,6 +1178,7 @@ import { ArrowUpTrayIcon, XMarkIcon, ExclamationTriangleIcon, Cog6ToothIcon, Mag
 import { useAnalytics } from '@/composables/useAnalytics'
 import api from '@/services/api'
 import { useGrowthBook } from '@/composables/useGrowthBook'
+import { useNotificationCenter } from '@/composables/useNotificationCenter'
 
 const { formatDateTime: formatDateTimeTz } = useUserTimezone()
 // Lazy-load modal components - only parsed/executed when first shown
@@ -1190,9 +1194,10 @@ const tradesStore = useTradesStore()
 const authStore = useAuthStore()
 const router = useRouter()
 const { showSuccess, showError, showImportantWarning, showSuccessModal, clearModalAlert } = useNotification()
-const { celebrationQueue } = usePriceAlertNotifications()
+const { suppressCelebrations } = usePriceAlertNotifications()
 const { track } = useAnalytics()
 const { getFeatureValue } = useGrowthBook()
+const { addUnreadNotifications } = useNotificationCenter()
 
 const loading = ref(false)
 const error = ref(null)
@@ -1316,8 +1321,10 @@ const importResultsData = ref({
   tradesImported: 0,
   duplicatesSkipped: 0,
   diagnostics: null,
-  failedTrades: []
+  failedTrades: [],
+  achievements: []
 })
+const activeImportStartedAt = ref(null)
 let activeFileAnalysisId = 0
 
 const showDemoDataCta = computed(() => getFeatureValue('import_zero_trades_demo_data_cta', true))
@@ -1827,6 +1834,9 @@ async function handleImport() {
     return
   }
 
+  suppressCelebrations(15000)
+  activeImportStartedAt.value = Date.now()
+
   // Validate account selection if required (null means not selected, "none" means explicitly no account)
   if (requiresAccountSelection.value && selectedAccountId.value === null) {
     error.value = 'Please select a trading account or choose "None" for this import'
@@ -2051,6 +2061,8 @@ async function handleUseBrokerDetected(detectedBroker) {
 async function handleKeepBrokerSelected(selectedBrokerValue) {
   console.log(`[IMPORT] User chose to keep selected broker: ${selectedBrokerValue}`)
   showBrokerMismatchModal.value = false
+  suppressCelebrations(15000)
+  activeImportStartedAt.value = Date.now()
 
   // Continue with original import - re-run handleImport but skip validation this time
   // by temporarily setting a flag
@@ -2116,8 +2128,19 @@ function handleImportResultsClose() {
     tradesImported: 0,
     duplicatesSkipped: 0,
     diagnostics: null,
-    failedTrades: []
+    failedTrades: [],
+    achievements: []
   }
+}
+
+async function handleImportResultsViewAnalytics() {
+  handleImportResultsClose()
+  await router.push({ name: 'metrics' })
+}
+
+async function handleImportResultsViewTrades() {
+  handleImportResultsClose()
+  await router.push({ name: 'trades' })
 }
 
 async function handleLoadDemoData() {
@@ -2141,6 +2164,71 @@ async function handleLoadDemoData() {
     showError('Demo Data Failed', err.response?.data?.error || 'Failed to load demo data')
   } finally {
     creatingDemoData.value = false
+  }
+}
+
+function getImportAchievementWindowStart() {
+  return activeImportStartedAt.value ? (activeImportStartedAt.value - 10000) : (Date.now() - 60000)
+}
+
+function formatAchievementToast(notifications, achievements) {
+  const achievementNames = achievements
+    .slice(0, 2)
+    .map(achievement => achievement.name)
+    .join(', ')
+
+  if (achievements.length > 0) {
+    if (achievements.length === 1) {
+      return {
+        title: 'Achievement Unlocked',
+        message: achievementNames
+      }
+    }
+
+    return {
+      title: `${achievements.length} Achievements Unlocked`,
+      message: achievements.length > 2
+        ? `${achievementNames}, and ${achievements.length - 2} more`
+        : achievementNames
+    }
+  }
+
+  const levelUp = notifications.find(notification => notification.type === 'level_up')
+
+  return {
+    title: 'Progress Updated',
+    message: levelUp?.message || 'Your latest import updated your gamification progress.'
+  }
+}
+
+async function getImportAchievementNotifications() {
+  const createdAfter = getImportAchievementWindowStart()
+  const response = await api.get('/notifications', {
+    params: {
+      limit: 25,
+      unread_only: true
+    }
+  })
+
+  const notifications = (response.data?.data || []).filter(notification => {
+    if (!['achievement_earned', 'level_up'].includes(notification.type)) {
+      return false
+    }
+
+    const createdAt = Date.parse(notification.created_at)
+    return !Number.isNaN(createdAt) && createdAt >= createdAfter
+  })
+
+  const achievements = notifications
+    .filter(notification => notification.type === 'achievement_earned')
+    .map(notification => ({
+      id: notification.id,
+      name: notification.symbol || notification.message?.replace(/^Achievement unlocked:\s*/i, '') || 'Achievement'
+    }))
+
+  return {
+    notifications,
+    achievements
   }
 }
 
@@ -2665,6 +2753,7 @@ function handleResolutionStarted(data) {
 function pollImportStatus(importId) {
   const poll = async () => {
     try {
+      suppressCelebrations(15000)
       const statusRes = await api.get(`/trades/import/status/${importId}`)
       const importLog = statusRes.data.importLog
       const status = importLog?.status
@@ -2683,7 +2772,8 @@ function pollImportStatus(importId) {
             tradesImported,
             duplicatesSkipped,
             diagnostics,
-            failedTrades
+            failedTrades,
+            achievements: []
           }
           showImportResultsModal.value = true
         }
@@ -2716,49 +2806,51 @@ function pollImportStatus(importId) {
         }
 
         if (status === 'completed') {
-          // Fallback achievement check + local celebration for non-SSE users
+          // Keep import results primary. Read achievement notifications that were
+          // persisted during import instead of relying on a second award pass.
           try {
-            const before = await api.get('/gamification/dashboard')
-            const beforeStats = before.data?.data?.stats || {}
-            const beforeXP = beforeStats.experience_points || 0
-            const beforeLevel = beforeStats.level || 1
-            const beforeMin = beforeStats.level_progress?.current_level_min_xp || 0
-            const beforeNext = beforeStats.level_progress?.next_level_min_xp || 100
+            suppressCelebrations(30000)
+            await api.post('/gamification/achievements/check')
 
-            const checkRes = await api.post('/gamification/achievements/check')
-            const newAchievements = checkRes.data?.data?.newAchievements || []
-            const count = newAchievements.length
+            const { notifications, achievements } = await getImportAchievementNotifications()
+            const count = notifications.length
             if (count > 0) {
-              newAchievements.forEach(a => {
-                celebrationQueue.value.push({ type: 'achievement', payload: { achievement: a } })
-              })
-              const after = await api.get('/gamification/dashboard')
-              const afterStats = after.data?.data?.stats || {}
-              const afterXP = afterStats.experience_points || beforeXP
-              const afterLevel = afterStats.level || beforeLevel
-              const afterMin = afterStats.level_progress?.current_level_min_xp || beforeMin
-              const afterNext = afterStats.level_progress?.next_level_min_xp || beforeNext
-              const deltaXP = Math.max(0, afterXP - beforeXP)
-              celebrationQueue.value.push({
-                type: 'xp_update',
-                payload: {
-                  oldXP: beforeXP,
-                  newXP: afterXP,
-                  deltaXP,
-                  oldLevel: beforeLevel,
-                  newLevel: afterLevel,
-                  currentLevelMinXPBefore: beforeMin,
-                  nextLevelMinXPBefore: beforeNext,
-                  currentLevelMinXPAfter: afterMin,
-                  nextLevelMinXPAfter: afterNext
-                }
-              })
-              if (afterLevel > beforeLevel) {
-                celebrationQueue.value.push({ type: 'level_up', payload: { oldLevel: beforeLevel, newLevel: afterLevel } })
+              importResultsData.value = {
+                ...importResultsData.value,
+                achievements
               }
-              showSuccess(`New Achievements!`, `${count} unlocked just now`)
+
+              const { title, message } = formatAchievementToast(notifications, achievements)
+              addUnreadNotifications(count, notifications.slice(0, 10))
+              window.dispatchEvent(new CustomEvent('notifications-updated', {
+                detail: {
+                  unreadDelta: count,
+                  notifications: notifications.slice(0, 10)
+                }
+              }))
+
+              showSuccess(
+                title,
+                message,
+                {
+                  duration: 10000,
+                  actions: [
+                    {
+                      label: 'View Notifications',
+                      onClick: () => router.push({ name: 'notifications' })
+                    },
+                    {
+                      label: 'Open Analytics',
+                      style: 'primary',
+                      onClick: () => router.push({ name: 'metrics' })
+                    }
+                  ]
+                }
+              )
             }
-          } catch (_) {}
+          } catch (achievementError) {
+            console.warn('Achievement check after import failed:', achievementError?.message || achievementError)
+          }
         }
         return
       }
