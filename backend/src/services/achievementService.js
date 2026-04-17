@@ -131,6 +131,40 @@ class AchievementService {
         
       case 'weekly_pnl':
         return await AchievementService.checkWeeklyPnL(userId, criteria.positive);
+
+      case 'r_multiple_winners':
+        return await AchievementService.checkRMultipleWinners(userId, criteria.count, criteria.min_r);
+
+      case 'disciplined_playbook':
+        return await AchievementService.checkDisciplinedPlaybook(
+          userId,
+          criteria.count,
+          criteria.min_followed_count,
+          criteria.min_adherence
+        );
+
+      case 'followed_beats_broken':
+        return await AchievementService.checkFollowedBeatsBroken(
+          userId,
+          criteria.min_followed_count,
+          criteria.min_broken_count
+        );
+
+      case 'profitable_playbook':
+        return await AchievementService.checkProfitablePlaybook(
+          userId,
+          criteria.count,
+          criteria.min_avg_r,
+          criteria.min_profit_factor
+        );
+
+      case 'sustained_profitable_playbook':
+        return await AchievementService.checkSustainedProfitablePlaybook(
+          userId,
+          criteria.count,
+          criteria.min_win_rate,
+          criteria.min_avg_r
+        );
         
       case 'win_rate':
         return await AchievementService.checkWinRate(userId, criteria.threshold, criteria.trades);
@@ -474,6 +508,180 @@ class AchievementService {
       };
     }
     
+    return false;
+  }
+
+  static async getPlaybookAchievementSummaries(userId) {
+    const result = await db.query(`
+      WITH reviewed AS (
+        SELECT
+          p.id,
+          p.name,
+          r.adherence_score,
+          r.followed_plan,
+          t.pnl,
+          t.r_value
+        FROM playbooks p
+        LEFT JOIN trade_playbook_reviews r
+          ON r.playbook_id = p.id
+         AND r.user_id = $1
+        LEFT JOIN trades t
+          ON t.id = r.trade_id
+         AND t.user_id = $1
+        WHERE p.user_id = $1
+      )
+      SELECT
+        id,
+        name,
+        COUNT(pnl) FILTER (WHERE pnl IS NOT NULL)::integer AS reviewed_trade_count,
+        ROUND(COALESCE(AVG(adherence_score), 0)::numeric, 2) AS adherence_average,
+        ROUND(
+          COALESCE(
+            100.0 * SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END)::numeric
+            / NULLIF(COUNT(pnl), 0),
+            0
+          ),
+          2
+        ) AS win_rate,
+        ROUND(COALESCE(AVG(r_value) FILTER (WHERE r_value IS NOT NULL), 0)::numeric, 2) AS avg_r,
+        ROUND(
+          COALESCE(
+            SUM(CASE WHEN pnl > 0 THEN pnl ELSE 0 END)
+            / NULLIF(ABS(SUM(CASE WHEN pnl < 0 THEN pnl ELSE 0 END)), 0),
+            0
+          )::numeric,
+          2
+        ) AS profit_factor,
+        COUNT(*) FILTER (WHERE followed_plan = true)::integer AS followed_count,
+        COUNT(*) FILTER (WHERE followed_plan = false)::integer AS broken_count,
+        ROUND(COALESCE(AVG(pnl) FILTER (WHERE followed_plan = true), 0)::numeric, 2) AS followed_avg_pnl,
+        ROUND(COALESCE(AVG(pnl) FILTER (WHERE followed_plan = false), 0)::numeric, 2) AS broken_avg_pnl
+      FROM reviewed
+      GROUP BY id, name
+    `, [userId]);
+
+    return result.rows;
+  }
+
+  static async checkRMultipleWinners(userId, requiredTrades, minR = 2) {
+    const result = await db.query(`
+      SELECT COUNT(*)::int AS qualifying_trades
+      FROM trades
+      WHERE user_id = $1
+        AND exit_time IS NOT NULL
+        AND stop_loss IS NOT NULL
+        AND r_value IS NOT NULL
+        AND r_value >= $2
+    `, [userId, minR]);
+
+    if (result.rows[0].qualifying_trades >= requiredTrades) {
+      return {
+        earned: true,
+        metadata: {
+          qualifying_trades: result.rows[0].qualifying_trades,
+          required_trades: requiredTrades,
+          min_r: minR
+        }
+      };
+    }
+
+    return false;
+  }
+
+  static async checkDisciplinedPlaybook(userId, requiredTrades, minFollowedCount, minAdherence) {
+    const playbooks = await this.getPlaybookAchievementSummaries(userId);
+    const match = playbooks.find(playbook =>
+      Number(playbook.reviewed_trade_count || 0) >= requiredTrades
+      && Number(playbook.followed_count || 0) >= minFollowedCount
+      && Number(playbook.adherence_average || 0) >= minAdherence
+    );
+
+    if (match) {
+      return {
+        earned: true,
+        metadata: {
+          playbook_id: match.id,
+          playbook_name: match.name,
+          reviewed_trade_count: match.reviewed_trade_count,
+          followed_count: match.followed_count,
+          adherence_average: match.adherence_average
+        }
+      };
+    }
+
+    return false;
+  }
+
+  static async checkFollowedBeatsBroken(userId, minFollowedCount, minBrokenCount) {
+    const playbooks = await this.getPlaybookAchievementSummaries(userId);
+    const match = playbooks.find(playbook =>
+      Number(playbook.followed_count || 0) >= minFollowedCount
+      && Number(playbook.broken_count || 0) >= minBrokenCount
+      && Number(playbook.followed_avg_pnl || 0) > Number(playbook.broken_avg_pnl || 0)
+    );
+
+    if (match) {
+      return {
+        earned: true,
+        metadata: {
+          playbook_id: match.id,
+          playbook_name: match.name,
+          followed_count: match.followed_count,
+          broken_count: match.broken_count,
+          followed_avg_pnl: match.followed_avg_pnl,
+          broken_avg_pnl: match.broken_avg_pnl
+        }
+      };
+    }
+
+    return false;
+  }
+
+  static async checkProfitablePlaybook(userId, requiredTrades, minAvgR, minProfitFactor) {
+    const playbooks = await this.getPlaybookAchievementSummaries(userId);
+    const match = playbooks.find(playbook =>
+      Number(playbook.reviewed_trade_count || 0) >= requiredTrades
+      && Number(playbook.avg_r || 0) >= minAvgR
+      && Number(playbook.profit_factor || 0) >= minProfitFactor
+    );
+
+    if (match) {
+      return {
+        earned: true,
+        metadata: {
+          playbook_id: match.id,
+          playbook_name: match.name,
+          reviewed_trade_count: match.reviewed_trade_count,
+          avg_r: match.avg_r,
+          profit_factor: match.profit_factor
+        }
+      };
+    }
+
+    return false;
+  }
+
+  static async checkSustainedProfitablePlaybook(userId, requiredTrades, minWinRate, minAvgR) {
+    const playbooks = await this.getPlaybookAchievementSummaries(userId);
+    const match = playbooks.find(playbook =>
+      Number(playbook.reviewed_trade_count || 0) >= requiredTrades
+      && Number(playbook.win_rate || 0) >= minWinRate
+      && Number(playbook.avg_r || 0) >= minAvgR
+    );
+
+    if (match) {
+      return {
+        earned: true,
+        metadata: {
+          playbook_id: match.id,
+          playbook_name: match.name,
+          reviewed_trade_count: match.reviewed_trade_count,
+          win_rate: match.win_rate,
+          avg_r: match.avg_r
+        }
+      };
+    }
+
     return false;
   }
   
