@@ -227,3 +227,87 @@ describe('analyticsController.getCalendarDayDetail', () => {
     expect(payload.contributions[0].pnl).toBeCloseTo(998, 2);
   });
 });
+
+describe('analyticsController.getCalendarData', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    Trade.calculateRiskAmount.mockReturnValue(123.45);
+  });
+
+  test('uses recomputed execution P&L for historical same-day exits when stored trade P&L is stale', async () => {
+    db.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            trade_id: 'trade-jnj',
+            symbol: 'JNJ',
+            side: 'long',
+            pnl: 336,
+            commission: 2.82,
+            fees: 0,
+            r_value: 1.5,
+            stop_loss: 146,
+            entry_price: 150,
+            quantity: 100,
+            instrument_type: 'stock',
+            contract_size: null,
+            point_value: null,
+            underlying_asset: null,
+            exit_time: '2026-04-03T15:10:00Z',
+            executions: [
+              {
+                quantity: 100,
+                side: 'long',
+                entryPrice: 150,
+                exitPrice: 153.36,
+                entryTime: '2026-04-03T09:31:00Z',
+                exitTime: '2026-04-03T15:10:00Z',
+                commission: 2.82,
+                fees: 0
+              }
+            ]
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            trade_date: '2026-04-03',
+            r_value: 1.5,
+            entry_price: 150,
+            stop_loss: 146,
+            quantity: 100,
+            side: 'long',
+            instrument_type: 'stock',
+            contract_size: null,
+            point_value: null,
+            symbol: 'JNJ',
+            underlying_asset: null
+          }
+        ]
+      });
+
+    const req = {
+      query: { year: '2026' },
+      user: { id: 'user-1' }
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await analyticsController.getCalendarData(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledTimes(1);
+
+    const payload = res.json.mock.calls[0][0];
+    expect(payload.calendar).toHaveLength(1);
+    expect(payload.calendar[0]).toEqual(expect.objectContaining({
+      trade_date: '2026-04-03',
+      trades: 1,
+      daily_r_value: 1.5,
+      daily_risk_amount: 123.45,
+      risk_trade_count: 1
+    }));
+    expect(payload.calendar[0].daily_pnl).toBeCloseTo(333.18, 2);
+  });
+});

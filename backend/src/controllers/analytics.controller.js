@@ -747,6 +747,77 @@ function buildCalendarDayContributions(trades, dateStr) {
     .sort((a, b) => (a.trade_id || '').localeCompare(b.trade_id || ''));
 }
 
+function addCalendarOverviewContribution(calendarByDate, tradeId, tradeDate, pnl) {
+  if (!tradeDate || pnl == null) return;
+
+  let day = calendarByDate.get(tradeDate);
+  if (!day) {
+    day = {
+      tradeIds: new Set(),
+      dailyPnl: 0
+    };
+    calendarByDate.set(tradeDate, day);
+  }
+
+  day.tradeIds.add(tradeId);
+  day.dailyPnl += pnl;
+}
+
+function buildCalendarOverviewRows(trades, startDateStr, endDateStr) {
+  const calendarByDate = new Map();
+
+  trades.forEach((trade) => {
+    const tradeId = trade.trade_id;
+    const exitEvents = computeTradeExitEvents(trade);
+    const exitEventsInRange = exitEvents.filter((event) =>
+      event.date &&
+      event.date >= startDateStr &&
+      event.date <= endDateStr
+    );
+    const exactTradePnl = parseNumericValue(trade.pnl);
+
+    if (exitEvents.length > 0) {
+      const computedTradePnl = exitEvents.reduce((sum, event) => sum + (event.pnl || 0), 0);
+      const uniqueExitDates = new Set(exitEvents.map((event) => event.date).filter(Boolean));
+      const shouldUseExactTradePnl =
+        uniqueExitDates.size === 1 &&
+        exactTradePnl != null &&
+        Math.abs(computedTradePnl - exactTradePnl) < 0.05;
+
+      if (shouldUseExactTradePnl) {
+        const [tradeDate] = uniqueExitDates;
+        if (tradeDate >= startDateStr && tradeDate <= endDateStr) {
+          addCalendarOverviewContribution(calendarByDate, tradeId, tradeDate, exactTradePnl);
+        }
+        return;
+      }
+
+      exitEventsInRange.forEach((event) => {
+        addCalendarOverviewContribution(calendarByDate, tradeId, event.date, event.pnl);
+      });
+      return;
+    }
+
+    const tradeDate = getExecutionDateString(trade.exit_time);
+    if (
+      exactTradePnl != null &&
+      tradeDate &&
+      tradeDate >= startDateStr &&
+      tradeDate <= endDateStr
+    ) {
+      addCalendarOverviewContribution(calendarByDate, tradeId, tradeDate, exactTradePnl);
+    }
+  });
+
+  return Array.from(calendarByDate.entries())
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([tradeDate, data]) => ({
+      trade_date: tradeDate,
+      trades: data.tradeIds.size,
+      daily_pnl: data.dailyPnl
+    }));
+}
+
 const analyticsController = {
   async getOverview(req, res, next) {
     try {
@@ -1320,105 +1391,67 @@ const analyticsController = {
       const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
       const params = [req.user.id, ...filterParams];
 
-      // Execution-level calendar: each exit execution contributes P&L on the date it occurred
+      // Execution-level calendar: aggregate yearly rows with the same execution
+      // reconstruction logic used by the day-detail modal so historical legacy
+      // trades stay consistent even when stored trade P&L is stale.
       const paramOffset = params.length;
       const tableAlias = 't';
       const fc = filterConditions ? filterConditions.replace(/\btrade_date\b/g, `${tableAlias}.trade_date`).replace(/\bsymbol\b/g, `${tableAlias}.symbol`).replace(/\bstrategy\b/g, `${tableAlias}.strategy`).replace(/\bside\b/g, `${tableAlias}.side`) : '';
-      const calendarQuery = `
-        WITH exit_executions AS (
-          SELECT ${tableAlias}.id AS trade_id, ${tableAlias}.pnl AS trade_pnl,
-            (COALESCE(exec->>'datetime', exec->>'exitTime', exec->>'exit_time'))::timestamp::date AS exec_date,
-            (exec->>'quantity')::numeric AS exec_qty
-          FROM trades ${tableAlias}
-          CROSS JOIN LATERAL jsonb_array_elements(COALESCE(${tableAlias}.executions, '[]'::jsonb)) WITH ORDINALITY AS arr(exec, ord)
-          WHERE ${tableAlias}.user_id = $1
-            AND ${tableAlias}.pnl IS NOT NULL
-            AND (exec->>'datetime' IS NOT NULL OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL)
-            AND (
-              (${tableAlias}.side IN ('long','buy') AND (
-                (exec->>'action') IN ('sell','short') OR (exec->>'type') IN ('sell','short')
-                OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL
-              ))
-              OR (${tableAlias}.side IN ('short','sell') AND (
-                (exec->>'action') IN ('buy','long') OR (exec->>'type') IN ('buy','long')
-                OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL
-              ))
-            )
-            AND (COALESCE(exec->>'datetime', exec->>'exitTime', exec->>'exit_time'))::timestamp::date >= $${paramOffset + 1}::date
-            AND (COALESCE(exec->>'datetime', exec->>'exitTime', exec->>'exit_time'))::timestamp::date <= $${paramOffset + 2}::date
-            ${fc}
-        ),
-        trade_exit_totals AS (
-          SELECT ${tableAlias}.id AS trade_id, SUM((exec->>'quantity')::numeric) AS total_exit_qty
-          FROM trades ${tableAlias}
-          CROSS JOIN LATERAL jsonb_array_elements(COALESCE(${tableAlias}.executions, '[]'::jsonb)) AS arr(exec)
-          WHERE ${tableAlias}.user_id = $1
-            AND ${tableAlias}.pnl IS NOT NULL
-            AND (exec->>'datetime' IS NOT NULL OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL)
-            AND (
-              (${tableAlias}.side IN ('long','buy') AND (
-                (exec->>'action') IN ('sell','short') OR (exec->>'type') IN ('sell','short')
-                OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL
-              ))
-              OR (${tableAlias}.side IN ('short','sell') AND (
-                (exec->>'action') IN ('buy','long') OR (exec->>'type') IN ('buy','long')
-                OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL
-              ))
-            )
-            ${fc}
-          GROUP BY ${tableAlias}.id
-        ),
-        trade_exit_dates AS (
-          SELECT trade_id, COUNT(DISTINCT exec_date) AS distinct_dates
-          FROM exit_executions
-          GROUP BY trade_id
-        ),
-        daily_from_exec AS (
-          -- Single exit date: use exact trade P&L to avoid proration rounding errors
-          SELECT e.trade_id, e.exec_date AS trade_date, e.trade_pnl AS pnl
-          FROM exit_executions e
-          JOIN trade_exit_dates d ON e.trade_id = d.trade_id
-          WHERE d.distinct_dates = 1
-          GROUP BY e.trade_id, e.exec_date, e.trade_pnl
-          UNION ALL
-          -- Multiple exit dates: prorate P&L proportionally by execution quantity
-          SELECT e.trade_id, e.exec_date AS trade_date,
-            e.trade_pnl * (e.exec_qty / NULLIF(t.total_exit_qty, 0)) AS pnl
-          FROM exit_executions e
-          JOIN trade_exit_totals t ON e.trade_id = t.trade_id
-          JOIN trade_exit_dates d ON e.trade_id = d.trade_id
-          WHERE d.distinct_dates > 1
-            AND t.total_exit_qty > 0
-        ),
-        daily_from_trade AS (
-          SELECT ${tableAlias}.id AS trade_id, (${tableAlias}.exit_time::timestamp)::date AS trade_date, ${tableAlias}.pnl
-          FROM trades ${tableAlias}
-          WHERE ${tableAlias}.user_id = $1
-            AND ${tableAlias}.exit_time IS NOT NULL
-            AND ${tableAlias}.pnl IS NOT NULL
-            AND NOT EXISTS (
-              SELECT 1 FROM trade_exit_totals tet WHERE tet.trade_id = ${tableAlias}.id
-            )
-            AND (${tableAlias}.exit_time::timestamp)::date >= $${paramOffset + 1}::date
-            AND (${tableAlias}.exit_time::timestamp)::date <= $${paramOffset + 2}::date
-            ${fc}
-        ),
-        combined AS (
-          SELECT trade_id, trade_date, pnl FROM daily_from_exec
-          UNION ALL
-          SELECT trade_id, trade_date, pnl FROM daily_from_trade
-        ),
-        pnl_by_date AS (
-          SELECT trade_date, COUNT(DISTINCT trade_id)::int AS trades, COALESCE(SUM(pnl), 0)::numeric AS daily_pnl
-          FROM combined
-          GROUP BY trade_date
-        )
+      const calendarTradesQuery = `
         SELECT
-          p.trade_date::text,
-          p.trades,
-          p.daily_pnl
-        FROM pnl_by_date p
-        ORDER BY p.trade_date
+          ${tableAlias}.id AS trade_id,
+          ${tableAlias}.symbol,
+          ${tableAlias}.side,
+          ${tableAlias}.pnl,
+          ${tableAlias}.commission,
+          ${tableAlias}.fees,
+          ${tableAlias}.r_value,
+          ${tableAlias}.stop_loss,
+          ${tableAlias}.entry_price,
+          ${tableAlias}.quantity,
+          ${tableAlias}.instrument_type,
+          ${tableAlias}.contract_size,
+          ${tableAlias}.point_value,
+          ${tableAlias}.underlying_asset,
+          ${tableAlias}.exit_time,
+          ${tableAlias}.executions
+        FROM trades ${tableAlias}
+        WHERE ${tableAlias}.user_id = $1
+          AND ${tableAlias}.pnl IS NOT NULL
+          AND (
+            ((${tableAlias}.exit_time::timestamp)::date >= $${paramOffset + 1}::date
+              AND (${tableAlias}.exit_time::timestamp)::date <= $${paramOffset + 2}::date)
+            OR EXISTS (
+              SELECT 1
+              FROM jsonb_array_elements(COALESCE(${tableAlias}.executions, '[]'::jsonb)) AS arr(exec)
+              WHERE (exec->>'quantity') IS NOT NULL
+                AND COALESCE(exec->>'exitTime', exec->>'exit_time', exec->>'datetime') IS NOT NULL
+                AND (
+                  exec->>'exitTime' IS NOT NULL
+                  OR exec->>'exit_time' IS NOT NULL
+                  OR exec->>'exitPrice' IS NOT NULL
+                  OR exec->>'exit_price' IS NOT NULL
+                  OR (
+                    ${tableAlias}.side IN ('long', 'buy')
+                    AND (
+                      (exec->>'action') IN ('sell', 'short')
+                      OR (exec->>'type') IN ('sell', 'short', 'exit')
+                    )
+                  )
+                  OR (
+                    ${tableAlias}.side IN ('short', 'sell')
+                    AND (
+                      (exec->>'action') IN ('buy', 'long')
+                      OR (exec->>'type') IN ('buy', 'long', 'exit')
+                    )
+                  )
+                )
+                AND (COALESCE(exec->>'exitTime', exec->>'exit_time', exec->>'datetime'))::timestamp::date >= $${paramOffset + 1}::date
+                AND (COALESCE(exec->>'exitTime', exec->>'exit_time', exec->>'datetime'))::timestamp::date <= $${paramOffset + 2}::date
+            )
+          )
+          ${fc}
+        ORDER BY ${tableAlias}.id
       `;
 
       const riskMetricsQuery = `
@@ -1444,13 +1477,18 @@ const analyticsController = {
 
       // Add start and end date to params
       const finalParams = [...params, startDate, endDate];
-      const [calendarResult, riskMetricsResult] = await Promise.all([
-        db.query(calendarQuery, finalParams),
+      const [calendarTradesResult, riskMetricsResult] = await Promise.all([
+        db.query(calendarTradesQuery, finalParams),
         db.query(riskMetricsQuery, finalParams)
       ]);
 
+      const calendarResultRows = buildCalendarOverviewRows(
+        calendarTradesResult.rows,
+        startDate,
+        endDate
+      );
       const riskMetricsByDate = buildCalendarRiskMetrics(riskMetricsResult.rows);
-      const calendarRows = calendarResult.rows.map((row) => {
+      const calendarRows = calendarResultRows.map((row) => {
         const riskMetrics = riskMetricsByDate.get(row.trade_date) || {
           dailyRValue: 0,
           dailyRiskAmount: 0,
