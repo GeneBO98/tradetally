@@ -1,9 +1,11 @@
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const unsubscribeService = require('./unsubscribeService');
+const trialFeedbackTokenService = require('./trialFeedbackTokenService');
 const escapeHtml = require('../utils/escapeHtml');
 const { loadTemplate, renderTemplate } = require('../utils/emailTemplateLoader');
 const db = require('../config/database');
+const { TRIAL_FEEDBACK_OPTIONS } = require('../constants/trialFeedbackOptions');
 
 function maskEmail(email) {
   if (!email || !email.includes('@')) return '***';
@@ -177,6 +179,53 @@ class EmailService {
         <a href="${unsubscribeUrl}" style="color: #71717a; text-decoration: underline;">Unsubscribe</a>
       </p>
     `;
+  }
+
+  static getTrialFeedbackUrl(userId, primaryReason) {
+    const token = trialFeedbackTokenService.generateToken(userId);
+    const baseUrl = process.env.FRONTEND_URL || 'https://tradetally.io';
+    return `${baseUrl}/trial-feedback?token=${encodeURIComponent(token)}&reason=${encodeURIComponent(primaryReason)}`;
+  }
+
+  static getTrialFeedbackSurveyBlock(userId) {
+    if (!userId) {
+      return { html: '', text: '' };
+    }
+
+    const links = TRIAL_FEEDBACK_OPTIONS.map((option) => ({
+      label: option.label,
+      url: this.getTrialFeedbackUrl(userId, option.value)
+    }));
+
+    const html = `
+      <div style="margin: 28px 0 0 0; padding: 20px; background-color: #fafaf9; border: 1px solid #e7e5e4; border-radius: 12px;">
+        <p style="color: #18181b; font-size: 15px; font-weight: 600; line-height: 1.5; margin: 0 0 8px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+          One quick question: what stopped you from subscribing?
+        </p>
+        <p style="color: #71717a; font-size: 13px; line-height: 1.6; margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+          One click records your answer. You can add extra detail on the next page if you want.
+        </p>
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="border-collapse: collapse;">
+          ${links.map((link) => `
+            <tr>
+              <td style="padding: 0 0 10px 0;">
+                <a href="${link.url}" style="${this.getSecondaryButtonStyle()} display: block; width: 100%; box-sizing: border-box;">
+                  ${escapeHtml(link.label)}
+                </a>
+              </td>
+            </tr>
+          `).join('')}
+        </table>
+      </div>
+    `;
+
+    const text = [
+      'One quick question: what stopped you from subscribing?',
+      'One click records your answer. You can add extra detail on the next page if you want.',
+      ...links.map((link) => `- ${link.label}: ${link.url}`)
+    ].join('\n');
+
+    return { html, text };
   }
 
   static async getInternalNotificationRecipient() {
@@ -812,6 +861,7 @@ class EmailService {
     const upgradeUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/settings`;
     const unsubscribeUrl = userId ? this.getUnsubscribeUrl(userId) : `${process.env.FRONTEND_URL || 'https://tradetally.io'}/settings`;
     const safeUsername = escapeHtml(username);
+    const surveyBlock = this.getTrialFeedbackSurveyBlock(userId);
 
     // Determine engagement tier
     const tier = metrics.totalTrades >= 20 ? 'high'
@@ -892,8 +942,15 @@ class EmailService {
         upgradeUrl,
         buttonStyle: this.getButtonStyle(),
         ctaText,
+        surveyBlock: surveyBlock.html,
         footer
       });
+
+      if (!templateHtml.includes('{{surveyBlock}}')) {
+        content = content.includes(footer)
+          ? content.replace(footer, `${surveyBlock.html}${footer}`)
+          : `${content}${surveyBlock.html}`;
+      }
     } else {
       content = `
         <h1 style="color: #18181b; font-size: 22px; margin: 0 0 8px 0; font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
@@ -909,6 +966,7 @@ class EmailService {
         <div style="text-align: center; margin: 0 0 8px 0;">
           <a href="${upgradeUrl}" style="${this.getButtonStyle()}">${ctaText}</a>
         </div>
+        ${surveyBlock.html}
         ${footer}
       `;
     }
@@ -923,7 +981,7 @@ class EmailService {
       to: email,
       subject,
       html: finalHtml,
-      text: `${greeting} ${bodyText} Upgrade: ${upgradeUrl} Unsubscribe: ${unsubscribeUrl}`,
+      text: `${greeting} ${bodyText}\n\nUpgrade: ${upgradeUrl}\n\n${surveyBlock.text}\n\nUnsubscribe: ${unsubscribeUrl}`,
       headers: {
         'List-Unsubscribe': `<${unsubscribeUrl}>`,
         'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',

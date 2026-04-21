@@ -54,6 +54,11 @@ const router = createRouter({
       meta: { guest: true }
     },
     {
+      path: '/trial-feedback',
+      name: 'trial-feedback',
+      component: () => import('@/views/auth/TrialFeedbackView.vue')
+    },
+    {
       path: '/dashboard',
       name: 'dashboard',
       component: () => import('@/views/DashboardView.vue'),
