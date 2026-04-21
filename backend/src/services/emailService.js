@@ -72,10 +72,10 @@ class EmailService {
         <![endif]-->
       </head>
       <body style="margin: 0; padding: 0; background-color: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%;">
-        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f4f4f5;">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" bgcolor="#f4f4f5" style="width: 100%; background-color: #f4f4f5; border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt;">
           <tr>
             <td align="center" style="padding: 40px 16px;">
-              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="520" style="max-width: 520px;">
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="520" style="width: 100%; max-width: 520px; border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt;">
                 <!-- Logo -->
                 <tr>
                   <td style="padding: 0 0 32px 0; text-align: center;">
@@ -84,8 +84,14 @@ class EmailService {
                 </tr>
                 <!-- Card -->
                 <tr>
-                  <td style="background-color: #ffffff; border-radius: 12px; padding: 40px 36px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
-                    ${content}
+                  <td>
+                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" bgcolor="#ffffff" style="width: 100%; background-color: #ffffff; border: 1px solid #e4e4e7; border-collapse: collapse;">
+                      <tr>
+                        <td style="padding: 40px 36px;">
+                          ${content}
+                        </td>
+                      </tr>
+                    </table>
                   </td>
                 </tr>
                 <!-- Footer -->
@@ -118,12 +124,16 @@ class EmailService {
       color: #ffffff;
       padding: 12px 28px;
       text-decoration: none;
-      border-radius: 8px;
       display: inline-block;
       font-weight: 600;
       font-size: 14px;
+      line-height: 14px;
       text-align: center;
       border: none;
+      border-radius: 8px;
+      -webkit-border-radius: 8px;
+      mso-border-alt: none;
+      mso-padding-alt: 12px 28px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     `;
   }
@@ -167,6 +177,25 @@ class EmailService {
         <a href="${unsubscribeUrl}" style="color: #71717a; text-decoration: underline;">Unsubscribe</a>
       </p>
     `;
+  }
+
+  static async getInternalNotificationRecipient() {
+    try {
+      const result = await db.query(
+        `SELECT email
+         FROM users
+         WHERE role IN ('admin', 'owner')
+           AND email IS NOT NULL
+           AND email != ''
+         ORDER BY created_at ASC
+         LIMIT 1`
+      );
+
+      return result.rows[0]?.email || process.env.ADMIN_EMAIL || process.env.SUPPORT_EMAIL || process.env.EMAIL_FROM || null;
+    } catch (error) {
+      console.error('[ERROR] Failed to resolve internal email recipient:', error);
+      return process.env.ADMIN_EMAIL || process.env.SUPPORT_EMAIL || process.env.EMAIL_FROM || null;
+    }
   }
 
   /**
@@ -768,9 +797,13 @@ class EmailService {
         <p style="color: #52525b; font-size: 15px; line-height: 1.6; margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
           If TradeTally has been helpful, I'd love if you left a short review here:
         </p>
-        <div style="text-align: center; margin: 0 0 8px 0;">
-          <a href="${reviewUrl}" style="${this.getButtonStyle()}">Leave a Review</a>
-        </div>
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin: 0 auto 8px auto; border-collapse: separate;">
+          <tr>
+            <td align="center" bgcolor="#F0812A" style="background-color: #F0812A; border-radius: 8px; -webkit-border-radius: 8px;">
+              <a href="${reviewUrl}" style="${this.getButtonStyle()}">Leave a Review</a>
+            </td>
+          </tr>
+        </table>
         <p style="color: #a1a1aa; font-size: 13px; line-height: 1.5; margin: 0 0 24px 0; text-align: center; word-break: break-all; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
           ${reviewUrl}
         </p>
@@ -909,6 +942,7 @@ class EmailService {
       throw error;
     }
   }
+
   static async sendSupportRequest({ to, userEmail, username, tier, subject, message }) {
     const safeUsername = escapeHtml(username || 'Unknown');
     const safeEmail = escapeHtml(userEmail);

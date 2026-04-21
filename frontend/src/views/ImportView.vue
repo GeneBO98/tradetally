@@ -1195,7 +1195,7 @@ const authStore = useAuthStore()
 const router = useRouter()
 const { showSuccess, showError, showImportantWarning, showSuccessModal, clearModalAlert } = useNotification()
 const { suppressCelebrations } = usePriceAlertNotifications()
-const { track } = useAnalytics()
+const { track, trackImport } = useAnalytics()
 const { getFeatureValue } = useGrowthBook()
 const { addUnreadNotifications } = useNotificationCenter()
 
@@ -1327,7 +1327,9 @@ const importResultsData = ref({
 const activeImportStartedAt = ref(null)
 let activeFileAnalysisId = 0
 
-const showDemoDataCta = computed(() => getFeatureValue('import_zero_trades_demo_data_cta', true))
+// Set lazily when the user lands in the zero-trades state, so the GrowthBook
+// exposure event only fires for users who actually see the empty state.
+const showDemoDataCta = ref(false)
 
 const popularBrokerOptions = [
   { value: 'auto', label: 'Auto-Detect' },
@@ -2766,6 +2768,15 @@ function pollImportStatus(importId) {
         const duplicatesSkipped = errorDetails.duplicates || 0
         const failedTrades = errorDetails.failedTrades || []
 
+        // Evaluate the demo-CTA feature only when the user is actually about to
+        // see the zero-trades state. This fires the GrowthBook exposure event
+        // (via trackingCallback) at the right moment for clean experiment data.
+        if (tradesImported === 0) {
+          showDemoDataCta.value = getFeatureValue('import_zero_trades_demo_data_cta', true)
+        } else {
+          showDemoDataCta.value = false
+        }
+
         // Show results modal if we have diagnostics or notable stats
         if (diagnostics || tradesImported > 0 || duplicatesSkipped > 0 || failedTrades.length > 0) {
           importResultsData.value = {
@@ -2806,6 +2817,8 @@ function pollImportStatus(importId) {
         }
 
         if (status === 'completed') {
+          trackImport(selectedBroker.value || 'unknown', tradesImported > 0 ? 'success' : 'empty', tradesImported)
+
           // Keep import results primary. Read achievement notifications that were
           // persisted during import instead of relying on a second award pass.
           try {

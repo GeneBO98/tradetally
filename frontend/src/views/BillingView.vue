@@ -329,7 +329,7 @@
         <div
             v-if="showCancelModal"
             class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-            @click.self="showCancelModal = false"
+            @click.self="closeCancelModal"
         >
             <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
                 <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">
@@ -348,16 +348,54 @@
                 <p class="text-sm text-gray-500 dark:text-gray-500 mb-6">
                     You can reactivate at any time before the billing period ends.
                 </p>
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-900 dark:text-white mb-3">
+                        What is the main reason you are canceling?
+                    </label>
+                    <div class="space-y-2">
+                        <label
+                            v-for="option in cancellationReasonOptions"
+                            :key="option.value"
+                            class="flex items-start gap-3 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 cursor-pointer"
+                        >
+                            <input
+                                v-model="cancelReason"
+                                :value="option.value"
+                                type="radio"
+                                class="mt-1"
+                            />
+                            <span class="text-sm text-gray-700 dark:text-gray-300">
+                                {{ option.label }}
+                            </span>
+                        </label>
+                    </div>
+                </div>
+                <div class="mb-6">
+                    <label
+                        for="cancel-feedback"
+                        class="block text-sm font-medium text-gray-900 dark:text-white mb-2"
+                    >
+                        Anything else you want to share? Optional
+                    </label>
+                    <textarea
+                        id="cancel-feedback"
+                        v-model="cancelFeedback"
+                        rows="4"
+                        maxlength="2000"
+                        class="input w-full"
+                        placeholder="What was missing, frustrating, or not worth the cost?"
+                    ></textarea>
+                </div>
                 <div class="flex justify-end space-x-3">
                     <button
-                        @click="showCancelModal = false"
+                        @click="closeCancelModal"
                         class="btn btn-secondary"
                     >
                         Keep Subscription
                     </button>
                     <button
                         @click="cancelSubscription"
-                        :disabled="cancelLoading"
+                        :disabled="cancelLoading || !cancelReason"
                         class="btn bg-red-600 text-white hover:bg-red-700"
                     >
                         <span
@@ -377,6 +415,17 @@ import { ref, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import api from "@/services/api";
 
+const cancellationReasonOptions = [
+    { value: "too_expensive", label: "Too expensive" },
+    { value: "not_using_enough", label: "I am not using it enough" },
+    { value: "missing_features", label: "Missing features I need" },
+    { value: "bugs_or_reliability", label: "Bugs, reliability, or performance issues" },
+    { value: "switching_tools", label: "Switching to another tool" },
+    { value: "temporary_break", label: "Temporary break from trading" },
+    { value: "other", label: "Other" },
+    { value: "prefer_not_to_say", label: "Prefer not to say" },
+];
+
 export default {
     name: "BillingView",
     setup() {
@@ -387,6 +436,8 @@ export default {
         const cancelLoading = ref(false);
         const reactivateLoading = ref(false);
         const showCancelModal = ref(false);
+        const cancelReason = ref("");
+        const cancelFeedback = ref("");
         const billingStatus = ref({
             billing_enabled: false,
             billing_available: false,
@@ -443,11 +494,22 @@ export default {
             }
         };
 
+        const closeCancelModal = () => {
+            showCancelModal.value = false;
+            cancelReason.value = "";
+            cancelFeedback.value = "";
+        };
+
         const cancelSubscription = async () => {
+            if (!cancelReason.value) return;
+
             cancelLoading.value = true;
             try {
-                await api.post("/billing/cancel");
-                showCancelModal.value = false;
+                await api.post("/billing/cancel", {
+                    cancellationReason: cancelReason.value,
+                    feedbackText: cancelFeedback.value,
+                });
+                closeCancelModal();
                 // Reload subscription to reflect cancellation state
                 await loadSubscription();
             } catch (error) {
@@ -581,6 +643,9 @@ export default {
             cancelLoading,
             reactivateLoading,
             showCancelModal,
+            cancelReason,
+            cancelFeedback,
+            cancellationReasonOptions,
             billingStatus,
             subscription,
             checkoutSuccess,
@@ -589,6 +654,7 @@ export default {
             redirectMessage,
             billingError,
             openCustomerPortal,
+            closeCancelModal,
             cancelSubscription,
             reactivateSubscription,
             getStatusBadgeClass,

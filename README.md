@@ -15,7 +15,7 @@ A comprehensive trading journal and analytics platform built with Vue.js fronten
 - **Live Demo**: [tradetally.io](https://tradetally.io)
 - **Documentation**: [docs.tradetally.io](https://docs.tradetally.io)
 - **Forum**: [forum.tradetally.io](https://forum.tradetally.io)
-- **iOS TestFlight**: [Join the beta](https://testflight.apple.com/join/11shUY3t)
+- **iOS App**: [Download Here](https://apps.apple.com/us/app/tradetally/id6748022992)
 - **Docker Hub**: [potentialmidas/tradetally](https://hub.docker.com/r/potentialmidas/tradetally)
 
 ### Demo Account

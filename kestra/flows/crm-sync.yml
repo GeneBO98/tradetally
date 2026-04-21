@@ -1,0 +1,31 @@
+id: tradetally_crm_sync
+namespace: tradetally.crm
+
+description: >
+  Manual full CRM reconciliation for TradeTally.
+  Keeps business mapping logic in the backend and only orchestrates authenticated calls.
+
+tasks:
+  - id: crm_sync_status
+    type: io.kestra.plugin.core.http.Request
+    uri: "{{secret('TRADETALLY_API_BASE_URL')}}/api/internal/kestra/crm-sync/status"
+    method: GET
+    headers:
+      X-Internal-Service-Secret: "{{secret('KESTRA_INTERNAL_API_SECRET')}}"
+      X-Internal-Service-Name: "kestra"
+
+  - id: full_crm_sync
+    type: io.kestra.plugin.core.http.Request
+    uri: "{{secret('TRADETALLY_API_BASE_URL')}}/api/internal/kestra/crm-sync"
+    method: POST
+    contentType: application/json
+    options:
+      readTimeout: PT30M
+    headers:
+      X-Internal-Service-Secret: "{{secret('KESTRA_INTERNAL_API_SECRET')}}"
+      X-Internal-Service-Name: "kestra"
+    body: |
+      {
+        "targets": ["twenty", "invoiceNinja"],
+        "reason": "kestra_scheduled_reconciliation"
+      }
