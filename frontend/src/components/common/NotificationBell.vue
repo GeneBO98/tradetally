@@ -1,5 +1,5 @@
 <template>
-  <div class="relative">
+  <div ref="rootRef" class="relative">
     <!-- Bell Icon Button -->
     <button
       @click="toggleDropdown"
@@ -140,13 +140,6 @@
         </div>
       </div>
     </transition>
-
-    <!-- Overlay to close dropdown when clicking outside -->
-    <div
-      v-if="isOpen"
-      class="fixed inset-0 z-40"
-      @click="closeDropdown"
-    ></div>
   </div>
 </template>
 
@@ -178,6 +171,7 @@ const {
 } = useNotificationCenter()
 
 // Component state
+const rootRef = ref(null)
 const isOpen = ref(false)
 const notifications = ref([])
 const loading = ref(false)
@@ -203,6 +197,19 @@ const toggleDropdown = async () => {
 
 const closeDropdown = () => {
   isOpen.value = false
+}
+
+const handleDocumentClick = (event) => {
+  if (!isOpen.value) return
+  if (rootRef.value && !rootRef.value.contains(event.target)) {
+    closeDropdown()
+  }
+}
+
+const handleEscKey = (event) => {
+  if (event.key === 'Escape' && isOpen.value) {
+    closeDropdown()
+  }
 }
 
 const handleNotificationsUpdated = async (event) => {
@@ -400,11 +407,15 @@ onMounted(() => {
   }
 
   window.addEventListener('notifications-updated', handleNotificationsUpdated)
+  document.addEventListener('mousedown', handleDocumentClick)
+  document.addEventListener('keydown', handleEscKey)
 })
 
 onUnmounted(() => {
   stopPolling()
   window.removeEventListener('notifications-updated', handleNotificationsUpdated)
+  document.removeEventListener('mousedown', handleDocumentClick)
+  document.removeEventListener('keydown', handleEscKey)
 })
 
 // Watch for auth changes
