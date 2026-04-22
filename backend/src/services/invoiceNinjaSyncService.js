@@ -65,13 +65,150 @@ class InvoiceNinjaSyncService {
     return response?.data || response || null;
   }
 
+  normalizeEmail(email) {
+    return String(email || '').trim().toLowerCase();
+  }
+
+  getClientStatusRank(client) {
+    if (client?.is_deleted) {
+      return 2;
+    }
+
+    if (client?.archived_at) {
+      return 1;
+    }
+
+    return 0;
+  }
+
+  getClientContacts(client) {
+    return Array.isArray(client?.contacts) ? client.contacts : [];
+  }
+
+  getClientEmails(client) {
+    return this.getClientContacts(client)
+      .map((contact) => this.normalizeEmail(contact?.email))
+      .filter(Boolean);
+  }
+
+  isClientArchived(client) {
+    return !client?.is_deleted && Boolean(client?.archived_at);
+  }
+
+  isClientInactive(client) {
+    return Boolean(client?.is_deleted || this.isClientArchived(client));
+  }
+
+  extractTradeTallyUserId(client) {
+    const notes = client?.private_notes || '';
+    const match = notes.match(/TradeTally User ID:\s*([^\n]+)/i);
+    return match?.[1]?.trim() || null;
+  }
+
+  isTradeTallyManagedClient(client) {
+    return Boolean(this.extractTradeTallyUserId(client));
+  }
+
+  buildClientData(userData, existingClient = null) {
+    const existingContact = this.getClientContacts(existingClient).find(
+      (contact) => this.normalizeEmail(contact?.email) === this.normalizeEmail(userData.email)
+    ) || this.getClientContacts(existingClient)[0] || null;
+
+    const contact = {
+      email: userData.email,
+      first_name: userData.full_name?.split(' ')[0] || '',
+      last_name: userData.full_name?.split(' ').slice(1).join(' ') || '',
+    };
+
+    if (existingContact?.id) {
+      contact.id = existingContact.id;
+    }
+
+    return {
+      name: userData.full_name || userData.username || userData.email,
+      contacts: [contact],
+      private_notes: this.buildPrivateNotes(userData),
+      custom_value1: userData.tier || 'free',
+      custom_value2: userData.subscription_status || 'none',
+      custom_value3: userData.stripe_customer_id || '',
+      custom_value4: userData.trade_count?.toString() || '0',
+    };
+  }
+
+  async listClients({ status = 'active', filter = null, perPage = 100 } = {}) {
+    const clients = [];
+    let page = 1;
+
+    while (true) {
+      const params = new URLSearchParams({
+        status,
+        per_page: String(perPage),
+        page: String(page),
+      });
+
+      if (filter) {
+        params.set('filter', filter);
+      }
+
+      const result = await this.request('GET', `/clients?${params.toString()}`);
+      const batch = Array.isArray(result?.data) ? result.data : [];
+      clients.push(...batch);
+
+      if (batch.length < perPage) {
+        break;
+      }
+
+      page += 1;
+    }
+
+    return clients;
+  }
+
+  async restoreClient(clientId) {
+    if (!clientId) {
+      return null;
+    }
+
+    return this.request('POST', '/clients/bulk', {
+      action: 'restore',
+      ids: [clientId],
+    });
+  }
+
+  async deleteClient(clientId) {
+    if (!clientId) {
+      return null;
+    }
+
+    return this.request('POST', '/clients/bulk', {
+      action: 'delete',
+      ids: [clientId],
+    });
+  }
+
   /**
    * Find a client in Invoice Ninja by email
    */
-  async findClientByEmail(email) {
+  async findClientByEmail(email, { includeInactive = false } = {}) {
     try {
-      const result = await this.request('GET', `/clients?email=${encodeURIComponent(email)}`);
-      return result?.data?.[0] || null;
+      const params = new URLSearchParams({
+        email,
+        per_page: '100',
+      });
+
+      if (includeInactive) {
+        params.set('status', 'active,archived,deleted');
+      }
+
+      const result = await this.request('GET', `/clients?${params.toString()}`);
+      const normalizedEmail = this.normalizeEmail(email);
+      const matches = (result?.data || []).filter((client) => {
+        const clientEmails = this.getClientEmails(client);
+        return clientEmails.length === 0 || clientEmails.includes(normalizedEmail);
+      });
+
+      matches.sort((a, b) => this.getClientStatusRank(a) - this.getClientStatusRank(b));
+      return matches[0] || null;
     } catch (error) {
       console.error('[INVOICE NINJA] Error finding client:', email, error.message);
       return null;
@@ -82,25 +219,14 @@ class InvoiceNinjaSyncService {
    * Create or update a client in Invoice Ninja
    */
   async upsertClient(userData) {
-    const existing = await this.findClientByEmail(userData.email);
-
-    const clientData = {
-      name: userData.full_name || userData.username || userData.email,
-      contacts: [
-        {
-          email: userData.email,
-          first_name: userData.full_name?.split(' ')[0] || '',
-          last_name: userData.full_name?.split(' ').slice(1).join(' ') || '',
-        },
-      ],
-      private_notes: this.buildPrivateNotes(userData),
-      custom_value1: userData.tier || 'free',
-      custom_value2: userData.subscription_status || 'none',
-      custom_value3: userData.stripe_customer_id || '',
-      custom_value4: userData.trade_count?.toString() || '0',
-    };
+    const existing = await this.findClientByEmail(userData.email, { includeInactive: true });
+    const clientData = this.buildClientData(userData, existing);
 
     if (existing) {
+      if (this.isClientInactive(existing)) {
+        await this.restoreClient(existing.id);
+      }
+
       return this.request('PUT', `/clients/${existing.id}`, clientData);
     } else {
       return this.request('POST', '/clients', clientData);
@@ -435,6 +561,15 @@ class InvoiceNinjaSyncService {
     return result.rows;
   }
 
+  shouldSyncUser(user) {
+    return Boolean(
+      user
+      && user.is_active === true
+      && user.role !== 'admin'
+      && this.normalizeEmail(user.email) !== 'demo@example.com'
+    );
+  }
+
   /**
    * Full sync: push all billable TradeTally users into Invoice Ninja as clients
    */
@@ -454,7 +589,10 @@ class InvoiceNinjaSyncService {
     console.log(`[INVOICE NINJA] Found ${users.length} users to sync`);
 
     let synced = 0;
+    let deleted = 0;
     let errors = 0;
+    const syncableUserIds = new Set(users.map((user) => String(user.id)));
+    const syncableEmails = new Set(users.map((user) => this.normalizeEmail(user.email)).filter(Boolean));
 
     for (const user of users) {
       try {
@@ -470,8 +608,40 @@ class InvoiceNinjaSyncService {
       }
     }
 
-    console.log(`[INVOICE NINJA] Complete: ${synced} synced, ${errors} errors`);
-    return { synced, errors };
+    try {
+      const remoteClients = await this.listClients({ status: 'active,archived,deleted' });
+
+      for (const client of remoteClients) {
+        if (!this.isTradeTallyManagedClient(client) || client?.is_deleted) {
+          continue;
+        }
+
+        const remoteUserId = this.extractTradeTallyUserId(client);
+        const remoteEmails = this.getClientEmails(client);
+        const shouldExist = (
+          (remoteUserId && syncableUserIds.has(String(remoteUserId)))
+          || remoteEmails.some((email) => syncableEmails.has(email))
+        );
+
+        if (shouldExist) {
+          continue;
+        }
+
+        try {
+          await this.deleteClient(client.id);
+          deleted++;
+        } catch (error) {
+          errors++;
+          console.error(`[INVOICE NINJA] Error deleting client ${client.id}:`, error.message);
+        }
+      }
+    } catch (error) {
+      errors++;
+      console.error('[INVOICE NINJA] Error reconciling deleted clients:', error.message);
+    }
+
+    console.log(`[INVOICE NINJA] Complete: ${synced} synced, ${deleted} deleted, ${errors} errors`);
+    return { synced, deleted, errors };
   }
 
   /**
@@ -482,7 +652,7 @@ class InvoiceNinjaSyncService {
 
     const query = `
       SELECT
-        u.id, u.email, u.username, u.full_name, u.tier, u.created_at,
+        u.id, u.email, u.username, u.full_name, u.tier, u.created_at, u.is_active, u.role,
         s.stripe_customer_id, s.stripe_subscription_id,
         s.status AS subscription_status,
         (SELECT COUNT(*) FROM trades WHERE user_id = u.id) AS trade_count
@@ -495,7 +665,20 @@ class InvoiceNinjaSyncService {
     const result = await db.query(query, [userId]);
     if (result.rows.length === 0) return null;
 
-    return this.upsertClient(result.rows[0]);
+    const user = result.rows[0];
+
+    if (!this.shouldSyncUser(user)) {
+      const existing = await this.findClientByEmail(user.email, { includeInactive: true });
+
+      if (!existing || existing.is_deleted) {
+        return existing;
+      }
+
+      await this.deleteClient(existing.id);
+      return { deleted: true, id: existing.id };
+    }
+
+    return this.upsertClient(user);
   }
 }
 
