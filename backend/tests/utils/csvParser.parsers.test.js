@@ -5,6 +5,9 @@
  *   result.trades must be an array (THE LIGHTSPEED BUG regression check)
  */
 
+const fs = require('fs');
+const path = require('path');
+
 jest.mock('../../src/config/database', () => ({ query: jest.fn().mockResolvedValue({ rows: [] }) }));
 jest.mock('../../src/utils/logger', () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }));
 jest.mock('../../src/utils/finnhub', () => ({}));
@@ -500,6 +503,23 @@ describe('Tradovate parser', () => {
     ].join('\n');
     const result = await parseCSV(buf(perfCSV), 'tradovate', {});
     expectValidResult(result);
+  });
+
+  test('parses paired trades export format', async () => {
+    const fixturePath = path.join(__dirname, '..', 'fixtures', 'tradovate-paired-trades-sample.csv');
+    const pairedCSV = fs.readFileSync(fixturePath, 'utf-8');
+
+    const result = await parseCSV(buf(pairedCSV), 'tradovate', {});
+
+    expectValidResult(result);
+    expect(result.trades).toHaveLength(5);
+    expect(result.trades[0].symbol).toBe('MNQM6');
+    expect(result.trades[0].instrumentType).toBe('future');
+    expect(result.trades[0].pointValue).toBe(2);
+    expect(result.trades[0].quantity).toBe(5);
+    expect(result.trades[0].pnl).toBe(-12.5);
+    expect(result.trades[0].accountIdentifier).toBe('APEX4977960000002');
+    expect(result.trades[3].side).toBe('short');
   });
 });
 

@@ -700,7 +700,7 @@ function detectBrokerFormat(fileBuffer) {
       return 'tradervue';
     }
 
-    // Tradovate detection - look for B/S, Contract, Product, Fill Time, avgPrice, filledQty columns
+    // Tradovate detection - supports both order-fill exports and paired trade/performance exports
     // Note: Don't rely on first column (orderId) due to potential BOM issues
     if (headers.includes('b/s') &&
         headers.includes('contract') &&
@@ -709,6 +709,15 @@ function detectBrokerFormat(fileBuffer) {
         (headers.includes('avgprice') || headers.includes('avg fill price')) &&
         (headers.includes('filledqty') || headers.includes('filled qty'))) {
       console.log('[AUTO-DETECT] Detected: Tradovate');
+      return 'tradovate';
+    }
+    if (headers.includes('contract') &&
+        (headers.includes('paired qty') || headers.includes('pairedqty') || headers.includes('qty')) &&
+        headers.includes('buy price') &&
+        headers.includes('sell price') &&
+        headers.includes('bought timestamp') &&
+        headers.includes('sold timestamp')) {
+      console.log('[AUTO-DETECT] Detected: Tradovate (paired trades export)');
       return 'tradovate';
     }
 
@@ -2959,9 +2968,13 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       // vs the standard Order/Fill History format
       const firstRecord = records[0] || {};
       const recordKeys = Object.keys(firstRecord).map(k => k.toLowerCase().trim());
-      const isPerformanceReport = recordKeys.some(k => k === 'buyprice') &&
-                                   recordKeys.some(k => k === 'sellprice') &&
-                                   recordKeys.some(k => k === 'boughttimestamp');
+      const isPerformanceReport = recordKeys.some(k => k === 'buyprice' || k === 'buy price') &&
+                                   recordKeys.some(k => k === 'sellprice' || k === 'sell price') &&
+                                   recordKeys.some(k => k === 'boughttimestamp' || k === 'bought timestamp') &&
+                                   (
+                                     recordKeys.some(k => k === 'qty') ||
+                                     recordKeys.some(k => k === 'paired qty' || k === 'pairedqty')
+                                   );
 
       if (isPerformanceReport) {
         console.log('Starting Tradovate Performance Report parsing');
@@ -8500,6 +8513,32 @@ async function parseTradovatePerformanceReport(records, context = {}) {
   console.log(`Processing ${records.length} pre-matched round-trip trades`);
 
   const completedTrades = [];
+  const diagnostics = context.diagnostics;
+
+  const getField = (record, ...fieldNames) => {
+    for (const fieldName of fieldNames) {
+      if (record[fieldName] !== undefined && record[fieldName] !== null) {
+        return record[fieldName];
+      }
+    }
+    return undefined;
+  };
+
+  const parseTradovateTimestamp = (value) => {
+    const rawValue = cleanString(value);
+    if (!rawValue) {
+      return null;
+    }
+
+    if (/^\d{10,13}$/.test(rawValue)) {
+      const numericValue = Number(rawValue);
+      const milliseconds = rawValue.length === 10 ? numericValue * 1000 : numericValue;
+      const parsed = new Date(milliseconds);
+      return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+    }
+
+    return parseDateTime(rawValue);
+  };
 
   // Debug: Log first few records
   console.log('Sample Tradovate Performance Report records:');
@@ -8510,13 +8549,17 @@ async function parseTradovatePerformanceReport(records, context = {}) {
   for (let i = 0; i < records.length; i++) {
     const record = records[i];
     try {
-      const rawSymbol = cleanString(record.symbol);
-      const quantity = Math.abs(parseInteger(record.qty));
-      const buyPrice = parseNumeric(record.buyPrice);
-      const sellPrice = parseNumeric(record.sellPrice);
+      const rawSymbol = cleanString(
+        getField(record, 'symbol', 'Symbol', 'Contract', 'contract', 'Product', 'product')
+      );
+      const quantity = Math.abs(parseInteger(
+        getField(record, 'qty', 'Qty', 'Paired Qty', 'pairedQty', 'paired qty')
+      ));
+      const buyPrice = parseNumeric(getField(record, 'buyPrice', 'Buy Price', 'buy price'));
+      const sellPrice = parseNumeric(getField(record, 'sellPrice', 'Sell Price', 'sell price'));
 
       // Parse PnL - Tradovate uses $185.00 or $(160.00) for negative
-      let pnlStr = (record.pnl || '').toString().trim();
+      let pnlStr = cleanString(getField(record, 'pnl', 'P/L', 'pl'));
       let pnl = 0;
       if (pnlStr) {
         const isNegative = pnlStr.includes('(') && pnlStr.includes(')');
@@ -8525,98 +8568,82 @@ async function parseTradovatePerformanceReport(records, context = {}) {
         if (isNegative) pnl = -pnl;
       }
 
-      // Parse timestamps - supports both Unix milliseconds and date strings (MM/DD/YYYY HH:MM:SS)
-      let boughtTime, soldTime;
-      const rawBought = (record.boughtTimestamp || '').toString().trim();
-      const rawSold = (record.soldTimestamp || '').toString().trim();
+      const rawBought = cleanString(getField(record, 'boughtTimestamp', 'Bought Timestamp', 'bought timestamp'));
+      const rawSold = cleanString(getField(record, 'soldTimestamp', 'Sold Timestamp', 'sold timestamp'));
+      const boughtTime = parseTradovateTimestamp(rawBought);
+      const soldTime = parseTradovateTimestamp(rawSold);
 
-      // Try parsing as Unix millisecond timestamps first
-      const boughtMs = parseInt(rawBought);
-      const soldMs = parseInt(rawSold);
-
-      if (!isNaN(boughtMs) && rawBought === boughtMs.toString()) {
-        // Pure numeric - Unix millisecond timestamp
-        boughtTime = new Date(boughtMs);
-        soldTime = new Date(soldMs);
-      } else {
-        // Try parsing as date string (MM/DD/YYYY HH:MM:SS)
-        boughtTime = new Date(rawBought);
-        soldTime = new Date(rawSold);
-      }
-
-      if (isNaN(boughtTime.getTime()) || isNaN(soldTime.getTime())) {
+      if (!boughtTime || !soldTime) {
         console.log(`[WARNING] Skipping row ${i + 1}: invalid timestamps - bought: "${rawBought}", sold: "${rawSold}"`);
+        if (diagnostics) {
+          diagnostics.invalidRows++;
+          diagnostics.skippedReasons.push({ row: i + 1, reason: 'Invalid bought/sold timestamps in Tradovate paired trade row' });
+        }
         continue;
       }
 
       if (!rawSymbol || quantity === 0) {
         console.log(`[WARNING] Skipping row ${i + 1}: missing symbol or zero quantity`);
+        if (diagnostics) {
+          diagnostics.invalidRows++;
+          diagnostics.skippedReasons.push({ row: i + 1, reason: 'Missing contract/product symbol or paired quantity in Tradovate paired trade row' });
+        }
         continue;
       }
 
       // Determine side: if bought first then sold -> LONG, if sold first then bought -> SHORT
-      const isLong = boughtTime.getTime() <= soldTime.getTime();
+      const boughtMs = new Date(boughtTime).getTime();
+      const soldMs = new Date(soldTime).getTime();
+      const isLong = boughtMs !== soldMs
+        ? boughtMs <= soldMs
+        : (pnl >= 0 ? sellPrice >= buyPrice : sellPrice < buyPrice);
       const side = isLong ? 'long' : 'short';
       const entryPrice = isLong ? buyPrice : sellPrice;
       const exitPrice = isLong ? sellPrice : buyPrice;
       const entryTime = isLong ? boughtTime : soldTime;
       const exitTime = isLong ? soldTime : boughtTime;
-      const tradeDate = entryTime.toISOString().split('T')[0];
+      const tradeDate = parseDate(rawBought) || parseDate(rawSold) || entryTime.split('T')[0];
 
-      // Extract futures underlying from symbol (e.g., NQH6 -> NQ)
-      const underlying = extractUnderlyingFromFuturesSymbol(rawSymbol);
-      const pointValue = underlying ? getFuturesPointValue(underlying) : 1;
-      const isFuture = !!underlying;
-      const displaySymbol = underlying || rawSymbol;
-
-      // If PnL was not parsed from the formatted string, calculate it
-      if (pnl === 0 && buyPrice !== sellPrice) {
-        pnl = (sellPrice - buyPrice) * quantity * pointValue;
+      const product = cleanString(getField(record, 'Product', 'product'));
+      const instrumentData = parseInstrumentData(rawSymbol);
+      if (instrumentData.instrumentType === 'future') {
+        instrumentData.underlyingAsset = instrumentData.underlyingAsset || product || extractUnderlyingFromFuturesSymbol(rawSymbol);
+        instrumentData.underlyingSymbol = instrumentData.underlyingSymbol || instrumentData.underlyingAsset || null;
       }
+      const pointValue = instrumentData.instrumentType === 'future'
+        ? (instrumentData.pointValue || getFuturesPointValue(product || extractUnderlyingFromFuturesSymbol(rawSymbol)))
+        : (instrumentData.contractSize || 1);
 
-      // Build instrument data
-      const instrumentData = isFuture ? {
-        instrumentType: 'future',
-        underlyingSymbol: underlying,
-        underlyingAsset: underlying,
-        pointValue: pointValue,
-        contractSize: pointValue,
-        contractMonth: null,
-        contractYear: null
-      } : {
-        instrumentType: 'stock',
-        contractSize: null
-      };
-
-      // Extract contract month/year from futures symbol (e.g., MNQH6 -> H = March, 6 = 2026)
-      if (isFuture) {
-        const normalizedSymbol = rawSymbol.toString().toUpperCase().trim();
-        const contractMatch = normalizedSymbol.match(/^([A-Z]+)([FGHJKMNQUVXZ])(\d{1,2})$/);
-        if (contractMatch) {
-          const [, , monthCode, yearDigit] = contractMatch;
-          const monthCodes = { F: '01', G: '02', H: '03', J: '04', K: '05', M: '06', N: '07', Q: '08', U: '09', V: '10', X: '11', Z: '12' };
-          instrumentData.contractMonth = monthCodes[monthCode];
-
-          let year = parseInt(yearDigit);
-          if (year < 10) {
-            const currentYear = new Date().getFullYear();
-            const currentDecade = Math.floor(currentYear / 10) * 10;
-            year = currentDecade + year;
-          } else if (year < 100) {
-            year += year < 50 ? 2000 : 1900;
-          }
-          instrumentData.contractYear = year;
-        }
+      // If PnL was not parsed from the formatted string, calculate it from the inferred side
+      if (pnl === 0 && buyPrice !== sellPrice) {
+        const priceDelta = isLong ? (sellPrice - buyPrice) : (buyPrice - sellPrice);
+        pnl = priceDelta * quantity * pointValue;
       }
 
       // Determine account identifier
-      const accountIdentifier = context.selectedAccountId || null;
+      const accountIdentifier = context.selectedAccountId
+        ? context.selectedAccountId
+        : context.accountColumnName
+          ? extractAccountFromRecord(record, context.accountColumnName)
+          : null;
+
+      const entryOrderId = isLong
+        ? cleanString(getField(record, 'buyFillId', 'Buy Fill ID', 'buy fill id'))
+        : cleanString(getField(record, 'sellFillId', 'Sell Fill ID', 'sell fill id'));
+      const exitOrderId = isLong
+        ? cleanString(getField(record, 'sellFillId', 'Sell Fill ID', 'sell fill id'))
+        : cleanString(getField(record, 'buyFillId', 'Buy Fill ID', 'buy fill id'));
+      const notes = [];
+      const duration = cleanString(getField(record, 'duration', 'Duration'));
+      const pairId = cleanString(getField(record, 'Pair ID', 'pairId', 'pair id'));
+      if (duration) notes.push(`Duration: ${duration}`);
+      if (pairId) notes.push(`Pair ID: ${pairId}`);
 
       const trade = {
-        symbol: displaySymbol,
+        symbol: rawSymbol,
         tradeDate,
-        entryTime: entryTime.toISOString(),
-        exitTime: exitTime.toISOString(),
+        entryTime,
+        exitTime,
         entryPrice,
         exitPrice,
         quantity,
@@ -8625,23 +8652,32 @@ async function parseTradovatePerformanceReport(records, context = {}) {
         fees: 0,
         pnl,
         profitLoss: pnl,
-        broker: 'Tradovate',
+        broker: 'tradovate',
         accountIdentifier,
-        notes: record.duration ? `Duration: ${record.duration}` : '',
+        currency: cleanString(getField(record, 'Currency', 'currency')) || 'USD',
+        notes: notes.join(' | '),
         executions: [
           {
-            entryTime: entryTime.toISOString(),
+            action: isLong ? 'buy' : 'sell',
+            side: isLong ? 'buy' : 'sell',
+            datetime: entryTime,
+            entryTime,
             entryPrice,
+            price: entryPrice,
             quantity,
-            side,
+            orderId: entryOrderId || undefined,
             commission: 0,
             fees: 0
           },
           {
-            exitTime: exitTime.toISOString(),
-            exitPrice,
-            quantity,
+            action: isLong ? 'sell' : 'buy',
             side: isLong ? 'sell' : 'buy',
+            datetime: exitTime,
+            exitTime,
+            exitPrice,
+            price: exitPrice,
+            quantity,
+            orderId: exitOrderId || undefined,
             commission: 0,
             fees: 0,
             pnl
@@ -8649,18 +8685,26 @@ async function parseTradovatePerformanceReport(records, context = {}) {
         ],
         executionData: [
           {
-            entryTime: entryTime.toISOString(),
+            action: isLong ? 'buy' : 'sell',
+            side: isLong ? 'buy' : 'sell',
+            datetime: entryTime,
+            entryTime,
             entryPrice,
+            price: entryPrice,
             quantity,
-            side,
+            orderId: entryOrderId || undefined,
             commission: 0,
             fees: 0
           },
           {
-            exitTime: exitTime.toISOString(),
-            exitPrice,
-            quantity,
+            action: isLong ? 'sell' : 'buy',
             side: isLong ? 'sell' : 'buy',
+            datetime: exitTime,
+            exitTime,
+            exitPrice,
+            price: exitPrice,
+            quantity,
+            orderId: exitOrderId || undefined,
             commission: 0,
             fees: 0,
             pnl
@@ -8670,7 +8714,7 @@ async function parseTradovatePerformanceReport(records, context = {}) {
       };
 
       completedTrades.push(trade);
-      console.log(`Parsed Tradovate performance trade: ${side} ${quantity} ${displaySymbol} @ $${entryPrice} -> $${exitPrice}, P&L: $${pnl.toFixed(2)}`);
+      console.log(`Parsed Tradovate performance trade: ${side} ${quantity} ${rawSymbol} @ $${entryPrice} -> $${exitPrice}, P&L: $${pnl.toFixed(2)}`);
     } catch (error) {
       console.error(`Error parsing Tradovate Performance Report row ${i + 1}:`, error.message, record);
     }
