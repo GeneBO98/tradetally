@@ -54,7 +54,6 @@ const unsubscribeRoutes = require('./routes/unsubscribe.routes');
 const passkeyRoutes = require('./routes/passkey.routes');
 const testimonialsRoutes = require('./routes/testimonials.routes');
 const supportRoutes = require('./routes/support.routes');
-const internalRoutes = require('./routes/internal.routes');
 const BillingService = require('./services/billingService');
 const priceMonitoringService = require('./services/priceMonitoringService');
 const backupScheduler = require('./services/backupScheduler.service');
@@ -70,7 +69,6 @@ const newsScheduler = require('./services/newsScheduler');
 const earningsScheduler = require('./services/earningsScheduler');
 const symbolCategoryScheduler = require('./services/symbolCategoryScheduler');
 const webhookEventBridge = require('./services/webhookEventBridge');
-const crmSyncScheduler = require('./services/crmSyncScheduler');
 const activityTrackingService = require('./services/activityTrackingService');
 const engagementScheduler = require('./services/engagementScheduler');
 const activityTrackingMiddleware = require('./middleware/activityTracking');
@@ -252,7 +250,6 @@ app.use('/api/features', featuresRoutes);
 app.use('/api/behavioral-analytics', behavioralAnalyticsRoutes);
 app.use('/api/billing', billingRoutes);
 app.use('/api/support', supportRoutes);
-app.use('/api/internal', internalRoutes);
 app.use('/api/watchlists', watchlistRoutes);
 app.use('/api/price-alerts', priceAlertsRoutes);
 app.use('/api/notifications', notificationsRoutes);
@@ -511,15 +508,6 @@ async function startServer() {
 
     if (process.env.ENABLE_V1_WEBHOOKS === 'true') {
       webhookEventBridge.start();
-    }
-
-    // Start CRM sync scheduler (Twenty CRM + Invoice Ninja)
-    if (process.env.ENABLE_CRM_SYNC === 'true') {
-      console.log('Starting CRM sync scheduler...');
-      crmSyncScheduler.start();
-      console.log('[SUCCESS] CRM sync scheduler started');
-    } else {
-      console.log('CRM sync disabled (ENABLE_CRM_SYNC=false)');
     }
 
     // Start activity tracking service (buffered event logging)
