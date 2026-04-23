@@ -204,14 +204,27 @@
                 <div
                     class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6"
                 >
-                    <h2 class="heading-section">Your Price Alerts</h2>
-                    <button
-                        @click="showCreateAlertModal = true"
-                        class="mt-4 sm:mt-0 btn-primary"
-                    >
-                        <MdiIcon :icon="mdiBell" :size="16" classes="mr-2" />
-                        Create Alert
-                    </button>
+                    <div>
+                        <h2 class="heading-section">Your Price Alerts</h2>
+                        <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                            Manage alerts and where triggered alerts get delivered.
+                        </p>
+                    </div>
+                    <div class="mt-4 sm:mt-0 flex flex-wrap gap-3">
+                        <a
+                            href="#markets-webhook-destinations"
+                            class="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                        >
+                            Webhook Destinations
+                        </a>
+                        <button
+                            @click="showCreateAlertModal = true"
+                            class="btn-primary"
+                        >
+                            <MdiIcon :icon="mdiBell" :size="16" classes="mr-2" />
+                            Create Alert
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Market & Connection Status -->
@@ -299,6 +312,8 @@
                         </div>
                     </div>
                 </div>
+
+                <PriceAlertWebhookManager />
 
                 <!-- Filters -->
                 <div class="mb-6 flex flex-wrap items-center gap-4">
@@ -832,6 +847,7 @@ import { usePriceAlertNotifications } from "@/composables/usePriceAlertNotificat
 import api from "@/services/api";
 import ProUpgradePrompt from "@/components/ProUpgradePrompt.vue";
 import MdiIcon from "@/components/MdiIcon.vue";
+import PriceAlertWebhookManager from "@/components/price-alerts/PriceAlertWebhookManager.vue";
 import { mdiBell, mdiRepeat } from "@mdi/js";
 import { getMarketStatus } from "@/utils/marketStatus";
 import SymbolAutocomplete from "@/components/common/SymbolAutocomplete.vue";

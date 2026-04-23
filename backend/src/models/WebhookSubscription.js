@@ -1,5 +1,7 @@
 const db = require('../config/database');
 
+const DEFAULT_PROVIDER_TYPE = 'custom';
+
 function parseJsonValue(value, fallback) {
   if (value === null || value === undefined) {
     return fallback;
@@ -20,6 +22,7 @@ function hydrateWebhookRow(row) {
   if (!row) return null;
   return {
     ...row,
+    provider_type: row.provider_type || DEFAULT_PROVIDER_TYPE,
     event_types: parseJsonValue(row.event_types, []),
     custom_headers: parseJsonValue(row.custom_headers, {})
   };
@@ -35,18 +38,20 @@ function hydrateDeliveryRow(row) {
 }
 
 class WebhookSubscription {
-  static async listByUserId(userId, { limit = 50, offset = 0 } = {}) {
+  static async listByUserId(userId, { limit = 50, offset = 0, exactEventTypes = null } = {}) {
+    const filterExactEventTypes = Array.isArray(exactEventTypes) ? JSON.stringify(exactEventTypes) : null;
     const listResult = await db.query(
       `
-        SELECT id, user_id, url, secret, description, event_types, custom_headers,
+        SELECT id, user_id, url, secret, provider_type, description, event_types, custom_headers,
                is_active, failure_count, disabled_at, last_success_at, last_failure_at,
                created_at, updated_at
         FROM webhook_subscriptions
         WHERE user_id = $1
+          AND ($2::jsonb IS NULL OR event_types = $2::jsonb)
         ORDER BY created_at DESC
-        LIMIT $2 OFFSET $3
+        LIMIT $3 OFFSET $4
       `,
-      [userId, limit, offset]
+      [userId, filterExactEventTypes, limit, offset]
     );
 
     const countResult = await db.query(
@@ -54,8 +59,9 @@ class WebhookSubscription {
         SELECT COUNT(*)::integer AS total
         FROM webhook_subscriptions
         WHERE user_id = $1
+          AND ($2::jsonb IS NULL OR event_types = $2::jsonb)
       `,
-      [userId]
+      [userId, filterExactEventTypes]
     );
 
     return {
@@ -67,7 +73,7 @@ class WebhookSubscription {
   static async findByIdForUser(id, userId) {
     const result = await db.query(
       `
-        SELECT id, user_id, url, secret, description, event_types, custom_headers,
+        SELECT id, user_id, url, secret, provider_type, description, event_types, custom_headers,
                is_active, failure_count, disabled_at, last_success_at, last_failure_at,
                created_at, updated_at
         FROM webhook_subscriptions
@@ -83,7 +89,7 @@ class WebhookSubscription {
   static async findById(id) {
     const result = await db.query(
       `
-        SELECT id, user_id, url, secret, description, event_types, custom_headers,
+        SELECT id, user_id, url, secret, provider_type, description, event_types, custom_headers,
                is_active, failure_count, disabled_at, last_success_at, last_failure_at,
                created_at, updated_at
         FROM webhook_subscriptions
@@ -100,6 +106,7 @@ class WebhookSubscription {
     userId,
     url,
     secret,
+    providerType = DEFAULT_PROVIDER_TYPE,
     description = null,
     eventTypes = [],
     customHeaders = {},
@@ -108,14 +115,14 @@ class WebhookSubscription {
     const result = await db.query(
       `
         INSERT INTO webhook_subscriptions (
-          user_id, url, secret, description, event_types, custom_headers, is_active
+          user_id, url, secret, provider_type, description, event_types, custom_headers, is_active
         )
-        VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7)
-        RETURNING id, user_id, url, secret, description, event_types, custom_headers,
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8)
+        RETURNING id, user_id, url, secret, provider_type, description, event_types, custom_headers,
                   is_active, failure_count, disabled_at, last_success_at, last_failure_at,
                   created_at, updated_at
       `,
-      [userId, url, secret, description, JSON.stringify(eventTypes), JSON.stringify(customHeaders), isActive]
+      [userId, url, secret, providerType, description, JSON.stringify(eventTypes), JSON.stringify(customHeaders), isActive]
     );
 
     return hydrateWebhookRow(result.rows[0]);
@@ -134,6 +141,11 @@ class WebhookSubscription {
     if (updates.secret !== undefined) {
       clauses.push(`secret = $${++param}`);
       values.push(updates.secret);
+    }
+
+    if (updates.providerType !== undefined) {
+      clauses.push(`provider_type = $${++param}`);
+      values.push(updates.providerType);
     }
 
     if (updates.description !== undefined) {
@@ -186,7 +198,7 @@ class WebhookSubscription {
         UPDATE webhook_subscriptions
         SET ${clauses.join(', ')}, updated_at = CURRENT_TIMESTAMP
         WHERE id = $${++param} AND user_id = $${++param}
-        RETURNING id, user_id, url, secret, description, event_types, custom_headers,
+        RETURNING id, user_id, url, secret, provider_type, description, event_types, custom_headers,
                   is_active, failure_count, disabled_at, last_success_at, last_failure_at,
                   created_at, updated_at
       `,
@@ -212,7 +224,7 @@ class WebhookSubscription {
   static async listActiveByEventType(eventType) {
     const result = await db.query(
       `
-        SELECT id, user_id, url, secret, description, event_types, custom_headers,
+        SELECT id, user_id, url, secret, provider_type, description, event_types, custom_headers,
                is_active, failure_count, disabled_at, last_success_at, last_failure_at,
                created_at, updated_at
         FROM webhook_subscriptions

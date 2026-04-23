@@ -14,6 +14,27 @@ const ALLOWED_EVENT_TYPES = Object.freeze([
 ]);
 
 const DEFAULT_EVENT_TYPES = Object.freeze(['trade.created', 'trade.updated', 'trade.deleted']);
+const ALLOWED_PROVIDER_TYPES = Object.freeze(['custom', 'slack', 'discord']);
+const DEFAULT_PROVIDER_TYPE = 'custom';
+
+function formatCurrency(value) {
+  if (value === null || value === undefined || value === '') return 'N/A';
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed)) return `${value}`;
+  return `$${parsed.toFixed(2)}`;
+}
+
+function formatPercent(value) {
+  if (value === null || value === undefined || value === '') return 'N/A';
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed)) return `${value}`;
+  return `${parsed >= 0 ? '+' : ''}${parsed.toFixed(2)}%`;
+}
+
+function getProviderType(webhook = {}) {
+  const providerType = webhook.provider_type || webhook.providerType || DEFAULT_PROVIDER_TYPE;
+  return ALLOWED_PROVIDER_TYPES.includes(providerType) ? providerType : DEFAULT_PROVIDER_TYPE;
+}
 
 function maskSecret(secret) {
   if (!secret || typeof secret !== 'string') return null;
@@ -26,6 +47,7 @@ function toSafeWebhook(webhook, includeSecret = false) {
   return {
     id: webhook.id,
     url: webhook.url,
+    providerType: getProviderType(webhook),
     description: webhook.description,
     eventTypes: Array.isArray(webhook.event_types) ? webhook.event_types : [],
     customHeaders: webhook.custom_headers || {},
@@ -39,6 +61,20 @@ function toSafeWebhook(webhook, includeSecret = false) {
     secretPreview: maskSecret(webhook.secret),
     secret: includeSecret ? webhook.secret : undefined
   };
+}
+
+function validateProviderType(providerType) {
+  const normalized = typeof providerType === 'string'
+    ? providerType.trim().toLowerCase()
+    : DEFAULT_PROVIDER_TYPE;
+
+  if (!ALLOWED_PROVIDER_TYPES.includes(normalized)) {
+    const error = new Error(`Invalid provider type: ${providerType}`);
+    error.code = 'INVALID_PROVIDER_TYPE';
+    throw error;
+  }
+
+  return normalized;
 }
 
 function normalizeEventTypes(eventTypes) {
@@ -69,9 +105,112 @@ function createWebhookSecret() {
   return `whsec_${crypto.randomBytes(24).toString('hex')}`;
 }
 
+function buildDefaultPayload(event) {
+  return {
+    id: event.id,
+    type: event.type,
+    createdAt: event.occurredAt,
+    data: event.payload,
+    metadata: event.metadata || {}
+  };
+}
+
+function buildPriceAlertSummary(event) {
+  const data = event?.payload || {};
+  const symbol = data.symbol || 'Unknown symbol';
+  const action = data.alertType === 'below'
+    ? 'dropped below your target'
+    : data.alertType === 'change_percent'
+      ? 'hit your change threshold'
+      : 'moved above your target';
+
+  return `Price alert triggered: ${symbol} ${action}`;
+}
+
+function buildPriceAlertFields(event) {
+  const data = event?.payload || {};
+  return [
+    { label: 'Symbol', value: data.symbol || 'N/A' },
+    { label: 'Alert Type', value: data.alertType || 'N/A' },
+    { label: 'Current Price', value: formatCurrency(data.currentPrice) },
+    { label: 'Target Price', value: formatCurrency(data.targetPrice) },
+    { label: 'Observed Change', value: formatPercent(data.observedPercentChange) },
+    { label: 'Threshold', value: formatPercent(data.changePercent) },
+    { label: 'Triggered At', value: data.triggeredAt || event.occurredAt || new Date().toISOString() }
+  ].filter((field) => field.value !== 'N/A');
+}
+
+function formatSlackPayload(event) {
+  const data = event?.payload || {};
+  const detailLines = buildPriceAlertFields(event)
+    .map((field) => `*${field.label}:* ${field.value}`)
+    .join('\n');
+
+  return {
+    text: buildPriceAlertSummary(event),
+    blocks: [
+      {
+        type: 'header',
+        text: {
+          type: 'plain_text',
+          text: `Price Alert: ${data.symbol || 'Unknown'}`
+        }
+      },
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: data.message || buildPriceAlertSummary(event)
+        }
+      },
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: detailLines
+        }
+      }
+    ]
+  };
+}
+
+function formatDiscordPayload(event) {
+  const data = event?.payload || {};
+  return {
+    content: buildPriceAlertSummary(event),
+    embeds: [
+      {
+        title: `Price Alert: ${data.symbol || 'Unknown'}`,
+        description: data.message || buildPriceAlertSummary(event),
+        color: data.alertType === 'below' ? 15158332 : 3066993,
+        fields: buildPriceAlertFields(event).map((field) => ({
+          name: field.label,
+          value: field.value,
+          inline: field.label !== 'Triggered At'
+        })),
+        timestamp: data.triggeredAt || event.occurredAt || new Date().toISOString()
+      }
+    ]
+  };
+}
+
+function buildWebhookRequestBody(webhook, event) {
+  const providerType = getProviderType(webhook);
+
+  if (providerType === 'slack') {
+    return formatSlackPayload(event);
+  }
+
+  if (providerType === 'discord') {
+    return formatDiscordPayload(event);
+  }
+
+  return buildDefaultPayload(event);
+}
+
 class WebhookService {
-  async listWebhooks(userId, { limit = 50, offset = 0 } = {}) {
-    const { rows, total } = await WebhookSubscription.listByUserId(userId, { limit, offset });
+  async listWebhooks(userId, { limit = 50, offset = 0, exactEventTypes = null } = {}) {
+    const { rows, total } = await WebhookSubscription.listByUserId(userId, { limit, offset, exactEventTypes });
     return {
       webhooks: rows.map((row) => toSafeWebhook(row)),
       total
@@ -87,10 +226,12 @@ class WebhookService {
     }
 
     await ensureValidatedOutboundUrl(payload.url, { mode: 'public' });
+    const providerType = validateProviderType(payload.providerType);
 
     const created = await WebhookSubscription.create({
       userId,
       url: payload.url,
+      providerType,
       description: payload.description || null,
       eventTypes: eventValidation.normalized.length > 0 ? eventValidation.normalized : [...DEFAULT_EVENT_TYPES],
       customHeaders: payload.customHeaders || {},
@@ -108,6 +249,7 @@ class WebhookService {
       await ensureValidatedOutboundUrl(payload.url, { mode: 'public' });
       updates.url = payload.url;
     }
+    if (payload.providerType !== undefined) updates.providerType = validateProviderType(payload.providerType);
     if (payload.description !== undefined) updates.description = payload.description;
     if (payload.isActive !== undefined) updates.isActive = payload.isActive;
     if (payload.customHeaders !== undefined) updates.customHeaders = payload.customHeaders;
@@ -164,18 +306,44 @@ class WebhookService {
     const webhook = await WebhookSubscription.findByIdForUser(webhookId, userId);
     if (!webhook) return null;
 
-    const testEvent = {
-      id: typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex'),
-      type: 'webhook.test',
-      occurredAt: new Date().toISOString(),
-      payload: {
-        message: 'This is a webhook test delivery from TradeTally.',
-        webhookId: webhook.id
-      },
-      metadata: {
-        source: 'api.v1.webhooks.test'
-      }
-    };
+    const now = new Date().toISOString();
+    const shouldUsePriceAlertPayload = Array.isArray(webhook.event_types) && webhook.event_types.includes('price_alert.triggered');
+    const testEvent = shouldUsePriceAlertPayload
+      ? {
+          id: typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex'),
+          type: 'price_alert.triggered',
+          occurredAt: now,
+          payload: {
+            alertId: typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex'),
+            userId,
+            symbol: 'AAPL',
+            alertType: 'above',
+            currentPrice: 205.15,
+            targetPrice: 200,
+            changePercent: null,
+            observedPercentChange: 3.42,
+            message: 'AAPL has reached $205.15, which is above your target of $200.00',
+            repeatEnabled: false,
+            triggeredAt: now
+          },
+          metadata: {
+            source: 'api.webhooks.test',
+            isTest: true
+          }
+        }
+      : {
+          id: typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex'),
+          type: 'webhook.test',
+          occurredAt: now,
+          payload: {
+            message: 'This is a webhook test delivery from TradeTally.',
+            webhookId: webhook.id
+          },
+          metadata: {
+            source: 'api.webhooks.test',
+            isTest: true
+          }
+        };
 
     return this.deliverEventToWebhook(webhook, testEvent, { isTest: true });
   }
@@ -215,13 +383,7 @@ class WebhookService {
     const timeoutMs = Number.parseInt(process.env.WEBHOOK_TIMEOUT_MS || '10000', 10) || 10000;
     const failureThreshold = Number.parseInt(process.env.WEBHOOK_FAILURE_THRESHOLD || '5', 10) || 5;
     const createdAt = Date.now();
-    const payload = {
-      id: event.id,
-      type: event.type,
-      createdAt: event.occurredAt,
-      data: event.payload,
-      metadata: event.metadata || {}
-    };
+    const payload = buildWebhookRequestBody(webhook, event);
     const payloadText = JSON.stringify(payload);
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const signature = crypto
@@ -326,8 +488,14 @@ class WebhookService {
 
 module.exports = {
   ALLOWED_EVENT_TYPES,
+  ALLOWED_PROVIDER_TYPES,
   DEFAULT_EVENT_TYPES,
+  DEFAULT_PROVIDER_TYPE,
+  buildWebhookRequestBody,
   createWebhookSecret,
+  formatDiscordPayload,
+  formatSlackPayload,
+  validateProviderType,
   validateEventTypes,
   webhookService: new WebhookService()
 };

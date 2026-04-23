@@ -12,6 +12,7 @@ const WEBHOOK_EVENT_TYPES = Object.freeze([
   'price_alert.triggered',
   'enrichment.completed'
 ]);
+const WEBHOOK_PROVIDER_TYPES = Object.freeze(['custom', 'slack', 'discord']);
 
 // Normalize snake_case fields to camelCase for API compatibility
 const normalizeFieldNames = (body) => {
@@ -510,6 +511,7 @@ const schemas = {
   // Webhook validation schemas
   createWebhook: Joi.object({
     url: Joi.string().uri({ scheme: ['http', 'https'] }).required(),
+    providerType: Joi.string().valid(...WEBHOOK_PROVIDER_TYPES).default('custom'),
     description: Joi.string().max(500).allow('', null),
     eventTypes: Joi.array().items(Joi.string().valid(...WEBHOOK_EVENT_TYPES)).min(1).optional(),
     customHeaders: Joi.object().pattern(Joi.string(), Joi.string().max(1000)).default({}),
@@ -519,6 +521,7 @@ const schemas = {
 
   updateWebhook: Joi.object({
     url: Joi.string().uri({ scheme: ['http', 'https'] }),
+    providerType: Joi.string().valid(...WEBHOOK_PROVIDER_TYPES),
     description: Joi.string().max(500).allow('', null),
     eventTypes: Joi.array().items(Joi.string().valid(...WEBHOOK_EVENT_TYPES)).min(1),
     customHeaders: Joi.object().pattern(Joi.string(), Joi.string().max(1000)),
