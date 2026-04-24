@@ -57,4 +57,22 @@ describe('csvParser timezone handling', () => {
     expect(result.trades[0].entryPrice).toBe(25081);
     expect(result.trades[0].exitPrice).toBe(25055.25);
   });
+
+  test('converts Tradovate paired trade export timestamps using the user timezone', async () => {
+    const csv = [
+      'Position ID,Timestamp,Trade Date,Net Pos,Net Price,Bought,Avg. Buy,Sold,Avg. Sell,Account,Contract,Product,Product Description,_priceFormat,_priceFormatType,_tickSize,Pair ID,Buy Fill ID,Sell Fill ID,Paired Qty,Buy Price,Sell Price,P/L,Currency,Bought Timestamp,Sold Timestamp',
+      '465747740010,04/09/2026 17:14:44,2026-04-09,0,,24,25065.97,24,25061.03,APEX4977960000002,MNQM6,MNQ,Micro E-mini NASDAQ-100,-2,0,0.25,465747740193,465747740168,465747740191,1,25060.75,25048.50,-24.50,USD,04/09/2026 15:38:40,04/09/2026 15:40:03'
+    ].join('\n');
+
+    const result = await parseCSV(Buffer.from(csv), 'tradovate', {
+      userTimezone: 'Europe/Berlin'
+    });
+
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0].side).toBe('long');
+    expect(result.trades[0].entryTime).toBe('2026-04-09T13:38:40Z');
+    expect(result.trades[0].exitTime).toBe('2026-04-09T13:40:03Z');
+    expect(result.trades[0].executions[0].datetime).toBe('2026-04-09T13:38:40Z');
+    expect(result.trades[0].executions[1].datetime).toBe('2026-04-09T13:40:03Z');
+  });
 });

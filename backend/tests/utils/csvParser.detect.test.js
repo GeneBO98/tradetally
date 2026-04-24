@@ -95,6 +95,11 @@ describe('detectBrokerFormat', () => {
     expect(detectBrokerFormat(buf(csv))).toBe('tradovate');
   });
 
+  test('detects Tradovate paired trades format', () => {
+    const csv = 'Position ID,Timestamp,Trade Date,Net Pos,Net Price,Bought,Avg. Buy,Sold,Avg. Sell,Account,Contract,Product,Product Description,_priceFormat,_priceFormatType,_tickSize,Pair ID,Buy Fill ID,Sell Fill ID,Paired Qty,Buy Price,Sell Price,P/L,Currency,Bought Timestamp,Sold Timestamp\n465747740010,04/09/2026 17:14:44,2026-04-09,0,,24,25065.97,24,25061.03,APEX4977960000002,MNQM6,MNQ,Micro E-mini NASDAQ-100,-2,0,0.25,465747740223,465747740203,465747740221,5,25073.25,25072.00,-12.50,USD,04/09/2026 17:14:44,04/09/2026 17:14:44';
+    expect(detectBrokerFormat(buf(csv))).toBe('tradovate');
+  });
+
   test('detects Questrade format', () => {
     const csv = 'Symbol,Action,Fill Qty,Fill Price,Exec Time,Commission\nAAPL,Buy,100,150.00,01/01/2025 09:30,4.95';
     expect(detectBrokerFormat(buf(csv))).toBe('questrade');
