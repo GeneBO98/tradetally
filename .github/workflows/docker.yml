@@ -101,8 +101,7 @@ jobs:
         run: |
           if [[ "${{ github.event_name }}" == "release" ]]; then
             release_tag="${{ github.event.release.tag_name }}"
-            version="${release_tag#v}"
-            tags="potentialmidas/tradetally:${release_tag},potentialmidas/tradetally:${version}"
+            tags="potentialmidas/tradetally:${release_tag}"
 
             if [[ "${{ github.event.release.prerelease }}" == "true" ]]; then
               tags="${tags},potentialmidas/tradetally:nightly"
@@ -113,8 +112,13 @@ jobs:
             echo "tags=${tags}" >> "$GITHUB_OUTPUT"
           elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             release_tag="${{ inputs.release_tag }}"
-            version="${release_tag#v}"
-            tags="potentialmidas/tradetally:${release_tag},potentialmidas/tradetally:${version}"
+
+            if [[ ! "$release_tag" =~ ^v.+$ ]]; then
+              echo "Release tag must start with 'v', got: $release_tag"
+              exit 1
+            fi
+
+            tags="potentialmidas/tradetally:${release_tag}"
 
             if [[ "${{ inputs.prerelease }}" == "true" ]]; then
               tags="${tags},potentialmidas/tradetally:nightly"
