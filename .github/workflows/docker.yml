@@ -1,0 +1,106 @@
+name: Build Docker Images
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  release:
+    types:
+      - published
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref || github.event.release.tag_name }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out release tag
+        if: github.event_name == 'release'
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Check out branch
+        if: github.event_name != 'release'
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'backend/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Run tests
+        working-directory: backend
+        run: npm test
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out release tag
+        if: github.event_name == 'release'
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Check out branch
+        if: github.event_name != 'release'
+        uses: actions/checkout@v6
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Determine tags
+        id: tags
+        run: |
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            release_tag="${{ github.event.release.tag_name }}"
+            version="${release_tag#v}"
+            tags="potentialmidas/tradetally:${release_tag},potentialmidas/tradetally:${version}"
+
+            if [[ "${{ github.event.release.prerelease }}" == "true" ]]; then
+              tags="${tags},potentialmidas/tradetally:nightly"
+            else
+              tags="${tags},potentialmidas/tradetally:latest"
+            fi
+
+            echo "tags=${tags}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "tags=potentialmidas/tradetally:latest" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            echo "tags=potentialmidas/tradetally:nightly" >> "$GITHUB_OUTPUT"
+          else
+            echo "Unsupported ref: ${{ github.ref }}"
+            exit 1
+          fi
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
