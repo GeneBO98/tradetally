@@ -3,9 +3,22 @@ const TierService = require('./tierService');
 const finnhub = require('../utils/finnhub');
 
 class TradingPersonalityService {
+  static addAccountFilter(sqlParts, params, tableAlias = '') {
+    const accounts = params.accountsFilter;
+    if (!accounts || accounts.length === 0) return;
+
+    const column = tableAlias ? `${tableAlias}.account_identifier` : 'account_identifier';
+    if (accounts.includes('__unsorted__')) {
+      sqlParts.push(`AND (${column} IS NULL OR ${column} = '')`);
+      return;
+    }
+
+    params.values.push(accounts);
+    sqlParts.push(`AND ${column} = ANY($${params.values.length}::text[])`);
+  }
   
   // Analyze and classify a user's trading personality
-  static async analyzePersonality(userId, startDate = null, endDate = null) {
+  static async analyzePersonality(userId, startDate = null, endDate = null, accounts = null) {
     try {
       // Note: Basic personality analysis is available to all users
       // Only advanced technical analysis features require Pro tier
@@ -19,6 +32,10 @@ class TradingPersonalityService {
         const testEnd = new Date(endDate);
         const testStart = new Date(startDate);
         
+        const testFilters = [];
+        const testParams = { values: [userId, testStart, testEnd], accountsFilter: accounts };
+        this.addAccountFilter(testFilters, testParams);
+
         const testQuery = `
           SELECT COUNT(*) as count
           FROM trades 
@@ -28,9 +45,10 @@ class TradingPersonalityService {
             AND exit_time IS NOT NULL
             AND entry_time IS NOT NULL
             AND pnl IS NOT NULL
+            ${testFilters.join('\n            ')}
         `;
         
-        const testResult = await db.query(testQuery, [userId, testStart, testEnd]);
+        const testResult = await db.query(testQuery, testParams.values);
         const tradesInRange = parseInt(testResult.rows[0].count);
         
         if (tradesInRange >= 20) {
@@ -46,6 +64,10 @@ class TradingPersonalityService {
       
       if (!useProvidedDateRange) {
         // Get all available trades - query the earliest and latest trade dates
+        const dateRangeFilters = [];
+        const dateRangeParams = { values: [userId], accountsFilter: accounts };
+        this.addAccountFilter(dateRangeFilters, dateRangeParams);
+
         const dateRangeQuery = `
           SELECT 
             MIN(entry_time) as earliest_date,
@@ -53,8 +75,9 @@ class TradingPersonalityService {
           FROM trades 
           WHERE user_id = $1 
             AND entry_time IS NOT NULL
+            ${dateRangeFilters.join('\n            ')}
         `;
-        const dateRangeResult = await db.query(dateRangeQuery, [userId]);
+        const dateRangeResult = await db.query(dateRangeQuery, dateRangeParams.values);
         
         if (dateRangeResult.rows[0].earliest_date) {
           start = new Date(dateRangeResult.rows[0].earliest_date);
@@ -68,6 +91,10 @@ class TradingPersonalityService {
       }
 
       // Get all completed trades for analysis
+      const tradeFilters = [];
+      const tradeParams = { values: [userId, start, end], accountsFilter: accounts };
+      this.addAccountFilter(tradeFilters, tradeParams);
+
       const tradesQuery = `
         SELECT 
           id, symbol, entry_time, exit_time, entry_price, exit_price,
@@ -80,10 +107,11 @@ class TradingPersonalityService {
           AND pnl IS NOT NULL
           AND entry_time >= $2
           AND exit_time <= $3
+          ${tradeFilters.join('\n          ')}
         ORDER BY entry_time
       `;
 
-      const tradesResult = await db.query(tradesQuery, [userId, start, end]);
+      const tradesResult = await db.query(tradesQuery, tradeParams.values);
       const trades = tradesResult.rows;
 
       console.log(`Personality analysis for user ${userId}: Found ${trades.length} trades`);
@@ -582,6 +610,14 @@ class TradingPersonalityService {
         momentum_score = EXCLUDED.momentum_score,
         mean_reversion_score = EXCLUDED.mean_reversion_score,
         swing_score = EXCLUDED.swing_score,
+        avg_hold_time_minutes = EXCLUDED.avg_hold_time_minutes,
+        avg_trade_frequency_per_day = EXCLUDED.avg_trade_frequency_per_day,
+        risk_tolerance = EXCLUDED.risk_tolerance,
+        position_sizing_consistency = EXCLUDED.position_sizing_consistency,
+        personality_performance_score = EXCLUDED.personality_performance_score,
+        optimal_strategy_adherence = EXCLUDED.optimal_strategy_adherence,
+        total_trades_analyzed = EXCLUDED.total_trades_analyzed,
+        analysis_start_date = EXCLUDED.analysis_start_date,
         updated_at = CURRENT_TIMESTAMP
       RETURNING *
     `;

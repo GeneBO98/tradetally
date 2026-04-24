@@ -5,6 +5,24 @@ const finnhub = require('../utils/finnhub');
 
 // Enhanced version with proper revenge trade aggregation
 class BehavioralAnalyticsServiceV2 {
+  static addTradeFilter(sqlParts, params, dateFilter = {}) {
+    if (dateFilter.startDate) {
+      params.push(dateFilter.startDate);
+      sqlParts.push(`AND exit_time >= $${params.length}`);
+    }
+    if (dateFilter.endDate) {
+      params.push(dateFilter.endDate);
+      sqlParts.push(`AND exit_time <= $${params.length}`);
+    }
+    if (dateFilter.accounts && dateFilter.accounts.length > 0) {
+      if (dateFilter.accounts.includes('__unsorted__')) {
+        sqlParts.push(`AND (account_identifier IS NULL OR account_identifier = '')`);
+      } else {
+        params.push(dateFilter.accounts);
+        sqlParts.push(`AND account_identifier = ANY($${params.length}::text[])`);
+      }
+    }
+  }
 
   // Calculate monetary position size for any trade
   // For both long and short trades, quantity * entry_price represents the monetary value at risk
@@ -13,16 +31,20 @@ class BehavioralAnalyticsServiceV2 {
   }
 
   // Analyze historical trades and properly aggregate revenge trading events
-  static async analyzeHistoricalTradesV2(userId) {
+  static async analyzeHistoricalTradesV2(userId, dateFilter = {}) {
     const hasAccess = await TierService.hasFeatureAccess(userId, 'behavioral_analytics');
     if (!hasAccess) {
       throw new Error('Historical analysis requires Pro tier');
     }
 
     // Clear existing data
-    await this.clearHistoricalData(userId);
+    await this.clearHistoricalData(userId, dateFilter);
 
     // Get all completed trades for the user, ordered by entry time
+    const tradeParams = [userId];
+    const tradeFilters = [];
+    this.addTradeFilter(tradeFilters, tradeParams, dateFilter);
+
     const tradesQuery = `
       SELECT 
         id, symbol, entry_time, exit_time, entry_price, exit_price, 
@@ -31,10 +53,11 @@ class BehavioralAnalyticsServiceV2 {
       WHERE user_id = $1 
         AND exit_price IS NOT NULL 
         AND exit_time IS NOT NULL
+        ${tradeFilters.join('\n        ')}
       ORDER BY entry_time ASC
     `;
 
-    const tradesResult = await db.query(tradesQuery, [userId]);
+    const tradesResult = await db.query(tradesQuery, tradeParams);
     const trades = tradesResult.rows;
 
     let revengeEventsCreated = 0;
@@ -698,16 +721,77 @@ class BehavioralAnalyticsServiceV2 {
   }
 
   // Clear existing historical data
-  static async clearHistoricalData(userId) {
-    const queries = [
-      'DELETE FROM revenge_trading_events WHERE user_id = $1',
-      'DELETE FROM behavioral_patterns WHERE user_id = $1',
-      'DELETE FROM behavioral_alerts WHERE user_id = $1'
-    ];
+  static async clearHistoricalData(userId, dateFilter = {}) {
+    const eventParams = [userId];
+    const patternParams = [userId];
+    const alertParams = [userId];
+    const eventConditions = [];
+    const patternConditions = [];
+    const alertConditions = [];
 
-    for (const query of queries) {
-      await db.query(query, [userId]);
+    if (dateFilter.startDate) {
+      eventParams.push(dateFilter.startDate);
+      patternParams.push(dateFilter.startDate);
+      alertParams.push(dateFilter.startDate);
+      eventConditions.push(`AND trigger_timestamp >= $${eventParams.length}`);
+      patternConditions.push(`AND detected_at >= $${patternParams.length}`);
+      alertConditions.push(`AND created_at >= $${alertParams.length}`);
     }
+
+    if (dateFilter.endDate) {
+      eventParams.push(dateFilter.endDate);
+      patternParams.push(dateFilter.endDate);
+      alertParams.push(dateFilter.endDate);
+      eventConditions.push(`AND trigger_timestamp <= $${eventParams.length}`);
+      patternConditions.push(`AND detected_at <= $${patternParams.length}`);
+      alertConditions.push(`AND created_at <= $${alertParams.length}`);
+    }
+
+    if (dateFilter.accounts && dateFilter.accounts.length > 0) {
+      if (dateFilter.accounts.includes('__unsorted__')) {
+        eventConditions.push(`
+          AND EXISTS (
+            SELECT 1
+            FROM trades account_trade
+            WHERE (account_trade.id = revenge_trading_events.trigger_trade_id
+               OR account_trade.id = ANY(revenge_trading_events.revenge_trades))
+              AND (account_trade.account_identifier IS NULL OR account_trade.account_identifier = '')
+          )
+        `);
+        patternConditions.push(`
+          AND EXISTS (
+            SELECT 1
+            FROM trades account_trade
+            WHERE account_trade.id = behavioral_patterns.trigger_trade_id
+              AND (account_trade.account_identifier IS NULL OR account_trade.account_identifier = '')
+          )
+        `);
+      } else {
+        eventParams.push(dateFilter.accounts);
+        patternParams.push(dateFilter.accounts);
+        eventConditions.push(`
+          AND EXISTS (
+            SELECT 1
+            FROM trades account_trade
+            WHERE (account_trade.id = revenge_trading_events.trigger_trade_id
+               OR account_trade.id = ANY(revenge_trading_events.revenge_trades))
+              AND account_trade.account_identifier = ANY($${eventParams.length}::text[])
+          )
+        `);
+        patternConditions.push(`
+          AND EXISTS (
+            SELECT 1
+            FROM trades account_trade
+            WHERE account_trade.id = behavioral_patterns.trigger_trade_id
+              AND account_trade.account_identifier = ANY($${patternParams.length}::text[])
+          )
+        `);
+      }
+    }
+
+    await db.query(`DELETE FROM revenge_trading_events WHERE user_id = $1 ${eventConditions.join(' ')}`, eventParams);
+    await db.query(`DELETE FROM behavioral_patterns WHERE user_id = $1 ${patternConditions.join(' ')}`, patternParams);
+    await db.query(`DELETE FROM behavioral_alerts WHERE user_id = $1 ${alertConditions.join(' ')}`, alertParams);
   }
 }
 

@@ -236,10 +236,16 @@ const behavioralAnalyticsController = {
   async getInsights(req, res, next) {
     try {
       const userId = req.user.id;
+      const { startDate, endDate, accounts } = req.query;
+
+      const dateFilter = {};
+      if (startDate) dateFilter.startDate = startDate;
+      if (endDate) dateFilter.endDate = endDate;
+      if (accounts) dateFilter.accounts = ensureString(accounts).split(',');
       
       // Get recent patterns and statistics
-      const overview = await BehavioralAnalyticsService.getBehavioralOverview(userId);
-      const revengeAnalysis = await BehavioralAnalyticsService.getRevengeTradeAnalysis(userId);
+      const overview = await BehavioralAnalyticsService.getBehavioralOverview(userId, dateFilter);
+      const revengeAnalysis = await BehavioralAnalyticsService.getRevengeTradeAnalysis(userId, dateFilter);
       
       // Generate insights based on data
       const insights = behavioralAnalyticsController.generateInsights(overview, revengeAnalysis);
@@ -411,6 +417,7 @@ const behavioralAnalyticsController = {
   async analyzeHistoricalTrades(req, res, next) {
     try {
       const userId = req.user.id;
+      const { startDate, endDate, accounts } = req.query;
       
       // Check if user has access to behavioral analytics
       const hasAccess = await TierService.hasFeatureAccess(userId, 'behavioral_analytics');
@@ -423,7 +430,12 @@ const behavioralAnalyticsController = {
       }
 
       // Use the improved V2 version for proper revenge trade aggregation
-      const analysis = await BehavioralAnalyticsServiceV2.analyzeHistoricalTradesV2(userId);
+      const dateFilter = {};
+      if (startDate) dateFilter.startDate = startDate;
+      if (endDate) dateFilter.endDate = endDate;
+      if (accounts) dateFilter.accounts = ensureString(accounts).split(',');
+
+      const analysis = await BehavioralAnalyticsServiceV2.analyzeHistoricalTradesV2(userId, dateFilter);
       
       res.json({
         success: true,
@@ -591,6 +603,7 @@ const behavioralAnalyticsController = {
   async reRunHistoricalAnalysis(req, res, next) {
     try {
       const userId = req.user.id;
+      const { startDate, endDate, accounts } = req.query;
       
       // Check if user has access to behavioral analytics
       const hasAccess = await TierService.hasFeatureAccess(userId, 'behavioral_analytics');
@@ -603,7 +616,12 @@ const behavioralAnalyticsController = {
       }
 
       // Use the improved V2 version with proper loss thresholds
-      const analysis = await BehavioralAnalyticsServiceV2.analyzeHistoricalTradesV2(userId);
+      const dateFilter = {};
+      if (startDate) dateFilter.startDate = startDate;
+      if (endDate) dateFilter.endDate = endDate;
+      if (accounts) dateFilter.accounts = ensureString(accounts).split(',');
+
+      const analysis = await BehavioralAnalyticsServiceV2.analyzeHistoricalTradesV2(userId, dateFilter);
       
       res.json({
         success: true,

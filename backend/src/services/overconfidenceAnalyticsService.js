@@ -5,6 +5,55 @@ const adminSettingsService = require('./adminSettings');
 const AnalyticsCache = require('./analyticsCache');
 
 class OverconfidenceAnalyticsService {
+  static addTradeAccountFilter(sqlParts, params, accounts, tableAlias = '') {
+    if (!accounts || accounts.length === 0) return;
+
+    const column = tableAlias ? `${tableAlias}.account_identifier` : 'account_identifier';
+    if (accounts.includes('__unsorted__')) {
+      sqlParts.push(`AND (${column} IS NULL OR ${column} = '')`);
+      return;
+    }
+
+    params.push(accounts);
+    sqlParts.push(`AND ${column} = ANY($${params.length}::text[])`);
+  }
+
+  static addEventDateFilter(sqlParts, params, dateFilter = {}) {
+    if (dateFilter.startDate) {
+      params.push(dateFilter.startDate);
+      sqlParts.push(`AND win_streak_end_date >= $${params.length}`);
+    }
+    if (dateFilter.endDate) {
+      params.push(dateFilter.endDate);
+      sqlParts.push(`AND win_streak_start_date <= $${params.length}`);
+    }
+  }
+
+  static addEventAccountFilter(sqlParts, params, accounts) {
+    if (!accounts || accounts.length === 0) return;
+
+    if (accounts.includes('__unsorted__')) {
+      sqlParts.push(`
+        AND EXISTS (
+          SELECT 1
+          FROM trades account_trade
+          WHERE account_trade.id = ANY(streak_trades)
+            AND (account_trade.account_identifier IS NULL OR account_trade.account_identifier = '')
+        )
+      `);
+      return;
+    }
+
+    params.push(accounts);
+    sqlParts.push(`
+      AND EXISTS (
+        SELECT 1
+        FROM trades account_trade
+        WHERE account_trade.id = ANY(streak_trades)
+          AND account_trade.account_identifier = ANY($${params.length}::text[])
+      )
+    `);
+  }
   
   // Calculate monetary position size for any trade
   static calculateMonetaryPositionSize(trade) {
@@ -32,22 +81,20 @@ class OverconfidenceAnalyticsService {
     // Clear existing data (only for the filtered date range if provided)
     await this.clearHistoricalData(userId, dateFilter);
 
-    // Build date filter conditions
-    let dateFilterSQL = '';
     const queryParams = [userId];
-    let paramCount = 2;
+    const tradeFilters = [];
 
     if (dateFilter.startDate) {
-      dateFilterSQL += ` AND exit_time >= $${paramCount}`;
       queryParams.push(dateFilter.startDate);
-      paramCount++;
+      tradeFilters.push(`AND exit_time >= $${queryParams.length}`);
     }
 
     if (dateFilter.endDate) {
-      dateFilterSQL += ` AND exit_time <= $${paramCount}`;
       queryParams.push(dateFilter.endDate);
-      paramCount++;
+      tradeFilters.push(`AND exit_time <= $${queryParams.length}`);
     }
+
+    this.addTradeAccountFilter(tradeFilters, queryParams, dateFilter.accounts);
 
     // Get all completed trades for the user, ordered by entry time
     const tradesQuery = `
@@ -58,7 +105,7 @@ class OverconfidenceAnalyticsService {
       WHERE user_id = $1
         AND exit_price IS NOT NULL
         AND exit_time IS NOT NULL
-        ${dateFilterSQL}
+        ${tradeFilters.join('\n        ')}
         AND UPPER(symbol) NOT IN ('TEST', 'DEMO', 'EXAMPLE', 'XXX', 'UNKNOWN')
       ORDER BY entry_time ASC
     `;
@@ -583,16 +630,12 @@ class OverconfidenceAnalyticsService {
     console.log(`[OVERCONFIDENCE SERVICE] Cache miss - querying database for fresh data`);
     console.log(`[OVERCONFIDENCE SERVICE] Will generate fresh AI recommendations for events...`);
 
-    // Build base parameters for date filtering
     const baseParams = [userId];
-    let paramCount = 1;
-
-    let dateCondition = '';
-    if (dateFilter.startDate && dateFilter.endDate) {
-      dateCondition = ` AND created_at >= $${++paramCount} AND created_at <= $${++paramCount}`;
-      baseParams.push(dateFilter.startDate, dateFilter.endDate);
-      console.log(`[OVERCONFIDENCE SERVICE] Date filter applied: ${dateFilter.startDate} to ${dateFilter.endDate}`);
-    }
+    const eventConditions = [];
+    this.addEventDateFilter(eventConditions, baseParams, dateFilter);
+    this.addEventAccountFilter(eventConditions, baseParams, dateFilter.accounts);
+    const dateCondition = eventConditions.length ? ` ${eventConditions.join(' ')}` : '';
+    let paramCount = baseParams.length;
 
     // Get total count for pagination
     const countQuery = `
@@ -843,32 +886,25 @@ class OverconfidenceAnalyticsService {
 
   // Clear existing historical data
   static async clearHistoricalData(userId, dateFilter = {}) {
-    let eventsDateFilterSQL = '';
-    let patternsDateFilterSQL = '';
     const eventsParams = [userId];
     const patternsParams = [userId, 'overconfidence_bias'];
+    const eventsConditions = [];
+    const patternsConditions = [];
 
     // Add date filters if provided
     if (dateFilter.startDate || dateFilter.endDate) {
-      let eventsParamCount = 2;
-      let patternsParamCount = 3;
-
       if (dateFilter.startDate) {
-        eventsDateFilterSQL += ` AND created_at >= $${eventsParamCount}`;
-        patternsDateFilterSQL += ` AND detected_at >= $${patternsParamCount}`;
         eventsParams.push(dateFilter.startDate);
         patternsParams.push(dateFilter.startDate);
-        eventsParamCount++;
-        patternsParamCount++;
+        eventsConditions.push(`AND win_streak_end_date >= $${eventsParams.length}`);
+        patternsConditions.push(`AND detected_at >= $${patternsParams.length}`);
       }
 
       if (dateFilter.endDate) {
-        eventsDateFilterSQL += ` AND created_at <= $${eventsParamCount}`;
-        patternsDateFilterSQL += ` AND detected_at <= $${patternsParamCount}`;
         eventsParams.push(dateFilter.endDate);
         patternsParams.push(dateFilter.endDate);
-        eventsParamCount++;
-        patternsParamCount++;
+        eventsConditions.push(`AND win_streak_start_date <= $${eventsParams.length}`);
+        patternsConditions.push(`AND detected_at <= $${patternsParams.length}`);
       }
 
       console.log(`[OVERCONFIDENCE] Clearing historical data with date filter: ${dateFilter.startDate || 'all'} to ${dateFilter.endDate || 'now'}`);
@@ -876,9 +912,11 @@ class OverconfidenceAnalyticsService {
       console.log(`[OVERCONFIDENCE] Clearing all historical data`);
     }
 
+    this.addEventAccountFilter(eventsConditions, eventsParams, dateFilter.accounts);
+
     const queries = [
-      `DELETE FROM overconfidence_events WHERE user_id = $1${eventsDateFilterSQL}`,
-      `DELETE FROM behavioral_patterns WHERE user_id = $1 AND pattern_type = $2${patternsDateFilterSQL}`
+      `DELETE FROM overconfidence_events WHERE user_id = $1 ${eventsConditions.join(' ')}`,
+      `DELETE FROM behavioral_patterns WHERE user_id = $1 AND pattern_type = $2 ${patternsConditions.join(' ')}`
     ];
 
     await db.query(queries[0], eventsParams);

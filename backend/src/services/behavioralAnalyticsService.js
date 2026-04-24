@@ -2,6 +2,54 @@ const db = require('../config/database');
 const TierService = require('./tierService');
 
 class BehavioralAnalyticsService {
+  static addDateRange(column, params, filter = {}) {
+    const conditions = [];
+    if (filter.startDate) {
+      params.push(filter.startDate);
+      conditions.push(`AND ${column} >= $${params.length}`);
+    }
+    if (filter.endDate) {
+      params.push(filter.endDate);
+      conditions.push(`AND ${column} <= $${params.length}`);
+    }
+    return conditions.join(' ');
+  }
+
+  static addTradeAccountCondition(params, accounts, tradeAlias = 't') {
+    if (!accounts || accounts.length === 0) return '';
+    if (accounts.includes('__unsorted__')) {
+      return `AND (${tradeAlias}.account_identifier IS NULL OR ${tradeAlias}.account_identifier = '')`;
+    }
+
+    params.push(accounts);
+    return `AND ${tradeAlias}.account_identifier = ANY($${params.length}::text[])`;
+  }
+
+  static addRevengeEventAccountCondition(params, accounts, eventAlias = 'rte') {
+    if (!accounts || accounts.length === 0) return '';
+    if (accounts.includes('__unsorted__')) {
+      return `
+        AND EXISTS (
+          SELECT 1
+          FROM trades account_trade
+          WHERE (account_trade.id = ${eventAlias}.trigger_trade_id
+             OR account_trade.id = ANY(${eventAlias}.revenge_trades))
+            AND (account_trade.account_identifier IS NULL OR account_trade.account_identifier = '')
+        )
+      `;
+    }
+
+    params.push(accounts);
+    return `
+      AND EXISTS (
+        SELECT 1
+        FROM trades account_trade
+        WHERE (account_trade.id = ${eventAlias}.trigger_trade_id
+           OR account_trade.id = ANY(${eventAlias}.revenge_trades))
+          AND account_trade.account_identifier = ANY($${params.length}::text[])
+      )
+    `;
+  }
   
   // Get behavioral analytics overview for a user
   static async getBehavioralOverview(userId, dateFilter = '') {
@@ -15,25 +63,23 @@ class BehavioralAnalyticsService {
     let paramCount = 1;
 
     // Add date filter if provided
-    let dateCondition = '';
-    if (dateFilter.startDate && dateFilter.endDate) {
-      dateCondition = ` AND detected_at >= $${++paramCount} AND detected_at <= $${++paramCount}`;
-      params.push(dateFilter.startDate, dateFilter.endDate);
-    }
+    let dateCondition = this.addDateRange('detected_at', params, dateFilter);
+    const patternAccountCondition = this.addTradeAccountCondition(params, dateFilter.accounts, 'trigger_trade');
 
     // Get pattern summary
     const patternQuery = `
       SELECT 
-        pattern_type,
+        bp.pattern_type,
         COUNT(*) as total_occurrences,
         AVG(confidence_score) as avg_confidence,
         COUNT(CASE WHEN severity = 'high' THEN 1 END) as high_severity_count,
         COUNT(CASE WHEN severity = 'medium' THEN 1 END) as medium_severity_count,
         COUNT(CASE WHEN severity = 'low' THEN 1 END) as low_severity_count,
         MAX(detected_at) as last_occurrence
-      FROM behavioral_patterns 
-      WHERE user_id = $1 ${dateCondition}
-      GROUP BY pattern_type
+      FROM behavioral_patterns bp
+      LEFT JOIN trades trigger_trade ON trigger_trade.id = bp.trigger_trade_id
+      WHERE bp.user_id = $1 ${dateCondition} ${patternAccountCondition}
+      GROUP BY bp.pattern_type
       ORDER BY total_occurrences DESC
     `;
 
@@ -47,7 +93,8 @@ class BehavioralAnalyticsService {
         bp.severity as pattern_severity
       FROM behavioral_alerts ba
       LEFT JOIN behavioral_patterns bp ON ba.pattern_id = bp.id
-      WHERE ba.user_id = $1 ${dateCondition.replace('detected_at', 'ba.created_at')}
+      LEFT JOIN trades trigger_trade ON trigger_trade.id = bp.trigger_trade_id
+      WHERE ba.user_id = $1 ${dateCondition.replaceAll('detected_at', 'ba.created_at')} ${patternAccountCondition}
       ORDER BY ba.created_at DESC
       LIMIT 10
     `;
@@ -82,17 +129,15 @@ class BehavioralAnalyticsService {
     const baseParams = [userId];
     let paramCount = 1;
 
-    let dateCondition = '';
-    if (dateFilter.startDate && dateFilter.endDate) {
-      dateCondition = ` AND created_at >= $${++paramCount} AND created_at <= $${++paramCount}`;
-      baseParams.push(dateFilter.startDate, dateFilter.endDate);
-    }
+    let dateCondition = this.addDateRange('created_at', baseParams, dateFilter);
+    const accountCondition = this.addRevengeEventAccountCondition(baseParams, dateFilter.accounts, 'rte');
+    paramCount = baseParams.length;
 
     // Get total count for pagination
     const countQuery = `
       SELECT COUNT(*) as total_count
       FROM revenge_trading_events rte
-      WHERE user_id = $1 ${dateCondition}
+      WHERE rte.user_id = $1 ${dateCondition} ${accountCondition}
     `;
     const countResult = await db.query(countQuery, baseParams);
     const totalCount = parseInt(countResult.rows[0].total_count);
@@ -108,7 +153,7 @@ class BehavioralAnalyticsService {
           ELSE 'neutral'
         END as outcome_type
       FROM revenge_trading_events rte
-      WHERE user_id = $1 ${dateCondition}
+      WHERE rte.user_id = $1 ${dateCondition} ${accountCondition}
       ORDER BY created_at DESC
       LIMIT $${++paramCount} OFFSET $${++paramCount}
     `;
@@ -126,9 +171,9 @@ class BehavioralAnalyticsService {
           SELECT 
             id, symbol, entry_price, exit_price, quantity, side, entry_time, exit_time, 
             commission, fees, pnl
-          FROM trades WHERE id = $1
+          FROM trades WHERE id = $1 AND user_id = $2
         `;
-        const triggerResult = await db.query(triggerQuery, [event.trigger_trade_id]);
+        const triggerResult = await db.query(triggerQuery, [event.trigger_trade_id, userId]);
         if (triggerResult.rows[0]) {
           event.trigger_trade = triggerResult.rows[0];
         }
@@ -165,13 +210,14 @@ class BehavioralAnalyticsService {
             0.8 as confidence_score,
             t.entry_time as detected_at
           FROM trades t
-          WHERE t.id = ANY($2)
+          WHERE t.id = ANY($2) AND t.user_id = $3
           ORDER BY t.entry_time DESC
           LIMIT 10
         `;
         const patternsResult = await db.query(revengeTradesQuery, [
           event.trigger_trade_id, 
-          event.revenge_trades
+          event.revenge_trades,
+          userId
         ]);
         event.related_patterns = patternsResult.rows;
       } else {
@@ -191,8 +237,8 @@ class BehavioralAnalyticsService {
         COUNT(CASE WHEN total_additional_loss <= 0 THEN 1 END) as profit_or_neutral_events,
         COUNT(CASE WHEN pattern_broken = true THEN 1 END) as pattern_broken_count,
         COUNT(CASE WHEN cooling_period_used = true THEN 1 END) as cooling_period_used_count
-      FROM revenge_trading_events
-      WHERE user_id = $1 ${dateCondition}
+      FROM revenge_trading_events rte
+      WHERE rte.user_id = $1 ${dateCondition} ${accountCondition}
     `;
 
     const statsResult = await db.query(statsQuery, baseParams);
