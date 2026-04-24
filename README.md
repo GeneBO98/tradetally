@@ -49,9 +49,10 @@ A comprehensive trading journal and analytics platform built with Vue.js fronten
 - **Forum Integration** - Join discussions at [forum.tradetally.io](https://forum.tradetally.io)
 
 ### Mobile App
-- **iOS App** - Native iOS application available on [TestFlight](https://testflight.apple.com/join/11shUY3t)
+- **iOS App** - Native iOS application available in app store
 - Full feature parity with web application
 - Optimized mobile trading journal experience
+- Required for the health tracking feature
 
 ## Deployment Options
 
