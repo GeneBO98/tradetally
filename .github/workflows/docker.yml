@@ -8,6 +8,17 @@ on:
   release:
     types:
       - published
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to build and publish, for example v2.5.0
+        required: true
+        type: string
+      prerelease:
+        description: Publish this manual build as a prerelease
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -21,6 +32,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Check out manually selected release tag
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.release_tag }}
+
       - name: Check out release tag
         if: github.event_name == 'release'
         uses: actions/checkout@v6
@@ -28,7 +45,7 @@ jobs:
           ref: ${{ github.event.release.tag_name }}
 
       - name: Check out branch
-        if: github.event_name != 'release'
+        if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
         uses: actions/checkout@v6
 
       - name: Set up Node.js
@@ -51,6 +68,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Check out manually selected release tag
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.release_tag }}
+
       - name: Check out release tag
         if: github.event_name == 'release'
         uses: actions/checkout@v6
@@ -58,7 +81,7 @@ jobs:
           ref: ${{ github.event.release.tag_name }}
 
       - name: Check out branch
-        if: github.event_name != 'release'
+        if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
         uses: actions/checkout@v6
 
       - name: Set up QEMU
@@ -82,6 +105,18 @@ jobs:
             tags="potentialmidas/tradetally:${release_tag},potentialmidas/tradetally:${version}"
 
             if [[ "${{ github.event.release.prerelease }}" == "true" ]]; then
+              tags="${tags},potentialmidas/tradetally:nightly"
+            else
+              tags="${tags},potentialmidas/tradetally:latest"
+            fi
+
+            echo "tags=${tags}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            release_tag="${{ inputs.release_tag }}"
+            version="${release_tag#v}"
+            tags="potentialmidas/tradetally:${release_tag},potentialmidas/tradetally:${version}"
+
+            if [[ "${{ inputs.prerelease }}" == "true" ]]; then
               tags="${tags},potentialmidas/tradetally:nightly"
             else
               tags="${tags},potentialmidas/tradetally:latest"
