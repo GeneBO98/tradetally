@@ -908,6 +908,7 @@ const defaultFilters = {
   holdTime: '',
   broker: '', // Keep for backward compatibility
   brokers: [], // New multi-select array
+  importId: '',
   accounts: '',
   daysOfWeek: [], // New multi-select array for days
   instrumentTypes: [], // New multi-select array for instrument types
@@ -1155,6 +1156,7 @@ const activeFiltersCount = computed(() => {
   if (filters.value.pnlType) count++
   if (filters.value.holdTime) count++
   if (filters.value.brokers && filters.value.brokers.length > 0) count++
+  if (filters.value.importId) count++
   if (filters.value.daysOfWeek && filters.value.daysOfWeek.length > 0) count++
   if (filters.value.optionTypes && filters.value.optionTypes.length > 0) count++
   if (filters.value.qualityGrades && filters.value.qualityGrades.length > 0) count++
@@ -1224,6 +1226,7 @@ function applyFilters() {
   if (filters.value.maxPnl !== null && filters.value.maxPnl !== '') cleanFilters.maxPnl = filters.value.maxPnl
   if (filters.value.pnlType) cleanFilters.pnlType = filters.value.pnlType
   if (filters.value.holdTime) cleanFilters.holdTime = filters.value.holdTime
+  if (filters.value.importId) cleanFilters.importId = filters.value.importId
   
   // Handle multi-select brokers - convert to comma-separated
   if (filters.value.brokers.length > 0) {
@@ -1261,6 +1264,7 @@ function applyFilters() {
     const filtersToSave = {}
     Object.keys(filters.value).forEach(key => {
       if (key === 'accounts') return
+      if (key === 'importId') return
       const value = filters.value[key]
       // Only save non-empty values
       if (value !== '' && value !== null && value !== undefined) {
@@ -1725,6 +1729,11 @@ onMounted(() => {
   // Handle quality grades from query parameters
   if (route.query.qualityGrades) {
     filters.value.qualityGrades = route.query.qualityGrades.split(',')
+    shouldApply = true
+  }
+
+  if (route.query.importId) {
+    filters.value.importId = route.query.importId
     shouldApply = true
   }
 

@@ -1434,8 +1434,14 @@ onMounted(() => {
     route.query.strategy || route.query.sector || route.query.status ||
     route.query.minPrice || route.query.maxPrice || route.query.minQuantity ||
     route.query.maxQuantity || route.query.holdTime || route.query.broker ||
-    route.query.minHoldTime || route.query.maxHoldTime || route.query.pnlType
+    route.query.minHoldTime || route.query.maxHoldTime || route.query.pnlType ||
+    route.query.importId
   )
+
+  if (route.query.importId) {
+    tradesStore.setFilters({ importId: route.query.importId })
+    tradesStore.fetchTrades()
+  }
 
   // Only fetch trades immediately if there are no URL parameters
   // TradeFilters component will handle URL parameters and trigger fetch automatically
