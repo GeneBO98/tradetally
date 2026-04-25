@@ -1089,6 +1089,12 @@ class Trade {
       paramCount++;
     }
 
+    if (filters.importId) {
+      whereClause += ` AND t.import_id = $${paramCount}`;
+      values.push(filters.importId);
+      paramCount++;
+    }
+
     if (filters.tags && filters.tags.length > 0) {
       console.log('[TAGS] Applying tag filter in Trade.findByUser:', filters.tags);
       whereClause += ` AND t.tags && $${paramCount}`;
@@ -2653,6 +2659,12 @@ class Trade {
       paramCount++;
     }
 
+    if (filters.importId && filters.importId.trim()) {
+      query += ` AND ${tablePrefix}import_id = $${paramCount}`;
+      values.push(filters.importId.trim());
+      paramCount++;
+    }
+
     if (filters.side && filters.side.trim()) {
       query += ` AND ${tablePrefix}side = $${paramCount}`;
       values.push(filters.side.trim());
@@ -2762,6 +2774,12 @@ class Trade {
     } else if (filters.endDate) {
       whereClause += ` AND (t.trade_date <= $${paramCount} OR t.exit_time::date <= $${paramCount})`;
       values.push(filters.endDate);
+      paramCount++;
+    }
+
+    if (filters.importId) {
+      whereClause += ` AND t.import_id = $${paramCount}`;
+      values.push(filters.importId);
       paramCount++;
     }
 

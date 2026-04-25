@@ -875,18 +875,37 @@ class AchievementService {
   
   // Get user achievements
   static async getUserAchievements(userId) {
+    // Includes unlock_percentage so the UI can show how rare each achievement is.
+    // Denominator = users who have earned at least one achievement (the engaged player base).
     const query = `
-      SELECT 
+      SELECT
         a.*,
         ua.earned_at,
         ua.progress,
-        ua.metadata as earn_metadata
+        ua.metadata as earn_metadata,
+        COALESCE(stats.earned_count, 0) AS earned_by_count,
+        CASE
+          WHEN totals.engaged_users > 0 THEN
+            ROUND(100.0 * COALESCE(stats.earned_count, 0) / totals.engaged_users, 1)::float
+          ELSE 0
+        END AS unlock_percentage
       FROM user_achievements ua
       JOIN achievements a ON a.id = ua.achievement_id
+      LEFT JOIN (
+        SELECT achievement_id, COUNT(*) AS earned_count
+        FROM user_achievements
+        WHERE earned_at IS NOT NULL
+        GROUP BY achievement_id
+      ) stats ON stats.achievement_id = a.id
+      CROSS JOIN (
+        SELECT COUNT(DISTINCT user_id) AS engaged_users
+        FROM user_achievements
+        WHERE earned_at IS NOT NULL
+      ) totals
       WHERE ua.user_id = $1
       ORDER BY ua.earned_at DESC
     `;
-    
+
     const result = await db.query(query, [userId]);
     return result.rows;
   }
@@ -953,21 +972,40 @@ class AchievementService {
   
   // Get available achievements for user
   static async getAvailableAchievements(userId) {
+    // Includes unlock_percentage so the UI can show how rare each achievement is.
+    // Denominator = users who have earned at least one achievement (the engaged player base).
     const query = `
-      SELECT 
+      SELECT
         a.*,
-        CASE 
-          WHEN ua.achievement_id IS NOT NULL THEN true 
-          ELSE false 
+        CASE
+          WHEN ua.achievement_id IS NOT NULL THEN true
+          ELSE false
         END as earned,
         ua.earned_at,
-        ua.progress
+        ua.progress,
+        COALESCE(stats.earned_count, 0) AS earned_by_count,
+        CASE
+          WHEN totals.engaged_users > 0 THEN
+            ROUND(100.0 * COALESCE(stats.earned_count, 0) / totals.engaged_users, 1)::float
+          ELSE 0
+        END AS unlock_percentage
       FROM achievements a
       LEFT JOIN user_achievements ua ON ua.achievement_id = a.id AND ua.user_id = $1
+      LEFT JOIN (
+        SELECT achievement_id, COUNT(*) AS earned_count
+        FROM user_achievements
+        WHERE earned_at IS NOT NULL
+        GROUP BY achievement_id
+      ) stats ON stats.achievement_id = a.id
+      CROSS JOIN (
+        SELECT COUNT(DISTINCT user_id) AS engaged_users
+        FROM user_achievements
+        WHERE earned_at IS NOT NULL
+      ) totals
       WHERE a.is_active = true
       ORDER BY a.category, a.difficulty, a.points
     `;
-    
+
     const result = await db.query(query, [userId]);
     return result.rows;
   }

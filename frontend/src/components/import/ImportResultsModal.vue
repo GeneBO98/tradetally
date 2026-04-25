@@ -54,6 +54,17 @@
             </p>
           </div>
 
+          <div v-if="props.tradesImported === 0" class="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/20">
+            <p class="text-sm font-semibold text-amber-900 dark:text-amber-100">{{ zeroTradeReason.title }}</p>
+            <p class="mt-1 text-sm text-amber-800 dark:text-amber-200">{{ zeroTradeReason.body }}</p>
+            <ul class="mt-3 space-y-1 text-sm text-amber-800 dark:text-amber-200">
+              <li v-for="step in zeroTradeReason.steps" :key="step" class="flex gap-2">
+                <span aria-hidden="true">•</span>
+                <span>{{ step }}</span>
+              </li>
+            </ul>
+          </div>
+
           <div v-if="props.achievements.length > 0" class="mt-4">
             <div class="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
               <div class="flex items-start gap-3">
@@ -223,6 +234,7 @@
                   <a
                     :href="supportMailtoLink"
                     class="inline-flex items-center justify-center px-3 py-1.5 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700"
+                    @click="$emit('support-clicked', { source: 'results_modal', detectedBroker: effectiveBroker, headerCount: diagnostics?.headerAnalysis?.foundHeaders?.length || 0 })"
                   >
                     Open a Support Ticket
                     <svg class="ml-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -318,7 +330,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['close', 'load-demo-data', 'view-analytics', 'view-trades'])
+const emit = defineEmits(['close', 'load-demo-data', 'view-analytics', 'view-trades', 'support-clicked'])
 
 function handleEscape(e) {
   if (e.key === 'Escape' && props.isOpen) {
@@ -451,6 +463,58 @@ const isSupportedBroker = computed(() => {
 
 const showNeedHelp = computed(() => {
   return props.tradesImported === 0 && isSupportedBroker.value
+})
+
+const zeroTradeReason = computed(() => {
+  const totalRows = props.diagnostics?.totalRows || 0
+  const skipped = rowsSkipped.value
+  const failed = props.failedTrades?.length || 0
+
+  if (failed > 0) {
+    return {
+      title: 'The parser found rows, but trades failed validation.',
+      body: 'This usually means one or more required values were missing or formatted differently than expected.',
+      steps: [
+        'Open failed trade details below and check the first error.',
+        'Try Generic CSV mapping if the broker format looks different.',
+        'Send support the detected headers if the export should be supported.'
+      ]
+    }
+  }
+
+  if (totalRows > 0 && skipped >= totalRows) {
+    return {
+      title: 'The file had rows, but all rows were skipped.',
+      body: 'This often happens when the file is an account summary, positions export, or closed-trade report without executions.',
+      steps: [
+        'Export trade activity, fills, executions, or transaction history instead.',
+        'Avoid positions, balances, tax, or account summary files.',
+        'Use the support link if you are unsure which broker export to use.'
+      ]
+    }
+  }
+
+  if (!props.diagnostics?.detectedBroker && props.selectedBroker === 'auto') {
+    return {
+      title: 'TradeTally could not recognize this export layout.',
+      body: 'The fastest path is to map the core columns or choose your broker manually before uploading.',
+      steps: [
+        'Try selecting your broker instead of Auto-Detect.',
+        'Use Generic CSV mapping for spreadsheets or unsupported brokers.',
+        'Load demo data if you want to explore analytics while fixing the file.'
+      ]
+    }
+  }
+
+  return {
+    title: 'No importable trades were found.',
+    body: 'The file uploaded successfully, but it did not contain rows TradeTally could turn into trades.',
+    steps: [
+      'Confirm the CSV contains actual trade rows.',
+      'Try Auto-Detect if you selected a specific broker.',
+      'Open a support ticket with the file headers if this looks like a valid export.'
+    ]
+  }
 })
 
 const supportMailtoLink = computed(() => {

@@ -11,9 +11,22 @@ const AnalyticsCache = require('./analyticsCache');
  * Pro users with Finnhub configured get full price movement analysis.
  */
 class LossAversionAnalyticsService {
+  static addAccountFilter(sqlParts, params, tableAlias = '') {
+    const accounts = params.accountsFilter;
+    if (!accounts || accounts.length === 0) return;
+
+    const column = tableAlias ? `${tableAlias}.account_identifier` : 'account_identifier';
+    if (accounts.includes('__unsorted__')) {
+      sqlParts.push(`AND (${column} IS NULL OR ${column} = '')`);
+      return;
+    }
+
+    params.values.push(accounts);
+    sqlParts.push(`AND ${column} = ANY($${params.values.length}::text[])`);
+  }
   
   // Analyze loss aversion patterns for a user
-  static async analyzeLossAversion(userId, startDate = null, endDate = null) {
+  static async analyzeLossAversion(userId, startDate = null, endDate = null, accounts = null) {
     try {
       // Check tier access
       const hasAccess = await TierService.hasFeatureAccess(userId, 'behavioral_analytics');
@@ -29,6 +42,10 @@ class LossAversionAnalyticsService {
       start = new Date(startDate);
     } else {
       // Get all available trades - query the earliest and latest trade dates
+      const dateRangeFilters = [];
+      const dateRangeParams = { values: [userId], accountsFilter: accounts };
+      this.addAccountFilter(dateRangeFilters, dateRangeParams);
+
       const dateRangeQuery = `
         SELECT 
           MIN(entry_time) as earliest_date,
@@ -36,8 +53,9 @@ class LossAversionAnalyticsService {
         FROM trades 
         WHERE user_id = $1 
           AND entry_time IS NOT NULL
+          ${dateRangeFilters.join('\n          ')}
       `;
-      const dateRangeResult = await db.query(dateRangeQuery, [userId]);
+      const dateRangeResult = await db.query(dateRangeQuery, dateRangeParams.values);
       
       if (dateRangeResult.rows[0].earliest_date) {
         start = new Date(dateRangeResult.rows[0].earliest_date);
@@ -50,6 +68,10 @@ class LossAversionAnalyticsService {
     }
 
     // Get all completed trades in the period
+    const tradeFilters = [];
+    const tradeParams = { values: [userId, start, end], accountsFilter: accounts };
+    this.addAccountFilter(tradeFilters, tradeParams);
+
     const tradesQuery = `
       SELECT 
         id, symbol, entry_time, exit_time, entry_price, exit_price,
@@ -62,10 +84,11 @@ class LossAversionAnalyticsService {
         AND pnl IS NOT NULL
         AND entry_time >= $2
         AND exit_time <= $3
+        ${tradeFilters.join('\n        ')}
       ORDER BY entry_time
     `;
 
-    const tradesResult = await db.query(tradesQuery, [userId, start, end]);
+    const tradesResult = await db.query(tradesQuery, tradeParams.values);
     const trades = tradesResult.rows;
     
     console.log(`Loss aversion analysis for user ${userId}: Found ${trades.length} trades between ${start.toISOString()} and ${end.toISOString()}`);
@@ -1315,7 +1338,7 @@ class LossAversionAnalyticsService {
     const query = `
       SELECT * FROM loss_aversion_events
       WHERE user_id = $1
-      ORDER BY analysis_end_date DESC
+      ORDER BY analysis_end_date DESC, created_at DESC, id DESC
       LIMIT 1
     `;
 
@@ -1556,7 +1579,7 @@ class LossAversionAnalyticsService {
   }
 
   // Get top missed trades by percentage of missed opportunity
-  static async getTopMissedTrades(userId, limit = 20, startDate = null, endDate = null, forceRefresh = false) {
+  static async getTopMissedTrades(userId, limit = 20, startDate = null, endDate = null, forceRefresh = false, accounts = null) {
     try {
       // Check tier access
       const hasAccess = await TierService.hasFeatureAccess(userId, 'behavioral_analytics');
@@ -1565,7 +1588,7 @@ class LossAversionAnalyticsService {
       }
 
       // Check cache first (include date filters in cache key) - but skip if forceRefresh is true
-      const cacheKey = AnalyticsCache.generateKey('top_missed_trades', { limit, startDate, endDate });
+      const cacheKey = AnalyticsCache.generateKey('top_missed_trades', { limit, startDate, endDate, accounts });
 
       if (!forceRefresh) {
         const cachedData = await AnalyticsCache.get(userId, cacheKey);
@@ -1598,6 +1621,16 @@ class LossAversionAnalyticsService {
         dateFilter += ` AND t.exit_time <= $${paramCount}`;
         queryParams.push(endDate);
         paramCount++;
+      }
+
+      if (accounts && accounts.length > 0) {
+        if (accounts.includes('__unsorted__')) {
+          dateFilter += ` AND (t.account_identifier IS NULL OR t.account_identifier = '')`;
+        } else {
+          dateFilter += ` AND t.account_identifier = ANY($${paramCount}::text[])`;
+          queryParams.push(accounts);
+          paramCount++;
+        }
       }
 
       // Get all completed winning trades that could have been held longer

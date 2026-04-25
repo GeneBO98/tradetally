@@ -51,6 +51,7 @@ export const useTradesStore = defineStore('trades', () => {
     hasNews: '',
     broker: '',
     brokers: [],
+    importId: '',
     accounts: [],
     daysOfWeek: [],
     instrumentTypes: []
@@ -463,6 +464,7 @@ export const useTradesStore = defineStore('trades', () => {
         hasNews: '',
         broker: '',
         brokers: [],
+        importId: '',
         accounts: globalAccount || '', // Preserve global account filter (string format)
         daysOfWeek: [],
         instrumentTypes: []
@@ -485,6 +487,7 @@ export const useTradesStore = defineStore('trades', () => {
         hasNews: '',
         broker: '',
         brokers: [],
+        importId: '',
         accounts: '',
         daysOfWeek: [],
         instrumentTypes: [],
@@ -520,6 +523,7 @@ export const useTradesStore = defineStore('trades', () => {
       hasNews: '',
       broker: '',
       brokers: [],
+      importId: '',
       accounts: globalAccount || '', // Preserve global account filter (string format)
       daysOfWeek: [],
       instrumentTypes: []

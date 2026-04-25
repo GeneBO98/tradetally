@@ -498,11 +498,19 @@
                                 {{ achievement.description }}
                             </p>
 
-                            <div
-                                v-if="achievement.is_earned"
-                                class="text-xs text-gray-500 dark:text-gray-400 mt-3"
-                            >
-                                Earned {{ formatDate(achievement.earned_at) }}
+                            <div class="mt-3 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                                <span v-if="achievement.is_earned">
+                                    Earned {{ formatDate(achievement.earned_at) }}
+                                </span>
+                                <span v-else></span>
+                                <span
+                                    v-if="typeof achievement.unlock_percentage === 'number'"
+                                    class="font-medium"
+                                    :class="rarityTextClass(achievement.unlock_percentage)"
+                                    :title="`${achievement.earned_by_count || 0} trader${achievement.earned_by_count === 1 ? '' : 's'} have earned this`"
+                                >
+                                    {{ formatUnlockPct(achievement.unlock_percentage) }} of traders
+                                </span>
                             </div>
                         </div>
                     </div>
@@ -1073,6 +1081,7 @@
 
 <script>
 import { ref, computed, onMounted, watch } from "vue";
+import { useRoute } from "vue-router";
 import api from "@/services/api";
 import MdiIcon from "@/components/MdiIcon.vue";
 import { useNotification } from "@/composables/useNotification";
@@ -1103,6 +1112,7 @@ export default {
         const { showSuccess, showError, showWarning } = useNotification();
         const { celebrationQueue } = usePriceAlertNotifications();
         const authStore = useAuthStore();
+        const route = useRoute();
 
         // Load saved tab from localStorage
         const savedTab = localStorage.getItem("gamificationTab");
@@ -1111,8 +1121,13 @@ export default {
             "achievements",
             "leaderboards",
         ]);
+        const queryTab = Array.isArray(route.query.tab)
+            ? route.query.tab[0]
+            : route.query.tab;
         const activeTab = ref(
-            validTabs.has(savedTab) ? savedTab : "overview",
+            validTabs.has(queryTab)
+                ? queryTab
+                : validTabs.has(savedTab) ? savedTab : "overview",
         );
 
         const tabs = [
@@ -1579,6 +1594,35 @@ export default {
             }
         };
 
+        // Color the unlock-% label by ACTUAL frequency, not by point value —
+        // an achievement only 0.5% of traders have IS legendary in rarity.
+        const rarityFromUnlockPct = (pct) => {
+            if (typeof pct !== "number" || isNaN(pct)) return "common";
+            if (pct <= 2) return "legendary";
+            if (pct <= 10) return "epic";
+            if (pct <= 30) return "rare";
+            if (pct <= 60) return "uncommon";
+            return "common";
+        };
+
+        const RARITY_TEXT_COLORS = {
+            common: "text-slate-500 dark:text-slate-400",
+            uncommon: "text-green-600 dark:text-green-400",
+            rare: "text-cyan-600 dark:text-cyan-400",
+            epic: "text-violet-600 dark:text-violet-400",
+            legendary: "text-primary-600 dark:text-primary-400",
+        };
+
+        const rarityTextClass = (pct) => RARITY_TEXT_COLORS[rarityFromUnlockPct(pct)];
+
+        const formatUnlockPct = (pct) => {
+            if (typeof pct !== "number" || isNaN(pct)) return "";
+            if (pct === 0) return "0%";
+            if (pct < 0.1) return "<0.1%";
+            if (pct < 10) return `${pct.toFixed(1)}%`;
+            return `${Math.round(pct)}%`;
+        };
+
         const formatLeaderboardValue = (value, key) => {
             // P&L-based leaderboards
             if (key.includes("pnl") || key.includes("trade")) {
@@ -2007,6 +2051,16 @@ export default {
             loadTabData();
         }, { immediate: true });
 
+        watch(
+            () => route.query.tab,
+            (tab) => {
+                const nextTab = Array.isArray(tab) ? tab[0] : tab;
+                if (validTabs.has(nextTab) && nextTab !== activeTab.value) {
+                    activeTab.value = nextTab;
+                }
+            },
+        );
+
         // Watch for showFilters changes to persist to localStorage
         watch(showFilters, (newValue) => {
             localStorage.setItem("gamificationShowFilters", String(newValue));
@@ -2052,6 +2106,8 @@ export default {
             applyFilters,
             clearFilters,
             formatDate,
+            formatUnlockPct,
+            rarityTextClass,
             formatLeaderboardValue,
             loadTabData,
             checkForNewAchievements,
