@@ -320,7 +320,7 @@
             to="/pricing"
             class="btn-primary btn-glow inline-flex items-center text-lg px-8 py-3"
           >
-            View Pro Plans &mdash; Starting at $8/month
+            View Pro Plans &mdash; {{ startingAtMonthlyLabel }}
           </router-link>
           <p class="mt-4 text-gray-500 dark:text-gray-400 text-sm">
             7-day free trial available. Cancel anytime.
@@ -642,12 +642,14 @@ import {
 } from '@heroicons/vue/24/outline'
 import { useRouter } from 'vue-router'
 import { useRegistrationMode } from '@/composables/useRegistrationMode'
+import { usePricingExperiment } from '@/composables/usePricingExperiment'
 import { useScrollReveal } from '@/composables/useScrollReveal'
 import api from '@/services/api'
 
 useScrollReveal()
 const router = useRouter()
 const { showSEOPages, registrationConfig, fetchRegistrationConfig } = useRegistrationMode()
+const { startingAtMonthlyLabel } = usePricingExperiment()
 const showRegisterButton = computed(() => registrationConfig.value?.allowRegistration !== false)
 
 const quickEmail = ref('')

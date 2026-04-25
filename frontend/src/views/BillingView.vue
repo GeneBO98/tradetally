@@ -413,6 +413,7 @@
 <script>
 import { ref, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { useAnalytics } from "@/composables/useAnalytics";
 import api from "@/services/api";
 
 const cancellationReasonOptions = [
@@ -431,6 +432,7 @@ export default {
     setup() {
         const route = useRoute();
         const router = useRouter();
+        const analytics = useAnalytics();
         const loading = ref(true);
         const portalLoading = ref(false);
         const cancelLoading = ref(false);
@@ -548,6 +550,11 @@ export default {
                     );
                     if (response.data.data.status === "complete") {
                         checkoutSuccess.value = true;
+                        analytics.track("pricing_checkout_completed", {
+                            session_id: response.data.data.id,
+                            payment_status: response.data.data.payment_status,
+                            subscription_id: response.data.data.subscription || null,
+                        });
                         // Reload subscription data
                         await loadSubscription();
 

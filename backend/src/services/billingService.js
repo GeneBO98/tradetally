@@ -8,6 +8,12 @@ const invoiceNinjaSyncService = require('./invoiceNinjaSyncService');
 let stripe = null;
 
 class BillingService {
+  static BILLING_PRICE_SETTING_KEYS = [
+    'stripe_price_id_monthly',
+    'stripe_price_id_monthly_experiment',
+    'stripe_price_id_yearly'
+  ];
+
   static async clearTrialOverride(userId) {
     const deleteQuery = `
       DELETE FROM tier_overrides
@@ -112,12 +118,70 @@ class BillingService {
     return customer.id;
   }
 
+  static async getConfiguredPriceIds() {
+    const priceQuery = `
+      SELECT setting_key, setting_value
+      FROM admin_settings
+      WHERE setting_key = ANY($1::text[])
+    `;
+    const result = await db.query(priceQuery, [this.BILLING_PRICE_SETTING_KEYS]);
+
+    return result.rows.reduce((accumulator, row) => {
+      if (row.setting_value) {
+        accumulator[row.setting_key] = row.setting_value;
+      }
+
+      return accumulator;
+    }, {});
+  }
+
+  static async assertAllowedCheckoutPriceId(priceId) {
+    const configuredPriceIds = await this.getConfiguredPriceIds();
+    const allowedPriceIds = new Set(Object.values(configuredPriceIds).filter(Boolean));
+
+    if (!allowedPriceIds.has(priceId)) {
+      const error = new Error('Price ID is not allowed');
+      error.code = 'invalid_price_id';
+      throw error;
+    }
+
+    return configuredPriceIds;
+  }
+
+  static normalizePricingExperimentMetadata(pricingExperiment = {}) {
+    if (!pricingExperiment || typeof pricingExperiment !== 'object') {
+      return {};
+    }
+
+    const normalized = {};
+
+    if (typeof pricingExperiment.key === 'string' && pricingExperiment.key.trim()) {
+      normalized.pricing_experiment_key = pricingExperiment.key.trim().slice(0, 40);
+    }
+
+    if (typeof pricingExperiment.variant === 'string' && pricingExperiment.variant.trim()) {
+      normalized.pricing_experiment_variant = pricingExperiment.variant.trim().slice(0, 40);
+    }
+
+    if (Number.isFinite(pricingExperiment.displayedPriceCents)) {
+      normalized.pricing_displayed_amount = String(Math.round(pricingExperiment.displayedPriceCents));
+    }
+
+    if (typeof pricingExperiment.currency === 'string' && pricingExperiment.currency.trim()) {
+      normalized.pricing_displayed_currency = pricingExperiment.currency.trim().slice(0, 10).toUpperCase();
+    }
+
+    return normalized;
+  }
+
   // Create checkout session
-  static async createCheckoutSession(userId, priceId, successUrl, cancelUrl, referral) {
+  static async createCheckoutSession(userId, priceId, successUrl, cancelUrl, referral, pricingExperiment) {
     const billingAvailable = await this.isBillingAvailable();
     if (!billingAvailable) {
       throw new Error('Billing not available');
     }
+
+    await this.assertAllowedCheckoutPriceId(priceId);
 
     const customerId = await this.createOrGetCustomer(userId);
 
@@ -129,6 +193,8 @@ class BillingService {
     if (referral) {
       metadata.promotekit_referral = referral;
     }
+
+    Object.assign(metadata, this.normalizePricingExperimentMetadata(pricingExperiment));
 
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
@@ -145,7 +211,8 @@ class BillingService {
       metadata: metadata,
       subscription_data: {
         metadata: {
-          user_id: userId
+          user_id: userId,
+          ...this.normalizePricingExperimentMetadata(pricingExperiment)
         }
       }
     });
@@ -780,6 +847,63 @@ class BillingService {
     ];
   }
 
+  static sanitizePublicPlan(plan) {
+    if (!plan) {
+      return null;
+    }
+
+    return {
+      id: plan.id,
+      name: plan.name,
+      price: plan.price,
+      currency: plan.currency,
+      interval: plan.interval
+    };
+  }
+
+  static async getPricingExperiments(plans = []) {
+    const billingAvailable = await this.isBillingAvailable();
+    if (!billingAvailable) {
+      return {};
+    }
+
+    let configuredPriceIds = {};
+    try {
+      configuredPriceIds = await this.getConfiguredPriceIds();
+    } catch (error) {
+      console.error('Error fetching configured price IDs for pricing experiments:', error);
+      return {};
+    }
+
+    const alternateMonthlyPriceId = configuredPriceIds.stripe_price_id_monthly_experiment;
+    const controlMonthlyPlan = plans.find((plan) => plan.interval === 'month');
+
+    if (!alternateMonthlyPriceId || !controlMonthlyPlan || alternateMonthlyPriceId === controlMonthlyPlan.id) {
+      return {};
+    }
+
+    try {
+      const price = await stripe.prices.retrieve(alternateMonthlyPriceId);
+      const alternateMonthlyPlan = {
+        id: price.id,
+        name: 'Pro Monthly',
+        price: price.unit_amount,
+        currency: price.currency.toUpperCase(),
+        interval: price.recurring?.interval || 'month'
+      };
+
+      return {
+        pricing_monthly_offer: {
+          control: this.sanitizePublicPlan(controlMonthlyPlan),
+          higher_price: this.sanitizePublicPlan(alternateMonthlyPlan)
+        }
+      };
+    } catch (error) {
+      console.error(`Error fetching alternate monthly experiment price ${alternateMonthlyPriceId}:`, error);
+      return {};
+    }
+  }
+
   // Get available pricing plans
   static async getPricingPlans() {
     const billingEnabled = await TierService.isBillingEnabled();
@@ -800,22 +924,7 @@ class BillingService {
     }
 
     try {
-      // Get price IDs from admin settings
-      const priceQuery = `
-        SELECT setting_key, setting_value 
-        FROM admin_settings 
-        WHERE setting_key IN ('stripe_price_id_monthly', 'stripe_price_id_yearly')
-      `;
-      const priceResult = await db.query(priceQuery);
-      
-      console.log('Admin settings query result:', priceResult.rows);
-      
-      const priceIds = {};
-      priceResult.rows.forEach(row => {
-        if (row.setting_value) {
-          priceIds[row.setting_key] = row.setting_value;
-        }
-      });
+      const priceIds = await this.getConfiguredPriceIds();
 
       console.log('Extracted price IDs:', priceIds);
 
@@ -831,6 +940,10 @@ class BillingService {
       
       // Fetch pricing details from Stripe
       for (const [key, priceId] of Object.entries(priceIds)) {
+        if (key === 'stripe_price_id_monthly_experiment') {
+          continue;
+        }
+
         try {
           console.log(`Fetching Stripe price for ${key}: ${priceId}`);
           const price = await stripe.prices.retrieve(priceId);

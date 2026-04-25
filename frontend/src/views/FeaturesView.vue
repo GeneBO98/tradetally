@@ -260,9 +260,11 @@ import {
   CalculatorIcon,
   ShieldCheckIcon
 } from '@heroicons/vue/24/outline'
+import { usePricingExperiment } from '@/composables/usePricingExperiment'
 import { useScrollReveal } from '@/composables/useScrollReveal'
 
 useScrollReveal()
+const { monthlyPricePerMoLabel } = usePricingExperiment()
 
 const activeTab = ref('dashboard')
 
@@ -544,12 +546,12 @@ const tradeAnalysisItems = [
   'Execution analysis per trade'
 ]
 
-const cloudBenefits = [
+const cloudBenefits = computed(() => [
   'Sign up and start journaling immediately',
   'All API keys provided (market data, AI, charts)',
   'Automatic updates and backups',
-  'Free tier + $8/mo Pro option'
-]
+  `Free tier + ${monthlyPricePerMoLabel.value} Pro option`
+])
 
 const selfHostBenefits = [
   { text: 'All features unlocked, no subscription required' },

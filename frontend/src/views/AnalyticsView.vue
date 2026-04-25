@@ -308,7 +308,7 @@
               to="/pricing"
               class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
             >
-              Upgrade to Pro - $8/month
+              Upgrade to Pro - {{ monthlyPricePerMonthLabel }}
             </router-link>
           </div>
         </div>
@@ -909,7 +909,7 @@
               to="/pricing"
               class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
             >
-              Upgrade to Pro - $8/month
+              Upgrade to Pro - {{ monthlyPricePerMonthLabel }}
             </router-link>
           </div>
         </div>
@@ -1233,12 +1233,14 @@ import AIConversationPanel from '@/components/ai/AIConversationPanel.vue'
 import StockLogo from '@/components/common/StockLogo.vue'
 import { useAIStore } from '@/stores/ai'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
+import { usePricingExperiment } from '@/composables/usePricingExperiment'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import Chart from 'chart.js/auto'
 
 const { use12Hour } = useUserTimezone()
 const { formatCurrency, currencySymbol } = useCurrencyFormatter()
+const { monthlyPricePerMonthLabel } = usePricingExperiment()
 import draggable from 'vuedraggable'
 import {
   mdiCheckCircle,
