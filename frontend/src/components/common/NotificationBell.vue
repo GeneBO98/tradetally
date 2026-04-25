@@ -373,7 +373,9 @@ const handleNotificationClick = async (notification) => {
     router.push(`/trades/${notification.trade_id}`)
   } else if (notification.type === 'price_alert') {
     router.push('/price-alerts')
-  } else if (['achievement_earned', 'level_up', 'challenge_joined', 'challenge_completed', 'leaderboard_ranking'].includes(notification.type)) {
+  } else if (['achievement_earned', 'level_up', 'challenge_joined', 'challenge_completed'].includes(notification.type)) {
+    router.push({ path: '/leaderboard', query: { tab: 'achievements' } })
+  } else if (notification.type === 'leaderboard_ranking') {
     router.push('/leaderboard')
   } else if (notification.type === 'behavioral_alert') {
     router.push('/metrics/behavioral')
