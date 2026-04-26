@@ -6,6 +6,8 @@
 const BrokerConnection = require('../models/BrokerConnection');
 const ibkrService = require('../services/brokerSync/ibkrService');
 const schwabService = require('../services/brokerSync/schwabService');
+const tradestationService = require('../services/brokerSync/tradestationService');
+const alpacaService = require('../services/brokerSync/alpacaService');
 const brokerSyncService = require('../services/brokerSync');
 const AnalyticsCache = require('../services/analyticsCache');
 const cache = require('../utils/cache');
@@ -14,6 +16,11 @@ const db = require('../config/database');
 const crypto = require('crypto');
 
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+const OAUTH_BROKER_SERVICES = {
+  tradestation: tradestationService,
+  alpaca: alpacaService
+};
 
 function redactAccountNumber(accountNumber) {
   if (!accountNumber) return null;
@@ -315,6 +322,99 @@ const brokerSyncController = {
   },
 
   /**
+   * Initialize a generic direct broker OAuth flow.
+   */
+  async initBrokerOAuth(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const { broker } = req.params;
+      const { environment } = req.body || {};
+      const service = OAUTH_BROKER_SERVICES[broker];
+
+      if (!service) {
+        return res.status(404).json({
+          success: false,
+          error: 'Broker OAuth integration not found'
+        });
+      }
+
+      if (!service.isConfigured()) {
+        return res.status(503).json({
+          success: false,
+          error: `${service.config.displayName} integration is not configured on this server`
+        });
+      }
+
+      const stateToken = crypto.randomBytes(32).toString('hex');
+      const expiresAt = new Date(Date.now() + OAUTH_STATE_TTL_MS);
+      const context = { environment: environment || null };
+
+      await db.query(
+        `INSERT INTO oauth_pending_states (state_token, user_id, provider, expires_at, context)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [stateToken, userId, broker, expiresAt, JSON.stringify(context)]
+      );
+
+      res.json({
+        success: true,
+        authUrl: service.getAuthorizationUrl(stateToken, context)
+      });
+    } catch (error) {
+      logger.logError('Error initiating broker OAuth:', error);
+      next(error);
+    }
+  },
+
+  /**
+   * Handle a generic direct broker OAuth callback.
+   */
+  async handleBrokerOAuthCallback(req, res, next) {
+    try {
+      const { broker } = req.params;
+      const { code, state, error: oauthError } = req.query;
+      const service = OAUTH_BROKER_SERVICES[broker];
+
+      if (!service) {
+        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=unsupported_broker`);
+      }
+
+      if (oauthError) {
+        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=${encodeURIComponent(oauthError)}&broker=${broker}`);
+      }
+
+      if (!code || !state) {
+        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=missing_params&broker=${broker}`);
+      }
+
+      const stateLookup = await db.query(
+        `UPDATE oauth_pending_states
+            SET consumed_at = NOW()
+          WHERE state_token = $1
+            AND provider = $2
+            AND consumed_at IS NULL
+            AND expires_at > NOW()
+          RETURNING user_id, context`,
+        [state, broker]
+      );
+
+      if (stateLookup.rows.length === 0) {
+        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=invalid_state&broker=${broker}`);
+      }
+
+      const userId = stateLookup.rows[0].user_id;
+      const context = stateLookup.rows[0].context || {};
+      const tokens = await service.exchangeCodeForTokens(code);
+      await service.createConnectionFromTokens(userId, tokens, context);
+
+      res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?success=${broker}`);
+    } catch (error) {
+      logger.logError('Error handling broker OAuth callback:', error);
+      const errorMsg = encodeURIComponent(error.message || 'oauth_failed');
+      res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=oauth_failed&details=${errorMsg}`);
+    }
+  },
+
+  /**
    * Update broker connection settings
    */
   async updateConnection(req, res, next) {
@@ -535,6 +635,14 @@ const brokerSyncController = {
           } catch (error) {
             testResult = { valid: false, message: `Schwab connection test failed: ${error.message}` };
           }
+        }
+      } else if (OAUTH_BROKER_SERVICES[connection.brokerType]) {
+        const service = OAUTH_BROKER_SERVICES[connection.brokerType];
+        const { accessToken, needsReauth } = await service.ensureValidToken(connection);
+        if (needsReauth) {
+          testResult = { valid: false, message: `${service.config.displayName} authentication expired. Please reconnect.` };
+        } else {
+          testResult = { valid: true, message: `${service.config.displayName} connection is valid` };
         }
       }
 

@@ -100,6 +100,66 @@
                 </div>
               </div>
             </div>
+
+            <!-- TradeStation Card -->
+            <div
+              class="p-6 border-2 rounded-lg transition-colors"
+              :class="brokerCardClass('tradestation')"
+              @click="canConnectBroker('tradestation') && handleBrokerOAuthConnect('tradestation')"
+            >
+              <div class="flex items-center space-x-4">
+                <div class="flex-shrink-0 w-12 h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg flex items-center justify-center">
+                  <div v-if="brokerConnecting.tradestation" class="animate-spin h-6 w-6 rounded-full border-2 border-emerald-200 border-t-emerald-600"></div>
+                  <span v-else class="text-emerald-600 dark:text-emerald-400 font-bold text-lg">TS</span>
+                </div>
+                <div>
+                  <h4 class="font-medium text-gray-900 dark:text-white">TradeStation</h4>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ brokerConnection('tradestation') ? 'Already connected' : brokerConnecting.tradestation ? 'Connecting...' : 'Connect via OAuth' }}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Alpaca Live Card -->
+            <div
+              class="p-6 border-2 rounded-lg transition-colors"
+              :class="brokerCardClass('alpaca', 'live')"
+              @click="canConnectBroker('alpaca', 'live') && handleBrokerOAuthConnect('alpaca', { environment: 'live' })"
+            >
+              <div class="flex items-center space-x-4">
+                <div class="flex-shrink-0 w-12 h-12 bg-cyan-100 dark:bg-cyan-900/30 rounded-lg flex items-center justify-center">
+                  <div v-if="brokerConnecting.alpacaLive" class="animate-spin h-6 w-6 rounded-full border-2 border-cyan-200 border-t-cyan-600"></div>
+                  <span v-else class="text-cyan-600 dark:text-cyan-400 font-bold text-lg">AL</span>
+                </div>
+                <div>
+                  <h4 class="font-medium text-gray-900 dark:text-white">Alpaca Live</h4>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ brokerConnection('alpaca', 'live') ? 'Already connected' : brokerConnecting.alpacaLive ? 'Connecting...' : 'Connect via OAuth' }}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Alpaca Paper Card -->
+            <div
+              class="p-6 border-2 rounded-lg transition-colors"
+              :class="brokerCardClass('alpaca', 'paper')"
+              @click="canConnectBroker('alpaca', 'paper') && handleBrokerOAuthConnect('alpaca', { environment: 'paper' })"
+            >
+              <div class="flex items-center space-x-4">
+                <div class="flex-shrink-0 w-12 h-12 bg-sky-100 dark:bg-sky-900/30 rounded-lg flex items-center justify-center">
+                  <div v-if="brokerConnecting.alpacaPaper" class="animate-spin h-6 w-6 rounded-full border-2 border-sky-200 border-t-sky-600"></div>
+                  <span v-else class="text-sky-600 dark:text-sky-400 font-bold text-lg">AP</span>
+                </div>
+                <div>
+                  <h4 class="font-medium text-gray-900 dark:text-white">Alpaca Paper</h4>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ brokerConnection('alpaca', 'paper') ? 'Already connected' : brokerConnecting.alpacaPaper ? 'Connecting...' : 'Connect via OAuth' }}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- Schwab Note -->
@@ -214,7 +274,38 @@ const showSettingsModal = ref(false)
 const selectedConnection = ref(null)
 const successMessage = ref('')
 const schwabConnecting = ref(false)
+const brokerConnecting = ref({
+  tradestation: false,
+  alpacaLive: false,
+  alpacaPaper: false
+})
 const SCHWAB_PENDING_STORAGE_KEY = 'broker_sync_schwab_pending'
+const BROKER_PENDING_STORAGE_KEY = 'broker_sync_pending'
+
+function brokerConnection(broker, environment = null) {
+  return store.connections.find(connection =>
+    connection.brokerType === broker &&
+    (!environment || (connection.brokerEnvironment || 'live') === environment)
+  )
+}
+
+function pendingKeyFor(broker, options = {}) {
+  if (broker === 'alpaca') {
+    return options.environment === 'paper' ? 'alpacaPaper' : 'alpacaLive'
+  }
+  return broker
+}
+
+function canConnectBroker(broker, environment = null) {
+  const key = pendingKeyFor(broker, { environment })
+  return !brokerConnection(broker, environment) && !brokerConnecting.value[key]
+}
+
+function brokerCardClass(broker, environment = null) {
+  return canConnectBroker(broker, environment)
+    ? 'border-dashed border-gray-300 dark:border-gray-600 hover:border-primary-500 dark:hover:border-primary-400 cursor-pointer'
+    : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 opacity-50 cursor-not-allowed'
+}
 
 function scheduleSuccessMessage(message) {
   successMessage.value = message
@@ -222,19 +313,30 @@ function scheduleSuccessMessage(message) {
 }
 
 async function consumeOAuthCallbackState(query) {
-  const hasCallbackState = query.success === 'schwab' || Boolean(query.error)
+  const supportedSuccess = ['schwab', 'tradestation', 'alpaca']
+  const hasCallbackState = supportedSuccess.includes(query.success) || Boolean(query.error)
 
   if (!hasCallbackState) {
     if (typeof window !== 'undefined' && window.sessionStorage.getItem(SCHWAB_PENDING_STORAGE_KEY) === 'true') {
       schwabConnecting.value = true
     }
+    if (typeof window !== 'undefined') {
+      const pending = window.sessionStorage.getItem(BROKER_PENDING_STORAGE_KEY)
+      if (pending && brokerConnecting.value[pending] !== undefined) {
+        brokerConnecting.value[pending] = true
+      }
+    }
     return
   }
 
   schwabConnecting.value = false
+  Object.keys(brokerConnecting.value).forEach(key => {
+    brokerConnecting.value[key] = false
+  })
 
   if (typeof window !== 'undefined') {
     window.sessionStorage.removeItem(SCHWAB_PENDING_STORAGE_KEY)
+    window.sessionStorage.removeItem(BROKER_PENDING_STORAGE_KEY)
   }
 
   await Promise.all([
@@ -244,6 +346,10 @@ async function consumeOAuthCallbackState(query) {
 
   if (query.success === 'schwab') {
     scheduleSuccessMessage('Schwab account connected successfully. Ready to sync trades.')
+  } else if (query.success === 'tradestation') {
+    scheduleSuccessMessage('TradeStation account connected successfully. Ready to sync trades.')
+  } else if (query.success === 'alpaca') {
+    scheduleSuccessMessage('Alpaca account connected successfully. Ready to sync trades.')
   }
 
   if (query.error) {
@@ -309,6 +415,23 @@ async function handleSchwabConnect() {
       window.sessionStorage.removeItem(SCHWAB_PENDING_STORAGE_KEY)
     }
     // Error is handled by store
+  }
+}
+
+async function handleBrokerOAuthConnect(broker, options = {}) {
+  const key = pendingKeyFor(broker, options)
+  try {
+    brokerConnecting.value[key] = true
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem(BROKER_PENDING_STORAGE_KEY, key)
+    }
+    const authUrl = await store.initBrokerOAuth(broker, options)
+    window.location.href = authUrl
+  } catch (error) {
+    brokerConnecting.value[key] = false
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.removeItem(BROKER_PENDING_STORAGE_KEY)
+    }
   }
 }
 

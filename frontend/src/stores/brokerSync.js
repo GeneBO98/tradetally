@@ -91,6 +91,22 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     }
   }
 
+  async function initBrokerOAuth(broker, options = {}) {
+    loading.value = true
+    error.value = null
+
+    try {
+      const response = await api.post(`/broker-sync/connections/${broker}/init`, options)
+      return response.data.authUrl
+    } catch (err) {
+      console.error(`[BROKER-SYNC] Failed to init ${broker} OAuth:`, err)
+      error.value = err.response?.data?.error || `Failed to initiate ${broker} connection`
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function updateConnection(connectionId, updates) {
     loading.value = true
     error.value = null
@@ -256,6 +272,7 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     fetchConnections,
     addIBKRConnection,
     initSchwabOAuth,
+    initBrokerOAuth,
     updateConnection,
     deleteConnection,
     deleteBrokerTrades,
