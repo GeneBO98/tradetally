@@ -1980,6 +1980,7 @@ async function loadTrade() {
               // IBKR partial-close executions have action:'buy'/'sell' but no side field
               const execSideValue = exec.side || (exec.action === 'buy' ? 'long' : exec.action === 'sell' ? 'short' : '')
               const result = {
+                ...exec,
                 side: execSideValue,
                 quantity: exec.quantity != null ? Number(exec.quantity) : '',
                 entryPrice: exec.entryPrice != null ? Number(exec.entryPrice) : '',
@@ -2031,12 +2032,14 @@ async function loadTrade() {
               if (action === 'short') action = 'sell'
 
               const result = {
+                ...exec,
                 action: action,
                 quantity: exec.quantity != null ? Number(exec.quantity) : '',
                 price: exec.price != null ? Number(exec.price) : '',
                 datetime: exec.datetime ? formatDateTimeLocal(exec.datetime) : '',
                 commission: execCommission,
                 fees: execFees,
+                pnl: exec.pnl != null ? Number(exec.pnl) : null,
                 // Fall back to trade-level stop loss if not in execution
                 stopLoss: (() => { const v = exec.stopLoss || exec.stop_loss || tradeData.stop_loss || tradeData.stopLoss; return v != null ? Number(v) : null; })(),
                 // Use targets array as source of truth for take profit
@@ -2181,6 +2184,7 @@ async function handleSubmit() {
             // Derive side: prefer exec.side (long/short), fall back to mapping exec.action (buy->long, sell->short)
             const execSideValue = exec.side || (exec.action === 'buy' ? 'long' : exec.action === 'sell' ? 'short' : '')
             return {
+              ...exec,
               side: execSideValue,
               quantity: parseFloat(exec.quantity),
               entryPrice: parseFloat(exec.entryPrice),
@@ -2219,12 +2223,14 @@ async function handleSubmit() {
 
             // Convert datetime from user's local timezone to UTC
             return {
+              ...exec,
               action: action,
               quantity: parseFloat(exec.quantity),
               price: parseFloat(exec.price),
               datetime: toUTC(exec.datetime),
               commission: parseFloat(exec.commission) || 0,  // Can be negative for rebates
               fees: parseFloat(exec.fees) || 0,  // Can be negative for rebates
+              pnl: exec.pnl != null ? parseFloat(exec.pnl) : null,
               stopLoss: exec.stopLoss && exec.stopLoss !== '' ? parseFloat(exec.stopLoss) : null,
               takeProfit: exec.takeProfit && exec.takeProfit !== '' ? parseFloat(exec.takeProfit) : null,
               takeProfitTargets: (() => {

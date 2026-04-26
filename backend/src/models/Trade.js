@@ -1689,11 +1689,23 @@ class Trade {
           executionsToSet = updates.executions.map((newExec, index) => {
             const currentExec = currentTrade.executions[index];
             if (currentExec) {
+              const preserveTimestamp = (incoming, existing) => {
+                if (!hasValue(incoming)) return existing ?? incoming;
+                if (!hasValue(existing)) return incoming;
+
+                // datetime-local inputs only preserve minute precision. If the edited
+                // value still points at the same minute, keep broker-imported seconds.
+                const incomingMinute = String(incoming).slice(0, 16);
+                const existingMinute = String(existing).slice(0, 16);
+                return incomingMinute === existingMinute ? existing : incoming;
+              };
+
               return {
+                ...currentExec,
                 ...newExec,
-                datetime: hasValue(newExec.datetime) ? newExec.datetime : (currentExec.datetime ?? newExec.datetime),
-                entryTime: hasValue(newExec.entryTime) ? newExec.entryTime : (currentExec.entryTime ?? newExec.entryTime),
-                exitTime: hasValue(newExec.exitTime) ? newExec.exitTime : (currentExec.exitTime ?? newExec.exitTime)
+                datetime: preserveTimestamp(newExec.datetime, currentExec.datetime),
+                entryTime: preserveTimestamp(newExec.entryTime, currentExec.entryTime),
+                exitTime: preserveTimestamp(newExec.exitTime, currentExec.exitTime)
               };
             }
             return newExec;

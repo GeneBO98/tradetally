@@ -8991,6 +8991,7 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
         quantity,
         price: transaction.price,
         datetime: transaction.datetime,
+        commission: 0,
         fees: feesForExecution,
         orderId: transaction.orderId
       };
