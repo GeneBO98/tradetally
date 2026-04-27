@@ -983,30 +983,36 @@ const brokerParsers = {
     // Date/Time mapping - support more formats
     const tradeDate = parseDate(
       row['Trade Date'] || row['T/D'] || row.Date || row.date ||
-      row['Transaction Date'] || row['Exec Date'] || row['Execution Date']
+      row['Transaction Date'] || row['Exec Date'] || row['Execution Date'] ||
+      row['Opening time (UTC-4)'] || row['Opening Time'] || row['Open Time'] ||
+      row['Opened Time']
     );
 
     const entryTime = parseDateTime(
       row['Entry Time'] || row['Exec Time'] || row['Execution Time'] ||
       row['Fill Time'] || row['Trade Time'] || row.Timestamp ||
+      row['Opening time (UTC-4)'] || row['Opening Time'] || row['Open Time'] ||
+      row['Opened Time'] ||
       row['Trade Date'] || row.Date
     );
 
     const exitTime = parseDateTime(
       row['Exit Time'] || row['Close Time'] || row['Exit Date'] ||
-      row['Closed Date'] || row['Sell Time']
+      row['Closed Date'] || row['Sell Time'] ||
+      row['Closing time (UTC-4)'] || row['Closing Time']
     );
 
     // Price mapping - support more variations
     const entryPrice = parseNumeric(
       row['Entry Price'] || row['Buy Price'] || row.Price || row.price ||
       row['Fill Price'] || row['Avg Price'] || row['Average Price'] ||
-      row['Open Price'] || row['Purchase Price']
+      row['Open Price'] || row['Opening Price'] || row['Purchase Price'] ||
+      row['Entry price']
     );
 
     const exitPrice = parseNumeric(
       row['Exit Price'] || row['Sell Price'] || row['Close Price'] ||
-      row['Sale Price'] || row['Closing Price']
+      row['Sale Price'] || row['Closing Price'] || row['Closing price']
     );
 
     // Quantity mapping
@@ -1014,14 +1020,15 @@ const brokerParsers = {
       row.Quantity || row.quantity || row.Qty || row.qty ||
       row.Shares || row.shares || row.Size || row.size ||
       row.Volume || row.volume || row.Amount || row.amount ||
-      row['Fill Qty'] || row['Filled Qty']
+      row['Fill Qty'] || row['Filled Qty'] || row['Closing Quantity']
     ));
 
     // Side mapping - handle more variations
     const side = parseSide(
       row.Side || row.side || row.Direction || row.direction ||
       row.Type || row.type || row.Action || row.action ||
-      row['B/S'] || row['Buy/Sell'] || row.BS
+      row['B/S'] || row['Buy/Sell'] || row.BS ||
+      row['Opening direction'] || row['Opening Direction']
     );
 
     // Commission and fees mapping
@@ -1074,6 +1081,7 @@ const brokerParsers = {
       stopLoss: stopLoss,
       takeProfit: takeProfit,
       notes: notes,
+      pnl: parseNumeric(row['Net $'] || row.Net || row.PnL || row.pnl || row['P&L'], null),
       broker: 'generic'
     };
   },
@@ -3197,6 +3205,13 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       return wrapResultWithDiagnostics(finalTrades, diagnostics, [], userTimezone);
     }
 
+    const hasGenericCompletedTradeRows = records.some(record => Boolean(
+      record['Opening time (UTC-4)'] ||
+      record['Closing time (UTC-4)'] ||
+      record['Entry Price'] && record['Exit Price'] ||
+      record['Entry price'] && record['Closing price']
+    ));
+
     // Generic parser - Use transaction-based processing for better position tracking
     // Check for user preference or use enhanced mode by default when context is available
     // Custom mappings represent complete trade rows. Routing them through the
@@ -3204,7 +3219,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     // imported" after a successful mapping step.
     const useEnhancedMode = context.usePositionTracking !== false; // Default to true
 
-    if (useEnhancedMode && !context.customMapping) {
+    if (useEnhancedMode && !context.customMapping && !hasGenericCompletedTradeRows) {
       console.log('Using enhanced generic parser with position tracking');
       const result = await parseGenericTransactions(records, existingPositions, context.customMapping, context);
       console.log('Finished generic transaction-based parsing');
@@ -3422,12 +3437,16 @@ function parseDate(dateStr) {
     return `${year}-${month}-${day}`;
   }
 
-  // Try to parse MM/DD/YYYY format
+  // Try to parse slash-separated YYYY dates. Prefer MM/DD/YYYY for ambiguous
+  // US-style dates, but accept DD/MM/YYYY when the first component cannot be a
+  // month.
   const mmddyyyyMatch = normalizedDateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if (mmddyyyyMatch) {
-    const [_, month, day, year] = mmddyyyyMatch;
-    const monthNum = parseInt(month);
-    const dayNum = parseInt(day);
+    const [_, first, second, year] = mmddyyyyMatch;
+    const firstNum = parseInt(first);
+    const secondNum = parseInt(second);
+    const monthNum = firstNum > 12 ? secondNum : firstNum;
+    const dayNum = firstNum > 12 ? firstNum : secondNum;
     const yearNum = parseInt(year);
 
     // Validate date components for PostgreSQL 16 compatibility
@@ -3560,10 +3579,16 @@ function parseDateTime(dateTimeStr) {
       return `${year}-${monthPadded}-${dayPadded}T${hourPadded}:${minute}:${second}${normalizeTimezoneOffset(offset)}`;
     }
 
-    // Check for MM/DD/YYYY HH:MM:SS format (common in many CSVs)
-    const mmddyyyyTimeMatch = dateTimeBody.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/);
+    // Check for slash-separated YYYY datetime. Prefer MM/DD/YYYY for
+    // ambiguous US-style dates, but accept DD/MM/YYYY when the first component
+    // cannot be a month. Fractional seconds are ignored.
+    const mmddyyyyTimeMatch = dateTimeBody.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})(?:\.\d+)?$/);
     if (mmddyyyyTimeMatch) {
-      const [, month, day, year, hour, minute, second] = mmddyyyyTimeMatch;
+      const [, first, secondDatePart, year, hour, minute, second] = mmddyyyyTimeMatch;
+      const firstNum = parseInt(first);
+      const secondNum = parseInt(secondDatePart);
+      const month = firstNum > 12 ? secondDatePart : first;
+      const day = firstNum > 12 ? first : secondDatePart;
       const monthPadded = month.padStart(2, '0');
       const dayPadded = day.padStart(2, '0');
       const hourPadded = hour.padStart(2, '0');
@@ -3692,7 +3717,11 @@ function parseDateTime(dateTimeStr) {
       if (datePart.includes('/')) {
         const dateMatch = datePart.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
         if (dateMatch) {
-          [, month, day, year] = dateMatch;
+          const [, first, second, parsedYear] = dateMatch;
+          const firstNum = parseInt(first);
+          year = parsedYear;
+          month = firstNum > 12 ? second : first;
+          day = firstNum > 12 ? first : second;
         }
       } else if (datePart.includes('-')) {
         const dateMatch = datePart.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -3702,7 +3731,7 @@ function parseDateTime(dateTimeStr) {
       }
 
       // Parse time part
-      const timeMatch = timePart.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+      const timeMatch = timePart.match(/^(\d{1,2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?$/);
       if (year && month && day && timeMatch) {
         const [, hour, minute, second = '00'] = timeMatch;
         const monthPadded = month.padStart(2, '0');
