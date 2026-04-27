@@ -40,6 +40,35 @@ describe('csvParser timezone handling', () => {
     expect(result.trades[0].executions[1].datetime).toBe('2026-03-09T15:31:05Z');
   });
 
+  test('parses issue 304 Tradovate bracket fills as a flat short with zero execution costs', async () => {
+    const csv = [
+      'orderId,Account,Order ID,B/S,Contract,Product,Product Description,avgPrice,filledQty,Fill Time,lastCommandId,Status,_priceFormat,_priceFormatType,_tickSize,spreadDefinitionId,Version ID,Timestamp,Date,Quantity,Text,Type,Limit Price,Stop Price,decimalLimit,decimalStop,Filled Qty,Avg Fill Price,decimalFillAvg,Venue,Notional Value,Currency',
+      '425825160659,,425825160659,Sell,MESM6,MES,Micro E-mini S&P 500,7157.5,4,04/23/2026 16:00:28,425825160659,Filled,-2,0,0.25,,425825160659,04/23/2026 16:00:28,4/23/26,4,multibracket,Market,,,,,4,7157.5,7157.5,,143150,USD',
+      '425825160669,,425825160669,Buy,MESM6,MES,Micro E-mini S&P 500,7157.5,2,04/23/2026 16:03:38,425825160735,Filled,-2,0,0.25,,425825160735,04/23/2026 16:01:22,4/23/26,2,multibracket,Stop,,7157.25,,7157.25,2,7157.5,7157.5,,71575,USD',
+      '425825160673,,425825160673,Buy,MESM6,MES,Micro E-mini S&P 500,7157.5,1,04/23/2026 16:03:38,425825160731,Filled,-2,0,0.25,,425825160731,04/23/2026 16:01:18,4/23/26,1,multibracket,Stop,,7157.25,,7157.25,1,7157.5,7157.5,,35787.5,USD',
+      '425825160677,,425825160677,Buy,MESM6,MES,Micro E-mini S&P 500,7157.5,1,04/23/2026 16:03:38,425825160727,Filled,-2,0,0.25,,425825160727,04/23/2026 16:01:14,4/23/26,1,multibracket,Stop,,7157.25,,7157.25,1,7157.5,7157.5,,35787.5,USD'
+    ].join('\n');
+
+    const result = await parseCSV(Buffer.from(csv), 'tradovate', {});
+
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0].side).toBe('short');
+    expect(result.trades[0].quantity).toBe(4);
+    expect(result.trades[0].entryPrice).toBe(7157.5);
+    expect(result.trades[0].exitPrice).toBe(7157.5);
+    expect(result.trades[0].pnl).toBe(0);
+    expect(result.trades[0].commission).toBe(0);
+    expect(result.trades[0].fees).toBe(0);
+    expect(result.trades[0].executions).toHaveLength(4);
+    expect(result.trades[0].executions.every(exec => exec.commission === 0 && exec.fees === 0)).toBe(true);
+    expect(result.trades[0].executions.map(exec => exec.orderId)).toEqual([
+      '425825160659',
+      '425825160669',
+      '425825160673',
+      '425825160677'
+    ]);
+  });
+
   test('parses Tradovate rows that are incorrectly quoted as entire CSV records', async () => {
     const csv = [
       'orderId,Account,Order ID,B/S,Contract,Product,Product Description,avgPrice,filledQty,Fill Time,lastCommandId,Status,_priceFormat,_priceFormatType,_tickSize,spreadDefinitionId,Version ID,Timestamp,Date,Quantity,Text,Type,Limit Price,Stop Price,decimalLimit,decimalStop,Filled Qty,Avg Fill Price,decimalFillAvg,Venue,Notional Value,Currency',

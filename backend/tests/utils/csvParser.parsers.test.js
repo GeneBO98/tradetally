@@ -692,6 +692,37 @@ describe('Generic parser', () => {
     expect(result.diagnostics.invalidRows).toBe(0);
   });
 
+  test('parses completed trade rows with opening and closing columns', async () => {
+    const completedTradeCSV = [
+      '"Symbol","Opening direction","Opening time (UTC-4)","Closing time (UTC-4)","Entry price","Closing price","Closing Quantity","Net $"',
+      '"TSLA","Buy","15/04/2026 15:09:58.271","17/04/2026 15:53:04.151","392.06","400.24","2.00 Lots","16.04"',
+      '"XAGUSD","Sell","15/04/2026 19:43:15.558","15/04/2026 19:43:40.872","79.519","79.566","0.01 Lots","-2.35"'
+    ].join('\n');
+    const result = await parseCSV(buf(completedTradeCSV), 'generic', {
+      tradeGroupingSettings: { enabled: false }
+    });
+
+    expectValidResult(result);
+    expect(result.trades).toHaveLength(2);
+    expect(result.diagnostics.invalidRows).toBe(0);
+    expect(result.trades[0]).toEqual(expect.objectContaining({
+      symbol: 'TSLA',
+      tradeDate: '2026-04-15',
+      entryTime: '2026-04-15T15:09:58',
+      exitTime: '2026-04-17T15:53:04',
+      entryPrice: 392.06,
+      exitPrice: 400.24,
+      quantity: 2,
+      side: 'long',
+      pnl: 16.04
+    }));
+    expect(result.trades[1]).toEqual(expect.objectContaining({
+      symbol: 'XAGUSD',
+      side: 'short',
+      pnl: -2.35
+    }));
+  });
+
   test('records diagnostics when generic rows fail validation', async () => {
     const invalidGenericCSV = [
       'Symbol,Date,Price,Quantity',
