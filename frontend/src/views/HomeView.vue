@@ -609,6 +609,17 @@
             />
           </a>
         </div>
+        <p class="mt-5 text-sm text-gray-500 dark:text-gray-400">
+          Follow product updates and trading journal tips on
+          <a
+            href="https://x.com/TradeTallyIO"
+            target="_blank"
+            rel="me noopener noreferrer"
+            class="font-semibold text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300 transition-colors"
+          >
+            X @TradeTallyIO
+          </a>
+        </p>
       </div>
     </section>
   </div>

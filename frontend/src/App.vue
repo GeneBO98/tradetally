@@ -52,14 +52,15 @@
             <a
               href="https://x.com/TradeTallyIO"
               target="_blank"
-              rel="noopener noreferrer"
+              rel="me noopener noreferrer"
               class="inline-flex items-center hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
               aria-label="Follow TradeTally on X"
             >
               <svg class="w-4 h-4 sm:mr-1" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M18.244 2H21.5l-7.11 8.128L22.75 22h-6.544l-5.126-7.13L4.84 22H1.58l7.605-8.693L1.25 2h6.71l4.634 6.457L18.244 2Zm-1.141 18.05h1.804L6.978 3.844H5.043L17.103 20.05Z" />
               </svg>
-              <span>X</span>
+              <span class="hidden sm:inline">Follow on X</span>
+              <span class="sm:hidden">X</span>
             </a>
             <span>•</span>
             <a
