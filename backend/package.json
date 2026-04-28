@@ -21,7 +21,7 @@
     "@simplewebauthn/server": "^13.2.3",
     "archiver": "^7.0.1",
     "autocannon": "^8.0.0",
-    "axios": "^1.15.0",
+    "axios": "^1.15.2",
     "bcrypt": "^6.0.0",
     "bcryptjs": "^2.4.3",
     "cheerio": "^1.1.2",
@@ -50,7 +50,7 @@
     "stripe": "^14.25.0",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
-    "uuid": "^9.0.1"
+    "uuid": "^14.0.0"
   },
   "devDependencies": {
     "jest": "^29.7.0",
@@ -70,6 +70,7 @@
     "brace-expansion@^1.1.12": "1.1.13",
     "brace-expansion@^2.0.1": "2.0.3",
     "brace-expansion@^5.0.1": "5.0.5",
+    "hyperid": "^4.0.0",
     "@parse/node-apn": {
       "node-forge": "^1.4.0"
     },
