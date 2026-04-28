@@ -1593,6 +1593,33 @@ const { toLocalInput, toUTC, getCurrentTimeLocal, timezoneLabel } = useUserTimez
 const loading = ref(false)
 const error = ref(null)
 const validationErrors = ref([])
+
+function normalizeValidationErrors(errorData) {
+  if (!errorData) return []
+
+  if (Array.isArray(errorData.fields)) {
+    return errorData.fields
+      .map(field => field.message || (field.field ? `${field.field}: Invalid value` : null))
+      .filter(Boolean)
+  }
+
+  if (Array.isArray(errorData.details)) {
+    return errorData.details
+  }
+
+  if (typeof errorData.details === 'string') {
+    return errorData.details
+      .split(',')
+      .map(detail => detail.trim())
+      .filter(Boolean)
+  }
+
+  if (typeof errorData.message === 'string') {
+    return [errorData.message]
+  }
+
+  return []
+}
 const errorRef = ref(null)
 const behavioralAlert = ref(null)
 const tradeBlocked = ref(false)
@@ -2548,9 +2575,10 @@ async function handleSubmit() {
       router.replace(`/trades/${newTrade.id}`)
     }
   } catch (err) {
-    const serverError = err.response?.data?.error || err.message || 'An unexpected error occurred. Please try again.'
+    const errorData = err.response?.data
+    const serverError = errorData?.error || err.message || 'An unexpected error occurred. Please try again.'
     error.value = serverError
-    validationErrors.value = err.response?.data?.details || []
+    validationErrors.value = normalizeValidationErrors(errorData)
     showError('Error', error.value)
     nextTick(() => errorRef.value?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
   } finally {
