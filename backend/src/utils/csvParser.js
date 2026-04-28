@@ -402,22 +402,35 @@ function detectCurrencyColumn(records) {
   const fieldNames = Object.keys(firstRecord);
   console.log(`[CURRENCY] Available fields: ${fieldNames.join(', ')}`);
 
-  // Check if any record has a currency field (case-insensitive)
-  const currencyFieldPatterns = ['currency', 'curr', 'ccy', 'currency_code', 'currencycode'];
+  const currencyFieldPatterns = new Set([
+    'currency',
+    'curr',
+    'ccy',
+    'currency_code',
+    'currencycode',
+    'price currency',
+    'currency (price / share)',
+    'currency (result)',
+    'currency (total)',
+    'ibcommissioncurrency',
+    'ib commission currency',
+    'currencyprimary',
+    'currency primary'
+  ]);
+  const validCurrencyCodePattern = /^[A-Z]{3}$/;
 
   for (const record of records) {
     for (const fieldName of Object.keys(record)) {
       const lowerFieldName = fieldName.toLowerCase().trim();
 
-      // Check if this field name matches any currency pattern
-      if (currencyFieldPatterns.some(pattern => lowerFieldName.includes(pattern))) {
+      if (currencyFieldPatterns.has(lowerFieldName)) {
         const value = record[fieldName];
         if (value && value.toString().trim() !== '') {
           const currencyValue = value.toString().toUpperCase().trim();
           console.log(`[CURRENCY] Found currency field '${fieldName}' with value '${currencyValue}'`);
 
           // Detect non-USD currency
-          if (currencyValue !== 'USD' && currencyValue !== '') {
+          if (validCurrencyCodePattern.test(currencyValue) && currencyValue !== 'USD') {
             console.log(`[CURRENCY] Detected non-USD currency: ${currencyValue}`);
             return true;
           }
@@ -978,12 +991,15 @@ const brokerParsers = {
     // Support various column naming conventions
 
     // Symbol mapping
-    const symbol = row.Symbol || row.symbol || row.Ticker || row.ticker || row.Stock || row.stock;
+    const symbol = row.Symbol || row.symbol || row.Ticker || row.ticker || row.Stock || row.stock ||
+      row['Underlying Symbol'] || row['underlying symbol'];
 
     // Date/Time mapping - support more formats
     const tradeDate = parseDate(
       row['Trade Date'] || row['T/D'] || row.Date || row.date ||
+      row.trade_date || row['trade_date'] || row['Entry Date'] ||
       row['Transaction Date'] || row['Exec Date'] || row['Execution Date'] ||
+      row['Date and time'] || row.Time || row.time ||
       row['Opening time (UTC-4)'] || row['Opening Time'] || row['Open Time'] ||
       row['Opened Time']
     );
@@ -991,10 +1007,12 @@ const brokerParsers = {
     const entryTime = parseDateTime(
       row['Entry Time'] || row['Exec Time'] || row['Execution Time'] ||
       row['Fill Time'] || row['Trade Time'] || row.Timestamp ||
+      row.order_execution_time || row['order_execution_time'] ||
+      row['Date and time'] || row.Time || row.time ||
       row['Opening time (UTC-4)'] || row['Opening Time'] || row['Open Time'] ||
       row['Opened Time'] ||
-      row['Trade Date'] || row.Date
-    );
+      row['Trade Date'] || row.trade_date || row['Entry Date'] || row.Date
+    ) || tradeDate;
 
     const exitTime = parseDateTime(
       row['Exit Time'] || row['Close Time'] || row['Exit Date'] ||
@@ -1005,6 +1023,7 @@ const brokerParsers = {
     // Price mapping - support more variations
     const entryPrice = parseNumeric(
       row['Entry Price'] || row['Buy Price'] || row.Price || row.price ||
+      row['Price / share'] || row.TradePrice || row['TradePrice'] ||
       row['Fill Price'] || row['Avg Price'] || row['Average Price'] ||
       row['Open Price'] || row['Opening Price'] || row['Purchase Price'] ||
       row['Entry price']
@@ -1018,7 +1037,7 @@ const brokerParsers = {
     // Quantity mapping
     const quantity = Math.abs(parseNumeric(
       row.Quantity || row.quantity || row.Qty || row.qty ||
-      row.Shares || row.shares || row.Size || row.size ||
+      row.Shares || row.shares || row['No. of shares'] || row.Size || row.size ||
       row.Volume || row.volume || row.Amount || row.amount ||
       row['Fill Qty'] || row['Filled Qty'] || row['Closing Quantity']
     ));
@@ -1026,7 +1045,7 @@ const brokerParsers = {
     // Side mapping - handle more variations
     const side = parseSide(
       row.Side || row.side || row.Direction || row.direction ||
-      row.Type || row.type || row.Action || row.action ||
+      row.Type || row.type || row.trade_type || row['trade_type'] || row.Action || row.action ||
       row['B/S'] || row['Buy/Sell'] || row.BS ||
       row['Opening direction'] || row['Opening Direction']
     );
@@ -1034,7 +1053,8 @@ const brokerParsers = {
     // Commission and fees mapping
     const commission = parseNumeric(
       row.Commission || row.commission || row.Comm || row.comm ||
-      row.Commissions || row.commissions || row['Commission Amount']
+      row.Commissions || row.commissions || row['Commission Amount'] ||
+      row['Comm']
     ) || 0;
 
     const fees = parseNumeric(
@@ -3208,6 +3228,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     const hasGenericCompletedTradeRows = records.some(record => Boolean(
       record['Opening time (UTC-4)'] ||
       record['Closing time (UTC-4)'] ||
+      record['Entry Date'] && record['Exit Date'] ||
       record['Entry Price'] && record['Exit Price'] ||
       record['Entry price'] && record['Closing price']
     ));
@@ -8222,7 +8243,13 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
         }
       } else {
         // Check if there's an explicit action/type field in the CSV
-        const action = (record.Action || record.Type || record.Side || '').toLowerCase();
+        const action = (
+          record.Action || record.action ||
+          record.Type || record.type ||
+          record.trade_type || record['trade_type'] ||
+          record.Side || record.side ||
+          ''
+        ).toLowerCase();
 
         if (action.includes('buy') || action.includes('purchase') || action.includes('bot')) {
           transactionSide = 'buy';
