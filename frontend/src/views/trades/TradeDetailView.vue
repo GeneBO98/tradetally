@@ -776,7 +776,10 @@
                         Exit Price
                       </th>
                       <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        P&L
+                        Gross P&L
+                      </th>
+                      <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Net P&L
                       </th>
                       <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         Commission
@@ -828,13 +831,23 @@
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono"
                           :class="[
-                            execution.pnl > 0
+                            execution.grossPnl > 0
                               ? 'text-green-600 dark:text-green-400'
-                              : execution.pnl < 0
+                              : execution.grossPnl < 0
                               ? 'text-red-600 dark:text-red-400'
                               : 'text-gray-900 dark:text-white'
                           ]">
-                        {{ execution.pnl !== undefined && execution.pnl !== null ? formatCurrency(execution.pnl) : '-' }}
+                        {{ execution.grossPnl !== undefined && execution.grossPnl !== null ? formatCurrency(execution.grossPnl) : '-' }}
+                      </td>
+                      <td class="px-3 py-4 whitespace-nowrap text-sm font-mono"
+                          :class="[
+                            execution.netPnl > 0
+                              ? 'text-green-600 dark:text-green-400'
+                              : execution.netPnl < 0
+                              ? 'text-red-600 dark:text-red-400'
+                              : 'text-gray-900 dark:text-white'
+                          ]">
+                        {{ execution.netPnl !== undefined && execution.netPnl !== null ? formatCurrency(execution.netPnl) : '-' }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono"
                           :class="[
@@ -914,17 +927,30 @@
                         {{ formatDateTime(execution.exitTime) }}
                       </div>
                     </div>
-                    <div v-if="execution.pnl !== undefined && execution.pnl !== null">
-                      <div class="text-gray-500 dark:text-gray-400 text-xs">P&L</div>
+                    <div v-if="execution.grossPnl !== undefined && execution.grossPnl !== null">
+                      <div class="text-gray-500 dark:text-gray-400 text-xs">Gross P&L</div>
                       <div class="font-mono"
                            :class="[
-                             execution.pnl > 0
+                             execution.grossPnl > 0
                                ? 'text-green-600 dark:text-green-400'
-                               : execution.pnl < 0
+                               : execution.grossPnl < 0
                                ? 'text-red-600 dark:text-red-400'
                                : 'text-gray-900 dark:text-white'
                            ]">
-                        {{ formatCurrency(execution.pnl) }}
+                        {{ formatCurrency(execution.grossPnl) }}
+                      </div>
+                    </div>
+                    <div v-if="execution.netPnl !== undefined && execution.netPnl !== null">
+                      <div class="text-gray-500 dark:text-gray-400 text-xs">Net P&L</div>
+                      <div class="font-mono"
+                           :class="[
+                             execution.netPnl > 0
+                               ? 'text-green-600 dark:text-green-400'
+                               : execution.netPnl < 0
+                               ? 'text-red-600 dark:text-red-400'
+                               : 'text-gray-900 dark:text-white'
+                           ]">
+                        {{ formatCurrency(execution.netPnl) }}
                       </div>
                     </div>
                     <div v-if="execution.commission">
@@ -953,7 +979,7 @@
 
               <!-- Summary Row -->
               <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
                   <div>
                     <div class="text-gray-500 dark:text-gray-400 text-xs">Total Executions</div>
                     <div class="font-semibold text-gray-900 dark:text-white">{{ trade.executions.length }}</div>
@@ -962,6 +988,12 @@
                     <div class="text-gray-500 dark:text-gray-400 text-xs">Total Volume</div>
                     <div class="font-semibold font-mono text-gray-900 dark:text-white">
                       {{ formatCurrency(executionSummary.totalVolume) }}
+                    </div>
+                  </div>
+                  <div>
+                    <div class="text-gray-500 dark:text-gray-400 text-xs">Total Commission</div>
+                    <div class="font-semibold font-mono text-gray-900 dark:text-white">
+                      {{ formatCurrency(executionSummary.totalCommission) }}
                     </div>
                   </div>
                   <div>
@@ -1205,7 +1237,7 @@
               <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance</h3>
               <dl class="space-y-4">
                 <div>
-                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">P&L</dt>
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Net P&L</dt>
                   <dd class="mt-1 text-2xl font-semibold" :class="[
                     displayPnl >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
@@ -1623,6 +1655,43 @@ const processedExecutions = computed(() => {
   const tradeSide = trade.value.side
   let runningPosition = 0
 
+  const calculateExecutionCosts = (execution, proportion) => {
+    const hasNonZeroCommission = execution.commission !== undefined && execution.commission !== null && parseFloat(execution.commission) !== 0
+    const hasNonZeroFees = execution.fees !== undefined && execution.fees !== null && parseFloat(execution.fees) !== 0
+    const tradeCommission = parseFloat(trade.value.commission) || 0
+    const tradeFees = parseFloat(trade.value.fees) || 0
+
+    if (hasNonZeroCommission && hasNonZeroFees) {
+      return {
+        commission: parseFloat(execution.commission) || 0,
+        fees: parseFloat(execution.fees) || 0,
+        hasNonZeroFees
+      }
+    }
+
+    if (hasNonZeroCommission) {
+      return {
+        commission: parseFloat(execution.commission) || 0,
+        fees: 0,
+        hasNonZeroFees
+      }
+    }
+
+    if (hasNonZeroFees) {
+      return {
+        commission: parseFloat(execution.fees) || 0,
+        fees: 0,
+        hasNonZeroFees
+      }
+    }
+
+    return {
+      commission: tradeCommission * proportion,
+      fees: tradeFees * proportion,
+      hasNonZeroFees
+    }
+  }
+
   // Check if these are grouped executions (round-trips with entryPrice/exitPrice)
   // vs individual fills (action/price/datetime)
   const isGroupedFormat = trade.value.executions.some(e =>
@@ -1631,25 +1700,29 @@ const processedExecutions = computed(() => {
 
   // For grouped executions, compute P&L directly instead of using FIFO matching
   if (isGroupedFormat) {
+    const totalQuantity = trade.value.executions.reduce((sum, exec) => sum + (parseFloat(exec?.quantity) || 0), 0)
+
     return trade.value.executions.map((execution) => {
-      if (!execution) return { action: 'N/A', quantity: 0, price: 0, value: 0, commission: 0, fees: 0, runningPosition: 0, avgCost: null, datetime: null, pnl: null }
+      if (!execution) return { action: 'N/A', quantity: 0, price: 0, value: 0, commission: 0, fees: 0, runningPosition: 0, avgCost: null, datetime: null, grossPnl: null, netPnl: null, pnl: null }
 
       const quantity = parseFloat(execution.quantity) || 0
       const entryPrice = parseFloat(execution.entryPrice ?? execution.entry_price) || 0
       const exitPrice = execution.exitPrice ?? execution.exit_price
       const parsedExitPrice = exitPrice != null ? parseFloat(exitPrice) : null
       const side = execution.side || tradeSide
-      const commission = parseFloat(execution.commission) || 0
-      const fees = parseFloat(execution.fees) || 0
+      const proportion = totalQuantity > 0 ? quantity / totalQuantity : 0
+      const { commission, fees } = calculateExecutionCosts(execution, proportion)
       const totalCost = commission + fees
 
-      let executionPnl = null
+      let grossPnl = null
+      let netPnl = null
       if (parsedExitPrice != null && quantity > 0) {
         if (side === 'long') {
-          executionPnl = (parsedExitPrice - entryPrice) * quantity * valueMultiplier - totalCost
+          grossPnl = (parsedExitPrice - entryPrice) * quantity * valueMultiplier
         } else {
-          executionPnl = (entryPrice - parsedExitPrice) * quantity * valueMultiplier - totalCost
+          grossPnl = (entryPrice - parsedExitPrice) * quantity * valueMultiplier
         }
+        netPnl = grossPnl - totalCost
       }
 
       return {
@@ -1659,7 +1732,7 @@ const processedExecutions = computed(() => {
         price: entryPrice,
         value: quantity * entryPrice * valueMultiplier,
         commission,
-        fees: parseFloat(execution.fees) || fees,
+        fees,
         datetime: execution.entryTime ?? execution.entry_time,
         runningPosition: 0,
         avgCost: entryPrice,
@@ -1667,7 +1740,9 @@ const processedExecutions = computed(() => {
         exitPrice: parsedExitPrice,
         entryTime: execution.entryTime ?? execution.entry_time,
         exitTime: execution.exitTime ?? execution.exit_time,
-        pnl: executionPnl
+        grossPnl,
+        netPnl,
+        pnl: netPnl
       }
     })
   }
@@ -1678,8 +1753,6 @@ const processedExecutions = computed(() => {
 
   // Calculate total quantity for proportional distribution (fallback when no execution-level data)
   const totalQuantity = trade.value.executions.reduce((sum, exec) => sum + (parseFloat(exec?.quantity) || 0), 0)
-  const tradeCommission = parseFloat(trade.value.commission) || 0
-  const tradeFees = parseFloat(trade.value.fees) || 0
 
   return trade.value.executions.map((execution, index) => {
     // Handle null/undefined execution
@@ -1710,27 +1783,7 @@ const processedExecutions = computed(() => {
     // IBKR stores commission in the 'fees' field; addFill stores both 'commission' and 'fees' separately
     const proportion = totalQuantity > 0 ? quantity / totalQuantity : 0
 
-    const hasNonZeroCommission = execution.commission !== undefined && execution.commission !== null && parseFloat(execution.commission) !== 0
-    const hasNonZeroFees = execution.fees !== undefined && execution.fees !== null && parseFloat(execution.fees) !== 0
-
-    let commission = 0
-    let fees = 0
-
-    if (hasNonZeroCommission && hasNonZeroFees) {
-      // Both fields present (e.g., addFill executions) - use both separately
-      commission = parseFloat(execution.commission) || 0
-      fees = parseFloat(execution.fees) || 0
-    } else if (hasNonZeroCommission) {
-      // Only commission field (e.g., some broker imports)
-      commission = parseFloat(execution.commission) || 0
-    } else if (hasNonZeroFees) {
-      // Only fees field (IBKR: commission bundled in fees)
-      commission = parseFloat(execution.fees) || 0
-    } else {
-      // Fall back to proportional distribution from trade-level totals
-      commission = tradeCommission * proportion
-      fees = tradeFees * proportion
-    }
+    const { commission, fees, hasNonZeroFees } = calculateExecutionCosts(execution, proportion)
 
     // Total cost preserves sign: positive = cost subtracted from P&L,
     // negative = rebate added to P&L (subtracting a negative adds)
@@ -1751,6 +1804,7 @@ const processedExecutions = computed(() => {
 
     // Track entries and calculate P&L using FIFO matching
     let executionPnl = null
+    let grossPnl = null
     let matchedEntryPrice = null
 
     if (isOpening) {
@@ -1791,11 +1845,12 @@ const processedExecutions = computed(() => {
 
         if (tradeSide === 'long') {
           // Long: profit when exit price > entry price
-          executionPnl = (price - matchedEntryPrice) * totalMatchedQty * valueMultiplier - totalCost - totalMatchedEntryCommission
+          grossPnl = (price - matchedEntryPrice) * totalMatchedQty * valueMultiplier
         } else {
           // Short: profit when exit price < entry price
-          executionPnl = (matchedEntryPrice - price) * totalMatchedQty * valueMultiplier - totalCost - totalMatchedEntryCommission
+          grossPnl = (matchedEntryPrice - price) * totalMatchedQty * valueMultiplier
         }
+        executionPnl = grossPnl - totalCost - totalMatchedEntryCommission
       }
     }
 
@@ -1834,6 +1889,8 @@ const processedExecutions = computed(() => {
       exitTime: originalExitTime ?? (isOpening ? null : datetime),
       // P&L: prefer computed FIFO value when available (more accurate with commission handling),
       // fall back to original stored value for executions without FIFO match
+      grossPnl,
+      netPnl: executionPnl,
       pnl: executionPnl ?? originalPnl
     }
   })
@@ -1844,10 +1901,10 @@ const processedExecutions = computed(() => {
 const executionDerivedPnl = computed(() => {
   if (!processedExecutions.value || processedExecutions.value.length === 0) return null
 
-  const exitExecutions = processedExecutions.value.filter(exec => exec.pnl !== null && exec.pnl !== undefined)
+  const exitExecutions = processedExecutions.value.filter(exec => exec.netPnl !== null && exec.netPnl !== undefined)
   if (exitExecutions.length === 0) return null
 
-  return exitExecutions.reduce((sum, exec) => sum + (parseFloat(exec.pnl) || 0), 0)
+  return exitExecutions.reduce((sum, exec) => sum + (parseFloat(exec.netPnl) || 0), 0)
 })
 
 // Use execution-derived P&L when available, otherwise fall back to trade.pnl
@@ -1857,9 +1914,10 @@ const displayPnl = computed(() => {
 })
 
 const executionSummary = computed(() => {
-  if (!trade.value?.executions || !Array.isArray(trade.value.executions)) return {
+  if (!processedExecutions.value || !Array.isArray(processedExecutions.value)) return {
     totalVolume: 0,
     totalShareQuantity: 0,
+    totalCommission: 0,
     totalFees: 0,
     finalPosition: 0
   }
@@ -1870,20 +1928,23 @@ const executionSummary = computed(() => {
 
   let totalVolume = 0
   let totalShareQuantity = 0
+  let totalCommission = 0
   let totalFees = 0
   let finalPosition = 0
 
-  trade.value.executions.forEach(execution => {
+  processedExecutions.value.forEach(execution => {
     if (!execution) return
 
     const quantity = parseFloat(execution.quantity) || 0
     const price = parseFloat(execution.price) || parseFloat(execution.entryPrice) || parseFloat(execution.entry_price) || parseFloat(execution.exitPrice) || parseFloat(execution.exit_price) || 0  // Use price from execution, fallback to entry_price from trade record
-    const fees = (parseFloat(execution.commission) || 0) + (parseFloat(execution.fees) || 0)
+    const commission = parseFloat(execution.commission) || 0
+    const fees = parseFloat(execution.fees) || 0
     const action = execution.action || execution.side || 'unknown'  // Use action from execution, fallback to side from trade record
 
     // For options, include contract multiplier in volume calculation
     totalVolume += isOption ? (quantity * price * contractSize) : (quantity * price)
     totalShareQuantity += Math.abs(quantity)  // Sum of all absolute quantities
+    totalCommission += commission
     totalFees += fees
 
     if (action === 'buy' || action === 'long') {
@@ -1896,6 +1957,7 @@ const executionSummary = computed(() => {
   return {
     totalVolume,
     totalShareQuantity,
+    totalCommission,
     totalFees,
     finalPosition
   }
