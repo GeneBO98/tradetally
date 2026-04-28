@@ -1,6 +1,6 @@
 const db = require('../config/database');
 const logger = require('../utils/logger');
-const { v4: uuidv4 } = require('uuid');
+const { uuidv4 } = require('../utils/uuid');
 
 const csvMappingController = {
   // Get all CSV mappings for the current user

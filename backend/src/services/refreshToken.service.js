@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const db = require('../config/database');
-const { v4: uuidv4 } = require('uuid');
+const { uuidv4 } = require('../utils/uuid');
 
 class RefreshTokenService {
   constructor() {

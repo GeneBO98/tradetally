@@ -1,7 +1,7 @@
 const db = require('../config/database');
 const logger = require('../utils/logger');
 const finnhub = require('../utils/finnhub');
-const { v4: uuidv4 } = require('uuid');
+const { uuidv4 } = require('../utils/uuid');
 const notificationsController = require('./notifications.controller');
 
 const priceAlertsController = {
