@@ -1973,17 +1973,18 @@ async function loadTrade() {
             const proportion = totalQuantity > 0 ? execQuantity / totalQuantity : 0
 
             // Determine commission/fees for this specific execution:
-            // 1. If this execution has a commission field (even if 0) - use it (previously processed)
-            // 2. If no commission field but has non-zero fees - use fees as commission (fresh CSV import)
-            // 3. Otherwise - distribute trade-level commission proportionally
+            // 1. If this execution has a non-zero commission field, use it directly
+            // 2. If no commission field but has non-zero fees, use fees as commission (fresh CSV import)
+            // 3. Otherwise, distribute trade-level costs proportionally. Tradovate imports may
+            //    preserve commission: 0 on executions while broker fee settings live at trade level.
             let execCommission = 0
             let execFees = 0
 
-            const thisExecHasCommission = exec.commission !== undefined && exec.commission !== null
+            const thisExecHasNonZeroCommission = exec.commission !== undefined && exec.commission !== null && parseFloat(exec.commission) !== 0
             const thisExecHasNonZeroFees = exec.fees !== undefined && exec.fees !== null && parseFloat(exec.fees) !== 0
 
-            if (thisExecHasCommission) {
-              // Execution has commission field set (from previous save) - use it directly
+            if (thisExecHasNonZeroCommission) {
+              // Execution has a real commission value set (from previous save) - use it directly
               execCommission = parseFloat(exec.commission) || 0
               // Only include fees if they're separate from commission
               execFees = parseFloat(exec.fees) || 0

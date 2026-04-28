@@ -1710,20 +1710,20 @@ const processedExecutions = computed(() => {
     // IBKR stores commission in the 'fees' field; addFill stores both 'commission' and 'fees' separately
     const proportion = totalQuantity > 0 ? quantity / totalQuantity : 0
 
-    const hasCommission = execution.commission !== undefined && execution.commission !== null
-    const hasFees = execution.fees !== undefined && execution.fees !== null
+    const hasNonZeroCommission = execution.commission !== undefined && execution.commission !== null && parseFloat(execution.commission) !== 0
+    const hasNonZeroFees = execution.fees !== undefined && execution.fees !== null && parseFloat(execution.fees) !== 0
 
     let commission = 0
     let fees = 0
 
-    if (hasCommission && hasFees) {
+    if (hasNonZeroCommission && hasNonZeroFees) {
       // Both fields present (e.g., addFill executions) - use both separately
       commission = parseFloat(execution.commission) || 0
       fees = parseFloat(execution.fees) || 0
-    } else if (hasCommission) {
+    } else if (hasNonZeroCommission) {
       // Only commission field (e.g., some broker imports)
       commission = parseFloat(execution.commission) || 0
-    } else if (hasFees) {
+    } else if (hasNonZeroFees) {
       // Only fees field (IBKR: commission bundled in fees)
       commission = parseFloat(execution.fees) || 0
     } else {
@@ -1810,7 +1810,7 @@ const processedExecutions = computed(() => {
     const originalEntryTime = execution.entryTime ?? execution.entry_time
     const originalExitTime = execution.exitTime ?? execution.exit_time
     const originalPnl = execution.pnl ?? execution.p_l ?? execution.profit_loss
-    const originalFees = execution.fees ?? execution.fee
+    const originalFees = hasNonZeroFees ? (execution.fees ?? execution.fee) : undefined
 
     return {
       // Keep original execution data
