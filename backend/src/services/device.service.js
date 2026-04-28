@@ -1,5 +1,5 @@
 const db = require('../config/database');
-const { v4: uuidv4 } = require('uuid');
+const { uuidv4 } = require('../utils/uuid');
 const crypto = require('crypto');
 
 class DeviceService {
