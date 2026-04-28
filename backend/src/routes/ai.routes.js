@@ -74,6 +74,11 @@ router.post('/sessions', authenticate, aiController.createSession);
 router.get('/sessions', authenticate, aiController.getUserSessions);
 
 /**
+ * Get stored AI analyses for a specific trade.
+ */
+router.get('/trades/:tradeId/analyses', authenticate, aiController.getTradeAnalyses);
+
+/**
  * @swagger
  * /api/ai/sessions/{id}:
  *   get:

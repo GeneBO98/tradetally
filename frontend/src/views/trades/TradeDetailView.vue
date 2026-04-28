@@ -28,7 +28,14 @@
             {{ formatDate(trade.trade_date) }} • {{ trade.side }}
           </p>
         </div>
-        <div class="flex space-x-3">
+        <div class="flex flex-wrap justify-end gap-3">
+          <button
+            @click="toggleAIPanel"
+            class="btn-primary inline-flex items-center gap-2"
+          >
+            <SparklesIcon class="h-4 w-4" />
+            <span>{{ showAIPanel ? 'Hide Analysis' : 'Analyze Trade' }}</span>
+          </button>
           <router-link :to="`/analysis/trade-management?tradeId=${trade.id}`" class="btn-primary">
             Manage
           </router-link>
@@ -39,6 +46,89 @@
             Delete
           </button>
         </div>
+      </div>
+
+      <!-- Stored AI Analyses -->
+      <div v-if="storedAIResponseCount > 0" class="rounded-lg border border-primary-200 bg-primary-50/60 dark:border-primary-900/50 dark:bg-primary-900/10">
+        <button
+          @click="storedAIExpanded = !storedAIExpanded"
+          class="flex w-full items-center justify-between gap-4 px-4 py-3 text-left"
+        >
+          <div class="flex items-center gap-3">
+            <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
+              <SparklesIcon class="h-4 w-4" />
+            </span>
+            <div>
+              <div class="text-sm font-semibold text-gray-900 dark:text-white">
+                {{ storedAIResponseCount }} AI response{{ storedAIResponseCount === 1 ? '' : 's' }} stored
+              </div>
+              <div class="text-xs text-gray-600 dark:text-gray-400">
+                {{ storedAIAnalyses.length }} analysis session{{ storedAIAnalyses.length === 1 ? '' : 's' }} for this trade
+              </div>
+            </div>
+          </div>
+          <svg
+            class="h-5 w-5 text-gray-500 transition-transform dark:text-gray-400"
+            :class="{ 'rotate-180': storedAIExpanded }"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        <div v-if="storedAIExpanded" class="border-t border-primary-200 px-4 py-4 dark:border-primary-900/50">
+          <div v-if="loadingStoredAIAnalyses" class="text-sm text-gray-500 dark:text-gray-400">
+            Loading stored AI responses...
+          </div>
+          <div v-else class="space-y-5">
+            <div
+              v-for="analysis in storedAIAnalyses"
+              :key="analysis.id"
+              class="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900"
+            >
+              <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div class="text-sm font-medium text-gray-900 dark:text-white">
+                  Analysis from {{ formatDateTime(analysis.created_at) }}
+                </div>
+                <div class="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                  <span v-if="formatAIModelLabel(analysis.ai_metadata)">
+                    {{ formatAIModelLabel(analysis.ai_metadata) }}
+                  </span>
+                  <span>{{ analysis.response_count }} response{{ analysis.response_count === 1 ? '' : 's' }}</span>
+                </div>
+              </div>
+              <div class="space-y-4">
+                <div
+                  v-for="response in analysis.responses"
+                  :key="response.id"
+                  class="rounded-md bg-gray-50 px-4 py-3 dark:bg-gray-800"
+                >
+                  <div class="mb-2 text-xs text-gray-500 dark:text-gray-400">
+                    {{ formatDateTime(response.created_at) }}
+                  </div>
+                  <AIReportRenderer :content="response.content" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI Single Trade Analysis -->
+      <div v-if="showAIPanel" class="card">
+        <AIConversationPanel
+          :trade-id="trade.id"
+          title="AI Trade Analysis"
+          subtitle="Analyze this trade using its executions, notes, enrichment, news, charts, and images."
+          empty-title="Analyze This Trade"
+          empty-description="Start a focused AI review of this trade to diagnose what went wrong, evaluate the technical setup, and turn the available chart, image, news, sector, and execution data into specific next steps."
+          start-label="Analyze This Trade"
+          loading-text="Analyzing this trade..."
+          auto-start
+          @session-created="loadStoredAIAnalyses"
+        />
       </div>
 
       <!-- Incomplete Calculation Banner -->
@@ -1387,7 +1477,7 @@ import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { format, formatDistanceToNow, formatDistance } from 'date-fns'
-import { DocumentIcon, ChatBubbleLeftIcon } from '@heroicons/vue/24/outline'
+import { DocumentIcon, ChatBubbleLeftIcon, SparklesIcon } from '@heroicons/vue/24/outline'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
@@ -1395,11 +1485,15 @@ import TradeChartVisualization from '@/components/trades/TradeChartVisualization
 import TradeImages from '@/components/trades/TradeImages.vue'
 import TradeCharts from '@/components/trades/TradeCharts.vue'
 import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
+import AIConversationPanel from '@/components/ai/AIConversationPanel.vue'
+import AIReportRenderer from '@/components/ai/AIReportRenderer.vue'
+import { useAIStore } from '@/stores/ai'
 
 const route = useRoute()
 const router = useRouter()
 const tradesStore = useTradesStore()
 const authStore = useAuthStore()
+const aiStore = useAIStore()
 const { showSuccess, showError, showConfirmation } = useNotification()
 const { formatDateTime: formatDateTimeTz, formatTime: formatTimeTz, timezoneLabel } = useUserTimezone()
 const { formatCurrency, currencySymbol, formatSignedCurrency } = useCurrencyFormatter()
@@ -1413,6 +1507,10 @@ const selectedExecutions = ref(new Set())
 const playbooks = ref([])
 const loadingPlaybooks = ref(false)
 const savingPlaybookReview = ref(false)
+const showAIPanel = ref(false)
+const storedAIAnalyses = ref([])
+const storedAIExpanded = ref(false)
+const loadingStoredAIAnalyses = ref(false)
 const selectedPlaybookId = ref('')
 const reviewForm = reactive({
   checklistResponses: [],
@@ -1443,6 +1541,10 @@ const checklistCompletion = computed(() => {
 
   const checked = reviewForm.checklistResponses.filter(item => item.checked).length
   return { checked, total }
+})
+
+const storedAIResponseCount = computed(() => {
+  return storedAIAnalyses.value.reduce((sum, analysis) => sum + (analysis.response_count || 0), 0)
 })
 
 // Helper function to safely get numeric score value
@@ -1480,6 +1582,13 @@ function toggleChartSection() {
 function toggleCommentsSection() {
   commentsSectionCollapsed.value = !commentsSectionCollapsed.value
   localStorage.setItem('tradeDetail_commentsCollapsed', commentsSectionCollapsed.value.toString())
+}
+
+function toggleAIPanel() {
+  showAIPanel.value = !showAIPanel.value
+  if (showAIPanel.value) {
+    aiStore.reset()
+  }
 }
 
 // Computed property to check if quality calculation is incomplete
@@ -2009,6 +2118,14 @@ function formatFileSize(bytes) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
 }
 
+function formatAIModelLabel(metadata) {
+  if (!metadata) return ''
+  const provider = metadata.provider ? String(metadata.provider) : ''
+  const model = metadata.model ? String(metadata.model) : ''
+  if (provider && model) return `${provider} / ${model}`
+  return model || provider
+}
+
 function calculateRiskReward() {
   if (!trade.value.exit_time) return 'Open'
 
@@ -2335,12 +2452,28 @@ async function loadTrade() {
     // Load comments after trade is loaded
     if (trade.value) {
       loadComments()
+      loadStoredAIAnalyses()
     }
   } catch (error) {
     showError('Error', 'Failed to load trade')
     router.push('/trades')
   } finally {
     loading.value = false
+  }
+}
+
+async function loadStoredAIAnalyses() {
+  const tradeId = trade.value?.id || route.params.id
+  if (!tradeId) return
+
+  try {
+    loadingStoredAIAnalyses.value = true
+    const response = await api.get(`/ai/trades/${tradeId}/analyses`)
+    storedAIAnalyses.value = response.data.analyses || []
+  } catch (error) {
+    console.error('Failed to load stored AI analyses:', error)
+  } finally {
+    loadingStoredAIAnalyses.value = false
   }
 }
 
