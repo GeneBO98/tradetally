@@ -266,23 +266,23 @@
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Setup</dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white">{{ trade.setup }}</dd>
                 </div>
-                <div v-if="trade.commission">
+                <div v-if="detailCommission">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                    {{ trade.commission < 0 ? 'Commission (Rebate)' : 'Commission' }}
+                    {{ detailCommission < 0 ? 'Commission (Rebate)' : 'Commission' }}
                   </dt>
                   <dd class="mt-1 text-sm" :class="[
-                    trade.commission < 0
+                    detailCommission < 0
                       ? 'text-green-600 dark:text-green-400'
-                      : trade.commission > 0
+                      : detailCommission > 0
                       ? 'text-red-600 dark:text-red-400'
                       : 'text-gray-900 dark:text-white'
                   ]">
-                    {{ formatSignedCurrency(-trade.commission) }}
+                    {{ formatSignedCurrency(-detailCommission) }}
                   </dd>
                 </div>
-                <div v-if="trade.fees">
+                <div v-if="detailFees">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Fees</dt>
-                  <dd class="mt-1 text-sm text-gray-900 dark:text-white">{{ formatCurrency(trade.fees) }}</dd>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white">{{ formatCurrency(detailFees) }}</dd>
                 </div>
               </dl>
             </div>
@@ -1655,40 +1655,20 @@ const processedExecutions = computed(() => {
   const tradeSide = trade.value.side
   let runningPosition = 0
 
-  const calculateExecutionCosts = (execution, proportion) => {
-    const hasNonZeroCommission = execution.commission !== undefined && execution.commission !== null && parseFloat(execution.commission) !== 0
-    const hasNonZeroFees = execution.fees !== undefined && execution.fees !== null && parseFloat(execution.fees) !== 0
-    const tradeCommission = parseFloat(trade.value.commission) || 0
-    const tradeFees = parseFloat(trade.value.fees) || 0
+  const parseCost = (value) => parseFloat(value) || 0
+  const hasNonZeroCost = (value) => value !== undefined && value !== null && parseCost(value) !== 0
+  const tradeCommission = parseCost(trade.value.commission)
+  const tradeFees = parseCost(trade.value.fees)
+  const totalQuantity = trade.value.executions.reduce((sum, exec) => sum + (parseFloat(exec?.quantity) || 0), 0)
+  const hasExecutionCommissions = trade.value.executions.some(exec => exec && hasNonZeroCost(exec.commission))
+  const hasExecutionFees = trade.value.executions.some(exec => exec && hasNonZeroCost(exec.fees))
 
-    if (hasNonZeroCommission && hasNonZeroFees) {
-      return {
-        commission: parseFloat(execution.commission) || 0,
-        fees: parseFloat(execution.fees) || 0,
-        hasNonZeroFees
-      }
-    }
-
-    if (hasNonZeroCommission) {
-      return {
-        commission: parseFloat(execution.commission) || 0,
-        fees: 0,
-        hasNonZeroFees
-      }
-    }
-
-    if (hasNonZeroFees) {
-      return {
-        commission: parseFloat(execution.fees) || 0,
-        fees: 0,
-        hasNonZeroFees
-      }
-    }
+  const calculateExecutionCosts = (execution, quantity) => {
+    const proportion = totalQuantity > 0 ? quantity / totalQuantity : 0
 
     return {
-      commission: tradeCommission * proportion,
-      fees: tradeFees * proportion,
-      hasNonZeroFees
+      commission: hasExecutionCommissions ? parseCost(execution.commission) : tradeCommission * proportion,
+      fees: hasExecutionFees ? parseCost(execution.fees) : tradeFees * proportion
     }
   }
 
@@ -1700,8 +1680,6 @@ const processedExecutions = computed(() => {
 
   // For grouped executions, compute P&L directly instead of using FIFO matching
   if (isGroupedFormat) {
-    const totalQuantity = trade.value.executions.reduce((sum, exec) => sum + (parseFloat(exec?.quantity) || 0), 0)
-
     return trade.value.executions.map((execution) => {
       if (!execution) return { action: 'N/A', quantity: 0, price: 0, value: 0, commission: 0, fees: 0, runningPosition: 0, avgCost: null, datetime: null, grossPnl: null, netPnl: null, pnl: null }
 
@@ -1710,8 +1688,7 @@ const processedExecutions = computed(() => {
       const exitPrice = execution.exitPrice ?? execution.exit_price
       const parsedExitPrice = exitPrice != null ? parseFloat(exitPrice) : null
       const side = execution.side || tradeSide
-      const proportion = totalQuantity > 0 ? quantity / totalQuantity : 0
-      const { commission, fees } = calculateExecutionCosts(execution, proportion)
+      const { commission, fees } = calculateExecutionCosts(execution, quantity)
       const totalCost = commission + fees
 
       let grossPnl = null
@@ -1751,9 +1728,6 @@ const processedExecutions = computed(() => {
   // This allows proper matching of exits to entries
   const entryQueue = []
 
-  // Calculate total quantity for proportional distribution (fallback when no execution-level data)
-  const totalQuantity = trade.value.executions.reduce((sum, exec) => sum + (parseFloat(exec?.quantity) || 0), 0)
-
   return trade.value.executions.map((execution, index) => {
     // Handle null/undefined execution
     if (!execution) {
@@ -1780,10 +1754,7 @@ const processedExecutions = computed(() => {
 
     // Calculate commission/fees for this execution
     // Commission sign convention: positive = cost (debit), negative = rebate (credit)
-    // IBKR stores commission in the 'fees' field; addFill stores both 'commission' and 'fees' separately
-    const proportion = totalQuantity > 0 ? quantity / totalQuantity : 0
-
-    const { commission, fees, hasNonZeroFees } = calculateExecutionCosts(execution, proportion)
+    const { commission, fees } = calculateExecutionCosts(execution, quantity)
 
     // Total cost preserves sign: positive = cost subtracted from P&L,
     // negative = rebate added to P&L (subtracting a negative adds)
@@ -1865,8 +1836,6 @@ const processedExecutions = computed(() => {
     const originalEntryTime = execution.entryTime ?? execution.entry_time
     const originalExitTime = execution.exitTime ?? execution.exit_time
     const originalPnl = execution.pnl ?? execution.p_l ?? execution.profit_loss
-    const originalFees = hasNonZeroFees ? (execution.fees ?? execution.fee) : undefined
-
     return {
       // Keep original execution data
       ...execution,
@@ -1876,8 +1845,7 @@ const processedExecutions = computed(() => {
       price,
       value,
       commission,
-      // Preserve original fees if available, otherwise use computed
-      fees: originalFees ?? fees,
+      fees,
       datetime,
       runningPosition,
       avgCost: isOpening ? (avgCostBasis || price) : matchedEntryPrice,
@@ -1961,6 +1929,16 @@ const executionSummary = computed(() => {
     totalFees,
     finalPosition
   }
+})
+
+const detailCommission = computed(() => {
+  const tradeCommission = parseFloat(trade.value?.commission) || 0
+  return processedExecutions.value?.length ? executionSummary.value.totalCommission : tradeCommission
+})
+
+const detailFees = computed(() => {
+  const tradeFees = parseFloat(trade.value?.fees) || 0
+  return processedExecutions.value?.length ? executionSummary.value.totalFees : tradeFees
 })
 
 function formatNumber(num, decimals = 2) {
