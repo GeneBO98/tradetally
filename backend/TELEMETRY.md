@@ -13,9 +13,9 @@ This backend has been configured to optionally send logs to PostHog using their 
 
 2. **Start the Server**:
    ```bash
-   npm run dev
+   pnpm run dev
    # or
-   npm start
+   pnpm start
    ```
 
 ## How It Works

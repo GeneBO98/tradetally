@@ -155,6 +155,11 @@ if [ ${#MISSING_SERVICES[@]} -gt 0 ]; then
             echo "Installing PM2..."
             sudo npm install -g pm2
         fi
+
+        if ! command -v pnpm &> /dev/null; then
+            echo "Installing pnpm..."
+            sudo npm install -g pnpm@10.13.1
+        fi
     else
         print_error "Required services are not installed. Please install them manually and run this script again."
         exit 1
@@ -206,13 +211,12 @@ fi
 # Step 9: Install dependencies
 echo -e "\n${YELLOW}Step 9: Installing dependencies${NC}"
 
-cd "$APP_DIR/backend"
-npm install --production
+cd "$APP_DIR"
+pnpm install --filter tradetally-backend --prod --frozen-lockfile
 print_status "Backend dependencies installed"
 
-cd "$APP_DIR/frontend"
-npm install
-npm run build
+pnpm install --filter tradetally-frontend --frozen-lockfile
+pnpm --dir frontend run build
 print_status "Frontend built successfully"
 
 # Step 10: Configure environment
@@ -231,7 +235,7 @@ fi
 # Step 11: Run migrations
 echo -e "\n${YELLOW}Step 11: Running database migrations${NC}"
 cd "$APP_DIR/backend"
-npm run migrate || print_warning "Migrations may have already been applied"
+pnpm run migrate || print_warning "Migrations may have already been applied"
 
 # Step 12: Set up PM2
 echo -e "\n${YELLOW}Step 12: Setting up PM2${NC}"
