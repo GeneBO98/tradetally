@@ -129,6 +129,7 @@ tramp
 .\#*
 .cursor/
 .claude/
+.agents/
 
 # Misc local files
 .sentryclirc
