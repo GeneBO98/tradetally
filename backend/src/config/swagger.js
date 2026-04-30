@@ -376,9 +376,22 @@ const options = {
   ],
 };
 
-const specs = swaggerJsdoc(options);
+function buildSwaggerSpec(serverUrl = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 3000}`) {
+  return swaggerJsdoc({
+    ...options,
+    definition: {
+      ...options.definition,
+      servers: [
+        {
+          url: serverUrl,
+          description: 'API server',
+        },
+      ],
+    },
+  });
+}
 
 module.exports = {
-  swaggerSpec: specs,
+  buildSwaggerSpec,
   swaggerUi,
 };
