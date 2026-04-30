@@ -3,6 +3,72 @@ const logger = require('../utils/logger');
 const aiService = require('../utils/aiService');
 
 class HealthController {
+  normalizeDataType(type) {
+    const normalized = String(type || '').trim();
+    const aliases = {
+      heartRate: 'heart_rate',
+      heart_rate: 'heart_rate',
+      heartrate: 'heart_rate',
+      sleep: 'sleep'
+    };
+
+    return aliases[normalized] || aliases[normalized.toLowerCase()] || normalized;
+  }
+
+  getDataTypeAliases(type) {
+    const normalized = this.normalizeDataType(type);
+
+    if (normalized === 'heart_rate') {
+      return ['heart_rate', 'heartRate'];
+    }
+
+    return [normalized];
+  }
+
+  normalizeMetadata(metadata = {}) {
+    const normalized = metadata && typeof metadata === 'object' ? { ...metadata } : {};
+
+    if (normalized.sleepQuality === undefined && normalized.sleep_quality !== undefined) {
+      normalized.sleepQuality = normalized.sleep_quality;
+    }
+
+    if (normalized.sleep_quality === undefined && normalized.sleepQuality !== undefined) {
+      normalized.sleep_quality = normalized.sleepQuality;
+    }
+
+    if (normalized.hrv === undefined && normalized.heartRateVariability !== undefined) {
+      normalized.hrv = normalized.heartRateVariability;
+    }
+
+    if (normalized.hrv === undefined && normalized.heart_rate_variability !== undefined) {
+      normalized.hrv = normalized.heart_rate_variability;
+    }
+
+    return normalized;
+  }
+
+  getDateKey(value) {
+    if (!value) return null;
+
+    if (value instanceof Date) {
+      return value.toISOString().split('T')[0];
+    }
+
+    return String(value).split('T')[0];
+  }
+
+  getSleepQuality(metadata = {}) {
+    const normalized = this.normalizeMetadata(metadata);
+    const rawValue = normalized.sleepQuality ?? normalized.quality ?? normalized.sleep_score;
+
+    if (rawValue === undefined || rawValue === null) return null;
+
+    const value = parseFloat(rawValue);
+    if (!Number.isFinite(value)) return null;
+
+    return value > 1 ? value / 100 : value;
+  }
+
   // POST /api/health/data - Submit health data from mobile app
   async submitHealthData(req, res) {
     try {
@@ -49,16 +115,18 @@ class HealthController {
       let updatedCount = 0;
 
       for (const dataPoint of healthData) {
-        const { date, type, value, metadata = {}, timestamp } = dataPoint;
+        const { date, type, value, timestamp } = dataPoint;
+        const dataType = this.normalizeDataType(type);
+        const metadata = this.normalizeMetadata(dataPoint.metadata || {});
 
         // Validate required fields
-        if (!date || !type || value === undefined) {
+        if (!date || !dataType || value === undefined) {
           logger.warn(`Invalid health data point received (date=${date || 'missing'}, type=${type || 'missing'})`, 'health');
           continue;
         }
 
         // For time-series data (heart rate), use timestamp instead of date for uniqueness
-        if (timestamp && type === 'heartRate') {
+        if (timestamp && dataType === 'heart_rate') {
           // Insert individual time-series samples (heart rate at 1-minute intervals)
           const result = await db.query(`
             INSERT INTO health_data (user_id, date, data_type, value, metadata, timestamp, updated_at)
@@ -70,7 +138,7 @@ class HealthController {
               metadata = EXCLUDED.metadata,
               updated_at = NOW()
             RETURNING (xmax = 0) AS inserted
-          `, [userId, date, type, value, JSON.stringify(metadata), timestamp]);
+          `, [userId, date, dataType, value, JSON.stringify(metadata), timestamp]);
 
           if (result.rows[0].inserted) {
             insertedCount++;
@@ -89,7 +157,7 @@ class HealthController {
               metadata = EXCLUDED.metadata,
               updated_at = NOW()
             RETURNING (xmax = 0) AS inserted
-          `, [userId, date, type, value, JSON.stringify(metadata)]);
+          `, [userId, date, dataType, value, JSON.stringify(metadata)]);
 
           if (result.rows[0].inserted) {
             insertedCount++;
@@ -163,8 +231,9 @@ class HealthController {
       }
 
       if (dataType) {
-        query += ` AND data_type = $${paramIndex}`;
-        params.push(dataType);
+        const aliases = this.getDataTypeAliases(dataType);
+        query += ` AND data_type = ANY($${paramIndex})`;
+        params.push(aliases);
         paramIndex++;
       }
 
@@ -172,10 +241,15 @@ class HealthController {
       params.push(limit, offset);
 
       const result = await db.query(query, params);
+      const rows = result.rows.map(row => ({
+        ...row,
+        data_type: this.normalizeDataType(row.data_type),
+        metadata: this.normalizeMetadata(row.metadata)
+      }));
 
       res.status(200).json({
         success: true,
-        data: result.rows,
+        data: rows,
         pagination: {
           limit: parseInt(limit),
           offset: parseInt(offset),
@@ -301,14 +375,31 @@ class HealthController {
     // Group health data by date and type
     const healthByDate = {};
     healthData.forEach(item => {
-      const dateKey = item.date.toISOString().split('T')[0];
+      const dateKey = this.getDateKey(item.date);
+      const dataType = this.normalizeDataType(item.data_type);
       if (!healthByDate[dateKey]) healthByDate[dateKey] = {};
-      healthByDate[dateKey][item.data_type] = item;
+      const metadata = this.normalizeMetadata(item.metadata);
+      const existing = healthByDate[dateKey][dataType];
+
+      if (dataType === 'heart_rate' && existing) {
+        existing.valueSum += parseFloat(item.value) || 0;
+        existing.valueCount += 1;
+        existing.value = existing.valueSum / existing.valueCount;
+        existing.metadata = { ...existing.metadata, ...metadata };
+      } else {
+        healthByDate[dateKey][dataType] = {
+          ...item,
+          data_type: dataType,
+          metadata,
+          valueSum: parseFloat(item.value) || 0,
+          valueCount: 1
+        };
+      }
     });
 
     // Create correlations for dates with both health and trade data
     tradeData.forEach(trade => {
-      const dateKey = trade.trade_date.toISOString().split('T')[0];
+      const dateKey = this.getDateKey(trade.trade_date);
       const healthForDate = healthByDate[dateKey];
 
       if (healthForDate) {
@@ -318,7 +409,7 @@ class HealthController {
         const correlation = {
           date: trade.trade_date,
           sleep_hours: sleepData ? parseFloat(sleepData.value) : null,
-          sleep_quality: sleepData?.metadata?.sleepQuality || null,
+          sleep_quality: sleepData ? this.getSleepQuality(sleepData.metadata) : null,
           avg_heart_rate: heartRateData ? parseFloat(heartRateData.value) : null,
           heart_rate_variability: heartRateData?.metadata?.hrv || null,
           total_pnl: parseFloat(trade.total_pnl),
@@ -671,11 +762,11 @@ class HealthController {
         SELECT timestamp, value
         FROM health_data
         WHERE user_id = $1
-        AND data_type = 'heartRate'
+        AND data_type = ANY($2)
         AND timestamp IS NOT NULL
         ORDER BY timestamp
       `;
-      const heartRateResult = await db.query(heartRateQuery, [userId]);
+      const heartRateResult = await db.query(heartRateQuery, [userId, this.getDataTypeAliases('heart_rate')]);
       console.log(`[HEALTH] Found ${heartRateResult.rows.length} heart rate samples with timestamps`);
 
       // Get daily sleep data
@@ -692,7 +783,7 @@ class HealthController {
       // Group sleep data by date
       const sleepByDate = {};
       for (const row of sleepResult.rows) {
-        const dateKey = row.date.toISOString().split('T')[0];
+        const dateKey = this.getDateKey(row.date);
 
         // Parse metadata if it's a string
         let metadata = row.metadata;
@@ -707,7 +798,7 @@ class HealthController {
 
         sleepByDate[dateKey] = {
           value: row.value,
-          metadata: metadata || {}
+          metadata: this.normalizeMetadata(metadata || {})
         };
       }
 
@@ -732,7 +823,7 @@ class HealthController {
         }
 
         // Get sleep data for the trade date
-        const tradeDateKey = trade.trade_date.toISOString().split('T')[0];
+        const tradeDateKey = this.getDateKey(trade.trade_date);
         const sleep = sleepByDate[tradeDateKey];
 
         const updateFields = [];
@@ -766,10 +857,11 @@ class HealthController {
           updateFields.push(`sleep_hours = $${paramIndex++}`);
           updateValues.push(sleep.value);
 
-          if (sleep.metadata && sleep.metadata.sleepQuality) {
+          const sleepQuality = this.getSleepQuality(sleep.metadata);
+          if (sleepQuality !== null) {
             updateFields.push(`sleep_score = $${paramIndex++}`);
-            updateValues.push(sleep.metadata.sleepQuality * 100);
-            sleepQualityFactor = sleep.metadata.sleepQuality; // 0-1 scale
+            updateValues.push(sleepQuality * 100);
+            sleepQualityFactor = sleepQuality; // 0-1 scale
           }
         }
 

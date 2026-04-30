@@ -11,10 +11,10 @@
             @change="updateChart"
             class="text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md px-3 py-2"
           >
-            <option value="heartRate">Heart Rate</option>
-            <option value="sleepScore">Sleep Quality</option>
-            <option value="sleepHours">Sleep Hours</option>
-            <option value="stressLevel">Stress Level</option>
+            <option value="heart_rate">Heart Rate</option>
+            <option value="sleep_score">Sleep Quality</option>
+            <option value="sleep_hours">Sleep Hours</option>
+            <option value="stress_level">Stress Level</option>
           </select>
           <select
             v-model="selectedPeriod"
@@ -131,7 +131,7 @@ const props = defineProps({
 })
 
 const loading = ref(false)
-const selectedMetric = ref('heartRate')
+const selectedMetric = ref('heart_rate')
 const selectedPeriod = ref('30')
 const removeOutliers = ref(false)
 const correlationData = ref([])
@@ -145,6 +145,23 @@ const statistics = ref({
 })
 
 const insights = ref([])
+
+function getTradeHealthValue(trade, field) {
+  const aliases = {
+    heart_rate: ['heart_rate', 'heartRate'],
+    sleep_score: ['sleep_score', 'sleepScore'],
+    sleep_hours: ['sleep_hours', 'sleepHours'],
+    stress_level: ['stress_level', 'stressLevel']
+  }
+
+  for (const key of aliases[field] || [field]) {
+    if (trade[key] !== null && trade[key] !== undefined) {
+      return trade[key]
+    }
+  }
+
+  return null
+}
 
 async function loadCorrelationData() {
   loading.value = true
@@ -170,15 +187,9 @@ async function loadCorrelationData() {
     console.log('Total trades loaded:', response.data.trades.length)
     console.log('First trade sample:', response.data.trades[0])
 
-    // Filter trades with health data (check both camelCase and snake_case)
+    // Filter trades with health data
     const tradesWithHealth = response.data.trades.filter(trade => {
-      // Check if health data exists in either naming convention
-      const hasData = trade[selectedMetric.value] !== null && trade[selectedMetric.value] !== undefined
-      return hasData ||
-             (selectedMetric.value === 'heartRate' && (trade.heart_rate !== null && trade.heart_rate !== undefined)) ||
-             (selectedMetric.value === 'sleepHours' && (trade.sleep_hours !== null && trade.sleep_hours !== undefined)) ||
-             (selectedMetric.value === 'sleepScore' && (trade.sleep_score !== null && trade.sleep_score !== undefined)) ||
-             (selectedMetric.value === 'stressLevel' && (trade.stress_level !== null && trade.stress_level !== undefined))
+      return getTradeHealthValue(trade, selectedMetric.value) !== null
     })
 
     console.log('Trades with health data:', tradesWithHealth.length)
@@ -190,11 +201,10 @@ async function loadCorrelationData() {
       date: trade.trade_date,
       pnl: trade.pnl,
       winRate: trade.pnl > 0 ? 1 : 0,
-      // Handle both camelCase and snake_case field names
-      heartRate: trade.heartRate || trade.heart_rate,
-      sleepScore: trade.sleepScore || trade.sleep_score,
-      sleepHours: trade.sleepHours || trade.sleep_hours,
-      stressLevel: trade.stressLevel || trade.stress_level,
+      heart_rate: getTradeHealthValue(trade, 'heart_rate'),
+      sleep_score: getTradeHealthValue(trade, 'sleep_score'),
+      sleep_hours: getTradeHealthValue(trade, 'sleep_hours'),
+      stress_level: getTradeHealthValue(trade, 'stress_level'),
       symbol: trade.symbol,
       side: trade.side
     }))
@@ -344,8 +354,8 @@ function generateInsights() {
   }
   
   // Specific metric insights
-  if (metric === 'sleepHours') {
-    const avgSleep = correlationData.value.reduce((sum, d) => sum + d.sleepHours, 0) / correlationData.value.length
+  if (metric === 'sleep_hours') {
+    const avgSleep = correlationData.value.reduce((sum, d) => sum + d.sleep_hours, 0) / correlationData.value.length
     if (avgSleep < 6) {
       insights.value.push({
         type: 'warning',
@@ -355,8 +365,8 @@ function generateInsights() {
     }
   }
   
-  if (metric === 'heartRate') {
-    const highHR = correlationData.value.filter(d => d.heartRate > 85)
+  if (metric === 'heart_rate') {
+    const highHR = correlationData.value.filter(d => d.heart_rate > 85)
     if (highHR.length > correlationData.value.length * 0.3) {
       insights.value.push({
         type: 'warning',
@@ -499,30 +509,30 @@ function updateChart() {
 // Helper functions
 function getMetricLabel(metric) {
   const labels = {
-    heartRate: 'Heart Rate',
-    sleepScore: 'Sleep Quality',
-    sleepHours: 'Sleep Duration',
-    stressLevel: 'Stress Level'
+    heart_rate: 'Heart Rate',
+    sleep_score: 'Sleep Quality',
+    sleep_hours: 'Sleep Duration',
+    stress_level: 'Stress Level'
   }
   return labels[metric] || metric
 }
 
 function getMetricUnit(metric) {
   const units = {
-    heartRate: 'BPM',
-    sleepScore: 'Score',
-    sleepHours: 'Hours',
-    stressLevel: '%'
+    heart_rate: 'BPM',
+    sleep_score: 'Score',
+    sleep_hours: 'Hours',
+    stress_level: '%'
   }
   return units[metric] || ''
 }
 
 function getMetricCondition(metric) {
   const conditions = {
-    heartRate: 'Higher heart rate',
-    sleepScore: 'Better sleep quality',
-    sleepHours: 'More sleep',
-    stressLevel: 'Higher stress'
+    heart_rate: 'Higher heart rate',
+    sleep_score: 'Better sleep quality',
+    sleep_hours: 'More sleep',
+    stress_level: 'Higher stress'
   }
   return conditions[metric] || 'Higher values'
 }
