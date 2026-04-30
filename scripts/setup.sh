@@ -1,44 +1,30 @@
 #!/bin/bash
 
-# Setup script for TraderVue
+# Setup script for TradeTally
 
-echo "[SETUP] Setting up TraderVue..."
+echo "[SETUP] Setting up TradeTally..."
 
-# Backend setup
-echo "[SETUP] Setting up backend..."
-cd backend
-
-# Remove node_modules and package-lock if they exist
-rm -rf node_modules package-lock.json
-
-# Install dependencies
-npm install
-
-# Copy env file if it doesn't exist
-if [ ! -f .env ]; then
-    cp .env.example .env
-    echo "[OK] Created .env file - Please update with your database credentials"
+if ! command -v pnpm >/dev/null 2>&1; then
+    echo "[ERROR] pnpm is required. Install it with: npm install -g pnpm@10.13.1"
+    exit 1
 fi
 
-cd ..
-
-# Frontend setup
-echo "[SETUP] Setting up frontend..."
-cd frontend
-
-# Remove node_modules and package-lock if they exist
-rm -rf node_modules package-lock.json
-
 # Install dependencies
-npm install
+pnpm install
 
-cd ..
+# Backend env setup
+if [ ! -f backend/.env ]; then
+    cd backend
+    cp .env.example .env
+    cd ..
+    echo "[OK] Created .env file - Please update with your database credentials"
+fi
 
 echo "[SUCCESS] Setup complete!"
 echo ""
 echo "Next steps:"
 echo "1. Update backend/.env with your PostgreSQL database credentials"
-echo "2. Create the database: createdb tradervue_db"
-echo "3. Run migrations: psql -U your_user -d tradervue_db -f backend/src/utils/schema.sql"
-echo "4. Start backend: cd backend && npm run dev"
-echo "5. Start frontend: cd frontend && npm run dev"
+echo "2. Create the database: createdb tradetally"
+echo "3. Run migrations: cd backend && pnpm run migrate"
+echo "4. Start backend: pnpm --dir backend run dev"
+echo "5. Start frontend: pnpm --dir frontend run dev"

@@ -1,4 +1,5 @@
 const Trade = require('../models/Trade');
+const TradeQueries = require('../services/tradeQueries');
 const User = require('../models/User');
 const { parseCSV, detectBrokerFormat, getCsvHeaderLine, getCsvSampleRows } = require('../utils/csvParser');
 const { uuidv4 } = require('../utils/uuid');
@@ -6,6 +7,7 @@ const db = require('../config/database');
 const logger = require('../utils/logger');
 const finnhub = require('../utils/finnhub');
 const cache = require('../utils/cache');
+const AnalyticsCache = require('../services/analyticsCache');
 const symbolCategories = require('../utils/symbolCategories');
 const imageProcessor = require('../utils/imageProcessor');
 const ensureString = require('../utils/ensureString');
@@ -209,20 +211,6 @@ function enrichOpenTradePnL(trade) {
     : null;
 }
 
-// Helper function to invalidate analytics cache for a user
-function invalidateAnalyticsCache(userId) {
-  // Clear all analytics cache entries for this user
-  const cacheKeys = Object.keys(cache.data).filter(key =>
-    key.startsWith(`analytics:user_${userId}:`) ||
-    key.startsWith(`analytics_overview_${userId}_`) ||
-    key.startsWith(`analytics_chart_data_${userId}_`) ||
-    key.startsWith(`performance_${userId}_`) ||
-    key.startsWith(`partial_exit_analytics:user_${userId}:`)
-  );
-  cacheKeys.forEach(key => cache.del(key));
-  console.log(`[CACHE] Invalidated ${cacheKeys.length} analytics cache entries for user ${userId}`);
-}
-
 const tradeController = {
   async getUserTrades(req, res, next) {
     const requestStartTime = Date.now();
@@ -285,9 +273,9 @@ const tradeController = {
       const skipCount = req.query.skipCount === 'true' || req.query.skipCount === '1';
       
       // Get trades with pagination
-      console.log('[PERF] About to call Trade.findByUser, elapsed:', Date.now() - requestStartTime, 'ms');
-      const trades = await Trade.findByUser(req.user.id, filters);
-      console.log('[PERF] Trade.findByUser completed, elapsed:', Date.now() - requestStartTime, 'ms');
+      console.log('[PERF] About to call TradeQueries.findByUser, elapsed:', Date.now() - requestStartTime, 'ms');
+      const trades = await TradeQueries.findByUser(req.user.id, filters);
+      console.log('[PERF] TradeQueries.findByUser completed, elapsed:', Date.now() - requestStartTime, 'ms');
 
       // Map snake_case database fields to camelCase for API response
       trades.forEach(trade => {
@@ -447,7 +435,7 @@ const tradeController = {
         offset: 0
       };
 
-      const trades = await Trade.findByUser(req.user.id, filters);
+      const trades = await TradeQueries.findByUser(req.user.id, filters);
 
       // Convert trades to CSV format with generic headers
       const csvHeaders = [
@@ -636,7 +624,7 @@ const tradeController = {
       }
 
       // Invalidate analytics cache for this user
-      invalidateAnalyticsCache(req.user.id);
+      await AnalyticsCache.invalidate(req.user.id);
 
       res.status(201).json({ trade });
 
@@ -664,15 +652,7 @@ const tradeController = {
       const trade = await Trade.createShell(req.user.id, normalizedBody);
 
       // Invalidate analytics cache
-      invalidateAnalyticsCache(req.user.id);
-
-      // Invalidate database analytics cache
-      try {
-        const AnalyticsCache = require('../services/analyticsCache');
-        await AnalyticsCache.invalidateUserCache(req.user.id);
-      } catch (cacheError) {
-        console.warn('[WARNING] Failed to invalidate analytics DB cache:', cacheError.message);
-      }
+      await AnalyticsCache.invalidate(req.user.id);
 
       res.status(201).json({ trade });
     } catch (error) {
@@ -693,15 +673,7 @@ const tradeController = {
       const trade = await Trade.addFill(tradeId, req.user.id, req.body);
 
       // Invalidate analytics cache
-      invalidateAnalyticsCache(req.user.id);
-
-      // Invalidate database analytics cache
-      try {
-        const AnalyticsCache = require('../services/analyticsCache');
-        await AnalyticsCache.invalidateUserCache(req.user.id);
-      } catch (cacheError) {
-        console.warn('[WARNING] Failed to invalidate analytics DB cache:', cacheError.message);
-      }
+      await AnalyticsCache.invalidate(req.user.id);
 
       res.status(200).json({ trade });
     } catch (error) {
@@ -879,7 +851,7 @@ const tradeController = {
       }
 
       // Invalidate analytics cache for this user
-      invalidateAnalyticsCache(req.user.id);
+      await AnalyticsCache.invalidate(req.user.id);
 
       res.json({ trade });
 
@@ -919,7 +891,7 @@ const tradeController = {
       }
 
       // Invalidate analytics cache for this user
-      invalidateAnalyticsCache(req.user.id);
+      await AnalyticsCache.invalidate(req.user.id);
 
       res.json({ message: 'Trade deleted successfully' });
     } catch (error) {
@@ -1108,7 +1080,7 @@ const tradeController = {
       }
 
       // Invalidate caches
-      invalidateAnalyticsCache(req.user.id);
+      await AnalyticsCache.invalidate(req.user.id);
 
       res.json({
         message: isPartialSplit
@@ -1178,7 +1150,7 @@ const tradeController = {
       }
 
       // Invalidate analytics cache for this user
-      invalidateAnalyticsCache(req.user.id);
+      await AnalyticsCache.invalidate(req.user.id);
 
       res.json({
         message: `Bulk delete completed. ${deletedCount} trades deleted successfully.`,
@@ -2557,7 +2529,7 @@ const tradeController = {
 
           // Invalidate analytics cache after successful import so counts/P&L update immediately
           try {
-            invalidateAnalyticsCache(fileUserId);
+            await AnalyticsCache.invalidate(fileUserId);
             console.log('[SUCCESS] Analytics cache invalidated after import completion');
           } catch (cacheError) {
             console.warn('[WARNING] Failed to invalidate analytics cache:', cacheError.message);
@@ -3253,7 +3225,7 @@ const tradeController = {
       await db.query(`DELETE FROM import_logs WHERE id = $1`, [importId]);
 
       // Invalidate analytics cache for this user so totals recalculate
-      invalidateAnalyticsCache(req.user.id);
+      await AnalyticsCache.invalidate(req.user.id);
 
       // Invalidate sector performance cache for this user
       try {
@@ -3324,7 +3296,7 @@ const tradeController = {
       await db.query(`DELETE FROM import_logs WHERE id IN (${importPlaceholders})`, validIds);
 
       // Invalidate caches
-      invalidateAnalyticsCache(req.user.id);
+      await AnalyticsCache.invalidate(req.user.id);
       try {
         await cache.invalidate('sector_performance');
         console.log('[SUCCESS] Sector performance cache invalidated after bulk import deletion');
@@ -3455,11 +3427,8 @@ const tradeController = {
         }
       }
 
-      // Generate cache key based on userId and filters
-      const cacheKey = `analytics:user_${req.user.id}:${JSON.stringify(filters)}`;
+      const cacheKey = TradeQueries.cacheKey(req.user.id, filters);
 
-      // Cache until invalidated - invalidateAnalyticsCache() clears on trade mutations
-      // (import, create, update, delete, sync). No need for time-based expiry.
       const cached = cache.get(cacheKey);
       if (cached) {
         console.log('[CACHE] Analytics cache hit for user:', req.user.id);
@@ -3467,9 +3436,9 @@ const tradeController = {
       }
 
       console.log('[CACHE] Analytics cache miss for user:', req.user.id);
-      const analytics = await Trade.getAnalytics(req.user.id, filters);
+      const analytics = await TradeQueries.getAnalytics(req.user.id, filters);
 
-      // Cache for 24h - effectively permanent since invalidateAnalyticsCache() clears on mutations
+      // 24h TTL — AnalyticsCache.invalidate() clears on trade mutations.
       cache.set(cacheKey, analytics, 86400000);
 
       res.json(analytics);
@@ -3881,7 +3850,7 @@ const tradeController = {
       if (endDate) filters.endDate = endDate;
 
       // Fetch all trades for the user
-      const trades = await Trade.findByUser(req.user.id, filters);
+      const trades = await TradeQueries.findByUser(req.user.id, filters);
 
       if (format === 'csv') {
         // Define CSV headers - include ALL fields
@@ -4820,7 +4789,10 @@ const tradeController = {
   async updateTradeHealthData(req, res, next) {
     try {
       const tradeId = req.params.id;
-      const { heartRate, sleepScore, sleepHours, stressLevel } = req.body;
+      const heartRate = req.body.heart_rate ?? req.body.heartRate;
+      const sleepScore = req.body.sleep_score ?? req.body.sleepScore;
+      const sleepHours = req.body.sleep_hours ?? req.body.sleepHours;
+      const stressLevel = req.body.stress_level ?? req.body.stressLevel;
 
       // Validate trade belongs to user
       const tradeCheck = await db.query(
@@ -4864,7 +4836,7 @@ const tradeController = {
 
   async bulkUpdateHealthData(req, res, next) {
     try {
-      const { trades } = req.body; // Array of {tradeId, heartRate, sleepScore, sleepHours, stressLevel}
+      const { trades } = req.body; // Array of trade updates with snake_case health fields
 
       if (!Array.isArray(trades) || trades.length === 0) {
         return res.status(400).json({ error: 'Trades array is required' });
@@ -4875,7 +4847,11 @@ const tradeController = {
 
       // Process each trade update
       for (const tradeUpdate of trades) {
-        const { tradeId, heartRate, sleepScore, sleepHours, stressLevel } = tradeUpdate;
+        const tradeId = tradeUpdate.trade_id ?? tradeUpdate.tradeId;
+        const heartRate = tradeUpdate.heart_rate ?? tradeUpdate.heartRate;
+        const sleepScore = tradeUpdate.sleep_score ?? tradeUpdate.sleepScore;
+        const sleepHours = tradeUpdate.sleep_hours ?? tradeUpdate.sleepHours;
+        const stressLevel = tradeUpdate.stress_level ?? tradeUpdate.stressLevel;
 
         try {
           // Validate trade belongs to user
@@ -5391,15 +5367,7 @@ const tradeController = {
 
         logger.info(`[REPAIR] Repaired ${updateResult.rows.length} trades for user ${req.user.id}`, 'app');
 
-        // Invalidate caches
-        const AnalyticsCache = require('../services/analyticsCache');
-        const cache = require('../utils/cache');
-
-        await AnalyticsCache.invalidateUserCache(req.user.id);
-        const cacheKeys = Object.keys(cache.data || {}).filter(key =>
-          key.startsWith(`analytics:user_${req.user.id}:`)
-        );
-        cacheKeys.forEach(key => cache.del(key));
+        await AnalyticsCache.invalidate(req.user.id);
 
         return res.json({
           success: true,

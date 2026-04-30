@@ -9,7 +9,7 @@ class JobQueue {
 
   /**
    * Add a job to the queue
-   * @param {string} type - Job type (cusip_resolution, strategy_classification, symbol_enrichment, mae_mfe_estimation)
+   * @param {string} type - Job type (cusip_resolution, strategy_classification, news_enrichment, news_backfill, quality_backfill)
    * @param {object} data - Job data
    * @param {number} priority - Priority (1=highest, 5=lowest)
    * @param {string} userId - User ID for the job
@@ -255,12 +255,6 @@ class JobQueue {
         case 'strategy_classification':
           result = await this.processStrategyClassification(data);
           break;
-        case 'symbol_enrichment':
-          result = await this.processSymbolEnrichment(data);
-          break;
-        case 'mae_mfe_estimation':
-          result = await this.processMaeMfeEstimation(data);
-          break;
         case 'news_backfill':
           result = await this.processNewsBackfill(data);
           break;
@@ -391,71 +385,6 @@ class JobQueue {
     }
     
     return { processed: tradesToProcess.length };
-  }
-
-  /**
-   * Process symbol enrichment job
-   */
-  async processSymbolEnrichment(data) {
-    const symbolCategories = require('./symbolCategories');
-    const { symbols } = data;
-    
-    logger.logImport(`Enriching ${symbols.length} symbols`);
-    
-    for (const symbol of symbols) {
-      try {
-        await symbolCategories.enrichSymbol(symbol);
-      } catch (error) {
-        logger.logError(`Failed to enrich symbol ${symbol}: ${error.message}`);
-      }
-    }
-    
-    return { processed: symbols.length };
-  }
-
-  /**
-   * Process MAE/MFE estimation job
-   */
-  async processMaeMfeEstimation(data) {
-    const maeEstimator = require('./maeEstimator');
-    const enrichmentCacheService = require('../services/enrichmentCacheService');
-    const { tradeIds } = data;
-    
-    logger.logImport(`Estimating MAE/MFE for ${tradeIds.length} trades`);
-    
-    for (const tradeId of tradeIds) {
-      try {
-        const trade = await db.query('SELECT * FROM trades WHERE id = $1', [tradeId]);
-        if (trade.rows[0]) {
-          const tradeData = trade.rows[0];
-          const estimates = await maeEstimator.estimateMAEMFE(tradeData);
-          
-          if (estimates.mae !== null || estimates.mfe !== null) {
-            await db.query(`
-              UPDATE trades 
-              SET mae = $1, mfe = $2
-              WHERE id = $3
-            `, [estimates.mae, estimates.mfe, tradeId]);
-            
-            // Store MAE/MFE data in enrichment cache
-            try {
-              await enrichmentCacheService.storeTradeEnrichmentData(tradeData, 'mae_mfe_estimation', {
-                typical_mae_percent: estimates.mae,
-                typical_mfe_percent: estimates.mfe,
-                confidence: estimates.confidence || 70, // Default confidence
-                api_provider: 'internal_calculation'
-              });
-            } catch (cacheError) {
-              logger.logError(`Failed to cache MAE/MFE data for trade ${tradeId}: ${cacheError.message}`);
-            }
-          }
-        }
-      } catch (error) {
-        logger.logError(`Failed to estimate MAE/MFE for trade ${tradeId}: ${error.message}`);
-      }
-    }
-    
-    return { processed: tradeIds.length };
   }
 
   /**

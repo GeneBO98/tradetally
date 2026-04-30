@@ -117,7 +117,7 @@
               {{ continueLabel }}
             </button>
             <button
-              v-if="remainingCount > 0"
+              v-if="totalRemaining > 0"
               @click="handleDismissAll"
               class="w-full text-xs text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
             >
@@ -165,6 +165,11 @@
 
 <script setup>
 import { ref, watch, onMounted, onBeforeUnmount, computed, nextTick } from 'vue'
+import {
+  usePriceAlertNotifications,
+  advanceCelebrationCursor,
+} from '@/composables/usePriceAlertNotifications'
+import { useAuthStore } from '@/stores/auth'
 
 const props = defineProps({
   queue: {
@@ -172,6 +177,12 @@ const props = defineProps({
     required: true
   }
 })
+
+const {
+  pendingCelebrationNotifications,
+  celebrationLevelContext,
+} = usePriceAlertNotifications()
+const authStore = useAuthStore()
 
 const visible = ref(false)
 const currentItem = ref(null)
@@ -355,10 +366,41 @@ const heroRarity = computed(() => {
 
 const heroHeaderLabel = computed(() => RARITY_LABELS[heroRarity.value] || 'Achievement unlocked')
 
+const totalRemaining = computed(
+  () => remainingCount.value + pendingCelebrationNotifications.value.length
+)
+
 const continueLabel = computed(() => {
   if (isAnimating.value) return 'Please wait...'
-  return remainingCount.value > 0 ? `Continue (${remainingCount.value} more)` : 'Done'
+  return totalRemaining.value > 0
+    ? `Continue Viewing (${totalRemaining.value} more)`
+    : 'Done'
 })
+
+// Mark notifications as read in the backend (fire-and-forget — bell badge
+// will refresh on its next poll). Accepts either a single id (defaults to
+// the achievement_earned type) or an array of {id, type} objects.
+async function markNotificationsRead(items) {
+  if (!authStore.token) return
+  const list = Array.isArray(items)
+    ? items
+    : items
+      ? [{ id: items, type: 'achievement_earned' }]
+      : []
+  if (list.length === 0) return
+  try {
+    await fetch('/api/notifications/mark-read', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${authStore.token}`
+      },
+      body: JSON.stringify({ notifications: list })
+    })
+  } catch (err) {
+    console.error('[CELEBRATION] Failed to mark notifications as read:', err)
+  }
+}
 
 function stopAnimation() {
   if (animationRafId) {
@@ -682,6 +724,10 @@ function showNextItem() {
 function handleDismissAll() {
   stopAnimation()
   props.queue.splice(0, props.queue.length)
+  // Pending notifications stay unread — dismissing the modal shouldn't
+  // silently consume them; the user can still find them in the bell.
+  pendingCelebrationNotifications.value = []
+  celebrationLevelContext.value = null
   visible.value = false
   currentItem.value = null
   isAnimating.value = false
@@ -695,6 +741,48 @@ async function handleContinue() {
   visible.value = false
   currentItem.value = null
   await wait(200)
+
+  // If the in-memory queue is exhausted but we have more unread achievement
+  // notifications, pop the next one onto the queue and mark it as read.
+  // advanceCelebrationCursor walks the captured level context forward by
+  // this achievement's points so the bar continues from where the previous
+  // modal left off — by the final modal it will have caught up to the
+  // user's true current XP / level.
+  if (props.queue.length === 0 && pendingCelebrationNotifications.value.length > 0) {
+    const next = pendingCelebrationNotifications.value.shift()
+    markNotificationsRead(next.notificationId)
+    const xpUpdate = advanceCelebrationCursor(
+      celebrationLevelContext.value,
+      next.achievement.points
+    )
+    if (xpUpdate) {
+      props.queue.push({ type: 'xp_update', payload: xpUpdate })
+    }
+    props.queue.push({
+      type: 'achievement',
+      payload: { achievement: next.achievement }
+    })
+  }
+
+  // When we've fully exhausted both the queue and pending list, the user
+  // has visually walked the bar up to their actual level — so mark any
+  // unread level_up notifications as read too. Then drop the captured
+  // level context so future SSE-driven celebrations aren't tinted by
+  // stale data.
+  if (
+    props.queue.length === 0 &&
+    pendingCelebrationNotifications.value.length === 0
+  ) {
+    const levelUpIds =
+      celebrationLevelContext.value?.levelUpNotificationIds || []
+    if (levelUpIds.length > 0) {
+      markNotificationsRead(
+        levelUpIds.map((id) => ({ id, type: 'level_up' }))
+      )
+    }
+    celebrationLevelContext.value = null
+  }
+
   isAnimating.value = false
   showNextItem()
 }

@@ -16,14 +16,16 @@ const aiController = {
     try {
       console.log('[AI_CONTROLLER] Creating new session for user', req.user.id);
 
-      const { filters } = req.body || {};
+      const { filters, tradeId, analysisType } = req.body || {};
 
       const result = await AISessionService.createSession(
         req.user.id,
         filters,
         {
           apiKey: req.body.apiKey,
-          modelName: req.body.modelName
+          modelName: req.body.modelName,
+          tradeId,
+          analysisType
         }
       );
 
@@ -55,6 +57,22 @@ const aiController = {
         return res.status(500).json({
           success: false,
           error: 'AI configuration error',
+          message: error.message
+        });
+      }
+
+      if (error.message.includes('Trade ID is required')) {
+        return res.status(400).json({
+          success: false,
+          error: 'Trade ID required',
+          message: error.message
+        });
+      }
+
+      if (error.message.includes('Trade not found')) {
+        return res.status(404).json({
+          success: false,
+          error: 'Trade not found',
           message: error.message
         });
       }
@@ -185,6 +203,44 @@ const aiController = {
       });
     } catch (error) {
       console.error('[AI_CONTROLLER] Error getting user sessions:', error.message);
+      next(error);
+    }
+  },
+
+  async getTradeAnalyses(req, res, next) {
+    try {
+      const { tradeId } = req.params;
+      const limit = parseInt(req.query.limit, 10) || 10;
+
+      const analyses = await AISessionService.getTradeAnalyses(req.user.id, tradeId, limit);
+      const responseCount = analyses.reduce((sum, analysis) => sum + (analysis.response_count || 0), 0);
+
+      res.json({
+        success: true,
+        tradeId,
+        count: analyses.length,
+        response_count: responseCount,
+        analyses
+      });
+    } catch (error) {
+      console.error('[AI_CONTROLLER] Error getting trade analyses:', error.message);
+
+      if (error.message.includes('Trade ID is required')) {
+        return res.status(400).json({
+          success: false,
+          error: 'Trade ID required',
+          message: error.message
+        });
+      }
+
+      if (error.message.includes('Trade not found')) {
+        return res.status(404).json({
+          success: false,
+          error: 'Trade not found',
+          message: error.message
+        });
+      }
+
       next(error);
     }
   },

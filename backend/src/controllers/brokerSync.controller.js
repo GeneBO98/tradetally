@@ -8,7 +8,6 @@ const ibkrService = require('../services/brokerSync/ibkrService');
 const schwabService = require('../services/brokerSync/schwabService');
 const brokerSyncService = require('../services/brokerSync');
 const AnalyticsCache = require('../services/analyticsCache');
-const cache = require('../utils/cache');
 const logger = require('../utils/logger');
 const db = require('../config/database');
 const crypto = require('crypto');
@@ -20,15 +19,6 @@ function redactAccountNumber(accountNumber) {
   const value = String(accountNumber);
   if (value.length <= 4) return value;
   return `****${value.slice(-4)}`;
-}
-
-// Helper function to invalidate in-memory analytics cache for a user
-function invalidateInMemoryCache(userId) {
-  const cacheKeys = Object.keys(cache.data || {}).filter(key =>
-    key.startsWith(`analytics:user_${userId}:`)
-  );
-  cacheKeys.forEach(key => cache.del(key));
-  console.log(`[BROKER-SYNC] Invalidated ${cacheKeys.length} in-memory analytics cache entries for user ${userId}`);
 }
 
 const brokerSyncController = {
@@ -611,11 +601,9 @@ const brokerSyncController = {
       const deletedCount = result.rowCount;
       console.log(`[BROKER-SYNC] Deleted ${deletedCount} synced trades for connection ${id} (user ${userId})`);
 
-      // Invalidate both database and in-memory analytics cache after deleting trades
       if (deletedCount > 0) {
         console.log(`[BROKER-SYNC] Invalidating analytics cache for user ${userId}`);
-        await AnalyticsCache.invalidateUserCache(userId);
-        invalidateInMemoryCache(userId);
+        await AnalyticsCache.invalidate(userId);
       }
 
       res.json({

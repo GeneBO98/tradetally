@@ -79,6 +79,17 @@ Free, open-source deployment with all Pro features included. Perfect for:
 
 For detailed installation and setup instructions, visit the [documentation site](https://docs.tradetally.io).
 
+### Local Development
+
+TradeTally uses pnpm for dependency management. Install pnpm, then install dependencies from the repository root:
+
+```bash
+npm install -g pnpm@10.13.1
+pnpm install
+pnpm --dir backend run dev
+pnpm --dir frontend run dev
+```
+
 ### Quick Start with Docker
 
 ```bash

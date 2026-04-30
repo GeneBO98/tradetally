@@ -15,17 +15,7 @@ const axios = require('axios');
 const Trade = require('../../models/Trade');
 const BrokerConnection = require('../../models/BrokerConnection');
 const AnalyticsCache = require('../analyticsCache');
-const cache = require('../../utils/cache');
 const db = require('../../config/database');
-
-// Helper function to invalidate in-memory analytics cache for a user
-function invalidateInMemoryCache(userId) {
-  const cacheKeys = Object.keys(cache.data || {}).filter(key =>
-    key.startsWith(`analytics:user_${userId}:`)
-  );
-  cacheKeys.forEach(key => cache.del(key));
-  console.log(`[SCHWAB] Invalidated ${cacheKeys.length} in-memory analytics cache entries for user ${userId}`);
-}
 
 const SCHWAB_API_BASE = 'https://api.schwabapi.com/trader/v1';
 const TOKEN_REFRESH_BUFFER = 5 * 60 * 1000; // Refresh 5 minutes before expiration
@@ -1113,11 +1103,9 @@ class SchwabService {
       }
     }
 
-    // Invalidate both database and in-memory analytics cache after importing trades
     if (imported > 0) {
       console.log(`[SCHWAB] Invalidating analytics cache for user ${userId}`);
-      await AnalyticsCache.invalidateUserCache(userId);
-      invalidateInMemoryCache(userId);
+      await AnalyticsCache.invalidate(userId);
     }
 
     return { imported, skipped, failed, duplicates };

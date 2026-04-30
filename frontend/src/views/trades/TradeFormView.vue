@@ -1593,6 +1593,33 @@ const { toLocalInput, toUTC, getCurrentTimeLocal, timezoneLabel } = useUserTimez
 const loading = ref(false)
 const error = ref(null)
 const validationErrors = ref([])
+
+function normalizeValidationErrors(errorData) {
+  if (!errorData) return []
+
+  if (Array.isArray(errorData.fields)) {
+    return errorData.fields
+      .map(field => field.message || (field.field ? `${field.field}: Invalid value` : null))
+      .filter(Boolean)
+  }
+
+  if (Array.isArray(errorData.details)) {
+    return errorData.details
+  }
+
+  if (typeof errorData.details === 'string') {
+    return errorData.details
+      .split(',')
+      .map(detail => detail.trim())
+      .filter(Boolean)
+  }
+
+  if (typeof errorData.message === 'string') {
+    return [errorData.message]
+  }
+
+  return []
+}
 const errorRef = ref(null)
 const behavioralAlert = ref(null)
 const tradeBlocked = ref(false)
@@ -1946,17 +1973,18 @@ async function loadTrade() {
             const proportion = totalQuantity > 0 ? execQuantity / totalQuantity : 0
 
             // Determine commission/fees for this specific execution:
-            // 1. If this execution has a commission field (even if 0) - use it (previously processed)
-            // 2. If no commission field but has non-zero fees - use fees as commission (fresh CSV import)
-            // 3. Otherwise - distribute trade-level commission proportionally
+            // 1. If this execution has a non-zero commission field, use it directly
+            // 2. If no commission field but has non-zero fees, use fees as commission (fresh CSV import)
+            // 3. Otherwise, distribute trade-level costs proportionally. Tradovate imports may
+            //    preserve commission: 0 on executions while broker fee settings live at trade level.
             let execCommission = 0
             let execFees = 0
 
-            const thisExecHasCommission = exec.commission !== undefined && exec.commission !== null
+            const thisExecHasNonZeroCommission = exec.commission !== undefined && exec.commission !== null && parseFloat(exec.commission) !== 0
             const thisExecHasNonZeroFees = exec.fees !== undefined && exec.fees !== null && parseFloat(exec.fees) !== 0
 
-            if (thisExecHasCommission) {
-              // Execution has commission field set (from previous save) - use it directly
+            if (thisExecHasNonZeroCommission) {
+              // Execution has a real commission value set (from previous save) - use it directly
               execCommission = parseFloat(exec.commission) || 0
               // Only include fees if they're separate from commission
               execFees = parseFloat(exec.fees) || 0
@@ -2548,9 +2576,10 @@ async function handleSubmit() {
       router.replace(`/trades/${newTrade.id}`)
     }
   } catch (err) {
-    const serverError = err.response?.data?.error || err.message || 'An unexpected error occurred. Please try again.'
+    const errorData = err.response?.data
+    const serverError = errorData?.error || err.message || 'An unexpected error occurred. Please try again.'
     error.value = serverError
-    validationErrors.value = err.response?.data?.details || []
+    validationErrors.value = normalizeValidationErrors(errorData)
     showError('Error', error.value)
     nextTick(() => errorRef.value?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
   } finally {

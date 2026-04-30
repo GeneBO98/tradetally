@@ -1,0 +1,11 @@
+packages:
+  - frontend
+  - backend
+
+onlyBuiltDependencies:
+  - '@scarf/scarf'
+  - bcrypt
+  - esbuild
+  - protobufjs
+  - sharp
+  - vue-demi

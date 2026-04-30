@@ -238,7 +238,6 @@ class SampleDataService {
   static async removeForUser(userId) {
     const db = require('../config/database');
     const AnalyticsCache = require('./analyticsCache');
-    const cache = require('../utils/cache');
 
     console.log(`[SAMPLE-DATA] Removing sample data for user ${userId}`);
 
@@ -263,13 +262,8 @@ class SampleDataService {
     );
     console.log(`[SAMPLE-DATA] Deleted ${accountResult.rowCount} sample accounts`);
 
-    // Invalidate caches
     try {
-      await AnalyticsCache.invalidateUserCache(userId);
-      const cacheKeys = Object.keys(cache.data || {}).filter(key =>
-        key.startsWith(`analytics:user_${userId}:`)
-      );
-      cacheKeys.forEach(key => cache.del(key));
+      await AnalyticsCache.invalidate(userId);
     } catch (err) {
       console.log(`[SAMPLE-DATA] Cache invalidation warning: ${err.message}`);
     }
