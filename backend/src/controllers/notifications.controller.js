@@ -290,7 +290,8 @@ const notificationsController = {
             NULL::text AS comment_text,
             NULL::uuid AS trade_id,
             n.created_at,
-            COALESCE(n.read, false) AS is_read
+            COALESCE(n.read, false) AS is_read,
+            n.data AS metadata
           FROM notifications n
           WHERE n.user_id = $1
             AND n.created_at > NOW() - INTERVAL '30 days'
@@ -309,7 +310,8 @@ const notificationsController = {
             NULL::text AS comment_text,
             NULL::uuid AS trade_id,
             an.sent_at AS created_at,
-            CASE WHEN nrs.id IS NOT NULL THEN true ELSE false END AS is_read
+            CASE WHEN nrs.id IS NOT NULL THEN true ELSE false END AS is_read,
+            NULL::jsonb AS metadata
           FROM alert_notifications an
           LEFT JOIN notification_read_status nrs ON (
             nrs.user_id = $1
@@ -332,7 +334,8 @@ const notificationsController = {
             tc.comment AS comment_text,
             t.id AS trade_id,
             tc.created_at,
-            CASE WHEN nrs.id IS NOT NULL THEN true ELSE false END AS is_read
+            CASE WHEN nrs.id IS NOT NULL THEN true ELSE false END AS is_read,
+            NULL::jsonb AS metadata
           FROM trade_comments tc
           JOIN trades t ON tc.trade_id = t.id
           JOIN users u ON tc.user_id = u.id
