@@ -5,6 +5,9 @@
 
 cd "$(dirname "$0")/.."
 
+PNPM_CMD=(corepack pnpm)
+STASHED=0
+
 # Load env vars for email notifications
 if [ -f .env ]; then
   export $(grep -E '^(EMAIL_HOST|EMAIL_PORT|EMAIL_USER|EMAIL_PASS|EMAIL_FROM|ADMIN_EMAIL)=' .env | xargs)
@@ -39,12 +42,22 @@ send_failure_email() {
   ") 2>&1 || echo "[UPDATE] Could not send failure email"
 }
 
+restore_stash() {
+  if [ "${STASHED:-0}" -eq 1 ]; then
+    echo "[UPDATE] Restoring stashed changes..."
+    git stash pop 2>&1 || true
+    STASHED=0
+  fi
+}
+
+trap restore_stash EXIT
+
 echo "[UPDATE] Pulling latest changes..."
 
 # Check for uncommitted changes that would block git pull
 if ! git diff --quiet || ! git diff --cached --quiet; then
   echo "[UPDATE] WARNING: Uncommitted changes detected. Stashing before pull..."
-  STASH_OUTPUT=$(git stash 2>&1)
+  STASH_OUTPUT=$(git stash push -u -m "native-update-$(date +%Y%m%d-%H%M%S)" 2>&1)
   echo "$STASH_OUTPUT"
   STASHED=1
 else
@@ -80,41 +93,22 @@ Please SSH in and resolve manually."
   exit 1
 fi
 
-# Restore stashed changes after successful pull
-if [ $STASHED -eq 1 ]; then
-  echo "[UPDATE] Restoring stashed changes..."
-  STASH_POP_OUTPUT=$(git stash pop 2>&1)
-  STASH_POP_EXIT=$?
-  echo "$STASH_POP_OUTPUT"
-  if [ $STASH_POP_EXIT -ne 0 ]; then
-    echo "[UPDATE] WARNING: Stash pop had conflicts. Manual resolution needed."
-    send_failure_email \
-      "[TradeTally] Update warning - stash conflicts" \
-      "The TradeTally update pulled successfully but stash pop had conflicts on $(hostname) at $(date).
-
-Output:
-$STASH_POP_OUTPUT
-
-Please SSH in and resolve the conflicts."
-  fi
-fi
-
 if echo "$PULL_OUTPUT" | grep -q "Already up to date."; then
   echo "[UPDATE] No changes, skipping build/restart."
   exit 0
 fi
 
-echo "[UPDATE] Installing backend dependencies..."
-if ! pnpm install --filter tradetally-backend --prod --frozen-lockfile 2>&1; then
-  echo "[UPDATE] ERROR: Backend pnpm install failed!"
+echo "[UPDATE] Installing workspace dependencies..."
+if ! "${PNPM_CMD[@]}" install --frozen-lockfile 2>&1; then
+  echo "[UPDATE] ERROR: Workspace pnpm install failed!"
   send_failure_email \
-    "[TradeTally] Update failed - backend pnpm install" \
-    "Backend pnpm install failed on $(hostname) at $(date). The server was NOT restarted."
+    "[TradeTally] Update failed - workspace pnpm install" \
+    "Workspace pnpm install failed on $(hostname) at $(date). The server was NOT restarted."
   exit 1
 fi
 
-echo "[UPDATE] Installing frontend dependencies and building..."
-if ! (pnpm install --filter tradetally-frontend --frozen-lockfile && pnpm --dir frontend run build 2>&1); then
+echo "[UPDATE] Building frontend..."
+if ! "${PNPM_CMD[@]}" --dir frontend run build 2>&1; then
   echo "[UPDATE] ERROR: Frontend build failed!"
   send_failure_email \
     "[TradeTally] Update failed - frontend build" \
