@@ -11,8 +11,11 @@ jest.mock('../../../src/controllers/analytics.controller', () => ({
 }));
 
 jest.mock('../../../src/models/Trade', () => ({
-  findByUser: jest.fn(),
   getCountWithFilters: jest.fn()
+}));
+
+jest.mock('../../../src/services/tradeQueries', () => ({
+  findByUser: jest.fn()
 }));
 
 jest.mock('../../../src/config/database', () => ({
@@ -22,6 +25,7 @@ jest.mock('../../../src/config/database', () => ({
 const tradeController = require('../../../src/controllers/trade.controller');
 const analyticsController = require('../../../src/controllers/analytics.controller');
 const Trade = require('../../../src/models/Trade');
+const TradeQueries = require('../../../src/services/tradeQueries');
 const db = require('../../../src/config/database');
 const tradeV1Controller = require('../../../src/controllers/v1/trade.controller');
 
@@ -152,7 +156,7 @@ describe('v1 trade controller', () => {
   });
 
   test('GET /api/v1/trades/recent sorts by descending entry_time and paginates', async () => {
-    Trade.findByUser.mockResolvedValue([
+    TradeQueries.findByUser.mockResolvedValue([
       { id: 'old', entry_time: '2026-02-01T09:00:00Z' },
       { id: 'new', entry_time: '2026-02-05T09:00:00Z' }
     ]);
@@ -169,7 +173,7 @@ describe('v1 trade controller', () => {
 
     await tradeV1Controller.getRecentTrades(req, res, next);
 
-    expect(Trade.findByUser).toHaveBeenCalledWith('u1', {
+    expect(TradeQueries.findByUser).toHaveBeenCalledWith('u1', {
       limit: 10,
       offset: 0,
       symbol: undefined,

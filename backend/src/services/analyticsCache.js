@@ -1,6 +1,17 @@
 const db = require('../config/database');
 const logger = require('../utils/logger');
 const { uuidv4 } = require('../utils/uuid');
+const memoryCache = require('../utils/cache');
+
+// Prefixes used by the in-memory analytics cache. Keys matching any of these
+// (with the user_id appended) are cleared on invalidate.
+const IN_MEMORY_KEY_PREFIXES = [
+  'analytics:user_',
+  'analytics_overview_',
+  'analytics_chart_data_',
+  'performance_',
+  'partial_exit_analytics:user_'
+];
 
 class AnalyticsCache {
   
@@ -160,28 +171,27 @@ class AnalyticsCache {
   }
 
   /**
-   * Invalidate cache when user data changes (call after trade import, deletion, etc.)
+   * Invalidate all analytics cache for a user — clears both the DB-backed
+   * cache and the in-memory cache in one call. This is the canonical entry
+   * point after any trade mutation (create/update/delete/import/sync).
    */
-  static async invalidateUserCache(userId, specificTypes = null) {
+  static async invalidate(userId) {
+    // DB layer
     try {
-      if (specificTypes && Array.isArray(specificTypes)) {
-        // Delete specific analysis types
-        for (const type of specificTypes) {
-          const query = `
-            DELETE FROM analytics_cache 
-            WHERE user_id = $1 AND cache_key LIKE $2
-          `;
-          await db.query(query, [userId, `${type}%`]);
-        }
-        logger.logDebug(`Invalidated cache for user ${userId} (types: ${specificTypes.join(', ')})`);
-      } else {
-        // Delete all user cache
-        await this.delete(userId);
-        logger.logDebug(`Invalidated all cache for user ${userId}`);
-      }
+      await this.delete(userId);
     } catch (error) {
-      logger.logError(`Error invalidating cache for user ${userId}:`, error);
+      logger.logError(`Error clearing DB analytics cache for user ${userId}:`, error);
     }
+
+    // In-memory layer — match by prefix since keys also encode filter shape
+    let cleared = 0;
+    for (const key of Object.keys(memoryCache.data || {})) {
+      if (IN_MEMORY_KEY_PREFIXES.some(prefix => key.startsWith(`${prefix}${userId}`))) {
+        memoryCache.del(key);
+        cleared++;
+      }
+    }
+    logger.logDebug(`Invalidated analytics cache for user ${userId} (in-memory: ${cleared} entries)`);
   }
 
   /**

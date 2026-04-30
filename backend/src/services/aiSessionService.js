@@ -1,5 +1,6 @@
 const db = require('../config/database');
 const Trade = require('../models/Trade');
+const TradeQueries = require('./tradeQueries');
 const AICreditService = require('./aiCreditService');
 const AIProvider = require('../utils/aiProvider');
 const TierService = require('./tierService');
@@ -66,10 +67,10 @@ class AISessionService {
     console.log('[AI_SESSION] Normalized filters:', normalizedFilters);
 
     // Get analytics for the filtered trades
-    const analytics = await Trade.getAnalytics(userId, normalizedFilters);
+    const analytics = await TradeQueries.getAnalytics(userId, normalizedFilters);
 
     // Get recent trades for context
-    const tradesResult = await Trade.findByUser(userId, {
+    const tradesResult = await TradeQueries.findByUser(userId, {
       ...normalizedFilters,
       limit: 100,
       offset: 0
