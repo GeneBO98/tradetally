@@ -282,12 +282,6 @@ class EnrichmentCacheService {
         tradeData.bollinger_upper = enrichmentData.bollinger_upper;
         tradeData.bollinger_lower = enrichmentData.bollinger_lower;
         break;
-        
-      case 'mae_mfe_estimation':
-        tradeData.typical_mae_percent = enrichmentData.typical_mae_percent;
-        tradeData.typical_mfe_percent = enrichmentData.typical_mfe_percent;
-        tradeData.mae_confidence = enrichmentData.confidence;
-        break;
     }
 
     return this.storeEnrichmentData(
