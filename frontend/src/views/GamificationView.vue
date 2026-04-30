@@ -414,11 +414,13 @@
                     <div
                         v-for="achievement in achievements"
                         :key="achievement.id"
+                        :data-achievement-id="achievement.id"
                         :class="[
                             'bg-white dark:bg-gray-800 rounded-lg shadow-sm border-2 transition-all duration-200 hover:shadow-md',
                             achievement.is_earned
                                 ? 'border-primary-200 dark:border-primary-700 bg-gradient-to-br from-primary-50 to-white dark:from-primary-900/20 dark:to-gray-800'
                                 : 'border-gray-200 dark:border-gray-700',
+                            highlightedAchievementId === achievement.id && 'achievement-highlight',
                         ]"
                     >
                         <div class="p-5">
@@ -1080,12 +1082,15 @@
 </template>
 
 <script>
-import { ref, computed, onMounted, watch } from "vue";
-import { useRoute } from "vue-router";
+import { ref, computed, onMounted, watch, nextTick } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import api from "@/services/api";
 import MdiIcon from "@/components/MdiIcon.vue";
 import { useNotification } from "@/composables/useNotification";
-import { usePriceAlertNotifications } from "@/composables/usePriceAlertNotifications";
+import {
+    usePriceAlertNotifications,
+    advanceCelebrationCursor,
+} from "@/composables/usePriceAlertNotifications";
 import { useAuthStore } from "@/stores/auth";
 import {
     mdiTrophy,
@@ -1110,9 +1115,14 @@ export default {
     },
     setup() {
         const { showSuccess, showError, showWarning } = useNotification();
-        const { celebrationQueue } = usePriceAlertNotifications();
+        const {
+            celebrationQueue,
+            pendingCelebrationNotifications,
+            celebrationLevelContext,
+        } = usePriceAlertNotifications();
         const authStore = useAuthStore();
         const route = useRoute();
+        const router = useRouter();
 
         // Load saved tab from localStorage
         const savedTab = localStorage.getItem("gamificationTab");
@@ -1148,6 +1158,9 @@ export default {
         const anonymousName = ref("");
         const recentAchievements = ref([]);
         const achievements = ref([]);
+        // ID of an achievement to scroll to + highlight after the list loads.
+        // Set when the user arrives from clicking an achievement notification.
+        const highlightedAchievementId = ref(null);
         const leaderboards = ref([]);
         const loading = ref(true);
         const achievementsLoading = ref(false);
@@ -1839,11 +1852,12 @@ export default {
         // Track if we've already run celebration for this page load
         const celebrationRunThisSession = ref(false);
 
-        const celebrateUnseenEarned = async () => {
-            console.log("[CELEBRATION] celebrateUnseenEarned called");
+        const celebrateUnseenEarned = async ({ force = false } = {}) => {
+            console.log("[CELEBRATION] celebrateUnseenEarned called", { force });
 
-            // Prevent running twice in the same session
-            if (celebrationRunThisSession.value) {
+            // Prevent running twice in the same session, unless explicitly forced
+            // (e.g. user arrived from an achievement notification click)
+            if (!force && celebrationRunThisSession.value) {
                 console.log("[CELEBRATION] Already ran this session, skipping");
                 return;
             }
@@ -1978,6 +1992,151 @@ export default {
             }
         };
 
+        // UUIDs are 36 chars (with dashes); the only other expected celebrate
+        // value is the literal "1" used as a generic fallback.
+        const looksLikeAchievementId = (value) =>
+            typeof value === "string" && value.length >= 32;
+
+        // Begin a notification-driven celebration. Single round-trip:
+        // fetches the clicked achievement's full record, the user's current
+        // dashboard stats, and the unread achievement-notification list in
+        // parallel; then sets up the celebration cursor so each modal in
+        // the chain animates the bar from where the previous left off and
+        // the final modal lands on the user's true current XP / level.
+        const startNotificationCelebration = async (clickedAchievementId) => {
+            try {
+                const [earnedRes, dashRes, notifRes] = await Promise.all([
+                    api.get("/gamification/achievements/earned"),
+                    api.get("/gamification/dashboard"),
+                    api.get("/notifications?unread_only=true&limit=100"),
+                ]);
+
+                const earned =
+                    earnedRes.data?.data?.achievements ||
+                    earnedRes.data?.achievements ||
+                    [];
+                const clicked = earned.find(
+                    (a) => a.id === clickedAchievementId,
+                );
+                if (!clicked) {
+                    console.log(
+                        "[CELEBRATION] Achievement not found in earned list:",
+                        clickedAchievementId,
+                    );
+                    return;
+                }
+
+                const notifList = Array.isArray(notifRes.data?.data)
+                    ? notifRes.data.data
+                    : [];
+                const pending = notifList
+                    .filter(
+                        (n) =>
+                            n.type === "achievement_earned" &&
+                            n.metadata?.achievement?.id &&
+                            n.metadata.achievement.id !== clickedAchievementId,
+                    )
+                    .map((n) => ({
+                        notificationId: n.id,
+                        achievement: n.metadata.achievement,
+                    }));
+
+                // The cursor walks from a "before any of these were earned"
+                // baseline up to the user's true current XP. Total points
+                // == clicked + every still-unviewed pending notification.
+                const totalPoints =
+                    (clicked.points || 0) +
+                    pending.reduce(
+                        (sum, p) => sum + (p.achievement.points || 0),
+                        0,
+                    );
+                const stats = dashRes.data?.data?.stats || {};
+                const levelProgress = stats.level_progress || {};
+                const actualCurrentXP = stats.experience_points || 0;
+                const startingXP = Math.max(0, actualCurrentXP - totalPoints);
+
+                // Collect any unread level_up notification ids — by viewing
+                // the full achievement chain the user implicitly sees the
+                // level the bar lands on, so we mark these read once the
+                // chain naturally exhausts (handled in CelebrationOverlay).
+                const levelUpNotificationIds = notifList
+                    .filter((n) => n.type === "level_up")
+                    .map((n) => n.id);
+
+                const ctx = {
+                    actualCurrentXP,
+                    actualCurrentLevel: stats.level || 1,
+                    currentLevelMinXP:
+                        levelProgress.current_level_min_xp || 0,
+                    nextLevelMinXP: levelProgress.next_level_min_xp || 100,
+                    cursorXP: startingXP,
+                    levelUpNotificationIds,
+                };
+                celebrationLevelContext.value = ctx;
+                pendingCelebrationNotifications.value = pending;
+
+                // Mark every achievement in the chain (clicked + pending) as
+                // seen in localStorage so a later overview-tab visit doesn't
+                // re-celebrate them.
+                const storageKey = getCelebrationStorageKey();
+                const seenIds = JSON.parse(
+                    localStorage.getItem(storageKey) || "[]",
+                );
+                const allIds = [
+                    clicked.id,
+                    ...pending.map((p) => p.achievement.id),
+                ];
+                const merged = [...new Set([...seenIds, ...allIds])];
+                localStorage.setItem(storageKey, JSON.stringify(merged));
+
+                // First modal: animate the bar over the clicked achievement's
+                // segment. advanceCelebrationCursor mutates ctx.cursorXP so
+                // subsequent Continue Viewing presses pick up where this ends.
+                const xpUpdate = advanceCelebrationCursor(
+                    ctx,
+                    clicked.points,
+                );
+                if (xpUpdate) {
+                    celebrationQueue.value.push({
+                        type: "xp_update",
+                        payload: xpUpdate,
+                    });
+                }
+                celebrationQueue.value.push({
+                    type: "achievement",
+                    payload: { achievement: clicked },
+                });
+                console.log(
+                    "[CELEBRATION] Started notification celebration:",
+                    clicked.name,
+                    `(${pending.length} pending, cursor ${startingXP}→${actualCurrentXP})`,
+                );
+            } catch (error) {
+                console.error(
+                    "[CELEBRATION] Error starting notification celebration:",
+                    error,
+                );
+                pendingCelebrationNotifications.value = [];
+            }
+        };
+
+        const scrollToHighlightedAchievement = () => {
+            const id = highlightedAchievementId.value;
+            if (!id) return;
+            const el = document.querySelector(
+                `[data-achievement-id="${id}"]`,
+            );
+            if (!el) return;
+            el.scrollIntoView({ behavior: "smooth", block: "center" });
+            // Clear the highlight after the pulse animation completes (CSS
+            // animation runs ~3s) so it doesn't persist on tab switches.
+            setTimeout(() => {
+                if (highlightedAchievementId.value === id) {
+                    highlightedAchievementId.value = null;
+                }
+            }, 3500);
+        };
+
         const markAchievementsAsViewed = () => {
             // This function can be used for additional logic when visiting achievements tab
             // For now, we rely on the localStorage tracking
@@ -2061,6 +2220,47 @@ export default {
             },
         );
 
+        // Fire the celebration when arriving with ?celebrate=<value>. This
+        // watcher handles three navigation shapes the activeTab/loadTabData
+        // chain alone cannot reliably cover:
+        //  1. Fresh mount (immediate: true)
+        //  2. In-component navigation that only changes the query (component
+        //     is reused, activeTab may already be "achievements")
+        //  3. Same-tab re-clicks of a different achievement notification
+        watch(
+            () => route.query.celebrate,
+            async (celebrateParam) => {
+                if (!celebrateParam) return;
+                const tabFromUrl = Array.isArray(route.query.tab)
+                    ? route.query.tab[0]
+                    : route.query.tab;
+                if (tabFromUrl !== "achievements") return;
+
+                if (looksLikeAchievementId(celebrateParam)) {
+                    await startNotificationCelebration(celebrateParam);
+                    highlightedAchievementId.value = celebrateParam;
+                } else {
+                    await celebrateUnseenEarned({ force: true });
+                }
+                // Strip the param so a refresh doesn't replay the celebration.
+                const { celebrate, ...rest } = route.query;
+                router.replace({ query: rest });
+            },
+            { immediate: true },
+        );
+
+        // Scroll the highlighted card into view once both the id is set and
+        // the achievements list has finished loading. Decoupled from the
+        // celebrate watcher because list-load and celebration run in parallel.
+        watch(
+            [highlightedAchievementId, () => achievements.value.length],
+            async ([id, count]) => {
+                if (!id || count === 0) return;
+                await nextTick();
+                scrollToHighlightedAchievement();
+            },
+        );
+
         // Watch for showFilters changes to persist to localStorage
         watch(showFilters, (newValue) => {
             localStorage.setItem("gamificationShowFilters", String(newValue));
@@ -2085,6 +2285,7 @@ export default {
             anonymousName,
             recentAchievements,
             achievements,
+            highlightedAchievementId,
             leaderboards,
             loading,
             achievementsLoading,
@@ -2130,3 +2331,32 @@ export default {
     },
 };
 </script>
+
+<style scoped>
+@keyframes achievement-highlight-pulse {
+    0% {
+        box-shadow:
+            0 0 0 0 rgba(240, 129, 42, 0.6),
+            0 0 20px 0 rgba(240, 129, 42, 0.35);
+        transform: scale(1);
+    }
+    50% {
+        box-shadow:
+            0 0 0 14px rgba(240, 129, 42, 0),
+            0 0 45px 10px rgba(240, 129, 42, 0.5);
+        transform: scale(1.025);
+    }
+    100% {
+        box-shadow:
+            0 0 0 0 rgba(240, 129, 42, 0),
+            0 0 20px 0 rgba(240, 129, 42, 0);
+        transform: scale(1);
+    }
+}
+
+.achievement-highlight {
+    animation: achievement-highlight-pulse 1.1s ease-in-out 3;
+    position: relative;
+    z-index: 1;
+}
+</style>

@@ -723,6 +723,87 @@ describe('Generic parser', () => {
     }));
   });
 
+  test('parses completed trade rows with entry and exit date columns', async () => {
+    const completedTradeCSV = [
+      'Symbol,Entry Date,Exit Date,Quantity,Entry Price,Exit Price,Commission,Side,Currency',
+      '6EM5,2025-06-06 08:30:01,2025-06-06 16:14:14,2.0,1.1399,1.14025,9.88,Long,USD',
+      'MESM5,2025-04-04 07:26:45,2025-04-06 21:52:45,1.0,5252.0,4981.25,1.24,Short,USD'
+    ].join('\n');
+    const result = await parseCSV(buf(completedTradeCSV), 'generic', {
+      tradeGroupingSettings: { enabled: false }
+    });
+
+    expectValidResult(result);
+    expect(result.trades).toHaveLength(2);
+    expect(result.diagnostics.invalidRows).toBe(0);
+    expect(result.trades[0]).toEqual(expect.objectContaining({
+      symbol: '6EM5',
+      tradeDate: '2025-06-06',
+      entryTime: '2025-06-06T08:30:01',
+      exitTime: '2025-06-06T16:14:14',
+      entryPrice: 1.1399,
+      exitPrice: 1.14025,
+      quantity: 2,
+      side: 'long'
+    }));
+  });
+
+  test('parses lowercase trade_date and trade_type transaction exports', async () => {
+    const indianBrokerCSV = [
+      'symbol,isin,trade_date,exchange,segment,series,trade_type,auction,quantity,price,trade_id,order_id,order_execution_time',
+      'SUZLON,INE040H01021,2025-06-09,NSE,EQ,EQ,buy,false,450.000000,67.500000,603052659,1300000021339012,2025-06-09T10:22:33',
+      'SUZLON,INE040H01021,2025-06-12,NSE,EQ,EQ,sell,false,450.000000,66.000000,605366350,1300000042576567,2025-06-12T12:04:50'
+    ].join('\n');
+    const result = await parseCSV(buf(indianBrokerCSV), 'generic', {
+      tradeGroupingSettings: { enabled: false }
+    });
+
+    expectValidResult(result);
+    expect(result.trades).toHaveLength(1);
+    expect(result.diagnostics.invalidRows).toBe(0);
+    expect(result.trades[0]).toEqual(expect.objectContaining({
+      symbol: 'SUZLON',
+      entryTime: '2025-06-09T10:22:33',
+      exitTime: '2025-06-12T12:04:50',
+      quantity: 450
+    }));
+  });
+
+  test('parses Trading 212 style market buy and sell rows', async () => {
+    const trading212CSV = [
+      'Action,Time,ISIN,Ticker,Name,Notes,ID,No. of shares,Price / share,Currency (Price / share),Exchange rate,Result,Currency (Result),Total,Currency (Total),Withholding tax,Currency (Withholding tax),Currency conversion fee,Currency (Currency conversion fee)',
+      'Market buy,2024-12-26 14:30:06,US7134481081,PEP,PepsiCo,,EOF25550025661,0.0067696000,153.3900000000,USD,1.03838894,,USD,1.00,USD,,,,',
+      'Market sell,2024-12-27 14:30:06,US7134481081,PEP,PepsiCo,,EOF25550025662,0.0067696000,154.3900000000,USD,1.03838894,,USD,1.01,USD,,,,'
+    ].join('\n');
+    const result = await parseCSV(buf(trading212CSV), 'generic', {
+      tradeGroupingSettings: { enabled: false }
+    });
+
+    expectValidResult(result);
+    expect(result.trades).toHaveLength(1);
+    expect(result.diagnostics.invalidRows).toBe(0);
+    expect(result.trades[0]).toEqual(expect.objectContaining({
+      symbol: 'PEP',
+      entryPrice: 153.39
+    }));
+    expect(result.trades[0].exitPrice).toBeCloseTo(154.39);
+  });
+
+  test('does not treat account labels containing CurrencyCode as currency columns', async () => {
+    const questradeConfirmationCSV = [
+      'CurrencyCode_Group_Account,Trade Date,Settlement date,Trade #,Action,Quantity,Symbol,Description,TB,EX,Price,Gross amount,Comm,SEC fees,Interest amount,Net amount,Net amount (account currency)',
+      'Canadian stocks and options - Account 5361397317,20-10-25,21-10-25,AAEBA7,Buy,80,.FTG,"FIRAN TECHNOLOGY GROUP, CORPORATION",A,CXD,10.40,(832.00),0.00,0.00,0.00,(832.00),(832.00)',
+      'Canadian stocks and options - Account 5361397317,21-10-25,22-10-25,AC3001,Sell,80,.FTG,"FIRAN TECHNOLOGY GROUP, CORPORATION",A,CXD,10.02,801.60,0.00,0.00,0.00,801.60,801.60'
+    ].join('\n');
+    const result = await parseCSV(buf(questradeConfirmationCSV), 'generic', {
+      tradeGroupingSettings: { enabled: false }
+    });
+
+    expectValidResult(result);
+    expect(result.trades).toHaveLength(1);
+    expect(result.diagnostics.invalidRows).toBe(0);
+  });
+
   test('records diagnostics when generic rows fail validation', async () => {
     const invalidGenericCSV = [
       'Symbol,Date,Price,Quantity',

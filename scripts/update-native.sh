@@ -105,16 +105,16 @@ if echo "$PULL_OUTPUT" | grep -q "Already up to date."; then
 fi
 
 echo "[UPDATE] Installing backend dependencies..."
-if ! (cd backend && npm install 2>&1); then
-  echo "[UPDATE] ERROR: Backend npm install failed!"
+if ! pnpm install --filter tradetally-backend --prod --frozen-lockfile 2>&1; then
+  echo "[UPDATE] ERROR: Backend pnpm install failed!"
   send_failure_email \
-    "[TradeTally] Update failed - backend npm install" \
-    "Backend npm install failed on $(hostname) at $(date). The server was NOT restarted."
+    "[TradeTally] Update failed - backend pnpm install" \
+    "Backend pnpm install failed on $(hostname) at $(date). The server was NOT restarted."
   exit 1
 fi
 
 echo "[UPDATE] Installing frontend dependencies and building..."
-if ! (cd frontend && npm install && npm run build 2>&1); then
+if ! (pnpm install --filter tradetally-frontend --frozen-lockfile && pnpm --dir frontend run build 2>&1); then
   echo "[UPDATE] ERROR: Frontend build failed!"
   send_failure_email \
     "[TradeTally] Update failed - frontend build" \

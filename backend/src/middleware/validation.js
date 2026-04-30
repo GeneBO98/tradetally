@@ -182,7 +182,7 @@ const schemas = {
             shares: Joi.number().integer().positive().allow(null).optional(),
             percentage: Joi.number().min(1).max(100).allow(null).optional()
           })).default([]).optional()
-        }),
+        }).unknown(true),
         // Grouped round-trip format
         Joi.object({
           side: Joi.string().valid('long', 'short').required(),
@@ -201,7 +201,7 @@ const schemas = {
             shares: Joi.number().integer().positive().allow(null).optional(),
             percentage: Joi.number().min(1).max(100).allow(null).optional()
           })).default([]).optional()
-        })
+        }).unknown(true)
       )
     ).optional()
   }),
@@ -327,7 +327,7 @@ const schemas = {
             shares: Joi.number().integer().positive().allow(null).optional(),
             percentage: Joi.number().min(1).max(100).allow(null).optional()
           })).default([]).optional()
-        }),
+        }).unknown(true),
         // Grouped round-trip format
         Joi.object({
           side: Joi.string().valid('long', 'short').required(),
@@ -346,7 +346,7 @@ const schemas = {
             shares: Joi.number().integer().positive().allow(null).optional(),
             percentage: Joi.number().min(1).max(100).allow(null).optional()
           })).default([]).optional()
-        })
+        }).unknown(true)
       )
     ).optional()
   }).min(1),

@@ -81,15 +81,16 @@ export const useAIStore = defineStore('ai', () => {
   /**
    * Create a new AI analysis session
    * @param {Object} filters - Optional filters to apply
+   * @param {Object} options - Optional context options such as { tradeId }
    */
-  async function createSession(filters = {}) {
+  async function createSession(filters = {}, options = {}) {
     loading.value = true
     generating.value = true
     error.value = null
 
     try {
-      console.log('[AI_STORE] Creating new session with filters:', filters)
-      const response = await api.post('/ai/sessions', { filters })
+      console.log('[AI_STORE] Creating new session with filters:', filters, 'options:', options)
+      const response = await api.post('/ai/sessions', { filters, ...options })
 
       currentSession.value = {
         id: response.data.session_id,
@@ -97,6 +98,7 @@ export const useAIStore = defineStore('ai', () => {
         followup_count: 0,
         max_followups: response.data.max_followups,
         trade_summary: response.data.trade_summary,
+        ai_metadata: response.data.ai_metadata || response.data.trade_summary?.ai_metadata || null,
         expires_at: response.data.expires_at
       }
 
@@ -192,6 +194,7 @@ export const useAIStore = defineStore('ai', () => {
         followup_count: session.followup_count,
         max_followups: session.max_followups,
         trade_summary: session.trade_summary,
+        ai_metadata: session.ai_metadata || session.trade_summary?.ai_metadata || null,
         expires_at: session.expires_at,
         created_at: session.created_at
       }

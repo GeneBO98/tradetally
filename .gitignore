@@ -129,11 +129,13 @@ tramp
 .\#*
 .cursor/
 .claude/
+.agents/
 
 # Misc local files
 .sentryclirc
 performance-test.js
 .mcp.json
 CLAUDE.md
+AGENTS.md
 backend/.envy
 zap.yaml

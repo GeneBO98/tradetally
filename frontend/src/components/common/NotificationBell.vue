@@ -374,7 +374,14 @@ const handleNotificationClick = async (notification) => {
   } else if (notification.type === 'price_alert') {
     router.push('/price-alerts')
   } else if (['achievement_earned', 'level_up', 'challenge_joined', 'challenge_completed'].includes(notification.type)) {
-    router.push({ path: '/leaderboard', query: { tab: 'achievements' } })
+    // For achievement_earned notifications we pass the specific achievement
+    // id so the destination page can fire the cannon for that exact card and
+    // scroll/highlight it. Other types fall back to a generic celebration.
+    const achievementId = notification.type === 'achievement_earned'
+      ? notification.metadata?.achievement?.id
+      : null
+    const celebrate = achievementId || '1'
+    router.push({ path: '/leaderboard', query: { tab: 'achievements', celebrate } })
   } else if (notification.type === 'leaderboard_ranking') {
     router.push('/leaderboard')
   } else if (notification.type === 'behavioral_alert') {

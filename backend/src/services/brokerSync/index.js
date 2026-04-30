@@ -6,17 +6,8 @@
 const BrokerConnection = require('../../models/BrokerConnection');
 const db = require('../../config/database');
 const AnalyticsCache = require('../analyticsCache');
-const cache = require('../../utils/cache');
 const ibkrService = require('./ibkrService');
 const schwabService = require('./schwabService');
-
-// Helper function to invalidate in-memory analytics cache for a user
-function invalidateInMemoryCache(userId) {
-  const cacheKeys = Object.keys(cache.data || {}).filter(key =>
-    key.startsWith(`analytics:user_${userId}:`)
-  );
-  cacheKeys.forEach(key => cache.del(key));
-}
 
 class BrokerSyncService {
   /**
@@ -277,9 +268,7 @@ class BrokerSyncService {
 
       if (closed > 0) {
         console.log(`[BROKER-SYNC] Auto-closed ${closed} expired option(s)`);
-        // Invalidate both caches so analytics reflect the closed trades
-        await AnalyticsCache.invalidateUserCache(userId);
-        invalidateInMemoryCache(userId);
+        await AnalyticsCache.invalidate(userId);
       }
     } catch (error) {
       console.error('[BROKER-SYNC] Error checking for expired options:', error.message);

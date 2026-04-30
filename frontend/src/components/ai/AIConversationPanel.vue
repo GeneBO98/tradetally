@@ -7,9 +7,12 @@
           <SparklesIcon class="h-5 w-5 text-primary-600 dark:text-primary-400" />
         </div>
         <div>
-          <h3 class="heading-card">AI Trading Assistant</h3>
+          <h3 class="heading-card">{{ title }}</h3>
           <p v-if="!aiStore.hasActiveSession" class="text-xs text-gray-500 dark:text-gray-400">
-            Get personalized analysis of your trading performance
+            {{ subtitle }}
+          </p>
+          <p v-else-if="currentModelLabel" class="text-xs text-gray-500 dark:text-gray-400">
+            Model: {{ currentModelLabel }}
           </p>
         </div>
       </div>
@@ -32,12 +35,9 @@
     <div v-if="!aiStore.hasActiveSession && !aiStore.loading" class="text-center py-8">
       <div class="max-w-md mx-auto">
         <SparklesIcon class="h-12 w-12 mx-auto text-gray-400 dark:text-gray-500 mb-4" />
-        <h4 class="text-lg font-medium text-gray-900 dark:text-white mb-2">
-          Get AI-Powered Insights
-        </h4>
+        <h4 class="text-lg font-medium text-gray-900 dark:text-white mb-2">{{ emptyTitle }}</h4>
         <p class="text-gray-600 dark:text-gray-400 mb-4 text-sm">
-          Start a conversation with our AI assistant to analyze your trading patterns,
-          identify strengths and weaknesses, and get personalized recommendations.
+          {{ emptyDescription }}
         </p>
 
         <div v-if="!aiStore.canStartSession" class="mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
@@ -58,7 +58,7 @@
         >
           <SparklesIcon class="h-4 w-4" />
           <span v-if="aiStore.generating">Starting Analysis...</span>
-          <span v-else>Start AI Analysis</span>
+          <span v-else>{{ startLabel }}</span>
           <span v-if="!aiStore.credits.unlimited" class="text-xs opacity-75">
             ({{ aiStore.creditCosts.new_session }} credits)
           </span>
@@ -69,7 +69,7 @@
     <!-- Loading State -->
     <div v-else-if="aiStore.loading && !aiStore.hasActiveSession" class="text-center py-12">
       <div class="animate-spin h-8 w-8 mx-auto mb-4 border-4 border-primary-600 border-t-transparent rounded-full"></div>
-      <p class="text-gray-600 dark:text-gray-400">Analyzing your trading data...</p>
+      <p class="text-gray-600 dark:text-gray-400">{{ loadingText }}</p>
       <p class="text-gray-500 dark:text-gray-500 text-xs mt-2">This may take a moment</p>
     </div>
 
@@ -174,7 +174,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, nextTick } from 'vue'
+import { computed, ref, onMounted, watch, nextTick } from 'vue'
 import { useAIStore } from '@/stores/ai'
 import { useTradesStore } from '@/stores/trades'
 import { SparklesIcon, PaperAirplaneIcon } from '@heroicons/vue/24/outline'
@@ -183,9 +183,59 @@ import CreditBadge from './CreditBadge.vue'
 
 const aiStore = useAIStore()
 const tradesStore = useTradesStore()
+const emit = defineEmits(['session-created'])
+
+const props = defineProps({
+  tradeId: {
+    type: String,
+    default: null
+  },
+  title: {
+    type: String,
+    default: 'AI Trading Assistant'
+  },
+  subtitle: {
+    type: String,
+    default: 'Get personalized analysis of your trading performance'
+  },
+  emptyTitle: {
+    type: String,
+    default: 'Get AI-Powered Insights'
+  },
+  emptyDescription: {
+    type: String,
+    default: 'Start a conversation with our AI assistant to analyze your trading patterns, identify strengths and weaknesses, and get personalized recommendations.'
+  },
+  startLabel: {
+    type: String,
+    default: 'Start AI Analysis'
+  },
+  loadingText: {
+    type: String,
+    default: 'Analyzing your trading data...'
+  },
+  autoStart: {
+    type: Boolean,
+    default: false
+  }
+})
 
 const followupMessage = ref('')
 const messagesContainer = ref(null)
+const autoStartAttempted = ref(false)
+
+const currentModelLabel = computed(() => {
+  const metadata = aiStore.currentSession?.ai_metadata || aiStore.currentSession?.trade_summary?.ai_metadata
+  return formatModelLabel(metadata)
+})
+
+function formatModelLabel(metadata) {
+  if (!metadata) return ''
+  const provider = metadata.provider ? String(metadata.provider) : ''
+  const model = metadata.model ? String(metadata.model) : ''
+  if (provider && model) return `${provider} / ${model}`
+  return model || provider
+}
 
 // Scroll to bottom when new messages arrive
 watch(() => aiStore.messages.length, async () => {
@@ -199,6 +249,10 @@ watch(() => aiStore.messages.length, async () => {
 onMounted(async () => {
   try {
     await aiStore.fetchCredits()
+    if (props.autoStart && props.tradeId && !aiStore.hasActiveSession && !autoStartAttempted.value) {
+      autoStartAttempted.value = true
+      await startNewSession()
+    }
   } catch (error) {
     console.error('[AI_PANEL] Error fetching credits:', error)
   }
@@ -206,8 +260,8 @@ onMounted(async () => {
 
 async function startNewSession() {
   try {
-    // Use current filters from trades store
-    const filters = { ...tradesStore.filters }
+    // Use current filters from trades store unless this panel is scoped to one trade.
+    const filters = props.tradeId ? {} : { ...tradesStore.filters }
 
     // Remove empty values
     Object.keys(filters).forEach(key => {
@@ -217,7 +271,11 @@ async function startNewSession() {
       }
     })
 
-    await aiStore.createSession(filters)
+    await aiStore.createSession(filters, props.tradeId ? {
+      analysisType: 'single_trade',
+      tradeId: props.tradeId
+    } : {})
+    emit('session-created', aiStore.currentSession)
 
     // Scroll to bottom after initial analysis
     await nextTick()

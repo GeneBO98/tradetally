@@ -1,5 +1,6 @@
 const db = require('../../config/database');
 const Trade = require('../../models/Trade');
+const TradeQueries = require('../../services/tradeQueries');
 const tradeController = require('../trade.controller');
 const analyticsController = require('../analytics.controller');
 const { sendV1Error, sendV1ErrorFromLegacy, sendV1NotImplemented, sendV1Paginated } = require('../../utils/apiResponse');
@@ -418,7 +419,7 @@ const tradeV1Controller = {
       };
 
       const [trades, total] = await Promise.all([
-        Trade.findByUser(req.user.id, filters),
+        TradeQueries.findByUser(req.user.id, filters),
         Trade.getCountWithFilters(req.user.id, {
           symbol: req.query.symbol,
           startDate: req.query.startDate,
