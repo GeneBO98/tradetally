@@ -29,6 +29,7 @@ export const useTradesStore = defineStore('trades', () => {
   const currentTrade = ref(null)
   const loading = ref(false)
   const initialLoading = ref(true)
+  const analyticsLoading = ref(false)
   const error = ref(null)
   const pagination = ref({
     page: 1,
@@ -65,10 +66,23 @@ export const useTradesStore = defineStore('trades', () => {
     return analytics.value.summary[key]
   }
 
+  const hasCompleteTradeSetLoaded = computed(() => {
+    const total = Number(pagination.value.total || 0)
+    if (total === 0) {
+      return trades.value.length > 0
+    }
+
+    return trades.value.length >= total
+  })
+
   const totalCosts = computed(() => {
     const summaryTotalCosts = getSummaryMetric('totalCosts')
     if (summaryTotalCosts !== undefined) {
       return parseFloat(summaryTotalCosts) || 0
+    }
+
+    if (!hasCompleteTradeSetLoaded.value) {
+      return 0
     }
 
     return trades.value.reduce((sum, trade) => {
@@ -79,11 +93,15 @@ export const useTradesStore = defineStore('trades', () => {
   })
 
   const totalPnL = computed(() => {
-    // Use analytics data if available, otherwise fall back to trade summation
     const summaryTotalPnL = getSummaryMetric('totalPnL')
     if (summaryTotalPnL !== undefined) {
       return parseFloat(summaryTotalPnL) || 0
     }
+
+    if (!hasCompleteTradeSetLoaded.value) {
+      return 0
+    }
+
     return trades.value.reduce((sum, trade) => sum + (parseFloat(trade.pnl) || 0), 0)
   })
 
@@ -91,6 +109,10 @@ export const useTradesStore = defineStore('trades', () => {
     const summaryTotalNetPnL = getSummaryMetric('totalNetPnL')
     if (summaryTotalNetPnL !== undefined) {
       return parseFloat(summaryTotalNetPnL) || 0
+    }
+
+    if (!hasCompleteTradeSetLoaded.value) {
+      return 0
     }
 
     return totalPnL.value
@@ -102,30 +124,38 @@ export const useTradesStore = defineStore('trades', () => {
       return parseFloat(summaryTotalGrossPnL) || 0
     }
 
+    if (!hasCompleteTradeSetLoaded.value) {
+      return 0
+    }
+
     return totalNetPnL.value + totalCosts.value
   })
 
   const winRate = computed(() => {
-    // Use analytics data if available, otherwise fall back to trade calculation
     const summaryWinRate = getSummaryMetric('winRate')
     if (summaryWinRate !== undefined) {
       return parseFloat(summaryWinRate).toFixed(2)
     }
+
+    if (!hasCompleteTradeSetLoaded.value) {
+      return '0.00'
+    }
+
     const winning = trades.value.filter(t => t.pnl > 0).length
     const total = trades.value.length
     return total > 0 ? (winning / total * 100).toFixed(2) : 0
   })
 
   const totalTrades = computed(() => {
-    // Use analytics data if available for total trades count
     if (analytics.value?.summary?.totalTrades !== undefined && !(trades.value.length > 0 && Number(analytics.value.summary.totalTrades || 0) === 0)) {
       return analytics.value.summary.totalTrades
     }
-    if (trades.value.length > 0) {
-      return trades.value.length
+
+    if (pagination.value.total > 0) {
+      return pagination.value.total
     }
-    // Fall back to pagination total
-    return pagination.value.total
+
+    return trades.value.length
   })
 
   function buildRequestParams(params = {}, options = {}) {
@@ -155,6 +185,7 @@ export const useTradesStore = defineStore('trades', () => {
 
   async function fetchTrades(params = {}) {
     loading.value = true
+    analyticsLoading.value = true
     error.value = null
 
     try {
@@ -165,17 +196,30 @@ export const useTradesStore = defineStore('trades', () => {
         skipCount
       })
 
+      const analyticsPromise = api.get('/trades/analytics', {
+        params: buildRequestParams(params)
+      }).catch(err => {
+        console.warn('Failed to fetch analytics:', err)
+        return null
+      })
+
       // Fetch trades with request cancellation support
-      const tradesResponse = await requestManager.request('fetchTrades', (cancelToken) =>
+      const tradesResponsePromise = requestManager.request('fetchTrades', (cancelToken) =>
         api.get('/trades', {
           params: requestParams,
           cancelToken
         })
       )
 
+      const [tradesResponse, analyticsResponse] = await Promise.all([
+        tradesResponsePromise,
+        analyticsPromise
+      ])
+
       // If request was cancelled, return early
       if (!tradesResponse) {
         loading.value = false
+        analyticsLoading.value = false
         return
       }
 
@@ -194,32 +238,19 @@ export const useTradesStore = defineStore('trades', () => {
         pagination.value.totalPages = Math.ceil(tradesResponse.data.total / pagination.value.limit)
       }
 
-      // Fetch count and analytics in parallel (non-blocking, happens after trades are shown)
-      // These can fail silently without affecting the main UI
-      Promise.all([
-        // Fetch count if it wasn't included
-        skipCount && tradesResponse.data.total === null
-          ? api.get('/trades/count', {
-              params: buildRequestParams(params)
-            }).then(response => {
-              pagination.value.total = response.data.total
-              pagination.value.totalPages = response.data.totalPages
-            }).catch(err => {
-              console.warn('Failed to fetch trade count:', err)
-            })
-          : Promise.resolve(),
-        // Fetch analytics (non-blocking)
-        api.get('/trades/analytics', {
+      analytics.value = analyticsResponse?.data || null
+
+      // Fetch count if it wasn't included
+      if (skipCount && tradesResponse.data.total === null) {
+        api.get('/trades/count', {
           params: buildRequestParams(params)
         }).then(response => {
-          analytics.value = response.data
+          pagination.value.total = response.data.total
+          pagination.value.totalPages = response.data.totalPages
         }).catch(err => {
-          console.warn('Failed to fetch analytics:', err)
-          // Analytics failure shouldn't block the UI
+          console.warn('Failed to fetch trade count:', err)
         })
-      ]).catch(() => {
-        // Ignore errors - these are non-critical background requests
-      })
+      }
 
       return tradesResponse.data
     } catch (err) {
@@ -227,6 +258,7 @@ export const useTradesStore = defineStore('trades', () => {
       throw err
     } finally {
       loading.value = false
+      analyticsLoading.value = false
       initialLoading.value = false
     }
   }
@@ -552,6 +584,7 @@ export const useTradesStore = defineStore('trades', () => {
     currentTrade,
     loading,
     initialLoading,
+    analyticsLoading,
     error,
     filters,
     pagination,

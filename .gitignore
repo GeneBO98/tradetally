@@ -130,6 +130,7 @@ tramp
 .cursor/
 .claude/
 .agents/
+.cloud-push-worktree/
 
 # Misc local files
 .sentryclirc
