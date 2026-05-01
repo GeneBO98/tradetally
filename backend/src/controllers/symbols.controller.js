@@ -1,6 +1,7 @@
 const db = require('../config/database');
 const finnhub = require('../utils/finnhub');
 const cache = require('../utils/cache');
+const symbolCategories = require('../utils/symbolCategories');
 
 const CACHE_TTL = 300000; // 5 minutes
 
@@ -15,6 +16,22 @@ function normalizeSymbolsParam(symbolsParam) {
       .map(symbol => symbol.trim().toUpperCase())
       .filter(Boolean)
   )].slice(0, 100);
+}
+
+function applyCategoryMetadata(target, category) {
+  if (!target || !category) {
+    return target;
+  }
+
+  return {
+    ...target,
+    company_name: target.company_name || category.company_name || null,
+    ...(Object.prototype.hasOwnProperty.call(target, 'companyName')
+      ? { companyName: target.companyName || category.company_name || null }
+      : {}),
+    exchange: target.exchange || category.exchange || null,
+    logo: target.logo || category.logo || null
+  };
 }
 
 async function searchSymbols(req, res) {
@@ -59,6 +76,24 @@ async function searchSymbols(req, res) {
           logo: row.logo || null,
           source: 'user_trades'
         });
+      }
+    }
+
+    const missingUserTradeSymbols = results
+      .filter(result => result.source === 'user_trades' && !result.company_name && !result.logo)
+      .map(result => result.symbol);
+
+    if (missingUserTradeSymbols.length > 0) {
+      const hydratedCategories = await symbolCategories.getSymbolCategories(missingUserTradeSymbols);
+      for (const result of results) {
+        if (result.source !== 'user_trades' || (result.company_name || result.logo)) {
+          continue;
+        }
+
+        const category = hydratedCategories.get(result.symbol);
+        if (category) {
+          Object.assign(result, applyCategoryMetadata(result, category));
+        }
       }
     }
 
@@ -182,6 +217,28 @@ async function getSymbolMetadata(req, res) {
         exchange: row.exchange || null,
         logo: row.logo || null
       };
+    }
+
+    const symbolsMissingMetadata = symbols.filter(symbol => {
+      const entry = metadata[symbol];
+      return entry && !entry.companyName && !entry.logo;
+    });
+
+    if (symbolsMissingMetadata.length > 0) {
+      const hydratedCategories = await symbolCategories.getSymbolCategories(symbolsMissingMetadata);
+      for (const symbol of symbolsMissingMetadata) {
+        const category = hydratedCategories.get(symbol);
+        if (!category) {
+          continue;
+        }
+
+        metadata[symbol] = {
+          symbol,
+          companyName: metadata[symbol].companyName || category.company_name || null,
+          exchange: metadata[symbol].exchange || category.exchange || null,
+          logo: metadata[symbol].logo || category.logo || null
+        };
+      }
     }
 
     cache.set(cacheKey, metadata, CACHE_TTL);
