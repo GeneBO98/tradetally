@@ -299,6 +299,35 @@
 
     <!-- Content with optional refresh indicator -->
     <div v-else class="space-y-8">
+      <div
+        v-if="!hasVisibleDashboardSections"
+        class="card border-primary-200 bg-primary-50 dark:border-primary-800 dark:bg-primary-900/20"
+      >
+        <div class="card-body flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 class="heading-card">Dashboard Sections Hidden</h2>
+            <p class="mt-1 text-sm text-primary-700 dark:text-primary-300">
+              Your saved dashboard layout is hiding every section. Reset the layout to restore the default dashboard.
+            </p>
+          </div>
+          <div class="flex gap-2">
+            <button
+              type="button"
+              class="btn-secondary"
+              @click="showLayoutSettings = true"
+            >
+              Show/Hide Sections
+            </button>
+            <button
+              type="button"
+              class="btn-primary"
+              @click="resetDashboardLayout"
+            >
+              Reset Layout
+            </button>
+          </div>
+        </div>
+      </div>
       
       <!-- Customization Mode Message -->
       <div v-if="isCustomizing" class="card bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
@@ -1484,6 +1513,7 @@ const defaultDashboardLayout = sectionDefinitions.map(section => ({
 }))
 
 const dashboardLayout = ref(JSON.parse(JSON.stringify(defaultDashboardLayout)))
+const hasVisibleDashboardSections = computed(() => dashboardLayout.value.some(section => section.visible))
 const isCustomizing = ref(false)
 const showLayoutSettings = ref(false)
 const onboardingStatus = ref(null)
@@ -1559,16 +1589,36 @@ async function saveDashboardLayout() {
 function loadDashboardLayout() {
   if (userSettings.value?.dashboardLayout && Array.isArray(userSettings.value.dashboardLayout)) {
     const savedLayout = userSettings.value.dashboardLayout
-    const savedIds = savedLayout.map(s => s.id)
+    const normalizedById = new Map(
+      defaultDashboardLayout.map(section => [section.id, { ...section }])
+    )
+    const normalizedLayout = []
 
-    // Start with saved layout in its saved order
-    dashboardLayout.value = savedLayout.map(savedSection => ({
-      ...savedSection
-    }))
+    for (const savedSection of savedLayout) {
+      const savedId = typeof savedSection === 'string' ? savedSection : savedSection?.id
+      const defaultSection = normalizedById.get(savedId)
 
-    // Add any new sections that weren't in the saved layout (from defaults)
-    const newSections = defaultDashboardLayout.filter(d => !savedIds.includes(d.id))
-    dashboardLayout.value = [...dashboardLayout.value, ...newSections]
+      if (!defaultSection) {
+        continue
+      }
+
+      normalizedLayout.push({
+        ...defaultSection,
+        ...(typeof savedSection === 'object' && savedSection ? savedSection : {}),
+        id: savedId,
+        visible: typeof savedSection === 'object' && savedSection && typeof savedSection.visible === 'boolean'
+          ? savedSection.visible
+          : true
+      })
+
+      normalizedById.delete(savedId)
+    }
+
+    // Add any new sections that were not present in the saved layout.
+    dashboardLayout.value = [
+      ...normalizedLayout,
+      ...Array.from(normalizedById.values())
+    ]
   }
 }
 
