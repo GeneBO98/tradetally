@@ -648,6 +648,25 @@ describe('TradeStation parser', () => {
     const result = await parseCSV(buf(tradestationCSV), 'tradestation', {});
     expect(result.trades.length).toBeGreaterThanOrEqual(1);
   });
+
+  test('keeps commissions separate from fees for TradeStation imports', async () => {
+    const detailedFeesCSV = [
+      'Account,T/D,S/D,Currency,Type,Side,Symbol,Qty,Price,Exec Time,Comm,SEC,TAF,NSCC,Nasdaq,ECN Remove,ECN Add,Gross Proceeds,Net Proceeds,Clr Broker,Liq,Note',
+      '12345,4/30/26,5/1/26,USD,2,B,HCAI,100,11.02,7:35:46,0.99,0,0,0.03,0.01,0,0,-1102.00,-1103.03,VIRTU,1,',
+      '12345,4/30/26,5/1/26,USD,2,S,HCAI,100,11.61,7:51:52,0.99,0.01,0.01,0.03,0.01,0,0,1161.00,1158.95,VIRTU,1,'
+    ].join('\n');
+
+    const result = await parseCSV(buf(detailedFeesCSV), 'tradestation', {});
+
+    expectValidResult(result);
+    expect(result.diagnostics.invalidRows).toBe(0);
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0]).toEqual(expect.objectContaining({
+      symbol: 'HCAI',
+      commission: 1.98,
+      fees: 0.10
+    }));
+  });
 });
 
 // ──────────────────────────────────────────────

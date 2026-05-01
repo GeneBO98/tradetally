@@ -1469,7 +1469,8 @@ const brokerParsers = {
     const quantity = Math.abs(parseInteger(row.Qty));
     const price = parseNumeric(row.Price);
 
-    // Calculate total fees from all fee columns
+    // TradeStation exports commission separately from regulatory/venue fees.
+    // Keep them split so the UI does not double count total transaction costs.
     const commission = parseNumeric(row.Comm) || 0;
     const sec = parseNumeric(row.SEC) || 0;
     const taf = parseNumeric(row.TAF) || 0;
@@ -1477,7 +1478,7 @@ const brokerParsers = {
     const nasdaq = parseNumeric(row.Nasdaq) || 0;
     const ecnRemove = parseNumeric(row['ECN Remove']) || 0;
     const ecnAdd = parseNumeric(row['ECN Add']) || 0;
-    const totalFees = commission + sec + taf + nscc + nasdaq + ecnRemove + ecnAdd;
+    const fees = sec + taf + nscc + nasdaq + ecnRemove + ecnAdd;
 
     const currency = (row.Currency || 'USD').toUpperCase();
     const type = cleanString(row.Type); // E, O for equity/option
@@ -1498,8 +1499,8 @@ const brokerParsers = {
       exitPrice: null,
       quantity: quantity,
       side: side,
-      commission: totalFees,
-      fees: totalFees,
+      commission: commission,
+      fees: fees,
       currency: currency,
       broker: 'tradestation',
       notes: note || `TradeStation ${type} trade`,
@@ -3070,6 +3071,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
               quantity: trade.quantity,
               price: trade.entryPrice,
               commission: trade.commission,
+              fees: trade.fees,
               currency: trade.currency,
               notes: trade.notes,
               raw: record
@@ -3116,7 +3118,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
               quantity: transaction.quantity,
               side: isBuy ? 'long' : 'short',
               commission: transaction.commission,
-              fees: transaction.commission,
+              fees: transaction.fees || 0,
               currency: transaction.currency,
               broker: 'tradestation',
               notes: transaction.notes
@@ -3128,7 +3130,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
               lastTrade.exitTime = transaction.datetime;
               lastTrade.exitPrice = transaction.price;
               lastTrade.commission += transaction.commission || 0;
-              lastTrade.fees = lastTrade.commission;
+              lastTrade.fees += transaction.fees || 0;
             }
           }
         }
