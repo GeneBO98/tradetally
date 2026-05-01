@@ -410,14 +410,21 @@ class TradeQueries {
         FROM completed_trades
         GROUP BY first_trade_date
       ),
+      cumulative_daily_pnl AS (
+        SELECT
+          trade_date,
+          daily_pnl,
+          SUM(daily_pnl) OVER (ORDER BY trade_date) as cumulative_pnl
+        FROM daily_pnl
+      ),
       drawdown_calc AS (
         SELECT
           trade_date,
           daily_pnl,
-          SUM(daily_pnl) OVER (ORDER BY trade_date) as cumulative_pnl,
-          MAX(SUM(daily_pnl) OVER (ORDER BY trade_date)) OVER (ORDER BY trade_date) as running_max,
-          SUM(daily_pnl) OVER (ORDER BY trade_date) - MAX(SUM(daily_pnl) OVER (ORDER BY trade_date)) OVER (ORDER BY trade_date) as drawdown
-        FROM daily_pnl
+          cumulative_pnl,
+          MAX(cumulative_pnl) OVER (ORDER BY trade_date) as running_max,
+          cumulative_pnl - MAX(cumulative_pnl) OVER (ORDER BY trade_date) as drawdown
+        FROM cumulative_daily_pnl
       ),
       drawdown_debug AS (
         SELECT MIN(drawdown) as min_drawdown FROM drawdown_calc
