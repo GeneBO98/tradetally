@@ -73,6 +73,22 @@ async function autoCalculateMAEMFE(userId, trade) {
   }
 }
 
+async function ensureSymbolMetadata(symbol) {
+  const normalizedSymbol = typeof symbol === 'string' ? symbol.trim().toUpperCase() : '';
+  if (!normalizedSymbol) return;
+
+  try {
+    const category = await symbolCategories.getSymbolCategory(normalizedSymbol);
+    if (category) {
+      console.log(`[SYMBOLS] Enriched metadata for ${normalizedSymbol}`);
+    } else {
+      console.log(`[SYMBOLS] No metadata available for ${normalizedSymbol}`);
+    }
+  } catch (error) {
+    console.warn(`[SYMBOLS] Failed to enrich metadata for ${normalizedSymbol}: ${error.message}`);
+  }
+}
+
 function buildSetupQuality(trade) {
   return {
     grade: trade.quality_grade ?? trade.qualityGrade ?? null,
@@ -627,6 +643,9 @@ const tradeController = {
       await AnalyticsCache.invalidate(req.user.id);
 
       res.status(201).json({ trade });
+
+      // Fire-and-forget: fetch company metadata for new symbols created outside CSV import.
+      ensureSymbolMetadata(trade.symbol).catch(() => {});
 
       // Fire-and-forget: auto-calculate MAE/MFE for closed trades (Pro only)
       autoCalculateMAEMFE(req.user.id, trade).catch(() => {});

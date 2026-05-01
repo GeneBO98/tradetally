@@ -1,10 +1,69 @@
 const db = require('../config/database');
 const finnhub = require('./finnhub');
+const cache = require('./cache');
 
 class SymbolCategoryManager {
   constructor() {
     this.batchSize = 10; // Process symbols in batches
     this.updateInterval = 24 * 60 * 60 * 1000; // Update categories older than 24 hours
+    this.inFlightLookups = new Map();
+  }
+
+  normalizeCategory(symbol, category = {}) {
+    const symbolUpper = symbol.toUpperCase();
+
+    return {
+      symbol: symbolUpper,
+      company_name: category.company_name ?? category.name ?? null,
+      finnhub_industry: category.finnhub_industry ?? category.finnhubIndustry ?? null,
+      country: category.country ?? null,
+      currency: category.currency ?? null,
+      exchange: category.exchange ?? null,
+      ipo_date: category.ipo_date ?? category.ipo ?? null,
+      market_cap: category.market_cap ?? (category.marketCapitalization ? parseFloat(category.marketCapitalization) : null),
+      phone: category.phone ?? null,
+      share_outstanding: category.share_outstanding ?? (category.shareOutstanding ? parseFloat(category.shareOutstanding) : null),
+      ticker: category.ticker ?? symbolUpper,
+      weburl: category.weburl ?? null,
+      logo: category.logo ?? null,
+      updated_at: category.updated_at ?? null
+    };
+  }
+
+  hasStoredMetadata(category) {
+    return Boolean(
+      category && (
+        category.company_name ||
+        category.logo ||
+        category.finnhub_industry ||
+        category.exchange ||
+        category.weburl
+      )
+    );
+  }
+
+  isFresh(category) {
+    if (!category?.updated_at) {
+      return false;
+    }
+
+    const updatedAt = new Date(category.updated_at);
+    const ageInDays = (Date.now() - updatedAt.getTime()) / (1000 * 60 * 60 * 24);
+    return ageInDays < 30;
+  }
+
+  shouldReuseStoredCategory(category) {
+    return this.isFresh(category) && this.hasStoredMetadata(category);
+  }
+
+  invalidateSymbolCaches(symbolUpper) {
+    for (const key of Object.keys(cache.data || {})) {
+      if (key.startsWith('symbol_search:') || key.startsWith('symbol_metadata:')) {
+        cache.del(key);
+      }
+    }
+
+    cache.del('company_profile', symbolUpper);
   }
 
   /**
@@ -12,48 +71,57 @@ class SymbolCategoryManager {
    */
   async getSymbolCategory(symbol) {
     const symbolUpper = symbol.toUpperCase();
-    
-    try {
+    if (this.inFlightLookups.has(symbolUpper)) {
+      return this.inFlightLookups.get(symbolUpper);
+    }
+
+    const lookupPromise = (async () => {
+      let storedCategory = null;
+
+      try {
       // First check permanent storage
-      const query = `
+        const query = `
         SELECT * FROM symbol_categories 
         WHERE symbol = $1
       `;
-      const result = await db.query(query, [symbolUpper]);
+        const result = await db.query(query, [symbolUpper]);
       
-      if (result.rows.length > 0) {
-        const category = result.rows[0];
-        
-        // Check if data is stale (older than 30 days)
-        const updatedAt = new Date(category.updated_at);
-        const ageInDays = (Date.now() - updatedAt.getTime()) / (1000 * 60 * 60 * 24);
-        
-        if (ageInDays < 30) {
+        if (result.rows.length > 0) {
+          storedCategory = this.normalizeCategory(symbolUpper, result.rows[0]);
+
+          if (this.shouldReuseStoredCategory(storedCategory)) {
           console.log(`[SUCCESS] Found category for ${symbol} in permanent storage`);
-          return category;
+            return storedCategory;
+          }
         }
-      }
       
       // If not found or stale, fetch from API
-      console.log(`[CHECK] Fetching category for ${symbol} from API...`);
-      const profile = await finnhub.getCompanyProfile(symbol);
+        console.log(`[CHECK] Fetching category for ${symbol} from API...`);
+        const profile = await finnhub.getCompanyProfile(symbolUpper);
       
-      if (profile) {
+        if (profile) {
         // Store in permanent storage even if no industry (to avoid repeated API calls)
-        await this.saveSymbolCategory(symbol, profile);
+          await this.saveSymbolCategory(symbolUpper, profile);
+          const normalizedProfile = this.normalizeCategory(symbolUpper, profile);
         
-        if (profile.finnhubIndustry) {
-          return profile;
-        } else {
-          console.log(`[WARNING] No industry data found for ${symbol}, but profile saved to avoid re-fetching`);
+          if (this.hasStoredMetadata(normalizedProfile)) {
+            return normalizedProfile;
+          }
+
+          console.log(`[WARNING] No company metadata found for ${symbol}, but profile saved to avoid re-fetching`);
         }
-      }
       
-      return null;
-    } catch (error) {
-      console.error(`Error getting category for ${symbol}:`, error.message);
-      return null;
-    }
+        return this.hasStoredMetadata(storedCategory) ? storedCategory : null;
+      } catch (error) {
+        console.error(`Error getting category for ${symbol}:`, error.message);
+        return this.hasStoredMetadata(storedCategory) ? storedCategory : null;
+      }
+    })().finally(() => {
+      this.inFlightLookups.delete(symbolUpper);
+    });
+
+    this.inFlightLookups.set(symbolUpper, lookupPromise);
+    return lookupPromise;
   }
 
   /**
@@ -84,24 +152,25 @@ class SymbolCategoryManager {
           updated_at = NOW()
       `;
       
+      const normalizedProfile = this.normalizeCategory(symbolUpper, profile);
       const params = [
-        symbolUpper,
-        profile.name || null,
-        profile.finnhubIndustry || null,
-        profile.country || null,
-        profile.currency || null,
-        profile.exchange || null,
-        profile.ipo || null,
-        // Handle numeric values that might be strings or null
-        profile.marketCapitalization ? parseFloat(profile.marketCapitalization) : null,
-        profile.phone || null,
-        profile.shareOutstanding ? parseFloat(profile.shareOutstanding) : null,
-        profile.ticker || symbolUpper,
-        profile.weburl || null,
-        profile.logo || null
+        normalizedProfile.symbol,
+        normalizedProfile.company_name,
+        normalizedProfile.finnhub_industry,
+        normalizedProfile.country,
+        normalizedProfile.currency,
+        normalizedProfile.exchange,
+        normalizedProfile.ipo_date,
+        normalizedProfile.market_cap,
+        normalizedProfile.phone,
+        normalizedProfile.share_outstanding,
+        normalizedProfile.ticker,
+        normalizedProfile.weburl,
+        normalizedProfile.logo
       ];
       
       await db.query(query, params);
+      this.invalidateSymbolCaches(symbolUpper);
       console.log(`[INFO] Saved category for ${symbol} to permanent storage`);
     } catch (error) {
       console.error(`Error saving category for ${symbol}:`, error.message);
@@ -114,6 +183,7 @@ class SymbolCategoryManager {
   async getSymbolCategories(symbols) {
     const uniqueSymbols = [...new Set(symbols.map(s => s.toUpperCase()))];
     const results = new Map();
+    const storedCategories = new Map();
     
     // First, get all categories from permanent storage
     if (uniqueSymbols.length > 0) {
@@ -125,10 +195,14 @@ class SymbolCategoryManager {
         const storedResult = await db.query(query, [uniqueSymbols]);
         
         for (const row of storedResult.rows) {
-          results.set(row.symbol, row);
+          const normalized = this.normalizeCategory(row.symbol, row);
+          storedCategories.set(normalized.symbol, normalized);
+          if (this.shouldReuseStoredCategory(normalized)) {
+            results.set(normalized.symbol, normalized);
+          }
         }
         
-        console.log(`[STATS] Found ${results.size} categories in permanent storage`);
+        console.log(`[STATS] Found ${storedCategories.size} categories in permanent storage`);
       } catch (error) {
         console.error('Error fetching stored categories:', error.message);
       }
@@ -148,7 +222,9 @@ class SymbolCategoryManager {
           try {
             const category = await this.getSymbolCategory(symbol);
             if (category) {
-              results.set(symbol, category);
+              results.set(symbol, this.normalizeCategory(symbol, category));
+            } else if (storedCategories.has(symbol) && this.hasStoredMetadata(storedCategories.get(symbol))) {
+              results.set(symbol, storedCategories.get(symbol));
             }
             
             // Add delay between API calls
@@ -182,8 +258,18 @@ class SymbolCategoryManager {
       let query = `
         SELECT DISTINCT t.symbol 
         FROM trades t
-        LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
-        WHERE sc.symbol IS NULL
+        LEFT JOIN symbol_categories sc ON UPPER(t.symbol) = UPPER(sc.symbol)
+        WHERE (
+          sc.symbol IS NULL
+          OR sc.updated_at < NOW() - INTERVAL '30 days'
+          OR (
+            sc.company_name IS NULL
+            AND sc.logo IS NULL
+            AND sc.finnhub_industry IS NULL
+            AND sc.exchange IS NULL
+            AND sc.weburl IS NULL
+          )
+        )
       `;
       
       const params = [];
