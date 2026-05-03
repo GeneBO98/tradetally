@@ -1820,6 +1820,7 @@ const tradeController = {
             existingPositions,
             existingExecutions,
             userId: req.user.id,
+            fileName,
             userTimezone,
             tradeGroupingSettings: {
               enabled: userSettings.enable_trade_grouping ?? true,
@@ -2497,7 +2498,9 @@ const tradeController = {
               warnings: parseDiagnostics.warnings || [],
               detectedBroker: parseDiagnostics.detectedBroker,
               selectedBroker: parseDiagnostics.selectedBroker,
-              headerAnalysis: parseDiagnostics.headerAnalysis
+              headerAnalysis: parseDiagnostics.headerAnalysis,
+              reason_breakdown: parseDiagnostics.reason_breakdown || [],
+              user_summary: parseDiagnostics.user_summary || null
             } : null
           };
 
