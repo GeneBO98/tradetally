@@ -836,10 +836,60 @@ describe('Generic parser', () => {
       expect.arrayContaining([
         expect.objectContaining({
           row: 1,
-          reason: expect.stringContaining('Invalid trade')
+          reason: expect.stringContaining('trade date')
         })
       ])
     );
+    expect(result.diagnostics.reason_breakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ count: 1 })
+      ])
+    );
+  });
+
+  test('parses time-only generic rows when the filename provides the trade date', async () => {
+    const timeOnlyGenericCSV = [
+      'Symbol,Price,Qty,Time,Side,Type,',
+      'AXIL,8.14,13,08:09:38,S,Margin,',
+      'AXIL,8.14,7,08:09:38,S,Margin,',
+      'AXIL,8.26,5,08:08:48,B,Margin,',
+      'AXIL,8.26,15,08:08:48,B,Margin,',
+      'AXIL,9.7,20,08:04:39,S,Margin,'
+    ].join('\n');
+
+    const result = await parseCSV(buf(timeOnlyGenericCSV), 'generic', {
+      fileName: 'AXIL-2026-05-02.csv',
+      tradeGroupingSettings: { enabled: false }
+    });
+
+    expectValidResult(result);
+    expect(result.trades.length).toBeGreaterThan(0);
+    expect(result.diagnostics.invalidRows).toBe(0);
+    expect(result.trades.every(trade => trade.symbol === 'AXIL')).toBe(true);
+    expect(result.trades.every(trade => trade.tradeDate === '2026-05-02')).toBe(true);
+    expect(result.trades.some(trade => trade.entryTime === '2026-05-02T08:04:39')).toBe(true);
+    expect(result.trades.some(trade => Array.isArray(trade.executions) && trade.executions.length > 0)).toBe(true);
+  });
+
+  test('explains time-only generic failures when no date can be inferred', async () => {
+    const timeOnlyGenericCSV = [
+      'Symbol,Price,Qty,Time,Side,Type,',
+      'AXIL,8.14,13,08:09:38,S,Margin,',
+      'AXIL,8.26,5,08:08:48,B,Margin,'
+    ].join('\n');
+
+    const result = await parseCSV(buf(timeOnlyGenericCSV), 'generic', {
+      fileName: 'AXIL.csv',
+      tradeGroupingSettings: { enabled: false }
+    });
+
+    expectValidResult(result);
+    expect(result.trades).toHaveLength(0);
+    expect(result.diagnostics.invalidRows).toBe(2);
+    expect(result.diagnostics.skippedReasons[0].reason).toContain('time was present, but no trade date was found');
+    expect(result.diagnostics.user_summary).toEqual(expect.objectContaining({
+      title: expect.stringContaining('missing a trade date')
+    }));
   });
 });
 

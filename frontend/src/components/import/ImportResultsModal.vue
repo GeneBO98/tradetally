@@ -54,6 +54,16 @@
             </p>
           </div>
 
+          <div v-if="reasonBreakdown.length > 0" class="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/40">
+            <p class="text-sm font-medium text-gray-900 dark:text-white">Top row issues</p>
+            <ul class="mt-2 space-y-1 text-sm text-gray-600 dark:text-gray-400">
+              <li v-for="item in displayedReasonBreakdown" :key="item.reason" class="flex items-start justify-between gap-3">
+                <span class="min-w-0">{{ item.reason }}</span>
+                <span class="shrink-0 text-xs text-gray-500 dark:text-gray-500">{{ item.count }} row{{ item.count === 1 ? '' : 's' }}</span>
+              </li>
+            </ul>
+          </div>
+
           <div v-if="props.tradesImported === 0" class="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/20">
             <p class="text-sm font-semibold text-amber-900 dark:text-amber-100">{{ zeroTradeReason.title }}</p>
             <p class="mt-1 text-sm text-amber-800 dark:text-amber-200">{{ zeroTradeReason.body }}</p>
@@ -414,6 +424,18 @@ const displayedSkippedReasons = computed(() => {
   return skippedReasons.value.slice(0, maxDisplayedReasons)
 })
 
+const diagnosticSummary = computed(() => {
+  return props.diagnostics?.user_summary || props.diagnostics?.userSummary || null
+})
+
+const reasonBreakdown = computed(() => {
+  return props.diagnostics?.reason_breakdown || props.diagnostics?.reasonBreakdown || []
+})
+
+const displayedReasonBreakdown = computed(() => {
+  return reasonBreakdown.value.slice(0, 3)
+})
+
 const importStatus = computed(() => {
   if (props.failedTrades && props.failedTrades.length > 0) return 'error'
   if (rowsSkipped.value > 0 || (warnings.value && warnings.value.length > 0)) return 'warning'
@@ -466,6 +488,14 @@ const showNeedHelp = computed(() => {
 })
 
 const zeroTradeReason = computed(() => {
+  if (diagnosticSummary.value) {
+    return {
+      title: diagnosticSummary.value.title,
+      body: diagnosticSummary.value.body,
+      steps: diagnosticSummary.value.steps || []
+    }
+  }
+
   const totalRows = props.diagnostics?.totalRows || 0
   const skipped = rowsSkipped.value
   const failed = props.failedTrades?.length || 0
