@@ -3448,7 +3448,9 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
           exitPrice: mapping.exit_price_column ? parseNumeric(row[mapping.exit_price_column]) : null,
           quantity: Math.abs(quantity), // Use absolute value
           side: side,
-          commission: mapping.fees_column ? parseNumeric(row[mapping.fees_column]) : 0,
+          commission: mapping.commission_column
+            ? parseNumeric(row[mapping.commission_column])
+            : (mapping.fees_column ? parseNumeric(row[mapping.fees_column]) : 0),
           fees: mapping.fees_column ? parseNumeric(row[mapping.fees_column]) : 0,
           pnl: mapping.pnl_column ? parseNumeric(row[mapping.pnl_column]) : null,
           notes: mapping.notes_column ? row[mapping.notes_column] : '',
@@ -8395,7 +8397,9 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
             entryPrice: Math.abs(rawPrice), // Use absolute value for price
             quantity: Math.abs(rawQuantity), // Use absolute value for quantity
             side: side,
-            commission: mapping.fees_column ? Math.abs(parseNumeric(row[mapping.fees_column])) : 0,
+            commission: mapping.commission_column
+              ? Math.abs(parseNumeric(row[mapping.commission_column]))
+              : (mapping.fees_column ? Math.abs(parseNumeric(row[mapping.fees_column])) : 0),
             fees: mapping.fees_column ? Math.abs(parseNumeric(row[mapping.fees_column])) : 0,
             stopLoss: mapping.stop_loss_column ? parseNumeric(row[mapping.stop_loss_column]) : null,
             takeProfit: mapping.take_profit_column ? parseNumeric(row[mapping.take_profit_column]) : null,

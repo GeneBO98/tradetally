@@ -69,6 +69,53 @@ describe('csvParser timezone handling', () => {
     ]);
   });
 
+  test('parses custom generic mappings with separate commission and fees columns', async () => {
+    const csv = [
+      'Symbol,Trade Date,Qty,Entry Price,Exit Price,Commission,Fees',
+      'AAPL,04/24/2026,10,100,105,1.25,0.42'
+    ].join('\n');
+
+    const result = await parseCSV(Buffer.from(csv), 'generic', {
+      customMapping: {
+        mapping_name: 'Separate Costs',
+        symbol_column: 'Symbol',
+        quantity_column: 'Qty',
+        entry_price_column: 'Entry Price',
+        exit_price_column: 'Exit Price',
+        entry_date_column: 'Trade Date',
+        commission_column: 'Commission',
+        fees_column: 'Fees'
+      }
+    });
+
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0].commission).toBe(1.25);
+    expect(result.trades[0].fees).toBe(0.42);
+  });
+
+  test('keeps legacy custom fees mappings as combined commission and fees', async () => {
+    const csv = [
+      'Symbol,Trade Date,Qty,Entry Price,Exit Price,Fees and Commission',
+      'AAPL,04/24/2026,10,100,105,1.67'
+    ].join('\n');
+
+    const result = await parseCSV(Buffer.from(csv), 'generic', {
+      customMapping: {
+        mapping_name: 'Legacy Costs',
+        symbol_column: 'Symbol',
+        quantity_column: 'Qty',
+        entry_price_column: 'Entry Price',
+        exit_price_column: 'Exit Price',
+        entry_date_column: 'Trade Date',
+        fees_column: 'Fees and Commission'
+      }
+    });
+
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0].commission).toBe(1.67);
+    expect(result.trades[0].fees).toBe(1.67);
+  });
+
   test('parses Tradovate rows that are incorrectly quoted as entire CSV records', async () => {
     const csv = [
       'orderId,Account,Order ID,B/S,Contract,Product,Product Description,avgPrice,filledQty,Fill Time,lastCommandId,Status,_priceFormat,_priceFormatType,_tickSize,spreadDefinitionId,Version ID,Timestamp,Date,Quantity,Text,Type,Limit Price,Stop Price,decimalLimit,decimalStop,Filled Qty,Avg Fill Price,decimalFillAvg,Venue,Notional Value,Currency',
