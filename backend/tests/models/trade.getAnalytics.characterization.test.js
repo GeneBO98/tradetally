@@ -89,6 +89,13 @@ describe('TradeQueries.getAnalytics characterization', () => {
     db.query.mockResolvedValue(defaultDbResponse());
   });
 
+  test('summary costs include both commission and fees with null-safe arithmetic', async () => {
+    await TradeQueries.getAnalytics('user-1', {});
+
+    const analyticsSql = db.query.mock.calls[1][0];
+    expect(analyticsSql).toContain('(COALESCE(commission, 0) + COALESCE(fees, 0)) as trade_costs');
+  });
+
   describe('baseline', () => {
     test('no filters: only user_id binding', async () => {
       await TradeQueries.getAnalytics('user-1', {});
