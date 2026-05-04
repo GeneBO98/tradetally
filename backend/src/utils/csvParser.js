@@ -3389,13 +3389,18 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     ));
 
     // Generic parser - Use transaction-based processing for better position tracking
-    // Check for user preference or use enhanced mode by default when context is available
-    // Custom mappings represent complete trade rows. Routing them through the
-    // transaction parser drops row-level exit fields and can produce "0 trades
-    // imported" after a successful mapping step.
+    // Check for user preference or use enhanced mode by default when context is available.
+    // Custom mappings with exit/P&L columns represent completed trade rows; custom mappings
+    // without those columns represent transaction rows that need buy/sell position matching.
     const useEnhancedMode = context.usePositionTracking !== false; // Default to true
+    const customMappingUsesTransactionRows = Boolean(
+      context.customMapping &&
+      !context.customMapping.exit_price_column &&
+      !context.customMapping.exit_date_column &&
+      !context.customMapping.pnl_column
+    );
 
-    if (useEnhancedMode && !context.customMapping && !hasGenericCompletedTradeRows) {
+    if (useEnhancedMode && (!context.customMapping || customMappingUsesTransactionRows) && !hasGenericCompletedTradeRows) {
       console.log('Using enhanced generic parser with position tracking');
       const result = await parseGenericTransactions(records, existingPositions, context.customMapping, context);
       console.log('Finished generic transaction-based parsing');
@@ -3411,7 +3416,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     }
 
     // Fallback to simple row-by-row parsing (legacy mode)
-    // Used when position tracking is disabled or when a custom mapping is used.
+    // Used when position tracking is disabled or when a custom mapping describes completed trade rows.
     console.log('Using simple generic parser (legacy mode - no position tracking)');
     // Create custom parser if custom mapping is provided
     let parser;
@@ -8398,9 +8403,9 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
             quantity: Math.abs(rawQuantity), // Use absolute value for quantity
             side: side,
             commission: mapping.commission_column
-              ? Math.abs(parseNumeric(row[mapping.commission_column]))
-              : (mapping.fees_column ? Math.abs(parseNumeric(row[mapping.fees_column])) : 0),
-            fees: mapping.fees_column ? Math.abs(parseNumeric(row[mapping.fees_column])) : 0,
+              ? parseNumeric(row[mapping.commission_column])
+              : (mapping.fees_column ? parseNumeric(row[mapping.fees_column]) : 0),
+            fees: mapping.fees_column ? parseNumeric(row[mapping.fees_column]) : 0,
             stopLoss: mapping.stop_loss_column ? parseNumeric(row[mapping.stop_loss_column]) : null,
             takeProfit: mapping.take_profit_column ? parseNumeric(row[mapping.take_profit_column]) : null,
             broker: 'custom'
@@ -8536,7 +8541,8 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
         ? existingPosition.executions
         : (existingPosition.executions ? JSON.parse(existingPosition.executions) : []),
       totalQuantity: existingPosition.quantity,
-      totalFees: existingPosition.commission || 0,
+      totalCommission: existingPosition.commission || 0,
+      totalFees: existingPosition.fees || 0,
       entryValue: existingPosition.quantity * existingPosition.entryPrice,
       exitValue: 0,
       broker: existingPosition.broker || 'generic',
@@ -8566,6 +8572,7 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
           side: transaction.side === 'buy' ? 'long' : 'short',
           executions: [],
           totalQuantity: 0,
+          totalCommission: 0,
           totalFees: 0,
           entryValue: 0,
           exitValue: 0,
@@ -8582,6 +8589,7 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
           quantity: qty,
           price: transaction.price,
           datetime: transaction.datetime,
+          commission: transaction.commission,
           fees: transaction.commission + transaction.fees
         };
 
@@ -8611,7 +8619,8 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
           }
         }
 
-        currentTrade.totalFees += transaction.commission + transaction.fees;
+        currentTrade.totalCommission += transaction.commission;
+        currentTrade.totalFees += transaction.fees;
       }
 
       // Process the transaction and update position
@@ -8633,7 +8642,7 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
               const avgEntryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
               const partialPnl = (avgEntryPrice - transaction.price) * qty;
               // Prorate commission for partial close
-              const partialCommission = (currentTrade.totalFees / currentTrade.totalQuantity) * qty;
+              const partialCommission = ((currentTrade.totalCommission + currentTrade.totalFees) / currentTrade.totalQuantity) * qty;
               const netPartialPnl = partialPnl - partialCommission;
 
               // Update the last execution with exit info and P&L
@@ -8667,7 +8676,7 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
               const avgEntryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
               const partialPnl = (transaction.price - avgEntryPrice) * qty;
               // Prorate commission for partial close
-              const partialCommission = (currentTrade.totalFees / currentTrade.totalQuantity) * qty;
+              const partialCommission = ((currentTrade.totalCommission + currentTrade.totalFees) / currentTrade.totalQuantity) * qty;
               const netPartialPnl = partialPnl - partialCommission;
 
               // Update the last execution with exit info and P&L
@@ -8694,16 +8703,17 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
         currentTrade.exitPrice = currentTrade.exitValue / currentTrade.totalQuantity;
 
         // Calculate P&L
+        const totalCosts = currentTrade.totalCommission + currentTrade.totalFees;
         if (currentTrade.side === 'long') {
-          currentTrade.pnl = currentTrade.exitValue - currentTrade.entryValue - currentTrade.totalFees;
+          currentTrade.pnl = currentTrade.exitValue - currentTrade.entryValue - totalCosts;
         } else {
-          currentTrade.pnl = currentTrade.entryValue - currentTrade.exitValue - currentTrade.totalFees;
+          currentTrade.pnl = currentTrade.entryValue - currentTrade.exitValue - totalCosts;
         }
 
         currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
         currentTrade.quantity = currentTrade.totalQuantity;
-        currentTrade.commission = currentTrade.totalFees;
-        currentTrade.fees = 0;
+        currentTrade.commission = currentTrade.totalCommission;
+        currentTrade.fees = currentTrade.totalFees;
 
         // Set proper entry and exit times
         const { entryTime, exitTime } = getExecutionTimeBounds(currentTrade.executions);
@@ -8743,8 +8753,8 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
       currentTrade.exitTime = null;
       currentTrade.quantity = netQuantity;
       currentTrade.totalQuantity = netQuantity;
-      currentTrade.commission = currentTrade.totalFees;
-      currentTrade.fees = 0;
+      currentTrade.commission = currentTrade.totalCommission;
+      currentTrade.fees = currentTrade.totalFees;
       currentTrade.pnl = 0;
       currentTrade.pnlPercent = 0;
 
