@@ -116,6 +116,39 @@ describe('csvParser timezone handling', () => {
     expect(result.trades[0].fees).toBe(1.67);
   });
 
+  test('matches custom generic transaction rows into a round trip trade', async () => {
+    const csv = [
+      'Shymbola,Date,Price,Quantity,Side,Commission,Fees',
+      'RANDO,2026-04-14 06:25:10,0.7489,1000,B,7.0000,-1.0000',
+      'RANDO,2026-04-14 06:30:07,0.9958,1000,S,5.0000,3.0000'
+    ].join('\n');
+
+    const result = await parseCSV(Buffer.from(csv), 'generic', {
+      customMapping: {
+        mapping_name: 'Issue 309 Transaction Rows',
+        symbol_column: 'Shymbola',
+        quantity_column: 'Quantity',
+        entry_price_column: 'Price',
+        entry_date_column: 'Date',
+        side_column: 'Side',
+        commission_column: 'Commission',
+        fees_column: 'Fees'
+      },
+      tradeGroupingSettings: { enabled: false }
+    });
+
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0].symbol).toBe('RANDO');
+    expect(result.trades[0].side).toBe('long');
+    expect(result.trades[0].quantity).toBe(1000);
+    expect(result.trades[0].entryPrice).toBe(0.7489);
+    expect(result.trades[0].exitPrice).toBe(0.9958);
+    expect(result.trades[0].commission).toBe(12);
+    expect(result.trades[0].fees).toBe(2);
+    expect(result.trades[0].pnl).toBeCloseTo(232.9, 5);
+    expect(result.trades[0].executions).toHaveLength(2);
+  });
+
   test('parses Tradovate rows that are incorrectly quoted as entire CSV records', async () => {
     const csv = [
       'orderId,Account,Order ID,B/S,Contract,Product,Product Description,avgPrice,filledQty,Fill Time,lastCommandId,Status,_priceFormat,_priceFormatType,_tickSize,spreadDefinitionId,Version ID,Timestamp,Date,Quantity,Text,Type,Limit Price,Stop Price,decimalLimit,decimalStop,Filled Qty,Avg Fill Price,decimalFillAvg,Venue,Notional Value,Currency',
