@@ -261,6 +261,14 @@
                     </span>
                   </dd>
                 </div>
+                <div v-if="trade.mae !== null && trade.mae !== undefined">
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">MAE</dt>
+                  <dd class="mt-1 text-sm text-red-600 dark:text-red-400 font-mono">{{ formatCurrency(trade.mae) }}</dd>
+                </div>
+                <div v-if="trade.mfe !== null && trade.mfe !== undefined">
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">MFE</dt>
+                  <dd class="mt-1 text-sm text-green-600 dark:text-green-400 font-mono">{{ formatCurrency(trade.mfe) }}</dd>
+                </div>
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
                     {{ trade.instrument_type === 'option' ? 'Contracts' : (!trade.exit_time ? 'Quantity Held' : 'Total Traded') }}

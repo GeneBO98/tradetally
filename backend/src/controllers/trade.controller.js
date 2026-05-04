@@ -67,6 +67,7 @@ async function autoCalculateMAEMFE(userId, trade) {
 
     // Update the trade with calculated values
     await Trade.update(trade.id, userId, { mae, mfe });
+    await AnalyticsCache.invalidate(userId);
     console.log(`[MAE/MFE] Updated trade ${trade.id}: MAE=$${mae.toFixed(2)}, MFE=$${mfe.toFixed(2)}`);
   } catch (error) {
     console.warn(`[MAE/MFE] Auto-calculation failed for trade ${trade.id}: ${error.message}`);
@@ -2619,6 +2620,9 @@ const tradeController = {
                       } catch (err) {
                         console.warn(`[MAE/MFE] Failed for ${trade.symbol}: ${err.message}`);
                       }
+                    }
+                    if (calculated > 0) {
+                      await AnalyticsCache.invalidate(fileUserId);
                     }
                     console.log(`[MAE/MFE] Background calculation complete: ${calculated}/${importedClosedTrades.rows.length} trades`);
                   })().catch(err => console.warn('[MAE/MFE] Background batch failed:', err.message));
