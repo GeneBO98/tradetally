@@ -367,7 +367,7 @@ class TradeQueries {
           symbol,
           id as trade_group,
           pnl as trade_pnl,
-          (commission + fees) as trade_costs,
+          (COALESCE(commission, 0) + COALESCE(fees, 0)) as trade_costs,
           1 as execution_count,
           pnl_percent as avg_return_pct,
           trade_date as first_trade_date,
