@@ -235,7 +235,8 @@ const FIELD_OPTIONS = [
   { value: 'entry_date_column', label: 'Entry Date' },
   { value: 'exit_date_column', label: 'Exit Date' },
   { value: 'pnl_column', label: 'P&L' },
-  { value: 'fees_column', label: 'Fees / Commission' },
+  { value: 'commission_column', label: 'Commission' },
+  { value: 'fees_column', label: 'Fees' },
   { value: 'notes_column', label: 'Notes' },
   { value: 'stop_loss_column', label: 'Stop Loss' },
   { value: 'take_profit_column', label: 'Take Profit' }
@@ -257,6 +258,7 @@ const mappingForm = ref({
   entry_date_column: '',
   exit_date_column: '',
   pnl_column: '',
+  commission_column: '',
   fees_column: '',
   notes_column: '',
   stop_loss_column: '',
@@ -389,9 +391,17 @@ function autoDetectMappings(headers) {
   )
   if (dateMatch) mappingForm.value.entry_date_column = dateMatch.original
 
+  const commissionMatch = lowerHeaders.find(h =>
+    h.lower.includes('commission') || h.lower === 'comm' || h.lower === 'commissions'
+  )
+  if (commissionMatch) mappingForm.value.commission_column = commissionMatch.original
+
   const feesMatch = lowerHeaders.find(h =>
-    h.lower.includes('fee') || h.lower.includes('commission') || h.lower.includes('comm') ||
-    h.lower === 'charges'
+    h.original !== commissionMatch?.original && (
+      h.lower.includes('fee') || h.lower === 'fees' || h.lower === 'charges' ||
+      h.lower.includes('regulatory') || h.lower.includes('exchange') ||
+      h.lower === 'sec' || h.lower === 'taf'
+    )
   )
   if (feesMatch) mappingForm.value.fees_column = feesMatch.original
 
@@ -450,6 +460,7 @@ async function saveMapping() {
       entry_date_column: mappingForm.value.entry_date_column || null,
       exit_date_column: mappingForm.value.exit_date_column || null,
       pnl_column: mappingForm.value.pnl_column || null,
+      commission_column: mappingForm.value.commission_column || null,
       fees_column: mappingForm.value.fees_column || null,
       notes_column: mappingForm.value.notes_column || null,
       stop_loss_column: mappingForm.value.stop_loss_column || null,
