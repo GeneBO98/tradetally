@@ -124,10 +124,16 @@ async function runMigration(filename, content, checksum) {
       END $migration$;
     `;
 
-    // Try wrapped version first for safety
+    // Try wrapped version first for safety. Keep the attempt inside a
+    // savepoint so syntax/runtime errors do not poison the whole transaction
+    // before falling back to the original migration SQL.
+    await client.query('SAVEPOINT migration_wrapper_attempt');
     try {
       await client.query(wrappedContent);
+      await client.query('RELEASE SAVEPOINT migration_wrapper_attempt');
     } catch (wrapError) {
+      await client.query('ROLLBACK TO SAVEPOINT migration_wrapper_attempt');
+      await client.query('RELEASE SAVEPOINT migration_wrapper_attempt');
       // If wrapping fails, try original content
       // Some migrations might not be compatible with DO blocks
       await client.query(content);
