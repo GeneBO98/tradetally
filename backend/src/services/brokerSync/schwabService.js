@@ -68,6 +68,67 @@ class SchwabService {
 
     return null;
   }
+
+  /**
+   * Schwab transactions can include both `time` and `tradeDate`. Some responses
+   * only provide a date-like `tradeDate`, which is not precise enough for FIFO
+   * matching intraday partial exits. Prefer whichever field contains an actual
+   * intraday time so buys and sells are processed in execution order.
+   */
+  _getTransactionTime(tx) {
+    const candidates = [tx.time, tx.tradeDate].filter(Boolean);
+    const precise = candidates.find(value => this._hasIntradayTime(value));
+    return precise || candidates[0] || null;
+  }
+
+  _hasIntradayTime(value) {
+    if (!value) return false;
+
+    if (value instanceof Date) {
+      return value.getUTCHours() !== 0 ||
+        value.getUTCMinutes() !== 0 ||
+        value.getUTCSeconds() !== 0 ||
+        value.getUTCMilliseconds() !== 0;
+    }
+
+    const str = String(value);
+    const match = str.match(/T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?/);
+    if (!match) return false;
+
+    const [, hours, minutes, seconds, milliseconds = '0'] = match;
+    return Number(hours) !== 0 ||
+      Number(minutes) !== 0 ||
+      Number(seconds) !== 0 ||
+      Number(milliseconds) !== 0;
+  }
+
+  _getTimeValue(value) {
+    const time = new Date(value).getTime();
+    return Number.isFinite(time) ? time : null;
+  }
+
+  _compareTransactionsForMatching(a, b) {
+    const aTime = this._getTimeValue(a.time);
+    const bTime = this._getTimeValue(b.time);
+
+    if (aTime !== null && bTime !== null && aTime !== bTime) {
+      return aTime - bTime;
+    }
+
+    if (aTime !== null && bTime === null) return -1;
+    if (aTime === null && bTime !== null) return 1;
+
+    // If Schwab only gave date-level timestamps, process openings before
+    // closings so same-day scale-outs are not treated as unmatched short sales.
+    const effectRank = { OPENING: 0, CLOSING: 1 };
+    const aRank = effectRank[a.positionEffect] ?? 2;
+    const bRank = effectRank[b.positionEffect] ?? 2;
+    if (aRank !== bRank) {
+      return aRank - bRank;
+    }
+
+    return String(a.orderId || '').localeCompare(String(b.orderId || ''));
+  }
   /**
    * Check if tokens need refresh and refresh if necessary
    * @param {object} connection - BrokerConnection with credentials
@@ -413,7 +474,7 @@ class SchwabService {
     console.log(`[SCHWAB] Found ${validTransactions.length} valid trade transactions`);
 
     // Sort by time (oldest first for FIFO matching)
-    validTransactions.sort((a, b) => new Date(a.time) - new Date(b.time));
+    validTransactions.sort((a, b) => this._compareTransactionsForMatching(a, b));
 
     // Match opening and closing transactions using FIFO
     const trades = this.matchTransactions(validTransactions);
@@ -436,7 +497,7 @@ class SchwabService {
     const roundTripCounters = {};
 
     // Sort all transactions by time
-    const sorted = [...transactions].sort((a, b) => new Date(a.time) - new Date(b.time));
+    const sorted = [...transactions].sort((a, b) => this._compareTransactionsForMatching(a, b));
 
     // Debug: Log position effects we're seeing
     const effectCounts = {};
@@ -918,7 +979,7 @@ class SchwabService {
       }
     }
 
-    const time = tx.tradeDate || tx.time;
+    const time = this._getTransactionTime(tx);
 
     // Net amount from transaction (includes P&L for closing trades)
     const netAmount = tx.netAmount;
