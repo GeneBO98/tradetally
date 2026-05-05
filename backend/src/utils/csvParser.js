@@ -986,33 +986,46 @@ function parseIBKRTradeConfirmationInstrumentData(record, fallbackSymbol = '') {
 }
 
 const brokerParsers = {
-  generic: (row) => {
+  generic: (row, options = {}) => {
     // Enhanced generic parser with flexible column mapping
     // Support various column naming conventions
 
     // Symbol mapping
     const symbol = row.Symbol || row.symbol || row.Ticker || row.ticker || row.Stock || row.stock ||
-      row['Underlying Symbol'] || row['underlying symbol'];
+      row['Underlying Symbol'] || row['underlying symbol'] ||
+      row.Instrument || row.instrument;
 
-    // Date/Time mapping - support more formats
-    const tradeDate = parseDate(
+    const rawTradeDateValue =
       row['Trade Date'] || row['T/D'] || row.Date || row.date ||
       row.trade_date || row['trade_date'] || row['Entry Date'] ||
       row['Transaction Date'] || row['Exec Date'] || row['Execution Date'] ||
       row['Date and time'] || row.Time || row.time ||
+      row['Entry Time'] || row['Entry time'] || row['entry time'] ||
+      row['Exit Time'] || row['Exit time'] || row['exit time'] ||
       row['Opening time (UTC-4)'] || row['Opening Time'] || row['Open Time'] ||
-      row['Opened Time']
-    );
+      row['Opened Time'];
 
-    const entryTime = parseDateTime(
+    const rawEntryTimeValue =
       row['Entry Time'] || row['Exec Time'] || row['Execution Time'] ||
       row['Fill Time'] || row['Trade Time'] || row.Timestamp ||
       row.order_execution_time || row['order_execution_time'] ||
       row['Date and time'] || row.Time || row.time ||
       row['Opening time (UTC-4)'] || row['Opening Time'] || row['Open Time'] ||
       row['Opened Time'] ||
-      row['Trade Date'] || row.trade_date || row['Entry Date'] || row.Date
-    ) || tradeDate;
+      row['Trade Date'] || row.trade_date || row['Entry Date'] || row.Date;
+
+    // Date/Time mapping - support more formats
+    let tradeDate = parseDate(rawTradeDateValue);
+    let entryTime = parseDateTime(rawEntryTimeValue) || tradeDate;
+
+    const timeOnlyEntry = parseTimeOnly(rawEntryTimeValue);
+    if (timeOnlyEntry) {
+      const resolvedTradeDate = tradeDate || options.importDate || null;
+      if (resolvedTradeDate) {
+        tradeDate = tradeDate || resolvedTradeDate;
+        entryTime = `${resolvedTradeDate}T${timeOnlyEntry}`;
+      }
+    }
 
     const exitTime = parseDateTime(
       row['Exit Time'] || row['Close Time'] || row['Exit Date'] ||
@@ -1047,7 +1060,8 @@ const brokerParsers = {
       row.Side || row.side || row.Direction || row.direction ||
       row.Type || row.type || row.trade_type || row['trade_type'] || row.Action || row.action ||
       row['B/S'] || row['Buy/Sell'] || row.BS ||
-      row['Opening direction'] || row['Opening Direction']
+      row['Opening direction'] || row['Opening Direction'] ||
+      row['Market pos.'] || row['Market Pos.'] || row['Market Position']
     );
 
     // Commission and fees mapping
@@ -1101,7 +1115,7 @@ const brokerParsers = {
       stopLoss: stopLoss,
       takeProfit: takeProfit,
       notes: notes,
-      pnl: parseNumeric(row['Net $'] || row.Net || row.PnL || row.pnl || row['P&L'], null),
+      pnl: parseNumeric(row['Net $'] || row.Net || row.PnL || row.pnl || row['P&L'] || row.Profit, null),
       broker: 'generic'
     };
   },
@@ -2047,6 +2061,140 @@ function finalizeRepairedTrade(trade, valueMultiplier) {
   return trade;
 }
 
+function formatDiagnosticList(items = []) {
+  if (items.length === 0) return '';
+  if (items.length === 1) return items[0];
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`;
+}
+
+function hasDateLikeHeader(headers = []) {
+  return headers.some((header) => {
+    const normalized = String(header || '').toLowerCase().trim();
+    return normalized.includes('date') || normalized.includes('t/d');
+  });
+}
+
+function hasTimeLikeHeader(headers = []) {
+  return headers.some((header) => {
+    const normalized = String(header || '').toLowerCase().trim();
+    return normalized.includes('time') || normalized.includes('timestamp');
+  });
+}
+
+function buildReasonBreakdown(skippedReasons = []) {
+  if (!Array.isArray(skippedReasons) || skippedReasons.length === 0) {
+    return [];
+  }
+
+  const counts = new Map();
+  for (const item of skippedReasons) {
+    const reason = String(item?.reason || 'Unknown issue').trim();
+    counts.set(reason, (counts.get(reason) || 0) + 1);
+  }
+
+  return Array.from(counts.entries())
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((left, right) => right.count - left.count);
+}
+
+function buildGenericValidationReason(trade, record, context = {}) {
+  const missingFields = [];
+  const rawTimeValue =
+    record?.['Entry Time'] || record?.['Exec Time'] || record?.['Execution Time'] ||
+    record?.['Fill Time'] || record?.['Trade Time'] || record?.Timestamp ||
+    record?.order_execution_time || record?.['order_execution_time'] ||
+    record?.['Date and time'] || record?.Time || record?.time ||
+    record?.['Opening time (UTC-4)'] || record?.['Opening Time'] || record?.['Open Time'] ||
+    record?.['Opened Time'];
+
+  if (!trade?.symbol) missingFields.push('symbol');
+  if (!(trade?.entryPrice > 0)) missingFields.push('price');
+  if (!(Number(trade?.quantity) > 0)) missingFields.push('quantity');
+
+  if (!trade?.tradeDate) {
+    if (parseTimeOnly(rawTimeValue)) {
+      if (context.importDate) {
+        missingFields.push('trade date');
+      } else {
+        return 'Could not import this row: time was present, but no trade date was found in the CSV or filename.';
+      }
+    } else {
+      missingFields.push('trade date');
+    }
+  }
+
+  if (missingFields.length === 0) {
+    return 'Could not import this row: required trade values were missing or invalid.';
+  }
+
+  return `Could not import this row: missing or invalid ${formatDiagnosticList(missingFields)}.`;
+}
+
+function buildDiagnosticSummary(diagnostics, context = {}) {
+  if (!diagnostics || diagnostics.totalRows === 0) {
+    return null;
+  }
+
+  const headers = diagnostics.headerAnalysis?.foundHeaders || [];
+  const reasonBreakdown = buildReasonBreakdown(diagnostics.skippedReasons);
+  const topReason = reasonBreakdown[0]?.reason || '';
+  const allRowsSkipped = diagnostics.parsedRows === 0 && (diagnostics.invalidRows + diagnostics.skippedRows) >= diagnostics.totalRows;
+  const skipRate = diagnostics.totalRows > 0
+    ? ((diagnostics.skippedRows + diagnostics.invalidRows) / diagnostics.totalRows) * 100
+    : 0;
+  const recognizedBroker = diagnostics.detectedBroker || diagnostics.headerAnalysis?.recognizedAs || 'generic';
+  const dateHeadersPresent = hasDateLikeHeader(headers);
+  const timeHeadersPresent = hasTimeLikeHeader(headers);
+  const importDateFromFilename = context.importDate || null;
+
+  if (allRowsSkipped && recognizedBroker === 'generic' && timeHeadersPresent && !dateHeadersPresent) {
+    return {
+      title: 'Headers were recognized, but every row is missing a trade date.',
+      body: importDateFromFilename
+        ? `TradeTally recognized this as Generic CSV and recovered the date from the filename (${importDateFromFilename}), but the rows still could not be turned into complete trades.`
+        : 'TradeTally recognized this as Generic CSV. The file includes time values, but there is no date column and no date in the filename for TradeTally to use.',
+      steps: importDateFromFilename
+        ? [
+            'Confirm the file only contains executions from that single trade date.',
+            'Add a Date column if the CSV mixes multiple trading days.',
+            'Re-import after exporting a trade activity or fills report when available.'
+          ]
+        : [
+            'Export a CSV that includes a Date or Trade Date column.',
+            'If the file is for a single trading day, include that date in the filename, for example AXIL-2026-05-02.csv.',
+            'Use a broker trade activity or fills export instead of an account summary.'
+          ]
+    };
+  }
+
+  if (allRowsSkipped && topReason) {
+    return {
+      title: 'TradeTally could not build trades from this file.',
+      body: `The most common row issue was: ${topReason}`,
+      steps: [
+        'Open skipped row details below to inspect the first few failures.',
+        'Confirm the CSV contains executions or trade activity rather than balances or positions.',
+        'Use Generic CSV mapping or broker-specific export instructions if the layout differs.'
+      ]
+    };
+  }
+
+  if (skipRate >= 50 && diagnostics.parsedRows > 0) {
+    return {
+      title: 'Import completed, but many rows could not be used.',
+      body: `TradeTally imported ${diagnostics.parsedRows} trades, but skipped ${(diagnostics.skippedRows + diagnostics.invalidRows)} of ${diagnostics.totalRows} rows.`,
+      steps: [
+        'Review skipped row details to see whether non-trade rows are mixed into the file.',
+        'Filter the export to executions, fills, or transactions only.',
+        'Check the top skipped reasons before importing a larger file.'
+      ]
+    };
+  }
+
+  return null;
+}
+
 function rebuildTradeFromExecutions(trade) {
   const executions = Array.isArray(trade.executions) ? trade.executions.filter(Boolean) : [];
   if (executions.length === 0) {
@@ -2220,6 +2368,11 @@ function wrapResultWithDiagnostics(trades, diagnostics, unresolvedCusips = [], u
     }
   }
 
+  diagnostics.reason_breakdown = buildReasonBreakdown(diagnostics.skippedReasons);
+  diagnostics.user_summary = buildDiagnosticSummary(diagnostics, {
+    importDate: diagnostics.importDate
+  });
+
   // Log diagnostics summary
   console.log(`[DIAGNOSTICS] Total: ${diagnostics.totalRows}, Parsed: ${diagnostics.parsedRows}, Skipped: ${diagnostics.skippedRows}, Invalid: ${diagnostics.invalidRows}`);
   if (diagnostics.skippedReasons.length > 0) {
@@ -2268,15 +2421,19 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
 
     const existingPositions = context.existingPositions || {};
     const userTimezone = context.userTimezone || null;
+    const importDateFromFileName = extractDateFromFilename(context.fileName);
+    diagnostics.importDate = context.importDate || importDateFromFileName || null;
     console.log(`\n=== IMPORT CONTEXT ===`);
     console.log(`Broker format: ${broker}`);
     console.log(`User ID: ${context.userId || 'NOT PROVIDED'}`);
     console.log(`User timezone: ${userTimezone || 'NOT PROVIDED (will store as-is)'}`);
+    console.log(`Import date from filename: ${importDateFromFileName || 'NOT PROVIDED'}`);
     console.log(`Existing open positions: ${Object.keys(existingPositions).length}`);
     Object.entries(existingPositions).forEach(([symbol, position]) => {
       console.log(`  ${symbol}: ${position.side} ${position.quantity} shares @ $${position.entryPrice}`);
     });
     console.log(`=====================\n`);
+    context.importDate = context.importDate || importDateFromFileName;
     
     let csvString = fileBuffer.toString('utf-8');
 
@@ -3232,17 +3389,23 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       record['Closing time (UTC-4)'] ||
       record['Entry Date'] && record['Exit Date'] ||
       record['Entry Price'] && record['Exit Price'] ||
+      record['Entry Time'] && record['Exit Time'] && record['Entry price'] && record['Exit price'] ||
       record['Entry price'] && record['Closing price']
     ));
 
     // Generic parser - Use transaction-based processing for better position tracking
-    // Check for user preference or use enhanced mode by default when context is available
-    // Custom mappings represent complete trade rows. Routing them through the
-    // transaction parser drops row-level exit fields and can produce "0 trades
-    // imported" after a successful mapping step.
+    // Check for user preference or use enhanced mode by default when context is available.
+    // Custom mappings with exit/P&L columns represent completed trade rows; custom mappings
+    // without those columns represent transaction rows that need buy/sell position matching.
     const useEnhancedMode = context.usePositionTracking !== false; // Default to true
+    const customMappingUsesTransactionRows = Boolean(
+      context.customMapping &&
+      !context.customMapping.exit_price_column &&
+      !context.customMapping.exit_date_column &&
+      !context.customMapping.pnl_column
+    );
 
-    if (useEnhancedMode && !context.customMapping && !hasGenericCompletedTradeRows) {
+    if (useEnhancedMode && (!context.customMapping || customMappingUsesTransactionRows) && !hasGenericCompletedTradeRows) {
       console.log('Using enhanced generic parser with position tracking');
       const result = await parseGenericTransactions(records, existingPositions, context.customMapping, context);
       console.log('Finished generic transaction-based parsing');
@@ -3258,7 +3421,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     }
 
     // Fallback to simple row-by-row parsing (legacy mode)
-    // Used when position tracking is disabled or when a custom mapping is used.
+    // Used when position tracking is disabled or when a custom mapping describes completed trade rows.
     console.log('Using simple generic parser (legacy mode - no position tracking)');
     // Create custom parser if custom mapping is provided
     let parser;
@@ -3295,7 +3458,9 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
           exitPrice: mapping.exit_price_column ? parseNumeric(row[mapping.exit_price_column]) : null,
           quantity: Math.abs(quantity), // Use absolute value
           side: side,
-          commission: mapping.fees_column ? parseNumeric(row[mapping.fees_column]) : 0,
+          commission: mapping.commission_column
+            ? parseNumeric(row[mapping.commission_column])
+            : (mapping.fees_column ? parseNumeric(row[mapping.fees_column]) : 0),
           fees: mapping.fees_column ? parseNumeric(row[mapping.fees_column]) : 0,
           pnl: mapping.pnl_column ? parseNumeric(row[mapping.pnl_column]) : null,
           notes: mapping.notes_column ? row[mapping.notes_column] : '',
@@ -3314,7 +3479,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     for (const record of records) {
       rowIndex++;
       try {
-        let trade = parser(record);
+        let trade = broker === 'generic' ? parser(record, context) : parser(record);
         if (isValidTrade(trade)) {
           // Parse instrument data for futures/options detection
           if (trade.symbol) {
@@ -3370,7 +3535,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
           trades.push(trade);
         } else {
           diagnostics.invalidRows++;
-          diagnostics.skippedReasons.push({ row: rowIndex, reason: 'Invalid trade: missing required fields (symbol, date, price, or quantity)' });
+          diagnostics.skippedReasons.push({ row: rowIndex, reason: buildGenericValidationReason(trade, record, context) });
         }
       } catch (error) {
         console.error('Error parsing row:', error, record);
@@ -3403,6 +3568,25 @@ function parseDate(dateStr) {
     /^([A-Za-z]+ \d{1,2}, \d{4})(\d{1,2}:\d{2}(?::\d{2})?\s*[AP]M)$/i,
     '$1 $2'
   );
+
+  const ddmmyyyyMatch = normalizedDateStr.match(/^(\d{1,2})-(\d{1,2})-(\d{4})(?:\s|$)/);
+  if (ddmmyyyyMatch) {
+    const [_, day, month, year] = ddmmyyyyMatch;
+    const dayNum = parseInt(day, 10);
+    const monthNum = parseInt(month, 10);
+    const yearNum = parseInt(year, 10);
+
+    if (monthNum < 1 || monthNum > 12) return null;
+    if (dayNum < 1 || dayNum > 31) return null;
+    if (yearNum < 1900 || yearNum > 2100) return null;
+
+    const date = new Date(yearNum, monthNum - 1, dayNum);
+    if (date.getFullYear() !== yearNum || date.getMonth() !== monthNum - 1 || date.getDate() !== dayNum) {
+      return null;
+    }
+
+    return `${yearNum}-${String(monthNum).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+  }
 
   // Try to parse IBKR format XX-XX-YY (could be MM-DD-YY or DD-MM-YY)
   const xxyyMatch = normalizedDateStr.match(/^(\d{1,2})-(\d{1,2})-(\d{2})/);
@@ -3541,6 +3725,58 @@ function parseDate(dateStr) {
   }
 }
 
+function parseTimeOnly(timeStr) {
+  if (!timeStr || timeStr.toString().trim() === '') return null;
+
+  const cleanTimeStr = timeStr.toString().replace(/^[\x27\x22\u2018\u2019\u201C\u201D]|[\x27\x22\u2018\u2019\u201C\u201D]$/g, '').trim();
+  const timeOnlyMatch = cleanTimeStr.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!timeOnlyMatch) return null;
+
+  const [, hour, minute, second = '00'] = timeOnlyMatch;
+  const hourNum = parseInt(hour, 10);
+  const minuteNum = parseInt(minute, 10);
+  const secondNum = parseInt(second, 10);
+
+  if (hourNum < 0 || hourNum > 23 || minuteNum < 0 || minuteNum > 59 || secondNum < 0 || secondNum > 59) {
+    return null;
+  }
+
+  return `${hour.padStart(2, '0')}:${minute}:${second.padStart(2, '0')}`;
+}
+
+function extractDateFromFilename(fileName) {
+  if (!fileName || typeof fileName !== 'string') return null;
+
+  const patterns = [
+    /\b(20\d{2})[-_](\d{1,2})[-_](\d{1,2})\b/,
+    /\b(\d{1,2})[-_](\d{1,2})[-_](20\d{2})\b/,
+    /\b(20\d{2})(\d{2})(\d{2})\b/
+  ];
+
+  for (let index = 0; index < patterns.length; index++) {
+    const match = fileName.match(patterns[index]);
+    if (!match) continue;
+
+    let candidate;
+    if (index === 0) {
+      const [, year, month, day] = match;
+      candidate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    } else if (index === 1) {
+      const [, month, day, year] = match;
+      candidate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    } else {
+      const [, year, month, day] = match;
+      candidate = `${year}-${month}-${day}`;
+    }
+
+    if (parseDate(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
 function parseDateTime(dateTimeStr) {
   if (!dateTimeStr || dateTimeStr.toString().trim() === '') return null;
 
@@ -3626,6 +3862,27 @@ function parseDateTime(dateTimeStr) {
       const dayPadded = day.padStart(2, '0');
       const hourPadded = hour.padStart(2, '0');
       return withTrailingTimezone(`${year}-${monthPadded}-${dayPadded}T${hourPadded}:${minute}:00`);
+    }
+
+    const ddmmyyyyTimeMatch = dateTimeBody.match(/^(\d{1,2})-(\d{1,2})-(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})(?:\.\d+)?$/);
+    if (ddmmyyyyTimeMatch) {
+      const [, day, month, year, hour, minute, second] = ddmmyyyyTimeMatch;
+      const dayNum = parseInt(day, 10);
+      const monthNum = parseInt(month, 10);
+      const yearNum = parseInt(year, 10);
+
+      if (monthNum < 1 || monthNum > 12) return null;
+      if (dayNum < 1 || dayNum > 31) return null;
+      if (yearNum < 1900 || yearNum > 2100) return null;
+
+      const date = new Date(yearNum, monthNum - 1, dayNum);
+      if (date.getFullYear() !== yearNum || date.getMonth() !== monthNum - 1 || date.getDate() !== dayNum) {
+        return null;
+      }
+
+      return withTrailingTimezone(
+        `${year}-${String(monthNum).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}T${hour.padStart(2, '0')}:${minute}:${second}`
+      );
     }
 
     // Check for IBKR Flex Query format: YYYYMMDD;HHMMSS (used in IBKR Japan and other regional exports)
@@ -4146,13 +4403,31 @@ function parseInstrumentData(symbol) {
 
       if (pattern.source.includes(':')) {
         // TradingView format
-        [, underlying] = match;
-        // Extract month/year from symbol if present
-        const tvMatch = underlying.match(/([A-Z]+)(\d+)/);
-        if (tvMatch) {
-          underlying = tvMatch[1];
-          year = parseInt(tvMatch[2]);
-          if (year < 100) year += 2000;
+        const [, , contractSymbol] = match;
+        const standardTvMatch = contractSymbol.match(/^([A-Z]+?)([FGHJKMNQUVXZ])(\d{1,4})$/);
+        const continuousTvMatch = contractSymbol.match(/^([A-Z]+)\d+$/);
+
+        if (standardTvMatch) {
+          [, underlying, monthCode, year] = standardTvMatch;
+          year = parseInt(year, 10);
+          if (year < 10) {
+            const currentYear = new Date().getFullYear();
+            const currentDecade = Math.floor(currentYear / 10) * 10;
+            year = currentDecade + year;
+          } else if (year < 100) {
+            year += 2000;
+          }
+        } else if (continuousTvMatch) {
+          underlying = continuousTvMatch[1];
+          monthCode = null;
+          year = 9999;
+        } else {
+          const tvMatch = contractSymbol.match(/([A-Z]+)(\d+)/);
+          if (tvMatch) {
+            underlying = tvMatch[1];
+            year = parseInt(tvMatch[2], 10);
+            if (year < 100) year += 2000;
+          }
         }
       } else {
         [, underlying, monthCode, year] = match;
@@ -4169,7 +4444,7 @@ function parseInstrumentData(symbol) {
       }
 
       const monthCodes = { F: '01', G: '02', H: '03', J: '04', K: '05', M: '06', N: '07', Q: '08', U: '09', V: '10', X: '11', Z: '12' };
-      const month = monthCode ? monthCodes[monthCode] : null;
+      const month = monthCode ? monthCodes[monthCode] : (year === 9999 ? 'CONT' : null);
 
       return {
         instrumentType: 'future',
@@ -8190,8 +8465,10 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
             entryPrice: Math.abs(rawPrice), // Use absolute value for price
             quantity: Math.abs(rawQuantity), // Use absolute value for quantity
             side: side,
-            commission: mapping.fees_column ? Math.abs(parseNumeric(row[mapping.fees_column])) : 0,
-            fees: mapping.fees_column ? Math.abs(parseNumeric(row[mapping.fees_column])) : 0,
+            commission: mapping.commission_column
+              ? parseNumeric(row[mapping.commission_column])
+              : (mapping.fees_column ? parseNumeric(row[mapping.fees_column]) : 0),
+            fees: mapping.fees_column ? parseNumeric(row[mapping.fees_column]) : 0,
             stopLoss: mapping.stop_loss_column ? parseNumeric(row[mapping.stop_loss_column]) : null,
             takeProfit: mapping.take_profit_column ? parseNumeric(row[mapping.take_profit_column]) : null,
             broker: 'custom'
@@ -8201,7 +8478,7 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
         parser = brokerParsers.generic;
       }
 
-      const trade = parser(record);
+      const trade = parser(record, context);
       const transactionPriceCandidates = [
         trade.entryPrice,
         trade.exitPrice,
@@ -8221,7 +8498,7 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
           diagnostics.invalidRows++;
           diagnostics.skippedReasons.push({
             row: rowIndex,
-            reason: 'Invalid trade: missing required fields (symbol, date, price, or quantity)'
+            reason: buildGenericValidationReason(trade, record, context)
           });
         }
         continue;
@@ -8327,7 +8604,8 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
         ? existingPosition.executions
         : (existingPosition.executions ? JSON.parse(existingPosition.executions) : []),
       totalQuantity: existingPosition.quantity,
-      totalFees: existingPosition.commission || 0,
+      totalCommission: existingPosition.commission || 0,
+      totalFees: existingPosition.fees || 0,
       entryValue: existingPosition.quantity * existingPosition.entryPrice,
       exitValue: 0,
       broker: existingPosition.broker || 'generic',
@@ -8357,6 +8635,7 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
           side: transaction.side === 'buy' ? 'long' : 'short',
           executions: [],
           totalQuantity: 0,
+          totalCommission: 0,
           totalFees: 0,
           entryValue: 0,
           exitValue: 0,
@@ -8373,6 +8652,7 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
           quantity: qty,
           price: transaction.price,
           datetime: transaction.datetime,
+          commission: transaction.commission,
           fees: transaction.commission + transaction.fees
         };
 
@@ -8402,7 +8682,8 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
           }
         }
 
-        currentTrade.totalFees += transaction.commission + transaction.fees;
+        currentTrade.totalCommission += transaction.commission;
+        currentTrade.totalFees += transaction.fees;
       }
 
       // Process the transaction and update position
@@ -8424,7 +8705,7 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
               const avgEntryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
               const partialPnl = (avgEntryPrice - transaction.price) * qty;
               // Prorate commission for partial close
-              const partialCommission = (currentTrade.totalFees / currentTrade.totalQuantity) * qty;
+              const partialCommission = ((currentTrade.totalCommission + currentTrade.totalFees) / currentTrade.totalQuantity) * qty;
               const netPartialPnl = partialPnl - partialCommission;
 
               // Update the last execution with exit info and P&L
@@ -8458,7 +8739,7 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
               const avgEntryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
               const partialPnl = (transaction.price - avgEntryPrice) * qty;
               // Prorate commission for partial close
-              const partialCommission = (currentTrade.totalFees / currentTrade.totalQuantity) * qty;
+              const partialCommission = ((currentTrade.totalCommission + currentTrade.totalFees) / currentTrade.totalQuantity) * qty;
               const netPartialPnl = partialPnl - partialCommission;
 
               // Update the last execution with exit info and P&L
@@ -8485,16 +8766,17 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
         currentTrade.exitPrice = currentTrade.exitValue / currentTrade.totalQuantity;
 
         // Calculate P&L
+        const totalCosts = currentTrade.totalCommission + currentTrade.totalFees;
         if (currentTrade.side === 'long') {
-          currentTrade.pnl = currentTrade.exitValue - currentTrade.entryValue - currentTrade.totalFees;
+          currentTrade.pnl = currentTrade.exitValue - currentTrade.entryValue - totalCosts;
         } else {
-          currentTrade.pnl = currentTrade.entryValue - currentTrade.exitValue - currentTrade.totalFees;
+          currentTrade.pnl = currentTrade.entryValue - currentTrade.exitValue - totalCosts;
         }
 
         currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
         currentTrade.quantity = currentTrade.totalQuantity;
-        currentTrade.commission = currentTrade.totalFees;
-        currentTrade.fees = 0;
+        currentTrade.commission = currentTrade.totalCommission;
+        currentTrade.fees = currentTrade.totalFees;
 
         // Set proper entry and exit times
         const { entryTime, exitTime } = getExecutionTimeBounds(currentTrade.executions);
@@ -8534,8 +8816,8 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
       currentTrade.exitTime = null;
       currentTrade.quantity = netQuantity;
       currentTrade.totalQuantity = netQuantity;
-      currentTrade.commission = currentTrade.totalFees;
-      currentTrade.fees = 0;
+      currentTrade.commission = currentTrade.totalCommission;
+      currentTrade.fees = currentTrade.totalFees;
       currentTrade.pnl = 0;
       currentTrade.pnlPercent = 0;
 

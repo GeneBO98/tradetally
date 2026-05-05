@@ -67,9 +67,26 @@ async function autoCalculateMAEMFE(userId, trade) {
 
     // Update the trade with calculated values
     await Trade.update(trade.id, userId, { mae, mfe });
+    await AnalyticsCache.invalidate(userId);
     console.log(`[MAE/MFE] Updated trade ${trade.id}: MAE=$${mae.toFixed(2)}, MFE=$${mfe.toFixed(2)}`);
   } catch (error) {
     console.warn(`[MAE/MFE] Auto-calculation failed for trade ${trade.id}: ${error.message}`);
+  }
+}
+
+async function ensureSymbolMetadata(symbol) {
+  const normalizedSymbol = typeof symbol === 'string' ? symbol.trim().toUpperCase() : '';
+  if (!normalizedSymbol) return;
+
+  try {
+    const category = await symbolCategories.getSymbolCategory(normalizedSymbol);
+    if (category) {
+      console.log(`[SYMBOLS] Enriched metadata for ${normalizedSymbol}`);
+    } else {
+      console.log(`[SYMBOLS] No metadata available for ${normalizedSymbol}`);
+    }
+  } catch (error) {
+    console.warn(`[SYMBOLS] Failed to enrich metadata for ${normalizedSymbol}: ${error.message}`);
   }
 }
 
@@ -627,6 +644,9 @@ const tradeController = {
       await AnalyticsCache.invalidate(req.user.id);
 
       res.status(201).json({ trade });
+
+      // Fire-and-forget: fetch company metadata for new symbols created outside CSV import.
+      ensureSymbolMetadata(trade.symbol).catch(() => {});
 
       // Fire-and-forget: auto-calculate MAE/MFE for closed trades (Pro only)
       autoCalculateMAEMFE(req.user.id, trade).catch(() => {});
@@ -1801,6 +1821,7 @@ const tradeController = {
             existingPositions,
             existingExecutions,
             userId: req.user.id,
+            fileName,
             userTimezone,
             tradeGroupingSettings: {
               enabled: userSettings.enable_trade_grouping ?? true,
@@ -2478,7 +2499,9 @@ const tradeController = {
               warnings: parseDiagnostics.warnings || [],
               detectedBroker: parseDiagnostics.detectedBroker,
               selectedBroker: parseDiagnostics.selectedBroker,
-              headerAnalysis: parseDiagnostics.headerAnalysis
+              headerAnalysis: parseDiagnostics.headerAnalysis,
+              reason_breakdown: parseDiagnostics.reason_breakdown || [],
+              user_summary: parseDiagnostics.user_summary || null
             } : null
           };
 
@@ -2597,6 +2620,9 @@ const tradeController = {
                       } catch (err) {
                         console.warn(`[MAE/MFE] Failed for ${trade.symbol}: ${err.message}`);
                       }
+                    }
+                    if (calculated > 0) {
+                      await AnalyticsCache.invalidate(fileUserId);
                     }
                     console.log(`[MAE/MFE] Background calculation complete: ${calculated}/${importedClosedTrades.rows.length} trades`);
                   })().catch(err => console.warn('[MAE/MFE] Background batch failed:', err.message));

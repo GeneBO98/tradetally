@@ -367,7 +367,7 @@ class TradeQueries {
           symbol,
           id as trade_group,
           pnl as trade_pnl,
-          (commission + fees) as trade_costs,
+          (COALESCE(commission, 0) + COALESCE(fees, 0)) as trade_costs,
           1 as execution_count,
           pnl_percent as avg_return_pct,
           trade_date as first_trade_date,
@@ -410,14 +410,21 @@ class TradeQueries {
         FROM completed_trades
         GROUP BY first_trade_date
       ),
+      cumulative_daily_pnl AS (
+        SELECT
+          trade_date,
+          daily_pnl,
+          SUM(daily_pnl) OVER (ORDER BY trade_date) as cumulative_pnl
+        FROM daily_pnl
+      ),
       drawdown_calc AS (
         SELECT
           trade_date,
           daily_pnl,
-          SUM(daily_pnl) OVER (ORDER BY trade_date) as cumulative_pnl,
-          MAX(SUM(daily_pnl) OVER (ORDER BY trade_date)) OVER (ORDER BY trade_date) as running_max,
-          SUM(daily_pnl) OVER (ORDER BY trade_date) - MAX(SUM(daily_pnl) OVER (ORDER BY trade_date)) OVER (ORDER BY trade_date) as drawdown
-        FROM daily_pnl
+          cumulative_pnl,
+          MAX(cumulative_pnl) OVER (ORDER BY trade_date) as running_max,
+          cumulative_pnl - MAX(cumulative_pnl) OVER (ORDER BY trade_date) as drawdown
+        FROM cumulative_daily_pnl
       ),
       drawdown_debug AS (
         SELECT MIN(drawdown) as min_drawdown FROM drawdown_calc

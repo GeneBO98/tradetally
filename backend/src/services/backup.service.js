@@ -17,8 +17,7 @@ function maskEmail(email) {
  */
 class BackupService {
   constructor() {
-    this.backupDir = path.resolve(__dirname, '../data/backups');
-    this.ensureBackupDirectory();
+    this.backupDir = path.resolve(process.env.BACKUP_DIR || path.join(__dirname, '../data/backups'));
   }
 
   resolveBackupPath(filePath) {
@@ -42,6 +41,7 @@ class BackupService {
       await fs.mkdir(this.backupDir, { recursive: true });
     } catch (error) {
       console.error('[BACKUP] Error creating backup directory:', error);
+      throw error;
     }
   }
 
@@ -53,6 +53,8 @@ class BackupService {
    */
   async createFullSiteBackup(userId, type = 'manual') {
     console.log(`[BACKUP] Starting full site backup (type: ${type})`);
+
+    await this.ensureBackupDirectory();
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const backupFileName = `tradetally-backup-${timestamp}.json`;
