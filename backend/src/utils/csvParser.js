@@ -992,13 +992,16 @@ const brokerParsers = {
 
     // Symbol mapping
     const symbol = row.Symbol || row.symbol || row.Ticker || row.ticker || row.Stock || row.stock ||
-      row['Underlying Symbol'] || row['underlying symbol'];
+      row['Underlying Symbol'] || row['underlying symbol'] ||
+      row.Instrument || row.instrument;
 
     const rawTradeDateValue =
       row['Trade Date'] || row['T/D'] || row.Date || row.date ||
       row.trade_date || row['trade_date'] || row['Entry Date'] ||
       row['Transaction Date'] || row['Exec Date'] || row['Execution Date'] ||
       row['Date and time'] || row.Time || row.time ||
+      row['Entry Time'] || row['Entry time'] || row['entry time'] ||
+      row['Exit Time'] || row['Exit time'] || row['exit time'] ||
       row['Opening time (UTC-4)'] || row['Opening Time'] || row['Open Time'] ||
       row['Opened Time'];
 
@@ -1057,7 +1060,8 @@ const brokerParsers = {
       row.Side || row.side || row.Direction || row.direction ||
       row.Type || row.type || row.trade_type || row['trade_type'] || row.Action || row.action ||
       row['B/S'] || row['Buy/Sell'] || row.BS ||
-      row['Opening direction'] || row['Opening Direction']
+      row['Opening direction'] || row['Opening Direction'] ||
+      row['Market pos.'] || row['Market Pos.'] || row['Market Position']
     );
 
     // Commission and fees mapping
@@ -1111,7 +1115,7 @@ const brokerParsers = {
       stopLoss: stopLoss,
       takeProfit: takeProfit,
       notes: notes,
-      pnl: parseNumeric(row['Net $'] || row.Net || row.PnL || row.pnl || row['P&L'], null),
+      pnl: parseNumeric(row['Net $'] || row.Net || row.PnL || row.pnl || row['P&L'] || row.Profit, null),
       broker: 'generic'
     };
   },
@@ -3385,6 +3389,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       record['Closing time (UTC-4)'] ||
       record['Entry Date'] && record['Exit Date'] ||
       record['Entry Price'] && record['Exit Price'] ||
+      record['Entry Time'] && record['Exit Time'] && record['Entry price'] && record['Exit price'] ||
       record['Entry price'] && record['Closing price']
     ));
 
@@ -3563,6 +3568,25 @@ function parseDate(dateStr) {
     /^([A-Za-z]+ \d{1,2}, \d{4})(\d{1,2}:\d{2}(?::\d{2})?\s*[AP]M)$/i,
     '$1 $2'
   );
+
+  const ddmmyyyyMatch = normalizedDateStr.match(/^(\d{1,2})-(\d{1,2})-(\d{4})(?:\s|$)/);
+  if (ddmmyyyyMatch) {
+    const [_, day, month, year] = ddmmyyyyMatch;
+    const dayNum = parseInt(day, 10);
+    const monthNum = parseInt(month, 10);
+    const yearNum = parseInt(year, 10);
+
+    if (monthNum < 1 || monthNum > 12) return null;
+    if (dayNum < 1 || dayNum > 31) return null;
+    if (yearNum < 1900 || yearNum > 2100) return null;
+
+    const date = new Date(yearNum, monthNum - 1, dayNum);
+    if (date.getFullYear() !== yearNum || date.getMonth() !== monthNum - 1 || date.getDate() !== dayNum) {
+      return null;
+    }
+
+    return `${yearNum}-${String(monthNum).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+  }
 
   // Try to parse IBKR format XX-XX-YY (could be MM-DD-YY or DD-MM-YY)
   const xxyyMatch = normalizedDateStr.match(/^(\d{1,2})-(\d{1,2})-(\d{2})/);
@@ -3838,6 +3862,27 @@ function parseDateTime(dateTimeStr) {
       const dayPadded = day.padStart(2, '0');
       const hourPadded = hour.padStart(2, '0');
       return withTrailingTimezone(`${year}-${monthPadded}-${dayPadded}T${hourPadded}:${minute}:00`);
+    }
+
+    const ddmmyyyyTimeMatch = dateTimeBody.match(/^(\d{1,2})-(\d{1,2})-(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})(?:\.\d+)?$/);
+    if (ddmmyyyyTimeMatch) {
+      const [, day, month, year, hour, minute, second] = ddmmyyyyTimeMatch;
+      const dayNum = parseInt(day, 10);
+      const monthNum = parseInt(month, 10);
+      const yearNum = parseInt(year, 10);
+
+      if (monthNum < 1 || monthNum > 12) return null;
+      if (dayNum < 1 || dayNum > 31) return null;
+      if (yearNum < 1900 || yearNum > 2100) return null;
+
+      const date = new Date(yearNum, monthNum - 1, dayNum);
+      if (date.getFullYear() !== yearNum || date.getMonth() !== monthNum - 1 || date.getDate() !== dayNum) {
+        return null;
+      }
+
+      return withTrailingTimezone(
+        `${year}-${String(monthNum).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}T${hour.padStart(2, '0')}:${minute}:${second}`
+      );
     }
 
     // Check for IBKR Flex Query format: YYYYMMDD;HHMMSS (used in IBKR Japan and other regional exports)
@@ -4358,13 +4403,31 @@ function parseInstrumentData(symbol) {
 
       if (pattern.source.includes(':')) {
         // TradingView format
-        [, underlying] = match;
-        // Extract month/year from symbol if present
-        const tvMatch = underlying.match(/([A-Z]+)(\d+)/);
-        if (tvMatch) {
-          underlying = tvMatch[1];
-          year = parseInt(tvMatch[2]);
-          if (year < 100) year += 2000;
+        const [, , contractSymbol] = match;
+        const standardTvMatch = contractSymbol.match(/^([A-Z]+?)([FGHJKMNQUVXZ])(\d{1,4})$/);
+        const continuousTvMatch = contractSymbol.match(/^([A-Z]+)\d+$/);
+
+        if (standardTvMatch) {
+          [, underlying, monthCode, year] = standardTvMatch;
+          year = parseInt(year, 10);
+          if (year < 10) {
+            const currentYear = new Date().getFullYear();
+            const currentDecade = Math.floor(currentYear / 10) * 10;
+            year = currentDecade + year;
+          } else if (year < 100) {
+            year += 2000;
+          }
+        } else if (continuousTvMatch) {
+          underlying = continuousTvMatch[1];
+          monthCode = null;
+          year = 9999;
+        } else {
+          const tvMatch = contractSymbol.match(/([A-Z]+)(\d+)/);
+          if (tvMatch) {
+            underlying = tvMatch[1];
+            year = parseInt(tvMatch[2], 10);
+            if (year < 100) year += 2000;
+          }
         }
       } else {
         [, underlying, monthCode, year] = match;
@@ -4381,7 +4444,7 @@ function parseInstrumentData(symbol) {
       }
 
       const monthCodes = { F: '01', G: '02', H: '03', J: '04', K: '05', M: '06', N: '07', Q: '08', U: '09', V: '10', X: '11', Z: '12' };
-      const month = monthCode ? monthCodes[monthCode] : null;
+      const month = monthCode ? monthCodes[monthCode] : (year === 9999 ? 'CONT' : null);
 
       return {
         instrumentType: 'future',
