@@ -97,6 +97,10 @@
                     v-else-if="notification.type === 'level_up'"
                     class="h-5 w-5 text-emerald-500"
                   />
+                  <BellIcon
+                    v-else-if="notification.type === 'web_mention_alert'"
+                    class="h-5 w-5 text-primary-500"
+                  />
                   <BellIcon v-else class="h-5 w-5 text-gray-400" />
                 </div>
 
@@ -116,6 +120,9 @@
                   <!-- Additional info for price alerts -->
                   <div v-if="notification.type === 'price_alert' && notification.trigger_price" class="text-xs text-gray-500 dark:text-gray-400 mt-1">
                     Triggered at ${{ parseFloat(notification.trigger_price).toFixed(2) }}
+                  </div>
+                  <div v-if="notification.type === 'web_mention_alert' && notification.metadata?.article_count" class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    {{ notification.metadata.article_count }} distinct articles
                   </div>
                 </div>
 
@@ -386,6 +393,8 @@ const handleNotificationClick = async (notification) => {
     router.push('/leaderboard')
   } else if (notification.type === 'behavioral_alert') {
     router.push('/metrics/behavioral')
+  } else if (notification.type === 'web_mention_alert') {
+    router.push('/web-mentions')
   }
   
   closeDropdown()

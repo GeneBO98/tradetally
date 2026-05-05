@@ -27,6 +27,7 @@ const behavioralAnalyticsRoutes = require('./routes/behavioralAnalytics.routes')
 const billingRoutes = require('./routes/billing.routes');
 const watchlistRoutes = require('./routes/watchlist.routes');
 const priceAlertsRoutes = require('./routes/priceAlerts.routes');
+const webMentionsRoutes = require('./routes/webMentions.routes');
 const notificationsRoutes = require('./routes/notifications.routes');
 const gamificationRoutes = require('./routes/gamification.routes');
 const newsEnrichmentRoutes = require('./routes/newsEnrichment.routes');
@@ -68,6 +69,7 @@ const dividendScheduler = require('./services/dividendScheduler');
 const newsScheduler = require('./services/newsScheduler');
 const earningsScheduler = require('./services/earningsScheduler');
 const symbolCategoryScheduler = require('./services/symbolCategoryScheduler');
+const webMentionScheduler = require('./services/webMentionScheduler');
 const webhookEventBridge = require('./services/webhookEventBridge');
 const activityTrackingService = require('./services/activityTrackingService');
 const engagementScheduler = require('./services/engagementScheduler');
@@ -252,6 +254,7 @@ app.use('/api/billing', billingRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/watchlists', watchlistRoutes);
 app.use('/api/price-alerts', priceAlertsRoutes);
+app.use('/api/web-mentions', webMentionsRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/gamification', gamificationRoutes);
 app.use('/api/news-enrichment', newsEnrichmentRoutes);
@@ -506,6 +509,14 @@ async function startServer() {
       console.log('Symbol category scheduler disabled (ENABLE_CATEGORY_SCHEDULER=false)');
     }
 
+    if (process.env.ENABLE_WEB_MENTION_SCHEDULER !== 'false') {
+      console.log('Starting web mention scheduler...');
+      webMentionScheduler.start();
+      console.log('[SUCCESS] Web mention scheduler started');
+    } else {
+      console.log('Web mention scheduler disabled (ENABLE_WEB_MENTION_SCHEDULER=false)');
+    }
+
     if (process.env.ENABLE_V1_WEBHOOKS === 'true') {
       webhookEventBridge.start();
     }
@@ -642,6 +653,7 @@ process.on('SIGTERM', async () => {
   newsScheduler.stop();
   earningsScheduler.stop();
   symbolCategoryScheduler.stop();
+  webMentionScheduler.stop();
   if (typeof GamificationScheduler.stopScheduler === 'function') GamificationScheduler.stopScheduler();
   if (typeof TrialScheduler.stopScheduler === 'function') TrialScheduler.stopScheduler();
   if (RetentionEmailScheduler.stopScheduler) RetentionEmailScheduler.stopScheduler();
@@ -664,6 +676,7 @@ process.on('SIGINT', async () => {
   newsScheduler.stop();
   earningsScheduler.stop();
   symbolCategoryScheduler.stop();
+  webMentionScheduler.stop();
   if (typeof GamificationScheduler.stopScheduler === 'function') GamificationScheduler.stopScheduler();
   if (typeof TrialScheduler.stopScheduler === 'function') TrialScheduler.stopScheduler();
   if (RetentionEmailScheduler.stopScheduler) RetentionEmailScheduler.stopScheduler();
