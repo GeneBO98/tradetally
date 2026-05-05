@@ -68,6 +68,7 @@ const dividendScheduler = require('./services/dividendScheduler');
 const newsScheduler = require('./services/newsScheduler');
 const earningsScheduler = require('./services/earningsScheduler');
 const symbolCategoryScheduler = require('./services/symbolCategoryScheduler');
+const portfolioSnapshotScheduler = require('./services/portfolioSnapshotScheduler');
 const webhookEventBridge = require('./services/webhookEventBridge');
 const activityTrackingService = require('./services/activityTrackingService');
 const engagementScheduler = require('./services/engagementScheduler');
@@ -506,6 +507,14 @@ async function startServer() {
       console.log('Symbol category scheduler disabled (ENABLE_CATEGORY_SCHEDULER=false)');
     }
 
+    if (process.env.ENABLE_PORTFOLIO_SNAPSHOT_SCHEDULER !== 'false') {
+      console.log('Starting portfolio snapshot scheduler...');
+      portfolioSnapshotScheduler.start();
+      console.log('[SUCCESS] Portfolio snapshot scheduler started');
+    } else {
+      console.log('Portfolio snapshot scheduler disabled (ENABLE_PORTFOLIO_SNAPSHOT_SCHEDULER=false)');
+    }
+
     if (process.env.ENABLE_V1_WEBHOOKS === 'true') {
       webhookEventBridge.start();
     }
@@ -642,6 +651,7 @@ process.on('SIGTERM', async () => {
   newsScheduler.stop();
   earningsScheduler.stop();
   symbolCategoryScheduler.stop();
+  portfolioSnapshotScheduler.stop();
   if (typeof GamificationScheduler.stopScheduler === 'function') GamificationScheduler.stopScheduler();
   if (typeof TrialScheduler.stopScheduler === 'function') TrialScheduler.stopScheduler();
   if (RetentionEmailScheduler.stopScheduler) RetentionEmailScheduler.stopScheduler();
@@ -664,6 +674,7 @@ process.on('SIGINT', async () => {
   newsScheduler.stop();
   earningsScheduler.stop();
   symbolCategoryScheduler.stop();
+  portfolioSnapshotScheduler.stop();
   if (typeof GamificationScheduler.stopScheduler === 'function') GamificationScheduler.stopScheduler();
   if (typeof TrialScheduler.stopScheduler === 'function') TrialScheduler.stopScheduler();
   if (RetentionEmailScheduler.stopScheduler) RetentionEmailScheduler.stopScheduler();

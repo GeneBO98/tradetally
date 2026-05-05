@@ -274,6 +274,7 @@ const notificationsController = {
               WHEN n.type IN ('challenge_joined', 'challenge_completed') THEN COALESCE(n.data->'challenge'->>'name', 'Challenge')
               WHEN n.type = 'leaderboard_ranking' THEN COALESCE(n.data->>'leaderboard', 'Leaderboard')
               WHEN n.type = 'behavioral_alert' THEN 'Behavioral Alert'
+              WHEN n.type = 'portfolio_alert' THEN COALESCE(n.data->>'symbol', 'Portfolio')
               ELSE 'Notification'
             END AS symbol,
             CASE
@@ -283,6 +284,7 @@ const notificationsController = {
               WHEN n.type = 'challenge_completed' THEN CONCAT('Completed challenge: ', COALESCE(n.data->'challenge'->>'name', 'Challenge'))
               WHEN n.type = 'leaderboard_ranking' THEN CONCAT('Leaderboard update: ', COALESCE(n.data->>'leaderboard', 'Leaderboard'))
               WHEN n.type = 'behavioral_alert' THEN COALESCE(n.data->>'message', 'Behavioral alert')
+              WHEN n.type = 'portfolio_alert' THEN COALESCE(n.data->>'message', 'Portfolio alert')
               ELSE COALESCE(n.data->>'message', 'Notification')
             END AS message,
             NULL::numeric AS trigger_price,

@@ -225,6 +225,10 @@ export function usePriceAlertNotifications() {
       case 'price_alert':
         handlePriceAlert(data.data)
         break
+
+      case 'portfolio_alert':
+        handlePortfolioAlert(data.data)
+        break
         
       case 'recent_notifications':
         // Handle recent notifications on connection
@@ -303,6 +307,18 @@ export function usePriceAlertNotifications() {
     } catch (error) {
       // Ignore audio errors
     }
+  }
+
+  const handlePortfolioAlert = (alert) => {
+    notifications.value.unshift({
+      ...alert,
+      type: 'portfolio_alert'
+    })
+    if (notifications.value.length > 10) {
+      notifications.value.pop()
+    }
+
+    showWarning(`Portfolio Alert: ${alert.symbol}`, alert.message)
   }
 
   const handleCusipResolution = (data) => {

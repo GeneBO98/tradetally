@@ -94,7 +94,7 @@
                     class="h-5 w-5 text-amber-500"
                   />
                   <ArrowTrendingUpIcon
-                    v-else-if="notification.type === 'level_up'"
+                    v-else-if="notification.type === 'level_up' || notification.type === 'portfolio_alert'"
                     class="h-5 w-5 text-emerald-500"
                   />
                   <BellIcon v-else class="h-5 w-5 text-gray-400" />
@@ -386,6 +386,8 @@ const handleNotificationClick = async (notification) => {
     router.push('/leaderboard')
   } else if (notification.type === 'behavioral_alert') {
     router.push('/metrics/behavioral')
+  } else if (notification.type === 'portfolio_alert') {
+    router.push({ path: '/analysis', query: { tab: 'holdings' } })
   }
   
   closeDropdown()
