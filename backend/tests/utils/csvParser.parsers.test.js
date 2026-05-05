@@ -767,6 +767,32 @@ describe('Generic parser', () => {
     }));
   });
 
+  test('parses Apex-style completed trade rows with Instrument and dd-mm-yyyy timestamps', async () => {
+    const apexCompletedTradeCSV = [
+      'Trade number,Instrument,Account,Strategy,Market pos.,Qty,Entry price,Exit price,Entry time,Exit time,Entry name,Exit name,Profit,Cum. net profit,Commission,Clearing Fee,Exchange Fee,IP Fee,NFA Fee,MAE,MFE,ETD,Bars,',
+      '1,NQ JUN26,PA-APEX-12345-625!Apex!Apex,100-100-5,Short,1,23960.00,23955.50,01-04-2026 00:27:56,01-04-2026 00:30:54,Entry,Target1,90.00 $,90.00 $,0.00 $,0.00 $,0.00 $,0.00 $,0.00 $,160.00 $,105.00 $,15.00 $,0,'
+    ].join('\n');
+
+    const result = await parseCSV(buf(apexCompletedTradeCSV), 'generic', {
+      tradeGroupingSettings: { enabled: false }
+    });
+
+    expectValidResult(result);
+    expect(result.trades).toHaveLength(1);
+    expect(result.diagnostics.invalidRows).toBe(0);
+    expect(result.trades[0]).toEqual(expect.objectContaining({
+      symbol: 'NQ JUN26',
+      tradeDate: '2026-04-01',
+      entryTime: '2026-04-01T00:27:56',
+      exitTime: '2026-04-01T00:30:54',
+      entryPrice: 23960,
+      exitPrice: 23955.5,
+      quantity: 1,
+      side: 'short',
+      pnl: 90
+    }));
+  });
+
   test('parses lowercase trade_date and trade_type transaction exports', async () => {
     const indianBrokerCSV = [
       'symbol,isin,trade_date,exchange,segment,series,trade_type,auction,quantity,price,trade_id,order_id,order_execution_time',
