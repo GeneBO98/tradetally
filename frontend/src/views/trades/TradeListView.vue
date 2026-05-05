@@ -724,6 +724,20 @@
                   <div v-else class="text-sm text-gray-500">-</div>
                 </td>
 
+                <td v-else-if="column.visible && column.key === 'mae'"
+                    :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  <span v-if="trade.mae != null" class="text-sm font-mono text-red-600 dark:text-red-400">{{ formatCurrency(trade.mae) }}</span>
+                  <span v-else class="text-sm text-gray-400">—</span>
+                </td>
+
+                <td v-else-if="column.visible && column.key === 'mfe'"
+                    :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  <span v-if="trade.mfe != null" class="text-sm font-mono text-green-600 dark:text-green-400">{{ formatCurrency(trade.mfe) }}</span>
+                  <span v-else class="text-sm text-gray-400">—</span>
+                </td>
+
                 <!-- Options/Futures Fields -->
                 <td v-else-if="column.visible && column.key === 'instrumentType'"
                     :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"

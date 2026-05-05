@@ -9,7 +9,6 @@ const MAEEstimator = require('../utils/maeEstimator');
 const symbolCategories = require('../utils/symbolCategories');
 const { sendV1NotImplemented } = require('../utils/apiResponse');
 const ensureString = require('../utils/ensureString');
-const SAMPLE_DATA_EXCLUSION_SQL = ` AND NOT COALESCE('sample' = ANY(tags), false)`;
 
 // Helper function to create a short but collision-resistant hash for cache keys
 function createFilterHash(filters) {
@@ -154,8 +153,7 @@ function convertQueryToTradeFilters(query) {
     optionTypes: toArray(query.optionTypes),
     holdTime: validHoldTimes.includes(holdTimeVal) ? holdTimeVal : undefined,
     hasRValue: query.hasRValue,
-    accounts: toArray(query.accounts),
-    includeSampleData: query.includeSampleData === 'true' || query.includeSampleData === true
+    accounts: toArray(query.accounts)
   };
 }
 
@@ -216,10 +214,6 @@ function buildFilterConditions(query) {
   let filterConditions = '';
   const params = [];
   let paramIndex = 2; // $1 is reserved for user_id in callers
-
-  if (!filters.includeSampleData) {
-    filterConditions += SAMPLE_DATA_EXCLUSION_SQL;
-  }
 
   // Date filters
   if (filters.startDate) {
@@ -1195,10 +1189,101 @@ const analyticsController = {
     }
   },
 
+  async getMAEMFETrades(req, res, next) {
+    try {
+      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+      const params = [req.user.id, ...filterParams];
+
+      const query = `
+        SELECT
+          id,
+          symbol,
+          side,
+          pnl,
+          r_value,
+          mae,
+          mfe,
+          stop_loss,
+          entry_price,
+          exit_price,
+          quantity,
+          instrument_type,
+          contract_size,
+          point_value,
+          underlying_asset,
+          CASE WHEN pnl > 0 THEN true ELSE false END AS is_winner
+        FROM trades
+        WHERE user_id = $1 ${filterConditions}
+          AND exit_time IS NOT NULL
+          AND mae IS NOT NULL
+          AND mfe IS NOT NULL
+        ORDER BY trade_date DESC
+        LIMIT 2000
+      `;
+
+      const result = await db.query(query, params);
+      const trades = result.rows.map(t => {
+        const riskAmount = Trade.calculateRiskAmount(
+          t.entry_price,
+          t.stop_loss,
+          t.quantity,
+          t.side,
+          t.instrument_type || 'stock',
+          t.contract_size,
+          t.point_value,
+          t.symbol,
+          t.underlying_asset
+        );
+
+        return {
+          id: t.id,
+          symbol: t.symbol,
+          side: t.side,
+          pnl: parseFloat(t.pnl) || 0,
+          r_value: t.r_value != null ? parseFloat(t.r_value) : null,
+          mae: parseFloat(t.mae),
+          mfe: parseFloat(t.mfe),
+          risk_amount: riskAmount != null ? parseFloat(riskAmount.toFixed(2)) : null,
+          is_winner: t.is_winner
+        };
+      });
+
+      const winners = trades.filter(t => t.is_winner);
+      const losers = trades.filter(t => !t.is_winner);
+
+      const avg = (arr, key) => arr.length > 0
+        ? arr.reduce((s, t) => s + (t[key] || 0), 0) / arr.length
+        : null;
+
+      const winnersAvgMae = avg(winners, 'mae');
+      const losersAvgMfe = avg(losers, 'mfe');
+      const avgProfitLeft = winners.length > 0
+        ? winners.reduce((s, t) => s + Math.max(0, t.mfe - t.pnl), 0) / winners.length
+        : null;
+      const avgMfeVsPnlGap = trades.length > 0
+        ? trades.reduce((s, t) => s + (t.mfe - t.pnl), 0) / trades.length
+        : null;
+
+      res.json({
+        success: true,
+        trades,
+        stats: {
+          trades_with_data: trades.length,
+          winners_avg_mae: winnersAvgMae != null ? parseFloat(winnersAvgMae.toFixed(2)) : null,
+          losers_avg_mfe: losersAvgMfe != null ? parseFloat(losersAvgMfe.toFixed(2)) : null,
+          avg_profit_left: avgProfitLeft != null ? parseFloat(avgProfitLeft.toFixed(2)) : null,
+          avg_mfe_vs_pnl_gap: avgMfeVsPnlGap != null ? parseFloat(avgMfeVsPnlGap.toFixed(2)) : null
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async getPerformance(req, res, next) {
     try {
       const { period = 'daily' } = req.query;
-      
+
       // Whitelist allowed periods to prevent SQL injection
       const allowedPeriods = ['daily', 'weekly', 'monthly'];
       const sanitizedPeriod = allowedPeriods.includes(period) ? period : 'daily';
