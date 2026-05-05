@@ -227,4 +227,67 @@ describe('broker sync duplicate protection', () => {
     expect(query).not.toContain('LIMIT 5000');
     expect(params).toEqual(['user-1', '2026-03-05', '2026-03-08']);
   });
+
+  test('Schwab parseTransactions uses intraday time for same-day partial exits', () => {
+    const schwabTrade = ({ orderId, tradeDate, time, price, amount, positionEffect, netAmount }) => ({
+      type: 'TRADE',
+      orderId,
+      tradeDate,
+      time,
+      netAmount,
+      transferItems: [
+        {
+          instrument: {
+            assetType: 'EQUITY',
+            symbol: 'AUUD'
+          },
+          price,
+          amount,
+          positionEffect
+        }
+      ]
+    });
+
+    const trades = schwabService.parseTransactions([
+      // Deliberately first in API order. With date-only tradeDate ordering this
+      // was treated as an unmatched short close and used netAmount as P&L.
+      schwabTrade({
+        orderId: '1006105171805',
+        tradeDate: '2026-04-23',
+        time: '2026-04-23T14:31:40Z',
+        price: 7.47,
+        amount: -50,
+        positionEffect: 'CLOSING',
+        netAmount: 373.5
+      }),
+      schwabTrade({
+        orderId: '1006105171703',
+        tradeDate: '2026-04-23',
+        time: '2026-04-23T14:05:48Z',
+        price: 6.84,
+        amount: 100,
+        positionEffect: 'OPENING',
+        netAmount: -684
+      }),
+      schwabTrade({
+        orderId: '1006105171794',
+        tradeDate: '2026-04-23',
+        time: '2026-04-23T14:30:45Z',
+        price: 7.00,
+        amount: -50,
+        positionEffect: 'CLOSING',
+        netAmount: 350
+      })
+    ]);
+
+    expect(trades).toHaveLength(1);
+    expect(trades[0]).toMatchObject({
+      symbol: 'AUUD',
+      side: 'long',
+      quantity: 100,
+      entryPrice: 6.84,
+      exitPrice: 7.235,
+      pnl: 39.5
+    });
+  });
 });
