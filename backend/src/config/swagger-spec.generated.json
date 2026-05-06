@@ -1,0 +1,5254 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "TradeTally API",
+    "version": "1.0.0",
+    "description": "TradeTally trading journal and analytics API",
+    "contact": {
+      "name": "TradeTally Support",
+      "url": "https://tradetally.com"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Development server"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT or API Key",
+        "description": "Enter a JWT access token or an API key (format: tt_live_xxx). API keys can be created under Profile > API Keys."
+      },
+      "apiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "Enter your API key (format: tt_live_xxx). API keys can be created under Profile > API Keys."
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Error message"
+          },
+          "code": {
+            "type": "string",
+            "description": "Error code"
+          }
+        }
+      },
+      "Trade": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Trade ID"
+          },
+          "symbol": {
+            "type": "string",
+            "description": "Stock symbol",
+            "example": "AAPL"
+          },
+          "side": {
+            "type": "string",
+            "enum": [
+              "long",
+              "short"
+            ],
+            "description": "Trade direction"
+          },
+          "quantity": {
+            "type": "number",
+            "description": "Number of shares",
+            "example": 100
+          },
+          "entryPrice": {
+            "type": "number",
+            "format": "float",
+            "description": "Entry price per share",
+            "example": 150.25
+          },
+          "exitPrice": {
+            "type": "number",
+            "format": "float",
+            "description": "Exit price per share",
+            "example": 155.75
+          },
+          "entryTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Entry timestamp"
+          },
+          "exitTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Exit timestamp"
+          },
+          "pnl": {
+            "type": "number",
+            "format": "float",
+            "description": "Profit/Loss amount",
+            "example": 550
+          },
+          "commission": {
+            "type": "number",
+            "format": "float",
+            "description": "Commission paid",
+            "example": 1
+          },
+          "fees": {
+            "type": "number",
+            "format": "float",
+            "description": "Additional fees",
+            "example": 0.5
+          },
+          "notes": {
+            "type": "string",
+            "description": "Trade notes"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Trade tags"
+          },
+          "strategy": {
+            "type": "string",
+            "description": "Trading strategy",
+            "example": "momentum"
+          },
+          "enrichmentStatus": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "completed"
+            ],
+            "description": "Enrichment status"
+          }
+        }
+      },
+      "CreateTrade": {
+        "type": "object",
+        "required": [
+          "symbol",
+          "side",
+          "quantity",
+          "entryPrice",
+          "entryTime"
+        ],
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "Stock/option/future symbol",
+            "example": "AAPL"
+          },
+          "side": {
+            "type": "string",
+            "enum": [
+              "long",
+              "short"
+            ],
+            "description": "Trade direction"
+          },
+          "quantity": {
+            "type": "number",
+            "description": "Number of shares/contracts",
+            "example": 100
+          },
+          "entryPrice": {
+            "type": "number",
+            "format": "float",
+            "description": "Entry price per share/contract",
+            "example": 150.25
+          },
+          "exitPrice": {
+            "type": "number",
+            "format": "float",
+            "description": "Exit price per share/contract (optional)",
+            "example": 155.75
+          },
+          "entryTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Entry timestamp"
+          },
+          "exitTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Exit timestamp (optional)"
+          },
+          "commission": {
+            "type": "number",
+            "format": "float",
+            "description": "Commission paid",
+            "example": 1
+          },
+          "fees": {
+            "type": "number",
+            "format": "float",
+            "description": "Additional fees",
+            "example": 0.5
+          },
+          "notes": {
+            "type": "string",
+            "description": "Trade notes"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Trade tags"
+          },
+          "instrumentType": {
+            "type": "string",
+            "enum": [
+              "stock",
+              "option",
+              "future",
+              "crypto"
+            ],
+            "default": "stock",
+            "description": "Type of instrument (also accepts instrument_type in snake_case)",
+            "example": "option"
+          },
+          "underlyingSymbol": {
+            "type": "string",
+            "description": "Underlying stock symbol for options (also accepts underlying_symbol)",
+            "example": "AAPL"
+          },
+          "optionType": {
+            "type": "string",
+            "enum": [
+              "call",
+              "put"
+            ],
+            "description": "Option type (also accepts option_type)",
+            "example": "call"
+          },
+          "strikePrice": {
+            "type": "number",
+            "format": "float",
+            "description": "Strike price for options (also accepts strike_price)",
+            "example": 150
+          },
+          "expirationDate": {
+            "type": "string",
+            "format": "date",
+            "description": "Expiration date for options (also accepts expiration_date)",
+            "example": "2024-12-20"
+          },
+          "contractSize": {
+            "type": "integer",
+            "description": "Contract size for options (defaults to 100) (also accepts contract_size)",
+            "example": 100
+          },
+          "underlyingAsset": {
+            "type": "string",
+            "description": "Underlying asset for futures (also accepts underlying_asset)",
+            "example": "ES"
+          },
+          "contractMonth": {
+            "type": "string",
+            "enum": [
+              "JAN",
+              "FEB",
+              "MAR",
+              "APR",
+              "MAY",
+              "JUN",
+              "JUL",
+              "AUG",
+              "SEP",
+              "OCT",
+              "NOV",
+              "DEC"
+            ],
+            "description": "Contract month for futures (also accepts contract_month)",
+            "example": "DEC"
+          },
+          "contractYear": {
+            "type": "integer",
+            "description": "Contract year for futures (also accepts contract_year)",
+            "example": 2024
+          },
+          "tickSize": {
+            "type": "number",
+            "format": "float",
+            "description": "Tick size for futures (also accepts tick_size)",
+            "example": 0.25
+          },
+          "pointValue": {
+            "type": "number",
+            "format": "float",
+            "description": "Point value for futures (also accepts point_value)",
+            "example": 50
+          },
+          "stopLoss": {
+            "type": "number",
+            "format": "float",
+            "description": "Stop loss price (also accepts stop_loss)",
+            "example": 145
+          },
+          "takeProfit": {
+            "type": "number",
+            "format": "float",
+            "description": "Take profit price (also accepts take_profit)",
+            "example": 160
+          },
+          "broker": {
+            "type": "string",
+            "description": "Broker name",
+            "example": "Interactive Brokers"
+          },
+          "account_identifier": {
+            "type": "string",
+            "description": "Account identifier",
+            "example": "U123456"
+          },
+          "strategy": {
+            "type": "string",
+            "description": "Trading strategy",
+            "example": "day_trading"
+          },
+          "setup": {
+            "type": "string",
+            "description": "Trade setup",
+            "example": "breakout"
+          }
+        }
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "User ID"
+          },
+          "username": {
+            "type": "string",
+            "description": "Username"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "description": "Email address"
+          },
+          "fullName": {
+            "type": "string",
+            "description": "Full name"
+          },
+          "tier": {
+            "type": "string",
+            "enum": [
+              "free",
+              "pro"
+            ],
+            "description": "User tier"
+          }
+        }
+      },
+      "Analytics": {
+        "type": "object",
+        "properties": {
+          "totalTrades": {
+            "type": "number",
+            "description": "Total number of trades"
+          },
+          "totalPnL": {
+            "type": "number",
+            "format": "float",
+            "description": "Total profit/loss"
+          },
+          "winRate": {
+            "type": "number",
+            "format": "float",
+            "description": "Win rate percentage"
+          },
+          "avgWin": {
+            "type": "number",
+            "format": "float",
+            "description": "Average winning trade"
+          },
+          "avgLoss": {
+            "type": "number",
+            "format": "float",
+            "description": "Average losing trade"
+          },
+          "profitFactor": {
+            "type": "number",
+            "format": "float",
+            "description": "Profit factor"
+          }
+        }
+      },
+      "HealthDataPoint": {
+        "type": "object",
+        "required": [
+          "date",
+          "type",
+          "value"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "description": "Date of the health data"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "sleep",
+              "heart_rate",
+              "heartRate"
+            ],
+            "description": "Type of health data. heartRate is accepted for backwards compatibility and stored as heart_rate."
+          },
+          "value": {
+            "type": "number",
+            "description": "Numeric value (hours for sleep, BPM for heart rate)"
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Additional metadata (sleep quality, HRV, etc.)"
+          }
+        }
+      },
+      "HealthCorrelation": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "sleep_hours": {
+            "type": "number"
+          },
+          "sleep_quality": {
+            "type": "number"
+          },
+          "avg_heart_rate": {
+            "type": "number"
+          },
+          "heart_rate_variability": {
+            "type": "number"
+          },
+          "total_pnl": {
+            "type": "number"
+          },
+          "win_rate": {
+            "type": "number"
+          },
+          "total_trades": {
+            "type": "integer"
+          }
+        }
+      },
+      "HealthInsight": {
+        "type": "object",
+        "properties": {
+          "insight_type": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "is_actionable": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/api/ai/sessions": {
+      "post": {
+        "summary": "Create a new AI analysis session",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "filters": {
+                    "type": "object",
+                    "description": "Optional filters to apply to trade analysis"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Session created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "session_id": {
+                      "type": "string"
+                    },
+                    "initial_analysis": {
+                      "type": "string"
+                    },
+                    "credits_used": {
+                      "type": "integer"
+                    },
+                    "credits_remaining": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient credits"
+          },
+          "403": {
+            "description": "Pro subscription required"
+          }
+        }
+      },
+      "get": {
+        "summary": "Get user's recent AI sessions",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 10
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sessions retrieved successfully"
+          }
+        }
+      }
+    },
+    "/api/ai/sessions/{id}": {
+      "get": {
+        "summary": "Get session details with message history",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Session retrieved successfully"
+          },
+          "404": {
+            "description": "Session not found"
+          }
+        }
+      }
+    },
+    "/api/ai/sessions/{id}/followup": {
+      "post": {
+        "summary": "Send a follow-up question in an existing session",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "message"
+                ],
+                "properties": {
+                  "message": {
+                    "type": "string",
+                    "description": "The follow-up question"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Response generated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "response": {
+                      "type": "string"
+                    },
+                    "followup_count": {
+                      "type": "integer"
+                    },
+                    "max_followups": {
+                      "type": "integer"
+                    },
+                    "credits_used": {
+                      "type": "integer"
+                    },
+                    "credits_remaining": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Message required"
+          },
+          "402": {
+            "description": "Insufficient credits"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "410": {
+            "description": "Session expired"
+          },
+          "429": {
+            "description": "Follow-up limit reached"
+          }
+        }
+      }
+    },
+    "/api/ai/sessions/{id}/close": {
+      "post": {
+        "summary": "Close an AI session",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Session closed successfully"
+          },
+          "404": {
+            "description": "Session not found"
+          }
+        }
+      }
+    },
+    "/api/ai/credits": {
+      "get": {
+        "summary": "Get user's AI credit balance",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Credits retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "credits": {
+                      "type": "object",
+                      "properties": {
+                        "allocated": {
+                          "type": "integer",
+                          "nullable": true,
+                          "description": "null if unlimited (self-hosted)"
+                        },
+                        "used": {
+                          "type": "integer"
+                        },
+                        "remaining": {
+                          "type": "integer",
+                          "nullable": true
+                        },
+                        "period_end": {
+                          "type": "string",
+                          "format": "date"
+                        },
+                        "unlimited": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "costs": {
+                      "type": "object",
+                      "properties": {
+                        "new_session": {
+                          "type": "integer"
+                        },
+                        "followup": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ai/credits/history": {
+      "get": {
+        "summary": "Get user's credit usage history",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 6
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Credit history retrieved successfully"
+          }
+        }
+      }
+    },
+    "/api/analytics/overview": {
+      "get": {
+        "summary": "Get analytics overview",
+        "tags": [
+          "Analytics"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Analytics overview data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Analytics"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/analytics/maemfe": {
+      "get": {
+        "summary": "Get MAE/MFE analysis",
+        "tags": [
+          "Analytics"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "MAE/MFE analysis data"
+          }
+        }
+      }
+    },
+    "/api/analytics/performance": {
+      "get": {
+        "summary": "Get performance metrics",
+        "tags": [
+          "Analytics"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Performance metrics"
+          }
+        }
+      }
+    },
+    "/api/analytics/symbols": {
+      "get": {
+        "summary": "Get symbol statistics",
+        "tags": [
+          "Analytics"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Symbol performance statistics"
+          }
+        }
+      }
+    },
+    "/api/analytics/tags": {
+      "get": {
+        "summary": "Get tag statistics",
+        "tags": [
+          "Analytics"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tag performance statistics"
+          }
+        }
+      }
+    },
+    "/api/analytics/strategies": {
+      "get": {
+        "summary": "Get strategy/setup statistics",
+        "tags": [
+          "Analytics"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Strategy performance statistics"
+          }
+        }
+      }
+    },
+    "/api/analytics/hours": {
+      "get": {
+        "summary": "Get hour of day statistics",
+        "tags": [
+          "Analytics"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Hour of day performance statistics"
+          }
+        }
+      }
+    },
+    "/api/v2/trades": {
+      "get": {
+        "summary": "List trades (V2)",
+        "description": "Returns paginated trades for the authenticated user. Deprecated - use GET /api/trades instead.",
+        "tags": [
+          "V2 Trades (Deprecated)"
+        ],
+        "deprecated": true,
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "in": "query",
+            "name": "symbol",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "side",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "long",
+                "short"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open",
+                "closed"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of trades"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Insufficient scope"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a trade (V2)",
+        "description": "Creates a new trade. Deprecated - use POST /api/trades instead.",
+        "tags": [
+          "V2 Trades (Deprecated)"
+        ],
+        "deprecated": true,
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTrade"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Trade created"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "403": {
+            "description": "Insufficient scope"
+          }
+        }
+      }
+    },
+    "/api/v2/trades/{id}": {
+      "get": {
+        "summary": "Get trade by ID (V2)",
+        "description": "Returns a single trade. Deprecated - use GET /api/trades/{id} instead.",
+        "tags": [
+          "V2 Trades (Deprecated)"
+        ],
+        "deprecated": true,
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Trade details"
+          },
+          "400": {
+            "description": "Trade not found"
+          },
+          "403": {
+            "description": "Insufficient scope"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update trade (V2)",
+        "description": "Updates an existing trade. Deprecated - use PUT /api/trades/{id} instead.",
+        "tags": [
+          "V2 Trades (Deprecated)"
+        ],
+        "deprecated": true,
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTrade"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Trade updated"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "403": {
+            "description": "Insufficient scope"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete trade (V2)",
+        "description": "Deletes a trade. Deprecated - use DELETE /api/trades/{id} instead.",
+        "tags": [
+          "V2 Trades (Deprecated)"
+        ],
+        "deprecated": true,
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Trade deleted"
+          },
+          "403": {
+            "description": "Insufficient scope"
+          },
+          "404": {
+            "description": "Trade not found"
+          }
+        }
+      }
+    },
+    "/api/v2/analytics/overview": {
+      "get": {
+        "summary": "Analytics overview (V2)",
+        "description": "Returns comprehensive trading analytics including total P&L, win rate, profit factor, average win/loss, best/worst trades, and streak data. Supports all trade filters.\n",
+        "tags": [
+          "V2 Analytics (Deprecated)"
+        ],
+        "deprecated": true,
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "startDate",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "endDate",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "symbol",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "accounts",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated account identifiers"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Analytics overview data"
+          },
+          "403": {
+            "description": "Insufficient scope"
+          }
+        }
+      }
+    },
+    "/api/v2/analytics/performance": {
+      "get": {
+        "summary": "Performance over time (V2)",
+        "description": "Returns P&L performance grouped by daily, weekly, or monthly periods.",
+        "tags": [
+          "V2 Analytics (Deprecated)"
+        ],
+        "deprecated": true,
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "period",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "daily",
+                "weekly",
+                "monthly"
+              ],
+              "default": "daily"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Performance data over time"
+          },
+          "403": {
+            "description": "Insufficient scope"
+          }
+        }
+      }
+    },
+    "/api/v2/analytics/calendar": {
+      "get": {
+        "summary": "Calendar heatmap data (V2)",
+        "description": "Returns daily P&L data for a calendar year heatmap visualization. Requires year parameter.",
+        "tags": [
+          "V2 Analytics (Deprecated)"
+        ],
+        "deprecated": true,
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "year",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Year to fetch calendar data for"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Daily P&L data for calendar heatmap"
+          },
+          "400": {
+            "description": "Year parameter required"
+          },
+          "403": {
+            "description": "Insufficient scope"
+          }
+        }
+      }
+    },
+    "/api/v2/analytics/symbols": {
+      "get": {
+        "summary": "Symbol statistics (V2)",
+        "description": "Returns per-symbol trading statistics including P&L, trade count, and win rate.",
+        "tags": [
+          "V2 Analytics (Deprecated)"
+        ],
+        "deprecated": true,
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 10
+            },
+            "description": "Max number of symbols to return"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Per-symbol statistics"
+          },
+          "403": {
+            "description": "Insufficient scope"
+          }
+        }
+      }
+    },
+    "/api/v2/analytics/charts": {
+      "get": {
+        "summary": "Chart data (V2)",
+        "description": "Returns formatted data for equity curve, P&L distribution, and other chart visualizations.",
+        "tags": [
+          "V2 Analytics (Deprecated)"
+        ],
+        "deprecated": true,
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Chart visualization data"
+          },
+          "403": {
+            "description": "Insufficient scope"
+          }
+        }
+      }
+    },
+    "/api/auth/config": {
+      "get": {
+        "summary": "Get registration configuration",
+        "tags": [
+          "Authentication"
+        ],
+        "responses": {
+          "200": {
+            "description": "Registration configuration"
+          }
+        }
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "summary": "Register a new user",
+        "tags": [
+          "Authentication"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "username",
+                  "email",
+                  "password"
+                ],
+                "properties": {
+                  "username": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 8
+                  },
+                  "fullName": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "User registered successfully"
+          },
+          "400": {
+            "description": "Validation error"
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "summary": "Login user",
+        "tags": [
+          "Authentication"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email",
+                  "password"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "password": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "token": {
+                      "type": "string"
+                    },
+                    "user": {
+                      "$ref": "#/components/schemas/User"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid credentials"
+          }
+        }
+      }
+    },
+    "/api/auth/verify-2fa": {
+      "post": {
+        "summary": "Verify 2FA code",
+        "tags": [
+          "Authentication"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "token",
+                  "code"
+                ],
+                "properties": {
+                  "token": {
+                    "type": "string"
+                  },
+                  "code": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "2FA verified successfully"
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "summary": "Logout user",
+        "tags": [
+          "Authentication"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Logout successful"
+          }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "summary": "Get current user info",
+        "tags": [
+          "Authentication"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "summary": "Refresh access token",
+        "tags": [
+          "Authentication"
+        ],
+        "responses": {
+          "200": {
+            "description": "Token refreshed successfully"
+          }
+        }
+      }
+    },
+    "/api/auth/forgot-password": {
+      "post": {
+        "summary": "Request password reset",
+        "tags": [
+          "Authentication"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Password reset email sent"
+          }
+        }
+      }
+    },
+    "/api/auth/reset-password": {
+      "post": {
+        "summary": "Reset password with token",
+        "tags": [
+          "Authentication"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "token",
+                  "password"
+                ],
+                "properties": {
+                  "token": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 8
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Password reset successful"
+          }
+        }
+      }
+    },
+    "/api/health/data": {
+      "post": {
+        "summary": "Submit health data from mobile app",
+        "description": "Uploads normalized health data from mobile or wearable integrations",
+        "tags": [
+          "Health"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "healthData": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/HealthDataPoint"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Health data submitted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "summary": {
+                      "type": "object",
+                      "properties": {
+                        "inserted": {
+                          "type": "integer"
+                        },
+                        "updated": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request data"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Requires Pro subscription"
+          }
+        }
+      },
+      "get": {
+        "summary": "Get user's health data",
+        "description": "Retrieves stored health data for the authenticated user",
+        "tags": [
+          "Health"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "startDate",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Start date for data range"
+          },
+          {
+            "in": "query",
+            "name": "endDate",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "End date for data range"
+          },
+          {
+            "in": "query",
+            "name": "dataType",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "sleep",
+                "heart_rate",
+                "heartRate"
+              ]
+            },
+            "description": "Filter by data type. heartRate is accepted as an alias for heart_rate."
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 100
+            },
+            "description": "Maximum number of records to return"
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            },
+            "description": "Number of records to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Health data retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/HealthDataPoint"
+                      }
+                    },
+                    "pagination": {
+                      "type": "object",
+                      "properties": {
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "offset": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Requires Pro subscription"
+          }
+        }
+      }
+    },
+    "/api/health/analyze": {
+      "post": {
+        "summary": "Perform health-trading correlation analysis",
+        "description": "Analyzes correlations between health metrics and trading performance",
+        "tags": [
+          "Health"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "startDate": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Analysis start date (defaults to 30 days ago)"
+                  },
+                  "endDate": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Analysis end date (defaults to today)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Analysis completed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "correlations": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/HealthCorrelation"
+                          }
+                        },
+                        "insights": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/HealthInsight"
+                          }
+                        },
+                        "summary": {
+                          "type": "object",
+                          "properties": {
+                            "dateRange": {
+                              "type": "object"
+                            },
+                            "healthDataPoints": {
+                              "type": "integer"
+                            },
+                            "tradingDays": {
+                              "type": "integer"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Requires Pro subscription"
+          }
+        }
+      }
+    },
+    "/api/health/insights": {
+      "get": {
+        "summary": "Get health insights for user",
+        "description": "Retrieves AI-generated insights about health-trading correlations",
+        "tags": [
+          "Health"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 10
+            },
+            "description": "Maximum number of insights to return"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Insights retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "insights": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/HealthInsight"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Requires Pro subscription"
+          }
+        }
+      }
+    },
+    "/api/health/correlate-trades": {
+      "post": {
+        "summary": "Correlate health data with trades",
+        "description": "Updates trades table with health metrics from health_data table based on matching dates",
+        "tags": [
+          "Health"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Health data correlated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "updatedCount": {
+                      "type": "integer"
+                    },
+                    "datesProcessed": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Requires Pro subscription"
+          }
+        }
+      }
+    },
+    "/api/instrument-templates": {
+      "get": {
+        "summary": "Get all instrument templates for the authenticated user",
+        "tags": [
+          "Instrument Templates"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "instrument_type",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "future",
+                "option"
+              ]
+            },
+            "description": "Filter by instrument type"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of instrument templates"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a new instrument template",
+        "tags": [
+          "Instrument Templates"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "instrument_type"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "instrument_type": {
+                    "type": "string",
+                    "enum": [
+                      "future",
+                      "option"
+                    ]
+                  },
+                  "symbol": {
+                    "type": "string"
+                  },
+                  "underlying_symbol": {
+                    "type": "string"
+                  },
+                  "contract_size": {
+                    "type": "integer"
+                  },
+                  "underlying_asset": {
+                    "type": "string"
+                  },
+                  "tick_size": {
+                    "type": "number"
+                  },
+                  "point_value": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Template created successfully"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Template with this name already exists"
+          }
+        }
+      }
+    },
+    "/api/instrument-templates/{id}": {
+      "get": {
+        "summary": "Get a single instrument template by ID",
+        "tags": [
+          "Instrument Templates"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Instrument template details"
+          },
+          "404": {
+            "description": "Template not found"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update an instrument template",
+        "tags": [
+          "Instrument Templates"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Template updated successfully"
+          },
+          "404": {
+            "description": "Template not found"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete an instrument template",
+        "tags": [
+          "Instrument Templates"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Template deleted successfully"
+          },
+          "404": {
+            "description": "Template not found"
+          }
+        }
+      }
+    },
+    "/api/news-correlation/analytics": {
+      "get": {
+        "summary": "Get comprehensive news sentiment correlation analytics",
+        "tags": [
+          "News Correlation"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "startDate",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Start date for analysis (YYYY-MM-DD)"
+          },
+          {
+            "in": "query",
+            "name": "endDate",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "End date for analysis (YYYY-MM-DD)"
+          },
+          {
+            "in": "query",
+            "name": "symbol",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by specific symbol"
+          },
+          {
+            "in": "query",
+            "name": "sector",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by sector"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "News sentiment correlation analytics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "overall_performance": {
+                      "type": "object",
+                      "description": "Performance metrics by sentiment and side"
+                    },
+                    "timing_analysis": {
+                      "type": "object",
+                      "description": "Timing patterns relative to news events"
+                    },
+                    "direction_bias": {
+                      "type": "object",
+                      "description": "Long/short bias based on news sentiment"
+                    },
+                    "sentiment_accuracy": {
+                      "type": "object",
+                      "description": "How well sentiment predictions align with outcomes"
+                    },
+                    "top_performers": {
+                      "type": "array",
+                      "description": "Best performing sentiment/symbol combinations"
+                    },
+                    "insights": {
+                      "type": "array",
+                      "description": "Generated insights and recommendations"
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "description": "Analysis metadata and filters"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Feature not available for user tier"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/news-correlation/summary": {
+      "get": {
+        "summary": "Get news correlation summary for dashboard",
+        "tags": [
+          "News Correlation"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "News correlation summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "description": "Whether the feature is enabled"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "total_trades_with_news": {
+                          "type": "integer"
+                        },
+                        "overall_win_rate": {
+                          "type": "number"
+                        },
+                        "avg_pnl": {
+                          "type": "number"
+                        },
+                        "sentiment_breakdown": {
+                          "type": "object"
+                        },
+                        "performance_by_sentiment": {
+                          "type": "object"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/news-correlation/enabled": {
+      "get": {
+        "summary": "Check if news correlation analytics is enabled",
+        "tags": [
+          "News Correlation"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Feature availability status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/news-correlation/performer-details": {
+      "get": {
+        "summary": "Get detailed trades and news for a specific performer combination",
+        "tags": [
+          "News Correlation"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "symbol",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Stock symbol"
+          },
+          {
+            "in": "query",
+            "name": "sentiment",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "positive",
+                "negative",
+                "neutral"
+              ]
+            },
+            "description": "News sentiment"
+          },
+          {
+            "in": "query",
+            "name": "side",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "long",
+                "short"
+              ]
+            },
+            "description": "Trade side"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Detailed trades and news data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "integer"
+                      },
+                      "symbol": {
+                        "type": "string"
+                      },
+                      "trade_date": {
+                        "type": "string",
+                        "format": "date"
+                      },
+                      "entry_price": {
+                        "type": "number"
+                      },
+                      "exit_price": {
+                        "type": "number"
+                      },
+                      "quantity": {
+                        "type": "number"
+                      },
+                      "pnl": {
+                        "type": "number"
+                      },
+                      "news_headlines": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing required parameters"
+          },
+          "403": {
+            "description": "Feature not available for user tier"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/news-enrichment/stats": {
+      "get": {
+        "summary": "Get news enrichment statistics",
+        "tags": [
+          "News Enrichment"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "News enrichment statistics"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/news-enrichment/backfill": {
+      "post": {
+        "summary": "Start news backfill for existing trades",
+        "tags": [
+          "News Enrichment"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "userId": {
+                    "type": "string",
+                    "description": "User ID to backfill (admin only, defaults to current user)"
+                  },
+                  "batchSize": {
+                    "type": "integer",
+                    "default": 50,
+                    "description": "Number of symbol/date combinations to process per batch"
+                  },
+                  "maxTrades": {
+                    "type": "integer",
+                    "description": "Maximum number of trades to process (for testing)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Backfill job started"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/news-enrichment/news/{symbol}/{date}": {
+      "get": {
+        "summary": "Get cached news for a symbol and date",
+        "tags": [
+          "News Enrichment"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "symbol",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Stock symbol"
+          },
+          {
+            "in": "path",
+            "name": "date",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Date (YYYY-MM-DD)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "News data for the symbol and date"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/notification-preferences": {
+      "get": {
+        "summary": "Get user's notification preferences",
+        "tags": [
+          "Notification Preferences"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User notification preferences",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "notify_news_open_positions": {
+                      "type": "boolean",
+                      "description": "Notifications for news on open positions"
+                    },
+                    "notify_earnings_announcements": {
+                      "type": "boolean",
+                      "description": "Notifications for earnings announcements"
+                    },
+                    "notify_price_alerts": {
+                      "type": "boolean",
+                      "description": "Notifications for price alerts"
+                    },
+                    "notify_trade_reminders": {
+                      "type": "boolean",
+                      "description": "Notifications for trade reminders"
+                    },
+                    "notify_market_events": {
+                      "type": "boolean",
+                      "description": "Notifications for market events"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update user's notification preferences",
+        "tags": [
+          "Notification Preferences"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "notify_news_open_positions": {
+                    "type": "boolean",
+                    "description": "Notifications for news on open positions"
+                  },
+                  "notify_earnings_announcements": {
+                    "type": "boolean",
+                    "description": "Notifications for earnings announcements"
+                  },
+                  "notify_price_alerts": {
+                    "type": "boolean",
+                    "description": "Notifications for price alerts"
+                  },
+                  "notify_trade_reminders": {
+                    "type": "boolean",
+                    "description": "Notifications for trade reminders"
+                  },
+                  "notify_market_events": {
+                    "type": "boolean",
+                    "description": "Notifications for market events"
+                  }
+                },
+                "example": {
+                  "notify_news_open_positions": true,
+                  "notify_earnings_announcements": true,
+                  "notify_price_alerts": false
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Preferences updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "preferences": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request data"
+          },
+          "404": {
+            "description": "User not found"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/notification-preferences/definitions": {
+      "get": {
+        "summary": "Get notification preference definitions and descriptions",
+        "tags": [
+          "Notification Preferences"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Notification preference definitions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "label": {
+                        "type": "string",
+                        "description": "Human-readable label"
+                      },
+                      "description": {
+                        "type": "string",
+                        "description": "Detailed description"
+                      },
+                      "category": {
+                        "type": "string",
+                        "description": "Preference category"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/notification-preferences/check/{preference}": {
+      "get": {
+        "summary": "Check if specific notification preference is enabled",
+        "tags": [
+          "Notification Preferences"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "preference",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "notify_news_open_positions",
+                "notify_earnings_announcements",
+                "notify_price_alerts",
+                "notify_trade_reminders",
+                "notify_market_events"
+              ]
+            },
+            "description": "Preference type to check"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Preference status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "preference": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid preference type"
+          },
+          "404": {
+            "description": "User not found"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/tags": {
+      "get": {
+        "summary": "Get all tags for the authenticated user",
+        "tags": [
+          "Tags"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of user tags"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a new tag",
+        "tags": [
+          "Tags"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 50
+                  },
+                  "color": {
+                    "type": "string",
+                    "pattern": "^#[0-9A-Fa-f]{6}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Tag created successfully"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Tag already exists"
+          }
+        }
+      }
+    },
+    "/api/tags/{id}": {
+      "put": {
+        "summary": "Update a tag",
+        "tags": [
+          "Tags"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 50
+                  },
+                  "color": {
+                    "type": "string",
+                    "pattern": "^#[0-9A-Fa-f]{6}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tag updated successfully"
+          },
+          "404": {
+            "description": "Tag not found"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a tag",
+        "tags": [
+          "Tags"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tag deleted successfully"
+          },
+          "404": {
+            "description": "Tag not found"
+          }
+        }
+      }
+    },
+    "/api/trades": {
+      "get": {
+        "summary": "Get user's trades",
+        "tags": [
+          "Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            },
+            "description": "Page number"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            },
+            "description": "Number of trades per page"
+          },
+          {
+            "in": "query",
+            "name": "symbol",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by symbol"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of trades",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "trades": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Trade"
+                      }
+                    },
+                    "pagination": {
+                      "type": "object",
+                      "properties": {
+                        "total": {
+                          "type": "integer"
+                        },
+                        "page": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a new trade",
+        "tags": [
+          "Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTrade"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Trade created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "trade": {
+                      "$ref": "#/components/schemas/Trade"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/trades/count": {
+      "get": {
+        "summary": "Get total trade count",
+        "description": "Returns the total number of trades for the authenticated user, respecting any active filters.",
+        "tags": [
+          "Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "symbol",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by symbol"
+          },
+          {
+            "in": "query",
+            "name": "side",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "long",
+                "short"
+              ]
+            },
+            "description": "Filter by trade direction"
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open",
+                "closed"
+              ]
+            },
+            "description": "Filter by trade status"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Trade count",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "count": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/trades/shell": {
+      "post": {
+        "summary": "Create a shell trade (no executions)",
+        "description": "Creates a trade with metadata only (symbol, side, strategy, etc.) but no entry/exit executions. Use POST /api/trades/{id}/fills to add executions incrementally after creation.\n",
+        "tags": [
+          "Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "symbol",
+                  "side"
+                ],
+                "properties": {
+                  "symbol": {
+                    "type": "string",
+                    "maxLength": 20,
+                    "example": "AAPL"
+                  },
+                  "side": {
+                    "type": "string",
+                    "enum": [
+                      "long",
+                      "short"
+                    ]
+                  },
+                  "instrumentType": {
+                    "type": "string",
+                    "enum": [
+                      "stock",
+                      "option",
+                      "future",
+                      "crypto"
+                    ],
+                    "default": "stock"
+                  },
+                  "broker": {
+                    "type": "string",
+                    "maxLength": 50
+                  },
+                  "account_identifier": {
+                    "type": "string",
+                    "maxLength": 50
+                  },
+                  "strategy": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "setup": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "notes": {
+                    "type": "string"
+                  },
+                  "confidence": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10
+                  },
+                  "stopLoss": {
+                    "type": "number"
+                  },
+                  "takeProfit": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Shell trade created"
+          },
+          "400": {
+            "description": "Validation error"
+          }
+        }
+      }
+    },
+    "/api/trades/export/csv": {
+      "get": {
+        "summary": "Export trades to CSV",
+        "description": "Export all trades matching the filter criteria to a CSV file with generic headers",
+        "tags": [
+          "Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "symbol",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by symbol"
+          },
+          {
+            "in": "query",
+            "name": "startDate",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Start date for filtering"
+          },
+          {
+            "in": "query",
+            "name": "endDate",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "End date for filtering"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CSV file download",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/trades/round-trip": {
+      "get": {
+        "summary": "Get round trip trades",
+        "tags": [
+          "Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of round trip trades"
+          }
+        }
+      }
+    },
+    "/api/trades/enrichment-status": {
+      "get": {
+        "summary": "Get trade enrichment status",
+        "tags": [
+          "Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Enrichment status"
+          }
+        }
+      }
+    },
+    "/api/trades/force-complete-enrichment": {
+      "post": {
+        "summary": "NUCLEAR OPTION - Force complete ALL enrichment jobs",
+        "tags": [
+          "Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "All enrichment force completed"
+          }
+        }
+      }
+    },
+    "/api/trades/open-positions-quotes": {
+      "get": {
+        "summary": "Get open positions with quotes",
+        "tags": [
+          "Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Open positions with current quotes"
+          }
+        }
+      }
+    },
+    "/api/trades/public": {
+      "get": {
+        "summary": "Get public trades",
+        "tags": [
+          "Trades"
+        ],
+        "responses": {
+          "200": {
+            "description": "List of public trades"
+          }
+        }
+      }
+    },
+    "/api/trades/analytics": {
+      "get": {
+        "summary": "Get trade analytics",
+        "tags": [
+          "Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Trade analytics data"
+          }
+        }
+      }
+    },
+    "/api/trades/analytics/monthly": {
+      "get": {
+        "summary": "Get monthly performance metrics",
+        "tags": [
+          "Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "year",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Year for monthly breakdown (defaults to current year)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Monthly performance metrics"
+          }
+        }
+      }
+    },
+    "/api/trades/symbols": {
+      "get": {
+        "summary": "Get symbol list",
+        "tags": [
+          "Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of available symbols"
+          }
+        }
+      }
+    },
+    "/api/trades/strategies": {
+      "get": {
+        "summary": "Get strategy list",
+        "tags": [
+          "Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of available strategies"
+          }
+        }
+      }
+    },
+    "/api/trades/setups": {
+      "get": {
+        "summary": "Get list of setups used by the user",
+        "tags": [
+          "Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of available setups"
+          }
+        }
+      }
+    },
+    "/api/trades/brokers": {
+      "get": {
+        "summary": "Get list of brokers used by the user",
+        "tags": [
+          "Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of available brokers"
+          }
+        }
+      }
+    },
+    "/api/trades/accounts": {
+      "get": {
+        "summary": "Get list of account identifiers used by the user",
+        "tags": [
+          "Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of available account identifiers (redacted)"
+          }
+        }
+      }
+    },
+    "/api/trades/import": {
+      "post": {
+        "summary": "Import trades from file",
+        "tags": [
+          "Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "CSV file containing trades"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Import started successfully"
+          }
+        }
+      }
+    },
+    "/api/trades/import/requirements": {
+      "get": {
+        "summary": "Check import requirements (account selection)",
+        "tags": [
+          "Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Import requirements including available accounts"
+          }
+        }
+      }
+    },
+    "/api/trades/import/validate": {
+      "post": {
+        "summary": "Validate import file before importing",
+        "description": "Pre-validates a CSV file to detect broker format mismatch and provide file analysis",
+        "tags": [
+          "Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "CSV file to validate"
+                  },
+                  "broker": {
+                    "type": "string",
+                    "description": "User-selected broker format"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Validation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detectedBroker": {
+                      "type": "string"
+                    },
+                    "selectedBroker": {
+                      "type": "string"
+                    },
+                    "mismatch": {
+                      "type": "boolean"
+                    },
+                    "detectedHeaders": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "rowCount": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/trades/import/status/{importId}": {
+      "get": {
+        "summary": "Get import status",
+        "tags": [
+          "Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "importId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Import status"
+          }
+        }
+      }
+    },
+    "/api/trades/import/history": {
+      "get": {
+        "summary": "Get import history",
+        "tags": [
+          "Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of previous imports"
+          }
+        }
+      }
+    },
+    "/api/trades/import/{importId}": {
+      "delete": {
+        "summary": "Delete import",
+        "tags": [
+          "Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "importId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Import deleted successfully"
+          }
+        }
+      }
+    },
+    "/api/trades/bulk": {
+      "delete": {
+        "summary": "Bulk delete trades",
+        "tags": [
+          "Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "tradeIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "description": "Array of trade IDs to delete"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Bulk delete completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "deletedCount": {
+                      "type": "integer"
+                    },
+                    "totalRequested": {
+                      "type": "integer"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "tradeId": {
+                            "type": "string"
+                          },
+                          "error": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/trades/bulk/tags": {
+      "post": {
+        "summary": "Bulk add tags to trades",
+        "tags": [
+          "Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "tradeIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "description": "Array of trade IDs to add tags to"
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Array of tag names to add"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Bulk tag update completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "updatedCount": {
+                      "type": "integer"
+                    },
+                    "totalRequested": {
+                      "type": "integer"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "tradeId": {
+                            "type": "string"
+                          },
+                          "error": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/trades/earnings": {
+      "get": {
+        "summary": "Get upcoming earnings",
+        "tags": [
+          "Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of upcoming earnings"
+          }
+        }
+      }
+    },
+    "/api/trades/news": {
+      "get": {
+        "summary": "Get trade-related news",
+        "tags": [
+          "Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of trade-related news"
+          }
+        }
+      }
+    },
+    "/api/trades/{id}": {
+      "get": {
+        "summary": "Get trade by ID",
+        "tags": [
+          "Trades"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Trade details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Trade"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Update trade",
+        "tags": [
+          "Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTrade"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Trade updated successfully"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete trade",
+        "tags": [
+          "Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Trade deleted successfully"
+          }
+        }
+      }
+    },
+    "/api/trades/{id}/fills": {
+      "post": {
+        "summary": "Add a fill (execution) to an existing trade",
+        "description": "Appends a single execution to a trade. The trade's entry/exit price, quantity, P&L, and open/closed status are recalculated automatically from all fills. Use with shell trades or to add partial fills to any trade.\n",
+        "tags": [
+          "Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Trade ID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "action",
+                  "quantity",
+                  "price",
+                  "datetime"
+                ],
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "buy",
+                      "sell"
+                    ],
+                    "description": "Fill direction"
+                  },
+                  "quantity": {
+                    "type": "number",
+                    "minimum": 0,
+                    "exclusiveMinimum": true,
+                    "description": "Number of shares/contracts",
+                    "example": 50
+                  },
+                  "price": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "Fill price per share/contract",
+                    "example": 152.3
+                  },
+                  "datetime": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Execution timestamp",
+                    "example": "2025-01-15T14:30:00Z"
+                  },
+                  "commission": {
+                    "type": "number",
+                    "default": 0,
+                    "description": "Commission for this fill"
+                  },
+                  "fees": {
+                    "type": "number",
+                    "default": 0,
+                    "description": "Additional fees for this fill"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Fill added, trade recalculated"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "404": {
+            "description": "Trade not found"
+          }
+        }
+      }
+    },
+    "/api/users/profile": {
+      "get": {
+        "summary": "Get user profile",
+        "tags": [
+          "Users"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User profile data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Update user profile",
+        "tags": [
+          "Users"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "fullName": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Profile updated successfully"
+          }
+        }
+      }
+    },
+    "/api/users/avatar": {
+      "post": {
+        "summary": "Upload user avatar",
+        "tags": [
+          "Users"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "avatar": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Avatar uploaded successfully"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete user avatar",
+        "tags": [
+          "Users"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Avatar deleted successfully"
+          }
+        }
+      }
+    },
+    "/api/users/password": {
+      "put": {
+        "summary": "Change user password",
+        "tags": [
+          "Users"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "currentPassword",
+                  "newPassword"
+                ],
+                "properties": {
+                  "currentPassword": {
+                    "type": "string"
+                  },
+                  "newPassword": {
+                    "type": "string",
+                    "minLength": 6
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Password changed successfully"
+          }
+        }
+      }
+    },
+    "/api/users/quality-weights": {
+      "get": {
+        "summary": "Get user's quality grading weight preferences",
+        "tags": [
+          "Users"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User's quality weight preferences",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "qualityWeights": {
+                      "type": "object",
+                      "properties": {
+                        "news": {
+                          "type": "integer",
+                          "description": "News sentiment weight percentage (0-100)"
+                        },
+                        "gap": {
+                          "type": "integer",
+                          "description": "Gap from previous close weight percentage (0-100)"
+                        },
+                        "relativeVolume": {
+                          "type": "integer",
+                          "description": "Relative volume weight percentage (0-100)"
+                        },
+                        "float": {
+                          "type": "integer",
+                          "description": "Float/shares outstanding weight percentage (0-100)"
+                        },
+                        "priceRange": {
+                          "type": "integer",
+                          "description": "Price range weight percentage (0-100)"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Update user's quality grading weight preferences",
+        "tags": [
+          "Users"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "news",
+                  "gap",
+                  "relativeVolume",
+                  "float",
+                  "priceRange"
+                ],
+                "properties": {
+                  "news": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100,
+                    "description": "News sentiment weight percentage"
+                  },
+                  "gap": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100,
+                    "description": "Gap from previous close weight percentage"
+                  },
+                  "relativeVolume": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100,
+                    "description": "Relative volume weight percentage"
+                  },
+                  "float": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100,
+                    "description": "Float/shares outstanding weight percentage"
+                  },
+                  "priceRange": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100,
+                    "description": "Price range weight percentage"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Quality weights updated successfully"
+          },
+          "400": {
+            "description": "Invalid weights (must sum to 100)"
+          }
+        }
+      }
+    },
+    "/api/users/api-usage": {
+      "get": {
+        "summary": "Get API usage statistics for current user",
+        "tags": [
+          "Users"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "API usage statistics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "tier": {
+                          "type": "string",
+                          "enum": [
+                            "free",
+                            "pro"
+                          ]
+                        },
+                        "billingEnabled": {
+                          "type": "boolean"
+                        },
+                        "unlimited": {
+                          "type": "boolean"
+                        },
+                        "endpoints": {
+                          "type": "object",
+                          "properties": {
+                            "quote": {
+                              "type": "object",
+                              "properties": {
+                                "limit": {
+                                  "oneOf": [
+                                    {
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "used": {
+                                  "type": "integer"
+                                },
+                                "remaining": {
+                                  "oneOf": [
+                                    {
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "resetAt": {
+                                  "type": "string",
+                                  "format": "date-time"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/users/account": {
+      "delete": {
+        "summary": "Delete own account",
+        "description": "Permanently delete the authenticated user's account. Requires password confirmation.",
+        "tags": [
+          "Users"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "password"
+                ],
+                "properties": {
+                  "password": {
+                    "type": "string",
+                    "description": "Current password to confirm deletion"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Account deleted successfully"
+          },
+          "400": {
+            "description": "Cannot delete last admin account"
+          },
+          "401": {
+            "description": "Incorrect password"
+          }
+        }
+      }
+    },
+    "/api/v1/analytics/drawdown": {
+      "get": {
+        "summary": "Drawdown analysis (V1)",
+        "description": "Returns daily P&L, cumulative P&L, running max, and drawdown values ordered by trade date. Useful for charting equity drawdown curves.\n",
+        "tags": [
+          "V1 Analytics"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "startDate",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "endDate",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "accounts",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated account identifiers"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Drawdown analysis data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "drawdown": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "trade_date": {
+                            "type": "string",
+                            "format": "date"
+                          },
+                          "daily_pnl": {
+                            "type": "number"
+                          },
+                          "cumulative_pnl": {
+                            "type": "number"
+                          },
+                          "running_max_pnl": {
+                            "type": "number"
+                          },
+                          "drawdown": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Insufficient scope"
+          }
+        }
+      }
+    },
+    "/api/v1/trades": {
+      "get": {
+        "summary": "List trades (V1)",
+        "description": "Returns paginated trades with full filtering support. Supports limit/offset pagination and all standard trade filters (symbol, side, status, date range, etc.).\n",
+        "tags": [
+          "V1 Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            },
+            "description": "Max trades to return"
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            },
+            "description": "Number of trades to skip"
+          },
+          {
+            "in": "query",
+            "name": "symbol",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "side",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "long",
+                "short"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open",
+                "closed"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "startDate",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "endDate",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "accounts",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated account identifiers"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated trade list with metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Trade"
+                      }
+                    },
+                    "pagination": {
+                      "type": "object",
+                      "properties": {
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "offset": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "hasMore": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Insufficient scope"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a trade (V1)",
+        "description": "Creates a new trade. Supports idempotency via the Idempotency-Key header to safely retry requests without creating duplicates.\n",
+        "tags": [
+          "V1 Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unique key to prevent duplicate creation on retries (1-255 chars)"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTrade"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Trade created"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "403": {
+            "description": "Insufficient scope"
+          }
+        }
+      }
+    },
+    "/api/v1/trades/bulk": {
+      "post": {
+        "summary": "Bulk create trades (V1)",
+        "description": "Creates multiple trades in a single request. Returns per-item results with partial failure support. Supports idempotency via header.\n",
+        "tags": [
+          "V1 Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unique key to prevent duplicate creation on retries"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "trades"
+                ],
+                "properties": {
+                  "trades": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/CreateTrade"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Bulk creation results with per-item status"
+          },
+          "403": {
+            "description": "Insufficient scope"
+          }
+        }
+      },
+      "put": {
+        "summary": "Bulk update trades (V1)",
+        "description": "Updates multiple trades in a single request. Each item must include the trade ID.",
+        "tags": [
+          "V1 Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "trades"
+                ],
+                "properties": {
+                  "trades": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Bulk update results"
+          },
+          "403": {
+            "description": "Insufficient scope"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Bulk delete trades (V1)",
+        "description": "Deletes multiple trades by ID in a single request.",
+        "tags": [
+          "V1 Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ids"
+                ],
+                "properties": {
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Bulk delete results"
+          },
+          "403": {
+            "description": "Insufficient scope"
+          }
+        }
+      }
+    },
+    "/api/v1/trades/summary/quick": {
+      "get": {
+        "summary": "Quick trading summary (V1)",
+        "description": "Returns a compact summary of the user's trading activity including total trades, open trades, total P&L, win rate, and recent activity.\n",
+        "tags": [
+          "V1 Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Quick summary data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "totalTrades": {
+                      "type": "integer"
+                    },
+                    "openTrades": {
+                      "type": "integer"
+                    },
+                    "totalPnl": {
+                      "type": "number"
+                    },
+                    "winRate": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Insufficient scope"
+          }
+        }
+      }
+    },
+    "/api/v1/trades/recent": {
+      "get": {
+        "summary": "Recent trades (V1)",
+        "description": "Returns the most recent trades ordered by entry time descending.",
+        "tags": [
+          "V1 Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 10
+            },
+            "description": "Number of recent trades to return"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of recent trades"
+          },
+          "403": {
+            "description": "Insufficient scope"
+          }
+        }
+      }
+    },
+    "/api/v1/trades/{id}": {
+      "get": {
+        "summary": "Get trade by ID (V1)",
+        "description": "Returns a single trade with all fields including executions and metadata.",
+        "tags": [
+          "V1 Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Trade details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Trade"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Insufficient scope"
+          },
+          "404": {
+            "description": "Trade not found"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update trade (V1)",
+        "description": "Updates an existing trade. Only provided fields are updated.",
+        "tags": [
+          "V1 Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTrade"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Trade updated"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "403": {
+            "description": "Insufficient scope"
+          },
+          "404": {
+            "description": "Trade not found"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete trade (V1)",
+        "description": "Permanently deletes a trade and all associated data.",
+        "tags": [
+          "V1 Trades"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Trade deleted"
+          },
+          "403": {
+            "description": "Insufficient scope"
+          },
+          "404": {
+            "description": "Trade not found"
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Analytics",
+      "description": "Trading analytics and performance metrics"
+    },
+    {
+      "name": "Authentication",
+      "description": "User authentication and account management"
+    },
+    {
+      "name": "Instrument Templates",
+      "description": "Reusable templates for futures and options contract details"
+    },
+    {
+      "name": "News Correlation",
+      "description": "News sentiment correlation analytics"
+    },
+    {
+      "name": "News Enrichment",
+      "description": "News enrichment and backfill operations"
+    },
+    {
+      "name": "Notification Preferences",
+      "description": "User notification preference management"
+    },
+    {
+      "name": "Tags",
+      "description": "User tag management for trade organization"
+    },
+    {
+      "name": "Trades",
+      "description": "Trading operations and management"
+    },
+    {
+      "name": "Users",
+      "description": "User profile and account management"
+    }
+  ]
+}
