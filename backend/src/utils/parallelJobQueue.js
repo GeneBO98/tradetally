@@ -56,6 +56,9 @@ class ParallelJobQueue {
         logger.logError(`Error in ${jobType} worker:`, error.message);
       }
     }, 500); // Check every 500ms for faster processing
+    if (typeof workerInfo.interval.unref === 'function') {
+      workerInfo.interval.unref();
+    }
 
     this.workers.set(jobType, workerInfo);
     logger.logImport(`Started worker for ${jobType} (max concurrent: ${maxConcurrent})`);

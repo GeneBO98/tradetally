@@ -73,6 +73,9 @@ class EarningsScheduler {
         console.error('[EARNINGS-SCHEDULER] Scheduled run failed:', error);
       });
     }, CHECK_INTERVAL);
+    if (typeof this.interval.unref === 'function') {
+      this.interval.unref();
+    }
 
     console.log('[EARNINGS-SCHEDULER] Scheduler started');
   }
