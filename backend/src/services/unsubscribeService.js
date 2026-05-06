@@ -17,11 +17,11 @@ const getSecret = () => {
 /**
  * Generate an unsubscribe token for a user
  * Format: base64url(userId).signature
- * @param {number} userId - The user's ID
+ * @param {string|number} userId - The user's ID
  * @returns {string} The signed token
  */
 function generateToken(userId) {
-  if (!userId || typeof userId !== 'number') {
+  if (userId === null || userId === undefined || String(userId).trim() === '') {
     throw new Error('Valid userId is required');
   }
 
@@ -38,7 +38,7 @@ function generateToken(userId) {
  * Verify an unsubscribe token and extract the userId
  * Uses timing-safe comparison to prevent timing attacks
  * @param {string} token - The token to verify
- * @returns {number|null} The userId if valid, null otherwise
+ * @returns {string|null} The userId if valid, null otherwise
  */
 function verifyToken(token) {
   if (!token || typeof token !== 'string') {
@@ -70,10 +70,11 @@ function verifyToken(token) {
     return null;
   }
 
-  // Decode userId from payload
+  // Decode userId from payload. User IDs are UUIDs in current deployments,
+  // but legacy numeric IDs remain valid because tokens never expire.
   try {
-    const userId = parseInt(Buffer.from(payload, 'base64url').toString(), 10);
-    if (isNaN(userId) || userId <= 0) {
+    const userId = Buffer.from(payload, 'base64url').toString();
+    if (!userId || userId.trim() === '') {
       return null;
     }
     return userId;
