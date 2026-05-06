@@ -7,7 +7,6 @@
           Pro alerts for curated financial/news feeds, holdings, watchlists, sectors, and custom terms.
         </p>
       </div>
-      <button @click="resetForm" class="btn-secondary">New Rule</button>
     </div>
 
     <div v-if="initialLoading" class="flex justify-center py-12">
