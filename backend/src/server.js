@@ -83,6 +83,7 @@ const { swaggerSpec, swaggerUi } = require('./config/swagger');
 const errorHandler = require('./middleware/errorHandler');
 const requestIdMiddleware = require('./middleware/requestId');
 const { isV1Request, sendV1Error } = require('./utils/apiResponse');
+const { isBackgroundJobsDisabled } = require('./utils/runtimeScope');
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -405,6 +406,7 @@ app.use((req, res) => {
 async function startServer() {
   try {
     logger.info('Starting TradeTally server...');
+    const backgroundJobsDisabled = isBackgroundJobsDisabled();
 
     // Initialize PostHog telemetry (optional)
     await initializePostHogTelemetry();
@@ -425,7 +427,9 @@ async function startServer() {
     await BillingService.initialize();
     
     // Start price monitoring service for Pro users
-    if (process.env.ENABLE_PRICE_MONITORING !== 'false') {
+    if (backgroundJobsDisabled) {
+      console.log('Price monitoring disabled (DISABLE_BACKGROUND_JOBS=true)');
+    } else if (process.env.ENABLE_PRICE_MONITORING !== 'false') {
       console.log('Starting price monitoring service...');
       await priceMonitoringService.start();
     } else {
@@ -433,7 +437,9 @@ async function startServer() {
     }
     
     // Start gamification scheduler
-    if (process.env.ENABLE_GAMIFICATION !== 'false') {
+    if (backgroundJobsDisabled) {
+      console.log('Gamification disabled (DISABLE_BACKGROUND_JOBS=true)');
+    } else if (process.env.ENABLE_GAMIFICATION !== 'false') {
       console.log('Starting gamification scheduler...');
       GamificationScheduler.startScheduler();
     } else {
@@ -441,7 +447,9 @@ async function startServer() {
     }
     
     // Start trial scheduler (for trial expiration emails)
-    if (process.env.ENABLE_TRIAL_EMAILS !== 'false') {
+    if (backgroundJobsDisabled) {
+      console.log('Trial scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
+    } else if (process.env.ENABLE_TRIAL_EMAILS !== 'false') {
       console.log('Starting trial scheduler...');
       TrialScheduler.startScheduler();
     } else {
@@ -449,7 +457,9 @@ async function startServer() {
     }
 
     // Start retention email scheduler (weekly digest, inactive re-engagement)
-    if (process.env.ENABLE_RETENTION_EMAILS !== 'false') {
+    if (backgroundJobsDisabled) {
+      console.log('Retention email scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
+    } else if (process.env.ENABLE_RETENTION_EMAILS !== 'false') {
       console.log('Starting retention email scheduler...');
       RetentionEmailScheduler.startScheduler();
     } else {
@@ -457,7 +467,9 @@ async function startServer() {
     }
 
     // Start options scheduler (for automatic expired options closure)
-    if (process.env.ENABLE_OPTIONS_SCHEDULER !== 'false') {
+    if (backgroundJobsDisabled) {
+      console.log('Options scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
+    } else if (process.env.ENABLE_OPTIONS_SCHEDULER !== 'false') {
       console.log('Starting options scheduler...');
       OptionsScheduler.start();
     } else {
@@ -465,7 +477,9 @@ async function startServer() {
     }
 
     // Start broker sync scheduler (for automatic trade syncing from connected brokers)
-    if (process.env.ENABLE_BROKER_SYNC_SCHEDULER !== 'false') {
+    if (backgroundJobsDisabled) {
+      console.log('Broker sync scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
+    } else if (process.env.ENABLE_BROKER_SYNC_SCHEDULER !== 'false') {
       console.log('Starting broker sync scheduler...');
       brokerSyncScheduler.start();
       console.log('[SUCCESS] Broker sync scheduler started');
@@ -474,7 +488,9 @@ async function startServer() {
     }
 
     // Start dividend scheduler (for automatic dividend tracking on open positions)
-    if (process.env.ENABLE_DIVIDEND_SCHEDULER !== 'false') {
+    if (backgroundJobsDisabled) {
+      console.log('Dividend scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
+    } else if (process.env.ENABLE_DIVIDEND_SCHEDULER !== 'false') {
       console.log('Starting dividend scheduler...');
       dividendScheduler.start();
       console.log('[SUCCESS] Dividend scheduler started');
@@ -483,7 +499,9 @@ async function startServer() {
     }
 
     // Start news scheduler (pre-fetches company news for dashboard)
-    if (process.env.ENABLE_NEWS_SCHEDULER !== 'false') {
+    if (backgroundJobsDisabled) {
+      console.log('News scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
+    } else if (process.env.ENABLE_NEWS_SCHEDULER !== 'false') {
       console.log('Starting news scheduler...');
       newsScheduler.start();
       console.log('[SUCCESS] News scheduler started');
@@ -492,7 +510,9 @@ async function startServer() {
     }
 
     // Start earnings scheduler (pre-fetches earnings calendar for dashboard)
-    if (process.env.ENABLE_EARNINGS_SCHEDULER !== 'false') {
+    if (backgroundJobsDisabled) {
+      console.log('Earnings scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
+    } else if (process.env.ENABLE_EARNINGS_SCHEDULER !== 'false') {
       console.log('Starting earnings scheduler...');
       earningsScheduler.start();
       console.log('[SUCCESS] Earnings scheduler started');
@@ -501,7 +521,9 @@ async function startServer() {
     }
 
     // Start symbol category scheduler (pre-categorizes traded symbols with industry data)
-    if (process.env.ENABLE_CATEGORY_SCHEDULER !== 'false') {
+    if (backgroundJobsDisabled) {
+      console.log('Symbol category scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
+    } else if (process.env.ENABLE_CATEGORY_SCHEDULER !== 'false') {
       console.log('Starting symbol category scheduler...');
       symbolCategoryScheduler.start();
       console.log('[SUCCESS] Symbol category scheduler started');
@@ -509,7 +531,9 @@ async function startServer() {
       console.log('Symbol category scheduler disabled (ENABLE_CATEGORY_SCHEDULER=false)');
     }
 
-    if (process.env.ENABLE_WEB_MENTION_SCHEDULER !== 'false') {
+    if (backgroundJobsDisabled) {
+      console.log('Web mention scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
+    } else if (process.env.ENABLE_WEB_MENTION_SCHEDULER !== 'false') {
       console.log('Starting web mention scheduler...');
       webMentionScheduler.start();
       console.log('[SUCCESS] Web mention scheduler started');
@@ -522,7 +546,9 @@ async function startServer() {
     }
 
     // Start activity tracking service (buffered event logging)
-    if (process.env.ENABLE_ACTIVITY_TRACKING !== 'false') {
+    if (backgroundJobsDisabled) {
+      console.log('Activity tracking disabled (DISABLE_BACKGROUND_JOBS=true)');
+    } else if (process.env.ENABLE_ACTIVITY_TRACKING !== 'false') {
       console.log('Starting activity tracking service...');
       activityTrackingService.start();
       console.log('[SUCCESS] Activity tracking service started');
@@ -531,7 +557,9 @@ async function startServer() {
     }
 
     // Start engagement scheduler (recomputes engagement scores every 2 hours)
-    if (process.env.ENABLE_ENGAGEMENT_TRACKING !== 'false') {
+    if (backgroundJobsDisabled) {
+      console.log('Engagement tracking disabled (DISABLE_BACKGROUND_JOBS=true)');
+    } else if (process.env.ENABLE_ENGAGEMENT_TRACKING !== 'false') {
       console.log('Starting engagement scheduler...');
       engagementScheduler.start();
       console.log('[SUCCESS] Engagement scheduler started');
@@ -547,7 +575,9 @@ async function startServer() {
     }
 
     // Start background worker for trade enrichment - CRITICAL for PRO tier
-    if (process.env.ENABLE_TRADE_ENRICHMENT !== 'false') {
+    if (backgroundJobsDisabled) {
+      console.log('Trade enrichment disabled (DISABLE_BACKGROUND_JOBS=true)');
+    } else if (process.env.ENABLE_TRADE_ENRICHMENT !== 'false') {
       console.log('Starting background worker for trade enrichment...');
       let attempts = 0;
       const maxAttempts = 3;
@@ -581,7 +611,9 @@ async function startServer() {
     }
 
     // Start automatic job recovery service - CRITICAL for PRO tier reliability
-    if (process.env.ENABLE_JOB_RECOVERY !== 'false') {
+    if (backgroundJobsDisabled) {
+      console.log('Job recovery disabled (DISABLE_BACKGROUND_JOBS=true)');
+    } else if (process.env.ENABLE_JOB_RECOVERY !== 'false') {
       console.log('Starting automatic job recovery service...');
       jobRecoveryService.start();
       console.log('✓ Job recovery service started (prevents stuck enrichment jobs)');
@@ -590,7 +622,9 @@ async function startServer() {
     }
 
     // Start global enrichment cache cleanup service
-    if (process.env.ENABLE_ENRICHMENT_CACHE_CLEANUP !== 'false') {
+    if (backgroundJobsDisabled) {
+      console.log('Enrichment cache cleanup disabled (DISABLE_BACKGROUND_JOBS=true)');
+    } else if (process.env.ENABLE_ENRICHMENT_CACHE_CLEANUP !== 'false') {
       console.log('Starting global enrichment cache cleanup service...');
       globalEnrichmentCacheCleanupService.start();
       console.log('✓ Global enrichment cache cleanup service started');
@@ -599,7 +633,9 @@ async function startServer() {
     }
 
     // Initialize backup scheduler
-    if (process.env.ENABLE_BACKUP_SCHEDULER !== 'false') {
+    if (backgroundJobsDisabled) {
+      console.log('Backup scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
+    } else if (process.env.ENABLE_BACKUP_SCHEDULER !== 'false') {
       console.log('Initializing backup scheduler...');
       await backupScheduler.initialize();
       console.log('✓ Backup scheduler initialized');
@@ -608,7 +644,9 @@ async function startServer() {
     }
 
     // Initialize stock scanner scheduler (3 AM quarterly Russell 2000 scan)
-    if (process.env.ENABLE_STOCK_SCANNER !== 'false') {
+    if (backgroundJobsDisabled) {
+      console.log('Stock scanner disabled (DISABLE_BACKGROUND_JOBS=true)');
+    } else if (process.env.ENABLE_STOCK_SCANNER !== 'false') {
       console.log('Initializing stock scanner scheduler...');
       
       // Clean up any stuck scans on startup
@@ -634,9 +672,13 @@ async function startServer() {
       logger.info(`✓ Log level: ${process.env.LOG_LEVEL || 'INFO'}`);
       
       // Start stock split daily checks
-      const stockSplitService = require('./services/stockSplitService');
-      stockSplitService.startDailyCheck();
-      console.log('✓ Stock split monitoring started');
+      if (backgroundJobsDisabled) {
+        console.log('Stock split monitoring disabled (DISABLE_BACKGROUND_JOBS=true)');
+      } else {
+        const stockSplitService = require('./services/stockSplitService');
+        stockSplitService.startDailyCheck();
+        console.log('✓ Stock split monitoring started');
+      }
     });
   } catch (error) {
     logger.error('Failed to start server:', error);

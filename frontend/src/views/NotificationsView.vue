@@ -25,6 +25,14 @@
               {{ markingRead ? 'Marking...' : 'Mark all read' }}
             </button>
             <button
+              v-if="notifications.length > 0"
+              @click="clearAllNotifications"
+              :disabled="deleting"
+              class="btn-secondary text-sm"
+            >
+              {{ deleting ? 'Clearing...' : 'Clear all' }}
+            </button>
+            <button
               @click="() => fetchNotifications(currentPage)"
               :disabled="loading"
               class="btn-primary text-sm"
@@ -311,6 +319,33 @@ const deleteSelected = async () => {
     }
   } catch (error) {
     console.error('Error deleting notifications:', error)
+  } finally {
+    deleting.value = false
+  }
+}
+
+const clearAllNotifications = async () => {
+  if (!notifications.value.length) return
+  if (!window.confirm('Delete all notifications? This cannot be undone.')) return
+
+  try {
+    deleting.value = true
+
+    const response = await fetch('/api/notifications/all', {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${authStore.token}`
+      }
+    })
+
+    if (response.ok) {
+      notifications.value = []
+      pagination.value = null
+      selectedNotifications.value = []
+      await fetchNotifications(1)
+    }
+  } catch (error) {
+    console.error('Error clearing all notifications:', error)
   } finally {
     deleting.value = false
   }

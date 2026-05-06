@@ -8,6 +8,22 @@ function sendError(res, error) {
   return res.status(status).json({ success: false, error: message });
 }
 
+async function runRuleImmediately(rule) {
+  try {
+    const sourceIds = Array.isArray(rule?.source_ids) ? rule.source_ids : [];
+    const fetchSummary = await WebMentionFetcherService.fetchSelectedSources(sourceIds);
+    const evaluation = await WebMentionService.evaluateRule(rule);
+    return { fetchSummary, evaluation };
+  } catch (error) {
+    logger.logError('[WEB-MENTIONS] Immediate rule run failed:', error);
+    return {
+      fetchSummary: null,
+      evaluation: null,
+      error: error.message || 'Immediate rule run failed'
+    };
+  }
+}
+
 const webMentionsController = {
   async getRules(req, res, next) {
     try {
@@ -21,7 +37,8 @@ const webMentionsController = {
   async createRule(req, res) {
     try {
       const rule = await WebMentionService.createRule(req.user.id, req.body);
-      res.status(201).json({ success: true, data: rule });
+      const immediateRun = await runRuleImmediately(rule);
+      res.status(201).json({ success: true, data: rule, meta: { immediate_run: immediateRun } });
     } catch (error) {
       sendError(res, error);
     }
@@ -31,7 +48,8 @@ const webMentionsController = {
     try {
       const rule = await WebMentionService.updateRule(req.user.id, req.params.id, req.body);
       if (!rule) return res.status(404).json({ success: false, error: 'Rule not found' });
-      res.json({ success: true, data: rule });
+      const immediateRun = await runRuleImmediately(rule);
+      res.json({ success: true, data: rule, meta: { immediate_run: immediateRun } });
     } catch (error) {
       sendError(res, error);
     }
@@ -83,6 +101,24 @@ const webMentionsController = {
     } catch (error) {
       logger.logError('Error fetching web mention presets:', error);
       next(error);
+    }
+  },
+
+  async createPreset(req, res) {
+    try {
+      const preset = await WebMentionService.createPreset(req.user.id, req.body || {});
+      res.status(201).json({ success: true, data: preset });
+    } catch (error) {
+      sendError(res, error);
+    }
+  },
+
+  async suggestTerms(req, res) {
+    try {
+      const result = await WebMentionService.suggestRuleTerms(req.user.id, req.body || {});
+      res.json({ success: true, data: result });
+    } catch (error) {
+      sendError(res, error);
     }
   },
 

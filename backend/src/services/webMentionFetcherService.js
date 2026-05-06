@@ -8,6 +8,21 @@ const USER_AGENT = 'TradeTally Web Mentions/1.0 (+https://tradetally.io)';
 const MAX_ITEMS_PER_SOURCE = parseInt(process.env.WEB_MENTION_MAX_ITEMS_PER_SOURCE || '40', 10);
 
 class WebMentionFetcherService {
+  static async getSourcesByIds(sourceIds = []) {
+    const normalizedIds = Array.from(new Set((sourceIds || []).filter(Boolean)));
+    if (normalizedIds.length === 0) return [];
+
+    const result = await db.query(`
+      SELECT *
+      FROM web_mention_sources
+      WHERE enabled = true
+        AND id = ANY($1::uuid[])
+      ORDER BY name ASC
+    `, [normalizedIds]);
+
+    return result.rows;
+  }
+
   static async getDueSources() {
     const result = await db.query(`
       SELECT *
@@ -164,6 +179,20 @@ class WebMentionFetcherService {
 
   static async fetchDueSources() {
     const sources = await this.getDueSources();
+    const summary = { sources: sources.length, fetched: 0, inserted: 0, errors: 0 };
+
+    for (const source of sources) {
+      const result = await this.fetchSource(source);
+      summary.fetched += result.fetched || 0;
+      summary.inserted += result.inserted || 0;
+      if (result.error) summary.errors++;
+    }
+
+    return summary;
+  }
+
+  static async fetchSelectedSources(sourceIds = []) {
+    const sources = await this.getSourcesByIds(sourceIds);
     const summary = { sources: sources.length, fetched: 0, inserted: 0, errors: 0 };
 
     for (const source of sources) {

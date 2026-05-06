@@ -74,6 +74,18 @@ export const useWebMentionsStore = defineStore('webMentions', () => {
     return presets.value
   }
 
+  async function createPreset(payload) {
+    const response = await api.post('/web-mentions/presets', payload)
+    const preset = unwrap(response)
+    presets.value = [preset, ...presets.value]
+    return preset
+  }
+
+  async function suggestTerms(symbols) {
+    const response = await api.post('/web-mentions/suggest-terms', { symbols })
+    return unwrap(response)
+  }
+
   return {
     rules,
     mentions,
@@ -89,6 +101,8 @@ export const useWebMentionsStore = defineStore('webMentions', () => {
     testRule,
     fetchMentions,
     fetchSources,
-    fetchPresets
+    fetchPresets,
+    createPreset,
+    suggestTerms
   }
 })

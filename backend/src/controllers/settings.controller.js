@@ -237,7 +237,7 @@ const settingsController = {
       
       if (!settings) {
         return res.json({
-          aiProvider: 'gemini',
+          aiProvider: '',
           aiApiKey: '',
           aiApiUrl: '',
           aiModel: ''
@@ -245,7 +245,7 @@ const settingsController = {
       }
 
       res.json({
-        aiProvider: settings.ai_provider || 'gemini',
+        aiProvider: settings.ai_provider || '',
         aiApiKey: settings.ai_api_key ? '***' : '',
         aiApiUrl: settings.ai_api_url || '',
         aiModel: settings.ai_model || ''
@@ -258,34 +258,52 @@ const settingsController = {
   async updateAIProviderSettings(req, res, next) {
     try {
       const { aiProvider, aiApiKey, aiApiUrl, aiModel } = req.body;
+      const normalizedProvider = aiProvider ? String(aiProvider).trim() : '';
 
       // Validate AI provider
       const validProviders = ['gemini', 'claude', 'openai', 'ollama', 'lmstudio', 'perplexity', 'local'];
-      if (aiProvider && !validProviders.includes(aiProvider)) {
+      if (normalizedProvider && !validProviders.includes(normalizedProvider)) {
         return res.status(400).json({ 
           error: 'Invalid AI provider. Must be one of: ' + validProviders.join(', ')
         });
       }
 
-      // Validate required fields
-      if (aiProvider && !['local', 'ollama', 'lmstudio'].includes(aiProvider) && !aiApiKey) {
-        return res.status(400).json({ 
-          error: 'API key is required for ' + aiProvider 
+      if (!normalizedProvider) {
+        const settings = await User.updateSettings(req.user.id, {
+          ai_provider: null,
+          ai_api_key: null,
+          ai_api_url: null,
+          ai_model: null
+        });
+
+        return res.json({
+          message: 'AI provider settings cleared successfully',
+          aiProvider: settings.ai_provider || '',
+          aiApiKey: '',
+          aiApiUrl: settings.ai_api_url || '',
+          aiModel: settings.ai_model || ''
         });
       }
 
-      if (['local', 'ollama', 'lmstudio'].includes(aiProvider) && !aiApiUrl) {
+      // Validate required fields
+      if (!['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !aiApiKey) {
         return res.status(400).json({ 
-          error: 'API URL is required for ' + aiProvider 
+          error: 'API key is required for ' + normalizedProvider 
+        });
+      }
+
+      if (['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !aiApiUrl) {
+        return res.status(400).json({ 
+          error: 'API URL is required for ' + normalizedProvider 
         });
       }
 
       if (aiApiUrl) {
-        await validateAiProviderUrl(aiProvider, aiApiUrl);
+        await validateAiProviderUrl(normalizedProvider, aiApiUrl);
       }
 
       const aiSettings = {
-        ai_provider: aiProvider,
+        ai_provider: normalizedProvider,
         ai_api_url: aiApiUrl,
         ai_model: aiModel
       };
@@ -344,9 +362,10 @@ const settingsController = {
   async updateCusipAIProviderSettings(req, res, next) {
     try {
       const { cusipAiProvider, cusipAiApiKey, cusipAiApiUrl, cusipAiModel, useMainProvider } = req.body;
+      const normalizedProvider = cusipAiProvider ? String(cusipAiProvider).trim() : '';
 
       // If useMainProvider is true, clear CUSIP-specific settings
-      if (useMainProvider) {
+      if (useMainProvider || !normalizedProvider) {
         const cusipAiSettings = {
           cusip_ai_provider: null,
           cusip_ai_api_key: null,
@@ -364,31 +383,31 @@ const settingsController = {
 
       // Validate AI provider
       const validProviders = ['gemini', 'claude', 'openai', 'ollama', 'lmstudio', 'perplexity', 'local'];
-      if (cusipAiProvider && !validProviders.includes(cusipAiProvider)) {
+      if (normalizedProvider && !validProviders.includes(normalizedProvider)) {
         return res.status(400).json({
           error: 'Invalid AI provider. Must be one of: ' + validProviders.join(', ')
         });
       }
 
       // Validate required fields based on provider type
-      if (cusipAiProvider && !['local', 'ollama', 'lmstudio'].includes(cusipAiProvider) && !cusipAiApiKey) {
+      if (!['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !cusipAiApiKey) {
         return res.status(400).json({
-          error: 'API key is required for ' + cusipAiProvider
+          error: 'API key is required for ' + normalizedProvider
         });
       }
 
-      if (['local', 'ollama', 'lmstudio'].includes(cusipAiProvider) && !cusipAiApiUrl) {
+      if (['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !cusipAiApiUrl) {
         return res.status(400).json({
-          error: 'API URL is required for ' + cusipAiProvider
+          error: 'API URL is required for ' + normalizedProvider
         });
       }
 
       if (cusipAiApiUrl) {
-        await validateAiProviderUrl(cusipAiProvider, cusipAiApiUrl);
+        await validateAiProviderUrl(normalizedProvider, cusipAiApiUrl);
       }
 
       const cusipAiSettings = {
-        cusip_ai_provider: cusipAiProvider,
+        cusip_ai_provider: normalizedProvider,
         cusip_ai_api_url: cusipAiApiUrl,
         cusip_ai_model: cusipAiModel
       };
@@ -1717,34 +1736,56 @@ const settingsController = {
       }
 
       const { aiProvider, aiApiKey, aiApiUrl, aiModel } = req.body;
+      const normalizedProvider = aiProvider ? String(aiProvider).trim() : '';
 
       // Validate AI provider
       const validProviders = ['gemini', 'claude', 'openai', 'ollama', 'lmstudio', 'perplexity', 'local'];
-      if (aiProvider && !validProviders.includes(aiProvider)) {
+      if (normalizedProvider && !validProviders.includes(normalizedProvider)) {
         return res.status(400).json({ 
           error: 'Invalid AI provider. Must be one of: ' + validProviders.join(', ')
         });
       }
 
-      // Validate required fields
-      if (aiProvider && !['local', 'ollama', 'lmstudio'].includes(aiProvider) && !aiApiKey) {
-        return res.status(400).json({ 
-          error: 'API key is required for ' + aiProvider 
+      if (!normalizedProvider) {
+        const success = await adminSettingsService.updateDefaultAISettings({
+          provider: null,
+          apiKey: null,
+          apiUrl: null,
+          model: null
+        });
+
+        if (!success) {
+          return res.status(500).json({ error: 'Failed to update admin AI settings' });
+        }
+
+        return res.json({
+          message: 'Admin AI provider settings cleared successfully',
+          aiProvider: '',
+          aiApiKey: '',
+          aiApiUrl: '',
+          aiModel: ''
         });
       }
 
-      if (['local', 'ollama', 'lmstudio'].includes(aiProvider) && !aiApiUrl) {
+      // Validate required fields
+      if (!['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !aiApiKey) {
         return res.status(400).json({ 
-          error: 'API URL is required for ' + aiProvider 
+          error: 'API key is required for ' + normalizedProvider 
+        });
+      }
+
+      if (['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !aiApiUrl) {
+        return res.status(400).json({ 
+          error: 'API URL is required for ' + normalizedProvider 
         });
       }
 
       if (aiApiUrl) {
-        await validateAiProviderUrl(aiProvider, aiApiUrl);
+        await validateAiProviderUrl(normalizedProvider, aiApiUrl);
       }
 
       const aiSettings = {
-        provider: aiProvider,
+        provider: normalizedProvider,
         apiKey: aiApiKey,
         apiUrl: aiApiUrl,
         model: aiModel
@@ -1758,7 +1799,7 @@ const settingsController = {
       
       res.json({
         message: 'Admin AI provider settings updated successfully',
-        aiProvider: aiProvider,
+        aiProvider: normalizedProvider,
         aiApiKey: aiApiKey ? '***' : '', // Mask the API key in response
         aiApiUrl: aiApiUrl,
         aiModel: aiModel
@@ -1800,9 +1841,10 @@ const settingsController = {
       }
 
       const { cusipAiProvider, cusipAiApiKey, cusipAiApiUrl, cusipAiModel, useMainProvider } = req.body;
+      const normalizedProvider = cusipAiProvider ? String(cusipAiProvider).trim() : '';
 
       // If useMainProvider is true, clear CUSIP-specific settings
-      if (useMainProvider) {
+      if (useMainProvider || !normalizedProvider) {
         const success = await adminSettingsService.updateDefaultCusipAISettings({
           provider: '',
           apiKey: '',
@@ -1822,31 +1864,31 @@ const settingsController = {
 
       // Validate AI provider
       const validProviders = ['gemini', 'claude', 'openai', 'ollama', 'lmstudio', 'perplexity', 'local'];
-      if (cusipAiProvider && !validProviders.includes(cusipAiProvider)) {
+      if (normalizedProvider && !validProviders.includes(normalizedProvider)) {
         return res.status(400).json({
           error: 'Invalid AI provider. Must be one of: ' + validProviders.join(', ')
         });
       }
 
       // Validate required fields based on provider type
-      if (cusipAiProvider && !['local', 'ollama', 'lmstudio'].includes(cusipAiProvider) && !cusipAiApiKey) {
+      if (!['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !cusipAiApiKey) {
         return res.status(400).json({
-          error: 'API key is required for ' + cusipAiProvider
+          error: 'API key is required for ' + normalizedProvider
         });
       }
 
-      if (['local', 'ollama', 'lmstudio'].includes(cusipAiProvider) && !cusipAiApiUrl) {
+      if (['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !cusipAiApiUrl) {
         return res.status(400).json({
-          error: 'API URL is required for ' + cusipAiProvider
+          error: 'API URL is required for ' + normalizedProvider
         });
       }
 
       if (cusipAiApiUrl) {
-        await validateAiProviderUrl(cusipAiProvider, cusipAiApiUrl);
+        await validateAiProviderUrl(normalizedProvider, cusipAiApiUrl);
       }
 
       const success = await adminSettingsService.updateDefaultCusipAISettings({
-        provider: cusipAiProvider,
+        provider: normalizedProvider,
         apiKey: cusipAiApiKey,
         apiUrl: cusipAiApiUrl,
         model: cusipAiModel
@@ -1858,7 +1900,7 @@ const settingsController = {
 
       res.json({
         message: 'Admin CUSIP AI provider settings updated successfully',
-        cusipAiProvider: cusipAiProvider,
+        cusipAiProvider: normalizedProvider,
         cusipAiApiKey: cusipAiApiKey ? '***' : '',
         cusipAiApiUrl: cusipAiApiUrl,
         cusipAiModel: cusipAiModel,

@@ -17,6 +17,29 @@ class AIService {
     };
   }
 
+  coalesceSettingsBundle(primary = {}, fallback = {}) {
+    const primaryProvider = primary?.provider || null;
+    const fallbackProvider = fallback?.provider || null;
+
+    if (!primaryProvider) {
+      return {
+        provider: fallbackProvider || '',
+        apiKey: fallback?.apiKey || '',
+        apiUrl: fallback?.apiUrl || '',
+        model: fallback?.model || ''
+      };
+    }
+
+    const sameProviderFallback = fallbackProvider && fallbackProvider === primaryProvider;
+
+    return {
+      provider: primaryProvider,
+      apiKey: primary?.apiKey || (sameProviderFallback ? (fallback?.apiKey || '') : ''),
+      apiUrl: primary?.apiUrl || (sameProviderFallback ? (fallback?.apiUrl || '') : ''),
+      model: primary?.model || (sameProviderFallback ? (fallback?.model || '') : '')
+    };
+  }
+
   async getUserSettings(userId) {
     try {
       // Route through User.getSettings so encrypted ai_api_key is decrypted.
@@ -25,12 +48,12 @@ class AIService {
       // Get admin default settings as fallback
       const adminDefaults = await adminSettingsService.getDefaultAISettings();
 
-      return {
-        provider: userSettings?.ai_provider || adminDefaults.provider,
-        apiKey: userSettings?.ai_api_key || adminDefaults.apiKey,
-        apiUrl: userSettings?.ai_api_url || adminDefaults.apiUrl,
-        model: userSettings?.ai_model || adminDefaults.model
-      };
+      return this.coalesceSettingsBundle({
+        provider: userSettings?.ai_provider || '',
+        apiKey: userSettings?.ai_api_key || '',
+        apiUrl: userSettings?.ai_api_url || '',
+        model: userSettings?.ai_model || ''
+      }, adminDefaults);
     } catch (error) {
       console.error('Failed to get user AI settings:', error);
       // Fallback to admin defaults, then hardcoded defaults
@@ -40,7 +63,7 @@ class AIService {
       } catch (adminError) {
         console.error('Failed to get admin default AI settings:', adminError);
         return {
-          provider: 'gemini',
+          provider: '',
           apiKey: '',
           apiUrl: '',
           model: ''
@@ -64,25 +87,27 @@ class AIService {
       const adminDefaults = await adminSettingsService.getDefaultAISettings();
 
       // Priority: User CUSIP settings > Admin CUSIP defaults > User main settings > Admin main defaults
-      const cusipProvider = userSettings?.cusip_ai_provider || adminCusipDefaults.provider;
+      const cusipSettings = this.coalesceSettingsBundle({
+        provider: userSettings?.cusip_ai_provider || '',
+        apiKey: userSettings?.cusip_ai_api_key || '',
+        apiUrl: userSettings?.cusip_ai_api_url || '',
+        model: userSettings?.cusip_ai_model || ''
+      }, adminCusipDefaults);
 
-      // If CUSIP-specific provider is set, use CUSIP settings
-      if (cusipProvider) {
-        return {
-          provider: cusipProvider,
-          apiKey: userSettings?.cusip_ai_api_key || adminCusipDefaults.apiKey,
-          apiUrl: userSettings?.cusip_ai_api_url || adminCusipDefaults.apiUrl,
-          model: userSettings?.cusip_ai_model || adminCusipDefaults.model
-        };
+      // If CUSIP-specific provider is set, use that provider bundle.
+      if (cusipSettings.provider) {
+        if (userSettings?.cusip_ai_provider || adminCusipDefaults.provider) {
+          return cusipSettings;
+        }
       }
 
       // Fall back to main AI settings
-      return {
-        provider: userSettings?.ai_provider || adminDefaults.provider,
-        apiKey: userSettings?.ai_api_key || adminDefaults.apiKey,
-        apiUrl: userSettings?.ai_api_url || adminDefaults.apiUrl,
-        model: userSettings?.ai_model || adminDefaults.model
-      };
+      return this.coalesceSettingsBundle({
+        provider: userSettings?.ai_provider || '',
+        apiKey: userSettings?.ai_api_key || '',
+        apiUrl: userSettings?.ai_api_url || '',
+        model: userSettings?.ai_model || ''
+      }, adminDefaults);
     } catch (error) {
       console.error('Failed to get CUSIP user AI settings:', error);
       // Fallback to main settings

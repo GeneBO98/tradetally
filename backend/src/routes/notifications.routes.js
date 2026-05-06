@@ -32,6 +32,7 @@ router.post('/mark-all-read', authenticate, notificationsController.markAllNotif
 
 // Delete notifications
 router.delete('/', authenticate, notificationsController.deleteNotifications);
+router.delete('/all', authenticate, notificationsController.clearAllNotifications);
 
 // Mobile push notification routes (remove pro tier requirement for basic functionality)
 const mobileRouter = express.Router();

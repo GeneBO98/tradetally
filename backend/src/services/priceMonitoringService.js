@@ -16,6 +16,10 @@ function maskEmail(email) {
   return `${localPart.slice(0, 2)}***@${domain}`;
 }
 
+function isEmailSuppressed() {
+  return process.env.NODE_ENV !== 'production';
+}
+
 class PriceMonitoringService {
   constructor() {
     this.isRunning = false;
@@ -57,6 +61,10 @@ class PriceMonitoringService {
   }
 
   isEmailConfigured() {
+    if (isEmailSuppressed()) {
+      return false;
+    }
+
     return !!(process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS);
   }
 

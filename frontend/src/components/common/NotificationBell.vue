@@ -334,10 +334,11 @@ const markAllAsRead = async () => {
       return
     }
     
-    const result = await response.json()
-    
-    // Update local state
-    notifications.value = notifications.value.map(n => ({ ...n, is_read: true }))
+    await response.json()
+
+    // The bell only shows unread notifications, so clear them immediately.
+    notifications.value = []
+    setRecentUnreadNotifications([])
     clearUnreadState()
     
     // Refresh the notifications and unread count to make sure they're accurate
