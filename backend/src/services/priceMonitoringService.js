@@ -80,6 +80,9 @@ class PriceMonitoringService {
         console.error('Error in price monitoring interval:', error);
       }
     }, this.intervalMs);
+    if (typeof this.monitoringInterval.unref === 'function') {
+      this.monitoringInterval.unref();
+    }
 
     console.log(`Price monitoring service started with ${this.intervalMs}ms interval`);
   }

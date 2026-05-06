@@ -200,6 +200,9 @@ class JobQueue {
         logger.logError(`Stack trace: ${error.stack}`);
       }
     }, 5000);
+    if (typeof this.processingInterval.unref === 'function') {
+      this.processingInterval.unref();
+    }
     
     logger.logImport('[SUCCESS] Job queue processing interval started (every 5 seconds)');
   }
