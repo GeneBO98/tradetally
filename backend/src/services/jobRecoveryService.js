@@ -10,6 +10,7 @@ class JobRecoveryService {
   constructor() {
     this.isRunning = false;
     this.recoveryInterval = null;
+    this.initialRecoveryTimeout = null;
     this.lastSummaryTime = 0;
   }
 
@@ -33,9 +34,15 @@ class JobRecoveryService {
         logger.logError('Job recovery failed:', error.message);
       }
     }, 5 * 60 * 1000); // 5 minutes
+    if (typeof this.recoveryInterval.unref === 'function') {
+      this.recoveryInterval.unref();
+    }
 
     // Run initial recovery immediately
-    setTimeout(() => this.runRecovery(), 10000); // 10 seconds after startup
+    this.initialRecoveryTimeout = setTimeout(() => this.runRecovery(), 10000); // 10 seconds after startup
+    if (typeof this.initialRecoveryTimeout.unref === 'function') {
+      this.initialRecoveryTimeout.unref();
+    }
 
     logger.logImport('[SUCCESS] Job recovery service started (runs every 5 minutes)');
   }
@@ -47,6 +54,10 @@ class JobRecoveryService {
     if (this.recoveryInterval) {
       clearInterval(this.recoveryInterval);
       this.recoveryInterval = null;
+    }
+    if (this.initialRecoveryTimeout) {
+      clearTimeout(this.initialRecoveryTimeout);
+      this.initialRecoveryTimeout = null;
     }
     this.isRunning = false;
     logger.logImport('Job recovery service stopped');
