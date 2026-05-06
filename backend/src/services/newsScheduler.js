@@ -76,6 +76,9 @@ class NewsScheduler {
         console.error('[NEWS-SCHEDULER] Scheduled run failed:', error);
       });
     }, CHECK_INTERVAL);
+    if (typeof this.interval.unref === 'function') {
+      this.interval.unref();
+    }
 
     console.log('[NEWS-SCHEDULER] Scheduler started');
   }

@@ -6,6 +6,7 @@ const db = require('../config/database');
 class StockSplitService {
   constructor() {
     this.checkInterval = null;
+    this.initialCheckTimeout = null;
   }
 
   /**
@@ -215,7 +216,7 @@ class StockSplitService {
     console.log(`[StockSplitService] Next stock split check scheduled for ${checkTime.toISOString()}`);
     
     // Schedule the first check
-    setTimeout(() => {
+    this.initialCheckTimeout = setTimeout(() => {
       this.checkForStockSplits().catch(error => {
         console.error('[StockSplitService] Scheduled check failed:', error);
       });
@@ -226,8 +227,14 @@ class StockSplitService {
           console.error('[StockSplitService] Daily check failed:', error);
         });
       }, 24 * 60 * 60 * 1000); // 24 hours
+      if (typeof this.checkInterval.unref === 'function') {
+        this.checkInterval.unref();
+      }
       
     }, timeUntilCheck);
+    if (typeof this.initialCheckTimeout.unref === 'function') {
+      this.initialCheckTimeout.unref();
+    }
   }
 
   /**
@@ -238,6 +245,10 @@ class StockSplitService {
       clearInterval(this.checkInterval);
       this.checkInterval = null;
       console.log('[StockSplitService] Daily stock split checks stopped');
+    }
+    if (this.initialCheckTimeout) {
+      clearTimeout(this.initialCheckTimeout);
+      this.initialCheckTimeout = null;
     }
   }
 
