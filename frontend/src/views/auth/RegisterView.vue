@@ -94,6 +94,9 @@
             <label for="marketing_consent" class="text-gray-700 dark:text-gray-300">
               I agree to receive marketing and promotional emails about TradeTally features, tips, and special offers.
             </label>
+            <p class="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
+              After opting in, check your spam folder and mark TradeTally emails as trusted so updates reach your inbox.
+            </p>
           </div>
         </div>
 
