@@ -1,6 +1,7 @@
 const User = require('../../models/User');
 const refreshTokenService = require('../../services/refreshToken.service');
 const deviceService = require('../../services/device.service');
+const sequenzySubscriberSyncService = require('../../services/sequenzySubscriberSyncService');
 const crypto = require('crypto');
 
 // Auto-generate a username from email, with random suffix if taken
@@ -77,6 +78,7 @@ const authV1Controller = {
       });
       
       await User.createSettings(user.id);
+      sequenzySubscriberSyncService.queueSyncUserById(user.id);
 
       // Register device if provided
       let device = null;

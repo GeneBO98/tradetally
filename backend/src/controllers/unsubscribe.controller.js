@@ -1,5 +1,6 @@
 const unsubscribeService = require('../services/unsubscribeService');
 const User = require('../models/User');
+const sequenzySubscriberSyncService = require('../services/sequenzySubscriberSyncService');
 const logger = require('../utils/logger');
 
 /**
@@ -87,6 +88,7 @@ async function handleUnsubscribe(req, res) {
     }
 
     logger.info(`[UNSUBSCRIBE] User ${userId} unsubscribed from marketing emails`);
+    sequenzySubscriberSyncService.queueSyncUserById(userId);
 
     return res.json({
       success: true,

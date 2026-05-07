@@ -1,10 +1,11 @@
-const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const unsubscribeService = require('./unsubscribeService');
 const trialFeedbackTokenService = require('./trialFeedbackTokenService');
+const emailDeliveryService = require('./emailDeliveryService');
 const escapeHtml = require('../utils/escapeHtml');
 const { loadTemplate, renderTemplate } = require('../utils/emailTemplateLoader');
 const db = require('../config/database');
+const SEQUENZY_TEMPLATES = require('../constants/sequenzyTemplates');
 const { TRIAL_FEEDBACK_OPTIONS } = require('../constants/trialFeedbackOptions');
 
 function maskEmail(email) {
@@ -15,6 +16,20 @@ function maskEmail(email) {
 }
 
 class EmailService {
+  static getTransactionalFromAddress() {
+    return process.env.EMAIL_FROM_TRANSACTIONAL
+      || process.env.SEQUENZY_FROM_TRANSACTIONAL
+      || process.env.EMAIL_FROM
+      || 'noreply@mail.tradetally.io';
+  }
+
+  static getMarketingFromAddress() {
+    return process.env.EMAIL_FROM_MARKETING
+      || process.env.SEQUENZY_FROM_MARKETING
+      || process.env.EMAIL_FROM
+      || 'noreply@updates.tradetally.io';
+  }
+
   static async logEmail({ recipient, subject, emailType, htmlBody, textBody, status, errorMessage, userId, metadata }) {
     try {
       await db.query(
@@ -27,31 +42,11 @@ class EmailService {
     }
   }
   static createTransporter() {
-    const port = parseInt(process.env.EMAIL_PORT) || 587;
-    return nodemailer.createTransport({
-      host: process.env.EMAIL_HOST,
-      port: port,
-      secure: port === 465,
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-      },
-      dkim: process.env.DKIM_PRIVATE_KEY ? {
-        domainName: process.env.EMAIL_DOMAIN || 'tradetally.io',
-        keySelector: process.env.DKIM_SELECTOR || 'default',
-        privateKey: process.env.DKIM_PRIVATE_KEY
-      } : undefined,
-      headers: {
-        'X-Mailer': 'TradeTally Email Service',
-        'X-Priority': '3',
-        'X-MSMail-Priority': 'Normal',
-        'Importance': 'Normal'
-      }
-    });
+    return emailDeliveryService.createSmtpTransporter();
   }
 
   static isConfigured() {
-    return !!(process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS);
+    return emailDeliveryService.isConfigured();
   }
 
   static getBaseTemplate(title, content) {
@@ -297,6 +292,48 @@ class EmailService {
     }
 
     const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/verify-email/${token}`;
+    const verificationSlug = SEQUENZY_TEMPLATES.email_verification;
+
+    if (emailDeliveryService.getEmailProvider() === 'sequenzy') {
+      const mailOptions = {
+        slug: verificationSlug,
+        to: email,
+        variables: {
+          verification_url: verificationUrl,
+          verify_url: verificationUrl,
+          confirmation_url: verificationUrl,
+          email
+        }
+      };
+
+      try {
+        await emailDeliveryService.sendMail(mailOptions);
+        console.log('Verification email sent to:', maskEmail(email));
+        await this.logEmail({
+          recipient: email,
+          subject: `slug:${verificationSlug}`,
+          emailType: 'verification',
+          htmlBody: null,
+          textBody: JSON.stringify(mailOptions.variables),
+          status: 'sent',
+          metadata: { provider: 'sequenzy', slug: verificationSlug }
+        });
+      } catch (error) {
+        console.error('Failed to send verification email via Sequenzy:', error);
+        await this.logEmail({
+          recipient: email,
+          subject: `slug:${verificationSlug}`,
+          emailType: 'verification',
+          htmlBody: null,
+          textBody: JSON.stringify(mailOptions.variables),
+          status: 'failed',
+          errorMessage: error.message,
+          metadata: { provider: 'sequenzy', slug: verificationSlug }
+        });
+      }
+
+      return;
+    }
 
     const content = `
       <h1 style="color: #18181b; font-size: 22px; margin: 0 0 8px 0; font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
@@ -323,7 +360,7 @@ class EmailService {
     const mailOptions = {
       from: {
         name: 'TradeTally',
-        address: process.env.EMAIL_FROM || 'noreply@tradetally.io'
+        address: this.getTransactionalFromAddress()
       },
       to: email,
       subject: 'Verify your email - TradeTally',
@@ -336,8 +373,7 @@ class EmailService {
     };
 
     try {
-      const transporter = this.createTransporter();
-      await transporter.sendMail(mailOptions);
+      await emailDeliveryService.sendMail(mailOptions);
       console.log('Verification email sent to:', maskEmail(email));
       await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'verification', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent' });
     } catch (error) {
@@ -379,7 +415,7 @@ class EmailService {
     const mailOptions = {
       from: {
         name: 'TradeTally',
-        address: process.env.EMAIL_FROM || 'noreply@tradetally.io'
+        address: this.getTransactionalFromAddress()
       },
       to: email,
       subject: 'Reset your password - TradeTally',
@@ -392,8 +428,7 @@ class EmailService {
     };
 
     try {
-      const transporter = this.createTransporter();
-      await transporter.sendMail(mailOptions);
+      await emailDeliveryService.sendMail(mailOptions);
       console.log('Password reset email sent to:', maskEmail(email));
       await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'password_reset', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent' });
     } catch (error) {
@@ -435,7 +470,7 @@ class EmailService {
     const mailOptions = {
       from: {
         name: 'TradeTally',
-        address: process.env.EMAIL_FROM || 'noreply@tradetally.io'
+        address: this.getTransactionalFromAddress()
       },
       to: email,
       subject: 'Confirm your new email - TradeTally',
@@ -448,8 +483,7 @@ class EmailService {
     };
 
     try {
-      const transporter = this.createTransporter();
-      await transporter.sendMail(mailOptions);
+      await emailDeliveryService.sendMail(mailOptions);
       console.log('Email change verification email sent to:', maskEmail(email));
       await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'email_change', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent' });
     } catch (error) {
@@ -500,7 +534,7 @@ class EmailService {
     const mailOptions = {
       from: {
         name: 'TradeTally',
-        address: process.env.EMAIL_FROM || 'noreply@tradetally.io'
+        address: this.getMarketingFromAddress()
       },
       to: email,
       subject: `${isExpired ? 'Your Pro trial ended' : `${daysRemaining} day${daysRemaining === 1 ? '' : 's'} left on your trial`} - TradeTally`,
@@ -516,8 +550,7 @@ class EmailService {
     };
 
     try {
-      const transporter = this.createTransporter();
-      await transporter.sendMail(mailOptions);
+      await emailDeliveryService.sendMail(mailOptions);
       console.log(`Trial ${isExpired ? 'expiration' : 'reminder'} email sent successfully to ${maskEmail(email)}`);
       await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'trial_expiration', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent', metadata: { daysRemaining, isExpired } });
     } catch (error) {
@@ -576,7 +609,7 @@ class EmailService {
     html = this.injectTrackingPixel(html, trackingId);
 
     const mailOptions = {
-      from: { name: 'TradeTally', address: process.env.EMAIL_FROM || 'noreply@tradetally.io' },
+      from: { name: 'TradeTally', address: this.getMarketingFromAddress() },
       to: email,
       subject: `${tradeCount} trades this week - TradeTally`,
       html,
@@ -589,8 +622,7 @@ class EmailService {
       }
     };
     try {
-      const transporter = this.createTransporter();
-      await transporter.sendMail(mailOptions);
+      await emailDeliveryService.sendMail(mailOptions);
       console.log('Weekly digest sent to', maskEmail(email));
       await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'weekly_digest', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent', userId, metadata: { tradeCount, totalPnL } });
     } catch (error) {
@@ -634,7 +666,7 @@ class EmailService {
     html = this.injectTrackingPixel(html, trackingId);
 
     const mailOptions = {
-      from: { name: 'TradeTally', address: process.env.EMAIL_FROM || 'noreply@tradetally.io' },
+      from: { name: 'TradeTally', address: this.getMarketingFromAddress() },
       to: email,
       subject: `Your journal is waiting - TradeTally`,
       html,
@@ -647,8 +679,7 @@ class EmailService {
       }
     };
     try {
-      const transporter = this.createTransporter();
-      await transporter.sendMail(mailOptions);
+      await emailDeliveryService.sendMail(mailOptions);
       console.log('Re-engagement email sent to', maskEmail(email));
       await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'reengagement', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent', userId, metadata: { daysInactive } });
     } catch (error) {
@@ -738,7 +769,7 @@ class EmailService {
     html = this.injectTrackingPixel(html, trackingId);
 
     const mailOptions = {
-      from: { name: 'TradeTally', address: process.env.EMAIL_FROM || 'noreply@tradetally.io' },
+      from: { name: 'TradeTally', address: this.getMarketingFromAddress() },
       to: email,
       subject: 'A few TradeTally features are still waiting for you',
       html,
@@ -752,8 +783,7 @@ class EmailService {
     };
 
     try {
-      const transporter = this.createTransporter();
-      await transporter.sendMail(mailOptions);
+      await emailDeliveryService.sendMail(mailOptions);
       console.log('At-risk follow-up email sent to', maskEmail(email));
       await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'at_risk_followup', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent', userId, metadata: metrics });
     } catch (error) {
@@ -820,7 +850,7 @@ class EmailService {
     html = this.injectTrackingPixel(html, trackingId);
 
     const mailOptions = {
-      from: { name: 'TradeTally', address: process.env.EMAIL_FROM || 'noreply@tradetally.io' },
+      from: { name: 'TradeTally', address: this.getMarketingFromAddress() },
       to: email,
       subject: 'Trade import updates you may have missed',
       html,
@@ -834,8 +864,7 @@ class EmailService {
     };
 
     try {
-      const transporter = this.createTransporter();
-      await transporter.sendMail(mailOptions);
+      await emailDeliveryService.sendMail(mailOptions);
       console.log('Churned no-import follow-up email sent to', maskEmail(email));
       await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'churned_no_imports_followup', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent', userId, metadata: context });
     } catch (error) {
@@ -977,7 +1006,7 @@ class EmailService {
     finalHtml = this.injectTrackingPixel(finalHtml, trackingId);
 
     const mailOptions = {
-      from: { name: 'TradeTally', address: process.env.EMAIL_FROM || 'noreply@tradetally.io' },
+      from: { name: 'TradeTally', address: this.getMarketingFromAddress() },
       to: email,
       subject,
       html: finalHtml,
@@ -991,8 +1020,7 @@ class EmailService {
     };
 
     try {
-      const transporter = this.createTransporter();
-      await transporter.sendMail(mailOptions);
+      await emailDeliveryService.sendMail(mailOptions);
       console.log('Trial conversion email sent to', maskEmail(email));
       await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'trial_conversion', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent', userId, metadata: metrics });
     } catch (error) {
@@ -1074,7 +1102,7 @@ class EmailService {
     html = this.injectTrackingPixel(html, trackingId);
 
     const mailOptions = {
-      from: { name: 'Brennon from TradeTally', address: process.env.EMAIL_FROM || 'noreply@tradetally.io' },
+      from: { name: 'Brennon from TradeTally', address: this.getMarketingFromAddress() },
       replyTo: process.env.SUPPORT_EMAIL || 'support@tradetally.io',
       to: email,
       subject: 'How\'s TradeTally Pro been for you?',
@@ -1089,8 +1117,7 @@ class EmailService {
     };
 
     try {
-      const transporter = this.createTransporter();
-      await transporter.sendMail(mailOptions);
+      await emailDeliveryService.sendMail(mailOptions);
       console.log('[SUCCESS] Review request email sent to', maskEmail(email));
       await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'review_request', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent', userId });
     } catch (error) {
@@ -1165,7 +1192,7 @@ class EmailService {
     const mailOptions = {
       from: {
         name: 'TradeTally',
-        address: process.env.EMAIL_FROM || 'noreply@tradetally.io'
+        address: this.getTransactionalFromAddress()
       },
       to: email,
       subject: 'Welcome to TradeTally Pro',
@@ -1178,8 +1205,7 @@ class EmailService {
     };
 
     try {
-      const transporter = this.createTransporter();
-      await transporter.sendMail(mailOptions);
+      await emailDeliveryService.sendMail(mailOptions);
       console.log('[SUCCESS] Subscription welcome email sent to', maskEmail(email));
       await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'subscription_welcome', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent', metadata: { planName } });
     } catch (error) {
@@ -1213,7 +1239,7 @@ class EmailService {
     const mailOptions = {
       from: {
         name: 'TradeTally Support',
-        address: process.env.EMAIL_FROM || 'noreply@tradetally.io'
+        address: this.getTransactionalFromAddress()
       },
       replyTo: userEmail,
       to: to,
@@ -1223,8 +1249,7 @@ class EmailService {
     };
 
     try {
-      const transporter = this.createTransporter();
-      await transporter.sendMail(mailOptions);
+      await emailDeliveryService.sendMail(mailOptions);
       console.log('[SUCCESS] Support request email sent from', maskEmail(userEmail));
       await this.logEmail({ recipient: to, subject: mailOptions.subject, emailType: 'support_request', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent', metadata: { userEmail, tier } });
     } catch (error) {
