@@ -153,13 +153,24 @@ class EmailService {
 
   /**
    * Generate a personalized unsubscribe URL for a user
-   * @param {number} userId - The user's ID
+   * @param {string|number} userId - The user's ID
    * @returns {string} The full unsubscribe URL with signed token
    */
   static getUnsubscribeUrl(userId) {
     const token = unsubscribeService.generateToken(userId);
     const baseUrl = process.env.FRONTEND_URL || 'https://tradetally.io';
     return `${baseUrl}/unsubscribe?token=${token}`;
+  }
+
+  /**
+   * Generate the one-click unsubscribe endpoint for List-Unsubscribe headers.
+   * Mailbox providers POST here directly, so this must be the API route.
+   */
+  static getOneClickUnsubscribeUrl(userId) {
+    const token = unsubscribeService.generateToken(userId);
+    const baseUrl = process.env.API_BASE_URL || process.env.FRONTEND_URL || 'https://tradetally.io';
+    const apiBaseUrl = baseUrl.replace(/\/$/, '').replace(/\/api$/, '');
+    return `${apiBaseUrl}/api/unsubscribe?token=${token}`;
   }
 
   /**
@@ -222,7 +233,6 @@ class EmailService {
 
     return { html, text };
   }
-
   static async getInternalNotificationRecipient() {
     try {
       const result = await db.query(
@@ -493,7 +503,7 @@ class EmailService {
     }
   }
 
-  static async sendTrialExpirationEmail(email, username, daysRemaining = 0) {
+  static async sendTrialExpirationEmail(email, username, daysRemaining = 0, userId = null) {
     if (!this.isConfigured()) {
       console.log('Email not configured, skipping trial expiration email');
       return;
@@ -501,6 +511,8 @@ class EmailService {
 
     const isExpired = daysRemaining <= 0;
     const pricingUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/pricing`;
+    const unsubscribeUrl = userId ? this.getUnsubscribeUrl(userId) : null;
+    const oneClickUnsubscribeUrl = userId ? this.getOneClickUnsubscribeUrl(userId) : null;
     const safeUsername = escapeHtml(username);
 
     const content = `
@@ -529,6 +541,7 @@ class EmailService {
           : 'After your trial ends, you\'ll return to the free plan with unlimited trade storage.'
         }
       </p>
+      ${unsubscribeUrl ? this.getMarketingFooter(unsubscribeUrl) : ''}
     `;
 
     const mailOptions = {
@@ -542,8 +555,12 @@ class EmailService {
         `${isExpired ? 'Trial Ended' : 'Trial Expiring'} - TradeTally`,
         content
       ),
-      text: `${isExpired ? 'Your TradeTally trial has ended.' : `Your TradeTally trial expires in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'}.`} Visit ${pricingUrl} to continue with Pro features.`,
+      text: `${isExpired ? 'Your TradeTally trial has ended.' : `Your TradeTally trial expires in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'}.`} Visit ${pricingUrl} to continue with Pro features.${unsubscribeUrl ? ` Unsubscribe: ${unsubscribeUrl}` : ''}`,
       headers: {
+        ...(oneClickUnsubscribeUrl ? {
+          'List-Unsubscribe': `<${oneClickUnsubscribeUrl}>`,
+          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+        } : {}),
         'X-Entity-Ref-ID': `trial-${isExpired ? 'expired' : 'reminder'}-${Date.now()}`,
         'Message-ID': `<trial-${isExpired ? 'expired' : 'reminder'}-${Date.now()}@tradetally.io>`
       }
@@ -552,10 +569,10 @@ class EmailService {
     try {
       await emailDeliveryService.sendMail(mailOptions);
       console.log(`Trial ${isExpired ? 'expiration' : 'reminder'} email sent successfully to ${maskEmail(email)}`);
-      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'trial_expiration', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent', metadata: { daysRemaining, isExpired } });
+      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'trial_expiration', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent', userId, metadata: { daysRemaining, isExpired } });
     } catch (error) {
       console.error(`Error sending trial ${isExpired ? 'expiration' : 'reminder'} email:`, error);
-      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'trial_expiration', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'failed', errorMessage: error.message });
+      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'trial_expiration', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'failed', errorMessage: error.message, userId });
       throw error;
     }
   }
@@ -576,6 +593,7 @@ class EmailService {
     const pnlFormatted = totalPnL != null ? `$${Number(totalPnL).toFixed(2)}` : '$0.00';
     const pnlColor = totalPnL >= 0 ? '#16a34a' : '#dc2626';
     const unsubscribeUrl = userId ? this.getUnsubscribeUrl(userId) : `${process.env.FRONTEND_URL || 'https://tradetally.io'}/settings`;
+    const oneClickUnsubscribeUrl = userId ? this.getOneClickUnsubscribeUrl(userId) : unsubscribeUrl;
     const safeUsername = escapeHtml(username);
     const content = `
       <h1 style="color: #18181b; font-size: 22px; margin: 0 0 8px 0; font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
@@ -615,7 +633,7 @@ class EmailService {
       html,
       text: `Your week: ${tradeCount} trades, P&L ${pnlFormatted}. View dashboard: ${url}. Unsubscribe: ${unsubscribeUrl}`,
       headers: {
-        'List-Unsubscribe': `<${unsubscribeUrl}>`,
+        'List-Unsubscribe': `<${oneClickUnsubscribeUrl}>`,
         'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
         'X-Entity-Ref-ID': `weekly-digest-${Date.now()}`,
         'Message-ID': `<weekly-digest-${Date.now()}@tradetally.io>`
@@ -646,6 +664,7 @@ class EmailService {
     }
     const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login`;
     const unsubscribeUrl = userId ? this.getUnsubscribeUrl(userId) : `${process.env.FRONTEND_URL || 'https://tradetally.io'}/settings`;
+    const oneClickUnsubscribeUrl = userId ? this.getOneClickUnsubscribeUrl(userId) : unsubscribeUrl;
     const safeUsername = escapeHtml(username);
     const content = `
       <h1 style="color: #18181b; font-size: 22px; margin: 0 0 8px 0; font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
@@ -672,7 +691,7 @@ class EmailService {
       html,
       text: `You haven't logged in for ${daysInactive} days. Log in: ${loginUrl}. Unsubscribe: ${unsubscribeUrl}`,
       headers: {
-        'List-Unsubscribe': `<${unsubscribeUrl}>`,
+        'List-Unsubscribe': `<${oneClickUnsubscribeUrl}>`,
         'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
         'X-Entity-Ref-ID': `reengagement-${Date.now()}`,
         'Message-ID': `<reengagement-${Date.now()}@tradetally.io>`
@@ -889,6 +908,7 @@ class EmailService {
 
     const upgradeUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/settings`;
     const unsubscribeUrl = userId ? this.getUnsubscribeUrl(userId) : `${process.env.FRONTEND_URL || 'https://tradetally.io'}/settings`;
+    const oneClickUnsubscribeUrl = userId ? this.getOneClickUnsubscribeUrl(userId) : unsubscribeUrl;
     const safeUsername = escapeHtml(username);
     const surveyBlock = this.getTrialFeedbackSurveyBlock(userId);
 
@@ -1012,7 +1032,7 @@ class EmailService {
       html: finalHtml,
       text: `${greeting} ${bodyText}\n\nUpgrade: ${upgradeUrl}\n\n${surveyBlock.text}\n\nUnsubscribe: ${unsubscribeUrl}`,
       headers: {
-        'List-Unsubscribe': `<${unsubscribeUrl}>`,
+        'List-Unsubscribe': `<${oneClickUnsubscribeUrl}>`,
         'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
         'X-Entity-Ref-ID': `trial-conversion-${Date.now()}`,
         'Message-ID': `<trial-conversion-${Date.now()}@tradetally.io>`
@@ -1044,6 +1064,7 @@ class EmailService {
     }
 
     const unsubscribeUrl = userId ? this.getUnsubscribeUrl(userId) : `${process.env.FRONTEND_URL || 'https://tradetally.io'}/settings`;
+    const oneClickUnsubscribeUrl = userId ? this.getOneClickUnsubscribeUrl(userId) : unsubscribeUrl;
     const safeUsername = escapeHtml(username);
     const footer = this.getMarketingFooter(unsubscribeUrl);
 
@@ -1109,7 +1130,7 @@ class EmailService {
       html,
       text: `Hi ${username}, you've been on TradeTally Pro for about a month now, so I wanted to check in. How's it been for you so far? If TradeTally has been helpful, I'd love if you left a short review here: ${reviewUrl}. Even a sentence or two goes a long way. If you have feedback, feature requests, or anything that feels missing, just reply to this email. I read every response. Thanks, Brennon. Unsubscribe: ${unsubscribeUrl}`,
       headers: {
-        'List-Unsubscribe': `<${unsubscribeUrl}>`,
+        'List-Unsubscribe': `<${oneClickUnsubscribeUrl}>`,
         'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
         'X-Entity-Ref-ID': `review-request-${Date.now()}`,
         'Message-ID': `<review-request-${Date.now()}@tradetally.io>`
@@ -1215,6 +1236,73 @@ class EmailService {
     }
   }
 
+  static async sendNewSubscriberNotification({ userEmail, username, planName, billingInterval }) {
+    if (!this.isConfigured()) {
+      console.log('Email not configured, skipping new subscriber notification');
+      return;
+    }
+
+    const recipientEmail = await this.getInternalNotificationRecipient();
+    if (!recipientEmail) {
+      console.log('No internal recipient configured, skipping new subscriber notification');
+      return;
+    }
+
+    const safeUsername = escapeHtml(username || 'Unknown');
+    const safeUserEmail = escapeHtml(userEmail || 'Unknown');
+    const safePlanName = escapeHtml(planName || 'Pro');
+    const safeBillingInterval = escapeHtml(billingInterval || 'unknown');
+    const dashboardUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/admin/users`;
+
+    const content = `
+      <h1 style="color: #18181b; font-size: 22px; margin: 0 0 8px 0; font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        New Paid Subscriber
+      </h1>
+      <p style="color: #52525b; font-size: 15px; line-height: 1.6; margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        A new TradeTally subscription was activated successfully.
+      </p>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin: 0 0 24px 0;">
+        <tr>
+          <td style="padding: 16px 20px; background-color: #fafafa; border: 1px solid #f4f4f5; color: #52525b; font-size: 14px; line-height: 1.8; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+            <strong>Username:</strong> ${safeUsername}<br>
+            <strong>Email:</strong> ${safeUserEmail}<br>
+            <strong>Plan:</strong> ${safePlanName}<br>
+            <strong>Billing Interval:</strong> ${safeBillingInterval}
+          </td>
+        </tr>
+      </table>
+      <div style="text-align: center; margin: 0 0 24px 0;">
+        <a href="${dashboardUrl}" style="${this.getButtonStyle()}">
+          View Users
+        </a>
+      </div>
+    `;
+
+    const mailOptions = {
+      from: {
+        name: 'TradeTally',
+        address: this.getTransactionalFromAddress()
+      },
+      to: recipientEmail,
+      subject: `[TradeTally] New paid subscriber: ${username || userEmail || 'Unknown user'}`,
+      html: this.getBaseTemplate('New Paid Subscriber', content),
+      text: `A new TradeTally subscription was activated.\n\nUsername: ${username || 'Unknown'}\nEmail: ${userEmail || 'Unknown'}\nPlan: ${planName || 'Pro'}\nBilling Interval: ${billingInterval || 'unknown'}\n\nView users: ${dashboardUrl}`,
+      headers: {
+        'X-Entity-Ref-ID': `new-subscriber-${Date.now()}`,
+        'Message-ID': `<new-subscriber-${Date.now()}@tradetally.io>`
+      }
+    };
+
+    try {
+      await emailDeliveryService.sendMail(mailOptions);
+      console.log('[SUCCESS] New subscriber notification sent to', maskEmail(recipientEmail));
+      await this.logEmail({ recipient: recipientEmail, subject: mailOptions.subject, emailType: 'new_subscriber_notification', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent', metadata: { userEmail, username, planName, billingInterval } });
+    } catch (error) {
+      console.error('[ERROR] Error sending new subscriber notification:', error);
+      await this.logEmail({ recipient: recipientEmail, subject: mailOptions.subject, emailType: 'new_subscriber_notification', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'failed', errorMessage: error.message, metadata: { userEmail, username, planName, billingInterval } });
+      throw error;
+    }
+  }
   static async sendSupportRequest({ to, userEmail, username, tier, subject, message }) {
     const safeUsername = escapeHtml(username || 'Unknown');
     const safeEmail = escapeHtml(userEmail);

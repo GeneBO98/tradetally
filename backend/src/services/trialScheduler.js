@@ -53,6 +53,7 @@ class TrialScheduler {
         INNER JOIN users u ON to_.user_id = u.id
         WHERE to_.tier = 'pro'
           AND to_.reason ILIKE '%trial%'
+          AND u.marketing_consent = true
           AND to_.expires_at::date = $1::date
           AND to_.expires_at > NOW()
           AND (to_.reminder_sent_at IS NULL OR to_.reminder_sent_at::date != CURRENT_DATE)
@@ -72,7 +73,8 @@ class TrialScheduler {
           await EmailService.sendTrialExpirationEmail(
             user.email,
             user.username || user.full_name || 'there',
-            daysRemaining
+            daysRemaining,
+            user.id
           );
           
           // Mark reminder as sent
@@ -110,6 +112,7 @@ class TrialScheduler {
         INNER JOIN users u ON to_.user_id = u.id
         WHERE to_.tier = 'pro'
           AND to_.reason ILIKE '%trial%'
+          AND u.marketing_consent = true
           AND to_.expires_at < NOW()
           AND to_.expires_at > (NOW() - INTERVAL '24 hours')
           AND (to_.expiration_sent_at IS NULL)
@@ -129,7 +132,8 @@ class TrialScheduler {
           await EmailService.sendTrialExpirationEmail(
             user.email,
             user.username || user.full_name || 'there',
-            0 // 0 means expired
+            0, // 0 means expired
+            user.id
           );
           
           // Mark expiration notice as sent
