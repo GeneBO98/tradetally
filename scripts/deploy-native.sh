@@ -29,7 +29,7 @@ pnpm --dir backend run migrate
 
 # Restart backend
 echo "[DEPLOY] Restarting backend..."
-pm2 restart all
+pm2 restart tradetally --update-env
 
 # Reload nginx
 echo "[DEPLOY] Reloading nginx..."
