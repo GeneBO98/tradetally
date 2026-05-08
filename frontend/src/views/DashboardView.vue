@@ -121,9 +121,27 @@
     <!-- Year Wrapped Banner -->
     <YearWrappedBanner />
 
-    <!-- Guided onboarding: step 1 of tour -->
+    <!-- Pro tour: step 1 of 5 (everyone who just signed up) -->
+    <ProTourCard
+      v-if="authStore.proOnboardingStep === 1"
+      :step="1"
+      :total-steps="5"
+      :next-step="2"
+      :title="trialDaysRemaining >= 25 ? 'Welcome to your 30-day Pro trial' : 'Welcome to your Pro trial'"
+      :description="trialDaysRemaining >= 25
+        ? 'Your account is loaded with sample trades that surface the patterns Pro analytics catch — revenge trades, premature exits, and more. Let\'s walk through what unlocks the most value.'
+        : 'Your 14-day Pro trial is active. Verify your email at any time to extend it to a full month. Let\'s walk through the features that drive most of the value.'"
+      cta-label="Show me Behavioral Analytics"
+      cta-route="behavioral-analytics"
+      icon="sparkles"
+      :stat-value="trialDaysRemaining"
+      stat-label="days of Pro access remaining"
+      stat-tone="primary"
+    />
+
+    <!-- Free tour: only for users who haven't started the pro tour -->
     <OnboardingCard
-      v-if="authStore.onboardingStep === 0 || authStore.onboardingStep === 1"
+      v-if="(authStore.onboardingStep === 0 || authStore.onboardingStep === 1) && authStore.proOnboardingStep === 0"
       :step="1"
       :total-steps="5"
       :next-step="2"
@@ -1363,6 +1381,7 @@ import { getRefreshInterval, shouldRefreshPrices, getMarketStatus } from '@/util
 import YearWrappedBanner from '@/components/yearWrapped/YearWrappedBanner.vue'
 import YearWrappedModal from '@/components/yearWrapped/YearWrappedModal.vue'
 import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
+import ProTourCard from '@/components/onboarding/ProTourCard.vue'
 import StockLogo from '@/components/common/StockLogo.vue'
 import { useYearWrappedStore } from '@/stores/yearWrapped'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
@@ -1530,6 +1549,11 @@ const showPostTrialBanner = computed(() => {
   return subscription.value.tier === 'free' &&
     subscription.value.has_used_trial === true &&
     !subscription.value.subscription
+})
+
+const trialDaysRemaining = computed(() => {
+  const days = subscription.value?.trial?.days_remaining
+  return Number.isFinite(days) ? days : 14
 })
 
 // Get section definition by ID

@@ -8,19 +8,6 @@
             </p>
         </div>
 
-        <!-- Pro onboarding: step 2 -->
-        <OnboardingCard
-            v-if="authStore.proOnboardingStep === 2"
-            :step="2"
-            :total-steps="3"
-            :next-step="3"
-            tour-type="pro"
-            title="Watchlists & Price Alerts"
-            description="Track your favorite symbols and get notified when price targets are hit."
-            cta-label="Next: Trade Management"
-            cta-route="trade-management"
-        />
-
         <!-- Pro Feature Notice -->
         <ProUpgradePrompt
             v-if="!authLoading && !isProUser"
@@ -826,7 +813,6 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
-import OnboardingCard from "@/components/onboarding/OnboardingCard.vue";
 import { useNotification } from "@/composables/useNotification";
 import { usePriceAlertNotifications } from "@/composables/usePriceAlertNotifications";
 import api from "@/services/api";

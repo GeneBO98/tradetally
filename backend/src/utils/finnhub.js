@@ -2,6 +2,7 @@ const axios = require('axios');
 const cache = require('./cache');
 const aiService = require('./aiService');
 const historicalPriceCache = require('./historicalPriceCache');
+const candleStore = require('./finnhubCandleStore');
 const ApiUsageService = require('../services/apiUsageService');
 const TierService = require('../services/tierService');
 const { validateAiProviderUrl } = require('./urlSecurity');
@@ -417,19 +418,28 @@ class FinnhubClient {
 
   async getCompanyProfile(symbol) {
     const symbolUpper = symbol.toUpperCase();
-    
-    // Check cache first (24 hour TTL for company profiles)
+
+    // Tier 1: in-memory cache.
     const cached = await cache.get('company_profile', symbolUpper);
     if (cached) {
       return cached;
     }
 
+    // Tier 2: persistent DB cache. Profiles change rarely (sector, exchange,
+    // logo), so a 7-day TTL is plenty and avoids hitting Finnhub for every
+    // sample-data signup that mentions the same symbol.
+    const persisted = await candleStore.getResponse('company_profile', symbolUpper);
+    if (persisted) {
+      await cache.set('company_profile', symbolUpper, persisted);
+      return persisted;
+    }
+
     try {
       const profile = await this.makeRequest('/stock/profile2', { symbol: symbolUpper });
-      
-      // Cache the result
+
       await cache.set('company_profile', symbolUpper, profile);
-      
+      await candleStore.setResponse('company_profile', symbolUpper, profile, 7 * 24 * 60 * 60 * 1000);
+
       return profile;
     } catch (error) {
       console.warn(`Failed to get company profile for ${symbol}: ${error.message}`);
@@ -439,28 +449,41 @@ class FinnhubClient {
 
   async getCompanyNews(symbol, fromDate = null, toDate = null) {
     const symbolUpper = symbol.toUpperCase();
-    const to = toDate || new Date().toISOString().split('T')[0];
+    const todayStr = new Date().toISOString().split('T')[0];
+    const to = toDate || todayStr;
     const from = fromDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-    
-    // Create cache key with date range
+
     const cacheKey = `${symbolUpper}_${from}_${to}`;
-    
-    // Check cache first (15 minute TTL for company news)
+
+    // Tier 1: in-memory cache.
     const cached = await cache.get('company_news', cacheKey);
     if (cached) {
       return cached;
     }
 
+    // Tier 2: persistent DB cache, but only for windows that don't include
+    // today — once a date is in the past, the news for that day is fixed.
+    const isPastWindow = to < todayStr;
+    if (isPastWindow) {
+      const persisted = await candleStore.getResponse('company_news', cacheKey);
+      if (persisted) {
+        await cache.set('company_news', cacheKey, persisted);
+        return persisted;
+      }
+    }
+
     try {
-      const news = await this.makeRequest('/company-news', { 
+      const news = await this.makeRequest('/company-news', {
         symbol: symbolUpper,
         from,
         to
       });
-      
-      // Cache the result
+
       await cache.set('company_news', cacheKey, news);
-      
+      if (isPastWindow) {
+        await candleStore.setResponse('company_news', cacheKey, news);
+      }
+
       return news;
     } catch (error) {
       console.warn(`Failed to get company news for ${symbol}: ${error.message}`);
@@ -488,10 +511,20 @@ class FinnhubClient {
     // Create cache key with parameters
     const cacheKey = `${symbolUpper}_${resolution}_${from}_${to}`;
 
-    // Check cache first (5 minute TTL for recent candle data)
+    // Tier 1: in-memory cache.
     const cached = await cache.get('stock_candles', cacheKey);
     if (cached) {
       return cached;
+    }
+
+    // Tier 2: persistent DB cache. The formatted-candle shape differs from
+    // the raw API response cached by getCandles, so we use a distinct
+    // resolution prefix to keep them in their own keyspace.
+    const persistedKey = `formatted_${resolution}`;
+    const persisted = await candleStore.get(symbolUpper, persistedKey, from, to);
+    if (persisted) {
+      await cache.set('stock_candles', cacheKey, persisted);
+      return persisted;
     }
 
     try {
@@ -520,8 +553,9 @@ class FinnhubClient {
         });
       }
 
-      // Cache the result
+      // Cache the result in both layers.
       await cache.set('stock_candles', cacheKey, formattedCandles);
+      await candleStore.set(symbolUpper, persistedKey, from, to, formattedCandles);
 
       // Track usage if userId provided
       if (userId) {
@@ -1193,11 +1227,19 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
     
     // Create cache key with all parameters
     const cacheKey = `${symbolUpper}_${resolution}_${from}_${to}`;
-    
-    // Check cache first (1 hour TTL for candle data)
+
+    // Tier 1: in-process memory cache (fastest, lost on restart).
     const cached = await cache.get('candles', cacheKey);
     if (cached) {
       return cached;
+    }
+
+    // Tier 2: cross-user persistent DB cache. This is what makes the
+    // sample-data signup flow free of Finnhub calls after the first user.
+    const persisted = await candleStore.get(symbolUpper, resolution, from, to);
+    if (persisted) {
+      await cache.set('candles', cacheKey, persisted);
+      return persisted;
     }
 
     try {
@@ -1207,14 +1249,16 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
         from,
         to
       });
-      
+
       // Validate candle data
       if (!candles || candles.s !== 'ok' || !candles.c || candles.c.length === 0) {
         throw new Error(`No candle data available for ${symbolUpper}. This may be due to: 1) Symbol not supported by Finnhub, 2) No trading data for the requested time period, or 3) API limitations.`);
       }
 
-      // Cache the result
+      // Cache the result in both layers so the next caller — same process or
+      // a fresh signup later — skips the API hit.
       await cache.set('candles', cacheKey, candles);
+      await candleStore.set(symbolUpper, resolution, from, to, candles);
 
       return candles;
     } catch (error) {
@@ -1479,28 +1523,31 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
       return [];
     }
 
-    const cacheKey = `stock_splits_${symbol}_${from}_${to}`;
+    const symbolUpper = symbol.toUpperCase();
+    const cacheKey = `stock_splits_${symbolUpper}_${from}_${to}`;
+    const persistedKey = `${symbolUpper}_${from}_${to}`;
+
     const cached = cache.get(cacheKey);
     if (cached) {
-      console.log(`Using cached stock splits for ${symbol}`);
       return cached;
     }
 
+    const persisted = await candleStore.getResponse('stock_splits', persistedKey);
+    if (persisted) {
+      cache.set(cacheKey, persisted, 86400);
+      return persisted;
+    }
+
     try {
-      const endpoint = '/stock/split';
-      const params = {
-        symbol,
-        from,
-        to
-      };
-      
-      console.log(`Fetching stock splits for ${symbol} from ${from} to ${to}`);
-      const response = await this.makeRequest(endpoint, params);
-      
-      // Cache for 24 hours since splits are historical data
-      cache.set(cacheKey, response, 86400);
-      
-      return response || [];
+      console.log(`Fetching stock splits for ${symbolUpper} from ${from} to ${to}`);
+      const response = await this.makeRequest('/stock/split', { symbol: symbolUpper, from, to });
+
+      const result = response || [];
+      cache.set(cacheKey, result, 86400);
+      // Splits don't change retroactively — cache forever.
+      await candleStore.setResponse('stock_splits', persistedKey, result);
+
+      return result;
     } catch (error) {
       console.error(`Error fetching stock splits for ${symbol}:`, error.message);
       return [];
@@ -1527,10 +1574,20 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
     // Create cache key with parameters
     const cacheKey = `${symbolUpper}_${resolution}_${from}_${to}`;
 
-    // Check cache first (5 minute TTL for recent candle data)
+    // Tier 1: in-memory cache.
     const cached = await cache.get('stock_candles', cacheKey);
     if (cached) {
       return cached;
+    }
+
+    // Tier 2: persistent DB cache. The formatted-candle shape differs from
+    // the raw API response cached by getCandles, so we use a distinct
+    // resolution prefix to keep them in their own keyspace.
+    const persistedKey = `formatted_${resolution}`;
+    const persisted = await candleStore.get(symbolUpper, persistedKey, from, to);
+    if (persisted) {
+      await cache.set('stock_candles', cacheKey, persisted);
+      return persisted;
     }
 
     try {
@@ -1559,8 +1616,9 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
         });
       }
 
-      // Cache the result
+      // Cache the result in both layers.
       await cache.set('stock_candles', cacheKey, formattedCandles);
+      await candleStore.set(symbolUpper, persistedKey, from, to, formattedCandles);
 
       // Track usage if userId provided
       if (userId) {
@@ -1972,14 +2030,20 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
       to = new Date().toISOString().split('T')[0];
     }
 
-    // Create cache key
     const cacheKey = `dividends_${symbolUpper}_${from}_${to}`;
+    const persistedKey = `${symbolUpper}_${from}_${to}`;
 
-    // Check cache first (24 hour TTL)
+    // Tier 1: in-memory.
     const cached = await cache.get('dividends', cacheKey);
     if (cached) {
-      console.log(`[DIVIDENDS] Using cached dividend data for ${symbolUpper}`);
       return cached;
+    }
+
+    // Tier 2: persistent. Past dividends never change retroactively.
+    const persisted = await candleStore.getResponse('dividends', persistedKey);
+    if (persisted) {
+      await cache.set('dividends', cacheKey, persisted);
+      return persisted;
     }
 
     try {
@@ -1991,24 +2055,19 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
         to: to
       });
 
-      // Finnhub returns an array of dividend objects:
-      // { symbol, date, amount, adjustedAmount, payDate, recordDate, declarationDate, currency }
       const dividends = data || [];
 
-      if (dividends.length > 0) {
-        console.log(`[DIVIDENDS] Found ${dividends.length} dividends for ${symbolUpper}`);
-        await cache.set('dividends', cacheKey, dividends);
-      } else {
-        console.log(`[DIVIDENDS] No dividends found for ${symbolUpper}`);
-        // Cache empty result for 24 hours to avoid repeated API calls
-        await cache.set('dividends', cacheKey, []);
+      await cache.set('dividends', cacheKey, dividends);
+      // Only persist if the requested window is fully in the past — windows
+      // that reach forward to today could grow as new dividends are declared.
+      const todayStr = new Date().toISOString().split('T')[0];
+      if (to < todayStr) {
+        await candleStore.setResponse('dividends', persistedKey, dividends);
       }
 
       return dividends;
     } catch (error) {
-      // Don't throw on 404 or empty results - just return empty array
       if (error.message.includes('404') || error.message.includes('No data')) {
-        console.log(`[DIVIDENDS] No dividend data available for ${symbolUpper}`);
         await cache.set('dividends', cacheKey, []);
         return [];
       }

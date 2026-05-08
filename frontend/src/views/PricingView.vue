@@ -1,6 +1,21 @@
 <template>
   <div class="min-h-screen bg-gray-50 dark:bg-gray-900 py-12">
     <div class="content-wrapper">
+      <!-- Pro tour: step 5 of 5 — Conversion CTA -->
+      <ProTourCard
+        v-if="authStore.proOnboardingStep === 5"
+        :step="5"
+        :total-steps="5"
+        :next-step="6"
+        title="Keep these tools after your trial"
+        description="You've seen what Pro catches: revenge trades, premature exits, missed profit, and pre-screened scanner setups. Pick a plan now and your trial keeps running — we won't charge until it ends."
+        cta-label="I'll pick a plan"
+        icon="rocket"
+        :stat-value="proTourTrialDays"
+        stat-label="trial days remaining"
+        stat-tone="success"
+      />
+
       <!-- Header -->
       <div class="text-center">
         <h1 class="text-4xl font-bold text-gray-900 dark:text-white">
@@ -337,9 +352,11 @@ import { useAuthStore } from '@/stores/auth'
 import { useAnalytics } from '@/composables/useAnalytics'
 import { useGrowthBook } from '@/composables/useGrowthBook'
 import api from '@/services/api'
+import ProTourCard from '@/components/onboarding/ProTourCard.vue'
 
 export default {
   name: 'PricingView',
+  components: { ProTourCard },
   setup() {
     const router = useRouter()
     const route = useRoute()
@@ -357,6 +374,10 @@ export default {
     const currentSubscription = ref(null)
     const trialInfo = ref(null)
     const hasUsedTrial = ref(false)
+    const proTourTrialDays = computed(() => {
+      const days = trialInfo.value?.days_remaining
+      return Number.isFinite(days) ? days : 14
+    })
     const redirectUrl = ref(route.query.redirect || null)
     const errorMessage = ref('')
     const successMessage = ref('')
@@ -632,6 +653,7 @@ export default {
     })
 
     return {
+      authStore,
       loading,
       subscribing,
       billingStatus,
@@ -641,6 +663,7 @@ export default {
       currentSubscription,
       trialInfo,
       hasUsedTrial,
+      proTourTrialDays,
       subscribe,
       startTrial,
       getSubscribeButtonClass,

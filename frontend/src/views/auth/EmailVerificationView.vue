@@ -23,13 +23,18 @@
           <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 dark:bg-green-900/20">
             <CheckIcon class="h-6 w-6 text-green-600 dark:text-green-400" />
           </div>
-          <h3 class="mt-4 text-lg font-medium text-gray-900 dark:text-white">Email Verified!</h3>
-          <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
+          <h3 class="mt-4 text-lg font-medium text-gray-900 dark:text-white">
+            {{ trialActive ? 'Email verified — trial extended to 30 days!' : 'Email Verified!' }}
+          </h3>
+          <p v-if="trialActive" class="mt-2 text-sm text-gray-600 dark:text-gray-400">
+            Your Pro trial now runs for a full month from signup. Sign in to keep exploring behavioral analytics, the stock scanner, and the rest of the Pro toolkit.
+          </p>
+          <p v-else class="mt-2 text-sm text-gray-600 dark:text-gray-400">
             Your email has been successfully verified. You can now sign in to your account.
           </p>
           <div class="mt-6">
             <router-link to="/login" class="btn-primary w-full">
-              Continue to Sign In
+              {{ trialActive ? 'Sign in and keep exploring' : 'Continue to Sign In' }}
             </router-link>
           </div>
         </div>
@@ -105,6 +110,7 @@ const { showSuccess, showError } = useNotification()
 
 const loading = ref(true)
 const verified = ref(false)
+const trialActive = ref(false)
 const error = ref(null)
 const showResendForm = ref(false)
 const resendEmail = ref('')
@@ -112,7 +118,7 @@ const resendLoading = ref(false)
 
 async function verifyEmail() {
   const token = route.params.token
-  
+
   if (!token) {
     error.value = 'Invalid verification link'
     loading.value = false
@@ -122,6 +128,7 @@ async function verifyEmail() {
   try {
     const response = await api.get(`/auth/verify-email/${token}`)
     verified.value = true
+    trialActive.value = Boolean(response.data?.trial?.active)
     showSuccess('Success', response.data.message)
   } catch (err) {
     error.value = err.response?.data?.error || 'Verification failed'

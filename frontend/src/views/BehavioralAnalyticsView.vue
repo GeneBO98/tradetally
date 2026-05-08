@@ -31,17 +31,39 @@
             </p>
         </div>
 
-        <!-- Pro onboarding: step 1 -->
-        <OnboardingCard
-            v-if="authStore.proOnboardingStep === 1"
-            :step="1"
-            :total-steps="3"
-            :next-step="2"
-            tour-type="pro"
-            title="Behavioral Analytics"
-            description="Detect revenge trading, overtrading, and FOMO patterns. Understand your psychological edge."
-            cta-label="Next: Watchlists"
-            cta-route="markets"
+        <!-- Pro tour: step 2 of 5 — Revenge Trade highlight -->
+        <ProTourCard
+            v-if="authStore.proOnboardingStep === 2"
+            :step="2"
+            :total-steps="5"
+            :next-step="3"
+            title="Look at the revenge trade we caught"
+            description="Your sample data includes a TSLA loss followed 22 minutes later by a re-entry on the same symbol with a 30% larger position — and another loss. Behavioral Analytics flags this pattern automatically so you can break the habit before it costs you real money."
+            cta-label="Next: Loss Aversion"
+            cta-scroll-selector="#loss-aversion-section"
+            icon="warning"
+            :stat-value="390"
+            stat-label="extra loss from the revenge trade"
+            stat-format="currency"
+            stat-tone="danger"
+        />
+
+        <!-- Pro tour: step 3 of 5 — Loss aversion + missed profit -->
+        <ProTourCard
+            v-if="authStore.proOnboardingStep === 3"
+            :step="3"
+            :total-steps="5"
+            :next-step="4"
+            title="Money you left on the table"
+            description="The same engine measures how quickly you exit winners vs. losers. Your sample winners were closed in seconds while losers were held 1.6× longer — costing an estimated $610 a month in missed profit. This is the kind of edge Pro gives you back."
+            cta-label="Next: Stock Scanner"
+            ctaRoute="analysis"
+            :ctaQuery="{ tab: 'scanner' }"
+            icon="trend"
+            :stat-value="610"
+            stat-label="estimated monthly missed profit"
+            stat-format="currency"
+            stat-tone="warning"
         />
 
         <!-- Pro Tier Gate -->
@@ -2641,7 +2663,7 @@
             </div>
 
             <!-- Loss Aversion Analysis -->
-            <div class="card">
+            <div class="card" id="loss-aversion-section">
                 <div class="card-body">
                     <div class="flex items-center justify-between mb-6">
                         <div>
@@ -3212,6 +3234,16 @@
                         </div>
                     </div>
 
+                    <div
+                        v-else-if="loadingLossAversion"
+                        class="flex items-center justify-center py-12 text-gray-500 dark:text-gray-400"
+                    >
+                        <svg class="animate-spin h-5 w-5 mr-3 text-primary-600" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span class="text-sm">Analyzing exit patterns…</span>
+                    </div>
                     <div
                         v-else
                         class="text-center py-8 text-gray-500 dark:text-gray-400"
@@ -4015,6 +4047,16 @@
                         </div>
                     </div>
 
+                    <div
+                        v-else-if="loadingTopMissedTrades"
+                        class="flex items-center justify-center py-12 text-gray-500 dark:text-gray-400"
+                    >
+                        <svg class="animate-spin h-5 w-5 mr-3 text-primary-600" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span class="text-sm">Finding early exits and looking up post-exit prices…</span>
+                    </div>
                     <div
                         v-else
                         class="text-center py-8 text-gray-500 dark:text-gray-400"
@@ -5547,6 +5589,16 @@
                     </div>
 
                     <div
+                        v-else-if="loadingOverconfidence"
+                        class="flex items-center justify-center py-12 text-gray-500 dark:text-gray-400"
+                    >
+                        <svg class="animate-spin h-5 w-5 mr-3 text-primary-600" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span class="text-sm">Detecting win-streak patterns…</span>
+                    </div>
+                    <div
                         v-else
                         class="text-center py-8 text-gray-500 dark:text-gray-400"
                     >
@@ -5690,6 +5742,7 @@ import api from "@/services/api";
 import { useNotification } from "@/composables/useNotification";
 import { useAuthStore } from "@/stores/auth";
 import OnboardingCard from "@/components/onboarding/OnboardingCard.vue";
+import ProTourCard from "@/components/onboarding/ProTourCard.vue";
 import { useGlobalAccountFilter } from "@/composables/useGlobalAccountFilter";
 import { useUserTimezone } from "@/composables/useUserTimezone";
 import ProUpgradePrompt from "@/components/ProUpgradePrompt.vue";
@@ -6808,23 +6861,26 @@ const loadCachedLossAversionData = () => {
 
 // Load existing loss aversion analysis data
 const loadExistingLossAversionData = async () => {
-    // Always try API first to get the latest data from database
+    // Surface a loading state on the card while the initial fetch is in
+    // flight so the empty-state copy doesn't flash before data lands.
+    loadingLossAversion.value = true;
     try {
-        const lossAversionRes = await api.get(
-            "/behavioral-analytics/loss-aversion/complete",
-        );
-        if (lossAversionRes.data.data) {
-            // Use the complete analysis data which includes stored trade patterns
-            lossAversionData.value = lossAversionRes.data.data;
-            // Cache the API response
-            cacheLossAversionData(lossAversionRes.data.data);
-            return;
+        try {
+            const lossAversionRes = await api.get(
+                "/behavioral-analytics/loss-aversion/complete",
+            );
+            if (lossAversionRes.data.data) {
+                // Use the complete analysis data which includes stored trade patterns
+                lossAversionData.value = lossAversionRes.data.data;
+                // Cache the API response
+                cacheLossAversionData(lossAversionRes.data.data);
+                return;
+            }
+        } catch (error) {
+            console.log(
+                "Failed to load complete loss aversion data, trying cache...",
+            );
         }
-    } catch (error) {
-        console.log(
-            "Failed to load complete loss aversion data, trying cache...",
-        );
-    }
 
     // Try cache as fallback
     const cachedData = loadCachedLossAversionData();
@@ -6882,10 +6938,14 @@ const loadExistingLossAversionData = async () => {
             fallbackError,
         );
     }
+    } finally {
+        loadingLossAversion.value = false;
+    }
 };
 
 // Load existing overconfidence analysis data
 const loadExistingOverconfidenceData = async () => {
+    loadingOverconfidence.value = true;
     try {
         const response = await api.get("/behavioral-analytics/overconfidence");
         if (response.data.success && response.data.data) {
@@ -6920,6 +6980,8 @@ const loadExistingOverconfidenceData = async () => {
         }
     } catch (error) {
         console.error("Failed to load existing overconfidence data:", error);
+    } finally {
+        loadingOverconfidence.value = false;
     }
 };
 

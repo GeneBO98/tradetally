@@ -1,5 +1,21 @@
 <template>
     <div class="content-wrapper py-8">
+        <!-- Pro tour: step 4 of 5 — Stock Scanner -->
+        <ProTourCard
+            v-if="authStore.proOnboardingStep === 4 && activeTab === 'scanner'"
+            :step="4"
+            :total-steps="5"
+            :next-step="5"
+            title="Find new setups in seconds with the 8 Pillars Scanner"
+            description="Every night the scanner runs the Russell 2000 through 8 quality filters — earnings growth, revenue trend, momentum, and more — and shows you only the names that pass. Pro users get the full ranked list each morning."
+            cta-label="Last step: Keep your trial"
+            cta-route="pricing"
+            icon="scanner"
+            :stat-value="2000"
+            stat-label="symbols scanned every night"
+            stat-tone="primary"
+        />
+
         <!-- Header -->
         <div class="flex items-center justify-between mb-8">
             <div>
@@ -937,11 +953,14 @@ import ScanStatusBadge from "@/components/investments/scanner/ScanStatusBadge.vu
 import StockAnalyzerSection from "@/components/investments/dcf/StockAnalyzerSection.vue";
 import { useScannerStore } from "@/stores/scanner";
 import StockLogo from "@/components/common/StockLogo.vue";
+import ProTourCard from "@/components/onboarding/ProTourCard.vue";
+import { useAuthStore } from "@/stores/auth";
 
 const router = useRouter();
 const route = useRoute();
 const investmentsStore = useInvestmentsStore();
 const scannerStore = useScannerStore();
+const authStore = useAuthStore();
 const { showSuccess, showError } = useNotification();
 
 // Valid tab names

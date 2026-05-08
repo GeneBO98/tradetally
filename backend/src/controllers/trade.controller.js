@@ -5442,8 +5442,18 @@ const tradeController = {
       const SampleDataService = require('../services/sampleDataService');
       const hasSample = await SampleDataService.hasSampleData(userId);
 
-      if (hasSample) {
+      // ?force=true wipes old sample data and creates fresh. Use this to
+      // upgrade accounts whose sample trades were created with the legacy
+      // 'sample' tag (which hid them from the calendar/dashboard) and which
+      // never had the behavioural analyzers run for them.
+      const force = req.query.force === 'true' || req.body?.force === true;
+
+      if (hasSample && !force) {
         return res.json({ message: 'Sample data already available' });
+      }
+
+      if (hasSample && force) {
+        await SampleDataService.removeForUser(userId);
       }
 
       const result = await SampleDataService.createForUser(userId);

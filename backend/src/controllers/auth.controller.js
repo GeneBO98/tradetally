@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const EmailService = require('../services/emailService');
 const bcrypt = require('bcryptjs');
 const TierService = require('../services/tierService');
+const BillingService = require('../services/billingService');
 const YearWrappedService = require('../services/yearWrappedService');
 const refreshTokenService = require('../services/refreshToken.service');
 const SampleDataService = require('../services/sampleDataService');
@@ -177,18 +178,35 @@ const authController = {
         marketingConsent: marketing_consent
       });
 
-      // Create sample data for new users on billing-enabled instances
-      try {
-        const billingEnabled = await TierService.isBillingEnabled(req.headers.host);
-        console.log(`[REGISTER] Sample data check: billingEnabled=${billingEnabled}, isFirstUser=${isFirstUser}`);
-        if (billingEnabled && !isFirstUser) {
+      // For billing-enabled instances we want every new user to land in a
+      // populated, Pro-feature-ready state on first login:
+      //   1. Grant the 14-day trial first (Pro tier required by analyzers)
+      //   2. Create sample trades
+      //   3. Run the historical analyzers so Behavioral Analytics shows real
+      //      findings (revenge trades, loss aversion, overconfidence) on the
+      //      first page load — without the user having to click "Analyze".
+      const billingEnabled = await TierService.isBillingEnabled(req.headers.host);
+      if (billingEnabled && !isFirstUser) {
+        try {
+          const trialResult = await BillingService.startTrialForUser(user.id, { days: 14 });
+          if (trialResult.granted) {
+            console.log(`[REGISTER] Granted 14-day signup trial to ${maskEmail(user.email)}`);
+          } else {
+            console.log(`[REGISTER] Signup trial not granted: ${trialResult.reason}`);
+          }
+        } catch (trialErr) {
+          console.error('[REGISTER] Failed to grant signup trial (non-blocking):', trialErr);
+        }
+
+        try {
+          console.log(`[REGISTER] Creating sample data for ${user.username}`);
           await SampleDataService.createForUser(user.id);
           console.log(`[REGISTER] Sample data created for new user ${user.username}`);
-        } else {
-          console.log(`[REGISTER] Skipping sample data: billingEnabled=${billingEnabled}, isFirstUser=${isFirstUser}`);
+        } catch (sampleErr) {
+          console.log('[REGISTER] Sample data creation failed (non-blocking):', sampleErr.message);
         }
-      } catch (sampleErr) {
-        console.log('[REGISTER] Sample data creation failed (non-blocking):', sampleErr.message);
+      } else {
+        console.log(`[REGISTER] Skipping trial+sample data: billingEnabled=${billingEnabled}, isFirstUser=${isFirstUser}`);
       }
 
       // Log if this user was made an admin
@@ -196,18 +214,23 @@ const authController = {
         console.log(`🔐 First user registered - automatically granted admin privileges: ${user.username} (${maskEmail(user.email)})`);
       }
 
-      // Determine response message
+      // Determine response message. Every billing-enabled signup gets a
+      // 14-day trial; verifying email extends it to a full month.
+      const trialPitch = billingEnabled && !isFirstUser
+        ? ' Your 14-day Pro trial is active — verify your email to extend it to a full month.'
+        : '';
+
       let message;
       if (isFirstUser && emailConfigured) {
         message = 'Registration successful. As the first user, you have been granted admin privileges. Please check your email to verify your account.';
       } else if (isFirstUser && !emailConfigured) {
         message = 'Registration successful. As the first user, you have been granted admin privileges. Your account is ready to use.';
       } else if (registrationMode === 'approval' && !adminApproved) {
-        message = emailConfigured 
-          ? 'Registration successful. Please check your email to verify your account, and wait for admin approval before you can sign in.'
+        message = emailConfigured
+          ? `Registration successful. Please check your email to verify your account, and wait for admin approval before you can sign in.${trialPitch}`
           : 'Registration successful. Please wait for admin approval before you can sign in.';
       } else if (!isFirstUser && emailConfigured) {
-        message = 'Registration successful. Please check your email to verify your account.';
+        message = `Registration successful. Please check your email to verify your account.${trialPitch}`;
       } else {
         message = 'Registration successful. Your account is ready to use.';
       }
@@ -652,9 +675,44 @@ const authController = {
       // Verify the user
       await User.verifyUser(user.id);
 
-      res.json({ 
+      // Extend the user's existing 14-day signup trial to a full month as a
+      // reward for verifying their email. Self-hosted users are already on
+      // Pro via TierService's billing-disabled fallback, so we skip them.
+      // If the user somehow doesn't have an active trial yet (e.g., first
+      // user, or trial creation failed at signup), fall back to creating a
+      // fresh 30-day trial.
+      let trial = null;
+      try {
+        const billingEnabled = await TierService.isBillingEnabled(req.headers.host);
+        if (billingEnabled) {
+          const extendResult = await BillingService.extendTrialForUser(user.id, { totalDays: 30 });
+          if (extendResult.extended) {
+            trial = { active: true, expires_at: extendResult.expiresAt, extended: true };
+            console.log(`[AUTH] Extended trial to 30 days for ${maskEmail(user.email)} on email verification`);
+          } else if (extendResult.reason === 'no_active_trial') {
+            const startResult = await BillingService.startTrialForUser(user.id, {
+              days: 30,
+              reason: 'Free 30-day trial — email verified'
+            });
+            if (startResult.granted) {
+              trial = { active: true, expires_at: startResult.expiresAt, extended: false };
+              console.log(`[AUTH] Granted fresh 30-day trial to ${maskEmail(user.email)} on email verification`);
+            } else {
+              console.log(`[AUTH] Trial not granted on verify for user ${user.id}: ${startResult.reason}`);
+            }
+          } else {
+            console.log(`[AUTH] Trial not extended on verify for user ${user.id}: ${extendResult.reason}`);
+          }
+        }
+      } catch (trialError) {
+        // Don't fail the verification if the trial extension errors out.
+        console.error('[AUTH] Failed to extend trial on email verification:', trialError);
+      }
+
+      res.json({
         message: 'Email verified successfully. You can now sign in.',
-        verified: true 
+        verified: true,
+        trial
       });
     } catch (error) {
       next(error);

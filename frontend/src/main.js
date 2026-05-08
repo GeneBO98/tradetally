@@ -1,5 +1,6 @@
 import { createApp, watch } from 'vue'
 import { createPinia } from 'pinia'
+import { MotionPlugin } from '@vueuse/motion'
 import App from './App.vue'
 import router from './router'
 import './assets/main.css'
@@ -13,6 +14,7 @@ const GROWTHBOOK_BOOTSTRAP_TIMEOUT_MS = 1500
 
 app.use(createPinia())
 app.use(router)
+app.use(MotionPlugin)
 app.config.globalProperties.$growthbook = growthbook
 
 function withTimeout(promise, timeoutMs) {
