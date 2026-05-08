@@ -60,6 +60,7 @@ const billingController = {
       const subscription = await BillingService.getSubscriptionDetails(userId);
       const userTier = await TierService.getUserTier(userId);
       const tierOverride = await User.getTierOverride(userId);
+      const user = await User.findById(userId);
       
       console.log('Subscription details:', {
         subscription: subscription ? 'exists' : 'null',
@@ -91,7 +92,7 @@ const billingController = {
           isOnTrial: trial ? trial.active : false,
           trialEndsAt: trial ? trial.expires_at : null,
           trial, // Keep for backward compatibility with web
-          has_used_trial: !!tierOverride
+          has_used_trial: !!(user?.trial_used || user?.trial_started_at || tierOverride)
         }
       });
     } catch (error) {
@@ -602,15 +603,25 @@ const billingController = {
       console.log('DEBUG: Resetting trial status for user:', userId);
 
       // Delete any existing trial tier overrides
-      // The database trigger will automatically reset the trial_used flag
       const deleteQuery = `
         DELETE FROM tier_overrides
         WHERE user_id = $1 AND reason ILIKE '%trial%'
       `;
       const result = await db.query(deleteQuery, [userId]);
 
+      await db.query(
+        `
+        UPDATE users
+        SET trial_used = false,
+            trial_started_at = NULL,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1
+        `,
+        [userId]
+      );
+
       console.log('DEBUG: Deleted', result.rowCount, 'trial records for user:', userId);
-      console.log('DEBUG: trial_used flag automatically reset by database trigger');
+      console.log('DEBUG: trial history explicitly reset for development user:', userId);
 
       res.json({
         success: true,
