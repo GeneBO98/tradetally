@@ -75,6 +75,11 @@ describe('detectBrokerFormat', () => {
     expect(detectBrokerFormat(buf(csv))).toBe('etrade');
   });
 
+  test('detects Firstrade format', () => {
+    const csv = 'Symbol,Quantity,Price,Action,Description,TradeDate,SettledDate,Interest,Amount,Commission,Fee,CUSIP,RecordType\nSPY,1,600.00,BUY,SPDR S&P 500 ETF TRUST,2025-02-10,2025-02-11,0.00,-600.00,0.00,0.00,78462F103,Trade';
+    expect(detectBrokerFormat(buf(csv))).toBe('firstrade');
+  });
+
   test('detects Webull standard format', () => {
     const csv = 'Name,Symbol,Side,Status,Filled,Price,Time-in-Force,Placed Time,Filled Time\nApple Inc,AAPL,Buy,Filled,100,150.00,Day,01/01/2025 09:30,01/01/2025 09:30';
     expect(detectBrokerFormat(buf(csv))).toBe('webull');
