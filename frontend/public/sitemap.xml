@@ -3,7 +3,7 @@
   <!-- Homepage -->
   <url>
     <loc>https://tradetally.io/</loc>
-    <lastmod>2026-02-12</lastmod>
+    <lastmod>2026-05-08</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
@@ -11,14 +11,14 @@
   <!-- Authentication pages -->
   <url>
     <loc>https://tradetally.io/login</loc>
-    <lastmod>2026-02-12</lastmod>
+    <lastmod>2026-05-08</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
 
   <url>
     <loc>https://tradetally.io/register</loc>
-    <lastmod>2026-02-12</lastmod>
+    <lastmod>2026-05-08</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -26,7 +26,7 @@
   <!-- Public pages -->
   <url>
     <loc>https://tradetally.io/public</loc>
-    <lastmod>2026-02-12</lastmod>
+    <lastmod>2026-05-08</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
@@ -34,28 +34,78 @@
   <!-- SEO pages -->
   <url>
     <loc>https://tradetally.io/features</loc>
-    <lastmod>2026-02-12</lastmod>
+    <lastmod>2026-05-08</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
 
   <url>
     <loc>https://tradetally.io/faq</loc>
-    <lastmod>2026-02-12</lastmod>
+    <lastmod>2026-05-08</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
 
   <url>
     <loc>https://tradetally.io/compare</loc>
-    <lastmod>2026-02-12</lastmod>
+    <lastmod>2026-05-08</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
 
   <url>
     <loc>https://tradetally.io/pricing</loc>
-    <lastmod>2026-02-12</lastmod>
+    <lastmod>2026-05-08</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <!-- Free Trader Tools -->
+  <url>
+    <loc>https://tradetally.io/tools</loc>
+    <lastmod>2026-05-08</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://tradetally.io/tools/position-size-calculator</loc>
+    <lastmod>2026-05-08</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <url>
+    <loc>https://tradetally.io/tools/risk-reward-calculator</loc>
+    <lastmod>2026-05-08</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <url>
+    <loc>https://tradetally.io/tools/trade-expectancy-calculator</loc>
+    <lastmod>2026-05-08</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <url>
+    <loc>https://tradetally.io/tools/required-win-rate-calculator</loc>
+    <lastmod>2026-05-08</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <url>
+    <loc>https://tradetally.io/tools/average-down-calculator</loc>
+    <lastmod>2026-05-08</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <url>
+    <loc>https://tradetally.io/tools/what-if-i-invested</loc>
+    <lastmod>2026-05-08</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -63,7 +113,7 @@
   <!-- Privacy Policy -->
   <url>
     <loc>https://tradetally.io/privacy</loc>
-    <lastmod>2026-02-12</lastmod>
+    <lastmod>2026-05-08</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>

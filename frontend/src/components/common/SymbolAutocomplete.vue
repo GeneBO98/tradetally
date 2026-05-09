@@ -61,6 +61,7 @@
             <StockLogo
               :symbol="item.symbol"
               :logo-url="item.logo"
+              :disable-metadata-fetch="disableMetadataFetch"
               size-class="w-7 h-7"
               rounded-class="rounded-md"
               fallback-text-class="text-[10px] font-semibold"
@@ -114,6 +115,18 @@ const props = defineProps({
   id: {
     type: String,
     default: ''
+  },
+  endpoint: {
+    type: String,
+    default: '/symbols/search'
+  },
+  apiClient: {
+    type: [Object, Function],
+    default: null
+  },
+  disableMetadataFetch: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -159,7 +172,8 @@ async function fetchSuggestions(q) {
   if (!q) return
   isLoading.value = true
   try {
-    const { data } = await api.get('/symbols/search', { params: { q } })
+    const client = props.apiClient || api
+    const { data } = await client.get(props.endpoint, { params: { q } })
     suggestions.value = data.results || []
     isOpen.value = true
   } catch (err) {

@@ -33,6 +33,8 @@ Allow: /faq
 Allow: /compare
 Allow: /pricing
 Allow: /privacy
+Allow: /tools
+Allow: /tools/
 
 # Crawl delay (in seconds)
 Crawl-delay: 1

@@ -297,6 +297,48 @@ const router = createRouter({
       meta: { requiresOpen: true }
     },
     {
+      path: '/tools',
+      name: 'tools-hub',
+      component: () => import('@/views/tools/ToolsHubView.vue'),
+      meta: { requiresOpen: true }
+    },
+    {
+      path: '/tools/position-size-calculator',
+      name: 'tool-position-size',
+      component: () => import('@/views/tools/PositionSizeCalculatorView.vue'),
+      meta: { requiresOpen: true }
+    },
+    {
+      path: '/tools/risk-reward-calculator',
+      name: 'tool-risk-reward',
+      component: () => import('@/views/tools/RiskRewardCalculatorView.vue'),
+      meta: { requiresOpen: true }
+    },
+    {
+      path: '/tools/trade-expectancy-calculator',
+      name: 'tool-expectancy',
+      component: () => import('@/views/tools/ExpectancyCalculatorView.vue'),
+      meta: { requiresOpen: true }
+    },
+    {
+      path: '/tools/required-win-rate-calculator',
+      name: 'tool-win-rate',
+      component: () => import('@/views/tools/RequiredWinRateCalculatorView.vue'),
+      meta: { requiresOpen: true }
+    },
+    {
+      path: '/tools/average-down-calculator',
+      name: 'tool-average-down',
+      component: () => import('@/views/tools/AverageDownCalculatorView.vue'),
+      meta: { requiresOpen: true }
+    },
+    {
+      path: '/tools/what-if-i-invested',
+      name: 'tool-what-if',
+      component: () => import('@/views/tools/WhatIfInvestedView.vue'),
+      meta: { requiresOpen: true }
+    },
+    {
       path: '/markets',
       name: 'markets',
       component: () => import('@/views/MarketsView.vue'),

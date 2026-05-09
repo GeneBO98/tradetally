@@ -215,6 +215,28 @@
       </div>
     </section>
 
+    <!-- Free Tools -->
+    <section data-reveal class="bg-gray-50 dark:bg-gray-900 py-12 sm:py-16">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center mb-8">
+          <h2 class="text-2xl sm:text-3xl font-extrabold text-gray-900 dark:text-white">
+            Plus, Free Trader Tools and Calculators
+          </h2>
+          <p class="mt-3 max-w-2xl mx-auto text-gray-500 dark:text-gray-400">
+            Use our free position size, risk/reward, expectancy, win rate, and DCA calculators &mdash; no signup required.
+          </p>
+        </div>
+        <div class="text-center">
+          <router-link to="/tools" class="inline-flex items-center px-6 py-3 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-primary-600 dark:text-primary-400 font-semibold hover:border-primary-500 dark:hover:border-primary-500 transition-colors">
+            Browse Free Tools
+            <svg class="ml-2 w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </router-link>
+        </div>
+      </div>
+    </section>
+
     <div class="h-3"></div>
 
     <!-- CTA -->

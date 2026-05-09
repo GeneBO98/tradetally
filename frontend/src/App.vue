@@ -75,6 +75,16 @@
               <span class="hidden sm:inline">View on GitHub</span>
               <span class="sm:hidden">GitHub</span>
             </a>
+            <template v-if="showSEOPages">
+              <span>•</span>
+              <router-link
+                to="/tools"
+                class="hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+              >
+                <span class="hidden sm:inline">Free Tools</span>
+                <span class="sm:hidden">Tools</span>
+              </router-link>
+            </template>
             <span>•</span>
             <router-link
               to="/privacy"
@@ -207,7 +217,7 @@ const lastRateLimitNotification = ref(0)
 const route = useRoute()
 const authStore = useAuthStore()
 const versionStore = useVersionStore()
-const { isBillingEnabled } = useRegistrationMode()
+const { isBillingEnabled, showSEOPages } = useRegistrationMode()
 
 // Initialize price alert notifications globally
 const { isConnected, connect, disconnect, celebrationQueue } = usePriceAlertNotifications()

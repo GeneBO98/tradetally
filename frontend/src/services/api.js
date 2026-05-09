@@ -66,8 +66,18 @@ api.interceptors.response.use(
       const currentPath = window.location.pathname
       const isAuthPage = currentPath.includes('/login') || currentPath.includes('/register') || currentPath.includes('/forgot-password') || currentPath.includes('/reset-password')
       const isLoginRequest = error.config?.url?.includes('/auth/login')
+      // Public pages (free tools, public profiles, etc.) must never bounce
+      // visitors to login because of a stale token on a background request.
+      const isPublicPage = currentPath.startsWith('/tools') ||
+        currentPath.startsWith('/public') ||
+        currentPath === '/features' ||
+        currentPath === '/compare' ||
+        currentPath === '/faq' ||
+        currentPath === '/pricing' ||
+        currentPath === '/privacy' ||
+        currentPath.startsWith('/u/')
 
-      if (!isAuthPage && !isLoginRequest) {
+      if (!isAuthPage && !isLoginRequest && !isPublicPage) {
         localStorage.removeItem('token')
         window.location.href = '/login'
       }

@@ -425,6 +425,7 @@ const publicNavigation = computed(() => {
   if (showSEOPages.value) {
     nav.push(
       { name: 'Features', to: '/features', route: 'features' },
+      { name: 'Tools', to: '/tools', route: 'tools-hub' },
       { name: 'FAQ', to: '/faq', route: 'faq' },
       { name: 'Compare', to: '/compare', route: 'compare' }
     )

@@ -376,6 +376,54 @@
     </section>
 
     <!-- SEO: TraderVue Alternative -->
+    <!-- Free Trader Tools -->
+    <section v-if="showSEOPages" data-reveal class="bg-gray-50 dark:bg-gray-900 py-16 sm:py-20 border-t border-gray-200 dark:border-gray-700/50">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center mb-10">
+          <h2 class="text-3xl font-extrabold text-gray-900 dark:text-white">
+            Free Trader Tools and Calculators
+          </h2>
+          <p class="mt-4 max-w-3xl mx-auto text-lg text-gray-500 dark:text-gray-400">
+            Free calculators for position sizing, risk/reward, expectancy, win rate, dollar-cost averaging, and historical investment returns. No signup required.
+          </p>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-5xl mx-auto">
+          <router-link to="/tools/position-size-calculator" class="block p-5 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-primary-500 dark:hover:border-primary-500 transition-colors">
+            <h3 class="font-semibold text-gray-900 dark:text-white">Position Size Calculator</h3>
+            <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">How many shares to buy at any risk %.</p>
+          </router-link>
+          <router-link to="/tools/risk-reward-calculator" class="block p-5 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-primary-500 dark:hover:border-primary-500 transition-colors">
+            <h3 class="font-semibold text-gray-900 dark:text-white">Risk/Reward Calculator</h3>
+            <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">Find R:R ratio and breakeven win rate.</p>
+          </router-link>
+          <router-link to="/tools/trade-expectancy-calculator" class="block p-5 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-primary-500 dark:hover:border-primary-500 transition-colors">
+            <h3 class="font-semibold text-gray-900 dark:text-white">Trade Expectancy Calculator</h3>
+            <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">Expected dollar value of your edge.</p>
+          </router-link>
+          <router-link to="/tools/required-win-rate-calculator" class="block p-5 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-primary-500 dark:hover:border-primary-500 transition-colors">
+            <h3 class="font-semibold text-gray-900 dark:text-white">Required Win Rate Calculator</h3>
+            <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">Minimum win rate at any R:R.</p>
+          </router-link>
+          <router-link to="/tools/average-down-calculator" class="block p-5 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-primary-500 dark:hover:border-primary-500 transition-colors">
+            <h3 class="font-semibold text-gray-900 dark:text-white">Average Down / DCA Calculator</h3>
+            <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">Blended cost basis across multiple buys.</p>
+          </router-link>
+          <router-link to="/tools/what-if-i-invested" class="block p-5 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-primary-500 dark:hover:border-primary-500 transition-colors">
+            <h3 class="font-semibold text-gray-900 dark:text-white">What If I Invested?</h3>
+            <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">Historical returns for any stock.</p>
+          </router-link>
+        </div>
+        <div class="text-center mt-8">
+          <router-link to="/tools" class="inline-flex items-center text-primary-600 dark:text-primary-400 font-semibold hover:underline">
+            See all free tools
+            <svg class="ml-1 w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </router-link>
+        </div>
+      </div>
+    </section>
+
     <section v-if="showSEOPages" class="bg-white dark:bg-gray-800 py-16">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="text-center">
