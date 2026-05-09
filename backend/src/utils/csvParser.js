@@ -5221,6 +5221,33 @@ async function parseFirstradeTransactions(records, existingPositions = {}, userI
     return base.toISOString().slice(0, 19);
   }
 
+  // Firstrade tucks one or more "EXEC TIME: YYYY-MM-DD HH:MM:SS" hints into the
+  // Description column for orders that didn't fill at the row's settle time.
+  // Use the earliest stamp when present so trades reconstruct in real order.
+  function extractExecTime(description) {
+    if (!description) return null;
+    const matches = String(description).match(/EXEC TIME:\s*(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})/gi);
+    if (!matches || matches.length === 0) return null;
+    let earliest = null;
+    for (const raw of matches) {
+      const m = raw.match(/(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})/);
+      if (!m) continue;
+      const stamp = `${m[1]}T${m[2]}`;
+      if (!earliest || stamp < earliest) earliest = stamp;
+    }
+    return earliest;
+  }
+
+  // CUSIPs starting with 9128 are US Treasury notes/bonds; description fallback
+  // catches non-standard rows. Treasuries are quoted as % of face value, so
+  // qty * price gives a wildly inflated cash basis. Use the CSV Amount column
+  // (the actual cash flow) instead.
+  function isTreasuryInstrument(cusip, description) {
+    if (cusip && /^9128/.test(cusip)) return true;
+    if (description && /TREASURY (NOTE|BOND|BILL)|T-BILL|TREASURY INFLATION/i.test(description)) return true;
+    return false;
+  }
+
   const cusipsToResolve = new Set();
   for (const record of records) {
     const cusip = cleanString(record.CUSIP);
@@ -5292,9 +5319,18 @@ async function parseFirstradeTransactions(records, existingPositions = {}, userI
       const resolvedSymbol = rawSymbol || optionData?.symbol || resolvedCusipSymbol || rawCusip;
 
       const quantity = Math.abs(parseNumeric(record.Quantity, 0));
-      const price = parseNumeric(record.Price, 0);
+      const rawPrice = parseNumeric(record.Price, 0);
+      const rawAmount = parseNumeric(record.Amount, 0);
       const tradeDate = parseDate(record.TradeDate || record['Trade Date']);
-      const datetime = buildIndexedDateTime(tradeDate, rowIndex);
+      const execTime = extractExecTime(description);
+      const datetime = execTime || buildIndexedDateTime(tradeDate, rowIndex);
+      const treasury = isTreasuryInstrument(rawCusip, description);
+
+      // For treasuries, derive a synthetic per-share price from the CSV Amount
+      // column so qty * price equals the actual cash flow.
+      const price = treasury && quantity > 0 && rawAmount !== 0
+        ? Math.abs(rawAmount) / quantity
+        : rawPrice;
 
       if (!resolvedSymbol || !tradeDate || !datetime || quantity <= 0 || price < 0) {
         if (diagnostics) {
@@ -5322,6 +5358,7 @@ async function parseFirstradeTransactions(records, existingPositions = {}, userI
         groupKey: contractKey,
         date: tradeDate,
         datetime,
+        hasExplicitTime: !!execTime,
         action: action === 'BUY' ? 'buy' : 'sell',
         quantity,
         price,
@@ -5341,11 +5378,45 @@ async function parseFirstradeTransactions(records, existingPositions = {}, userI
     }
   }
 
+  // Firstrade CSVs don't preserve execution order. Within a same-day, same-group
+  // bucket, infer ordering from the day's net flow: long-net days process BUYs
+  // before SELLs (and the reverse for short-net days). Otherwise an existing
+  // long position closing via SELL gets misclassified as opening a short.
+  const netFlowByGroupDate = {};
+  for (const t of transactions) {
+    const key = `${t.groupKey}|${t.date}`;
+    if (!(key in netFlowByGroupDate)) netFlowByGroupDate[key] = 0;
+    netFlowByGroupDate[key] += t.action === 'buy' ? t.quantity : -t.quantity;
+  }
+
   transactions.sort((a, b) => {
     if (a.groupKey !== b.groupKey) return a.groupKey.localeCompare(b.groupKey);
+    if (a.date !== b.date) return a.date.localeCompare(b.date);
+
+    if (a.action !== b.action) {
+      const netFlow = netFlowByGroupDate[`${a.groupKey}|${a.date}`] || 0;
+      if (netFlow > 0) return a.action === 'buy' ? -1 : 1;
+      if (netFlow < 0) return a.action === 'sell' ? -1 : 1;
+    }
+
     if (a.datetime !== b.datetime) return a.datetime.localeCompare(b.datetime);
     return a.rowIndex - b.rowIndex;
   });
+
+  // Rewrite datetimes monotonically within each group so that the downstream
+  // execution-level sort (normalizeExecutionCollections) preserves this order
+  // instead of undoing it. Real EXEC TIMEs are kept when they don't break
+  // monotonicity; everything else gets bumped by a second from the previous.
+  const lastDatetimeByGroup = {};
+  for (const t of transactions) {
+    const last = lastDatetimeByGroup[t.groupKey];
+    if (last && t.datetime <= last) {
+      const d = new Date(`${last}Z`);
+      d.setUTCSeconds(d.getUTCSeconds() + 1);
+      t.datetime = d.toISOString().slice(0, 19);
+    }
+    lastDatetimeByGroup[t.groupKey] = t.datetime;
+  }
 
   const transactionsByGroup = {};
   for (const transaction of transactions) {

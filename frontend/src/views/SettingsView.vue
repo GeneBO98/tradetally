@@ -105,10 +105,12 @@
                                 <p
                                     class="mt-1 text-sm text-gray-500 dark:text-gray-400"
                                 >
-                                    Sets the currency symbol shown for your trade
-                                    data (P&L, prices, commissions). Market data
-                                    such as watchlist prices and stock quotes
-                                    remains in USD.
+                                    Changes the currency symbol displayed for
+                                    P&L, prices, and commissions. This is a
+                                    cosmetic setting only — values are not
+                                    converted using a foreign exchange rate.
+                                    Market data (watchlist prices, stock
+                                    quotes) remains in USD.
                                 </p>
                             </div>
 
