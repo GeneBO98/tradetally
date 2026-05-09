@@ -12,6 +12,11 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 
+if ! docker info > /dev/null 2>&1; then
+    echo "[ERROR] Docker daemon is not running." >&2
+    exit 1
+fi
+
 # Check if Docker Compose is installed
 if docker compose version &> /dev/null; then
     DOCKER_COMPOSE="docker compose"
@@ -28,6 +33,7 @@ echo "[OK] Docker Compose is installed"
 
 # Create deployment directory
 DEPLOY_DIR="tradetally-deployment"
+DEPLOY_PATH="$(pwd)/$DEPLOY_DIR"
 if [ -d "$DEPLOY_DIR" ]; then
     echo "[INFO] Directory $DEPLOY_DIR already exists. Using existing directory."
     cd "$DEPLOY_DIR"
@@ -36,6 +42,9 @@ else
     mkdir "$DEPLOY_DIR"
     cd "$DEPLOY_DIR"
 fi
+
+# Create directories
+mkdir -p backend/src/logs backend/src/data backend/src/utils backend/uploads
 
 # Download required files
 echo "[INFO] Downloading deployment files..."
@@ -54,7 +63,7 @@ download_file() {
 
 download_file "$REPO_RAW_URL/docker-compose.yaml" docker-compose.yml
 download_file "https://raw.githubusercontent.com/GeneBO98/tradetally/main/.env.example" .env.example
-download_file "$REPO_RAW_URL/backend/src/utils/schema.sql" schema.sql
+download_file "$REPO_RAW_URL/backend/src/utils/schema.sql" backend/src/utils/schema.sql
 
 # Create .env if it doesn't exist
 if [ ! -f .env ]; then
@@ -80,20 +89,21 @@ if [ ! -f .env ]; then
     echo "[SECURITY] Generated secure JWT secret and database password"
 fi
 
-# Create directories
-mkdir -p backend/src/logs backend/src/data backend/uploads
-
 # Start deployment
 echo "[DEPLOY] Starting TradeTally deployment..."
 $DOCKER_COMPOSE up -d
 
 # Wait for database to be ready
-echo "[WAIT] Waiting for database to be ready..."
-sleep 10
+echo -n "[WAIT] Waiting for database to be ready..."
+until [ "$(docker inspect -f '{{.State.Health.Status}}' tradetally-db 2>/dev/null || echo starting)" = "healthy" ]; do
+    echo -n "."
+    sleep 1
+done
+echo " ready"
 
 # Initialize database schema
 echo "[DB] Initializing database schema..."
-docker exec -i tradetally-db psql -U trader -d tradetally < schema.sql 2>/dev/null || echo "Schema may already exist"
+docker exec -i tradetally-db psql -U trader -d tradetally < backend/src/utils/schema.sql 2>/dev/null || echo "Schema may already exist"
 
 echo ""
 echo "[SUCCESS] TradeTally deployment complete!"
@@ -106,9 +116,11 @@ echo "   Email: demo@example.com"
 echo "   Password: DemoUser25"
 echo ""
 echo "[CONFIG] To customize settings, edit the .env file and restart:"
+echo "   cd $DEPLOY_PATH"
 echo "   $DOCKER_COMPOSE restart"
 echo ""
 echo "[COMMANDS] Useful commands:"
+echo "   cd $DEPLOY_PATH"
 echo "   View logs: $DOCKER_COMPOSE logs -f"
 echo "   Stop: $DOCKER_COMPOSE down"
 echo "   Update: $DOCKER_COMPOSE pull && $DOCKER_COMPOSE up -d"
