@@ -144,6 +144,41 @@ describe('Schwab parser', () => {
 });
 
 // ──────────────────────────────────────────────
+// Firstrade Parser
+// ──────────────────────────────────────────────
+describe('Firstrade parser', () => {
+  const firstradeCSV = [
+    'Symbol,Quantity,Price,Action,Description,TradeDate,SettledDate,Interest,Amount,Commission,Fee,CUSIP,RecordType',
+    'SPY,10,605.2699,BUY,SPDR S&P 500 ETF TRUST,2025-02-10,2025-02-11,0.00,-6052.70,0.00,0.00,78462F103,Trade',
+    ',-1,0.11,SELL,PUT IAG 02/21/25 6 IAMGOLD CORP OPEN CONTRACT,2025-02-10,2025-02-11,0.00,11.00,0.00,0.05,,Trade',
+    ',1,0.15,BUY,PUT IAG 02/21/25 6 IAMGOLD CORP CLOSING CONTRACT,2025-02-18,2025-02-19,0.00,-15.00,0.00,0.00,,Trade',
+    'SPY,10,610.0000,SELL,SPDR S&P 500 ETF TRUST,2025-03-20,2025-03-21,0.00,6100.00,0.00,0.00,78462F103,Trade',
+    ',0.00,,Interest,INTEREST ON CREDIT BALANCE,2025-03-17,2025-03-17,0.00,3.10,0.00,0.00,00099A109,Financial'
+  ].join('\n');
+
+  test('returns valid result with trades array', async () => {
+    const result = await parseCSV(buf(firstradeCSV), 'firstrade', {});
+    expectValidResult(result);
+  });
+
+  test('parses stock and option trades while skipping financial rows', async () => {
+    const result = await parseCSV(buf(firstradeCSV), 'firstrade', {});
+    expect(result.trades).toHaveLength(2);
+
+    const spyTrade = result.trades.find(trade => trade.symbol === 'SPY');
+    expect(spyTrade).toBeDefined();
+    expect(spyTrade.exitPrice).toBeCloseTo(610, 5);
+    expect(spyTrade.quantity).toBe(10);
+
+    const optionTrade = result.trades.find(trade => trade.instrumentType === 'option');
+    expect(optionTrade).toBeDefined();
+    expect(optionTrade.symbol).toBe('IAG');
+    expect(optionTrade.underlyingSymbol).toBe('IAG');
+    expect(optionTrade.optionType).toBe('put');
+  });
+});
+
+// ──────────────────────────────────────────────
 // ThinkorSwim Parser
 // ──────────────────────────────────────────────
 describe('ThinkorSwim parser', () => {

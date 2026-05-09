@@ -666,6 +666,16 @@ function detectBrokerFormat(fileBuffer) {
       return 'etrade';
     }
 
+    // Firstrade detection - account history export
+    if (headers.includes('tradedate') &&
+        headers.includes('settleddate') &&
+        headers.includes('recordtype') &&
+        headers.includes('description') &&
+        headers.includes('cusip')) {
+      console.log('[AUTO-DETECT] Detected: Firstrade');
+      return 'firstrade';
+    }
+
     // Webull detection - look for Name, Symbol, Side, Status, Filled, Price, Time-in-Force, Placed Time, Filled Time
     if (headers.includes('name') && headers.includes('symbol') && headers.includes('side') &&
         headers.includes('status') && headers.includes('filled') && headers.includes('time-in-force') &&
@@ -1293,6 +1303,18 @@ const brokerParsers = {
     commission: parseFloat(row.Commission || 0),
     fees: parseFloat(row.Fees || 0),
     broker: 'etrade'
+  }),
+
+  firstrade: (row) => ({
+    symbol: cleanString(row.Symbol),
+    tradeDate: parseDate(row.TradeDate || row['Trade Date']),
+    entryTime: parseDateTime(row.TradeDate || row['Trade Date']),
+    entryPrice: parseNumeric(row.Price),
+    quantity: Math.abs(parseNumeric(row.Quantity, 0)),
+    side: cleanString(row.Action).toUpperCase() === 'BUY' ? 'buy' : 'sell',
+    commission: Math.abs(parseNumeric(row.Commission, 0)),
+    fees: Math.abs(parseNumeric(row.Fee, 0)),
+    broker: 'firstrade'
   }),
 
   schwab: (row) => {
@@ -3035,6 +3057,17 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       // Schwab parser already uses round-trip position tracking to create properly separated trades
       // Trade grouping would incorrectly merge multiple round trips on the same day
       console.log('[INFO] Skipping trade grouping for Schwab (already grouped by round-trip logic)');
+
+      return wrapResultWithDiagnostics(result, diagnostics, [], userTimezone);
+    }
+
+    if (broker === 'firstrade') {
+      console.log('Starting Firstrade transaction parsing');
+      const result = await parseFirstradeTransactions(records, existingPositions, context.userId, context);
+      console.log('Finished Firstrade transaction parsing');
+
+      // Firstrade parser already reconstructs trades from executions.
+      console.log('[INFO] Skipping trade grouping for Firstrade (already grouped by round-trip logic)');
 
       return wrapResultWithDiagnostics(result, diagnostics, [], userTimezone);
     }
@@ -5148,6 +5181,353 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
   });
 
   console.log(`Created ${completedTrades.length} trades from ${transactions.length} transactions`);
+  return completedTrades;
+}
+
+async function parseFirstradeTransactions(records, existingPositions = {}, userId = null, context = {}) {
+  console.log(`\n=== FIRSTRADE TRANSACTION PARSER ===`);
+  console.log(`Processing ${records.length} Firstrade transaction records`);
+
+  const diagnostics = context.diagnostics;
+  const transactions = [];
+  const completedTrades = [];
+
+  function parseFirstradeOptionDescription(description) {
+    if (!description) return null;
+
+    const match = String(description).match(/\b(PUT|CALL)\s+([A-Z.\-]+)\s+(\d{2}\/\d{2}\/\d{2})\s+(\d+(?:\.\d+)?)/i);
+    if (!match) return null;
+
+    const [, type, underlying, expirationRaw, strike] = match;
+    const [month, day, year] = expirationRaw.split('/');
+    const fullYear = parseInt(year, 10) < 50 ? `20${year}` : `19${year}`;
+
+    return {
+      symbol: underlying,
+      instrumentType: 'option',
+      underlyingSymbol: underlying,
+      strikePrice: parseFloat(strike),
+      expirationDate: `${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`,
+      optionType: type.toLowerCase(),
+      contractSize: 100
+    };
+  }
+
+  function buildIndexedDateTime(tradeDate, rowIndex) {
+    if (!tradeDate) return null;
+    const base = new Date(`${tradeDate}T09:30:00`);
+    if (Number.isNaN(base.getTime())) return null;
+    base.setSeconds(base.getSeconds() + rowIndex);
+    return base.toISOString().slice(0, 19);
+  }
+
+  const cusipsToResolve = new Set();
+  for (const record of records) {
+    const cusip = cleanString(record.CUSIP);
+    if (cusip && cusip.length === 9 && /^[0-9A-Z]{8}[0-9]$/.test(cusip)) {
+      cusipsToResolve.add(cusip);
+    }
+  }
+
+  const cusipToTickerMap = {};
+  const unresolvedCusips = [];
+
+  for (const cusip of cusipsToResolve) {
+    let resolved = false;
+
+    try {
+      const result = await db.query('SELECT * FROM get_cusip_mapping($1, $2)', [cusip, userId]);
+      if (result.rows.length > 0) {
+        cusipToTickerMap[cusip] = result.rows[0].ticker;
+        resolved = true;
+      }
+    } catch (error) {
+      console.warn(`[FIRSTRADE][CUSIP] Failed to check database for ${cusip}:`, error.message);
+    }
+
+    if (!resolved) {
+      try {
+        const cached = await cache.get('cusip_resolution', cusip);
+        if (cached) {
+          cusipToTickerMap[cusip] = cached;
+          resolved = true;
+        }
+      } catch (error) {
+        console.warn(`[FIRSTRADE][CUSIP] Failed to check cache for ${cusip}:`, error.message);
+      }
+    }
+
+    if (!resolved) {
+      unresolvedCusips.push(cusip);
+    }
+  }
+
+  if (unresolvedCusips.length > 0) {
+    await cusipQueue.addToQueue(unresolvedCusips, 2);
+  }
+
+  let rowIndex = 0;
+  for (const record of records) {
+    rowIndex++;
+
+    try {
+      const recordType = cleanString(record.RecordType).toLowerCase();
+      const action = cleanString(record.Action).toUpperCase();
+      const description = cleanString(record.Description);
+
+      if (recordType !== 'trade') {
+        if (diagnostics) diagnostics.skippedRows++;
+        continue;
+      }
+
+      if (action !== 'BUY' && action !== 'SELL') {
+        if (diagnostics) diagnostics.skippedRows++;
+        continue;
+      }
+
+      const optionData = parseFirstradeOptionDescription(description);
+      const rawCusip = cleanString(record.CUSIP);
+      const rawSymbol = cleanString(record.Symbol);
+      const resolvedCusipSymbol = rawCusip ? cusipToTickerMap[rawCusip] : null;
+      const resolvedSymbol = rawSymbol || optionData?.symbol || resolvedCusipSymbol || rawCusip;
+
+      const quantity = Math.abs(parseNumeric(record.Quantity, 0));
+      const price = parseNumeric(record.Price, 0);
+      const tradeDate = parseDate(record.TradeDate || record['Trade Date']);
+      const datetime = buildIndexedDateTime(tradeDate, rowIndex);
+
+      if (!resolvedSymbol || !tradeDate || !datetime || quantity <= 0 || price < 0) {
+        if (diagnostics) {
+          diagnostics.invalidRows++;
+          diagnostics.skippedReasons.push({ row: rowIndex, reason: 'Missing required Firstrade trade fields' });
+        }
+        continue;
+      }
+
+      const instrumentData = optionData || parseInstrumentData(resolvedSymbol);
+      const groupingSymbol = instrumentData.instrumentType === 'option'
+        ? (instrumentData.underlyingSymbol || resolvedSymbol)
+        : resolvedSymbol;
+      const contractKey = instrumentData.instrumentType === 'option'
+        ? `${groupingSymbol}_${instrumentData.expirationDate}_${instrumentData.optionType}_${instrumentData.strikePrice}`
+        : groupingSymbol;
+      const accountIdentifier = context.selectedAccountId
+        ? context.selectedAccountId
+        : context.accountColumnName
+          ? extractAccountFromRecord(record, context.accountColumnName)
+          : null;
+
+      transactions.push({
+        symbol: groupingSymbol,
+        groupKey: contractKey,
+        date: tradeDate,
+        datetime,
+        action: action === 'BUY' ? 'buy' : 'sell',
+        quantity,
+        price,
+        commission: Math.abs(parseNumeric(record.Commission, 0)),
+        fees: Math.abs(parseNumeric(record.Fee, 0)),
+        description,
+        accountIdentifier,
+        instrumentData,
+        rowIndex
+      });
+    } catch (error) {
+      console.error('Error parsing Firstrade transaction:', error, record);
+      if (diagnostics) {
+        diagnostics.invalidRows++;
+        diagnostics.skippedReasons.push({ row: rowIndex, reason: `Parse error: ${error.message}` });
+      }
+    }
+  }
+
+  transactions.sort((a, b) => {
+    if (a.groupKey !== b.groupKey) return a.groupKey.localeCompare(b.groupKey);
+    if (a.datetime !== b.datetime) return a.datetime.localeCompare(b.datetime);
+    return a.rowIndex - b.rowIndex;
+  });
+
+  const transactionsByGroup = {};
+  for (const transaction of transactions) {
+    if (!transactionsByGroup[transaction.groupKey]) {
+      transactionsByGroup[transaction.groupKey] = [];
+    }
+    transactionsByGroup[transaction.groupKey].push(transaction);
+  }
+
+  function startTrade(transaction, existingPosition = null) {
+    const valueMultiplier = transaction.instrumentData.contractSize || (transaction.instrumentData.instrumentType === 'option' ? 100 : 1);
+    const existingExecutions = normalizeExecutionCollections([{
+      executions: Array.isArray(existingPosition?.executions)
+        ? existingPosition.executions
+        : (existingPosition?.executions ? JSON.parse(existingPosition.executions) : [])
+    }])[0].executions;
+
+    return {
+      symbol: transaction.symbol,
+      tradeDate: existingPosition?.tradeDate || transaction.date,
+      entryTime: existingPosition?.entryTime || transaction.datetime,
+      side: existingPosition?.side || (transaction.action === 'buy' ? 'long' : 'short'),
+      executions: existingExecutions,
+      totalQuantity: existingPosition?.quantity || 0,
+      totalFees: existingPosition?.commission || 0,
+      entryValue: (existingPosition?.quantity || 0) * (existingPosition?.entryPrice || 0) * valueMultiplier,
+      exitValue: 0,
+      broker: existingPosition?.broker || 'firstrade',
+      accountIdentifier: transaction.accountIdentifier || existingPosition?.accountIdentifier || null,
+      isExistingPosition: !!existingPosition,
+      existingTradeId: existingPosition?.id,
+      newExecutionsAdded: 0,
+      instrumentData: transaction.instrumentData
+    };
+  }
+
+  function appendExecution(trade, transaction, quantityPortion, feePortion) {
+    trade.executions.push({
+      action: transaction.action,
+      quantity: quantityPortion,
+      price: transaction.price,
+      datetime: transaction.datetime,
+      fees: feePortion
+    });
+    trade.totalFees += feePortion;
+    if (trade.isExistingPosition) {
+      trade.newExecutionsAdded++;
+    }
+  }
+
+  function finalizeTrade(trade) {
+    const instrumentData = trade.instrumentData;
+    const valueMultiplier = instrumentData.contractSize || (instrumentData.instrumentType === 'option' ? 100 : 1);
+
+    if (trade.totalQuantity <= 0) {
+      return null;
+    }
+
+    trade.entryPrice = trade.entryValue / (trade.totalQuantity * valueMultiplier);
+    trade.exitPrice = trade.exitValue / (trade.totalQuantity * valueMultiplier);
+    trade.quantity = trade.totalQuantity;
+    trade.commission = trade.totalFees;
+    trade.fees = 0;
+    trade.pnl = trade.side === 'long'
+      ? trade.exitValue - trade.entryValue - trade.totalFees
+      : trade.entryValue - trade.exitValue - trade.totalFees;
+    trade.pnlPercent = trade.entryValue ? (trade.pnl / trade.entryValue) * 100 : 0;
+
+    const { entryTime, exitTime } = getExecutionTimeBounds(trade.executions);
+    if (entryTime) trade.entryTime = entryTime;
+    if (exitTime) trade.exitTime = exitTime;
+
+    trade.executionData = trade.executions;
+    Object.assign(trade, instrumentData);
+
+    if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol) {
+      trade.symbol = instrumentData.underlyingSymbol;
+    }
+
+    if (trade.isExistingPosition) {
+      trade.isUpdate = trade.newExecutionsAdded > 0;
+    }
+
+    delete trade.instrumentData;
+    return trade;
+  }
+
+  for (const groupKey of Object.keys(transactionsByGroup)) {
+    const groupTransactions = transactionsByGroup[groupKey];
+    const firstTransaction = groupTransactions[0];
+    const instrumentData = firstTransaction.instrumentData;
+    const valueMultiplier = instrumentData.contractSize || (instrumentData.instrumentType === 'option' ? 100 : 1);
+
+    let existingPosition = existingPositions[groupKey] || existingPositions[firstTransaction.symbol];
+    if (!existingPosition && instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol) {
+      existingPosition = existingPositions[instrumentData.underlyingSymbol];
+    }
+
+    let currentPosition = existingPosition
+      ? (existingPosition.side === 'long' ? existingPosition.quantity : -existingPosition.quantity)
+      : 0;
+    let currentTrade = existingPosition ? startTrade(firstTransaction, existingPosition) : null;
+
+    for (const transaction of groupTransactions) {
+      let remainingQty = transaction.quantity;
+      let remainingFees = transaction.commission + transaction.fees;
+
+      while (remainingQty > 0) {
+        if (currentPosition === 0 || !currentTrade) {
+          currentTrade = startTrade(transaction);
+        }
+
+        const sameDirection = (currentPosition >= 0 && transaction.action === 'buy') ||
+          (currentPosition <= 0 && transaction.action === 'sell');
+
+        const consumeQty = sameDirection ? remainingQty : Math.min(Math.abs(currentPosition), remainingQty);
+        const feePortion = remainingQty === consumeQty ? remainingFees : remainingFees * (consumeQty / remainingQty);
+
+        appendExecution(currentTrade, transaction, consumeQty, feePortion);
+
+        if (transaction.action === 'buy') {
+          currentPosition += consumeQty;
+          if (currentTrade.side === 'long') {
+            currentTrade.entryValue += consumeQty * transaction.price * valueMultiplier;
+            currentTrade.totalQuantity += consumeQty;
+          } else {
+            currentTrade.exitValue += consumeQty * transaction.price * valueMultiplier;
+          }
+        } else {
+          currentPosition -= consumeQty;
+          if (currentTrade.side === 'short') {
+            currentTrade.entryValue += consumeQty * transaction.price * valueMultiplier;
+            currentTrade.totalQuantity += consumeQty;
+          } else {
+            currentTrade.exitValue += consumeQty * transaction.price * valueMultiplier;
+          }
+        }
+
+        remainingQty -= consumeQty;
+        remainingFees -= feePortion;
+
+        if (currentPosition === 0) {
+          const finalized = finalizeTrade(currentTrade);
+          if (finalized && finalized.executions.length > 0) {
+            completedTrades.push(finalized);
+          }
+          currentTrade = null;
+        }
+      }
+    }
+
+    if (currentTrade && Math.abs(currentPosition) > 0) {
+      currentTrade.entryPrice = currentTrade.totalQuantity > 0
+        ? currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier)
+        : 0;
+      currentTrade.exitPrice = null;
+      currentTrade.exitTime = null;
+      currentTrade.quantity = Math.abs(currentPosition);
+      currentTrade.totalQuantity = Math.abs(currentPosition);
+      currentTrade.commission = currentTrade.totalFees;
+      currentTrade.fees = 0;
+      currentTrade.pnl = 0;
+      currentTrade.pnlPercent = 0;
+      currentTrade.side = currentPosition > 0 ? 'long' : 'short';
+      currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
+      currentTrade.executionData = currentTrade.executions;
+      Object.assign(currentTrade, instrumentData);
+
+      if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol) {
+        currentTrade.symbol = instrumentData.underlyingSymbol;
+      }
+
+      if (currentTrade.isExistingPosition) {
+        currentTrade.isUpdate = currentTrade.newExecutionsAdded > 0;
+      }
+
+      delete currentTrade.instrumentData;
+      completedTrades.push(currentTrade);
+    }
+  }
+
+  console.log(`\n[SUCCESS] Created ${completedTrades.length} trades from ${transactions.length} Firstrade transactions`);
   return completedTrades;
 }
 

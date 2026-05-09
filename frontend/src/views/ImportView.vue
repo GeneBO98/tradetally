@@ -162,6 +162,7 @@
                 <option value="ibkr">Interactive Brokers</option>
                 <option value="webull">Webull</option>
                 <option value="etrade">E*TRADE</option>
+                <option value="firstrade">Firstrade</option>
                 <option value="papermoney">PaperMoney</option>
                 <option value="tradervue">TraderVue</option>
                 <option value="tradingview">TradingView</option>
@@ -1499,6 +1500,16 @@ const brokerGuides = {
     ],
     warning: 'Account-balance exports will not import correctly. Use transaction history.'
   },
+  firstrade: {
+    title: 'Firstrade',
+    badge: 'Supported',
+    steps: [
+      'Export account history as CSV from Accounts > History.',
+      'Keep the original headers, especially symbol, action, trade date, CUSIP, and record type.',
+      'Use Auto-Detect first. TradeTally will ignore non-trade cash activity rows.'
+    ],
+    warning: 'History exports can include wires, interest, dividends, and other cash activity. Upload the raw CSV and let the importer filter them out.'
+  },
   tradestation: {
     title: 'TradeStation',
     badge: 'Supported',
@@ -1648,6 +1659,7 @@ function formatBrokerName(broker) {
     lightspeed: 'Lightspeed',
     webull: 'Webull',
     etrade: 'E*TRADE',
+    firstrade: 'Firstrade',
     tradingview: 'TradingView',
     tradingview_performance: 'TradingView',
     tradingview_paper: 'TradingView',
@@ -1953,6 +1965,13 @@ function detectBrokerFromHeaders(headers) {
   if (headersStr.includes('transaction date') && headersStr.includes('transaction type') &&
       (headersStr.includes('buy') || headersStr.includes('sell'))) {
     return 'etrade'
+  }
+
+  // Firstrade detection
+  if (headersStr.includes('tradedate') && headersStr.includes('settleddate') &&
+      headersStr.includes('recordtype') && headersStr.includes('description') &&
+      headersStr.includes('cusip')) {
+    return 'firstrade'
   }
 
   // ProjectX detection
