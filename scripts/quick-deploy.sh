@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -euo pipefail
+
 echo "[DEPLOY] TradeTally Quick Deploy Script"
 echo "=================================="
 
@@ -11,13 +13,18 @@ if ! command -v docker &> /dev/null; then
 fi
 
 # Check if Docker Compose is installed
-if ! command -v docker-compose &> /dev/null; then
+if docker compose version &> /dev/null; then
+    DOCKER_COMPOSE="docker compose"
+elif command -v docker-compose &> /dev/null; then
+    DOCKER_COMPOSE="docker-compose"
+else
     echo "[ERROR] Docker Compose is not installed. Please install Docker Compose first."
     echo "Visit: https://docs.docker.com/compose/install/"
     exit 1
 fi
 
 echo "[OK] Docker is installed"
+echo "[OK] Docker Compose is installed"
 
 # Create deployment directory
 DEPLOY_DIR="tradetally-deployment"
@@ -33,42 +40,52 @@ fi
 # Download required files
 echo "[INFO] Downloading deployment files..."
 
-curl -s -o docker-compose.yml https://raw.githubusercontent.com/YOUR_USERNAME/trader-vue/main/docker-compose.production.yaml
-curl -s -o .env.example https://raw.githubusercontent.com/YOUR_USERNAME/trader-vue/main/.env.production.example
-curl -s -o schema.sql https://raw.githubusercontent.com/YOUR_USERNAME/trader-vue/main/schema.sql
+REPO_RAW_URL="https://raw.githubusercontent.com/GeneBO98/tradetally/refs/heads/main"
+
+download_file() {
+    local url="$1"
+    local output="$2"
+
+    if ! curl -fsSL "$url" -o "$output"; then
+        echo "[ERROR] Failed to download $url"
+        exit 1
+    fi
+}
+
+download_file "$REPO_RAW_URL/docker-compose.yaml" docker-compose.yml
+download_file "https://raw.githubusercontent.com/GeneBO98/tradetally/main/.env.example" .env.example
+download_file "$REPO_RAW_URL/backend/src/utils/schema.sql" schema.sql
 
 # Create .env if it doesn't exist
 if [ ! -f .env ]; then
     echo "[CONFIG] Creating .env file from template..."
     cp .env.example .env
     
-    # Generate a random JWT secret
-    JWT_SECRET=$(openssl rand -base64 32 2>/dev/null || echo "CHANGE_THIS_JWT_SECRET_$(date +%s)")
-    sed -i.bak "s/your_super_secure_jwt_secret_key_change_this_in_production/${JWT_SECRET}/" .env
-    
-    # Generate a random database password
-    DB_PASSWORD=$(openssl rand -base64 16 2>/dev/null || echo "secure_db_pass_$(date +%s)")
-    sed -i.bak "s/your_secure_database_password_here/${DB_PASSWORD}/" .env
-    
+    # Generate delimiter-safe secrets for sed replacement.
+    JWT_SECRET=$(openssl rand -hex 32 2>/dev/null || echo "CHANGE_THIS_JWT_SECRET_$(date +%s)")
+    sed -i.bak \
+        -e "s|your_super_secret_jwt_key_change_this_in_production|${JWT_SECRET}|g" \
+        -e "s|your_super_secure_jwt_secret_key_change_this_in_production|${JWT_SECRET}|g" \
+        .env
+
+    # Generate a random database password.
+    DB_PASSWORD=$(openssl rand -hex 16 2>/dev/null || echo "secure_db_pass_$(date +%s)")
+    sed -i.bak \
+        -e "s|trader_password|${DB_PASSWORD}|g" \
+        -e "s|your_secure_database_password_here|${DB_PASSWORD}|g" \
+        .env
+
+    rm -f .env.bak
+
     echo "[SECURITY] Generated secure JWT secret and database password"
 fi
 
-# Update docker-compose.yml with correct image name
-echo "[CONFIG] Please update the Docker image name in docker-compose.yml"
-echo "Replace 'YOUR_DOCKERHUB_USERNAME/tradetally:latest' with your actual image name"
-read -p "Enter your Docker Hub image name (e.g., username/tradetally:latest): " IMAGE_NAME
-
-if [ ! -z "$IMAGE_NAME" ]; then
-    sed -i.bak "s|YOUR_DOCKERHUB_USERNAME/tradetally:latest|${IMAGE_NAME}|" docker-compose.yml
-    echo "[OK] Updated image name to: $IMAGE_NAME"
-fi
-
 # Create directories
-mkdir -p logs data
+mkdir -p backend/src/logs backend/src/data backend/uploads
 
 # Start deployment
 echo "[DEPLOY] Starting TradeTally deployment..."
-docker-compose up -d
+$DOCKER_COMPOSE up -d
 
 # Wait for database to be ready
 echo "[WAIT] Waiting for database to be ready..."
@@ -82,18 +99,17 @@ echo ""
 echo "[SUCCESS] TradeTally deployment complete!"
 echo ""
 echo "[INFO] Access your application:"
-echo "   TradeTally: http://localhost"
-echo "   Database Admin: http://localhost:8080"
+echo "   TradeTally: http://localhost:8080"
 echo ""
 echo "[DEMO] Demo Login:"
 echo "   Email: demo@example.com"
 echo "   Password: DemoUser25"
 echo ""
 echo "[CONFIG] To customize settings, edit the .env file and restart:"
-echo "   docker-compose restart"
+echo "   $DOCKER_COMPOSE restart"
 echo ""
 echo "[COMMANDS] Useful commands:"
-echo "   View logs: docker-compose logs -f"
-echo "   Stop: docker-compose down"
-echo "   Update: docker-compose pull && docker-compose up -d"
+echo "   View logs: $DOCKER_COMPOSE logs -f"
+echo "   Stop: $DOCKER_COMPOSE down"
+echo "   Update: $DOCKER_COMPOSE pull && $DOCKER_COMPOSE up -d"
 echo ""
