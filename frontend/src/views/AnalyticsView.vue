@@ -3552,12 +3552,26 @@ onMounted(async () => {
   // loadData() now handles initializing localFilters from saved filters
   await loadData()
 
-  // Scroll to hash if present
+  // Scroll to hash if present. The dashboard's Max Drawdown card links to
+  // #drawdown; if the user customized the layout to hide that chart, force it
+  // back on so the click has a visible target instead of silently no-op'ing.
   if (route.hash) {
+    if (route.hash === '#drawdown') {
+      const drawdownChart = chartLayout.value.find(c => c.id === 'drawdown-chart')
+      if (drawdownChart && !drawdownChart.visible) {
+        drawdownChart.visible = true
+      }
+    }
+
     await nextTick()
     const element = document.querySelector(route.hash)
     if (element) {
       element.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      // Briefly highlight the target so users see where they landed.
+      element.classList.add('ring-2', 'ring-primary-500', 'ring-offset-2', 'transition-all')
+      setTimeout(() => {
+        element.classList.remove('ring-2', 'ring-primary-500', 'ring-offset-2')
+      }, 2000)
     }
   }
 })

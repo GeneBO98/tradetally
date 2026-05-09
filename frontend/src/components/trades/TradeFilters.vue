@@ -916,8 +916,28 @@ const defaultFilters = {
   qualityGrades: [] // New multi-select array for quality grades
 }
 
+function urlHasFilterParams() {
+  return !!(
+    route.query.symbol || route.query.startDate || route.query.endDate ||
+    route.query.strategy || route.query.strategies || route.query.sector ||
+    route.query.sectors || route.query.status || route.query.minPrice ||
+    route.query.maxPrice || route.query.minQuantity || route.query.maxQuantity ||
+    route.query.holdTime || route.query.broker || route.query.brokers ||
+    route.query.minHoldTime || route.query.maxHoldTime || route.query.pnlType ||
+    route.query.importId || route.query.tags
+  )
+}
+
 // Load saved filters from localStorage on initialization
 function loadInitialFilters() {
+  // When the URL carries explicit filter params, treat the URL as authoritative
+  // and skip the localStorage merge. Otherwise stale persisted filters (e.g. a
+  // previous "status: open" selection) layer onto a click-through like
+  // /trades?symbol=X and produce empty results.
+  if (urlHasFilterParams()) {
+    return { ...defaultFilters }
+  }
+
   try {
     const savedFilters = localStorage.getItem('tradeFilters')
     const savedPeriod = localStorage.getItem('tradeFiltersPeriod')
@@ -1556,8 +1576,10 @@ onMounted(() => {
     shouldApply = true
   }
 
-  // Override with store filters if they exist
-  if (tradesStore.filters) {
+  // Override with store filters if they exist — but skip when the URL is
+  // authoritative, otherwise stale store filters (e.g. status:open carried
+  // over from a previous /trades visit) would re-merge in.
+  if (tradesStore.filters && !urlHasFilterParams()) {
     const storeFilters = { ...tradesStore.filters }
     // Convert comma-separated strings back to arrays for multi-select fields
     if (storeFilters.strategies && typeof storeFilters.strategies === 'string') {

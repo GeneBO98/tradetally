@@ -176,6 +176,60 @@ describe('Firstrade parser', () => {
     expect(optionTrade.underlyingSymbol).toBe('IAG');
     expect(optionTrade.optionType).toBe('put');
   });
+
+  // Firstrade CSV doesn't list rows in execution order. When the day's net flow
+  // is long, BUYs must process before SELLs so a partial close isn't misread as
+  // opening a short. Reconstructed from issue #311 NET stock example.
+  test('reorders same-day mixed buys/sells using net flow when execution times missing', async () => {
+    const reorderCSV = [
+      'Symbol,Quantity,Price,Action,Description,TradeDate,SettledDate,Interest,Amount,Commission,Fee,CUSIP,RecordType',
+      'NET,-38.00,254.30,SELL,CLOUDFLARE INC CLASS A,2026-05-07,2026-05-08,0.00,9663.20,0.00,0.20,18915M107,Trade',
+      'NET,88.00,254.00,BUY,CLOUDFLARE INC CLASS A,2026-05-07,2026-05-08,0.00,-22352.00,0.00,0.00,18915M107,Trade',
+      'NET,50.00,223.00,BUY,CLOUDFLARE INC CLASS A EXEC TIME: 2026-05-07 16:28:38,2026-05-07,2026-05-08,0.00,-11150.00,0.00,0.00,18915M107,Trade'
+    ].join('\n');
+
+    const result = await parseCSV(buf(reorderCSV), 'firstrade', {});
+    expect(result.trades).toHaveLength(1);
+
+    const trade = result.trades[0];
+    expect(trade.symbol).toBe('NET');
+    expect(trade.side).toBe('long');
+    expect(trade.quantity).toBe(100);
+    expect(trade.entryPrice).toBeCloseTo((88 * 254 + 50 * 223) / 138, 2);
+  });
+
+  test('extracts EXEC TIME from description when present', async () => {
+    const execTimeCSV = [
+      'Symbol,Quantity,Price,Action,Description,TradeDate,SettledDate,Interest,Amount,Commission,Fee,CUSIP,RecordType',
+      'AAPL,100.00,150.00,BUY,APPLE INC EXEC TIME: 2026-01-15 14:30:25,2026-01-15,2026-01-16,0.00,-15000.00,0.00,0.00,037833100,Trade',
+      'AAPL,-100.00,155.00,SELL,APPLE INC EXEC TIME: 2026-01-15 15:45:10,2026-01-15,2026-01-16,0.00,15500.00,0.00,0.00,037833100,Trade'
+    ].join('\n');
+
+    const result = await parseCSV(buf(execTimeCSV), 'firstrade', {});
+    expect(result.trades).toHaveLength(1);
+    const trade = result.trades[0];
+    expect(trade.entryTime).toContain('14:30:25');
+    expect(trade.exitTime).toContain('15:45:10');
+  });
+
+  // Treasury notes/bonds are quoted as percent of face value. qty * price would
+  // give an inflated cash basis; CSV Amount column is the actual cash flow.
+  test('uses Amount column for treasury bond cost basis', async () => {
+    const treasuryCSV = [
+      'Symbol,Quantity,Price,Action,Description,TradeDate,SettledDate,Interest,Amount,Commission,Fee,CUSIP,RecordType',
+      ',100000.00,100.161,BUY,UNITED STATES TREASURY NOTE DUE 12/31/2026 04.250,2025-02-10,2025-02-11,-493.09,-100654.09,0.00,0.00,91282CME8,Trade',
+      ',-100000.00,100.506,SELL,UNITED STATES TREASURY NOTE DUE 12/31/2026 04.250,2026-01-07,2026-01-08,93.92,100599.92,0.00,0.00,91282CME8,Trade'
+    ].join('\n');
+
+    const result = await parseCSV(buf(treasuryCSV), 'firstrade', {});
+    expect(result.trades).toHaveLength(1);
+    const trade = result.trades[0];
+
+    // P&L should be the cash difference (~ -$54), not qty * price difference (~ $34,500).
+    expect(Math.abs(trade.pnl)).toBeLessThan(200);
+    expect(trade.entryPrice * trade.quantity).toBeCloseTo(100654.09, 1);
+    expect(trade.exitPrice * trade.quantity).toBeCloseTo(100599.92, 1);
+  });
 });
 
 // ──────────────────────────────────────────────
