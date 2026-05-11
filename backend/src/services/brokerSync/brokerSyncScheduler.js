@@ -7,6 +7,7 @@
 
 const BrokerConnection = require('../../models/BrokerConnection');
 const brokerSyncService = require('./index');
+const db = require('../../config/database');
 
 const SCHEDULER_INTERVAL = 15 * 60 * 1000; // 15 minutes
 const MAX_CONCURRENT_SYNCS = 3;
@@ -133,11 +134,38 @@ class BrokerSyncScheduler {
   }
 
   /**
+   * Mark any sync logs stuck in 'started' or 'fetching' as failed.
+   * These are left over from a previous process that was killed mid-flight.
+   */
+  async cleanupZombieSyncs() {
+    try {
+      const result = await db.query(
+        `UPDATE broker_sync_logs
+         SET status = 'failed',
+             error_message = 'Sync interrupted by server restart',
+             completed_at = CURRENT_TIMESTAMP
+         WHERE status IN ('started', 'fetching')
+         RETURNING id`
+      );
+      if (result.rowCount > 0) {
+        console.log(`[BROKER-SCHEDULER] Cleaned up ${result.rowCount} zombie sync log(s) left from previous run`);
+      }
+    } catch (error) {
+      console.error('[BROKER-SCHEDULER] Failed to clean up zombie syncs:', error.message);
+    }
+  }
+
+  /**
    * Start the scheduler
    */
   start() {
     console.log('[BROKER-SCHEDULER] Starting broker sync scheduler...');
     console.log(`[BROKER-SCHEDULER] Check interval: ${SCHEDULER_INTERVAL / 60000} minutes`);
+
+    // Clean up any syncs that were interrupted by a previous server restart
+    this.cleanupZombieSyncs().catch(error => {
+      console.error('[BROKER-SCHEDULER] Zombie cleanup failed:', error);
+    });
 
     // Run immediately on start
     this.processDueSyncs().catch(error => {
