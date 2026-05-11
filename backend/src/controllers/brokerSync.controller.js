@@ -79,7 +79,8 @@ const brokerSyncController = {
         accountLabel = '',
         autoSyncEnabled = false,
         syncFrequency = 'daily',
-        syncTime = '06:00:00'
+        syncTime = '06:00:00',
+        syncStartDate = null
       } = req.body;
 
       // Validate required fields
@@ -109,7 +110,8 @@ const brokerSyncController = {
         accountLabel: accountLabel || null,
         autoSyncEnabled,
         syncFrequency,
-        syncTime
+        syncTime,
+        syncStartDate
       });
 
       // Update status to active after validation
@@ -311,7 +313,7 @@ const brokerSyncController = {
     try {
       const userId = req.user.id;
       const { id } = req.params;
-      const { autoSyncEnabled, syncFrequency, syncTime } = req.body;
+      const { autoSyncEnabled, syncFrequency, syncTime, syncStartDate } = req.body;
 
       // Verify ownership
       const connection = await BrokerConnection.findById(id, false);
@@ -322,12 +324,16 @@ const brokerSyncController = {
         });
       }
 
-      // Update settings
-      const updated = await BrokerConnection.update(id, {
+      // Update settings (syncStartDate may be explicitly null to mean "all time")
+      const updates = {
         autoSyncEnabled,
         syncFrequency,
         syncTime
-      });
+      };
+      if (Object.prototype.hasOwnProperty.call(req.body, 'syncStartDate')) {
+        updates.syncStartDate = syncStartDate;
+      }
+      const updated = await BrokerConnection.update(id, updates);
 
       // Recalculate next sync time
       if (autoSyncEnabled && syncFrequency !== 'manual') {

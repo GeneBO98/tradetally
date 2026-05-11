@@ -127,6 +127,36 @@
                 Time to automatically sync each day (in your local timezone)
               </p>
             </div>
+
+            <div>
+              <label class="label">Sync Trades From</label>
+              <div class="flex flex-wrap gap-2 mb-2">
+                <button
+                  v-for="preset in syncRangePresets"
+                  :key="preset.id"
+                  type="button"
+                  @click="applySyncRangePreset(preset.id)"
+                  :class="[
+                    'px-3 py-1 text-sm rounded-full border transition-colors',
+                    activePreset === preset.id
+                      ? 'bg-primary-600 border-primary-600 text-white'
+                      : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600'
+                  ]"
+                >
+                  {{ preset.label }}
+                </button>
+              </div>
+              <input
+                v-if="activePreset === 'custom'"
+                v-model="form.syncStartDate"
+                type="date"
+                class="input"
+                :max="todayIso"
+              />
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Only sync trades on or after this date. Leave as "All Time" to import the full history available from the broker.
+              </p>
+            </div>
           </form>
         </div>
 
@@ -158,6 +188,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
+import { syncRangePresets, applyPresetToForm, resolveActivePreset, todayIso } from '@/utils/syncRangePresets'
 
 const props = defineProps({
   loading: {
@@ -178,8 +209,16 @@ const form = ref({
   flexQueryId: '',
   autoSyncEnabled: true,
   syncFrequency: 'daily',
-  syncTime: '06:00'
+  syncTime: '06:00',
+  syncStartDate: null
 })
+
+const activePreset = ref('all')
+
+function applySyncRangePreset(presetId) {
+  activePreset.value = presetId
+  applyPresetToForm(form.value, presetId)
+}
 
 const isValid = computed(() => {
   return form.value.flexToken.length > 0 && form.value.flexQueryId.length > 0
@@ -194,7 +233,8 @@ function handleSubmit() {
     flexQueryId: form.value.flexQueryId,
     autoSyncEnabled: form.value.autoSyncEnabled,
     syncFrequency: form.value.syncFrequency,
-    syncTime: form.value.syncTime + ':00'
+    syncTime: form.value.syncTime + ':00',
+    syncStartDate: form.value.syncStartDate
   })
 }
 </script>

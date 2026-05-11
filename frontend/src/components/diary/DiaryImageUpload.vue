@@ -39,7 +39,7 @@
             <span class="text-gray-500 dark:text-gray-400"> or drag and drop</span>
           </div>
           <p class="text-xs text-gray-500 dark:text-gray-400">
-            JPEG, PNG, WebP up to 50MB each
+            JPEG, PNG, WebP up to 50MB each &middot; paste from clipboard with {{ pasteShortcut }}
           </p>
         </div>
       </div>
@@ -193,7 +193,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useNotification } from '@/composables/useNotification'
 import api from '@/services/api'
 
@@ -221,6 +221,11 @@ const previewImage = ref(null)
 
 // Supported file types
 const supportedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+
+const pasteShortcut = computed(() => {
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
+  return isMac ? '⌘V' : 'Ctrl+V'
+})
 
 function getImageUrl(image) {
   // Use the API URL with authentication token
@@ -251,6 +256,38 @@ function handleDrop(event) {
   const files = Array.from(event.dataTransfer.files)
   addFiles(files)
 }
+
+function handlePaste(event) {
+  if (!event.clipboardData) return
+  const items = Array.from(event.clipboardData.items || [])
+  const imageItems = items.filter(item => item.kind === 'file' && item.type.startsWith('image/'))
+  if (imageItems.length === 0) return
+
+  const pastedFiles = []
+  for (const item of imageItems) {
+    const blob = item.getAsFile()
+    if (!blob) continue
+    const mimeExt = (blob.type.split('/')[1] || 'png').toLowerCase()
+    const ext = mimeExt === 'jpeg' ? 'jpg' : mimeExt
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+    const hasMeaningfulName = blob.name && !/^image\.[a-z]+$/i.test(blob.name)
+    const name = hasMeaningfulName ? blob.name : `pasted-${timestamp}.${ext}`
+    pastedFiles.push(new File([blob], name, { type: blob.type }))
+  }
+
+  if (pastedFiles.length > 0) {
+    event.preventDefault()
+    addFiles(pastedFiles)
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('paste', handlePaste)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('paste', handlePaste)
+})
 
 function addFiles(files) {
   const validFiles = files.filter(file => {

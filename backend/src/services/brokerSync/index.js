@@ -16,7 +16,8 @@ class BrokerSyncService {
    * @param {object} options - Sync options
    */
   async syncConnection(connectionId, options = {}) {
-    const { syncType = 'manual', startDate, endDate } = options;
+    const { syncType = 'manual', endDate } = options;
+    let { startDate } = options;
 
     // Get connection with credentials
     const connection = await BrokerConnection.findById(connectionId, true);
@@ -26,6 +27,17 @@ class BrokerSyncService {
 
     if (connection.connectionStatus !== 'active') {
       throw new Error(`Cannot sync: connection status is ${connection.connectionStatus}`);
+    }
+
+    // Apply the connection's configured sync floor when the caller didn't pass
+    // an explicit startDate. This makes scheduled syncs respect the user's
+    // chosen lookback window (e.g. "this year only") without re-specifying it
+    // each time. An ad-hoc manual sync can still override by passing startDate.
+    if (!startDate && connection.syncStartDate) {
+      const floor = connection.syncStartDate instanceof Date
+        ? connection.syncStartDate.toISOString().slice(0, 10)
+        : String(connection.syncStartDate).slice(0, 10);
+      startDate = floor;
     }
 
     // Create sync log
