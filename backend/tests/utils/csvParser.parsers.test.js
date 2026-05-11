@@ -230,6 +230,84 @@ describe('Firstrade parser', () => {
     expect(trade.entryPrice * trade.quantity).toBeCloseTo(100654.09, 1);
     expect(trade.exitPrice * trade.quantity).toBeCloseTo(100599.92, 1);
   });
+
+  // Firstrade leaves the Symbol column blank for treasuries; using the raw
+  // 9-character CUSIP as the symbol is unfriendly. Parse the maturity and
+  // coupon from the description into Bloomberg-style "T 4.25 12/31/26".
+  test('derives a friendly symbol for treasuries from the description', async () => {
+    const treasuryCSV = [
+      'Symbol,Quantity,Price,Action,Description,TradeDate,SettledDate,Interest,Amount,Commission,Fee,CUSIP,RecordType',
+      ',100000.00,100.161,BUY,UNITED STATES TREASURY NOTE DUE 12/31/2026 04.250,2025-02-10,2025-02-11,-493.09,-100654.09,0.00,0.00,91282CME8,Trade'
+    ].join('\n');
+
+    const result = await parseCSV(buf(treasuryCSV), 'firstrade', {});
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0].symbol).toBe('T 4.25 12/31/26');
+  });
+
+  // A short option that gets assigned is recorded as a RecordType=Financial
+  // row (no BUY/SELL), so the contract was being left as an open position.
+  // The synthetic close at price=0 lets the seller realise the premium and
+  // keeps the parser output in sync with the user's actual account.
+  test('closes a sold put at $0 when a Financial assignment row exists', async () => {
+    const csv = [
+      'Symbol,Quantity,Price,Action,Description,TradeDate,SettledDate,Interest,Amount,Commission,Fee,CUSIP,RecordType',
+      ',-155.00,0.11,SELL,PUT IAG 02/21/25 6 IAMGOLD CORP OPEN CONTRACT,2025-02-10,2025-02-11,0.00,1700.80,0.00,0.05,,Trade',
+      ',155.00,,Other,PUT IAG 02/21/25 6 IAMGOLD CORP A/E 155 ASSIGNED,2025-02-21,2025-02-21,0.00,0.00,0.00,0.00,,Financial'
+    ].join('\n');
+
+    const result = await parseCSV(buf(csv), 'firstrade', {});
+    const optionTrade = result.trades.find(t => t.instrumentType === 'option');
+    expect(optionTrade).toBeDefined();
+    expect(optionTrade.side).toBe('short');
+    expect(optionTrade.exitPrice).toBe(0);
+    // Premium kept (minus the row's reported + implied fees).
+    expect(optionTrade.pnl).toBeGreaterThan(1690);
+    expect(optionTrade.pnl).toBeLessThan(1701);
+  });
+
+  // Firstrade rolls SEC/ORF/exchange fees into the Amount column without
+  // itemising them in Fee. P&L from qty*price*100 was therefore $4-5 off per
+  // option round trip — small but real. Derive total fees from the cash gap.
+  test('matches realised option P&L to the Amount column cash flow', async () => {
+    const csv = [
+      'Symbol,Quantity,Price,Action,Description,TradeDate,SettledDate,Interest,Amount,Commission,Fee,CUSIP,RecordType',
+      ',-155.00,0.15,SELL,CALL IAG 03/21/25 6 IAMGOLD CORP OPEN CONTRACT,2025-03-14,2025-03-17,0.00,2320.57,0.00,0.07,,Trade',
+      ',155.00,0.15,BUY,CALL IAG 03/21/25 6 IAMGOLD CORP CLOSING CONTRACT,2025-03-18,2025-03-19,0.00,-2329.36,0.00,0.00,,Trade'
+    ].join('\n');
+
+    const result = await parseCSV(buf(csv), 'firstrade', {});
+    expect(result.trades).toHaveLength(1);
+    const trade = result.trades[0];
+    // Actual cash flow: 2320.57 - 2329.36 = -8.79
+    expect(trade.pnl).toBeCloseTo(-8.79, 2);
+  });
+
+  // Most users keep the default 'generic' broker dropdown selection. When the
+  // headers clearly belong to a known broker, route to that parser instead of
+  // forcing the user to know which dropdown entry to pick.
+  test('falls through to Firstrade parser when broker=generic but headers match', async () => {
+    const result = await parseCSV(buf(firstradeCSV), 'generic', {});
+    expect(result.trades.length).toBeGreaterThan(0);
+    expect(result.diagnostics.detectedBroker).toBe('firstrade');
+  });
+
+  // Commission and Fee columns map to distinct ledger fields; collapsing them
+  // into commission with fees=0 (the previous behaviour) hid the regulatory
+  // costs Firstrade was charging.
+  test('keeps Commission and Fee values separate on the resulting trade', async () => {
+    const csv = [
+      'Symbol,Quantity,Price,Action,Description,TradeDate,SettledDate,Interest,Amount,Commission,Fee,CUSIP,RecordType',
+      'AAPL,100.00,150.00,BUY,APPLE INC,2026-01-15,2026-01-16,0.00,-15001.50,1.00,0.50,037833100,Trade',
+      'AAPL,-100.00,155.00,SELL,APPLE INC,2026-01-16,2026-01-17,0.00,15497.50,1.00,1.50,037833100,Trade'
+    ].join('\n');
+
+    const result = await parseCSV(buf(csv), 'firstrade', {});
+    expect(result.trades).toHaveLength(1);
+    const trade = result.trades[0];
+    expect(trade.commission).toBeCloseTo(2.00, 2);
+    expect(trade.fees).toBeCloseTo(2.00, 2);
+  });
 });
 
 // ──────────────────────────────────────────────
