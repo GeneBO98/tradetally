@@ -57,6 +57,7 @@ const testimonialsRoutes = require('./routes/testimonials.routes');
 const supportRoutes = require('./routes/support.routes');
 const internalRoutes = require('./routes/internal.routes');
 const toolsRoutes = require('./routes/tools.routes');
+const experimentsRoutes = require('./routes/experiments.routes');
 const BillingService = require('./services/billingService');
 const priceMonitoringService = require('./services/priceMonitoringService');
 const backupScheduler = require('./services/backupScheduler.service');
@@ -288,6 +289,7 @@ app.use('/api/trial-feedback', trialFeedbackRoutes);
 app.use('/api/auth/passkey', passkeyRoutes);
 app.use('/api/testimonials', testimonialsRoutes);
 app.use('/api/tools', toolsRoutes);
+app.use('/api/experiments', experimentsRoutes);
 
 // OAuth2 Provider endpoints
 app.use('/oauth', oauth2Routes);

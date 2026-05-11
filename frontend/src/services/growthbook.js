@@ -67,6 +67,14 @@ function buildAttributes(user = null, route = null) {
   }
 }
 
+function recordExposure(anonymousId, userId, experimentId, variationId) {
+  fetch('/api/experiments/expose', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ anonymousId, userId, experimentId, variationId })
+  }).catch(() => {}) // fire-and-forget
+}
+
 const growthbook = GROWTHBOOK_ENABLED && GROWTHBOOK_CLIENT_KEY
   ? new GrowthBook({
       apiHost: GROWTHBOOK_API_HOST,
@@ -81,6 +89,14 @@ const growthbook = GROWTHBOOK_ENABLED && GROWTHBOOK_CLIENT_KEY
           variation_key: result.key,
           feature_id: result.featureId
         })
+
+        const attrs = growthbook.getAttributes()
+        recordExposure(
+          attrs.anonymousId,
+          attrs.loggedIn ? attrs.id : null,
+          experiment.key,
+          result.key
+        )
       }
     })
   : null
