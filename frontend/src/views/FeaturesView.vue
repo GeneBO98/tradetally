@@ -262,6 +262,7 @@ import {
 } from '@heroicons/vue/24/outline'
 import { usePricingExperiment } from '@/composables/usePricingExperiment'
 import { useScrollReveal } from '@/composables/useScrollReveal'
+import { PRO_MONTHLY_PRICE } from '@/config/pricing'
 
 useScrollReveal()
 const { monthlyPricePerMoLabel } = usePricingExperiment()
@@ -613,11 +614,11 @@ onMounted(() => {
       {
         "@type": "Offer",
         "name": "Pro Tier",
-        "price": "8",
+        "price": String(PRO_MONTHLY_PRICE),
         "priceCurrency": "USD",
         "priceSpecification": {
           "@type": "UnitPriceSpecification",
-          "price": "8",
+          "price": String(PRO_MONTHLY_PRICE),
           "priceCurrency": "USD",
           "billingDuration": "P1M"
         },

@@ -1,9 +1,10 @@
 import { computed } from 'vue'
 import { useGrowthBook } from '@/composables/useGrowthBook'
+import { PRO_MONTHLY_PRICE, PRO_MONTHLY_PRICE_B, PRO_YEARLY_PRICE } from '@/config/pricing'
 
-const CONTROL_MONTHLY_PRICE_CENTS = 800
-const HIGHER_MONTHLY_PRICE_CENTS = 1200
-const YEARLY_PRICE_CENTS = 8000
+const CONTROL_MONTHLY_PRICE_CENTS = PRO_MONTHLY_PRICE * 100
+const HIGHER_MONTHLY_PRICE_CENTS = PRO_MONTHLY_PRICE_B * 100
+const YEARLY_PRICE_CENTS = PRO_YEARLY_PRICE * 100
 
 const currencyFormatter = new Intl.NumberFormat('en-US', {
   style: 'currency',
@@ -32,12 +33,13 @@ export function usePricingExperiment() {
   const { getFeatureValue } = useGrowthBook()
 
   const selectedMonthlyVariant = computed(() => {
-    const variant = normalizeVariant(getFeatureValue('pricing_monthly_offer', 'control'))
-    return variant === 'higher_price' ? 'higher_price' : 'control'
+    const variant = normalizeVariant(getFeatureValue('pricing_plan_variant', 'control'))
+    if (variant === 'b' || variant === 'higher_price') return variant
+    return 'control'
   })
 
   const monthlyPriceCents = computed(() => (
-    selectedMonthlyVariant.value === 'higher_price'
+    selectedMonthlyVariant.value === 'b' || selectedMonthlyVariant.value === 'higher_price'
       ? HIGHER_MONTHLY_PRICE_CENTS
       : CONTROL_MONTHLY_PRICE_CENTS
   ))

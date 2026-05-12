@@ -65,6 +65,16 @@
           </div>
         </div>
 
+        <div class="flex justify-center mb-8">
+          <div class="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+            <button @click="billingPeriod = 'monthly'" :class="billingPeriod === 'monthly' ? 'bg-white dark:bg-gray-700 shadow text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'" class="px-5 py-2 rounded-md text-sm font-medium transition-all">Monthly</button>
+            <button @click="billingPeriod = 'yearly'" :class="billingPeriod === 'yearly' ? 'bg-white dark:bg-gray-700 shadow text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'" class="px-5 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2">
+              Annually
+              <span v-if="yearlySavingsPercent" class="text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-0.5 rounded-full font-semibold">Save {{ yearlySavingsPercent }}%</span>
+            </button>
+          </div>
+        </div>
+
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
           <!-- Free Plan -->
           <div class="card relative flex flex-col">
@@ -198,8 +208,10 @@
               <div class="text-center">
                 <h3 class="text-2xl font-bold text-gray-900 dark:text-white">Pro</h3>
                 <div class="mt-4">
-                  <span class="text-4xl font-bold text-gray-900 dark:text-white">{{ formattedMonthlyPrice }}</span>
+                  <span class="text-4xl font-bold text-gray-900 dark:text-white">${{ billingPeriod === 'yearly' ? yearlyMonthlyEquivalent : monthlyDisplayPrice }}</span>
                   <span class="text-gray-600 dark:text-gray-400">/month</span>
+                  <div v-if="billingPeriod === 'yearly'" class="mt-1 text-sm text-gray-500 dark:text-gray-400">${{ yearlyDisplayPrice }} billed annually</div>
+                  <div v-else-if="yearlySavingsPercent" class="mt-1 text-sm text-green-600 dark:text-green-400 font-medium">Save {{ yearlySavingsPercent }}% with annual billing</div>
                 </div>
                 <p class="mt-4 text-gray-600 dark:text-gray-400">
                   Advanced analytics and behavioral insights for serious traders
@@ -336,6 +348,8 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useAnalytics } from '@/composables/useAnalytics'
 import { useGrowthBook } from '@/composables/useGrowthBook'
+import { growthbook } from '@/services/growthbook'
+import { PRO_MONTHLY_PRICE, PRO_MONTHLY_PRICE_B, PRO_YEARLY_PRICE } from '@/config/pricing'
 import api from '@/services/api'
 
 export default {
@@ -360,6 +374,39 @@ export default {
     const redirectUrl = ref(route.query.redirect || null)
     const errorMessage = ref('')
     const successMessage = ref('')
+    const billingPeriod = ref('monthly')
+
+    const pricingVariant = computed(() =>
+      growthbook?.getFeatureValue('pricing_plan_variant', 'control') || 'control'
+    )
+    const selectedMonthlyPlan = computed(() => {
+      if (!pricingPlans.value.length) return null
+      const variant = pricingVariant.value
+      return (
+        pricingPlans.value.find(p => p.interval === 'month' && p.variant === variant) ||
+        pricingPlans.value.find(p => p.interval === 'month')
+      )
+    })
+    const yearlyPlan = computed(() =>
+      pricingPlans.value.find(p => p.interval === 'year') || null
+    )
+    const monthlyDisplayPrice = computed(() => {
+      if (selectedMonthlyPlan.value) return Math.round(selectedMonthlyPlan.value.price / 100)
+      return pricingVariant.value === 'b' ? PRO_MONTHLY_PRICE_B : PRO_MONTHLY_PRICE
+    })
+    const yearlyDisplayPrice = computed(() => {
+      if (yearlyPlan.value) return Math.round(yearlyPlan.value.price / 100)
+      return PRO_YEARLY_PRICE
+    })
+    const yearlyMonthlyEquivalent = computed(() =>
+      (yearlyDisplayPrice.value / 12).toFixed(2).replace(/\.00$/, '')
+    )
+    const yearlySavingsPercent = computed(() => {
+      const monthly = selectedMonthlyPlan.value?.price || monthlyDisplayPrice.value * 100
+      const yearly = yearlyPlan.value?.price || yearlyDisplayPrice.value * 100
+      const savings = Math.round((1 - yearly / (monthly * 12)) * 100)
+      return savings > 0 ? savings : null
+    })
 
     const moneyFormatter = new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -412,7 +459,7 @@ export default {
 
     const formattedMonthlyPrice = computed(() => {
       if (!Number.isFinite(selectedMonthlyOffer.value?.price)) {
-        return selectedMonthlyVariant.value === 'higher_price' ? '$12' : '$8'
+        return `$${pricingVariant.value === 'b' ? PRO_MONTHLY_PRICE_B : PRO_MONTHLY_PRICE}`
       }
 
       return formatPrice(selectedMonthlyOffer.value.price)
@@ -501,28 +548,61 @@ export default {
 
       subscribing.value = true
       try {
-        const monthlyOffer = selectedMonthlyOffer.value
-        const priceId = monthlyOffer?.id
+        const isYearly = billingPeriod.value === 'yearly'
+        const chosenPlan = isYearly ? yearlyPlan.value : selectedMonthlyPlan.value
+        const priceId = isYearly ? yearlyPlan.value?.id : selectedMonthlyPlan.value?.id
 
         if (!priceId) {
-          throw new Error('Price ID not found. Please contact support.')
+          // Fall back to legacy experiment offer if new plan objects not available
+          const monthlyOffer = selectedMonthlyOffer.value
+          const fallbackPriceId = monthlyOffer?.id
+          if (!fallbackPriceId) {
+            throw new Error('Price ID not found. Please contact support.')
+          }
+
+          analytics.track('pricing_checkout_started', {
+            feature_key: 'pricing_monthly_offer',
+            variant: selectedMonthlyVariant.value,
+            price_cents: monthlyOffer.price,
+            currency: monthlyOffer.currency || 'USD',
+            interval: monthlyOffer.interval || 'month'
+          })
+
+          const payload = {
+            priceId: fallbackPriceId,
+            pricingExperiment: {
+              key: 'pricing_monthly_offer',
+              variant: selectedMonthlyVariant.value,
+              displayedPriceCents: monthlyOffer.price,
+              currency: monthlyOffer.currency || 'USD'
+            }
+          }
+          if (redirectUrl.value) {
+            payload.redirectUrl = redirectUrl.value
+          }
+          if (window.promotekit_referral) {
+            payload.referral = window.promotekit_referral
+          }
+          const response = await api.post('/billing/checkout', payload)
+          window.location.href = response.data.data.checkout_url
+          return
         }
 
         analytics.track('pricing_checkout_started', {
-          feature_key: 'pricing_monthly_offer',
-          variant: selectedMonthlyVariant.value,
-          price_cents: monthlyOffer.price,
-          currency: monthlyOffer.currency || 'USD',
-          interval: monthlyOffer.interval || 'month'
+          feature_key: 'pricing_plan_variant',
+          variant: isYearly ? 'yearly' : pricingVariant.value,
+          price_cents: chosenPlan?.price,
+          currency: chosenPlan?.currency || 'USD',
+          interval: isYearly ? 'year' : 'month'
         })
 
         const payload = {
           priceId,
           pricingExperiment: {
-            key: 'pricing_monthly_offer',
-            variant: selectedMonthlyVariant.value,
-            displayedPriceCents: monthlyOffer.price,
-            currency: monthlyOffer.currency || 'USD'
+            key: 'pricing_plan_variant',
+            variant: isYearly ? 'yearly' : pricingVariant.value,
+            displayedPriceCents: chosenPlan?.price,
+            currency: chosenPlan?.currency || 'USD'
           }
         }
         if (redirectUrl.value) {
@@ -648,7 +728,15 @@ export default {
       getTrialButtonClass,
       getTrialButtonText,
       errorMessage,
-      successMessage
+      successMessage,
+      billingPeriod,
+      pricingVariant,
+      selectedMonthlyPlan,
+      yearlyPlan,
+      monthlyDisplayPrice,
+      yearlyDisplayPrice,
+      yearlyMonthlyEquivalent,
+      yearlySavingsPercent
     }
   }
 }
