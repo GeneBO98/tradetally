@@ -58,8 +58,10 @@ function detectIOSNonSafari() {
   const ua = navigator.userAgent
   const isIOS = /iPhone|iPad|iPod/.test(ua)
   if (!isIOS) return false
-  // iOS Safari already shows the native Smart App Banner via <meta apple-itunes-app>.
-  // Only show our custom banner for in-app webviews and third-party iOS browsers.
+  // In production iOS Safari shows the native Smart App Banner via <meta apple-itunes-app>,
+  // so the custom banner self-suppresses. In dev the native banner never fires (localhost,
+  // no HTTPS App Store lookup), so render the custom banner on Safari too for visual testing.
+  if (import.meta.env.DEV) return true
   const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua)
   return !isSafari
 }
