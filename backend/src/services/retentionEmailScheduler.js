@@ -1,5 +1,8 @@
 const db = require('../config/database');
 const EmailService = require('./emailService');
+const TierService = require('./tierService');
+const weeklyInsights = require('./weeklyDigest/insights');
+const aiRecap = require('./weeklyDigest/aiRecap');
 
 function maskEmail(email) {
   if (!email || !email.includes('@')) return '***';
@@ -46,44 +49,51 @@ class RetentionEmailScheduler {
       const startStr = startDate.toISOString().split('T')[0];
       const endStr = endDate.toISOString().split('T')[0];
 
-      // Only send to users with marketing_consent = true
-      const query = `
-        SELECT
-          t.user_id,
-          u.email,
-          u.username,
-          u.full_name,
-          COUNT(*)::int AS trade_count,
-          COALESCE(SUM(t.pnl), 0)::double precision AS total_pnl
-        FROM trades t
-        INNER JOIN users u ON u.id = t.user_id AND u.is_active = true AND u.marketing_consent = true
-        WHERE t.trade_date >= $1::date AND t.trade_date <= $2::date
-        GROUP BY t.user_id, u.email, u.username, u.full_name
-        HAVING COUNT(*) > 0
-      `;
-      const result = await db.query(query, [startStr, endStr]);
-      if (result.rows.length === 0) {
+      const aggregates = await weeklyInsights.fetchWeeklyAggregates(startStr, endStr);
+      if (aggregates.length === 0) {
         console.log('No weekly digests to send');
         return;
       }
-      const dashboardUrl = process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL}/dashboard` : null;
-      for (const row of result.rows) {
+
+      const frontendUrl = process.env.FRONTEND_URL || 'https://tradetally.io';
+      const dashboardUrl = `${frontendUrl}/dashboard`;
+      let aiRecapCount = 0;
+
+      for (const agg of aggregates) {
         try {
+          const highlight = weeklyInsights.pickHighlight(agg, {
+            startDate: startStr,
+            endDate: endStr,
+            frontendUrl,
+          });
+
+          const tier = await TierService.getUserTier(agg.userId);
+          const isPro = tier === 'pro';
+
+          let recap = null;
+          if (isPro) {
+            recap = await aiRecap.generateRecap(agg.userId, agg, startStr, endStr);
+            if (recap) aiRecapCount++;
+          }
+
           await EmailService.sendWeeklyDigestEmail(
-            row.email,
-            row.username || row.full_name || 'there',
+            agg.email,
+            agg.username || agg.fullName || 'there',
             {
-              tradeCount: row.trade_count,
-              totalPnL: parseFloat(row.total_pnl) || 0,
-              dashboardUrl
+              tradeCount: agg.tradeCount,
+              totalPnL: agg.totalPnL,
+              dashboardUrl,
+              highlight,
+              aiRecap: recap,
+              isPro,
             },
-            row.user_id // Pass userId for personalized unsubscribe link
+            agg.userId
           );
         } catch (err) {
-          console.error(`Failed to send weekly digest to ${maskEmail(row.email)}:`, err.message);
+          console.error(`Failed to send weekly digest to ${maskEmail(agg.email)}:`, err.message);
         }
       }
-      console.log(`Weekly digests sent: ${result.rows.length}`);
+      console.log(`Weekly digests sent: ${aggregates.length} (AI recaps: ${aiRecapCount})`);
     } catch (error) {
       console.error('Error sending weekly digests:', error);
     }

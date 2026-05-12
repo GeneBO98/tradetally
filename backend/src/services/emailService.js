@@ -561,22 +561,48 @@ class EmailService {
   }
 
   /**
-   * Send weekly digest: "Your week in trades" (trade count, P&L summary, link to dashboard)
-   * @param {string} email - Recipient email
-   * @param {string} username - Username for greeting
-   * @param {object} options - tradeCount, totalPnL, dashboardUrl
-   * @param {number} userId - User ID for personalized unsubscribe link
+   * Pure render: build the weekly digest email content. No DB, no network.
+   * Returns { subject, html, text, engagementMeta }.
    */
-  static async sendWeeklyDigestEmail(email, username, { tradeCount, totalPnL, dashboardUrl }, userId) {
-    if (!this.isConfigured()) {
-      console.log('Email not configured, skipping weekly digest');
-      return;
-    }
-    const url = dashboardUrl || `${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard`;
+  static buildWeeklyDigestEmail(username, {
+    tradeCount,
+    totalPnL,
+    dashboardUrl,
+    highlight,
+    aiRecap,
+    isPro,
+  }, unsubscribeUrl) {
+    const frontendUrl = process.env.FRONTEND_URL || 'https://tradetally.io';
+    const dashUrl = dashboardUrl || `${frontendUrl}/dashboard`;
     const pnlFormatted = totalPnL != null ? `$${Number(totalPnL).toFixed(2)}` : '$0.00';
     const pnlColor = totalPnL >= 0 ? '#16a34a' : '#dc2626';
-    const unsubscribeUrl = userId ? this.getUnsubscribeUrl(userId) : `${process.env.FRONTEND_URL || 'https://tradetally.io'}/settings`;
     const safeUsername = escapeHtml(username);
+
+    const ctaUrl = highlight?.ctaUrl || dashUrl;
+    const ctaText = highlight?.ctaText || 'View Dashboard';
+    const highlightSection = highlight ? `
+      <div style="background-color: #fafafa; border-radius: 8px; padding: 20px 22px; margin: 0 0 24px 0;">
+        <p style="color: #a1a1aa; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 8px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">This week's highlight</p>
+        <p style="color: #18181b; font-size: 16px; font-weight: 600; margin: 0 0 8px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">${escapeHtml(highlight.headline)}</p>
+        <p style="color: #52525b; font-size: 14px; line-height: 1.55; margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">${escapeHtml(highlight.body)}</p>
+      </div>
+    ` : '';
+
+    const aiSection = aiRecap ? `
+      <div style="border: 1px solid #f4f4f5; border-left: 3px solid #F0812A; border-radius: 8px; padding: 20px 22px; margin: 0 0 24px 0;">
+        <p style="color: #a1a1aa; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 8px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">Your week, analyzed</p>
+        <p style="color: #18181b; font-size: 14px; line-height: 1.6; margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">${escapeHtml(aiRecap)}</p>
+      </div>
+    ` : '';
+
+    const proTeaserSection = (!isPro && !aiRecap) ? `
+      <div style="background-color: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 18px 22px; margin: 0 0 24px 0;">
+        <p style="color: #18181b; font-size: 14px; font-weight: 600; margin: 0 0 6px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">Want an AI coach reviewing your week?</p>
+        <p style="color: #52525b; font-size: 13px; line-height: 1.55; margin: 0 0 12px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">Upgrade to Pro to get a personalized AI analysis of every trading week, plus behavioral insights and more.</p>
+        <a href="${frontendUrl}/pricing" style="color: #F0812A; font-size: 13px; font-weight: 600; text-decoration: none; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">See Pro features &rarr;</a>
+      </div>
+    ` : '';
+
     const content = `
       <h1 style="color: #18181b; font-size: 22px; margin: 0 0 8px 0; font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
         Your week in trades
@@ -585,7 +611,7 @@ class EmailService {
         Hi ${safeUsername}, here's your 7-day summary.
       </p>
 
-      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin: 0 0 28px 0;">
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin: 0 0 24px 0;">
         <tr>
           <td style="padding: 16px 20px; background-color: #fafafa; border-radius: 8px 0 0 8px; border-right: 1px solid #f4f4f5; width: 50%; text-align: center;">
             <p style="color: #a1a1aa; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">Trades</p>
@@ -598,22 +624,65 @@ class EmailService {
         </tr>
       </table>
 
+      ${aiSection}
+      ${highlightSection}
+      ${proTeaserSection}
+
       <div style="text-align: center; margin: 0 0 8px 0;">
-        <a href="${url}" style="${this.getButtonStyle()}">View Dashboard</a>
+        <a href="${ctaUrl}" style="${this.getButtonStyle()}">${escapeHtml(ctaText)}</a>
       </div>
       ${this.getMarketingFooter(unsubscribeUrl)}
     `;
-    // Record email engagement and inject tracking
-    const trackingId = userId ? await this.recordEmailEngagement(userId, 'weekly_digest', { tradeCount, totalPnL }) : null;
-    let html = this.getBaseTemplate('Your Week in Trades', content);
-    html = this.injectTrackingPixel(html, trackingId);
+
+    const html = this.getBaseTemplate('Your Week in Trades', content);
+
+    const textParts = [`Your week: ${tradeCount} trades, P&L ${pnlFormatted}.`];
+    if (aiRecap) textParts.push(`\nYour week, analyzed: ${aiRecap}`);
+    if (highlight) textParts.push(`\n${highlight.headline}: ${highlight.body}`);
+    textParts.push(`\n${ctaText}: ${ctaUrl}`);
+    textParts.push(`\nUnsubscribe: ${unsubscribeUrl}`);
+
+    return {
+      subject: `${tradeCount} trades this week - TradeTally`,
+      html,
+      text: textParts.join(' '),
+      engagementMeta: {
+        tradeCount,
+        totalPnL,
+        highlightType: highlight?.type || null,
+        hasAiRecap: !!aiRecap,
+        isPro: !!isPro,
+      },
+    };
+  }
+
+  /**
+   * Send weekly digest: "Your week in trades" with behavior nudge and optional Pro AI recap.
+   * @param {string} email - Recipient email
+   * @param {string} username - Username for greeting
+   * @param {object} options - tradeCount, totalPnL, dashboardUrl, highlight, aiRecap, isPro
+   * @param {number} userId - User ID for personalized unsubscribe link
+   */
+  static async sendWeeklyDigestEmail(email, username, options, userId) {
+    if (!this.isConfigured()) {
+      console.log('Email not configured, skipping weekly digest');
+      return;
+    }
+    const frontendUrl = process.env.FRONTEND_URL || 'https://tradetally.io';
+    const unsubscribeUrl = userId ? this.getUnsubscribeUrl(userId) : `${frontendUrl}/settings`;
+
+    const { subject, html: rawHtml, text, engagementMeta } =
+      this.buildWeeklyDigestEmail(username, options, unsubscribeUrl);
+
+    const trackingId = userId ? await this.recordEmailEngagement(userId, 'weekly_digest', engagementMeta) : null;
+    const html = this.injectTrackingPixel(rawHtml, trackingId);
 
     const mailOptions = {
       from: { name: 'TradeTally', address: this.getMarketingFromAddress() },
       to: email,
-      subject: `${tradeCount} trades this week - TradeTally`,
+      subject,
       html,
-      text: `Your week: ${tradeCount} trades, P&L ${pnlFormatted}. View dashboard: ${url}. Unsubscribe: ${unsubscribeUrl}`,
+      text,
       headers: {
         'List-Unsubscribe': `<${unsubscribeUrl}>`,
         'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
@@ -624,7 +693,7 @@ class EmailService {
     try {
       await emailDeliveryService.sendMail(mailOptions);
       console.log('Weekly digest sent to', maskEmail(email));
-      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'weekly_digest', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent', userId, metadata: { tradeCount, totalPnL } });
+      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'weekly_digest', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent', userId, metadata: engagementMeta });
     } catch (error) {
       console.error('Error sending weekly digest to', maskEmail(email), error);
       await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'weekly_digest', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'failed', errorMessage: error.message, userId });
