@@ -463,6 +463,10 @@ export const useInvestmentsStore = defineStore('investments', () => {
     dcfResults.value = null
   }
 
+  function setDCFResults(results) {
+    dcfResults.value = results
+  }
+
   // ========================================
   // UTILITIES
   // ========================================
@@ -553,6 +557,7 @@ export const useInvestmentsStore = defineStore('investments', () => {
     fetchValuations,
     deleteValuation,
     clearDCFData,
+    setDCFResults,
 
     // Utilities
     clearError,
