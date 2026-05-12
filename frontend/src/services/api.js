@@ -67,7 +67,7 @@ api.interceptors.response.use(
       const isAuthPage = currentPath.includes('/login') || currentPath.includes('/register') || currentPath.includes('/forgot-password') || currentPath.includes('/reset-password')
       const isLoginRequest = error.config?.url?.includes('/auth/login')
 
-      if (!isAuthPage && !isLoginRequest) {
+      if (!isAuthPage && !isLoginRequest && !error.config?.skipAuthRedirect) {
         localStorage.removeItem('token')
         window.location.href = '/login'
       }

@@ -145,11 +145,13 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function fetchUser() {
+  async function fetchUser(options = {}) {
     if (!token.value) return
 
     try {
-      const response = await api.get('/auth/me')
+      const response = await api.get('/auth/me', {
+        skipAuthRedirect: options.skipAuthRedirect === true
+      })
       // Merge settings into user object (convert snake_case to camelCase)
       const settings = response.data.settings || {}
       const u = response.data.user || {}
@@ -170,7 +172,13 @@ export const useAuthStore = defineStore('auth', () => {
       return user.value
     } catch (err) {
       if (err.response?.status === 401) {
-        logout()
+        user.value = null
+        token.value = null
+        localStorage.removeItem('token')
+
+        if (options.redirectOnUnauthorized !== false) {
+          logout()
+        }
       }
       throw err
     }
@@ -225,7 +233,10 @@ export const useAuthStore = defineStore('auth', () => {
     if (token.value) {
       // Set the authorization header for subsequent requests
       api.defaults.headers.common['Authorization'] = `Bearer ${token.value}`
-      await fetchUser()
+      await fetchUser({
+        skipAuthRedirect: true,
+        redirectOnUnauthorized: false
+      })
     }
   }
 
@@ -384,7 +395,8 @@ export const useAuthStore = defineStore('auth', () => {
           return {
             registrationMode: 'open',
             emailVerificationEnabled: false,
-            allowRegistration: true
+            allowRegistration: true,
+            billingEnabled: true
           }
         })
         .finally(() => {
