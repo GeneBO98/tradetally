@@ -4,7 +4,7 @@
       <!-- Header -->
       <div class="text-center">
         <h1 class="text-4xl font-bold text-gray-900 dark:text-white">
-          Trading Journal Pricing: Free Plan + {{ formattedMonthlyPrice }}/mo Pro
+          Trading Journal Pricing
         </h1>
         <p class="mt-4 text-xl text-gray-600 dark:text-gray-400">
           Compare TradeTally pricing for a free trading journal and Pro analytics built for serious traders.
@@ -55,6 +55,13 @@
 
       <!-- Pricing Plans -->
       <div v-else class="mt-12">
+        <div v-if="noPlansAvailable" class="mb-8 max-w-2xl mx-auto rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700 p-4">
+          <p class="text-sm font-medium text-amber-900 dark:text-amber-100">Pricing plans failed to load.</p>
+          <p class="mt-1 text-sm text-amber-800 dark:text-amber-200">
+            Stripe returned no plans. Check the backend logs for price-fetch errors and verify your <code class="font-mono">STRIPE_SECRET_KEY</code> matches the mode (test / live) of the configured price IDs.
+          </p>
+        </div>
+
         <!-- Current Plan Info -->
         <div v-if="currentSubscription" class="mb-8 text-center">
           <div class="inline-flex items-center px-4 py-2 rounded-full bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200">
@@ -258,11 +265,12 @@
               </ul>
 
               <div class="mt-8">
-                <button 
+                <button
                   v-if="!currentSubscription"
                   @click="subscribe()"
-                  :disabled="subscribing || !selectedMonthlyOffer"
-                  :class="getSubscribeButtonClass()"
+                  :disabled="subscribing || !activePlan"
+                  :class="[getSubscribeButtonClass(), { 'opacity-50 cursor-not-allowed': subscribing || !activePlan }]"
+                  :title="!activePlan ? 'Pricing plans failed to load — check Stripe config' : ''"
                   class="w-full"
                 >
                   <span v-if="subscribing" class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></span>
@@ -408,6 +416,15 @@ export default {
       return savings > 0 ? savings : null
     })
 
+    const activePlan = computed(() => {
+      if (billingPeriod.value === 'yearly') return yearlyPlan.value
+      return selectedMonthlyPlan.value || selectedMonthlyOffer.value || null
+    })
+
+    const noPlansAvailable = computed(() => (
+      !loading.value && billingStatus.value.billing_available && pricingPlans.value.length === 0
+    ))
+
     const moneyFormatter = new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
@@ -550,10 +567,13 @@ export default {
       try {
         const isYearly = billingPeriod.value === 'yearly'
         const chosenPlan = isYearly ? yearlyPlan.value : selectedMonthlyPlan.value
-        const priceId = isYearly ? yearlyPlan.value?.id : selectedMonthlyPlan.value?.id
+        const priceId = chosenPlan?.id
 
         if (!priceId) {
-          // Fall back to legacy experiment offer if new plan objects not available
+          // Fall back to legacy experiment offer only when no monthly plan object is available
+          if (isYearly) {
+            throw new Error('Yearly plan unavailable. Please contact support.')
+          }
           const monthlyOffer = selectedMonthlyOffer.value
           const fallbackPriceId = monthlyOffer?.id
           if (!fallbackPriceId) {
@@ -736,7 +756,9 @@ export default {
       monthlyDisplayPrice,
       yearlyDisplayPrice,
       yearlyMonthlyEquivalent,
-      yearlySavingsPercent
+      yearlySavingsPercent,
+      activePlan,
+      noPlansAvailable
     }
   }
 }
