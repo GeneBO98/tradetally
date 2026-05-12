@@ -22,7 +22,8 @@ class BrokerConnection {
       accountLabel = null,
       autoSyncEnabled = false,
       syncFrequency = 'daily',
-      syncTime = '06:00:00'
+      syncTime = '06:00:00',
+      syncStartDate = null
     } = connectionData;
 
     // Encrypt sensitive credentials
@@ -40,15 +41,16 @@ class BrokerConnection {
         INSERT INTO broker_connections (
           user_id, broker_type, connection_status,
           ibkr_flex_token, ibkr_flex_query_id, account_label,
-          auto_sync_enabled, sync_frequency, sync_time
+          auto_sync_enabled, sync_frequency, sync_time, sync_start_date
         )
-        VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8)
+        VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9)
         ON CONFLICT (user_id, ibkr_flex_query_id) WHERE broker_type = 'ibkr' AND ibkr_flex_query_id IS NOT NULL DO UPDATE SET
           ibkr_flex_token = EXCLUDED.ibkr_flex_token,
           account_label = EXCLUDED.account_label,
           auto_sync_enabled = EXCLUDED.auto_sync_enabled,
           sync_frequency = EXCLUDED.sync_frequency,
           sync_time = EXCLUDED.sync_time,
+          sync_start_date = EXCLUDED.sync_start_date,
           connection_status = 'pending',
           consecutive_failures = 0,
           updated_at = CURRENT_TIMESTAMP
@@ -56,7 +58,7 @@ class BrokerConnection {
       `;
       params = [
         userId, brokerType, encryptedIbkrToken, ibkrFlexQueryId,
-        accountLabel, autoSyncEnabled, syncFrequency, syncTime
+        accountLabel, autoSyncEnabled, syncFrequency, syncTime, syncStartDate
       ];
     } else {
       // Schwab: keep single connection per user (upsert via partial unique index)
@@ -64,9 +66,9 @@ class BrokerConnection {
         INSERT INTO broker_connections (
           user_id, broker_type, connection_status,
           schwab_access_token, schwab_refresh_token, schwab_token_expires_at, schwab_account_id,
-          account_label, auto_sync_enabled, sync_frequency, sync_time
+          account_label, auto_sync_enabled, sync_frequency, sync_time, sync_start_date
         )
-        VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10)
+        VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11)
         ON CONFLICT (user_id) WHERE broker_type = 'schwab' DO UPDATE SET
           schwab_access_token = EXCLUDED.schwab_access_token,
           schwab_refresh_token = EXCLUDED.schwab_refresh_token,
@@ -76,6 +78,7 @@ class BrokerConnection {
           auto_sync_enabled = EXCLUDED.auto_sync_enabled,
           sync_frequency = EXCLUDED.sync_frequency,
           sync_time = EXCLUDED.sync_time,
+          sync_start_date = EXCLUDED.sync_start_date,
           connection_status = 'pending',
           consecutive_failures = 0,
           updated_at = CURRENT_TIMESTAMP
@@ -84,7 +87,7 @@ class BrokerConnection {
       params = [
         userId, brokerType, encryptedSchwabAccess, encryptedSchwabRefresh,
         schwabTokenExpiresAt, schwabAccountId, accountLabel,
-        autoSyncEnabled, syncFrequency, syncTime
+        autoSyncEnabled, syncFrequency, syncTime, syncStartDate
       ];
     }
 
@@ -240,7 +243,7 @@ class BrokerConnection {
    * Update connection settings
    */
   static async update(connectionId, updates) {
-    const allowedFields = ['auto_sync_enabled', 'sync_frequency', 'sync_time', 'account_label'];
+    const allowedFields = ['auto_sync_enabled', 'sync_frequency', 'sync_time', 'sync_start_date', 'account_label'];
     const setClauses = [];
     const values = [];
     let paramCount = 1;
@@ -401,6 +404,7 @@ class BrokerConnection {
       autoSyncEnabled: row.auto_sync_enabled,
       syncFrequency: row.sync_frequency,
       syncTime: row.sync_time,
+      syncStartDate: row.sync_start_date,
       lastSyncAt: row.last_sync_at,
       lastSyncStatus: row.last_sync_status,
       lastSyncMessage: row.last_sync_message,

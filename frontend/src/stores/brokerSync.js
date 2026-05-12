@@ -57,7 +57,8 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
         accountLabel: credentials.accountLabel || '',
         autoSyncEnabled: credentials.autoSyncEnabled || false,
         syncFrequency: credentials.syncFrequency || 'daily',
-        syncTime: credentials.syncTime || '06:00:00'
+        syncTime: credentials.syncTime || '06:00:00',
+        syncStartDate: credentials.syncStartDate || null
       })
 
       // Refresh connections list

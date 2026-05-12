@@ -222,7 +222,12 @@
                     {{ trade.instrument_type === 'option' ? 'Exit Price (per share)' : 'Exit Price' }}
                   </dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">
-                    {{ trade.exit_time ? formatCurrency(trade.exit_price) : 'Open' }}
+                    <template v-if="trade.exit_time">{{ formatCurrency(trade.exit_price) }}</template>
+                    <template v-else-if="manualOptionPrice !== null">
+                      {{ formatCurrency(manualOptionPrice) }}
+                      <span class="text-xs text-gray-500 dark:text-gray-400 font-normal ml-1">(current)</span>
+                    </template>
+                    <template v-else>Open</template>
                   </dd>
                 </div>
                 <div v-if="trade.stopLoss || trade.stop_loss">
@@ -1339,19 +1344,25 @@
               <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance</h3>
               <dl class="space-y-4">
                 <div>
-                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Net P&L</dt>
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
+                    Net P&L
+                    <span v-if="!trade.exit_time && openOptionUnrealizedPnL !== null" class="text-xs font-normal text-gray-400">(unrealized)</span>
+                  </dt>
                   <dd class="mt-1 text-2xl font-semibold" :class="[
-                    displayPnl >= 0 ? 'text-green-600' : 'text-red-600'
+                    (trade.exit_time ? displayPnl : openOptionUnrealizedPnL) >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
-                    {{ trade.exit_time ? formatCurrency(displayPnl) : 'Open' }}
+                    <template v-if="trade.exit_time">{{ formatCurrency(displayPnl) }}</template>
+                    <template v-else-if="openOptionUnrealizedPnL !== null">{{ formatCurrency(openOptionUnrealizedPnL) }}</template>
+                    <template v-else>Open</template>
                   </dd>
                 </div>
-                <div v-if="trade.pnl_percent">
+                <div v-if="trade.pnl_percent || openOptionUnrealizedPnLPercent !== null">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">P&L %</dt>
                   <dd class="mt-1 text-lg font-semibold" :class="[
-                    trade.pnl_percent >= 0 ? 'text-green-600' : 'text-red-600'
+                    (trade.exit_time ? trade.pnl_percent : openOptionUnrealizedPnLPercent) >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
-                    {{ trade.pnl_percent > 0 ? '+' : '' }}{{ formatNumber(trade.pnl_percent) }}%
+                    <template v-if="trade.exit_time">{{ trade.pnl_percent > 0 ? '+' : '' }}{{ formatNumber(trade.pnl_percent) }}%</template>
+                    <template v-else>{{ openOptionUnrealizedPnLPercent > 0 ? '+' : '' }}{{ formatNumber(openOptionUnrealizedPnLPercent) }}%</template>
                   </dd>
                 </div>
                 <div>
@@ -2000,6 +2011,47 @@ const executionDerivedPnl = computed(() => {
 const displayPnl = computed(() => {
   if (executionDerivedPnl.value !== null) return executionDerivedPnl.value
   return trade.value?.pnl ?? null
+})
+
+// Open option positions can have a user-entered current premium stored by the
+// dashboard's Open Positions table (localStorage key matches DashboardView).
+// Read it here so the trade detail surfaces the same unrealized P&L instead of
+// just showing "Open".
+const manualOptionPrice = computed(() => {
+  if (!trade.value) return null
+  const isOption = trade.value.instrument_type === 'option'
+  const isOpen = !trade.value.exit_time
+  if (!isOption || !isOpen) return null
+  try {
+    const stored = localStorage.getItem('tradetally_manual_option_prices')
+    if (!stored) return null
+    const map = JSON.parse(stored)
+    const price = map[trade.value.symbol]
+    return typeof price === 'number' && !Number.isNaN(price) ? price : null
+  } catch (e) {
+    return null
+  }
+})
+
+const openOptionUnrealizedPnL = computed(() => {
+  if (manualOptionPrice.value === null) return null
+  const t = trade.value
+  if (!t) return null
+  const quantity = Number(t.quantity || 0)
+  const multiplier = Number(t.contract_size || 100)
+  const entryPrice = Number(t.entry_price || 0)
+  if (!quantity || !entryPrice) return null
+  const currentValue = manualOptionPrice.value * quantity * multiplier
+  const entryValue = entryPrice * quantity * multiplier
+  return t.side === 'short' ? entryValue - currentValue : currentValue - entryValue
+})
+
+const openOptionUnrealizedPnLPercent = computed(() => {
+  if (openOptionUnrealizedPnL.value === null) return null
+  const t = trade.value
+  const entryValue = Number(t.entry_price || 0) * Number(t.quantity || 0) * Number(t.contract_size || 100)
+  if (!entryValue) return null
+  return (openOptionUnrealizedPnL.value / entryValue) * 100
 })
 
 const executionSummary = computed(() => {

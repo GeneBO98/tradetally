@@ -2436,6 +2436,19 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       diagnostics.detectedBroker = detectedBroker;
       diagnostics.headerAnalysis.recognizedAs = detectedBroker;
       broker = detectedBroker;
+    } else if (broker === 'generic') {
+      // When the user keeps the default 'generic' selection but the headers
+      // unambiguously match a known broker (e.g. Firstrade's account history
+      // export), route to that broker's parser instead of forcing the user to
+      // pick from the dropdown. Generic remains the fallback when detection
+      // returns 'generic'.
+      const detectedBroker = detectBrokerFormat(fileBuffer);
+      if (detectedBroker && detectedBroker !== 'generic') {
+        console.log(`[AUTO-DETECT] Generic selected but headers match ${detectedBroker} — using ${detectedBroker} parser`);
+        broker = detectedBroker;
+      }
+      diagnostics.detectedBroker = broker;
+      diagnostics.headerAnalysis.recognizedAs = broker;
     } else {
       diagnostics.detectedBroker = broker;
       diagnostics.headerAnalysis.recognizedAs = broker;
@@ -5221,6 +5234,81 @@ async function parseFirstradeTransactions(records, existingPositions = {}, userI
     return base.toISOString().slice(0, 19);
   }
 
+  // Firstrade tucks one or more "EXEC TIME: YYYY-MM-DD HH:MM:SS" hints into the
+  // Description column for orders that didn't fill at the row's settle time.
+  // Use the earliest stamp when present so trades reconstruct in real order.
+  function extractExecTime(description) {
+    if (!description) return null;
+    const matches = String(description).match(/EXEC TIME:\s*(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})/gi);
+    if (!matches || matches.length === 0) return null;
+    let earliest = null;
+    for (const raw of matches) {
+      const m = raw.match(/(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})/);
+      if (!m) continue;
+      const stamp = `${m[1]}T${m[2]}`;
+      if (!earliest || stamp < earliest) earliest = stamp;
+    }
+    return earliest;
+  }
+
+  // CUSIPs starting with 9128 are US Treasury notes/bonds; description fallback
+  // catches non-standard rows. Treasuries are quoted as % of face value, so
+  // qty * price gives a wildly inflated cash basis. Use the CSV Amount column
+  // (the actual cash flow) instead.
+  function isTreasuryInstrument(cusip, description) {
+    if (cusip && /^9128/.test(cusip)) return true;
+    if (description && /TREASURY (NOTE|BOND|BILL)|T-BILL|TREASURY INFLATION/i.test(description)) return true;
+    return false;
+  }
+
+  // Firstrade leaves the Symbol column blank for treasuries. Parse the
+  // maturity and coupon out of the description (Bloomberg-style "T 4.25
+  // 12/31/26") so the trade isn't tagged with the raw 9-char CUSIP.
+  function parseTreasurySymbol(description, cusip) {
+    if (description) {
+      const match = String(description).match(/TREASURY\s+(?:NOTE|BOND|BILL)\s+DUE\s+(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d+(?:\.\d+)?)/i);
+      if (match) {
+        const [, mm, dd, yyyy, rate] = match;
+        const cleanRate = parseFloat(rate).toString();
+        return `T ${cleanRate} ${mm.padStart(2, '0')}/${dd.padStart(2, '0')}/${yyyy.slice(2)}`;
+      }
+    }
+    return cusip ? `UST-${cusip}` : null;
+  }
+
+  // Firstrade records option assignment, exercise, and expiration as
+  // RecordType=Financial rows (not BUY/SELL). Without synthetic close
+  // transactions, the underlying option position stays "open" in the parser
+  // output even though it no longer exists in the user's account.
+  function extractOptionLifecycleEvents(records) {
+    const events = [];
+    let recIndex = 0;
+    for (const record of records) {
+      recIndex++;
+      const recordType = cleanString(record.RecordType).toLowerCase();
+      if (recordType !== 'financial') continue;
+
+      const description = cleanString(record.Description);
+      if (!/\b(ASSIGNED|EXPIRED|EXERCISED)\b/i.test(description)) continue;
+
+      const optionData = parseFirstradeOptionDescription(description);
+      if (!optionData) continue;
+
+      const tradeDate = parseDate(record.TradeDate || record['Trade Date']);
+      if (!tradeDate) continue;
+
+      const groupKey = `${optionData.underlyingSymbol || optionData.symbol}_${optionData.expirationDate}_${optionData.optionType}_${optionData.strikePrice}`;
+      events.push({
+        groupKey,
+        date: tradeDate,
+        description,
+        instrumentData: optionData,
+        sourceRowIndex: recIndex
+      });
+    }
+    return events;
+  }
+
   const cusipsToResolve = new Set();
   for (const record of records) {
     const cusip = cleanString(record.CUSIP);
@@ -5289,12 +5377,22 @@ async function parseFirstradeTransactions(records, existingPositions = {}, userI
       const rawCusip = cleanString(record.CUSIP);
       const rawSymbol = cleanString(record.Symbol);
       const resolvedCusipSymbol = rawCusip ? cusipToTickerMap[rawCusip] : null;
-      const resolvedSymbol = rawSymbol || optionData?.symbol || resolvedCusipSymbol || rawCusip;
+      const treasury = isTreasuryInstrument(rawCusip, description);
+      const treasurySymbol = treasury ? parseTreasurySymbol(description, rawCusip) : null;
+      const resolvedSymbol = rawSymbol || optionData?.symbol || resolvedCusipSymbol || treasurySymbol || rawCusip;
 
       const quantity = Math.abs(parseNumeric(record.Quantity, 0));
-      const price = parseNumeric(record.Price, 0);
+      const rawPrice = parseNumeric(record.Price, 0);
+      const rawAmount = parseNumeric(record.Amount, 0);
       const tradeDate = parseDate(record.TradeDate || record['Trade Date']);
-      const datetime = buildIndexedDateTime(tradeDate, rowIndex);
+      const execTime = extractExecTime(description);
+      const datetime = execTime || buildIndexedDateTime(tradeDate, rowIndex);
+
+      // For treasuries, derive a synthetic per-share price from the CSV Amount
+      // column so qty * price equals the actual cash flow.
+      const price = treasury && quantity > 0 && rawAmount !== 0
+        ? Math.abs(rawAmount) / quantity
+        : rawPrice;
 
       if (!resolvedSymbol || !tradeDate || !datetime || quantity <= 0 || price < 0) {
         if (diagnostics) {
@@ -5302,6 +5400,19 @@ async function parseFirstradeTransactions(records, existingPositions = {}, userI
           diagnostics.skippedReasons.push({ row: rowIndex, reason: 'Missing required Firstrade trade fields' });
         }
         continue;
+      }
+
+      // Option rows from Firstrade roll exchange/regulatory fees into Amount
+      // without itemising them in the Fee column. Derive the row's total
+      // commission+fees from the cash-flow gap (gross premium vs Amount), then
+      // split it: explicit Commission stays as commission, everything else is
+      // fees. This makes the realised P&L match the user's actual cash flow.
+      let rowCommission = Math.abs(parseNumeric(record.Commission, 0));
+      let rowFees = Math.abs(parseNumeric(record.Fee, 0));
+      if (optionData && quantity > 0 && rawAmount !== 0) {
+        const grossValue = quantity * rawPrice * 100;
+        const totalFromCash = Math.abs(Math.abs(rawAmount) - grossValue);
+        rowFees = Math.max(rowFees, totalFromCash - rowCommission);
       }
 
       const instrumentData = optionData || parseInstrumentData(resolvedSymbol);
@@ -5322,11 +5433,12 @@ async function parseFirstradeTransactions(records, existingPositions = {}, userI
         groupKey: contractKey,
         date: tradeDate,
         datetime,
+        hasExplicitTime: !!execTime,
         action: action === 'BUY' ? 'buy' : 'sell',
         quantity,
         price,
-        commission: Math.abs(parseNumeric(record.Commission, 0)),
-        fees: Math.abs(parseNumeric(record.Fee, 0)),
+        commission: rowCommission,
+        fees: rowFees,
         description,
         accountIdentifier,
         instrumentData,
@@ -5341,11 +5453,90 @@ async function parseFirstradeTransactions(records, existingPositions = {}, userI
     }
   }
 
+  // Inject synthetic close transactions for option assignment/exercise/expiry
+  // recorded as Financial rows. The Quantity column on those rows is unreliable
+  // (sometimes signed, sometimes magnitude), so close whatever net option
+  // position exists for that contract at price=0. Existing-position carryovers
+  // are folded into the net so a previously open contract can also be closed.
+  const lifecycleEvents = extractOptionLifecycleEvents(records);
+  if (lifecycleEvents.length > 0) {
+    const netByGroup = {};
+    for (const t of transactions) {
+      netByGroup[t.groupKey] = (netByGroup[t.groupKey] || 0) + (t.action === 'buy' ? t.quantity : -t.quantity);
+    }
+    for (const [key, pos] of Object.entries(existingPositions || {})) {
+      if (!pos || pos.instrumentType !== 'option') continue;
+      const signed = pos.side === 'short' ? -Math.abs(pos.quantity || 0) : Math.abs(pos.quantity || 0);
+      netByGroup[key] = (netByGroup[key] || 0) + signed;
+    }
+
+    let synthIdx = 0;
+    for (const event of lifecycleEvents) {
+      const net = netByGroup[event.groupKey] || 0;
+      if (net === 0) continue;
+      const closeAction = net > 0 ? 'sell' : 'buy';
+      const closeQty = Math.abs(net);
+      transactions.push({
+        symbol: event.instrumentData.underlyingSymbol || event.instrumentData.symbol,
+        groupKey: event.groupKey,
+        date: event.date,
+        datetime: `${event.date}T16:00:0${Math.min(synthIdx, 9)}`,
+        hasExplicitTime: false,
+        action: closeAction,
+        quantity: closeQty,
+        price: 0,
+        commission: 0,
+        fees: 0,
+        description: `[Auto-close: ${event.description.slice(0, 80)}]`,
+        accountIdentifier: null,
+        instrumentData: event.instrumentData,
+        rowIndex: 1_000_000 + event.sourceRowIndex,
+        isSyntheticClose: true
+      });
+      netByGroup[event.groupKey] = 0;
+      synthIdx++;
+    }
+  }
+
+  // Firstrade CSVs don't preserve execution order. Within a same-day, same-group
+  // bucket, infer ordering from the day's net flow: long-net days process BUYs
+  // before SELLs (and the reverse for short-net days). Otherwise an existing
+  // long position closing via SELL gets misclassified as opening a short.
+  const netFlowByGroupDate = {};
+  for (const t of transactions) {
+    const key = `${t.groupKey}|${t.date}`;
+    if (!(key in netFlowByGroupDate)) netFlowByGroupDate[key] = 0;
+    netFlowByGroupDate[key] += t.action === 'buy' ? t.quantity : -t.quantity;
+  }
+
   transactions.sort((a, b) => {
     if (a.groupKey !== b.groupKey) return a.groupKey.localeCompare(b.groupKey);
+    if (a.date !== b.date) return a.date.localeCompare(b.date);
+
+    if (a.action !== b.action) {
+      const netFlow = netFlowByGroupDate[`${a.groupKey}|${a.date}`] || 0;
+      if (netFlow > 0) return a.action === 'buy' ? -1 : 1;
+      if (netFlow < 0) return a.action === 'sell' ? -1 : 1;
+    }
+
     if (a.datetime !== b.datetime) return a.datetime.localeCompare(b.datetime);
     return a.rowIndex - b.rowIndex;
   });
+
+  // Rewrite datetimes monotonically within each group so that the downstream
+  // execution-level sort (normalizeExecutionCollections) preserves this order
+  // instead of undoing it. Real EXEC TIMEs are kept when they don't break
+  // monotonicity; everything else gets bumped by a second from the previous.
+  const lastDatetimeByGroup = {};
+  for (const t of transactions) {
+    const last = lastDatetimeByGroup[t.groupKey];
+    if (last && t.datetime <= last) {
+      const d = new Date(`${last}Z`);
+      d.setUTCSeconds(d.getUTCSeconds() + 1);
+      t.datetime = d.toISOString().slice(0, 19);
+    }
+    lastDatetimeByGroup[t.groupKey] = t.datetime;
+  }
 
   const transactionsByGroup = {};
   for (const transaction of transactions) {
@@ -5370,7 +5561,8 @@ async function parseFirstradeTransactions(records, existingPositions = {}, userI
       side: existingPosition?.side || (transaction.action === 'buy' ? 'long' : 'short'),
       executions: existingExecutions,
       totalQuantity: existingPosition?.quantity || 0,
-      totalFees: existingPosition?.commission || 0,
+      totalCommission: existingPosition?.commission || 0,
+      totalFees: existingPosition?.fees || 0,
       entryValue: (existingPosition?.quantity || 0) * (existingPosition?.entryPrice || 0) * valueMultiplier,
       exitValue: 0,
       broker: existingPosition?.broker || 'firstrade',
@@ -5382,14 +5574,16 @@ async function parseFirstradeTransactions(records, existingPositions = {}, userI
     };
   }
 
-  function appendExecution(trade, transaction, quantityPortion, feePortion) {
+  function appendExecution(trade, transaction, quantityPortion, commissionPortion, feePortion) {
     trade.executions.push({
       action: transaction.action,
       quantity: quantityPortion,
       price: transaction.price,
       datetime: transaction.datetime,
+      commission: commissionPortion,
       fees: feePortion
     });
+    trade.totalCommission += commissionPortion;
     trade.totalFees += feePortion;
     if (trade.isExistingPosition) {
       trade.newExecutionsAdded++;
@@ -5404,14 +5598,15 @@ async function parseFirstradeTransactions(records, existingPositions = {}, userI
       return null;
     }
 
+    const totalCost = trade.totalCommission + trade.totalFees;
     trade.entryPrice = trade.entryValue / (trade.totalQuantity * valueMultiplier);
     trade.exitPrice = trade.exitValue / (trade.totalQuantity * valueMultiplier);
     trade.quantity = trade.totalQuantity;
-    trade.commission = trade.totalFees;
-    trade.fees = 0;
+    trade.commission = trade.totalCommission;
+    trade.fees = trade.totalFees;
     trade.pnl = trade.side === 'long'
-      ? trade.exitValue - trade.entryValue - trade.totalFees
-      : trade.entryValue - trade.exitValue - trade.totalFees;
+      ? trade.exitValue - trade.entryValue - totalCost
+      : trade.entryValue - trade.exitValue - totalCost;
     trade.pnlPercent = trade.entryValue ? (trade.pnl / trade.entryValue) * 100 : 0;
 
     const { entryTime, exitTime } = getExecutionTimeBounds(trade.executions);
@@ -5451,7 +5646,8 @@ async function parseFirstradeTransactions(records, existingPositions = {}, userI
 
     for (const transaction of groupTransactions) {
       let remainingQty = transaction.quantity;
-      let remainingFees = transaction.commission + transaction.fees;
+      let remainingCommission = transaction.commission;
+      let remainingFees = transaction.fees;
 
       while (remainingQty > 0) {
         if (currentPosition === 0 || !currentTrade) {
@@ -5462,9 +5658,12 @@ async function parseFirstradeTransactions(records, existingPositions = {}, userI
           (currentPosition <= 0 && transaction.action === 'sell');
 
         const consumeQty = sameDirection ? remainingQty : Math.min(Math.abs(currentPosition), remainingQty);
-        const feePortion = remainingQty === consumeQty ? remainingFees : remainingFees * (consumeQty / remainingQty);
+        const isFinalPortion = remainingQty === consumeQty;
+        const ratio = isFinalPortion ? 1 : (consumeQty / remainingQty);
+        const commissionPortion = isFinalPortion ? remainingCommission : remainingCommission * ratio;
+        const feePortion = isFinalPortion ? remainingFees : remainingFees * ratio;
 
-        appendExecution(currentTrade, transaction, consumeQty, feePortion);
+        appendExecution(currentTrade, transaction, consumeQty, commissionPortion, feePortion);
 
         if (transaction.action === 'buy') {
           currentPosition += consumeQty;
@@ -5485,6 +5684,7 @@ async function parseFirstradeTransactions(records, existingPositions = {}, userI
         }
 
         remainingQty -= consumeQty;
+        remainingCommission -= commissionPortion;
         remainingFees -= feePortion;
 
         if (currentPosition === 0) {
@@ -5505,8 +5705,8 @@ async function parseFirstradeTransactions(records, existingPositions = {}, userI
       currentTrade.exitTime = null;
       currentTrade.quantity = Math.abs(currentPosition);
       currentTrade.totalQuantity = Math.abs(currentPosition);
-      currentTrade.commission = currentTrade.totalFees;
-      currentTrade.fees = 0;
+      currentTrade.commission = currentTrade.totalCommission;
+      currentTrade.fees = currentTrade.totalFees;
       currentTrade.pnl = 0;
       currentTrade.pnlPercent = 0;
       currentTrade.side = currentPosition > 0 ? 'long' : 'short';

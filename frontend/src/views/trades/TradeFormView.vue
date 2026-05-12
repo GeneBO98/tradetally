@@ -1586,7 +1586,7 @@ const route = useRoute()
 const router = useRouter()
 const tradesStore = useTradesStore()
 const authStore = useAuthStore()
-const { showSuccess, showError } = useNotification()
+const { showSuccess, showError, showConfirmation } = useNotification()
 const { trackTradeAction } = useAnalytics()
 const { toLocalInput, toUTC, getCurrentTimeLocal, timezoneLabel } = useUserTimezone()
 
@@ -2162,7 +2162,7 @@ function handleNotesKeydown(event) {
   }
 }
 
-async function handleSubmit() {
+async function handleSubmit(opts = {}) {
   error.value = null
   validationErrors.value = []
 
@@ -2178,6 +2178,23 @@ async function handleSubmit() {
     error.value = 'Please fix the following issues:'
     validationErrors.value = errors
     nextTick(() => errorRef.value?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
+    return
+  }
+
+  // Warn about pending (unflushed) images when updating an existing trade.
+  // In create mode, pending images are auto-uploaded after the trade is created.
+  const pendingImageCount = isEdit.value && imageUploadRef.value
+    ? (imageUploadRef.value.selectedFiles?.length || 0)
+    : 0
+  if (pendingImageCount > 0 && !opts.imagesAcknowledged) {
+    const noun = pendingImageCount > 1 ? 'images' : 'image'
+    const pronoun = pendingImageCount > 1 ? 'them' : 'it'
+    showConfirmation(
+      'Unsaved Images',
+      `You have ${pendingImageCount} ${noun} selected but not uploaded yet. Save the trade and upload ${pronoun} now?`,
+      () => handleSubmit({ imagesAcknowledged: true }),
+      null
+    )
     return
   }
 
@@ -2499,7 +2516,25 @@ async function handleSubmit() {
         brokersList.value.push(tradeData.broker)
       }
 
-      showSuccess('Success', 'Trade updated successfully')
+      // Flush any pending images that were selected but not explicitly uploaded.
+      let imageFlushError = null
+      if (imageUploadRef.value && imageUploadRef.value.selectedFiles.length > 0) {
+        try {
+          const imageResult = await imageUploadRef.value.flushPendingImages(route.params.id)
+          if (!imageResult.success) {
+            imageFlushError = 'Trade saved, but images failed to upload.'
+          }
+        } catch (err) {
+          console.error('[TRADE FORM] Image flush error on update:', err)
+          imageFlushError = 'Trade saved, but images failed to upload.'
+        }
+      }
+
+      if (imageFlushError) {
+        showError('Partial Save', imageFlushError)
+      } else {
+        showSuccess('Success', 'Trade updated successfully')
+      }
       trackTradeAction('update', {
         side: tradeData.side,
         broker: tradeData.broker,

@@ -162,7 +162,7 @@
                 <option value="ibkr">Interactive Brokers</option>
                 <option value="webull">Webull</option>
                 <option value="etrade">E*TRADE</option>
-                <option value="firstrade">Firstrade</option>
+                <option value="firstrade">Firstrade (Alpha)</option>
                 <option value="papermoney">PaperMoney</option>
                 <option value="tradervue">TraderVue</option>
                 <option value="tradingview">TradingView</option>
@@ -1502,13 +1502,13 @@ const brokerGuides = {
   },
   firstrade: {
     title: 'Firstrade',
-    badge: 'Supported',
+    badge: 'Alpha',
     steps: [
       'Export account history as CSV from Accounts > History.',
       'Keep the original headers, especially symbol, action, trade date, CUSIP, and record type.',
       'Use Auto-Detect first. TradeTally will ignore non-trade cash activity rows.'
     ],
-    warning: 'History exports can include wires, interest, dividends, and other cash activity. Upload the raw CSV and let the importer filter them out.'
+    warning: 'The Firstrade parser is in Alpha — review imported trades and report any incorrect P&L or symbol mappings via GitHub Issues. History exports can include wires, interest, dividends, and other cash activity; upload the raw CSV and let the importer filter them out.'
   },
   tradestation: {
     title: 'TradeStation',

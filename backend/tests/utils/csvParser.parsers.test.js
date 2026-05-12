@@ -176,6 +176,138 @@ describe('Firstrade parser', () => {
     expect(optionTrade.underlyingSymbol).toBe('IAG');
     expect(optionTrade.optionType).toBe('put');
   });
+
+  // Firstrade CSV doesn't list rows in execution order. When the day's net flow
+  // is long, BUYs must process before SELLs so a partial close isn't misread as
+  // opening a short. Reconstructed from issue #311 NET stock example.
+  test('reorders same-day mixed buys/sells using net flow when execution times missing', async () => {
+    const reorderCSV = [
+      'Symbol,Quantity,Price,Action,Description,TradeDate,SettledDate,Interest,Amount,Commission,Fee,CUSIP,RecordType',
+      'NET,-38.00,254.30,SELL,CLOUDFLARE INC CLASS A,2026-05-07,2026-05-08,0.00,9663.20,0.00,0.20,18915M107,Trade',
+      'NET,88.00,254.00,BUY,CLOUDFLARE INC CLASS A,2026-05-07,2026-05-08,0.00,-22352.00,0.00,0.00,18915M107,Trade',
+      'NET,50.00,223.00,BUY,CLOUDFLARE INC CLASS A EXEC TIME: 2026-05-07 16:28:38,2026-05-07,2026-05-08,0.00,-11150.00,0.00,0.00,18915M107,Trade'
+    ].join('\n');
+
+    const result = await parseCSV(buf(reorderCSV), 'firstrade', {});
+    expect(result.trades).toHaveLength(1);
+
+    const trade = result.trades[0];
+    expect(trade.symbol).toBe('NET');
+    expect(trade.side).toBe('long');
+    expect(trade.quantity).toBe(100);
+    expect(trade.entryPrice).toBeCloseTo((88 * 254 + 50 * 223) / 138, 2);
+  });
+
+  test('extracts EXEC TIME from description when present', async () => {
+    const execTimeCSV = [
+      'Symbol,Quantity,Price,Action,Description,TradeDate,SettledDate,Interest,Amount,Commission,Fee,CUSIP,RecordType',
+      'AAPL,100.00,150.00,BUY,APPLE INC EXEC TIME: 2026-01-15 14:30:25,2026-01-15,2026-01-16,0.00,-15000.00,0.00,0.00,037833100,Trade',
+      'AAPL,-100.00,155.00,SELL,APPLE INC EXEC TIME: 2026-01-15 15:45:10,2026-01-15,2026-01-16,0.00,15500.00,0.00,0.00,037833100,Trade'
+    ].join('\n');
+
+    const result = await parseCSV(buf(execTimeCSV), 'firstrade', {});
+    expect(result.trades).toHaveLength(1);
+    const trade = result.trades[0];
+    expect(trade.entryTime).toContain('14:30:25');
+    expect(trade.exitTime).toContain('15:45:10');
+  });
+
+  // Treasury notes/bonds are quoted as percent of face value. qty * price would
+  // give an inflated cash basis; CSV Amount column is the actual cash flow.
+  test('uses Amount column for treasury bond cost basis', async () => {
+    const treasuryCSV = [
+      'Symbol,Quantity,Price,Action,Description,TradeDate,SettledDate,Interest,Amount,Commission,Fee,CUSIP,RecordType',
+      ',100000.00,100.161,BUY,UNITED STATES TREASURY NOTE DUE 12/31/2026 04.250,2025-02-10,2025-02-11,-493.09,-100654.09,0.00,0.00,91282CME8,Trade',
+      ',-100000.00,100.506,SELL,UNITED STATES TREASURY NOTE DUE 12/31/2026 04.250,2026-01-07,2026-01-08,93.92,100599.92,0.00,0.00,91282CME8,Trade'
+    ].join('\n');
+
+    const result = await parseCSV(buf(treasuryCSV), 'firstrade', {});
+    expect(result.trades).toHaveLength(1);
+    const trade = result.trades[0];
+
+    // P&L should be the cash difference (~ -$54), not qty * price difference (~ $34,500).
+    expect(Math.abs(trade.pnl)).toBeLessThan(200);
+    expect(trade.entryPrice * trade.quantity).toBeCloseTo(100654.09, 1);
+    expect(trade.exitPrice * trade.quantity).toBeCloseTo(100599.92, 1);
+  });
+
+  // Firstrade leaves the Symbol column blank for treasuries; using the raw
+  // 9-character CUSIP as the symbol is unfriendly. Parse the maturity and
+  // coupon from the description into Bloomberg-style "T 4.25 12/31/26".
+  test('derives a friendly symbol for treasuries from the description', async () => {
+    const treasuryCSV = [
+      'Symbol,Quantity,Price,Action,Description,TradeDate,SettledDate,Interest,Amount,Commission,Fee,CUSIP,RecordType',
+      ',100000.00,100.161,BUY,UNITED STATES TREASURY NOTE DUE 12/31/2026 04.250,2025-02-10,2025-02-11,-493.09,-100654.09,0.00,0.00,91282CME8,Trade'
+    ].join('\n');
+
+    const result = await parseCSV(buf(treasuryCSV), 'firstrade', {});
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0].symbol).toBe('T 4.25 12/31/26');
+  });
+
+  // A short option that gets assigned is recorded as a RecordType=Financial
+  // row (no BUY/SELL), so the contract was being left as an open position.
+  // The synthetic close at price=0 lets the seller realise the premium and
+  // keeps the parser output in sync with the user's actual account.
+  test('closes a sold put at $0 when a Financial assignment row exists', async () => {
+    const csv = [
+      'Symbol,Quantity,Price,Action,Description,TradeDate,SettledDate,Interest,Amount,Commission,Fee,CUSIP,RecordType',
+      ',-155.00,0.11,SELL,PUT IAG 02/21/25 6 IAMGOLD CORP OPEN CONTRACT,2025-02-10,2025-02-11,0.00,1700.80,0.00,0.05,,Trade',
+      ',155.00,,Other,PUT IAG 02/21/25 6 IAMGOLD CORP A/E 155 ASSIGNED,2025-02-21,2025-02-21,0.00,0.00,0.00,0.00,,Financial'
+    ].join('\n');
+
+    const result = await parseCSV(buf(csv), 'firstrade', {});
+    const optionTrade = result.trades.find(t => t.instrumentType === 'option');
+    expect(optionTrade).toBeDefined();
+    expect(optionTrade.side).toBe('short');
+    expect(optionTrade.exitPrice).toBe(0);
+    // Premium kept (minus the row's reported + implied fees).
+    expect(optionTrade.pnl).toBeGreaterThan(1690);
+    expect(optionTrade.pnl).toBeLessThan(1701);
+  });
+
+  // Firstrade rolls SEC/ORF/exchange fees into the Amount column without
+  // itemising them in Fee. P&L from qty*price*100 was therefore $4-5 off per
+  // option round trip — small but real. Derive total fees from the cash gap.
+  test('matches realised option P&L to the Amount column cash flow', async () => {
+    const csv = [
+      'Symbol,Quantity,Price,Action,Description,TradeDate,SettledDate,Interest,Amount,Commission,Fee,CUSIP,RecordType',
+      ',-155.00,0.15,SELL,CALL IAG 03/21/25 6 IAMGOLD CORP OPEN CONTRACT,2025-03-14,2025-03-17,0.00,2320.57,0.00,0.07,,Trade',
+      ',155.00,0.15,BUY,CALL IAG 03/21/25 6 IAMGOLD CORP CLOSING CONTRACT,2025-03-18,2025-03-19,0.00,-2329.36,0.00,0.00,,Trade'
+    ].join('\n');
+
+    const result = await parseCSV(buf(csv), 'firstrade', {});
+    expect(result.trades).toHaveLength(1);
+    const trade = result.trades[0];
+    // Actual cash flow: 2320.57 - 2329.36 = -8.79
+    expect(trade.pnl).toBeCloseTo(-8.79, 2);
+  });
+
+  // Most users keep the default 'generic' broker dropdown selection. When the
+  // headers clearly belong to a known broker, route to that parser instead of
+  // forcing the user to know which dropdown entry to pick.
+  test('falls through to Firstrade parser when broker=generic but headers match', async () => {
+    const result = await parseCSV(buf(firstradeCSV), 'generic', {});
+    expect(result.trades.length).toBeGreaterThan(0);
+    expect(result.diagnostics.detectedBroker).toBe('firstrade');
+  });
+
+  // Commission and Fee columns map to distinct ledger fields; collapsing them
+  // into commission with fees=0 (the previous behaviour) hid the regulatory
+  // costs Firstrade was charging.
+  test('keeps Commission and Fee values separate on the resulting trade', async () => {
+    const csv = [
+      'Symbol,Quantity,Price,Action,Description,TradeDate,SettledDate,Interest,Amount,Commission,Fee,CUSIP,RecordType',
+      'AAPL,100.00,150.00,BUY,APPLE INC,2026-01-15,2026-01-16,0.00,-15001.50,1.00,0.50,037833100,Trade',
+      'AAPL,-100.00,155.00,SELL,APPLE INC,2026-01-16,2026-01-17,0.00,15497.50,1.00,1.50,037833100,Trade'
+    ].join('\n');
+
+    const result = await parseCSV(buf(csv), 'firstrade', {});
+    expect(result.trades).toHaveLength(1);
+    const trade = result.trades[0];
+    expect(trade.commission).toBeCloseTo(2.00, 2);
+    expect(trade.fees).toBeCloseTo(2.00, 2);
+  });
 });
 
 // ──────────────────────────────────────────────
