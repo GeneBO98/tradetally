@@ -308,7 +308,7 @@
               to="/pricing"
               class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
             >
-              Upgrade to Pro - $8/month
+              Upgrade to Pro - ${{ PRO_MONTHLY_PRICE }}/month
             </router-link>
           </div>
         </div>
@@ -909,7 +909,7 @@
               to="/pricing"
               class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
             >
-              Upgrade to Pro - $8/month
+              Upgrade to Pro - ${{ PRO_MONTHLY_PRICE }}/month
             </router-link>
           </div>
         </div>
@@ -1222,6 +1222,7 @@ import { ref, onMounted, onUnmounted, nextTick, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import api from '@/services/api'
+import { PRO_MONTHLY_PRICE } from '@/config/pricing'
 import PerformanceChart from '@/components/charts/PerformanceChart.vue'
 import MdiIcon from '@/components/MdiIcon.vue'
 import NewsCorrelationAnalytics from '@/components/analytics/NewsCorrelationAnalytics.vue'

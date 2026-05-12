@@ -320,7 +320,7 @@
             to="/pricing"
             class="btn-primary btn-glow inline-flex items-center text-lg px-8 py-3"
           >
-            View Pro Plans &mdash; Starting at $8/month
+            View Pro Plans &mdash; Starting at ${{ PRO_MONTHLY_PRICE }}/month
           </router-link>
           <p class="mt-4 text-gray-500 dark:text-gray-400 text-sm">
             7-day free trial available. Cancel anytime.
@@ -616,6 +616,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { PRO_MONTHLY_PRICE } from '@/config/pricing'
 import {
   ChartBarIcon,
   DocumentTextIcon,

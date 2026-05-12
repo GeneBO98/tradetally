@@ -5,7 +5,7 @@
         TradeTally vs TraderVue 2026 -- Free Alternative Comparison
       </h1>
       <p class="text-xl text-gray-600 dark:text-gray-400">
-        Compare features and pricing: free unlimited trades with TradeTally ($0-$8/mo) vs TraderVue ($29-$79/mo)
+        Compare features and pricing: free unlimited trades with TradeTally ($0-${{ PRO_MONTHLY_PRICE }}/mo) vs TraderVue ($29-$79/mo)
       </p>
     </div>
 
@@ -32,7 +32,7 @@
           <tr class="bg-gray-50 dark:bg-gray-900/50">
             <td class="px-6 py-4 text-gray-700 dark:text-gray-300">Price (Monthly)</td>
             <td class="px-6 py-4 text-center">
-              <span class="text-green-600 dark:text-green-400 font-semibold">Free or $8/mo</span>
+              <span class="text-green-600 dark:text-green-400 font-semibold">Free or ${{ PRO_MONTHLY_PRICE }}/mo</span>
               <div class="text-xs text-gray-500">(Pro for advanced features)</div>
             </td>
             <td class="px-6 py-4 text-center text-gray-600 dark:text-gray-400">$29-$79/month</td>
@@ -81,7 +81,7 @@
           <tr>
             <td class="px-6 py-4 text-gray-700 dark:text-gray-300">Advanced Analytics (SQN, Kelly, K-Ratio, MAE/MFE)</td>
             <td class="px-6 py-4 text-center">
-              <span class="text-primary-600 dark:text-primary-400 font-semibold">Pro ($8/mo)</span>
+              <span class="text-primary-600 dark:text-primary-400 font-semibold">Pro (${{ PRO_MONTHLY_PRICE }}/mo)</span>
             </td>
             <td class="px-6 py-4 text-center">
               <CheckIcon class="h-5 w-5 text-green-500 mx-auto" />
@@ -131,7 +131,7 @@
           <tr>
             <td class="px-6 py-4 text-gray-700 dark:text-gray-300">API Access</td>
             <td class="px-6 py-4 text-center">
-              <span class="text-primary-600 dark:text-primary-400 font-semibold">Pro ($8/mo)</span>
+              <span class="text-primary-600 dark:text-primary-400 font-semibold">Pro (${{ PRO_MONTHLY_PRICE }}/mo)</span>
             </td>
             <td class="px-6 py-4 text-center text-gray-600 dark:text-gray-400">Premium only</td>
           </tr>
@@ -157,7 +157,7 @@
           <tr class="bg-gray-50 dark:bg-gray-900/50">
             <td class="px-6 py-4 text-gray-700 dark:text-gray-300">Trade Management Analysis (Management R, Target R)</td>
             <td class="px-6 py-4 text-center">
-              <span class="text-primary-600 dark:text-primary-400 font-semibold">Pro ($8/mo)</span>
+              <span class="text-primary-600 dark:text-primary-400 font-semibold">Pro (${{ PRO_MONTHLY_PRICE }}/mo)</span>
             </td>
             <td class="px-6 py-4 text-center">
               <XMarkIcon class="h-5 w-5 text-red-500 mx-auto" />
@@ -167,7 +167,7 @@
           <tr class="bg-gray-50 dark:bg-gray-900/50">
             <td class="px-6 py-4 text-gray-700 dark:text-gray-300">Behavioral Analytics (Revenge Trading, Loss Aversion)</td>
             <td class="px-6 py-4 text-center">
-              <span class="text-primary-600 dark:text-primary-400 font-semibold">Pro ($8/mo)</span>
+              <span class="text-primary-600 dark:text-primary-400 font-semibold">Pro (${{ PRO_MONTHLY_PRICE }}/mo)</span>
             </td>
             <td class="px-6 py-4 text-center">
               <XMarkIcon class="h-5 w-5 text-red-500 mx-auto" />
@@ -177,7 +177,7 @@
           <tr class="bg-gray-50 dark:bg-gray-900/50">
             <td class="px-6 py-4 text-gray-700 dark:text-gray-300">Watchlists & Price Alerts</td>
             <td class="px-6 py-4 text-center">
-              <span class="text-primary-600 dark:text-primary-400 font-semibold">Pro ($8/mo)</span>
+              <span class="text-primary-600 dark:text-primary-400 font-semibold">Pro (${{ PRO_MONTHLY_PRICE }}/mo)</span>
             </td>
             <td class="px-6 py-4 text-center">
               <XMarkIcon class="h-5 w-5 text-red-500 mx-auto" />
@@ -187,7 +187,7 @@
           <tr>
             <td class="px-6 py-4 text-gray-700 dark:text-gray-300">AI-Powered Insights</td>
             <td class="px-6 py-4 text-center">
-              <span class="text-primary-600 dark:text-primary-400 font-semibold">Pro ($8/mo)</span>
+              <span class="text-primary-600 dark:text-primary-400 font-semibold">Pro (${{ PRO_MONTHLY_PRICE }}/mo)</span>
             </td>
             <td class="px-6 py-4 text-center">
               <XMarkIcon class="h-5 w-5 text-red-500 mx-auto" />
@@ -207,7 +207,7 @@
           <tr>
             <td class="px-6 py-4 text-gray-700 dark:text-gray-300">8 Pillars Stock Analyzer & DCF Valuation</td>
             <td class="px-6 py-4 text-center">
-              <span class="text-primary-600 dark:text-primary-400 font-semibold">Pro ($8/mo)</span>
+              <span class="text-primary-600 dark:text-primary-400 font-semibold">Pro (${{ PRO_MONTHLY_PRICE }}/mo)</span>
             </td>
             <td class="px-6 py-4 text-center">
               <XMarkIcon class="h-5 w-5 text-red-500 mx-auto" />
@@ -217,7 +217,7 @@
           <tr class="bg-gray-50 dark:bg-gray-900/50">
             <td class="px-6 py-4 text-gray-700 dark:text-gray-300">Holdings Tracking with Real-Time P&amp;L</td>
             <td class="px-6 py-4 text-center">
-              <span class="text-primary-600 dark:text-primary-400 font-semibold">Pro ($8/mo)</span>
+              <span class="text-primary-600 dark:text-primary-400 font-semibold">Pro (${{ PRO_MONTHLY_PRICE }}/mo)</span>
             </td>
             <td class="px-6 py-4 text-center">
               <XMarkIcon class="h-5 w-5 text-red-500 mx-auto" />
@@ -248,7 +248,7 @@
           <div class="flex items-start">
             <CheckCircleIcon class="h-6 w-6 text-green-500 mt-1 mr-3 flex-shrink-0" />
             <div>
-              <h3 class="font-semibold text-gray-900 dark:text-white">Pro at $8/mo vs TraderVue at $29-$79/mo</h3>
+              <h3 class="font-semibold text-gray-900 dark:text-white">Pro at ${{ PRO_MONTHLY_PRICE }}/mo vs TraderVue at $29-$79/mo</h3>
               <p class="text-gray-600 dark:text-gray-400">
                 Pro unlocks AI insights, behavioral analytics, trade management analysis, 8 Pillars stock analyzer, holdings tracking, watchlists, and price alerts -- all at a fraction of TraderVue's cost.
               </p>
@@ -317,6 +317,7 @@
 <script setup>
 import { CheckIcon, XMarkIcon, CheckCircleIcon, ArrowRightIcon } from '@heroicons/vue/24/solid'
 import { onMounted } from 'vue'
+import { PRO_MONTHLY_PRICE, PRO_YEARLY_PRICE, PRO_YEARLY_SAVINGS_PCT } from '@/config/pricing'
 
 // Set document title and meta tags
 onMounted(() => {
@@ -325,7 +326,7 @@ onMounted(() => {
   // Update meta description
   let metaDescription = document.querySelector('meta[name="description"]')
   if (metaDescription) {
-    metaDescription.setAttribute('content', 'TradeTally vs TraderVue: free unlimited trades and $8/mo Pro vs $29-$79/mo. Open-source, self-hosted, with Schwab and IBKR auto-sync. The best free TraderVue alternative in 2026.')
+    metaDescription.setAttribute('content', `TradeTally vs TraderVue: free unlimited trades and $${PRO_MONTHLY_PRICE}/mo Pro vs $29-$79/mo. Open-source, self-hosted, with Schwab and IBKR auto-sync. The best free TraderVue alternative in 2026.`)
   }
   
   // Update meta keywords

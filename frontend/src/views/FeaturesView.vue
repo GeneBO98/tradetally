@@ -237,6 +237,7 @@
 
 <script setup>
 import { ref, computed, onMounted, markRaw } from 'vue'
+import { PRO_MONTHLY_PRICE } from '@/config/pricing'
 import {
   ArrowUpTrayIcon,
   ChartBarIcon,
@@ -548,7 +549,7 @@ const cloudBenefits = [
   'Sign up and start journaling immediately',
   'All API keys provided (market data, AI, charts)',
   'Automatic updates and backups',
-  'Free tier + $8/mo Pro option'
+  `Free tier + $${PRO_MONTHLY_PRICE}/mo Pro option`
 ]
 
 const selfHostBenefits = [
@@ -611,11 +612,11 @@ onMounted(() => {
       {
         "@type": "Offer",
         "name": "Pro Tier",
-        "price": "8",
+        "price": String(PRO_MONTHLY_PRICE),
         "priceCurrency": "USD",
         "priceSpecification": {
           "@type": "UnitPriceSpecification",
-          "price": "8",
+          "price": String(PRO_MONTHLY_PRICE),
           "priceCurrency": "USD",
           "billingDuration": "P1M"
         },

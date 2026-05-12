@@ -4,7 +4,7 @@
       <!-- Header -->
       <div class="text-center">
         <h1 class="text-4xl font-bold text-gray-900 dark:text-white">
-          Trading Journal Pricing: Free Plan + $8/mo Pro
+          Trading Journal Pricing: Free Plan + Pro
         </h1>
         <p class="mt-4 text-xl text-gray-600 dark:text-gray-400">
           Compare TradeTally pricing for a free trading journal and low-cost Pro analytics.
@@ -62,6 +62,27 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             Currently on {{ currentSubscription.plan_name || 'Pro Plan' }}
+          </div>
+        </div>
+
+        <!-- Billing Period Toggle -->
+        <div class="flex justify-center mb-8">
+          <div class="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+            <button
+              @click="billingPeriod = 'monthly'"
+              :class="billingPeriod === 'monthly' ? 'bg-white dark:bg-gray-700 shadow text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'"
+              class="px-5 py-2 rounded-md text-sm font-medium transition-all"
+            >Monthly</button>
+            <button
+              @click="billingPeriod = 'yearly'"
+              :class="billingPeriod === 'yearly' ? 'bg-white dark:bg-gray-700 shadow text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'"
+              class="px-5 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2"
+            >
+              Annually
+              <span v-if="yearlySavingsPercent" class="text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-0.5 rounded-full font-semibold">
+                Save {{ yearlySavingsPercent }}%
+              </span>
+            </button>
           </div>
         </div>
 
@@ -198,8 +219,14 @@
               <div class="text-center">
                 <h3 class="text-2xl font-bold text-gray-900 dark:text-white">Pro</h3>
                 <div class="mt-4">
-                  <span class="text-4xl font-bold text-gray-900 dark:text-white">$8</span>
+                  <span class="text-4xl font-bold text-gray-900 dark:text-white">${{ billingPeriod === 'yearly' ? yearlyMonthlyEquivalent : monthlyDisplayPrice }}</span>
                   <span class="text-gray-600 dark:text-gray-400">/month</span>
+                </div>
+                <div v-if="billingPeriod === 'yearly'" class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  ${{ yearlyDisplayPrice }} billed annually
+                </div>
+                <div v-else-if="yearlySavingsPercent" class="mt-1 text-sm text-green-600 dark:text-green-400 font-medium">
+                  Save {{ yearlySavingsPercent }}% with annual billing
                 </div>
                 <p class="mt-4 text-gray-600 dark:text-gray-400">
                   Advanced analytics and behavioral insights for serious traders
@@ -331,10 +358,12 @@
 </template>
 
 <script>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import api from '@/services/api'
+import { growthbook } from '@/services/growthbook'
+import { PRO_MONTHLY_PRICE, PRO_MONTHLY_PRICE_B, PRO_YEARLY_PRICE } from '@/config/pricing'
 
 export default {
   name: 'PricingView',
@@ -355,6 +384,49 @@ export default {
     const redirectUrl = ref(route.query.redirect || null)
     const errorMessage = ref('')
     const successMessage = ref('')
+    const billingPeriod = ref('monthly')
+
+    // A/B variant: 'control' = $12/mo, 'b' = $15/mo (price_1TViHpLaCqNEHzDFBIXiDCgM)
+    const pricingVariant = computed(() =>
+      growthbook?.getFeatureValue('pricing_plan_variant', 'control') || 'control'
+    )
+
+    const selectedMonthlyPlan = computed(() => {
+      if (!pricingPlans.value.length) return null
+      const variant = pricingVariant.value
+      return (
+        pricingPlans.value.find(p => p.interval === 'month' && p.variant === variant) ||
+        pricingPlans.value.find(p => p.interval === 'month')
+      )
+    })
+
+    const yearlyPlan = computed(() =>
+      pricingPlans.value.find(p => p.interval === 'year') || null
+    )
+
+    // Display price in dollars (from Stripe cents, or fallback)
+    const monthlyDisplayPrice = computed(() => {
+      if (selectedMonthlyPlan.value) return Math.round(selectedMonthlyPlan.value.price / 100)
+      return pricingVariant.value === 'b' ? PRO_MONTHLY_PRICE_B : PRO_MONTHLY_PRICE
+    })
+
+    const yearlyDisplayPrice = computed(() => {
+      if (yearlyPlan.value) return Math.round(yearlyPlan.value.price / 100)
+      return PRO_YEARLY_PRICE
+    })
+
+    // Monthly equivalent when billed yearly (e.g. $80/yr = $6.67/mo → show $6.67)
+    const yearlyMonthlyEquivalent = computed(() =>
+      (yearlyDisplayPrice.value / 12).toFixed(2).replace(/\.00$/, '')
+    )
+
+    // Savings % of yearly vs the active monthly variant
+    const yearlySavingsPercent = computed(() => {
+      const monthly = selectedMonthlyPlan.value?.price || monthlyDisplayPrice.value * 100
+      const yearly = yearlyPlan.value?.price || yearlyDisplayPrice.value * 100
+      const savings = Math.round((1 - yearly / (monthly * 12)) * 100)
+      return savings > 0 ? savings : null
+    })
 
     const loadBillingStatus = async () => {
       try {
@@ -412,11 +484,14 @@ export default {
 
       subscribing.value = true
       try {
-        // Get the price ID from pricing plans
+        // Get the price ID from pricing plans based on billing period and A/B variant
         let priceId = null
         if (pricingPlans.value && pricingPlans.value.length > 0) {
-          const proPlan = pricingPlans.value.find(plan => plan.interval === 'month')
-          priceId = proPlan ? proPlan.id : null
+          if (billingPeriod.value === 'yearly') {
+            priceId = yearlyPlan.value?.id || null
+          } else {
+            priceId = selectedMonthlyPlan.value?.id || null
+          }
         }
         
         if (!priceId) {
@@ -527,7 +602,7 @@ export default {
         metaDescription.setAttribute('name', 'description')
         document.head.appendChild(metaDescription)
       }
-      metaDescription.setAttribute('content', 'TradeTally pricing: free plan with unlimited trades or Pro at $8/mo. Compare to TraderVue ($29-$79/mo) and TraderSync ($30-$80/mo). Open-source and self-hosted option available.')
+      metaDescription.setAttribute('content', 'TradeTally pricing: free plan with unlimited trades or Pro monthly/annually. Compare to TraderVue ($29-$79/mo) and TraderSync ($30-$80/mo). Open-source and self-hosted option available.')
 
       let metaKeywords = document.querySelector('meta[name="keywords"]')
       if (!metaKeywords) {
@@ -570,7 +645,12 @@ export default {
       getTrialButtonClass,
       getTrialButtonText,
       errorMessage,
-      successMessage
+      successMessage,
+      billingPeriod,
+      monthlyDisplayPrice,
+      yearlyDisplayPrice,
+      yearlyMonthlyEquivalent,
+      yearlySavingsPercent
     }
   }
 }

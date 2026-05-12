@@ -636,10 +636,11 @@ class BillingService {
       {
         id: 'pro_monthly',
         name: 'Pro Monthly',
-        price: 800, // $8.00 in cents (matches web app pricing)
+        price: 1200, // $12.00 in cents
         currency: 'USD',
         interval: 'month',
         interval_count: 1,
+        variant: 'control',
         features: [
           'Everything in Free',
           'Behavioral analytics',
@@ -657,7 +658,7 @@ class BillingService {
       {
         id: 'pro_yearly',
         name: 'Pro Yearly',
-        price: 8000, // $80.00 in cents (10 months price for 12 months)
+        price: 12000, // $120.00 in cents (save 17% vs monthly)
         currency: 'USD',
         interval: 'year',
         interval_count: 1,
@@ -693,14 +694,14 @@ class BillingService {
     try {
       // Get price IDs from admin settings
       const priceQuery = `
-        SELECT setting_key, setting_value 
-        FROM admin_settings 
-        WHERE setting_key IN ('stripe_price_id_monthly', 'stripe_price_id_yearly')
+        SELECT setting_key, setting_value
+        FROM admin_settings
+        WHERE setting_key IN ('stripe_price_id_monthly', 'stripe_price_id_yearly', 'stripe_price_id_monthly_b')
       `;
       const priceResult = await db.query(priceQuery);
-      
+
       console.log('Admin settings query result:', priceResult.rows);
-      
+
       const priceIds = {};
       priceResult.rows.forEach(row => {
         if (row.setting_value) {
@@ -719,26 +720,33 @@ class BillingService {
       }
 
       const plans = [];
-      
+
       // Fetch pricing details from Stripe
       for (const [key, priceId] of Object.entries(priceIds)) {
         try {
           console.log(`Fetching Stripe price for ${key}: ${priceId}`);
           const price = await stripe.prices.retrieve(priceId);
           const product = await stripe.products.retrieve(price.product);
-          
+
           console.log(`Retrieved price ${priceId}:`, {
             amount: price.unit_amount,
             currency: price.currency,
             interval: price.recurring?.interval,
             product_name: product.name
           });
-          
-          // Create plan in format expected by iOS app
-          const planType = key.includes('monthly') ? 'monthly' : 'yearly';
-          const features = planType === 'monthly' ? [
+
+          // Determine plan type and A/B variant
+          const isYearly = key === 'stripe_price_id_yearly';
+          const planType = isYearly ? 'yearly' : 'monthly';
+          const variant = key === 'stripe_price_id_monthly_b' ? 'b' : key === 'stripe_price_id_monthly' ? 'control' : undefined;
+
+          const features = isYearly ? [
+            'Everything in Pro Monthly',
+            '2 months free',
+            'Priority support'
+          ] : [
             'Everything in Free',
-            'Behavioral analytics', 
+            'Behavioral analytics',
             'Revenge trading detection',
             'Advanced risk metrics',
             'Real-time alerts',
@@ -747,21 +755,19 @@ class BillingService {
             'Price Alerts',
             'Enhanced Charts',
             'API Access'
-          ] : [
-            'Everything in Pro Monthly',
-            '2 months free',
-            'Priority support'
           ];
 
-          plans.push({
+          const plan = {
             id: price.id,
-            name: planType === 'monthly' ? 'Pro Monthly' : 'Pro Yearly',
+            name: isYearly ? 'Pro Yearly' : 'Pro Monthly',
             price: price.unit_amount, // Already in cents
             currency: price.currency.toUpperCase(),
             interval: price.recurring?.interval || planType.replace('ly', ''),
             features: features,
-            popular: planType === 'monthly'
-          });
+            popular: !isYearly
+          };
+          if (variant !== undefined) plan.variant = variant;
+          plans.push(plan);
         } catch (error) {
           console.error(`Error fetching price ${priceId}:`, error);
         }
