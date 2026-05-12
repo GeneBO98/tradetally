@@ -982,11 +982,18 @@ class DCFValuationService {
       RETURNING *
     `;
 
+    // shares_outstanding is BIGINT — Finnhub returns shares in millions and we
+    // multiply by 1e6, which can yield tiny floating-point residue (e.g.,
+    // 1036160000.0000001). Round to an integer before INSERT.
+    const sharesOutstanding = data.shares_outstanding === null || data.shares_outstanding === undefined
+      ? null
+      : Math.round(Number(data.shares_outstanding));
+
     const values = [
       userId,
       data.symbol?.toUpperCase(),
       data.current_price,
-      data.shares_outstanding,
+      sharesOutstanding,
       data.roic_1yr,
       data.roic_5yr,
       data.roic_10yr,

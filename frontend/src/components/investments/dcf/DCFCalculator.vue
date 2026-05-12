@@ -228,8 +228,8 @@
       />
     </div>
 
-    <!-- Save Button -->
-    <div v-if="results" class="flex items-center gap-4">
+    <!-- Save Button (manual save mode only) -->
+    <div v-if="results && !autoSave" class="flex items-center gap-4">
       <button
         @click="save"
         :disabled="saving"
@@ -269,6 +269,10 @@ const props = defineProps({
   results: {
     type: Object,
     default: null
+  },
+  autoSave: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -297,6 +301,7 @@ const inputs = ref({
 
 const notes = ref('')
 const saving = ref(false)
+const awaitingAutoSave = ref(false)
 
 // Helper functions
 function formatPercent(value) {
@@ -341,6 +346,18 @@ watch(() => props.metrics, () => {
     desired_return_medium: null,
     desired_return_high: null
   }
+  awaitingAutoSave.value = false
+})
+
+// Auto-save when fresh results arrive from a Calculate (skipped when results
+// were injected by loading a saved valuation).
+watch(() => props.results, (newResults) => {
+  if (!props.autoSave) return
+  if (!newResults) return
+  if (!awaitingAutoSave.value) return
+
+  awaitingAutoSave.value = false
+  emitSave()
 })
 
 const canCalculate = computed(() => {
@@ -372,6 +389,9 @@ function toDecimal(value) {
 function calculate() {
   if (!canCalculate.value) return
 
+  // Mark this calculation as eligible for auto-save when results arrive.
+  awaitingAutoSave.value = true
+
   // Only send user inputs - backend fetches financial data itself
   emit('calculate', {
     // Convert percentages to decimals (null if not entered)
@@ -397,38 +417,43 @@ function calculate() {
   })
 }
 
-function save() {
+function emitSave() {
   if (!props.results) return
-
-  saving.value = true
 
   emit('save', {
     ...props.metrics,
     // User inputs (as decimals)
-    revenue_growth_low: inputs.value.revenue_growth_low / 100,
-    revenue_growth_medium: inputs.value.revenue_growth_medium / 100,
-    revenue_growth_high: inputs.value.revenue_growth_high / 100,
-    profit_margin_low: inputs.value.profit_margin_low / 100,
-    profit_margin_medium: inputs.value.profit_margin_medium / 100,
-    profit_margin_high: inputs.value.profit_margin_high / 100,
-    fcf_margin_low: inputs.value.fcf_margin_low / 100,
-    fcf_margin_medium: inputs.value.fcf_margin_medium / 100,
-    fcf_margin_high: inputs.value.fcf_margin_high / 100,
+    revenue_growth_low: toDecimal(inputs.value.revenue_growth_low),
+    revenue_growth_medium: toDecimal(inputs.value.revenue_growth_medium),
+    revenue_growth_high: toDecimal(inputs.value.revenue_growth_high),
+    profit_margin_low: toDecimal(inputs.value.profit_margin_low),
+    profit_margin_medium: toDecimal(inputs.value.profit_margin_medium),
+    profit_margin_high: toDecimal(inputs.value.profit_margin_high),
+    fcf_margin_low: toDecimal(inputs.value.fcf_margin_low),
+    fcf_margin_medium: toDecimal(inputs.value.fcf_margin_medium),
+    fcf_margin_high: toDecimal(inputs.value.fcf_margin_high),
     pe_low: inputs.value.pe_low,
     pe_medium: inputs.value.pe_medium,
     pe_high: inputs.value.pe_high,
     pfcf_low: inputs.value.pfcf_low,
     pfcf_medium: inputs.value.pfcf_medium,
     pfcf_high: inputs.value.pfcf_high,
-    desired_return_low: inputs.value.desired_return_low / 100,
-    desired_return_medium: inputs.value.desired_return_medium / 100,
-    desired_return_high: inputs.value.desired_return_high / 100,
+    desired_return_low: toDecimal(inputs.value.desired_return_low),
+    desired_return_medium: toDecimal(inputs.value.desired_return_medium),
+    desired_return_high: toDecimal(inputs.value.desired_return_high),
     // Results
     fair_value_low: props.results.fair_value_low,
     fair_value_medium: props.results.fair_value_medium,
     fair_value_high: props.results.fair_value_high,
     notes: notes.value || null
   })
+}
+
+function save() {
+  if (!props.results) return
+
+  saving.value = true
+  emitSave()
 
   setTimeout(() => {
     saving.value = false
@@ -438,6 +463,9 @@ function save() {
 
 // Method to load a saved valuation
 function loadValuation(valuation) {
+  // Loading is a read action, not a fresh analysis — never auto-save off the
+  // results that the parent will inject afterwards.
+  awaitingAutoSave.value = false
   inputs.value = {
     revenue_growth_low: (valuation.revenue_growth_low || 0) * 100,
     revenue_growth_medium: (valuation.revenue_growth_medium || 0) * 100,

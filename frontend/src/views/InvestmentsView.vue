@@ -724,42 +724,16 @@
                 </div>
             </div>
 
-            <!-- DCF Valuation Section -->
-            <div v-if="analyzerSymbol && analyzerStockInfo">
-                <StockAnalyzerSection
-                    :symbol="analyzerSymbol"
-                    :current-price="analyzerStockInfo?.currentPrice"
-                />
-            </div>
-
-            <!-- Empty State -->
-            <div
-                v-else-if="!analyzerLoading"
-                class="text-center py-12 bg-white dark:bg-gray-800 rounded-lg shadow-sm"
-            >
-                <svg
-                    class="mx-auto h-12 w-12 text-gray-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                >
-                    <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"
-                    />
-                </svg>
-                <h3
-                    class="mt-2 text-sm font-medium text-gray-900 dark:text-white"
-                >
-                    DCF Valuation Calculator
-                </h3>
-                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    Enter a stock symbol above to calculate fair value using
-                    Discounted Cash Flow analysis.
-                </p>
-            </div>
+            <!-- DCF Valuation Section (always renders so saved valuations
+                 stay visible even before a symbol is loaded) -->
+            <StockAnalyzerSection
+                :symbol="analyzerSymbol"
+                :current-price="analyzerStockInfo?.currentPrice"
+                :pending-valuation-id="pendingValuationId"
+                :analyzer-loading="analyzerLoading"
+                @select-symbol="handleAnalyzerSymbolSelect"
+                @pending-consumed="pendingValuationId = null"
+            />
         </div>
 
         <!-- Add Holding Modal -->
@@ -944,6 +918,7 @@ const addingToWatchlist = ref(false);
 const analyzerSymbol = ref("");
 const analyzerStockInfo = ref(null);
 const analyzerLoading = ref(false);
+const pendingValuationId = ref(null);
 
 const filteredSearchHistory = computed(() => {
     if (showFavoritesOnly.value) {
@@ -1031,6 +1006,13 @@ async function loadAnalyzerData() {
     } finally {
         analyzerLoading.value = false;
     }
+}
+
+async function handleAnalyzerSymbolSelect({ symbol, valuationId }) {
+    if (!symbol) return;
+    pendingValuationId.value = valuationId || null;
+    analyzerSymbol.value = symbol;
+    await loadAnalyzerData();
 }
 
 async function analyzeSymbol() {
