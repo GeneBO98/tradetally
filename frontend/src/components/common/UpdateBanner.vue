@@ -46,12 +46,19 @@
 import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useVersionStore } from '@/stores/version'
+import { useAuthStore } from '@/stores/auth'
 import { ArrowPathIcon, XMarkIcon } from '@heroicons/vue/24/outline'
 
 const versionStore = useVersionStore()
+const authStore = useAuthStore()
 const { updateAvailable, latestVersion, releaseUrl, dismissed } = storeToRefs(versionStore)
 
-const showBanner = computed(() => updateAvailable.value && !dismissed.value)
+const isAdmin = computed(() => {
+  const role = authStore.user?.role
+  return role === 'admin' || role === 'owner'
+})
+
+const showBanner = computed(() => isAdmin.value && updateAvailable.value && !dismissed.value)
 
 const dismissUpdate = () => {
   versionStore.dismissUpdate()

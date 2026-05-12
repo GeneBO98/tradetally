@@ -2,6 +2,7 @@
   <div id="app" style="width: 100%; min-width: 100%; overflow-x: visible;">
     <UpdateBanner v-if="!isAuthRoute" />
     <EmailVerificationBanner v-if="!isAuthRoute" />
+    <IOSAppBanner v-if="!isAuthRoute" />
     <NavBar v-if="!isAuthRoute" />
     <main class="min-h-screen">
       <router-view />
@@ -195,6 +196,7 @@ import ModalAlert from '@/components/common/ModalAlert.vue'
 import CelebrationOverlay from '@/components/gamification/CelebrationOverlay.vue'
 import UpdateBanner from '@/components/common/UpdateBanner.vue'
 import EmailVerificationBanner from '@/components/common/EmailVerificationBanner.vue'
+import IOSAppBanner from '@/components/common/IOSAppBanner.vue'
 import VersionDisplay from '@/components/common/VersionDisplay.vue'
 import CookieConsentBanner from '@/components/common/CookieConsentBanner.vue'
 import { useRegistrationMode } from '@/composables/useRegistrationMode'
