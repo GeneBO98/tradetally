@@ -58,13 +58,13 @@
                 loop
                 muted
                 playsinline
-                poster="/images/screenshot-trading-personality.png"
+                poster="/images/trading-personality-analyzer.webp"
                 class="w-full h-auto"
               >
                 <source src="/images/hero-dashboard.mp4" type="video/mp4" />
                 <source src="/images/hero-dashboard.webm" type="video/webm" />
                 <img
-                  src="/images/screenshot-trading-personality.png"
+                  src="/images/trading-personality-analyzer.webp"
                   alt="TradeTally behavioral analytics - Trading personality profiling with Scalper, Momentum, Mean Reversion, and Swing scores"
                   class="w-full h-auto"
                 />
@@ -198,7 +198,7 @@
           </div>
           <div class="order-1 lg:order-2 lg:col-span-3 rounded-xl overflow-hidden shadow-xl ring-1 ring-gray-200 dark:ring-gray-700" data-parallax>
             <img
-              src="/images/screenshot-broker-sync.png"
+              src="/images/broker-sync-schwab-ibkr.webp"
               alt="TradeTally Broker Sync - Connect Schwab or IBKR to auto-sync trades"
               class="w-full h-auto"
               loading="lazy"
@@ -214,7 +214,7 @@
         <div class="grid grid-cols-1 lg:grid-cols-5 gap-10 lg:gap-16 items-center">
           <div class="lg:col-span-3 rounded-xl overflow-hidden shadow-xl ring-1 ring-gray-200 dark:ring-gray-700" data-parallax>
             <img
-              src="/images/screenshot-journal.png"
+              src="/images/trading-journal-daily-entries.webp"
               alt="TradeTally Journal - Tag trades and log your mindset to fuel behavioral analysis"
               class="w-full h-auto"
               loading="lazy"
@@ -690,7 +690,7 @@ const carouselSlides = [
     title: 'Trading Personality Profiling',
     description: 'Get classified as a Scalper, Momentum, Mean Reversion, or Swing trader with confidence scores based on your actual trade data. Understand your natural edge.',
     gradient: 'from-purple-100 to-purple-200 dark:from-purple-900/30 dark:to-purple-800/20',
-    image: '/images/screenshot-trading-personality.png'
+    image: '/images/trading-personality-analyzer.webp'
   },
   {
     icon: ExclamationTriangleIcon,
@@ -698,7 +698,7 @@ const carouselSlides = [
     title: 'Risk Score & Behavioral Insights',
     description: 'A 0-100 risk score calculated from your trading behavior. See severity-colored breakdowns of position sizing, frequency, and emotional patterns.',
     gradient: 'from-red-100 to-red-200 dark:from-red-900/30 dark:to-red-800/20',
-    image: '/images/screenshot-behavioral-insights.png'
+    image: '/images/trader-risk-score-behavioral-insights.webp'
   },
   {
     icon: FireIcon,
@@ -706,7 +706,7 @@ const carouselSlides = [
     title: 'Revenge Trading Detection',
     description: 'Automatically flags when you take impulsive trades after a loss. See your revenge trading frequency, average loss, and which sessions trigger it.',
     gradient: 'from-orange-100 to-orange-200 dark:from-orange-900/30 dark:to-orange-800/20',
-    image: '/images/screenshot-revenge-trading.png'
+    image: '/images/revenge-trading-detection.webp'
   },
   {
     icon: ScaleIcon,
@@ -714,7 +714,7 @@ const carouselSlides = [
     title: 'Loss Aversion Analysis',
     description: 'Measures how exit timing shifts based on whether a trade is winning or losing. Detects if you cut winners early and let losers run.',
     gradient: 'from-yellow-100 to-yellow-200 dark:from-yellow-900/30 dark:to-yellow-800/20',
-    image: '/images/screenshot-loss-aversion.png'
+    image: '/images/loss-aversion-trading-analysis.webp'
   },
   {
     icon: BanknotesIcon,
@@ -722,7 +722,7 @@ const carouselSlides = [
     title: 'Missed Profit Opportunities',
     description: 'Identifies trades you exited too early by comparing your exit price to the subsequent price movement. Quantifies exactly how much was left on the table.',
     gradient: 'from-emerald-100 to-emerald-200 dark:from-emerald-900/30 dark:to-emerald-800/20',
-    image: '/images/screenshot-missed-profits.png'
+    image: '/images/missed-profits-exit-analysis.webp'
   },
   {
     icon: ArrowTrendingUpIcon,
@@ -730,7 +730,7 @@ const carouselSlides = [
     title: 'Overconfidence Indicators',
     description: 'Detects when win streaks lead to larger position sizes and riskier trades. Shows the correlation between consecutive wins and subsequent losses.',
     gradient: 'from-primary-100 to-primary-200 dark:from-primary-900/30 dark:to-primary-800/20',
-    image: '/images/screenshot-overconfidence.png'
+    image: '/images/overconfidence-bias-tracking.webp'
   }
 ]
 
@@ -757,13 +757,13 @@ function resetCarouselTimer() {
 const brokers = [
   { name: 'Schwab', logo: '/images/brokers/schwab.svg', height: 'h-10' },
   { name: 'Interactive Brokers', logo: '/images/brokers/ibkr.svg', darkInvert: true },
-  { name: 'ThinkorSwim', logo: '/images/brokers/thinkorswim.png', height: 'h-10' },
+  { name: 'ThinkorSwim', logo: '/images/brokers/thinkorswim.webp', height: 'h-10' },
   { name: 'Lightspeed', logo: '/images/brokers/lightspeed.svg', darkInvert: true },
   { name: 'Webull', logo: '/images/brokers/webull.svg', darkInvert: true },
   { name: 'TradingView', logo: '/images/brokers/tradingview.svg', darkInvert: true },
   { name: 'TradeStation', logo: '/images/brokers/tradestation.svg' },
   { name: 'Tastytrade', logo: '/images/brokers/tastytrade.svg', darkInvert: true },
-  { name: 'Tradovate', logo: '/images/brokers/tradovate.png', darkInvert: true },
+  { name: 'Tradovate', logo: '/images/brokers/tradovate.webp', darkInvert: true },
   { name: 'Questrade', logo: '/images/brokers/questrade.svg', height: 'h-10' }
 ]
 
