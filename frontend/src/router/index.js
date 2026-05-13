@@ -51,7 +51,7 @@ const router = createRouter({
       path: '/unsubscribe',
       name: 'unsubscribe',
       component: () => import('@/views/auth/UnsubscribeView.vue'),
-      meta: { guest: true }
+      meta: { public: true }
     },
     {
       path: '/trial-feedback',
