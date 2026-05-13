@@ -433,54 +433,28 @@ class DCFValuationService {
       }
     });
 
-    if (!baseNetIncome && !baseFCF) {
-      throw new Error('Missing required data: need either net income or FCF data');
+    if (!baseRevenue && !baseNetIncome && !baseFCF) {
+      throw new Error('Missing required data: need revenue, net income, or FCF data');
     }
 
-    // Calculate fair value for each scenario
-    // We use a hybrid approach: traditional DCF with annual projections + terminal value
-    // This is more accurate than the simplified "target price" method
-    // Note: Bear (low) should have lower growth, lower multiples, and higher discount rate
-    //      Bull (high) should have higher growth, higher multiples, and lower discount rate
-    //      This ensures Bear fair value <= Base <= Bull fair value
-    
-    // ENFORCE logical ordering for all inputs to ensure Bear <= Bull
-    // If user entered backwards, automatically correct it
-    let finalGrowthLow = revenue_growth_low;
-    let finalGrowthMedium = revenue_growth_medium;
-    let finalGrowthHigh = revenue_growth_high;
-    
-    let finalPELow = pe_low;
-    let finalPEMedium = pe_medium;
-    let finalPEHigh = pe_high;
-    
-    let finalPFCFLow = pfcf_low;
-    let finalPFCFMedium = pfcf_medium;
-    let finalPFCFHigh = pfcf_high;
-    
     const inputWarnings = [];
-    
-    // Fix growth rates if reversed
-    if (finalGrowthLow !== null && finalGrowthHigh !== null && finalGrowthLow > finalGrowthHigh) {
-      inputWarnings.push(`Growth rates reversed: Bear (${(finalGrowthLow*100).toFixed(1)}%) > Bull (${(finalGrowthHigh*100).toFixed(1)}%). Auto-correcting.`);
-      [finalGrowthLow, finalGrowthHigh] = [finalGrowthHigh, finalGrowthLow]; // Swap them
+
+    if (revenue_growth_low !== null && revenue_growth_low !== undefined &&
+        revenue_growth_high !== null && revenue_growth_high !== undefined &&
+        revenue_growth_low > revenue_growth_high) {
+      inputWarnings.push(`Growth rates appear reversed: Bear (${(revenue_growth_low*100).toFixed(1)}%) > Bull (${(revenue_growth_high*100).toFixed(1)}%). Values were preserved as entered.`);
     }
-    
-    // Fix P/E multiples if reversed
-    if (finalPELow && finalPEHigh && finalPELow > finalPEHigh) {
-      inputWarnings.push(`P/E multiples reversed: Bear (${finalPELow}) > Bull (${finalPEHigh}). Auto-correcting.`);
-      [finalPELow, finalPEHigh] = [finalPEHigh, finalPELow]; // Swap them
+
+    if (pe_low && pe_high && pe_low > pe_high) {
+      inputWarnings.push(`P/E multiples appear reversed: Bear (${pe_low}) > Bull (${pe_high}). Values were preserved as entered.`);
     }
-    
-    // Fix P/FCF multiples if reversed
-    if (finalPFCFLow && finalPFCFHigh && finalPFCFLow > finalPFCFHigh) {
-      inputWarnings.push(`P/FCF multiples reversed: Bear (${finalPFCFLow}) > Bull (${finalPFCFHigh}). Auto-correcting.`);
-      [finalPFCFLow, finalPFCFHigh] = [finalPFCFHigh, finalPFCFLow]; // Swap them
+
+    if (pfcf_low && pfcf_high && pfcf_low > pfcf_high) {
+      inputWarnings.push(`P/FCF multiples appear reversed: Bear (${pfcf_low}) > Bull (${pfcf_high}). Values were preserved as entered.`);
     }
-    
-    // Discount rates are already enforced above, but log if there was an issue
+
     if (bearRate < bullRate) {
-      inputWarnings.push(`Discount rates were reversed but have been auto-corrected.`);
+      inputWarnings.push(`Discount rates appear reversed: Bear (${(bearRate*100).toFixed(1)}%) < Bull (${(bullRate*100).toFixed(1)}%). Values were preserved as entered.`);
     }
     
     // Log discount rate calculation info
@@ -495,13 +469,13 @@ class DCFValuationService {
     
     if (inputWarnings.length > 0) {
       console.warn(`[DCF] INPUT VALIDATION WARNINGS:\n${inputWarnings.map(w => `  - ${w}`).join('\n')}`);
-      console.warn(`[DCF] CORRECT INPUTS SHOULD BE:`);
+      console.warn(`[DCF] TYPICAL INPUTS ARE:`);
       console.warn(`[DCF]   Bear: Lower growth, LOWER multiples (20-22), HIGHER discount (15%+)`);
       console.warn(`[DCF]   Bull: Higher growth, HIGHER multiples (25-30), LOWER discount (10-12%)`);
     }
     
     console.log(`[DCF] ===== BEAR SCENARIO =====`);
-    console.log(`[DCF] Growth: ${finalGrowthLow ? (finalGrowthLow*100).toFixed(2) + '%' : 'N/A'}, PE: ${finalPELow || 'N/A'}, P/FCF: ${finalPFCFLow || 'N/A'}, DISCOUNT RATE: ${(bearRate*100).toFixed(2)}%`);
+    console.log(`[DCF] Growth: ${revenue_growth_low ? (revenue_growth_low*100).toFixed(2) + '%' : 'N/A'}, PE: ${pe_low || 'N/A'}, P/FCF: ${pfcf_low || 'N/A'}, DISCOUNT RATE: ${(bearRate*100).toFixed(2)}%`);
     console.log(`[DCF] Higher discount rate (${(bearRate*100).toFixed(2)}%) should produce LOWER fair value`);
     
     // Use traditional DCF method (projects cash flows year-by-year + terminal value)
@@ -510,11 +484,11 @@ class DCFValuationService {
       revenue: baseRevenue,
       netIncome: baseNetIncome,
       fcf: baseFCF,
-      revenueGrowth: finalGrowthLow,
+      revenueGrowth: revenue_growth_low,
       profitMargin: profit_margin_low,
       fcfMargin: fcf_margin_low,
-      peMultiple: finalPELow,
-      pfcfMultiple: finalPFCFLow,
+      peMultiple: pe_low,
+      pfcfMultiple: pfcf_low,
       discountRate: bearRate,
       years: projection_years,
       shares: shares_outstanding,
@@ -522,17 +496,17 @@ class DCFValuationService {
     });
 
     console.log(`[DCF] ===== BASE SCENARIO =====`);
-    console.log(`[DCF] Growth: ${finalGrowthMedium ? (finalGrowthMedium*100).toFixed(2) + '%' : 'N/A'}, PE: ${finalPEMedium || 'N/A'}, P/FCF: ${finalPFCFMedium || 'N/A'}, DISCOUNT RATE: ${(mediumRate*100).toFixed(2)}%`);
+    console.log(`[DCF] Growth: ${revenue_growth_medium ? (revenue_growth_medium*100).toFixed(2) + '%' : 'N/A'}, PE: ${pe_medium || 'N/A'}, P/FCF: ${pfcf_medium || 'N/A'}, DISCOUNT RATE: ${(mediumRate*100).toFixed(2)}%`);
     
     const fairValueMedium = this.calculateDCFTraditional({
       revenue: baseRevenue,
       netIncome: baseNetIncome,
       fcf: baseFCF,
-      revenueGrowth: finalGrowthMedium,
+      revenueGrowth: revenue_growth_medium,
       profitMargin: profit_margin_medium,
       fcfMargin: fcf_margin_medium,
-      peMultiple: finalPEMedium,
-      pfcfMultiple: finalPFCFMedium,
+      peMultiple: pe_medium,
+      pfcfMultiple: pfcf_medium,
       discountRate: mediumRate,
       years: projection_years,
       shares: shares_outstanding,
@@ -540,17 +514,17 @@ class DCFValuationService {
     });
 
     console.log(`[DCF] ===== BULL SCENARIO =====`);
-    console.log(`[DCF] Growth: ${finalGrowthHigh ? (finalGrowthHigh*100).toFixed(2) + '%' : 'N/A'}, PE: ${finalPEHigh || 'N/A'}, P/FCF: ${finalPFCFHigh || 'N/A'}, DISCOUNT RATE: ${(bullRate*100).toFixed(2)}%`);
+    console.log(`[DCF] Growth: ${revenue_growth_high ? (revenue_growth_high*100).toFixed(2) + '%' : 'N/A'}, PE: ${pe_high || 'N/A'}, P/FCF: ${pfcf_high || 'N/A'}, DISCOUNT RATE: ${(bullRate*100).toFixed(2)}%`);
     console.log(`[DCF] Lower discount rate (${(bullRate*100).toFixed(2)}%) should produce HIGHER fair value`);
     let fairValueHigh = this.calculateDCFTraditional({
       revenue: baseRevenue,
       netIncome: baseNetIncome,
       fcf: baseFCF,
-      revenueGrowth: finalGrowthHigh,
+      revenueGrowth: revenue_growth_high,
       profitMargin: profit_margin_high,
       fcfMargin: fcf_margin_high,
-      peMultiple: finalPEHigh,
-      pfcfMultiple: finalPFCFHigh,
+      peMultiple: pe_high,
+      pfcfMultiple: pfcf_high,
       discountRate: bullRate,
       years: projection_years,
       shares: shares_outstanding,
@@ -570,24 +544,16 @@ class DCFValuationService {
       console.log(`[DCF] Fair value difference: $${valueDiff.toFixed(2)} (${discountImpact.toFixed(1)}% impact)`);
     }
 
-    // Validate logical ordering: Bear (low) should be <= Bull (high)
-    // After auto-correction, this should never happen, but check anyway
     if (fairValueLow && fairValueHigh && fairValueLow > fairValueHigh) {
-      const bearGrowth = finalGrowthLow !== null && finalGrowthLow !== undefined ? (finalGrowthLow * 100).toFixed(1) : 'N/A';
-      const bullGrowth = finalGrowthHigh !== null && finalGrowthHigh !== undefined ? (finalGrowthHigh * 100).toFixed(1) : 'N/A';
+      const bearGrowth = revenue_growth_low !== null && revenue_growth_low !== undefined ? (revenue_growth_low * 100).toFixed(1) : 'N/A';
+      const bullGrowth = revenue_growth_high !== null && revenue_growth_high !== undefined ? (revenue_growth_high * 100).toFixed(1) : 'N/A';
       const bearDiscount = (bearRate * 100).toFixed(1);
       const bullDiscount = (bullRate * 100).toFixed(1);
       
-      console.error(`[DCF] ERROR: Even after auto-correction, Bear ($${fairValueLow.toFixed(2)}) > Bull ($${fairValueHigh.toFixed(2)}). ` +
-        `This suggests a calculation error. ` +
-        `Bear: growth=${bearGrowth}%, discount=${bearDiscount}%, PE=${finalPELow || 'N/A'}, P/FCF=${finalPFCFLow || 'N/A'} ` +
-        `Bull: growth=${bullGrowth}%, discount=${bullDiscount}%, PE=${finalPEHigh || 'N/A'}, P/FCF=${finalPFCFHigh || 'N/A'}`);
-      
-      // Force correct ordering by swapping values if needed
-      if (fairValueLow > fairValueHigh) {
-        console.warn(`[DCF] Forcing correct ordering: swapping Bear and Bull fair values`);
-        [fairValueLow, fairValueHigh] = [fairValueHigh, fairValueLow];
-      }
+      console.warn(`[DCF] Bear fair value ($${fairValueLow.toFixed(2)}) is above Bull ($${fairValueHigh.toFixed(2)}). ` +
+        `Values were preserved as entered. ` +
+        `Bear: growth=${bearGrowth}%, discount=${bearDiscount}%, PE=${pe_low || 'N/A'}, P/FCF=${pfcf_low || 'N/A'} ` +
+        `Bull: growth=${bullGrowth}%, discount=${bullDiscount}%, PE=${pe_high || 'N/A'}, P/FCF=${pfcf_high || 'N/A'}`);
     }
 
     // Calculate margin of safety (positive = undervalued, negative = overvalued)
@@ -608,28 +574,29 @@ class DCFValuationService {
         current_net_income,
         shares_outstanding,
         current_price,
-        revenue_growth_low: finalGrowthLow,
-        revenue_growth_medium: finalGrowthMedium,
-        revenue_growth_high: finalGrowthHigh,
+        revenue_growth_low,
+        revenue_growth_medium,
+        revenue_growth_high,
         profit_margin_low,
         profit_margin_medium,
         profit_margin_high,
         fcf_margin_low,
         fcf_margin_medium,
         fcf_margin_high,
-        pe_low: finalPELow,
-        pe_medium: finalPEMedium,
-        pe_high: finalPEHigh,
-        pfcf_low: finalPFCFLow,
-        pfcf_medium: finalPFCFMedium,
-        pfcf_high: finalPFCFHigh,
+        pe_low,
+        pe_medium,
+        pe_high,
+        pfcf_low,
+        pfcf_medium,
+        pfcf_high,
         desired_return_low: bearRate,
         desired_return_medium: mediumRate,
         desired_return_high: bullRate,
         calculated_discount_rate: calculated_discount_rate,
         beta: beta,
         projection_years,
-        inputs_were_corrected: inputWarnings.length > 0
+        input_warnings: inputWarnings,
+        inputs_were_corrected: false
       }
     };
   }
@@ -662,6 +629,9 @@ class DCFValuationService {
     
     const projYears = years ?? 10;
     const growth = revenueGrowth ?? 0;
+    const hasRevenue = revenue !== null && revenue !== undefined && revenue > 0;
+    const hasProfitMargin = profitMargin !== null && profitMargin !== undefined && !isNaN(profitMargin);
+    const hasFCFMargin = fcfMargin !== null && fcfMargin !== undefined && !isNaN(fcfMargin);
     
     console.log(`[DCF] Traditional DCF calculation:`, {
       revenue, netIncome, fcf, shares, growth, discount, projYears, terminalGrowth
@@ -673,14 +643,19 @@ class DCFValuationService {
     console.log(`[DCF] This means $1 in year ${projYears} is worth $${(1/discountFactor).toFixed(6)} today`);
     
     // Method 1: FCF-based DCF (traditional approach)
-    if (fcf && fcf > 0 && shares) {
+    if (shares && ((fcf && fcf > 0) || (hasRevenue && hasFCFMargin))) {
       let currentFCF = fcf;
+      let projectedRevenue = revenue;
       let presentValueSum = 0;
       
       // Project FCF for each year and discount to present value
       for (let year = 1; year <= projYears; year++) {
-        // Grow FCF by revenue growth rate
-        currentFCF = currentFCF * (1 + growth);
+        if (hasRevenue && hasFCFMargin) {
+          projectedRevenue = projectedRevenue * (1 + growth);
+          currentFCF = projectedRevenue * fcfMargin;
+        } else {
+          currentFCF = currentFCF * (1 + growth);
+        }
         
         // Discount to present value
         const presentValue = currentFCF / Math.pow(1 + discount, year);
@@ -729,14 +704,19 @@ class DCFValuationService {
     }
     
     // Method 2: Earnings-based DCF (using net income as proxy for cash flow)
-    if (netIncome && netIncome > 0 && shares && peMultiple) {
+    if (shares && peMultiple && ((netIncome && netIncome > 0) || (hasRevenue && hasProfitMargin))) {
       let currentEarnings = netIncome;
+      let projectedRevenue = revenue;
       let presentValueSum = 0;
       
       // Project earnings for each year and discount to present value
       for (let year = 1; year <= projYears; year++) {
-        // Grow earnings by revenue growth rate
-        currentEarnings = currentEarnings * (1 + growth);
+        if (hasRevenue && hasProfitMargin) {
+          projectedRevenue = projectedRevenue * (1 + growth);
+          currentEarnings = projectedRevenue * profitMargin;
+        } else {
+          currentEarnings = currentEarnings * (1 + growth);
+        }
         
         // Discount to present value
         const presentValue = currentEarnings / Math.pow(1 + discount, year);

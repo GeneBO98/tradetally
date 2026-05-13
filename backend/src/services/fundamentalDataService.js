@@ -144,6 +144,8 @@ class FundamentalDataService {
       const revenue = findValue(ic, 'revenuefromcontract', 'revenues', 'netsales', 'totalrevenue', 'revenue', 'salesrevenue');
       const netIncome = findValue(ic, 'netincomeloss', 'netincome', 'profitloss', 'netloss');
       const operatingIncome = findValue(ic, 'operatingincomeloss', 'operatingincome', 'incomefromoperations');
+      const incomeBeforeTax = findValue(ic, 'incomelossfromcontinuingoperationsbeforeincometaxes', 'incomebeforetax', 'pretaxincome', 'incomebeforeincometaxes');
+      const incomeTaxExpense = findValue(ic, 'incometaxexpensebenefit', 'incometaxexpense', 'provisionforincometaxes');
       const totalAssets = findValue(bs, 'assets');
       const totalLiabilities = findValue(bs, 'liabilities', 'liabilitiesandstockholdersequity');
       const totalEquity = findValue(bs, 'stockholdersequity', 'equity', 'totalequity', 'shareownersequity');
@@ -152,6 +154,7 @@ class FundamentalDataService {
       // Boeing uses LongTermDebtAndCapitalLeaseObligations
       const longTermDebt = findValue(bs, 'longtermdebtnoncurrent', 'longtermdebtandcapitalleaseobligations', 'noncurrentportionoflongtermdebt', 'longtermdebt', 'secureddebt', 'unsecureddebt', 'notespayable', 'debtinstrument');
       const cashAndEquivalents = findValue(bs, 'cashandcashequivalents', 'cashcashequivalents', 'cash');
+      const accountsPayable = findValue(bs, 'accountspayablecurrent', 'accountspayable');
 
       // Cash flow items - Finnhub uses "NetCashProvidedByUsedInOperatingActivities" (with UsedIn)
       const operatingCashFlow = findValue(cf, 'netcashprovidedbyusedinoperatingactivities', 'netcashprovidedbyoperatingactivities', 'cashprovidedbyoperatingactivities', 'operatingcashflow');
@@ -270,6 +273,8 @@ class FundamentalDataService {
         revenue,
         netIncome,
         operatingIncome,
+        incomeBeforeTax,
+        incomeTaxExpense,
         grossProfit: findValue(ic, 'grossprofit'),
         ebit: operatingIncome,
         ebitda: null,
@@ -282,6 +287,7 @@ class FundamentalDataService {
         shortTermDebt,
         totalDebt: totalDebt > 0 ? totalDebt : null,
         cashAndEquivalents,
+        accountsPayable,
         // Cash Flow
         freeCashFlow,
         operatingCashFlow,
@@ -485,7 +491,9 @@ class FundamentalDataService {
    * @returns {Promise<Object>} Aggregated metrics
    */
   static async getFiveYearAggregates(symbol, forceRefresh = false, profileSharesOutstanding = null) {
-    const financials = await this.getFinancials(symbol, 5, forceRefresh, 'annual', profileSharesOutstanding);
+    // Fetch one extra balance-sheet period so ROIC can use average invested
+    // capital for all five target years.
+    const financials = await this.getFinancials(symbol, 6, forceRefresh, 'annual', profileSharesOutstanding);
 
     if (financials.length < 2) {
       console.warn(`[FUNDAMENTAL] Insufficient data for 5-year aggregates (${financials.length} periods)`);
@@ -500,13 +508,14 @@ class FundamentalDataService {
 
     // Sort by year descending (most recent first)
     const sorted = normalized.sort((a, b) => b.fiscalYear - a.fiscalYear);
+    const calculationPeriods = sorted.slice(0, 5);
 
     // Current (most recent) and prior (5 years ago or oldest available)
-    const current = sorted[0];
-    const prior = sorted[sorted.length - 1];
+    const current = calculationPeriods[0];
+    const prior = calculationPeriods[calculationPeriods.length - 1];
 
     // Sum up 5 years of data
-    const fiveYearTotals = sorted.reduce((acc, period) => {
+    const fiveYearTotals = calculationPeriods.reduce((acc, period) => {
       acc.netIncome += period.netIncome || 0;
       acc.freeCashFlow += period.freeCashFlow || 0;
       acc.revenue += period.revenue || 0;
@@ -514,12 +523,12 @@ class FundamentalDataService {
     }, { netIncome: 0, freeCashFlow: 0, revenue: 0 });
 
     // Average values
-    const avgEquity = sorted.reduce((sum, p) => sum + (p.totalEquity || 0), 0) / sorted.length;
-    const avgDebt = sorted.reduce((sum, p) => sum + (p.totalDebt || 0), 0) / sorted.length;
-    const avgFCF = fiveYearTotals.freeCashFlow / sorted.length;
-    const avgNetIncome = fiveYearTotals.netIncome / sorted.length;
-    const avgOperatingIncome = sorted.reduce((sum, p) => sum + (p.operatingIncome || 0), 0) / sorted.length;
-    const avgRevenue = fiveYearTotals.revenue / sorted.length;
+    const avgEquity = calculationPeriods.reduce((sum, p) => sum + (p.totalEquity || 0), 0) / calculationPeriods.length;
+    const avgDebt = calculationPeriods.reduce((sum, p) => sum + (p.totalDebt || 0), 0) / calculationPeriods.length;
+    const avgFCF = fiveYearTotals.freeCashFlow / calculationPeriods.length;
+    const avgNetIncome = fiveYearTotals.netIncome / calculationPeriods.length;
+    const avgOperatingIncome = calculationPeriods.reduce((sum, p) => sum + (p.operatingIncome || 0), 0) / calculationPeriods.length;
+    const avgRevenue = fiveYearTotals.revenue / calculationPeriods.length;
 
     // Debug logging for ROIC calculation
     console.log(`[FUNDAMENTAL] Aggregates Debug for ${symbol}:`);
@@ -532,17 +541,22 @@ class FundamentalDataService {
     const annualData = sorted.map(p => ({
       fiscalYear: p.fiscalYear,
       netIncome: p.netIncome,
+      revenue: p.revenue,
+      freeCashFlow: p.freeCashFlow,
       operatingIncome: p.operatingIncome,
+      incomeBeforeTax: p.incomeBeforeTax,
+      incomeTaxExpense: p.incomeTaxExpense,
       totalEquity: p.totalEquity,
       totalDebt: p.totalDebt,
       cashAndEquivalents: p.cashAndEquivalents,
+      accountsPayable: p.accountsPayable,
       sharesOutstanding: p.sharesOutstanding,
       // Use EPS from financial statements if available, otherwise calculate
       eps: p.eps || (p.netIncome && p.sharesOutstanding ? p.netIncome / p.sharesOutstanding : null)
     }));
 
     return {
-      periodsAnalyzed: sorted.length,
+      periodsAnalyzed: calculationPeriods.length,
       yearsSpan: current.fiscalYear - prior.fiscalYear,
       current: {
         fiscalYear: current.fiscalYear,
@@ -648,6 +662,8 @@ class FundamentalDataService {
    * @returns {Object} Financial data object (camelCase)
    */
   static rowToFinancialData(row) {
+    const rawData = row.raw_data || {};
+
     return {
       year: row.fiscal_year,
       fiscalYear: row.fiscal_year,
@@ -657,6 +673,8 @@ class FundamentalDataService {
       revenue: parseFloat(row.revenue) || null,
       netIncome: parseFloat(row.net_income) || null,
       operatingIncome: parseFloat(row.operating_income) || null,
+      incomeBeforeTax: this.extractValue(rawData, ['incomeBeforeTax', 'pretaxIncome']) || null,
+      incomeTaxExpense: this.extractValue(rawData, ['incomeTaxExpense', 'taxExpense']) || null,
       grossProfit: parseFloat(row.gross_profit) || null,
       ebit: parseFloat(row.ebit) || null,
       ebitda: parseFloat(row.ebitda) || null,
@@ -667,6 +685,7 @@ class FundamentalDataService {
       shortTermDebt: parseFloat(row.short_term_debt) || null,
       totalDebt: parseFloat(row.total_debt) || null,
       cashAndEquivalents: parseFloat(row.cash_and_equivalents) || null,
+      accountsPayable: this.extractValue(rawData, ['accountsPayable']) || null,
       freeCashFlow: parseFloat(row.free_cash_flow) || null,
       operatingCashFlow: parseFloat(row.operating_cash_flow) || null,
       capitalExpenditures: parseFloat(row.capital_expenditures) || null,
