@@ -11,6 +11,9 @@ const SampleDataService = require('../services/sampleDataService');
 const activityTrackingService = require('../services/activityTrackingService');
 const sequenzySubscriberSyncService = require('../services/sequenzySubscriberSyncService');
 const { getClientIp } = require('../utils/clientIp');
+const { generateCsrfToken } = require('../middleware/csrf');
+const { clearAuthCookies, setAuthCookies } = require('../utils/authCookies');
+const jobQueue = require('../utils/jobQueue');
 
 // Check if email configuration is available
 function isEmailConfigured() {
@@ -59,9 +62,19 @@ function maskEmail(email) {
 function sendVerificationEmailInBackground(email, token) {
   setImmediate(async () => {
     try {
-      await sendVerificationEmail(email, token);
+      await jobQueue.addJob('verification_email', { email, token }, 2);
     } catch (error) {
       console.warn('[WARNING] Failed to send verification email after registration:', error.message);
+    }
+  });
+}
+
+function queuePasswordResetEmail(email, token) {
+  setImmediate(async () => {
+    try {
+      await jobQueue.addJob('password_reset_email', { email, token }, 2);
+    } catch (error) {
+      console.warn('[WARNING] Failed to queue password reset email:', error.message);
     }
   });
 }
@@ -222,12 +235,7 @@ const authController = {
 
         const authToken = generateToken(user, { purpose: TOKEN_PURPOSES.ACCESS });
 
-        res.cookie('token', authToken, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: 'lax',
-          maxAge: 7 * 24 * 60 * 60 * 1000
-        });
+        setAuthCookies(req, res, authToken, generateCsrfToken());
 
         const { tier: userTier, billingEnabled: billingStatus } = await TierService.getUserTierWithBillingStatus(user.id, req.headers.host);
         const regSettings = await User.getSettings(user.id);
@@ -356,13 +364,7 @@ const authController = {
 
       const token = generateToken(user, { purpose: TOKEN_PURPOSES.ACCESS });
 
-      // Set HTTP-only cookie for OAuth flow
-      res.cookie('token', token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-      });
+      setAuthCookies(req, res, token, generateCsrfToken());
 
       // Get user tier and billing status in one optimized call
       const TierService = require('../services/tierService');
@@ -472,12 +474,7 @@ const authController = {
       // Generate full access token
       const token = generateToken(user, { purpose: TOKEN_PURPOSES.ACCESS });
 
-      res.cookie('token', token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-      });
+      setAuthCookies(req, res, token, generateCsrfToken());
 
       // Get tier and billing status
       const TierService = require('../services/tierService');
@@ -510,12 +507,7 @@ const authController = {
 
   async logout(req, res, next) {
     try {
-      // Clear the HTTP-only cookie
-      res.clearCookie('token', {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax'
-      });
+      clearAuthCookies(req, res);
 
       res.json({ message: 'Logout successful' });
     } catch (error) {
@@ -601,7 +593,7 @@ const authController = {
       const resetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
       await User.updateResetToken(user.id, resetToken, resetExpires);
-      await sendPasswordResetEmail(email, resetToken);
+      queuePasswordResetEmail(email, resetToken);
 
       res.json({ message: 'If the email exists, a reset link has been sent' });
     } catch (error) {
@@ -679,7 +671,7 @@ const authController = {
       const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
       await User.updateVerificationToken(user.id, verificationToken, verificationExpires);
-      await sendVerificationEmail(email, verificationToken);
+      sendVerificationEmailInBackground(email, verificationToken);
 
       res.json({ message: 'Verification email has been resent.' });
     } catch (error) {
@@ -727,15 +719,5 @@ const authController = {
     }
   }
 };
-
-// Email sending function
-async function sendVerificationEmail(email, token) {
-  await EmailService.sendVerificationEmail(email, token);
-}
-
-// Password reset email function
-async function sendPasswordResetEmail(email, token) {
-  await EmailService.sendPasswordResetEmail(email, token);
-}
 
 module.exports = authController;

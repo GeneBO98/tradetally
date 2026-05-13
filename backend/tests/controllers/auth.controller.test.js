@@ -1,25 +1,36 @@
 jest.mock('../../src/models/User', () => ({
   findByEmail: jest.fn(),
+  findByUsername: jest.fn(),
   findById: jest.fn(),
   verifyPassword: jest.fn(),
   updateLastLogin: jest.fn(),
   updateBackupCodes: jest.fn(),
-  getSettings: jest.fn()
+  getSettings: jest.fn(),
+  getUserCount: jest.fn(),
+  create: jest.fn(),
+  createSettings: jest.fn(),
+  updateResetToken: jest.fn()
 }));
 jest.mock('../../src/services/emailService', () => ({
   isConfigured: jest.fn(() => true)
 }));
 jest.mock('../../src/services/tierService', () => ({
   getUserTier: jest.fn(async () => 'free'),
-  isBillingEnabled: jest.fn(async () => true)
+  isBillingEnabled: jest.fn(async () => true),
+  getUserTierWithBillingStatus: jest.fn(async () => ({ tier: 'free', billingEnabled: true }))
 }));
 jest.mock('../../src/services/yearWrappedService', () => ({
   recordLogin: jest.fn(() => Promise.resolve())
 }));
 jest.mock('../../src/services/refreshToken.service', () => ({}));
-jest.mock('../../src/services/sampleDataService', () => ({}));
+jest.mock('../../src/services/sampleDataService', () => ({
+  createForUser: jest.fn()
+}));
 jest.mock('../../src/services/activityTrackingService', () => ({
   trackEvent: jest.fn()
+}));
+jest.mock('../../src/utils/jobQueue', () => ({
+  addJob: jest.fn()
 }));
 jest.mock('speakeasy', () => ({
   totp: {
@@ -32,6 +43,11 @@ const authController = require('../../src/controllers/auth.controller');
 const speakeasy = require('speakeasy');
 const { authenticate, generateToken, TOKEN_PURPOSES } = require('../../src/middleware/auth');
 const jwt = require('jsonwebtoken');
+const jobQueue = require('../../src/utils/jobQueue');
+
+function flushImmediate() {
+  return new Promise((resolve) => setImmediate(resolve));
+}
 
 function createResponse() {
   return {
@@ -45,7 +61,8 @@ function createResponse() {
       this.payload = body;
       return this;
     },
-    cookie: jest.fn()
+    cookie: jest.fn(),
+    clearCookie: jest.fn()
   };
 }
 
@@ -146,6 +163,10 @@ describe('auth controller 2FA flow', () => {
       httpOnly: true,
       sameSite: 'lax'
     }));
+    expect(res.cookie).toHaveBeenCalledWith('csrf_token', expect.any(String), expect.objectContaining({
+      httpOnly: false,
+      sameSite: 'lax'
+    }));
     expect(res.payload).toEqual(expect.objectContaining({
       message: 'Login successful',
       token: expect.any(String)
@@ -196,5 +217,89 @@ describe('auth controller 2FA flow', () => {
     expect(next).not.toHaveBeenCalled();
     expect(res.statusCode).toBe(200);
     expect(res.payload.token).toEqual(expect.any(String));
+  });
+
+  test('register queues verification email for non-first users', async () => {
+    User.findByEmail.mockResolvedValue(null);
+    User.findByUsername.mockResolvedValue(null);
+    User.getUserCount.mockResolvedValue(1);
+    User.create.mockResolvedValue({
+      id: 'user-2',
+      email: 'new@example.com',
+      username: 'newuser',
+      full_name: 'New User',
+      avatar_url: null,
+      role: 'user',
+      is_verified: false,
+      admin_approved: true,
+      created_at: new Date().toISOString()
+    });
+    User.createSettings.mockResolvedValue({});
+    User.getSettings.mockResolvedValue({ onboarding_step: 0, pro_onboarding_step: 0 });
+
+    const req = {
+      body: {
+        email: 'new@example.com',
+        username: 'newuser',
+        password: 'password123',
+        fullName: 'New User'
+      },
+      headers: {
+        host: 'localhost:3030'
+      }
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await authController.register(req, res, next);
+    await flushImmediate();
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(201);
+    expect(jobQueue.addJob).toHaveBeenCalledWith(
+      'verification_email',
+      expect.objectContaining({
+        email: 'new@example.com',
+        token: expect.any(String)
+      }),
+      2
+    );
+  });
+
+  test('forgotPassword queues reset email after persisting token', async () => {
+    User.findByEmail.mockResolvedValue({
+      id: 'user-3',
+      email: 'reset@example.com'
+    });
+    User.updateResetToken.mockResolvedValue(undefined);
+
+    const req = {
+      body: {
+        email: 'reset@example.com'
+      }
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await authController.forgotPassword(req, res, next);
+    await flushImmediate();
+
+    expect(next).not.toHaveBeenCalled();
+    expect(User.updateResetToken).toHaveBeenCalledWith(
+      'user-3',
+      expect.any(String),
+      expect.any(Date)
+    );
+    expect(jobQueue.addJob).toHaveBeenCalledWith(
+      'password_reset_email',
+      expect.objectContaining({
+        email: 'reset@example.com',
+        token: expect.any(String)
+      }),
+      2
+    );
+    expect(res.payload).toEqual({
+      message: 'If the email exists, a reset link has been sent'
+    });
   });
 });

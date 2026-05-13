@@ -2,8 +2,13 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const settingsController = require('../controllers/settings.controller');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requireAdmin } = require('../middleware/auth');
 const { validate, schemas } = require('../middleware/validation');
+
+function isJsonUpload(file) {
+  const filename = file?.originalname?.toLowerCase?.() || '';
+  return file?.mimetype === 'application/json' || filename.endsWith('.json');
+}
 
 // Configure multer for file uploads
 const upload = multer({
@@ -12,7 +17,7 @@ const upload = multer({
     fileSize: 10 * 1024 * 1024 // 10MB limit
   },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype === 'application/json') {
+    if (isJsonUpload(file)) {
       cb(null, true);
     } else {
       cb(new Error('Only JSON files are allowed'), false);
@@ -37,9 +42,9 @@ router.post('/import', authenticate, upload.single('file'), settingsController.i
 
 // Admin Settings Routes
 router.get('/admin/ai', authenticate, settingsController.getAdminAISettings);
-router.put('/admin/ai', authenticate, settingsController.updateAdminAISettings);
+router.put('/admin/ai', requireAdmin, validate(schemas.adminAiSettings), settingsController.updateAdminAISettings);
 router.get('/admin/cusip-ai', authenticate, settingsController.getAdminCusipAISettings);
-router.put('/admin/cusip-ai', authenticate, settingsController.updateAdminCusipAISettings);
+router.put('/admin/cusip-ai', requireAdmin, settingsController.updateAdminCusipAISettings);
 router.get('/admin/all', authenticate, settingsController.getAllAdminSettings);
 
 // Broker Fee Settings Routes

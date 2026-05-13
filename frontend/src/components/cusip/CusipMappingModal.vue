@@ -210,11 +210,7 @@ const validateTicker = () => {
 
 const checkTradeImpact = async (cusip) => {
   try {
-    const response = await fetch(`/api/trades?symbol=${cusip}&limit=1`, {
-      headers: {
-        'Authorization': `Bearer ${authStore.token}`
-      }
-    })
+    const response = await fetch(`/api/trades?symbol=${cusip}&limit=1`)
     
     if (response.ok) {
       const data = await response.json()
@@ -232,8 +228,7 @@ const saveMapping = async () => {
     const response = await fetch('/api/cusip-mappings', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authStore.token}`
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         cusip: form.value.cusip,

@@ -170,14 +170,6 @@ function getImageUrl(image) {
     baseUrl = `${api.defaults.baseURL}${image.file_url}`
   }
   
-  // Add authentication token as query parameter for image access
-  // This is needed because img src requests don't include Authorization headers
-  const token = localStorage.getItem('token') || sessionStorage.getItem('token')
-  if (token) {
-    const separator = baseUrl.includes('?') ? '&' : '?'
-    return `${baseUrl}${separator}token=${encodeURIComponent(token)}`
-  }
-  
   return baseUrl
 }
 

@@ -228,11 +228,9 @@ const pasteShortcut = computed(() => {
 })
 
 function getImageUrl(image) {
-  // Use the API URL with authentication token
-  const token = localStorage.getItem('token')
   // file_url already includes /api prefix, so use origin only (not VITE_API_URL which includes /api)
   const origin = window.location.origin
-  const url = `${origin}${image.file_url}?token=${token}`
+  const url = `${origin}${image.file_url}`
   return url
 }
 

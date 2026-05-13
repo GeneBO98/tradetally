@@ -1,5 +1,24 @@
 <template>
   <div id="app" style="width: 100%; min-width: 100%; overflow-x: visible;">
+    <div v-if="runtimeError" class="min-h-screen bg-white dark:bg-gray-950">
+      <div class="content-wrapper py-16">
+        <div class="max-w-lg">
+          <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Something went wrong</h1>
+          <p class="mt-3 text-sm text-gray-600 dark:text-gray-400">
+            The app hit an unexpected error and stopped rendering this view.
+          </p>
+          <div class="mt-6 flex gap-3">
+            <button class="btn btn-primary" @click="reloadApp">
+              Reload
+            </button>
+            <button class="btn btn-outline" @click="clearRuntimeError">
+              Dismiss
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <template v-else>
     <UpdateBanner v-if="!isAuthRoute" />
     <EmailVerificationBanner v-if="!isAuthRoute" />
     <IOSAppBanner v-if="!isAuthRoute" />
@@ -192,6 +211,7 @@
         </form>
       </div>
     </div>
+    </template>
   </div>
 </template>
 
@@ -237,6 +257,19 @@ const supportSubject = ref('')
 const supportMessage = ref('')
 const supportSending = ref(false)
 const supportSent = ref(false)
+const runtimeError = ref(null)
+
+function clearRuntimeError() {
+  runtimeError.value = null
+}
+
+function reloadApp() {
+  window.location.reload()
+}
+
+function handleRuntimeError(event) {
+  runtimeError.value = event.detail || { message: 'Unexpected application error' }
+}
 
 async function submitSupportRequest() {
   supportSending.value = true
@@ -258,8 +291,8 @@ async function submitSupportRequest() {
 
 // Watch for authentication changes and user tier changes
 let lastConnectionState = false
-watch(() => [authStore.user?.tier, authStore.token, authStore.user?.billingEnabled], ([tier, token, billingEnabled]) => {
-  const shouldConnect = token && (tier === 'pro' || billingEnabled === false)
+watch(() => [authStore.user?.tier, authStore.isAuthenticated, authStore.user?.billingEnabled], ([tier, isAuthenticated, billingEnabled]) => {
+  const shouldConnect = isAuthenticated && (tier === 'pro' || billingEnabled === false)
   
   // Only connect/disconnect if the state actually changed
   if (shouldConnect !== lastConnectionState) {
@@ -285,12 +318,12 @@ const showPasskeyPrompt = ref(false)
 const passkeyRegistering = ref(false)
 const PASSKEY_PROMPT_DISMISSED_KEY = 'passkey_prompt_dismissed'
 
-// Watch for login: when token appears, check if user has passkeys
-let previousToken = authStore.token
-watch(() => authStore.token, async (newToken) => {
-  if (newToken && !previousToken) {
+// Watch for login: when session becomes active, check if user has passkeys
+let previousSessionState = authStore.isAuthenticated
+watch(() => authStore.isAuthenticated, async (isAuthenticated) => {
+  if (isAuthenticated && !previousSessionState) {
     if (localStorage.getItem(PASSKEY_PROMPT_DISMISSED_KEY)) {
-      previousToken = newToken
+      previousSessionState = isAuthenticated
       return
     }
     // Wait for page to settle after redirect
@@ -305,7 +338,7 @@ watch(() => authStore.token, async (newToken) => {
       }
     }, 1500)
   }
-  previousToken = newToken
+  previousSessionState = isAuthenticated
 })
 
 async function registerPasskey() {
@@ -363,6 +396,7 @@ onMounted(async () => {
   }
 
   // Listen for rate limit events from the API interceptor
+  window.addEventListener('app-runtime-error', handleRuntimeError)
   window.addEventListener('rate-limit-exceeded', handleRateLimitExceeded)
 
   // Note: checkAuth() is awaited in main.js before mount to prevent flash of public page
@@ -379,6 +413,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   // Clean up rate limit event listener
+  window.removeEventListener('app-runtime-error', handleRuntimeError)
   window.removeEventListener('rate-limit-exceeded', handleRateLimitExceeded)
 
   if (versionPollInterval) {

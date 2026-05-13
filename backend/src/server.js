@@ -5,6 +5,7 @@ const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env.local'), override: false });
+const { validateEnv } = require('./config/env');
 
 const { migrate } = require('./utils/migrate');
 const { initializePostHogTelemetry, shutdown: shutdownPostHogTelemetry } = require('./posthog-telemetry');
@@ -80,10 +81,14 @@ const backgroundWorker = require('./workers/backgroundWorker');
 const jobRecoveryService = require('./services/jobRecoveryService');
 const pushNotificationService = require('./services/pushNotificationService');
 const globalEnrichmentCacheCleanupService = require('./services/globalEnrichmentCacheCleanupService');
+const storageHealthService = require('./services/storageHealth.service');
+const { buildHealthStatus } = require('./services/healthStatus.service');
 const { buildSwaggerSpec, swaggerUi } = require('./config/swagger');
 const errorHandler = require('./middleware/errorHandler');
 const requestIdMiddleware = require('./middleware/requestId');
 const { isV1Request, sendV1Error } = require('./utils/apiResponse');
+const { ensureCsrfCookie, requireCsrf } = require('./middleware/csrf');
+const { createRateLimiter } = require('./utils/rateLimit');
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -122,24 +127,10 @@ const rateLimitWindowMs = parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 
 // Custom key generator to properly identify clients behind proxies
 const { getClientIp } = require('./utils/clientIp');
 
-const limiter = rateLimit({
+const limiter = createRateLimiter({
   windowMs: rateLimitWindowMs,
   max: rateLimitMax,
-  keyGenerator: getClientIp, // Use our custom IP extractor
-  standardHeaders: true, // Return rate limit info in headers
-  legacyHeaders: false,
-  message: {
-    error: 'Too many requests',
-    message: 'Too many requests, please try again later.',
-    retryAfter: Math.ceil(rateLimitWindowMs / 1000)
-  },
-  skip: (req) => {
-    // Skip rate limiting if disabled via environment variable
-    if (!rateLimitEnabled) return true;
-    // Skip rate limiting for import endpoints
-    if (req.path.includes('/import')) return true;
-    return false;
-  }
+  skip: () => !rateLimitEnabled
 });
 
 // Log rate limit configuration on startup
@@ -162,7 +153,9 @@ app.use(requestIdMiddleware);
 // Optimized CORS configuration
 const allowedOrigins = [
   process.env.FRONTEND_URL || 'http://localhost:5173',
-  ...(process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : [])
+  ...(process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(',').map((origin) => origin.trim()).filter(Boolean)
+    : [])
 ];
 
 if (process.env.NODE_ENV !== 'production') {
@@ -199,7 +192,7 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization', 'X-API-Key', 'X-Device-ID', 'X-App-Version', 'X-Platform', 'X-Request-ID'],
+  allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization', 'X-API-Key', 'X-Device-ID', 'X-App-Version', 'X-Platform', 'X-Request-ID', 'X-CSRF-Token'],
   exposedHeaders: ['X-API-Version', 'X-Rate-Limit-Remaining', 'X-Rate-Limit-Reset', 'X-Request-ID'],
   optionsSuccessStatus: 200
 };
@@ -221,6 +214,7 @@ app.use(morgan(':method :url :status :response-time ms req_id=:request-id', {
 
 // Cookie parser middleware
 app.use(cookieParser());
+app.use(ensureCsrfCookie);
 
 // Body parsing middleware (skip for webhook routes that need raw body)
 app.use((req, res, next) => {
@@ -232,6 +226,7 @@ app.use((req, res, next) => {
 });
 app.use(express.urlencoded({ extended: true }));
 app.use('/api', skipRateLimit);
+app.use('/api', requireCsrf);
 
 // Activity tracking middleware (auto-logs user actions to user_activity_events)
 app.use(activityTrackingMiddleware);
@@ -313,41 +308,7 @@ if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_SWAGGER === 'tru
 
 // Health endpoint with database connection check and background worker status
 app.get('/api/health', async (req, res) => {
-  const health = {
-    status: 'OK',
-    timestamp: new Date().toISOString(),
-    services: {
-      database: 'OK',
-      backgroundWorker: backgroundWorker.getStatus(),
-      jobRecovery: jobRecoveryService.getStatus(),
-      enrichmentCacheCleanup: globalEnrichmentCacheCleanupService.getStatus()
-    }
-  };
-  
-  // Check database connection
-  try {
-    await require('./config/database').query('SELECT 1');
-  } catch (error) {
-    health.services.database = 'ERROR';
-    health.status = 'DEGRADED';
-  }
-  
-  // Check if background worker is running (critical for PRO features)
-  if (!health.services.backgroundWorker.isRunning || !health.services.backgroundWorker.queueProcessing) {
-    health.status = 'DEGRADED';
-    health.services.backgroundWorker.status = 'ERROR';
-  } else {
-    health.services.backgroundWorker.status = 'OK';
-  }
-
-  // Check if job recovery is running
-  if (!health.services.jobRecovery.isRunning) {
-    health.status = 'DEGRADED';
-    health.services.jobRecovery.status = 'ERROR';
-  } else {
-    health.services.jobRecovery.status = 'OK';
-  }
-  
+  const health = await buildHealthStatus();
   res.json(health);
 });
 
@@ -417,7 +378,11 @@ app.use((req, res) => {
 // Function to start server with migration
 async function startServer() {
   try {
+    const { warnings } = validateEnv();
     logger.info('Starting TradeTally server...');
+    warnings.forEach((warning) => logger.warn(warning, 'startup'));
+    const storageHealth = await storageHealthService.getHealth();
+    storageHealth.warnings.forEach((warning) => logger.warn(warning, 'startup'));
 
     // Initialize PostHog telemetry (optional)
     await initializePostHogTelemetry();
@@ -703,5 +668,12 @@ process.on('SIGINT', async () => {
   process.exit(0);
 });
 
-// Start the server
-startServer();
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = {
+  app,
+  buildHealthStatus,
+  startServer
+};

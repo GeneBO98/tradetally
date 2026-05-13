@@ -211,11 +211,7 @@ const selectedNotifications = ref([])
 const fetchNotifications = async (page = 1) => {
   try {
     loading.value = true
-    const response = await fetch(`/api/notifications?page=${page}&limit=20`, {
-      headers: {
-        'Authorization': `Bearer ${authStore.token}`
-      }
-    })
+    const response = await fetch(`/api/notifications?page=${page}&limit=20`)
     
     if (response.ok) {
       const data = await response.json()
@@ -246,8 +242,7 @@ const markAllAsRead = async () => {
     const response = await fetch('/api/notifications/mark-all-read', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authStore.token}`
+        'Content-Type': 'application/json'
       }
     })
     
@@ -283,8 +278,7 @@ const deleteSelected = async () => {
     const response = await fetch('/api/notifications', {
       method: 'DELETE',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authStore.token}`
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({ notifications: notificationsToDelete })
     })

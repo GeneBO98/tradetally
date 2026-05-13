@@ -117,7 +117,7 @@ export function usePriceAlertNotifications() {
   
   const connect = () => {
     // Skip verbose logging - only log important state changes
-    if (!authStore.token || (authStore.user?.tier !== 'pro' && authStore.user?.billingEnabled !== false)) {
+    if (!authStore.isAuthenticated || (authStore.user?.tier !== 'pro' && authStore.user?.billingEnabled !== false)) {
       return
     }
 
@@ -138,10 +138,7 @@ export function usePriceAlertNotifications() {
       disconnect()
     }
 
-    // Construct SSE URL - always use relative URL to go through Vite proxy in development
-    // This avoids CORS issues since EventSource doesn't support credentials for cross-origin
-    // In production (same origin), relative URLs also work correctly
-    const sseUrl = `/api/notifications/stream?token=${authStore.token}`
+    const sseUrl = '/api/notifications/stream'
     console.log('Connecting to SSE:', sseUrl)
     eventSource.value = new EventSource(sseUrl)
     
@@ -184,7 +181,7 @@ export function usePriceAlertNotifications() {
         reconnectDelay.value = Math.min(reconnectDelay.value * 2, 60000) // Exponential backoff, cap at 60s
         reconnectTimeout.value = setTimeout(() => {
           reconnectTimeout.value = null
-          if (authStore.token && (authStore.user?.tier === 'pro' || authStore.user?.billingEnabled === false)) {
+          if (authStore.isAuthenticated && (authStore.user?.tier === 'pro' || authStore.user?.billingEnabled === false)) {
             console.log(`SSE manual reconnect after ${delay / 1000}s`)
             connect()
           }

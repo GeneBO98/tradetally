@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/user.controller');
 const { authenticate, requireAdmin } = require('../middleware/auth');
-const multer = require('multer');
+const upload = require('../middleware/upload');
 
 /**
  * @swagger
@@ -10,20 +10,6 @@ const multer = require('multer');
  *   name: Users
  *   description: User profile and account management
  */
-
-const upload = multer({
-  limits: { fileSize: 5242880 }, // 5MB
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|gif/;
-    const mimetype = allowedTypes.test(file.mimetype);
-    const extname = allowedTypes.test(file.originalname.toLowerCase());
-    
-    if (mimetype && extname) {
-      return cb(null, true);
-    }
-    cb(new Error('Invalid file type'));
-  }
-});
 
 /**
  * @swagger

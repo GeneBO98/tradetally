@@ -208,8 +208,12 @@ class BackupController {
   async getSettings(req, res, next) {
     try {
       const settings = await backupService.getBackupSettings();
+      const health = await backupService.getBackupHealth();
 
-      res.json(settings);
+      res.json({
+        ...settings,
+        health
+      });
     } catch (error) {
       console.error('[BACKUP] Error fetching settings:', error);
       next(error);

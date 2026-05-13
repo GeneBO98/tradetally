@@ -7,6 +7,7 @@ const { validate, schemas } = require('../middleware/validation');
 const multer = require('multer');
 const imageUpload = require('../middleware/upload');
 const { requiresTier } = require('../middleware/tierAuth');
+const { createRateLimiter } = require('../utils/rateLimit');
 
 /**
  * @swagger
@@ -37,6 +38,12 @@ const upload = multer({
     console.log('File rejected - invalid type');
     cb(new Error('Invalid file type'));
   }
+});
+
+const importLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: 'Too many import requests. Please try again later.'
 });
 
 /**
@@ -530,9 +537,9 @@ router.get('/import/requirements', authenticate, tradeController.checkImportRequ
  *                 rowCount:
  *                   type: integer
  */
-router.post('/import/validate', authenticate, upload.single('file'), tradeController.validateImportFile);
+router.post('/import/validate', authenticate, importLimiter, upload.single('file'), tradeController.validateImportFile);
 
-router.post('/import', authenticate, upload.single('file'), tradeController.importTrades);
+router.post('/import', authenticate, importLimiter, upload.single('file'), tradeController.importTrades);
 
 /**
  * @swagger
@@ -586,8 +593,8 @@ router.get('/import/history', authenticate, tradeController.getImportHistory);
  *       200:
  *         description: Import deleted successfully
  */
-router.delete('/import/bulk', authenticate, tradeController.bulkDeleteImports);
-router.delete('/import/:importId', authenticate, tradeController.deleteImport);
+router.delete('/import/bulk', authenticate, importLimiter, tradeController.bulkDeleteImports);
+router.delete('/import/:importId', authenticate, importLimiter, tradeController.deleteImport);
 router.get('/import/logs', authenticate, tradeController.getImportLogs);
 router.get('/import/logs/:filename', authenticate, tradeController.getLogFile);
 router.get('/cusip/resolution-status', authenticate, tradeController.getCusipResolutionStatus);

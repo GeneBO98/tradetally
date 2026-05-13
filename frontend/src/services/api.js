@@ -1,5 +1,15 @@
 import axios from 'axios'
 
+let sessionAuthToken = null
+
+function getCookie(name) {
+  const cookieEntry = document.cookie
+    .split('; ')
+    .find((entry) => entry.startsWith(`${name}=`))
+
+  return cookieEntry ? decodeURIComponent(cookieEntry.split('=').slice(1).join('=')) : null
+}
+
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
   withCredentials: true // Enable sending cookies with requests
@@ -8,9 +18,15 @@ const api = axios.create({
 
 api.interceptors.request.use(
   config => {
-    const token = localStorage.getItem('token')
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`
+    const method = (config.method || 'get').toUpperCase()
+    const csrfToken = getCookie('csrf_token')
+
+    if (sessionAuthToken) {
+      config.headers.Authorization = `Bearer ${sessionAuthToken}`
+    }
+
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && csrfToken) {
+      config.headers['X-CSRF-Token'] = csrfToken
     }
     
     // Only set JSON content type if it's not FormData
@@ -68,7 +84,11 @@ api.interceptors.response.use(
       const isLoginRequest = error.config?.url?.includes('/auth/login')
 
       if (!isAuthPage && !isLoginRequest && !error.config?.skipAuthRedirect) {
-        localStorage.removeItem('token')
+        // Clear the JS-readable csrf_token cookie so the synchronous "has session"
+        // hint in the auth store doesn't bounce us back to /dashboard in a loop.
+        document.cookie = 'csrf_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
+        document.cookie = `csrf_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=${window.location.hostname}`
+        sessionAuthToken = null
         window.location.href = '/login'
       }
     }
@@ -91,6 +111,10 @@ export const isRateLimited = () => {
 // Add CUSIP resolution utility
 api.resolveCusip = async (cusip) => {
   return api.post('/trades/cusip/resolve', { cusip })
+}
+
+export function setSessionAuthToken(token) {
+  sessionAuthToken = token || null
 }
 
 export default api
