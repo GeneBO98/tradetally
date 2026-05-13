@@ -145,4 +145,4 @@ This project is open source software.
 
 ## Support Development
 
-Feel free to [throw me a couple of bucks](https://www.paypal.com/donate/?business=EHMBRET4CNELL&no_recurring=0&currency_code=USD) if you got some use out of this.
+Feel free to [throw me a couple of bucks](https://buymeacoffee.com/BrennonO) if you got some use out of this.
