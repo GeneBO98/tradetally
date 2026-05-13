@@ -560,7 +560,7 @@ class EmailService {
           footnote: isExpired
             ? 'Your free plan includes unlimited trade storage, CSV import, and basic analytics.'
             : 'After your trial ends, you will return to the free plan with unlimited trade storage.',
-          unsubscribe_url: unsubscribeUrl || ''
+          marketing_unsubscribe_url: unsubscribeUrl || ''
         },
         text: `${isExpired ? 'Your TradeTally trial has ended.' : `Your TradeTally trial expires in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'}.`} Visit ${pricingUrl} to continue with Pro features.${unsubscribeUrl ? ` Unsubscribe: ${unsubscribeUrl}` : ''}`,
         headers: mailOptions.headers
@@ -652,7 +652,7 @@ class EmailService {
           total_pnl: pnlFormatted,
           pnl_color: pnlColor,
           dashboard_url: url,
-          unsubscribe_url: unsubscribeUrl
+          marketing_unsubscribe_url: unsubscribeUrl
         },
         text: `Your week: ${tradeCount} trades, P&L ${pnlFormatted}. View dashboard: ${url}. Unsubscribe: ${unsubscribeUrl}`,
         headers: mailOptions.headers
@@ -726,7 +726,7 @@ class EmailService {
           username,
           days_inactive: daysInactive,
           login_url: loginUrl,
-          unsubscribe_url: unsubscribeUrl
+          marketing_unsubscribe_url: unsubscribeUrl
         },
         text: `You haven't logged in for ${daysInactive} days. Log in: ${loginUrl}. Unsubscribe: ${unsubscribeUrl}`,
         headers: mailOptions.headers
@@ -910,7 +910,7 @@ class EmailService {
           feedback_label_7: '',
           feedback_url_8: '',
           feedback_label_8: '',
-          unsubscribe_url: unsubscribeUrl
+          marketing_unsubscribe_url: unsubscribeUrl
         },
         text: `${greeting} ${bodyText} Upgrade: ${upgradeUrl} Unsubscribe: ${unsubscribeUrl}`,
         headers: mailOptions.headers
@@ -1034,7 +1034,7 @@ class EmailService {
           feature_3: rawFeatureHighlights[2] || '',
           dashboard_url: dashboardUrl,
           cta_text: 'Open My Dashboard',
-          unsubscribe_url: unsubscribeUrl
+          marketing_unsubscribe_url: unsubscribeUrl
         },
         text: `Hi ${username}, a few of TradeTally's highest-value workflows are still waiting for you. Reopen your dashboard here: ${dashboardUrl}. Unsubscribe: ${unsubscribeUrl}`,
         headers: mailOptions.headers
@@ -1132,7 +1132,7 @@ class EmailService {
           status_note: sequenzyStatusNote,
           import_url: importUrl,
           cta_text: 'Try Import Again',
-          unsubscribe_url: unsubscribeUrl
+          marketing_unsubscribe_url: unsubscribeUrl
         },
         text: `Hi ${username}, if importing was the blocker, TradeTally's import flow is worth another try. Start here: ${importUrl}. Unsubscribe: ${unsubscribeUrl}`,
         headers: mailOptions.headers
@@ -1243,7 +1243,7 @@ class EmailService {
         variables: {
           username,
           review_url: reviewUrl,
-          unsubscribe_url: unsubscribeUrl
+          marketing_unsubscribe_url: unsubscribeUrl
         },
         text: `Hi ${username}, you've been on TradeTally Pro for about a month now, so I wanted to check in. How's it been for you so far? If TradeTally has been helpful, I'd love if you left a short review here: ${reviewUrl}. Even a sentence or two goes a long way. If you have feedback, feature requests, or anything that feels missing, just reply to this email. I read every response. Thanks, Brennon. Unsubscribe: ${unsubscribeUrl}`,
         headers: mailOptions.headers
