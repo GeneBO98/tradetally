@@ -16,6 +16,10 @@ function getEmailProvider() {
   return (process.env.EMAIL_PROVIDER || 'smtp').trim().toLowerCase();
 }
 
+function isSequenzyProvider() {
+  return getEmailProvider() === 'sequenzy';
+}
+
 class EmailService {
   static async logEmail({ recipient, subject, emailType, htmlBody, textBody, status, errorMessage, userId, metadata }) {
     try {
@@ -29,7 +33,7 @@ class EmailService {
     }
   }
   static createTransporter() {
-    if (getEmailProvider() === 'sequenzy') {
+    if (isSequenzyProvider()) {
       const emailDeliveryService = require('./emailDeliveryService');
       return {
         sendMail: (mailOptions) => emailDeliveryService.sendMail(mailOptions)
@@ -60,12 +64,16 @@ class EmailService {
   }
 
   static isConfigured() {
-    if (getEmailProvider() === 'sequenzy') {
+    if (isSequenzyProvider()) {
       const emailDeliveryService = require('./emailDeliveryService');
       return emailDeliveryService.isConfigured();
     }
 
     return !!(process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS);
+  }
+
+  static isSequenzyProvider() {
+    return isSequenzyProvider();
   }
 
   static getTransactionalFromAddress() {
@@ -309,12 +317,9 @@ class EmailService {
       <p style="color: #a1a1aa; font-size: 13px; line-height: 1.5; margin: 0 0 4px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
         This link expires in 24 hours. If you didn't create this account, ignore this email.
       </p>
-      <p style="color: #a1a1aa; font-size: 12px; margin: 16px 0 0 0; word-break: break-all; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-        ${verificationUrl}
-      </p>
     `;
 
-    const mailOptions = {
+    let mailOptions = {
       from: {
         name: 'TradeTally',
         address: process.env.EMAIL_FROM || 'noreply@tradetally.io'
@@ -328,15 +333,25 @@ class EmailService {
         'Message-ID': `<verify-${Date.now()}@tradetally.io>`
       }
     };
+    if (this.isSequenzyProvider()) {
+      mailOptions = {
+        from: { name: 'TradeTally', address: this.getTransactionalFromAddress() },
+        to: email,
+        slug: 'email-verification',
+        variables: { verification_url: verificationUrl },
+        text: `Welcome to TradeTally! Please verify your email address by visiting: ${verificationUrl}`,
+        headers: mailOptions.headers
+      };
+    }
 
     try {
       const transporter = this.createTransporter();
       await transporter.sendMail(mailOptions);
       console.log('Verification email sent to:', maskEmail(email));
-      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'verification', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent' });
+      await this.logEmail({ recipient: email, subject: mailOptions.subject || 'email-verification', emailType: 'verification', htmlBody: mailOptions.html || null, textBody: mailOptions.text, status: 'sent' });
     } catch (error) {
       console.error('Failed to send verification email:', error);
-      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'verification', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'failed', errorMessage: error.message });
+      await this.logEmail({ recipient: email, subject: mailOptions.subject || 'email-verification', emailType: 'verification', htmlBody: mailOptions.html || null, textBody: mailOptions.text, status: 'failed', errorMessage: error.message });
     }
   }
 
@@ -365,12 +380,9 @@ class EmailService {
       <p style="color: #a1a1aa; font-size: 13px; line-height: 1.5; margin: 0 0 4px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
         This link expires in 1 hour. If you didn't request this, you can safely ignore this email.
       </p>
-      <p style="color: #a1a1aa; font-size: 12px; margin: 16px 0 0 0; word-break: break-all; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-        ${resetUrl}
-      </p>
     `;
 
-    const mailOptions = {
+    let mailOptions = {
       from: {
         name: 'TradeTally',
         address: process.env.EMAIL_FROM || 'noreply@tradetally.io'
@@ -384,15 +396,25 @@ class EmailService {
         'Message-ID': `<reset-${Date.now()}@tradetally.io>`
       }
     };
+    if (this.isSequenzyProvider()) {
+      mailOptions = {
+        from: { name: 'TradeTally', address: this.getTransactionalFromAddress() },
+        to: email,
+        slug: 'password-reset',
+        variables: { reset_url: resetUrl },
+        text: `Reset your TradeTally password by visiting: ${resetUrl}`,
+        headers: mailOptions.headers
+      };
+    }
 
     try {
       const transporter = this.createTransporter();
       await transporter.sendMail(mailOptions);
       console.log('Password reset email sent to:', maskEmail(email));
-      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'password_reset', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent' });
+      await this.logEmail({ recipient: email, subject: mailOptions.subject || 'password-reset', emailType: 'password_reset', htmlBody: mailOptions.html || null, textBody: mailOptions.text, status: 'sent' });
     } catch (error) {
       console.error('Failed to send password reset email:', error);
-      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'password_reset', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'failed', errorMessage: error.message });
+      await this.logEmail({ recipient: email, subject: mailOptions.subject || 'password-reset', emailType: 'password_reset', htmlBody: mailOptions.html || null, textBody: mailOptions.text, status: 'failed', errorMessage: error.message });
     }
   }
 
@@ -421,12 +443,9 @@ class EmailService {
       <p style="color: #a1a1aa; font-size: 13px; line-height: 1.5; margin: 0 0 4px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
         This link expires in 24 hours. If you didn't request this change, contact support immediately.
       </p>
-      <p style="color: #a1a1aa; font-size: 12px; margin: 16px 0 0 0; word-break: break-all; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-        ${verificationUrl}
-      </p>
     `;
 
-    const mailOptions = {
+    let mailOptions = {
       from: {
         name: 'TradeTally',
         address: process.env.EMAIL_FROM || 'noreply@tradetally.io'
@@ -440,15 +459,25 @@ class EmailService {
         'Message-ID': `<email-change-${Date.now()}@tradetally.io>`
       }
     };
+    if (this.isSequenzyProvider()) {
+      mailOptions = {
+        from: { name: 'TradeTally', address: this.getTransactionalFromAddress() },
+        to: email,
+        slug: 'email-change-verification',
+        variables: { verification_url: verificationUrl },
+        text: `Verify your new TradeTally email address by visiting: ${verificationUrl}`,
+        headers: mailOptions.headers
+      };
+    }
 
     try {
       const transporter = this.createTransporter();
       await transporter.sendMail(mailOptions);
       console.log('Email change verification email sent to:', maskEmail(email));
-      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'email_change', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent' });
+      await this.logEmail({ recipient: email, subject: mailOptions.subject || 'email-change-verification', emailType: 'email_change', htmlBody: mailOptions.html || null, textBody: mailOptions.text, status: 'sent' });
     } catch (error) {
       console.error('Failed to send email change verification email:', error);
-      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'email_change', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'failed', errorMessage: error.message });
+      await this.logEmail({ recipient: email, subject: mailOptions.subject || 'email-change-verification', emailType: 'email_change', htmlBody: mailOptions.html || null, textBody: mailOptions.text, status: 'failed', errorMessage: error.message });
       throw error;
     }
   }
@@ -494,7 +523,7 @@ class EmailService {
       ${unsubscribeUrl ? this.getMarketingFooter(unsubscribeUrl) : ''}
     `;
 
-    const mailOptions = {
+    let mailOptions = {
       from: {
         name: 'TradeTally',
         address: process.env.EMAIL_FROM || 'noreply@tradetally.io'
@@ -515,15 +544,37 @@ class EmailService {
         'Message-ID': `<trial-${isExpired ? 'expired' : 'reminder'}-${Date.now()}@tradetally.io>`
       }
     };
+    if (this.isSequenzyProvider()) {
+      mailOptions = {
+        from: { name: 'TradeTally', address: this.getMarketingFromAddress() },
+        to: email,
+        slug: 'trial-expiration',
+        variables: {
+          headline: isExpired ? 'Your Pro trial has ended' : `${daysRemaining} day${daysRemaining === 1 ? '' : 's'} left on your trial`,
+          username,
+          body_text: isExpired
+            ? 'Your 14-day Pro trial has ended. You can continue using TradeTally on the free plan, or upgrade to keep Pro features like behavioral analytics, price alerts, and enhanced charts.'
+            : `Your Pro trial expires in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'}. Upgrade to keep access to behavioral analytics, price alerts, and enhanced charts.`,
+          cta_url: pricingUrl,
+          cta_text: isExpired ? 'View Plans' : 'Upgrade Now',
+          footnote: isExpired
+            ? 'Your free plan includes unlimited trade storage, CSV import, and basic analytics.'
+            : 'After your trial ends, you will return to the free plan with unlimited trade storage.',
+          unsubscribe_url: unsubscribeUrl || ''
+        },
+        text: `${isExpired ? 'Your TradeTally trial has ended.' : `Your TradeTally trial expires in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'}.`} Visit ${pricingUrl} to continue with Pro features.${unsubscribeUrl ? ` Unsubscribe: ${unsubscribeUrl}` : ''}`,
+        headers: mailOptions.headers
+      };
+    }
 
     try {
       const transporter = this.createTransporter();
       await transporter.sendMail(mailOptions);
       console.log(`Trial ${isExpired ? 'expiration' : 'reminder'} email sent successfully to ${maskEmail(email)}`);
-      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'trial_expiration', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent', userId, metadata: { daysRemaining, isExpired } });
+      await this.logEmail({ recipient: email, subject: mailOptions.subject || 'trial-expiration', emailType: 'trial_expiration', htmlBody: mailOptions.html || null, textBody: mailOptions.text, status: 'sent', userId, metadata: { daysRemaining, isExpired } });
     } catch (error) {
       console.error(`Error sending trial ${isExpired ? 'expiration' : 'reminder'} email:`, error);
-      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'trial_expiration', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'failed', errorMessage: error.message, userId });
+      await this.logEmail({ recipient: email, subject: mailOptions.subject || 'trial-expiration', emailType: 'trial_expiration', htmlBody: mailOptions.html || null, textBody: mailOptions.text, status: 'failed', errorMessage: error.message, userId });
       throw error;
     }
   }
@@ -577,7 +628,7 @@ class EmailService {
     let html = this.getBaseTemplate('Your Week in Trades', content);
     html = this.injectTrackingPixel(html, trackingId);
 
-    const mailOptions = {
+    let mailOptions = {
       from: { name: 'TradeTally', address: process.env.EMAIL_FROM || 'noreply@tradetally.io' },
       to: email,
       subject: `${tradeCount} trades this week - TradeTally`,
@@ -590,14 +641,31 @@ class EmailService {
         'Message-ID': `<weekly-digest-${Date.now()}@tradetally.io>`
       }
     };
+    if (this.isSequenzyProvider()) {
+      mailOptions = {
+        from: { name: 'TradeTally', address: this.getMarketingFromAddress() },
+        to: email,
+        slug: 'weekly-digest',
+        variables: {
+          username,
+          trade_count: tradeCount,
+          total_pnl: pnlFormatted,
+          pnl_color: pnlColor,
+          dashboard_url: url,
+          unsubscribe_url: unsubscribeUrl
+        },
+        text: `Your week: ${tradeCount} trades, P&L ${pnlFormatted}. View dashboard: ${url}. Unsubscribe: ${unsubscribeUrl}`,
+        headers: mailOptions.headers
+      };
+    }
     try {
       const transporter = this.createTransporter();
       await transporter.sendMail(mailOptions);
       console.log('Weekly digest sent to', maskEmail(email));
-      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'weekly_digest', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent', userId, metadata: { tradeCount, totalPnL } });
+      await this.logEmail({ recipient: email, subject: mailOptions.subject || 'weekly-digest', emailType: 'weekly_digest', htmlBody: mailOptions.html || null, textBody: mailOptions.text, status: 'sent', userId, metadata: { tradeCount, totalPnL } });
     } catch (error) {
       console.error('Error sending weekly digest to', maskEmail(email), error);
-      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'weekly_digest', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'failed', errorMessage: error.message, userId });
+      await this.logEmail({ recipient: email, subject: mailOptions.subject || 'weekly-digest', emailType: 'weekly_digest', htmlBody: mailOptions.html || null, textBody: mailOptions.text, status: 'failed', errorMessage: error.message, userId });
       throw error;
     }
   }
@@ -636,7 +704,7 @@ class EmailService {
     let html = this.getBaseTemplate('Your journal is waiting', content);
     html = this.injectTrackingPixel(html, trackingId);
 
-    const mailOptions = {
+    let mailOptions = {
       from: { name: 'TradeTally', address: process.env.EMAIL_FROM || 'noreply@tradetally.io' },
       to: email,
       subject: `Your journal is waiting - TradeTally`,
@@ -649,14 +717,29 @@ class EmailService {
         'Message-ID': `<reengagement-${Date.now()}@tradetally.io>`
       }
     };
+    if (this.isSequenzyProvider()) {
+      mailOptions = {
+        from: { name: 'TradeTally', address: this.getMarketingFromAddress() },
+        to: email,
+        slug: 'reengagement',
+        variables: {
+          username,
+          days_inactive: daysInactive,
+          login_url: loginUrl,
+          unsubscribe_url: unsubscribeUrl
+        },
+        text: `You haven't logged in for ${daysInactive} days. Log in: ${loginUrl}. Unsubscribe: ${unsubscribeUrl}`,
+        headers: mailOptions.headers
+      };
+    }
     try {
       const transporter = this.createTransporter();
       await transporter.sendMail(mailOptions);
       console.log('Re-engagement email sent to', maskEmail(email));
-      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'reengagement', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent', userId, metadata: { daysInactive } });
+      await this.logEmail({ recipient: email, subject: mailOptions.subject || 'reengagement', emailType: 'reengagement', htmlBody: mailOptions.html || null, textBody: mailOptions.text, status: 'sent', userId, metadata: { daysInactive } });
     } catch (error) {
       console.error('Error sending re-engagement email to', maskEmail(email), error);
-      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'reengagement', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'failed', errorMessage: error.message, userId });
+      await this.logEmail({ recipient: email, subject: mailOptions.subject || 'reengagement', emailType: 'reengagement', htmlBody: mailOptions.html || null, textBody: mailOptions.text, status: 'failed', errorMessage: error.message, userId });
       throw error;
     }
   }
@@ -783,7 +866,7 @@ class EmailService {
     let finalHtml = this.getBaseTemplate(headline, content);
     finalHtml = this.injectTrackingPixel(finalHtml, trackingId);
 
-    const mailOptions = {
+    let mailOptions = {
       from: { name: 'TradeTally', address: process.env.EMAIL_FROM || 'noreply@tradetally.io' },
       to: email,
       subject,
@@ -796,15 +879,52 @@ class EmailService {
         'Message-ID': `<trial-conversion-${Date.now()}@tradetally.io>`
       }
     };
+    if (this.isSequenzyProvider()) {
+      mailOptions = {
+        from: { name: 'TradeTally', address: this.getMarketingFromAddress() },
+        to: email,
+        slug: 'trial-conversion',
+        variables: {
+          headline,
+          greeting: greeting.replace(/&amp;/g, '&'),
+          trade_count: metrics.totalTrades || 0,
+          win_rate: winRateFormatted,
+          total_pnl: pnlFormatted,
+          pnl_color: metrics.totalPnL >= 0 ? '#16a34a' : '#dc2626',
+          body_text: bodyText.replace(/&amp;/g, '&'),
+          upgrade_url: upgradeUrl,
+          cta_text: ctaText,
+          feedback_url_1: upgradeUrl,
+          feedback_label_1: 'Upgrade to Pro',
+          feedback_url_2: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/contact`,
+          feedback_label_2: 'Send feedback',
+          feedback_url_3: '',
+          feedback_label_3: '',
+          feedback_url_4: '',
+          feedback_label_4: '',
+          feedback_url_5: '',
+          feedback_label_5: '',
+          feedback_url_6: '',
+          feedback_label_6: '',
+          feedback_url_7: '',
+          feedback_label_7: '',
+          feedback_url_8: '',
+          feedback_label_8: '',
+          unsubscribe_url: unsubscribeUrl
+        },
+        text: `${greeting} ${bodyText} Upgrade: ${upgradeUrl} Unsubscribe: ${unsubscribeUrl}`,
+        headers: mailOptions.headers
+      };
+    }
 
     try {
       const transporter = this.createTransporter();
       await transporter.sendMail(mailOptions);
       console.log('Trial conversion email sent to', maskEmail(email));
-      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'trial_conversion', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent', userId, metadata: metrics });
+      await this.logEmail({ recipient: email, subject: mailOptions.subject || 'trial-conversion', emailType: 'trial_conversion', htmlBody: mailOptions.html || null, textBody: mailOptions.text, status: 'sent', userId, metadata: metrics });
     } catch (error) {
       console.error('Error sending trial conversion email to', maskEmail(email), error);
-      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'trial_conversion', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'failed', errorMessage: error.message, userId });
+      await this.logEmail({ recipient: email, subject: mailOptions.subject || 'trial-conversion', emailType: 'trial_conversion', htmlBody: mailOptions.html || null, textBody: mailOptions.text, status: 'failed', errorMessage: error.message, userId });
       throw error;
     }
   }
@@ -839,7 +959,8 @@ class EmailService {
     const unsubscribeUrl = userId ? this.getUnsubscribeUrl(userId) : `${process.env.FRONTEND_URL || 'https://tradetally.io'}/settings`;
     const oneClickUnsubscribeUrl = userId ? this.getOneClickUnsubscribeUrl(userId) : unsubscribeUrl;
     const safeUsername = escapeHtml(username);
-    const featureHighlights = this.getAtRiskFeatureHighlights(metrics)
+    const rawFeatureHighlights = this.getAtRiskFeatureHighlights(metrics);
+    const featureHighlights = rawFeatureHighlights
       .map((item) => `<li style="margin: 0 0 10px 0;">${escapeHtml(item)}</li>`)
       .join('');
     const featureList = `
@@ -850,8 +971,12 @@ class EmailService {
 
     const headline = 'You\'re close to getting more from TradeTally';
     const greeting = `Hi ${safeUsername}, you already put real activity into your journal, and a few of the highest-value workflows may still be untouched.`;
+    const sequenzyGreeting = `Hi ${username}, you already put real activity into your journal, and a few of the highest-value workflows may still be untouched.`;
     const bodyText = metrics.lastFeatureUsed
       ? `Your last activity was around ${escapeHtml(metrics.lastFeatureUsed)}. If you come back in for even one short review session, you can turn the trades you've already logged into clearer patterns and better feedback loops.`
+      : 'If you come back in for even one short review session, you can turn the trades you\'ve already logged into clearer patterns and better feedback loops.';
+    const sequenzyBodyText = metrics.lastFeatureUsed
+      ? `Your last activity was around ${metrics.lastFeatureUsed}. If you come back in for even one short review session, you can turn the trades you've already logged into clearer patterns and better feedback loops.`
       : 'If you come back in for even one short review session, you can turn the trades you\'ve already logged into clearer patterns and better feedback loops.';
     const footer = this.getMarketingFooter(unsubscribeUrl);
 
@@ -882,7 +1007,7 @@ class EmailService {
     let html = this.getBaseTemplate(headline, content);
     html = this.injectTrackingPixel(html, trackingId);
 
-    const mailOptions = {
+    let mailOptions = {
       from: { name: 'TradeTally', address: this.getMarketingFromAddress() },
       to: email,
       subject: 'A few TradeTally features are still waiting for you',
@@ -895,15 +1020,35 @@ class EmailService {
         'Message-ID': `<at-risk-followup-${Date.now()}@tradetally.io>`
       }
     };
+    if (this.isSequenzyProvider()) {
+      mailOptions = {
+        from: { name: 'TradeTally', address: this.getMarketingFromAddress() },
+        to: email,
+        slug: 'at-risk-followup',
+        variables: {
+          headline,
+          greeting: sequenzyGreeting,
+          body_text: sequenzyBodyText,
+          feature_1: rawFeatureHighlights[0] || '',
+          feature_2: rawFeatureHighlights[1] || '',
+          feature_3: rawFeatureHighlights[2] || '',
+          dashboard_url: dashboardUrl,
+          cta_text: 'Open My Dashboard',
+          unsubscribe_url: unsubscribeUrl
+        },
+        text: `Hi ${username}, a few of TradeTally's highest-value workflows are still waiting for you. Reopen your dashboard here: ${dashboardUrl}. Unsubscribe: ${unsubscribeUrl}`,
+        headers: mailOptions.headers
+      };
+    }
 
     try {
       const transporter = this.createTransporter();
       await transporter.sendMail(mailOptions);
       console.log('At-risk follow-up email sent to', maskEmail(email));
-      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'at_risk_followup', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent', userId, metadata: metrics });
+      await this.logEmail({ recipient: email, subject: mailOptions.subject || 'at-risk-followup', emailType: 'at_risk_followup', htmlBody: mailOptions.html || null, textBody: mailOptions.text, status: 'sent', userId, metadata: metrics });
     } catch (error) {
       console.error('Error sending at-risk follow-up email to', maskEmail(email), error);
-      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'at_risk_followup', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'failed', errorMessage: error.message, userId, metadata: metrics });
+      await this.logEmail({ recipient: email, subject: mailOptions.subject || 'at-risk-followup', emailType: 'at_risk_followup', htmlBody: mailOptions.html || null, textBody: mailOptions.text, status: 'failed', errorMessage: error.message, userId, metadata: metrics });
       throw error;
     }
   }
@@ -923,11 +1068,15 @@ class EmailService {
       ? 'Importing trades into TradeTally is easier now'
       : 'If importing was the blocker, it\'s worth another try';
     const greeting = `Hi ${safeUsername}, you signed up for TradeTally but never got a clean import across the finish line.`;
+    const sequenzyGreeting = `Hi ${username}, you signed up for TradeTally but never got a clean import across the finish line.`;
     const bodyText = hasFailures
       ? 'We\'ve continued improving the parser, broker detection, and import diagnostics. If earlier CSV attempts failed or produced empty results, the import flow is in a better place now.'
       : 'We\'ve kept improving the import flow with better parser coverage, clearer diagnostics, and more resilient broker handling, so getting your first data set in should take less work.';
     const statusNote = hasFailures
       ? `<p style="color: #52525b; font-size: 15px; line-height: 1.6; margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">You had ${Number(context.recentImportFailures)} recent import issue${Number(context.recentImportFailures) === 1 ? '' : 's'} recorded on our side, which is exactly the kind of experience this cleanup was meant to reduce.</p>`
+      : '';
+    const sequenzyStatusNote = hasFailures
+      ? `You had ${Number(context.recentImportFailures)} recent import issue${Number(context.recentImportFailures) === 1 ? '' : 's'} recorded on our side, which is exactly the kind of experience this cleanup was meant to reduce.`
       : '';
     const footer = this.getMarketingFooter(unsubscribeUrl);
 
@@ -958,7 +1107,7 @@ class EmailService {
     let html = this.getBaseTemplate(headline, content);
     html = this.injectTrackingPixel(html, trackingId);
 
-    const mailOptions = {
+    let mailOptions = {
       from: { name: 'TradeTally', address: this.getMarketingFromAddress() },
       to: email,
       subject: 'Trade import updates you may have missed',
@@ -971,15 +1120,33 @@ class EmailService {
         'Message-ID': `<churned-no-imports-${Date.now()}@tradetally.io>`
       }
     };
+    if (this.isSequenzyProvider()) {
+      mailOptions = {
+        from: { name: 'TradeTally', address: this.getMarketingFromAddress() },
+        to: email,
+        slug: 'churned-no-imports-followup',
+        variables: {
+          headline,
+          greeting: sequenzyGreeting,
+          body_text: bodyText,
+          status_note: sequenzyStatusNote,
+          import_url: importUrl,
+          cta_text: 'Try Import Again',
+          unsubscribe_url: unsubscribeUrl
+        },
+        text: `Hi ${username}, if importing was the blocker, TradeTally's import flow is worth another try. Start here: ${importUrl}. Unsubscribe: ${unsubscribeUrl}`,
+        headers: mailOptions.headers
+      };
+    }
 
     try {
       const transporter = this.createTransporter();
       await transporter.sendMail(mailOptions);
       console.log('Churned no-import follow-up email sent to', maskEmail(email));
-      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'churned_no_imports_followup', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent', userId, metadata: context });
+      await this.logEmail({ recipient: email, subject: mailOptions.subject || 'churned-no-imports-followup', emailType: 'churned_no_imports_followup', htmlBody: mailOptions.html || null, textBody: mailOptions.text, status: 'sent', userId, metadata: context });
     } catch (error) {
       console.error('Error sending churned no-import follow-up email to', maskEmail(email), error);
-      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'churned_no_imports_followup', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'failed', errorMessage: error.message, userId, metadata: context });
+      await this.logEmail({ recipient: email, subject: mailOptions.subject || 'churned-no-imports-followup', emailType: 'churned_no_imports_followup', htmlBody: mailOptions.html || null, textBody: mailOptions.text, status: 'failed', errorMessage: error.message, userId, metadata: context });
       throw error;
     }
   }
@@ -1033,9 +1200,6 @@ class EmailService {
             </td>
           </tr>
         </table>
-        <p style="color: #a1a1aa; font-size: 13px; line-height: 1.5; margin: 0 0 24px 0; text-align: center; word-break: break-all; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-          ${reviewUrl}
-        </p>
         <p style="color: #52525b; font-size: 15px; line-height: 1.6; margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
           Even a sentence or two goes a long way.
         </p>
@@ -1056,7 +1220,7 @@ class EmailService {
     let html = this.getBaseTemplate('How\'s TradeTally Pro?', content);
     html = this.injectTrackingPixel(html, trackingId);
 
-    const mailOptions = {
+    let mailOptions = {
       from: { name: 'Brennon from TradeTally', address: process.env.EMAIL_FROM || 'noreply@tradetally.io' },
       replyTo: process.env.SUPPORT_EMAIL || 'support@tradetally.io',
       to: email,
@@ -1070,15 +1234,30 @@ class EmailService {
         'Message-ID': `<review-request-${Date.now()}@tradetally.io>`
       }
     };
+    if (this.isSequenzyProvider()) {
+      mailOptions = {
+        from: { name: 'Brennon from TradeTally', address: this.getMarketingFromAddress() },
+        replyTo: process.env.SUPPORT_EMAIL || 'support@tradetally.io',
+        to: email,
+        slug: 'review-request',
+        variables: {
+          username,
+          review_url: reviewUrl,
+          unsubscribe_url: unsubscribeUrl
+        },
+        text: `Hi ${username}, you've been on TradeTally Pro for about a month now, so I wanted to check in. How's it been for you so far? If TradeTally has been helpful, I'd love if you left a short review here: ${reviewUrl}. Even a sentence or two goes a long way. If you have feedback, feature requests, or anything that feels missing, just reply to this email. I read every response. Thanks, Brennon. Unsubscribe: ${unsubscribeUrl}`,
+        headers: mailOptions.headers
+      };
+    }
 
     try {
       const transporter = this.createTransporter();
       await transporter.sendMail(mailOptions);
       console.log('[SUCCESS] Review request email sent to', maskEmail(email));
-      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'review_request', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent', userId });
+      await this.logEmail({ recipient: email, subject: mailOptions.subject || 'review-request', emailType: 'review_request', htmlBody: mailOptions.html || null, textBody: mailOptions.text, status: 'sent', userId });
     } catch (error) {
       console.error('[ERROR] Error sending review request email to', maskEmail(email), error);
-      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'review_request', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'failed', errorMessage: error.message, userId });
+      await this.logEmail({ recipient: email, subject: mailOptions.subject || 'review-request', emailType: 'review_request', htmlBody: mailOptions.html || null, textBody: mailOptions.text, status: 'failed', errorMessage: error.message, userId });
       throw error;
     }
   }
@@ -1145,7 +1324,7 @@ class EmailService {
       </p>
     `;
 
-    const mailOptions = {
+    let mailOptions = {
       from: {
         name: 'TradeTally',
         address: process.env.EMAIL_FROM || 'noreply@tradetally.io'
@@ -1159,15 +1338,30 @@ class EmailService {
         'Message-ID': `<subscription-welcome-${Date.now()}@tradetally.io>`
       }
     };
+    if (this.isSequenzyProvider()) {
+      mailOptions = {
+        from: { name: 'TradeTally', address: this.getTransactionalFromAddress() },
+        to: email,
+        slug: 'subscription-welcome',
+        variables: {
+          username,
+          plan_name: planName || 'Pro',
+          support_email: supportEmail,
+          dashboard_url: dashboardUrl
+        },
+        text: `Hi ${username}, thank you for subscribing to ${planName || 'Pro'}. All Pro features are now unlocked. As a Pro subscriber, you get priority service for any issues or feature requests. Reach out anytime at ${supportEmail}. Manage your subscription at Settings > Billing. Go to your dashboard: ${dashboardUrl}`,
+        headers: mailOptions.headers
+      };
+    }
 
     try {
       const transporter = this.createTransporter();
       await transporter.sendMail(mailOptions);
       console.log('[SUCCESS] Subscription welcome email sent to', maskEmail(email));
-      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'subscription_welcome', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent', metadata: { planName } });
+      await this.logEmail({ recipient: email, subject: mailOptions.subject || 'subscription-welcome', emailType: 'subscription_welcome', htmlBody: mailOptions.html || null, textBody: mailOptions.text, status: 'sent', metadata: { planName } });
     } catch (error) {
       console.error('[ERROR] Error sending subscription welcome email to', maskEmail(email), error);
-      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'subscription_welcome', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'failed', errorMessage: error.message });
+      await this.logEmail({ recipient: email, subject: mailOptions.subject || 'subscription-welcome', emailType: 'subscription_welcome', htmlBody: mailOptions.html || null, textBody: mailOptions.text, status: 'failed', errorMessage: error.message });
       throw error;
     }
   }
@@ -1193,7 +1387,7 @@ class EmailService {
 
     const html = this.getBaseTemplate(`[Support] ${subject}`, content);
 
-    const mailOptions = {
+    let mailOptions = {
       from: {
         name: 'TradeTally Support',
         address: process.env.EMAIL_FROM || 'noreply@tradetally.io'
@@ -1204,15 +1398,31 @@ class EmailService {
       html: html,
       text: `Support Request\n\nFrom: ${username} (${userEmail})\nPlan: ${tier}\nSubject: ${subject}\n\n${message}`
     };
+    if (this.isSequenzyProvider()) {
+      mailOptions = {
+        from: { name: 'TradeTally Support', address: this.getTransactionalFromAddress() },
+        replyTo: userEmail,
+        to,
+        slug: 'support-request',
+        variables: {
+          username: username || 'Unknown',
+          user_email: userEmail,
+          tier,
+          support_subject: subject,
+          message_html: safeMessage
+        },
+        text: `Support Request\n\nFrom: ${username} (${userEmail})\nPlan: ${tier}\nSubject: ${subject}\n\n${message}`
+      };
+    }
 
     try {
       const transporter = this.createTransporter();
       await transporter.sendMail(mailOptions);
       console.log('[SUCCESS] Support request email sent from', maskEmail(userEmail));
-      await this.logEmail({ recipient: to, subject: mailOptions.subject, emailType: 'support_request', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent', metadata: { userEmail, tier } });
+      await this.logEmail({ recipient: to, subject: mailOptions.subject || 'support-request', emailType: 'support_request', htmlBody: mailOptions.html || null, textBody: mailOptions.text, status: 'sent', metadata: { userEmail, tier } });
     } catch (error) {
       console.error('[ERROR] Error sending support request email:', error);
-      await this.logEmail({ recipient: to, subject: mailOptions.subject, emailType: 'support_request', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'failed', errorMessage: error.message });
+      await this.logEmail({ recipient: to, subject: mailOptions.subject || 'support-request', emailType: 'support_request', htmlBody: mailOptions.html || null, textBody: mailOptions.text, status: 'failed', errorMessage: error.message });
       throw error;
     }
   }
