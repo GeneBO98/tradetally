@@ -1,4 +1,5 @@
 const unsubscribeService = require('../services/unsubscribeService');
+const sequenzySubscriberSyncService = require('../services/sequenzySubscriberSyncService');
 const User = require('../models/User');
 const logger = require('../utils/logger');
 
@@ -92,6 +93,8 @@ async function handleUnsubscribe(req, res) {
         error: 'User not found'
       });
     }
+
+    sequenzySubscriberSyncService.queueSyncUserById(userId);
 
     logger.info(`[UNSUBSCRIBE] User ${userId} unsubscribed from marketing emails`);
 
