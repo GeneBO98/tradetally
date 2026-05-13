@@ -12,6 +12,10 @@ function maskEmail(email) {
   return `${localPart.slice(0, 2)}***@${domain}`;
 }
 
+function getEmailProvider() {
+  return (process.env.EMAIL_PROVIDER || 'smtp').trim().toLowerCase();
+}
+
 class EmailService {
   static async logEmail({ recipient, subject, emailType, htmlBody, textBody, status, errorMessage, userId, metadata }) {
     try {
@@ -25,6 +29,13 @@ class EmailService {
     }
   }
   static createTransporter() {
+    if (getEmailProvider() === 'sequenzy') {
+      const emailDeliveryService = require('./emailDeliveryService');
+      return {
+        sendMail: (mailOptions) => emailDeliveryService.sendMail(mailOptions)
+      };
+    }
+
     const port = parseInt(process.env.EMAIL_PORT) || 587;
     return nodemailer.createTransport({
       host: process.env.EMAIL_HOST,
@@ -49,7 +60,28 @@ class EmailService {
   }
 
   static isConfigured() {
+    if (getEmailProvider() === 'sequenzy') {
+      const emailDeliveryService = require('./emailDeliveryService');
+      return emailDeliveryService.isConfigured();
+    }
+
     return !!(process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS);
+  }
+
+  static getTransactionalFromAddress() {
+    return process.env.SEQUENZY_FROM_TRANSACTIONAL ||
+      process.env.EMAIL_FROM_TRANSACTIONAL ||
+      process.env.SEQUENZY_FROM ||
+      process.env.EMAIL_FROM ||
+      'noreply@tradetally.io';
+  }
+
+  static getMarketingFromAddress() {
+    return process.env.SEQUENZY_FROM_MARKETING ||
+      process.env.EMAIL_FROM_MARKETING ||
+      process.env.SEQUENZY_FROM ||
+      process.env.EMAIL_FROM ||
+      this.getTransactionalFromAddress();
   }
 
   static getBaseTemplate(title, content) {
@@ -773,6 +805,181 @@ class EmailService {
     } catch (error) {
       console.error('Error sending trial conversion email to', maskEmail(email), error);
       await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'trial_conversion', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'failed', errorMessage: error.message, userId });
+      throw error;
+    }
+  }
+
+  static getAtRiskFeatureHighlights(metrics = {}) {
+    const highlights = [];
+
+    if ((metrics.totalImports || 0) > 0 || (metrics.totalBrokerSyncs || 0) > 0) {
+      highlights.push('Faster trade capture with imports and broker sync');
+    }
+    if ((metrics.totalTrades || 0) > 0) {
+      highlights.push('Performance analytics on your existing trades');
+    }
+    if ((metrics.totalDiaryEntries || 0) > 0) {
+      highlights.push('Journaling and review workflows tied to each setup');
+    }
+
+    if (highlights.length === 0) {
+      highlights.push('Imports, analytics, journaling, and review tools in one place');
+    }
+
+    return highlights.slice(0, 3);
+  }
+
+  static async sendAtRiskFollowupEmail(email, username, metrics, userId) {
+    if (!this.isConfigured()) {
+      console.log('Email not configured, skipping at-risk follow-up email');
+      return;
+    }
+
+    const dashboardUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard`;
+    const unsubscribeUrl = userId ? this.getUnsubscribeUrl(userId) : `${process.env.FRONTEND_URL || 'https://tradetally.io'}/settings`;
+    const oneClickUnsubscribeUrl = userId ? this.getOneClickUnsubscribeUrl(userId) : unsubscribeUrl;
+    const safeUsername = escapeHtml(username);
+    const featureHighlights = this.getAtRiskFeatureHighlights(metrics)
+      .map((item) => `<li style="margin: 0 0 10px 0;">${escapeHtml(item)}</li>`)
+      .join('');
+    const featureList = `
+      <ul style="color: #52525b; font-size: 15px; line-height: 1.6; margin: 0 0 28px 20px; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        ${featureHighlights}
+      </ul>
+    `;
+
+    const headline = 'You\'re close to getting more from TradeTally';
+    const greeting = `Hi ${safeUsername}, you already put real activity into your journal, and a few of the highest-value workflows may still be untouched.`;
+    const bodyText = metrics.lastFeatureUsed
+      ? `Your last activity was around ${escapeHtml(metrics.lastFeatureUsed)}. If you come back in for even one short review session, you can turn the trades you've already logged into clearer patterns and better feedback loops.`
+      : 'If you come back in for even one short review session, you can turn the trades you\'ve already logged into clearer patterns and better feedback loops.';
+    const footer = this.getMarketingFooter(unsubscribeUrl);
+
+    const templateHtml = loadTemplate('at-risk-followup.html');
+    const content = templateHtml
+      ? renderTemplate(templateHtml, {
+          headline,
+          greeting,
+          bodyText,
+          featureList,
+          dashboardUrl,
+          buttonStyle: this.getButtonStyle(),
+          ctaText: 'Open My Dashboard',
+          footer
+        })
+      : `
+        <h1 style="color: #18181b; font-size: 22px; margin: 0 0 8px 0; font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">${headline}</h1>
+        <p style="color: #71717a; font-size: 15px; line-height: 1.6; margin: 0 0 20px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">${greeting}</p>
+        <p style="color: #52525b; font-size: 15px; line-height: 1.6; margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">${bodyText}</p>
+        ${featureList}
+        <div style="text-align: center; margin: 0 0 8px 0;">
+          <a href="${dashboardUrl}" style="${this.getButtonStyle()}">Open My Dashboard</a>
+        </div>
+        ${footer}
+      `;
+
+    const trackingId = userId ? await this.recordEmailEngagement(userId, 'at_risk_followup', metrics) : null;
+    let html = this.getBaseTemplate(headline, content);
+    html = this.injectTrackingPixel(html, trackingId);
+
+    const mailOptions = {
+      from: { name: 'TradeTally', address: this.getMarketingFromAddress() },
+      to: email,
+      subject: 'A few TradeTally features are still waiting for you',
+      html,
+      text: `Hi ${username}, a few of TradeTally's highest-value workflows are still waiting for you. Reopen your dashboard here: ${dashboardUrl}. Unsubscribe: ${unsubscribeUrl}`,
+      headers: {
+        'List-Unsubscribe': `<${oneClickUnsubscribeUrl}>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        'X-Entity-Ref-ID': `at-risk-followup-${Date.now()}`,
+        'Message-ID': `<at-risk-followup-${Date.now()}@tradetally.io>`
+      }
+    };
+
+    try {
+      const transporter = this.createTransporter();
+      await transporter.sendMail(mailOptions);
+      console.log('At-risk follow-up email sent to', maskEmail(email));
+      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'at_risk_followup', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent', userId, metadata: metrics });
+    } catch (error) {
+      console.error('Error sending at-risk follow-up email to', maskEmail(email), error);
+      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'at_risk_followup', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'failed', errorMessage: error.message, userId, metadata: metrics });
+      throw error;
+    }
+  }
+
+  static async sendChurnedNoImportsFollowupEmail(email, username, context, userId) {
+    if (!this.isConfigured()) {
+      console.log('Email not configured, skipping churned no-import follow-up email');
+      return;
+    }
+
+    const importUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/import`;
+    const unsubscribeUrl = userId ? this.getUnsubscribeUrl(userId) : `${process.env.FRONTEND_URL || 'https://tradetally.io'}/settings`;
+    const oneClickUnsubscribeUrl = userId ? this.getOneClickUnsubscribeUrl(userId) : unsubscribeUrl;
+    const safeUsername = escapeHtml(username);
+    const hasFailures = (context.recentImportFailures || 0) > 0;
+    const headline = hasFailures
+      ? 'Importing trades into TradeTally is easier now'
+      : 'If importing was the blocker, it\'s worth another try';
+    const greeting = `Hi ${safeUsername}, you signed up for TradeTally but never got a clean import across the finish line.`;
+    const bodyText = hasFailures
+      ? 'We\'ve continued improving the parser, broker detection, and import diagnostics. If earlier CSV attempts failed or produced empty results, the import flow is in a better place now.'
+      : 'We\'ve kept improving the import flow with better parser coverage, clearer diagnostics, and more resilient broker handling, so getting your first data set in should take less work.';
+    const statusNote = hasFailures
+      ? `<p style="color: #52525b; font-size: 15px; line-height: 1.6; margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">You had ${Number(context.recentImportFailures)} recent import issue${Number(context.recentImportFailures) === 1 ? '' : 's'} recorded on our side, which is exactly the kind of experience this cleanup was meant to reduce.</p>`
+      : '';
+    const footer = this.getMarketingFooter(unsubscribeUrl);
+
+    const templateHtml = loadTemplate('churned-no-imports-followup.html');
+    const content = templateHtml
+      ? renderTemplate(templateHtml, {
+          headline,
+          greeting,
+          bodyText,
+          statusNote,
+          importUrl,
+          buttonStyle: this.getButtonStyle(),
+          ctaText: 'Try Import Again',
+          footer
+        })
+      : `
+        <h1 style="color: #18181b; font-size: 22px; margin: 0 0 8px 0; font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">${headline}</h1>
+        <p style="color: #71717a; font-size: 15px; line-height: 1.6; margin: 0 0 20px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">${greeting}</p>
+        <p style="color: #52525b; font-size: 15px; line-height: 1.6; margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">${bodyText}</p>
+        ${statusNote}
+        <div style="text-align: center; margin: 0 0 8px 0;">
+          <a href="${importUrl}" style="${this.getButtonStyle()}">Try Import Again</a>
+        </div>
+        ${footer}
+      `;
+
+    const trackingId = userId ? await this.recordEmailEngagement(userId, 'churned_no_imports_followup', context) : null;
+    let html = this.getBaseTemplate(headline, content);
+    html = this.injectTrackingPixel(html, trackingId);
+
+    const mailOptions = {
+      from: { name: 'TradeTally', address: this.getMarketingFromAddress() },
+      to: email,
+      subject: 'Trade import updates you may have missed',
+      html,
+      text: `Hi ${username}, if importing was the blocker, TradeTally's import flow is worth another try. Start here: ${importUrl}. Unsubscribe: ${unsubscribeUrl}`,
+      headers: {
+        'List-Unsubscribe': `<${oneClickUnsubscribeUrl}>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        'X-Entity-Ref-ID': `churned-no-imports-${Date.now()}`,
+        'Message-ID': `<churned-no-imports-${Date.now()}@tradetally.io>`
+      }
+    };
+
+    try {
+      const transporter = this.createTransporter();
+      await transporter.sendMail(mailOptions);
+      console.log('Churned no-import follow-up email sent to', maskEmail(email));
+      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'churned_no_imports_followup', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'sent', userId, metadata: context });
+    } catch (error) {
+      console.error('Error sending churned no-import follow-up email to', maskEmail(email), error);
+      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'churned_no_imports_followup', htmlBody: mailOptions.html, textBody: mailOptions.text, status: 'failed', errorMessage: error.message, userId, metadata: context });
       throw error;
     }
   }
