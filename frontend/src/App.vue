@@ -11,7 +11,7 @@
     <!-- Footer -->
     <footer v-if="!isAuthRoute" class="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-        <div class="flex items-center justify-center">
+        <div class="flex flex-col items-center justify-center gap-4">
           <div class="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400">
             <a
               href="https://docs.tradetally.io"
@@ -87,6 +87,18 @@
             <span>•</span>
             <VersionDisplay />
           </div>
+          <a
+            href="https://www.betterlaunch.co"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex justify-center"
+          >
+            <img
+              src="https://www.betterlaunch.co/badge-dark.svg"
+              alt="Featured on Better Launch"
+              class="h-auto w-[200px]"
+            />
+          </a>
         </div>
       </div>
     </footer>
