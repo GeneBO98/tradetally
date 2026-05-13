@@ -10,7 +10,7 @@ describe('auth cookie options', () => {
     process.env.NODE_ENV = originalNodeEnv;
   });
 
-  test('uses SameSite=None without forcing Secure for cross-origin local HTTP requests', () => {
+  test('marks localhost cookies Secure so SameSite=None is accepted over http://localhost', () => {
     process.env.NODE_ENV = 'development';
 
     const req = {
@@ -28,20 +28,20 @@ describe('auth cookie options', () => {
     expect(buildAuthCookieOptions(req)).toEqual(
       expect.objectContaining({
         sameSite: 'none',
-        secure: false,
+        secure: true,
         httpOnly: true
       })
     );
     expect(buildCsrfCookieOptions(req)).toEqual(
       expect.objectContaining({
         sameSite: 'none',
-        secure: false,
+        secure: true,
         httpOnly: false
       })
     );
   });
 
-  test('keeps SameSite=Lax for same-origin requests', () => {
+  test('keeps SameSite=Lax for same-origin localhost requests, still marked Secure', () => {
     process.env.NODE_ENV = 'development';
 
     const req = {
@@ -59,6 +59,29 @@ describe('auth cookie options', () => {
     expect(buildAuthCookieOptions(req)).toEqual(
       expect.objectContaining({
         sameSite: 'lax',
+        secure: true
+      })
+    );
+  });
+
+  test('non-localhost http dev requests stay non-Secure', () => {
+    process.env.NODE_ENV = 'development';
+
+    const req = {
+      protocol: 'http',
+      secure: false,
+      headers: {
+        origin: 'http://192.168.1.10:5173',
+        host: '192.168.1.10:3030'
+      },
+      get(name) {
+        return this.headers[name.toLowerCase()];
+      }
+    };
+
+    expect(buildAuthCookieOptions(req)).toEqual(
+      expect.objectContaining({
+        sameSite: 'none',
         secure: false
       })
     );
