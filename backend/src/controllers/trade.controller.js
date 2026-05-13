@@ -1278,12 +1278,27 @@ const tradeController = {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
-      const fileUrl = `/uploads/${req.file.filename}`;
+      if (!req.file.mimetype || !req.file.mimetype.startsWith('image/')) {
+        return res.status(400).json({ error: 'Only image attachments are supported' });
+      }
+
+      await imageProcessor.validateImage(req.file.buffer);
+
+      const uploadsDir = path.join(__dirname, '../../uploads/trades');
+      const processedImage = await imageProcessor.processImage(
+        req.file.buffer,
+        req.file.originalname,
+        req.user.id,
+        req.params.id
+      );
+      const savedImage = await imageProcessor.saveImage(processedImage, uploadsDir);
+
+      const fileUrl = `/api/trades/${req.params.id}/images/${savedImage.filename}`;
       const attachment = await Trade.addAttachment(req.params.id, {
         fileUrl,
-        fileType: req.file.mimetype,
+        fileType: savedImage.mimeType,
         fileName: req.file.originalname,
-        fileSize: req.file.size
+        fileSize: savedImage.size
       });
 
       res.status(201).json({ attachment });

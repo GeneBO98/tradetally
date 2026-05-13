@@ -1,14 +1,14 @@
 const express = require('express');
 const router = express.Router();
-const rateLimit = require('express-rate-limit');
 const passkeyController = require('../controllers/passkey.controller');
 const { authenticate } = require('../middleware/auth');
+const { createRateLimiter } = require('../utils/rateLimit');
 
 // Rate limit for login endpoints
-const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+const loginLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
   max: 10,
-  message: { error: 'Too many passkey login attempts, please try again later.' },
+  message: 'Too many passkey login attempts, please try again later.'
 });
 
 // Authenticated routes - manage passkeys

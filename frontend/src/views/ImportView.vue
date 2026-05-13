@@ -2940,8 +2940,7 @@ async function addCusipMapping() {
     const response = await fetch('/api/cusip-mappings', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${tradesStore.token || localStorage.getItem('token')}`
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         cusip: cusipForm.value.cusip.toUpperCase(),
@@ -2981,11 +2980,7 @@ async function lookupCusip() {
   
   try {
     // Use the database function to get mapping
-    const response = await fetch(`/api/cusip-mappings?search=${lookupForm.value.cusip.toUpperCase()}&limit=1`, {
-      headers: {
-        'Authorization': `Bearer ${tradesStore.token || localStorage.getItem('token')}`
-      }
-    })
+    const response = await fetch(`/api/cusip-mappings?search=${lookupForm.value.cusip.toUpperCase()}&limit=1`)
     
     if (response.ok) {
       const data = await response.json()
@@ -3030,10 +3025,7 @@ async function deleteCusipMapping(cusip) {
   
   try {
     const response = await fetch(`/api/cusip-mappings/${cusip}`, {
-      method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${tradesStore.token || localStorage.getItem('token')}`
-      }
+      method: 'DELETE'
     })
     
     if (response.ok) {
@@ -3057,7 +3049,6 @@ async function fetchUnmappedCusipsCount() {
     const url = `/api/cusip-mappings/unmapped?_t=${Date.now()}`
     const response = await fetch(url, {
       headers: {
-        'Authorization': `Bearer ${tradesStore.token || localStorage.getItem('token')}`,
         'Cache-Control': 'no-cache'
       }
     })

@@ -107,6 +107,45 @@ class ImageProcessor {
   }
 
   /**
+   * Process and compress avatar image
+   */
+  async processAvatar(inputBuffer, originalFilename, userId) {
+    try {
+      if (!this.isSupportedFormat(originalFilename)) {
+        throw new Error(`Unsupported image format. Supported: ${this.supportedFormats.join(', ')}`);
+      }
+
+      await sharp(inputBuffer).metadata();
+
+      const processedBuffer = await sharp(inputBuffer)
+        .resize(512, 512, {
+          fit: 'cover',
+          position: 'centre',
+          withoutEnlargement: false
+        })
+        .webp(this.compressionSettings.webp)
+        .toBuffer();
+
+      const compressionRatio = ((inputBuffer.length - processedBuffer.length) / inputBuffer.length * 100).toFixed(1);
+      const timestamp = Date.now();
+      const sanitizedOriginalName = path.parse(originalFilename).name.replace(/[^a-zA-Z0-9-_]/g, '');
+      const filename = `avatar_${userId}_${timestamp}_${sanitizedOriginalName}.webp`;
+
+      return {
+        buffer: processedBuffer,
+        filename,
+        mimeType: 'image/webp',
+        originalSize: inputBuffer.length,
+        compressedSize: processedBuffer.length,
+        compressionRatio: parseFloat(compressionRatio)
+      };
+    } catch (error) {
+      console.error('Avatar processing error:', error);
+      throw new Error(`Avatar processing failed: ${error.message}`);
+    }
+  }
+
+  /**
    * Save processed image to disk
    */
   async saveImage(processedImage, uploadsDir) {

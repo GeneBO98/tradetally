@@ -253,10 +253,7 @@ const fetchNotifications = async () => {
     loading.value = true
     // Only fetch unread notifications for the bell dropdown
     const response = await fetch(`/api/notifications?limit=10&unread_only=true&_t=${Date.now()}`, {
-      cache: 'no-store',
-      headers: {
-        'Authorization': `Bearer ${authStore.token}`
-      }
+      cache: 'no-store'
     })
     
     if (response.ok) {
@@ -289,10 +286,7 @@ const fetchUnreadCount = async () => {
   
   try {
     const response = await fetch(`/api/notifications/unread-count?_t=${Date.now()}`, {
-      cache: 'no-store',
-      headers: {
-        'Authorization': `Bearer ${authStore.token}`
-      }
+      cache: 'no-store'
     })
     
     if (response.ok) {
@@ -316,8 +310,7 @@ const markAllAsRead = async () => {
     const response = await fetch('/api/notifications/mark-all-read', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authStore.token}`
+        'Content-Type': 'application/json'
       }
     })
     
@@ -349,8 +342,7 @@ const handleNotificationClick = async (notification) => {
       await fetch('/api/notifications/mark-read', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authStore.token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({ 
           notifications: [{ id: notification.id, type: notification.type }] 

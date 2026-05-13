@@ -2,6 +2,14 @@ const express = require('express');
 const router = express.Router();
 const aiController = require('../controllers/ai.controller');
 const { authenticate } = require('../middleware/auth');
+const { validate, schemas } = require('../middleware/validation');
+const { createRateLimiter } = require('../utils/rateLimit');
+
+const aiLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: 'Too many AI requests. Please slow down and try again later.'
+});
 
 /**
  * AI Routes
@@ -51,7 +59,7 @@ const { authenticate } = require('../middleware/auth');
  *       403:
  *         description: Pro subscription required
  */
-router.post('/sessions', authenticate, aiController.createSession);
+router.post('/sessions', authenticate, aiLimiter, validate(schemas.aiCreateSession), aiController.createSession);
 
 /**
  * @swagger
@@ -157,7 +165,7 @@ router.get('/sessions/:id', authenticate, aiController.getSession);
  *       429:
  *         description: Follow-up limit reached
  */
-router.post('/sessions/:id/followup', authenticate, aiController.sendFollowup);
+router.post('/sessions/:id/followup', authenticate, aiLimiter, validate(schemas.aiFollowup), aiController.sendFollowup);
 
 /**
  * @swagger
@@ -179,7 +187,7 @@ router.post('/sessions/:id/followup', authenticate, aiController.sendFollowup);
  *       404:
  *         description: Session not found
  */
-router.post('/sessions/:id/close', authenticate, aiController.closeSession);
+router.post('/sessions/:id/close', authenticate, aiLimiter, aiController.closeSession);
 
 /**
  * @swagger

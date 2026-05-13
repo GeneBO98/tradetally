@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
-const { api, router } = vi.hoisted(() => ({
+const { api, setSessionAuthToken, router } = vi.hoisted(() => ({
   api: {
     defaults: {
       headers: {
@@ -11,13 +11,15 @@ const { api, router } = vi.hoisted(() => ({
     get: vi.fn(),
     post: vi.fn()
   },
+  setSessionAuthToken: vi.fn(),
   router: {
     push: vi.fn()
   }
 }))
 
 vi.mock('@/services/api', () => ({
-  default: api
+  default: api,
+  setSessionAuthToken
 }))
 
 vi.mock('@/router', () => ({
@@ -30,6 +32,7 @@ describe('auth store', () => {
     api.defaults.headers.common = {}
     api.get.mockReset()
     api.post.mockReset()
+    setSessionAuthToken.mockReset()
     router.push.mockReset()
     localStorage.clear()
   })
@@ -65,8 +68,6 @@ describe('auth store', () => {
     expect(store.user.email).toBe('trader@example.com')
     expect(store.user.settings.publicProfile).toBe(true)
     expect(store.pendingOnboarding).toBe(true)
-    expect(localStorage.getItem('token')).toBe('token-123')
-    expect(api.defaults.headers.common.Authorization).toBe('Bearer token-123')
     expect(router.push).toHaveBeenCalledWith('/dashboard?tab=stats')
   })
 

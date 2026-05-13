@@ -9,7 +9,7 @@ class JobQueue {
 
   /**
    * Add a job to the queue
-   * @param {string} type - Job type (cusip_resolution, strategy_classification, news_enrichment, news_backfill, quality_backfill)
+   * @param {string} type - Job type (cusip_resolution, strategy_classification, news_enrichment, news_backfill, quality_backfill, verification_email, password_reset_email, support_request_email)
    * @param {object} data - Job data
    * @param {number} priority - Priority (1=highest, 5=lowest)
    * @param {string} userId - User ID for the job
@@ -266,6 +266,15 @@ class JobQueue {
           break;
         case 'quality_backfill':
           result = await this.processQualityBackfill(data);
+          break;
+        case 'verification_email':
+          result = await this.processVerificationEmail(data);
+          break;
+        case 'password_reset_email':
+          result = await this.processPasswordResetEmail(data);
+          break;
+        case 'support_request_email':
+          result = await this.processSupportRequestEmail(data);
           break;
         default:
           throw new Error(`Unknown job type: ${job.type}`);
@@ -691,6 +700,36 @@ class JobQueue {
       logger.logError(`News enrichment job failed: ${error.message}`);
       throw error;
     }
+  }
+
+  async processVerificationEmail(data) {
+    const EmailService = require('../services/emailService');
+    const { email, token } = data;
+
+    if (!email || !token) {
+      throw new Error('Verification email job is missing email or token');
+    }
+
+    await EmailService.sendVerificationEmail(email, token);
+    return { sent: true, email };
+  }
+
+  async processPasswordResetEmail(data) {
+    const EmailService = require('../services/emailService');
+    const { email, token } = data;
+
+    if (!email || !token) {
+      throw new Error('Password reset email job is missing email or token');
+    }
+
+    await EmailService.sendPasswordResetEmail(email, token);
+    return { sent: true, email };
+  }
+
+  async processSupportRequestEmail(data) {
+    const EmailService = require('../services/emailService');
+    await EmailService.sendSupportRequest(data);
+    return { sent: true, recipient: data.to };
   }
 }
 

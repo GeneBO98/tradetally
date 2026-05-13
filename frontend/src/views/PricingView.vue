@@ -405,7 +405,7 @@ export default {
       }
 
       // Check if user is authenticated
-      if (!authStore.token || !authStore.isAuthenticated) {
+      if (!authStore.isAuthenticated) {
         router.push('/login?redirect=' + encodeURIComponent('/pricing'))
         return
       }

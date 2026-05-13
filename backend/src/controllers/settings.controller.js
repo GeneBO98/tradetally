@@ -1692,7 +1692,7 @@ const settingsController = {
   async getAdminAISettings(req, res, next) {
     try {
       // Check if user is admin
-      if (req.user.role !== 'admin') {
+      if (!['admin', 'owner'].includes(req.user.role)) {
         return res.status(403).json({ error: 'Admin access required' });
       }
 
@@ -1712,7 +1712,7 @@ const settingsController = {
   async updateAdminAISettings(req, res, next) {
     try {
       // Check if user is admin
-      if (req.user.role !== 'admin') {
+      if (!['admin', 'owner'].includes(req.user.role)) {
         return res.status(403).json({ error: 'Admin access required' });
       }
 
@@ -1774,7 +1774,7 @@ const settingsController = {
   async getAdminCusipAISettings(req, res, next) {
     try {
       // Check if user is admin
-      if (req.user.role !== 'admin') {
+      if (!['admin', 'owner'].includes(req.user.role)) {
         return res.status(403).json({ error: 'Admin access required' });
       }
 
@@ -1795,7 +1795,7 @@ const settingsController = {
   async updateAdminCusipAISettings(req, res, next) {
     try {
       // Check if user is admin
-      if (req.user.role !== 'admin') {
+      if (!['admin', 'owner'].includes(req.user.role)) {
         return res.status(403).json({ error: 'Admin access required' });
       }
 
@@ -1875,7 +1875,7 @@ const settingsController = {
   async getAllAdminSettings(req, res, next) {
     try {
       // Check if user is admin
-      if (req.user.role !== 'admin') {
+      if (!['admin', 'owner'].includes(req.user.role)) {
         return res.status(403).json({ error: 'Admin access required' });
       }
 

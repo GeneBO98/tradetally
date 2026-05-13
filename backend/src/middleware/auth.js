@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { isV1Request, sendV1Error } = require('../utils/apiResponse');
+const { AUTH_COOKIE_NAME } = require('../utils/authCookies');
 
 const TOKEN_PURPOSES = Object.freeze({
   ACCESS: 'access',
@@ -25,9 +26,23 @@ function verifyJwtToken(token, { requiredPurpose = TOKEN_PURPOSES.ACCESS } = {})
   return decoded;
 }
 
+function extractAccessToken(req) {
+  const cookieToken = req.cookies?.[AUTH_COOKIE_NAME];
+  if (cookieToken) {
+    return { token: cookieToken, source: 'cookie' };
+  }
+
+  const bearerToken = req.header('Authorization')?.replace('Bearer ', '').trim();
+  if (bearerToken) {
+    return { token: bearerToken, source: 'bearer' };
+  }
+
+  return { token: null, source: null };
+}
+
 const authenticate = async (req, res, next) => {
   try {
-    const token = req.header('Authorization')?.replace('Bearer ', '');
+    const { token, source } = extractAccessToken(req);
 
     if (!token) {
       throw new Error();
@@ -44,6 +59,7 @@ const authenticate = async (req, res, next) => {
     // Add device tracking headers to request
     req.user = user;
     req.token = token;
+    req.authSource = source;
     req.deviceId = req.headers['x-device-id'];
     req.userAgent = req.headers['user-agent'];
     
@@ -80,13 +96,7 @@ const authenticate = async (req, res, next) => {
 
 const optionalAuth = async (req, res, next) => {
   try {
-    // Try to get token from Authorization header first
-    let token = req.header('Authorization')?.replace('Bearer ', '');
-
-    // If no Authorization header, try to get token from cookie
-    if (!token && req.cookies && req.cookies.token) {
-      token = req.cookies.token;
-    }
+    const { token, source } = extractAccessToken(req);
 
     if (token) {
       const decoded = verifyJwtToken(token, { requiredPurpose: TOKEN_PURPOSES.ACCESS });
@@ -95,6 +105,7 @@ const optionalAuth = async (req, res, next) => {
       if (user && user.is_active) {
         req.user = user;
         req.token = token;
+        req.authSource = source;
       }
     }
     next();
@@ -114,7 +125,7 @@ const requireAdmin = async (req, res, next) => {
     });
 
     // Check if user has admin role
-    if (req.user.role !== 'admin') {
+    if (!['admin', 'owner'].includes(req.user.role)) {
       if (isV1Request(req)) {
         return sendV1Error(res, 403, 'FORBIDDEN', 'Admin access required');
       }
@@ -154,6 +165,7 @@ const generateToken = (user, options = {}) => {
 module.exports = {
   TOKEN_PURPOSES,
   authenticate,
+  extractAccessToken,
   optionalAuth,
   requireAdmin,
   generateToken,

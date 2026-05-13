@@ -44,7 +44,7 @@ describe('Trade upload paths reject non-owned public trades', () => {
     const req = {
       params: { id: 'trade-1' },
       user: { id: 'attacker' },
-      file: { filename: 'evil.jpg', mimetype: 'image/jpeg', originalname: 'evil.jpg', size: 100 }
+      file: { buffer: Buffer.from('x'), mimetype: 'image/jpeg', originalname: 'evil.jpg', size: 100 }
     };
     const res = createRes();
     await tradeController.uploadAttachment(req, res, jest.fn());
@@ -97,12 +97,22 @@ describe('Trade upload paths reject non-owned public trades', () => {
       user_id: 'owner-real',
       is_public: false
     });
+    const imageProcessor = require('../../src/utils/imageProcessor');
+    imageProcessor.validateImage.mockResolvedValue(true);
+    imageProcessor.processImage.mockResolvedValue({
+      filename: 'trade_trade-1_123_ok.webp'
+    });
+    imageProcessor.saveImage.mockResolvedValue({
+      filename: 'trade_trade-1_123_ok.webp',
+      mimeType: 'image/webp',
+      size: 80
+    });
     Trade.addAttachment.mockResolvedValue({ id: 'att-1' });
 
     const req = {
       params: { id: 'trade-1' },
       user: { id: 'owner-real' },
-      file: { filename: 'ok.jpg', mimetype: 'image/jpeg', originalname: 'ok.jpg', size: 100 }
+      file: { buffer: Buffer.from('ok'), mimetype: 'image/jpeg', originalname: 'ok.jpg', size: 100 }
     };
     const res = createRes();
     await tradeController.uploadAttachment(req, res, jest.fn());

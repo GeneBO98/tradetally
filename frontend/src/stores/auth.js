@@ -1,11 +1,21 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '@/services/api'
+import { setSessionAuthToken } from '@/services/api'
 import router from '@/router'
+
+function hasSessionCookie() {
+  if (typeof document === 'undefined') return false
+  return document.cookie.split('; ').some((entry) => entry.startsWith('csrf_token='))
+}
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref(null)
-  const token = ref(localStorage.getItem('token'))
+  // Cookie-based session: the `token` cookie is HttpOnly so it can't be read here,
+  // but the companion `csrf_token` cookie is JS-readable. Use it as a synchronous
+  // hint that a session exists so router guards don't bounce us to /login before
+  // checkAuth() can verify with /auth/me.
+  const token = ref(hasSessionCookie() ? 'cookie-session' : null)
   const loading = ref(false)
   const error = ref(null)
   const registrationConfig = ref(null)
@@ -28,6 +38,26 @@ export const useAuthStore = defineStore('auth', () => {
     if (!user.value) return 0
     return user.value.pro_onboarding_step || 0
   })
+
+  function markAuthenticated(sessionToken = null) {
+    const normalizedToken = sessionToken || 'cookie-session'
+    token.value = normalizedToken
+    setSessionAuthToken(normalizedToken === 'cookie-session' ? null : normalizedToken)
+  }
+
+  function clearAuthState() {
+    user.value = null
+    token.value = null
+    setSessionAuthToken(null)
+    // Clear the JS-readable csrf_token cookie so the synchronous session hint
+    // doesn't keep us in an authenticated-looking state after the real session
+    // has been invalidated. Try a few path/domain variants for safety.
+    if (typeof document !== 'undefined') {
+      const expired = 'csrf_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
+      document.cookie = expired
+      document.cookie = `${expired}; domain=${window.location.hostname}`
+    }
+  }
 
   async function login(credentials, returnUrl = null) {
     loading.value = true
@@ -54,11 +84,7 @@ export const useAuthStore = defineStore('auth', () => {
         throw twoFactorError
       }
 
-      const { token: authToken } = response.data
-
-      token.value = authToken
-      localStorage.setItem('token', authToken)
-      api.defaults.headers.common['Authorization'] = `Bearer ${authToken}`
+      markAuthenticated(response.data.token)
 
       if (response.data.is_first_login === true) {
         pendingOnboarding.value = true
@@ -106,9 +132,7 @@ export const useAuthStore = defineStore('auth', () => {
       // Auto-login: if backend returned a token, sign in immediately
       const { token: authToken } = response.data
       if (authToken) {
-        token.value = authToken
-        localStorage.setItem('token', authToken)
-        api.defaults.headers.common['Authorization'] = `Bearer ${authToken}`
+        markAuthenticated(authToken)
 
         if (response.data.is_first_login) {
           pendingOnboarding.value = true
@@ -135,9 +159,7 @@ export const useAuthStore = defineStore('auth', () => {
     } catch (err) {
       console.error('Logout error:', err)
     } finally {
-      user.value = null
-      token.value = null
-      localStorage.removeItem('token')
+      clearAuthState()
       localStorage.removeItem('calendar_year')
       localStorage.removeItem('calendar_expanded_month')
       localStorage.removeItem('calendar_expanded_year')
@@ -145,9 +167,8 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function fetchUser() {
-    if (!token.value) return
-
+  async function fetchUser(options = {}) {
+    const { redirectOnUnauthorized = true } = options
     try {
       const response = await api.get('/auth/me')
       // Merge settings into user object (convert snake_case to camelCase)
@@ -167,10 +188,15 @@ export const useAuthStore = defineStore('auth', () => {
           ...settings
         }
       }
+      markAuthenticated(token.value)
       return user.value
     } catch (err) {
       if (err.response?.status === 401) {
-        logout()
+        clearAuthState()
+        if (redirectOnUnauthorized) {
+          router.push({ name: 'login' })
+        }
+        return null
       }
       throw err
     }
@@ -222,11 +248,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function checkAuth() {
-    if (token.value) {
-      // Set the authorization header for subsequent requests
-      api.defaults.headers.common['Authorization'] = `Bearer ${token.value}`
-      await fetchUser()
-    }
+    await fetchUser({ redirectOnUnauthorized: false })
   }
 
   async function verify2FA(tempToken, twoFactorCode) {
@@ -244,15 +266,13 @@ export const useAuthStore = defineStore('auth', () => {
         twoFactorCode: normalizedCode
       })
       
-      const { user: userData, token: authToken } = response.data
+      const { token: authToken } = response.data
 
       if (response.data.is_first_login === true) {
         pendingOnboarding.value = true
       }
 
-      token.value = authToken
-      localStorage.setItem('token', authToken)
-      api.defaults.headers.common['Authorization'] = `Bearer ${authToken}`
+      markAuthenticated(authToken)
 
       await fetchUser()
 
@@ -295,11 +315,7 @@ export const useAuthStore = defineStore('auth', () => {
         throw twoFactorError
       }
 
-      const { token: authToken } = verifyRes.data
-
-      token.value = authToken
-      localStorage.setItem('token', authToken)
-      api.defaults.headers.common['Authorization'] = `Bearer ${authToken}`
+      markAuthenticated(verifyRes.data.token)
 
       if (verifyRes.data.is_first_login === true) {
         pendingOnboarding.value = true

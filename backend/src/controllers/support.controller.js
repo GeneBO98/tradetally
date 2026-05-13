@@ -1,5 +1,6 @@
 const EmailService = require('../services/emailService');
 const db = require('../config/database');
+const jobQueue = require('../utils/jobQueue');
 
 const supportController = {
   async submitContactRequest(req, res, next) {
@@ -70,20 +71,20 @@ const supportController = {
         });
       }
 
-      await EmailService.sendSupportRequest({
+      await jobQueue.addJob('support_request_email', {
         to: recipientEmail,
         userEmail: user.email,
         username: user.username,
         tier: tier,
         subject: subject,
         message: message
-      });
+      }, 2, userId);
 
-      console.log('[SUPPORT] Support request sent from', user.email, '- Subject:', subject);
+      console.log('[SUPPORT] Support request queued from', user.email, '- Subject:', subject);
 
       res.json({
         success: true,
-        message: 'Support request sent successfully'
+        message: 'Support request received successfully'
       });
     } catch (error) {
       console.error('[ERROR] Failed to send support request:', error);

@@ -1,8 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const gamificationController = require('../controllers/gamification.controller');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requireAdmin } = require('../middleware/auth');
 const { attachTierInfo, requiresTier } = require('../middleware/tierAuth');
+const { validate, schemas } = require('../middleware/validation');
 
 // Apply authentication to all routes
 router.use(authenticate);
@@ -36,10 +37,10 @@ router.get('/dashboard', gamificationController.getDashboard);
 router.get('/peer-comparison', gamificationController.getPeerComparison);
 
 // Admin routes
-router.post('/challenges', gamificationController.createChallenge);
-router.post('/leaderboards/update', gamificationController.updateLeaderboards);
+router.post('/challenges', requireAdmin, validate(schemas.gamificationChallengeCreate), gamificationController.createChallenge);
+router.post('/leaderboards/update', requireAdmin, gamificationController.updateLeaderboards);
 
 // Debug/sync route
-router.post('/sync-stats', gamificationController.syncUserStats);
+router.post('/sync-stats', requireAdmin, gamificationController.syncUserStats);
 
 module.exports = router;

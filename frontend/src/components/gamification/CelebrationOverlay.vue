@@ -381,7 +381,7 @@ const continueLabel = computed(() => {
 // will refresh on its next poll). Accepts either a single id (defaults to
 // the achievement_earned type) or an array of {id, type} objects.
 async function markNotificationsRead(items) {
-  if (!authStore.token) return
+  if (!authStore.isAuthenticated) return
   const list = Array.isArray(items)
     ? items
     : items
@@ -392,8 +392,7 @@ async function markNotificationsRead(items) {
     await fetch('/api/notifications/mark-read', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${authStore.token}`
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({ notifications: list })
     })

@@ -44,6 +44,48 @@
                         </p>
                     </div>
 
+                    <div
+                        v-if="backupWarnings.length"
+                        class="mb-4 rounded-md border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20"
+                    >
+                        <h4
+                            class="text-sm font-medium text-amber-800 dark:text-amber-300"
+                        >
+                            Backup Warnings
+                        </h4>
+                        <ul
+                            class="mt-2 space-y-2 text-sm text-amber-700 dark:text-amber-400"
+                        >
+                            <li
+                                v-for="warning in backupWarnings"
+                                :key="warning"
+                            >
+                                {{ warning }}
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div
+                        v-if="storageWarnings.length"
+                        class="mb-4 rounded-md border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20"
+                    >
+                        <h4
+                            class="text-sm font-medium text-amber-800 dark:text-amber-300"
+                        >
+                            Storage Warnings
+                        </h4>
+                        <ul
+                            class="mt-2 space-y-2 text-sm text-amber-700 dark:text-amber-400"
+                        >
+                            <li
+                                v-for="warning in storageWarnings"
+                                :key="warning"
+                            >
+                                {{ warning }}
+                            </li>
+                        </ul>
+                    </div>
+
                     <div class="space-y-4">
                         <!-- Enable/Disable Automatic Backups -->
                         <div class="flex items-center justify-between">
@@ -295,7 +337,7 @@
                                         <span
                                             :class="[
                                                 backup.backupType === 'manual'
-                                                    ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400'
+                                                    ? 'bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-300'
                                                     : 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400',
                                                 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
                                             ]"
@@ -784,6 +826,8 @@ const settings = ref({
     retentionDays: 30,
     lastBackup: null,
 });
+const backupWarnings = ref([]);
+const storageWarnings = ref([]);
 
 // Fetch backup settings and history
 async function loadData() {
@@ -791,9 +835,10 @@ async function loadData() {
         loading.value = true;
         errorMessage.value = "";
 
-        const [settingsRes, backupsRes] = await Promise.all([
+        const [settingsRes, backupsRes, healthRes] = await Promise.all([
             api.get("/admin/backup/settings"),
             api.get("/admin/backup"),
+            api.get("/health"),
         ]);
 
         settings.value = {
@@ -802,6 +847,9 @@ async function loadData() {
             retentionDays: settingsRes.data.retention_days,
             lastBackup: settingsRes.data.last_backup,
         };
+        backupWarnings.value = settingsRes.data.health?.warnings || [];
+        storageWarnings.value =
+            healthRes.data?.services?.storage?.warnings || [];
 
         backups.value = backupsRes.data.backups.map((b) => ({
             id: b.id,

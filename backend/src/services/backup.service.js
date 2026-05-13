@@ -286,6 +286,57 @@ class BackupService {
     return result.rows[0];
   }
 
+  async getBackupHealth() {
+    const settings = await this.getBackupSettings();
+    const warnings = [];
+    const scheduleWindows = {
+      hourly: 2 * 60 * 60 * 1000,
+      daily: 2 * 24 * 60 * 60 * 1000,
+      weekly: 14 * 24 * 60 * 60 * 1000,
+      monthly: 62 * 24 * 60 * 60 * 1000
+    };
+
+    const schedulerEnabled = process.env.ENABLE_BACKUP_SCHEDULER !== 'false';
+    const localOnlyStorage = this.backupDir.includes('/backend/src/data/backups');
+    const health = {
+      scheduler_enabled: schedulerEnabled,
+      backups_enabled: Boolean(settings.enabled),
+      backup_dir: this.backupDir,
+      local_only_storage: localOnlyStorage,
+      last_backup: settings.last_backup || null,
+      status: 'OK',
+      warnings
+    };
+
+    if (!schedulerEnabled) {
+      warnings.push('Automatic backup scheduler is disabled by environment configuration.');
+    }
+
+    if (!settings.enabled) {
+      warnings.push('Backups are disabled in backup settings.');
+    }
+
+    if (!settings.last_backup) {
+      warnings.push('No successful backup has been recorded yet.');
+    } else {
+      const maxAge = scheduleWindows[settings.schedule] || scheduleWindows.daily;
+      const backupAgeMs = Date.now() - new Date(settings.last_backup).getTime();
+      if (backupAgeMs > maxAge) {
+        warnings.push(`Last backup is stale for the configured ${settings.schedule} schedule.`);
+      }
+    }
+
+    if (localOnlyStorage) {
+      warnings.push('Backups are stored on the app host filesystem only.');
+    }
+
+    if (warnings.length > 0) {
+      health.status = 'DEGRADED';
+    }
+
+    return health;
+  }
+
   /**
    * Update backup settings
    * @param {Object} settings - New settings

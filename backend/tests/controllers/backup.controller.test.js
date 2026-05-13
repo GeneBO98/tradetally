@@ -2,7 +2,9 @@ jest.mock('../../src/services/backup.service', () => ({
   getBackups: jest.fn(),
   getBackupById: jest.fn(),
   resolveBackupPath: jest.fn(),
-  deleteOldBackups: jest.fn()
+  deleteOldBackups: jest.fn(),
+  getBackupSettings: jest.fn(),
+  getBackupHealth: jest.fn()
 }));
 
 const backupController = require('../../src/controllers/backup.controller');
@@ -72,5 +74,36 @@ describe('backup controller hardening', () => {
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json).toHaveBeenCalledWith({ error: 'Invalid backup path' });
     expect(next).not.toHaveBeenCalled();
+  });
+
+  test('getSettings includes backup health warnings', async () => {
+    backupService.getBackupSettings.mockResolvedValue({
+      enabled: false,
+      schedule: 'daily',
+      retention_days: 30,
+      last_backup: null
+    });
+    backupService.getBackupHealth.mockResolvedValue({
+      status: 'DEGRADED',
+      warnings: ['Backups are disabled in backup settings.']
+    });
+
+    const req = {};
+    const res = createRes();
+    const next = jest.fn();
+
+    await backupController.getSettings(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith({
+      enabled: false,
+      schedule: 'daily',
+      retention_days: 30,
+      last_backup: null,
+      health: {
+        status: 'DEGRADED',
+        warnings: ['Backups are disabled in backup settings.']
+      }
+    });
   });
 });
