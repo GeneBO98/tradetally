@@ -91,6 +91,7 @@ async function sendViaSequenzy(mailOptions) {
     body: mailOptions.html,
     preview: mailOptions.preview,
     variables: mailOptions.variables,
+    headers: mailOptions.headers,
     from: formatAddress(mailOptions.from),
     replyTo: formatAddress(mailOptions.replyTo),
     attachments: normalizeAttachments(mailOptions.attachments)

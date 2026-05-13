@@ -28,6 +28,9 @@ describe('emailDeliveryService', () => {
     delete process.env.EMAIL_PASS;
     delete process.env.SEQUENZY_API_KEY;
     delete process.env.SEQUENZY_API_BASE_URL;
+    delete process.env.SEQUENZY_FROM;
+    delete process.env.SEQUENZY_FROM_TRANSACTIONAL;
+    delete process.env.SEQUENZY_FROM_MARKETING;
   });
 
   afterAll(() => {
@@ -61,7 +64,11 @@ describe('emailDeliveryService', () => {
       to: 'user@example.com',
       subject: 'Test Subject',
       html: '<p>Hello</p>',
-      replyTo: 'support@tradetally.io'
+      replyTo: 'support@tradetally.io',
+      headers: {
+        'List-Unsubscribe': '<https://tradetally.io/api/unsubscribe?token=test>',
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+      }
     });
 
     expect(mockAxios.post).toHaveBeenCalledWith(
@@ -71,7 +78,11 @@ describe('emailDeliveryService', () => {
         from: 'TradeTally <noreply@tradetally.io>',
         replyTo: 'support@tradetally.io',
         subject: 'Test Subject',
-        body: '<p>Hello</p>'
+        body: '<p>Hello</p>',
+        headers: {
+          'List-Unsubscribe': '<https://tradetally.io/api/unsubscribe?token=test>',
+          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+        }
       }),
       expect.objectContaining({
         headers: expect.objectContaining({

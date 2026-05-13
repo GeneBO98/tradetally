@@ -110,7 +110,7 @@ const alreadyUnsubscribed = ref(false)
 const token = ref(null)
 
 async function checkUnsubscribeStatus() {
-  token.value = route.query.token
+  token.value = route.query.token || route.query.unsubscribe_token || route.query.unsubscribeToken
 
   if (!token.value) {
     error.value = 'Missing unsubscribe token. Please use the link from your email.'
@@ -119,7 +119,10 @@ async function checkUnsubscribeStatus() {
   }
 
   try {
-    const response = await api.get(`/unsubscribe?token=${token.value}`)
+    const response = await api.get('/unsubscribe', {
+      params: { token: token.value },
+      skipAuthRedirect: true
+    })
 
     if (response.data.success) {
       if (response.data.marketing_consent === false) {
@@ -143,7 +146,9 @@ async function confirmUnsubscribe() {
   processing.value = true
 
   try {
-    const response = await api.post('/unsubscribe', { token: token.value })
+    const response = await api.post('/unsubscribe', { token: token.value }, {
+      skipAuthRedirect: true
+    })
 
     if (response.data.success) {
       showConfirm.value = false
