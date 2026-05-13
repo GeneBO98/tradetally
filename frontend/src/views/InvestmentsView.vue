@@ -93,27 +93,13 @@
                 class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6 mb-6"
             >
                 <div class="flex items-center space-x-4">
-                    <div class="flex-1 relative">
-                        <input
+                    <div class="flex-1">
+                        <SymbolAutocomplete
                             v-model="searchSymbol"
-                            @keyup.enter="analyzeSymbol"
-                            type="text"
                             placeholder="Enter stock symbol (e.g., AAPL, MSFT, GOOGL)"
-                            class="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+                            input-class="w-full py-3 text-base"
+                            @select="onScreenerSelect"
                         />
-                        <svg
-                            class="absolute left-3 top-3.5 h-5 w-5 text-gray-400"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                        >
-                            <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                stroke-width="2"
-                                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                            ></path>
-                        </svg>
                     </div>
                     <button
                         @click="analyzeSymbol"
@@ -676,27 +662,13 @@
                 class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6 mb-6"
             >
                 <div class="flex items-center space-x-4">
-                    <div class="flex-1 relative">
-                        <input
+                    <div class="flex-1">
+                        <SymbolAutocomplete
                             v-model="analyzerSymbol"
-                            @keyup.enter="loadAnalyzerData"
-                            type="text"
                             placeholder="Enter stock symbol to analyze (e.g., AAPL, MSFT)"
-                            class="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+                            input-class="w-full py-3 text-base"
+                            @select="onAnalyzerSelect"
                         />
-                        <svg
-                            class="absolute left-3 top-3.5 h-5 w-5 text-gray-400"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                        >
-                            <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                stroke-width="2"
-                                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                            ></path>
-                        </svg>
                     </div>
                     <button
                         @click="loadAnalyzerData"
@@ -937,6 +909,7 @@ import ScanStatusBadge from "@/components/investments/scanner/ScanStatusBadge.vu
 import StockAnalyzerSection from "@/components/investments/dcf/StockAnalyzerSection.vue";
 import { useScannerStore } from "@/stores/scanner";
 import StockLogo from "@/components/common/StockLogo.vue";
+import SymbolAutocomplete from "@/components/common/SymbolAutocomplete.vue";
 
 const router = useRouter();
 const route = useRoute();
@@ -1077,6 +1050,16 @@ async function analyzeSymbol() {
 async function analyzeFromHistory(symbol) {
     searchSymbol.value = symbol;
     await analyzeSymbol();
+}
+
+async function onScreenerSelect(item) {
+    searchSymbol.value = item.symbol;
+    await analyzeSymbol();
+}
+
+async function onAnalyzerSelect(item) {
+    analyzerSymbol.value = item.symbol;
+    await loadAnalyzerData();
 }
 
 async function analyzeHolding(symbol) {
