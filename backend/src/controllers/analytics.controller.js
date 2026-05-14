@@ -1726,10 +1726,10 @@ const analyticsController = {
             CASE
               WHEN executions IS NOT NULL AND jsonb_array_length(executions) > 0 THEN
                 (
-                  SELECT COALESCE(SUM((exec->>'quantity')::integer), 0)
+                  SELECT COALESCE(SUM((exec->>'quantity')::numeric), 0)
                   FROM jsonb_array_elements(executions) AS exec
                 )
-              ELSE quantity  -- Fallback to trade quantity if no executions data
+              ELSE quantity  -- Fractional quantities (crypto) require numeric, not integer
             END as total_volume,
             pnl,
             r_value,
@@ -2071,10 +2071,10 @@ const analyticsController = {
             CASE 
               WHEN executions IS NOT NULL AND jsonb_array_length(executions) > 0 THEN
                 (
-                  SELECT COALESCE(SUM((exec->>'quantity')::integer), 0)
+                  SELECT COALESCE(SUM((exec->>'quantity')::numeric), 0)
                   FROM jsonb_array_elements(executions) AS exec
                 )
-              ELSE quantity  -- Fallback to trade quantity if no executions data
+              ELSE quantity  -- Fractional quantities (crypto) require numeric, not integer
             END as trade_volume
           FROM trades
           WHERE user_id = $1 ${filterConditions}

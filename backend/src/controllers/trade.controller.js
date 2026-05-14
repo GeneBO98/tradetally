@@ -238,8 +238,15 @@ const tradeController = {
         strategies, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, brokers, importId, accounts,
-        limit = 50, offset = 0
+        limit = 50, offset, page
       } = req.query;
+
+      const parsedLimit = parseInt(limit);
+      const parsedOffset = offset !== undefined && offset !== ''
+        ? parseInt(offset)
+        : (page !== undefined && page !== '' && parseInt(page) > 0
+            ? (parseInt(page) - 1) * parsedLimit
+            : 0);
 
       const filters = {
         symbol,
@@ -274,8 +281,8 @@ const tradeController = {
         importId,
         accounts: accounts ? ensureString(accounts).split(',') : undefined, // Account identifier filter
         // Pagination
-        limit: parseInt(limit),
-        offset: parseInt(offset)
+        limit: parsedLimit,
+        offset: parsedOffset
       };
 
       if (filters.tags && filters.tags.length > 0) {
