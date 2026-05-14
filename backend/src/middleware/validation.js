@@ -503,8 +503,6 @@ const schemas = {
     priority: Joi.number().integer().min(1).max(10).default(5)
   }),
 
-  // Reuse existing schemas with aliases
-  trade: Joi.ref('createTrade'),
   journalEntry: Joi.object({
     content: Joi.string().required(),
     type: Joi.string().valid('note', 'lesson', 'emotion', 'setup').default('note'),
@@ -830,5 +828,7 @@ const schemas = {
     display_name: nullableString(100)
   })
 };
+
+schemas.trade = schemas.createTrade;
 
 module.exports = { validate, schemas };

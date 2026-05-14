@@ -31,10 +31,18 @@ function buildPagination(limit, offset, total, returnedCount) {
 
 function parseLimitOffset(query = {}, defaultLimit = 50) {
   const parsedLimit = parseInt(query.limit ?? `${defaultLimit}`, 10);
-  const parsedOffset = parseInt(query.offset ?? '0', 10);
-
   const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 200) : defaultLimit;
-  const offset = Number.isFinite(parsedOffset) && parsedOffset >= 0 ? parsedOffset : 0;
+
+  let offset;
+  if (query.offset !== undefined && query.offset !== '') {
+    const n = parseInt(query.offset, 10);
+    offset = Number.isFinite(n) && n >= 0 ? n : 0;
+  } else if (query.page !== undefined && query.page !== '') {
+    const p = parseInt(query.page, 10);
+    offset = Number.isFinite(p) && p > 0 ? (p - 1) * limit : 0;
+  } else {
+    offset = 0;
+  }
 
   return { limit, offset };
 }
