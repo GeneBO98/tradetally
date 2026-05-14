@@ -136,6 +136,9 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { AdjustmentsHorizontalIcon } from '@heroicons/vue/24/outline'
 import { Bars3Icon } from '@heroicons/vue/24/solid'
+import { useUiPreferencesStore } from '@/stores/uiPreferences'
+
+const uiPreferencesStore = useUiPreferencesStore()
 
 const props = defineProps({
   columns: {
@@ -344,6 +347,7 @@ const saveColumns = () => {
     required: col.required
   }))
   localStorage.setItem('tradeListColumns', JSON.stringify(columnsToSave))
+  uiPreferencesStore.notifyChanged('tradeListColumns', columnsToSave)
   console.log('[COLUMNS] Saved column preferences:', columnsToSave.length, 'columns')
 }
 
@@ -450,6 +454,7 @@ const deselectAll = () => {
 const resetToDefault = () => {
   localColumns.value = [...defaultColumns]
   localStorage.removeItem('tradeListColumns')
+  uiPreferencesStore.notifyChanged('tradeListColumns', null)
 }
 
 const updateColumns = () => {

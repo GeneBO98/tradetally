@@ -1,5 +1,6 @@
 import { ref, computed, watch } from 'vue'
 import api from '@/services/api'
+import { useUiPreferencesStore } from '@/stores/uiPreferences'
 
 export const STORAGE_KEY = 'tradetally_global_account'
 
@@ -143,12 +144,14 @@ export function useGlobalAccountFilter() {
     } else {
       localStorage.removeItem(STORAGE_KEY)
     }
+    useUiPreferencesStore().notifyChanged(STORAGE_KEY, normalized || null)
     console.log('[GLOBAL ACCOUNT] Set to:', normalized || 'All Accounts')
   }
 
   function clearAccount() {
     selectedAccount.value = null
     localStorage.removeItem(STORAGE_KEY)
+    useUiPreferencesStore().notifyChanged(STORAGE_KEY, null)
     console.log('[GLOBAL ACCOUNT] Cleared - showing all accounts')
   }
 

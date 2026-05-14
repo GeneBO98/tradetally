@@ -1221,6 +1221,7 @@
 import { ref, onMounted, onUnmounted, nextTick, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import api from '@/services/api'
 import PerformanceChart from '@/components/charts/PerformanceChart.vue'
 import MdiIcon from '@/components/MdiIcon.vue'
@@ -1256,6 +1257,7 @@ const userSettings = ref(null)
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+const uiPreferencesStore = useUiPreferencesStore()
 const aiStore = useAIStore()
 const { selectedAccount } = useGlobalAccountFilter()
 const showAdvanced = ref(false)
@@ -2993,7 +2995,8 @@ async function clearFilters() {
   
   // Clear localStorage to ensure fresh defaults
   localStorage.removeItem('analyticsFilters')
-  
+  uiPreferencesStore.notifyChanged('analyticsFilters', null)
+
   // Apply the cleared filters
   await applyFilters()
 }
@@ -3360,6 +3363,7 @@ function setDefaultDateRange() {
 
 function saveFilters() {
   localStorage.setItem('analyticsFilters', JSON.stringify(filters.value))
+  uiPreferencesStore.notifyChanged('analyticsFilters', filters.value)
 }
 
 function navigateToSymbolTrades(symbol) {

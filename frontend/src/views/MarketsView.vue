@@ -826,6 +826,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
+import { useUiPreferencesStore } from "@/stores/uiPreferences";
 import OnboardingCard from "@/components/onboarding/OnboardingCard.vue";
 import { useNotification } from "@/composables/useNotification";
 import { usePriceAlertNotifications } from "@/composables/usePriceAlertNotifications";
@@ -839,6 +840,7 @@ import SymbolAutocomplete from "@/components/common/SymbolAutocomplete.vue";
 const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
+const uiPreferencesStore = useUiPreferencesStore();
 const { showSuccess, showError, showCriticalError, showConfirmation } =
     useNotification();
 const { isConnected, notifications, requestNotificationPermission } =
@@ -1178,6 +1180,7 @@ watch(
     filters,
     () => {
         localStorage.setItem("marketsFilters", JSON.stringify(filters.value));
+        uiPreferencesStore.notifyChanged("marketsFilters", filters.value);
         loadAlerts();
     },
     { deep: true },
@@ -1186,6 +1189,7 @@ watch(
 // Watch for tab changes to persist to localStorage
 watch(activeTab, (newTab) => {
     localStorage.setItem("marketsTab", newTab);
+    uiPreferencesStore.notifyChanged("marketsTab", newTab);
 });
 
 // Watch for auth loading to complete

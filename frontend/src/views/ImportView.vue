@@ -1237,6 +1237,7 @@ import { ref, defineAsyncComponent, onMounted, onBeforeUnmount, computed, nextTi
 import { useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useAuthStore } from '@/stores/auth'
+import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { useNotification } from '@/composables/useNotification'
 import { format } from 'date-fns'
 import { formatTradeDate } from '@/utils/date'
@@ -1259,6 +1260,7 @@ import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotificat
 
 const tradesStore = useTradesStore()
 const authStore = useAuthStore()
+const uiPreferencesStore = useUiPreferencesStore()
 const router = useRouter()
 const { showSuccess, showError, showImportantWarning, showSuccessModal, clearModalAlert } = useNotification()
 const { suppressCelebrations } = usePriceAlertNotifications()
@@ -2280,6 +2282,7 @@ async function handleImport() {
 
     // Save broker preference to localStorage
     localStorage.setItem('lastSelectedBroker', selectedBroker.value)
+    uiPreferencesStore.notifyChanged('lastSelectedBroker', selectedBroker.value)
 
     // Reset form (but keep broker selection)
     selectedFile.value = null
@@ -2433,6 +2436,7 @@ async function handleKeepBrokerSelected(selectedBrokerValue) {
 
     // Save broker preference to localStorage
     localStorage.setItem('lastSelectedBroker', selectedBroker.value)
+    uiPreferencesStore.notifyChanged('lastSelectedBroker', selectedBroker.value)
 
     // Reset form (but keep broker selection)
     selectedFile.value = null
@@ -3400,6 +3404,7 @@ async function handleMappingSaved(mapping) {
 
     // Save broker preference
     localStorage.setItem('lastSelectedBroker', 'generic')
+    uiPreferencesStore.notifyChanged('lastSelectedBroker', 'generic')
 
     // Clear the file reference
     currentMappingFile.value = null

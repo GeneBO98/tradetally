@@ -5689,6 +5689,7 @@ import { useRouter, useRoute } from "vue-router";
 import api from "@/services/api";
 import { useNotification } from "@/composables/useNotification";
 import { useAuthStore } from "@/stores/auth";
+import { useUiPreferencesStore } from "@/stores/uiPreferences";
 import OnboardingCard from "@/components/onboarding/OnboardingCard.vue";
 import { useGlobalAccountFilter } from "@/composables/useGlobalAccountFilter";
 import { useUserTimezone } from "@/composables/useUserTimezone";
@@ -5712,6 +5713,7 @@ import {
 
 const { showSuccess, showError } = useNotification();
 const authStore = useAuthStore();
+const uiPreferencesStore = useUiPreferencesStore();
 const { selectedAccount } = useGlobalAccountFilter();
 const { formatTime: formatTimeTz } = useUserTimezone();
 const router = useRouter();
@@ -5917,6 +5919,7 @@ const clearFilters = async () => {
 
     // Clear localStorage
     localStorage.removeItem("behavioralAnalyticsFilters");
+    uiPreferencesStore.notifyChanged("behavioralAnalyticsFilters", null);
 
     // Apply the cleared filters
     await applyFilters();
@@ -5928,6 +5931,7 @@ const saveFilters = () => {
         "behavioralAnalyticsFilters",
         JSON.stringify(filters.value),
     );
+    uiPreferencesStore.notifyChanged("behavioralAnalyticsFilters", filters.value);
 };
 
 // Load filters from localStorage

@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '@/services/api'
 import router from '@/router'
+import { useUiPreferencesStore } from '@/stores/uiPreferences'
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref(null)
@@ -141,6 +142,13 @@ export const useAuthStore = defineStore('auth', () => {
       localStorage.removeItem('calendar_year')
       localStorage.removeItem('calendar_expanded_month')
       localStorage.removeItem('calendar_expanded_year')
+      // Drop synced UI preferences so the next user on this device starts clean
+      // and re-hydrates from their own server values on login.
+      try {
+        useUiPreferencesStore().reset()
+      } catch (_) {
+        // store may not exist yet (e.g. logout before login) — ignore.
+      }
       router.push({ name: 'home' })
     }
   }
@@ -167,6 +175,16 @@ export const useAuthStore = defineStore('auth', () => {
           ...settings
         }
       }
+
+      // Hydrate cross-device UI preferences from the server. Awaited so any
+      // component that mounts after this point (NavBar, view filters, etc.)
+      // reads the freshly-synced localStorage values.
+      try {
+        await useUiPreferencesStore().init()
+      } catch (prefsErr) {
+        console.warn('[AUTH] UI preference hydration failed:', prefsErr?.message)
+      }
+
       return user.value
     } catch (err) {
       if (err.response?.status === 401) {
