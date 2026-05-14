@@ -7,6 +7,9 @@
       </p>
     </div>
 
+    <!-- IBKR Maintenance Notice -->
+    <IBKRNoticeBanner />
+
     <!-- Success/Error Messages -->
     <div v-if="successMessage" class="mb-6 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
       <div class="flex">
@@ -202,6 +205,7 @@ import { useNotification } from '@/composables/useNotification'
 import BrokerConnectionCard from '@/components/broker-sync/BrokerConnectionCard.vue'
 import IBKRConnectionModal from '@/components/broker-sync/IBKRConnectionModal.vue'
 import ConnectionSettingsModal from '@/components/broker-sync/ConnectionSettingsModal.vue'
+import IBKRNoticeBanner from '@/components/broker-sync/IBKRNoticeBanner.vue'
 
 const store = useBrokerSyncStore()
 const tradesStore = useTradesStore()
