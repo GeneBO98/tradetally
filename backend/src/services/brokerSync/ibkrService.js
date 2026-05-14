@@ -2,7 +2,7 @@
  * IBKR Flex Web Service Integration
  * Fetches trade data from Interactive Brokers using the Flex Query API
  *
- * API Documentation: https://www.interactivebrokers.com/en/software/am/am/reports/flex_web_service_version_3.htm
+ * API Documentation: https://www.interactivebrokers.com/campus/ibkr-api-page/flex-web-service/
  */
 
 const axios = require('axios');
@@ -10,8 +10,10 @@ const { parseCSV } = require('../../utils/csvParser');
 const Trade = require('../../models/Trade');
 const BrokerConnection = require('../../models/BrokerConnection');
 const db = require('../../config/database');
+const { version: APP_VERSION } = require('../../../package.json');
 
-const FLEX_BASE_URL = 'https://gdcdyn.interactivebrokers.com/Universal/servlet/FlexStatementService';
+const FLEX_BASE_URL = 'https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService';
+const FLEX_USER_AGENT = `TradeTally/${APP_VERSION}`;
 const REPORT_REQUEST_TIMEOUT = 120000; // 2 minutes to request report
 const REPORT_POLL_INTERVAL = 5000; // Poll every 5 seconds
 const REPORT_MAX_WAIT = 300000; // Max 5 minutes to wait for report
@@ -53,13 +55,14 @@ class IBKRService {
   async requestFlexReport(flexToken, queryId, options = {}) {
     console.log('[IBKR] Requesting Flex report...');
 
-    const url = `${FLEX_BASE_URL}.SendRequest`;
+    const url = `${FLEX_BASE_URL}/SendRequest`;
     const params = this.buildReportRequestParams(flexToken, queryId, options);
 
     try {
       const response = await axios.get(url, {
         params,
-        timeout: REPORT_REQUEST_TIMEOUT
+        timeout: REPORT_REQUEST_TIMEOUT,
+        headers: { 'User-Agent': FLEX_USER_AGENT }
       });
 
       // Parse XML response
@@ -104,7 +107,7 @@ class IBKRService {
   async fetchFlexReport(referenceCode, flexToken) {
     console.log('[IBKR] Fetching Flex report...');
 
-    const url = `${FLEX_BASE_URL}.GetStatement`;
+    const url = `${FLEX_BASE_URL}/GetStatement`;
     const params = {
       t: flexToken,
       q: referenceCode,
@@ -117,7 +120,8 @@ class IBKRService {
       try {
         const response = await axios.get(url, {
           params,
-          timeout: 60000
+          timeout: 60000,
+          headers: { 'User-Agent': FLEX_USER_AGENT }
         });
 
         const data = response.data;
