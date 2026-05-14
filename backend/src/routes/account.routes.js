@@ -8,6 +8,7 @@ const express = require('express');
 const router = express.Router();
 const accountController = require('../controllers/account.controller');
 const { authenticate } = require('../middleware/auth');
+const { validate, schemas } = require('../middleware/validation');
 
 // All routes require authentication
 router.use(authenticate);
@@ -19,19 +20,19 @@ router.get('/debug/trade-identifiers', accountController.getTradeIdentifiersSumm
 
 // Transaction routes (must come before /:id to avoid conflicts)
 router.get('/transactions/:transactionId', accountController.getTransactions);
-router.put('/transactions/:transactionId', accountController.updateTransaction);
+router.put('/transactions/:transactionId', validate(schemas.accountTransactionUpdate), accountController.updateTransaction);
 router.delete('/transactions/:transactionId', accountController.deleteTransaction);
 
 // Account CRUD
 router.get('/', accountController.getAccounts);
-router.post('/', accountController.createAccount);
+router.post('/', validate(schemas.accountCreate), accountController.createAccount);
 router.get('/:id', accountController.getAccount);
-router.put('/:id', accountController.updateAccount);
+router.put('/:id', validate(schemas.accountUpdate), accountController.updateAccount);
 router.delete('/:id', accountController.deleteAccount);
 
 // Account-specific transactions
 router.get('/:accountId/transactions', accountController.getTransactions);
-router.post('/:accountId/transactions', accountController.addTransaction);
+router.post('/:accountId/transactions', validate(schemas.accountTransaction), accountController.addTransaction);
 
 // Cashflow
 router.get('/:accountId/cashflow', accountController.getCashflow);
@@ -41,6 +42,6 @@ router.get('/:accountId/debug-cashflow', accountController.debugCashflow);
 router.post('/:accountId/fix-trades', accountController.fixRedactedTrades);
 
 // Link trades to an account
-router.post('/:accountId/link-trades', accountController.linkTradesToAccount);
+router.post('/:accountId/link-trades', validate(schemas.accountLinkTrades), accountController.linkTradesToAccount);
 
 module.exports = router;

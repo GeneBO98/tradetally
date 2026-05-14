@@ -254,9 +254,6 @@ const autoRemapAll = async () => {
     
     const response = await fetch('/api/trades/cusip/resolve-unresolved', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${authStore.token}`
-      }
     })
     
     if (response.ok) {
@@ -289,8 +286,7 @@ const saveQuickMapping = async () => {
     const response = await fetch('/api/cusip-mappings', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authStore.token}`
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         cusip: mappingCusip.value,

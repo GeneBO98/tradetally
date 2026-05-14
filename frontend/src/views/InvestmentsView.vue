@@ -72,17 +72,6 @@
                 >
                     Stock Scanner
                 </button>
-                <button
-                    @click="activeTab = 'analyzer'"
-                    :class="[
-                        'py-4 px-1 border-b-2 font-medium text-sm',
-                        activeTab === 'analyzer'
-                            ? 'border-primary-500 text-primary-600 dark:text-primary-400'
-                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300',
-                    ]"
-                >
-                    Stock Analyzer
-                </button>
             </nav>
         </div>
 
@@ -93,16 +82,15 @@
                 class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6 mb-6"
             >
                 <div class="flex items-center space-x-4">
-                    <div class="flex-1 relative">
-                        <input
+                    <div class="flex-1 relative" @keyup.enter="analyzeSymbol">
+                        <SymbolAutocomplete
                             v-model="searchSymbol"
-                            @keyup.enter="analyzeSymbol"
-                            type="text"
                             placeholder="Enter stock symbol (e.g., AAPL, MSFT, GOOGL)"
-                            class="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+                            input-class="!pl-10 !pr-4 !py-3 !rounded-lg dark:!bg-gray-700 dark:!text-white"
+                            @select="analyzeSymbol"
                         />
                         <svg
-                            class="absolute left-3 top-3.5 h-5 w-5 text-gray-400"
+                            class="absolute left-3 top-3.5 h-5 w-5 text-gray-400 pointer-events-none z-10"
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24"
@@ -131,7 +119,18 @@
             </div>
 
             <!-- Current Analysis -->
-            <div v-if="investmentsStore.currentAnalysis" class="mb-6">
+            <div v-if="investmentsStore.currentAnalysis" class="mb-6 space-y-6">
+                <!-- DCF Valuation Calculator (above 8 Pillars) -->
+                <StockAnalyzerSection
+                    v-if="investmentsStore.currentAnalysis.type !== 'crypto'"
+                    :symbol="investmentsStore.currentAnalysis.symbol"
+                    :current-price="investmentsStore.currentAnalysis.currentPrice"
+                    :pending-valuation-id="pendingValuationId"
+                    :analyzer-loading="investmentsStore.analysisLoading"
+                    @select-symbol="handleAnalyzerSymbolSelect"
+                    @pending-consumed="pendingValuationId = null"
+                />
+
                 <EightPillarsCard
                     :analysis="investmentsStore.currentAnalysis"
                     @view-details="viewAnalysisDetails"
@@ -139,16 +138,33 @@
                     @add-to-watchlist="openWatchlistModal"
                 />
 
+                <!-- Key Metrics summary card (between Pillars and Financial Statements) -->
+                <KeyMetricsCard
+                    v-if="investmentsStore.currentAnalysis.type !== 'crypto'"
+                    :metrics="investmentsStore.dcfMetrics"
+                />
+
                 <!-- Financial Statements Section (only for stocks, not crypto) -->
                 <div
                     v-if="investmentsStore.currentAnalysis.type !== 'crypto'"
-                    class="mt-6"
                 >
                     <FinancialStatementTabs
                         :symbol="investmentsStore.currentAnalysis.symbol"
                     />
                 </div>
             </div>
+
+            <!-- Saved Valuations (visible even with no current analysis) -->
+            <StockAnalyzerSection
+                v-else
+                :symbol="''"
+                :current-price="null"
+                :pending-valuation-id="pendingValuationId"
+                :analyzer-loading="investmentsStore.analysisLoading"
+                class="mb-6"
+                @select-symbol="handleAnalyzerSymbolSelect"
+                @pending-consumed="pendingValuationId = null"
+            />
 
             <!-- Search History -->
             <div
@@ -669,101 +685,6 @@
             </div>
         </div>
 
-        <!-- Stock Analyzer Tab (DCF Valuation) -->
-        <div v-if="activeTab === 'analyzer'">
-            <!-- Search Bar -->
-            <div
-                class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6 mb-6"
-            >
-                <div class="flex items-center space-x-4">
-                    <div class="flex-1 relative">
-                        <input
-                            v-model="analyzerSymbol"
-                            @keyup.enter="loadAnalyzerData"
-                            type="text"
-                            placeholder="Enter stock symbol to analyze (e.g., AAPL, MSFT)"
-                            class="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
-                        />
-                        <svg
-                            class="absolute left-3 top-3.5 h-5 w-5 text-gray-400"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                        >
-                            <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                stroke-width="2"
-                                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                            ></path>
-                        </svg>
-                    </div>
-                    <button
-                        @click="loadAnalyzerData"
-                        :disabled="!analyzerSymbol || analyzerLoading"
-                        class="btn-primary px-6 py-3"
-                    >
-                        <span v-if="analyzerLoading">Loading...</span>
-                        <span v-else>Analyze</span>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Stock Info Header -->
-            <div
-                v-if="analyzerStockInfo"
-                class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6 mb-6"
-            >
-                <div class="flex items-center justify-between">
-                    <div class="flex items-center">
-                        <StockLogo
-                            :symbol="analyzerStockInfo.symbol"
-                            :logo-url="analyzerStockInfo.logo"
-                            size-class="w-12 h-12"
-                            class="mr-4"
-                        />
-                        <div>
-                            <h2
-                                class="text-2xl font-bold text-gray-900 dark:text-white"
-                            >
-                                {{ analyzerStockInfo.symbol }}
-                            </h2>
-                            <p class="text-gray-600 dark:text-gray-400">
-                                {{ analyzerStockInfo.companyName }}
-                            </p>
-                        </div>
-                    </div>
-                    <div class="text-right">
-                        <p class="text-sm text-gray-500 dark:text-gray-400">
-                            Current Price
-                        </p>
-                        <p
-                            class="text-2xl font-bold text-gray-900 dark:text-white"
-                        >
-                            {{
-                                analyzerStockInfo.currentPrice
-                                    ? formatCurrency(
-                                          analyzerStockInfo.currentPrice,
-                                      )
-                                    : "N/A"
-                            }}
-                        </p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- DCF Valuation Section (always renders so saved valuations
-                 stay visible even before a symbol is loaded) -->
-            <StockAnalyzerSection
-                :symbol="analyzerSymbol"
-                :current-price="analyzerStockInfo?.currentPrice"
-                :pending-valuation-id="pendingValuationId"
-                :analyzer-loading="analyzerLoading"
-                @select-symbol="handleAnalyzerSymbolSelect"
-                @pending-consumed="pendingValuationId = null"
-            />
-        </div>
-
         <!-- Add Holding Modal -->
         <AddHoldingModal
             v-if="showAddHoldingModal"
@@ -903,6 +824,7 @@ import { useNotification } from "@/composables/useNotification";
 import { format } from "date-fns";
 import api from "@/services/api";
 import EightPillarsCard from "@/components/investments/EightPillarsCard.vue";
+import KeyMetricsCard from "@/components/investments/KeyMetricsCard.vue";
 import AddHoldingModal from "@/components/investments/AddHoldingModal.vue";
 import FinancialStatementTabs from "@/components/investments/financials/FinancialStatementTabs.vue";
 import PillarFilterChips from "@/components/investments/scanner/PillarFilterChips.vue";
@@ -911,6 +833,7 @@ import ScanStatusBadge from "@/components/investments/scanner/ScanStatusBadge.vu
 import StockAnalyzerSection from "@/components/investments/dcf/StockAnalyzerSection.vue";
 import { useScannerStore } from "@/stores/scanner";
 import StockLogo from "@/components/common/StockLogo.vue";
+import SymbolAutocomplete from "@/components/common/SymbolAutocomplete.vue";
 
 const router = useRouter();
 const route = useRoute();
@@ -919,11 +842,13 @@ const scannerStore = useScannerStore();
 const { showSuccess, showError } = useNotification();
 
 // Valid tab names
-const validTabs = ["screener", "holdings", "scanner", "analyzer"];
+const validTabs = ["screener", "holdings", "scanner"];
 
 // Initialize tab from URL or default to 'screener'
+// Legacy 'analyzer' tab is now merged into 'screener'
 const getInitialTab = () => {
     const urlTab = route.query.tab;
+    if (urlTab === "analyzer") return "screener";
     return validTabs.includes(urlTab) ? urlTab : "screener";
 };
 
@@ -941,10 +866,7 @@ const selectedWatchlistId = ref(null);
 const symbolToAddToWatchlist = ref("");
 const addingToWatchlist = ref(false);
 
-// Stock Analyzer state
-const analyzerSymbol = ref("");
-const analyzerStockInfo = ref(null);
-const analyzerLoading = ref(false);
+// DCF analyzer state (now part of screener flow)
 const pendingValuationId = ref(null);
 
 const filteredSearchHistory = computed(() => {
@@ -1008,38 +930,14 @@ async function onPillarFilterChange() {
     await scannerStore.fetchResults(1);
 }
 
-// Stock Analyzer functions
-async function loadAnalyzerData() {
-    if (!analyzerSymbol.value) return;
-
-    analyzerLoading.value = true;
-    analyzerStockInfo.value = null;
-
-    try {
-        // Get stock info (8 pillars analysis gives us company name, logo, price)
-        const analysis = await investmentsStore.analyzeStock(
-            analyzerSymbol.value.toUpperCase(),
-            false,
-        );
-        analyzerStockInfo.value = {
-            symbol: analysis.symbol,
-            companyName: analysis.companyName,
-            logo: analysis.logo,
-            currentPrice: analysis.currentPrice,
-        };
-    } catch (error) {
-        console.error("Failed to load analyzer data:", error);
-        showError("Error", "Failed to load stock data. Please try again.");
-    } finally {
-        analyzerLoading.value = false;
-    }
-}
-
+// Loading a saved valuation for a different symbol switches the screener
+// to that stock so the DCF analyzer, 8 Pillars, and financials all reload.
 async function handleAnalyzerSymbolSelect({ symbol, valuationId }) {
     if (!symbol) return;
     pendingValuationId.value = valuationId || null;
-    analyzerSymbol.value = symbol;
-    await loadAnalyzerData();
+    activeTab.value = "screener";
+    searchSymbol.value = symbol;
+    await analyzeSymbol();
 }
 
 async function analyzeSymbol() {

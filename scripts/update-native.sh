@@ -10,7 +10,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
 PNPM_CMD=(corepack pnpm)
-PM2_APP_NAME="tradetally-backend-native"
+PM2_APP_NAME="tradetally"
 PM2_ECOSYSTEM="$REPO_ROOT/scripts/ecosystem.config.js"
 CURRENT_STEP="initializing"
 STASHED=0

@@ -1,6 +1,6 @@
 {
   "name": "tradetally-frontend",
-  "version": "2.6.4",
+  "version": "2.6.6",
   "packageManager": "pnpm@10.13.1",
   "private": true,
   "type": "module",

@@ -1,11 +1,11 @@
 const jwt = require('jsonwebtoken');
 const db = require('../config/database');
 const TierService = require('../services/tierService');
+const { AUTH_COOKIE_NAME } = require('../utils/authCookies');
 
 const sseAuthenticate = async (req, res, next) => {
   try {
-    // Check for token in query params (for SSE)
-    const token = req.query.token || req.headers.authorization?.replace('Bearer ', '');
+    const token = req.headers.authorization?.replace('Bearer ', '') || req.cookies?.[AUTH_COOKIE_NAME] || req.query.token;
     
     if (!token) {
       return res.status(401).json({ error: 'No token provided' });

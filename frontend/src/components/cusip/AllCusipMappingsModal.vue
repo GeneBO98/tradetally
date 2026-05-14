@@ -475,11 +475,7 @@ const loadMappings = async (page = 1) => {
         console.log("API request URL:", `/api/cusip-mappings?${params}`);
 
         // Get all CUSIPs (mapped and unmapped) from the main API
-        const response = await fetch(`/api/cusip-mappings?${params}`, {
-            headers: {
-                Authorization: `Bearer ${authStore.token}`,
-            },
-        });
+        const response = await fetch(`/api/cusip-mappings?${params}`);
 
         console.log("API response status:", response.status);
 
@@ -528,14 +524,13 @@ const debouncedSearch = debounce(() => {
 
 const verifyMapping = async (cusip) => {
     try {
-        const response = await fetch(`/api/cusip-mappings/${cusip}/verify`, {
-            method: "PATCH",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${authStore.token}`,
-            },
-            body: JSON.stringify({ verified: true }),
-        });
+            const response = await fetch(`/api/cusip-mappings/${cusip}/verify`, {
+                method: "PATCH",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ verified: true }),
+            });
 
         if (response.ok) {
             await loadMappings(pagination.value?.page || 1);
@@ -558,9 +553,6 @@ const deleteMapping = (cusip) => {
             try {
                 const response = await fetch(`/api/cusip-mappings/${cusip}`, {
                     method: "DELETE",
-                    headers: {
-                        Authorization: `Bearer ${authStore.token}`,
-                    },
                 });
 
                 if (response.ok) {

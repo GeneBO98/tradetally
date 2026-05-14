@@ -238,8 +238,15 @@ const tradeController = {
         strategies, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, brokers, importId, accounts,
-        limit = 50, offset = 0
+        limit = 50, offset, page
       } = req.query;
+
+      const parsedLimit = parseInt(limit);
+      const parsedOffset = offset !== undefined && offset !== ''
+        ? parseInt(offset)
+        : (page !== undefined && page !== '' && parseInt(page) > 0
+            ? (parseInt(page) - 1) * parsedLimit
+            : 0);
 
       const filters = {
         symbol,
@@ -274,8 +281,8 @@ const tradeController = {
         importId,
         accounts: accounts ? ensureString(accounts).split(',') : undefined, // Account identifier filter
         // Pagination
-        limit: parseInt(limit),
-        offset: parseInt(offset)
+        limit: parsedLimit,
+        offset: parsedOffset
       };
 
       if (filters.tags && filters.tags.length > 0) {
@@ -1278,12 +1285,27 @@ const tradeController = {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
-      const fileUrl = `/uploads/${req.file.filename}`;
+      if (!req.file.mimetype || !req.file.mimetype.startsWith('image/')) {
+        return res.status(400).json({ error: 'Only image attachments are supported' });
+      }
+
+      await imageProcessor.validateImage(req.file.buffer);
+
+      const uploadsDir = path.join(__dirname, '../../uploads/trades');
+      const processedImage = await imageProcessor.processImage(
+        req.file.buffer,
+        req.file.originalname,
+        req.user.id,
+        req.params.id
+      );
+      const savedImage = await imageProcessor.saveImage(processedImage, uploadsDir);
+
+      const fileUrl = `/api/trades/${req.params.id}/images/${savedImage.filename}`;
       const attachment = await Trade.addAttachment(req.params.id, {
         fileUrl,
-        fileType: req.file.mimetype,
+        fileType: savedImage.mimeType,
         fileName: req.file.originalname,
-        fileSize: req.file.size
+        fileSize: savedImage.size
       });
 
       res.status(201).json({ attachment });

@@ -486,11 +486,7 @@ const fetchMappings = async (page = 1) => {
         if (verifiedFilter.value)
             params.append("verified", verifiedFilter.value);
 
-        const response = await fetch(`/api/cusip-mappings?${params}`, {
-            headers: {
-                Authorization: `Bearer ${authStore.token}`,
-            },
-        });
+        const response = await fetch(`/api/cusip-mappings?${params}`);
 
         if (response.ok) {
             const data = await response.json();
@@ -514,11 +510,7 @@ const fetchMappingsForReview = async () => {
 
     try {
         loading.value = true;
-        const response = await fetch("/api/cusip-mappings/review", {
-            headers: {
-                Authorization: `Bearer ${authStore.token}`,
-            },
-        });
+        const response = await fetch("/api/cusip-mappings/review");
 
         if (response.ok) {
             const data = await response.json();
@@ -541,11 +533,7 @@ const fetchUnmappedCusips = async () => {
     if (!isAuthenticated.value) return;
 
     try {
-        const response = await fetch("/api/cusip-mappings/unmapped", {
-            headers: {
-                Authorization: `Bearer ${authStore.token}`,
-            },
-        });
+        const response = await fetch("/api/cusip-mappings/unmapped");
 
         if (response.ok) {
             const data = await response.json();
@@ -562,7 +550,6 @@ const verifyMapping = async (cusip, verified) => {
             method: "PATCH",
             headers: {
                 "Content-Type": "application/json",
-                Authorization: `Bearer ${authStore.token}`,
             },
             body: JSON.stringify({ verified }),
         });
@@ -583,9 +570,6 @@ const deleteMapping = (cusip) => {
             try {
                 const response = await fetch(`/api/cusip-mappings/${cusip}`, {
                     method: "DELETE",
-                    headers: {
-                        Authorization: `Bearer ${authStore.token}`,
-                    },
                 });
 
                 if (response.ok) {

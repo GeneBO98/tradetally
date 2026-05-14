@@ -4,6 +4,25 @@ const TierService = require('../services/tierService');
 const EmailService = require('../services/emailService');
 const ApiUsageService = require('../services/apiUsageService');
 const db = require('../config/database');
+const path = require('path');
+const imageProcessor = require('../utils/imageProcessor');
+
+function getAvatarUploadsDir() {
+  return path.join(__dirname, '../../uploads/avatars');
+}
+
+function getAvatarPathFromUrl(avatarUrl) {
+  if (!avatarUrl || typeof avatarUrl !== 'string' || !avatarUrl.startsWith('/uploads/avatars/')) {
+    return null;
+  }
+
+  const filename = path.basename(avatarUrl);
+  if (!filename || filename === '.' || filename === path.sep) {
+    return null;
+  }
+
+  return path.join(getAvatarUploadsDir(), filename);
+}
 
 const userController = {
   /**
@@ -151,8 +170,22 @@ const userController = {
         return res.status(400).json({ error: 'No file uploaded' });
       }
 
-      const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+      const existingUser = await User.findById(req.user.id);
+      await imageProcessor.validateImage(req.file.buffer);
+
+      const processedImage = await imageProcessor.processAvatar(
+        req.file.buffer,
+        req.file.originalname,
+        req.user.id
+      );
+      const savedImage = await imageProcessor.saveImage(processedImage, getAvatarUploadsDir());
+      const avatarUrl = `/uploads/avatars/${savedImage.filename}`;
       const user = await User.update(req.user.id, { avatar_url: avatarUrl });
+
+      const previousAvatarPath = getAvatarPathFromUrl(existingUser?.avatar_url);
+      if (previousAvatarPath && existingUser.avatar_url !== avatarUrl) {
+        await imageProcessor.deleteImage(previousAvatarPath);
+      }
       
       res.json({ user });
     } catch (error) {
@@ -162,7 +195,14 @@ const userController = {
 
   async deleteAvatar(req, res, next) {
     try {
+      const existingUser = await User.findById(req.user.id);
       const user = await User.update(req.user.id, { avatar_url: null });
+      const avatarPath = getAvatarPathFromUrl(existingUser?.avatar_url);
+
+      if (avatarPath) {
+        await imageProcessor.deleteImage(avatarPath);
+      }
+
       res.json({ user });
     } catch (error) {
       next(error);
