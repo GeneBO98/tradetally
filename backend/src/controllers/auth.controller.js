@@ -15,6 +15,8 @@ const { generateCsrfToken } = require('../middleware/csrf');
 const { clearAuthCookies, setAuthCookies } = require('../utils/authCookies');
 const jobQueue = require('../utils/jobQueue');
 
+const PROTECTED_EMAIL = (process.env.DEMO_EMAIL || 'demo@example.com').toLowerCase();
+
 // Check if email configuration is available
 function isEmailConfigured() {
   return EmailService.isConfigured();
@@ -582,6 +584,11 @@ const authController = {
   async forgotPassword(req, res, next) {
     try {
       const { email } = req.body;
+
+      // Return the same generic message to avoid leaking the protection
+      if (email?.toLowerCase() === PROTECTED_EMAIL) {
+        return res.json({ message: 'If the email exists, a reset link has been sent' });
+      }
 
       const user = await User.findByEmail(email);
       if (!user) {

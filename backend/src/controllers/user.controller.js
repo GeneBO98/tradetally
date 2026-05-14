@@ -8,6 +8,8 @@ const db = require('../config/database');
 const path = require('path');
 const imageProcessor = require('../utils/imageProcessor');
 
+const PROTECTED_EMAIL = (process.env.DEMO_EMAIL || 'demo@example.com').toLowerCase();
+
 function getAvatarUploadsDir() {
   return path.join(__dirname, '../../uploads/avatars');
 }
@@ -217,6 +219,10 @@ const userController = {
   async changePassword(req, res, next) {
     try {
       const { currentPassword, newPassword } = req.body;
+
+      if (req.user.email.toLowerCase() === PROTECTED_EMAIL) {
+        return res.status(403).json({ error: 'This account is protected. Contact an administrator to change the password.' });
+      }
 
       const user = await User.findByEmail(req.user.email);
       const isValid = await User.verifyPassword(user, currentPassword);
@@ -806,6 +812,10 @@ const userController = {
     try {
       const { password } = req.body;
       const userId = req.user.id;
+
+      if (req.user.email.toLowerCase() === PROTECTED_EMAIL) {
+        return res.status(403).json({ error: 'This account is protected and cannot be deleted.' });
+      }
 
       if (!password) {
         return res.status(400).json({ error: 'Password is required to confirm account deletion' });
