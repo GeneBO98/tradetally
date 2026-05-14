@@ -1023,6 +1023,8 @@ const calculateDCF = async (req, res) => {
       current_price: metrics.current_price,
       calculated_discount_rate: baseDiscountRate, // Pass calculated rate for reference
       beta: metrics.beta, // Pass beta for reference
+      current_dividend_per_share: metrics.current_dividend_per_share,
+      buyback_rate: metrics.buyback_rate,
       // User inputs - growth rates
       revenue_growth_low: userInputs.revenue_growth_low,
       revenue_growth_medium: userInputs.revenue_growth_medium,

@@ -19,6 +19,13 @@
       >
         {{ marginOfSafety >= 0 ? '+' : '' }}{{ formatPercent(marginOfSafety) }} MoS
       </p>
+      <p
+        v-if="currentPriceReturn !== null && currentPriceReturn !== undefined"
+        class="text-sm mt-1 font-medium"
+        :class="returnClass"
+      >
+        {{ currentPriceReturn >= 0 ? '+' : '' }}{{ formatPercent(currentPriceReturn) }} / yr
+      </p>
       <p class="text-xs mt-1" :class="statusClass">
         {{ statusText }}
       </p>
@@ -44,6 +51,10 @@ const props = defineProps({
     default: null
   },
   marginOfSafety: {
+    type: Number,
+    default: null
+  },
+  currentPriceReturn: {
     type: Number,
     default: null
   }
@@ -97,6 +108,13 @@ const mosClass = computed(() => {
   if (props.marginOfSafety === null) return 'text-gray-500'
   if (props.marginOfSafety >= 0.15) return 'text-green-600 dark:text-green-400'
   if (props.marginOfSafety >= 0) return 'text-yellow-600 dark:text-yellow-400'
+  return 'text-red-600 dark:text-red-400'
+})
+
+const returnClass = computed(() => {
+  if (props.currentPriceReturn === null || props.currentPriceReturn === undefined) return 'text-gray-500'
+  if (props.currentPriceReturn >= 0.10) return 'text-green-600 dark:text-green-400'
+  if (props.currentPriceReturn >= 0) return 'text-yellow-600 dark:text-yellow-400'
   return 'text-red-600 dark:text-red-400'
 })
 
