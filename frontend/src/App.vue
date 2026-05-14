@@ -164,7 +164,7 @@
             @click="dismissPasskeyPrompt"
             class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
           >
-            Skip for now
+            No thanks
           </button>
         </div>
       </div>
@@ -245,6 +245,7 @@ import IOSAppBanner from '@/components/common/IOSAppBanner.vue'
 import VersionDisplay from '@/components/common/VersionDisplay.vue'
 import CookieConsentBanner from '@/components/common/CookieConsentBanner.vue'
 import { useRegistrationMode } from '@/composables/useRegistrationMode'
+import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import api from '@/services/api'
 
 // Rate limit notification handling
@@ -381,6 +382,7 @@ async function registerPasskey() {
 function dismissPasskeyPrompt() {
   showPasskeyPrompt.value = false
   localStorage.setItem(PASSKEY_PROMPT_DISMISSED_KEY, 'true')
+  useUiPreferencesStore().notifyChanged(PASSKEY_PROMPT_DISMISSED_KEY, true)
 }
 
 // Version check polling interval (6 hours)
