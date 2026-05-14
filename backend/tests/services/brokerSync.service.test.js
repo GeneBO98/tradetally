@@ -130,32 +130,20 @@ describe('broker sync duplicate protection', () => {
     ).toBe(true);
   });
 
-  test('IBKR manual sync defaults to a bounded Flex date override window', () => {
-    jest.useFakeTimers().setSystemTime(new Date('2026-03-09T12:00:00Z'));
-
+  test('IBKR Flex request never sends fd/td date overrides', () => {
     const params = ibkrService.buildReportRequestParams('token-1', 'query-1', {
-      syncType: 'manual'
+      syncType: 'manual',
+      startDate: '2025-01-01',
+      endDate: '2026-01-01'
     });
 
-    const start = new Date(`${params.fd.slice(0, 4)}-${params.fd.slice(4, 6)}-${params.fd.slice(6, 8)}T00:00:00Z`);
-    const end = new Date(`${params.td.slice(0, 4)}-${params.td.slice(4, 6)}-${params.td.slice(6, 8)}T00:00:00Z`);
-    const daySpan = Math.floor((end - start) / 86400000) + 1;
-
-    expect(params).toMatchObject({
+    expect(params).toEqual({
       t: 'token-1',
       q: 'query-1',
-      v: '3',
-      td: '20260309'
+      v: '3'
     });
-    expect(daySpan).toBe(365);
-
-    jest.useRealTimers();
-  });
-
-  test('IBKR explicit Flex date overrides reject ranges longer than 365 days', () => {
-    expect(() => {
-      ibkrService.normalizeReportDateRange('2025-01-01', '2026-01-01');
-    }).toThrow('IBKR Flex Web Service supports up to 365 days per request');
+    expect(params).not.toHaveProperty('fd');
+    expect(params).not.toHaveProperty('td');
   });
 
   test('Schwab importTrades skips a trade already imported by a previous sync', async () => {
