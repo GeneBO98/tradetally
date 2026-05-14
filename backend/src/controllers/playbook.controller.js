@@ -87,6 +87,13 @@ const playbookController = {
   async createPlaybook(req, res, next) {
     try {
       const playbook = await Playbook.create(req.user.id, req.body);
+
+      try {
+        await AchievementService.checkAndAwardAchievements(req.user.id);
+      } catch (achievementError) {
+        console.warn(`Failed to check achievements for user ${req.user.id} after playbook creation:`, achievementError.message);
+      }
+
       res.status(201).json({ playbook: mapPlaybook(playbook) });
     } catch (error) {
       if (error.code === '23505') {
