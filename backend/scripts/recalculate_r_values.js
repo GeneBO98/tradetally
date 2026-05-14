@@ -1,5 +1,6 @@
 const db = require('./src/config/database');
 const TargetHitAnalysisService = require('./src/services/targetHitAnalysisService');
+const Trade = require('./src/models/Trade');
 
 /**
  * One-time script to recalculate R-Values and Management R for all trades
@@ -22,7 +23,23 @@ const TargetHitAnalysisService = require('./src/services/targetHitAnalysisServic
 
 // R-Value calculation function (matches calculateTradeR in tradeManagement.controller.js)
 function calculateRValue(trade) {
-  const { entry_price, exit_price, stop_loss, take_profit, take_profit_targets, side, risk_level_history, quantity } = trade;
+  const {
+    entry_price,
+    exit_price,
+    stop_loss,
+    take_profit,
+    take_profit_targets,
+    side,
+    risk_level_history,
+    quantity,
+    commission,
+    fees,
+    instrument_type,
+    contract_size,
+    point_value,
+    underlying_asset,
+    symbol
+  } = trade;
 
   if (!entry_price || !exit_price || !stop_loss || !side) {
     return null;
@@ -73,6 +90,24 @@ function calculateRValue(trade) {
     actualR = (entryPrice - exitPrice) / risk;
   } else {
     return null;
+  }
+
+  const riskAmount = Trade.calculateRiskAmount(
+    entryPrice,
+    stopLoss,
+    quantity,
+    side,
+    instrument_type || 'stock',
+    contract_size,
+    point_value,
+    symbol,
+    underlying_asset
+  );
+
+  if (riskAmount != null && riskAmount > 0) {
+    const grossProfit = actualR * riskAmount;
+    const netProfit = grossProfit - (parseFloat(commission) || 0) - (parseFloat(fees) || 0);
+    actualR = netProfit / riskAmount;
   }
 
   if (!isFinite(actualR)) return null;
@@ -166,7 +201,8 @@ async function recalculateRValues() {
     const query = `
       SELECT id, symbol, side, entry_price, exit_price, stop_loss, take_profit,
              take_profit_targets, quantity, manual_target_hit_first, r_value,
-             management_r, risk_level_history
+             management_r, risk_level_history, commission, fees, instrument_type,
+             contract_size, point_value, underlying_asset
       FROM trades
       WHERE exit_price IS NOT NULL
     `;

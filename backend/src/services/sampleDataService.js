@@ -48,6 +48,7 @@ class SampleDataService {
     // Sample trades: ~12 closed (8 winners, 4 losers) + 1 open AAPL
     const closedTrades = [
       // Day 1 - NVDA winner (day trade)
+      // MAE: dipped $0.50 to 118.00 before running. MFE: peaked at 122.10 (+$3.60), exited early at 121.30.
       {
         symbol: 'NVDA', side: 'long',
         entryPrice: 118.50, exitPrice: 121.30, quantity: 50,
@@ -55,8 +56,10 @@ class SampleDataService {
         entryTime: `${this.fmt(tradingDays[0])}T10:15:00`,
         exitTime: `${this.fmt(tradingDays[0])}T14:30:00`,
         commission: 0.50, strategy: 'day_trading', stopLoss: 117.00, takeProfit: 122.00,
+        mae: 25.00, mfe: 180.00,
       },
       // Day 2 - SPY loser (day trade)
+      // MAE: stopped out at 571.45 (-$1.75/sh). MFE: briefly ticked to 573.80 before reversing.
       {
         symbol: 'SPY', side: 'long',
         entryPrice: 573.20, exitPrice: 571.45, quantity: 100,
@@ -64,8 +67,10 @@ class SampleDataService {
         entryTime: `${this.fmt(tradingDays[1])}T09:35:00`,
         exitTime: `${this.fmt(tradingDays[1])}T11:20:00`,
         commission: 1.00, strategy: 'day_trading', stopLoss: 571.00, takeProfit: 576.00,
+        mae: 175.00, mfe: 60.00,
       },
       // Day 2 - META winner (day trade)
+      // MAE: small dip to 584.35. MFE: ran to 593.80, exited at 592.75 — left $26.25 on table.
       {
         symbol: 'META', side: 'long',
         entryPrice: 585.00, exitPrice: 592.75, quantity: 25,
@@ -73,8 +78,10 @@ class SampleDataService {
         entryTime: `${this.fmt(tradingDays[1])}T13:00:00`,
         exitTime: `${this.fmt(tradingDays[1])}T15:30:00`,
         commission: 0.50, strategy: 'day_trading', stopLoss: 582.00, takeProfit: 594.00,
+        mae: 16.25, mfe: 222.50,
       },
       // Day 3 - TSLA loser (day trade, short)
+      // Adverse (short): price ran to 255.60 before we stopped at 255.10. MFE (short): briefly dipped to 251.80.
       {
         symbol: 'TSLA', side: 'short',
         entryPrice: 252.80, exitPrice: 255.10, quantity: 40,
@@ -82,8 +89,10 @@ class SampleDataService {
         entryTime: `${this.fmt(tradingDays[2])}T10:45:00`,
         exitTime: `${this.fmt(tradingDays[2])}T13:15:00`,
         commission: 0.50, strategy: 'day_trading', stopLoss: 255.50, takeProfit: 249.00,
+        mae: 112.00, mfe: 40.00,
       },
       // Day 4 - MSFT winner (swing trade, held 2 days)
+      // MAE: overnight dip to 394.85. MFE: touched 403.50, exited at 402.20.
       {
         symbol: 'MSFT', side: 'long',
         entryPrice: 395.50, exitPrice: 402.20, quantity: 30,
@@ -91,8 +100,10 @@ class SampleDataService {
         entryTime: `${this.fmt(tradingDays[3])}T10:00:00`,
         exitTime: `${this.fmt(tradingDays[4])}T14:00:00`,
         commission: 0.50, strategy: 'swing_trading', stopLoss: 392.00, takeProfit: 405.00,
+        mae: 19.50, mfe: 240.00,
       },
       // Day 5 - AMD winner (day trade)
+      // MAE: tested 117.00 support. MFE: hit 120.60 before pulling back to 119.80 exit.
       {
         symbol: 'AMD', side: 'long',
         entryPrice: 117.25, exitPrice: 119.80, quantity: 75,
@@ -100,8 +111,10 @@ class SampleDataService {
         entryTime: `${this.fmt(tradingDays[4])}T09:45:00`,
         exitTime: `${this.fmt(tradingDays[4])}T12:30:00`,
         commission: 0.50, strategy: 'day_trading', stopLoss: 116.00, takeProfit: 120.50,
+        mae: 18.75, mfe: 251.25,
       },
       // Day 6 - GOOGL winner (day trade)
+      // MAE: quick wick to 163.05. MFE: extended to 166.85 before we exited at 166.10.
       {
         symbol: 'GOOGL', side: 'long',
         entryPrice: 163.40, exitPrice: 166.10, quantity: 60,
@@ -109,8 +122,10 @@ class SampleDataService {
         entryTime: `${this.fmt(tradingDays[5])}T11:00:00`,
         exitTime: `${this.fmt(tradingDays[5])}T15:00:00`,
         commission: 0.50, strategy: 'day_trading', stopLoss: 162.00, takeProfit: 167.00,
+        mae: 21.00, mfe: 207.00,
       },
       // Day 7 - SPY winner (day trade)
+      // MAE: opened with small dip to 574.15. MFE: ran to 578.40 past TP, exited at 577.80.
       {
         symbol: 'SPY', side: 'long',
         entryPrice: 574.50, exitPrice: 577.80, quantity: 100,
@@ -118,8 +133,10 @@ class SampleDataService {
         entryTime: `${this.fmt(tradingDays[6])}T09:32:00`,
         exitTime: `${this.fmt(tradingDays[6])}T11:45:00`,
         commission: 1.00, strategy: 'day_trading', stopLoss: 573.00, takeProfit: 578.00,
+        mae: 35.00, mfe: 390.00,
       },
       // Day 7 - NVDA loser (day trade)
+      // MAE: hit stop at 120.00 (-$2.00/sh). MFE: only got to 122.80 before reversing hard.
       {
         symbol: 'NVDA', side: 'long',
         entryPrice: 122.00, exitPrice: 120.15, quantity: 50,
@@ -127,8 +144,10 @@ class SampleDataService {
         entryTime: `${this.fmt(tradingDays[6])}T13:30:00`,
         exitTime: `${this.fmt(tradingDays[6])}T15:15:00`,
         commission: 0.50, strategy: 'day_trading', stopLoss: 120.00, takeProfit: 124.50,
+        mae: 100.00, mfe: 40.00,
       },
       // Day 8 - TSLA winner (day trade, short)
+      // MAE (short): briefly squeezed to 259.20. MFE (short): fell to 252.50, exited at 253.20.
       {
         symbol: 'TSLA', side: 'short',
         entryPrice: 258.40, exitPrice: 253.20, quantity: 30,
@@ -136,8 +155,10 @@ class SampleDataService {
         entryTime: `${this.fmt(tradingDays[7])}T10:30:00`,
         exitTime: `${this.fmt(tradingDays[7])}T14:45:00`,
         commission: 0.50, strategy: 'day_trading', stopLoss: 261.00, takeProfit: 253.00,
+        mae: 24.00, mfe: 177.00,
       },
       // Day 9 - META winner (swing trade, held to day 10)
+      // MAE: initial pullback to 589.60. MFE: pushed to 600.50 past TP, exited at 598.60.
       {
         symbol: 'META', side: 'long',
         entryPrice: 590.25, exitPrice: 598.60, quantity: 20,
@@ -145,8 +166,10 @@ class SampleDataService {
         entryTime: `${this.fmt(tradingDays[8])}T11:15:00`,
         exitTime: `${this.fmt(tradingDays[9])}T10:30:00`,
         commission: 0.50, strategy: 'swing_trading', stopLoss: 586.00, takeProfit: 600.00,
+        mae: 13.00, mfe: 205.00,
       },
       // Day 10 - AMD loser (day trade)
+      // MAE: dropped to 118.80, stopped out at 118.90. MFE: briefly ran to 121.30 before collapsing.
       {
         symbol: 'AMD', side: 'long',
         entryPrice: 120.50, exitPrice: 118.90, quantity: 60,
@@ -154,6 +177,7 @@ class SampleDataService {
         entryTime: `${this.fmt(tradingDays[9])}T09:40:00`,
         exitTime: `${this.fmt(tradingDays[9])}T12:00:00`,
         commission: 0.50, strategy: 'day_trading', stopLoss: 118.50, takeProfit: 123.00,
+        mae: 102.00, mfe: 48.00,
       },
     ];
 

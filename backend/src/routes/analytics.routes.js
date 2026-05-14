@@ -41,6 +41,7 @@ router.get('/overview', authenticate, analyticsController.getOverview);
  *         description: MAE/MFE analysis data
  */
 router.get('/maemfe', authenticate, analyticsController.getMAEMFE);
+router.get('/maemfe/trades', authenticate, analyticsController.getMAEMFETrades);
 
 /**
  * @swagger

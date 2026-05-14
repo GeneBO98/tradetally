@@ -3,8 +3,6 @@ const AchievementService = require('../services/achievementService');
 const { getUserLocalDate } = require('../utils/timezone');
 const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('../utils/futuresUtils');
 const logger = require('../utils/logger');
-const SAMPLE_DATA_EXCLUSION_WHERE = ` AND NOT COALESCE('sample' = ANY(t.tags), false)`;
-
 /**
  * Round a numeric value to fit database precision
  * DECIMAL(20, 8) allows up to 12 integer digits and 8 decimal places
@@ -417,7 +415,16 @@ class Trade {
     // Calculate R-Multiple if stop loss and exit price are provided
     // R-Multiple = Profit / Risk (where Risk = distance from entry to stop loss)
     if (finalStopLoss && cleanExitPrice && entryPrice && side) {
-      rValue = this.calculateRValue(entryPrice, finalStopLoss, cleanExitPrice, side);
+      rValue = this.calculateRValue(entryPrice, finalStopLoss, cleanExitPrice, side, {
+        quantity,
+        commission,
+        fees,
+        instrumentType,
+        contractSize,
+        pointValue: finalPointValue,
+        symbol,
+        underlyingAsset: finalUnderlyingAsset
+      });
     }
 
     // Aggregate take profit targets from executions to trade level
@@ -757,7 +764,17 @@ class Trade {
     let rValue = null;
     if (trade.stop_loss && aggregates.exit_price && aggregates.entry_price) {
       rValue = this.calculateRValue(
-        aggregates.entry_price, trade.stop_loss, aggregates.exit_price, trade.side
+        aggregates.entry_price, trade.stop_loss, aggregates.exit_price, trade.side,
+        {
+          quantity: aggregates.quantity,
+          commission: aggregates.commission,
+          fees: aggregates.fees,
+          instrumentType: trade.instrument_type || 'stock',
+          contractSize: trade.contract_size,
+          pointValue: trade.point_value,
+          symbol: trade.symbol,
+          underlyingAsset: trade.underlying_asset
+        }
       );
     }
 
@@ -1570,11 +1587,22 @@ class Trade {
       executionsForRCalc.some(ex => ex.stopLoss !== null && ex.stopLoss !== undefined);
 
     if (updates.entryPrice !== undefined || updates.exitPrice !== undefined ||
-        updates.stopLoss !== undefined || updates.side || executionsToSet !== null) {
+        updates.stopLoss !== undefined || updates.side || executionsToSet !== null ||
+        updates.quantity !== undefined || updates.commission !== undefined ||
+        updates.fees !== undefined || updates.instrumentType !== undefined ||
+        updates.contractSize !== undefined || updates.pointValue !== undefined ||
+        updates.underlyingAsset !== undefined) {
       let entryPrice = updates.entryPrice || currentTrade.entry_price;
       let exitPrice = updates.exitPrice !== undefined ? updates.exitPrice : currentTrade.exit_price;
       let stopLoss = updates.stopLoss !== undefined ? updates.stopLoss : currentTrade.stop_loss;
       const side = updates.side || currentTrade.side;
+      const quantity = updates.quantity !== undefined ? updates.quantity : currentTrade.quantity;
+      const commission = updates.commission !== undefined ? updates.commission : currentTrade.commission;
+      const fees = updates.fees !== undefined ? updates.fees : currentTrade.fees;
+      const instrumentType = updates.instrumentType || currentTrade.instrument_type || 'stock';
+      const contractSize = updates.contractSize !== undefined ? updates.contractSize : currentTrade.contract_size;
+      const pointValue = updates.pointValue !== undefined ? updates.pointValue : currentTrade.point_value;
+      const underlyingAsset = updates.underlyingAsset !== undefined ? updates.underlyingAsset : currentTrade.underlying_asset;
 
       // If stopLoss is in executions, calculate weighted average
       if (!stopLoss && hasExecutionStopLoss) {
@@ -1605,7 +1633,16 @@ class Trade {
       // Calculate R-Multiple if stop loss and exit price are provided
       // R-Multiple = Profit / Risk (where Risk = distance from entry to stop loss)
       const rValue = (stopLoss && exitPrice && entryPrice && side)
-        ? this.calculateRValue(entryPrice, stopLoss, exitPrice, side)
+        ? this.calculateRValue(entryPrice, stopLoss, exitPrice, side, {
+          quantity,
+          commission,
+          fees,
+          instrumentType,
+          contractSize,
+          pointValue,
+          symbol: currentTrade.symbol,
+          underlyingAsset
+        })
         : null;
 
       console.log('[R-MULTIPLE CALC] Result:', rValue);
@@ -1986,7 +2023,7 @@ class Trade {
    * @param {string} side - The trade side ('long' or 'short')
    * @returns {number|null} The calculated R-Multiple, or null if inputs are invalid
    */
-  static calculateRValue(entryPrice, stopLoss, exitPrice, side) {
+  static calculateRValue(entryPrice, stopLoss, exitPrice, side, options = {}) {
     // Validate inputs - all required for calculation
     if (!entryPrice || !stopLoss || !exitPrice || !side) {
       console.warn('[R-MULTIPLE] Missing required inputs:', { entryPrice, stopLoss, exitPrice, side });
@@ -2037,7 +2074,45 @@ class Trade {
       return null;
     }
 
-    const rMultiple = actualProfit / riskAmount;
+    const {
+      quantity,
+      commission = 0,
+      fees = 0,
+      instrumentType = 'stock',
+      contractSize = null,
+      pointValue = null,
+      symbol = null,
+      underlyingAsset = null
+    } = options || {};
+
+    let rMultiple;
+    const parsedQty = parseFloat(quantity);
+
+    if (isFinite(parsedQty) && parsedQty > 0) {
+      const totalRiskAmount = this.calculateRiskAmount(
+        entryPrice,
+        stopLoss,
+        parsedQty,
+        side,
+        instrumentType,
+        contractSize,
+        pointValue,
+        symbol,
+        underlyingAsset
+      );
+
+      if (!totalRiskAmount || totalRiskAmount <= 0) {
+        console.warn('[R-MULTIPLE] Total risk amount must be positive, got:', totalRiskAmount);
+        return null;
+      }
+
+      const multiplier = totalRiskAmount / (riskAmount * parsedQty);
+      const grossProfit = actualProfit * parsedQty * multiplier;
+      const netProfit = grossProfit - (parseFloat(commission) || 0) - (parseFloat(fees) || 0);
+      rMultiple = netProfit / totalRiskAmount;
+    } else {
+      rMultiple = actualProfit / riskAmount;
+    }
 
     // Guard against NaN or Infinity (negative values are allowed)
     if (!isFinite(rMultiple)) {
@@ -2071,7 +2146,8 @@ class Trade {
 
       // Find all trades without a stop loss that have the necessary data
       const tradesQuery = `
-        SELECT id, entry_price, exit_price, side
+        SELECT id, symbol, entry_price, exit_price, side, quantity, commission,
+               fees, instrument_type, contract_size, point_value, underlying_asset
         FROM trades
         WHERE user_id = $1
           AND stop_loss IS NULL
@@ -2093,7 +2169,20 @@ class Trade {
 
       // Update each trade with the calculated stop loss
       for (const trade of trades) {
-        const { id, entry_price, exit_price, side } = trade;
+        const {
+          id,
+          symbol,
+          entry_price,
+          exit_price,
+          side,
+          quantity,
+          commission,
+          fees,
+          instrument_type,
+          contract_size,
+          point_value,
+          underlying_asset
+        } = trade;
 
         // Calculate stop loss based on entry price and side
         let stopLoss;
@@ -2112,7 +2201,16 @@ class Trade {
         // Calculate R value if exit price exists
         let rValue = null;
         if (exit_price) {
-          rValue = this.calculateRValue(entry_price, stopLoss, exit_price, side);
+          rValue = this.calculateRValue(entry_price, stopLoss, exit_price, side, {
+            quantity,
+            commission,
+            fees,
+            instrumentType: instrument_type || 'stock',
+            contractSize: contract_size,
+            pointValue: point_value,
+            symbol,
+            underlyingAsset: underlying_asset
+          });
         }
 
         // Update the trade
@@ -2158,7 +2256,8 @@ class Trade {
       await client.query('BEGIN');
 
       const tradesQuery = `
-        SELECT id, entry_price, exit_price, side, quantity, instrument_type, contract_size, point_value
+        SELECT id, symbol, entry_price, exit_price, side, quantity, commission,
+               fees, instrument_type, contract_size, point_value, underlying_asset
         FROM trades
         WHERE user_id = $1
           AND stop_loss IS NULL
@@ -2181,7 +2280,20 @@ class Trade {
       let updatedCount = 0;
 
       for (const trade of trades) {
-        const { id, entry_price, exit_price, side, quantity, instrument_type, contract_size, point_value } = trade;
+        const {
+          id,
+          symbol,
+          entry_price,
+          exit_price,
+          side,
+          quantity,
+          commission,
+          fees,
+          instrument_type,
+          contract_size,
+          point_value,
+          underlying_asset
+        } = trade;
 
         const instrumentType = instrument_type || 'stock';
         const priceMove = this.getDollarStopLossPriceMove(defaultStopLossDollars, quantity, instrumentType, contract_size, point_value);
@@ -2204,7 +2316,16 @@ class Trade {
 
         let rValue = null;
         if (exit_price) {
-          rValue = this.calculateRValue(entry_price, stopLoss, exit_price, side);
+          rValue = this.calculateRValue(entry_price, stopLoss, exit_price, side, {
+            quantity,
+            commission,
+            fees,
+            instrumentType,
+            contractSize: contract_size,
+            pointValue: point_value,
+            symbol,
+            underlyingAsset: underlying_asset
+          });
         }
 
         const updateQuery = `
@@ -2439,7 +2560,7 @@ class Trade {
     console.log('[PARTIAL-EXIT] Getting partial exit analytics for user:', userId);
 
     // Build WHERE clause using the same filter pattern as getAnalytics
-    let whereClause = `WHERE t.user_id = $1${filters.includeSampleData ? '' : SAMPLE_DATA_EXCLUSION_WHERE} AND t.exit_price IS NOT NULL`;
+    let whereClause = `WHERE t.user_id = $1 AND t.exit_price IS NOT NULL`;
     const values = [userId];
     let paramCount = 2;
 

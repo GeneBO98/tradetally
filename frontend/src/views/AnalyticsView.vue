@@ -1097,6 +1097,11 @@
       </div>
             </template>
 
+            <!-- MAE / MFE Analysis -->
+            <template v-else-if="element.id === 'mae-mfe-analysis'">
+      <MaeMfeAnalysis :filters="filters" />
+            </template>
+
           </div>
         </template>
       </draggable>
@@ -1226,6 +1231,7 @@ import api from '@/services/api'
 import PerformanceChart from '@/components/charts/PerformanceChart.vue'
 import MdiIcon from '@/components/MdiIcon.vue'
 import NewsCorrelationAnalytics from '@/components/analytics/NewsCorrelationAnalytics.vue'
+import MaeMfeAnalysis from '@/components/analytics/MaeMfeAnalysis.vue'
 import TagManagement from '@/components/trades/TagManagement.vue'
 import TradeFilters from '@/components/trades/TradeFilters.vue'
 import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
@@ -1436,7 +1442,8 @@ const chartDefinitions = [
   { id: 'news-sentiment', title: 'News Sentiment Correlation', defaultSize: 'full', category: 'charts' },
   { id: 'tag-performance', title: 'Tag Performance', defaultSize: 'full', category: 'tables' },
   { id: 'strategy-performance', title: 'Strategy/Setup Performance', defaultSize: 'full', category: 'tables' },
-  { id: 'hour-of-day-performance', title: 'Hour of Day Performance', defaultSize: 'full', category: 'tables' }
+  { id: 'hour-of-day-performance', title: 'Hour of Day Performance', defaultSize: 'full', category: 'tables' },
+  { id: 'mae-mfe-analysis', title: 'MAE / MFE Analysis', defaultSize: 'full', category: 'charts' }
 ]
 
 const defaultChartLayout = chartDefinitions.map(chart => ({
