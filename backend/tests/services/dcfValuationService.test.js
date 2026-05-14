@@ -49,6 +49,54 @@ describe('DCFValuationService calculation rules', () => {
     expect(result.fair_value_medium).toBeLessThan(result.fair_value_high);
   });
 
+  test('current price return is an output based on projected future price', () => {
+    const result = DCFValuationService.calculateDCF({
+      ...baseParams,
+      revenue_growth_low: 0.02,
+      revenue_growth_medium: 0.05,
+      revenue_growth_high: 0.10,
+      pe_low: 12,
+      pe_medium: 15,
+      pe_high: 20,
+      pfcf_low: 12,
+      pfcf_medium: 15,
+      pfcf_high: 20,
+      desired_return_low: 0.12,
+      desired_return_medium: 0.12,
+      desired_return_high: 0.12
+    });
+
+    expect(result.future_price_low).toBeGreaterThan(0);
+    expect(result.current_price_return_low).toBeGreaterThan(0);
+    expect(result.current_price_return_medium).toBeGreaterThan(result.current_price_return_low);
+    expect(result.current_price_return_high).toBeGreaterThan(result.current_price_return_medium);
+  });
+
+  test('historical ROIC uses average invested capital with accounts payable and reported tax rate', () => {
+    const roic = DCFValuationService.calculateROIC([
+      {
+        fiscalYear: 2025,
+        operatingIncome: 100,
+        incomeBeforeTax: 80,
+        incomeTaxExpense: 16,
+        totalEquity: 50,
+        totalDebt: 50,
+        accountsPayable: 25
+      },
+      {
+        fiscalYear: 2024,
+        operatingIncome: 90,
+        incomeBeforeTax: 70,
+        incomeTaxExpense: 14,
+        totalEquity: 70,
+        totalDebt: 50,
+        accountsPayable: 30
+      }
+    ], 1);
+
+    expect(roic).toBeCloseTo(80 / 137.5, 5);
+  });
+
   test('profit margin assumptions affect earnings-based fair value', () => {
     const lowMargin = DCFValuationService.calculateDCFTraditional({
       revenue: 1_000,
@@ -113,7 +161,7 @@ describe('DCFValuationService calculation rules', () => {
     expect(highMargin).toBeGreaterThan(lowMargin);
   });
 
-  test('reversed Bear and Bull inputs are preserved and warned, not swapped', () => {
+  test('reversed Bear and Bull operating assumptions are preserved and warned, not swapped', () => {
     const result = DCFValuationService.calculateDCF({
       ...baseParams,
       revenue_growth_low: 0.12,
@@ -139,8 +187,40 @@ describe('DCFValuationService calculation rules', () => {
       expect.arrayContaining([
         expect.stringMatching(/Growth rates appear reversed/),
         expect.stringMatching(/P\/E multiples appear reversed/),
-        expect.stringMatching(/P\/FCF multiples appear reversed/),
-        expect.stringMatching(/Discount rates appear reversed/)
+        expect.stringMatching(/P\/FCF multiples appear reversed/)
+      ])
+    );
+  });
+
+  test('uses the same valid valuation method across scenarios when one scenario has negative earnings', () => {
+    const result = DCFValuationService.calculateDCF({
+      ...baseParams,
+      revenue_growth_low: 0.20,
+      revenue_growth_medium: 0.225,
+      revenue_growth_high: 0.25,
+      profit_margin_low: -0.05,
+      profit_margin_medium: 0.05,
+      profit_margin_high: 0.10,
+      fcf_margin_low: 0.20,
+      fcf_margin_medium: 0.30,
+      fcf_margin_high: 0.40,
+      pe_low: 20,
+      pe_medium: 21,
+      pe_high: 22,
+      pfcf_low: 20,
+      pfcf_medium: 21,
+      pfcf_high: 22,
+      desired_return_low: 0.10,
+      desired_return_medium: 0.12,
+      desired_return_high: 0.14
+    });
+
+    expect(result.fair_value_medium).toBeGreaterThan(result.fair_value_low);
+    expect(result.fair_value_high).toBeGreaterThan(result.fair_value_medium);
+    expect(result.inputs.input_warnings).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/Bear: P\/E method excluded/),
+        expect.stringMatching(/same valid valuation methods/)
       ])
     );
   });
@@ -161,5 +241,34 @@ describe('DCFValuationService calculation rules', () => {
     });
 
     expect(result).toBeGreaterThan(0);
+  });
+
+  test('saved valuation mapping preserves zero and negative numeric inputs', () => {
+    const valuation = DCFValuationService.rowToValuation({
+      id: 'valuation-1',
+      user_id: 'user-1',
+      symbol: 'NOW',
+      valuation_date: new Date('2026-05-13T00:00:00Z'),
+      current_price: '87.0500',
+      shares_outstanding: '1000000',
+      profit_margin_low: '-0.0500',
+      profit_margin_medium: '0.0000',
+      profit_margin_high: '0.1000',
+      fcf_margin_low: '0.0000',
+      revenue_growth_low: '0.0000',
+      desired_return_low: '0.0000',
+      desired_return_medium: '0.1200',
+      desired_return_high: '0.1000',
+      fair_value_low: '0.0000',
+      fair_value_medium: '153.3200',
+      fair_value_high: '232.1100'
+    });
+
+    expect(valuation.profit_margin_low).toBe(-0.05);
+    expect(valuation.profit_margin_medium).toBe(0);
+    expect(valuation.fcf_margin_low).toBe(0);
+    expect(valuation.revenue_growth_low).toBe(0);
+    expect(valuation.desired_return_low).toBe(0);
+    expect(valuation.fair_value_low).toBe(0);
   });
 });

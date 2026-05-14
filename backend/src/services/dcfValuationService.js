@@ -55,19 +55,44 @@ class DCFValuationService {
     const profileShares = profile?.shareOutstanding ? profile.shareOutstanding * 1000000 : null;
     const currentPrice = quote?.c || null;
 
-    // Get 10 years of financial data
-    const financials = await FundamentalDataService.getFinancials(symbolUpper, 10, forceRefresh, 'annual', profileShares);
+    // Get one extra balance sheet period so ROIC can use average invested
+    // capital for every displayed historical period.
+    const financials = await FundamentalDataService.getFinancials(symbolUpper, 11, forceRefresh, 'annual', profileShares);
 
     if (!financials || financials.length < 2) {
       throw new Error(`Insufficient financial data for ${symbolUpper}. Need at least 2 years.`);
     }
 
     // Sort by year descending
-    const sorted = financials
+    const sortedRaw = financials
       .map(f => ({ ...f, fiscalYear: f.fiscalYear || f.year }))
       .sort((a, b) => b.fiscalYear - a.fiscalYear);
 
+    // Drop historical periods whose revenue is implausibly small relative to
+    // the most recent year — these are usually extraction errors where the
+    // older filing used a different XBRL concept and our `findValue` picked
+    // up a segment line or none at all. Without this filter, e.g. AMZN's
+    // 10Y revenue CAGR comes back as 38% (mathematically impossible) because
+    // one old year reports $26B instead of the real number.
+    const cleaned = this.filterAnomalousRevenue(sortedRaw);
+
+    // Split-adjust historical shares so every downstream per-share metric
+    // (EPS, P/E history, P/FCF history, buyback rate) is on the same basis
+    // as the most recent period. Without this, e.g. NVDA's 10-for-1 split
+    // in 2024 makes pre-2024 share counts look 10× smaller than they should.
+    const sorted = this.splitAdjustFinancials(cleaned);
+
     console.log(`[DCF] Got ${sorted.length} years of data for ${symbolUpper}`);
+
+    // Fetch year-end prices for each fiscal year so we can compute the
+    // per-year P/E and P/FCF ratios EM-style (using each year's actual
+    // year-end price, not today's price).
+    const fiscalYears = sorted.map(p => p.fiscalYear);
+    const yearEndPrices = await FundamentalDataService.getYearEndPrices(symbolUpper, fiscalYears)
+      .catch(err => {
+        console.warn(`[DCF] Failed to get year-end prices for ${symbolUpper}: ${err.message}`);
+        return {};
+      });
 
     // Extract beta from metrics if available
     // Finnhub metrics may have beta in different formats
@@ -84,12 +109,46 @@ class DCFValuationService {
     // Use current risk-free rate (10-year Treasury ~4%) and market risk premium (~6%)
     const calculatedDiscountRate = this.calculateDiscountRate(beta, 0.04, 0.06);
 
+    const finnhubMetric = metricsData?.metric || {};
+    const numericFromFinnhub = (key) => {
+      const value = finnhubMetric[key];
+      if (value === null || value === undefined) return null;
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+
+    const latest = sorted[0] || {};
+    const computedMarketCap = currentPrice && profileShares ? currentPrice * profileShares : null;
+    const marketCap = numericFromFinnhub('marketCapitalization')
+      ? numericFromFinnhub('marketCapitalization') * 1_000_000
+      : computedMarketCap;
+    const totalDebt = latest.totalDebt ?? null;
+    const cashAndEquivalents = latest.cashAndEquivalents ?? null;
+    const enterpriseValue = marketCap !== null && marketCap !== undefined
+      ? marketCap + (totalDebt || 0) - (cashAndEquivalents || 0)
+      : null;
+    const dividendsPaidTtm = latest.dividendsPaid !== null && latest.dividendsPaid !== undefined
+      ? Math.abs(Number(latest.dividendsPaid))
+      : null;
+    const psRatio = numericFromFinnhub('psTTM')
+      ?? (marketCap && latest.revenue ? marketCap / latest.revenue : null);
+    const pegRatio = numericFromFinnhub('pegRatio');
+    const dividendYieldPct = numericFromFinnhub('currentDividendYieldTTM')
+      ?? numericFromFinnhub('dividendYieldIndicatedAnnual');
+    const dividendYield = dividendYieldPct !== null ? dividendYieldPct / 100 : null;
+    const forwardDividendYieldPct = numericFromFinnhub('dividendYieldIndicatedAnnual');
+    const forwardDividendYield = forwardDividendYieldPct !== null ? forwardDividendYieldPct / 100 : null;
+    const week52High = numericFromFinnhub('52WeekHigh');
+    const week52Low = numericFromFinnhub('52WeekLow');
+    const week52HighDate = finnhubMetric['52WeekHighDate'] || null;
+    const week52LowDate = finnhubMetric['52WeekLowDate'] || null;
+
     // Calculate metrics for each available period
     const metrics = {
       symbol: symbolUpper,
       current_price: currentPrice,
       shares_outstanding: profileShares,
-      market_cap: currentPrice && profileShares ? currentPrice * profileShares : null,
+      market_cap: marketCap,
 
       // Historical metrics
       roic_1yr: this.calculateROIC(sorted, 1),
@@ -97,6 +156,7 @@ class DCFValuationService {
       roic_10yr: this.calculateROIC(sorted, 10),
 
       revenue_growth_1yr: this.calculateCAGR(sorted, 'revenue', 1),
+      revenue_growth_3yr: this.calculateCAGR(sorted, 'revenue', 3),
       revenue_growth_5yr: this.calculateCAGR(sorted, 'revenue', 5),
       revenue_growth_10yr: this.calculateCAGR(sorted, 'revenue', 10),
 
@@ -104,26 +164,53 @@ class DCFValuationService {
       profit_margin_5yr: this.calculateAvgMargin(sorted, 'netIncome', 'revenue', 5),
       profit_margin_10yr: this.calculateAvgMargin(sorted, 'netIncome', 'revenue', 10),
 
+      gross_profit_margin_1yr: this.calculateAvgMargin(sorted, 'grossProfit', 'revenue', 1),
+      gross_profit_margin_5yr: this.calculateAvgMargin(sorted, 'grossProfit', 'revenue', 5),
+      gross_profit_margin_10yr: this.calculateAvgMargin(sorted, 'grossProfit', 'revenue', 10),
+
       fcf_margin_1yr: this.calculateAvgMargin(sorted, 'freeCashFlow', 'revenue', 1),
       fcf_margin_5yr: this.calculateAvgMargin(sorted, 'freeCashFlow', 'revenue', 5),
       fcf_margin_10yr: this.calculateAvgMargin(sorted, 'freeCashFlow', 'revenue', 10),
 
       // Current values for DCF base
-      current_fcf: sorted[0]?.freeCashFlow || null,
-      current_revenue: sorted[0]?.revenue || null,
+      current_fcf: latest.freeCashFlow || null,
+      current_revenue: latest.revenue || null,
 
       // Ratios - current and historical averages
-      pe_ratio: this.calculatePE(sorted[0], currentPrice),
-      pe_1yr: this.calculateAvgPE(sorted, currentPrice, 1),
-      pe_5yr: this.calculateAvgPE(sorted, currentPrice, 5),
-      pe_10yr: this.calculateAvgPE(sorted, currentPrice, 10),
-      price_to_fcf: this.calculatePriceToFCF(currentPrice, profileShares, sorted[0]?.freeCashFlow),
-      pfcf_1yr: this.calculateAvgPFCF(sorted, currentPrice, profileShares, 1),
-      pfcf_5yr: this.calculateAvgPFCF(sorted, currentPrice, profileShares, 5),
-      pfcf_10yr: this.calculateAvgPFCF(sorted, currentPrice, profileShares, 10),
+      pe_ratio: this.calculatePE(latest, currentPrice),
+      pe_1yr: this.calculateAvgPE(sorted, yearEndPrices, 1),
+      pe_5yr: this.calculateAvgPE(sorted, yearEndPrices, 5),
+      pe_10yr: this.calculateAvgPE(sorted, yearEndPrices, 10),
+      price_to_fcf: this.calculatePriceToFCF(currentPrice, profileShares, latest.freeCashFlow),
+      pfcf_1yr: this.calculateAvgPFCF(sorted, yearEndPrices, 1),
+      pfcf_5yr: this.calculateAvgPFCF(sorted, yearEndPrices, 5),
+      pfcf_10yr: this.calculateAvgPFCF(sorted, yearEndPrices, 10),
 
       // Additional current values for DCF calculations
-      current_net_income: sorted[0]?.netIncome || null,
+      current_net_income: latest.netIncome || null,
+
+      // Dividend per share and buyback rate — used by the DCF target-price
+      // model so fair value includes the dividend stream and accounts for
+      // share-count decline from buybacks. Matches EM's methodology, which
+      // explicitly includes dividends in the result.
+      current_dividend_per_share: this.calculateCurrentDividendPerShare(latest),
+      buyback_rate: this.calculateBuybackRate(sorted, 5),
+
+      // Snapshot metrics for the key-metrics panel
+      avg_net_income_5yr: this.calculateAvg(sorted, 'netIncome', 5),
+      avg_fcf_5yr: this.calculateAvg(sorted, 'freeCashFlow', 5),
+      ps_ratio: psRatio,
+      peg_ratio: pegRatio,
+      dividend_yield: dividendYield,
+      forward_dividend_yield: forwardDividendYield,
+      dividends_paid_ttm: dividendsPaidTtm,
+      enterprise_value: enterpriseValue,
+      total_debt: totalDebt,
+      cash_and_equivalents: cashAndEquivalents,
+      week_52_high: week52High,
+      week_52_low: week52Low,
+      week_52_high_date: week52HighDate,
+      week_52_low_date: week52LowDate,
 
       // Calculated discount rate (CAPM)
       calculated_discount_rate: calculatedDiscountRate,
@@ -131,7 +218,7 @@ class DCFValuationService {
 
       // Raw data for transparency
       years_available: sorted.length,
-      latest_year: sorted[0]?.fiscalYear,
+      latest_year: latest.fiscalYear,
       oldest_year: sorted[sorted.length - 1]?.fiscalYear
     };
 
@@ -142,31 +229,52 @@ class DCFValuationService {
 
   /**
    * Calculate average ROIC over a period
-   * ROIC = NOPAT / Invested Capital
-   * Invested Capital = Total Equity + Total Debt - Cash and Equivalents
+   * ROIC = NOPAT / Average Invested Capital
+   * Invested Capital = Total Equity + Total Debt + Accounts Payable
+   * (matches EverythingMoney methodology — AP is treated as operating
+   * capital deployed since it represents supplier-financed working capital)
    * @param {Array} financials - Sorted financial data (most recent first)
    * @param {number} years - Number of years to average
    * @returns {number|null} Average ROIC as decimal (0.15 = 15%)
    */
   static calculateROIC(financials, years) {
     const taxRate = 0.21;
-    const periods = financials.slice(0, Math.min(years, financials.length));
+    const periods = financials.slice(0, Math.min(years, financials.length - 1));
 
     const roics = [];
-    for (const period of periods) {
-      const { operatingIncome, totalEquity, totalDebt, cashAndEquivalents } = period;
+    for (let index = 0; index < periods.length; index += 1) {
+      const period = periods[index];
+      const priorPeriod = financials[index + 1];
+      const {
+        operatingIncome,
+        totalEquity,
+        totalDebt,
+        accountsPayable,
+        incomeBeforeTax,
+        incomeTaxExpense
+      } = period;
 
-      if (operatingIncome !== null && totalEquity !== null) {
-        const investedCapital = (totalEquity || 0) + (totalDebt || 0) - (cashAndEquivalents || 0);
+      if (
+        operatingIncome !== null &&
+        operatingIncome !== undefined &&
+        totalEquity !== null &&
+        totalEquity !== undefined &&
+        priorPeriod
+      ) {
+        const investedCapital = (totalEquity || 0) + (totalDebt || 0) + (accountsPayable || 0);
+        const priorInvestedCapital = (priorPeriod.totalEquity || 0) +
+          (priorPeriod.totalDebt || 0) +
+          (priorPeriod.accountsPayable || 0);
+        const avgInvestedCapital = (investedCapital + priorInvestedCapital) / 2;
 
-        // Only calculate ROIC if invested capital is positive and meaningful
-        // Negative invested capital (net cash position) makes ROIC calculation problematic
-        if (investedCapital > 0.01) {
-          const nopat = operatingIncome * (1 - taxRate);
-          const roic = nopat / investedCapital;
+        if (avgInvestedCapital > 0.01) {
+          const effectiveTaxRate = incomeBeforeTax && incomeBeforeTax > 0 && incomeTaxExpense !== null && incomeTaxExpense !== undefined
+            ? Math.max(0, Math.min(Number(incomeTaxExpense) / Number(incomeBeforeTax), 1))
+            : taxRate;
+          const nopat = operatingIncome * (1 - effectiveTaxRate);
+          const roic = nopat / avgInvestedCapital;
           roics.push(roic);
         }
-        // Skip periods with negative or near-zero invested capital
       }
     }
 
@@ -226,6 +334,26 @@ class DCFValuationService {
   }
 
   /**
+   * Calculate simple average of a numeric field over a period
+   * @param {Array} financials - Sorted financial data (most recent first)
+   * @param {string} field - Field name to average
+   * @param {number} years - Number of years to include
+   * @returns {number|null} Average of the field, or null when no values exist
+   */
+  static calculateAvg(financials, field, years) {
+    const periods = financials.slice(0, Math.min(years, financials.length));
+    const values = [];
+    for (const period of periods) {
+      const value = period[field];
+      if (value !== null && value !== undefined && !Number.isNaN(Number(value))) {
+        values.push(Number(value));
+      }
+    }
+    if (values.length === 0) return null;
+    return values.reduce((sum, v) => sum + v, 0) / values.length;
+  }
+
+  /**
    * Calculate P/E ratio
    * @param {Object} latestFinancial - Most recent financial data
    * @param {number} currentPrice - Current stock price
@@ -260,59 +388,229 @@ class DCFValuationService {
 
   /**
    * Calculate average P/E ratio over a period
-   * Uses average EPS over the period with current price
+   * For each year, computes that year's P/E = year-end price / year EPS,
+   * then averages those per-year P/E values. This matches the EM-style
+   * historical average P/E (vs. inflating with today's price).
    * @param {Array} financials - Sorted financial data (most recent first)
-   * @param {number} currentPrice - Current stock price
+   * @param {Object} yearEndPrices - Map of fiscal year -> year-end price
    * @param {number} years - Number of years to average
    * @returns {number|null} Average P/E ratio
    */
-  static calculateAvgPE(financials, currentPrice, years) {
-    if (!currentPrice) return null;
+  static calculateAvgPE(financials, yearEndPrices, years) {
+    if (!yearEndPrices) return null;
 
     const periods = financials.slice(0, Math.min(years, financials.length));
-    const epsValues = [];
+    const peValues = [];
 
     for (const period of periods) {
-      if (period.netIncome && period.sharesOutstanding && period.sharesOutstanding > 0) {
-        const eps = period.netIncome / period.sharesOutstanding;
-        if (eps > 0) {
-          epsValues.push(eps);
-        }
-      }
+      const price = yearEndPrices[period.fiscalYear];
+      if (!price || price <= 0) continue;
+      if (!period.netIncome || !period.sharesOutstanding || period.sharesOutstanding <= 0) continue;
+
+      const eps = period.netIncome / period.sharesOutstanding;
+      if (eps <= 0) continue;
+
+      peValues.push(price / eps);
     }
 
-    if (epsValues.length === 0) return null;
-
-    const avgEPS = epsValues.reduce((sum, e) => sum + e, 0) / epsValues.length;
-    return currentPrice / avgEPS;
+    if (peValues.length === 0) return null;
+    return peValues.reduce((sum, p) => sum + p, 0) / peValues.length;
   }
 
   /**
    * Calculate average P/FCF ratio over a period
-   * Uses average FCF per share over the period with current price
+   * For each year, computes that year's P/FCF = year-end price /
+   * (year FCF / year shares), then averages those per-year ratios.
    * @param {Array} financials - Sorted financial data (most recent first)
-   * @param {number} currentPrice - Current stock price
-   * @param {number} sharesOutstanding - Current shares outstanding
+   * @param {Object} yearEndPrices - Map of fiscal year -> year-end price
    * @param {number} years - Number of years to average
    * @returns {number|null} Average P/FCF ratio
    */
-  static calculateAvgPFCF(financials, currentPrice, sharesOutstanding, years) {
-    if (!currentPrice || !sharesOutstanding) return null;
+  static calculateAvgPFCF(financials, yearEndPrices, years) {
+    if (!yearEndPrices) return null;
 
     const periods = financials.slice(0, Math.min(years, financials.length));
-    const fcfValues = [];
+    const pfcfValues = [];
 
     for (const period of periods) {
-      if (period.freeCashFlow && period.freeCashFlow > 0) {
-        fcfValues.push(period.freeCashFlow);
+      const price = yearEndPrices[period.fiscalYear];
+      if (!price || price <= 0) continue;
+      if (!period.freeCashFlow || period.freeCashFlow <= 0) continue;
+      if (!period.sharesOutstanding || period.sharesOutstanding <= 0) continue;
+
+      const fcfPerShare = period.freeCashFlow / period.sharesOutstanding;
+      if (fcfPerShare <= 0) continue;
+
+      pfcfValues.push(price / fcfPerShare);
+    }
+
+    if (pfcfValues.length === 0) return null;
+    return pfcfValues.reduce((sum, p) => sum + p, 0) / pfcfValues.length;
+  }
+
+  /**
+   * Current dividend per share from the most recent period.
+   * Returns null when no dividend data is available; the DCF will then skip
+   * the dividend term entirely.
+   * @param {Object} latest - Most recent financial period
+   * @returns {number|null} Dividend per share (positive number) or null
+   */
+  static calculateCurrentDividendPerShare(latest) {
+    if (!latest) return null;
+    const dividendsPaid = Math.abs(Number(latest.dividendsPaid) || 0);
+    const shares = Number(latest.sharesOutstanding) || 0;
+    if (dividendsPaid <= 0 || shares <= 0) return null;
+    return dividendsPaid / shares;
+  }
+
+  /**
+   * Trim historical periods where the reported revenue is implausibly small
+   * compared to the most recent year. These are nearly always XBRL
+   * extraction failures (older filings used a different concept name, our
+   * `findValue` picked up a segment line, or the API truncated the
+   * statement). Including them in CAGR / margin averages produces
+   * obviously-wrong outputs (e.g. 38% 10Y revenue CAGR, inflated 10Y FCF
+   * margin avg pulled up by a single tiny-revenue datapoint).
+   *
+   * Walks newest → oldest. As soon as we hit a year whose revenue is less
+   * than 10% of the most recent year's revenue OR less than half of the
+   * immediately newer year's revenue, we treat that year and everything
+   * older as unreliable and drop them.
+   *
+   * @param {Array} financialsSortedDesc - Financials newest-first
+   * @returns {Array} Same array truncated at the first anomaly
+   */
+  static filterAnomalousRevenue(financialsSortedDesc) {
+    if (!Array.isArray(financialsSortedDesc) || financialsSortedDesc.length < 2) {
+      return financialsSortedDesc || [];
+    }
+
+    const newestRevenue = Number(financialsSortedDesc[0]?.revenue) || 0;
+    if (newestRevenue <= 0) return financialsSortedDesc;
+
+    const kept = [financialsSortedDesc[0]];
+    for (let i = 1; i < financialsSortedDesc.length; i += 1) {
+      const period = financialsSortedDesc[i];
+      const periodRev = Number(period?.revenue) || 0;
+      const newerRev = Number(kept[kept.length - 1]?.revenue) || 0;
+
+      // No revenue reported — keep the period for non-revenue calcs but
+      // it'll be excluded from revenue-based ones by their own null guard.
+      if (periodRev <= 0) {
+        kept.push(period);
+        continue;
+      }
+
+      // Anomaly tests:
+      //   - period revenue < 10% of the newest year's (catches single bad cells)
+      //   - period revenue < 50% of the next-newer year (catches sudden drops
+      //     that real businesses don't show 5–10 years back from now)
+      if (periodRev < newestRevenue * 0.10 || (newerRev > 0 && periodRev < newerRev * 0.5)) {
+        console.warn(`[DCF] Dropping fiscal ${period.fiscalYear} and earlier — revenue ${(periodRev/1e9).toFixed(1)}B vs newer ${(newerRev/1e9).toFixed(1)}B looks like a data extraction error`);
+        break;
+      }
+
+      kept.push(period);
+    }
+
+    return kept;
+  }
+
+  /**
+   * Normalize historical share counts to the most recent period's basis by
+   * inferring stock splits from large YoY ratios. Walks newest → oldest;
+   * when a YoY ratio falls outside [0.5, 2.0] it's treated as a split (or
+   * reverse split) and the inferred multiplier is applied cumulatively to
+   * all older periods.
+   *
+   * Doing this once at ingest means every per-share metric we compute
+   * downstream (EPS, P/E history, P/FCF history, buyback rate, dividend
+   * per share) sees consistent split-adjusted shares without each call
+   * site needing its own split logic. Finnhub's price candles are already
+   * split-adjusted, so adjusting shares this way puts both legs of every
+   * per-share ratio on the same basis.
+   *
+   * @param {Array} financialsSortedDesc - Financials newest-first
+   * @returns {Array} New array with split-adjusted sharesOutstanding values
+   */
+  static splitAdjustFinancials(financialsSortedDesc) {
+    if (!Array.isArray(financialsSortedDesc) || financialsSortedDesc.length === 0) {
+      return financialsSortedDesc || [];
+    }
+
+    const adjusted = financialsSortedDesc.map(p => ({ ...p }));
+    let multiplier = 1;
+
+    for (let i = 1; i < adjusted.length; i += 1) {
+      // Compare raw (un-touched-by-this-loop-pass) shares to detect the
+      // jump. Older periods get multiplied cumulatively below.
+      const newerRaw = Number(financialsSortedDesc[i - 1]?.sharesOutstanding) || 0;
+      const olderRaw = Number(financialsSortedDesc[i]?.sharesOutstanding) || 0;
+
+      if (newerRaw > 0 && olderRaw > 0) {
+        const ratio = newerRaw / olderRaw;
+        if (ratio > 2.0 || ratio < 0.5) {
+          // Split (forward or reverse) between i-1 and i. Apply the inferred
+          // ratio so the older period, on the new basis, matches the newer.
+          multiplier *= ratio;
+          console.log(`[DCF] Detected split at fiscal ${adjusted[i].fiscalYear || '?'} (${(olderRaw/1e6).toFixed(1)}M → ${(newerRaw/1e6).toFixed(1)}M shares). Applying ${ratio.toFixed(2)}× to prior periods.`);
+        }
+      }
+
+      if (multiplier !== 1 && Number(adjusted[i].sharesOutstanding) > 0) {
+        adjusted[i].sharesOutstanding = Number(adjusted[i].sharesOutstanding) * multiplier;
       }
     }
 
-    if (fcfValues.length === 0) return null;
+    return adjusted;
+  }
 
-    const avgFCF = fcfValues.reduce((sum, f) => sum + f, 0) / fcfValues.length;
-    const marketCap = currentPrice * sharesOutstanding;
-    return marketCap / avgFCF;
+  /**
+   * Annualized share-count change over the last `years` periods. Positive
+   * means buybacks (share count declining); negative means dilution. Used
+   * to project future share count: futureShares = currentShares ×
+   * (1 - buybackRate)^N.
+   *
+   * Walks year-over-year so we can detect and exclude stock-split anomalies
+   * (e.g. NVDA's 10-for-1 in 2024 would otherwise look like -900% dilution).
+   * Any YoY ratio outside [0.5, 2.0] is treated as a split and skipped.
+   *
+   * @param {Array} financials - Sorted financial data (most recent first)
+   * @param {number} years - Lookback period
+   * @returns {number} Annualized rate (e.g., 0.03 = 3% buybacks/yr). 0 when insufficient data.
+   */
+  static calculateBuybackRate(financials, years) {
+    if (!Array.isArray(financials) || financials.length < 2) return 0;
+
+    const window = financials.slice(0, Math.min(years + 1, financials.length));
+
+    // Geometric mean of clean year-over-year ratios (skipping splits).
+    // We accumulate the product of valid ratios so the final rate is
+    // (product)^(1/count) — the true compound annual change across the
+    // remaining periods.
+    let ratioProduct = 1;
+    let validYears = 0;
+    for (let i = 0; i < window.length - 1; i += 1) {
+      const newer = Number(window[i]?.sharesOutstanding) || 0;
+      const older = Number(window[i + 1]?.sharesOutstanding) || 0;
+      if (newer <= 0 || older <= 0) continue;
+
+      const ratio = newer / older;
+      // Anything outside [0.5, 2.0] in a single year is almost certainly a
+      // stock split or reverse split, not actual buybacks/dilution.
+      if (ratio < 0.5 || ratio > 2.0) continue;
+
+      ratioProduct *= ratio;
+      validYears += 1;
+    }
+
+    if (validYears === 0) return 0;
+
+    const meanRatio = Math.pow(ratioProduct, 1 / validYears);
+    const rate = 1 - meanRatio;
+
+    if (!Number.isFinite(rate)) return 0;
+    return Math.max(-0.20, Math.min(0.20, rate));
   }
 
   /**
@@ -356,7 +654,12 @@ class DCFValuationService {
       desired_return_medium,
       desired_return_high,
       // Projection period
-      projection_years = 10
+      projection_years = 10,
+      // Dividend per share and buyback rate (auto-derived in getHistoricalMetrics).
+      // The fair value adds PV of the dividend stream over the projection, and
+      // projects future share count as shares × (1 - buyback_rate)^N.
+      current_dividend_per_share = 0,
+      buyback_rate = 0
     } = params;
     
     // Use calculated discount rate as base if user doesn't provide
@@ -374,14 +677,6 @@ class DCFValuationService {
     let mediumRate = desired_return_medium ?? defaultMediumRate;
     let bullRate = desired_return_high ?? defaultBullRate;
     
-    // Warn if logical ordering is reversed, but DON'T auto-correct
-    // User might want to test different scenarios
-    if (desired_return_low !== null && desired_return_high !== null && desired_return_low < desired_return_high) {
-      console.warn(`[DCF] NOTE: Bear discount (${(desired_return_low*100).toFixed(1)}%) < Bull (${(desired_return_high*100).toFixed(1)}%). ` +
-        `Typically Bear should have HIGHER discount (more conservative) than Bull. ` +
-        `Using your values as entered - Bear=${(bearRate*100).toFixed(1)}%, Bull=${(bullRate*100).toFixed(1)}%`);
-    }
-
     if (!shares_outstanding) {
       throw new Error('Missing required data: shares outstanding is required');
     }
@@ -453,15 +748,11 @@ class DCFValuationService {
       inputWarnings.push(`P/FCF multiples appear reversed: Bear (${pfcf_low}) > Bull (${pfcf_high}). Values were preserved as entered.`);
     }
 
-    if (bearRate < bullRate) {
-      inputWarnings.push(`Discount rates appear reversed: Bear (${(bearRate*100).toFixed(1)}%) < Bull (${(bullRate*100).toFixed(1)}%). Values were preserved as entered.`);
-    }
-    
     // Log discount rate calculation info
     if (calculated_discount_rate) {
       console.log(`[DCF] Using calculated discount rate (CAPM): ${(calculated_discount_rate*100).toFixed(2)}% (Beta: ${beta || 'N/A'})`);
       console.log(`[DCF] Scenario adjustments: Bear=${(bearRate*100).toFixed(2)}%, Base=${(mediumRate*100).toFixed(2)}%, Bull=${(bullRate*100).toFixed(2)}%`);
-      console.log(`[DCF] IMPORTANT: Higher discount rate = LOWER fair value. Bear (${(bearRate*100).toFixed(2)}%) should produce LOWER fair value than Bull (${(bullRate*100).toFixed(2)}%)`);
+      console.log(`[DCF] Higher required return lowers the present fair value for a given future price.`);
     } else {
       console.warn(`[DCF] No calculated discount rate available - using user inputs or defaults`);
       console.log(`[DCF] Discount rates being used: Bear=${(bearRate*100).toFixed(2)}%, Base=${(mediumRate*100).toFixed(2)}%, Bull=${(bullRate*100).toFixed(2)}%`);
@@ -469,18 +760,15 @@ class DCFValuationService {
     
     if (inputWarnings.length > 0) {
       console.warn(`[DCF] INPUT VALIDATION WARNINGS:\n${inputWarnings.map(w => `  - ${w}`).join('\n')}`);
-      console.warn(`[DCF] TYPICAL INPUTS ARE:`);
-      console.warn(`[DCF]   Bear: Lower growth, LOWER multiples (20-22), HIGHER discount (15%+)`);
-      console.warn(`[DCF]   Bull: Higher growth, HIGHER multiples (25-30), LOWER discount (10-12%)`);
     }
     
     console.log(`[DCF] ===== BEAR SCENARIO =====`);
     console.log(`[DCF] Growth: ${revenue_growth_low ? (revenue_growth_low*100).toFixed(2) + '%' : 'N/A'}, PE: ${pe_low || 'N/A'}, P/FCF: ${pfcf_low || 'N/A'}, DISCOUNT RATE: ${(bearRate*100).toFixed(2)}%`);
-    console.log(`[DCF] Higher discount rate (${(bearRate*100).toFixed(2)}%) should produce LOWER fair value`);
     
-    // Use traditional DCF method (projects cash flows year-by-year + terminal value)
-    // This is more accurate than the simplified target price method
-    let fairValueLow = this.calculateDCFTraditional({
+    // Use EverythingMoney-style target price method: project year-N
+    // earnings/FCF, apply the exit multiple, then discount that future stock
+    // price back by the required return.
+    const bearValuation = this.calculateDCFTraditionalDetailed({
       revenue: baseRevenue,
       netIncome: baseNetIncome,
       fcf: baseFCF,
@@ -492,13 +780,18 @@ class DCFValuationService {
       discountRate: bearRate,
       years: projection_years,
       shares: shares_outstanding,
-      terminalGrowth: 0.03 // 3% terminal growth rate (long-term GDP growth)
+      terminalGrowth: 0.03, // 3% terminal growth rate (long-term GDP growth)
+      dividendPerShare: current_dividend_per_share,
+      buybackRate: buyback_rate
     });
+    inputWarnings.push(...bearValuation.warnings.map(warning => `Bear: ${warning}`));
+    let fairValueLow = bearValuation.fairValue;
+    let futurePriceLow = bearValuation.futurePrice;
 
     console.log(`[DCF] ===== BASE SCENARIO =====`);
     console.log(`[DCF] Growth: ${revenue_growth_medium ? (revenue_growth_medium*100).toFixed(2) + '%' : 'N/A'}, PE: ${pe_medium || 'N/A'}, P/FCF: ${pfcf_medium || 'N/A'}, DISCOUNT RATE: ${(mediumRate*100).toFixed(2)}%`);
     
-    const fairValueMedium = this.calculateDCFTraditional({
+    const baseValuation = this.calculateDCFTraditionalDetailed({
       revenue: baseRevenue,
       netIncome: baseNetIncome,
       fcf: baseFCF,
@@ -510,13 +803,17 @@ class DCFValuationService {
       discountRate: mediumRate,
       years: projection_years,
       shares: shares_outstanding,
-      terminalGrowth: 0.03
+      terminalGrowth: 0.03,
+      dividendPerShare: current_dividend_per_share,
+      buybackRate: buyback_rate
     });
+    inputWarnings.push(...baseValuation.warnings.map(warning => `Base: ${warning}`));
+    let fairValueMedium = baseValuation.fairValue;
+    let futurePriceMedium = baseValuation.futurePrice;
 
     console.log(`[DCF] ===== BULL SCENARIO =====`);
     console.log(`[DCF] Growth: ${revenue_growth_high ? (revenue_growth_high*100).toFixed(2) + '%' : 'N/A'}, PE: ${pe_high || 'N/A'}, P/FCF: ${pfcf_high || 'N/A'}, DISCOUNT RATE: ${(bullRate*100).toFixed(2)}%`);
-    console.log(`[DCF] Lower discount rate (${(bullRate*100).toFixed(2)}%) should produce HIGHER fair value`);
-    let fairValueHigh = this.calculateDCFTraditional({
+    const bullValuation = this.calculateDCFTraditionalDetailed({
       revenue: baseRevenue,
       netIncome: baseNetIncome,
       fcf: baseFCF,
@@ -528,20 +825,50 @@ class DCFValuationService {
       discountRate: bullRate,
       years: projection_years,
       shares: shares_outstanding,
-      terminalGrowth: 0.03
+      terminalGrowth: 0.03,
+      dividendPerShare: current_dividend_per_share,
+      buybackRate: buyback_rate
     });
+    inputWarnings.push(...bullValuation.warnings.map(warning => `Bull: ${warning}`));
+    let fairValueHigh = bullValuation.fairValue;
+    let futurePriceHigh = bullValuation.futurePrice;
+
+    const commonMethods = this.getCommonValuationMethods([
+      bearValuation,
+      baseValuation,
+      bullValuation
+    ]);
+
+    if (commonMethods.length > 0) {
+      const bearCommon = this.averageValuationMethods(bearValuation, commonMethods);
+      const baseCommon = this.averageValuationMethods(baseValuation, commonMethods);
+      const bullCommon = this.averageValuationMethods(bullValuation, commonMethods);
+
+      fairValueLow = bearCommon.fairValue;
+      fairValueMedium = baseCommon.fairValue;
+      fairValueHigh = bullCommon.fairValue;
+      futurePriceLow = bearCommon.futurePrice;
+      futurePriceMedium = baseCommon.futurePrice;
+      futurePriceHigh = bullCommon.futurePrice;
+
+      const allMethods = ['pe', 'pfcf'];
+      const excludedMethods = allMethods.filter(method => !commonMethods.includes(method));
+      if (excludedMethods.length > 0) {
+        inputWarnings.push(`Fair values use the same valid valuation methods across Bear, Base, and Bull: ${commonMethods.map(this.formatValuationMethod).join(', ')}. Excluded ${excludedMethods.map(this.formatValuationMethod).join(', ')} because it was not valid for every scenario.`);
+      }
+    } else {
+      inputWarnings.push('No valuation method was valid across every scenario, so each scenario used its own available methods.');
+    }
 
     console.log(`[DCF] ===== FINAL RESULTS =====`);
     console.log(`[DCF] Bear (discount=${(bearRate*100).toFixed(2)}%): $${fairValueLow?.toFixed(2)}`);
     console.log(`[DCF] Base (discount=${(mediumRate*100).toFixed(2)}%): $${fairValueMedium?.toFixed(2)}`);
     console.log(`[DCF] Bull (discount=${(bullRate*100).toFixed(2)}%): $${fairValueHigh?.toFixed(2)}`);
-    console.log(`[DCF] Expected: Bear (highest discount) <= Base <= Bull (lowest discount)`);
     if (fairValueLow && fairValueHigh) {
       const discountDiff = bearRate - bullRate;
       const valueDiff = fairValueHigh - fairValueLow;
-      const discountImpact = discountDiff > 0 ? (valueDiff / fairValueLow * 100) : 0;
       console.log(`[DCF] Discount rate difference: ${(discountDiff*100).toFixed(2)}% (Bear ${(bearRate*100).toFixed(2)}% - Bull ${(bullRate*100).toFixed(2)}%)`);
-      console.log(`[DCF] Fair value difference: $${valueDiff.toFixed(2)} (${discountImpact.toFixed(1)}% impact)`);
+      console.log(`[DCF] Fair value difference: $${valueDiff.toFixed(2)}`);
     }
 
     if (fairValueLow && fairValueHigh && fairValueLow > fairValueHigh) {
@@ -556,6 +883,14 @@ class DCFValuationService {
         `Bull: growth=${bullGrowth}%, discount=${bullDiscount}%, PE=${pe_high || 'N/A'}, P/FCF=${pfcf_high || 'N/A'}`);
     }
 
+    if (fairValueLow && fairValueMedium && fairValueMedium < fairValueLow) {
+      inputWarnings.push(`Base fair value is below Bear because the entered assumptions produce a lower average valuation. Values were preserved as entered.`);
+    }
+
+    if (fairValueMedium && fairValueHigh && fairValueHigh < fairValueMedium) {
+      inputWarnings.push(`Bull fair value is below Base because the entered assumptions produce a lower average valuation. Values were preserved as entered.`);
+    }
+
     // Calculate margin of safety (positive = undervalued, negative = overvalued)
     const marginOfSafetyLow = current_price ? ((fairValueLow - current_price) / current_price) : null;
     const marginOfSafetyMedium = current_price ? ((fairValueMedium - current_price) / current_price) : null;
@@ -565,6 +900,21 @@ class DCFValuationService {
       fair_value_low: fairValueLow,
       fair_value_medium: fairValueMedium,
       fair_value_high: fairValueHigh,
+      future_price_low: futurePriceLow,
+      future_price_medium: futurePriceMedium,
+      future_price_high: futurePriceHigh,
+      current_price_return_low: this.calculateCurrentPriceReturn(current_price, futurePriceLow, projection_years, {
+        cashFlowBasis: this.computeCashFlowBasis(baseRevenue, profit_margin_low, fcf_margin_low, baseNetIncome, baseFCF, shares_outstanding),
+        growthRate: revenue_growth_low
+      }),
+      current_price_return_medium: this.calculateCurrentPriceReturn(current_price, futurePriceMedium, projection_years, {
+        cashFlowBasis: this.computeCashFlowBasis(baseRevenue, profit_margin_medium, fcf_margin_medium, baseNetIncome, baseFCF, shares_outstanding),
+        growthRate: revenue_growth_medium
+      }),
+      current_price_return_high: this.calculateCurrentPriceReturn(current_price, futurePriceHigh, projection_years, {
+        cashFlowBasis: this.computeCashFlowBasis(baseRevenue, profit_margin_high, fcf_margin_high, baseNetIncome, baseFCF, shares_outstanding),
+        growthRate: revenue_growth_high
+      }),
       margin_of_safety_low: marginOfSafetyLow,
       margin_of_safety_medium: marginOfSafetyMedium,
       margin_of_safety_high: marginOfSafetyHigh,
@@ -602,13 +952,88 @@ class DCFValuationService {
   }
 
   /**
-   * Calculate fair value using traditional DCF with annual projections
-   * Projects FCF year-by-year, discounts each year, then adds terminal value
-   * This is the proper DCF method, not the simplified target price approach
+   * Calculate fair value using the EverythingMoney-style target price model.
+   * It projects the year-N earnings and FCF, applies the selected exit
+   * multiples, then discounts the resulting future stock price back to today.
    */
   static calculateDCFTraditional({ revenue, netIncome, fcf, revenueGrowth, profitMargin, fcfMargin, peMultiple, pfcfMultiple, discountRate, years, shares, terminalGrowth = 0.03 }) {
+    return this.calculateDCFTraditionalDetailed({
+      revenue,
+      netIncome,
+      fcf,
+      revenueGrowth,
+      profitMargin,
+      fcfMargin,
+      peMultiple,
+      pfcfMultiple,
+      discountRate,
+      years,
+      shares,
+      terminalGrowth
+    }).fairValue;
+  }
+
+  static getCommonValuationMethods(valuations) {
+    if (!Array.isArray(valuations) || valuations.length === 0) return [];
+
+    return ['pe', 'pfcf'].filter(method =>
+      valuations.every(valuation => valuation?.methodValues?.[method])
+    );
+  }
+
+  static averageValuationMethods(valuation, methods) {
+    const validMethods = methods
+      .map(method => valuation.methodValues[method])
+      .filter(Boolean);
+
+    if (validMethods.length === 0) {
+      return { fairValue: null, futurePrice: null };
+    }
+
+    return {
+      fairValue: validMethods.reduce((sum, method) => sum + method.fairValue, 0) / validMethods.length,
+      futurePrice: validMethods.reduce((sum, method) => sum + method.futurePrice, 0) / validMethods.length
+    };
+  }
+
+  static formatValuationMethod(method) {
+    return method === 'pe' ? 'P/E' : 'P/FCF';
+  }
+
+  /**
+   * Year-0 per-share cash-flow basis used by the IRR (Current Price Return)
+   * calculation to match the two-stage DCF in `calculateDCFTraditionalDetailed`.
+   * Averages the EPS and FCF-per-share bases when both are available so the
+   * IRR is consistent with the averaged fair value across methods. Falls
+   * back to whichever side has data.
+   */
+  static computeCashFlowBasis(revenue, profitMargin, fcfMargin, netIncome, fcf, shares) {
+    if (!shares || shares <= 0) return 0;
+
+    let epsBasis = 0;
+    if (revenue && profitMargin !== null && profitMargin !== undefined) {
+      epsBasis = (revenue * profitMargin) / shares;
+    } else if (netIncome) {
+      epsBasis = netIncome / shares;
+    }
+
+    let fcfBasis = 0;
+    if (revenue && fcfMargin !== null && fcfMargin !== undefined) {
+      fcfBasis = (revenue * fcfMargin) / shares;
+    } else if (fcf) {
+      fcfBasis = fcf / shares;
+    }
+
+    if (epsBasis > 0 && fcfBasis > 0) return (epsBasis + fcfBasis) / 2;
+    return epsBasis > 0 ? epsBasis : fcfBasis;
+  }
+
+  static calculateDCFTraditionalDetailed({ revenue, netIncome, fcf, revenueGrowth, profitMargin, fcfMargin, peMultiple, pfcfMultiple, discountRate, years, shares, terminalGrowth = 0.03, dividendPerShare = 0, buybackRate = 0 }) {
     const methods = [];
-    
+    const futurePrices = [];
+    const methodValues = {};
+    const warnings = [];
+
     // Ensure discount rate is a valid number and not null/undefined
     // If user enters 15%, it should be 0.15 (already converted by frontend)
     let discount = discountRate;
@@ -616,7 +1041,7 @@ class DCFValuationService {
       console.warn(`[DCF] Invalid discount rate provided: ${discountRate}, using default 10%`);
       discount = 0.10;
     }
-    
+
     // Validate discount rate is reasonable (between 0 and 1000% as decimal, i.e., 0 to 10.0)
     // But don't cap it - let user enter any value they want
     if (discount < 0) {
@@ -626,134 +1051,192 @@ class DCFValuationService {
     if (discount > 10.0) {
       console.warn(`[DCF] Extremely high discount rate ${(discount*100).toFixed(2)}% - this will produce very low fair values`);
     }
-    
+
     const projYears = years ?? 10;
     const growth = revenueGrowth ?? 0;
     const hasRevenue = revenue !== null && revenue !== undefined && revenue > 0;
     const hasProfitMargin = profitMargin !== null && profitMargin !== undefined && !isNaN(profitMargin);
     const hasFCFMargin = fcfMargin !== null && fcfMargin !== undefined && !isNaN(fcfMargin);
-    
-    console.log(`[DCF] Traditional DCF calculation:`, {
-      revenue, netIncome, fcf, shares, growth, discount, projYears, terminalGrowth
-    });
-    console.log(`[DCF] DISCOUNT RATE IMPACT: Using discount rate of ${(discount*100).toFixed(2)}% (raw value: ${discount})`);
-    console.log(`[DCF] Higher discount rate = lower present value = lower fair value`);
+
+    // Two-stage DCF. Standard textbook formula — matches GuruFocus and EM:
+    //
+    //   Fair Value = Σ_{t=1..N} [ EPS_t / (1+r)^t ]     ← Stage 1: PV of earnings stream
+    //              + (EPS_N × multiple) / (1+r)^N        ← Stage 2: PV of terminal stock price
+    //
+    // Where EPS_t = EPS_0 × (1+g)^t and EPS_0 = current_revenue × user_margin / shares.
+    //
+    // Our previous formula only computed Stage 2 (PV of terminal stock price)
+    // and ignored Stage 1 (the value of the earnings stream during the
+    // projection years). That left a ~$70+/share hole vs. textbook DCF tools,
+    // which is the entire reason AMZN was showing $150 when GuruFocus/EM
+    // both produced $242 from the same assumptions.
+    //
+    // Shares are held at current count (no buyback adjustment): treating
+    // earnings as the cash-flow stream already captures the value of
+    // share-count reduction by counting full earnings as available to
+    // shareholders. Adding a buyback adjustment on top would double-count.
+
     const discountFactor = Math.pow(1 + discount, projYears);
+    const growthFactor = Math.pow(1 + growth, projYears);
+    console.log(`[DCF] Two-stage DCF calculation:`, {
+      revenue, netIncome, fcf, shares, growth, discount, projYears
+    });
     console.log(`[DCF] Discount factor for year ${projYears}: (1 + ${(discount*100).toFixed(2)}%)^${projYears} = ${discountFactor.toFixed(4)}`);
-    console.log(`[DCF] This means $1 in year ${projYears} is worth $${(1/discountFactor).toFixed(6)} today`);
-    
-    // Method 1: FCF-based DCF (traditional approach)
-    if (shares && ((fcf && fcf > 0) || (hasRevenue && hasFCFMargin))) {
-      let currentFCF = fcf;
-      let projectedRevenue = revenue;
-      let presentValueSum = 0;
-      
-      // Project FCF for each year and discount to present value
-      for (let year = 1; year <= projYears; year++) {
-        if (hasRevenue && hasFCFMargin) {
-          projectedRevenue = projectedRevenue * (1 + growth);
-          currentFCF = projectedRevenue * fcfMargin;
-        } else {
-          currentFCF = currentFCF * (1 + growth);
-        }
-        
-        // Discount to present value
-        const presentValue = currentFCF / Math.pow(1 + discount, year);
-        presentValueSum += presentValue;
-        
-        console.log(`[DCF] Year ${year}: FCF=$${(currentFCF/1e9).toFixed(2)}B, PV=$${(presentValue/1e9).toFixed(2)}B`);
-      }
-      
-      // Terminal Value using exit multiple (P/FCF)
-      let terminalValue;
-      if (pfcfMultiple) {
-        // Use exit multiple method
-        terminalValue = currentFCF * pfcfMultiple;
-        console.log(`[DCF] Terminal Value (P/FCF method): Final FCF=$${(currentFCF/1e9).toFixed(2)}B × ${pfcfMultiple} = $${(terminalValue/1e9).toFixed(2)}B`);
+
+    // Geometric sum of (1+g)/(1+r) for t=1..N — used by both methods for Stage 1.
+    const streamRatio = (1 + growth) / (1 + discount);
+    let streamSum;
+    if (Math.abs(streamRatio - 1) < 1e-9) {
+      streamSum = projYears; // r = g exactly — sum is just N
+    } else {
+      streamSum = streamRatio * (Math.pow(streamRatio, projYears) - 1) / (streamRatio - 1);
+    }
+    console.log(`[DCF] Stage 1 stream multiplier (sum of (1+g/1+r)^t for t=1..${projYears}): ${streamSum.toFixed(4)}`);
+
+    // Method 1: P/FCF
+    if (shares && pfcfMultiple && ((fcf && fcf > 0) || (hasRevenue && hasFCFMargin))) {
+      // Year-0 FCF per share — what the company would earn per share now at
+      // the user's assumed FCF margin (or current FCF/share if no margin).
+      let baseFCFPerShare;
+      if (hasRevenue && hasFCFMargin) {
+        baseFCFPerShare = (revenue * fcfMargin) / shares;
+        console.log(`[DCF] P/FCF base: revenue $${(revenue/1e9).toFixed(2)}B × ${(fcfMargin*100).toFixed(2)}% margin / ${(shares/1e9).toFixed(2)}B shares = $${baseFCFPerShare.toFixed(2)}/sh`);
       } else {
-        // Use Gordon Growth Model
-        if (discount <= terminalGrowth) {
-          terminalValue = currentFCF * 15; // Fallback
-        } else {
-          terminalValue = (currentFCF * (1 + terminalGrowth)) / (discount - terminalGrowth);
-        }
-        console.log(`[DCF] Terminal Value (Gordon Growth): $${(terminalValue/1e9).toFixed(2)}B`);
+        baseFCFPerShare = fcf / shares;
+        console.log(`[DCF] P/FCF base: current FCF/share = $${baseFCFPerShare.toFixed(2)}`);
       }
-      
-      // Discount terminal value to present
-      const terminalDiscountFactor = Math.pow(1 + discount, projYears);
-      const terminalPV = terminalValue / terminalDiscountFactor;
-      
-      // Total intrinsic value
-      const intrinsicValue = presentValueSum + terminalPV;
-      const fairValueFCF = intrinsicValue / shares;
-      
-      console.log(`[DCF] FCF DCF Method: Sum of PVs=$${(presentValueSum/1e9).toFixed(2)}B, Terminal Value=$${(terminalValue/1e9).toFixed(2)}B, Terminal Discount Factor=${terminalDiscountFactor.toFixed(4)}, Terminal PV=$${(terminalPV/1e9).toFixed(6)}B, Total=$${(intrinsicValue/1e9).toFixed(2)}B, Fair Value=$${fairValueFCF.toFixed(2)}`);
-      console.log(`[DCF] DISCOUNT RATE BREAKDOWN: Using ${(discount*100).toFixed(2)}% discount rate`);
-      console.log(`[DCF]   - Early years PV (years 1-${projYears}): $${(presentValueSum/1e9).toFixed(2)}B (${((presentValueSum/intrinsicValue)*100).toFixed(1)}% of total)`);
-      console.log(`[DCF]   - Terminal PV (year ${projYears}): $${(terminalPV/1e9).toFixed(6)}B (${((terminalPV/intrinsicValue)*100).toFixed(1)}% of total)`);
-      console.log(`[DCF] DISCOUNT RATE SENSITIVITY: If discount was ${((discount-0.01)*100).toFixed(2)}% (1% lower), terminal PV would be $${((terminalValue / Math.pow(1 + discount - 0.01, projYears))/1e9).toFixed(2)}B (higher)`);
-      console.log(`[DCF] DISCOUNT RATE SENSITIVITY: If discount was ${((discount+0.01)*100).toFixed(2)}% (1% higher), terminal PV would be $${((terminalValue / Math.pow(1 + discount + 0.01, projYears))/1e9).toFixed(2)}B (lower)`);
-      
+
+      const stage1FCF = baseFCFPerShare * streamSum;
+      const futureFCFPerShare = baseFCFPerShare * growthFactor;
+      const futurePriceFCF = futureFCFPerShare * pfcfMultiple;
+      const stage2FCF = futurePriceFCF / discountFactor;
+      const fairValueFCF = stage1FCF + stage2FCF;
+
+      console.log(`[DCF] P/FCF method: Stage 1 $${stage1FCF.toFixed(2)} + Stage 2 $${stage2FCF.toFixed(2)} = $${fairValueFCF.toFixed(2)}  (futurePrice=$${futurePriceFCF.toFixed(2)})`);
+
       if (fairValueFCF > 0 && isFinite(fairValueFCF)) {
         methods.push(fairValueFCF);
-        console.log(`[DCF] ✓ FCF method produced valid result: $${fairValueFCF.toFixed(2)} per share`);
+        futurePrices.push(futurePriceFCF);
+        methodValues.pfcf = {
+          fairValue: fairValueFCF,
+          futurePrice: futurePriceFCF
+        };
       } else {
-        console.warn(`[DCF] ✗ FCF method produced invalid result: ${fairValueFCF} (not included)`);
+        warnings.push('P/FCF method excluded because projected free cash flow is not positive.');
+        console.warn(`[DCF] P/FCF method produced invalid result: ${fairValueFCF} (not included)`);
       }
     }
-    
-    // Method 2: Earnings-based DCF (using net income as proxy for cash flow)
+
+    // Method 2: P/E
     if (shares && peMultiple && ((netIncome && netIncome > 0) || (hasRevenue && hasProfitMargin))) {
-      let currentEarnings = netIncome;
-      let projectedRevenue = revenue;
-      let presentValueSum = 0;
-      
-      // Project earnings for each year and discount to present value
-      for (let year = 1; year <= projYears; year++) {
-        if (hasRevenue && hasProfitMargin) {
-          projectedRevenue = projectedRevenue * (1 + growth);
-          currentEarnings = projectedRevenue * profitMargin;
-        } else {
-          currentEarnings = currentEarnings * (1 + growth);
-        }
-        
-        // Discount to present value
-        const presentValue = currentEarnings / Math.pow(1 + discount, year);
-        presentValueSum += presentValue;
+      let baseEPS;
+      if (hasRevenue && hasProfitMargin) {
+        baseEPS = (revenue * profitMargin) / shares;
+        console.log(`[DCF] P/E base: revenue $${(revenue/1e9).toFixed(2)}B × ${(profitMargin*100).toFixed(2)}% margin / ${(shares/1e9).toFixed(2)}B shares = $${baseEPS.toFixed(2)}/sh`);
+      } else {
+        baseEPS = netIncome / shares;
+        console.log(`[DCF] P/E base: current EPS = $${baseEPS.toFixed(2)}`);
       }
-      
-      // Terminal Value using exit multiple (P/E)
-      const terminalValue = currentEarnings * peMultiple;
-      const terminalDiscountFactor = Math.pow(1 + discount, projYears);
-      const terminalPV = terminalValue / terminalDiscountFactor;
-      
-      // Total intrinsic value
-      const intrinsicValue = presentValueSum + terminalPV;
-      const fairValuePE = intrinsicValue / shares;
-      
-      console.log(`[DCF] Earnings DCF Method: Sum of PVs=$${(presentValueSum/1e9).toFixed(2)}B, Terminal Value=$${(terminalValue/1e9).toFixed(2)}B, Terminal Discount Factor=${terminalDiscountFactor.toFixed(4)}, Terminal PV=$${(terminalPV/1e9).toFixed(6)}B, Total=$${(intrinsicValue/1e9).toFixed(2)}B, Fair Value=$${fairValuePE.toFixed(2)}`);
-      console.log(`[DCF] DISCOUNT RATE BREAKDOWN: Using ${(discount*100).toFixed(2)}% discount rate`);
-      console.log(`[DCF]   - Early years PV (years 1-${projYears}): $${(presentValueSum/1e9).toFixed(2)}B (${((presentValueSum/intrinsicValue)*100).toFixed(1)}% of total)`);
-      console.log(`[DCF]   - Terminal PV (year ${projYears}): $${(terminalPV/1e9).toFixed(6)}B (${((terminalPV/intrinsicValue)*100).toFixed(1)}% of total)`);
-      
+
+      const stage1PE = baseEPS * streamSum;
+      const futureEPS = baseEPS * growthFactor;
+      const futurePricePE = futureEPS * peMultiple;
+      const stage2PE = futurePricePE / discountFactor;
+      const fairValuePE = stage1PE + stage2PE;
+
+      console.log(`[DCF] P/E method: Stage 1 $${stage1PE.toFixed(2)} + Stage 2 $${stage2PE.toFixed(2)} = $${fairValuePE.toFixed(2)}  (futurePrice=$${futurePricePE.toFixed(2)})`);
+
       if (fairValuePE > 0 && isFinite(fairValuePE)) {
         methods.push(fairValuePE);
-        console.log(`[DCF] ✓ Earnings method produced valid result: $${fairValuePE.toFixed(2)} per share`);
+        futurePrices.push(futurePricePE);
+        methodValues.pe = {
+          fairValue: fairValuePE,
+          futurePrice: futurePricePE
+        };
       } else {
-        console.warn(`[DCF] ✗ Earnings method produced invalid result: ${fairValuePE} (not included)`);
+        warnings.push('P/E method excluded because projected earnings are not positive.');
+        console.warn(`[DCF] P/E method produced invalid result: ${fairValuePE} (not included)`);
       }
     }
     
     // Average all valid methods
     if (methods.length === 0) {
       console.log(`[DCF] No valid methods - returning null`);
-      return null;
+      return { fairValue: null, futurePrice: null, methodValues, warnings };
     }
     
     const avgValue = methods.reduce((sum, v) => sum + v, 0) / methods.length;
+    const avgFuturePrice = futurePrices.length > 0
+      ? futurePrices.reduce((sum, v) => sum + v, 0) / futurePrices.length
+      : null;
     console.log(`[DCF] Average of ${methods.length} methods: $${avgValue.toFixed(2)}`);
-    return avgValue;
+    return { fairValue: avgValue, futurePrice: avgFuturePrice, methodValues, warnings };
+  }
+
+  /**
+   * Annualized IRR if you buy at current price and realize the projected
+   * earnings stream plus terminal stock price over N years.
+   *
+   * Solves for r in (two-stage DCF inversion):
+   *   currentPrice = Σ_{t=1..N} [ baseCashFlow × (1+g)^t / (1+r)^t ]
+   *                + futurePrice / (1+r)^N
+   *
+   * baseCashFlow is the year-0 per-share earnings (or FCF) basis that the
+   * fair-value calc projects. When omitted (or zero), this collapses to
+   * the simpler price-only IRR: r = (futurePrice/currentPrice)^(1/N) - 1.
+   *
+   * Solved by binary search over r ∈ [-0.5, 1.0]. f(r) is strictly
+   * decreasing in r so the search converges cleanly.
+   */
+  static calculateCurrentPriceReturn(currentPrice, futurePrice, years, options = {}) {
+    if (!currentPrice || currentPrice <= 0 || !futurePrice || futurePrice <= 0 || !years || years <= 0) {
+      return null;
+    }
+
+    // Accept either `cashFlowBasis` (new, two-stage DCF) or `dividendPerShare`
+    // (legacy alias from the previous formula). They mean the same thing for
+    // this calculation.
+    const { cashFlowBasis = 0, dividendPerShare = 0, growthRate = 0 } = options;
+    const basis = cashFlowBasis || dividendPerShare || 0;
+
+    if (!basis || basis <= 0) {
+      return Math.pow(futurePrice / currentPrice, 1 / years) - 1;
+    }
+
+    // f(r) = PV at rate r of (cash-flow stream + terminal price) − currentPrice
+    const f = (r) => {
+      const ratio = (1 + growthRate) / (1 + r);
+      let streamSum;
+      if (Math.abs(ratio - 1) < 1e-9) {
+        streamSum = years;
+      } else {
+        streamSum = ratio * (Math.pow(ratio, years) - 1) / (ratio - 1);
+      }
+      const pv = basis * streamSum + futurePrice / Math.pow(1 + r, years);
+      return pv - currentPrice;
+    };
+
+    let lo = -0.5;
+    let hi = 1.0;
+    const fLo = f(lo);
+    const fHi = f(hi);
+
+    // Sanity: if both ends have same sign, no root in bracket; fall back to closed-form.
+    if ((fLo > 0) === (fHi > 0)) {
+      return Math.pow(futurePrice / currentPrice, 1 / years) - 1;
+    }
+
+    for (let i = 0; i < 80; i++) {
+      const mid = (lo + hi) / 2;
+      const fMid = f(mid);
+      if (Math.abs(fMid) < 1e-7) return mid;
+      if ((fMid > 0) === (fLo > 0)) {
+        lo = mid;
+      } else {
+        hi = mid;
+      }
+    }
+    return (lo + hi) / 2;
   }
 
   /**
@@ -1006,10 +1489,10 @@ class DCFValuationService {
       data.pfcf_low,
       data.pfcf_medium,
       data.pfcf_high,
-      data.desired_return_low || 0.15,
-      data.desired_return_medium || 0.12,
-      data.desired_return_high || 0.10,
-      data.projection_years || 10,
+      data.desired_return_low ?? 0.15,
+      data.desired_return_medium ?? 0.12,
+      data.desired_return_high ?? 0.10,
+      data.projection_years ?? 10,
       data.fair_value_low,
       data.fair_value_medium,
       data.fair_value_high,
@@ -1105,72 +1588,91 @@ class DCFValuationService {
    * @returns {Object} Valuation object
    */
   static rowToValuation(row) {
+    const numberOrNull = (value) => {
+      if (value === null || value === undefined) return null;
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+    const numberOrDefault = (value, defaultValue) => {
+      const parsed = numberOrNull(value);
+      return parsed === null ? defaultValue : parsed;
+    };
+    const intOrNull = (value) => {
+      if (value === null || value === undefined) return null;
+      const parsed = Number.parseInt(value, 10);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+    const intOrDefault = (value, defaultValue) => {
+      const parsed = intOrNull(value);
+      return parsed === null ? defaultValue : parsed;
+    };
+
     return {
       id: row.id,
       user_id: row.user_id,
       symbol: row.symbol,
       valuation_date: row.valuation_date,
-      current_price: parseFloat(row.current_price) || null,
-      shares_outstanding: parseInt(row.shares_outstanding) || null,
+      current_price: numberOrNull(row.current_price),
+      shares_outstanding: intOrNull(row.shares_outstanding),
 
       // Historical metrics
-      roic_1yr: parseFloat(row.roic_1yr) || null,
-      roic_5yr: parseFloat(row.roic_5yr) || null,
-      roic_10yr: parseFloat(row.roic_10yr) || null,
-      revenue_growth_1yr: parseFloat(row.revenue_growth_1yr) || null,
-      revenue_growth_5yr: parseFloat(row.revenue_growth_5yr) || null,
-      revenue_growth_10yr: parseFloat(row.revenue_growth_10yr) || null,
-      profit_margin_1yr: parseFloat(row.profit_margin_1yr) || null,
-      profit_margin_5yr: parseFloat(row.profit_margin_5yr) || null,
-      profit_margin_10yr: parseFloat(row.profit_margin_10yr) || null,
-      fcf_margin_1yr: parseFloat(row.fcf_margin_1yr) || null,
-      fcf_margin_5yr: parseFloat(row.fcf_margin_5yr) || null,
-      fcf_margin_10yr: parseFloat(row.fcf_margin_10yr) || null,
-      pe_ratio: parseFloat(row.pe_ratio) || null,
-      price_to_fcf: parseFloat(row.price_to_fcf) || null,
-      current_fcf: parseFloat(row.current_fcf) || null,
-      current_revenue: parseFloat(row.current_revenue) || null,
-      current_net_income: parseFloat(row.current_net_income) || null,
+      roic_1yr: numberOrNull(row.roic_1yr),
+      roic_5yr: numberOrNull(row.roic_5yr),
+      roic_10yr: numberOrNull(row.roic_10yr),
+      revenue_growth_1yr: numberOrNull(row.revenue_growth_1yr),
+      revenue_growth_5yr: numberOrNull(row.revenue_growth_5yr),
+      revenue_growth_10yr: numberOrNull(row.revenue_growth_10yr),
+      profit_margin_1yr: numberOrNull(row.profit_margin_1yr),
+      profit_margin_5yr: numberOrNull(row.profit_margin_5yr),
+      profit_margin_10yr: numberOrNull(row.profit_margin_10yr),
+      fcf_margin_1yr: numberOrNull(row.fcf_margin_1yr),
+      fcf_margin_5yr: numberOrNull(row.fcf_margin_5yr),
+      fcf_margin_10yr: numberOrNull(row.fcf_margin_10yr),
+      pe_ratio: numberOrNull(row.pe_ratio),
+      price_to_fcf: numberOrNull(row.price_to_fcf),
+      current_fcf: numberOrNull(row.current_fcf),
+      current_revenue: numberOrNull(row.current_revenue),
+      current_net_income: numberOrNull(row.current_net_income),
 
       // User inputs - Revenue Growth
-      revenue_growth_low: parseFloat(row.revenue_growth_low) || null,
-      revenue_growth_medium: parseFloat(row.revenue_growth_medium) || null,
-      revenue_growth_high: parseFloat(row.revenue_growth_high) || null,
+      revenue_growth_low: numberOrNull(row.revenue_growth_low),
+      revenue_growth_medium: numberOrNull(row.revenue_growth_medium),
+      revenue_growth_high: numberOrNull(row.revenue_growth_high),
 
       // User inputs - Profit Margin
-      profit_margin_low: parseFloat(row.profit_margin_low) || null,
-      profit_margin_medium: parseFloat(row.profit_margin_medium) || null,
-      profit_margin_high: parseFloat(row.profit_margin_high) || null,
+      profit_margin_low: numberOrNull(row.profit_margin_low),
+      profit_margin_medium: numberOrNull(row.profit_margin_medium),
+      profit_margin_high: numberOrNull(row.profit_margin_high),
 
       // User inputs - FCF Margin
-      fcf_margin_low: parseFloat(row.fcf_margin_low) || null,
-      fcf_margin_medium: parseFloat(row.fcf_margin_medium) || null,
-      fcf_margin_high: parseFloat(row.fcf_margin_high) || null,
+      fcf_margin_low: numberOrNull(row.fcf_margin_low),
+      fcf_margin_medium: numberOrNull(row.fcf_margin_medium),
+      fcf_margin_high: numberOrNull(row.fcf_margin_high),
 
       // User inputs - P/E Multiple
-      pe_low: parseFloat(row.pe_low) || null,
-      pe_medium: parseFloat(row.pe_medium) || null,
-      pe_high: parseFloat(row.pe_high) || null,
+      pe_low: numberOrNull(row.pe_low),
+      pe_medium: numberOrNull(row.pe_medium),
+      pe_high: numberOrNull(row.pe_high),
 
       // User inputs - P/FCF Multiple
-      pfcf_low: parseFloat(row.pfcf_low) || null,
-      pfcf_medium: parseFloat(row.pfcf_medium) || null,
-      pfcf_high: parseFloat(row.pfcf_high) || null,
+      pfcf_low: numberOrNull(row.pfcf_low),
+      pfcf_medium: numberOrNull(row.pfcf_medium),
+      pfcf_high: numberOrNull(row.pfcf_high),
 
       // User inputs - Desired Returns
-      desired_return_low: parseFloat(row.desired_return_low) || 0.15,
-      desired_return_medium: parseFloat(row.desired_return_medium) || 0.12,
-      desired_return_high: parseFloat(row.desired_return_high) || 0.10,
+      desired_return_low: numberOrDefault(row.desired_return_low, 0.15),
+      desired_return_medium: numberOrDefault(row.desired_return_medium, 0.12),
+      desired_return_high: numberOrDefault(row.desired_return_high, 0.10),
 
       // DCF parameters (legacy)
-      desired_annual_return: parseFloat(row.desired_annual_return) || 0.15,
-      projection_years: parseInt(row.projection_years) || 10,
-      terminal_growth_rate: parseFloat(row.terminal_growth_rate) || 0.03,
+      desired_annual_return: numberOrDefault(row.desired_annual_return, 0.15),
+      projection_years: intOrDefault(row.projection_years, 10),
+      terminal_growth_rate: numberOrDefault(row.terminal_growth_rate, 0.03),
 
       // Results
-      fair_value_low: parseFloat(row.fair_value_low) || null,
-      fair_value_medium: parseFloat(row.fair_value_medium) || null,
-      fair_value_high: parseFloat(row.fair_value_high) || null,
+      fair_value_low: numberOrNull(row.fair_value_low),
+      fair_value_medium: numberOrNull(row.fair_value_medium),
+      fair_value_high: numberOrNull(row.fair_value_high),
 
       notes: row.notes,
       created_at: row.created_at,

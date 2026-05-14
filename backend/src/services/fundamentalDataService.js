@@ -128,13 +128,36 @@ class FundamentalDataService {
       // Helper to find value from array of concepts (case-insensitive partial match)
       const findValue = (data, ...conceptNames) => {
         if (!Array.isArray(data)) return null;
+        const normalizeConcept = (value) => String(value || '')
+          .replace(/^.*[_:]/, '')
+          .replace(/[^a-zA-Z0-9]/g, '')
+          .toLowerCase();
+        const normalizedItems = data.map(item => ({
+          item,
+          concept: normalizeConcept(item?.concept)
+        }));
+
         for (const name of conceptNames) {
-          const nameLower = name.toLowerCase();
-          const item = data.find(d =>
-            d.concept && d.concept.toLowerCase().includes(nameLower)
-          );
-          if (item && item.value !== undefined && item.value !== null) {
-            return item.value;
+          const target = normalizeConcept(name);
+          const exact = normalizedItems.find(({ concept }) => concept === target);
+          if (exact?.item?.value !== undefined && exact.item.value !== null) {
+            return exact.item.value;
+          }
+        }
+
+        for (const name of conceptNames) {
+          const target = normalizeConcept(name);
+          const suffix = normalizedItems.find(({ concept }) => concept.endsWith(target));
+          if (suffix?.item?.value !== undefined && suffix.item.value !== null) {
+            return suffix.item.value;
+          }
+        }
+
+        for (const name of conceptNames) {
+          const target = normalizeConcept(name);
+          const partial = normalizedItems.find(({ concept }) => concept.includes(target));
+          if (partial?.item?.value !== undefined && partial.item.value !== null) {
+            return partial.item.value;
           }
         }
         return null;
@@ -158,7 +181,24 @@ class FundamentalDataService {
 
       // Cash flow items - Finnhub uses "NetCashProvidedByUsedInOperatingActivities" (with UsedIn)
       const operatingCashFlow = findValue(cf, 'netcashprovidedbyusedinoperatingactivities', 'netcashprovidedbyoperatingactivities', 'cashprovidedbyoperatingactivities', 'operatingcashflow');
-      const capitalExpenditures = findValue(cf, 'paymentstoacquirepropertyplantandequipment', 'capitalexpenditures', 'purchaseofppe', 'paymentsforpurchaseofpropertyplant');
+      // Capital expenditures — try a wide set of XBRL concepts. Different
+      // companies/eras use different names; e.g. Amazon's newer filings use
+      // "PaymentsToAcquirePropertyPlantAndEquipmentExcludingFinanceLeases"
+      // which won't match a shorter search term unless we list more variants.
+      const capitalExpenditures = findValue(cf,
+        'paymentstoacquirepropertyplantandequipment',
+        'paymentstoacquirepropertyplantandequipmentexcludingfinanceleases',
+        'paymentstoacquirepropertyplantandequipmentnet',
+        'paymentstoacquireproductiveassets',
+        'capitalexpenditures',
+        'capitalexpendituresincurredbutnotyetpaid',
+        'purchaseofppe',
+        'paymentsforpurchaseofpropertyplant',
+        'purchasesofpropertyandequipment',
+        'purchaseofpropertyandequipment',
+        'paymentsforcapitalimprovements',
+        'acquisitionsofpropertyandequipment'
+      );
 
       // Shares outstanding - try multiple sources with expanded SEC concept names
       let sharesOutstanding = findValue(bs,
@@ -220,19 +260,18 @@ class FundamentalDataService {
         }
       }
 
-      // Calculate free cash flow: OCF - |CapEx|
-      // CapEx is typically negative in cash flow statements (outflow)
+      // Calculate free cash flow: OCF - |CapEx|.
+      // CapEx is typically negative in cash flow statements (outflow).
+      // If CapEx isn't found we leave FCF null rather than treating OCF as
+      // FCF — for capital-heavy companies (Amazon, telcos, utilities) those
+      // are wildly different and the silent fallback would inflate FCF margins.
       let freeCashFlow = null;
-      if (operatingCashFlow !== null) {
-        if (capitalExpenditures !== null) {
-          // If capex is already negative (typical), add it; if positive, subtract it
-          freeCashFlow = capitalExpenditures < 0
-            ? operatingCashFlow + capitalExpenditures // capex is negative, adding subtracts
-            : operatingCashFlow - capitalExpenditures; // capex is positive, subtract it
-        } else {
-          // If no CapEx found, FCF = OCF (some companies have minimal CapEx)
-          freeCashFlow = operatingCashFlow;
-        }
+      if (operatingCashFlow !== null && capitalExpenditures !== null) {
+        freeCashFlow = capitalExpenditures < 0
+          ? operatingCashFlow + capitalExpenditures // capex is negative, adding subtracts
+          : operatingCashFlow - capitalExpenditures; // capex is positive, subtract it
+      } else if (operatingCashFlow !== null && capitalExpenditures === null) {
+        console.warn(`[FUNDAMENTAL] CapEx not found for fiscal ${period.year} — FCF left null rather than defaulting to OCF`);
       }
 
       // Calculate total debt
