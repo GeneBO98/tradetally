@@ -93,6 +93,28 @@ describe('csrf middleware', () => {
     expect(res.statusCode).toBe(200);
   });
 
+  test('requireCsrf allows mobile clients with stale auth cookie but no csrf header', () => {
+    const req = {
+      method: 'POST',
+      originalUrl: '/api/v1/auth/login',
+      cookies: {
+        token: 'stale-cookie',
+        csrf_token: 'stale-csrf'
+      },
+      headers: {
+        'x-device-id': 'device-123'
+      },
+      header: jest.fn(() => undefined)
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    requireCsrf(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(res.statusCode).toBe(200);
+  });
+
   test('requireCsrf exempts stripe webhook path', () => {
     const req = {
       method: 'POST',
