@@ -3,6 +3,7 @@ const { AUTH_COOKIE_NAME, CSRF_COOKIE_NAME, buildCsrfCookieOptions } = require('
 
 const CSRF_HEADER_NAME = 'x-csrf-token';
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+const MOBILE_CLIENT_HEADERS = ['x-device-id', 'x-platform', 'x-app-version'];
 
 function generateCsrfToken() {
   return crypto.randomBytes(32).toString('hex');
@@ -10,6 +11,10 @@ function generateCsrfToken() {
 
 function hasBearerAuthorization(req) {
   return Boolean(req.header('Authorization')?.replace('Bearer ', '').trim());
+}
+
+function isMobileClient(req) {
+  return MOBILE_CLIENT_HEADERS.some((name) => Boolean(req.headers[name]));
 }
 
 function ensureCsrfCookie(req, res, next) {
@@ -33,7 +38,7 @@ function requireCsrf(req, res, next) {
   }
 
   const hasAuthCookie = Boolean(req.cookies?.[AUTH_COOKIE_NAME]);
-  if (!hasAuthCookie || hasBearerAuthorization(req) || req.headers['x-api-key']) {
+  if (!hasAuthCookie || hasBearerAuthorization(req) || req.headers['x-api-key'] || isMobileClient(req)) {
     return next();
   }
 
