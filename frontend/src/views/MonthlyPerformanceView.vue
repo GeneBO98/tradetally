@@ -490,6 +490,7 @@
 <script setup>
 import { ref, onMounted, computed, nextTick, watch } from "vue";
 import { useTradesStore } from "@/stores/trades";
+import { useUiPreferencesStore } from "@/stores/uiPreferences";
 import { Chart, registerables } from "chart.js";
 import { useGlobalAccountFilter } from "@/composables/useGlobalAccountFilter";
 import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
@@ -497,6 +498,7 @@ import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
 Chart.register(...registerables);
 
 const tradesStore = useTradesStore();
+const uiPreferencesStore = useUiPreferencesStore();
 const { selectedAccount } = useGlobalAccountFilter();
 const { formatCurrency, currencySymbol } = useCurrencyFormatter();
 
@@ -553,6 +555,7 @@ const monthlyTotalRValues = computed(() => {
 // Watch for year changes and save to localStorage
 watch(selectedYear, (newYear) => {
     localStorage.setItem("monthlyPerformanceYear", newYear.toString());
+    uiPreferencesStore.notifyChanged("monthlyPerformanceYear", newYear);
 });
 
 // Watch for global account filter changes

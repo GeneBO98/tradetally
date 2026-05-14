@@ -1365,6 +1365,7 @@ import YearWrappedModal from '@/components/yearWrapped/YearWrappedModal.vue'
 import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
 import StockLogo from '@/components/common/StockLogo.vue'
 import { useYearWrappedStore } from '@/stores/yearWrapped'
+import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
@@ -1375,6 +1376,7 @@ const { formatTime: formatTimeTz } = useUserTimezone()
 const { formatCurrency, currencySymbol, formatSignedCurrency } = useCurrencyFormatter()
 const { selectedAccount, selectedAccountLabel } = useGlobalAccountFilter()
 const yearWrappedStore = useYearWrappedStore()
+const uiPreferencesStore = useUiPreferencesStore()
 const router = useRouter()
 
 const loading = computed(() => analyticsLoading.value || quotesLoading.value)
@@ -2231,13 +2233,18 @@ function createCharts() {
 function saveFiltersToStorage() {
   try {
     localStorage.setItem('dashboardTimeRange', filters.value.timeRange)
+    uiPreferencesStore.notifyChanged('dashboardTimeRange', filters.value.timeRange)
     if (filters.value.timeRange === 'custom') {
       localStorage.setItem('dashboardCustomStartDate', filters.value.startDate || '')
       localStorage.setItem('dashboardCustomEndDate', filters.value.endDate || '')
+      uiPreferencesStore.notifyChanged('dashboardCustomStartDate', filters.value.startDate || '')
+      uiPreferencesStore.notifyChanged('dashboardCustomEndDate', filters.value.endDate || '')
     } else {
       // Clear custom dates when not in custom mode
       localStorage.removeItem('dashboardCustomStartDate')
       localStorage.removeItem('dashboardCustomEndDate')
+      uiPreferencesStore.notifyChanged('dashboardCustomStartDate', null)
+      uiPreferencesStore.notifyChanged('dashboardCustomEndDate', null)
     }
   } catch (e) {
     // localStorage save failed

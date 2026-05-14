@@ -677,6 +677,7 @@ import { ChevronRightIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
 import TagManagement from './TagManagement.vue'
 import { useTradesStore } from '@/stores/trades'
+import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { formatLocalDate } from '@/utils/date'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import SymbolAutocomplete from '@/components/common/SymbolAutocomplete.vue'
@@ -684,6 +685,7 @@ import SymbolAutocomplete from '@/components/common/SymbolAutocomplete.vue'
 const emit = defineEmits(['filter'])
 const route = useRoute()
 const tradesStore = useTradesStore()
+const uiPreferencesStore = useUiPreferencesStore()
 const { selectedAccount, isFiltered: globalAccountFilterActive } = useGlobalAccountFilter()
 
 const showAdvanced = ref(false)
@@ -750,6 +752,7 @@ function applyPeriodPreset() {
   // Save selected period to localStorage
   try {
     localStorage.setItem('tradeFiltersPeriod', selectedPeriod.value)
+    uiPreferencesStore.notifyChanged('tradeFiltersPeriod', selectedPeriod.value)
   } catch (e) {
     // localStorage save failed
   }
@@ -1303,6 +1306,7 @@ function applyFilters() {
     console.log('[TradeFilters] Full filtersToSave:', JSON.stringify(filtersToSave))
     console.log('[TradeFilters] Current filters.value.startDate:', filters.value.startDate, 'endDate:', filters.value.endDate)
     localStorage.setItem('tradeFilters', JSON.stringify(filtersToSave))
+    uiPreferencesStore.notifyChanged('tradeFilters', filtersToSave)
   } catch (e) {
     console.error('[TradeFilters] localStorage save failed:', e)
   }
@@ -1323,6 +1327,8 @@ function resetFilters() {
   try {
     localStorage.removeItem('tradeFilters')
     localStorage.removeItem('tradeFiltersPeriod')
+    uiPreferencesStore.notifyChanged('tradeFilters', null)
+    uiPreferencesStore.notifyChanged('tradeFiltersPeriod', null)
   } catch (e) {
     // localStorage clear failed
   }

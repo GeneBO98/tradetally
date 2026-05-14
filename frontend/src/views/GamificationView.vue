@@ -1092,6 +1092,7 @@ import {
     advanceCelebrationCursor,
 } from "@/composables/usePriceAlertNotifications";
 import { useAuthStore } from "@/stores/auth";
+import { useUiPreferencesStore } from "@/stores/uiPreferences";
 import {
     mdiTrophy,
     mdiChartLine,
@@ -1121,6 +1122,7 @@ export default {
             celebrationLevelContext,
         } = usePriceAlertNotifications();
         const authStore = useAuthStore();
+        const uiPreferencesStore = useUiPreferencesStore();
         const route = useRoute();
         const router = useRouter();
 
@@ -1542,6 +1544,7 @@ export default {
                 "gamificationFilters",
                 JSON.stringify(filters.value),
             );
+            uiPreferencesStore.notifyChanged("gamificationFilters", filters.value);
             applyingFilters.value = true;
             try {
                 // Load both user rankings and all leaderboards with filters
@@ -1570,6 +1573,7 @@ export default {
             };
             // Clear from localStorage
             localStorage.removeItem("gamificationFilters");
+            uiPreferencesStore.notifyChanged("gamificationFilters", null);
             try {
                 // Reload both without filters
                 await Promise.all([loadUserRankings(), loadLeaderboards()]);
@@ -2207,6 +2211,7 @@ export default {
         // Watch for tab changes to load data and persist to localStorage
         watch(activeTab, (newTab) => {
             localStorage.setItem("gamificationTab", newTab);
+            uiPreferencesStore.notifyChanged("gamificationTab", newTab);
             loadTabData();
         }, { immediate: true });
 

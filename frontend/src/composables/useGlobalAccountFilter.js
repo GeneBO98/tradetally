@@ -1,5 +1,6 @@
 import { ref, computed, watch } from 'vue'
 import api from '@/services/api'
+import { useUiPreferencesStore } from '@/stores/uiPreferences'
 
 export const STORAGE_KEY = 'tradetally_global_account'
 
@@ -135,6 +136,16 @@ export function useGlobalAccountFilter() {
     }
   }
 
+  // Pinia may not be installed when this composable is exercised from a unit
+  // test, so swallow the lookup error rather than crashing the caller.
+  function notifyPreferenceChange(value) {
+    try {
+      useUiPreferencesStore().notifyChanged(STORAGE_KEY, value)
+    } catch (_) {
+      // no active Pinia (test context) — local write is enough
+    }
+  }
+
   function setAccount(accountId) {
     const normalized = normalizeStoredAccount(accountId)
     selectedAccount.value = normalized
@@ -143,12 +154,14 @@ export function useGlobalAccountFilter() {
     } else {
       localStorage.removeItem(STORAGE_KEY)
     }
+    notifyPreferenceChange(normalized || null)
     console.log('[GLOBAL ACCOUNT] Set to:', normalized || 'All Accounts')
   }
 
   function clearAccount() {
     selectedAccount.value = null
     localStorage.removeItem(STORAGE_KEY)
+    notifyPreferenceChange(null)
     console.log('[GLOBAL ACCOUNT] Cleared - showing all accounts')
   }
 

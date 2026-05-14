@@ -973,6 +973,7 @@
 import { onMounted, computed, watch, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
+import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { format } from 'date-fns'
 import { DocumentTextIcon, ChatBubbleLeftIcon } from '@heroicons/vue/24/outline'
@@ -989,6 +990,7 @@ import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { getTradeGrossPnl } from '@/utils/tradePnl'
 
 const tradesStore = useTradesStore()
+const uiPreferencesStore = useUiPreferencesStore()
 const { formatCurrency, currencySymbol, formatSignedCurrency } = useCurrencyFormatter()
 const { formatTime: formatTimeTz } = useUserTimezone()
 const route = useRoute()
@@ -1017,6 +1019,7 @@ const loadFullWidthPreference = () => {
 const toggleFullWidth = () => {
   isFullWidth.value = !isFullWidth.value
   localStorage.setItem('tradeListFullWidth', isFullWidth.value.toString())
+  uiPreferencesStore.notifyChanged('tradeListFullWidth', isFullWidth.value)
 }
 
 // Scroll synchronization functions

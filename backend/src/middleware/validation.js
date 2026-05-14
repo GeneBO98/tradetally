@@ -421,7 +421,8 @@ const schemas = {
       visible: Joi.boolean().required(),
       size: Joi.string().valid('full', 'half').optional()
     })).allow(null),
-    displayCurrency: Joi.string().max(10)
+    displayCurrency: Joi.string().max(10),
+    uiPreferences: Joi.object()
   }).min(1),
 
   // Mobile-specific validation schemas

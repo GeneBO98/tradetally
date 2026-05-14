@@ -579,6 +579,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useDiaryStore } from '@/stores/diary'
+import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday, addMonths, subMonths, startOfWeek, endOfWeek } from 'date-fns'
 import { parseMarkdown, truncateHtml as truncateHtmlUtil } from '@/utils/markdown'
 import DiaryAnalysis from '@/components/diary/DiaryAnalysis.vue'
@@ -604,6 +605,7 @@ import {
 
 const authStore = useAuthStore()
 const diaryStore = useDiaryStore()
+const uiPreferencesStore = useUiPreferencesStore()
 const router = useRouter()
 
 // Component state - load saved view from localStorage
@@ -715,6 +717,7 @@ const truncateHtml = (html, maxLength) => {
 const applyFilters = async () => {
   // Save filters to localStorage
   localStorage.setItem('diaryFilters', JSON.stringify(filters.value))
+  uiPreferencesStore.notifyChanged('diaryFilters', filters.value)
   diaryStore.updateFilters(filters.value)
   await loadEntries()
 }
@@ -730,6 +733,8 @@ const clearFilters = async () => {
   // Clear from localStorage
   localStorage.removeItem('diaryFilters')
   localStorage.removeItem('diarySearchQuery')
+  uiPreferencesStore.notifyChanged('diaryFilters', null)
+  uiPreferencesStore.notifyChanged('diarySearchQuery', null)
   diaryStore.resetFilters()
   await loadEntries()
 }
@@ -745,8 +750,10 @@ const debounceSearch = () => {
   // Save search query to localStorage
   if (searchQuery.value.trim()) {
     localStorage.setItem('diarySearchQuery', searchQuery.value)
+    uiPreferencesStore.notifyChanged('diarySearchQuery', searchQuery.value)
   } else {
     localStorage.removeItem('diarySearchQuery')
+    uiPreferencesStore.notifyChanged('diarySearchQuery', null)
   }
 
   clearTimeout(searchTimeout.value)
@@ -944,6 +951,7 @@ watch(filters, () => {
 // Watch for view changes to persist to localStorage
 watch(currentView, (newView) => {
   localStorage.setItem('diaryView', newView)
+  uiPreferencesStore.notifyChanged('diaryView', newView)
 })
 </script>
 

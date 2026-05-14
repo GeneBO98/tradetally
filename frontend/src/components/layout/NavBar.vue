@@ -281,6 +281,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { useRegistrationMode } from '@/composables/useRegistrationMode'
 import { SunIcon, MoonIcon, Bars3Icon, XMarkIcon, ChevronDownIcon, ChevronUpIcon, UserIcon } from '@heroicons/vue/24/outline'
 import config from '@/config'
@@ -289,6 +290,7 @@ import NotificationBell from '@/components/common/NotificationBell.vue'
 import GlobalAccountSelector from '@/components/layout/GlobalAccountSelector.vue'
 
 const authStore = useAuthStore()
+const uiPreferencesStore = useUiPreferencesStore()
 const { showSEOPages, isBillingEnabled } = useRegistrationMode()
 const isDark = ref(false)
 const isMobileMenuOpen = ref(false)
@@ -488,6 +490,7 @@ function toggleDarkMode() {
   isDark.value = !isDark.value
   document.documentElement.classList.toggle('dark')
   localStorage.setItem('darkMode', isDark.value)
+  uiPreferencesStore.notifyChanged('darkMode', isDark.value)
 }
 
 function toggleMobileMenu() {

@@ -528,6 +528,7 @@ import { useRoute } from "vue-router";
 import { useNotification } from "@/composables/useNotification";
 import { usePriceAlertNotifications } from "@/composables/usePriceAlertNotifications";
 import { useAuthStore } from "@/stores/auth";
+import { useUiPreferencesStore } from "@/stores/uiPreferences";
 import api from "@/services/api";
 import ProUpgradePrompt from "@/components/ProUpgradePrompt.vue";
 import MdiIcon from "@/components/MdiIcon.vue";
@@ -548,6 +549,7 @@ export default {
         const { showSuccess, showError, showCriticalError, showConfirmation } =
             useNotification();
         const authStore = useAuthStore();
+        const uiPreferencesStore = useUiPreferencesStore();
         const { isConnected, notifications, requestNotificationPermission } =
             usePriceAlertNotifications();
         const { formatCurrency } = useCurrencyFormatter();
@@ -781,6 +783,7 @@ export default {
                     "priceAlertsFilters",
                     JSON.stringify(filters.value),
                 );
+                uiPreferencesStore.notifyChanged("priceAlertsFilters", filters.value);
                 loadAlerts();
             },
             { deep: true },

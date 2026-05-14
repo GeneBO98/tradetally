@@ -2,7 +2,7 @@
  * IBKR Flex Web Service Integration
  * Fetches trade data from Interactive Brokers using the Flex Query API
  *
- * API Documentation: https://www.interactivebrokers.com/en/software/am/am/reports/flex_web_service_version_3.htm
+ * API Documentation: https://www.interactivebrokers.com/campus/ibkr-api-page/flex-web-service/
  */
 
 const axios = require('axios');
@@ -10,13 +10,13 @@ const { parseCSV } = require('../../utils/csvParser');
 const Trade = require('../../models/Trade');
 const BrokerConnection = require('../../models/BrokerConnection');
 const db = require('../../config/database');
+const { version: APP_VERSION } = require('../../../package.json');
 
-const FLEX_BASE_URL = 'https://gdcdyn.interactivebrokers.com/Universal/servlet/FlexStatementService';
+const FLEX_BASE_URL = 'https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService';
+const FLEX_USER_AGENT = `TradeTally/${APP_VERSION}`;
 const REPORT_REQUEST_TIMEOUT = 120000; // 2 minutes to request report
 const REPORT_POLL_INTERVAL = 5000; // Poll every 5 seconds
 const REPORT_MAX_WAIT = 300000; // Max 5 minutes to wait for report
-const MAX_FLEX_OVERRIDE_DAYS = 365;
-const DEFAULT_MANUAL_LOOKBACK_DAYS = 365;
 
 // Transient network errors that warrant a retry
 const RETRYABLE_NETWORK_CODES = new Set(['EAI_AGAIN', 'ENOTFOUND', 'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'ECONNABORTED']);
@@ -56,7 +56,7 @@ class IBKRService {
   async requestFlexReport(flexToken, queryId, options = {}) {
     console.log('[IBKR] Requesting Flex report...');
 
-    const url = `${FLEX_BASE_URL}.SendRequest`;
+    const url = `${FLEX_BASE_URL}/SendRequest`;
     const params = this.buildReportRequestParams(flexToken, queryId, options);
     const maxAttempts = 5;
 
@@ -64,7 +64,8 @@ class IBKRService {
       try {
         const response = await axios.get(url, {
           params,
-          timeout: REPORT_REQUEST_TIMEOUT
+          timeout: REPORT_REQUEST_TIMEOUT,
+          headers: { 'User-Agent': FLEX_USER_AGENT }
         });
 
         const data = response.data;
@@ -122,7 +123,7 @@ class IBKRService {
   async fetchFlexReport(referenceCode, flexToken) {
     console.log('[IBKR] Fetching Flex report...');
 
-    const url = `${FLEX_BASE_URL}.GetStatement`;
+    const url = `${FLEX_BASE_URL}/GetStatement`;
     const params = {
       t: flexToken,
       q: referenceCode,
@@ -135,7 +136,8 @@ class IBKRService {
       try {
         const response = await axios.get(url, {
           params,
-          timeout: 60000
+          timeout: 60000,
+          headers: { 'User-Agent': FLEX_USER_AGENT }
         });
 
         const data = response.data;
@@ -731,83 +733,15 @@ class IBKRService {
     };
   }
 
-  buildReportRequestParams(flexToken, queryId, options = {}) {
-    const params = {
+  buildReportRequestParams(flexToken, queryId) {
+    // We intentionally do not send fd/td. The Flex Query's own period (configured
+    // in IBKR) determines what data IBKR returns; TradeTally filters to the
+    // user-requested date range after parsing via filterByDateRange().
+    return {
       t: flexToken,
       q: queryId,
       v: '3'
     };
-
-    const overrideRange = this.getReportDateOverride(options);
-    if (overrideRange) {
-      params.fd = overrideRange.start.replace(/-/g, '');
-      params.td = overrideRange.end.replace(/-/g, '');
-    }
-
-    return params;
-  }
-
-  getReportDateOverride(options = {}) {
-    const { startDate, endDate, syncType = 'manual' } = options;
-
-    if (startDate || endDate) {
-      return this.normalizeReportDateRange(startDate, endDate);
-    }
-
-    if (syncType === 'manual') {
-      const end = this.normalizeDateString(new Date());
-      const startDateValue = new Date(`${end}T00:00:00Z`);
-      startDateValue.setUTCDate(startDateValue.getUTCDate() - (DEFAULT_MANUAL_LOOKBACK_DAYS - 1));
-      const start = startDateValue.toISOString().split('T')[0];
-
-      return { start, end };
-    }
-
-    return null;
-  }
-
-  normalizeReportDateRange(startDate, endDate) {
-    const normalizedStart = this.normalizeDateString(startDate || endDate);
-    const normalizedEnd = this.normalizeDateString(endDate || startDate);
-
-    if (!normalizedStart || !normalizedEnd) {
-      throw new Error('Invalid IBKR date override supplied');
-    }
-
-    if (normalizedStart > normalizedEnd) {
-      throw new Error('IBKR sync start date must be on or before end date');
-    }
-
-    const daySpan = Math.floor(
-      (new Date(`${normalizedEnd}T00:00:00Z`) - new Date(`${normalizedStart}T00:00:00Z`)) / 86400000
-    ) + 1;
-
-    if (daySpan > MAX_FLEX_OVERRIDE_DAYS) {
-      throw new Error(`IBKR Flex Web Service supports up to ${MAX_FLEX_OVERRIDE_DAYS} days per request`);
-    }
-
-    return {
-      start: normalizedStart,
-      end: normalizedEnd
-    };
-  }
-
-  normalizeDateString(value) {
-    if (!value) {
-      return null;
-    }
-
-    if (value instanceof Date) {
-      return value.toISOString().split('T')[0];
-    }
-
-    const stringValue = String(value);
-    if (/^\d{4}-\d{2}-\d{2}$/.test(stringValue)) {
-      return stringValue;
-    }
-
-    const parsed = new Date(stringValue);
-    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().split('T')[0];
   }
 
   executionsMatch(left, right) {
