@@ -123,6 +123,18 @@
                 <div v-if="!notification.is_read" class="flex-shrink-0">
                   <div class="w-2 h-2 bg-primary-500 rounded-full"></div>
                 </div>
+
+                <!-- Dismiss (mark single as read without navigating) -->
+                <button
+                  v-if="!notification.is_read"
+                  @click.stop="dismissNotification(notification)"
+                  :disabled="dismissingIds.has(notification.id)"
+                  class="flex-shrink-0 p-1 -m-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label="Dismiss notification"
+                  title="Dismiss"
+                >
+                  <XMarkIcon class="h-4 w-4" />
+                </button>
               </div>
             </div>
           </div>
@@ -146,20 +158,23 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { 
-  BellIcon, 
-  BellSlashIcon, 
+import {
+  BellIcon,
+  BellSlashIcon,
   ChatBubbleLeftRightIcon,
   TrophyIcon,
-  ArrowTrendingUpIcon
+  ArrowTrendingUpIcon,
+  XMarkIcon
 } from '@heroicons/vue/24/outline'
 import { useAuthStore } from '@/stores/auth'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { useNotificationCenter } from '@/composables/useNotificationCenter'
+import { useNotification } from '@/composables/useNotification'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const { formatDateTime: formatDateTimeTz } = useUserTimezone()
+const { showError } = useNotification()
 const {
   unreadCount,
   recentUnreadNotifications,
@@ -178,6 +193,7 @@ const loading = ref(false)
 const markingAsRead = ref(false)
 const pollInterval = ref(null)
 const pollingDisabled = ref(false)
+const dismissingIds = ref(new Set())
 
 // Computed
 const isAuthenticated = computed(() => authStore.isAuthenticated)
@@ -301,37 +317,86 @@ const fetchUnreadCount = async () => {
   }
 }
 
+async function readErrorMessage(response, fallback) {
+  try {
+    const data = await response.json()
+    return data?.message || data?.error || fallback
+  } catch {
+    return fallback
+  }
+}
+
 const markAllAsRead = async () => {
   if (!isAuthenticated.value || markingAsRead.value) return
-  
+
   try {
     markingAsRead.value = true
-    
+
     const response = await fetch('/api/notifications/mark-all-read', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       }
     })
-    
+
     if (!response.ok) {
-      const errorData = await response.json()
-      console.error('Failed to mark all notifications as read:', errorData)
+      const message = await readErrorMessage(response, 'Could not mark notifications as read. Please try again.')
+      console.error('Failed to mark all notifications as read:', message)
+      showError('Notifications', message)
       return
     }
-    
-    const result = await response.json()
-    
+
+    await response.json().catch(() => null)
+
     // Update local state
     notifications.value = notifications.value.map(n => ({ ...n, is_read: true }))
     clearUnreadState()
-    
+
     // Refresh the notifications and unread count to make sure they're accurate
     await Promise.all([fetchNotifications(), fetchUnreadCount()])
   } catch (error) {
     console.error('Error marking all notifications as read:', error)
+    showError('Notifications', 'Could not mark notifications as read. Please try again.')
   } finally {
     markingAsRead.value = false
+  }
+}
+
+const markSingleAsRead = async (notification) => {
+  const response = await fetch('/api/notifications/mark-read', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      notifications: [{ id: notification.id, type: notification.type }]
+    })
+  })
+
+  if (!response.ok) {
+    const message = await readErrorMessage(response, 'Could not dismiss notification. Please try again.')
+    throw new Error(message)
+  }
+}
+
+const dismissNotification = async (notification) => {
+  if (!isAuthenticated.value || dismissingIds.value.has(notification.id)) return
+
+  dismissingIds.value.add(notification.id)
+  // Trigger reactivity since Set mutations aren't tracked by Vue
+  dismissingIds.value = new Set(dismissingIds.value)
+
+  try {
+    await markSingleAsRead(notification)
+    notifications.value = notifications.value.filter(n => n.id !== notification.id)
+    setRecentUnreadNotifications(notifications.value)
+    decrementUnreadCount()
+  } catch (error) {
+    console.error('Error dismissing notification:', error)
+    showError('Notifications', error.message || 'Could not dismiss notification.')
+  } finally {
+    dismissingIds.value.delete(notification.id)
+    dismissingIds.value = new Set(dismissingIds.value)
   }
 }
 
@@ -339,24 +404,17 @@ const handleNotificationClick = async (notification) => {
   // Mark this notification as read
   if (!notification.is_read) {
     try {
-      await fetch('/api/notifications/mark-read', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ 
-          notifications: [{ id: notification.id, type: notification.type }] 
-        })
-      })
-      
+      await markSingleAsRead(notification)
+
       // Remove the notification from the list (since we only show unread)
       notifications.value = notifications.value.filter(n => n.id !== notification.id)
-      
+
       // Update unread count
       setRecentUnreadNotifications(notifications.value)
       decrementUnreadCount()
     } catch (error) {
       console.error('Error marking notification as read:', error)
+      showError('Notifications', error.message || 'Could not mark notification as read.')
     }
   }
   
