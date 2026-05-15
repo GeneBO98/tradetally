@@ -16,12 +16,15 @@
                 role="dialog"
                 aria-modal="true"
                 :aria-labelledby="titleId"
-                @click.self="handleBackdropClick"
                 @keydown.tab="handleTab"
             >
                 <div
+                    class="flex min-h-full items-center justify-center p-4"
+                    @click.self="handleBackdropClick"
+                >
+                <div
                     ref="modalRef"
-                    class="relative mx-4 sm:mx-auto my-8 sm:my-20 p-5 border shadow-lg rounded-md bg-white dark:bg-gray-800 dark:border-gray-700"
+                    class="relative p-5 border shadow-lg rounded-md bg-white dark:bg-gray-800 dark:border-gray-700"
                     :class="[sizeClass, panelClass]"
                     tabindex="-1"
                 >
@@ -54,6 +57,7 @@
                     <div v-if="$slots.footer" class="mt-6 flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
                         <slot name="footer" />
                     </div>
+                </div>
                 </div>
             </div>
         </Transition>

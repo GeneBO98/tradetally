@@ -313,7 +313,7 @@ const brokerSyncController = {
     try {
       const userId = req.user.id;
       const { id } = req.params;
-      const { autoSyncEnabled, syncFrequency, syncTime, syncStartDate } = req.body;
+      const { accountLabel, autoSyncEnabled, syncFrequency, syncTime, syncStartDate } = req.body;
 
       // Verify ownership
       const connection = await BrokerConnection.findById(id, false);
@@ -324,7 +324,8 @@ const brokerSyncController = {
         });
       }
 
-      // Update settings (syncStartDate may be explicitly null to mean "all time")
+      // Update settings. syncStartDate and accountLabel may be explicitly null
+      // (meaning "all time" / "clear label"), so only forward them when present.
       const updates = {
         autoSyncEnabled,
         syncFrequency,
@@ -332,6 +333,9 @@ const brokerSyncController = {
       };
       if (Object.prototype.hasOwnProperty.call(req.body, 'syncStartDate')) {
         updates.syncStartDate = syncStartDate;
+      }
+      if (Object.prototype.hasOwnProperty.call(req.body, 'accountLabel')) {
+        updates.accountLabel = accountLabel;
       }
       const updated = await BrokerConnection.update(id, updates);
 

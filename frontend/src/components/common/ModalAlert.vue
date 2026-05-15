@@ -4,10 +4,13 @@
         <div
             v-if="modalAlert"
             class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
-            @click="handleOverlayClick"
         >
             <div
-                class="relative top-20 mx-auto p-5 border max-w-md shadow-lg rounded-md bg-white dark:bg-gray-800"
+                class="flex min-h-full items-center justify-center p-4"
+                @click="handleOverlayClick"
+            >
+            <div
+                class="relative w-full max-w-md p-5 border shadow-lg rounded-md bg-white dark:bg-gray-800"
             >
                 <div class="mt-3">
                     <!-- Icon -->
@@ -83,6 +86,7 @@
                         </button>
                     </div>
                 </div>
+            </div>
             </div>
         </div>
     </Teleport>
