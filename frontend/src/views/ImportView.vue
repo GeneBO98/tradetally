@@ -160,6 +160,7 @@
                 <option value="schwab">Charles Schwab</option>
                 <option value="thinkorswim">ThinkorSwim</option>
                 <option value="ibkr">Interactive Brokers</option>
+                <option value="captrader">CapTrader</option>
                 <option value="webull">Webull</option>
                 <option value="etrade">E*TRADE</option>
                 <option value="firstrade">Firstrade (Alpha)</option>
@@ -1658,6 +1659,7 @@ function formatBrokerName(broker) {
     schwab: 'Charles Schwab',
     thinkorswim: 'thinkorswim',
     ibkr: 'Interactive Brokers',
+    captrader: 'CapTrader',
     lightspeed: 'Lightspeed',
     webull: 'Webull',
     etrade: 'E*TRADE',
