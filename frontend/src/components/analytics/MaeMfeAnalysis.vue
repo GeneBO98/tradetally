@@ -8,29 +8,41 @@
             Maximum Adverse / Favorable Excursion — {{ stats.trades_with_data || 0 }} trades with data
           </p>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 flex-wrap justify-end">
           <span class="text-xs text-gray-500 dark:text-gray-400">Display in</span>
-          <button
-            @click="hasRValues ? (useRMultiple = !useRMultiple) : null"
-            :class="[
-              useRMultiple && hasRValues ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-700',
-              hasRValues ? 'cursor-pointer' : 'cursor-not-allowed opacity-40',
-              'relative inline-flex h-5 w-10 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out'
-            ]"
-            type="button"
-            :title="hasRValues ? (useRMultiple ? 'Switch to dollar view' : 'Switch to R-multiple view') : 'R-multiples require a stop loss set on trades'"
-          >
-            <span
-              :class="[
-                useRMultiple && hasRValues ? 'translate-x-5' : 'translate-x-0',
-                'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out'
-              ]"
-            />
-          </button>
-          <span class="text-xs font-medium text-gray-700 dark:text-gray-300">
-            {{ useRMultiple && hasRValues ? 'R-Multiples' : 'Dollars' }}
+          <div class="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <button
+              type="button"
+              class="px-3 py-1.5 text-xs font-medium transition-colors"
+              :class="displayMode === 'dollars' ? 'bg-primary-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'"
+              @click="displayMode = 'dollars'"
+            >
+              Dollars
+            </button>
+            <button
+              type="button"
+              class="px-3 py-1.5 text-xs font-medium border-l border-gray-200 dark:border-gray-700 transition-colors"
+              :class="displayMode === 'points' && canUsePoints ? 'bg-primary-600 text-white' : canUsePoints ? 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700' : 'bg-gray-100 text-gray-400 cursor-not-allowed dark:bg-gray-800 dark:text-gray-500'"
+              :disabled="!canUsePoints"
+              :title="canUsePoints ? 'Switch to futures points view' : 'Points view is available when all displayed trades are futures with quantity and point value set'"
+              @click="canUsePoints ? (displayMode = 'points') : null"
+            >
+              Points
+            </button>
+            <button
+              type="button"
+              class="px-3 py-1.5 text-xs font-medium border-l border-gray-200 dark:border-gray-700 transition-colors"
+              :class="displayMode === 'r' && hasRValues ? 'bg-primary-600 text-white' : hasRValues ? 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700' : 'bg-gray-100 text-gray-400 cursor-not-allowed dark:bg-gray-800 dark:text-gray-500'"
+              :disabled="!hasRValues"
+              :title="hasRValues ? 'Switch to R-multiple view' : 'R-multiples require a stop loss set on trades'"
+              @click="hasRValues ? (displayMode = 'r') : null"
+            >
+              R-Multiples
+            </button>
+          </div>
+          <span v-if="!hasRValues || !canUsePoints" class="text-xs text-gray-400 dark:text-gray-500">
+            {{ !hasRValues && !canUsePoints ? 'R needs stop loss. Points need futures-only trades with qty and point value.' : !hasRValues ? 'R needs stop loss.' : 'Points need futures-only trades with qty and point value.' }}
           </span>
-          <span v-if="!hasRValues" class="text-xs text-gray-400 dark:text-gray-500">(set stop loss on trades to enable)</span>
         </div>
       </div>
 
@@ -143,7 +155,7 @@ const props = defineProps({
 const loading = ref(true)
 const trades = ref([])
 const stats = ref({ trades_with_data: 0 })
-const useRMultiple = ref(false)
+const displayMode = ref('dollars')
 const router = useRouter()
 
 let scatterChartInstance = null
@@ -157,9 +169,15 @@ function formatCurrency(val) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val)
 }
 
+function formatPoints(val) {
+  if (val == null) return '—'
+  return `${val.toFixed(2)} pts`
+}
+
 function formatValue(val) {
   if (val == null) return '—'
-  if (useRMultiple.value) return `${val.toFixed(2)}R`
+  if (displayMode.value === 'r') return `${val.toFixed(2)}R`
+  if (displayMode.value === 'points') return formatPoints(val)
   return formatCurrency(val)
 }
 
@@ -180,6 +198,15 @@ function roundMetric(value) {
 }
 
 const hasRValues = computed(() => trades.value.some(t => asNumber(t.risk_amount) > 0))
+
+const canUsePoints = computed(() => (
+  trades.value.length > 0 &&
+  trades.value.every(t =>
+    t.instrument_type === 'future' &&
+    asNumber(t.quantity) > 0 &&
+    asNumber(t.point_value) > 0
+  )
+))
 
 const displayStats = computed(() => {
   const winners = trades.value.filter(t => t.is_winner)
@@ -269,13 +296,28 @@ function renderCharts() {
   renderHistogram()
 }
 
+function getPointsValue(t, field) {
+  const quantity = Math.abs(asNumber(t.quantity) || 0)
+  const pointValue = asNumber(t.point_value)
+  if (quantity <= 0 || pointValue == null || pointValue <= 0) return null
+
+  const value = asNumber(field === 'pnl' ? t.pnl : field === 'mfe' ? t.mfe : t.mae)
+  if (value == null) return null
+
+  return value / (quantity * pointValue)
+}
+
 function getTradeValue(t, field) {
-  if (useRMultiple.value) {
+  if (displayMode.value === 'r') {
     if (field === 'pnl') return asNumber(t.r_value)
 
     const riskAmount = asNumber(t.risk_amount)
     const value = asNumber(t[field])
     return riskAmount > 0 && value != null ? value / riskAmount : null
+  }
+
+  if (displayMode.value === 'points') {
+    return getPointsValue(t, field)
   }
 
   return asNumber(field === 'pnl' ? t.pnl : field === 'mfe' ? t.mfe : t.mae)
@@ -356,7 +398,7 @@ function renderScatter() {
               if (ctx.dataset.label === 'Perfect exit') return null
               const p = ctx.raw
               const sym = p.label || ''
-              const fmt = v => useRMultiple.value ? `${v.toFixed(2)}R` : formatCurrency(v)
+              const fmt = v => formatValue(v)
               return `${sym}  MFE: ${fmt(p.x)}  Result: ${fmt(p.y)}`
             }
           }
@@ -364,12 +406,12 @@ function renderScatter() {
       },
       scales: {
         x: {
-          title: { display: true, text: useRMultiple.value ? 'MFE (R)' : 'MFE ($)', color: '#6b7280', font: { size: 11 } },
+          title: { display: true, text: displayMode.value === 'r' ? 'MFE (R)' : displayMode.value === 'points' ? 'MFE (pts)' : 'MFE ($)', color: '#6b7280', font: { size: 11 } },
           ticks: { color: '#6b7280', font: { size: 10 } },
           grid: { color: 'rgba(107,114,128,0.1)' }
         },
         y: {
-          title: { display: true, text: useRMultiple.value ? 'Result (R)' : 'Result ($)', color: '#6b7280', font: { size: 11 } },
+          title: { display: true, text: displayMode.value === 'r' ? 'Result (R)' : displayMode.value === 'points' ? 'Result (pts)' : 'Result ($)', color: '#6b7280', font: { size: 11 } },
           ticks: { color: '#6b7280', font: { size: 10 } },
           grid: { color: 'rgba(107,114,128,0.1)' }
         }
@@ -399,9 +441,9 @@ function renderHistogram() {
   const labels = bins.map((_, i) => {
     const lo = i * binSize
     const hi = (i + 1) * binSize
-    return useRMultiple.value
-      ? `${lo.toFixed(1)}–${hi.toFixed(1)}R`
-      : `${formatCurrency(lo)}–${formatCurrency(hi)}`
+    if (displayMode.value === 'r') return `${lo.toFixed(1)}–${hi.toFixed(1)}R`
+    if (displayMode.value === 'points') return `${lo.toFixed(1)}–${hi.toFixed(1)} pts`
+    return `${formatCurrency(lo)}–${formatCurrency(hi)}`
   })
 
   histogramChartInstance = new Chart(ctx, {
@@ -433,7 +475,7 @@ function renderHistogram() {
       },
       scales: {
         x: {
-          title: { display: true, text: useRMultiple.value ? 'MAE (R)' : 'MAE ($)', color: '#6b7280', font: { size: 11 } },
+          title: { display: true, text: displayMode.value === 'r' ? 'MAE (R)' : displayMode.value === 'points' ? 'MAE (pts)' : 'MAE ($)', color: '#6b7280', font: { size: 11 } },
           ticks: { color: '#6b7280', font: { size: 9 }, maxRotation: 30 },
           grid: { display: false }
         },
@@ -449,13 +491,29 @@ function renderHistogram() {
 
 // ---- watchers ----
 watch(() => props.filters, fetchData, { deep: true })
-watch(useRMultiple, async (val) => {
-  if (val && !hasRValues.value) {
-    useRMultiple.value = false
+watch(displayMode, async (val) => {
+  if (val === 'r' && !hasRValues.value) {
+    displayMode.value = 'dollars'
+    return
+  }
+  if (val === 'points' && !canUsePoints.value) {
+    displayMode.value = 'dollars'
     return
   }
   await nextTick()
   renderCharts()
+})
+
+watch(canUsePoints, value => {
+  if (!value && displayMode.value === 'points') {
+    displayMode.value = 'dollars'
+  }
+})
+
+watch(hasRValues, value => {
+  if (!value && displayMode.value === 'r') {
+    displayMode.value = 'dollars'
+  }
 })
 
 onMounted(fetchData)

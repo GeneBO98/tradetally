@@ -1244,6 +1244,9 @@ const analyticsController = {
           mae: parseFloat(t.mae),
           mfe: parseFloat(t.mfe),
           risk_amount: riskAmount != null ? parseFloat(riskAmount.toFixed(2)) : null,
+          quantity: t.quantity != null ? parseFloat(t.quantity) : null,
+          instrument_type: t.instrument_type || 'stock',
+          point_value: t.point_value != null ? parseFloat(t.point_value) : null,
           is_winner: t.is_winner
         };
       });
