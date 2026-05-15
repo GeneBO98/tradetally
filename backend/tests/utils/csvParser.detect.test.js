@@ -70,6 +70,42 @@ describe('detectBrokerFormat', () => {
     expect(detectBrokerFormat(buf(csv))).toBe('ibkr_trade_confirmation');
   });
 
+  test('detects IBKR multi-section Activity Statement (Trades section)', () => {
+    const csv = [
+      'Statement,Header,Field Name,Field Value',
+      'Statement,Data,Title,Activity Statement',
+      'Account Information,Header,Field Name,Field Value',
+      'Account Information,Data,Account,U1234567',
+      'Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,Proceeds,Comm/Fee,Basis,Realized P/L,MTM P/L,Code',
+      'Trades,Data,Order,Stocks,USD,AAPL,"2026-01-05, 09:30:00",100,150.00,150.00,-15000,-1.00,15001,0,0,O'
+    ].join('\n');
+    expect(detectBrokerFormat(buf(csv))).toBe('ibkr');
+  });
+
+  test('detects CapTrader Activity Statement via German Feldname/Feldwert headers', () => {
+    const csv = [
+      'Statement,Header,Feldname,Feldwert',
+      'Statement,Data,Title,Transaction History',
+      'Summary,Header,Feldname,Feldwert',
+      'Summary,Data,Basiswährung,EUR',
+      'Transaction History,Header,Date,Account,Description,Transaction Type,Symbol,Quantity,Price,Price Currency,Gross Amount ,Commission,Net Amount',
+      'Transaction History,Data,2026-05-14,U***50777 Trading,MCL JUN26,Buy,MCLM6,2.0,99.94,USD,-17128.5,-2.14,208.66'
+    ].join('\n');
+    expect(detectBrokerFormat(buf(csv))).toBe('captrader');
+  });
+
+  test('detects CapTrader Activity Statement via CapTrader GmbH master name', () => {
+    const csv = [
+      'Statement,Header,Field Name,Field Value',
+      'Statement,Data,Title,Activity Statement',
+      'Account Information,Header,Field Name,Field Value',
+      'Account Information,Data,Master Name,CapTrader GmbH',
+      'Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,Proceeds,Comm/Fee,Basis,Realized P/L,MTM P/L,Code',
+      'Trades,Data,Order,Stocks,EUR,8TRA,"2026-02-10, 10:01:14",100,36.42,36.18,-3642,-3.64,3646,0,-24,O'
+    ].join('\n');
+    expect(detectBrokerFormat(buf(csv))).toBe('captrader');
+  });
+
   test('detects E*TRADE format', () => {
     const csv = 'Transaction Date,Transaction Type,Symbol,Quantity,Price,Commission,Fees\n01/01/2025,Buy,AAPL,100,150.00,6.95,0.00';
     expect(detectBrokerFormat(buf(csv))).toBe('etrade');

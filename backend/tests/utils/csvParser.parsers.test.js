@@ -434,6 +434,53 @@ describe('IBKR parser', () => {
     expectValidResult(result);
   });
 
+  test('parses IBKR multi-section Activity Statement Trades section', async () => {
+    const activityCSV = [
+      'Statement,Header,Field Name,Field Value',
+      'Statement,Data,Title,Activity Statement',
+      'Account Information,Header,Field Name,Field Value',
+      'Account Information,Data,Account,U1234567',
+      'Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,Proceeds,Comm/Fee,Basis,Realized P/L,MTM P/L,Code',
+      'Trades,Data,Order,Stocks,USD,AAPL,"2026-01-05, 09:30:00",100,150.00,150.00,-15000,-1.00,15001,0,0,O',
+      'Trades,Data,Order,Stocks,USD,AAPL,"2026-01-06, 10:00:00",-100,155.00,155.00,15500,-1.00,-15001,498,0,C',
+      'Trades,SubTotal,,Stocks,USD,AAPL,,0,,,500,-2.00,0,498,0,',
+      'Trades,Total,,Stocks,USD,,,,,,500,-2.00,0,498,0,'
+    ].join('\n');
+    const result = await parseCSV(buf(activityCSV), 'ibkr', {});
+    expectValidResult(result);
+    expect(result.trades.length).toBe(1);
+    expect(result.trades[0]).toEqual(expect.objectContaining({
+      symbol: 'AAPL',
+      side: 'long',
+      entryPrice: 150,
+      exitPrice: 155,
+      broker: 'ibkr'
+    }));
+  });
+
+  test('parses CapTrader Transaction History export and tags broker', async () => {
+    const captraderCSV = [
+      'Statement,Header,Feldname,Feldwert',
+      'Statement,Data,Title,Transaction History',
+      'Summary,Header,Feldname,Feldwert',
+      'Summary,Data,Basiswährung,EUR',
+      'Transaction History,Header,Date,Account,Description,Transaction Type,Symbol,Quantity,Price,Price Currency,Gross Amount ,Commission,Net Amount',
+      'Transaction History,Data,2026-05-14,U***50777 Trading,MNQ 18JUN26 Position MTM,Position MTM,MNQM6,-,-,-,357.34,-,357.34',
+      'Transaction History,Data,2026-05-14,U***07430 Invest..,XETRA-GOLD MAINTENANCE FEE,Other Fee,-,-,-,-,-0.09,-,-0.09',
+      'Transaction History,Data,2026-05-14,U***50777 Trading,MCL JUN26,Buy,MCLM6,2.0,99.94,USD,-17128.51,-2.14,208.66',
+      'Transaction History,Data,2026-05-14,U***50777 Trading,MCL JUN26,Sell,MCLM6,-2.0,101.31,USD,17363.31,-2.14,43.70'
+    ].join('\n');
+    const result = await parseCSV(buf(captraderCSV), 'captrader', {});
+    expectValidResult(result);
+    // Position MTM and Other Fee rows must be filtered out, leaving only the Buy/Sell pair
+    expect(result.trades.length).toBe(1);
+    expect(result.trades[0]).toEqual(expect.objectContaining({
+      symbol: 'MCLM6',
+      side: 'long',
+      broker: 'captrader'
+    }));
+  });
+
   test('parses IBKR trade confirmation futures using AssetClass and Multiplier', async () => {
     const tradeConfFuturesCSV = [
       'AssetClass,Symbol,UnderlyingSymbol,Strike,Expiry,Put/Call,Multiplier,Buy/Sell,Date/Time,Quantity,Price,Commission',
