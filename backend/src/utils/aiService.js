@@ -286,10 +286,10 @@ Your response:`;
         max_completion_tokens: options.maxTokens || 1000,
       };
       
-      // Only add temperature for models that support it
-      // Some models like o1-preview, o1-mini, and custom/nano models don't support temperature
-      const noTempModels = ['o1-preview', 'o1-mini', 'o1', 'gpt-5-nano', 'nano'];
-      if (!noTempModels.some(m => model.toLowerCase().includes(m.toLowerCase()))) {
+      // Only add temperature for models that support it.
+      // Reasoning models (o-series, all gpt-5 variants) reject any non-default temperature.
+      const isReasoningModel = /^(o\d|gpt-5)/i.test(model);
+      if (!isReasoningModel) {
         requestParams.temperature = 0.1;
       }
       

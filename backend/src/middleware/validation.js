@@ -645,11 +645,17 @@ const schemas = {
   }),
 
   aiCreateSession: Joi.object({
-    filters: Joi.object().unknown(true).default({})
+    filters: Joi.object().unknown(true).default({}),
+    tradeId: Joi.string().trim().max(64),
+    analysisType: Joi.string().valid('single_trade'),
+    apiKey: Joi.string().trim().max(500),
+    modelName: Joi.string().trim().max(200)
   }),
 
   aiFollowup: Joi.object({
-    message: Joi.string().trim().max(4000).required()
+    message: Joi.string().trim().max(4000).required(),
+    apiKey: Joi.string().trim().max(500),
+    modelName: Joi.string().trim().max(200)
   }),
 
   brokerSyncIbkrConnection: Joi.object({
@@ -663,6 +669,7 @@ const schemas = {
   }),
 
   brokerSyncConnectionUpdate: Joi.object({
+    accountLabel: nullableString(255),
     autoSyncEnabled: Joi.boolean(),
     syncFrequency: Joi.string().valid('manual', 'hourly', 'daily', 'weekly'),
     syncTime: nullableString(10),

@@ -826,11 +826,11 @@ class FinnhubClient {
           max_completion_tokens: 50
         };
         
-        // Only add temperature for models that support it
-        // Some models like o1-preview, o1-mini, and custom/nano models don't support temperature
-        const noTempModels = ['o1-preview', 'o1-mini', 'o1', 'gpt-5-nano', 'nano'];
+        // Only add temperature for models that support it.
+        // Reasoning models (o-series, all gpt-5 variants) reject any non-default temperature.
         const modelName = settings.default_ai_model || 'gpt-3.5-turbo';
-        if (!noTempModels.some(m => modelName.toLowerCase().includes(m.toLowerCase()))) {
+        const isReasoningModel = /^(o\d|gpt-5)/i.test(modelName);
+        if (!isReasoningModel) {
           requestParams.temperature = 0.1;
         }
         
