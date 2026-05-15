@@ -16,12 +16,48 @@ const FLEX_BASE_URL = 'https://ndcdyn.interactivebrokers.com/AccountManagement/F
 const FLEX_USER_AGENT = `TradeTally/${APP_VERSION}`;
 const REPORT_REQUEST_TIMEOUT = 120000; // 2 minutes to request report
 const REPORT_POLL_INTERVAL = 5000; // Poll every 5 seconds
-const REPORT_MAX_WAIT = 300000; // Max 5 minutes to wait for report
+const REPORT_INITIAL_MAX_WAIT = 300000; // Initial 5 min poll window before extending
+const REPORT_EXTENDED_MAX_WAIT = 720000; // 12 min total when first poll times out
 
 // Transient network errors that warrant a retry
 const RETRYABLE_NETWORK_CODES = new Set(['EAI_AGAIN', 'ENOTFOUND', 'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'ECONNABORTED']);
 // IBKR error codes that mean "try again in a moment" (per official Version 3 error code docs)
 const RETRYABLE_IBKR_CODES = new Set(['1001', '1004', '1005', '1006', '1007', '1008', '1009', '1018', '1019', '1021']);
+
+// Phrases in IBKR's <ErrorMessage> text that indicate a transient condition,
+// regardless of whether the numeric ErrorCode is one we know about. IBKR
+// occasionally returns codes outside the documented set with these messages.
+const RETRYABLE_MESSAGE_PHRASES = [
+  'try again',
+  'temporary',
+  'temporarily',
+  'shortly',
+  'please wait',
+  'being generated',
+  'not ready',
+  'in a moment',
+  'currently unavailable',
+  'heavy load'
+];
+
+function isRetryableErrorMessage(message) {
+  if (!message) return false;
+  const text = String(message).toLowerCase();
+  return RETRYABLE_MESSAGE_PHRASES.some(phrase => text.includes(phrase));
+}
+
+/**
+ * Build an Error annotated with the IBKR error code and a transient flag.
+ * The caller (sync orchestrator) uses these to (a) save error_details and
+ * (b) decide whether to schedule an auto-retry.
+ */
+function buildIBKRError(humanMessage, { errorCode = null, rawMessage = null, transient = false } = {}) {
+  const err = new Error(humanMessage);
+  err.errorCode = errorCode;
+  err.rawMessage = rawMessage;
+  err.transient = transient;
+  return err;
+}
 
 class IBKRService {
   /**
@@ -77,19 +113,27 @@ class IBKRService {
           const errorCode = errorCodeMatch ? errorCodeMatch[1] : 'Unknown';
           const errorMsg = errorMsgMatch ? errorMsgMatch[1] : 'Unknown error';
 
-          if (RETRYABLE_IBKR_CODES.has(errorCode) && attempt < maxAttempts) {
+          // Retry if the code is known-transient OR the human message says
+          // "try again"/"temporary"/etc. IBKR sometimes returns undocumented
+          // codes with explicitly retryable wording.
+          const isTransient = RETRYABLE_IBKR_CODES.has(errorCode) || isRetryableErrorMessage(errorMsg);
+          if (isTransient && attempt < maxAttempts) {
             const delay = attempt * 15000;
-            console.warn(`[IBKR] Retryable error ${errorCode} on attempt ${attempt}/${maxAttempts}, retrying in ${delay / 1000}s...`);
+            console.warn(`[IBKR] Retryable error ${errorCode} ("${errorMsg}") on attempt ${attempt}/${maxAttempts}, retrying in ${delay / 1000}s...`);
             await this.sleep(delay);
             continue;
           }
 
-          throw new Error(this.getErrorMessage(errorCode, errorMsg));
+          throw buildIBKRError(this.getErrorMessage(errorCode, errorMsg), {
+            errorCode,
+            rawMessage: errorMsg,
+            transient: isTransient // true if retries were exhausted on a transient error
+          });
         }
 
         const refCodeMatch = data.match(/<ReferenceCode>([^<]+)<\/ReferenceCode>/);
         if (!refCodeMatch) {
-          throw new Error('Failed to get reference code from IBKR response');
+          throw buildIBKRError('Failed to get reference code from IBKR response', { errorCode: 'NO_REF_CODE' });
         }
 
         const referenceCode = refCodeMatch[1];
@@ -98,7 +142,10 @@ class IBKRService {
       } catch (error) {
         if (error.response) {
           console.error('[IBKR] API error status:', error.response.status);
-          throw new Error(`IBKR API error: ${error.response.status}`);
+          throw buildIBKRError(`IBKR API error: ${error.response.status}`, {
+            errorCode: `HTTP_${error.response.status}`,
+            transient: error.response.status >= 500
+          });
         }
 
         // Retry on transient network/DNS errors
@@ -109,6 +156,12 @@ class IBKRService {
           continue;
         }
 
+        if (RETRYABLE_NETWORK_CODES.has(error.code)) {
+          // Exhausted retries on a transient network error — mark as transient
+          // so the scheduler can auto-retry later.
+          error.transient = true;
+          error.errorCode = error.code;
+        }
         throw error;
       }
     }
@@ -118,10 +171,13 @@ class IBKRService {
    * Fetch the generated Flex report
    * @param {string} referenceCode - Report reference code
    * @param {string} flexToken - IBKR Flex Token
+   * @param {object} [options]
+   * @param {number} [options.maxWait] - Override the default poll window in ms
    * @returns {Promise<string>} - CSV data
    */
-  async fetchFlexReport(referenceCode, flexToken) {
-    console.log('[IBKR] Fetching Flex report...');
+  async fetchFlexReport(referenceCode, flexToken, options = {}) {
+    const maxWait = options.maxWait || REPORT_INITIAL_MAX_WAIT;
+    console.log(`[IBKR] Fetching Flex report (max wait ${Math.round(maxWait / 1000)}s)...`);
 
     const url = `${FLEX_BASE_URL}/GetStatement`;
     const params = {
@@ -132,7 +188,7 @@ class IBKRService {
 
     const startTime = Date.now();
 
-    while (Date.now() - startTime < REPORT_MAX_WAIT) {
+    while (Date.now() - startTime < maxWait) {
       try {
         const response = await axios.get(url, {
           params,
@@ -149,13 +205,20 @@ class IBKRService {
           const errorCode = errorCodeMatch ? errorCodeMatch[1] : 'Unknown';
           const errorMsg = errorMsgMatch ? errorMsgMatch[1] : 'Unknown error';
 
-          if (RETRYABLE_IBKR_CODES.has(errorCode)) {
-            console.log(`[IBKR] Transient error ${errorCode} on GetStatement, waiting to retry...`);
+          // Treat known-transient codes AND messages with retry hints as
+          // transient. Polling will continue until maxWait is reached.
+          const isTransient = RETRYABLE_IBKR_CODES.has(errorCode) || isRetryableErrorMessage(errorMsg);
+          if (isTransient) {
+            console.log(`[IBKR] Transient error ${errorCode} ("${errorMsg}") on GetStatement, waiting to retry...`);
             await this.sleep(REPORT_POLL_INTERVAL);
             continue;
           }
 
-          throw new Error(this.getErrorMessage(errorCode, errorMsg));
+          throw buildIBKRError(this.getErrorMessage(errorCode, errorMsg), {
+            errorCode,
+            rawMessage: errorMsg,
+            transient: false
+          });
         }
 
         // If we got CSV data, return it
@@ -177,7 +240,12 @@ class IBKRService {
       }
     }
 
-    throw new Error('Timeout waiting for IBKR report generation');
+    // Timeout: poll window exceeded. Mark as transient so the caller can
+    // retry with a longer window or schedule an auto-retry later.
+    throw buildIBKRError('Timeout waiting for IBKR report generation', {
+      errorCode: 'TIMEOUT',
+      transient: true
+    });
   }
 
   /**
@@ -208,10 +276,30 @@ class IBKRService {
       throw new Error('Failed to request IBKR report');
     }
 
-    const csvData = await this.fetchFlexReport(
-      reportResponse.referenceCode,
-      connection.ibkrFlexToken
-    );
+    // Two-phase fetch: poll for up to 5 minutes first (fast path). If the
+    // report still isn't ready, keep polling the same reference code for
+    // another window up to a 12-minute total. Larger accounts often need
+    // longer than 5 minutes; small accounts shouldn't have to wait.
+    let csvData;
+    try {
+      csvData = await this.fetchFlexReport(
+        reportResponse.referenceCode,
+        connection.ibkrFlexToken,
+        { maxWait: REPORT_INITIAL_MAX_WAIT }
+      );
+    } catch (error) {
+      if (error.errorCode === 'TIMEOUT') {
+        const remainingMs = REPORT_EXTENDED_MAX_WAIT - REPORT_INITIAL_MAX_WAIT;
+        console.warn(`[IBKR] Report not ready after 5 min, continuing to poll for up to ${Math.round(remainingMs / 60000)} more minutes...`);
+        csvData = await this.fetchFlexReport(
+          reportResponse.referenceCode,
+          connection.ibkrFlexToken,
+          { maxWait: remainingMs }
+        );
+      } else {
+        throw error;
+      }
+    }
 
     // Update sync log status
     if (syncLogId) {
@@ -368,14 +456,45 @@ class IBKRService {
   }
 
   /**
-   * Detect which IBKR CSV format we're dealing with
+   * Detect which IBKR CSV format we're dealing with.
+   *
+   * Returns one of:
+   *   - 'ibkr_trade_confirmation' — IBKR Flex Query Trade Confirmation layout
+   *     (UnderlyingSymbol, Strike, Expiry, Put/Call columns)
+   *   - 'captrader'               — CapTrader Activity Statement (multi-section
+   *     IBKR format with German metadata markers like `Feldname,Feldwert` or
+   *     an explicit `CapTrader GmbH` master-name row)
+   *   - 'ibkr'                    — Vanilla IBKR Activity Statement
+   *
+   * CapTrader is an IBKR introducing broker — it uses the same Flex Web
+   * Service API but exports CSVs with CapTrader-specific markers. Tagging
+   * these trades as 'captrader' (vs 'ibkr') is purely cosmetic; the parser
+   * handles both via the same code path, but the broker label shown in the
+   * UI/database matches the user's actual broker.
    */
   detectIBKRFormat(csvData) {
     const headerLine = csvData.split('\n')[0].toLowerCase();
 
     if (headerLine.includes('underlyingsymbol') && headerLine.includes('strike') &&
         headerLine.includes('expiry') && headerLine.includes('put/call')) {
+      // Trade Confirmation files don't have CapTrader-style section markers,
+      // so we keep them as plain IBKR even if the user is on CapTrader.
       return 'ibkr_trade_confirmation';
+    }
+
+    // Scan first ~1000 lines for CapTrader markers. Reuses the same patterns
+    // as the CSV parser's auto-detection (csvParser.js:680-702) so detection
+    // is consistent across import paths.
+    const lines = csvData.split('\n');
+    const scanLimit = Math.min(lines.length, 1000);
+    for (let i = 0; i < scanLimit; i++) {
+      const line = lines[i];
+      if (!line) continue;
+      if (/^[^,]*,\s*"?Header"?\s*,\s*"?Feldname"?\s*,\s*"?Feldwert"?/i.test(line) ||
+          /CapTrader/i.test(line)) {
+        console.log('[IBKR] CapTrader markers found — tagging sync as captrader');
+        return 'captrader';
+      }
     }
 
     return 'ibkr';

@@ -215,6 +215,31 @@ class BrokerConnection {
   }
 
   /**
+   * Bring next_scheduled_sync forward when a sync failed with a transient
+   * error (timeout, DNS hiccup, IBKR "try again later"). The regular
+   * scheduler will pick the connection up on its next pass and retry.
+   * Only fires for scheduled syncs and only while consecutive_failures is
+   * below the cap enforced by findDueForSync. Doesn't move the sync forward
+   * if the user already had it scheduled sooner than the retry window.
+   */
+  static async scheduleTransientRetry(connectionId, delayMinutes = 30) {
+    const query = `
+      UPDATE broker_connections
+      SET next_scheduled_sync = LEAST(
+            COALESCE(next_scheduled_sync, NOW() + ($2 || ' minutes')::interval),
+            NOW() + ($2 || ' minutes')::interval
+          ),
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+        AND auto_sync_enabled = true
+        AND consecutive_failures < 3
+      RETURNING id, next_scheduled_sync
+    `;
+    const result = await db.query(query, [connectionId, String(delayMinutes)]);
+    return result.rows[0] || null;
+  }
+
+  /**
    * Update connection after failed sync
    */
   static async updateAfterFailure(connectionId, errorMessage) {
