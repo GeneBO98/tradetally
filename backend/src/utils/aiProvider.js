@@ -130,9 +130,10 @@ class AIProvider {
       // OpenAI API uses max_completion_tokens; local/other APIs may still use max_tokens
       const isOpenAIAPI = apiUrl && apiUrl.includes('api.openai.com');
 
-      // Reasoning models (o1, o3, gpt-5-nano, etc.) need higher token limits
-      // because reasoning tokens count toward max_completion_tokens but don't produce visible output
-      const isReasoningModel = /^(o\d|gpt-5-nano)/i.test(modelName);
+      // Reasoning models (o-series, all gpt-5 variants) need higher token limits
+      // because reasoning tokens count toward max_completion_tokens but don't produce visible output.
+      // These models also reject custom `temperature` — only the default (1) is supported.
+      const isReasoningModel = /^(o\d|gpt-5)/i.test(modelName);
       const tokenLimit = isReasoningModel ? 16384 : 4096;
 
       const tokenParam = isOpenAIAPI

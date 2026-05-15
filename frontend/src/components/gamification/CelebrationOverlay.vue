@@ -169,6 +169,7 @@ import {
   usePriceAlertNotifications,
   advanceCelebrationCursor,
 } from '@/composables/usePriceAlertNotifications'
+import api from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 
 const props = defineProps({
@@ -389,13 +390,7 @@ async function markNotificationsRead(items) {
       : []
   if (list.length === 0) return
   try {
-    await fetch('/api/notifications/mark-read', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ notifications: list })
-    })
+    await api.post('/notifications/mark-read', { notifications: list })
   } catch (err) {
     console.error('[CELEBRATION] Failed to mark notifications as read:', err)
   }
