@@ -108,13 +108,41 @@ class BrokerSyncService {
     } catch (error) {
       console.error(`[BROKER-SYNC] Sync failed:`, error.message);
 
+      // Capture error code + raw message into error_details for diagnosability.
+      // Without this we only have the human-friendly message and can't tell
+      // an IBKR 1019 ("statement being generated") from a 1011 ("inactive
+      // account") after the fact.
+      const errorDetails = {
+        errorCode: error.errorCode || null,
+        rawMessage: error.rawMessage || null,
+        transient: Boolean(error.transient),
+        timestamp: new Date().toISOString()
+      };
+
       // Update sync log with error
       await BrokerConnection.updateSyncLog(syncLog.id, 'failed', {
-        errorMessage: error.message
+        errorMessage: error.message,
+        errorDetails
       });
 
       // Update connection failure status
       await BrokerConnection.updateAfterFailure(connectionId, error.message);
+
+      // Auto-retry transient failures by bringing next_scheduled_sync
+      // forward to 30 min from now. The scheduler will pick it up on its
+      // next pass. Only retries when auto-sync is enabled and we haven't
+      // already burned through retries (updateAfterFailure caps at 3
+      // consecutive failures, after which the connection is marked 'error').
+      // Manual retries are not auto-rescheduled — the user is watching the
+      // UI and can re-click "Sync Now".
+      if (error.transient && syncType === 'scheduled') {
+        try {
+          await BrokerConnection.scheduleTransientRetry(connectionId, 30);
+          console.log(`[BROKER-SYNC] Scheduled transient-failure retry for ${connectionId} in 30 min`);
+        } catch (retryErr) {
+          console.error(`[BROKER-SYNC] Failed to schedule retry: ${retryErr.message}`);
+        }
+      }
 
       return {
         success: false,

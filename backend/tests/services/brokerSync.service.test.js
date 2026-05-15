@@ -279,3 +279,58 @@ describe('broker sync duplicate protection', () => {
     });
   });
 });
+
+describe('IBKR transient error handling', () => {
+  const axios = require('axios');
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.spyOn(ibkrService, 'sleep').mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  test('fetchFlexReport keeps polling when IBKR returns an unknown code with a "try again" message', async () => {
+    // First poll: unknown error code with retry-hint wording. Second poll: CSV.
+    axios.get
+      .mockResolvedValueOnce({
+        data: '<?xml version="1.0"?><FlexStatementResponse><Status>Warn</Status><ErrorCode>9999</ErrorCode><ErrorMessage>Statement could not be generated at this time. Please try again shortly.</ErrorMessage></FlexStatementResponse>'
+      })
+      .mockResolvedValueOnce({
+        data: 'Symbol,Quantity,Price\nAAPL,10,150.50\n'
+      });
+
+    const csv = await ibkrService.fetchFlexReport('REF-123', 'token', { maxWait: 60000 });
+    expect(csv).toContain('AAPL');
+    expect(axios.get).toHaveBeenCalledTimes(2);
+  });
+
+  test('fetchFlexReport throws a transient timeout error when poll window is exhausted', async () => {
+    // Every poll returns the "being generated" message — never returns CSV.
+    axios.get.mockResolvedValue({
+      data: '<?xml version="1.0"?><FlexStatementResponse><ErrorCode>1019</ErrorCode><ErrorMessage>Statement is being generated</ErrorMessage></FlexStatementResponse>'
+    });
+
+    // 1ms window guarantees timeout on the first iteration check.
+    await expect(ibkrService.fetchFlexReport('REF-123', 'token', { maxWait: 1 }))
+      .rejects.toMatchObject({
+        message: 'Timeout waiting for IBKR report generation',
+        errorCode: 'TIMEOUT',
+        transient: true
+      });
+  });
+
+  test('fetchFlexReport throws a non-transient error on a known fatal IBKR code', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: '<?xml version="1.0"?><FlexStatementResponse><ErrorCode>1015</ErrorCode><ErrorMessage>Token is invalid</ErrorMessage></FlexStatementResponse>'
+    });
+
+    await expect(ibkrService.fetchFlexReport('REF-123', 'token', { maxWait: 60000 }))
+      .rejects.toMatchObject({
+        errorCode: '1015',
+        transient: false
+      });
+  });
+});
