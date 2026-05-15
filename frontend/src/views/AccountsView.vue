@@ -75,6 +75,7 @@
                   <option value="schwab">Charles Schwab</option>
                   <option value="thinkorswim">thinkorswim</option>
                   <option value="ibkr">Interactive Brokers</option>
+                  <option value="captrader">CapTrader</option>
                   <option value="lightspeed">Lightspeed</option>
                   <option value="webull">Webull</option>
                   <option value="etrade">E*TRADE</option>
@@ -314,6 +315,7 @@ const brokerLabels = {
   schwab: 'Charles Schwab',
   thinkorswim: 'thinkorswim',
   ibkr: 'Interactive Brokers',
+  captrader: 'CapTrader',
   lightspeed: 'Lightspeed',
   webull: 'Webull',
   etrade: 'E*TRADE',

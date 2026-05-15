@@ -373,6 +373,7 @@ const brokerNames = {
   thinkorswim: 'ThinkorSwim',
   ibkr: 'Interactive Brokers',
   ibkr_trade_confirmation: 'IBKR Trade Confirmation',
+  captrader: 'CapTrader',
   webull: 'Webull',
   etrade: 'E*TRADE',
   papermoney: 'PaperMoney',
@@ -389,7 +390,7 @@ const brokerNames = {
 }
 
 const supportedBrokers = [
-  'lightspeed', 'schwab', 'thinkorswim', 'ibkr', 'ibkr_trade_confirmation',
+  'lightspeed', 'schwab', 'thinkorswim', 'ibkr', 'ibkr_trade_confirmation', 'captrader',
   'webull', 'etrade', 'papermoney', 'tradervue', 'avatrade', 'tradingview', 'tradovate', 'questrade',
   'projectx', 'tradestation', 'tastytrade'
 ]

@@ -160,6 +160,7 @@ const brokerNames = {
   thinkorswim: 'ThinkorSwim',
   ibkr: 'Interactive Brokers',
   ibkr_trade_confirmation: 'IBKR Trade Confirmation',
+  captrader: 'CapTrader',
   webull: 'Webull',
   etrade: 'E*TRADE',
   papermoney: 'PaperMoney',

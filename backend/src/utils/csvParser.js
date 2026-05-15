@@ -529,6 +529,132 @@ function extractAccountFromRecord(record, accountColumnName) {
  * @param {Buffer} fileBuffer - The CSV file buffer
  * @returns {string} - Detected broker format
  */
+/**
+ * IBKR/CapTrader Activity Statement exports prefix every row with
+ * `<Section>,<Header|Data|SubTotal|Total|Notes|Hinweise>,...`. The trade data
+ * lives in either:
+ *   - `Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,...`
+ *     (full Activity Statement; data rows have `DataDiscriminator = Order`)
+ *   - `Transaction History,Header,Date,Account,Description,Transaction Type,Symbol,Quantity,Price,...`
+ *     (CapTrader Transaction History export; filter by `Transaction Type` ∈ {Buy, Sell})
+ *
+ * This helper extracts just that section, strips the section prefix, filters
+ * to actual trade executions, and returns a clean CSV string suitable for
+ * csv-parse. Returns null when the input doesn't look like a multi-section
+ * Activity Statement.
+ */
+function extractIBKRActivityStatementSection(csvString) {
+  const lines = csvString.split('\n');
+
+  // Use csv-parse on candidate header lines so quoted/comma-containing fields
+  // are handled correctly when we strip the section prefix.
+  const parseLine = (line) => {
+    try {
+      const [fields] = parse(line, {
+        delimiter: ',',
+        relax: true,
+        relax_column_count: true,
+        relax_quotes: true,
+        skip_empty_lines: true,
+        trim: true
+      });
+      return fields || [];
+    } catch (_) {
+      return null;
+    }
+  };
+
+  // Locate header line + section type
+  let headerLineIndex = -1;
+  let section = null; // 'Trades' | 'TransactionHistory'
+  let headerFields = null;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line) continue;
+    if (/^"?Trades"?\s*,\s*"?Header"?\s*,\s*"?DataDiscriminator"?/i.test(line)) {
+      const fields = parseLine(line);
+      if (!fields) continue;
+      headerLineIndex = i;
+      section = 'Trades';
+      // Drop the leading "Trades", "Header" prefix
+      headerFields = fields.slice(2);
+      break;
+    }
+    if (/^"?Transaction History"?\s*,\s*"?Header"?\s*,\s*"?(?:Date|Datum)"?\s*,/i.test(line)) {
+      const fields = parseLine(line);
+      if (!fields) continue;
+      headerLineIndex = i;
+      section = 'TransactionHistory';
+      headerFields = fields.slice(2);
+      break;
+    }
+  }
+
+  if (headerLineIndex === -1 || !headerFields) {
+    return null;
+  }
+
+  // Identify the section's row prefix so we only collect rows from this section.
+  // The section name itself can contain commas inside quotes (it doesn't here),
+  // so match by the literal first token before the comma.
+  const sectionPrefixRegex = section === 'Trades'
+    ? /^"?Trades"?\s*,\s*"?Data"?\s*,/i
+    : /^"?Transaction History"?\s*,\s*"?Data"?\s*,/i;
+
+  // For Trades: only `DataDiscriminator = Order` rows are real executions
+  // (SubTotal/Total/etc. have different layouts).
+  // For Transaction History: filter to `Transaction Type` ∈ {Buy, Sell}.
+  const transactionTypeIndex = section === 'TransactionHistory'
+    ? headerFields.findIndex((f) => /^transaction type$/i.test(f.trim()))
+    : -1;
+  const dataDiscriminatorIndex = section === 'Trades'
+    ? 0 // DataDiscriminator is the first field after stripping "Trades,Header"
+    : -1;
+
+  const collectedRows = [];
+  for (let i = headerLineIndex + 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line || !line.trim()) continue;
+    if (!sectionPrefixRegex.test(line)) {
+      // Skip rows from other sections; do not break, since the trades section
+      // can be interleaved with SubTotal/Total/Notes lines we want to ignore.
+      continue;
+    }
+    const fields = parseLine(line);
+    if (!fields || fields.length < 3) continue;
+    const stripped = fields.slice(2);
+
+    if (section === 'Trades') {
+      const discriminator = (stripped[dataDiscriminatorIndex] || '').trim();
+      if (discriminator !== 'Order') continue;
+    } else if (transactionTypeIndex >= 0) {
+      const txType = (stripped[transactionTypeIndex] || '').trim();
+      if (txType !== 'Buy' && txType !== 'Sell') continue;
+    }
+
+    collectedRows.push(stripped);
+  }
+
+  if (collectedRows.length === 0) {
+    return null;
+  }
+
+  // Re-quote fields for output. Standard CSV escaping: wrap in quotes when
+  // the value contains a comma, quote, or newline; double up internal quotes.
+  const escapeField = (value) => {
+    const v = value == null ? '' : String(value);
+    if (/[",\r\n]/.test(v)) {
+      return `"${v.replace(/"/g, '""')}"`;
+    }
+    return v;
+  };
+  const renderRow = (row) => row.map(escapeField).join(',');
+
+  const csv = [renderRow(headerFields), ...collectedRows.map(renderRow)].join('\n');
+  return { section, csv, dataRows: collectedRows.length };
+}
+
 function detectBrokerFormat(fileBuffer) {
   try {
     let csvString = fileBuffer.toString('utf-8');
@@ -537,6 +663,43 @@ function detectBrokerFormat(fileBuffer) {
       csvString = csvString.slice(1);
     }
     const lines = csvString.split('\n');
+
+    // IBKR/CapTrader multi-section Activity Statement format detection.
+    // These exports prefix every row with `<Section>,<Header|Data|SubTotal|...>,...`
+    // and contain either a `Trades,Header,DataDiscriminator,...` header (full
+    // Activity Statement) or a `Transaction History,Header,Date,...` header
+    // (CapTrader Transaction History export). The real column headers can be
+    // hundreds of lines into the file, so the standard header sniffing below
+    // misses them.
+    //
+    // CapTrader (German introducing broker on IBKR) uses the same CSV format,
+    // but is distinguishable by either German metadata column names
+    // (`Feldname,Feldwert`) or an explicit `CapTrader GmbH` master-name row.
+    let multiSectionDetected = false;
+    let captraderMarkerFound = false;
+    const scanLimit = Math.min(lines.length, 1000);
+    for (let i = 0; i < scanLimit; i++) {
+      const line = lines[i];
+      if (!line) continue;
+      if (!multiSectionDetected) {
+        if (/^"?Trades"?\s*,\s*"?Header"?\s*,\s*"?DataDiscriminator"?/i.test(line) ||
+            /^"?Transaction History"?\s*,\s*"?Header"?\s*,\s*"?(?:Date|Datum)"?\s*,/i.test(line)) {
+          multiSectionDetected = true;
+        }
+      }
+      if (!captraderMarkerFound) {
+        if (/^[^,]*,\s*"?Header"?\s*,\s*"?Feldname"?\s*,\s*"?Feldwert"?/i.test(line) ||
+            /CapTrader/i.test(line)) {
+          captraderMarkerFound = true;
+        }
+      }
+      if (multiSectionDetected && captraderMarkerFound) break;
+    }
+    if (multiSectionDetected) {
+      const detected = captraderMarkerFound ? 'captrader' : 'ibkr';
+      console.log(`[AUTO-DETECT] Detected: ${captraderMarkerFound ? 'CapTrader' : 'Interactive Brokers'} Activity Statement (multi-section)`);
+      return detected;
+    }
 
     const headerInfo = findLikelyDelimitedHeaderLine(lines);
     const headerLine = headerInfo?.line || '';
@@ -2836,29 +2999,40 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     }
 
     // Special handling for IBKR CSV formats
-    if (broker === 'ibkr' || broker === 'ibkr_trade_confirmation') {
-      // IBKR Flex Query exports can contain multiple sections with different column layouts.
-      // Each section has its own header row. We need to extract only the first section
-      // (trade executions) and discard later sections to prevent column mismatch issues.
-      const lines = csvString.split('\n');
-      if (lines.length > 1) {
-        const firstHeader = lines[0].trim();
-        const filteredLines = [lines[0]]; // Keep the first header
-        for (let i = 1; i < lines.length; i++) {
-          const line = lines[i].trim();
-          if (!line) continue;
-          // Detect section header rows: they start with "ClientAccountID" or "CurrencyPrimary"
-          // and contain column names rather than data values
-          if (/^"?ClientAccountID"?,"?AccountAlias"?/i.test(line) ||
-              /^"?CurrencyPrimary"?,"?AssetClass"?/i.test(line)) {
-            console.log(`[IBKR] Stopping at section header on line ${i + 1} (multi-section Flex Query)`);
-            break;
+    if (broker === 'ibkr' || broker === 'ibkr_trade_confirmation' || broker === 'captrader') {
+      // IBKR/CapTrader Activity Statement exports prefix every row with
+      // `<Section>,<Header|Data|SubTotal|Total|Notes|Hinweise>,...`. We need
+      // to extract only the trade-execution section, strip the prefix, and
+      // rebuild a clean CSV before handing off to csv-parse. Without this,
+      // the parser sees mismatched column counts across sections and aborts.
+      const sectionExtracted = extractIBKRActivityStatementSection(csvString);
+      if (sectionExtracted) {
+        console.log(`[IBKR] Extracted multi-section Activity Statement (${sectionExtracted.section} section, ${sectionExtracted.dataRows} data rows)`);
+        csvString = sectionExtracted.csv;
+      } else {
+        // IBKR Flex Query exports can also contain multiple sections, but with
+        // a different layout (each section is its own self-describing block).
+        // Each section has its own header row. We extract only the first
+        // section (trade executions) and discard later sections.
+        const lines = csvString.split('\n');
+        if (lines.length > 1) {
+          const filteredLines = [lines[0]]; // Keep the first header
+          for (let i = 1; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue;
+            // Detect section header rows: they start with "ClientAccountID" or "CurrencyPrimary"
+            // and contain column names rather than data values
+            if (/^"?ClientAccountID"?,"?AccountAlias"?/i.test(line) ||
+                /^"?CurrencyPrimary"?,"?AssetClass"?/i.test(line)) {
+              console.log(`[IBKR] Stopping at section header on line ${i + 1} (multi-section Flex Query)`);
+              break;
+            }
+            filteredLines.push(lines[i]);
           }
-          filteredLines.push(lines[i]);
-        }
-        if (filteredLines.length < lines.length) {
-          console.log(`[IBKR] Trimmed multi-section CSV from ${lines.length} to ${filteredLines.length} lines`);
-          csvString = filteredLines.join('\n');
+          if (filteredLines.length < lines.length) {
+            console.log(`[IBKR] Trimmed multi-section CSV from ${lines.length} to ${filteredLines.length} lines`);
+            csvString = filteredLines.join('\n');
+          }
         }
       }
 
@@ -2888,7 +3062,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       console.error('CSV parsing error:', parseError.message);
       
       // If IBKR parsing fails, try alternative approach
-      if (broker === 'ibkr' || broker === 'ibkr_trade_confirmation') {
+      if (broker === 'ibkr' || broker === 'ibkr_trade_confirmation' || broker === 'captrader') {
         console.log('Trying alternative parsing approach for IBKR');
         
         // Try with even more relaxed options
@@ -3167,10 +3341,13 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       return wrapResultWithDiagnostics(result, diagnostics, [], userTimezone);
     }
 
-    if (broker === 'ibkr' || broker === 'ibkr_trade_confirmation') {
+    if (broker === 'ibkr' || broker === 'ibkr_trade_confirmation' || broker === 'captrader') {
       console.log(`Starting IBKR transaction parsing (${broker} format)`);
       const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
-      const result = await parseIBKRTransactions(records, existingPositions, tradeGroupingSettings, context);
+      // CapTrader is an IBKR introducing broker — same parser, but tag trades
+      // with `captrader` so the UI labels them correctly.
+      const ibkrContext = { ...context, brokerTag: broker === 'captrader' ? 'captrader' : 'ibkr' };
+      const result = await parseIBKRTransactions(records, existingPositions, tradeGroupingSettings, ibkrContext);
       console.log('Finished IBKR transaction parsing');
       return wrapResultWithDiagnostics(result, diagnostics, [], userTimezone);
     }
@@ -4011,6 +4188,14 @@ function parseDateTime(dateTimeStr) {
       const dayPadded = day.padStart(2, '0');
       // Default to 09:30 (market open) if no time provided
       return withTrailingTimezone(`${year}-${monthPadded}-${dayPadded}T09:30:00`);
+    }
+
+    // ISO date-only YYYY-MM-DD (CapTrader Transaction History exports a Date column without time)
+    const isoDateOnlyMatch = dateTimeBody.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoDateOnlyMatch) {
+      const [, year, month, day] = isoDateOnlyMatch;
+      // Default to 09:30 (market open) when no time is provided
+      return withTrailingTimezone(`${year}-${month}-${day}T09:30:00`);
     }
 
     const monthNameDateTimeMatch = dateTimeBody.match(
@@ -7702,8 +7887,11 @@ async function parseTradervueCompletedTrades(records, context = {}) {
 }
 
 async function parseIBKRTransactions(records, existingPositions = {}, tradeGroupingSettings = { enabled: true, timeGapMinutes: 60 }, context = {}) {
+  // Allow callers (e.g. CapTrader) to override the broker label written onto
+  // completed trades. Defaults to `ibkr` for backwards compatibility.
+  const brokerTag = context.brokerTag || 'ibkr';
   console.log(`\n=== IBKR TRANSACTION PARSER ===`);
-  console.log(`Processing ${records.length} IBKR transaction records`);
+  console.log(`Processing ${records.length} IBKR transaction records (broker tag: ${brokerTag})`);
   console.log(`Existing open positions passed to parser: ${Object.keys(existingPositions).length}`);
   console.log(`Trade grouping: ${tradeGroupingSettings.enabled ? `enabled (${tradeGroupingSettings.timeGapMinutes} minute time gap)` : 'disabled'}`);
 
@@ -7766,19 +7954,34 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         // Read Multiplier column for Trade Confirmation format
         multiplierFromCSV = record.Multiplier ? parseNumeric(record.Multiplier, null) : null;
       } else {
-        // Activity Statement format (original)
+        // Activity Statement format (original) \u2014 includes:
+        //   - IBKR Flex Query exports
+        //   - IBKR Activity Statement Trades section (`T. Price`, `Comm/Fee`)
+        //   - CapTrader Transaction History (Date-only, Transaction Type column)
         symbol = cleanString(record.Symbol);
         quantity = parseNumeric(record.Quantity, NaN);
         absQuantity = Math.abs(quantity);
-        price = parseNumeric(record.Price, NaN);
+        // `T. Price` is the trade price column in Activity Statement Trades sections
+        price = parseNumeric(record.Price ?? record['T. Price'] ?? record['T.Price'], NaN);
         // IBKR commission: negative = fee paid, positive = rebate received
         // Convert to our convention: positive = fee paid, negative = rebate (credit)
-        commission = -(parseNumeric(record.Commission || 0, 0));
-        // Handle both "DateTime" and "Date/Time" column names
+        // `Comm/Fee` is the column name in Activity Statement Trades sections
+        commission = -(parseNumeric(record.Commission ?? record['Comm/Fee'] ?? record.IBCommission ?? 0, 0));
+        // Handle "DateTime", "Date/Time", or just "Date" (CapTrader Transaction History)
         // Clean DateTime - remove leading and trailing apostrophes/quotes if present
-        const rawDateTime = (record.DateTime || record['Date/Time'] || '').toString();
+        const rawDateTime = (record.DateTime || record['Date/Time'] || record.Date || record.Datum || '').toString();
         dateTime = rawDateTime.replace(/^[\x27\x22\u2018\u2019\u201C\u201D]|[\x27\x22\u2018\u2019\u201C\u201D]$/g, '').trim();
-        action = quantity > 0 ? 'buy' : 'sell';
+        // Prefer explicit `Transaction Type` (CapTrader Transaction History) over
+        // sign-of-quantity inference, since some Transaction History rows use a
+        // signed quantity that already reflects the action.
+        const txType = cleanString(record['Transaction Type'] || '').toLowerCase();
+        if (txType === 'buy') {
+          action = 'buy';
+        } else if (txType === 'sell') {
+          action = 'sell';
+        } else {
+          action = quantity > 0 ? 'buy' : 'sell';
+        }
         // Check for Multiplier column (some IBKR Activity Statement exports include this)
         multiplierFromCSV = record.Multiplier ? parseNumeric(record.Multiplier, null) : null;
       }
@@ -8130,7 +8333,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         totalFees: recalcFees,
         entryValue: recalcEntryValue,
         exitValue: recalcExitValue,  // Include partial close exit value!
-        broker: existingPosition.broker || 'ibkr',
+        broker: existingPosition.broker || brokerTag,
         isExistingPosition: true,
         existingTradeId: existingPosition.id,
         newExecutionsAdded: 0
@@ -8191,7 +8394,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
             pnlPercent: 0,
             commission: transaction.fees || 0,
             fees: 0,
-            broker: 'ibkr',
+            broker: brokerTag,
             accountIdentifier: transaction.accountIdentifier,
             executions: [{
               action: transaction.action,
@@ -8263,7 +8466,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
             totalFees: 0,
             entryValue: 0,
             exitValue: 0,
-            broker: 'ibkr',
+            broker: brokerTag,
             accountIdentifier: transaction.accountIdentifier
           };
 
