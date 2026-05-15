@@ -184,6 +184,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import api from '@/services/api'
 import { 
   BellIcon, 
   BellSlashIcon, 
@@ -238,18 +239,10 @@ const loadPage = (page) => {
 const markAllAsRead = async () => {
   try {
     markingRead.value = true
-    
-    const response = await fetch('/api/notifications/mark-all-read', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    })
-    
-    if (response.ok) {
-      // Update local state
-      notifications.value = notifications.value.map(n => ({ ...n, is_read: true }))
-    }
+
+    await api.post('/notifications/mark-all-read')
+
+    notifications.value = notifications.value.map(n => ({ ...n, is_read: true }))
   } catch (error) {
     console.error('Error marking notifications as read:', error)
   } finally {
@@ -275,22 +268,14 @@ const deleteSelected = async () => {
       .filter(n => selectedNotifications.value.includes(n.id))
       .map(n => ({ id: n.id, type: n.type }))
     
-    const response = await fetch('/api/notifications', {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ notifications: notificationsToDelete })
+    await api.delete('/notifications', {
+      data: { notifications: notificationsToDelete }
     })
+
+    notifications.value = notifications.value.filter(n => !selectedNotifications.value.includes(n.id))
+    selectedNotifications.value = []
     
-    if (response.ok) {
-      // Remove deleted notifications from local state
-      notifications.value = notifications.value.filter(n => !selectedNotifications.value.includes(n.id))
-      selectedNotifications.value = []
-      
-      // Refresh the list to get updated pagination
-      await fetchNotifications(currentPage.value)
-    }
+    await fetchNotifications(currentPage.value)
   } catch (error) {
     console.error('Error deleting notifications:', error)
   } finally {

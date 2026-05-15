@@ -166,6 +166,7 @@ import {
   ArrowTrendingUpIcon,
   XMarkIcon
 } from '@heroicons/vue/24/outline'
+import api from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { useNotificationCenter } from '@/composables/useNotificationCenter'
@@ -332,21 +333,17 @@ const markAllAsRead = async () => {
   try {
     markingAsRead.value = true
 
-    const response = await fetch('/api/notifications/mark-all-read', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    })
-
-    if (!response.ok) {
-      const message = await readErrorMessage(response, 'Could not mark notifications as read. Please try again.')
+    try {
+      await api.post('/notifications/mark-all-read')
+    } catch (error) {
+      const message =
+        error.response?.data?.message
+        || error.response?.data?.error
+        || 'Could not mark notifications as read. Please try again.'
       console.error('Failed to mark all notifications as read:', message)
       showError('Notifications', message)
       return
     }
-
-    await response.json().catch(() => null)
 
     // Update local state
     notifications.value = notifications.value.map(n => ({ ...n, is_read: true }))
@@ -363,18 +360,15 @@ const markAllAsRead = async () => {
 }
 
 const markSingleAsRead = async (notification) => {
-  const response = await fetch('/api/notifications/mark-read', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
+  try {
+    await api.post('/notifications/mark-read', {
       notifications: [{ id: notification.id, type: notification.type }]
     })
-  })
-
-  if (!response.ok) {
-    const message = await readErrorMessage(response, 'Could not dismiss notification. Please try again.')
+  } catch (error) {
+    const message =
+      error.response?.data?.message
+      || error.response?.data?.error
+      || 'Could not dismiss notification. Please try again.'
     throw new Error(message)
   }
 }
