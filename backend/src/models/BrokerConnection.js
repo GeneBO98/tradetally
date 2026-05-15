@@ -6,6 +6,22 @@
 const db = require('../config/database');
 const encryptionService = require('../services/brokerSync/encryptionService');
 
+// pg-types parses PostgreSQL DATE columns via `new Date(y, m, d)` (server-local
+// midnight). Letting JSON serialize that Date via toISOString() shifts the
+// calendar day backward whenever the server TZ is east of UTC. Normalize to a
+// plain YYYY-MM-DD string using local getters so the wire format matches what
+// was stored regardless of server timezone.
+function toDateOnlyString(value) {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) {
+    const yyyy = value.getFullYear();
+    const mm = String(value.getMonth() + 1).padStart(2, '0');
+    const dd = String(value.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  return String(value).slice(0, 10);
+}
+
 class BrokerConnection {
   /**
    * Create a new broker connection
@@ -404,7 +420,7 @@ class BrokerConnection {
       autoSyncEnabled: row.auto_sync_enabled,
       syncFrequency: row.sync_frequency,
       syncTime: row.sync_time,
-      syncStartDate: row.sync_start_date,
+      syncStartDate: toDateOnlyString(row.sync_start_date),
       lastSyncAt: row.last_sync_at,
       lastSyncStatus: row.last_sync_status,
       lastSyncMessage: row.last_sync_message,
@@ -568,8 +584,8 @@ class BrokerConnection {
       tradesSkipped: row.trades_skipped,
       tradesFailed: row.trades_failed,
       duplicatesDetected: row.duplicates_detected,
-      syncStartDate: row.sync_start_date,
-      syncEndDate: row.sync_end_date,
+      syncStartDate: toDateOnlyString(row.sync_start_date),
+      syncEndDate: toDateOnlyString(row.sync_end_date),
       startedAt: row.started_at,
       completedAt: row.completed_at,
       durationMs: row.duration_ms,
