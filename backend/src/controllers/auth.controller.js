@@ -10,6 +10,7 @@ const refreshTokenService = require('../services/refreshToken.service');
 const SampleDataService = require('../services/sampleDataService');
 const activityTrackingService = require('../services/activityTrackingService');
 const { getClientIp } = require('../utils/clientIp');
+const { findMatchingBackupCodeIndex } = require('../utils/twoFactorBackupCodes');
 
 // Check if email configuration is available
 function isEmailConfigured() {
@@ -439,9 +440,10 @@ const authController = {
       if (!verified) {
         // Check if it's a backup code
         const backupCodes = user.two_factor_backup_codes || [];
-        if (backupCodes.includes(twoFactorCode.toUpperCase())) {
+        const matchingBackupCodeIndex = await findMatchingBackupCodeIndex(backupCodes, twoFactorCode);
+        if (matchingBackupCodeIndex >= 0) {
           // Remove used backup code
-          const updatedBackupCodes = backupCodes.filter(code => code !== twoFactorCode.toUpperCase());
+          const updatedBackupCodes = backupCodes.filter((_, index) => index !== matchingBackupCodeIndex);
           await User.updateBackupCodes(user.id, updatedBackupCodes);
         } else {
           return res.status(400).json({ error: 'Invalid 2FA code' });

@@ -1,6 +1,19 @@
 const db = require('../config/database');
 const bcrypt = require('bcryptjs');
 
+const ALLOWED_UPDATE_FIELDS = new Set([
+  'email',
+  'username',
+  'full_name',
+  'avatar_url',
+  'is_verified',
+  'admin_approved',
+  'is_active',
+  'timezone',
+  'tier',
+  'marketing_consent'
+]);
+
 class User {
   static async create({ email, username, password, fullName, verificationToken, verificationExpires, role = 'user', isVerified = false, adminApproved = true, tier = 'free', marketingConsent = false }) {
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -70,16 +83,26 @@ class User {
   }
 
   static async update(id, updates) {
+    if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
+      throw new Error('User.update requires an updates object');
+    }
+
     const fields = [];
     const values = [];
     let paramCount = 1;
 
     Object.entries(updates).forEach(([key, value]) => {
-      if (key !== 'id' && key !== 'password') {
-        fields.push(`${key} = $${paramCount}`);
-        values.push(value);
-        paramCount++;
+      if (key === 'password') {
+        return;
       }
+
+      if (!ALLOWED_UPDATE_FIELDS.has(key)) {
+        throw new Error(`Unsupported user update field: ${key}`);
+      }
+
+      fields.push(`${key} = $${paramCount}`);
+      values.push(value);
+      paramCount++;
     });
 
     if (updates.password) {
@@ -87,6 +110,15 @@ class User {
       fields.push(`password_hash = $${paramCount}`);
       values.push(hashedPassword);
       paramCount++;
+    }
+
+    if (fields.length === 0) {
+      const result = await db.query(`
+        SELECT id, email, username, full_name, avatar_url, is_verified, admin_approved, is_active, timezone, tier, updated_at
+        FROM users
+        WHERE id = $1 AND is_active = true
+      `, [id]);
+      return result.rows[0];
     }
 
     values.push(id);

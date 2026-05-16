@@ -1,7 +1,11 @@
 const speakeasy = require('speakeasy');
 const QRCode = require('qrcode');
 const db = require('../config/database');
-const crypto = require('crypto');
+const {
+  findMatchingBackupCodeIndex,
+  generateBackupCodes,
+  hashBackupCodes
+} = require('../utils/twoFactorBackupCodes');
 
 const twoFactorController = {
   // Generate 2FA setup (secret and QR code)
@@ -25,12 +29,7 @@ const twoFactorController = {
       // Generate QR code
       const qrCodeUrl = await QRCode.toDataURL(secret.otpauth_url);
 
-      // Generate backup codes
-      const backupCodes = [];
-      for (let i = 0; i < 10; i++) {
-        const code = Math.random().toString(36).substr(2, 8).toUpperCase();
-        backupCodes.push(code);
-      }
+      const backupCodes = generateBackupCodes();
 
       // Store temporary secret (not enabled yet)
       await db.query(
@@ -93,18 +92,15 @@ const twoFactorController = {
         return res.status(400).json({ error: 'Invalid verification code' });
       }
 
-      // Use provided backup codes or generate new ones
-      const finalBackupCodes = backupCodes || [];
-      if (finalBackupCodes.length === 0) {
-        for (let i = 0; i < 10; i++) {
-          finalBackupCodes.push(crypto.randomBytes(4).toString('hex').toUpperCase());
-        }
-      }
+      const finalBackupCodes = Array.isArray(backupCodes) && backupCodes.length > 0
+        ? backupCodes
+        : generateBackupCodes();
+      const hashedBackupCodes = await hashBackupCodes(finalBackupCodes);
 
       // Enable 2FA
       await db.query(
         'UPDATE users SET two_factor_enabled = true, two_factor_backup_codes = $1, two_factor_enabled_at = NOW() WHERE id = $2',
-        [finalBackupCodes, userId]
+        [hashedBackupCodes, userId]
       );
 
       res.json({
@@ -138,10 +134,10 @@ const twoFactorController = {
       const secret = user.rows[0].two_factor_secret;
       const backupCodes = user.rows[0].two_factor_backup_codes || [];
 
-      // Check if it's a backup code
-      if (backupCodes.includes(token.toUpperCase())) {
+      const matchingBackupCodeIndex = await findMatchingBackupCodeIndex(backupCodes, token);
+      if (matchingBackupCodeIndex >= 0) {
         // Remove used backup code
-        const updatedBackupCodes = backupCodes.filter(code => code !== token.toUpperCase());
+        const updatedBackupCodes = backupCodes.filter((_, index) => index !== matchingBackupCodeIndex);
         await db.query(
           'UPDATE users SET two_factor_backup_codes = $1 WHERE id = $2',
           [updatedBackupCodes, userId]
@@ -208,8 +204,8 @@ const twoFactorController = {
 
       let tokenValid = false;
 
-      // Check backup code
-      if (backupCodes.includes(token.toUpperCase())) {
+      const matchingBackupCodeIndex = await findMatchingBackupCodeIndex(backupCodes, token);
+      if (matchingBackupCodeIndex >= 0) {
         tokenValid = true;
       } else {
         // Check TOTP

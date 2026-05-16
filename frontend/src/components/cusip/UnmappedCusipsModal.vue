@@ -200,8 +200,8 @@ import {
   CheckCircleIcon,
   ExclamationTriangleIcon
 } from '@heroicons/vue/24/outline'
-import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
+import api from '@/services/api'
 
 const props = defineProps({
   isOpen: {
@@ -216,7 +216,6 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'mappingCreated', 'resolutionStarted'])
 
-const authStore = useAuthStore()
 const { showImportantWarning, showCriticalError } = useNotification()
 
 // Component state
@@ -252,26 +251,13 @@ const autoRemapAll = async () => {
   try {
     remapping.value = true
     
-    const response = await fetch('/api/trades/cusip/resolve-unresolved', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${authStore.token}`
-      }
-    })
-    
-    if (response.ok) {
-      const result = await response.json()
-      const total = result.total || 0
-      
-      showImportantWarning('CUSIP Resolution Started', `Processing ${total} CUSIPs in background. This may take a few minutes.`)
-      
-      emit('resolutionStarted', { total })
-      emit('mappingCreated')
-    } else {
-      const error = await response.json()
-      console.error('Failed to auto remap:', error)
-      showCriticalError('Auto Remap Failed', 'Failed to auto remap CUSIPs. Please try again.')
-    }
+    const response = await api.post('/trades/cusip/resolve-unresolved')
+    const total = response.data.total || 0
+
+    showImportantWarning('CUSIP Resolution Started', `Processing ${total} CUSIPs in background. This may take a few minutes.`)
+
+    emit('resolutionStarted', { total })
+    emit('mappingCreated')
   } catch (error) {
     console.error('Error auto remapping:', error)
     showCriticalError('Auto Remap Failed', 'Failed to auto remap CUSIPs. Please try again.')
@@ -286,28 +272,15 @@ const saveQuickMapping = async () => {
   try {
     savingMapping.value = true
     
-    const response = await fetch('/api/cusip-mappings', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authStore.token}`
-      },
-      body: JSON.stringify({
-        cusip: mappingCusip.value,
-        ticker: quickMapping.value.ticker,
-        company_name: quickMapping.value.company_name || null,
-        verified: quickMapping.value.verified
-      })
+    const response = await api.post('/cusip-mappings', {
+      cusip: mappingCusip.value,
+      ticker: quickMapping.value.ticker,
+      company_name: quickMapping.value.company_name || null,
+      verified: quickMapping.value.verified
     })
-    
-    if (response.ok) {
-      const result = await response.json()
-      emit('mappingCreated', result)
-      cancelQuickMapping()
-    } else {
-      const error = await response.json()
-      console.error('Failed to save mapping:', error)
-    }
+
+    emit('mappingCreated', response.data)
+    cancelQuickMapping()
   } catch (error) {
     console.error('Error saving mapping:', error)
   } finally {

@@ -171,12 +171,13 @@ import {
   BellSlashIcon, 
   ChatBubbleLeftRightIcon 
 } from '@heroicons/vue/24/outline'
-import { useAuthStore } from '@/stores/auth'
 import { useUserTimezone } from '@/composables/useUserTimezone'
+import { useNotification } from '@/composables/useNotification'
+import api from '@/services/api'
 
 const router = useRouter()
-const authStore = useAuthStore()
 const { formatDateTime: formatDateTimeTz } = useUserTimezone()
+const { showError } = useNotification()
 
 // Component state
 const notifications = ref([])
@@ -191,23 +192,19 @@ const selectedNotifications = ref([])
 const fetchNotifications = async (page = 1) => {
   try {
     loading.value = true
-    const response = await fetch(`/api/notifications?page=${page}&limit=20`, {
-      headers: {
-        'Authorization': `Bearer ${authStore.token}`
+    const response = await api.get('/notifications', {
+      params: {
+        page,
+        limit: 20
       }
     })
-    
-    if (response.ok) {
-      const data = await response.json()
-      notifications.value = data.data || []
-      pagination.value = data.pagination
-      currentPage.value = page
-      selectedNotifications.value = [] // Clear selections on new fetch
-    } else {
-      console.error('Failed to fetch notifications:', response.statusText)
-    }
+    notifications.value = response.data.data || []
+    pagination.value = response.data.pagination
+    currentPage.value = page
+    selectedNotifications.value = [] // Clear selections on new fetch
   } catch (error) {
     console.error('Error fetching notifications:', error)
+    showError('Load Failed', error.response?.data?.error || 'Failed to load notifications')
   } finally {
     loading.value = false
   }
@@ -222,21 +219,13 @@ const loadPage = (page) => {
 const markAllAsRead = async () => {
   try {
     markingRead.value = true
-    
-    const response = await fetch('/api/notifications/mark-all-read', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authStore.token}`
-      }
-    })
-    
-    if (response.ok) {
-      // Update local state
-      notifications.value = notifications.value.map(n => ({ ...n, is_read: true }))
-    }
+    await api.post('/notifications/mark-all-read')
+
+    // Update local state after server success
+    notifications.value = notifications.value.map(n => ({ ...n, is_read: true }))
   } catch (error) {
     console.error('Error marking notifications as read:', error)
+    showError('Update Failed', error.response?.data?.error || 'Failed to mark notifications as read')
   } finally {
     markingRead.value = false
   }
@@ -259,26 +248,20 @@ const deleteSelected = async () => {
     const notificationsToDelete = notifications.value
       .filter(n => selectedNotifications.value.includes(n.id))
       .map(n => ({ id: n.id, type: n.type }))
-    
-    const response = await fetch('/api/notifications', {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authStore.token}`
-      },
-      body: JSON.stringify({ notifications: notificationsToDelete })
+
+    await api.delete('/notifications', {
+      data: { notifications: notificationsToDelete }
     })
-    
-    if (response.ok) {
-      // Remove deleted notifications from local state
-      notifications.value = notifications.value.filter(n => !selectedNotifications.value.includes(n.id))
-      selectedNotifications.value = []
-      
-      // Refresh the list to get updated pagination
-      await fetchNotifications(currentPage.value)
-    }
+
+    // Remove deleted notifications from local state after server success
+    notifications.value = notifications.value.filter(n => !selectedNotifications.value.includes(n.id))
+    selectedNotifications.value = []
+
+    // Refresh the list to get updated pagination
+    await fetchNotifications(currentPage.value)
   } catch (error) {
     console.error('Error deleting notifications:', error)
+    showError('Delete Failed', error.response?.data?.error || 'Failed to delete selected notifications')
   } finally {
     deleting.value = false
   }

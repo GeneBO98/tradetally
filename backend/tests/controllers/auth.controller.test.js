@@ -32,6 +32,7 @@ const authController = require('../../src/controllers/auth.controller');
 const speakeasy = require('speakeasy');
 const { authenticate, generateToken, TOKEN_PURPOSES } = require('../../src/middleware/auth');
 const jwt = require('jsonwebtoken');
+const { hashBackupCode } = require('../../src/utils/twoFactorBackupCodes');
 
 function createResponse() {
   return {
@@ -196,5 +197,55 @@ describe('auth controller 2FA flow', () => {
     expect(next).not.toHaveBeenCalled();
     expect(res.statusCode).toBe(200);
     expect(res.payload.token).toEqual(expect.any(String));
+  });
+
+  test('verify2FA accepts a hashed backup code and removes only the used hash', async () => {
+    const usedHash = await hashBackupCode('ABCDEF1234567890');
+    const unusedHash = await hashBackupCode('0011223344556677');
+    const user = {
+      id: 'backup-code-user-id',
+      email: 'backup@example.com',
+      username: 'backup-user',
+      role: 'user',
+      full_name: 'Backup User',
+      avatar_url: null,
+      timezone: 'UTC',
+      is_active: true,
+      is_verified: true,
+      admin_approved: true,
+      marketing_consent: false,
+      two_factor_enabled: true,
+      two_factor_secret: 'BASE32SECRET',
+      two_factor_backup_codes: [usedHash, unusedHash],
+      last_login_at: null
+    };
+
+    const tempToken = generateToken(user, {
+      purpose: TOKEN_PURPOSES.PRE_2FA,
+      expiresIn: '15m'
+    });
+
+    User.findById.mockResolvedValue(user);
+    speakeasy.totp.verify.mockReturnValue(false);
+
+    const req = {
+      body: {
+        tempToken,
+        twoFactorCode: 'abcd-ef12 3456 7890'
+      },
+      headers: {}
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await authController.verify2FA(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(User.updateBackupCodes).toHaveBeenCalledWith(user.id, [unusedHash]);
+    expect(res.statusCode).toBe(200);
+    expect(res.payload).toEqual(expect.objectContaining({
+      message: 'Login successful',
+      token: expect.any(String)
+    }));
   });
 });

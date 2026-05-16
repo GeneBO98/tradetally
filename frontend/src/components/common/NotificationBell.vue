@@ -152,6 +152,7 @@ import {
 } from '@heroicons/vue/24/outline'
 import { useAuthStore } from '@/stores/auth'
 import { useUserTimezone } from '@/composables/useUserTimezone'
+import api from '@/services/api'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -201,23 +202,22 @@ const fetchNotifications = async () => {
   try {
     loading.value = true
     // Only fetch unread notifications for the bell dropdown
-    const response = await fetch('/api/notifications?limit=10&unread_only=true', {
-      headers: {
-        'Authorization': `Bearer ${authStore.token}`
+    const response = await api.get('/notifications', {
+      params: {
+        limit: 10,
+        unread_only: true
       }
     })
-    
-    if (response.ok) {
-      const data = await response.json()
-      notifications.value = data.data || []
-    } else if (response.status === 401 || response.status === 403) {
+    notifications.value = response.data.data || []
+  } catch (error) {
+    if (error.response?.status === 401 || error.response?.status === 403) {
       notifications.value = []
       unreadCount.value = 0
       isOpen.value = false
       disablePolling()
+    } else {
+      console.error('Error fetching notifications:', error)
     }
-  } catch (error) {
-    console.error('Error fetching notifications:', error)
   } finally {
     loading.value = false
   }
@@ -227,21 +227,15 @@ const fetchUnreadCount = async () => {
   if (!isAuthenticated.value || pollingDisabled.value) return
   
   try {
-    const response = await fetch('/api/notifications/unread-count', {
-      headers: {
-        'Authorization': `Bearer ${authStore.token}`
-      }
-    })
-    
-    if (response.ok) {
-      const data = await response.json()
-      unreadCount.value = data.unread_count || 0
-    } else if (response.status === 401 || response.status === 403) {
+    const response = await api.get('/notifications/unread-count')
+    unreadCount.value = response.data.unread_count || 0
+  } catch (error) {
+    if (error.response?.status === 401 || error.response?.status === 403) {
       unreadCount.value = 0
       disablePolling()
+    } else {
+      console.error('Error fetching unread count:', error)
     }
-  } catch (error) {
-    console.error('Error fetching unread count:', error)
   }
 }
 
@@ -250,22 +244,7 @@ const markAllAsRead = async () => {
   
   try {
     markingAsRead.value = true
-    
-    const response = await fetch('/api/notifications/mark-all-read', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authStore.token}`
-      }
-    })
-    
-    if (!response.ok) {
-      const errorData = await response.json()
-      console.error('Failed to mark all notifications as read:', errorData)
-      return
-    }
-    
-    const result = await response.json()
+    await api.post('/notifications/mark-all-read')
     
     // Update local state
     notifications.value = notifications.value.map(n => ({ ...n, is_read: true }))
@@ -274,7 +253,7 @@ const markAllAsRead = async () => {
     // Refresh the notifications and unread count to make sure they're accurate
     await Promise.all([fetchNotifications(), fetchUnreadCount()])
   } catch (error) {
-    console.error('Error marking all notifications as read:', error)
+    console.error('Error marking all notifications as read:', error.response?.data || error)
   } finally {
     markingAsRead.value = false
   }
@@ -284,15 +263,8 @@ const handleNotificationClick = async (notification) => {
   // Mark this notification as read
   if (!notification.is_read) {
     try {
-      await fetch('/api/notifications/mark-read', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authStore.token}`
-        },
-        body: JSON.stringify({ 
-          notifications: [{ id: notification.id, type: notification.type }] 
-        })
+      await api.post('/notifications/mark-read', {
+        notifications: [{ id: notification.id, type: notification.type }]
       })
       
       // Remove the notification from the list (since we only show unread)
@@ -301,7 +273,7 @@ const handleNotificationClick = async (notification) => {
       // Update unread count
       unreadCount.value = Math.max(0, unreadCount.value - 1)
     } catch (error) {
-      console.error('Error marking notification as read:', error)
+      console.error('Error marking notification as read:', error.response?.data || error)
     }
   }
   

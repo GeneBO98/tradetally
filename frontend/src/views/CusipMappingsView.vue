@@ -449,6 +449,7 @@ import {
 import { useAuthStore } from "@/stores/auth";
 import CusipMappingModal from "@/components/cusip/CusipMappingModal.vue";
 import UnmappedCusipsModal from "@/components/cusip/UnmappedCusipsModal.vue";
+import api from "@/services/api";
 import { debounce } from "lodash-es";
 
 const router = useRouter();
@@ -486,22 +487,12 @@ const fetchMappings = async (page = 1) => {
         if (verifiedFilter.value)
             params.append("verified", verifiedFilter.value);
 
-        const response = await fetch(`/api/cusip-mappings?${params}`, {
-            headers: {
-                Authorization: `Bearer ${authStore.token}`,
-            },
+        const response = await api.get("/cusip-mappings", {
+            params: Object.fromEntries(params),
         });
-
-        if (response.ok) {
-            const data = await response.json();
-            mappings.value = data.data || [];
-            pagination.value = data.pagination;
-        } else {
-            console.error(
-                "Failed to fetch CUSIP mappings:",
-                response.statusText,
-            );
-        }
+        const data = response.data;
+        mappings.value = data.data || [];
+        pagination.value = data.pagination;
     } catch (error) {
         console.error("Error fetching CUSIP mappings:", error);
     } finally {
@@ -514,22 +505,15 @@ const fetchMappingsForReview = async () => {
 
     try {
         loading.value = true;
-        const response = await fetch("/api/cusip-mappings/review", {
-            headers: {
-                Authorization: `Bearer ${authStore.token}`,
-            },
-        });
+        const response = await api.get("/cusip-mappings/review");
+        const data = response.data;
+        mappings.value = data.data || [];
+        pagination.value = null; // Review mode doesn't use pagination
 
-        if (response.ok) {
-            const data = await response.json();
-            mappings.value = data.data || [];
-            pagination.value = null; // Review mode doesn't use pagination
-
-            // Reset filters
-            searchQuery.value = "";
-            sourceFilter.value = "";
-            verifiedFilter.value = "false";
-        }
+        // Reset filters
+        searchQuery.value = "";
+        sourceFilter.value = "";
+        verifiedFilter.value = "false";
     } catch (error) {
         console.error("Error fetching mappings for review:", error);
     } finally {
@@ -541,16 +525,8 @@ const fetchUnmappedCusips = async () => {
     if (!isAuthenticated.value) return;
 
     try {
-        const response = await fetch("/api/cusip-mappings/unmapped", {
-            headers: {
-                Authorization: `Bearer ${authStore.token}`,
-            },
-        });
-
-        if (response.ok) {
-            const data = await response.json();
-            unmappedCusips.value = data.data || [];
-        }
+        const response = await api.get("/cusip-mappings/unmapped");
+        unmappedCusips.value = response.data.data || [];
     } catch (error) {
         console.error("Error fetching unmapped CUSIPs:", error);
     }
@@ -558,18 +534,8 @@ const fetchUnmappedCusips = async () => {
 
 const verifyMapping = async (cusip, verified) => {
     try {
-        const response = await fetch(`/api/cusip-mappings/${cusip}/verify`, {
-            method: "PATCH",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${authStore.token}`,
-            },
-            body: JSON.stringify({ verified }),
-        });
-
-        if (response.ok) {
-            await fetchMappings(pagination.value?.page || 1);
-        }
+        await api.patch(`/cusip-mappings/${cusip}/verify`, { verified });
+        await fetchMappings(pagination.value?.page || 1);
     } catch (error) {
         console.error("Error verifying mapping:", error);
     }
@@ -581,16 +547,8 @@ const deleteMapping = (cusip) => {
         "Delete this user override? This will revert to the global mapping if one exists.",
         async () => {
             try {
-                const response = await fetch(`/api/cusip-mappings/${cusip}`, {
-                    method: "DELETE",
-                    headers: {
-                        Authorization: `Bearer ${authStore.token}`,
-                    },
-                });
-
-                if (response.ok) {
-                    await fetchMappings(pagination.value?.page || 1);
-                }
+                await api.delete(`/cusip-mappings/${cusip}`);
+                await fetchMappings(pagination.value?.page || 1);
             } catch (error) {
                 console.error("Error deleting mapping:", error);
             }

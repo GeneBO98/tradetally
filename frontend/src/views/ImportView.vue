@@ -2483,35 +2483,22 @@ async function addCusipMapping() {
   cusipLoading.value = true
   
   try {
-    const response = await fetch('/api/cusip-mappings', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${tradesStore.token || localStorage.getItem('token')}`
-      },
-      body: JSON.stringify({
-        cusip: cusipForm.value.cusip.toUpperCase(),
-        ticker: cusipForm.value.ticker.toUpperCase(),
-        verified: true
-      })
+    const response = await api.post('/cusip-mappings', {
+      cusip: cusipForm.value.cusip.toUpperCase(),
+      ticker: cusipForm.value.ticker.toUpperCase(),
+      verified: true
     })
-    
-    if (response.ok) {
-      const result = await response.json()
-      showSuccess('CUSIP Mapping Added', `${cusipForm.value.cusip} → ${cusipForm.value.ticker}${result.tradesUpdated ? ` (${result.tradesUpdated} trades updated)` : ''}`)
-      
-      // Reset form
-      cusipForm.value.cusip = ''
-      cusipForm.value.ticker = ''
-      
-      // Refresh unmapped count
-      await fetchUnmappedCusipsCount()
-    } else {
-      const error = await response.json()
-      showError('Add Failed', error.error || 'Failed to add CUSIP mapping')
-    }
+    const result = response.data
+    showSuccess('CUSIP Mapping Added', `${cusipForm.value.cusip} → ${cusipForm.value.ticker}${result.tradesUpdated ? ` (${result.tradesUpdated} trades updated)` : ''}`)
+
+    // Reset form
+    cusipForm.value.cusip = ''
+    cusipForm.value.ticker = ''
+
+    // Refresh unmapped count
+    await fetchUnmappedCusipsCount()
   } catch (error) {
-    showError('Add Failed', 'Failed to add CUSIP mapping')
+    showError('Add Failed', error.response?.data?.error || 'Failed to add CUSIP mapping')
   } finally {
     cusipLoading.value = false
   }
@@ -2527,31 +2514,27 @@ async function lookupCusip() {
   
   try {
     // Use the database function to get mapping
-    const response = await fetch(`/api/cusip-mappings?search=${lookupForm.value.cusip.toUpperCase()}&limit=1`, {
-      headers: {
-        'Authorization': `Bearer ${tradesStore.token || localStorage.getItem('token')}`
+    const response = await api.get('/cusip-mappings', {
+      params: {
+        search: lookupForm.value.cusip.toUpperCase(),
+        limit: 1
       }
     })
-    
-    if (response.ok) {
-      const data = await response.json()
-      if (data.data && data.data.length > 0) {
-        const mapping = data.data[0]
-        lookupResult.value = {
-          found: true,
-          cusip: mapping.cusip,
-          ticker: mapping.ticker,
-          source: mapping.resolution_source,
-          verified: mapping.verified
-        }
-      } else {
-        lookupResult.value = {
-          found: false,
-          cusip: lookupForm.value.cusip.toUpperCase()
-        }
+    const data = response.data
+    if (data.data && data.data.length > 0) {
+      const mapping = data.data[0]
+      lookupResult.value = {
+        found: true,
+        cusip: mapping.cusip,
+        ticker: mapping.ticker,
+        source: mapping.resolution_source,
+        verified: mapping.verified
       }
     } else {
-      throw new Error('Failed to lookup CUSIP')
+      lookupResult.value = {
+        found: false,
+        cusip: lookupForm.value.cusip.toUpperCase()
+      }
     }
   } catch (error) {
     showError('Lookup Failed', 'Failed to lookup CUSIP')
@@ -2575,22 +2558,11 @@ async function deleteCusipMapping(cusip) {
   cusipLoading.value = true
   
   try {
-    const response = await fetch(`/api/cusip-mappings/${cusip}`, {
-      method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${tradesStore.token || localStorage.getItem('token')}`
-      }
-    })
-    
-    if (response.ok) {
-      showSuccess('CUSIP Mapping Deleted', `Mapping for ${cusip} has been deleted`)
-      await fetchUnmappedCusipsCount()
-    } else {
-      const error = await response.json()
-      showError('Delete Failed', error.error || 'Failed to delete CUSIP mapping')
-    }
+    await api.delete(`/cusip-mappings/${cusip}`)
+    showSuccess('CUSIP Mapping Deleted', `Mapping for ${cusip} has been deleted`)
+    await fetchUnmappedCusipsCount()
   } catch (error) {
-    showError('Delete Failed', 'Failed to delete CUSIP mapping')
+    showError('Delete Failed', error.response?.data?.error || 'Failed to delete CUSIP mapping')
   } finally {
     cusipLoading.value = false
   }
@@ -2599,31 +2571,22 @@ async function deleteCusipMapping(cusip) {
 // Fetch unmapped CUSIPs count
 async function fetchUnmappedCusipsCount() {
   try {
-    // Add cache busting parameter
-    const url = `/api/cusip-mappings/unmapped?_t=${Date.now()}`
-    const response = await fetch(url, {
-      headers: {
-        'Authorization': `Bearer ${tradesStore.token || localStorage.getItem('token')}`,
-        'Cache-Control': 'no-cache'
-      }
+    const response = await api.get('/cusip-mappings/unmapped', {
+      params: { _t: Date.now() },
+      headers: { 'Cache-Control': 'no-cache' }
     })
-    
-    if (response.ok) {
-      const data = await response.json()
-      const newCount = (data.data || []).length
-      const oldCount = unmappedCusipsCount.value
-      
-      unmappedCusips.value = data.data || []
-      unmappedCusipsCount.value = newCount
-      
-      // Log updates for debugging
-      if (newCount !== oldCount) {
-        console.log(`[CUSIP POLLING] Count updated: ${oldCount} → ${newCount}`)
-      } else {
-        console.log(`[CUSIP POLLING] Count unchanged: ${newCount}`)
-      }
+    const data = response.data
+    const newCount = (data.data || []).length
+    const oldCount = unmappedCusipsCount.value
+
+    unmappedCusips.value = data.data || []
+    unmappedCusipsCount.value = newCount
+
+    // Log updates for debugging
+    if (newCount !== oldCount) {
+      console.log(`[CUSIP POLLING] Count updated: ${oldCount} → ${newCount}`)
     } else {
-      console.error('[CUSIP POLLING] API error:', response.status, response.statusText)
+      console.log(`[CUSIP POLLING] Count unchanged: ${newCount}`)
     }
   } catch (error) {
     console.error('Error fetching unmapped CUSIPs:', error)

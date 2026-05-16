@@ -417,8 +417,8 @@ import {
     PencilIcon,
     TrashIcon,
 } from "@heroicons/vue/24/outline";
-import { useAuthStore } from "@/stores/auth";
 import { useNotification } from "@/composables/useNotification";
+import api from "@/services/api";
 import CusipMappingModal from "./CusipMappingModal.vue";
 // Simple debounce implementation to avoid lodash-es dependency
 const debounce = (func, wait) => {
@@ -442,7 +442,6 @@ const props = defineProps({
 
 const emit = defineEmits(["close", "mappingChanged"]);
 
-const authStore = useAuthStore();
 const { showDangerConfirmation } = useNotification();
 
 // Component state
@@ -472,42 +471,28 @@ const loadMappings = async (page = 1) => {
         else if (statusFilter.value === "unmapped")
             params.append("verified", "false");
 
-        console.log("API request URL:", `/api/cusip-mappings?${params}`);
+        console.log("API request URL:", `/cusip-mappings?${params}`);
 
         // Get all CUSIPs (mapped and unmapped) from the main API
-        const response = await fetch(`/api/cusip-mappings?${params}`, {
-            headers: {
-                Authorization: `Bearer ${authStore.token}`,
-            },
+        const response = await api.get("/cusip-mappings", {
+            params: Object.fromEntries(params),
         });
 
         console.log("API response status:", response.status);
+        console.log("API response data:", response.data);
 
-        if (response.ok) {
-            const data = await response.json();
-            console.log("API response data:", data);
+        // Apply status filter on frontend since backend doesn't handle it directly
+        let filteredMappings = response.data.data || [];
 
-            // Apply status filter on frontend since backend doesn't handle it directly
-            let filteredMappings = data.data || [];
-
-            if (statusFilter.value === "mapped") {
-                filteredMappings = filteredMappings.filter((m) => m.ticker);
-            } else if (statusFilter.value === "unmapped") {
-                filteredMappings = filteredMappings.filter((m) => !m.ticker);
-            }
-
-            console.log("Setting mappings:", filteredMappings.length, "items");
-            mappings.value = filteredMappings;
-            pagination.value = data.pagination;
-        } else {
-            const errorText = await response.text();
-            console.error(
-                "Failed to load mappings:",
-                response.status,
-                response.statusText,
-                errorText,
-            );
+        if (statusFilter.value === "mapped") {
+            filteredMappings = filteredMappings.filter((m) => m.ticker);
+        } else if (statusFilter.value === "unmapped") {
+            filteredMappings = filteredMappings.filter((m) => !m.ticker);
         }
+
+        console.log("Setting mappings:", filteredMappings.length, "items");
+        mappings.value = filteredMappings;
+        pagination.value = response.data.pagination;
     } catch (error) {
         console.error("Error loading mappings:", error);
     } finally {
@@ -528,19 +513,9 @@ const debouncedSearch = debounce(() => {
 
 const verifyMapping = async (cusip) => {
     try {
-        const response = await fetch(`/api/cusip-mappings/${cusip}/verify`, {
-            method: "PATCH",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${authStore.token}`,
-            },
-            body: JSON.stringify({ verified: true }),
-        });
-
-        if (response.ok) {
-            await loadMappings(pagination.value?.page || 1);
-            emit("mappingChanged");
-        }
+        await api.patch(`/cusip-mappings/${cusip}/verify`, { verified: true });
+        await loadMappings(pagination.value?.page || 1);
+        emit("mappingChanged");
     } catch (error) {
         console.error("Error verifying mapping:", error);
     }
@@ -556,17 +531,9 @@ const deleteMapping = (cusip) => {
         "Delete this user override? This will revert to the global mapping if one exists.",
         async () => {
             try {
-                const response = await fetch(`/api/cusip-mappings/${cusip}`, {
-                    method: "DELETE",
-                    headers: {
-                        Authorization: `Bearer ${authStore.token}`,
-                    },
-                });
-
-                if (response.ok) {
-                    await loadMappings(pagination.value?.page || 1);
-                    emit("mappingChanged");
-                }
+                await api.delete(`/cusip-mappings/${cusip}`);
+                await loadMappings(pagination.value?.page || 1);
+                emit("mappingChanged");
             } catch (error) {
                 console.error("Error deleting mapping:", error);
             }

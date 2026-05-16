@@ -55,6 +55,13 @@ class CusipMappingsController {
               WHERE t.user_id = $1 
                 AND t.symbol = cm.ticker
             )
+
+          UNION
+
+          -- Get user-created mappings even before any trade uses them
+          SELECT DISTINCT cm.cusip, 'user_mapping' as cusip_type
+          FROM cusip_mappings cm
+          WHERE cm.user_id = $1
         ),
         trade_counts AS (
           -- Count trades for current CUSIPs
@@ -128,6 +135,13 @@ class CusipMappingsController {
               WHERE t.user_id = $1 
                 AND t.symbol = cm.ticker
             )
+
+          UNION
+
+          -- Get user-created mappings even before any trade uses them
+          SELECT DISTINCT cm.cusip
+          FROM cusip_mappings cm
+          WHERE cm.user_id = $1
         ),
         prioritized_mappings AS (
           SELECT DISTINCT ON (uc.cusip) uc.cusip

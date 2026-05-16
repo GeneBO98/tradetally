@@ -138,7 +138,7 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { InformationCircleIcon } from '@heroicons/vue/24/outline'
-import { useAuthStore } from '@/stores/auth'
+import api from '@/services/api'
 
 const props = defineProps({
   isOpen: {
@@ -152,8 +152,6 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close', 'saved'])
-
-const authStore = useAuthStore()
 
 // Component state
 const form = ref({
@@ -210,16 +208,13 @@ const validateTicker = () => {
 
 const checkTradeImpact = async (cusip) => {
   try {
-    const response = await fetch(`/api/trades?symbol=${cusip}&limit=1`, {
-      headers: {
-        'Authorization': `Bearer ${authStore.token}`
+    const response = await api.get('/trades', {
+      params: {
+        symbol: cusip,
+        limit: 1
       }
     })
-    
-    if (response.ok) {
-      const data = await response.json()
-      expectedTradeUpdates.value = data.pagination?.total || 0
-    }
+    expectedTradeUpdates.value = response.data.pagination?.total || 0
   } catch (error) {
     console.error('Error checking trade impact:', error)
   }
@@ -229,28 +224,13 @@ const saveMapping = async () => {
   try {
     saving.value = true
     
-    const response = await fetch('/api/cusip-mappings', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authStore.token}`
-      },
-      body: JSON.stringify({
-        cusip: form.value.cusip,
-        ticker: form.value.ticker,
-        company_name: form.value.company_name || null,
-        verified: form.value.verified
-      })
+    const response = await api.post('/cusip-mappings', {
+      cusip: form.value.cusip,
+      ticker: form.value.ticker,
+      company_name: form.value.company_name || null,
+      verified: form.value.verified
     })
-    
-    if (response.ok) {
-      const result = await response.json()
-      emit('saved', result)
-    } else {
-      const error = await response.json()
-      console.error('Failed to save mapping:', error)
-      // You could show a toast notification here
-    }
+    emit('saved', response.data)
   } catch (error) {
     console.error('Error saving mapping:', error)
   } finally {
