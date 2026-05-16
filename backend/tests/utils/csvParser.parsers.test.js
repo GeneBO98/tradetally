@@ -425,6 +425,54 @@ describe('IBKR parser', () => {
     ]);
   });
 
+  test('keeps same-second partial close fills when updating an existing IBKR option position', async () => {
+    const openShortCsv = [
+      'Symbol,DateTime,Quantity,Price,Commission,Code,Conid',
+      "AVAV  260109C00320000,'2026-01-05 10:23:00,-1,0.9,-0.05204,O;P,834720350",
+      "AVAV  260109C00320000,'2026-01-05 10:23:00,-1,0.9,0.64796,O;P,834720350",
+      "AVAV  260109C00320000,'2026-01-05 10:23:00,-2,0.9,0.59592,O;P,834720350",
+      "AVAV  260109C00320000,'2026-01-05 10:23:00,-1,0.9,0.29796,O;P,834720350",
+      "AVAV  260109C00320000,'2026-01-05 10:23:00,-1,0.9,0.29796,O;P,834720350",
+      "AVAV  260109C00320000,'2026-01-05 10:23:03,-1,0.9,0.29796,O;P,834720350"
+    ].join('\n');
+    const partialCloseCsv = [
+      'Symbol,DateTime,Quantity,Price,Commission,Code,Conid',
+      "AVAV  260109C00320000,'2026-01-08 10:46:38,1,0.45,-0.04875,C;P,834720350",
+      "AVAV  260109C00320000,'2026-01-08 10:46:38,1,0.45,0.65125,C;P,834720350"
+    ].join('\n');
+
+    const initialResult = await parseCSV(buf(openShortCsv), 'ibkr', {});
+    const existingTrade = { ...initialResult.trades[0], id: 'trade-1' };
+    const optionKey = `${existingTrade.underlyingSymbol}_${existingTrade.strikePrice}_${existingTrade.expirationDate}_${existingTrade.optionType}`;
+    const existingPositions = {
+      [existingTrade.symbol]: existingTrade,
+      [`conid_${existingTrade.conid}`]: existingTrade,
+      [optionKey]: existingTrade
+    };
+    const existingExecutions = {
+      [existingTrade.symbol]: existingTrade.executions,
+      [`conid_${existingTrade.conid}`]: existingTrade.executions,
+      [optionKey]: existingTrade.executions
+    };
+
+    const result = await parseCSV(buf(partialCloseCsv), 'ibkr', {
+      existingPositions,
+      existingExecutions
+    });
+
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0].quantity).toBe(5);
+    expect(result.trades[0].executions).toHaveLength(8);
+    expect(
+      result.trades[0].executions.filter(exec =>
+        exec.action === 'buy' &&
+        exec.quantity === 1 &&
+        exec.price === 0.45 &&
+        exec.datetime === '2026-01-08T10:46:38'
+      )
+    ).toHaveLength(2);
+  });
+
   test('parses trade confirmation format', async () => {
     const tradeConfCSV = [
       'Symbol,UnderlyingSymbol,Strike,Expiry,Put/Call,Multiplier,Buy/Sell,Date/Time,Quantity,Price,Commission',

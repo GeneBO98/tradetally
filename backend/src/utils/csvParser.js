@@ -2131,8 +2131,6 @@ function normalizeExecutionCollections(trades) {
             execution.orderID ??
             execution.tradeId ??
             execution.tradeID ??
-            execution.sourceIndex ??
-            execution.source_index ??
             null;
 
           if (identifierKey === null || identifierKey === undefined || identifierKey === '') {
@@ -8327,7 +8325,9 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         entryTime: existingPosition.entryTime,
         tradeDate: existingPosition.tradeDate,
         side: existingPosition.side,
-        executions: existingExecutions,
+        // Clone the array so new executions added during this parse do not
+        // mutate the duplicate-detection context mid-import.
+        executions: existingExecutions.map(exec => ({ ...exec })),
         // Use recalculated values from executions for accurate P&L
         totalQuantity: recalcEntryQty,  // Total entry quantity, not remaining
         totalFees: recalcFees,
