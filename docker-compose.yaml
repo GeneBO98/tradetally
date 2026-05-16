@@ -107,6 +107,12 @@ services:
       - ./backend/uploads:/app/backend/uploads
     networks:
       - trader-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/api/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
 
 networks:

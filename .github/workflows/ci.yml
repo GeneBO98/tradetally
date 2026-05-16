@@ -18,6 +18,20 @@ jobs:
   backend:
     name: Backend Tests
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: tradetally_fresh_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d tradetally_fresh_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Check out repository
@@ -34,13 +48,56 @@ jobs:
         working-directory: backend
         run: npm ci
 
+      - name: Validate migration checksums
+        working-directory: backend
+        run: npm run migrate:check
+
+      - name: Fresh database migration rebuild
+        working-directory: backend
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_NAME: tradetally_fresh_ci
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+        run: npm run migrate:fresh-rebuild
+
       - name: Run backend tests
         working-directory: backend
         run: npm test
 
+      - name: Generate broker corpus review diff
+        working-directory: backend
+        run: npm run broker-import:diff
+
+      - name: Upload broker corpus artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: broker-import-corpus-review
+          if-no-files-found: ignore
+          path: |
+            backend/test-results/broker-import-corpus-current.json
+            backend/test-results/broker-import-corpus-diff.json
+            backend/test-results/broker-import-corpus-diff.md
+
   frontend:
     name: Frontend Build
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: tradetally_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d tradetally_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Check out repository
@@ -57,6 +114,100 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Install backend dependencies for E2E server
+        working-directory: backend
+        run: npm ci
+
       - name: Build frontend
         working-directory: frontend
         run: npm run build
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Run frontend E2E tests
+        working-directory: frontend
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_NAME: tradetally_test
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          JWT_SECRET: ci-e2e-secret
+          RUN_MIGRATIONS: true
+          ENABLE_TEST_SUPPORT: true
+          RATE_LIMIT_ENABLED: false
+        run: npm run test:e2e
+
+      - name: Enforce performance budgets
+        working-directory: backend
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_NAME: tradetally_test
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          PERFORMANCE_BUDGET_MIN_SAMPLES: 1
+          PERFORMANCE_BUDGET_ENV: ci
+        run: npm run performance-budgets:check
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Run isolated execution load tests
+        working-directory: backend
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_NAME: tradetally_test
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          LOAD_TEST_TERMINATE_TEMPLATE_CONNECTIONS: true
+          LOAD_TEST_DURATION_SECONDS: 3
+          LOAD_TEST_CONNECTIONS: 2
+          LOAD_TEST_MAX_P95_MS: 2500
+        run: npm run load:execution:disposable
+
+      - name: Upload Playwright artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-playwright-artifacts
+          if-no-files-found: ignore
+          path: |
+            frontend/test-results/**
+            frontend/playwright-report/**
+            frontend/e2e/__screenshots__/**
+
+      - name: Upload performance budget artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-budget-trends
+          if-no-files-found: ignore
+          path: backend/test-results/performance-budget-current.json
+
+  bridge:
+    name: Bridge Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        run: python -m pip install uv
+
+      - name: Install bridge dependencies
+        working-directory: bridge
+        run: uv sync --extra test
+
+      - name: Run bridge tests
+        working-directory: bridge
+        run: uv run pytest

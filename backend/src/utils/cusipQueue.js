@@ -409,9 +409,11 @@ const cusipQueue = new CusipQueueManager();
 
 // NOTE: Do not auto-start here. Processing is started in server.js after migrations complete.
 
-// Cleanup old entries daily
-setInterval(() => {
+// Cleanup old entries daily without keeping short-lived test processes open.
+const cleanupInterval = setInterval(() => {
   cusipQueue.cleanup();
 }, 24 * 60 * 60 * 1000);
+
+cleanupInterval.unref?.();
 
 module.exports = cusipQueue;

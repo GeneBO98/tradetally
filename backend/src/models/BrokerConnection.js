@@ -6,6 +6,8 @@
 const db = require('../config/database');
 const encryptionService = require('../services/brokerSync/encryptionService');
 
+const SYNC_CLAIM_TTL_MINUTES = 30;
+
 class BrokerConnection {
   /**
    * Create a new broker connection
@@ -152,18 +154,156 @@ class BrokerConnection {
   /**
    * Find all connections due for sync
    */
-  static async findDueForSync() {
+  static async findDueForSync(limit = 50, workerId = this.getSyncWorkerId()) {
     const query = `
-      SELECT * FROM broker_connections
-      WHERE auto_sync_enabled = true
-        AND connection_status = 'active'
-        AND (next_scheduled_sync IS NULL OR next_scheduled_sync <= NOW())
-        AND consecutive_failures < 3
-      ORDER BY next_scheduled_sync ASC NULLS FIRST
+      WITH due AS (
+        SELECT id
+        FROM broker_connections
+        WHERE auto_sync_enabled = true
+          AND connection_status = 'active'
+          AND (next_scheduled_sync IS NULL OR next_scheduled_sync <= NOW())
+          AND consecutive_failures < 3
+          AND (
+            sync_claimed_at IS NULL
+            OR COALESCE(sync_heartbeat_at, sync_claimed_at) < NOW() - ($2::text || ' minutes')::interval
+          )
+        ORDER BY next_scheduled_sync ASC NULLS FIRST
+        LIMIT $1
+        FOR UPDATE SKIP LOCKED
+      )
+      UPDATE broker_connections bc
+      SET sync_claimed_at = CURRENT_TIMESTAMP,
+          sync_heartbeat_at = CURRENT_TIMESTAMP,
+          sync_claimed_by = $3,
+          updated_at = CURRENT_TIMESTAMP
+      FROM due
+      WHERE bc.id = due.id
+      RETURNING bc.*
     `;
 
-    const result = await db.query(query);
+    const result = await db.query(query, [limit, SYNC_CLAIM_TTL_MINUTES, workerId]);
     return result.rows.map(row => this.formatConnection(row, true));
+  }
+
+  static getSyncWorkerId() {
+    return `${process.env.HOSTNAME || 'local'}:${process.pid || 'pid'}:${process.env.NODE_ENV || 'dev'}`;
+  }
+
+  static async claimForSync(connectionId, workerId = this.getSyncWorkerId()) {
+    const query = `
+      UPDATE broker_connections
+      SET sync_claimed_at = CURRENT_TIMESTAMP,
+          sync_heartbeat_at = CURRENT_TIMESTAMP,
+          sync_claimed_by = $2,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+        AND (
+          sync_claimed_at IS NULL
+          OR COALESCE(sync_heartbeat_at, sync_claimed_at) < NOW() - ($3::text || ' minutes')::interval
+        )
+      RETURNING *
+    `;
+
+    const result = await db.query(query, [connectionId, workerId, SYNC_CLAIM_TTL_MINUTES]);
+    if (result.rows.length === 0) return null;
+    return this.formatConnection(result.rows[0], true);
+  }
+
+  static async heartbeatSyncClaim(connectionId, workerId = this.getSyncWorkerId()) {
+    const query = `
+      UPDATE broker_connections
+      SET sync_heartbeat_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+        AND sync_claimed_at IS NOT NULL
+        AND sync_claimed_by = $2
+      RETURNING *
+    `;
+
+    const result = await db.query(query, [connectionId, workerId]);
+    if (result.rows.length === 0) return null;
+    return this.formatConnection(result.rows[0], false);
+  }
+
+  static async releaseSyncClaim(connectionId) {
+    await db.query(
+      `
+        UPDATE broker_connections
+        SET sync_claimed_at = NULL,
+            sync_heartbeat_at = NULL,
+            sync_claimed_by = NULL,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1
+      `,
+      [connectionId]
+    );
+  }
+
+  static async getSyncLeaseMetrics(userId = null) {
+    const values = [];
+    const clauses = [];
+
+    if (userId) {
+      values.push(userId);
+      clauses.push(`user_id = $${values.length}`);
+    }
+
+    const ttlParam = values.length + 1;
+    const query = `
+      SELECT
+        id,
+        user_id,
+        broker_type,
+        account_label,
+        connection_status,
+        sync_claimed_at,
+        sync_heartbeat_at,
+        sync_claimed_by,
+        EXTRACT(EPOCH FROM (NOW() - sync_claimed_at))::integer AS lease_age_seconds,
+        EXTRACT(EPOCH FROM (NOW() - COALESCE(sync_heartbeat_at, sync_claimed_at)))::integer AS heartbeat_age_seconds,
+        (
+          sync_claimed_at IS NOT NULL
+          AND COALESCE(sync_heartbeat_at, sync_claimed_at) < NOW() - ($${ttlParam}::text || ' minutes')::interval
+        ) AS is_expired,
+        next_scheduled_sync,
+        last_sync_at,
+        last_sync_status,
+        last_error_at,
+        last_error_message,
+        updated_at
+      FROM broker_connections
+      ${clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : ''}
+      ORDER BY sync_claimed_at DESC NULLS LAST, updated_at DESC
+    `;
+
+    const result = await db.query(query, [...values, SYNC_CLAIM_TTL_MINUTES]);
+    const leases = result.rows.map(row => ({
+      id: row.id,
+      userId: row.user_id,
+      brokerType: row.broker_type,
+      accountLabel: row.account_label,
+      connectionStatus: row.connection_status,
+      syncClaimedAt: row.sync_claimed_at,
+      syncHeartbeatAt: row.sync_heartbeat_at,
+      syncClaimedBy: row.sync_claimed_by,
+      leaseAgeSeconds: row.lease_age_seconds,
+      heartbeatAgeSeconds: row.heartbeat_age_seconds,
+      isExpired: row.is_expired,
+      nextScheduledSync: row.next_scheduled_sync,
+      lastSyncAt: row.last_sync_at,
+      lastSyncStatus: row.last_sync_status,
+      lastErrorAt: row.last_error_at,
+      lastErrorMessage: row.last_error_message,
+      updatedAt: row.updated_at
+    }));
+
+    return {
+      ttlMinutes: SYNC_CLAIM_TTL_MINUTES,
+      total: leases.length,
+      active: leases.filter(lease => lease.syncClaimedAt && !lease.isExpired).length,
+      expired: leases.filter(lease => lease.isExpired).length,
+      leases
+    };
   }
 
   /**
@@ -407,6 +547,9 @@ class BrokerConnection {
       lastSyncTradesImported: row.last_sync_trades_imported,
       lastSyncTradesSkipped: row.last_sync_trades_skipped,
       nextScheduledSync: row.next_scheduled_sync,
+      syncClaimedAt: row.sync_claimed_at,
+      syncHeartbeatAt: row.sync_heartbeat_at,
+      syncClaimedBy: row.sync_claimed_by,
       consecutiveFailures: row.consecutive_failures,
       lastErrorAt: row.last_error_at,
       lastErrorMessage: row.last_error_message,

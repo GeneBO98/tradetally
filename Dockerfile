@@ -62,6 +62,7 @@ RUN apk update && apk upgrade --no-cache && \
     nginx \
     netcat-openbsd \
     libc6-compat \
+    wget \
     su-exec && \
     mkdir -p /run/nginx /var/lib/nginx /var/lib/nginx/tmp /var/log/nginx && \
     chown -R nginx:nginx /run/nginx /var/lib/nginx /var/log/nginx
@@ -86,4 +87,6 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup && \
     chown -R appuser:appgroup /app
 
 EXPOSE 80 3000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD wget -qO- http://127.0.0.1/api/health >/dev/null || exit 1
 CMD ["/app/start.sh"]

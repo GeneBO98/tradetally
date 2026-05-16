@@ -2,7 +2,7 @@
  * IBKR Flex Web Service Integration
  * Fetches trade data from Interactive Brokers using the Flex Query API
  *
- * API Documentation: https://www.interactivebrokers.com/en/software/am/am/reports/flex_web_service_version_3.htm
+ * API Documentation: https://www.interactivebrokers.com/campus/ibkr-api-page/flex-web-service/
  */
 
 const axios = require('axios');
@@ -10,13 +10,18 @@ const { parseCSV } = require('../../utils/csvParser');
 const Trade = require('../../models/Trade');
 const BrokerConnection = require('../../models/BrokerConnection');
 const db = require('../../config/database');
+const { version: APP_VERSION } = require('../../../package.json');
 
-const FLEX_BASE_URL = 'https://gdcdyn.interactivebrokers.com/Universal/servlet/FlexStatementService';
+const FLEX_BASE_URL = 'https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService';
+const FLEX_USER_AGENT = `TradeTally/${APP_VERSION}`;
 const REPORT_REQUEST_TIMEOUT = 120000; // 2 minutes to request report
 const REPORT_POLL_INTERVAL = 5000; // Poll every 5 seconds
 const REPORT_MAX_WAIT = 300000; // Max 5 minutes to wait for report
-const MAX_FLEX_OVERRIDE_DAYS = 365;
-const DEFAULT_MANUAL_LOOKBACK_DAYS = 365;
+
+// Transient network errors that warrant a retry
+const RETRYABLE_NETWORK_CODES = new Set(['EAI_AGAIN', 'ENOTFOUND', 'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'ECONNABORTED']);
+// IBKR error codes that mean "try again in a moment" (per official Version 3 error code docs)
+const RETRYABLE_IBKR_CODES = new Set(['1001', '1004', '1005', '1006', '1007', '1008', '1009', '1018', '1019', '1021']);
 
 class IBKRService {
   /**
@@ -46,52 +51,65 @@ class IBKRService {
 
   /**
    * Request a Flex report generation
-   * @param {string} flexToken - IBKR Flex Token
-   * @param {string} queryId - Flex Query ID
-   * @returns {Promise<{referenceCode: string} | {error: string}>}
+   * Retries on transient DNS/network errors and retryable IBKR codes.
    */
   async requestFlexReport(flexToken, queryId, options = {}) {
     console.log('[IBKR] Requesting Flex report...');
 
-    const url = `${FLEX_BASE_URL}.SendRequest`;
+    const url = `${FLEX_BASE_URL}/SendRequest`;
     const params = this.buildReportRequestParams(flexToken, queryId, options);
+    const maxAttempts = 5;
 
-    try {
-      const response = await axios.get(url, {
-        params,
-        timeout: REPORT_REQUEST_TIMEOUT
-      });
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const response = await axios.get(url, {
+          params,
+          timeout: REPORT_REQUEST_TIMEOUT,
+          headers: { 'User-Agent': FLEX_USER_AGENT }
+        });
 
-      // Parse XML response
-      const data = response.data;
-      console.log(`[IBKR] Request response received (${data.length} chars)`);
+        const data = response.data;
+        console.log(`[IBKR] Request response received (${data.length} chars)`);
 
-      // Check for errors in response
-      if (data.includes('<ErrorCode>')) {
-        const errorCodeMatch = data.match(/<ErrorCode>(\d+)<\/ErrorCode>/);
-        const errorMsgMatch = data.match(/<ErrorMessage>([^<]+)<\/ErrorMessage>/);
-        const errorCode = errorCodeMatch ? errorCodeMatch[1] : 'Unknown';
-        const errorMsg = errorMsgMatch ? errorMsgMatch[1] : 'Unknown error';
+        if (data.includes('<ErrorCode>')) {
+          const errorCodeMatch = data.match(/<ErrorCode>(\d+)<\/ErrorCode>/);
+          const errorMsgMatch = data.match(/<ErrorMessage>([^<]+)<\/ErrorMessage>/);
+          const errorCode = errorCodeMatch ? errorCodeMatch[1] : 'Unknown';
+          const errorMsg = errorMsgMatch ? errorMsgMatch[1] : 'Unknown error';
 
-        throw new Error(this.getErrorMessage(errorCode, errorMsg));
+          if (RETRYABLE_IBKR_CODES.has(errorCode) && attempt < maxAttempts) {
+            const delay = attempt * 15000;
+            console.warn(`[IBKR] Retryable error ${errorCode} on attempt ${attempt}/${maxAttempts}, retrying in ${delay / 1000}s...`);
+            await this.sleep(delay);
+            continue;
+          }
+
+          throw new Error(this.getErrorMessage(errorCode, errorMsg));
+        }
+
+        const refCodeMatch = data.match(/<ReferenceCode>([^<]+)<\/ReferenceCode>/);
+        if (!refCodeMatch) {
+          throw new Error('Failed to get reference code from IBKR response');
+        }
+
+        const referenceCode = refCodeMatch[1];
+        console.log('[IBKR] Got reference code:', referenceCode);
+        return { referenceCode };
+      } catch (error) {
+        if (error.response) {
+          console.error('[IBKR] API error status:', error.response.status);
+          throw new Error(`IBKR API error: ${error.response.status}`);
+        }
+
+        if (RETRYABLE_NETWORK_CODES.has(error.code) && attempt < maxAttempts) {
+          const delay = attempt * 10000;
+          console.warn(`[IBKR] Network error (${error.code}) on attempt ${attempt}/${maxAttempts}, retrying in ${delay / 1000}s...`);
+          await this.sleep(delay);
+          continue;
+        }
+
+        throw error;
       }
-
-      // Extract reference code
-      const refCodeMatch = data.match(/<ReferenceCode>([^<]+)<\/ReferenceCode>/);
-      if (!refCodeMatch) {
-        throw new Error('Failed to get reference code from IBKR response');
-      }
-
-      const referenceCode = refCodeMatch[1];
-      console.log('[IBKR] Got reference code:', referenceCode);
-
-      return { referenceCode };
-    } catch (error) {
-      if (error.response) {
-        console.error('[IBKR] API error status:', error.response.status);
-        throw new Error(`IBKR API error: ${error.response.status}`);
-      }
-      throw error;
     }
   }
 
@@ -104,7 +122,7 @@ class IBKRService {
   async fetchFlexReport(referenceCode, flexToken) {
     console.log('[IBKR] Fetching Flex report...');
 
-    const url = `${FLEX_BASE_URL}.GetStatement`;
+    const url = `${FLEX_BASE_URL}/GetStatement`;
     const params = {
       t: flexToken,
       q: referenceCode,
@@ -117,24 +135,24 @@ class IBKRService {
       try {
         const response = await axios.get(url, {
           params,
-          timeout: 60000
+          timeout: 60000,
+          headers: { 'User-Agent': FLEX_USER_AGENT }
         });
 
         const data = response.data;
 
-        // Check if report is still being generated
-        if (data.includes('<ErrorCode>1019</ErrorCode>')) {
-          console.log('[IBKR] Report still generating, waiting...');
-          await this.sleep(REPORT_POLL_INTERVAL);
-          continue;
-        }
-
-        // Check for other errors
+        // Check for errors in the GetStatement response
         if (data.includes('<ErrorCode>')) {
           const errorCodeMatch = data.match(/<ErrorCode>(\d+)<\/ErrorCode>/);
           const errorMsgMatch = data.match(/<ErrorMessage>([^<]+)<\/ErrorMessage>/);
           const errorCode = errorCodeMatch ? errorCodeMatch[1] : 'Unknown';
           const errorMsg = errorMsgMatch ? errorMsgMatch[1] : 'Unknown error';
+
+          if (RETRYABLE_IBKR_CODES.has(errorCode)) {
+            console.log(`[IBKR] Transient error ${errorCode} on GetStatement, waiting to retry...`);
+            await this.sleep(REPORT_POLL_INTERVAL);
+            continue;
+          }
 
           throw new Error(this.getErrorMessage(errorCode, errorMsg));
         }
@@ -149,8 +167,8 @@ class IBKRService {
         console.warn('[IBKR] Unexpected response format from IBKR; retrying');
         await this.sleep(REPORT_POLL_INTERVAL);
       } catch (error) {
-        if (error.code === 'ECONNABORTED') {
-          console.warn('[IBKR] Request timeout, retrying...');
+        if (RETRYABLE_NETWORK_CODES.has(error.code)) {
+          console.warn(`[IBKR] Network error while fetching report (${error.code}), retrying...`);
           await this.sleep(REPORT_POLL_INTERVAL);
           continue;
         }
@@ -426,7 +444,7 @@ class IBKRService {
         id: row.id,
         symbol: row.symbol,
         side: row.side,
-        quantity: parseInt(row.quantity),
+        quantity: parseFloat(row.quantity),
         entryPrice: parseFloat(row.entry_price),
         entryTime: row.entry_time,
         tradeDate: row.trade_date,
@@ -623,7 +641,7 @@ class IBKRService {
         parseFloat(newTrade.entryPrice)
       ) < 0.01;
 
-      const quantityMatch = parseInt(existing.quantity) === parseInt(newTrade.quantity);
+      const quantityMatch = Math.abs(parseFloat(existing.quantity) - parseFloat(newTrade.quantity)) < 0.000001;
 
       if (entryTimeMatch && entryPriceMatch && quantityMatch) {
         return true;
@@ -714,64 +732,13 @@ class IBKRService {
     };
   }
 
-  buildReportRequestParams(flexToken, queryId, options = {}) {
-    const params = {
+  buildReportRequestParams(flexToken, queryId) {
+    // Do not send fd/td. The Flex Query period configured in IBKR determines
+    // what IBKR returns; TradeTally filters to the requested range after parsing.
+    return {
       t: flexToken,
       q: queryId,
       v: '3'
-    };
-
-    const overrideRange = this.getReportDateOverride(options);
-    if (overrideRange) {
-      params.fd = overrideRange.start.replace(/-/g, '');
-      params.td = overrideRange.end.replace(/-/g, '');
-    }
-
-    return params;
-  }
-
-  getReportDateOverride(options = {}) {
-    const { startDate, endDate, syncType = 'manual' } = options;
-
-    if (startDate || endDate) {
-      return this.normalizeReportDateRange(startDate, endDate);
-    }
-
-    if (syncType === 'manual') {
-      const end = this.normalizeDateString(new Date());
-      const startDateValue = new Date(`${end}T00:00:00Z`);
-      startDateValue.setUTCDate(startDateValue.getUTCDate() - (DEFAULT_MANUAL_LOOKBACK_DAYS - 1));
-      const start = startDateValue.toISOString().split('T')[0];
-
-      return { start, end };
-    }
-
-    return null;
-  }
-
-  normalizeReportDateRange(startDate, endDate) {
-    const normalizedStart = this.normalizeDateString(startDate || endDate);
-    const normalizedEnd = this.normalizeDateString(endDate || startDate);
-
-    if (!normalizedStart || !normalizedEnd) {
-      throw new Error('Invalid IBKR date override supplied');
-    }
-
-    if (normalizedStart > normalizedEnd) {
-      throw new Error('IBKR sync start date must be on or before end date');
-    }
-
-    const daySpan = Math.floor(
-      (new Date(`${normalizedEnd}T00:00:00Z`) - new Date(`${normalizedStart}T00:00:00Z`)) / 86400000
-    ) + 1;
-
-    if (daySpan > MAX_FLEX_OVERRIDE_DAYS) {
-      throw new Error(`IBKR Flex Web Service supports up to ${MAX_FLEX_OVERRIDE_DAYS} days per request`);
-    }
-
-    return {
-      start: normalizedStart,
-      end: normalizedEnd
     };
   }
 
@@ -830,21 +797,28 @@ class IBKRService {
    * Get human-readable error message for IBKR error codes
    */
   getErrorMessage(errorCode, defaultMessage) {
-    // IBKR Flex Web Service error codes
-    // Reference: https://www.interactivebrokers.com/en/software/am/am/reports/flex_web_service_version_3.htm
+    // Error codes per official IBKR Flex Web Service Version 3 documentation
     const errorMessages = {
-      '1003': 'Statement not available. This usually means your Flex Query has no data for the configured period, or the query was just created. Try running the query manually in IBKR first, or check that your query includes recent trades.',
-      '1004': 'Invalid Flex Token. Please verify your token in IBKR: Performance & Reports > Flex Queries > gear icon > Flex Web Service.',
-      '1005': 'Invalid Flex Query ID. Please verify the Query ID matches your Activity Flex Query in IBKR.',
-      '1006': 'Too many requests. IBKR limits API calls. Please wait a few minutes and try again.',
-      '1007': 'Flex Token has expired. Please generate a new token in IBKR: Performance & Reports > Flex Queries > gear icon > Flex Web Service.',
-      '1010': 'Maximum daily request limit reached. IBKR limits requests per day. Try again tomorrow.',
-      '1011': 'Query is currently running. Please wait a moment and try again.',
-      '1012': 'Query format error. Your Flex Query may have an invalid configuration.',
-      '1013': 'Account not authorized for Flex queries. Please enable Flex Web Service in your IBKR account settings.',
-      '1018': 'IBKR service temporarily unavailable. Please try again later.',
-      '1019': 'Statement is being generated. Please wait and try again in a few seconds.',
-      '1020': 'No data available for the requested period. Your query returned no trades.'
+      '1001': 'IBKR could not generate the statement right now. This is temporary; please try again in a few minutes.',
+      '1003': 'Statement not available. Your Flex Query may have no data for the configured period, or the query was just created. Try running it manually in IBKR first.',
+      '1004': 'Statement is incomplete. Please try again shortly.',
+      '1005': 'Settlement data is not ready yet. Please try again shortly.',
+      '1006': 'FIFO P/L data is not ready yet. Please try again shortly.',
+      '1007': 'MTM P/L data is not ready yet. Please try again shortly.',
+      '1008': 'MTM and FIFO P/L data is not ready yet. Please try again shortly.',
+      '1009': 'IBKR server is under heavy load. Please try again shortly.',
+      '1010': 'Legacy Flex Queries are no longer supported. Please convert your query to an Activity Flex Query in IBKR.',
+      '1011': 'Service account is inactive. Please check your IBKR account status.',
+      '1012': 'Flex Token has expired. Please generate a new token in IBKR: Performance & Reports > Flex Queries > gear icon > Flex Web Service.',
+      '1013': "IP restriction - this server's IP is not authorised for your Flex Token. Add it in IBKR: Performance & Reports > Flex Queries > gear icon > Flex Web Service.",
+      '1014': 'Query is invalid. Please verify your Flex Query ID in IBKR.',
+      '1015': 'Flex Token is invalid. Please generate a new token in IBKR: Performance & Reports > Flex Queries > gear icon > Flex Web Service.',
+      '1016': 'Account is invalid. Please check your IBKR account configuration.',
+      '1017': 'Reference code is invalid.',
+      '1018': 'IBKR rate limit reached (max 10 requests per minute per token). Please wait before trying again.',
+      '1019': 'Statement is being generated; please wait a moment and try again.',
+      '1020': 'Invalid request. Please check your Flex Token and Query ID.',
+      '1021': 'Statement could not be retrieved right now. Please try again shortly.'
     };
 
     return errorMessages[errorCode] || defaultMessage || `IBKR Error ${errorCode}: ${defaultMessage}`;

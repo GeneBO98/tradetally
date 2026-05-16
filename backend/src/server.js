@@ -5,6 +5,8 @@ const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env.local'), override: false });
+const { initializeOpenTelemetry, shutdownOpenTelemetry } = require('./otel-bootstrap');
+initializeOpenTelemetry();
 
 const { migrate } = require('./utils/migrate');
 const { initializePostHogTelemetry, shutdown: shutdownPostHogTelemetry } = require('./posthog-telemetry');
@@ -47,6 +49,9 @@ const stockScannerRoutes = require('./routes/stockScanner.routes');
 const accountRoutes = require('./routes/account.routes');
 const instrumentTemplatesRoutes = require('./routes/instrumentTemplates.routes');
 const tradeManagementRoutes = require('./routes/tradeManagement.routes');
+const executionRunRoutes = require('./routes/executionRun.routes');
+const clientTelemetryRoutes = require('./routes/clientTelemetry.routes');
+const testSupportRoutes = require('./routes/testSupport.routes');
 const playbookRoutes = require('./routes/playbook.routes');
 const aiRoutes = require('./routes/ai.routes');
 const symbolsRoutes = require('./routes/symbols.routes');
@@ -157,11 +162,15 @@ app.use(requestIdMiddleware);
 const allowedOrigins = [
   process.env.FRONTEND_URL || 'http://localhost:5173',
   ...(process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : [])
-];
+].map(origin => origin.trim()).filter(Boolean);
 
 if (process.env.NODE_ENV !== 'production') {
   allowedOrigins.push(
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://[::1]:5173',
     'http://localhost:3000',
+    'http://127.0.0.1:3000',
     'http://localhost:8080',
     'http://localhost:8081',
     'capacitor://localhost',
@@ -170,8 +179,10 @@ if (process.env.NODE_ENV !== 'production') {
   );
 }
 
-logger.info(`CORS configuration initialized with ${allowedOrigins.length} allowed origins`, 'cors');
-logger.debug(`Allowed origins: ${allowedOrigins.join(', ')}`, 'cors');
+const allowedOriginSet = new Set(allowedOrigins);
+
+logger.info(`CORS configuration initialized with ${allowedOriginSet.size} allowed origins`, 'cors');
+logger.debug(`Allowed origins: ${Array.from(allowedOriginSet).join(', ')}`, 'cors');
 
 const corsOptions = {
   origin: (origin, callback) => {
@@ -183,11 +194,11 @@ const corsOptions = {
       return;
     }
     
-    if (allowedOrigins.includes(origin)) {
+    if (allowedOriginSet.has(origin)) {
       logger.debug(`Origin ${origin} is allowed`, 'cors');
       callback(null, true);
     } else {
-      logger.warn(`Origin ${origin} not allowed. Allowed origins: ${allowedOrigins.join(', ')}`, 'cors');
+      logger.warn(`Origin ${origin} not allowed. Allowed origins: ${Array.from(allowedOriginSet).join(', ')}`, 'cors');
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -272,6 +283,11 @@ app.use('/api/scanner', stockScannerRoutes);
 app.use('/api/accounts', accountRoutes);
 app.use('/api/instrument-templates', instrumentTemplatesRoutes);
 app.use('/api/trade-management', tradeManagementRoutes);
+app.use('/api/execution-runs', executionRunRoutes);
+app.use('/api/client-telemetry', clientTelemetryRoutes);
+if (process.env.NODE_ENV !== 'production' && process.env.ENABLE_TEST_SUPPORT !== 'false') {
+  app.use('/api/test-support', testSupportRoutes);
+}
 app.use('/api/playbooks', playbookRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/symbols', symbolsRoutes);
@@ -391,12 +407,22 @@ app.post('/api/admin/trigger-recovery', requireAdmin, async (req, res) => {
 
 app.use(errorHandler);
 
+// Serve frontend static files (self-hosted mode, no nginx needed)
+const path = require('path');
+const frontendDist = path.resolve(__dirname, '../../frontend/dist');
+app.use(express.static(frontendDist));
+
+// SPA fallback: serve index.html for non-API routes
 app.use((req, res) => {
   if (isV1Request(req)) {
     return sendV1Error(res, 404, 'NOT_FOUND', 'Route not found');
   }
-
-  res.status(404).json({ error: 'Route not found' });
+  // If it's an API route that wasn't matched, return 404 JSON
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: 'Route not found' });
+  }
+  // Otherwise serve the SPA
+  res.sendFile(path.join(frontendDist, 'index.html'));
 });
 
 // Function to start server with migration
@@ -663,6 +689,7 @@ process.on('SIGTERM', async () => {
   watchlistPillarsScheduler.stop();
   await backgroundWorker.stop();
   await shutdownPostHogTelemetry();
+  await shutdownOpenTelemetry();
   process.exit(0);
 });
 
@@ -685,6 +712,7 @@ process.on('SIGINT', async () => {
   watchlistPillarsScheduler.stop();
   await backgroundWorker.stop();
   await shutdownPostHogTelemetry();
+  await shutdownOpenTelemetry();
   process.exit(0);
 });
 

@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 
 const fs = require('fs');
+const crypto = require('crypto');
 const path = require('path');
-const db = require('../src/config/database');
+const { runMigration: applyMigration, ensureMigrationsTable, syncMigrationsSequence } = require('../src/utils/migrate');
 
-async function runMigration() {
+async function runSingleMigration() {
   const migrationFile = process.argv[2];
   
   if (!migrationFile) {
@@ -13,7 +14,7 @@ async function runMigration() {
     process.exit(1);
   }
   
-  const migrationPath = path.join(__dirname, '..', 'src', 'migrations', migrationFile);
+  const migrationPath = path.join(__dirname, '..', 'migrations', migrationFile);
   
   if (!fs.existsSync(migrationPath)) {
     console.error(`Migration file not found: ${migrationPath}`);
@@ -21,11 +22,13 @@ async function runMigration() {
   }
   
   try {
-    console.log(`Running migration: ${migrationFile}`);
-    
     const sql = fs.readFileSync(migrationPath, 'utf8');
-    await db.query(sql);
+    const checksum = crypto.createHash('sha256').update(sql).digest('hex');
     
+    await ensureMigrationsTable();
+    await syncMigrationsSequence();
+    await applyMigration(migrationFile, sql, checksum);
+
     console.log('Migration completed successfully!');
   } catch (error) {
     console.error('Migration failed:', error);
@@ -35,4 +38,4 @@ async function runMigration() {
   }
 }
 
-runMigration();
+runSingleMigration();

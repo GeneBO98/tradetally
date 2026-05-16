@@ -1,0 +1,471 @@
+{
+  "corpusVersion": "broker-import-corpus-v1",
+  "generatedAt": null,
+  "fixtures": [
+    {
+      "name": "lightspeed equities with fees",
+      "broker": "lightspeed",
+      "result": {
+        "tradeCount": 1,
+        "diagnostics": {
+          "totalRows": 2,
+          "parsedRows": 1,
+          "skippedRows": 0,
+          "invalidRows": 0,
+          "skippedReasons": [],
+          "warnings": [],
+          "detectedBroker": "lightspeed",
+          "selectedBroker": "lightspeed",
+          "headerAnalysis": {
+            "foundHeaders": [
+              "Trade Number",
+              "Trade Date",
+              "Execution Time",
+              "Symbol",
+              "Side",
+              "Qty",
+              "Price",
+              "Commission Amount",
+              "FeeSEC",
+              "Buy/Sell",
+              "Principal Amount",
+              "NET Amount"
+            ],
+            "recognizedAs": "lightspeed"
+          }
+        },
+        "trades": [
+          {
+            "symbol": "AAPL",
+            "side": "long",
+            "quantity": 100,
+            "entryPrice": 150,
+            "exitPrice": 155,
+            "entryTime": "2025-07-04T13:30:00.000Z",
+            "exitTime": "2025-07-04T14:00:00.000Z",
+            "pnl": 497.98,
+            "commission": 2.02,
+            "executions": [
+              {
+                "action": "buy",
+                "quantity": 100,
+                "price": 150,
+                "datetime": "2025-07-04T13:30:00.000Z"
+              },
+              {
+                "action": "sell",
+                "quantity": 100,
+                "price": 155,
+                "datetime": "2025-07-04T14:00:00.000Z"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "interactive brokers activity futures-style timestamp",
+      "broker": "ibkr",
+      "result": {
+        "tradeCount": 1,
+        "diagnostics": {
+          "totalRows": 2,
+          "parsedRows": 1,
+          "skippedRows": 0,
+          "invalidRows": 0,
+          "skippedReasons": [],
+          "warnings": [],
+          "detectedBroker": "ibkr",
+          "selectedBroker": "ibkr",
+          "headerAnalysis": {
+            "foundHeaders": [
+              "Symbol",
+              "Date/Time",
+              "Quantity",
+              "Price",
+              "Commission",
+              "Fees"
+            ],
+            "recognizedAs": "ibkr"
+          }
+        },
+        "trades": [
+          {
+            "symbol": "MESM26",
+            "side": "long",
+            "instrumentType": "future",
+            "quantity": 1,
+            "entryPrice": 5300.25,
+            "exitPrice": 5305.25,
+            "entryTime": "2025-01-01T09:30:00",
+            "exitTime": "2025-01-01T10:00:00",
+            "pnl": 22.5,
+            "commission": 2.5,
+            "executions": [
+              {
+                "action": "buy",
+                "quantity": 1,
+                "price": 5300.25,
+                "datetime": "2025-01-01T09:30:00",
+                "orderId": null
+              },
+              {
+                "action": "sell",
+                "quantity": 1,
+                "price": 5305.25,
+                "datetime": "2025-01-01T10:00:00",
+                "orderId": null
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "webull option round trip",
+      "broker": "webull",
+      "result": {
+        "tradeCount": 1,
+        "diagnostics": {
+          "totalRows": 2,
+          "parsedRows": 1,
+          "skippedRows": 0,
+          "invalidRows": 0,
+          "skippedReasons": [],
+          "warnings": [],
+          "detectedBroker": "webull",
+          "selectedBroker": "webull",
+          "headerAnalysis": {
+            "foundHeaders": [
+              "Symbol",
+              "B/S",
+              "Side Type",
+              "Qty",
+              "Filled Qty",
+              "Filled Avg Price",
+              "Filled Time",
+              "Status"
+            ],
+            "recognizedAs": "webull"
+          }
+        },
+        "trades": [
+          {
+            "symbol": "AAPL",
+            "side": "long",
+            "instrumentType": "option",
+            "quantity": 1,
+            "entryPrice": 5,
+            "exitPrice": 6,
+            "entryTime": "2025-01-01T09:30:00",
+            "exitTime": "2025-01-02T10:00:00",
+            "pnl": 100,
+            "commission": 0,
+            "executions": [
+              {
+                "action": "buy",
+                "quantity": 1,
+                "price": 5,
+                "datetime": "2025-01-01T09:30:00"
+              },
+              {
+                "action": "sell",
+                "quantity": 1,
+                "price": 6,
+                "datetime": "2025-01-02T10:00:00"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "tradingview performance export",
+      "broker": "tradingview",
+      "result": {
+        "tradeCount": 1,
+        "diagnostics": {
+          "totalRows": 1,
+          "parsedRows": 1,
+          "skippedRows": 0,
+          "invalidRows": 0,
+          "skippedReasons": [],
+          "warnings": [],
+          "detectedBroker": "tradingview",
+          "selectedBroker": "tradingview",
+          "headerAnalysis": {
+            "foundHeaders": [
+              "buyFillId",
+              "sellFillId",
+              "symbol",
+              "qty",
+              "buyPrice",
+              "sellPrice",
+              "boughtTimestamp",
+              "soldTimestamp",
+              "pnl"
+            ],
+            "recognizedAs": "tradingview"
+          }
+        },
+        "trades": [
+          {
+            "symbol": "AAPL",
+            "side": "long",
+            "instrumentType": "stock",
+            "quantity": 100,
+            "entryPrice": 150,
+            "exitPrice": 155,
+            "entryTime": "2025-01-01T09:30:00",
+            "exitTime": "2025-01-02T10:00:00",
+            "pnl": 500,
+            "commission": 0,
+            "executions": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "failed row diagnostics",
+      "broker": "generic",
+      "result": {
+        "tradeCount": 0,
+        "diagnostics": {
+          "totalRows": 1,
+          "parsedRows": 0,
+          "skippedRows": 0,
+          "invalidRows": 1,
+          "skippedReasons": [
+            {
+              "row": 1,
+              "reason": "Invalid trade: missing required fields (symbol, date, price, or quantity)"
+            }
+          ],
+          "warnings": [
+            "High skip rate: 100.0% of rows were skipped or invalid"
+          ],
+          "detectedBroker": "generic",
+          "selectedBroker": "generic",
+          "headerAnalysis": {
+            "foundHeaders": [
+              "Symbol",
+              "Date",
+              "Price",
+              "Quantity"
+            ],
+            "recognizedAs": "generic"
+          }
+        },
+        "trades": []
+      }
+    },
+    {
+      "name": "partial close fixture",
+      "broker": "ibkr",
+      "result": {
+        "tradeCount": 1,
+        "diagnostics": {
+          "totalRows": 3,
+          "parsedRows": 1,
+          "skippedRows": 0,
+          "invalidRows": 0,
+          "skippedReasons": [],
+          "warnings": [],
+          "detectedBroker": "ibkr",
+          "selectedBroker": "ibkr",
+          "headerAnalysis": {
+            "foundHeaders": [
+              "Account",
+              "Symbol",
+              "Date/Time",
+              "Quantity",
+              "Price",
+              "Commission",
+              "Fees",
+              "Order ID"
+            ],
+            "recognizedAs": "ibkr"
+          }
+        },
+        "trades": [
+          {
+            "symbol": "AAPL",
+            "side": "long",
+            "instrumentType": "stock",
+            "quantity": 100,
+            "entryPrice": 150,
+            "exitPrice": 155.6,
+            "entryTime": "2025-01-01T09:30:00",
+            "exitTime": "2025-01-01T11:00:00",
+            "pnl": 558,
+            "commission": 2,
+            "executions": [
+              {
+                "action": "buy",
+                "quantity": 100,
+                "price": 150,
+                "datetime": "2025-01-01T09:30:00",
+                "orderId": "1"
+              },
+              {
+                "action": "sell",
+                "quantity": 40,
+                "price": 155,
+                "datetime": "2025-01-01T10:00:00",
+                "orderId": "2"
+              },
+              {
+                "action": "sell",
+                "quantity": 60,
+                "price": 156,
+                "datetime": "2025-01-01T11:00:00",
+                "orderId": "3"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "same-timestamp reversal fixture",
+      "broker": "ibkr",
+      "result": {
+        "tradeCount": 2,
+        "diagnostics": {
+          "totalRows": 4,
+          "parsedRows": 2,
+          "skippedRows": 0,
+          "invalidRows": 0,
+          "skippedReasons": [],
+          "warnings": [],
+          "detectedBroker": "ibkr",
+          "selectedBroker": "ibkr",
+          "headerAnalysis": {
+            "foundHeaders": [
+              "Symbol",
+              "Date/Time",
+              "Quantity",
+              "Price",
+              "Commission",
+              "Fees",
+              "Order ID"
+            ],
+            "recognizedAs": "ibkr"
+          }
+        },
+        "trades": [
+          {
+            "symbol": "AAPL",
+            "side": "long",
+            "instrumentType": "stock",
+            "quantity": 100,
+            "entryPrice": 150,
+            "exitPrice": 155,
+            "entryTime": "2025-01-01T09:30:00",
+            "exitTime": "2025-01-01T10:00:00",
+            "pnl": 498,
+            "commission": 2,
+            "executions": [
+              {
+                "action": "buy",
+                "quantity": 100,
+                "price": 150,
+                "datetime": "2025-01-01T09:30:00",
+                "orderId": "1"
+              },
+              {
+                "action": "sell",
+                "quantity": 100,
+                "price": 155,
+                "datetime": "2025-01-01T10:00:00",
+                "orderId": "2"
+              }
+            ]
+          },
+          {
+            "symbol": "AAPL",
+            "side": "short",
+            "instrumentType": "stock",
+            "quantity": 100,
+            "entryPrice": 156,
+            "exitPrice": 154,
+            "entryTime": "2025-01-01T10:00:00",
+            "exitTime": "2025-01-01T10:00:00",
+            "pnl": 198,
+            "commission": 2,
+            "executions": [
+              {
+                "action": "sell",
+                "quantity": 100,
+                "price": 156,
+                "datetime": "2025-01-01T10:00:00",
+                "orderId": "3"
+              },
+              {
+                "action": "buy",
+                "quantity": 100,
+                "price": 154,
+                "datetime": "2025-01-01T10:00:00",
+                "orderId": "4"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "options assignment fixture",
+      "broker": "tastytrade",
+      "result": {
+        "tradeCount": 1,
+        "diagnostics": {
+          "totalRows": 2,
+          "parsedRows": 1,
+          "skippedRows": 0,
+          "invalidRows": 0,
+          "skippedReasons": [],
+          "warnings": [],
+          "detectedBroker": "tastytrade",
+          "selectedBroker": "tastytrade",
+          "headerAnalysis": {
+            "foundHeaders": [
+              "Date",
+              "Type",
+              "Action",
+              "Symbol",
+              "Instrument Type",
+              "Description",
+              "Value",
+              "Quantity",
+              "Average Price",
+              "Commissions",
+              "Fees",
+              "Root Symbol",
+              "Underlying Symbol",
+              "Expiration Date",
+              "Strike Price",
+              "Call or Put"
+            ],
+            "recognizedAs": "tastytrade"
+          }
+        },
+        "trades": [
+          {
+            "symbol": "AAPL",
+            "side": "short",
+            "instrumentType": "option",
+            "quantity": 1,
+            "entryPrice": 2.5,
+            "entryTime": "2025-01-19T05:00:00.000Z",
+            "commission": 1,
+            "executions": [
+              {
+                "quantity": 1
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

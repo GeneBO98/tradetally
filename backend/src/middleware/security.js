@@ -65,13 +65,12 @@ const securityMiddleware = () => {
         setAllHeaders: true, // Set all CSP headers for broader compatibility
       },
       
-      // OWASP HSTS Configuration
-      // Reference: https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Strict_Transport_Security_Cheat_Sheet.html
-      hsts: {
-        maxAge: 63072000, // 2 years (OWASP recommended: long max-age)
-        includeSubDomains: true, // Apply to all subdomains
-        preload: process.env.NODE_ENV === 'production' // Only preload in production
-      },
+      // OWASP HSTS Configuration - disabled for local HTTP
+      hsts: process.env.REQUIRE_HTTPS === 'true' ? {
+        maxAge: 63072000,
+        includeSubDomains: true,
+        preload: process.env.NODE_ENV === 'production'
+      } : false,
       
       // Frame Options (Defense in depth - CSP frameAncestors is preferred)
       // CWE-1021 & WSTG-v42-CLNT-09 mitigation
@@ -122,8 +121,10 @@ const securityMiddleware = () => {
       // Cross-Origin Opener Policy (OWASP recommended) - WASC-15 compliance
       res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
       
-      // Cross-Origin Embedder Policy (WASC-15 mitigation)
-      res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+      // Cross-Origin Embedder Policy (WASC-15 mitigation) - skip for local HTTP
+      if (process.env.REQUIRE_HTTPS === 'true') {
+        res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+      }
       
       // Server information hiding (OWASP recommended) - CWE-693 mitigation
       res.removeHeader('X-Powered-By');

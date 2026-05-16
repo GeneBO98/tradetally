@@ -1,0 +1,83 @@
+{
+  "006": [
+    "006_add_mae_mfe_columns.sql",
+    "006_trade_view_compat_columns.sql"
+  ],
+  "012": [
+    "012_add_missing_export_fields.sql",
+    "012_drop_trade_health_view_before_price_precision.sql"
+  ],
+  "019": [
+    "019_add_user_tiers_and_subscriptions.sql",
+    "019_fix_trade_dates_timezone.sql"
+  ],
+  "020": [
+    "020_add_stock_splits_tracking.sql",
+    "020_create_cusip_mappings.sql",
+    "020_set_admin_users_to_pro_tier.sql"
+  ],
+  "022": [
+    "022_add_behavioral_analytics_feature.sql",
+    "022_create_overconfidence_analytics.sql"
+  ],
+  "023": [
+    "023_create_loss_aversion_analytics.sql",
+    "023_create_tick_data_table.sql"
+  ],
+  "025": [
+    "025_create_watchlist_system.sql",
+    "025_drop_compat_confidence_before_trade_confidence.sql"
+  ],
+  "026": [
+    "026_add_trade_confidence_field.sql",
+    "026_create_gamification_system.sql"
+  ],
+  "029": [
+    "029_add_avg_missed_profit_percent.sql",
+    "029_add_easy_achievements.sql"
+  ],
+  "061": [
+    "061_create_health_data_tables.sql",
+    "061_create_news_cache.sql"
+  ],
+  "064": [
+    "064_add_auto_closed_flag.sql",
+    "064_fix_pnl_field_overflow.sql"
+  ],
+  "101": [
+    "101_add_apple_transactions_table.sql",
+    "101_update_feature_tiers.sql"
+  ],
+  "103": [
+    "103_add_gamification_profile.sql",
+    "103_create_stock_valuations.sql"
+  ],
+  "105": [
+    "105_add_broker_fee_settings.sql",
+    "105_drop_broker_fee_instrument_constraint_before_readd.sql"
+  ],
+  "112": [
+    "112_add_last_login_at_to_users.sql",
+    "112_add_more_sync_frequencies.sql"
+  ],
+  "122": [
+    "122_fix_confidence_score_overflow.sql",
+    "122_fix_quarterly_financials_cache.sql"
+  ],
+  "126": [
+    "126_add_marketing_consent.sql",
+    "126_admin_settings_key_value_compat.sql"
+  ],
+  "140": [
+    "140_add_dashboard_layout.sql",
+    "140_trade_status_index_compat.sql"
+  ],
+  "165": [
+    "165_create_user_acquisition.sql",
+    "165_widen_dashboard_news_cache_symbol.sql"
+  ],
+  "172": [
+    "172_create_twenty_person_sync_map.sql",
+    "172_drop_trade_status_index_compat.sql"
+  ]
+}

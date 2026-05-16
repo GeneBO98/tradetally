@@ -1,8 +1,9 @@
 <template>
-  <div class="relative" ref="dropdownRef">
+  <div class="relative" ref="dropdownRef" data-testid="global-account-selector">
     <!-- Trigger Button -->
     <button
       @click="toggleDropdown"
+      data-testid="global-account-selector-trigger"
       class="flex items-center space-x-2 px-3 py-2 text-sm rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
       :title="selectedAccountLabel"
     >
@@ -37,6 +38,7 @@
       <div
         v-if="isOpen"
         class="absolute right-0 mt-2 w-72 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 dark:ring-gray-700 z-50"
+        data-testid="global-account-selector-menu"
       >
         <div class="py-1" role="menu">
           <!-- Header -->
@@ -47,6 +49,7 @@
           <!-- All Accounts Option -->
           <button
             @click="handleClearAccount"
+            data-testid="account-option-all"
             class="w-full text-left px-4 py-2 text-sm flex items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
             :class="!isFiltered ? 'text-primary-600 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300'"
             role="menuitem"
@@ -58,6 +61,7 @@
           <!-- Unsorted Option (trades without account) -->
           <button
             @click="handleSelectUnsorted"
+            data-testid="account-option-unsorted"
             class="w-full text-left px-4 py-2 text-sm flex items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
             :class="selectedAccount === UNSORTED_ACCOUNT ? 'text-primary-600 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300'"
             role="menuitem"
@@ -85,6 +89,7 @@
               v-for="account in accounts"
               :key="account.value"
               @click="handleSelectAccount(account.value)"
+              :data-testid="`account-option-${account.value}`"
               class="w-full text-left px-4 py-2 text-sm flex items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
               :class="selectedAccount === account.value ? 'text-primary-600 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300'"
               role="menuitem"

@@ -737,3 +737,4 @@ async function sendPasswordResetEmail(email, token) {
 }
 
 module.exports = authController;
+module.exports.sendVerificationEmailInBackground = sendVerificationEmailInBackground;

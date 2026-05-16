@@ -1,6 +1,7 @@
 const User = require('../../models/User');
 const refreshTokenService = require('../../services/refreshToken.service');
 const deviceService = require('../../services/device.service');
+const { sendVerificationEmailInBackground } = require('../auth.controller');
 const crypto = require('crypto');
 
 // Auto-generate a username from email, with random suffix if taken
@@ -102,7 +103,10 @@ const authV1Controller = {
         };
       }
 
-      // TODO: Send verification email if needed (reuse existing logic)
+      // Send verification email (matches guard used in main auth.controller.js)
+      if (emailConfigured && !isFirstUser && verificationToken) {
+        sendVerificationEmailInBackground(email, verificationToken);
+      }
 
       res.status(201).json({
         message: isVerified ? 'Registration successful' : 'Registration successful. Please verify your email.',

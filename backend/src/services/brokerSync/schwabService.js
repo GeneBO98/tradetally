@@ -733,8 +733,8 @@ class SchwabService {
     // Convert grouped data back to trade format
     const groupedTrades = [];
     for (const group of groupedMap.values()) {
-      const entryPrice = group.hasEntry ? Math.round((group.totalEntryValue / group.entryQuantity) * 10000) / 10000 : null;
-      const exitPrice = group.hasExit ? Math.round((group.totalExitValue / group.exitQuantity) * 10000) / 10000 : null;
+      const entryPrice = group.hasEntry ? group.totalEntryValue / group.entryQuantity : null;
+      const exitPrice = group.hasExit ? group.totalExitValue / group.exitQuantity : null;
 
       // Recalculate P&L if we have both entry and exit
       let pnl = group.totalPnL;
@@ -751,9 +751,9 @@ class SchwabService {
         entryTime: group.earliestEntryTime,
         exitTime: group.latestExitTime,
         tradeDate: group.tradeDate,
-        commission: Math.round(group.totalCommission * 100) / 100,
-        fees: Math.round(group.totalFees * 100) / 100,
-        pnl: pnl !== null ? Math.round(pnl * 100) / 100 : null,
+        commission: group.totalCommission,
+        fees: group.totalFees,
+        pnl,
         broker: group.broker,
         instrumentType: group.instrumentType,
         optionType: group.optionType,
@@ -808,7 +808,7 @@ class SchwabService {
     const diff = exitPrice - entryPrice;
     const pnl = side === 'long' ? diff * quantity * multiplier : -diff * quantity * multiplier;
 
-    return Math.round(pnl * 100) / 100;
+    return pnl;
   }
 
   /**

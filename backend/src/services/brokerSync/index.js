@@ -25,28 +25,41 @@ class BrokerSyncService {
    * @param {object} options - Sync options
    */
   async syncConnection(connectionId, options = {}) {
-    const { syncType = 'manual', startDate, endDate } = options;
+    const { syncType = 'manual', startDate, endDate, preclaimed = false } = options;
 
-    // Get connection with credentials
-    const connection = await BrokerConnection.findById(connectionId, true);
-    if (!connection) {
-      throw new Error('Connection not found');
+    let claim = null;
+    const workerId = BrokerConnection.getSyncWorkerId();
+    if (!preclaimed) {
+      claim = await BrokerConnection.claimForSync(connectionId, workerId);
+      if (!claim) {
+        throw new Error('Connection is already being synced by another worker');
+      }
     }
 
-    if (connection.connectionStatus !== 'active') {
-      throw new Error(`Cannot sync: connection status is ${connection.connectionStatus}`);
-    }
-
-    // Create sync log
-    const syncLog = await BrokerConnection.createSyncLog(
-      connectionId,
-      connection.userId,
-      syncType,
-      startDate,
-      endDate
-    );
-
+    let connection = null;
+    let syncLog = null;
     try {
+      // Get connection with credentials
+      connection = await BrokerConnection.findById(connectionId, true);
+      if (!connection) {
+        throw new Error('Connection not found');
+      }
+
+      if (connection.connectionStatus !== 'active') {
+        throw new Error(`Cannot sync: connection status is ${connection.connectionStatus}`);
+      }
+
+      await BrokerConnection.heartbeatSyncClaim(connectionId, workerId);
+
+      // Create sync log
+      syncLog = await BrokerConnection.createSyncLog(
+        connectionId,
+        connection.userId,
+        syncType,
+        startDate,
+        endDate
+      );
+
       let result;
 
       // Route to appropriate broker service
@@ -71,9 +84,13 @@ class BrokerSyncService {
           throw new Error(`Unknown broker type: ${connection.brokerType}`);
       }
 
+      await BrokerConnection.heartbeatSyncClaim(connectionId, workerId);
+
       // Auto-close expired options after importing broker data
       const expiredClosed = await this.closeExpiredOptions(connection.userId);
       result.expiredClosed = expiredClosed;
+
+      await BrokerConnection.heartbeatSyncClaim(connectionId, workerId);
 
       // Update sync log with results
       await BrokerConnection.updateSyncLog(syncLog.id, 'completed', {
@@ -106,18 +123,24 @@ class BrokerSyncService {
       console.error(`[BROKER-SYNC] Sync failed:`, error.message);
 
       // Update sync log with error
-      await BrokerConnection.updateSyncLog(syncLog.id, 'failed', {
-        errorMessage: error.message
-      });
+      if (syncLog?.id) {
+        await BrokerConnection.updateSyncLog(syncLog.id, 'failed', {
+          errorMessage: error.message
+        });
+      }
 
       // Update connection failure status
-      await BrokerConnection.updateAfterFailure(connectionId, error.message);
+      if (connection) {
+        await BrokerConnection.updateAfterFailure(connectionId, error.message);
+      }
 
       return {
         success: false,
-        syncLogId: syncLog.id,
+        syncLogId: syncLog?.id || null,
         error: error.message
       };
+    } finally {
+      await BrokerConnection.releaseSyncClaim(connectionId);
     }
   }
 
@@ -137,7 +160,8 @@ class BrokerSyncService {
         console.log(`[BROKER-SYNC] Processing scheduled sync for connection ${connection.id}`);
 
         const result = await this.syncConnection(connection.id, {
-          syncType: 'scheduled'
+          syncType: 'scheduled',
+          preclaimed: true
         });
 
         results.push({
@@ -235,14 +259,14 @@ class BrokerSyncService {
           const closingAction = trade.side === 'long' ? 'sell' : 'buy';
           executions.push({
             action: closingAction,
-            quantity: parseInt(trade.quantity),
+            quantity: parseFloat(trade.quantity),
             price: 0,
             datetime: exitTime,
             fees: 0,
             note: 'Option expired worthless (auto-closed by broker sync)'
           });
 
-          const quantity = parseInt(trade.quantity);
+          const quantity = parseFloat(trade.quantity);
           const entryPrice = parseFloat(trade.entry_price);
           const contractSize = trade.contract_size || 100;
 

@@ -1886,6 +1886,7 @@ const tradeController = {
 
             // Collect unique account identifiers from parsed trades
             const accountIdentifiers = new Set();
+            const accountIdentifierCounts = new Map();
             logger.logImport(`[ACCOUNTS] Checking ${trades.length} trades for account identifiers`);
             trades.forEach((trade, index) => {
               if (index < 3) {
@@ -1893,6 +1894,10 @@ const tradeController = {
               }
               if (trade.accountIdentifier) {
                 accountIdentifiers.add(trade.accountIdentifier);
+                accountIdentifierCounts.set(
+                  trade.accountIdentifier,
+                  (accountIdentifierCounts.get(trade.accountIdentifier) || 0) + 1
+                );
               }
             });
 
@@ -1921,9 +1926,16 @@ const tradeController = {
 
               for (const identifier of accountIdentifiers) {
                 if (!existingIdentifiers.has(identifier)) {
+                  await Account.recordImportReconciliation(req.user.id, {
+                    importId,
+                    accountIdentifier: identifier,
+                    broker: broker !== 'auto' && broker !== 'generic' ? broker : null,
+                    status: 'pending',
+                    sampleCount: accountIdentifierCounts.get(identifier) || 0
+                  });
                   try {
                     const brokerName = brokerNames[broker] || 'Trading';
-                    await Account.create(req.user.id, {
+                    const account = await Account.create(req.user.id, {
                       accountName: `${brokerName} Account`,
                       accountIdentifier: identifier,
                       broker: broker !== 'auto' && broker !== 'generic' ? broker : null,
@@ -1931,10 +1943,34 @@ const tradeController = {
                       initialBalanceDate: new Date().toISOString().split('T')[0],
                       isPrimary: existingAccounts.length === 0 && accountIdentifiers.size === 1
                     });
+                    await Account.recordImportReconciliation(req.user.id, {
+                      importId,
+                      accountIdentifier: identifier,
+                      broker: broker !== 'auto' && broker !== 'generic' ? broker : null,
+                      status: 'resolved',
+                      resolvedAccountId: account.id,
+                      sampleCount: 0
+                    });
                     logger.logImport(`[ACCOUNTS] Auto-created account for identifier: ${identifier}`);
                   } catch (createError) {
+                    await Account.recordImportReconciliation(req.user.id, {
+                      importId,
+                      accountIdentifier: identifier,
+                      broker: broker !== 'auto' && broker !== 'generic' ? broker : null,
+                      status: 'pending',
+                      sampleCount: 0,
+                      lastError: createError.message
+                    });
                     logger.logImport(`[ACCOUNTS] Failed to auto-create account for ${identifier}: ${createError.message}`);
                   }
+                } else {
+                  await Account.recordImportReconciliation(req.user.id, {
+                    importId,
+                    accountIdentifier: identifier,
+                    broker: broker !== 'auto' && broker !== 'generic' ? broker : null,
+                    status: 'resolved',
+                    sampleCount: accountIdentifierCounts.get(identifier) || 0
+                  });
                 }
               }
             } else {

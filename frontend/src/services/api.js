@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { reportApiError } from '@/services/telemetry'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
@@ -39,6 +40,9 @@ api.interceptors.response.use(
     return response
   },
   error => {
+    error.traceId = error.response?.headers?.['x-request-id'] || error.response?.data?.requestId || null
+    reportApiError(error)
+
     // Handle 429 Too Many Requests
     if (error.response?.status === 429) {
       const retryAfter = parseInt(error.response.headers['retry-after']) || 60

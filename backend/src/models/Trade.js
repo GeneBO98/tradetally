@@ -20,6 +20,75 @@ function roundToDbPrecision(value, decimals = 8) {
   return Math.round(num * multiplier) / multiplier;
 }
 
+function extractLocalDate(timestamp) {
+  if (!timestamp) return null;
+  if (timestamp instanceof Date) return timestamp.toISOString().split('T')[0];
+  return String(timestamp).split('T')[0];
+}
+
+const TRADE_UPDATE_COLUMNS = Object.freeze({
+  symbol: 'symbol',
+  tradeDate: 'trade_date',
+  entryTime: 'entry_time',
+  exitTime: 'exit_time',
+  entryPrice: 'entry_price',
+  exitPrice: 'exit_price',
+  quantity: 'quantity',
+  side: 'side',
+  commission: 'commission',
+  entryCommission: 'entry_commission',
+  exitCommission: 'exit_commission',
+  fees: 'fees',
+  pnl: 'pnl',
+  pnlPercent: 'pnl_percent',
+  notes: 'notes',
+  isPublic: 'is_public',
+  broker: 'broker',
+  strategy: 'strategy',
+  setup: 'setup',
+  tags: 'tags',
+  mae: 'mae',
+  mfe: 'mfe',
+  confidence: 'confidence',
+  strategyConfidence: 'strategy_confidence',
+  classificationMethod: 'classification_method',
+  classificationMetadata: 'classification_metadata',
+  manualOverride: 'manual_override',
+  newsEvents: 'news_events',
+  hasNews: 'has_news',
+  newsSentiment: 'news_sentiment',
+  newsCheckedAt: 'news_checked_at',
+  instrumentType: 'instrument_type',
+  strikePrice: 'strike_price',
+  expirationDate: 'expiration_date',
+  optionType: 'option_type',
+  contractSize: 'contract_size',
+  underlyingSymbol: 'underlying_symbol',
+  contractMonth: 'contract_month',
+  contractYear: 'contract_year',
+  tickSize: 'tick_size',
+  pointValue: 'point_value',
+  underlyingAsset: 'underlying_asset',
+  importId: 'import_id',
+  originalCurrency: 'original_currency',
+  exchangeRate: 'exchange_rate',
+  originalEntryPriceCurrency: 'original_entry_price_currency',
+  originalExitPriceCurrency: 'original_exit_price_currency',
+  originalPnlCurrency: 'original_pnl_currency',
+  originalCommissionCurrency: 'original_commission_currency',
+  originalFeesCurrency: 'original_fees_currency',
+  stopLoss: 'stop_loss',
+  takeProfit: 'take_profit',
+  takeProfitTargets: 'take_profit_targets',
+  rValue: 'r_value',
+  chartUrl: 'chart_url',
+  brokerConnectionId: 'broker_connection_id',
+  accountIdentifier: 'account_identifier',
+  account_identifier: 'account_identifier',
+  conid: 'conid',
+  manualTargetHitFirst: 'manual_target_hit_first'
+});
+
 class Trade {
   /**
    * Ensure tags exist in the tags table
@@ -135,7 +204,7 @@ class Trade {
     if (!finalTradeDate) {
       // Extract date from timestamp (YYYY-MM-DD format)
       const timestampToUse = cleanExitTime || finalEntryTime;
-      finalTradeDate = timestampToUse.split('T')[0];
+      finalTradeDate = extractLocalDate(timestampToUse);
     }
 
     // Auto-assign strategy if not provided by user
@@ -1511,7 +1580,7 @@ class Trade {
 
     // Only update trade_date when entryTime changes (trade_date should always reflect entry date)
     if (updates.entryTime) {
-      updates.tradeDate = new Date(updates.entryTime).toISOString().split('T')[0];
+      updates.tradeDate = extractLocalDate(updates.entryTime);
     }
 
     // Check if user is manually setting strategy - do this first to prevent re-classification from overwriting it
@@ -1698,8 +1767,13 @@ class Trade {
     // Process all other fields
     Object.entries(updates).forEach(([key, value]) => {
       if (key !== 'id' && key !== 'user_id' && key !== 'created_at') {
-        // Convert camelCase to snake_case for database columns
-        const dbKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+        const dbKey = TRADE_UPDATE_COLUMNS[key];
+        if (!dbKey) {
+          const error = new Error(`Unsupported trade update field: ${key}`);
+          error.status = 400;
+          throw error;
+        }
+
         fields.push(`${dbKey} = $${paramCount}`);
 
         // Handle JSON/JSONB fields that need serialization
@@ -1856,6 +1930,12 @@ class Trade {
     // Ensure tags exist in tags table if tags are being updated
     if (updates.tags && updates.tags.length > 0) {
       await this.ensureTagsExist(userId, updates.tags);
+    }
+
+    if (fields.length === 0) {
+      const error = new Error('No trade fields changed');
+      error.status = 400;
+      throw error;
     }
 
     values.push(id);
@@ -3334,7 +3414,12 @@ class Trade {
     for (const trade of trades) {
       let executions = trade.executions;
       if (typeof executions === 'string') {
-        try { executions = JSON.parse(executions); } catch { continue; }
+        try {
+          executions = JSON.parse(executions);
+        } catch (err) {
+          logger.warn(`[PARTIAL-EXIT] Dropping trade ${trade.id}: malformed executions JSON (${err.message})`);
+          continue;
+        }
       }
       if (!Array.isArray(executions) || executions.length === 0) continue;
 

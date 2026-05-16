@@ -225,7 +225,7 @@ router.post(
   idempotencyMiddleware({ routeKey: '/api/v1/trades/bulk' }),
   tradeV1Controller.bulkCreateTrades
 );
-router.put('/bulk', flexibleAuth, requireApiScope('trades:write'), tradeV1Controller.bulkUpdateTrades);
+router.put('/bulk', flexibleAuth, requireApiScope('trades:write'), validate(schemas.bulkUpdateTrades), tradeV1Controller.bulkUpdateTrades);
 router.delete('/bulk', flexibleAuth, requireApiScope('trades:write'), tradeV1Controller.bulkDeleteTrades);
 
 // Import/Export (JWT only - internal app use)

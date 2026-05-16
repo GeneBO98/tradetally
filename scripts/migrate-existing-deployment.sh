@@ -103,16 +103,16 @@ else
             echo -e "${BLUE}   Running migration: $filename${NC}"
             
             # Check if migration was already applied (basic check)
-            if docker exec "$DB_CONTAINER" psql -U trader -d tradetally -c "SELECT 1 FROM information_schema.tables WHERE table_name = 'migrations'" | grep -q "1 row"; then
+            if docker exec "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U trader -d tradetally -c "SELECT 1 FROM information_schema.tables WHERE table_name = 'migrations'" | grep -q "1 row"; then
                 # Migrations table exists, check if this migration was applied
-                if docker exec "$DB_CONTAINER" psql -U trader -d tradetally -c "SELECT 1 FROM migrations WHERE filename = '$filename'" | grep -q "1 row"; then
+                if docker exec "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U trader -d tradetally -c "SELECT 1 FROM migrations WHERE filename = '$filename'" | grep -q "1 row"; then
                     echo -e "${YELLOW}     Skipping $filename (already applied)${NC}"
                     continue
                 fi
             fi
             
             # Run the migration
-            docker exec -i "$DB_CONTAINER" psql -U trader -d tradetally < "$migration_file"
+            docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U trader -d tradetally < "$migration_file"
             echo -e "${GREEN}     [OK] $filename applied${NC}"
         fi
     done

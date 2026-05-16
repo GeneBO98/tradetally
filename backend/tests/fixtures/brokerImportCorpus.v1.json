@@ -1,0 +1,51 @@
+{
+  "corpusVersion": "broker-import-corpus-v1",
+  "contractFixtures": [
+    {
+      "name": "lightspeed equities with fees",
+      "broker": "lightspeed",
+      "csv": "Trade Number,Trade Date,Execution Time,Symbol,Side,Qty,Price,Commission Amount,FeeSEC,Buy/Sell,Principal Amount,NET Amount\n900001,07/04/2025,09:30,AAPL,B,100,150.00,1.00,0.01,Long Buy,15000.00,14998.99\n900002,07/04/2025,10:00,AAPL,S,100,155.00,1.00,0.01,Long Sell,-15500.00,-15501.01",
+      "expect": { "symbol": "AAPL", "side": "long" }
+    },
+    {
+      "name": "interactive brokers activity futures-style timestamp",
+      "broker": "ibkr",
+      "csv": "Symbol,Date/Time,Quantity,Price,Commission,Fees\nMESM26,20250101;093000,1,5300.25,-1.25,0.00\nMESM26,20250101;100000,-1,5305.25,-1.25,0.00",
+      "expect": { "symbol": "MESM26" }
+    },
+    {
+      "name": "webull option round trip",
+      "broker": "webull",
+      "csv": "Symbol,B/S,Side Type,Qty,Filled Qty,Filled Avg Price,Filled Time,Status\nAAPL230120C00150000,Buy,Long,1,1,5.00,01/01/2025 09:30,Filled\nAAPL230120C00150000,Sell,Long,1,1,6.00,01/02/2025 10:00,Filled",
+      "expect": { "symbol": "AAPL", "instrumentType": "option" }
+    },
+    {
+      "name": "tradingview performance export",
+      "broker": "tradingview",
+      "csv": "buyFillId,sellFillId,symbol,qty,buyPrice,sellPrice,boughtTimestamp,soldTimestamp,pnl\n1,2,AAPL,100,150.00,155.00,2025-01-01 09:30:00,2025-01-02 10:00:00,500.00",
+      "expect": { "symbol": "AAPL" }
+    }
+  ],
+  "edgeCaseFixtures": [
+    {
+      "name": "failed row diagnostics",
+      "broker": "generic",
+      "csv": "Symbol,Date,Price,Quantity\nAAPL,not-a-date,150.00,100"
+    },
+    {
+      "name": "partial close fixture",
+      "broker": "ibkr",
+      "csv": "Account,Symbol,Date/Time,Quantity,Price,Commission,Fees,Order ID\nU1234567,AAPL,20250101;093000,100,150.00,-1.00,0.00,1\nU1234567,AAPL,20250101;100000,-40,155.00,-0.40,0.00,2\nU1234567,AAPL,20250101;110000,-60,156.00,-0.60,0.00,3"
+    },
+    {
+      "name": "same-timestamp reversal fixture",
+      "broker": "ibkr",
+      "csv": "Symbol,Date/Time,Quantity,Price,Commission,Fees,Order ID\nAAPL,20250101;093000,100,150.00,-1.00,0.00,1\nAAPL,20250101;100000,-100,155.00,-1.00,0.00,2\nAAPL,20250101;100000,100,154.00,-1.00,0.00,4\nAAPL,20250101;100000,-100,156.00,-1.00,0.00,3"
+    },
+    {
+      "name": "options assignment fixture",
+      "broker": "tastytrade",
+      "csv": "Date,Type,Action,Symbol,Instrument Type,Description,Value,Quantity,Average Price,Commissions,Fees,Root Symbol,Underlying Symbol,Expiration Date,Strike Price,Call or Put\n01/19/2025,Trade,Sell to Open,AAPL250117P00150000,Equity Option,AAPL 01/17/25 Put 150.00,-250.00,1,2.50,-1.00,0.00,AAPL,AAPL,01/17/2025,150.00,Put\n01/20/2025,Assignment,Assigned,AAPL250117P00150000,Equity Option,AAPL 01/17/25 Put 150.00,0.00,1,0.00,0.00,0.00,AAPL,AAPL,01/17/2025,150.00,Put"
+    }
+  ]
+}

@@ -4,6 +4,61 @@ const { requireAdmin } = require('../middleware/auth');
 const stockSplitService = require('../services/stockSplitService');
 const StockSplit = require('../models/StockSplit');
 const logger = require('../utils/logger');
+const BrokerConnection = require('../models/BrokerConnection');
+const executionRunController = require('../controllers/executionRun.controller');
+const operationalMetricsController = require('../controllers/operationalMetrics.controller');
+
+router.get('/execution-runs', requireAdmin, executionRunController.listAdmin);
+router.get('/execution-runs/summary', requireAdmin, executionRunController.adminSummary);
+router.get('/execution-runs/:id/report', requireAdmin, (req, res, next) => {
+  req.adminReport = true;
+  return executionRunController.getReport(req, res, next);
+});
+router.get('/observability/slo', requireAdmin, operationalMetricsController.getSlo);
+router.get('/alerts', requireAdmin, operationalMetricsController.listAlerts);
+router.get('/alerts/audit', requireAdmin, operationalMetricsController.listAlertActionAudits);
+router.get('/alerts/suppression-rules', requireAdmin, operationalMetricsController.listAlertSuppressionRules);
+router.post('/alerts/suppression-rules', requireAdmin, operationalMetricsController.upsertAlertSuppressionRule);
+router.get('/alerts/escalation-destinations', requireAdmin, operationalMetricsController.listAlertEscalationDestinations);
+router.post('/alerts/escalation-destinations', requireAdmin, operationalMetricsController.upsertAlertEscalationDestination);
+router.get('/alerts/escalation-destinations/audits', requireAdmin, operationalMetricsController.listAlertEscalationDestinationAudits);
+router.get('/alerts/escalation-destinations/requests', requireAdmin, operationalMetricsController.listAlertEscalationDestinationRequests);
+router.post('/alerts/escalation-destinations/requests', requireAdmin, operationalMetricsController.requestAlertEscalationDestinationAction);
+router.post('/alerts/escalation-destinations/requests/:id/actions', requireAdmin, operationalMetricsController.runAlertEscalationDestinationRequestAction);
+router.post('/alerts/escalation-destinations/:id/actions', requireAdmin, operationalMetricsController.runAlertEscalationDestinationAction);
+router.get('/alerts/escalation-deliveries', requireAdmin, operationalMetricsController.listAlertEscalationDeliveries);
+router.post('/alerts/escalation-deliveries/:id/retry', requireAdmin, operationalMetricsController.retryAlertEscalationDelivery);
+router.get('/alerts/escalation-delivery-replay-requests', requireAdmin, operationalMetricsController.listAlertEscalationDeliveryReplayRequests);
+router.post('/alerts/escalation-deliveries/:id/replay-requests', requireAdmin, operationalMetricsController.requestAlertEscalationDeliveryReplay);
+router.post('/alerts/escalation-delivery-replay-requests/:id/actions', requireAdmin, operationalMetricsController.runAlertEscalationDeliveryReplayRequestAction);
+router.post('/alerts/scan', requireAdmin, operationalMetricsController.scanAlerts);
+router.post('/alerts/:id/actions', requireAdmin, operationalMetricsController.runAlertAction);
+router.get('/import-account-reconciliations', requireAdmin, operationalMetricsController.listImportAccountReconciliations);
+router.post('/import-account-reconciliations/bulk-actions', requireAdmin, operationalMetricsController.runImportAccountReconciliationBulkAction);
+router.post('/import-account-reconciliations/:id/actions', requireAdmin, operationalMetricsController.runImportAccountReconciliationAction);
+router.get('/import-account-reconciliation-audits', requireAdmin, operationalMetricsController.listImportAccountReconciliationAudits);
+router.post('/import-account-reconciliation-audits/:id/rollback', requireAdmin, operationalMetricsController.rollbackImportAccountReconciliationAudit);
+router.get('/report-templates', requireAdmin, operationalMetricsController.listReportTemplates);
+router.get('/report-templates/revisions', requireAdmin, operationalMetricsController.listReportTemplateRevisions);
+router.post('/report-templates/revisions/:id/actions', requireAdmin, operationalMetricsController.runReportTemplateRevisionAction);
+router.post('/report-templates/:templateKey/revisions', requireAdmin, operationalMetricsController.requestReportTemplateUpdate);
+router.post('/report-templates/:templateKey/preview', requireAdmin, operationalMetricsController.previewReportTemplate);
+router.post('/report-templates/:templateKey', requireAdmin, operationalMetricsController.upsertReportTemplate);
+router.post('/execution-runs/events/backfill-hashes', requireAdmin, operationalMetricsController.backfillExecutionEventHashes);
+router.get('/workflow-settings', requireAdmin, operationalMetricsController.listWorkflowSettings);
+router.get('/workflow-settings/revisions', requireAdmin, operationalMetricsController.listWorkflowSettingRevisions);
+router.post('/workflow-settings/:source/revisions', requireAdmin, operationalMetricsController.requestWorkflowSettingsUpdate);
+router.post('/workflow-settings/revisions/:id/actions', requireAdmin, operationalMetricsController.runWorkflowSettingRevisionAction);
+router.patch('/workflow-settings/:source', requireAdmin, operationalMetricsController.updateWorkflowSettings);
+router.get('/strategy-anomaly-settings', requireAdmin, operationalMetricsController.listStrategyAnomalySettings);
+router.post('/strategy-anomaly-settings', requireAdmin, operationalMetricsController.upsertStrategyAnomalySettings);
+router.get('/performance-budgets', requireAdmin, operationalMetricsController.listPerformanceBudgets);
+router.get('/retention-policy', requireAdmin, operationalMetricsController.getRetentionPolicy);
+router.get('/retention-policy/preview', requireAdmin, operationalMetricsController.previewRetentionPolicy);
+router.get('/retention-policy/revisions', requireAdmin, operationalMetricsController.listRetentionPolicyRevisions);
+router.post('/retention-policy/revisions', requireAdmin, operationalMetricsController.requestRetentionPolicyUpdate);
+router.post('/retention-policy/revisions/:id/actions', requireAdmin, operationalMetricsController.runRetentionPolicyRevisionAction);
+router.post('/retention-policy/run', requireAdmin, operationalMetricsController.runRetentionPolicy);
 
 // Check for stock splits manually
 router.post('/stock-splits/check', requireAdmin, async (req, res, next) => {
@@ -27,6 +82,19 @@ router.post('/stock-splits/check', requireAdmin, async (req, res, next) => {
         ...result
       });
     }
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Broker sync lease visibility across all users.
+router.get('/broker-sync/leases', requireAdmin, async (req, res, next) => {
+  try {
+    const metrics = await BrokerConnection.getSyncLeaseMetrics();
+    res.json({
+      success: true,
+      data: metrics
+    });
   } catch (error) {
     next(error);
   }

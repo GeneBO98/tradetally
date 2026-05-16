@@ -5,6 +5,57 @@
  */
 
 const db = require('../config/database');
+const { randomUUID } = require('crypto');
+
+function cleanText(value, limit = 500) {
+  if (value === undefined || value === null) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+  return text.slice(0, limit);
+}
+
+function toImportReconciliationCamel(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    userId: row.user_id,
+    userEmail: row.user_email,
+    username: row.username,
+    importId: row.import_id,
+    accountIdentifier: row.account_identifier,
+    broker: row.broker,
+    source: row.source,
+    status: row.status,
+    sampleCount: Number(row.sample_count || 0),
+    resolvedAccountId: row.resolved_account_id,
+    resolvedAccountName: row.resolved_account_name,
+    lastError: row.last_error,
+    lastAuditId: row.last_audit_id,
+    lastAuditAction: row.last_audit_action,
+    lastAuditReason: row.last_audit_reason,
+    lastAuditAt: row.last_audit_at,
+    firstSeenAt: row.first_seen_at,
+    lastSeenAt: row.last_seen_at,
+    resolvedAt: row.resolved_at
+  };
+}
+
+function toImportReconciliationAuditCamel(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    reconciliationId: row.reconciliation_id,
+    action: row.action,
+    actorUserId: row.actor_user_id,
+    actorEmail: row.actor_email,
+    actorUsername: row.actor_username,
+    reason: row.reason,
+    beforeState: row.before_state || {},
+    afterState: row.after_state || {},
+    bulkActionId: row.bulk_action_id,
+    createdAt: row.created_at
+  };
+}
 
 class Account {
   /**
@@ -125,6 +176,371 @@ class Account {
 
     const result = await db.query(query, [userId]);
     return result.rows;
+  }
+
+  static async recordImportReconciliation(userId, {
+    importId = null,
+    accountIdentifier,
+    broker = null,
+    source = 'csv_import',
+    status = 'pending',
+    sampleCount = 0,
+    resolvedAccountId = null,
+    lastError = null
+  } = {}) {
+    const identifier = accountIdentifier ? String(accountIdentifier).trim() : '';
+    if (!identifier) return null;
+    const result = await db.query(
+      `
+        INSERT INTO import_account_reconciliations (
+          user_id, import_id, account_identifier, broker, source, status,
+          sample_count, resolved_account_id, last_error, resolved_at
+        )
+        VALUES (
+          $1, $2, $3, $4, $5, $6,
+          $7, $8, $9,
+          CASE WHEN $6 = 'resolved' THEN CURRENT_TIMESTAMP ELSE NULL END
+        )
+        ON CONFLICT (user_id, account_identifier, source) DO UPDATE SET
+          import_id = COALESCE(EXCLUDED.import_id, import_account_reconciliations.import_id),
+          broker = COALESCE(EXCLUDED.broker, import_account_reconciliations.broker),
+          status = EXCLUDED.status,
+          sample_count = import_account_reconciliations.sample_count + EXCLUDED.sample_count,
+          resolved_account_id = COALESCE(EXCLUDED.resolved_account_id, import_account_reconciliations.resolved_account_id),
+          last_error = EXCLUDED.last_error,
+          last_seen_at = CURRENT_TIMESTAMP,
+          resolved_at = CASE WHEN EXCLUDED.status = 'resolved' THEN CURRENT_TIMESTAMP ELSE import_account_reconciliations.resolved_at END
+        RETURNING *
+      `,
+      [
+        userId,
+        importId,
+        identifier,
+        broker || null,
+        source,
+        ['pending', 'resolved', 'ignored'].includes(status) ? status : 'pending',
+        Math.max(0, parseInt(sampleCount || '0', 10) || 0),
+        resolvedAccountId || null,
+        lastError || null
+      ]
+    );
+    return result.rows[0];
+  }
+
+  static async listImportReconciliations(userId, filters = {}) {
+    const values = [userId];
+    const clauses = ['user_id = $1'];
+    if (filters.status) {
+      values.push(filters.status);
+      clauses.push(`status = $${values.length}`);
+    }
+    const limit = Math.min(Math.max(parseInt(filters.limit || '50', 10), 1), 500);
+    values.push(limit);
+    const result = await db.query(
+      `
+        SELECT *
+        FROM import_account_reconciliations
+        WHERE ${clauses.join(' AND ')}
+        ORDER BY last_seen_at DESC
+        LIMIT $${values.length}
+      `,
+      values
+    );
+    return result.rows;
+  }
+
+  static async listImportReconciliationsForAdmin(filters = {}) {
+    const values = [];
+    const clauses = [];
+    if (filters.status) {
+      values.push(filters.status);
+      clauses.push(`iar.status = $${values.length}`);
+    }
+    if (filters.userId || filters.user_id) {
+      values.push(filters.userId || filters.user_id);
+      clauses.push(`iar.user_id = $${values.length}`);
+    }
+    if (filters.accountIdentifier || filters.account_identifier) {
+      values.push(`%${String(filters.accountIdentifier || filters.account_identifier).trim()}%`);
+      clauses.push(`iar.account_identifier ILIKE $${values.length}`);
+    }
+
+    const limit = Math.min(Math.max(parseInt(filters.limit || '50', 10), 1), 500);
+    values.push(limit);
+    const result = await db.query(
+      `
+        SELECT
+          iar.*,
+          u.email AS user_email,
+          u.username,
+          ua.account_name AS resolved_account_name,
+          audit.id AS last_audit_id,
+          audit.action AS last_audit_action,
+          audit.reason AS last_audit_reason,
+          audit.created_at AS last_audit_at
+        FROM import_account_reconciliations iar
+        LEFT JOIN users u ON u.id = iar.user_id
+        LEFT JOIN user_accounts ua ON ua.id = iar.resolved_account_id
+        LEFT JOIN LATERAL (
+          SELECT id, action, reason, created_at
+          FROM import_account_reconciliation_audits
+          WHERE reconciliation_id = iar.id
+          ORDER BY created_at DESC
+          LIMIT 1
+        ) audit ON true
+        ${clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : ''}
+        ORDER BY
+          CASE iar.status WHEN 'pending' THEN 0 WHEN 'resolved' THEN 1 ELSE 2 END,
+          iar.last_seen_at DESC
+        LIMIT $${values.length}
+      `,
+      values
+    );
+    return result.rows.map(toImportReconciliationCamel);
+  }
+
+  static async recordImportReconciliationAudit(client, beforeRow, afterRow, {
+    action,
+    actorUserId = null,
+    reason,
+    bulkActionId = null
+  } = {}) {
+    const cleanedReason = cleanText(reason, 500);
+    if (!cleanedReason) {
+      const error = new Error('A reason is required for import account reconciliation review');
+      error.status = 400;
+      throw error;
+    }
+    const result = await client.query(
+      `
+        INSERT INTO import_account_reconciliation_audits (
+          reconciliation_id, action, actor_user_id, reason, before_state, after_state, bulk_action_id
+        )
+        VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7)
+        RETURNING *
+      `,
+      [
+        beforeRow.id,
+        action,
+        actorUserId,
+        cleanedReason,
+        JSON.stringify(beforeRow || {}),
+        JSON.stringify(afterRow || {}),
+        bulkActionId
+      ]
+    );
+    return toImportReconciliationAuditCamel(result.rows[0]);
+  }
+
+  static async runImportReconciliationAction(reconciliationId, action = 'ignore', data = {}, actorUserId = null, options = {}) {
+    if (!['resolve', 'ignore', 'reopen'].includes(action)) {
+      const error = new Error('Import reconciliation action must be resolve, ignore, or reopen');
+      error.status = 400;
+      throw error;
+    }
+
+    const status = action === 'resolve' ? 'resolved' : action === 'ignore' ? 'ignored' : 'pending';
+    const resolvedAccountId = action === 'resolve' ? (data.resolvedAccountId || data.resolved_account_id || null) : null;
+    const client = options.client || await db.connect();
+    const shouldRelease = !options.client;
+    try {
+      if (shouldRelease) await client.query('BEGIN');
+      const beforeResult = await client.query(
+        'SELECT * FROM import_account_reconciliations WHERE id = $1 FOR UPDATE',
+        [reconciliationId]
+      );
+      const beforeRow = beforeResult.rows[0];
+      if (!beforeRow) {
+        const error = new Error('Import account reconciliation not found');
+        error.status = 404;
+        throw error;
+      }
+
+      const result = await client.query(
+        `
+          UPDATE import_account_reconciliations
+          SET status = $2,
+              resolved_account_id = $3,
+              last_error = $4,
+              resolved_at = CASE WHEN $2 = 'resolved' THEN CURRENT_TIMESTAMP ELSE NULL END,
+              last_seen_at = CURRENT_TIMESTAMP
+          WHERE id = $1
+          RETURNING *
+        `,
+        [
+          reconciliationId,
+          status,
+          resolvedAccountId,
+          action === 'ignore' ? cleanText(data.reason, 500) : null
+        ]
+      );
+      const afterRow = result.rows[0];
+      const audit = await this.recordImportReconciliationAudit(client, beforeRow, afterRow, {
+        action,
+        actorUserId,
+        reason: data.reason,
+        bulkActionId: options.bulkActionId || null
+      });
+      if (shouldRelease) await client.query('COMMIT');
+      return {
+        ...toImportReconciliationCamel({
+          ...afterRow,
+          last_audit_id: audit.id,
+          last_audit_action: audit.action,
+          last_audit_reason: audit.reason,
+          last_audit_at: audit.createdAt
+        }),
+        audit
+      };
+    } catch (error) {
+      if (shouldRelease) await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      if (shouldRelease) client.release();
+    }
+  }
+
+  static async runBulkImportReconciliationAction({
+    reconciliationIds = [],
+    action = 'ignore',
+    reason,
+    preview = false,
+    resolvedAccountId = null
+  } = {}, actorUserId = null) {
+    const ids = Array.from(new Set((reconciliationIds || []).map(String).filter(Boolean))).slice(0, 100);
+    if (ids.length === 0) {
+      const error = new Error('At least one reconciliation id is required');
+      error.status = 400;
+      throw error;
+    }
+    if (!['resolve', 'ignore', 'reopen'].includes(action)) {
+      const error = new Error('Import reconciliation bulk action must be resolve, ignore, or reopen');
+      error.status = 400;
+      throw error;
+    }
+
+    const rowsResult = await db.query(
+      `
+        SELECT *
+        FROM import_account_reconciliations
+        WHERE id = ANY($1::uuid[])
+        ORDER BY last_seen_at DESC
+      `,
+      [ids]
+    );
+    const rows = rowsResult.rows.map(toImportReconciliationCamel);
+    if (preview) {
+      return { preview: true, action, affectedCount: rows.length, reconciliations: rows };
+    }
+
+    const bulkActionId = randomUUID();
+    const client = await db.connect();
+    const updated = [];
+    try {
+      await client.query('BEGIN');
+      for (const id of ids) {
+        updated.push(await this.runImportReconciliationAction(id, action, {
+          reason,
+          resolvedAccountId
+        }, actorUserId, { client, bulkActionId }));
+      }
+      await client.query('COMMIT');
+      return { preview: false, action, bulkActionId, affectedCount: updated.length, reconciliations: updated };
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  static async listImportReconciliationAudits(filters = {}) {
+    const values = [];
+    const clauses = [];
+    if (filters.reconciliationId || filters.reconciliation_id) {
+      values.push(filters.reconciliationId || filters.reconciliation_id);
+      clauses.push(`a.reconciliation_id = $${values.length}`);
+    }
+    const limit = Math.min(Math.max(parseInt(filters.limit || '50', 10), 1), 500);
+    values.push(limit);
+    const result = await db.query(
+      `
+        SELECT a.*, u.email AS actor_email, u.username AS actor_username
+        FROM import_account_reconciliation_audits a
+        LEFT JOIN users u ON u.id = a.actor_user_id
+        ${clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : ''}
+        ORDER BY a.created_at DESC
+        LIMIT $${values.length}
+      `,
+      values
+    );
+    return result.rows.map(toImportReconciliationAuditCamel);
+  }
+
+  static async rollbackImportReconciliationAudit(auditId, actorUserId = null, reason = null) {
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      const auditResult = await client.query(
+        'SELECT * FROM import_account_reconciliation_audits WHERE id = $1 FOR UPDATE',
+        [auditId]
+      );
+      const audit = auditResult.rows[0];
+      if (!audit) {
+        const error = new Error('Import reconciliation audit not found');
+        error.status = 404;
+        throw error;
+      }
+      const before = audit.before_state || {};
+      const currentResult = await client.query(
+        'SELECT * FROM import_account_reconciliations WHERE id = $1 FOR UPDATE',
+        [audit.reconciliation_id]
+      );
+      const current = currentResult.rows[0];
+      if (!current) {
+        const error = new Error('Import account reconciliation not found');
+        error.status = 404;
+        throw error;
+      }
+      const rolledBack = await client.query(
+        `
+          UPDATE import_account_reconciliations
+          SET status = $2,
+              resolved_account_id = $3,
+              last_error = $4,
+              resolved_at = $5,
+              last_seen_at = CURRENT_TIMESTAMP
+          WHERE id = $1
+          RETURNING *
+        `,
+        [
+          audit.reconciliation_id,
+          before.status || 'pending',
+          before.resolved_account_id || null,
+          before.last_error || null,
+          before.resolved_at || null
+        ]
+      );
+      const rollbackAudit = await this.recordImportReconciliationAudit(client, current, rolledBack.rows[0], {
+        action: 'rollback',
+        actorUserId,
+        reason: reason || `Rollback audit ${auditId}`,
+        bulkActionId: audit.bulk_action_id || null
+      });
+      await client.query('COMMIT');
+      return {
+        reconciliation: {
+          ...toImportReconciliationCamel(rolledBack.rows[0]),
+          audit: rollbackAudit
+        },
+        audit: rollbackAudit
+      };
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   /**

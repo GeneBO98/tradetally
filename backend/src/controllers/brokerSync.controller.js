@@ -47,6 +47,23 @@ const brokerSyncController = {
   },
 
   /**
+   * Get broker sync lease metrics for the current user.
+   */
+  async getLeaseMetrics(req, res, next) {
+    try {
+      const metrics = await BrokerConnection.getSyncLeaseMetrics(req.user.id);
+
+      res.json({
+        success: true,
+        data: metrics
+      });
+    } catch (error) {
+      logger.logError('Error fetching broker sync lease metrics:', error);
+      next(error);
+    }
+  },
+
+  /**
    * Get a specific broker connection by ID
    */
   async getConnection(req, res, next) {

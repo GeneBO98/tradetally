@@ -11,6 +11,44 @@ const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('..
 const ensureString = require('../utils/ensureString');
 const { v4: uuidv4 } = require('uuid');
 
+const UNSORTED_ACCOUNT = '__unsorted__';
+
+function appendAccountFilter(query, values, paramCount, columnName, rawAccounts) {
+  if (!rawAccounts) {
+    return { query, paramCount };
+  }
+
+  const accountsArray = rawAccounts
+    .split(',')
+    .map(account => account.trim())
+    .filter(Boolean);
+
+  if (accountsArray.length === 0) {
+    return { query, paramCount };
+  }
+
+  const includeUnsorted = accountsArray.includes(UNSORTED_ACCOUNT);
+  const explicitAccounts = accountsArray.filter(account => account !== UNSORTED_ACCOUNT);
+  const clauses = [];
+
+  if (explicitAccounts.length > 0) {
+    const placeholders = explicitAccounts.map((_, index) => `$${paramCount + index}`).join(',');
+    clauses.push(`${columnName} IN (${placeholders})`);
+    explicitAccounts.forEach(account => values.push(account));
+    paramCount += explicitAccounts.length;
+  }
+
+  if (includeUnsorted) {
+    clauses.push(`(${columnName} IS NULL OR ${columnName} = '')`);
+  }
+
+  if (clauses.length > 0) {
+    query += ` AND (${clauses.join(' OR ')})`;
+  }
+
+  return { query, paramCount };
+}
+
 /**
  * Calculate R-Multiple values for a trade
  * @param {Object} trade - Trade object with entry_price, exit_price, stop_loss, take_profit, take_profit_targets, side
@@ -710,30 +748,15 @@ const tradeManagementController = {
 
       logger.info('[TRADE-MGMT] getTradesForSelection called', { userId, symbol, startDate, endDate, limit, offset, accounts });
 
-      // Use a CTE to calculate trade_number for trades with stop_loss
-      // This matches the R-Performance chart numbering (chronological order for trades with SL)
+      // Filter once, then number the same filtered trade set used by R-Performance.
       let query = `
-        WITH numbered_trades AS (
+        WITH filtered_trades AS (
           SELECT
-            id,
-            ROW_NUMBER() OVER (ORDER BY trade_date ASC, id ASC) as trade_number
-          FROM trades
-          WHERE user_id = $1
-            AND exit_price IS NOT NULL
-            AND stop_loss IS NOT NULL
-        )
-        SELECT
-          t.id, t.symbol, t.trade_date, t.entry_time, t.entry_price, t.exit_price,
-          t.quantity, t.side, t.pnl, t.pnl_percent,
-          t.stop_loss, t.take_profit, t.r_value,
-          t.strategy, t.broker, t.instrument_type,
-          t.manual_target_hit_first, t.target_hit_analysis,
-          nt.trade_number
-        FROM trades t
-        LEFT JOIN numbered_trades nt ON t.id = nt.id
-        WHERE t.user_id = $1
-          AND t.exit_price IS NOT NULL
-      `;
+            t.*
+          FROM trades t
+          WHERE t.user_id = $1
+            AND t.exit_price IS NOT NULL
+        `;
       const values = [userId];
       let paramCount = 2;
 
@@ -757,13 +780,28 @@ const tradeManagementController = {
         logger.info('[TRADE-MGMT] Searching for symbol:', searchSymbol);
       }
 
-      if (accounts) {
-        const accountsArray = accounts.split(',');
-        const placeholders = accountsArray.map((_, index) => `$${paramCount + index}`).join(',');
-        query += ` AND t.account_identifier IN (${placeholders})`;
-        accountsArray.forEach(account => values.push(account));
-        paramCount += accountsArray.length;
-      }
+      ({ query, paramCount } = appendAccountFilter(query, values, paramCount, 't.account_identifier', accounts));
+
+      query += `
+        ),
+        numbered_trades AS (
+          SELECT
+            id,
+            ROW_NUMBER() OVER (ORDER BY trade_date ASC, id ASC) as trade_number
+          FROM filtered_trades
+          WHERE stop_loss IS NOT NULL
+        )
+        SELECT
+          t.id, t.symbol, t.trade_date, t.entry_time, t.exit_time, t.entry_price, t.exit_price,
+          t.quantity, t.side, t.pnl, t.pnl_percent,
+          t.stop_loss, t.take_profit, t.r_value,
+          t.strategy, t.broker, t.instrument_type,
+          t.account_identifier,
+          t.manual_target_hit_first, t.target_hit_analysis,
+          nt.trade_number
+        FROM filtered_trades t
+        LEFT JOIN numbered_trades nt ON t.id = nt.id
+      `;
 
       query += ` ORDER BY t.trade_date DESC, t.entry_time DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
       values.push(parseInt(limit), parseInt(offset));
@@ -809,12 +847,13 @@ const tradeManagementController = {
         countParamCount++;
       }
 
-      if (accounts) {
-        const accountsArray = accounts.split(',');
-        const placeholders = accountsArray.map((_, index) => `$${countParamCount + index}`).join(',');
-        countQuery += ` AND account_identifier IN (${placeholders})`;
-        accountsArray.forEach(account => countValues.push(account));
-      }
+      ({ query: countQuery, paramCount: countParamCount } = appendAccountFilter(
+        countQuery,
+        countValues,
+        countParamCount,
+        'account_identifier',
+        accounts
+      ));
 
       const countResult = await db.query(countQuery, countValues);
       const total = parseInt(countResult.rows[0].total);
@@ -1307,13 +1346,7 @@ const tradeManagementController = {
         paramCount++;
       }
 
-      if (accounts) {
-        const accountsArray = accounts.split(',');
-        const placeholders = accountsArray.map((_, index) => `$${paramCount + index}`).join(',');
-        query += ` AND account_identifier IN (${placeholders})`;
-        accountsArray.forEach(account => values.push(account));
-        paramCount += accountsArray.length;
-      }
+      ({ query, paramCount } = appendAccountFilter(query, values, paramCount, 'account_identifier', accounts));
 
       query += ` ORDER BY trade_date ASC, id ASC LIMIT $${paramCount}`;
       values.push(parseInt(limit));

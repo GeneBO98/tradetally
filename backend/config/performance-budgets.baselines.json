@@ -1,0 +1,30 @@
+{
+  "local": {
+    "admin.alerts.scan": { "p95BudgetMs": 2500 },
+    "admin.execution_runs": { "p95BudgetMs": 750 },
+    "admin.observability.slo": { "p95BudgetMs": 2500 },
+    "execution.compare": { "p95BudgetMs": 1000 },
+    "execution.report": { "p95BudgetMs": 1500 }
+  },
+  "ci": {
+    "admin.alerts.scan": { "p95BudgetMs": 3000 },
+    "admin.execution_runs": { "p95BudgetMs": 1000 },
+    "admin.observability.slo": { "p95BudgetMs": 3000 },
+    "execution.compare": { "p95BudgetMs": 1250 },
+    "execution.report": { "p95BudgetMs": 1800 }
+  },
+  "staging": {
+    "admin.alerts.scan": { "p95BudgetMs": 1800 },
+    "admin.execution_runs": { "p95BudgetMs": 500 },
+    "admin.observability.slo": { "p95BudgetMs": 1800 },
+    "execution.compare": { "p95BudgetMs": 700 },
+    "execution.report": { "p95BudgetMs": 1200 }
+  },
+  "prod": {
+    "admin.alerts.scan": { "p95BudgetMs": 1200 },
+    "admin.execution_runs": { "p95BudgetMs": 350 },
+    "admin.observability.slo": { "p95BudgetMs": 1200 },
+    "execution.compare": { "p95BudgetMs": 500 },
+    "execution.report": { "p95BudgetMs": 900 }
+  }
+}

@@ -1,0 +1,254 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`broker import contract fixtures matches broker-import fixture snapshot for failed row diagnostics 1`] = `
+{
+  "corpusVersion": "broker-import-corpus-v1",
+  "diagnostics": {
+    "detectedBroker": "generic",
+    "headerAnalysis": {
+      "foundHeaders": [
+        "Symbol",
+        "Date",
+        "Price",
+        "Quantity",
+      ],
+      "recognizedAs": "generic",
+    },
+    "invalidRows": 1,
+    "parsedRows": 0,
+    "selectedBroker": "generic",
+    "skippedReasons": [
+      {
+        "reason": "Invalid trade: missing required fields (symbol, date, price, or quantity)",
+        "row": 1,
+      },
+    ],
+    "skippedRows": 0,
+    "totalRows": 1,
+    "warnings": [
+      "High skip rate: 100.0% of rows were skipped or invalid",
+    ],
+  },
+  "tradeCount": 0,
+  "trades": [],
+}
+`;
+
+exports[`broker import contract fixtures matches broker-import fixture snapshot for options assignment fixture 1`] = `
+{
+  "corpusVersion": "broker-import-corpus-v1",
+  "diagnostics": {
+    "detectedBroker": "tastytrade",
+    "headerAnalysis": {
+      "foundHeaders": [
+        "Date",
+        "Type",
+        "Action",
+        "Symbol",
+        "Instrument Type",
+        "Description",
+        "Value",
+        "Quantity",
+        "Average Price",
+        "Commissions",
+        "Fees",
+        "Root Symbol",
+        "Underlying Symbol",
+        "Expiration Date",
+        "Strike Price",
+        "Call or Put",
+      ],
+      "recognizedAs": "tastytrade",
+    },
+    "invalidRows": 0,
+    "parsedRows": 1,
+    "selectedBroker": "tastytrade",
+    "skippedReasons": [],
+    "skippedRows": 0,
+    "totalRows": 2,
+    "warnings": [],
+  },
+  "tradeCount": 1,
+  "trades": [
+    {
+      "commission": 1,
+      "entryPrice": 2.5,
+      "entryTime": 2025-01-19T05:00:00.000Z,
+      "executions": [
+        {
+          "action": undefined,
+          "datetime": undefined,
+          "orderId": undefined,
+          "price": undefined,
+          "quantity": 1,
+        },
+      ],
+      "exitPrice": undefined,
+      "exitTime": undefined,
+      "instrumentType": "option",
+      "pnl": undefined,
+      "quantity": 1,
+      "side": "short",
+      "status": undefined,
+      "symbol": "AAPL",
+    },
+  ],
+}
+`;
+
+exports[`broker import contract fixtures matches broker-import fixture snapshot for partial close fixture 1`] = `
+{
+  "corpusVersion": "broker-import-corpus-v1",
+  "diagnostics": {
+    "detectedBroker": "ibkr",
+    "headerAnalysis": {
+      "foundHeaders": [
+        "Account",
+        "Symbol",
+        "Date/Time",
+        "Quantity",
+        "Price",
+        "Commission",
+        "Fees",
+        "Order ID",
+      ],
+      "recognizedAs": "ibkr",
+    },
+    "invalidRows": 0,
+    "parsedRows": 1,
+    "selectedBroker": "ibkr",
+    "skippedReasons": [],
+    "skippedRows": 0,
+    "totalRows": 3,
+    "warnings": [],
+  },
+  "tradeCount": 1,
+  "trades": [
+    {
+      "commission": 2,
+      "entryPrice": 150,
+      "entryTime": "2025-01-01T09:30:00",
+      "executions": [
+        {
+          "action": "buy",
+          "datetime": "2025-01-01T09:30:00",
+          "orderId": "1",
+          "price": 150,
+          "quantity": 100,
+        },
+        {
+          "action": "sell",
+          "datetime": "2025-01-01T10:00:00",
+          "orderId": "2",
+          "price": 155,
+          "quantity": 40,
+        },
+        {
+          "action": "sell",
+          "datetime": "2025-01-01T11:00:00",
+          "orderId": "3",
+          "price": 156,
+          "quantity": 60,
+        },
+      ],
+      "exitPrice": 155.6,
+      "exitTime": "2025-01-01T11:00:00",
+      "instrumentType": "stock",
+      "pnl": 558,
+      "quantity": 100,
+      "side": "long",
+      "status": undefined,
+      "symbol": "AAPL",
+    },
+  ],
+}
+`;
+
+exports[`broker import contract fixtures matches broker-import fixture snapshot for same-timestamp reversal fixture 1`] = `
+{
+  "corpusVersion": "broker-import-corpus-v1",
+  "diagnostics": {
+    "detectedBroker": "ibkr",
+    "headerAnalysis": {
+      "foundHeaders": [
+        "Symbol",
+        "Date/Time",
+        "Quantity",
+        "Price",
+        "Commission",
+        "Fees",
+        "Order ID",
+      ],
+      "recognizedAs": "ibkr",
+    },
+    "invalidRows": 0,
+    "parsedRows": 2,
+    "selectedBroker": "ibkr",
+    "skippedReasons": [],
+    "skippedRows": 0,
+    "totalRows": 4,
+    "warnings": [],
+  },
+  "tradeCount": 2,
+  "trades": [
+    {
+      "commission": 2,
+      "entryPrice": 150,
+      "entryTime": "2025-01-01T09:30:00",
+      "executions": [
+        {
+          "action": "buy",
+          "datetime": "2025-01-01T09:30:00",
+          "orderId": "1",
+          "price": 150,
+          "quantity": 100,
+        },
+        {
+          "action": "sell",
+          "datetime": "2025-01-01T10:00:00",
+          "orderId": "2",
+          "price": 155,
+          "quantity": 100,
+        },
+      ],
+      "exitPrice": 155,
+      "exitTime": "2025-01-01T10:00:00",
+      "instrumentType": "stock",
+      "pnl": 498,
+      "quantity": 100,
+      "side": "long",
+      "status": undefined,
+      "symbol": "AAPL",
+    },
+    {
+      "commission": 2,
+      "entryPrice": 156,
+      "entryTime": "2025-01-01T10:00:00",
+      "executions": [
+        {
+          "action": "sell",
+          "datetime": "2025-01-01T10:00:00",
+          "orderId": "3",
+          "price": 156,
+          "quantity": 100,
+        },
+        {
+          "action": "buy",
+          "datetime": "2025-01-01T10:00:00",
+          "orderId": "4",
+          "price": 154,
+          "quantity": 100,
+        },
+      ],
+      "exitPrice": 154,
+      "exitTime": "2025-01-01T10:00:00",
+      "instrumentType": "stock",
+      "pnl": 198,
+      "quantity": 100,
+      "side": "short",
+      "status": undefined,
+      "symbol": "AAPL",
+    },
+  ],
+}
+`;

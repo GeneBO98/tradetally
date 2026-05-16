@@ -1,5 +1,5 @@
 <template>
-  <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
+  <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden" data-testid="trade-management-chart-panel">
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
       <h3 class="text-lg font-medium text-gray-900 dark:text-white">Trade Visualization</h3>
       <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
@@ -15,7 +15,7 @@
       </div>
 
       <!-- Error State -->
-      <div v-else-if="error" class="text-center py-16">
+      <div v-else-if="error" class="text-center py-16" data-testid="trade-management-chart-error">
         <div class="mb-4">
           <svg class="w-16 h-16 mx-auto text-red-500 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -59,7 +59,7 @@
           </div>
         </div>
 
-        <div ref="chartContainer" class="w-full h-96"></div>
+        <div ref="chartContainer" class="w-full h-96" data-testid="trade-management-chart-canvas"></div>
 
         <!-- Legend -->
         <div class="mt-4 flex flex-wrap gap-4 text-sm">
@@ -106,6 +106,7 @@ import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import * as LightweightCharts from 'lightweight-charts'
 import api from '@/services/api'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { reportUiError } from '@/services/telemetry'
 
 const props = defineProps({
   trade: {
@@ -155,12 +156,26 @@ async function loadChart() {
     showChart.value = true
 
     await nextTick()
-    createChart()
+    try {
+      createChart()
+    } catch (chartError) {
+      error.value = 'Failed to render chart data'
+      reportUiError('chart.render_failure', chartError, {
+        component: 'TradeManagementChart',
+        tradeId: props.trade.id
+      })
+      emit('chart-loaded', { success: false, error: error.value })
+      return
+    }
     emit('chart-loaded', { success: true })
   } catch (err) {
     const errorMsg = err.response?.data?.error || err.response?.data?.message || 'Failed to load chart data'
     error.value = errorMsg
     console.error('[CHART] Error loading chart:', err)
+    reportUiError('chart.api_failure', err, {
+      component: 'TradeManagementChart',
+      tradeId: props.trade.id
+    })
     loading.value = false
     emit('chart-loaded', { success: false, error: errorMsg })
   }

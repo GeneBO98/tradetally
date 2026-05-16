@@ -20,6 +20,9 @@ router.use((req, res, next) => {
 // Get all broker connections for current user
 router.get('/connections', brokerSyncController.getConnections);
 
+// Get current user's broker sync lease metrics
+router.get('/leases', brokerSyncController.getLeaseMetrics);
+
 // Get all sync logs for current user
 router.get('/logs', brokerSyncController.getAllSyncLogs);
 

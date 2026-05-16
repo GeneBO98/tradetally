@@ -2,6 +2,61 @@ const db = require('../config/database');
 const logger = require('../utils/logger');
 const aiService = require('../utils/aiService');
 
+// Pearson correlation coefficient for two equal-length numeric arrays.
+// Returns null if n < 3 or either series has zero variance.
+function pearson(xs, ys) {
+  if (!Array.isArray(xs) || xs.length < 3 || xs.length !== ys.length) return null;
+  const n = xs.length;
+  let sx = 0, sy = 0;
+  for (let i = 0; i < n; i++) { sx += xs[i]; sy += ys[i]; }
+  const mx = sx / n;
+  const my = sy / n;
+  let num = 0, dx2 = 0, dy2 = 0;
+  for (let i = 0; i < n; i++) {
+    const dx = xs[i] - mx;
+    const dy = ys[i] - my;
+    num += dx * dy;
+    dx2 += dx * dx;
+    dy2 += dy * dy;
+  }
+  const denom = Math.sqrt(dx2 * dy2);
+  if (denom === 0) return null;
+  const r = num / denom;
+  // Clamp against floating-point drift outside [-1, 1].
+  return Math.max(-1, Math.min(1, r));
+}
+
+// Correlation across the analysis window. Prefers sleep_hours vs total_pnl
+// (stronger signal in the existing insights); falls back to avg_heart_rate
+// vs total_pnl if fewer than 3 days have sleep data.
+function computeWindowCorrelation(correlations) {
+  if (!Array.isArray(correlations) || correlations.length === 0) return 0;
+
+  const pick = (key) => {
+    const xs = [], ys = [];
+    for (const c of correlations) {
+      const x = c[key];
+      const y = c.total_pnl;
+      if (typeof x === 'number' && !Number.isNaN(x) &&
+          typeof y === 'number' && !Number.isNaN(y)) {
+        xs.push(x);
+        ys.push(y);
+      }
+    }
+    return { xs, ys };
+  };
+
+  const sleep = pick('sleep_hours');
+  let r = pearson(sleep.xs, sleep.ys);
+  if (r === null) {
+    const hr = pick('avg_heart_rate');
+    r = pearson(hr.xs, hr.ys);
+  }
+  // DECIMAL(4,3) column is nullable; store 0 when undefined rather than null to
+  // preserve the legacy "no correlation" contract downstream (UI checks for 0).
+  return r === null ? 0 : r;
+}
+
 class HealthController {
   // POST /api/health/data - Submit health data from mobile app
   async submitHealthData(req, res) {
@@ -337,6 +392,10 @@ class HealthController {
   // Helper method to store correlation results
   async storeCorrelationResults(userId, correlations, startDate, endDate) {
     try {
+      // Series-level Pearson correlation for the whole window. Prefers sleep_hours
+      // vs total_pnl; falls back to avg_heart_rate vs total_pnl if sleep is sparse.
+      const correlationScore = computeWindowCorrelation(correlations);
+
       for (const correlation of correlations) {
         await db.query(`
           INSERT INTO health_trading_correlations (
@@ -360,7 +419,7 @@ class HealthController {
           correlation.avg_heart_rate, correlation.heart_rate_variability,
           correlation.total_pnl, correlation.win_rate,
           correlation.total_trades, correlation.avg_pnl,
-          0 // TODO: Calculate actual correlation score
+          correlationScore
         ]);
       }
     } catch (error) {

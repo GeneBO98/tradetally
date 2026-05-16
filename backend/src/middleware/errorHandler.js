@@ -45,34 +45,46 @@ const errorHandler = (err, req, res, next) => {
   if (err.name === 'ValidationError') {
     return res.status(400).json({
       error: 'Validation Error',
-      details: err.message
+      details: err.message,
+      requestId: req.requestId
+    });
+  }
+
+  if (Number.isInteger(err.status) && err.status >= 400 && err.status < 500) {
+    return res.status(err.status).json({
+      error: err.message,
+      requestId: req.requestId
     });
   }
 
   if (err.name === 'UnauthorizedError' || err.name === 'JsonWebTokenError') {
     return res.status(401).json({
       error: 'Unauthorized',
-      message: 'Invalid token'
+      message: 'Invalid token',
+      requestId: req.requestId
     });
   }
 
   if (err.code === '23505') { // PostgreSQL unique violation
     return res.status(409).json({
       error: 'Conflict',
-      message: 'Resource already exists'
+      message: 'Resource already exists',
+      requestId: req.requestId
     });
   }
 
   if (err.code === '23503') { // PostgreSQL foreign key violation
     return res.status(400).json({
       error: 'Bad Request',
-      message: 'Invalid reference'
+      message: 'Invalid reference',
+      requestId: req.requestId
     });
   }
 
   res.status(500).json({
     error: 'Internal Server Error',
-    message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
+    message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong',
+    requestId: req.requestId
   });
 };
 

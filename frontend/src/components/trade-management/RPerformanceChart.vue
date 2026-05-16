@@ -1,5 +1,5 @@
 <template>
-  <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
+  <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden" data-testid="r-performance-panel">
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
       <div>
         <h3 class="text-lg font-medium text-gray-900 dark:text-white">R-Multiple Performance</h3>
@@ -32,7 +32,7 @@
       </div>
 
       <!-- Empty State -->
-      <div v-else-if="!chartData || chartData.length === 0" class="text-center py-12">
+      <div v-else-if="!chartData || chartData.length === 0" class="text-center py-12" data-testid="r-performance-empty">
         <svg class="w-12 h-12 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
         </svg>
@@ -43,7 +43,7 @@
       </div>
 
       <!-- Chart and Summary -->
-      <div v-else>
+      <div v-else data-testid="r-performance-loaded">
         <!-- Summary Stats Grid: equal-height cards with consistent alignment -->
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 mb-6">
           <!-- Total Actual R -->
@@ -140,6 +140,7 @@
 import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { Chart, registerables } from 'chart.js'
 import api from '@/services/api'
+import { reportUiError } from '@/services/telemetry'
 
 Chart.register(...registerables)
 
@@ -194,6 +195,7 @@ async function fetchRPerformance() {
     createChart()
   } catch (err) {
     console.error('[R-PERF] Error fetching R performance:', err)
+    reportUiError('chart.api_failure', err, { component: 'RPerformanceChart' })
     chartData.value = []
     summary.value = null
     loading.value = false
@@ -269,85 +271,90 @@ function createChart() {
     })
   }
 
-  chartInstance = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels,
-      datasets
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: {
-        mode: 'index',
-        intersect: false
+  try {
+    chartInstance = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets
       },
-      plugins: {
-        legend: {
-          display: false
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          mode: 'index',
+          intersect: false
         },
-        tooltip: {
-          backgroundColor: isDark ? '#1f2937' : '#ffffff',
-          titleColor: textColor,
-          bodyColor: textColor,
-          borderColor: isDark ? '#374151' : '#e5e7eb',
-          borderWidth: 1,
-          padding: 12,
-          callbacks: {
-            title: (items) => {
-              if (items.length > 0) {
-                const dataPoint = chartData.value[items[0].dataIndex]
-                return `Trade #${dataPoint.trade_number} - ${dataPoint.symbol}`
+        plugins: {
+          legend: {
+            display: false
+          },
+          tooltip: {
+            backgroundColor: isDark ? '#1f2937' : '#ffffff',
+            titleColor: textColor,
+            bodyColor: textColor,
+            borderColor: isDark ? '#374151' : '#e5e7eb',
+            borderWidth: 1,
+            padding: 12,
+            callbacks: {
+              title: (items) => {
+                if (items.length > 0) {
+                  const dataPoint = chartData.value[items[0].dataIndex]
+                  return `Trade #${dataPoint.trade_number} - ${dataPoint.symbol}`
+                }
+                return ''
+              },
+              label: (context) => {
+                const dataPoint = chartData.value[context.dataIndex]
+                if (context.datasetIndex === 0) {
+                  return `Actual R (Net): ${dataPoint.cumulative_actual_r}R (this trade: ${dataPoint.actual_r > 0 ? '+' : ''}${dataPoint.actual_r}R)`
+                } else if (context.datasetIndex === 1) {
+                  return `Target R (Net): ${dataPoint.cumulative_potential_r}R`
+                } else if (context.datasetIndex === 2) {
+                  const mgmtR = dataPoint.management_r || 0
+                  return `Management R: ${dataPoint.cumulative_management_r || 0}R (this trade: ${mgmtR >= 0 ? '+' : ''}${mgmtR}R)`
+                }
+                return ''
               }
-              return ''
+            }
+          }
+        },
+        scales: {
+          x: {
+            title: {
+              display: true,
+              text: 'Trade #',
+              color: textColor
             },
-            label: (context) => {
-              const dataPoint = chartData.value[context.dataIndex]
-              if (context.datasetIndex === 0) {
-                return `Actual R (Net): ${dataPoint.cumulative_actual_r}R (this trade: ${dataPoint.actual_r > 0 ? '+' : ''}${dataPoint.actual_r}R)`
-              } else if (context.datasetIndex === 1) {
-                return `Target R (Net): ${dataPoint.cumulative_potential_r}R`
-              } else if (context.datasetIndex === 2) {
-                const mgmtR = dataPoint.management_r || 0
-                return `Management R: ${dataPoint.cumulative_management_r || 0}R (this trade: ${mgmtR >= 0 ? '+' : ''}${mgmtR}R)`
-              }
-              return ''
+            ticks: {
+              color: textColor
+            },
+            grid: {
+              color: gridColor,
+              display: false
+            }
+          },
+          y: {
+            title: {
+              display: true,
+              text: 'Cumulative R',
+              color: textColor
+            },
+            ticks: {
+              color: textColor,
+              callback: (value) => `${value}R`
+            },
+            grid: {
+              color: gridColor
             }
           }
         }
-      },
-      scales: {
-        x: {
-          title: {
-            display: true,
-            text: 'Trade #',
-            color: textColor
-          },
-          ticks: {
-            color: textColor
-          },
-          grid: {
-            color: gridColor,
-            display: false
-          }
-        },
-        y: {
-          title: {
-            display: true,
-            text: 'Cumulative R',
-            color: textColor
-          },
-          ticks: {
-            color: textColor,
-            callback: (value) => `${value}R`
-          },
-          grid: {
-            color: gridColor
-          }
-        }
       }
-    }
-  })
+    })
+  } catch (err) {
+    console.error('[R-PERF] Error creating chart:', err)
+    reportUiError('chart.render_failure', err, { component: 'RPerformanceChart' })
+  }
 }
 
 function formatR(value) {

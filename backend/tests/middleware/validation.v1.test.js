@@ -33,4 +33,31 @@ describe('v1 validation envelope', () => {
     });
     expect(next).not.toHaveBeenCalled();
   });
+
+  test('rejects unknown fields in v1 bulk trade updates', () => {
+    const middleware = validate(schemas.bulkUpdateTrades);
+    const req = {
+      originalUrl: '/api/v1/trades/bulk',
+      body: {
+        trades: [
+          {
+            id: '11111111-1111-4111-8111-111111111111',
+            symbol: 'AAPL',
+            rawSqlColumn: 'should-not-pass'
+          }
+        ]
+      },
+      headers: {},
+      requestId: 'req-bulk-validation'
+    };
+    const res = createMockRes('req-bulk-validation');
+    const next = jest.fn();
+
+    middleware(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0].error.code).toBe('VALIDATION_ERROR');
+    expect(res.json.mock.calls[0][0].error.details[0].field).toBe('trades.0.rawSqlColumn');
+    expect(next).not.toHaveBeenCalled();
+  });
 });

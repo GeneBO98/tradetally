@@ -12,39 +12,52 @@ export default defineConfig(({ command, mode }) => {
     : ['127.0.0.1', 'localhost', '[::1]']
 
   return {
-  define: {
-    __APP_VERSION__: JSON.stringify(pkg.version)
-  },
-  plugins: [
-    vue(),
-  ],
-  resolve: {
-    alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url))
-    }
-  },
-  server: {
-    port: 5173,
-    host: devHost,
-    strictPort: true,
-    cors: false,
-    allowedHosts,
-    proxy: {
-      '/api': {
-        // Extract base URL from VITE_API_URL (remove /api suffix if present)
-        target: (env.VITE_API_URL || 'http://localhost:3000').replace(/\/api\/?$/, ''),
-        changeOrigin: true,
-        // Configure proxy for SSE (Server-Sent Events) support
-        configure: (proxy) => {
-          proxy.on('proxyRes', (proxyRes, req) => {
-            // Disable buffering for SSE endpoints to allow real-time streaming
-            if (req.url?.includes('/notifications/stream')) {
-              proxyRes.headers['x-accel-buffering'] = 'no';
-              proxyRes.headers['cache-control'] = 'no-cache';
-            }
-          });
+    define: {
+      __APP_VERSION__: JSON.stringify(pkg.version)
+    },
+    plugins: [
+      vue(),
+    ],
+    resolve: {
+      alias: {
+        '@': fileURLToPath(new URL('./src', import.meta.url))
+      }
+    },
+    build: {
+      chunkSizeWarningLimit: 700,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules/pdfjs-dist/')) return 'pdfjs'
+            if (id.includes('node_modules/chart.js/')) return 'chart'
+            if (id.includes('node_modules/lightweight-charts/')) return 'lightweight-charts'
+          }
+        }
+      }
+    },
+    server: {
+      port: 5173,
+      host: devHost,
+      strictPort: true,
+      cors: false,
+      allowedHosts,
+      proxy: {
+        '/api': {
+          // Extract base URL from VITE_API_URL (remove /api suffix if present)
+          target: (env.VITE_API_URL || 'http://localhost:3001').replace(/\/api\/?$/, ''),
+          changeOrigin: true,
+          // Configure proxy for SSE (Server-Sent Events) support
+          configure: (proxy) => {
+            proxy.on('proxyRes', (proxyRes, req) => {
+              // Disable buffering for SSE endpoints to allow real-time streaming
+              if (req.url?.includes('/notifications/stream')) {
+                proxyRes.headers['x-accel-buffering'] = 'no';
+                proxyRes.headers['cache-control'] = 'no-cache';
+              }
+            });
+          }
         }
       }
     }
   }
-}})
+})

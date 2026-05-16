@@ -11,6 +11,8 @@ jest.mock('../../src/models/Trade', () => ({
 }));
 
 jest.mock('../../src/models/BrokerConnection', () => ({
+  claimForSync: jest.fn(),
+  releaseSyncClaim: jest.fn(),
   updateSyncLog: jest.fn(),
   updateSchwabTokens: jest.fn(),
   updateStatus: jest.fn()
@@ -31,6 +33,7 @@ jest.mock('../../src/config/database', () => ({
 
 const Trade = require('../../src/models/Trade');
 const db = require('../../src/config/database');
+const axios = require('axios');
 const ibkrService = require('../../src/services/brokerSync/ibkrService');
 const schwabService = require('../../src/services/brokerSync/schwabService');
 
@@ -121,6 +124,34 @@ describe('broker sync duplicate protection', () => {
     expect(isDuplicate).toBe(true);
   });
 
+  test('IBKR duplicate detection keeps fractional quantities distinct', () => {
+    const isDuplicate = ibkrService.isDuplicateTrade(
+      {
+        symbol: 'AAPL',
+        side: 'long',
+        quantity: 10.75,
+        entryPrice: 100,
+        entryTime: '2026-03-06T15:00:00Z',
+        tradeDate: '2026-03-06'
+      },
+      [
+        {
+          symbol: 'AAPL',
+          side: 'long',
+          quantity: 10.25,
+          entry_price: 100,
+          entry_time: '2026-03-06T15:00:00Z',
+          trade_date: '2026-03-06',
+          instrument_type: 'stock',
+          executions: null
+        }
+      ],
+      {}
+    );
+
+    expect(isDuplicate).toBe(false);
+  });
+
   test('IBKR execution matching uses order IDs when they are present', () => {
     expect(
       ibkrService.executionsMatch(
@@ -130,32 +161,38 @@ describe('broker sync duplicate protection', () => {
     ).toBe(true);
   });
 
-  test('IBKR manual sync defaults to a bounded Flex date override window', () => {
-    jest.useFakeTimers().setSystemTime(new Date('2026-03-09T12:00:00Z'));
-
+  test('IBKR Flex request never sends fd/td date overrides', () => {
     const params = ibkrService.buildReportRequestParams('token-1', 'query-1', {
-      syncType: 'manual'
+      syncType: 'manual',
+      startDate: '2025-01-01',
+      endDate: '2026-01-01'
     });
 
-    const start = new Date(`${params.fd.slice(0, 4)}-${params.fd.slice(4, 6)}-${params.fd.slice(6, 8)}T00:00:00Z`);
-    const end = new Date(`${params.td.slice(0, 4)}-${params.td.slice(4, 6)}-${params.td.slice(6, 8)}T00:00:00Z`);
-    const daySpan = Math.floor((end - start) / 86400000) + 1;
-
-    expect(params).toMatchObject({
+    expect(params).toEqual({
       t: 'token-1',
       q: 'query-1',
-      v: '3',
-      td: '20260309'
+      v: '3'
     });
-    expect(daySpan).toBe(365);
-
-    jest.useRealTimers();
+    expect(params).not.toHaveProperty('fd');
+    expect(params).not.toHaveProperty('td');
   });
 
-  test('IBKR explicit Flex date overrides reject ranges longer than 365 days', () => {
-    expect(() => {
-      ibkrService.normalizeReportDateRange('2025-01-01', '2026-01-01');
-    }).toThrow('IBKR Flex Web Service supports up to 365 days per request');
+  test('IBKR Flex report requests use current endpoint and TradeTally user agent', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: '<FlexStatementResponse><ReferenceCode>ref-123</ReferenceCode></FlexStatementResponse>'
+    });
+
+    await expect(ibkrService.requestFlexReport('token-1', 'query-1')).resolves.toEqual({
+      referenceCode: 'ref-123'
+    });
+
+    expect(axios.get).toHaveBeenCalledWith(
+      'https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService/SendRequest',
+      expect.objectContaining({
+        params: { t: 'token-1', q: 'query-1', v: '3' },
+        headers: { 'User-Agent': expect.stringMatching(/^TradeTally\//) }
+      })
+    );
   });
 
   test('Schwab importTrades skips a trade already imported by a previous sync', async () => {

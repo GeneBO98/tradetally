@@ -1,5 +1,35 @@
 const db = require('../config/database');
+const fs = require('fs').promises;
+const path = require('path');
 const { getUserLocalDate } = require('../utils/timezone');
+const logger = require('../utils/logger');
+
+// Uploads directory must match controllers/diary.controller.js.
+const DIARY_UPLOADS_DIR = path.resolve(__dirname, '../../uploads/diary');
+
+// Resolve a stored file_url to an absolute path inside DIARY_UPLOADS_DIR.
+// Returns null if the path would escape the uploads directory (path traversal defense).
+function resolveDiaryAttachmentPath(fileUrl) {
+  if (!fileUrl) return null;
+  const filename = path.basename(fileUrl);
+  const resolved = path.resolve(DIARY_UPLOADS_DIR, filename);
+  if (!resolved.startsWith(DIARY_UPLOADS_DIR + path.sep) && resolved !== DIARY_UPLOADS_DIR) {
+    return null;
+  }
+  return resolved;
+}
+
+async function unlinkAttachmentFile(fileUrl) {
+  const resolved = resolveDiaryAttachmentPath(fileUrl);
+  if (!resolved) return;
+  try {
+    await fs.unlink(resolved);
+  } catch (err) {
+    if (err.code !== 'ENOENT') {
+      logger.warn(`[Diary] Failed to unlink attachment ${fileUrl}: ${err.message}`);
+    }
+  }
+}
 
 class Diary {
   static async create(userId, entryData) {
@@ -298,13 +328,16 @@ class Diary {
     `;
 
     const result = await db.query(query, [id, userId]);
-    
+
     if (result.rows.length > 0) {
-      // TODO: Clean up attachment files from filesystem
-      // This would be implemented with the file system cleanup
+      // Clean up attachment files from filesystem (DB rows already cascaded).
+      // Don't await per-file; swallow failures in unlinkAttachmentFile (already logged).
+      await Promise.all(
+        (attachments.rows || []).map(a => unlinkAttachmentFile(a.file_url))
+      );
       return result.rows[0];
     }
-    
+
     return null;
   }
 
@@ -358,7 +391,8 @@ class Diary {
     const deleteQuery = `DELETE FROM diary_attachments WHERE id = $1`;
     await db.query(deleteQuery, [attachmentId]);
 
-    // TODO: Clean up file from filesystem
+    // Clean up file from filesystem (failures logged but non-fatal).
+    await unlinkAttachmentFile(attachment.file_url);
     return attachment;
   }
 

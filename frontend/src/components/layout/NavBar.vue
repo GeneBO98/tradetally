@@ -444,6 +444,12 @@ const navigation = computed(() => {
         to: '/admin/users',
         route: 'admin-users',
         description: 'Manage users and permissions'
+      },
+      {
+        name: 'Execution Runs',
+        to: '/admin/execution-runs',
+        route: 'admin-execution-runs',
+        description: 'Run ledger, SLOs, alerts'
       }
     ]
 

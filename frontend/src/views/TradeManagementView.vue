@@ -1,5 +1,5 @@
 <template>
-    <div class="content-wrapper py-8">
+    <div class="content-wrapper py-8" data-testid="trade-management-view">
         <!-- Header -->
         <div class="flex items-center justify-between mb-8">
             <div>
@@ -22,11 +22,17 @@
             cta-label="Done"
         />
 
+        <ExecutionRunPanel
+            :filters="filters"
+            :trade-count="trades.length"
+        />
+
         <!-- R-Multiple Performance Chart -->
         <RPerformanceChart
             :filters="filters"
             :refresh-trigger="rPerfRefreshTrigger"
             class="mb-8"
+            data-testid="r-performance-chart"
         />
 
         <!-- Divider -->
@@ -52,6 +58,7 @@
             :pagination="pagination"
             :selected-trade-id="selectedTradeId"
             :initial-filters="filters"
+            data-testid="trade-selector"
             @trade-selected="onTradeSelected"
             @filters-changed="onFiltersChanged"
             @load-more="loadMoreTrades"
@@ -73,9 +80,10 @@
         >
             <!-- Candlestick Chart with Markers (only shown when chart data loads successfully and instrument is supported) -->
             <TradeManagementChart
-                v-if="chartAvailable && isChartSupportedInstrument"
+                v-if="isChartSupportedInstrument"
                 :trade="selectedTrade"
                 :loading="chartLoading"
+                data-testid="trade-management-chart"
                 @chart-loaded="onChartLoaded"
             />
 
@@ -145,6 +153,7 @@ const authStore = useAuthStore();
 import { useGlobalAccountFilter } from "@/composables/useGlobalAccountFilter";
 import TradeSelector from "@/components/trade-management/TradeSelector.vue";
 import StopLossTakeProfitForm from "@/components/trade-management/StopLossTakeProfitForm.vue";
+import ExecutionRunPanel from "@/components/trade-management/ExecutionRunPanel.vue";
 import TradeManagementChart from "@/components/trade-management/TradeManagementChart.vue";
 import RMultipleAnalysis from "@/components/trade-management/RMultipleAnalysis.vue";
 import TradeSummaryMetrics from "@/components/trade-management/TradeSummaryMetrics.vue";
@@ -372,6 +381,7 @@ async function onLevelsSaved(updatedTrade) {
     // Re-fetch analysis with new levels
     await fetchAnalysis(updatedTrade.id);
     updateTradeInList(updatedTrade);
+    rPerfRefreshTrigger.value++;
 }
 
 async function refreshAnalysisOnly(tradeId) {
@@ -403,6 +413,7 @@ async function onLevelsUpdated(updatedTrade) {
     // Refresh analysis without replacing selectedTrade
     await refreshAnalysisOnly(updatedTrade.id);
     updateTradeInList(updatedTrade);
+    rPerfRefreshTrigger.value++;
 }
 
 async function onTargetHitUpdated(data) {

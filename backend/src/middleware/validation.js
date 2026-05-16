@@ -595,4 +595,14 @@ const schemas = {
   })
 };
 
+schemas.bulkUpdateTrades = Joi.object({
+  trades: Joi.array()
+    .items(schemas.updateTrade.keys({
+      id: Joi.string().uuid().required()
+    }))
+    .min(1)
+    .max(500)
+    .required()
+});
+
 module.exports = { validate, schemas };

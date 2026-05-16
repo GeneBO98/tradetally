@@ -42,6 +42,12 @@ dist-ssr/
 build/
 out/
 coverage/
+frontend/test-results/
+frontend/playwright-report/
+frontend/e2e/.auth/
+backend/test-results/
+test-results/
+.codex-*.png
 .nyc_output/
 .parcel-cache/
 .cache/

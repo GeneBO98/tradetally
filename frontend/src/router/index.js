@@ -204,6 +204,12 @@ const router = createRouter({
       meta: { requiresAuth: true, requiresAdmin: true }
     },
     {
+      path: '/admin/execution-runs',
+      name: 'admin-execution-runs',
+      component: () => import('@/views/admin/ExecutionRunsAdminView.vue'),
+      meta: { requiresAuth: true, requiresAdmin: true }
+    },
+    {
       path: '/admin/oauth',
       name: 'oauth-clients',
       component: () => import('@/views/OAuth/ClientManagementView.vue'),

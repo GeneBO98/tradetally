@@ -36,6 +36,22 @@ async function ensureMigrationsTable() {
       );
     `);
     console.log(`${colors.green}[SUCCESS] Migrations table created${colors.reset}`);
+  } else {
+    await db.query(`
+      ALTER TABLE migrations
+      ADD COLUMN IF NOT EXISTS checksum VARCHAR(64)
+    `);
+
+    await db.query(`
+      UPDATE migrations
+      SET checksum = repeat('0', 64)
+      WHERE checksum IS NULL
+    `);
+
+    await db.query(`
+      ALTER TABLE migrations
+      ALTER COLUMN checksum SET NOT NULL
+    `);
   }
 }
 
@@ -74,6 +90,10 @@ async function getAppliedMigrations() {
   return new Map(result.rows.map(row => [row.filename, row.checksum]));
 }
 
+function isLegacyChecksum(checksum) {
+  return !checksum || checksum === '0'.repeat(64);
+}
+
 async function calculateChecksum(content) {
   const crypto = require('crypto');
   return crypto.createHash('sha256').update(content).digest('hex');
@@ -104,34 +124,7 @@ async function runMigration(filename, content, checksum) {
   try {
     await client.query('BEGIN');
 
-    // Make migration idempotent by wrapping in exception handling
-    // This allows migrations to be re-run safely
-    const wrappedContent = `
-      DO $migration$
-      BEGIN
-        ${content}
-      EXCEPTION
-        WHEN duplicate_table THEN
-          RAISE NOTICE 'Table already exists, skipping...';
-        WHEN duplicate_column THEN
-          RAISE NOTICE 'Column already exists, skipping...';
-        WHEN duplicate_object THEN
-          RAISE NOTICE 'Object already exists, skipping...';
-        WHEN undefined_column THEN
-          RAISE NOTICE 'Column does not exist, skipping...';
-        WHEN undefined_table THEN
-          RAISE NOTICE 'Table does not exist, skipping...';
-      END $migration$;
-    `;
-
-    // Try wrapped version first for safety
-    try {
-      await client.query(wrappedContent);
-    } catch (wrapError) {
-      // If wrapping fails, try original content
-      // Some migrations might not be compatible with DO blocks
-      await client.query(content);
-    }
+    await client.query(content);
 
     // Record the migration
     await recordMigration(client, filename, checksum);
@@ -140,22 +133,6 @@ async function runMigration(filename, content, checksum) {
     console.log(`${colors.green}[SUCCESS] Migration ${filename} applied successfully${colors.reset}`);
   } catch (error) {
     await client.query('ROLLBACK');
-
-    // Check if error is due to existing schema elements
-    if (error.code === '42P07') { // duplicate_table
-      console.log(`${colors.yellow}[WARNING] Table already exists in ${filename}, marking as applied${colors.reset}`);
-      // Mark migration as applied anyway
-      await recordMigration(client, filename, checksum);
-      return;
-    } else if (error.code === '42701') { // duplicate_column
-      console.log(`${colors.yellow}[WARNING] Column already exists in ${filename}, marking as applied${colors.reset}`);
-      await recordMigration(client, filename, checksum);
-      return;
-    } else if (error.code === '42710') { // duplicate_object (for indexes, etc)
-      console.log(`${colors.yellow}[WARNING] Object already exists in ${filename}, marking as applied${colors.reset}`);
-      await recordMigration(client, filename, checksum);
-      return;
-    }
 
     throw error;
   } finally {
@@ -213,8 +190,14 @@ async function migrate() {
       const checksum = await calculateChecksum(content);
       
       if (appliedMigrations.has(filename)) {
-        // Skip this migration as it's already applied
-        // We don't validate checksums as they cause unnecessary issues
+        const appliedChecksum = appliedMigrations.get(filename);
+        if (isLegacyChecksum(appliedChecksum)) {
+          await db.query('UPDATE migrations SET checksum = $1 WHERE filename = $2', [checksum, filename]);
+          appliedMigrations.set(filename, checksum);
+        } else if (appliedChecksum !== checksum) {
+          throw new Error(`Migration checksum mismatch for ${filename}. Refusing to run with edited applied migration.`);
+        }
+
         console.log(`${colors.gray}→ Skipping ${filename} (already applied)${colors.reset}`);
       } else {
         await runMigration(filename, content, checksum);
@@ -228,7 +211,7 @@ async function migrate() {
     if (error.detail) {
       console.error(`${colors.red}  Detail: ${error.detail}${colors.reset}`);
     }
-    process.exit(1);
+    throw error;
   }
 }
 
@@ -239,4 +222,4 @@ if (require.main === module) {
     .catch(() => process.exit(1));
 }
 
-module.exports = { migrate };
+module.exports = { migrate, runMigration, ensureMigrationsTable, syncMigrationsSequence };

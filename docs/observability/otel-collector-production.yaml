@@ -1,0 +1,35 @@
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+  batch:
+    timeout: 3s
+    send_batch_size: 512
+  resource:
+    attributes:
+      - key: service.namespace
+        value: tradetally
+        action: upsert
+
+exporters:
+  otlphttp:
+    endpoint: ${OTEL_VENDOR_ENDPOINT}
+    headers:
+      api-key: ${OTEL_VENDOR_API_KEY}
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlphttp]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlphttp]

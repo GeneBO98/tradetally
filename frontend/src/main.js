@@ -6,6 +6,7 @@ import './assets/main.css'
 import { useAuthStore } from './stores/auth'
 import { useAnalytics } from './composables/useAnalytics'
 import { growthbook, initializeGrowthBook, updateGrowthBookContext } from './services/growthbook'
+import { installGlobalErrorTelemetry } from './services/telemetry'
 
 const app = createApp(App)
 const AUTH_BOOTSTRAP_TIMEOUT_MS = 4000
@@ -14,6 +15,7 @@ const GROWTHBOOK_BOOTSTRAP_TIMEOUT_MS = 1500
 app.use(createPinia())
 app.use(router)
 app.config.globalProperties.$growthbook = growthbook
+installGlobalErrorTelemetry(app, router)
 
 function withTimeout(promise, timeoutMs) {
   let timeoutId
