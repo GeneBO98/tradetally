@@ -146,8 +146,10 @@ const securityMiddleware = () => {
       res.setHeader('X-Permitted-Cross-Domain-Policies', 'none'); // Adobe Flash/PDF security
       res.setHeader('X-DNS-Prefetch-Control', 'off'); // Privacy protection
       
-      // OWASP A05:2021 Security Misconfiguration prevention
-      res.setHeader('X-Robots-Tag', 'noindex, nofollow, nosnippet, noarchive'); // Search engine control
+      // Search engine control is only appropriate for backend/API responses.
+      if (req.path === '/api' || req.path.startsWith('/api/') || req.path.startsWith('/oauth')) {
+        res.setHeader('X-Robots-Tag', 'noindex, nofollow, nosnippet, noarchive');
+      }
       
       // Additional A05:2021 mitigation headers
       res.setHeader('X-Content-Options', 'nosniff'); // Additional content-type protection
