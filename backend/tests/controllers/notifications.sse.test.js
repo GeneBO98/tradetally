@@ -10,6 +10,7 @@ jest.mock('../../src/services/sseFanoutService', () => ({
 
 const notificationsController = require('../../src/controllers/notifications.controller');
 const sseFanoutService = require('../../src/services/sseFanoutService');
+const db = require('../../src/config/database');
 
 describe('notifications SSE connection controls', () => {
   const { sseConnections, evictOldestConnectionIfNeeded } = notificationsController._test;
@@ -70,5 +71,30 @@ describe('notifications SSE connection controls', () => {
       'user-1',
       expect.objectContaining({ type: 'price_alert' })
     );
+  });
+
+  test('deleting a trade comment notification hides only the notification row', async () => {
+    db.query.mockResolvedValue({ rowCount: 1, rows: [] });
+    const req = {
+      user: { id: 'trade-owner-1' },
+      body: {
+        notifications: [{ id: 'comment-1', type: 'trade_comment' }]
+      }
+    };
+    const res = {
+      json: jest.fn()
+    };
+    const next = jest.fn();
+
+    await notificationsController.deleteNotifications(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(db.query).toHaveBeenCalledTimes(1);
+    expect(db.query.mock.calls[0][0]).toContain('INSERT INTO notification_read_status');
+    expect(db.query.mock.calls[0][0]).not.toContain('UPDATE trade_comments');
+    expect(db.query.mock.calls[0][1]).toEqual(['comment-1', 'trade-owner-1']);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      success: true
+    }));
   });
 });

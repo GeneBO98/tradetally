@@ -351,6 +351,7 @@ const notificationsController = {
           AND tc.user_id != $1
           AND t.is_public = true
           AND tc.deleted_at IS NULL
+          AND nrs.deleted_at IS NULL
           ${unread_only === 'true' ? 'AND nrs.id IS NULL' : ''}
         ORDER BY tc.created_at DESC
         LIMIT $2 OFFSET $3
@@ -383,7 +384,7 @@ const notificationsController = {
            LEFT JOIN notification_read_status nrs ON (
              nrs.user_id = $1 AND nrs.notification_type = 'trade_comment' AND nrs.notification_id = tc.id
            )
-           WHERE t.user_id = $1 AND tc.user_id != $1 AND t.is_public = true AND tc.deleted_at IS NULL
+           WHERE t.user_id = $1 AND tc.user_id != $1 AND t.is_public = true AND tc.deleted_at IS NULL AND nrs.deleted_at IS NULL
            ${unread_only === 'true' ? 'AND nrs.id IS NULL' : ''}
           ) as total
       `;
@@ -529,6 +530,7 @@ const notificationsController = {
           AND tc.user_id != $1
           AND t.is_public = true
           AND tc.deleted_at IS NULL
+          AND nrs.deleted_at IS NULL
           AND nrs.id IS NULL
           AND tc.created_at > NOW() - INTERVAL '30 days'
       `;
@@ -572,18 +574,22 @@ const notificationsController = {
             WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
           `, [notification.id, userId]);
         } else if (notification.type === 'trade_comment') {
-          // For trade comments, we soft delete them but only hide from notifications
-          // (the actual comment stays on the trade)
           return db.query(`
-            UPDATE trade_comments 
-            SET deleted_at = CURRENT_TIMESTAMP 
-            WHERE id = $1 
-            AND id IN (
-              SELECT tc.id FROM trade_comments tc
-              JOIN trades t ON tc.trade_id = t.id
-              WHERE t.user_id = $2 AND tc.user_id != $2
+            INSERT INTO notification_read_status (
+              user_id, notification_type, notification_id, read_at, deleted_at
             )
-            AND deleted_at IS NULL
+            SELECT $2, 'trade_comment', tc.id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+            FROM trade_comments tc
+            JOIN trades t ON tc.trade_id = t.id
+            WHERE tc.id = $1
+              AND t.user_id = $2
+              AND tc.user_id != $2
+              AND t.is_public = true
+              AND tc.deleted_at IS NULL
+            ON CONFLICT (user_id, notification_type, notification_id)
+            DO UPDATE SET
+              read_at = CURRENT_TIMESTAMP,
+              deleted_at = CURRENT_TIMESTAMP
           `, [notification.id, userId]);
         }
         return Promise.resolve();
