@@ -1,11 +1,18 @@
 const db = require('../config/database');
 const TierService = require('../services/tierService');
 const { verifyJwtToken } = require('./auth');
+const { getRequestAuthToken, hasDisabledQueryToken } = require('../utils/requestAuthToken');
 
 const sseAuthenticate = async (req, res, next) => {
   try {
-    // Check for token in query params (for SSE)
-    const token = req.query.token || req.headers.authorization?.replace('Bearer ', '');
+    const token = getRequestAuthToken(req);
+
+    if (!token && hasDisabledQueryToken(req)) {
+      return res.status(401).json({
+        error: 'Query-string token auth is disabled',
+        code: 'QUERY_TOKEN_DISABLED'
+      });
+    }
     
     if (!token) {
       return res.status(401).json({ error: 'No token provided' });

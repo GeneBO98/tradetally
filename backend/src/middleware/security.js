@@ -14,15 +14,16 @@ const securityMiddleware = () => {
           // Core CSP directives - OWASP Level 3 compliant
           defaultSrc: ["'self'"],
           scriptSrc: [
-            "'self'",
-            // Required for inline PostHog init and index.html bootstrap script.
-            // TODO: Replace with nonces via generateCSPNonce middleware for full CWE-693 compliance.
-            "'unsafe-inline'",
+            "'self'"
           ],
+          scriptSrcAttr: ["'none'"],
           styleSrc: [
-            "'self'",
-            "'unsafe-inline'", // Required for Vue scoped styles and Tailwind
+            "'self'"
           ],
+          styleSrcElem: ["'self'"],
+          // Some legacy Vue templates still use dynamic style attributes for chart
+          // dimensions and progress bars. Keep this scoped to attributes only.
+          styleSrcAttr: ["'unsafe-inline'"],
           imgSrc: [
             "'self'",
             "data:",
@@ -47,13 +48,11 @@ const securityMiddleware = () => {
           childSrc: ["'none'"], // CSP Level 3 - Prevent nested browsing contexts
           // OWASP Injection prevention directives (CWE-693 mitigation)  
           objectSrc: ["'none'"], // Block object/embed/applet tags
-          embedSrc: ["'none'"], // CSP3 directive for embed tags
           baseUri: ["'self'"], // Restrict base tag usage
           formAction: ["'self'"], // Restrict form submission targets
           // OWASP CSP Level 3 directives for WASC-15 compliance
           manifestSrc: ["'self'"], // Web app manifest sources
           mediaSrc: ["'self'"], // Audio/video sources
-          childSrc: ["'none'"], // Child browsing context sources
           workerSrc: ["'self'"], // Worker script sources
           // OWASP Transport Security (WASC-15 mitigation)
           upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null,

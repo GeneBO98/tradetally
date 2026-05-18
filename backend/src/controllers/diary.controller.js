@@ -9,6 +9,7 @@ const imageProcessor = require('../utils/imageProcessor');
 const path = require('path');
 const fs = require('fs').promises;
 const { verifyJwtToken } = require('../middleware/auth');
+const { hasDisabledQueryToken, queryToken } = require('../utils/requestAuthToken');
 
 
 // Get diary entries for user with filtering and pagination
@@ -346,9 +347,17 @@ const getDiaryImage = async (req, res) => {
 
     // Check if token is provided as query parameter (for direct image access)
     let user = req.user;
-    if (!user && req.query.token) {
+    if (!user && hasDisabledQueryToken(req)) {
+      return res.status(401).json({
+        error: 'Query-string token auth is disabled',
+        code: 'QUERY_TOKEN_DISABLED'
+      });
+    }
+
+    const imageQueryToken = queryToken(req);
+    if (!user && imageQueryToken) {
       try {
-        const decoded = verifyJwtToken(req.query.token);
+        const decoded = verifyJwtToken(imageQueryToken);
         user = { id: decoded.id };
       } catch (error) {
         return res.status(401).json({ error: 'Invalid token' });

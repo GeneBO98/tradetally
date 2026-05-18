@@ -35,43 +35,8 @@
     <meta name="theme-color" content="#3B82F6">
     <meta name="format-detection" content="telephone=no">
 
-    <!-- Loader is shown for JS-enabled browsers until Vue mounts -->
-    <style>
-      /* Loading spinner while Vue bootstraps */
-      #app-loading{display:none;justify-content:center;align-items:center;min-height:100vh;background:#fff}
-      #app-loading .spinner{width:3rem;height:3rem;border:3px solid #e5e7eb;border-top-color:#2563eb;border-radius:50%;animation:tt-spin 0.7s linear infinite}
-      @keyframes tt-spin{to{transform:rotate(360deg)}}
-      @media(prefers-color-scheme:dark){#app-loading{background:#111827}#app-loading .spinner{border-color:#374151;border-top-color:#3b82f6}}
-      /* If JS is enabled, hide static fallback and show loader immediately */
-      .tt-js #app-loading{display:flex}
-      .tt-js #app-fallback{display:none}
-
-      #app-fallback{max-width:72rem;margin:0 auto;padding:4rem 1rem;text-align:center;font-family:system-ui,-apple-system,sans-serif}
-      #app-fallback h1{font-size:2.25rem;font-weight:800;color:#111827;line-height:1.2;margin:0 0 1.25rem}
-      #app-fallback .hero-sub{font-size:1.25rem;color:#6b7280;line-height:1.75;max-width:48rem;margin:0 auto}
-      #app-fallback .hero-cta{margin-top:2rem;display:flex;justify-content:center;gap:1rem}
-      #app-fallback .hero-cta a{display:inline-block;padding:0.75rem 2rem;border-radius:0.5rem;font-weight:600;font-size:1.125rem;text-decoration:none}
-      #app-fallback .hero-cta a:first-child{background:#2563eb;color:#fff}
-      #app-fallback .hero-cta a:last-child{background:#f3f4f6;color:#374151}
-      #app-fallback .seo-sections{display:block;margin-top:2.5rem;text-align:left}
-      #app-fallback .seo-sections section{max-width:54rem;margin:0 auto 1rem;padding:1rem 1.25rem;background:#f9fafb;border:1px solid #e5e7eb;border-radius:0.75rem}
-      #app-fallback .seo-sections h2{margin:0 0 0.5rem;color:#111827;font-size:1.25rem}
-      #app-fallback .seo-sections p{margin:0;color:#4b5563;line-height:1.65}
-      #app-fallback .seo-sections nav{margin-top:0.75rem;display:flex;flex-wrap:wrap;gap:0.75rem}
-      #app-fallback .seo-sections a{color:#1d4ed8;text-decoration:none}
-      #app-fallback .seo-sections a:hover{text-decoration:underline}
-    </style>
-    <!-- Mark JS-enabled clients before body paint -->
-    <script>
-      try {
-        document.documentElement.classList.add('tt-js')
-        if (localStorage.getItem('token')) {
-          document.documentElement.classList.add('tt-has-token')
-        }
-      } catch (e) {
-        document.documentElement.classList.add('tt-js')
-      }
-    </script>
+    <link rel="stylesheet" href="/app-shell.css">
+    <script src="/app-bootstrap.js"></script>
   </head>
   <body>
     <div id="app">

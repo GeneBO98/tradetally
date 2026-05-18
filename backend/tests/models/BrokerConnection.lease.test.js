@@ -75,4 +75,52 @@ describe('BrokerConnection sync lease metrics', () => {
       syncClaimedBy: 'worker-1'
     });
   });
+
+  test('redacts broker tokens before storing connection failure messages', async () => {
+    db.query.mockResolvedValueOnce({
+      rows: [{
+        id: 'connection-1',
+        user_id: 'user-1',
+        broker_type: 'ibkr',
+        connection_status: 'error',
+        last_error_message: 'request failed https://flex.example/report?t=[REDACTED]&q=[REDACTED]'
+      }]
+    });
+
+    await BrokerConnection.updateAfterFailure(
+      'connection-1',
+      'request failed https://flex.example/report?t=raw-flex-token&q=raw-query-id'
+    );
+
+    expect(db.query.mock.calls[0][1][1]).toBe(
+      'request failed https://flex.example/report?t=[REDACTED]&q=[REDACTED]'
+    );
+  });
+
+  test('redacts broker tokens before storing sync log errors', async () => {
+    db.query.mockResolvedValueOnce({
+      rows: [{
+        id: 'log-1',
+        connection_id: 'connection-1',
+        user_id: 'user-1',
+        sync_type: 'manual',
+        status: 'failed',
+        error_message: 'failed'
+      }]
+    });
+
+    await BrokerConnection.updateSyncLog('log-1', 'failed', {
+      errorMessage: 'axios failed https://flex.example/report?t=raw-flex-token&q=raw-query-id',
+      errorDetails: {
+        url: 'https://flex.example/report?t=raw-flex-token&q=raw-query-id',
+        token: 'raw-flex-token'
+      }
+    });
+
+    expect(db.query.mock.calls[0][1][7]).toBe(
+      'axios failed https://flex.example/report?t=[REDACTED]&q=[REDACTED]'
+    );
+    expect(db.query.mock.calls[0][1][8]).toContain('[REDACTED]');
+    expect(db.query.mock.calls[0][1][8]).not.toContain('raw-flex-token');
+  });
 });

@@ -14,6 +14,7 @@
     "performance-budgets:check": "node scripts/check-performance-budgets.js",
     "deployment:smoke": "node scripts/deployment-smoke.js",
     "deployment:post-check": "node scripts/deployment-post-check.js",
+    "smoke:static-assets": "node scripts/smoke-static-assets.js",
     "smoke:alert-escalations": "node scripts/smoke-alert-escalations.js",
     "smoke:alert-fixtures": "node scripts/generate-alert-smoke-fixtures.js",
     "otel:smoke": "node scripts/smoke-otel-export.js",

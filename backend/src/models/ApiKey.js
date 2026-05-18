@@ -33,16 +33,28 @@ function hydrateApiKeyRow(row) {
 }
 
 class ApiKey {
+  static getLookupSecret() {
+    return process.env.API_KEY_LOOKUP_SECRET || process.env.JWT_SECRET || 'development-api-key-lookup-secret';
+  }
+
+  static computeLookupHmac(key) {
+    return crypto
+      .createHmac('sha256', this.getLookupSecret())
+      .update(key)
+      .digest('hex');
+  }
+
   static async create({ userId, name, permissions = ['read'], scopes = [], expiresAt = null }) {
     // Generate a random API key
     const key = this.generateApiKey();
     const keyPrefix = key.substring(0, 8);
     const keyHash = await bcrypt.hash(key, 10);
+    const keyHmac = this.computeLookupHmac(key);
     const resolvedScopes = resolveEffectiveScopes({ permissions, scopes });
 
     const query = `
-      INSERT INTO api_keys (user_id, name, key_hash, key_prefix, permissions, scopes, expires_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO api_keys (user_id, name, key_hash, key_prefix, key_hmac, permissions, scopes, expires_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING id, name, key_prefix, permissions, scopes, expires_at, is_active, created_at
     `;
 
@@ -51,6 +63,7 @@ class ApiKey {
       name,
       keyHash,
       keyPrefix,
+      keyHmac,
       JSON.stringify(permissions),
       JSON.stringify(resolvedScopes),
       expiresAt
@@ -165,7 +178,22 @@ class ApiKey {
   }
 
   static async verifyKey(key) {
-    // Extract potential key prefix to optimize search
+    const keyHmac = this.computeLookupHmac(key);
+    const hmacQuery = `
+      SELECT ak.*, u.username, u.email, u.role
+      FROM api_keys ak
+      JOIN users u ON ak.user_id = u.id
+      WHERE ak.key_hmac = $1 AND ak.is_active = true
+      AND (ak.expires_at IS NULL OR ak.expires_at > NOW())
+      LIMIT 1
+    `;
+
+    const hmacResult = await db.query(hmacQuery, [keyHmac]);
+    if (hmacResult.rows.length > 0) {
+      this.updateLastUsed(hmacResult.rows[0].id).catch(() => {});
+      return hydrateApiKeyRow(hmacResult.rows[0]);
+    }
+
     const keyPrefix = key.substring(0, 8);
     
     const query = `
@@ -173,6 +201,7 @@ class ApiKey {
       FROM api_keys ak
       JOIN users u ON ak.user_id = u.id
       WHERE ak.key_prefix = $1 AND ak.is_active = true
+      AND (ak.key_hmac IS NULL OR ak.key_hmac = '')
       AND (ak.expires_at IS NULL OR ak.expires_at > NOW())
     `;
     
@@ -181,8 +210,8 @@ class ApiKey {
     for (const row of result.rows) {
       const isValid = await bcrypt.compare(key, row.key_hash);
       if (isValid) {
-        // Update last used timestamp
-        await this.updateLastUsed(row.id);
+        await db.query('UPDATE api_keys SET key_hmac = $1 WHERE id = $2 AND (key_hmac IS NULL OR key_hmac = \'\')', [keyHmac, row.id]);
+        this.updateLastUsed(row.id).catch(() => {});
         
         return hydrateApiKeyRow(row);
       }

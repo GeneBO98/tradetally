@@ -4,6 +4,8 @@ const { hasScope, resolveEffectiveScopes } = require('../utils/apiScopes');
 const { isV1Request, sendV1Error } = require('../utils/apiResponse');
 const { TOKEN_PURPOSES, verifyJwtToken } = require('./auth');
 
+const apiKeyRateLimitBuckets = new Map();
+
 function sendAuthError(req, res, status, code, message, extra = {}) {
   if (isV1Request(req)) {
     return sendV1Error(res, status, code, message, extra.details);
@@ -14,6 +16,46 @@ function sendAuthError(req, res, status, code, message, extra = {}) {
     code,
     ...extra
   });
+}
+
+function getApiKeyRateLimitConfig() {
+  const windowMs = Number(process.env.API_KEY_RATE_LIMIT_WINDOW_MS || 60 * 1000);
+  const max = Number(process.env.API_KEY_RATE_LIMIT_MAX || 600);
+  return {
+    enabled: process.env.API_KEY_RATE_LIMIT_ENABLED !== 'false',
+    windowMs: Number.isFinite(windowMs) && windowMs > 0 ? windowMs : 60 * 1000,
+    max: Number.isFinite(max) && max > 0 ? max : 600
+  };
+}
+
+function resetApiKeyRateLimitBuckets() {
+  apiKeyRateLimitBuckets.clear();
+}
+
+function consumeApiKeyRateLimit(keyId, now = Date.now()) {
+  const config = getApiKeyRateLimitConfig();
+  if (!config.enabled || !keyId) {
+    return { allowed: true, remaining: config.max, retryAfterSeconds: 0 };
+  }
+
+  const current = apiKeyRateLimitBuckets.get(keyId);
+  if (!current || now >= current.resetAt) {
+    const next = { count: 1, resetAt: now + config.windowMs };
+    apiKeyRateLimitBuckets.set(keyId, next);
+    return {
+      allowed: true,
+      remaining: Math.max(config.max - 1, 0),
+      retryAfterSeconds: Math.ceil(config.windowMs / 1000)
+    };
+  }
+
+  current.count += 1;
+  const retryAfterSeconds = Math.max(Math.ceil((current.resetAt - now) / 1000), 1);
+  return {
+    allowed: current.count <= config.max,
+    remaining: Math.max(config.max - current.count, 0),
+    retryAfterSeconds
+  };
 }
 
 /**
@@ -44,6 +86,15 @@ const apiKeyAuth = async (req, res, next) => {
 
     if (keyData.expires_at && new Date(keyData.expires_at) < new Date()) {
       return sendAuthError(req, res, 401, 'API_KEY_EXPIRED', 'API key has expired');
+    }
+
+    const rateLimitResult = consumeApiKeyRateLimit(keyData.id);
+    res.setHeader?.('X-Rate-Limit-Remaining', String(rateLimitResult.remaining));
+    if (!rateLimitResult.allowed) {
+      res.setHeader?.('Retry-After', String(rateLimitResult.retryAfterSeconds));
+      return sendAuthError(req, res, 429, 'API_KEY_RATE_LIMITED', 'API key rate limit exceeded', {
+        retryAfterSeconds: rateLimitResult.retryAfterSeconds
+      });
     }
 
     const effectiveScopes = resolveEffectiveScopes({
@@ -248,5 +299,6 @@ module.exports = {
   requireApiPermission,
   requireApiScope,
   flexibleAuth,
-  flexibleOptionalAuth
+  flexibleOptionalAuth,
+  resetApiKeyRateLimitBuckets
 };

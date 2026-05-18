@@ -5,6 +5,7 @@
 
 const db = require('../config/database');
 const encryptionService = require('../services/brokerSync/encryptionService');
+const { sanitizeForLogging } = require('../utils/logSanitizer');
 
 const SYNC_CLAIM_TTL_MINUTES = 30;
 
@@ -370,7 +371,7 @@ class BrokerConnection {
       RETURNING *
     `;
 
-    const result = await db.query(query, [connectionId, errorMessage]);
+    const result = await db.query(query, [connectionId, sanitizeForLogging(errorMessage)]);
     if (result.rows.length === 0) return null;
 
     return this.formatConnection(result.rows[0], false);
@@ -645,8 +646,8 @@ class BrokerConnection {
       tradesSkipped,
       tradesFailed,
       duplicatesDetected,
-      errorMessage,
-      errorDetails ? JSON.stringify(errorDetails) : null,
+      sanitizeForLogging(errorMessage),
+      errorDetails ? JSON.stringify(sanitizeForLogging(errorDetails)) : null,
       syncDetails ? JSON.stringify(syncDetails) : null,
       isCompleted
     ]);

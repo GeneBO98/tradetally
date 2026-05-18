@@ -13,6 +13,9 @@ const { initializePostHogTelemetry, shutdown: shutdownPostHogTelemetry } = requi
 const { securityMiddleware } = require('./middleware/security');
 const logger = require('./utils/logger');
 const { sanitizeForLogging } = require('./utils/logSanitizer');
+const { buildAllowedOrigins, buildCorsOptions } = require('./utils/corsPolicy');
+const { recordCorsDenied, recordStaticAssetFailure } = require('./services/httpAnomalyService');
+const { validateProductionSecrets } = require('./config/envValidation');
 const authRoutes = require('./routes/auth.routes');
 const userRoutes = require('./routes/user.routes');
 const tradeRoutes = require('./routes/trade.routes');
@@ -160,68 +163,17 @@ app.use(securityMiddleware());
 app.use(requestIdMiddleware);
 
 // Optimized CORS configuration
-const allowedOrigins = [
-  process.env.FRONTEND_URL || 'http://localhost:5173',
-  ...(process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : [])
-].map(origin => origin.trim()).filter(Boolean);
-
-if (process.env.NODE_ENV !== 'production') {
-  allowedOrigins.push(
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-    'http://[::1]:5173',
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
-    'http://localhost:8080',
-    'http://localhost:8081',
-    'capacitor://localhost',
-    'ionic://localhost',
-    'http://localhost'
-  );
-}
-
+const allowedOrigins = buildAllowedOrigins();
 const allowedOriginSet = new Set(allowedOrigins);
 
 logger.info(`CORS configuration initialized with ${allowedOriginSet.size} allowed origins`, 'cors');
 logger.debug(`Allowed origins: ${Array.from(allowedOriginSet).join(', ')}`, 'cors');
 
-function isSameHostOrigin(origin, req) {
-  try {
-    const originUrl = new URL(origin);
-    return originUrl.host === req.get('host');
-  } catch (_) {
-    return false;
-  }
-}
-
-function buildCorsOptions(req) {
-  return {
-    origin: (origin, callback) => {
-      logger.debug(`CORS check for origin: ${origin || 'null'}`, 'cors');
-
-      if (!origin) {
-        logger.debug('No origin header present - allowing request', 'cors');
-        callback(null, true);
-        return;
-      }
-
-      if (allowedOriginSet.has(origin) || isSameHostOrigin(origin, req)) {
-        logger.debug(`Origin ${origin} is allowed`, 'cors');
-        callback(null, true);
-      } else {
-        logger.warn(`Origin ${origin} not allowed. Allowed origins: ${Array.from(allowedOriginSet).join(', ')}`, 'cors');
-        callback(new Error('Not allowed by CORS'));
-      }
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization', 'X-API-Key', 'X-Device-ID', 'X-App-Version', 'X-Platform', 'X-Request-ID'],
-    exposedHeaders: ['X-API-Version', 'X-Rate-Limit-Remaining', 'X-Rate-Limit-Reset', 'X-Request-ID'],
-    optionsSuccessStatus: 200
-  };
-}
-
-app.use((req, res, next) => cors(buildCorsOptions(req))(req, res, next));
+app.use((req, res, next) => cors(buildCorsOptions(req, {
+  allowedOriginSet,
+  logger,
+  onDenied: recordCorsDenied
+}))(req, res, next));
 
 morgan.token('request-id', (req) => req.requestId || '-');
 morgan.token('safe-url', (req) => sanitizeForLogging(req.originalUrl || req.url || '-'));
@@ -423,7 +375,23 @@ app.use(errorHandler);
 // Serve frontend static files (self-hosted mode, no nginx needed)
 const path = require('path');
 const frontendDist = path.resolve(__dirname, '../../frontend/dist');
+app.use((req, res, next) => {
+  if (req.path.startsWith('/assets/') || req.path === '/app-shell.css' || req.path === '/app-bootstrap.js') {
+    res.on('finish', () => {
+      if (res.statusCode >= 400) {
+        recordStaticAssetFailure({ path: req.path, statusCode: res.statusCode });
+      }
+    });
+  }
+  next();
+});
 app.use(express.static(frontendDist));
+app.use((req, res, next) => {
+  if (req.path.startsWith('/assets/') || req.path === '/app-shell.css' || req.path === '/app-bootstrap.js') {
+    return res.status(404).json({ error: 'Static asset not found' });
+  }
+  next();
+});
 
 // SPA fallback: serve index.html for non-API routes
 app.use((req, res) => {
@@ -442,6 +410,7 @@ app.use((req, res) => {
 async function startServer() {
   try {
     logger.info('Starting TradeTally server...');
+    validateProductionSecrets();
 
     // Initialize PostHog telemetry (optional)
     await initializePostHogTelemetry();
