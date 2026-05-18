@@ -47,12 +47,11 @@ export function usePriceAlertNotifications() {
       disconnect()
     }
 
-    // Construct SSE URL - always use relative URL to go through Vite proxy in development
-    // This avoids CORS issues since EventSource doesn't support credentials for cross-origin
-    // In production (same origin), relative URLs also work correctly
-    const sseUrl = `/api/notifications/stream?token=${authStore.token}`
-    console.log('Connecting to SSE:', sseUrl)
-    eventSource.value = new EventSource(sseUrl)
+    // Keep auth in the secure cookie path. Query-string JWTs are rejected server-side
+    // because URLs leak into browser history, referrers, and access logs.
+    const sseUrl = '/api/notifications/stream'
+    console.log('Connecting to SSE')
+    eventSource.value = new EventSource(sseUrl, { withCredentials: true })
     
     eventSource.value.onopen = () => {
       console.log('Connected to notification stream')

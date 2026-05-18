@@ -919,10 +919,9 @@ const handleApplyTemplate = (template) => {
 
 // Image handling
 const getImageUrl = (attachment) => {
-  const token = localStorage.getItem('token')
   // file_url already includes /api prefix, so use origin only (not VITE_API_URL which includes /api)
   const origin = window.location.origin
-  return `${origin}${attachment.file_url}?token=${token}`
+  return `${origin}${attachment.file_url}`
 }
 
 const openImagePreview = (attachment) => {

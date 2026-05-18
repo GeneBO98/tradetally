@@ -15,6 +15,17 @@ setup('authenticated storage state', async ({ page, request }) => {
   const fixture = await fixtureResponse.json()
   fs.writeFileSync(fixtureFile, JSON.stringify(fixture, null, 2))
 
+  await page.context().addCookies([{
+    name: 'token',
+    value: fixture.token,
+    domain: '127.0.0.1',
+    path: '/',
+    httpOnly: true,
+    secure: false,
+    sameSite: 'Lax',
+    expires: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
+  }])
+
   await page.goto('/')
   await page.evaluate(token => {
     window.localStorage.setItem('token', token)

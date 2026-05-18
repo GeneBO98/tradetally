@@ -9,6 +9,17 @@ test.beforeEach(async ({ page, request }) => {
   expect(response.ok()).toBeTruthy()
   adminFixture = await response.json()
 
+  await page.context().addCookies([{
+    name: 'token',
+    value: adminFixture.token,
+    domain: '127.0.0.1',
+    path: '/',
+    httpOnly: true,
+    secure: false,
+    sameSite: 'Lax',
+    expires: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
+  }])
+
   await page.goto('/')
   await page.evaluate(token => {
     window.localStorage.setItem('token', token)
