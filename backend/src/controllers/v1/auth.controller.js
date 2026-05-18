@@ -4,6 +4,11 @@ const deviceService = require('../../services/device.service');
 const { sendVerificationEmailInBackground } = require('../auth.controller');
 const crypto = require('crypto');
 
+function useDetailedErrors() {
+  return process.env.NODE_ENV !== 'production' &&
+    process.env.DETAILED_AUTH_ERRORS === 'true';
+}
+
 // Auto-generate a username from email, with random suffix if taken
 async function generateUsername(email) {
   const base = email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '').substring(0, 20) || 'user';
@@ -138,8 +143,7 @@ const authV1Controller = {
       const { email, password } = req.body;
 
       const user = await User.findByEmail(email);
-      const detailedErrors = process.env.DETAILED_AUTH_ERRORS === 'true' || 
-                           !(process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS);
+      const detailedErrors = useDetailedErrors();
       
       if (!user || !user.is_active) {
         return res.status(401).json({ 
@@ -190,8 +194,7 @@ const authV1Controller = {
 
       // First authenticate user
       const user = await User.findByEmail(email);
-      const detailedErrors = process.env.DETAILED_AUTH_ERRORS === 'true' || 
-                           !(process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS);
+      const detailedErrors = useDetailedErrors();
       
       if (!user || !user.is_active) {
         return res.status(401).json({ 

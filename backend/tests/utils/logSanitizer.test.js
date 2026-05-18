@@ -26,9 +26,9 @@ describe('logSanitizer', () => {
   });
 
   test('redacts bearer tokens and URL credentials in strings', () => {
-    const sanitized = sanitizeForLogging('Authorization: Bearer abc.def.ghi https://user:pass@example.com/path?token=abc');
+    const sanitized = sanitizeForLogging('Authorization: Bearer abc.def.ghi https://user:pass@example.com/path?token=abc&t=flex-token&q=query-id');
     expect(sanitized).toContain('Authorization: [REDACTED] [REDACTED]');
-    expect(sanitized).toContain('https://[REDACTED]:[REDACTED]@example.com/path?token=[REDACTED]');
+    expect(sanitized).toContain('https://[REDACTED]:[REDACTED]@example.com/path?token=[REDACTED]&t=[REDACTED]&q=[REDACTED]');
   });
 
   test('sanitizes error objects', () => {

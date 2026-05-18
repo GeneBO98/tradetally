@@ -12,6 +12,7 @@ const { migrate } = require('./utils/migrate');
 const { initializePostHogTelemetry, shutdown: shutdownPostHogTelemetry } = require('./posthog-telemetry');
 const { securityMiddleware } = require('./middleware/security');
 const logger = require('./utils/logger');
+const { sanitizeForLogging } = require('./utils/logSanitizer');
 const authRoutes = require('./routes/auth.routes');
 const userRoutes = require('./routes/user.routes');
 const tradeRoutes = require('./routes/trade.routes');
@@ -184,35 +185,47 @@ const allowedOriginSet = new Set(allowedOrigins);
 logger.info(`CORS configuration initialized with ${allowedOriginSet.size} allowed origins`, 'cors');
 logger.debug(`Allowed origins: ${Array.from(allowedOriginSet).join(', ')}`, 'cors');
 
-const corsOptions = {
-  origin: (origin, callback) => {
-    logger.debug(`CORS check for origin: ${origin || 'null'}`, 'cors');
-    
-    if (!origin) {
-      logger.debug('No origin header present - allowing request', 'cors');
-      callback(null, true);
-      return;
-    }
-    
-    if (allowedOriginSet.has(origin)) {
-      logger.debug(`Origin ${origin} is allowed`, 'cors');
-      callback(null, true);
-    } else {
-      logger.warn(`Origin ${origin} not allowed. Allowed origins: ${Array.from(allowedOriginSet).join(', ')}`, 'cors');
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization', 'X-API-Key', 'X-Device-ID', 'X-App-Version', 'X-Platform', 'X-Request-ID'],
-  exposedHeaders: ['X-API-Version', 'X-Rate-Limit-Remaining', 'X-Rate-Limit-Reset', 'X-Request-ID'],
-  optionsSuccessStatus: 200
-};
+function isSameHostOrigin(origin, req) {
+  try {
+    const originUrl = new URL(origin);
+    return originUrl.host === req.get('host');
+  } catch (_) {
+    return false;
+  }
+}
 
-app.use(cors(corsOptions));
+function buildCorsOptions(req) {
+  return {
+    origin: (origin, callback) => {
+      logger.debug(`CORS check for origin: ${origin || 'null'}`, 'cors');
+
+      if (!origin) {
+        logger.debug('No origin header present - allowing request', 'cors');
+        callback(null, true);
+        return;
+      }
+
+      if (allowedOriginSet.has(origin) || isSameHostOrigin(origin, req)) {
+        logger.debug(`Origin ${origin} is allowed`, 'cors');
+        callback(null, true);
+      } else {
+        logger.warn(`Origin ${origin} not allowed. Allowed origins: ${Array.from(allowedOriginSet).join(', ')}`, 'cors');
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization', 'X-API-Key', 'X-Device-ID', 'X-App-Version', 'X-Platform', 'X-Request-ID'],
+    exposedHeaders: ['X-API-Version', 'X-Rate-Limit-Remaining', 'X-Rate-Limit-Reset', 'X-Request-ID'],
+    optionsSuccessStatus: 200
+  };
+}
+
+app.use((req, res, next) => cors(buildCorsOptions(req))(req, res, next));
 
 morgan.token('request-id', (req) => req.requestId || '-');
-app.use(morgan(':method :url :status :response-time ms req_id=:request-id', {
+morgan.token('safe-url', (req) => sanitizeForLogging(req.originalUrl || req.url || '-'));
+app.use(morgan(':method :safe-url :status :response-time ms req_id=:request-id', {
   skip: function (req, res) {
     if (process.env.NODE_ENV === 'production') {
       return false;

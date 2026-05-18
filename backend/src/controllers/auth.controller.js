@@ -1,6 +1,6 @@
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
-const { generateToken, TOKEN_PURPOSES, verifyJwtToken } = require('../middleware/auth');
+const { generateToken, JWT_ALGORITHM, TOKEN_PURPOSES, verifyJwtToken } = require('../middleware/auth');
 const crypto = require('crypto');
 const EmailService = require('../services/emailService');
 const bcrypt = require('bcryptjs');
@@ -20,7 +20,7 @@ function isEmailConfigured() {
 // Check if detailed error messages are enabled (for self-hosted setups)
 function useDetailedErrors() {
   return process.env.NODE_ENV !== 'production' &&
-    (process.env.DETAILED_AUTH_ERRORS === 'true' || !isEmailConfigured());
+    process.env.DETAILED_AUTH_ERRORS === 'true';
 }
 
 // Get registration mode from environment
@@ -414,7 +414,9 @@ const authController = {
       } catch (error) {
         try {
           // Accept legacy temp tokens minted before token-purpose enforcement.
-          const legacyDecoded = jwt.verify(tempToken, process.env.JWT_SECRET);
+          const legacyDecoded = jwt.verify(tempToken, process.env.JWT_SECRET, {
+            algorithms: [JWT_ALGORITHM]
+          });
           if (legacyDecoded.purpose) {
             throw error;
           }

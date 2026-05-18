@@ -7,6 +7,8 @@ const TOKEN_PURPOSES = Object.freeze({
   PRE_2FA: 'pre_2fa'
 });
 
+const JWT_ALGORITHM = 'HS256';
+
 class InvalidTokenPurposeError extends Error {
   constructor(expectedPurpose, actualPurpose) {
     super(`Invalid token purpose: expected ${expectedPurpose}, received ${actualPurpose || 'none'}`);
@@ -16,7 +18,9 @@ class InvalidTokenPurposeError extends Error {
 }
 
 function verifyJwtToken(token, { requiredPurpose = TOKEN_PURPOSES.ACCESS } = {}) {
-  const decoded = jwt.verify(token, process.env.JWT_SECRET);
+  const decoded = jwt.verify(token, process.env.JWT_SECRET, {
+    algorithms: [JWT_ALGORITHM]
+  });
 
   if (requiredPurpose && decoded.purpose !== requiredPurpose) {
     throw new InvalidTokenPurposeError(requiredPurpose, decoded.purpose);
@@ -146,12 +150,14 @@ const generateToken = (user, options = {}) => {
     },
     process.env.JWT_SECRET,
     { 
+      algorithm: JWT_ALGORITHM,
       expiresIn
     }
   );
 };
 
 module.exports = {
+  JWT_ALGORITHM,
   TOKEN_PURPOSES,
   authenticate,
   optionalAuth,

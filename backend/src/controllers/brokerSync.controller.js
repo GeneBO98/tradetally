@@ -215,7 +215,7 @@ const brokerSyncController = {
       // Handle OAuth errors
       if (oauthError) {
         console.error('[BROKER-SYNC] Schwab OAuth error:', oauthError);
-        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=${oauthError}`);
+        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=${encodeURIComponent(oauthError)}`);
       }
 
       if (!code || !state) {

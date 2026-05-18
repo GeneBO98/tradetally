@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const db = require('../config/database');
 const { v4: uuidv4 } = require('uuid');
+const { JWT_ALGORITHM, TOKEN_PURPOSES } = require('../middleware/auth');
 
 class RefreshTokenService {
   constructor() {
@@ -18,10 +19,14 @@ class RefreshTokenService {
         id: user.id,
         email: user.email,
         username: user.username,
-        role: user.role
+        role: user.role,
+        purpose: TOKEN_PURPOSES.ACCESS
       },
       process.env.JWT_SECRET,
-      { expiresIn: this.ACCESS_TOKEN_EXPIRE }
+      {
+        algorithm: JWT_ALGORITHM,
+        expiresIn: this.ACCESS_TOKEN_EXPIRE
+      }
     );
   }
 

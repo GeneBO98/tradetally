@@ -9,8 +9,8 @@ function sanitizeString(value) {
 
   sanitized = sanitized.replace(/(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi, '$1[REDACTED]');
   sanitized = sanitized.replace(/(Basic\s+)[A-Za-z0-9+/=]+/gi, '$1[REDACTED]');
-  sanitized = sanitized.replace(/([?&](?:token|access_token|refresh_token|api[_-]?key|key|secret|password)=)[^&\s]+/gi, '$1[REDACTED]');
-  sanitized = sanitized.replace(/((?:token|access_token|refresh_token|api[_-]?key|secret|password|authorization|cookie)["']?\s*[:=]\s*["']?)([^"',\s}]+)/gi, '$1[REDACTED]');
+  sanitized = sanitized.replace(/([?&](?:token|access_token|refresh_token|api[_-]?key|key|secret|password|t|q)=)[^&\s]+/gi, '$1[REDACTED]');
+  sanitized = sanitized.replace(/(^|[\s,{])((?:token|access_token|refresh_token|api[_-]?key|secret|password|authorization|cookie)["']?\s*[:=]\s*["']?)([^"',\s}]+)/gi, '$1$2[REDACTED]');
   sanitized = sanitized.replace(/(https?:\/\/)([^/\s:@]+):([^@/\s]+)@/gi, '$1[REDACTED]:[REDACTED]@');
 
   try {

@@ -1,6 +1,6 @@
-const jwt = require('jsonwebtoken');
 const db = require('../config/database');
 const TierService = require('../services/tierService');
+const { verifyJwtToken } = require('./auth');
 
 const sseAuthenticate = async (req, res, next) => {
   try {
@@ -12,7 +12,7 @@ const sseAuthenticate = async (req, res, next) => {
     }
 
     // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = verifyJwtToken(token);
     
     // Get user from database
     const result = await db.query(
@@ -36,7 +36,7 @@ const sseAuthenticate = async (req, res, next) => {
     };
     next();
   } catch (error) {
-    if (error.name === 'JsonWebTokenError') {
+    if (error.name === 'JsonWebTokenError' || error.name === 'InvalidTokenPurposeError') {
       return res.status(401).json({ error: 'Invalid token', code: 'INVALID_TOKEN' });
     }
     if (error.name === 'TokenExpiredError') {

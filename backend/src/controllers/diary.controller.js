@@ -8,6 +8,7 @@ const db = require('../config/database');
 const imageProcessor = require('../utils/imageProcessor');
 const path = require('path');
 const fs = require('fs').promises;
+const { verifyJwtToken } = require('../middleware/auth');
 
 
 // Get diary entries for user with filtering and pagination
@@ -347,8 +348,7 @@ const getDiaryImage = async (req, res) => {
     let user = req.user;
     if (!user && req.query.token) {
       try {
-        const jwt = require('jsonwebtoken');
-        const decoded = jwt.verify(req.query.token, process.env.JWT_SECRET);
+        const decoded = verifyJwtToken(req.query.token);
         user = { id: decoded.id };
       } catch (error) {
         return res.status(401).json({ error: 'Invalid token' });

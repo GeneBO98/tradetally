@@ -30,6 +30,7 @@ jest.mock('speakeasy', () => ({
 const User = require('../../src/models/User');
 const authController = require('../../src/controllers/auth.controller');
 const speakeasy = require('speakeasy');
+const EmailService = require('../../src/services/emailService');
 const { authenticate, generateToken, TOKEN_PURPOSES } = require('../../src/middleware/auth');
 const jwt = require('jsonwebtoken');
 const { hashBackupCode } = require('../../src/utils/twoFactorBackupCodes');
@@ -55,6 +56,49 @@ describe('auth controller 2FA flow', () => {
     jest.clearAllMocks();
     process.env.JWT_SECRET = 'test-secret';
     process.env.NODE_ENV = 'test';
+    delete process.env.DETAILED_AUTH_ERRORS;
+    EmailService.isConfigured.mockReturnValue(true);
+  });
+
+  test('login keeps credential errors generic when SMTP is unconfigured unless explicitly opted in', async () => {
+    EmailService.isConfigured.mockReturnValue(false);
+    User.findByEmail.mockResolvedValue(null);
+
+    const req = {
+      body: {
+        email: 'missing@example.com',
+        password: 'password123'
+      }
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await authController.login(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(401);
+    expect(res.payload).toEqual({ error: 'Invalid credentials' });
+  });
+
+  test('login returns detailed credential errors only when DETAILED_AUTH_ERRORS is true outside production', async () => {
+    process.env.DETAILED_AUTH_ERRORS = 'true';
+    EmailService.isConfigured.mockReturnValue(false);
+    User.findByEmail.mockResolvedValue(null);
+
+    const req = {
+      body: {
+        email: 'missing@example.com',
+        password: 'password123'
+      }
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await authController.login(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(401);
+    expect(res.payload).toEqual({ error: 'No account found with this email address' });
   });
 
   test('login returns a pre-2fa token for 2FA-enabled users and that token is rejected by authenticate', async () => {

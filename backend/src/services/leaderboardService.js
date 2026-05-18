@@ -404,12 +404,14 @@ class LeaderboardService {
   
   // Save leaderboard entries
   static async saveLeaderboardEntries(leaderboardId, scores) {
+    const client = await db.pool.connect();
+
     try {
       // Begin transaction
-      await db.query('BEGIN');
+      await client.query('BEGIN');
       
       // Clear existing entries for this period
-      await db.query(
+      await client.query(
         'DELETE FROM leaderboard_entries WHERE leaderboard_id = $1 AND DATE(recorded_at) = CURRENT_DATE',
         [leaderboardId]
       );
@@ -420,9 +422,9 @@ class LeaderboardService {
         const rank = i + 1;
         
         // Always generate anonymous names for leaderboards (privacy protection)
-        const anonymousName = await this.generateAnonymousName(score.user_id);
+        const anonymousName = await this.generateAnonymousName(score.user_id, client);
         
-        await db.query(`
+        await client.query(`
           INSERT INTO leaderboard_entries (
             leaderboard_id, user_id, anonymous_name, score, rank, metadata, recorded_at
           ) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
@@ -436,16 +438,18 @@ class LeaderboardService {
         ]);
       }
       
-      await db.query('COMMIT');
+      await client.query('COMMIT');
     } catch (error) {
-      await db.query('ROLLBACK');
+      await client.query('ROLLBACK');
       throw error;
+    } finally {
+      client.release();
     }
   }
   
   // Generate anonymous name for user
-  static async generateAnonymousName(userId) {
-    const result = await db.query(
+  static async generateAnonymousName(userId, queryRunner = db) {
+    const result = await queryRunner.query(
       'SELECT generate_anonymous_name($1) as name',
       [userId]
     );

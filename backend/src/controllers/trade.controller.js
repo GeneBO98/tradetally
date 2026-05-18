@@ -20,6 +20,7 @@ const { getUserTimezone } = require('../utils/timezone');
 const Playbook = require('../models/Playbook');
 const MAEEstimator = require('../utils/maeEstimator');
 const TierService = require('../services/tierService');
+const { verifyJwtToken } = require('../middleware/auth');
 
 /**
  * Auto-calculate MAE/MFE for a closed trade using Finnhub candle data.
@@ -4370,8 +4371,7 @@ const tradeController = {
       let user = req.user;
       if (!user && req.query.token) {
         try {
-          const jwt = require('jsonwebtoken');
-          const decoded = jwt.verify(req.query.token, process.env.JWT_SECRET);
+          const decoded = verifyJwtToken(req.query.token);
           user = { id: decoded.id };
         } catch (error) {
           console.log('JWT verification failed for query token:', error.message);

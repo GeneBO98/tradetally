@@ -1,5 +1,6 @@
 const oauth2Service = require('../services/oauth2.service');
 const User = require('../models/User');
+const { verifyJwtToken } = require('./auth');
 
 /**
  * Middleware to authenticate OAuth2 access tokens
@@ -103,9 +104,8 @@ const authenticateFlexible = async (req, res, next) => {
     const token = authHeader.substring(7);
 
     // Try JWT authentication first
-    const jwt = require('jsonwebtoken');
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const decoded = verifyJwtToken(token);
       const user = await User.findById(decoded.id);
 
       if (user && user.is_active) {
