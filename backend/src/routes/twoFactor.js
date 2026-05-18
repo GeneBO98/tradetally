@@ -2,10 +2,11 @@ const express = require('express');
 const router = express.Router();
 const twoFactorController = require('../controllers/twoFactor.controller');
 const { authenticate } = require('../middleware/auth');
-const { requireSudo } = require('../middleware/sensitiveAccess');
+const { requireSudo, requireVerifiedEmail } = require('../middleware/sensitiveAccess');
 
 // All 2FA routes require authentication
 router.use(authenticate);
+router.use(requireVerifiedEmail);
 
 // Get 2FA status
 router.get('/status', twoFactorController.getStatus);

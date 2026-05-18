@@ -9,6 +9,10 @@ function useDetailedErrors() {
     process.env.DETAILED_AUTH_ERRORS === 'true';
 }
 
+function isEmailConfigured() {
+  return !!(process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS);
+}
+
 // Auto-generate a username from email, with random suffix if taken
 async function generateUsername(email) {
   const base = email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '').substring(0, 20) || 'user';
@@ -60,7 +64,7 @@ const authV1Controller = {
       const isFirstUser = userCount === 0;
 
       // Check if email verification is configured
-      const emailConfigured = !!(process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS);
+      const emailConfigured = isEmailConfigured();
       
       let verificationToken = null;
       let verificationExpires = null;
@@ -158,6 +162,15 @@ const authV1Controller = {
         });
       }
 
+      if (isEmailConfigured() && !user.is_verified) {
+        return res.status(403).json({
+          error: 'Please verify your email before signing in',
+          code: 'EMAIL_VERIFICATION_REQUIRED',
+          requiresVerification: true,
+          email: user.email
+        });
+      }
+
       // Generate both access and refresh tokens
       const accessToken = refreshTokenService.generateAccessToken(user);
       const refreshTokenData = await refreshTokenService.generateRefreshToken(user.id);
@@ -210,7 +223,7 @@ const authV1Controller = {
       }
 
       // Check email verification
-      const emailConfigured = !!(process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS);
+      const emailConfigured = isEmailConfigured();
       if (emailConfigured && !user.is_verified) {
         return res.status(403).json({ 
           error: 'Please verify your email before signing in',

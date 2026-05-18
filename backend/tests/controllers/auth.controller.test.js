@@ -1,15 +1,24 @@
+jest.mock('../../src/config/database', () => ({
+  query: jest.fn()
+}));
 jest.mock('../../src/models/User', () => ({
+  create: jest.fn(),
+  createSettings: jest.fn(),
+  findByUsername: jest.fn(),
   findByEmail: jest.fn(),
   findById: jest.fn(),
+  getSettings: jest.fn(),
+  getUserCount: jest.fn(),
   verifyPassword: jest.fn(),
   updateLastLogin: jest.fn(),
-  updateBackupCodes: jest.fn(),
-  getSettings: jest.fn()
+  updateBackupCodes: jest.fn()
 }));
 jest.mock('../../src/services/emailService', () => ({
-  isConfigured: jest.fn(() => true)
+  isConfigured: jest.fn(() => true),
+  sendVerificationEmail: jest.fn(() => Promise.resolve())
 }));
 jest.mock('../../src/services/tierService', () => ({
+  getUserTierWithBillingStatus: jest.fn(async () => ({ tier: 'free', billingEnabled: false })),
   getUserTier: jest.fn(async () => 'free'),
   isBillingEnabled: jest.fn(async () => true)
 }));
@@ -101,6 +110,85 @@ describe('auth controller 2FA flow', () => {
     expect(res.payload).toEqual({ error: 'No account found with this email address' });
   });
 
+  test('login rejects unverified users when email verification is configured', async () => {
+    const user = {
+      id: 'unverified-user-id',
+      email: 'unverified@example.com',
+      username: 'unverified',
+      role: 'user',
+      is_active: true,
+      is_verified: false,
+      admin_approved: true,
+      two_factor_enabled: false
+    };
+    User.findByEmail.mockResolvedValue(user);
+    User.verifyPassword.mockResolvedValue(true);
+
+    const req = {
+      body: {
+        email: user.email,
+        password: 'password123'
+      },
+      headers: {}
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await authController.login(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(403);
+    expect(res.payload).toEqual(expect.objectContaining({
+      code: 'EMAIL_VERIFICATION_REQUIRED',
+      requiresVerification: true
+    }));
+    expect(User.updateLastLogin).not.toHaveBeenCalled();
+    expect(res.cookie).not.toHaveBeenCalled();
+  });
+
+  test('register does not issue a session to non-first unverified users', async () => {
+    const user = {
+      id: 'registered-user-id',
+      email: 'registered@example.com',
+      username: 'registered',
+      full_name: 'Registered User',
+      avatar_url: null,
+      role: 'user',
+      is_verified: false,
+      admin_approved: true,
+      created_at: new Date().toISOString()
+    };
+    User.findByEmail.mockResolvedValue(null);
+    User.findByUsername.mockResolvedValue(null);
+    User.getUserCount.mockResolvedValue(1);
+    User.create.mockResolvedValue(user);
+    User.createSettings.mockResolvedValue({});
+
+    const req = {
+      body: {
+        email: user.email,
+        username: user.username,
+        password: 'password123',
+        fullName: 'Registered User'
+      },
+      headers: {}
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await authController.register(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(201);
+    expect(res.payload).toEqual(expect.objectContaining({
+      requiresVerification: true,
+      requiresApproval: false
+    }));
+    expect(res.payload.token).toBeUndefined();
+    expect(res.cookie).not.toHaveBeenCalled();
+    expect(User.updateLastLogin).not.toHaveBeenCalled();
+  });
+
   test('login returns a pre-2fa token for 2FA-enabled users and that token is rejected by authenticate', async () => {
     const user = {
       id: '7f4af2f4-64b0-4ffc-a834-4b2578402e3d',
@@ -108,6 +196,7 @@ describe('auth controller 2FA flow', () => {
       username: 'user',
       role: 'user',
       is_active: true,
+      is_verified: true,
       two_factor_enabled: true,
       admin_approved: true
     };

@@ -3,10 +3,12 @@ const router = express.Router();
 const apiKeyController = require('../controllers/apiKey.controller');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const { requiresTier } = require('../middleware/tierAuth');
+const { requireVerifiedEmail } = require('../middleware/sensitiveAccess');
 const { validate, schemas } = require('../middleware/validation');
 
 // API keys are a Pro-only integration feature.
 router.use(authenticate);
+router.use(requireVerifiedEmail);
 router.use(requiresTier('pro'));
 
 // Create a new API key

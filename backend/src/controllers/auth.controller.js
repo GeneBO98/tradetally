@@ -212,8 +212,8 @@ const authController = {
         message = 'Registration successful. Your account is ready to use.';
       }
 
-      // Auto-login: generate token and sign user in immediately (unless approval-pending)
-      if (adminApproved) {
+      // Issue a session only when the account is both approved and verified.
+      if (adminApproved && isVerified) {
         await User.updateLastLogin(user.id);
 
         YearWrappedService.recordLogin(user.id).catch(err => {
@@ -234,7 +234,7 @@ const authController = {
 
         res.status(201).json({
           message,
-          requiresVerification: emailConfigured,
+          requiresVerification: false,
           requiresApproval: false,
           registrationMode,
           isFirstUser,
@@ -259,11 +259,11 @@ const authController = {
           }
         });
       } else {
-        // Approval-pending: no auto-login
+        // Approval-pending or email-verification-pending: no auto-login
         res.status(201).json({
           message,
-          requiresVerification: emailConfigured,
-          requiresApproval: true,
+          requiresVerification: !isVerified,
+          requiresApproval: !adminApproved,
           registrationMode,
           isFirstUser,
           emailConfigured,
@@ -317,6 +317,15 @@ const authController = {
         return res.status(403).json({ 
           error: 'Your account is pending admin approval. Please wait for an administrator to approve your registration.',
           requiresApproval: true,
+          email: user.email
+        });
+      }
+
+      if (isEmailConfigured() && !user.is_verified) {
+        return res.status(403).json({
+          error: 'Please verify your email before signing in',
+          code: 'EMAIL_VERIFICATION_REQUIRED',
+          requiresVerification: true,
           email: user.email
         });
       }
