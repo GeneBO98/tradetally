@@ -181,19 +181,30 @@
                         :key="tag.id"
                         class="flex items-center justify-between p-2 rounded border border-gray-200 dark:border-gray-600"
                     >
-                        <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-2 flex-1 min-w-0">
+                            <label
+                                class="relative inline-flex flex-shrink-0 cursor-pointer"
+                                :title="`Change color for ${tag.name}`"
+                            >
+                                <span
+                                    class="block w-5 h-5 rounded-full border border-gray-300 dark:border-gray-500"
+                                    :style="{ backgroundColor: tag.color }"
+                                ></span>
+                                <input
+                                    type="color"
+                                    :value="tag.color"
+                                    @change="updateTagColor(tag, $event.target.value)"
+                                    class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                />
+                            </label>
                             <span
-                                class="w-4 h-4 rounded-full flex-shrink-0"
-                                :style="{ backgroundColor: tag.color }"
-                            ></span>
-                            <span
-                                class="text-sm text-gray-900 dark:text-white"
+                                class="text-sm text-gray-900 dark:text-white truncate"
                                 >{{ tag.name }}</span
                             >
                         </div>
                         <button
                             @click="deleteTag(tag.id)"
-                            class="text-red-600 hover:text-red-700 text-sm"
+                            class="text-red-600 hover:text-red-700 text-sm ml-2 flex-shrink-0"
                             title="Delete tag"
                         >
                             <svg
@@ -295,6 +306,21 @@ async function createTag() {
         alert(error.response?.data?.message || "Failed to create tag");
     } finally {
         creatingTag.value = false;
+    }
+}
+
+async function updateTagColor(tag, newColor) {
+    if (!newColor || newColor === tag.color) return;
+
+    const previousColor = tag.color;
+    tag.color = newColor;
+
+    try {
+        await api.put(`/tags/${tag.id}`, { color: newColor });
+    } catch (error) {
+        console.error("[ERROR] Failed to update tag color:", error);
+        tag.color = previousColor;
+        alert(error.response?.data?.message || "Failed to update tag color");
     }
 }
 
