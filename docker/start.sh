@@ -11,6 +11,17 @@ echo "[OK] Database connection established"
 # Set environment variables for mobile support
 export RUN_MIGRATIONS="${RUN_MIGRATIONS:-true}"
 
+# Expose selected runtime config values to the static frontend bundle.
+node <<'EOF' > /usr/share/nginx/html/runtime-config.js
+const config = {
+  VITE_POSTHOG_ENABLED: process.env.VITE_POSTHOG_ENABLED || '',
+  VITE_POSTHOG_KEY: process.env.VITE_POSTHOG_KEY || '',
+  VITE_POSTHOG_HOST: process.env.VITE_POSTHOG_HOST || '',
+};
+
+process.stdout.write(`window.__APP_CONFIG__ = Object.freeze(${JSON.stringify(config)});\n`);
+EOF
+
 # Ensure writable runtime directories exist for mounted volumes.
 mkdir -p \
   /app/backend/uploads/trades \

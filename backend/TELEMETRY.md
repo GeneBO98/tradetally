@@ -8,7 +8,7 @@ This backend has been configured to optionally send logs to PostHog using their 
    Ensure your `.env` file contains:
    ```
    VITE_POSTHOG_KEY=phc_45FhZD0bI110gyeQp5rf9eADyVKen6DE1bdU5LJTfML
-   VITE_POSTHOG_HOST=https://us.posthog.com
+   VITE_POSTHOG_HOST=https://us.i.posthog.com
    ```
 
 2. **Start the Server**:

@@ -9,10 +9,13 @@ const YearWrappedService = require('../services/yearWrappedService');
 const refreshTokenService = require('../services/refreshToken.service');
 const SampleDataService = require('../services/sampleDataService');
 const activityTrackingService = require('../services/activityTrackingService');
+const sequenzySubscriberSyncService = require('../services/sequenzySubscriberSyncService');
 const { getClientIp } = require('../utils/clientIp');
 const { generateCsrfToken } = require('../middleware/csrf');
 const { clearAuthCookies, setAuthCookies } = require('../utils/authCookies');
 const jobQueue = require('../utils/jobQueue');
+
+const PROTECTED_EMAIL = (process.env.DEMO_EMAIL || 'demo@example.com').toLowerCase();
 
 // Check if email configuration is available
 function isEmailConfigured() {
@@ -152,6 +155,7 @@ const authController = {
         marketingConsent: marketing_consent || false
       });
       await User.createSettings(user.id);
+      sequenzySubscriberSyncService.queueSyncUserById(user.id);
 
       // Record acquisition data (UTM params, referral source, IP, user agent)
       try {
@@ -580,6 +584,11 @@ const authController = {
   async forgotPassword(req, res, next) {
     try {
       const { email } = req.body;
+
+      // Return the same generic message to avoid leaking the protection
+      if (email?.toLowerCase() === PROTECTED_EMAIL) {
+        return res.json({ message: 'If the email exists, a reset link has been sent' });
+      }
 
       const user = await User.findByEmail(email);
       if (!user) {

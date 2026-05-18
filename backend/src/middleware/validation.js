@@ -118,6 +118,22 @@ const schemas = {
     password: Joi.string().required()
   }),
 
+  internalCrmSyncRun: Joi.object({
+    targets: Joi.array()
+      .items(Joi.string().valid('twenty', 'invoiceNinja'))
+      .min(1)
+      .optional(),
+    reason: Joi.string().max(255).allow('', null).optional()
+  }),
+
+  internalCrmSyncUserRun: Joi.object({
+    targets: Joi.array()
+      .items(Joi.string().valid('twenty', 'invoiceNinja'))
+      .min(1)
+      .optional(),
+    reason: Joi.string().max(255).allow('', null).optional()
+  }),
+
   forgotPassword: Joi.object({
     email: Joi.string().email().required()
   }),
@@ -136,6 +152,7 @@ const schemas = {
     code: Joi.string().allow('', null)
   }).or('tempToken', 'temp_token', 'token')
     .or('twoFactorCode', 'two_factor_code', 'code'),
+
 
   createTrade: Joi.object({
     symbol: Joi.string().max(20).required(),

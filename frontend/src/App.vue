@@ -21,6 +21,7 @@
     <template v-else>
     <UpdateBanner v-if="!isAuthRoute" />
     <EmailVerificationBanner v-if="!isAuthRoute" />
+    <IOSAppBanner v-if="!isAuthRoute" />
     <NavBar v-if="!isAuthRoute" />
     <main class="min-h-screen">
       <router-view />
@@ -29,7 +30,7 @@
     <!-- Footer -->
     <footer v-if="!isAuthRoute" class="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-        <div class="flex items-center justify-center">
+        <div class="flex flex-col items-center justify-center gap-4">
           <div class="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400">
             <a
               href="https://docs.tradetally.io"
@@ -69,6 +70,33 @@
             </a>
             <span>•</span>
             <a
+              href="https://tradetally.io/blog"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="inline-flex items-center hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+            >
+              <svg class="w-4 h-4 sm:mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
+              </svg>
+              <span class="hidden sm:inline">Blog &amp; Newsletter</span>
+              <span class="sm:hidden">Blog</span>
+            </a>
+            <span>•</span>
+            <a
+              href="https://x.com/TradeTallyIO"
+              target="_blank"
+              rel="me noopener noreferrer"
+              class="inline-flex items-center hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+              aria-label="Follow TradeTally on X"
+            >
+              <svg class="w-4 h-4 sm:mr-1" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M18.244 2H21.5l-7.11 8.128L22.75 22h-6.544l-5.126-7.13L4.84 22H1.58l7.605-8.693L1.25 2h6.71l4.634 6.457L18.244 2Zm-1.141 18.05h1.804L6.978 3.844H5.043L17.103 20.05Z" />
+              </svg>
+              <span class="hidden sm:inline">Follow on X</span>
+              <span class="sm:hidden">X</span>
+            </a>
+            <span>•</span>
+            <a
               href="https://github.com/GeneBO98/tradetally"
               target="_blank"
               rel="noopener noreferrer"
@@ -91,6 +119,18 @@
             <span>•</span>
             <VersionDisplay />
           </div>
+          <a
+            href="https://www.betterlaunch.co"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex justify-center"
+          >
+            <img
+              src="https://www.betterlaunch.co/badge-dark.svg"
+              alt="Featured on Better Launch"
+              class="h-auto w-[200px]"
+            />
+          </a>
         </div>
       </div>
     </footer>
@@ -201,6 +241,7 @@ import ModalAlert from '@/components/common/ModalAlert.vue'
 import CelebrationOverlay from '@/components/gamification/CelebrationOverlay.vue'
 import UpdateBanner from '@/components/common/UpdateBanner.vue'
 import EmailVerificationBanner from '@/components/common/EmailVerificationBanner.vue'
+import IOSAppBanner from '@/components/common/IOSAppBanner.vue'
 import VersionDisplay from '@/components/common/VersionDisplay.vue'
 import CookieConsentBanner from '@/components/common/CookieConsentBanner.vue'
 import { useRegistrationMode } from '@/composables/useRegistrationMode'

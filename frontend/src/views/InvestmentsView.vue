@@ -82,26 +82,13 @@
                 class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6 mb-6"
             >
                 <div class="flex items-center space-x-4">
-                    <div class="flex-1 relative" @keyup.enter="analyzeSymbol">
+                    <div class="flex-1">
                         <SymbolAutocomplete
                             v-model="searchSymbol"
                             placeholder="Enter stock symbol (e.g., AAPL, MSFT, GOOGL)"
-                            input-class="!pl-10 !pr-4 !py-3 !rounded-lg dark:!bg-gray-700 dark:!text-white"
-                            @select="analyzeSymbol"
+                            input-class="w-full py-3 text-base"
+                            @select="onScreenerSelect"
                         />
-                        <svg
-                            class="absolute left-3 top-3.5 h-5 w-5 text-gray-400 pointer-events-none z-10"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                        >
-                            <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                stroke-width="2"
-                                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                            ></path>
-                        </svg>
                     </div>
                     <button
                         @click="analyzeSymbol"
@@ -685,6 +672,87 @@
             </div>
         </div>
 
+        <!-- Stock Analyzer Tab (DCF Valuation) -->
+        <div v-if="activeTab === 'analyzer'">
+            <!-- Search Bar -->
+            <div
+                class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6 mb-6"
+            >
+                <div class="flex items-center space-x-4">
+                    <div class="flex-1">
+                        <SymbolAutocomplete
+                            v-model="analyzerSymbol"
+                            placeholder="Enter stock symbol to analyze (e.g., AAPL, MSFT)"
+                            input-class="w-full py-3 text-base"
+                            @select="onAnalyzerSelect"
+                        />
+                    </div>
+                    <button
+                        @click="loadAnalyzerData"
+                        :disabled="!analyzerSymbol || analyzerLoading"
+                        class="btn-primary px-6 py-3"
+                    >
+                        <span v-if="analyzerLoading">Loading...</span>
+                        <span v-else>Analyze</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Stock Info Header -->
+            <div
+                v-if="analyzerStockInfo"
+                class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6 mb-6"
+            >
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <StockLogo
+                            :symbol="analyzerStockInfo.symbol"
+                            :logo-url="analyzerStockInfo.logo"
+                            size-class="w-12 h-12"
+                            class="mr-4"
+                        />
+                        <div>
+                            <h2
+                                class="text-2xl font-bold text-gray-900 dark:text-white"
+                            >
+                                {{ analyzerStockInfo.symbol }}
+                            </h2>
+                            <p class="text-gray-600 dark:text-gray-400">
+                                {{ analyzerStockInfo.companyName }}
+                            </p>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-sm text-gray-500 dark:text-gray-400">
+                            Current Price
+                        </p>
+                        <p
+                            class="text-2xl font-bold text-gray-900 dark:text-white"
+                        >
+                            {{
+                                analyzerStockInfo.currentPrice
+                                    ? formatCurrency(
+                                          analyzerStockInfo.currentPrice,
+                                      )
+                                    : "N/A"
+                            }}
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DCF Valuation Section (always renders so saved valuations
+                 stay visible even before a symbol is loaded) -->
+            <StockAnalyzerSection
+                :symbol="analyzerSymbol"
+                :current-price="analyzerStockInfo?.currentPrice"
+                :pending-valuation-id="pendingValuationId"
+                :analyzer-loading="analyzerLoading"
+                @select-symbol="handleAnalyzerSymbolSelect"
+                @pending-consumed="pendingValuationId = null"
+            />
+        </div>
+
         <!-- Add Holding Modal -->
         <AddHoldingModal
             v-if="showAddHoldingModal"
@@ -957,6 +1025,16 @@ async function analyzeSymbol() {
 async function analyzeFromHistory(symbol) {
     searchSymbol.value = symbol;
     await analyzeSymbol();
+}
+
+async function onScreenerSelect(item) {
+    searchSymbol.value = item.symbol;
+    await analyzeSymbol();
+}
+
+async function onAnalyzerSelect(item) {
+    analyzerSymbol.value = item.symbol;
+    await loadAnalyzerData();
 }
 
 async function analyzeHolding(symbol) {

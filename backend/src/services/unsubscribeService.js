@@ -14,18 +14,46 @@ const getSecret = () => {
   return secret;
 };
 
+function normalizeUserId(userId) {
+  if (typeof userId === 'number' && Number.isFinite(userId) && userId > 0) {
+    return String(userId);
+  }
+
+  if (typeof userId === 'string') {
+    const trimmed = userId.trim();
+    if (trimmed) {
+      return trimmed;
+    }
+  }
+
+  throw new Error('Valid userId is required');
+}
+
+function parseDecodedUserId(decoded) {
+  if (!decoded || typeof decoded !== 'string') {
+    return null;
+  }
+
+  if (/^\d+$/.test(decoded)) {
+    const numericId = Number.parseInt(decoded, 10);
+    return Number.isNaN(numericId) || numericId <= 0 ? null : numericId;
+  }
+
+  return decoded;
+}
+
 /**
  * Generate an unsubscribe token for a user
- * Format: base64url(userId).signature
- * @param {string|number} userId - The user's ID
+ * Format: base64url({"userId":"...","purpose":"unsubscribe"}).signature
+ * @param {number|string} userId - The user's ID
  * @returns {string} The signed token
  */
 function generateToken(userId) {
-  if (userId === null || userId === undefined || String(userId).trim() === '') {
-    throw new Error('Valid userId is required');
-  }
-
-  const payload = Buffer.from(String(userId)).toString('base64url');
+  const normalizedUserId = normalizeUserId(userId);
+  const payload = Buffer.from(JSON.stringify({
+    userId: normalizedUserId,
+    purpose: 'unsubscribe'
+  })).toString('base64url');
   const signature = crypto
     .createHmac('sha256', getSecret())
     .update(payload)
@@ -38,7 +66,7 @@ function generateToken(userId) {
  * Verify an unsubscribe token and extract the userId
  * Uses timing-safe comparison to prevent timing attacks
  * @param {string} token - The token to verify
- * @returns {string|null} The userId if valid, null otherwise
+ * @returns {number|string|null} The userId if valid, null otherwise
  */
 function verifyToken(token) {
   if (!token || typeof token !== 'string') {
@@ -70,14 +98,25 @@ function verifyToken(token) {
     return null;
   }
 
-  // Decode userId from payload. User IDs are UUIDs in current deployments,
-  // but legacy numeric IDs remain valid because tokens never expire.
   try {
-    const userId = Buffer.from(payload, 'base64url').toString();
-    if (!userId || userId.trim() === '') {
-      return null;
+    const decoded = Buffer.from(payload, 'base64url').toString();
+
+    try {
+      const parsed = JSON.parse(decoded);
+      if (parsed && typeof parsed === 'object') {
+        if (parsed.purpose !== 'unsubscribe') {
+          return null;
+        }
+
+        return parseDecodedUserId(parsed.userId);
+      }
+
+      return parseDecodedUserId(String(parsed));
+    } catch (_) {
+      // Backward compatibility for legacy tokens that encoded only the raw user ID.
     }
-    return userId;
+
+    return parseDecodedUserId(decoded);
   } catch (err) {
     return null;
   }

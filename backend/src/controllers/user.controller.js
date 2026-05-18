@@ -3,9 +3,12 @@ const Trade = require('../models/Trade');
 const TierService = require('../services/tierService');
 const EmailService = require('../services/emailService');
 const ApiUsageService = require('../services/apiUsageService');
+const sequenzySubscriberSyncService = require('../services/sequenzySubscriberSyncService');
 const db = require('../config/database');
 const path = require('path');
 const imageProcessor = require('../utils/imageProcessor');
+
+const PROTECTED_EMAIL = (process.env.DEMO_EMAIL || 'demo@example.com').toLowerCase();
 
 function getAvatarUploadsDir() {
   return path.join(__dirname, '../../uploads/avatars');
@@ -134,6 +137,7 @@ const userController = {
   async updateProfile(req, res, next) {
     try {
       const { fullName, timezone, email } = req.body;
+      const previousEmail = req.user.email;
       
       const updates = {};
       if (fullName !== undefined) updates.full_name = fullName;
@@ -151,6 +155,9 @@ const userController = {
       }
 
       const user = await User.update(req.user.id, updates);
+      sequenzySubscriberSyncService.queueSyncUserById(req.user.id, {
+        previousEmail: email !== undefined && email !== previousEmail ? previousEmail : undefined
+      });
       
       const response = { user };
       if (email !== undefined && email !== req.user.email) {
@@ -212,6 +219,10 @@ const userController = {
   async changePassword(req, res, next) {
     try {
       const { currentPassword, newPassword } = req.body;
+
+      if (req.user.email.toLowerCase() === PROTECTED_EMAIL) {
+        return res.status(403).json({ error: 'This account is protected. Contact an administrator to change the password.' });
+      }
 
       const user = await User.findByEmail(req.user.email);
       const isValid = await User.verifyPassword(user, currentPassword);
@@ -337,6 +348,8 @@ const userController = {
         return res.status(404).json({ error: 'User not found' });
       }
 
+      sequenzySubscriberSyncService.queueSyncUserById(userId);
+
       res.json({ 
         message: 'User approved successfully',
         user 
@@ -366,6 +379,7 @@ const userController = {
       }
 
       const user = await User.updateRole(userId, role);
+      sequenzySubscriberSyncService.queueSyncUserById(userId);
       res.json({ user, message: `User role updated to ${role}` });
     } catch (error) {
       next(error);
@@ -389,6 +403,7 @@ const userController = {
       }
 
       const user = await User.updateStatus(userId, isActive);
+      sequenzySubscriberSyncService.queueSyncUserById(userId);
       res.json({ user, message: `User ${isActive ? 'activated' : 'deactivated'}` });
     } catch (error) {
       next(error);
@@ -411,6 +426,7 @@ const userController = {
 
       // Fetch updated user to return
       const user = await User.findByIdForAdmin(userId);
+      sequenzySubscriberSyncService.queueSyncUserById(userId);
       res.json({
         user,
         message: `Marketing consent ${marketingConsent ? 'enabled' : 'disabled'} for user`
@@ -443,6 +459,7 @@ const userController = {
         }
       }
 
+      sequenzySubscriberSyncService.queueDeleteSubscriber(targetUser.email);
       await User.deleteUser(userId, { deletionType: 'admin', deletedByAdminId: req.user.id });
       res.json({ message: `User ${targetUser.username} has been permanently deleted` });
     } catch (error) {
@@ -458,6 +475,8 @@ const userController = {
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
       }
+
+      sequenzySubscriberSyncService.queueSyncUserById(userId);
       
       res.json({ user, message: 'User verified successfully' });
     } catch (error) {
@@ -479,6 +498,8 @@ const userController = {
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
       }
+
+      sequenzySubscriberSyncService.queueSyncUserById(userId);
 
       res.json({ user, message: `User tier updated to ${tier}` });
     } catch (error) {
@@ -792,6 +813,10 @@ const userController = {
       const { password } = req.body;
       const userId = req.user.id;
 
+      if (req.user.email.toLowerCase() === PROTECTED_EMAIL) {
+        return res.status(403).json({ error: 'This account is protected and cannot be deleted.' });
+      }
+
       if (!password) {
         return res.status(400).json({ error: 'Password is required to confirm account deletion' });
       }
@@ -817,6 +842,7 @@ const userController = {
       }
 
       // Delete the user account (self-deletion)
+      sequenzySubscriberSyncService.queueDeleteSubscriber(user.email);
       await User.deleteUser(userId, { deletionType: 'self', deletedByAdminId: null });
 
       console.log(`[INFO] User ${user.username} (ID: ${userId}) deleted their own account`);

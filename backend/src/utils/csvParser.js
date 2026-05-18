@@ -939,6 +939,42 @@ function detectBrokerFormat(fileBuffer) {
       return 'tastytrade';
     }
 
+    // Trading 212 detection - distinctive `No. of shares`, `Price / share`,
+    // and `ISIN` columns with an `Action` value like "Market buy"/"Market sell".
+    // The generic parser already handles these column names, so we route there
+    // (and log the detection so it shows up in diagnostics).
+    if (headers.includes('action') && headers.includes('ticker') &&
+        headers.includes('isin') &&
+        headers.includes('no. of shares') &&
+        headers.includes('price / share')) {
+      console.log('[AUTO-DETECT] Detected: Trading 212 (routed to generic parser)');
+      return 'generic';
+    }
+
+    // MetaTrader 4/5 detection - `ticket` + `opening_time_utc` (snake_case
+    // column names are diagnostic of MT4/MT5 history exports).
+    if (headers.includes('ticket') &&
+        headers.includes('opening_time_utc') &&
+        headers.includes('closing_time_utc') &&
+        (headers.includes('lots') || headers.includes('original_position_size')) &&
+        headers.includes('symbol')) {
+      console.log('[AUTO-DETECT] Detected: MetaTrader 4/5 history export (routed to generic parser)');
+      return 'generic';
+    }
+
+    // Robinhood detection - `Activity Date,Process Date,Settle Date,Instrument,
+    // Description,Trans Code,Quantity,Price,Amount` is the canonical account
+    // history export. The generic parser maps `Activity Date` → date,
+    // `Instrument` → symbol, `Trans Code` → side.
+    if (headers.includes('activity date') &&
+        headers.includes('process date') &&
+        headers.includes('settle date') &&
+        headers.includes('instrument') &&
+        headers.includes('trans code')) {
+      console.log('[AUTO-DETECT] Detected: Robinhood account history (routed to generic parser)');
+      return 'generic';
+    }
+
     // Default to generic if no specific format detected
     console.log('[AUTO-DETECT] No specific format detected, using generic parser');
     return 'generic';
@@ -1171,12 +1207,13 @@ const brokerParsers = {
     const rawTradeDateValue =
       row['Trade Date'] || row['T/D'] || row.Date || row.date ||
       row.trade_date || row['trade_date'] || row['Entry Date'] ||
-      row['Transaction Date'] || row['Exec Date'] || row['Execution Date'] ||
+      row['Transaction Date'] || row['Activity Date'] || row['Exec Date'] || row['Execution Date'] ||
       row['Date and time'] || row.Time || row.time ||
       row['Entry Time'] || row['Entry time'] || row['entry time'] ||
       row['Exit Time'] || row['Exit time'] || row['exit time'] ||
       row['Opening time (UTC-4)'] || row['Opening Time'] || row['Open Time'] ||
-      row['Opened Time'];
+      row['Opened Time'] ||
+      row.opening_time_utc || row['opening_time_utc'];
 
     const rawEntryTimeValue =
       row['Entry Time'] || row['Exec Time'] || row['Execution Time'] ||
@@ -1185,7 +1222,9 @@ const brokerParsers = {
       row['Date and time'] || row.Time || row.time ||
       row['Opening time (UTC-4)'] || row['Opening Time'] || row['Open Time'] ||
       row['Opened Time'] ||
-      row['Trade Date'] || row.trade_date || row['Entry Date'] || row.Date;
+      row.opening_time_utc || row['opening_time_utc'] ||
+      row['Trade Date'] || row.trade_date || row['Entry Date'] || row.Date ||
+      row['Activity Date'];
 
     // Date/Time mapping - support more formats
     let tradeDate = parseDate(rawTradeDateValue);
@@ -1203,7 +1242,8 @@ const brokerParsers = {
     const exitTime = parseDateTime(
       row['Exit Time'] || row['Close Time'] || row['Exit Date'] ||
       row['Closed Date'] || row['Sell Time'] ||
-      row['Closing time (UTC-4)'] || row['Closing Time']
+      row['Closing time (UTC-4)'] || row['Closing Time'] ||
+      row.closing_time_utc || row['closing_time_utc']
     );
 
     // Price mapping - support more variations
@@ -1212,27 +1252,38 @@ const brokerParsers = {
       row['Price / share'] || row.TradePrice || row['TradePrice'] ||
       row['Fill Price'] || row['Avg Price'] || row['Average Price'] ||
       row['Open Price'] || row['Opening Price'] || row['Purchase Price'] ||
-      row['Entry price']
+      row['Entry price'] ||
+      row.opening_price || row['opening_price']
     );
 
     const exitPrice = parseNumeric(
       row['Exit Price'] || row['Sell Price'] || row['Close Price'] ||
-      row['Sale Price'] || row['Closing Price'] || row['Closing price']
+      row['Sale Price'] || row['Closing Price'] || row['Closing price'] ||
+      row.closing_price || row['closing_price']
     );
 
     // Quantity mapping
+    // Note: MetaTrader uses `lots` (lot size) — for forex 1 lot ≈ 100,000 units,
+    // but for trade-journal purposes we record `lots` directly as the quantity
+    // since `original_position_size` is also available and represents units.
     const quantity = Math.abs(parseNumeric(
       row.Quantity || row.quantity || row.Qty || row.qty ||
       row.Shares || row.shares || row['No. of shares'] || row.Size || row.size ||
       row.Volume || row.volume || row.Amount || row.amount ||
-      row['Fill Qty'] || row['Filled Qty'] || row['Closing Quantity']
+      row['Fill Qty'] || row['Filled Qty'] || row['Closing Quantity'] ||
+      row.original_position_size || row['original_position_size'] ||
+      row.lots || row.Lots
     ));
 
     // Side mapping - handle more variations
+    // MetaTrader uses `type` with values like "buy"/"sell" or "0"/"1" — parseSide
+    // already handles the text values; the numeric values fall through to long.
+    // Robinhood uses `Trans Code` with values "Buy"/"Sell".
     const side = parseSide(
       row.Side || row.side || row.Direction || row.direction ||
       row.Type || row.type || row.trade_type || row['trade_type'] || row.Action || row.action ||
       row['B/S'] || row['Buy/Sell'] || row.BS ||
+      row['Trans Code'] || row['trans code'] ||
       row['Opening direction'] || row['Opening Direction'] ||
       row['Market pos.'] || row['Market Pos.'] || row['Market Position']
     );
@@ -2749,7 +2800,16 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       columns: true,
       skip_empty_lines: true,
       trim: true,
-      delimiter: delimiter
+      delimiter: delimiter,
+      // Resilient defaults: many broker exports have variable column counts
+      // (trailing commas, multi-section files, footer rows). Without these
+      // options, csv-parse throws "Invalid Record Length" and the entire
+      // import fails. Broker-specific overrides may add more options below.
+      relax: true,
+      relax_column_count: true,
+      skip_records_with_error: true,
+      quote: '"',
+      escape: '"'
     };
 
     if (broker === 'tradovate') {
@@ -3188,22 +3248,29 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       if (preservesSourceCurrency) {
         console.log(`[CURRENCY] ${broker} parser preserves source currency; skipping Pro conversion gate`);
       } else {
-        // Check if user has pro tier access
         const userId = context.userId;
-        if (!userId) {
-          throw new Error('CURRENCY_REQUIRES_PRO:User authentication required for currency conversion');
+        const hasProAccess = userId ? await currencyConverter.userHasProAccess(userId) : false;
+
+        if (hasProAccess) {
+          console.log(`[CURRENCY] User ${userId} has Pro access, currency conversion enabled`);
+          // Store currency column info in context for broker parsers to use
+          context.hasCurrencyColumn = true;
+          context.currencyRecords = records; // Store original records with currency data
+        } else {
+          // Free tier: import the trades in their source currency rather than
+          // hard-failing the entire CSV. We previously threw CURRENCY_REQUIRES_PRO
+          // here, which blocked users from seeing any of their trades. The trade
+          // model stores original_currency, and users can change their display
+          // currency under settings to match.
+          console.log('[CURRENCY] Non-USD currency detected but user is on free tier — importing without conversion');
+          diagnostics.warnings.push(
+            'Trades were imported in their original currency without USD conversion. ' +
+            'Update your currency display preference in your settings to match, or upgrade to Pro to enable automatic conversion.'
+          );
+          // Leave context.hasCurrencyColumn unset so the per-trade conversion
+          // block (line ~3812) doesn't fire. Broker parsers can still copy
+          // the source currency onto the trade via the row-level Currency field.
         }
-
-        const hasProAccess = await currencyConverter.userHasProAccess(userId);
-        if (!hasProAccess) {
-          throw new Error('CURRENCY_REQUIRES_PRO:Currency conversion is a Pro feature. Please upgrade to Pro to import trades with non-USD currencies.');
-        }
-
-        console.log(`[CURRENCY] User ${userId} has Pro access, currency conversion enabled`);
-
-        // Store currency column info in context for broker parsers to use
-        context.hasCurrencyColumn = true;
-        context.currencyRecords = records; // Store original records with currency data
       }
     }
 
@@ -3611,7 +3678,10 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       record['Entry Date'] && record['Exit Date'] ||
       record['Entry Price'] && record['Exit Price'] ||
       record['Entry Time'] && record['Exit Time'] && record['Entry price'] && record['Exit price'] ||
-      record['Entry price'] && record['Closing price']
+      record['Entry price'] && record['Closing price'] ||
+      // MetaTrader 4/5 exports — each row is a completed trade with open/close
+      record.opening_price && record.closing_price ||
+      record.opening_time_utc && record.closing_time_utc
     ));
 
     // Generic parser - Use transaction-based processing for better position tracking
@@ -3711,8 +3781,11 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
             }
           }
 
-          // Check if this trade has a currency that needs conversion
-          if (hasCurrencyColumn) {
+          // Check if this trade has a currency that needs conversion.
+          // Gated on context.hasCurrencyColumn (only set when the user has
+          // Pro access) so free-tier users keep their source-currency values
+          // instead of getting USD conversion for free.
+          if (context.hasCurrencyColumn) {
             const currencyFieldPatterns = ['currency', 'curr', 'ccy', 'currency_code', 'currencycode'];
             let currency = null;
 

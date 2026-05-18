@@ -260,9 +260,12 @@ import {
   CalculatorIcon,
   ShieldCheckIcon
 } from '@heroicons/vue/24/outline'
+import { usePricingExperiment } from '@/composables/usePricingExperiment'
 import { useScrollReveal } from '@/composables/useScrollReveal'
+import { PRO_MONTHLY_PRICE } from '@/config/pricing'
 
 useScrollReveal()
+const { monthlyPricePerMoLabel } = usePricingExperiment()
 
 const activeTab = ref('dashboard')
 
@@ -275,7 +278,7 @@ const featureTabs = [
 
 const tabContent = {
   dashboard: {
-    image: '/images/screenshot-dashboard.png',
+    image: '/images/trading-performance-dashboard.webp',
     alt: 'TradeTally Dashboard with P&L charts, win rate, and open positions',
     badge: 'ANALYTICS',
     badgeClass: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300',
@@ -290,7 +293,7 @@ const tabContent = {
     ]
   },
   journal: {
-    image: '/images/screenshot-journal.png',
+    image: '/images/trading-journal-daily-entries.webp',
     alt: 'TradeTally Trading Journal with daily entries, market bias, and watchlists',
     badge: 'JOURNAL',
     badgeClass: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300',
@@ -305,7 +308,7 @@ const tabContent = {
     ]
   },
   'trade-mgmt': {
-    image: '/images/screenshot-trade-management.png',
+    image: '/images/r-multiple-trade-management.webp',
     alt: 'TradeTally Trade Management with R-Multiple performance chart',
     badge: 'RISK MANAGEMENT',
     badgeClass: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300',
@@ -320,7 +323,7 @@ const tabContent = {
     ]
   },
   'stock-analyzer': {
-    image: '/images/screenshot-stock-analyzer.png',
+    image: '/images/dcf-stock-valuation-calculator.webp',
     alt: 'TradeTally Stock Analyzer with DCF valuation calculator',
     badge: 'INVESTMENTS',
     badgeClass: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300',
@@ -544,12 +547,12 @@ const tradeAnalysisItems = [
   'Execution analysis per trade'
 ]
 
-const cloudBenefits = [
+const cloudBenefits = computed(() => [
   'Sign up and start journaling immediately',
   'All API keys provided (market data, AI, charts)',
   'Automatic updates and backups',
-  'Free tier + $8/mo Pro option'
-]
+  `Free tier + ${monthlyPricePerMoLabel.value} Pro option`
+])
 
 const selfHostBenefits = [
   { text: 'All features unlocked, no subscription required' },
@@ -611,11 +614,11 @@ onMounted(() => {
       {
         "@type": "Offer",
         "name": "Pro Tier",
-        "price": "8",
+        "price": String(PRO_MONTHLY_PRICE),
         "priceCurrency": "USD",
         "priceSpecification": {
           "@type": "UnitPriceSpecification",
-          "price": "8",
+          "price": String(PRO_MONTHLY_PRICE),
           "priceCurrency": "USD",
           "billingDuration": "P1M"
         },

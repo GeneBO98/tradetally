@@ -52,9 +52,11 @@ const playbookRoutes = require('./routes/playbook.routes');
 const aiRoutes = require('./routes/ai.routes');
 const symbolsRoutes = require('./routes/symbols.routes');
 const unsubscribeRoutes = require('./routes/unsubscribe.routes');
+const trialFeedbackRoutes = require('./routes/trialFeedback.routes');
 const passkeyRoutes = require('./routes/passkey.routes');
 const testimonialsRoutes = require('./routes/testimonials.routes');
 const supportRoutes = require('./routes/support.routes');
+const internalRoutes = require('./routes/internal.routes');
 const BillingService = require('./services/billingService');
 const priceMonitoringService = require('./services/priceMonitoringService');
 const backupScheduler = require('./services/backupScheduler.service');
@@ -70,6 +72,7 @@ const newsScheduler = require('./services/newsScheduler');
 const earningsScheduler = require('./services/earningsScheduler');
 const symbolCategoryScheduler = require('./services/symbolCategoryScheduler');
 const webhookEventBridge = require('./services/webhookEventBridge');
+const crmSyncScheduler = require('./services/crmSyncScheduler');
 const activityTrackingService = require('./services/activityTrackingService');
 const engagementScheduler = require('./services/engagementScheduler');
 const activityTrackingMiddleware = require('./middleware/activityTracking');
@@ -80,7 +83,7 @@ const pushNotificationService = require('./services/pushNotificationService');
 const globalEnrichmentCacheCleanupService = require('./services/globalEnrichmentCacheCleanupService');
 const storageHealthService = require('./services/storageHealth.service');
 const { buildHealthStatus } = require('./services/healthStatus.service');
-const { swaggerSpec, swaggerUi } = require('./config/swagger');
+const { buildSwaggerSpec, swaggerUi } = require('./config/swagger');
 const errorHandler = require('./middleware/errorHandler');
 const requestIdMiddleware = require('./middleware/requestId');
 const { isV1Request, sendV1Error } = require('./utils/apiResponse');
@@ -89,6 +92,10 @@ const { createRateLimiter } = require('./utils/rateLimit');
 
 const app = express();
 const PORT = process.env.PORT || 5001;
+
+function getApiDocsOrigin(req) {
+  return process.env.API_BASE_URL || process.env.INSTANCE_URL || `${req.protocol}://${req.get('host')}`;
+}
 
 function parseTrustProxySetting(value) {
   if (value === undefined || value === null || value === '') {
@@ -245,6 +252,7 @@ app.use('/api/features', featuresRoutes);
 app.use('/api/behavioral-analytics', behavioralAnalyticsRoutes);
 app.use('/api/billing', billingRoutes);
 app.use('/api/support', supportRoutes);
+app.use('/api/internal', internalRoutes);
 app.use('/api/watchlists', watchlistRoutes);
 app.use('/api/price-alerts', priceAlertsRoutes);
 app.use('/api/notifications', notificationsRoutes);
@@ -270,6 +278,7 @@ app.use('/api/playbooks', playbookRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/symbols', symbolsRoutes);
 app.use('/api/unsubscribe', unsubscribeRoutes);
+app.use('/api/trial-feedback', trialFeedbackRoutes);
 app.use('/api/auth/passkey', passkeyRoutes);
 app.use('/api/testimonials', testimonialsRoutes);
 
@@ -282,10 +291,17 @@ app.use('/.well-known', wellKnownRoutes);
 
 // Swagger API Documentation
 if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_SWAGGER === 'true') {
-  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  app.get('/api-docs.json', (req, res) => {
+    res.json(buildSwaggerSpec(getApiDocsOrigin(req)));
+  });
+
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(null, {
     explorer: true,
     customCss: '.swagger-ui .topbar { display: none }',
     customSiteTitle: 'TradeTally API Documentation',
+    swaggerOptions: {
+      url: '/api-docs.json',
+    },
   }));
   logger.info('📚 Swagger documentation available at /api-docs');
 }
@@ -473,6 +489,15 @@ async function startServer() {
 
     if (process.env.ENABLE_V1_WEBHOOKS === 'true') {
       webhookEventBridge.start();
+    }
+
+    // Start CRM sync scheduler (Twenty CRM + Invoice Ninja)
+    if (process.env.ENABLE_CRM_SYNC === 'true') {
+      console.log('Starting CRM sync scheduler...');
+      crmSyncScheduler.start();
+      console.log('[SUCCESS] CRM sync scheduler started');
+    } else {
+      console.log('CRM sync disabled (ENABLE_CRM_SYNC=false)');
     }
 
     // Start activity tracking service (buffered event logging)

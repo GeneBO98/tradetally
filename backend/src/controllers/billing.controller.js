@@ -121,13 +121,15 @@ const billingController = {
       });
       
       const plans = await BillingService.getPricingPlans();
+      const experiments = await BillingService.getPricingExperiments(plans);
       
       console.log('Retrieved pricing plans:', plans.length, 'plans');
       
       res.json({
         success: true,
         data: plans, // Web app expects 'data'
-        plans: plans // Mobile app expects 'plans' - provide both for compatibility
+        plans: plans, // Mobile app expects 'plans' - provide both for compatibility
+        experiments
       });
     } catch (error) {
       console.error('Error fetching pricing plans:', error);
@@ -145,7 +147,7 @@ const billingController = {
   async createCheckoutSession(req, res, next) {
     try {
       const userId = req.user.id;
-      const { priceId, redirectUrl, referral } = req.body;
+      const { priceId, redirectUrl, referral, pricingExperiment } = req.body;
 
       if (!priceId) {
         return res.status(400).json({
@@ -170,7 +172,8 @@ const billingController = {
         priceId,
         successUrl,
         cancelUrl,
-        referral
+        referral,
+        pricingExperiment
       );
 
       res.json({
@@ -190,6 +193,12 @@ const billingController = {
         return res.status(400).json({
           error: 'billing_unavailable',
           message: 'Billing is not enabled on this instance'
+        });
+      }
+      if (error.code === 'invalid_price_id') {
+        return res.status(400).json({
+          error: 'invalid_price_id',
+          message: 'The selected price is not available'
         });
       }
       next(error);

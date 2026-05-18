@@ -3,10 +3,11 @@ const logger = require('../utils/logger');
 const finnhub = require('../utils/finnhub');
 const priceFallbackManager = require('../utils/priceFallbackManager');
 const historicalPriceCache = require('../utils/historicalPriceCache');
-const nodemailer = require('nodemailer');
 const { uuidv4 } = require('../utils/uuid');
 const TierService = require('./tierService');
 const NotificationPreferenceService = require('./notificationPreferenceService');
+const emailDeliveryService = require('./emailDeliveryService');
+const EmailService = require('./emailService');
 const escapeHtml = require('../utils/escapeHtml');
 
 function maskEmail(email) {
@@ -21,12 +22,10 @@ class PriceMonitoringService {
     this.isRunning = false;
     this.monitoringInterval = null;
     this.intervalMs = 30000; // 30 seconds
-    this.emailTransporter = null;
     this.failedSymbols = new Map(); // Track failed symbols to reduce log spam
     this.skippedSymbols = new Set();
     this.symbolOffset = 0; // Round-robin offset for batching
     this.maxSymbolsPerCycle = parseInt(process.env.PRICE_MONITOR_MAX_SYMBOLS, 10) || 25;
-    this.initializeEmailTransporter();
   }
 
   getUnsupportedQuoteReason(symbol) {
@@ -42,22 +41,8 @@ class PriceMonitoringService {
     return null;
   }
 
-  initializeEmailTransporter() {
-    if (this.isEmailConfigured()) {
-      this.emailTransporter = nodemailer.createTransport({
-        host: process.env.EMAIL_HOST,
-        port: process.env.EMAIL_PORT || 587,
-        secure: process.env.EMAIL_PORT == 465,
-        auth: {
-          user: process.env.EMAIL_USER,
-          pass: process.env.EMAIL_PASS
-        }
-      });
-    }
-  }
-
   isEmailConfigured() {
-    return !!(process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS);
+    return emailDeliveryService.isConfigured();
   }
 
   async start() {
@@ -447,7 +432,7 @@ class PriceMonitoringService {
 
   async sendEmailNotification(email, symbol, message, alert) {
     try {
-      if (!this.emailTransporter) {
+      if (!this.isEmailConfigured()) {
         logger.logWarn('Email not configured, skipping email notification');
         return;
       }
@@ -472,8 +457,8 @@ class PriceMonitoringService {
         <p><em>This alert was sent from your TradeTally Pro account.</em></p>
       `;
 
-      await this.emailTransporter.sendMail({
-        from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+      await emailDeliveryService.sendMail({
+        from: EmailService.getTransactionalFromAddress(),
         to: email,
         subject: subject,
         html: html

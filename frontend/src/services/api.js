@@ -83,7 +83,7 @@ api.interceptors.response.use(
       const isAuthPage = currentPath.includes('/login') || currentPath.includes('/register') || currentPath.includes('/forgot-password') || currentPath.includes('/reset-password')
       const isLoginRequest = error.config?.url?.includes('/auth/login')
 
-      if (!isAuthPage && !isLoginRequest) {
+      if (!isAuthPage && !isLoginRequest && !error.config?.skipAuthRedirect) {
         // Clear the JS-readable csrf_token cookie so the synchronous "has session"
         // hint in the auth store doesn't bounce us back to /dashboard in a loop.
         document.cookie = 'csrf_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'

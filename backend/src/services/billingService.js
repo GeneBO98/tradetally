@@ -2,11 +2,20 @@ const db = require('../config/database');
 const TierService = require('./tierService');
 const User = require('../models/User');
 const EmailService = require('./emailService');
+const invoiceNinjaSyncService = require('./invoiceNinjaSyncService');
+const sequenzySubscriberSyncService = require('./sequenzySubscriberSyncService');
 
 // Conditionally load Stripe only if billing is enabled
 let stripe = null;
 
 class BillingService {
+  static BILLING_PRICE_SETTING_KEYS = [
+    'stripe_price_id_monthly',
+    'stripe_price_id_monthly_b',
+    'stripe_price_id_monthly_experiment',
+    'stripe_price_id_yearly'
+  ];
+
   static async clearTrialOverride(userId) {
     const deleteQuery = `
       DELETE FROM tier_overrides
@@ -111,12 +120,70 @@ class BillingService {
     return customer.id;
   }
 
+  static async getConfiguredPriceIds() {
+    const priceQuery = `
+      SELECT setting_key, setting_value
+      FROM admin_settings
+      WHERE setting_key = ANY($1::text[])
+    `;
+    const result = await db.query(priceQuery, [this.BILLING_PRICE_SETTING_KEYS]);
+
+    return result.rows.reduce((accumulator, row) => {
+      if (row.setting_value) {
+        accumulator[row.setting_key] = row.setting_value;
+      }
+
+      return accumulator;
+    }, {});
+  }
+
+  static async assertAllowedCheckoutPriceId(priceId) {
+    const configuredPriceIds = await this.getConfiguredPriceIds();
+    const allowedPriceIds = new Set(Object.values(configuredPriceIds).filter(Boolean));
+
+    if (!allowedPriceIds.has(priceId)) {
+      const error = new Error('Price ID is not allowed');
+      error.code = 'invalid_price_id';
+      throw error;
+    }
+
+    return configuredPriceIds;
+  }
+
+  static normalizePricingExperimentMetadata(pricingExperiment = {}) {
+    if (!pricingExperiment || typeof pricingExperiment !== 'object') {
+      return {};
+    }
+
+    const normalized = {};
+
+    if (typeof pricingExperiment.key === 'string' && pricingExperiment.key.trim()) {
+      normalized.pricing_experiment_key = pricingExperiment.key.trim().slice(0, 40);
+    }
+
+    if (typeof pricingExperiment.variant === 'string' && pricingExperiment.variant.trim()) {
+      normalized.pricing_experiment_variant = pricingExperiment.variant.trim().slice(0, 40);
+    }
+
+    if (Number.isFinite(pricingExperiment.displayedPriceCents)) {
+      normalized.pricing_displayed_amount = String(Math.round(pricingExperiment.displayedPriceCents));
+    }
+
+    if (typeof pricingExperiment.currency === 'string' && pricingExperiment.currency.trim()) {
+      normalized.pricing_displayed_currency = pricingExperiment.currency.trim().slice(0, 10).toUpperCase();
+    }
+
+    return normalized;
+  }
+
   // Create checkout session
-  static async createCheckoutSession(userId, priceId, successUrl, cancelUrl, referral) {
+  static async createCheckoutSession(userId, priceId, successUrl, cancelUrl, referral, pricingExperiment) {
     const billingAvailable = await this.isBillingAvailable();
     if (!billingAvailable) {
       throw new Error('Billing not available');
     }
+
+    await this.assertAllowedCheckoutPriceId(priceId);
 
     const customerId = await this.createOrGetCustomer(userId);
 
@@ -128,6 +195,8 @@ class BillingService {
     if (referral) {
       metadata.promotekit_referral = referral;
     }
+
+    Object.assign(metadata, this.normalizePricingExperimentMetadata(pricingExperiment));
 
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
@@ -144,7 +213,8 @@ class BillingService {
       metadata: metadata,
       subscription_data: {
         metadata: {
-          user_id: userId
+          user_id: userId,
+          ...this.normalizePricingExperimentMetadata(pricingExperiment)
         }
       }
     });
@@ -415,6 +485,9 @@ class BillingService {
       case 'customer.subscription.deleted':
         await this.handleSubscriptionDeleted(event.data.object);
         break;
+      case 'invoice.payment_succeeded':
+        await this.handlePaymentSucceeded(event.data.object);
+        break;
       case 'invoice.payment_failed':
         await this.handlePaymentFailed(event.data.object);
         break;
@@ -553,6 +626,7 @@ class BillingService {
     try {
       await TierService.handleSubscriptionUpdate(subscription.id, subscription.status);
       console.log('User tier updated');
+      sequenzySubscriberSyncService.queueSyncUserById(userId);
     } catch (tierError) {
       // If we don't have a local subscription record yet, don't fail the webhook
       if (tierError && tierError.message === 'Subscription not found') {
@@ -583,12 +657,125 @@ class BillingService {
       WHERE stripe_subscription_id = $1
     `;
     await db.query(updateQuery, [subscription.id]);
+
+    const userResult = await db.query(
+      `SELECT user_id FROM subscriptions WHERE stripe_subscription_id = $1 LIMIT 1`,
+      [subscription.id]
+    );
+    if (userResult.rows[0]?.user_id) {
+      sequenzySubscriberSyncService.queueSyncUserById(userResult.rows[0].user_id);
+    }
+  }
+
+  // Handle successful payment
+  static async handlePaymentSucceeded(invoice) {
+    console.log('Payment succeeded for invoice:', invoice.id);
+    const userId = await this.resolveUserIdForInvoice(invoice);
+
+    if (!userId) {
+      console.warn('[BILLING] Unable to resolve user for paid invoice:', invoice.id);
+      return;
+    }
+
+    const initialized = invoiceNinjaSyncService.initialize();
+    if (!initialized) {
+      console.log('[BILLING] Invoice Ninja revenue sync skipped - integration not configured');
+      return;
+    }
+
+    try {
+      const result = await invoiceNinjaSyncService.syncStripeInvoiceRevenue(userId, invoice);
+      if (result?.skipped) {
+        console.log('[BILLING] Invoice Ninja revenue sync skipped:', invoice.id, result.reason);
+      } else if (result?.invoice?.id) {
+        console.log('[BILLING] Invoice Ninja revenue synced:', invoice.id, '->', result.invoice.id);
+      }
+    } catch (error) {
+      console.error('[BILLING] Invoice Ninja revenue sync failed for Stripe invoice:', invoice.id, error.message);
+    }
   }
 
   // Handle failed payment
   static async handlePaymentFailed(invoice) {
     console.log('Payment failed for invoice:', invoice.id);
     // Could add logic for handling failed payments, notifications, etc.
+  }
+
+  static async backfillInvoiceNinjaRevenue(userId) {
+    const billingAvailable = await this.isBillingAvailable();
+    if (!billingAvailable) {
+      throw new Error('Billing not available');
+    }
+
+    const subscription = await User.getSubscription(userId);
+    if (!subscription?.stripe_subscription_id && !subscription?.stripe_customer_id) {
+      return {
+        skipped: true,
+        reason: 'subscription_not_configured',
+      };
+    }
+
+    const initialized = invoiceNinjaSyncService.initialize();
+    if (!initialized) {
+      return {
+        skipped: true,
+        reason: 'invoice_ninja_not_configured',
+      };
+    }
+
+    const invoiceListParams = subscription.stripe_subscription_id
+      ? { subscription: subscription.stripe_subscription_id, limit: 20 }
+      : { customer: subscription.stripe_customer_id, limit: 20 };
+
+    const invoices = await stripe.invoices.list(invoiceListParams);
+    const paidInvoice = invoices.data.find((invoice) => invoice.paid && Number(invoice.amount_paid || 0) > 0);
+
+    if (!paidInvoice) {
+      return {
+        skipped: true,
+        reason: 'no_paid_invoice_found',
+      };
+    }
+
+    return invoiceNinjaSyncService.syncStripeInvoiceRevenue(userId, paidInvoice);
+  }
+
+  static async resolveUserIdForInvoice(invoice) {
+    const stripeSubscriptionId = invoice?.subscription || null;
+    const stripeCustomerId = invoice?.customer || null;
+
+    if (stripeSubscriptionId) {
+      const subscriptionResult = await db.query(
+        `SELECT user_id FROM subscriptions WHERE stripe_subscription_id = $1 LIMIT 1`,
+        [stripeSubscriptionId]
+      );
+
+      if (subscriptionResult.rows[0]?.user_id) {
+        return subscriptionResult.rows[0].user_id;
+      }
+    }
+
+    if (stripeCustomerId) {
+      const customerResult = await db.query(
+        `SELECT user_id FROM subscriptions WHERE stripe_customer_id = $1 LIMIT 1`,
+        [stripeCustomerId]
+      );
+
+      if (customerResult.rows[0]?.user_id) {
+        return customerResult.rows[0].user_id;
+      }
+
+      try {
+        const customer = await stripe.customers.retrieve(stripeCustomerId);
+        if (customer?.metadata?.user_id) {
+          return customer.metadata.user_id;
+        }
+      } catch (error) {
+        console.error('[BILLING] Failed to resolve Stripe customer for invoice:', invoice?.id, error.message);
+      }
+    }
+
+    return null;
   }
 
   // Create or update subscription record
@@ -636,10 +823,11 @@ class BillingService {
       {
         id: 'pro_monthly',
         name: 'Pro Monthly',
-        price: 800, // $8.00 in cents (matches web app pricing)
+        price: 1200, // $12.00 in cents (matches web app pricing)
         currency: 'USD',
         interval: 'month',
         interval_count: 1,
+        variant: 'control',
         features: [
           'Everything in Free',
           'Behavioral analytics',
@@ -657,7 +845,7 @@ class BillingService {
       {
         id: 'pro_yearly',
         name: 'Pro Yearly',
-        price: 8000, // $80.00 in cents (10 months price for 12 months)
+        price: 12000, // $120.00 in cents (10 months price for 12 months)
         currency: 'USD',
         interval: 'year',
         interval_count: 1,
@@ -669,6 +857,63 @@ class BillingService {
         popular: false
       }
     ];
+  }
+
+  static sanitizePublicPlan(plan) {
+    if (!plan) {
+      return null;
+    }
+
+    return {
+      id: plan.id,
+      name: plan.name,
+      price: plan.price,
+      currency: plan.currency,
+      interval: plan.interval
+    };
+  }
+
+  static async getPricingExperiments(plans = []) {
+    const billingAvailable = await this.isBillingAvailable();
+    if (!billingAvailable) {
+      return {};
+    }
+
+    let configuredPriceIds = {};
+    try {
+      configuredPriceIds = await this.getConfiguredPriceIds();
+    } catch (error) {
+      console.error('Error fetching configured price IDs for pricing experiments:', error);
+      return {};
+    }
+
+    const alternateMonthlyPriceId = configuredPriceIds.stripe_price_id_monthly_experiment;
+    const controlMonthlyPlan = plans.find((plan) => plan.interval === 'month');
+
+    if (!alternateMonthlyPriceId || !controlMonthlyPlan || alternateMonthlyPriceId === controlMonthlyPlan.id) {
+      return {};
+    }
+
+    try {
+      const price = await stripe.prices.retrieve(alternateMonthlyPriceId);
+      const alternateMonthlyPlan = {
+        id: price.id,
+        name: 'Pro Monthly',
+        price: price.unit_amount,
+        currency: price.currency.toUpperCase(),
+        interval: price.recurring?.interval || 'month'
+      };
+
+      return {
+        pricing_monthly_offer: {
+          control: this.sanitizePublicPlan(controlMonthlyPlan),
+          higher_price: this.sanitizePublicPlan(alternateMonthlyPlan)
+        }
+      };
+    } catch (error) {
+      console.error(`Error fetching alternate monthly experiment price ${alternateMonthlyPriceId}:`, error);
+      return {};
+    }
   }
 
   // Get available pricing plans
@@ -691,22 +936,7 @@ class BillingService {
     }
 
     try {
-      // Get price IDs from admin settings
-      const priceQuery = `
-        SELECT setting_key, setting_value 
-        FROM admin_settings 
-        WHERE setting_key IN ('stripe_price_id_monthly', 'stripe_price_id_yearly')
-      `;
-      const priceResult = await db.query(priceQuery);
-      
-      console.log('Admin settings query result:', priceResult.rows);
-      
-      const priceIds = {};
-      priceResult.rows.forEach(row => {
-        if (row.setting_value) {
-          priceIds[row.setting_key] = row.setting_value;
-        }
-      });
+      const priceIds = await this.getConfiguredPriceIds();
 
       console.log('Extracted price IDs:', priceIds);
 
@@ -720,48 +950,63 @@ class BillingService {
 
       const plans = [];
       
+      const monthlyFeatures = [
+        'Everything in Free',
+        'Behavioral analytics',
+        'Revenge trading detection',
+        'Advanced risk metrics',
+        'Real-time alerts',
+        'Priority support',
+        'Unlimited Watchlists',
+        'Price Alerts',
+        'Enhanced Charts',
+        'API Access'
+      ];
+      const yearlyFeatures = [
+        'Everything in Pro Monthly',
+        '2 months free',
+        'Priority support'
+      ];
+
       // Fetch pricing details from Stripe
       for (const [key, priceId] of Object.entries(priceIds)) {
+        if (key === 'stripe_price_id_monthly_experiment') {
+          continue;
+        }
+
         try {
           console.log(`Fetching Stripe price for ${key}: ${priceId}`);
           const price = await stripe.prices.retrieve(priceId);
           const product = await stripe.products.retrieve(price.product);
-          
+
           console.log(`Retrieved price ${priceId}:`, {
             amount: price.unit_amount,
             currency: price.currency,
             interval: price.recurring?.interval,
             product_name: product.name
           });
-          
-          // Create plan in format expected by iOS app
-          const planType = key.includes('monthly') ? 'monthly' : 'yearly';
-          const features = planType === 'monthly' ? [
-            'Everything in Free',
-            'Behavioral analytics', 
-            'Revenge trading detection',
-            'Advanced risk metrics',
-            'Real-time alerts',
-            'Priority support',
-            'Unlimited Watchlists',
-            'Price Alerts',
-            'Enhanced Charts',
-            'API Access'
-          ] : [
-            'Everything in Pro Monthly',
-            '2 months free',
-            'Priority support'
-          ];
 
-          plans.push({
+          const isYearly = key === 'stripe_price_id_yearly';
+          const variant = key === 'stripe_price_id_monthly' ? 'control'
+            : key === 'stripe_price_id_monthly_b' ? 'b'
+            : undefined;
+          const features = isYearly ? yearlyFeatures : monthlyFeatures;
+
+          const plan = {
             id: price.id,
-            name: planType === 'monthly' ? 'Pro Monthly' : 'Pro Yearly',
+            name: isYearly ? 'Pro Yearly' : 'Pro Monthly',
             price: price.unit_amount, // Already in cents
             currency: price.currency.toUpperCase(),
-            interval: price.recurring?.interval || planType.replace('ly', ''),
+            interval: price.recurring?.interval || (isYearly ? 'year' : 'month'),
             features: features,
-            popular: planType === 'monthly'
-          });
+            popular: !isYearly
+          };
+
+          if (variant !== undefined) {
+            plan.variant = variant;
+          }
+
+          plans.push(plan);
         } catch (error) {
           console.error(`Error fetching price ${priceId}:`, error);
         }

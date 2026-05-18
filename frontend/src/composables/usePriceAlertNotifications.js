@@ -276,7 +276,7 @@ export function usePriceAlertNotifications() {
     if ('Notification' in window && Notification.permission === 'granted') {
       const notification = new Notification(`TradeTally Alert: ${alert.symbol}`, {
         body: alert.message,
-        icon: '/favicon.ico',
+        icon: '/favicon-32x32.png',
         tag: alert.id,
         requireInteraction: false
       })

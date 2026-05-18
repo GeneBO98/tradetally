@@ -30,7 +30,7 @@ export function useRegistrationMode() {
           registrationConfig.value = {
             registrationMode: 'open',
             allowRegistration: true,
-            billingEnabled: false
+            billingEnabled: true
           }
           return registrationConfig.value
         })

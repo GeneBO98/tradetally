@@ -4,6 +4,16 @@ const { AUTH_COOKIE_NAME, CSRF_COOKIE_NAME, buildCsrfCookieOptions } = require('
 const CSRF_HEADER_NAME = 'x-csrf-token';
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const MOBILE_CLIENT_HEADERS = ['x-device-id', 'x-platform', 'x-app-version'];
+// Pre-auth endpoints don't need CSRF protection (no session to hijack)
+const CSRF_EXEMPT_PATHS = new Set([
+  '/api/auth/login',
+  '/api/auth/register',
+  '/api/v1/auth/login',
+  '/api/v1/auth/register',
+  '/api/auth/forgot-password',
+  '/api/auth/reset-password',
+  '/api/v1/auth/login/device',
+]);
 
 function generateCsrfToken() {
   return crypto.randomBytes(32).toString('hex');
@@ -34,6 +44,10 @@ function requireCsrf(req, res, next) {
   }
 
   if (req.originalUrl === '/api/billing/webhooks/stripe') {
+    return next();
+  }
+
+  if (CSRF_EXEMPT_PATHS.has(req.originalUrl.split('?')[0])) {
     return next();
   }
 

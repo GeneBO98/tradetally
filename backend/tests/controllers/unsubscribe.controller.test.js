@@ -3,6 +3,10 @@ jest.mock('../../src/models/User', () => ({
   updateMarketingConsent: jest.fn()
 }));
 
+jest.mock('../../src/services/sequenzySubscriberSyncService', () => ({
+  queueSyncUserById: jest.fn()
+}));
+
 jest.mock('../../src/utils/logger', () => ({
   warn: jest.fn(),
   info: jest.fn(),
@@ -10,6 +14,7 @@ jest.mock('../../src/utils/logger', () => ({
 }));
 
 const User = require('../../src/models/User');
+const sequenzySubscriberSyncService = require('../../src/services/sequenzySubscriberSyncService');
 const unsubscribeController = require('../../src/controllers/unsubscribe.controller');
 const unsubscribeService = require('../../src/services/unsubscribeService');
 
@@ -48,6 +53,7 @@ describe('unsubscribe controller', () => {
     await unsubscribeController.handleUnsubscribe(req, res);
 
     expect(User.updateMarketingConsent).toHaveBeenCalledWith(userId, false);
+    expect(sequenzySubscriberSyncService.queueSyncUserById).toHaveBeenCalledWith(userId);
     expect(res.statusCode).toBe(200);
     expect(res.payload).toEqual({
       success: true,
@@ -69,6 +75,7 @@ describe('unsubscribe controller', () => {
     await unsubscribeController.handleUnsubscribe(req, res);
 
     expect(User.updateMarketingConsent).toHaveBeenCalledWith(userId, false);
+    expect(sequenzySubscriberSyncService.queueSyncUserById).toHaveBeenCalledWith(userId);
     expect(res.statusCode).toBe(200);
   });
 });
