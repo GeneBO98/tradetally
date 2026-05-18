@@ -159,6 +159,70 @@ describe('analyticsController.getCalendarDayDetail', () => {
     expect(payload.contributions[0].pnl).toBeCloseTo(118.68, 2);
   });
 
+  test('credits partial-close P&L on an open short option position when trade.pnl is null', async () => {
+    db.query.mockResolvedValueOnce({
+      rows: [
+        {
+          trade_id: 'trade-avav-open',
+          symbol: 'AVAV',
+          side: 'short',
+          pnl: null,
+          commission: null,
+          fees: null,
+          r_value: null,
+          stop_loss: null,
+          entry_price: 0.9,
+          quantity: 5,
+          instrument_type: 'option',
+          contract_size: 100,
+          point_value: null,
+          underlying_asset: 'AVAV',
+          exit_time: null,
+          executions: [
+            { action: 'sell', quantity: 1, price: 0.9, datetime: '2026-01-05T10:23:00', fees: -0.05204 },
+            { action: 'sell', quantity: 1, price: 0.9, datetime: '2026-01-05T10:23:00', fees: 0.64796 },
+            { action: 'sell', quantity: 2, price: 0.9, datetime: '2026-01-05T10:23:00', fees: 0.59592 },
+            { action: 'sell', quantity: 1, price: 0.9, datetime: '2026-01-05T10:23:00', fees: 0.29796 },
+            { action: 'sell', quantity: 1, price: 0.9, datetime: '2026-01-05T10:23:00', fees: 0.29796 },
+            { action: 'sell', quantity: 1, price: 0.9, datetime: '2026-01-05T10:23:03', fees: 0.29796 },
+            { action: 'buy',  quantity: 1, price: 0.45, datetime: '2026-01-08T10:46:38', fees: -0.04875 },
+            { action: 'buy',  quantity: 1, price: 0.45, datetime: '2026-01-08T10:46:38', fees: 0.65125 }
+          ]
+        }
+      ]
+    });
+
+    const req = {
+      query: { date: '2026-01-08' },
+      user: { id: 'user-1' }
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await analyticsController.getCalendarDayDetail(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+
+    const payload = res.json.mock.calls[0][0];
+    expect(payload.date).toBe('2026-01-08');
+    expect(payload.contributions).toHaveLength(1);
+    expect(payload.contributions[0]).toEqual(expect.objectContaining({
+      trade_id: 'trade-avav-open',
+      symbol: 'AVAV',
+      side: 'short',
+      exit_count: 2,
+      // is_partial flags "exits on other days too"; here both closing legs
+      // are on 2026-01-08 so it is false even though 5 contracts remain open.
+      is_partial: false
+    }));
+    // Short option partial close: 2 contracts closed @ $0.45 vs entry $0.90,
+    // contract_size 100 → gross $45 per fill. Each fill's `fees` field is
+    // applied as cost; FIFO-matched entry leg's `fees` (the first two sell
+    // fills here) is also subtracted. Negative fees are rebates (raise P&L).
+    // Gross = 90, costs = (-0.04875) + 0.65125 + (-0.05204) + 0.64796 = 1.19842
+    expect(payload.contributions[0].pnl).toBeCloseTo(90 - 1.19842, 2);
+  });
+
   test('supports legacy executions that only stored side and type', async () => {
     db.query.mockResolvedValueOnce({
       rows: [

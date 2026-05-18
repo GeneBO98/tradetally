@@ -1491,6 +1491,10 @@ const analyticsController = {
       const paramOffset = params.length;
       const tableAlias = 't';
       const fc = filterConditions ? filterConditions.replace(/\btrade_date\b/g, `${tableAlias}.trade_date`).replace(/\bsymbol\b/g, `${tableAlias}.symbol`).replace(/\bstrategy\b/g, `${tableAlias}.strategy`).replace(/\bside\b/g, `${tableAlias}.side`) : '';
+      // Note: do NOT require trade.pnl IS NOT NULL here. Open positions with partial
+      // closes have realized P&L in their executions JSONB but trade.pnl stays NULL
+      // until the position is fully closed (see csvParser.js IBKR open-position branch).
+      // The execution-level aggregator handles those rows correctly.
       const calendarTradesQuery = `
         SELECT
           ${tableAlias}.id AS trade_id,
@@ -1511,10 +1515,12 @@ const analyticsController = {
           ${tableAlias}.executions
         FROM trades ${tableAlias}
         WHERE ${tableAlias}.user_id = $1
-          AND ${tableAlias}.pnl IS NOT NULL
           AND (
-            ((${tableAlias}.exit_time::timestamp)::date >= $${paramOffset + 1}::date
-              AND (${tableAlias}.exit_time::timestamp)::date <= $${paramOffset + 2}::date)
+            (
+              ${tableAlias}.pnl IS NOT NULL
+              AND (${tableAlias}.exit_time::timestamp)::date >= $${paramOffset + 1}::date
+              AND (${tableAlias}.exit_time::timestamp)::date <= $${paramOffset + 2}::date
+            )
             OR EXISTS (
               SELECT 1
               FROM jsonb_array_elements(COALESCE(${tableAlias}.executions, '[]'::jsonb)) AS arr(exec)
@@ -1625,6 +1631,9 @@ const analyticsController = {
       const paramLen = params.length;
       const fc = filterConditions ? filterConditions.replace(/\btrade_date\b/g, 't.trade_date').replace(/\bsymbol\b/g, 't.symbol').replace(/\bstrategy\b/g, 't.strategy').replace(/\bside\b/g, 't.side') : '';
 
+      // Note: do NOT require trade.pnl IS NOT NULL here. Open positions with partial
+      // closes have realized P&L in their executions JSONB but trade.pnl stays NULL
+      // until the position is fully closed.
       const dayQuery = `
         SELECT
           t.id AS trade_id,
@@ -1645,9 +1654,8 @@ const analyticsController = {
           t.executions
         FROM trades t
         WHERE t.user_id = $1
-          AND t.pnl IS NOT NULL
           AND (
-            (t.exit_time::timestamp)::date = $${paramLen}::date
+            (t.pnl IS NOT NULL AND (t.exit_time::timestamp)::date = $${paramLen}::date)
             OR EXISTS (
               SELECT 1
               FROM jsonb_array_elements(COALESCE(t.executions, '[]'::jsonb)) AS arr(exec)
