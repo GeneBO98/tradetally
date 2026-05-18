@@ -31,4 +31,14 @@ describe('envValidation', () => {
     })).toEqual([]);
     expect(hasStrongSecret('x'.repeat(32))).toBe(true);
   });
+
+  test('requires REDIS_URL when production opts into Redis-backed coordination', () => {
+    expect(() => validateProductionSecrets({
+      NODE_ENV: 'production',
+      JWT_SECRET: 'j'.repeat(32),
+      ENABLE_BROKER_SYNC_SCHEDULER: 'false',
+      API_KEY_RATE_LIMIT_STORE: 'redis',
+      SSE_REDIS_FANOUT_ENABLED: 'true'
+    })).toThrow(/REDIS_URL/);
+  });
 });

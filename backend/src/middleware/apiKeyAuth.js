@@ -3,6 +3,7 @@ const logger = require('../utils/logger');
 const { hasScope, resolveEffectiveScopes } = require('../utils/apiScopes');
 const { isV1Request, sendV1Error } = require('../utils/apiResponse');
 const { TOKEN_PURPOSES, verifyJwtToken } = require('./auth');
+const { getRedisClient, getRedisNamespace, isRedisConfigured } = require('../services/redisClient');
 
 const apiKeyRateLimitBuckets = new Map();
 
@@ -23,6 +24,7 @@ function getApiKeyRateLimitConfig() {
   const max = Number(process.env.API_KEY_RATE_LIMIT_MAX || 600);
   return {
     enabled: process.env.API_KEY_RATE_LIMIT_ENABLED !== 'false',
+    store: process.env.API_KEY_RATE_LIMIT_STORE || (isRedisConfigured() ? 'redis' : 'memory'),
     windowMs: Number.isFinite(windowMs) && windowMs > 0 ? windowMs : 60 * 1000,
     max: Number.isFinite(max) && max > 0 ? max : 600
   };
@@ -32,12 +34,7 @@ function resetApiKeyRateLimitBuckets() {
   apiKeyRateLimitBuckets.clear();
 }
 
-function consumeApiKeyRateLimit(keyId, now = Date.now()) {
-  const config = getApiKeyRateLimitConfig();
-  if (!config.enabled || !keyId) {
-    return { allowed: true, remaining: config.max, retryAfterSeconds: 0 };
-  }
-
+function consumeMemoryApiKeyRateLimit(keyId, config, now = Date.now()) {
   const current = apiKeyRateLimitBuckets.get(keyId);
   if (!current || now >= current.resetAt) {
     const next = { count: 1, resetAt: now + config.windowMs };
@@ -45,7 +42,8 @@ function consumeApiKeyRateLimit(keyId, now = Date.now()) {
     return {
       allowed: true,
       remaining: Math.max(config.max - 1, 0),
-      retryAfterSeconds: Math.ceil(config.windowMs / 1000)
+      retryAfterSeconds: Math.ceil(config.windowMs / 1000),
+      store: 'memory'
     };
   }
 
@@ -54,8 +52,50 @@ function consumeApiKeyRateLimit(keyId, now = Date.now()) {
   return {
     allowed: current.count <= config.max,
     remaining: Math.max(config.max - current.count, 0),
-    retryAfterSeconds
+    retryAfterSeconds,
+    store: 'memory'
   };
+}
+
+async function consumeRedisApiKeyRateLimit(keyId, config) {
+  const redis = await getRedisClient();
+  if (!redis?.isReady) {
+    return null;
+  }
+
+  const bucketKey = `${getRedisNamespace()}:api-key-rate:${keyId}`;
+  const count = await redis.incr(bucketKey);
+  if (count === 1) {
+    await redis.pExpire(bucketKey, config.windowMs);
+  }
+
+  const ttlMs = await redis.pTTL(bucketKey);
+  return {
+    allowed: count <= config.max,
+    remaining: Math.max(config.max - count, 0),
+    retryAfterSeconds: Math.max(Math.ceil((ttlMs > 0 ? ttlMs : config.windowMs) / 1000), 1),
+    store: 'redis'
+  };
+}
+
+async function consumeApiKeyRateLimit(keyId, now = Date.now()) {
+  const config = getApiKeyRateLimitConfig();
+  if (!config.enabled || !keyId) {
+    return { allowed: true, remaining: config.max, retryAfterSeconds: 0, store: config.store };
+  }
+
+  if (config.store === 'redis') {
+    try {
+      const redisResult = await consumeRedisApiKeyRateLimit(keyId, config);
+      if (redisResult) {
+        return redisResult;
+      }
+    } catch (error) {
+      logger.logError(`Redis API key rate limit failed, falling back to memory: ${error.message}`);
+    }
+  }
+
+  return consumeMemoryApiKeyRateLimit(keyId, config, now);
 }
 
 /**
@@ -88,8 +128,9 @@ const apiKeyAuth = async (req, res, next) => {
       return sendAuthError(req, res, 401, 'API_KEY_EXPIRED', 'API key has expired');
     }
 
-    const rateLimitResult = consumeApiKeyRateLimit(keyData.id);
+    const rateLimitResult = await consumeApiKeyRateLimit(keyData.id);
     res.setHeader?.('X-Rate-Limit-Remaining', String(rateLimitResult.remaining));
+    res.setHeader?.('X-Rate-Limit-Store', rateLimitResult.store);
     if (!rateLimitResult.allowed) {
       res.setHeader?.('Retry-After', String(rateLimitResult.retryAfterSeconds));
       return sendAuthError(req, res, 429, 'API_KEY_RATE_LIMITED', 'API key rate limit exceeded', {

@@ -65,6 +65,14 @@ api.interceptors.response.use(
       error.retryAfter = retryAfter
     }
 
+    if (error.response?.status === 403 && error.response?.data?.code === 'EMAIL_VERIFICATION_REQUIRED') {
+      window.dispatchEvent(new CustomEvent('email-verification-required', {
+        detail: {
+          message: error.response.data.error || 'Please verify your email address before using this feature.'
+        }
+      }))
+    }
+
     if (error.response?.status === 401) {
       // Don't redirect to login if we're already on login/auth pages or if this is a login attempt
       const currentPath = window.location.pathname

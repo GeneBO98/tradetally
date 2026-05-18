@@ -17,6 +17,7 @@ const { buildAllowedOrigins, buildCorsOptions } = require('./utils/corsPolicy');
 const { recordCorsDenied, recordStaticAssetFailure } = require('./services/httpAnomalyService');
 const { validateProductionSecrets } = require('./config/envValidation');
 const HttpSecurityEvent = require('./models/HttpSecurityEvent');
+const { getRedisHealth } = require('./services/redisClient');
 const authRoutes = require('./routes/auth.routes');
 const userRoutes = require('./routes/user.routes');
 const tradeRoutes = require('./routes/trade.routes');
@@ -287,7 +288,8 @@ app.get('/api/health', async (req, res) => {
       database: 'OK',
       backgroundWorker: backgroundWorker.getStatus(),
       jobRecovery: jobRecoveryService.getStatus(),
-      enrichmentCacheCleanup: globalEnrichmentCacheCleanupService.getStatus()
+      enrichmentCacheCleanup: globalEnrichmentCacheCleanupService.getStatus(),
+      redis: { configured: false, status: 'not_configured' }
     }
   };
   
@@ -296,6 +298,11 @@ app.get('/api/health', async (req, res) => {
     await require('./config/database').query('SELECT 1');
   } catch (error) {
     health.services.database = 'ERROR';
+    health.status = 'DEGRADED';
+  }
+
+  health.services.redis = await getRedisHealth();
+  if (health.services.redis.configured && health.services.redis.status !== 'ok') {
     health.status = 'DEGRADED';
   }
   

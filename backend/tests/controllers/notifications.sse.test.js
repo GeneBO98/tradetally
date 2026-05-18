@@ -2,7 +2,14 @@ jest.mock('../../src/config/database', () => ({
   query: jest.fn()
 }));
 
+jest.mock('../../src/services/sseFanoutService', () => ({
+  getSseFanoutStatus: jest.fn(() => ({ configured: true, enabled: true, subscribed: true, channel: 'test:sse' })),
+  publishSseNotification: jest.fn().mockResolvedValue(true),
+  startSseFanout: jest.fn().mockResolvedValue({})
+}));
+
 const notificationsController = require('../../src/controllers/notifications.controller');
+const sseFanoutService = require('../../src/services/sseFanoutService');
 
 describe('notifications SSE connection controls', () => {
   const { sseConnections, evictOldestConnectionIfNeeded } = notificationsController._test;
@@ -42,5 +49,26 @@ describe('notifications SSE connection controls', () => {
     expect(oldestRes.end).toHaveBeenCalled();
     expect(sseConnections.has('user-oldest')).toBe(false);
     expect(sseConnections.has('user-newest')).toBe(true);
+  });
+
+  test('publishes notification through Redis fanout and local connection', async () => {
+    const res = { destroyed: false, writableEnded: false, write: jest.fn() };
+    sseConnections.set('user-1', {
+      res,
+      heartbeatInterval: null,
+      connectedAt: Date.now()
+    });
+
+    const sent = await notificationsController.sendNotificationToUser('user-1', {
+      type: 'price_alert',
+      data: { symbol: 'AAPL' }
+    });
+
+    expect(sent).toBe(true);
+    expect(res.write).toHaveBeenCalledWith(expect.stringContaining('price_alert'));
+    expect(sseFanoutService.publishSseNotification).toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({ type: 'price_alert' })
+    );
   });
 });

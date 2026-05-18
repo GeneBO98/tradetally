@@ -92,10 +92,26 @@
         <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
           Sign in faster next time using your device's biometrics, security key, or PIN. No password needed.
         </p>
+        <div class="mb-5 space-y-3 text-left">
+          <input
+            v-model="passkeySudoPassword"
+            type="password"
+            autocomplete="current-password"
+            class="input"
+            placeholder="Confirm current password"
+          />
+          <input
+            v-model="passkeySudoCode"
+            type="text"
+            autocomplete="one-time-code"
+            class="input"
+            placeholder="2FA code if enabled"
+          />
+        </div>
         <div class="flex space-x-3 justify-center">
           <button
             @click="registerPasskey"
-            :disabled="passkeyRegistering"
+            :disabled="passkeyRegistering || !passkeySudoPassword"
             class="px-6 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-md disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
           >
             <span v-if="passkeyRegistering">Setting up...</span>
@@ -185,6 +201,7 @@ import VersionDisplay from '@/components/common/VersionDisplay.vue'
 import CookieConsentBanner from '@/components/common/CookieConsentBanner.vue'
 import { useRegistrationMode } from '@/composables/useRegistrationMode'
 import api from '@/services/api'
+import { requestSudoToken, sudoHeaders } from '@/services/sudo'
 
 // Rate limit notification handling
 const { showError, showSuccess } = useNotification()
@@ -248,6 +265,8 @@ watch(() => [authStore.user?.tier, authStore.token, authStore.user?.billingEnabl
 // Passkey registration prompt
 const showPasskeyPrompt = ref(false)
 const passkeyRegistering = ref(false)
+const passkeySudoPassword = ref('')
+const passkeySudoCode = ref('')
 const PASSKEY_PROMPT_DISMISSED_KEY = 'passkey_prompt_dismissed'
 
 // Watch for login: when token appears, check if user has passkeys
@@ -277,19 +296,33 @@ async function registerPasskey() {
   passkeyRegistering.value = true
   try {
     const { startRegistration } = await import('@simplewebauthn/browser')
-    const optionsRes = await api.post('/auth/passkey/register/options')
+    const { sudoToken } = await requestSudoToken({
+      password: passkeySudoPassword.value,
+      twoFactorCode: passkeySudoCode.value
+    })
+    const sudoConfig = sudoHeaders(sudoToken)
+    const optionsRes = await api.post('/auth/passkey/register/options', {}, sudoConfig)
     const regResponse = await startRegistration({ optionsJSON: optionsRes.data })
 
     await api.post('/auth/passkey/register/verify', {
       response: regResponse,
       deviceName: navigator.platform || 'My device',
-    })
+    }, sudoConfig)
 
     showPasskeyPrompt.value = false
+    passkeySudoPassword.value = ''
+    passkeySudoCode.value = ''
     showSuccess('Passkey added', 'You can now sign in with your passkey next time.')
   } catch (err) {
-    showPasskeyPrompt.value = false
-    if (err.name !== 'NotAllowedError') {
+    const reauthCode = err.response?.data?.code || ''
+    const reauthFailed = ['INVALID_PASSWORD', 'TWO_FACTOR_REQUIRED', 'INVALID_TWO_FACTOR'].includes(reauthCode) ||
+      String(reauthCode).startsWith('SUDO')
+    if (reauthFailed) {
+      showError('Security confirmation failed', err.response?.data?.error || 'Check your password and 2FA code.')
+    } else {
+      showPasskeyPrompt.value = false
+    }
+    if (err.name !== 'NotAllowedError' && !reauthCode) {
       showError('Error', err.response?.data?.error || err.message || 'Failed to register passkey.')
     }
   } finally {
@@ -321,6 +354,13 @@ const handleRateLimitExceeded = (event) => {
   }
 }
 
+const handleEmailVerificationRequired = (event) => {
+  showError(
+    'Email verification required',
+    event.detail?.message || 'Please verify your email address before using this feature.'
+  )
+}
+
 onMounted(async () => {
   // Initialize dark mode from localStorage (needed for auth pages where NavBar isn't rendered)
   if (localStorage.getItem('darkMode') === 'true') {
@@ -329,6 +369,7 @@ onMounted(async () => {
 
   // Listen for rate limit events from the API interceptor
   window.addEventListener('rate-limit-exceeded', handleRateLimitExceeded)
+  window.addEventListener('email-verification-required', handleEmailVerificationRequired)
 
   // Note: checkAuth() is awaited in main.js before mount to prevent flash of public page
 
@@ -345,6 +386,7 @@ onMounted(async () => {
 onUnmounted(() => {
   // Clean up rate limit event listener
   window.removeEventListener('rate-limit-exceeded', handleRateLimitExceeded)
+  window.removeEventListener('email-verification-required', handleEmailVerificationRequired)
 
   if (versionPollInterval) {
     clearInterval(versionPollInterval)

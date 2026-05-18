@@ -156,6 +156,33 @@
                         two-factor authentication.
                     </p>
 
+                    <div
+                        class="mb-6 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800"
+                    >
+                        <h4 class="text-sm font-medium text-gray-900 dark:text-white">
+                            Security confirmation
+                        </h4>
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            Required before changing 2FA or passkeys. The confirmation expires after a few minutes.
+                        </p>
+                        <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <input
+                                v-model="sudoForm.password"
+                                type="password"
+                                autocomplete="current-password"
+                                class="input"
+                                placeholder="Current password"
+                            />
+                            <input
+                                v-model="sudoForm.twoFactorCode"
+                                type="text"
+                                autocomplete="one-time-code"
+                                class="input"
+                                placeholder="2FA code if enabled"
+                            />
+                        </div>
+                    </div>
+
                     <div v-if="twoFactorStatus.enabled" class="space-y-4">
                         <!-- 2FA is enabled -->
                         <div
@@ -1542,6 +1569,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useNotification } from "@/composables/useNotification";
 import NotificationPreferences from "@/components/profile/NotificationPreferences.vue";
 import api from "@/services/api";
+import { requestSudoToken, sudoHeaders } from "@/services/sudo";
 import { TIMEZONE_OPTIONS } from "@/utils/timezone";
 
 const router = useRouter();
@@ -1575,6 +1603,13 @@ const twoFactorStatus = ref({
     enabled: false,
     backupCodesRemaining: 0,
 });
+const sudoForm = ref({
+    password: "",
+    twoFactorCode: "",
+});
+const sudoToken = ref("");
+const sudoExpiresAt = ref(0);
+const twoFactorSetupSudoToken = ref("");
 
 // Subscription data
 const subscriptionLoading = ref(false);
@@ -1748,6 +1783,32 @@ const canManageApiKeys = computed(() => {
     return subscription.value.tier === "pro";
 });
 
+async function getSudoToken() {
+    if (sudoToken.value && Date.now() < sudoExpiresAt.value - 30000) {
+        return sudoToken.value;
+    }
+
+    if (!sudoForm.value.password) {
+        showError("Security confirmation required", "Enter your current password before changing security settings.");
+        throw new Error("Sudo password required");
+    }
+
+    const result = await requestSudoToken({
+        password: sudoForm.value.password,
+        twoFactorCode: sudoForm.value.twoFactorCode,
+    });
+    sudoToken.value = result.sudoToken;
+    sudoExpiresAt.value = result.expiresAt;
+    sudoForm.value = { password: "", twoFactorCode: "" };
+    return sudoToken.value;
+}
+
+function resetSudoToken() {
+    sudoToken.value = "";
+    sudoExpiresAt.value = 0;
+    twoFactorSetupSudoToken.value = "";
+}
+
 // Profile methods
 async function updateProfile() {
     profileLoading.value = true;
@@ -1798,13 +1859,15 @@ async function setup2FA() {
     twoFactorLoading.value = true;
 
     try {
-        const response = await api.post("/2fa/setup");
+        const token = await getSudoToken();
+        twoFactorSetupSudoToken.value = token;
+        const response = await api.post("/2fa/setup", {}, sudoHeaders(token));
         show2FASetup.value = true;
         qrCodeUrl.value = response.data.qrCode;
         setupSecret.value = response.data.secret;
         backupCodes.value = response.data.backupCodes || [];
     } catch (error) {
-        showError("Error", "Failed to set up 2FA");
+        showError("Error", error.response?.data?.error || "Failed to set up 2FA");
     } finally {
         twoFactorLoading.value = false;
     }
@@ -1819,15 +1882,17 @@ async function enable2FA() {
     twoFactorLoading.value = true;
 
     try {
+        const token = twoFactorSetupSudoToken.value || await getSudoToken();
         await api.post("/2fa/enable", {
             secret: setupSecret.value,
             token: verificationCode.value,
             backupCodes: backupCodes.value,
-        });
+        }, sudoHeaders(token));
 
         showSuccess("Success", "2FA has been enabled successfully");
         show2FASetup.value = false;
         verificationCode.value = "";
+        resetSudoToken();
         await fetch2FAStatus();
     } catch (error) {
         showError(
@@ -1852,13 +1917,18 @@ async function confirmDisable2FA() {
     twoFactorLoading.value = true;
 
     try {
+        const sudo = await requestSudoToken({
+            password: disable2FAForm.value.password,
+            twoFactorCode: disable2FAForm.value.token,
+        });
         await api.post("/2fa/disable", {
             password: disable2FAForm.value.password,
             token: disable2FAForm.value.token,
-        });
+        }, sudoHeaders(sudo.sudoToken));
 
         showSuccess("Success", "2FA has been disabled successfully");
         showDisable2FAModal.value = false;
+        resetSudoToken();
         disable2FAForm.value = { password: "", token: "" };
         await fetch2FAStatus();
     } catch (error) {
@@ -1882,6 +1952,7 @@ function cancel2FASetup() {
     qrCodeUrl.value = "";
     setupSecret.value = "";
     backupCodes.value = [];
+    twoFactorSetupSudoToken.value = "";
 }
 
 // Passkey methods
@@ -1901,12 +1972,14 @@ async function addPasskey() {
     console.log("[PASSKEY] addPasskey() called");
     addingPasskey.value = true;
     try {
+        const token = await getSudoToken();
+        const sudoConfig = sudoHeaders(token);
         console.log("[PASSKEY] Importing @simplewebauthn/browser...");
         const { startRegistration } = await import("@simplewebauthn/browser");
         console.log("[PASSKEY] Import OK, fetching options...");
 
         // Get registration options
-        const optionsRes = await api.post("/auth/passkey/register/options");
+        const optionsRes = await api.post("/auth/passkey/register/options", {}, sudoConfig);
         const options = optionsRes.data;
         console.log("[PASSKEY] Options received, rpID:", options.rp?.id, "options:", JSON.stringify(options).substring(0, 200));
 
@@ -1921,7 +1994,7 @@ async function addPasskey() {
         await api.post("/auth/passkey/register/verify", {
             response: regResponse,
             deviceName,
-        });
+        }, sudoConfig);
 
         showSuccess("Success", "Passkey registered successfully.");
         await fetchPasskeys();
@@ -1947,7 +2020,8 @@ function deletePasskeyConfirm(pk) {
 
 async function deletePasskey(id) {
     try {
-        await api.delete(`/auth/passkey/${id}`);
+        const token = await getSudoToken();
+        await api.delete(`/auth/passkey/${id}`, sudoHeaders(token));
         showSuccess("Success", "Passkey deleted.");
         await fetchPasskeys();
     } catch (error) {

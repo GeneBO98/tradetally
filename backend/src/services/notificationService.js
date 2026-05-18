@@ -159,15 +159,14 @@ class NotificationService {
   // Send SSE notification if user is connected
   static async sendSSENotification(userId, message) {
     try {
-      const connections = this.getSSEConnections();
-      const connectionData = connections.get(userId);
-
-      // Connection data now contains { res, heartbeatInterval }
-      if (connectionData && connectionData.res && !connectionData.res.destroyed && !connectionData.res.writableEnded) {
-        connectionData.res.write(`data: ${JSON.stringify(message)}\n\n`);
+      const notificationsController = require('../controllers/notifications.controller');
+      if (notificationsController.sendNotificationToUser) {
+        return await notificationsController.sendNotificationToUser(userId, message);
       }
+      return false;
     } catch (error) {
       console.error('Error sending SSE notification:', error);
+      return false;
     }
   }
   

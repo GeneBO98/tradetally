@@ -37,6 +37,14 @@ function validateProductionSecrets(env = process.env) {
     errors.push('REPORT_LINK_SECRET must be at least 32 characters long when configured');
   }
 
+  if (env.API_KEY_RATE_LIMIT_STORE === 'redis' && !env.REDIS_URL) {
+    errors.push('REDIS_URL must be configured when API_KEY_RATE_LIMIT_STORE=redis');
+  }
+
+  if (env.SSE_REDIS_FANOUT_ENABLED === 'true' && !env.REDIS_URL) {
+    errors.push('REDIS_URL must be configured when SSE_REDIS_FANOUT_ENABLED=true');
+  }
+
   if (errors.length > 0) {
     throw new Error(`Production configuration is unsafe: ${errors.join('; ')}`);
   }

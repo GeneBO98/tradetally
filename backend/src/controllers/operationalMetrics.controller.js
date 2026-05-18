@@ -5,6 +5,7 @@ const Account = require('../models/Account');
 const ExecutionRetentionService = require('../services/executionRetentionService');
 const OperationalMetricsService = require('../services/operationalMetricsService');
 const AlertEscalationDeliveryService = require('../services/alertEscalationDeliveryService');
+const { getRedisHealth } = require('../services/redisClient');
 const { reportToPdf, reportToPdfVisualSnapshot } = require('../utils/executionRunReportFormatters');
 const { withRequestMetricsContext } = require('../utils/requestMetricsContext');
 
@@ -547,6 +548,15 @@ const operationalMetricsController = {
     try {
       const events = await HttpSecurityEvent.list(req.query || {});
       res.json({ events });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getRedisHealth(req, res, next) {
+    try {
+      const redis = await getRedisHealth();
+      res.json({ redis });
     } catch (error) {
       next(error);
     }

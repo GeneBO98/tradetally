@@ -1,6 +1,11 @@
 const logger = require('../utils/logger');
 const db = require('../config/database');
 const { v4: uuidv4 } = require('uuid');
+const {
+  getSseFanoutStatus,
+  publishSseNotification,
+  startSseFanout
+} = require('../services/sseFanoutService');
 
 // Store active SSE connections with metadata
 const sseConnections = new Map();
@@ -32,6 +37,35 @@ function evictOldestConnectionIfNeeded(incomingUserId) {
 
   return oldestUserId;
 }
+
+function normalizeSseEvent(notification) {
+  return notification?.type && notification?.data ? notification : {
+    type: notification?.type || 'price_alert',
+    data: notification,
+    timestamp: new Date().toISOString()
+  };
+}
+
+function sendLocalSseMessage(userId, eventData, cleanupReason = 'send_error') {
+  const connectionData = sseConnections.get(userId);
+
+  if (connectionData && connectionData.res && !connectionData.res.destroyed && !connectionData.res.writableEnded) {
+    connectionData.res.write(`data: ${JSON.stringify(eventData)}\n\n`);
+    return true;
+  }
+
+  if (connectionData) {
+    cleanupConnection(userId, cleanupReason);
+  }
+
+  return false;
+}
+
+startSseFanout(async ({ userId, message }) => {
+  if (userId) {
+    sendLocalSseMessage(userId, normalizeSseEvent(message), 'redis_fanout_send_error');
+  }
+}).catch(error => logger.logError(`Failed to start SSE fanout: ${error.message}`));
 
 // Cleanup function to properly close an existing connection
 function cleanupConnection(userId, reason = 'unknown') {
@@ -245,17 +279,11 @@ const notificationsController = {
   // Send notification to specific user
   async sendNotificationToUser(userId, notification) {
     try {
-      const connectionData = sseConnections.get(userId);
+      const eventData = normalizeSseEvent(notification);
+      const localSent = sendLocalSseMessage(userId, eventData);
+      const fanoutSent = await publishSseNotification(userId, eventData);
 
-      if (connectionData && connectionData.res && !connectionData.res.destroyed && !connectionData.res.writableEnded) {
-        // If notification already has type and data structure, use it as is
-        const eventData = notification.type && notification.data ? notification : {
-          type: notification.type || 'price_alert',
-          data: notification,
-          timestamp: new Date().toISOString()
-        };
-
-        connectionData.res.write(`data: ${JSON.stringify(eventData)}\n\n`);
+      if (localSent || fanoutSent) {
         logger.logDebug(`Sent real-time notification to user ${userId}:`, eventData.type);
         return true;
       }
@@ -576,16 +604,15 @@ const notificationsController = {
   // Send enrichment status update to specific user
   async sendEnrichmentUpdateToUser(userId, enrichmentData) {
     try {
-      const connectionData = sseConnections.get(userId);
+      const eventData = {
+        type: 'enrichment_update',
+        data: enrichmentData,
+        timestamp: new Date().toISOString()
+      };
+      const localSent = sendLocalSseMessage(userId, eventData, 'enrichment_send_error');
+      const fanoutSent = await publishSseNotification(userId, eventData);
 
-      if (connectionData && connectionData.res && !connectionData.res.destroyed && !connectionData.res.writableEnded) {
-        const eventData = {
-          type: 'enrichment_update',
-          data: enrichmentData,
-          timestamp: new Date().toISOString()
-        };
-
-        connectionData.res.write(`data: ${JSON.stringify(eventData)}\n\n`);
+      if (localSent || fanoutSent) {
         logger.logDebug(`Sent enrichment update to user ${userId}`);
         return true;
       }
@@ -653,6 +680,7 @@ const notificationsController = {
         data: {
           connected: isConnected,
           total_connections: sseConnections.size,
+          fanout: getSseFanoutStatus(),
           user_id: userId
         }
       });
@@ -938,5 +966,7 @@ module.exports._test = {
   cleanupConnection,
   evictOldestConnectionIfNeeded,
   getMaxSseConnections,
+  normalizeSseEvent,
+  sendLocalSseMessage,
   sseConnections
 };

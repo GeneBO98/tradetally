@@ -138,6 +138,27 @@
         <p v-else class="text-sm text-gray-500 dark:text-gray-400">No HTTP security events captured.</p>
       </section>
 
+      <section class="card p-5" data-testid="admin-platform-health">
+        <div class="mb-4 flex items-center justify-between">
+          <h2 class="text-base font-semibold text-gray-900 dark:text-white">Platform Coordination</h2>
+          <span :class="redisHealth.status === 'ok' || redisHealth.status === 'not_configured' ? 'text-emerald-600 dark:text-emerald-300' : 'text-red-600 dark:text-red-300'" class="text-xs font-medium">
+            {{ redisHealth.status || 'unknown' }}
+          </span>
+        </div>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <div class="rounded-md border border-gray-200 p-3 text-xs dark:border-gray-700">
+            <p class="font-medium text-gray-900 dark:text-white">Redis</p>
+            <p class="mt-1 text-gray-500 dark:text-gray-400">{{ redisHealth.configured ? redisHealth.namespace : 'memory fallback' }}</p>
+            <p v-if="redisHealth.latencyMs !== undefined" class="mt-1 text-gray-400 dark:text-gray-500">{{ redisHealth.latencyMs }} ms ping</p>
+          </div>
+          <div class="rounded-md border border-gray-200 p-3 text-xs dark:border-gray-700">
+            <p class="font-medium text-gray-900 dark:text-white">API key lookup</p>
+            <p class="mt-1 text-gray-500 dark:text-gray-400">{{ hmacHealth.hmac_indexed || 0 }} / {{ hmacHealth.total || 0 }} HMAC indexed</p>
+            <p class="mt-1 text-gray-400 dark:text-gray-500">{{ hmacRotationPreview.rotationMode || 'current-secret-only' }}</p>
+          </div>
+        </div>
+      </section>
+
       <section class="card p-5" data-testid="admin-workflow-settings">
         <div class="mb-4 flex items-center justify-between">
           <h2 class="text-base font-semibold text-gray-900 dark:text-white">Workflow Thresholds</h2>
@@ -751,6 +772,9 @@ const runs = ref([])
 const slo = ref({})
 const alerts = ref([])
 const securityEvents = ref([])
+const redisHealth = ref({})
+const hmacHealth = ref({})
+const hmacRotationPreview = ref({})
 const retentionPreview = ref({})
 const alertAudits = ref([])
 const workflowSettings = ref([])
@@ -906,6 +930,9 @@ async function loadAll() {
       sloResponse,
       alertsResponse,
       securityEventsResponse,
+      redisHealthResponse,
+      hmacHealthResponse,
+      hmacRotationPreviewResponse,
       retentionPreviewResponse,
       alertAuditsResponse,
       workflowResponse,
@@ -929,6 +956,9 @@ async function loadAll() {
       api.get('/admin/observability/slo'),
       api.get('/admin/alerts', { params: { status: 'active', limit: 50, includeSuppressed: true } }),
       api.get('/admin/security-events', { params: { limit: 20 } }),
+      api.get('/admin/redis/health'),
+      api.get('/admin/api-keys/hmac-health'),
+      api.get('/admin/api-keys/hmac-rotation-preview'),
       api.get('/admin/retention-policy/preview'),
       api.get('/admin/alerts/audit', { params: { limit: 25 } }),
       api.get('/admin/workflow-settings'),
@@ -952,6 +982,9 @@ async function loadAll() {
     slo.value = sloResponse.data.slo || {}
     alerts.value = alertsResponse.data.alerts || []
     securityEvents.value = securityEventsResponse.data.events || []
+    redisHealth.value = redisHealthResponse.data.redis || {}
+    hmacHealth.value = hmacHealthResponse.data.health || {}
+    hmacRotationPreview.value = hmacRotationPreviewResponse.data.preview || {}
     retentionPreview.value = retentionPreviewResponse.data.candidateCounts || {}
     alertAudits.value = alertAuditsResponse.data.audits || []
     workflowSettings.value = workflowResponse.data.settings || []

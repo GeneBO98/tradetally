@@ -55,6 +55,7 @@ router.get('/strategy-anomaly-settings', requireAdmin, operationalMetricsControl
 router.post('/strategy-anomaly-settings', requireAdmin, operationalMetricsController.upsertStrategyAnomalySettings);
 router.get('/performance-budgets', requireAdmin, operationalMetricsController.listPerformanceBudgets);
 router.get('/security-events', requireAdmin, operationalMetricsController.listHttpSecurityEvents);
+router.get('/redis/health', requireAdmin, operationalMetricsController.getRedisHealth);
 router.get('/api-keys/hmac-health', requireAdmin, async (req, res, next) => {
   try {
     const health = await ApiKey.getLookupHealth();

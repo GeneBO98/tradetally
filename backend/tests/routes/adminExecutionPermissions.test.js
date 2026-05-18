@@ -90,6 +90,7 @@ describe('admin execution endpoint row-level permissions', () => {
     ['post', '/api/admin/strategy-anomaly-settings'],
     ['get', '/api/admin/performance-budgets'],
     ['get', '/api/admin/security-events'],
+    ['get', '/api/admin/redis/health'],
     ['get', '/api/admin/api-keys/hmac-health'],
     ['get', '/api/admin/api-keys/hmac-rotation-preview'],
     ['get', '/api/admin/retention-policy'],
