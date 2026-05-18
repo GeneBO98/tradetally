@@ -1,4 +1,5 @@
 const OperationalAlert = require('../models/OperationalAlert');
+const HttpSecurityEvent = require('../models/HttpSecurityEvent');
 const logger = require('../utils/logger');
 
 const DEFAULT_WINDOW_MS = 5 * 60 * 1000;
@@ -75,6 +76,15 @@ async function recordHttpAnomaly({ alertType, severity = 'warning', entityType =
 }
 
 function recordCorsDenied({ origin, path, host }) {
+  HttpSecurityEvent.record({
+    eventType: 'cors_denied',
+    severity: 'warning',
+    origin,
+    path,
+    host,
+    payload: { origin, path, host }
+  }).catch(error => logger.logError(`Failed to persist denied CORS event: ${error.message}`));
+
   return recordHttpAnomaly({
     alertType: 'http_cors_denied_spike',
     severity: 'warning',
@@ -86,6 +96,14 @@ function recordCorsDenied({ origin, path, host }) {
 }
 
 function recordStaticAssetFailure({ path, statusCode }) {
+  HttpSecurityEvent.record({
+    eventType: 'static_asset_failure',
+    severity: statusCode >= 500 ? 'critical' : 'warning',
+    path,
+    statusCode,
+    payload: { path, statusCode }
+  }).catch(error => logger.logError(`Failed to persist static asset failure event: ${error.message}`));
+
   return recordHttpAnomaly({
     alertType: 'http_static_asset_failure_spike',
     severity: statusCode >= 500 ? 'critical' : 'warning',

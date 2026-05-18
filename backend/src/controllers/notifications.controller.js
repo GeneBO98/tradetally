@@ -5,6 +5,34 @@ const { v4: uuidv4 } = require('uuid');
 // Store active SSE connections with metadata
 const sseConnections = new Map();
 
+function getMaxSseConnections() {
+  const configured = Number(process.env.MAX_SSE_CONNECTIONS || 1000);
+  return Number.isFinite(configured) && configured > 0 ? configured : 1000;
+}
+
+function evictOldestConnectionIfNeeded(incomingUserId) {
+  const maxConnections = getMaxSseConnections();
+  if (sseConnections.has(incomingUserId) || sseConnections.size < maxConnections) {
+    return null;
+  }
+
+  let oldestUserId = null;
+  let oldestConnectedAt = Infinity;
+  for (const [userId, connectionData] of sseConnections.entries()) {
+    const connectedAt = connectionData.connectedAt || 0;
+    if (connectedAt < oldestConnectedAt) {
+      oldestConnectedAt = connectedAt;
+      oldestUserId = userId;
+    }
+  }
+
+  if (oldestUserId) {
+    cleanupConnection(oldestUserId, 'max_connections_eviction');
+  }
+
+  return oldestUserId;
+}
+
 // Cleanup function to properly close an existing connection
 function cleanupConnection(userId, reason = 'unknown') {
   const connectionData = sseConnections.get(userId);
@@ -62,6 +90,7 @@ const notificationsController = {
       if (sseConnections.has(userId)) {
         cleanupConnection(userId, 'new_connection_replacing');
       }
+      evictOldestConnectionIfNeeded(userId);
 
       // Send initial connection event
       res.write(`data: ${JSON.stringify({
@@ -90,7 +119,7 @@ const notificationsController = {
       }, 45000);
 
       // Store connection with heartbeat interval reference
-      sseConnections.set(userId, { res, heartbeatInterval });
+      sseConnections.set(userId, { res, heartbeatInterval, connectedAt: Date.now() });
 
       console.log(`User ${userId} connected to notifications stream`);
 
@@ -110,6 +139,7 @@ const notificationsController = {
           FROM alert_notifications an
           LEFT JOIN price_alerts pa ON an.price_alert_id = pa.id
           WHERE an.user_id = $1 
+          AND an.deleted_at IS NULL
           AND an.sent_at > NOW() - INTERVAL '1 hour'
           ORDER BY an.sent_at DESC
           LIMIT 5
@@ -904,3 +934,9 @@ const notificationsController = {
 };
 
 module.exports = notificationsController;
+module.exports._test = {
+  cleanupConnection,
+  evictOldestConnectionIfNeeded,
+  getMaxSseConnections,
+  sseConnections
+};

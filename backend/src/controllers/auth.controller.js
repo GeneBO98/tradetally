@@ -11,6 +11,7 @@ const SampleDataService = require('../services/sampleDataService');
 const activityTrackingService = require('../services/activityTrackingService');
 const { getClientIp } = require('../utils/clientIp');
 const { findMatchingBackupCodeIndex } = require('../utils/twoFactorBackupCodes');
+const { issueSudoToken, verifyPasswordAndOptional2FA } = require('../middleware/sensitiveAccess');
 
 // Check if email configuration is available
 function isEmailConfigured() {
@@ -520,6 +521,41 @@ const authController = {
       });
 
       res.json({ message: 'Logout successful' });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async createSudoToken(req, res, next) {
+    try {
+      const { password, twoFactorCode, two_factor_code, code } = req.body || {};
+      const verified = await verifyPasswordAndOptional2FA(
+        req.user.id,
+        password,
+        twoFactorCode || two_factor_code || code
+      );
+
+      if (!verified.ok) {
+        const status = verified.code === 'TWO_FACTOR_REQUIRED' ? 400 : 401;
+        return res.status(status).json({
+          error: verified.code === 'TWO_FACTOR_REQUIRED'
+            ? 'Two-factor code is required'
+            : 'Re-authentication failed',
+          code: verified.code
+        });
+      }
+
+      const sudoToken = issueSudoToken({
+        id: verified.user.id,
+        email: verified.user.email,
+        username: verified.user.username,
+        role: verified.user.role
+      });
+
+      res.json({
+        sudoToken,
+        expiresIn: process.env.SUDO_TOKEN_EXPIRES_IN || '5m'
+      });
     } catch (error) {
       next(error);
     }

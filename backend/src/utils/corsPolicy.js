@@ -69,7 +69,10 @@ function buildCorsOptions(req, {
 
       logger?.warn?.(`Origin ${origin} not allowed. Allowed origins: ${Array.from(allowedOriginSet).join(', ')}`, 'cors');
       onDenied?.({ origin, path: req.originalUrl || req.url, host: req.get('host') });
-      callback(new Error('Not allowed by CORS'));
+      const error = new Error('Not allowed by CORS');
+      error.status = 403;
+      error.code = 'CORS_ORIGIN_DENIED';
+      callback(error);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],

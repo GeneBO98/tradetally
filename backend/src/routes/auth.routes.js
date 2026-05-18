@@ -147,6 +147,7 @@ router.post('/verify-2fa', twoFactorLimiter, authController.verify2FA);
  *         description: Logout successful
  */
 router.post('/logout', authenticate, authController.logout);
+router.post('/sudo', authenticate, authLimiter, authController.createSudoToken);
 
 /**
  * @swagger

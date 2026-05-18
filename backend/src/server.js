@@ -16,6 +16,7 @@ const { sanitizeForLogging } = require('./utils/logSanitizer');
 const { buildAllowedOrigins, buildCorsOptions } = require('./utils/corsPolicy');
 const { recordCorsDenied, recordStaticAssetFailure } = require('./services/httpAnomalyService');
 const { validateProductionSecrets } = require('./config/envValidation');
+const HttpSecurityEvent = require('./models/HttpSecurityEvent');
 const authRoutes = require('./routes/auth.routes');
 const userRoutes = require('./routes/user.routes');
 const tradeRoutes = require('./routes/trade.routes');
@@ -327,6 +328,19 @@ app.post('/api/csp-report', express.json({ type: 'application/csp-report' }), (r
   if (cspReport && cspReport['csp-report']) {
     const violation = cspReport['csp-report'];
     console.warn(`CSP Violation: ${violation['violated-directive']} blocked ${violation['blocked-uri']} on ${violation['document-uri']}`);
+    HttpSecurityEvent.record({
+      eventType: 'csp_violation',
+      severity: 'warning',
+      origin: req.headers.origin || null,
+      path: req.originalUrl,
+      host: req.get('host'),
+      directive: violation['violated-directive'] || violation['effective-directive'] || null,
+      blockedUri: violation['blocked-uri'] || null,
+      documentUri: violation['document-uri'] || null,
+      userAgent: req.headers['user-agent'] || null,
+      requestId: req.requestId || null,
+      payload: violation
+    }).catch(error => logger.logError(`Failed to persist CSP violation: ${error.message}`));
   }
   
   res.status(204).end(); // No content response

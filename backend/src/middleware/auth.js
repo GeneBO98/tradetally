@@ -4,7 +4,8 @@ const { isV1Request, sendV1Error } = require('../utils/apiResponse');
 
 const TOKEN_PURPOSES = Object.freeze({
   ACCESS: 'access',
-  PRE_2FA: 'pre_2fa'
+  PRE_2FA: 'pre_2fa',
+  SUDO: 'sudo'
 });
 
 const JWT_ALGORITHM = 'HS256';

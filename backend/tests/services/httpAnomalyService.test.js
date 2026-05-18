@@ -2,11 +2,16 @@ jest.mock('../../src/models/OperationalAlert', () => ({
   upsertActive: jest.fn()
 }));
 
+jest.mock('../../src/models/HttpSecurityEvent', () => ({
+  record: jest.fn().mockResolvedValue({})
+}));
+
 jest.mock('../../src/utils/logger', () => ({
   logError: jest.fn()
 }));
 
 const OperationalAlert = require('../../src/models/OperationalAlert');
+const HttpSecurityEvent = require('../../src/models/HttpSecurityEvent');
 const {
   recordCorsDenied,
   recordStaticAssetFailure,
@@ -31,6 +36,10 @@ describe('httpAnomalyService', () => {
   test('emits an operational alert after repeated denied CORS requests', async () => {
     await recordCorsDenied({ origin: 'https://evil.example', path: '/api/health', host: 'localhost:3001' });
     expect(OperationalAlert.upsertActive).not.toHaveBeenCalled();
+    expect(HttpSecurityEvent.record).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'cors_denied',
+      origin: 'https://evil.example'
+    }));
 
     await recordCorsDenied({ origin: 'https://evil.example', path: '/api/health', host: 'localhost:3001' });
 
@@ -50,6 +59,11 @@ describe('httpAnomalyService', () => {
     await recordStaticAssetFailure({ path: '/assets/app.js', statusCode: 500 });
     await recordStaticAssetFailure({ path: '/assets/app.js', statusCode: 500 });
 
+    expect(HttpSecurityEvent.record).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'static_asset_failure',
+      severity: 'critical',
+      path: '/assets/app.js'
+    }));
     expect(OperationalAlert.upsertActive).toHaveBeenCalledWith(expect.objectContaining({
       alertType: 'http_static_asset_failure_spike',
       severity: 'critical',

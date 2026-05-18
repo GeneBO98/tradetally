@@ -20,6 +20,7 @@ describe('ApiKey HMAC lookup', () => {
 
   afterEach(() => {
     delete process.env.API_KEY_LOOKUP_SECRET;
+    delete process.env.API_KEY_LOOKUP_PREVIOUS_SECRETS;
   });
 
   test('stores a keyed HMAC lookup digest when creating keys', async () => {
@@ -69,8 +70,35 @@ describe('ApiKey HMAC lookup', () => {
     const result = await ApiKey.verifyKey('tt_live_existing_key');
 
     expect(result.id).toBe('k1');
-    expect(db.query.mock.calls[0][0]).toContain('ak.key_hmac = $1');
+    expect(db.query.mock.calls[0][0]).toContain('ak.key_hmac = ANY($1::text[])');
     expect(bcrypt.compare).not.toHaveBeenCalled();
+  });
+
+  test('accepts previous HMAC secret and rotates the row to the current secret on use', async () => {
+    process.env.API_KEY_LOOKUP_PREVIOUS_SECRETS = 'previous-secret-with-enough-length';
+    const previousHmac = ApiKey.computeLookupHmacWithSecret('tt_live_rotated_key', 'previous-secret-with-enough-length');
+    db.query
+      .mockResolvedValueOnce({
+        rows: [{
+          id: 'k-rotated',
+          user_id: 'u1',
+          name: 'rotated',
+          key_hmac: previousHmac,
+          username: 'demo',
+          email: 'demo@example.com',
+          role: 'user',
+          permissions: '["read"]',
+          scopes: '[]',
+          is_active: true,
+          expires_at: null
+        }]
+      })
+      .mockResolvedValue({ rows: [] });
+
+    const result = await ApiKey.verifyKey('tt_live_rotated_key');
+
+    expect(result.id).toBe('k-rotated');
+    expect(db.query.mock.calls[1][0]).toContain('UPDATE api_keys SET key_hmac = $1');
   });
 
   test('falls back to prefix and bcrypt for legacy rows, then backfills key_hmac', async () => {
@@ -99,5 +127,22 @@ describe('ApiKey HMAC lookup', () => {
     expect(result.id).toBe('legacy1');
     expect(bcrypt.compare).toHaveBeenCalledWith('tt_live_legacy_key', 'bcrypt-hash');
     expect(db.query.mock.calls[2][0]).toContain('UPDATE api_keys SET key_hmac = $1');
+  });
+
+  test('reports HMAC lookup health and rotation mode', async () => {
+    process.env.API_KEY_LOOKUP_PREVIOUS_SECRETS = 'previous-secret-with-enough-length';
+    db.query.mockResolvedValueOnce({
+      rows: [{ total: 4, hmac_indexed: 3, legacy_bcrypt_only: 1 }]
+    });
+
+    const preview = await ApiKey.getLookupRotationPreview();
+
+    expect(preview).toMatchObject({
+      total: 4,
+      hmac_indexed: 3,
+      legacy_bcrypt_only: 1,
+      previousSecretCount: 1,
+      rotationMode: 'dual-read-rotate-on-use'
+    });
   });
 });

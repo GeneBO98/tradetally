@@ -1,4 +1,5 @@
 const OperationalAlert = require('../models/OperationalAlert');
+const HttpSecurityEvent = require('../models/HttpSecurityEvent');
 const ExecutionRun = require('../models/ExecutionRun');
 const Account = require('../models/Account');
 const ExecutionRetentionService = require('../services/executionRetentionService');
@@ -537,6 +538,15 @@ const operationalMetricsController = {
     try {
       const budgets = await OperationalMetricsService.getPerformanceBudgets(req.query || {});
       res.json({ budgets });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async listHttpSecurityEvents(req, res, next) {
+    try {
+      const events = await HttpSecurityEvent.list(req.query || {});
+      res.json({ events });
     } catch (error) {
       next(error);
     }

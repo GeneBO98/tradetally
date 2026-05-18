@@ -5,6 +5,7 @@ const stockSplitService = require('../services/stockSplitService');
 const StockSplit = require('../models/StockSplit');
 const logger = require('../utils/logger');
 const BrokerConnection = require('../models/BrokerConnection');
+const ApiKey = require('../models/ApiKey');
 const executionRunController = require('../controllers/executionRun.controller');
 const operationalMetricsController = require('../controllers/operationalMetrics.controller');
 
@@ -53,6 +54,23 @@ router.patch('/workflow-settings/:source', requireAdmin, operationalMetricsContr
 router.get('/strategy-anomaly-settings', requireAdmin, operationalMetricsController.listStrategyAnomalySettings);
 router.post('/strategy-anomaly-settings', requireAdmin, operationalMetricsController.upsertStrategyAnomalySettings);
 router.get('/performance-budgets', requireAdmin, operationalMetricsController.listPerformanceBudgets);
+router.get('/security-events', requireAdmin, operationalMetricsController.listHttpSecurityEvents);
+router.get('/api-keys/hmac-health', requireAdmin, async (req, res, next) => {
+  try {
+    const health = await ApiKey.getLookupHealth();
+    res.json({ health });
+  } catch (error) {
+    next(error);
+  }
+});
+router.get('/api-keys/hmac-rotation-preview', requireAdmin, async (req, res, next) => {
+  try {
+    const preview = await ApiKey.getLookupRotationPreview();
+    res.json({ preview });
+  } catch (error) {
+    next(error);
+  }
+});
 router.get('/retention-policy', requireAdmin, operationalMetricsController.getRetentionPolicy);
 router.get('/retention-policy/preview', requireAdmin, operationalMetricsController.previewRetentionPolicy);
 router.get('/retention-policy/revisions', requireAdmin, operationalMetricsController.listRetentionPolicyRevisions);

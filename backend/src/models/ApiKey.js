@@ -37,11 +37,26 @@ class ApiKey {
     return process.env.API_KEY_LOOKUP_SECRET || process.env.JWT_SECRET || 'development-api-key-lookup-secret';
   }
 
-  static computeLookupHmac(key) {
+  static getPreviousLookupSecrets() {
+    return (process.env.API_KEY_LOOKUP_PREVIOUS_SECRETS || '')
+      .split(',')
+      .map(secret => secret.trim())
+      .filter(Boolean);
+  }
+
+  static computeLookupHmacWithSecret(key, secret) {
     return crypto
-      .createHmac('sha256', this.getLookupSecret())
+      .createHmac('sha256', secret)
       .update(key)
       .digest('hex');
+  }
+
+  static computeLookupHmac(key) {
+    return this.computeLookupHmacWithSecret(key, this.getLookupSecret());
+  }
+
+  static fingerprintLookupSecret(secret = this.getLookupSecret()) {
+    return crypto.createHash('sha256').update(secret).digest('hex');
   }
 
   static async create({ userId, name, permissions = ['read'], scopes = [], expiresAt = null }) {
@@ -179,17 +194,24 @@ class ApiKey {
 
   static async verifyKey(key) {
     const keyHmac = this.computeLookupHmac(key);
+    const lookupHmacs = [
+      keyHmac,
+      ...this.getPreviousLookupSecrets().map(secret => this.computeLookupHmacWithSecret(key, secret))
+    ];
     const hmacQuery = `
       SELECT ak.*, u.username, u.email, u.role
       FROM api_keys ak
       JOIN users u ON ak.user_id = u.id
-      WHERE ak.key_hmac = $1 AND ak.is_active = true
+      WHERE ak.key_hmac = ANY($1::text[]) AND ak.is_active = true
       AND (ak.expires_at IS NULL OR ak.expires_at > NOW())
       LIMIT 1
     `;
 
-    const hmacResult = await db.query(hmacQuery, [keyHmac]);
+    const hmacResult = await db.query(hmacQuery, [lookupHmacs]);
     if (hmacResult.rows.length > 0) {
+      if (hmacResult.rows[0].key_hmac !== keyHmac) {
+        await db.query('UPDATE api_keys SET key_hmac = $1 WHERE id = $2', [keyHmac, hmacResult.rows[0].id]);
+      }
       this.updateLastUsed(hmacResult.rows[0].id).catch(() => {});
       return hydrateApiKeyRow(hmacResult.rows[0]);
     }
@@ -238,6 +260,30 @@ class ApiKey {
     
     const result = await db.query(query);
     return result.rows;
+  }
+
+  static async getLookupHealth() {
+    const result = await db.query(`
+      SELECT
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE key_hmac IS NOT NULL AND key_hmac <> '')::int AS hmac_indexed,
+        COUNT(*) FILTER (WHERE key_hmac IS NULL OR key_hmac = '')::int AS legacy_bcrypt_only
+      FROM api_keys
+    `);
+    return {
+      ...result.rows[0],
+      currentSecretFingerprint: this.fingerprintLookupSecret().slice(0, 16),
+      previousSecretCount: this.getPreviousLookupSecrets().length
+    };
+  }
+
+  static async getLookupRotationPreview() {
+    const health = await this.getLookupHealth();
+    return {
+      ...health,
+      rotationMode: this.getPreviousLookupSecrets().length > 0 ? 'dual-read-rotate-on-use' : 'current-secret-only',
+      note: 'Existing bcrypt-only keys cannot be bulk-HMAC-backfilled without the plaintext key. They are upgraded on their next successful verification.'
+    };
   }
 }
 

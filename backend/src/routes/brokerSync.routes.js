@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const brokerSyncController = require('../controllers/brokerSync.controller');
 const { authenticate } = require('../middleware/auth');
+const { requireVerifiedEmail } = require('../middleware/sensitiveAccess');
 
 // All routes require authentication (except OAuth callback)
 router.use((req, res, next) => {
@@ -14,7 +15,10 @@ router.use((req, res, next) => {
   if (req.path === '/connections/schwab/callback') {
     return next();
   }
-  return authenticate(req, res, next);
+  return authenticate(req, res, (err) => {
+    if (err) return next(err);
+    return requireVerifiedEmail(req, res, next);
+  });
 });
 
 // Get all broker connections for current user

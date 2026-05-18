@@ -118,6 +118,26 @@
     </div>
 
     <div class="mt-6 grid gap-6 xl:grid-cols-2">
+      <section class="card p-5" data-testid="admin-security-events">
+        <div class="mb-4 flex items-center justify-between">
+          <h2 class="text-base font-semibold text-gray-900 dark:text-white">HTTP Security Events</h2>
+          <span class="text-xs text-gray-500 dark:text-gray-400">{{ securityEvents.length }}</span>
+        </div>
+        <div v-if="securityEvents.length" class="space-y-3">
+          <div v-for="event in securityEvents.slice(0, 6)" :key="event.id" class="rounded-md border border-gray-200 p-3 text-xs dark:border-gray-700">
+            <div class="flex items-center justify-between gap-3">
+              <span class="font-medium text-gray-900 dark:text-white">{{ event.eventType }}</span>
+              <span :class="event.severity === 'critical' ? 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300' : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200'" class="rounded px-2 py-0.5">
+                {{ event.severity }}
+              </span>
+            </div>
+            <p class="mt-1 text-gray-500 dark:text-gray-400">{{ event.path || event.directive || event.blockedUri || 'event captured' }}</p>
+            <p class="mt-1 text-gray-400 dark:text-gray-500">{{ formatDate(event.createdAt) }}</p>
+          </div>
+        </div>
+        <p v-else class="text-sm text-gray-500 dark:text-gray-400">No HTTP security events captured.</p>
+      </section>
+
       <section class="card p-5" data-testid="admin-workflow-settings">
         <div class="mb-4 flex items-center justify-between">
           <h2 class="text-base font-semibold text-gray-900 dark:text-white">Workflow Thresholds</h2>
@@ -730,6 +750,7 @@ const summary = ref({})
 const runs = ref([])
 const slo = ref({})
 const alerts = ref([])
+const securityEvents = ref([])
 const retentionPreview = ref({})
 const alertAudits = ref([])
 const workflowSettings = ref([])
@@ -884,6 +905,7 @@ async function loadAll() {
       runsResponse,
       sloResponse,
       alertsResponse,
+      securityEventsResponse,
       retentionPreviewResponse,
       alertAuditsResponse,
       workflowResponse,
@@ -906,6 +928,7 @@ async function loadAll() {
       api.get('/admin/execution-runs', { params: runParams }),
       api.get('/admin/observability/slo'),
       api.get('/admin/alerts', { params: { status: 'active', limit: 50, includeSuppressed: true } }),
+      api.get('/admin/security-events', { params: { limit: 20 } }),
       api.get('/admin/retention-policy/preview'),
       api.get('/admin/alerts/audit', { params: { limit: 25 } }),
       api.get('/admin/workflow-settings'),
@@ -928,6 +951,7 @@ async function loadAll() {
     runs.value = runsResponse.data.runs || []
     slo.value = sloResponse.data.slo || {}
     alerts.value = alertsResponse.data.alerts || []
+    securityEvents.value = securityEventsResponse.data.events || []
     retentionPreview.value = retentionPreviewResponse.data.candidateCounts || {}
     alertAudits.value = alertAuditsResponse.data.audits || []
     workflowSettings.value = workflowResponse.data.settings || []

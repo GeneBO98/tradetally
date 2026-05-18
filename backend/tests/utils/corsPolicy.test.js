@@ -68,6 +68,8 @@ describe('corsPolicy', () => {
 
     expect(result.error).toBeInstanceOf(Error);
     expect(result.error.message).toBe('Not allowed by CORS');
+    expect(result.error.status).toBe(403);
+    expect(result.error.code).toBe('CORS_ORIGIN_DENIED');
     expect(result.allowed).toBeUndefined();
     expect(onDenied).toHaveBeenCalledWith({
       origin: 'https://evil.example',
