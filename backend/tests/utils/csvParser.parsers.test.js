@@ -343,6 +343,34 @@ describe('ThinkorSwim parser', () => {
     // Dividend row should be skipped
     expect(result.trades.length).toBeGreaterThanOrEqual(1);
   });
+
+  test('imports single-leg option rows and skips spread rows from PaperMoney account statement exports', async () => {
+    const issue322Csv = [
+      'Cash Balance',
+      'DATE,TIME,TYPE,REF #,DESCRIPTION,Misc Fees,Commissions & Fees,AMOUNT,BALANCE',
+      '5/5/26,07:31:00,TRD,="5337400962",SOLD -1 VERTICAL SPY 100 (Weeklys) 5 JUN 26 715/714 PUT @.34,-0.04,-1.30,34.00,"98,898.76"',
+      '5/5/26,08:13:43,TRD,="5337576468",SOLD -1 VERTICAL SPX 100 (Weeklys) 9 JUN 26 7050/7025 PUT @4.50,-1.06,-1.30,450.00,"99,346.40"',
+      '5/6/26,09:45:00,TRD,="5338000000",BOT +1 AAPL 100 19 JUN 26 200 CALL @1.25,$0.00,-$1.30,-$126.30,"99,220.10"',
+      '5/7/26,10:15:00,TRD,="5338000001",SOLD -1 AAPL 100 19 JUN 26 200 CALL @1.75,$0.00,-$1.30,$173.70,"99,393.80"'
+    ].join('\n');
+
+    const result = await parseCSV(buf(issue322Csv), 'thinkorswim', {});
+
+    expectValidResult(result);
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0]).toEqual(expect.objectContaining({
+      symbol: 'AAPL',
+      instrumentType: 'option',
+      underlyingSymbol: 'AAPL',
+      optionType: 'call',
+      strikePrice: 200
+    }));
+    expect(result.diagnostics.skippedReasons).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        reason: expect.stringContaining('Multi-leg option spread (VERTICAL) not supported')
+      })
+    ]));
+  });
 });
 
 // ──────────────────────────────────────────────
