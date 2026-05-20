@@ -20,7 +20,11 @@ function createRes() {
 describe('analyticsController.getCalendarDayDetail', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    db.query.mockReset();
     Trade.calculateRiskAmount.mockReturnValue(123.45);
+    // Calendar endpoints look up the user's timezone before issuing the data
+    // query, so each test starts with a UTC timezone response queued up.
+    db.query.mockResolvedValueOnce({ rows: [{ timezone: 'UTC' }] });
   });
 
   test('returns grouped execution P&L net of commission for same-day exits', async () => {
@@ -295,7 +299,11 @@ describe('analyticsController.getCalendarDayDetail', () => {
 describe('analyticsController.getCalendarData', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    db.query.mockReset();
     Trade.calculateRiskAmount.mockReturnValue(123.45);
+    // Calendar endpoints look up the user's timezone before issuing the data
+    // query, so each test starts with a UTC timezone response queued up.
+    db.query.mockResolvedValueOnce({ rows: [{ timezone: 'UTC' }] });
   });
 
   test('uses recomputed execution P&L for historical same-day exits when stored trade P&L is stale', async () => {
