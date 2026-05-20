@@ -119,29 +119,28 @@ function computePnlPercent(entryPrice, exitPrice, side, pnl, quantity, instrumen
 function resolvePerExecCosts(executions, fallbackCommission, fallbackFees) {
   const totalQty = executions.reduce((sum, e) => sum + Math.abs(parseNumeric(e?.quantity) || 0), 0);
 
-  const hasAnyCommission = executions.some((e) => parseNumeric(e?.commission) !== null);
-  const hasAnyFees = executions.some((e) => parseNumeric(e?.fees) !== null);
+  // If ANY execution carries ANY cost field (commission or fees), treat per-exec
+  // as authoritative and do NOT also apply trade-level fallbacks. Some importers
+  // (notably IBKR) record the broker commission in both `trade.commission` AND
+  // `execution.fees` — applying both would double-count.
+  // Only prorate trade-level totals when executions carry no cost info at all.
+  const hasAnyExecCost = executions.some((e) =>
+    parseNumeric(e?.commission) !== null || parseNumeric(e?.fees) !== null
+  );
 
   return executions.map((execution) => {
     const qty = Math.abs(parseNumeric(execution?.quantity) || 0);
     const proportion = totalQty > 0 ? qty / totalQty : 0;
 
     let commission;
-    if (hasAnyCommission) {
-      commission = parseNumeric(execution.commission) ?? 0;
-    } else if (fallbackCommission != null && totalQty > 0) {
-      commission = parseNumeric(fallbackCommission) * proportion;
-    } else {
-      commission = 0;
-    }
-
     let fees;
-    if (hasAnyFees) {
+
+    if (hasAnyExecCost) {
+      commission = parseNumeric(execution.commission) ?? 0;
       fees = parseNumeric(execution.fees) ?? 0;
-    } else if (fallbackFees != null && totalQty > 0) {
-      fees = parseNumeric(fallbackFees) * proportion;
     } else {
-      fees = 0;
+      commission = (parseNumeric(fallbackCommission) ?? 0) * proportion;
+      fees = (parseNumeric(fallbackFees) ?? 0) * proportion;
     }
 
     return { commission, fees };

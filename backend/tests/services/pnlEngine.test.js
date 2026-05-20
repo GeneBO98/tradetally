@@ -280,7 +280,11 @@ describe('pnlEngine.computeTradePnl', () => {
       nearly(aggregate.pnl, 99);
     });
 
-    test('commission and fees evaluated independently', () => {
+    test('per-exec costs are authoritative when any leg carries a cost field', () => {
+      // Trade-level fallbackFees should NOT be added on top of per-exec commissions —
+      // they represent the same broker cost in different storage locations on some
+      // importers (IBKR records commission in both trade.commission AND execution.fees).
+      // Double-counting would over-deduct. Per-exec values win.
       const { aggregate } = computeTradePnl({
         side: 'long',
         instrumentType: 'stock',
@@ -293,8 +297,31 @@ describe('pnlEngine.computeTradePnl', () => {
         timezone: 'UTC'
       });
       nearly(aggregate.commission, 2);
-      nearly(aggregate.fees, 5);
-      nearly(aggregate.pnl, 93);
+      nearly(aggregate.fees, 0);
+      nearly(aggregate.pnl, 98);
+    });
+
+    test('IBKR-style double-recorded cost (trade.commission == sum(exec.fees)) is not double-counted', () => {
+      // Regression for issue #318: IBKR importer stores the broker commission in
+      // both trade.commission AND execution.fees. The engine must NOT deduct both.
+      // AGQ short option fixture from real user data:
+      //   - 4 contracts @ $0.47 entry, $0.00 exit (worthless expiry)
+      //   - trade.commission = -1.53 (rebate stored at trade level)
+      //   - executions[0].fees = -1.53 (same rebate, stored on entry leg)
+      //   - Correct net P&L = (0.47 - 0) * 4 * 100 - (-1.53) = $189.53
+      const { aggregate } = computeTradePnl({
+        side: 'short',
+        instrumentType: 'option',
+        contractSize: 100,
+        fallbackCommission: -1.53244,
+        fallbackFees: 0,
+        executions: [
+          { action: 'sell', quantity: 4, price: 0.47, fees: -1.53244, datetime: '2025-12-30T18:11:00Z' },
+          { action: 'buy', quantity: 4, price: 0, fees: 0, datetime: '2026-01-02T21:20:00Z' }
+        ],
+        timezone: 'UTC'
+      });
+      nearly(aggregate.pnl, 189.53244, 0.001);
     });
   });
 
