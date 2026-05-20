@@ -944,6 +944,33 @@ class Trade {
       trade.executions = [];
     }
 
+    // If executions haven't been stamped by the engine yet (pre-backfill trades),
+    // annotate them on the fly so the Trade Detail page can render per-row P&L
+    // without requiring the bulk backfill to have finished. Read-only mutation
+    // of the response — does not touch the DB.
+    if (trade && Array.isArray(trade.executions) && trade.executions.length > 0 && trade.side) {
+      const hasStamped = trade.executions.some((e) => e && e.realized_pnl !== undefined && e.realized_pnl !== null);
+      if (!hasStamped) {
+        try {
+          const tz = await getUserTimezone(trade.user_id);
+          const engineResult = computeTradePnl({
+            side: trade.side,
+            instrumentType: trade.instrument_type || 'stock',
+            contractSize: trade.contract_size,
+            pointValue: trade.point_value,
+            fallbackCommission: trade.commission != null ? parseFloat(trade.commission) : null,
+            fallbackFees: trade.fees != null ? parseFloat(trade.fees) : null,
+            executions: trade.executions,
+            timezone: tz,
+            tradeId: trade.id
+          });
+          trade.executions = engineResult.annotatedExecutions;
+        } catch (err) {
+          console.warn(`[findById] Engine annotation failed for trade ${trade.id}: ${err.message}`);
+        }
+      }
+    }
+
     // Convert charts from snake_case to camelCase for frontend
     if (trade && trade.charts && Array.isArray(trade.charts)) {
       trade.charts = trade.charts.map(chart => ({
