@@ -9,6 +9,7 @@ const MAEEstimator = require('../utils/maeEstimator');
 const symbolCategories = require('../utils/symbolCategories');
 const { sendV1NotImplemented } = require('../utils/apiResponse');
 const ensureString = require('../utils/ensureString');
+const { getUserTimezone } = require('../utils/timezone');
 
 // Helper function to create a short but collision-resistant hash for cache keys
 function createFilterHash(filters) {
@@ -460,15 +461,30 @@ function isSellAction(action) {
   return /\b(sell|sold|short|sld)\b/.test(action);
 }
 
-function getExecutionDateString(...candidates) {
+// Returns YYYY-MM-DD for a timestamp candidate, interpreted in the given timezone.
+// Date-only strings (no time component) are returned as-is — they already represent a
+// calendar day in the user's local sense and have no timezone to convert.
+function getExecutionDateString(timezone, ...candidates) {
   for (const candidate of candidates) {
     if (!candidate) continue;
 
-    const match = String(candidate).match(/^(\d{4}-\d{2}-\d{2})/);
-    if (match) return match[1];
+    const str = String(candidate);
 
-    const parsed = new Date(candidate);
-    if (!Number.isNaN(parsed.getTime())) {
+    // Date-only (e.g. "2026-05-20") — return verbatim
+    const dateOnly = str.match(/^(\d{4}-\d{2}-\d{2})$/);
+    if (dateOnly) return dateOnly[1];
+
+    const parsed = new Date(str);
+    if (Number.isNaN(parsed.getTime())) continue;
+
+    try {
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone: timezone || 'UTC',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(parsed);
+    } catch (err) {
       return parsed.toISOString().split('T')[0];
     }
   }
@@ -501,7 +517,7 @@ function hasGroupedExecutions(executions = []) {
   );
 }
 
-function computeGroupedExecutionExitEvents(trade, executions) {
+function computeGroupedExecutionExitEvents(trade, executions, timezone) {
   const valueMultiplier = getTradeValueMultiplier(trade);
 
   return executions
@@ -514,6 +530,7 @@ function computeGroupedExecutionExitEvents(trade, executions) {
       const fees = parseNumericValue(execution.fees ?? execution.fee) || 0;
       const side = execution.side || trade.side;
       const date = getExecutionDateString(
+        timezone,
         execution.exitTime,
         execution.exit_time,
         execution.datetime
@@ -539,7 +556,7 @@ function computeGroupedExecutionExitEvents(trade, executions) {
     .filter(Boolean);
 }
 
-function computeFillExecutionExitEvents(trade, executions) {
+function computeFillExecutionExitEvents(trade, executions, timezone) {
   const valueMultiplier = getTradeValueMultiplier(trade);
   const tradeSide = trade.side;
   const tradeCommission = parseNumericValue(trade.commission) || 0;
@@ -658,6 +675,7 @@ function computeFillExecutionExitEvents(trade, executions) {
     }
 
     const date = getExecutionDateString(
+      timezone,
       execution.exitTime,
       execution.exit_time,
       execution.datetime
@@ -671,21 +689,21 @@ function computeFillExecutionExitEvents(trade, executions) {
   return exitEvents;
 }
 
-function computeTradeExitEvents(trade) {
+function computeTradeExitEvents(trade, timezone) {
   const executions = Array.isArray(trade.executions) ? trade.executions : [];
   if (executions.length === 0) return [];
 
   if (hasGroupedExecutions(executions)) {
-    return computeGroupedExecutionExitEvents(trade, executions);
+    return computeGroupedExecutionExitEvents(trade, executions, timezone);
   }
 
-  return computeFillExecutionExitEvents(trade, executions);
+  return computeFillExecutionExitEvents(trade, executions, timezone);
 }
 
-function buildCalendarDayContributions(trades, dateStr) {
+function buildCalendarDayContributions(trades, dateStr, timezone) {
   return trades
     .map((trade) => {
-      const exitEvents = computeTradeExitEvents(trade);
+      const exitEvents = computeTradeExitEvents(trade, timezone);
       const exitEventsOnDay = exitEvents.filter((event) => event.date === dateStr);
       const exactTradePnl = parseNumericValue(trade.pnl);
       const computedTradePnl = exitEvents.reduce((sum, event) => sum + (event.pnl || 0), 0);
@@ -707,7 +725,7 @@ function buildCalendarDayContributions(trades, dateStr) {
       } else if (
         totalExitCount === 0 &&
         exactTradePnl != null &&
-        getExecutionDateString(trade.exit_time) === dateStr
+        getExecutionDateString(timezone, trade.exit_time) === dateStr
       ) {
         pnl = exactTradePnl;
         exitCount = 1;
@@ -763,12 +781,12 @@ function addCalendarOverviewContribution(calendarByDate, tradeId, tradeDate, pnl
   day.dailyPnl += pnl;
 }
 
-function buildCalendarOverviewRows(trades, startDateStr, endDateStr) {
+function buildCalendarOverviewRows(trades, startDateStr, endDateStr, timezone) {
   const calendarByDate = new Map();
 
   trades.forEach((trade) => {
     const tradeId = trade.trade_id;
-    const exitEvents = computeTradeExitEvents(trade);
+    const exitEvents = computeTradeExitEvents(trade, timezone);
     const exitEventsInRange = exitEvents.filter((event) =>
       event.date &&
       event.date >= startDateStr &&
@@ -798,7 +816,7 @@ function buildCalendarOverviewRows(trades, startDateStr, endDateStr) {
       return;
     }
 
-    const tradeDate = getExecutionDateString(trade.exit_time);
+    const tradeDate = getExecutionDateString(timezone, trade.exit_time);
     if (
       exactTradePnl != null &&
       tradeDate &&
@@ -1479,6 +1497,10 @@ const analyticsController = {
       const startDate = `${sanitizedYear}-01-01`;
       const endDate = `${sanitizedYear}-12-31`;
 
+      // Bucket trades by the user's configured timezone so cross-midnight UTC
+      // trades land on the correct calendar day from the user's perspective.
+      const userTz = await getUserTimezone(req.user.id);
+
       // Build filter conditions without date range - dates are handled explicitly in each CTE
       // Using req.query directly avoids adding trade_date filters that exclude trades whose
       // trade_date moved to a different year (e.g. partial exits spanning calendar years)
@@ -1518,8 +1540,8 @@ const analyticsController = {
           AND (
             (
               ${tableAlias}.pnl IS NOT NULL
-              AND (${tableAlias}.exit_time::timestamp)::date >= $${paramOffset + 1}::date
-              AND (${tableAlias}.exit_time::timestamp)::date <= $${paramOffset + 2}::date
+              AND (${tableAlias}.exit_time AT TIME ZONE $${paramOffset + 3})::date >= $${paramOffset + 1}::date
+              AND (${tableAlias}.exit_time AT TIME ZONE $${paramOffset + 3})::date <= $${paramOffset + 2}::date
             )
             OR EXISTS (
               SELECT 1
@@ -1546,8 +1568,8 @@ const analyticsController = {
                     )
                   )
                 )
-                AND (COALESCE(exec->>'exitTime', exec->>'exit_time', exec->>'datetime'))::timestamp::date >= $${paramOffset + 1}::date
-                AND (COALESCE(exec->>'exitTime', exec->>'exit_time', exec->>'datetime'))::timestamp::date <= $${paramOffset + 2}::date
+                AND ((COALESCE(exec->>'exitTime', exec->>'exit_time', exec->>'datetime'))::timestamptz AT TIME ZONE $${paramOffset + 3})::date >= $${paramOffset + 1}::date
+                AND ((COALESCE(exec->>'exitTime', exec->>'exit_time', exec->>'datetime'))::timestamptz AT TIME ZONE $${paramOffset + 3})::date <= $${paramOffset + 2}::date
             )
           )
           ${fc}
@@ -1556,7 +1578,7 @@ const analyticsController = {
 
       const riskMetricsQuery = `
         SELECT
-          (${tableAlias}.exit_time::timestamp)::date::text AS trade_date,
+          (${tableAlias}.exit_time AT TIME ZONE $${paramOffset + 3})::date::text AS trade_date,
           ${tableAlias}.r_value,
           ${tableAlias}.entry_price,
           ${tableAlias}.stop_loss,
@@ -1570,13 +1592,13 @@ const analyticsController = {
         FROM trades ${tableAlias}
         WHERE ${tableAlias}.user_id = $1
           AND ${tableAlias}.exit_time IS NOT NULL
-          AND (${tableAlias}.exit_time::timestamp)::date >= $${paramOffset + 1}::date
-          AND (${tableAlias}.exit_time::timestamp)::date <= $${paramOffset + 2}::date
+          AND (${tableAlias}.exit_time AT TIME ZONE $${paramOffset + 3})::date >= $${paramOffset + 1}::date
+          AND (${tableAlias}.exit_time AT TIME ZONE $${paramOffset + 3})::date <= $${paramOffset + 2}::date
           ${fc}
       `;
 
-      // Add start and end date to params
-      const finalParams = [...params, startDate, endDate];
+      // Add start date, end date, and user timezone to params
+      const finalParams = [...params, startDate, endDate, userTz];
       const [calendarTradesResult, riskMetricsResult] = await Promise.all([
         db.query(calendarTradesQuery, finalParams),
         db.query(riskMetricsQuery, finalParams)
@@ -1585,7 +1607,8 @@ const analyticsController = {
       const calendarResultRows = buildCalendarOverviewRows(
         calendarTradesResult.rows,
         startDate,
-        endDate
+        endDate,
+        userTz
       );
       const riskMetricsByDate = buildCalendarRiskMetrics(riskMetricsResult.rows);
       const calendarRows = calendarResultRows.map((row) => {
@@ -1626,9 +1649,13 @@ const analyticsController = {
         return res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD' });
       }
 
+      // Bucket trades by the user's configured timezone so the day modal matches
+      // the calendar overview's cross-midnight handling.
+      const userTz = await getUserTimezone(req.user.id);
       const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
-      const params = [req.user.id, ...filterParams, dateStr];
-      const paramLen = params.length;
+      const params = [req.user.id, ...filterParams, dateStr, userTz];
+      const dateParam = params.length - 1;
+      const tzParam = params.length;
       const fc = filterConditions ? filterConditions.replace(/\btrade_date\b/g, 't.trade_date').replace(/\bsymbol\b/g, 't.symbol').replace(/\bstrategy\b/g, 't.strategy').replace(/\bside\b/g, 't.side') : '';
 
       // Note: do NOT require trade.pnl IS NOT NULL here. Open positions with partial
@@ -1655,7 +1682,7 @@ const analyticsController = {
         FROM trades t
         WHERE t.user_id = $1
           AND (
-            (t.pnl IS NOT NULL AND (t.exit_time::timestamp)::date = $${paramLen}::date)
+            (t.pnl IS NOT NULL AND (t.exit_time AT TIME ZONE $${tzParam})::date = $${dateParam}::date)
             OR EXISTS (
               SELECT 1
               FROM jsonb_array_elements(COALESCE(t.executions, '[]'::jsonb)) AS arr(exec)
@@ -1681,14 +1708,14 @@ const analyticsController = {
                     )
                   )
                 )
-                AND (COALESCE(exec->>'exitTime', exec->>'exit_time', exec->>'datetime'))::timestamp::date = $${paramLen}::date
+                AND ((COALESCE(exec->>'exitTime', exec->>'exit_time', exec->>'datetime'))::timestamptz AT TIME ZONE $${tzParam})::date = $${dateParam}::date
             )
           )
           ${fc}
         ORDER BY t.id
       `;
       const tradeResult = await db.query(dayQuery, params);
-      const contributions = buildCalendarDayContributions(tradeResult.rows, dateStr);
+      const contributions = buildCalendarDayContributions(tradeResult.rows, dateStr, userTz);
       res.json({ date: dateStr, contributions });
     } catch (error) {
       console.error('Calendar day detail error:', error);
