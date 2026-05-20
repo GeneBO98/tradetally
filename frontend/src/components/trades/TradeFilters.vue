@@ -653,11 +653,25 @@
       </div>
     </div>
 
-    <div class="flex justify-between items-center">
-      <div v-if="activeFiltersCount > 0" class="text-sm text-gray-600 dark:text-gray-400">
-        {{ activeFiltersCount }} filter{{ activeFiltersCount !== 1 ? 's' : '' }} active
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div class="min-h-[1.25rem]">
+        <div
+          v-if="filters.importId"
+          class="inline-flex items-center gap-2 rounded-full bg-primary-50 px-3 py-1 text-sm text-primary-800 dark:bg-primary-900/20 dark:text-primary-300"
+        >
+          <span>Showing trades from this import only</span>
+          <button
+            type="button"
+            class="font-medium text-primary-700 underline decoration-primary-300 underline-offset-2 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
+            @click="clearImportFilter"
+          >
+            Show all trades
+          </button>
+        </div>
+        <div v-else-if="activeFiltersCount > 0" class="text-sm text-gray-600 dark:text-gray-400">
+          {{ activeFiltersCount }} filter{{ activeFiltersCount !== 1 ? 's' : '' }} active
+        </div>
       </div>
-      <div v-else></div>
       <div class="flex space-x-3">
         <button @click="resetFilters" class="btn-secondary">
           Reset
@@ -672,7 +686,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ChevronRightIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
 import TagManagement from './TagManagement.vue'
@@ -684,6 +698,7 @@ import SymbolAutocomplete from '@/components/common/SymbolAutocomplete.vue'
 
 const emit = defineEmits(['filter'])
 const route = useRoute()
+const router = useRouter()
 const tradesStore = useTradesStore()
 const uiPreferencesStore = useUiPreferencesStore()
 const { selectedAccount, isFiltered: globalAccountFilterActive } = useGlobalAccountFilter()
@@ -1334,6 +1349,18 @@ function resetFilters() {
   }
 
   // Apply today filter
+  applyFilters()
+}
+
+async function clearImportFilter() {
+  filters.value.importId = ''
+
+  if (route.query.importId) {
+    const nextQuery = { ...route.query }
+    delete nextQuery.importId
+    await router.replace({ query: nextQuery })
+  }
+
   applyFilters()
 }
 
