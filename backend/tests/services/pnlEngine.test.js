@@ -412,6 +412,33 @@ describe('pnlEngine.computeTradePnl', () => {
       nearly(aggregate.pnl, 157.8);
     });
 
+    test('IBKR-decorated exit fill stays in FIFO path and deducts both commissions', () => {
+      // csvParser:5170 stamps entryPrice/exitPrice/entryTime/exitTime on the
+      // closing fill of an IBKR partial close. The engine must NOT switch to
+      // grouped mode just because one fill carries those fields — the opening
+      // fill is a separate plain fill, and grouped mode would skip its commission.
+      const { aggregate, annotatedExecutions } = computeTradePnl({
+        side: 'long',
+        instrumentType: 'stock',
+        executions: [
+          { action: 'buy', quantity: 100, price: 200, datetime: '2025-12-15T10:00:00Z', commission: 1, fees: 0 },
+          {
+            action: 'sell', quantity: 100, price: 201.89, datetime: '2026-01-02T14:00:00Z',
+            commission: 1, fees: 0,
+            entryTime: '2025-12-15T10:00:00Z', entryPrice: 200,
+            exitTime: '2026-01-02T14:00:00Z', exitPrice: 201.89,
+            pnl: 189
+          }
+        ],
+        timezone: 'UTC'
+      });
+
+      nearly(aggregate.pnl, 187);
+      nearly(aggregate.commission, 2);
+      const exit = annotatedExecutions.find((e) => e.action === 'sell');
+      nearly(exit.realized_pnl, 187);
+    });
+
     test('AVAV-style open short option partial close yields 88.80', () => {
       const { aggregate } = computeTradePnl({
         side: 'short',

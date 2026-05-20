@@ -74,11 +74,15 @@ function dateInTimezone(value, timezone) {
 }
 
 function hasGroupedShape(executions) {
-  return executions.some((e) => e && (
+  // True grouped only when EVERY execution carries entryPrice/entry_price
+  // (Lightspeed round-trip records, broker-sync grouped legs). IBKR partial-close
+  // importers decorate just the closing fill with entryPrice/exitPrice — those
+  // arrays still have a plain opening fill, so they must run through fill-based
+  // FIFO so the opening fill's commission gets matched correctly.
+  if (executions.length === 0) return false;
+  return executions.every((e) => e && (
     e.entryPrice !== undefined ||
-    e.entry_price !== undefined ||
-    e.entryTime !== undefined ||
-    e.entry_time !== undefined
+    e.entry_price !== undefined
   ));
 }
 
