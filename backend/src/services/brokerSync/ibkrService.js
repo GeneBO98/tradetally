@@ -10,6 +10,9 @@ const { parseCSV } = require('../../utils/csvParser');
 const Trade = require('../../models/Trade');
 const BrokerConnection = require('../../models/BrokerConnection');
 const db = require('../../config/database');
+const { computeTradePnl } = require('../pnlEngine');
+const { getUserTimezone } = require('../../utils/timezone');
+const AnalyticsCache = require('../analyticsCache');
 const { version: APP_VERSION } = require('../../../package.json');
 
 const FLEX_BASE_URL = 'https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService';
@@ -371,35 +374,54 @@ class IBKRService {
 
         // Handle updates vs new trades
         if (tradeData.isUpdate && tradeData.existingTradeId) {
-          // This trade has more executions than existing - update it
           console.log(`[IBKR] Updating existing trade ${tradeData.existingTradeId} with additional executions for ${tradeData.symbol}`);
 
-          // Direct SQL UPDATE - avoids Trade.update() complex side effects that can silently fail
-          const executions = preparedTrade.executions || preparedTrade.executionData;
+          const rawExecutions = preparedTrade.executions || preparedTrade.executionData || [];
+          const ibkrTimezone = await getUserTimezone(userId);
+          const engineResult = computeTradePnl({
+            side: preparedTrade.side,
+            instrumentType: preparedTrade.instrumentType || 'stock',
+            contractSize: preparedTrade.contractSize || (preparedTrade.instrumentType === 'option' ? 100 : null),
+            pointValue: preparedTrade.pointValue,
+            fallbackCommission: preparedTrade.commission != null ? preparedTrade.commission : null,
+            fallbackFees: preparedTrade.fees != null ? preparedTrade.fees : null,
+            executions: rawExecutions,
+            timezone: ibkrTimezone,
+            tradeId: tradeData.existingTradeId
+          });
+          const annotatedExecs = engineResult.annotatedExecutions;
+          const agg = engineResult.aggregate;
+
           const updateQuery = `
             UPDATE trades
             SET executions = $1::jsonb,
-                exit_time = $2,
-                exit_price = $3,
-                pnl = $4,
-                pnl_percent = $5,
-                quantity = $6,
-                commission = $7,
-                fees = $8,
-                entry_commission = $9,
-                exit_commission = $10,
+                entry_price = $2,
+                exit_time = $3,
+                exit_price = $4,
+                entry_time = $5,
+                trade_date = $6,
+                pnl = $7,
+                pnl_percent = $8,
+                quantity = $9,
+                commission = $10,
+                fees = $11,
+                entry_commission = $12,
+                exit_commission = $13,
                 updated_at = NOW()
-            WHERE id = $11 AND user_id = $12
+            WHERE id = $14 AND user_id = $15
           `;
           await db.query(updateQuery, [
-            JSON.stringify(executions),
-            preparedTrade.exitTime || null,
-            preparedTrade.exitPrice != null ? preparedTrade.exitPrice : null,
-            preparedTrade.pnl != null ? preparedTrade.pnl : null,
-            preparedTrade.pnlPercent != null ? preparedTrade.pnlPercent : null,
-            preparedTrade.quantity,
-            preparedTrade.commission || 0,
-            preparedTrade.fees || 0,
+            JSON.stringify(annotatedExecs),
+            agg.entry_price,
+            agg.is_fully_closed ? agg.exit_time : (preparedTrade.exitTime || null),
+            agg.exit_price,
+            agg.entry_time || preparedTrade.entryTime || null,
+            agg.trade_date || preparedTrade.tradeDate || null,
+            agg.pnl,
+            agg.pnl_percent,
+            agg.quantity || preparedTrade.quantity,
+            agg.commission,
+            agg.fees,
             preparedTrade.entryCommission || 0,
             preparedTrade.exitCommission || 0,
             tradeData.existingTradeId,
@@ -408,11 +430,11 @@ class IBKRService {
 
           const existingTrade = existingTrades.find(trade => trade.id === tradeData.existingTradeId);
           if (existingTrade) {
-            existingTrade.executions = executions;
-            existingTrade.exit_time = preparedTrade.exitTime || null;
-            existingTrade.exit_price = preparedTrade.exitPrice != null ? preparedTrade.exitPrice : null;
-            existingTrade.pnl = preparedTrade.pnl != null ? preparedTrade.pnl : null;
-            existingTrade.quantity = preparedTrade.quantity;
+            existingTrade.executions = annotatedExecs;
+            existingTrade.exit_time = agg.is_fully_closed ? agg.exit_time : (preparedTrade.exitTime || null);
+            existingTrade.exit_price = agg.exit_price;
+            existingTrade.pnl = agg.pnl;
+            existingTrade.quantity = agg.quantity || preparedTrade.quantity;
           }
 
           updated++;
@@ -449,6 +471,14 @@ class IBKRService {
       } catch (error) {
         console.error(`[IBKR] Failed to import trade:`, error.message);
         failed++;
+      }
+    }
+
+    if (imported > 0 || updated > 0) {
+      try {
+        await AnalyticsCache.invalidate(userId);
+      } catch (cacheErr) {
+        console.warn(`[IBKR] AnalyticsCache invalidation failed: ${cacheErr.message}`);
       }
     }
 

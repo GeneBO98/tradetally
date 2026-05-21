@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - develop
+      - fix/pnl-canonical-engine
   release:
     types:
       - published
@@ -137,6 +138,8 @@ jobs:
             echo "tags=potentialmidas/tradetally:latest" >> "$GITHUB_OUTPUT"
           elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
             echo "tags=potentialmidas/tradetally:nightly" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.ref }}" == "refs/heads/fix/pnl-canonical-engine" ]]; then
+            echo "tags=potentialmidas/tradetally:pnl-engine" >> "$GITHUB_OUTPUT"
           else
             echo "Unsupported ref: ${{ github.ref }}"
             exit 1

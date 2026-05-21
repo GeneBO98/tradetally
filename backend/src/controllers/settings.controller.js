@@ -3,6 +3,55 @@ const db = require('../config/database');
 const adminSettingsService = require('../services/adminSettings');
 const { validateAiProviderUrl } = require('../utils/urlSecurity');
 const encryptionService = require('../services/brokerSync/encryptionService');
+const { computeTradePnl } = require('../services/pnlEngine');
+const { getUserTimezone } = require('../utils/timezone');
+const AnalyticsCache = require('../services/analyticsCache');
+
+function recomputeImportedTradePnl(trade, timezone) {
+  const executions = trade.executions || trade.executionData || trade.execution_data;
+  if (!Array.isArray(executions) || executions.length === 0) return trade;
+
+  const side = trade.side ?? trade.Side;
+  if (!side) return trade;
+
+  const instrumentType = trade.instrument_type || trade.instrumentType || 'stock';
+  const contractSize = trade.contract_size ?? trade.contractSize ?? (instrumentType === 'option' ? 100 : null);
+  const pointValue = trade.point_value ?? trade.pointValue ?? null;
+  const fallbackCommission = trade.commission ?? null;
+  const fallbackFees = trade.fees ?? null;
+
+  const result = computeTradePnl({
+    side,
+    instrumentType,
+    contractSize,
+    pointValue,
+    fallbackCommission,
+    fallbackFees,
+    executions,
+    timezone: timezone || 'UTC'
+  });
+
+  return {
+    ...trade,
+    executions: result.annotatedExecutions,
+    pnl: result.aggregate.pnl,
+    pnl_percent: result.aggregate.pnl_percent,
+    pnlPercent: result.aggregate.pnl_percent,
+    commission: result.aggregate.commission,
+    fees: result.aggregate.fees,
+    entry_price: result.aggregate.entry_price ?? trade.entry_price ?? trade.entryPrice,
+    entryPrice: result.aggregate.entry_price ?? trade.entry_price ?? trade.entryPrice,
+    exit_price: result.aggregate.exit_price ?? trade.exit_price ?? trade.exitPrice,
+    exitPrice: result.aggregate.exit_price ?? trade.exit_price ?? trade.exitPrice,
+    quantity: result.aggregate.quantity > 0 ? result.aggregate.quantity : trade.quantity,
+    entry_time: result.aggregate.entry_time || trade.entry_time || trade.entryTime,
+    entryTime: result.aggregate.entry_time || trade.entry_time || trade.entryTime,
+    exit_time: result.aggregate.is_fully_closed ? result.aggregate.exit_time : (trade.exit_time || trade.exitTime || null),
+    exitTime: result.aggregate.is_fully_closed ? result.aggregate.exit_time : (trade.exit_time || trade.exitTime || null),
+    trade_date: result.aggregate.trade_date || trade.trade_date || trade.tradeDate,
+    tradeDate: result.aggregate.trade_date || trade.trade_date || trade.tradeDate
+  };
+}
 
 // Encrypt third-party AI provider keys on import paths that write to
 // user_settings directly. Safe with already-encrypted values.
@@ -999,8 +1048,11 @@ const settingsController = {
         if (importData.trades && importData.trades.length > 0) {
           console.log(`[IMPORT] Processing ${importData.trades.length} trades (v3: ${isV3})...`);
 
+          const importTimezone = await getUserTimezone(userId);
+
           for (let i = 0; i < importData.trades.length; i++) {
-            const trade = importData.trades[i];
+            const rawTrade = importData.trades[i];
+            const trade = recomputeImportedTradePnl(rawTrade, importTimezone);
             try {
               // Duplicate detection: same for both v2 and v3
               const symbol = trade.symbol ?? trade[toSnakeCase('symbol')];
@@ -1650,6 +1702,14 @@ const settingsController = {
 
         await client.query('COMMIT');
         console.log('[IMPORT] Transaction committed successfully');
+
+        if (tradesAdded > 0) {
+          try {
+            await AnalyticsCache.invalidate(userId);
+          } catch (cacheErr) {
+            console.warn(`[IMPORT] AnalyticsCache invalidation failed: ${cacheErr.message}`);
+          }
+        }
 
         const additionalMsg = Object.entries(additionalTablesImported)
           .filter(([, count]) => count > 0)

@@ -8,6 +8,7 @@ const logger = require('../utils/logger');
 const finnhub = require('../utils/finnhub');
 const cache = require('../utils/cache');
 const AnalyticsCache = require('../services/analyticsCache');
+const { computeTradePnl } = require('../services/pnlEngine');
 const symbolCategories = require('../utils/symbolCategories');
 const imageProcessor = require('../utils/imageProcessor');
 const ensureString = require('../utils/ensureString');
@@ -1069,37 +1070,41 @@ const tradeController = {
       }
 
       if (isPartialSplit) {
-        // Update original trade: remove split-out entries, recalculate fields
         const selectedSet = new Set(execution_indices);
         const remainingExecutions = executions.filter((_, i) => !selectedSet.has(i));
 
-        const remainingEntryQty = fillsToKeep.reduce((s, e) => s + e.quantity, 0);
-        const newEntryPrice = fillsToKeep.reduce((s, e) => s + e.price * e.quantity, 0) / remainingEntryQty;
-
-        // Determine instrument multiplier
-        const isOption = (trade.instrument_type || trade.instrumentType) === 'option';
-        const isFuture = (trade.instrument_type || trade.instrumentType) === 'future';
-        const contractSize = isOption ? (trade.contract_size || trade.contractSize || 100) : 1;
-        const pointValue = isFuture ? (trade.point_value || trade.pointValue || 1) : 1;
-        const multiplier = isFuture ? pointValue : contractSize;
-
-        // Recalculate PnL
-        let newPnl;
-        if (side === 'long') {
-          newPnl = (avgExitPrice - newEntryPrice) * remainingEntryQty * multiplier;
-        } else {
-          newPnl = (newEntryPrice - avgExitPrice) * remainingEntryQty * multiplier;
-        }
-
-        // Recalculate remaining fees
-        const remainingEntryFees = fillsToKeep.reduce((s, e) => s + (e.fees || 0), 0);
-        const remainingExitFeeShare = totalExitFees * (remainingEntryQty / (totalSplitQty + remainingEntryQty));
-        const totalRemainingFees = remainingEntryFees + remainingExitFeeShare;
-        newPnl -= totalRemainingFees;
+        const splitTimezone = await getUserTimezone(req.user.id);
+        const instrumentType = trade.instrument_type || trade.instrumentType || 'stock';
+        const splitEngineResult = computeTradePnl({
+          side,
+          instrumentType,
+          contractSize: trade.contract_size || trade.contractSize || (instrumentType === 'option' ? 100 : null),
+          pointValue: trade.point_value || trade.pointValue,
+          fallbackCommission: trade.commission != null ? trade.commission : null,
+          fallbackFees: trade.fees != null ? trade.fees : null,
+          executions: remainingExecutions,
+          timezone: splitTimezone,
+          tradeId: req.params.id
+        });
+        const splitAgg = splitEngineResult.aggregate;
 
         await db.query(
-          `UPDATE trades SET executions = $1, entry_price = $2, quantity = $3, pnl = $4 WHERE id = $5 AND user_id = $6`,
-          [JSON.stringify(remainingExecutions), newEntryPrice, remainingEntryQty, newPnl, req.params.id, req.user.id]
+          `UPDATE trades SET executions = $1, entry_price = $2, exit_price = $3, quantity = $4, commission = $5, fees = $6, pnl = $7, pnl_percent = $8, exit_time = $9, entry_time = $10, trade_date = $11 WHERE id = $12 AND user_id = $13`,
+          [
+            JSON.stringify(splitEngineResult.annotatedExecutions),
+            splitAgg.entry_price,
+            splitAgg.exit_price,
+            splitAgg.quantity,
+            splitAgg.commission,
+            splitAgg.fees,
+            splitAgg.pnl,
+            splitAgg.pnl_percent,
+            splitAgg.is_fully_closed ? splitAgg.exit_time : null,
+            splitAgg.entry_time,
+            splitAgg.trade_date,
+            req.params.id,
+            req.user.id
+          ]
         );
       } else {
         // Delete the original grouped trade (all entries were split)

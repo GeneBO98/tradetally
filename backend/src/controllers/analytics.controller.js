@@ -446,31 +446,13 @@ function parseNumericValue(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function normalizeExecutionAction(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[_-]+/g, ' ');
-}
-
-function isBuyAction(action) {
-  return /\b(buy|bot|long)\b/.test(action);
-}
-
-function isSellAction(action) {
-  return /\b(sell|sold|short|sld)\b/.test(action);
-}
-
 // Returns YYYY-MM-DD for a timestamp candidate, interpreted in the given timezone.
-// Date-only strings (no time component) are returned as-is — they already represent a
-// calendar day in the user's local sense and have no timezone to convert.
+// Used for the legacy fallback when a trade has no annotated executions.
 function getExecutionDateString(timezone, ...candidates) {
   for (const candidate of candidates) {
     if (!candidate) continue;
 
     const str = String(candidate);
-
-    // Date-only (e.g. "2026-05-20") — return verbatim
     const dateOnly = str.match(/^(\d{4}-\d{2}-\d{2})$/);
     if (dateOnly) return dateOnly[1];
 
@@ -506,222 +488,97 @@ function getTradeValueMultiplier(trade) {
   return 1;
 }
 
-function hasGroupedExecutions(executions = []) {
-  return executions.some((execution) =>
-    execution && (
-      execution.entryPrice !== undefined ||
-      execution.entry_price !== undefined ||
-      execution.entryTime !== undefined ||
-      execution.entry_time !== undefined
-    )
+// Convert a stored execution into { date, pnl } if it represents a closing leg.
+// Prefers engine-stamped realized_pnl + exit_date; falls back to legacy reconstruction
+// for trades that pre-date the canonical engine (pre-backfill).
+function getExitEventFromExecution(execution, trade, timezone) {
+  const realized = parseNumericValue(execution.realized_pnl);
+  if (realized != null) {
+    const date = execution.exit_date
+      ? execution.exit_date
+      : getExecutionDateString(
+          timezone,
+          execution.exitTime,
+          execution.exit_time,
+          execution.datetime
+        );
+    if (date) return { date, pnl: realized };
+  }
+
+  return legacyExitEventFromExecution(execution, trade, timezone);
+}
+
+function legacyExitEventFromExecution(execution, trade, timezone) {
+  const date = getExecutionDateString(
+    timezone,
+    execution.exitTime,
+    execution.exit_time,
+    execution.datetime
   );
+  if (!date) return null;
+
+  const stored = parseNumericValue(execution.pnl ?? execution.p_l ?? execution.profit_loss);
+  if (stored != null) return { date, pnl: stored };
+
+  const exitPrice = parseNumericValue(execution.exitPrice ?? execution.exit_price);
+  const entryPrice = parseNumericValue(execution.entryPrice ?? execution.entry_price);
+  const quantity = Math.abs(parseNumericValue(execution.quantity) || 0);
+  if (exitPrice == null || entryPrice == null || quantity <= 0) return null;
+
+  const multiplier = getTradeValueMultiplier(trade);
+  const side = execution.side || trade.side;
+  const commission = parseNumericValue(execution.commission) || 0;
+  const fees = parseNumericValue(execution.fees ?? execution.fee) || 0;
+
+  const gross = side === 'short'
+    ? (entryPrice - exitPrice) * quantity * multiplier
+    : (exitPrice - entryPrice) * quantity * multiplier;
+  return { date, pnl: gross - commission - fees };
 }
 
-function computeGroupedExecutionExitEvents(trade, executions, timezone) {
-  const valueMultiplier = getTradeValueMultiplier(trade);
-
-  return executions
-    .filter(Boolean)
-    .map((execution) => {
-      const quantity = Math.abs(parseNumericValue(execution.quantity) || 0);
-      const entryPrice = parseNumericValue(execution.entryPrice ?? execution.entry_price);
-      const exitPrice = parseNumericValue(execution.exitPrice ?? execution.exit_price);
-      const commission = parseNumericValue(execution.commission) || 0;
-      const fees = parseNumericValue(execution.fees ?? execution.fee) || 0;
-      const side = execution.side || trade.side;
-      const date = getExecutionDateString(
-        timezone,
-        execution.exitTime,
-        execution.exit_time,
-        execution.datetime
-      );
-
-      if (!date || quantity <= 0 || exitPrice == null) {
-        return null;
-      }
-
-      let pnl = null;
-      if (entryPrice != null) {
-        if (side === 'long') {
-          pnl = (exitPrice - entryPrice) * quantity * valueMultiplier - commission - fees;
-        } else {
-          pnl = (entryPrice - exitPrice) * quantity * valueMultiplier - commission - fees;
-        }
-      } else {
-        pnl = parseNumericValue(execution.pnl ?? execution.p_l ?? execution.profit_loss);
-      }
-
-      return pnl == null ? null : { date, pnl };
-    })
-    .filter(Boolean);
-}
-
-function computeFillExecutionExitEvents(trade, executions, timezone) {
-  const valueMultiplier = getTradeValueMultiplier(trade);
-  const tradeSide = trade.side;
-  const tradeCommission = parseNumericValue(trade.commission) || 0;
-  const tradeFees = parseNumericValue(trade.fees) || 0;
-  const totalQuantity = executions.reduce((sum, execution) => {
-    const quantity = Math.abs(parseNumericValue(execution?.quantity) || 0);
-    return sum + quantity;
-  }, 0);
-  const entryQueue = [];
-
-  const sortedExecutions = [...executions]
-    .filter(Boolean)
-    .sort((a, b) => {
-      const left = Date.parse(
-        a.datetime || a.entry_time || a.exitTime || a.exit_time || a.entryTime || ''
-      );
-      const right = Date.parse(
-        b.datetime || b.entry_time || b.exitTime || b.exit_time || b.entryTime || ''
-      );
-
-      if (Number.isNaN(left) && Number.isNaN(right)) return 0;
-      if (Number.isNaN(left)) return 1;
-      if (Number.isNaN(right)) return -1;
-      return left - right;
-    });
-
-  const exitEvents = [];
-
-  sortedExecutions.forEach((execution) => {
-    const quantity = Math.abs(parseNumericValue(execution.quantity) || 0);
-    const price = parseNumericValue(
-      execution.price ??
-      execution.entryPrice ??
-      execution.entry_price ??
-      execution.exitPrice ??
-      execution.exit_price
-    );
-    const action = normalizeExecutionAction(execution.action || execution.side || execution.type);
-    const hasCommission = execution.commission !== undefined && execution.commission !== null;
-    const hasFees = execution.fees !== undefined && execution.fees !== null;
-    const proportion = totalQuantity > 0 ? quantity / totalQuantity : 0;
-
-    let commission = 0;
-    let fees = 0;
-
-    if (hasCommission && hasFees) {
-      commission = parseNumericValue(execution.commission) || 0;
-      fees = parseNumericValue(execution.fees) || 0;
-    } else if (hasCommission) {
-      commission = parseNumericValue(execution.commission) || 0;
-    } else if (hasFees) {
-      commission = parseNumericValue(execution.fees) || 0;
-    } else {
-      commission = tradeCommission * proportion;
-      fees = tradeFees * proportion;
-    }
-
-    const totalCost = commission + fees;
-    const isOpening =
-      (tradeSide === 'long' && isBuyAction(action)) ||
-      (tradeSide === 'short' && isSellAction(action));
-
-    if (isOpening) {
-      if (quantity > 0 && price != null) {
-        entryQueue.push({
-          quantity,
-          price,
-          commission: totalCost,
-          remainingQty: quantity
-        });
-      }
-      return;
-    }
-
-    let executionPnl = null;
-    let totalMatchedValue = 0;
-    let totalMatchedQty = 0;
-    let totalMatchedEntryCommission = 0;
-    let remainingExitQty = quantity;
-
-    while (remainingExitQty > 0 && entryQueue.length > 0) {
-      const entry = entryQueue[0];
-      const matchQty = Math.min(remainingExitQty, entry.remainingQty);
-
-      totalMatchedValue += matchQty * entry.price;
-      totalMatchedQty += matchQty;
-
-      if (entry.commission && entry.quantity > 0) {
-        totalMatchedEntryCommission += (entry.commission * matchQty) / entry.quantity;
-      }
-
-      remainingExitQty -= matchQty;
-      entry.remainingQty -= matchQty;
-
-      if (entry.remainingQty <= 0) {
-        entryQueue.shift();
-      }
-    }
-
-    if (totalMatchedQty > 0 && price != null) {
-      const matchedEntryPrice = totalMatchedValue / totalMatchedQty;
-
-      if (tradeSide === 'long') {
-        executionPnl =
-          (price - matchedEntryPrice) * totalMatchedQty * valueMultiplier -
-          totalCost -
-          totalMatchedEntryCommission;
-      } else {
-        executionPnl =
-          (matchedEntryPrice - price) * totalMatchedQty * valueMultiplier -
-          totalCost -
-          totalMatchedEntryCommission;
-      }
-    } else {
-      executionPnl = parseNumericValue(execution.pnl ?? execution.p_l ?? execution.profit_loss);
-    }
-
-    const date = getExecutionDateString(
-      timezone,
-      execution.exitTime,
-      execution.exit_time,
-      execution.datetime
-    );
-
-    if (date && executionPnl != null) {
-      exitEvents.push({ date, pnl: executionPnl });
-    }
-  });
-
-  return exitEvents;
-}
-
-function computeTradeExitEvents(trade, timezone) {
+function tradeExitEvents(trade, timezone) {
   const executions = Array.isArray(trade.executions) ? trade.executions : [];
   if (executions.length === 0) return [];
 
-  if (hasGroupedExecutions(executions)) {
-    return computeGroupedExecutionExitEvents(trade, executions, timezone);
+  const hasStamped = executions.some((e) => e && parseNumericValue(e.realized_pnl) != null);
+  if (hasStamped) {
+    return executions
+      .map((exec) => exec && getExitEventFromExecution(exec, trade, timezone))
+      .filter(Boolean);
   }
 
-  return computeFillExecutionExitEvents(trade, executions, timezone);
+  const { computeTradePnl } = require('../services/pnlEngine');
+  const engineResult = computeTradePnl({
+    side: trade.side,
+    instrumentType: trade.instrument_type || 'stock',
+    contractSize: trade.contract_size,
+    pointValue: trade.point_value,
+    fallbackCommission: trade.commission != null ? parseNumericValue(trade.commission) : null,
+    fallbackFees: trade.fees != null ? parseNumericValue(trade.fees) : null,
+    executions,
+    timezone,
+    tradeId: trade.trade_id || trade.id
+  });
+
+  return engineResult.annotatedExecutions
+    .filter((e) => parseNumericValue(e.realized_pnl) != null && e.exit_date)
+    .map((e) => ({ date: e.exit_date, pnl: parseNumericValue(e.realized_pnl) }));
 }
 
 function buildCalendarDayContributions(trades, dateStr, timezone) {
   return trades
     .map((trade) => {
-      const exitEvents = computeTradeExitEvents(trade, timezone);
-      const exitEventsOnDay = exitEvents.filter((event) => event.date === dateStr);
+      const exitEvents = tradeExitEvents(trade, timezone);
+      const eventsOnDay = exitEvents.filter((e) => e.date === dateStr);
       const exactTradePnl = parseNumericValue(trade.pnl);
-      const computedTradePnl = exitEvents.reduce((sum, event) => sum + (event.pnl || 0), 0);
-      const uniqueExitDates = new Set(exitEvents.map((event) => event.date).filter(Boolean));
-      const shouldUseExactTradePnl =
-        uniqueExitDates.size === 1 &&
-        exactTradePnl != null &&
-        Math.abs(computedTradePnl - exactTradePnl) < 0.05;
 
       let pnl = null;
       let exitCount = 0;
       let totalExitCount = exitEvents.length;
 
-      if (exitEventsOnDay.length > 0) {
-        pnl = shouldUseExactTradePnl
-          ? exactTradePnl
-          : exitEventsOnDay.reduce((sum, event) => sum + (event.pnl || 0), 0);
-        exitCount = exitEventsOnDay.length;
+      if (eventsOnDay.length > 0) {
+        pnl = eventsOnDay.reduce((sum, e) => sum + (e.pnl || 0), 0);
+        exitCount = eventsOnDay.length;
       } else if (
         totalExitCount === 0 &&
         exactTradePnl != null &&
@@ -732,9 +589,7 @@ function buildCalendarDayContributions(trades, dateStr, timezone) {
         totalExitCount = 1;
       }
 
-      if (pnl == null || exitCount === 0) {
-        return null;
-      }
+      if (pnl == null || exitCount === 0) return null;
 
       const riskAmount = Trade.calculateRiskAmount(
         trade.entry_price,
@@ -765,77 +620,46 @@ function buildCalendarDayContributions(trades, dateStr, timezone) {
     .sort((a, b) => (a.trade_id || '').localeCompare(b.trade_id || ''));
 }
 
-function addCalendarOverviewContribution(calendarByDate, tradeId, tradeDate, pnl) {
-  if (!tradeDate || pnl == null) return;
-
-  let day = calendarByDate.get(tradeDate);
-  if (!day) {
-    day = {
-      tradeIds: new Set(),
-      dailyPnl: 0
-    };
-    calendarByDate.set(tradeDate, day);
-  }
-
-  day.tradeIds.add(tradeId);
-  day.dailyPnl += pnl;
-}
-
 function buildCalendarOverviewRows(trades, startDateStr, endDateStr, timezone) {
-  const calendarByDate = new Map();
+  const byDate = new Map();
+
+  const add = (tradeId, date, pnl) => {
+    if (!date || pnl == null) return;
+    let day = byDate.get(date);
+    if (!day) {
+      day = { tradeIds: new Set(), dailyPnl: 0 };
+      byDate.set(date, day);
+    }
+    day.tradeIds.add(tradeId);
+    day.dailyPnl += pnl;
+  };
 
   trades.forEach((trade) => {
-    const tradeId = trade.trade_id;
-    const exitEvents = computeTradeExitEvents(trade, timezone);
-    const exitEventsInRange = exitEvents.filter((event) =>
-      event.date &&
-      event.date >= startDateStr &&
-      event.date <= endDateStr
-    );
-    const exactTradePnl = parseNumericValue(trade.pnl);
-
+    const exitEvents = tradeExitEvents(trade, timezone);
     if (exitEvents.length > 0) {
-      const computedTradePnl = exitEvents.reduce((sum, event) => sum + (event.pnl || 0), 0);
-      const uniqueExitDates = new Set(exitEvents.map((event) => event.date).filter(Boolean));
-      const shouldUseExactTradePnl =
-        uniqueExitDates.size === 1 &&
-        exactTradePnl != null &&
-        Math.abs(computedTradePnl - exactTradePnl) < 0.05;
-
-      if (shouldUseExactTradePnl) {
-        const [tradeDate] = uniqueExitDates;
-        if (tradeDate >= startDateStr && tradeDate <= endDateStr) {
-          addCalendarOverviewContribution(calendarByDate, tradeId, tradeDate, exactTradePnl);
+      exitEvents.forEach((event) => {
+        if (event.date >= startDateStr && event.date <= endDateStr) {
+          add(trade.trade_id, event.date, event.pnl);
         }
-        return;
-      }
-
-      exitEventsInRange.forEach((event) => {
-        addCalendarOverviewContribution(calendarByDate, tradeId, event.date, event.pnl);
       });
       return;
     }
 
-    const tradeDate = getExecutionDateString(timezone, trade.exit_time);
-    if (
-      exactTradePnl != null &&
-      tradeDate &&
-      tradeDate >= startDateStr &&
-      tradeDate <= endDateStr
-    ) {
-      addCalendarOverviewContribution(calendarByDate, tradeId, tradeDate, exactTradePnl);
+    const exactPnl = parseNumericValue(trade.pnl);
+    const date = getExecutionDateString(timezone, trade.exit_time);
+    if (exactPnl != null && date && date >= startDateStr && date <= endDateStr) {
+      add(trade.trade_id, date, exactPnl);
     }
   });
 
-  return Array.from(calendarByDate.entries())
+  return Array.from(byDate.entries())
     .sort(([left], [right]) => left.localeCompare(right))
-    .map(([tradeDate, data]) => ({
-      trade_date: tradeDate,
+    .map(([date, data]) => ({
+      trade_date: date,
       trades: data.tradeIds.size,
       daily_pnl: data.dailyPnl
     }));
 }
-
 const analyticsController = {
   async getOverview(req, res, next) {
     try {
