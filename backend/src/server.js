@@ -394,7 +394,34 @@ async function startServer() {
     } else {
       logger.info('Skipping migrations (RUN_MIGRATIONS=false)');
     }
-    
+
+    // Run the canonical pnlEngine backfill in the background — idempotent and
+    // does not block startup. Calendar and Trade Detail already fall back to
+    // inline engine computation for unstamped trades, so correctness is not
+    // gated on this completing. The backfill populates executions[].realized_pnl
+    // and executions[].exit_date so analytics queries see consistent stored data.
+    // Opt out with SKIP_PNL_BACKFILL=true.
+    if (process.env.SKIP_PNL_BACKFILL !== 'true') {
+      const { execFile } = require('child_process');
+      const pathMod = require('path');
+      const scriptPath = pathMod.join(__dirname, '..', 'scripts', 'backfill-pnl-engine.js');
+      console.log('[BACKFILL] Spawning canonical P&L engine backfill in background...');
+      execFile('node', [scriptPath, '--apply'], {
+        env: process.env,
+        cwd: pathMod.join(__dirname, '..')
+      }, (err, stdout, stderr) => {
+        if (stdout) process.stdout.write(stdout);
+        if (stderr) process.stderr.write(stderr);
+        if (err) {
+          console.error(`[BACKFILL] Background backfill failed: ${err.message}`);
+        } else {
+          console.log('[BACKFILL] Background backfill complete.');
+        }
+      });
+    } else {
+      console.log('[BACKFILL] Skipping P&L engine backfill (SKIP_PNL_BACKFILL=true).');
+    }
+
     // Start CUSIP queue processing (after migrations have created the table)
     const cusipQueue = require('./utils/cusipQueue');
     cusipQueue.startProcessing();
