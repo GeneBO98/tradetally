@@ -28,7 +28,8 @@
     >
       <div
         v-if="isOpen"
-        class="absolute right-0 mt-2 w-96 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50"
+        class="absolute w-96 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50"
+        :class="placementClasses"
         @click.stop
       >
         <!-- Header -->
@@ -168,6 +169,21 @@ import {
 } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
+
+const props = defineProps({
+  placement: {
+    type: String,
+    default: 'bottom-right',
+    validator: (v) => ['bottom-right', 'top-left'].includes(v)
+  }
+})
+
+const placementClasses = computed(() => {
+  if (props.placement === 'top-left') {
+    return 'bottom-full left-0 mb-2'
+  }
+  return 'right-0 mt-2'
+})
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { useNotificationCenter } from '@/composables/useNotificationCenter'
 import { useNotification } from '@/composables/useNotification'

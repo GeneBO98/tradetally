@@ -17,6 +17,50 @@ function createFilterHash(filters) {
   return crypto.createHash('md5').update(str).digest('hex').slice(0, 16);
 }
 
+// Lightweight keyword-based tone classifier for news headlines. NOT a real
+// sentiment model — it just catches the obvious bull/bear signals so the
+// dashboard insight reads as "likely positive/negative for your position"
+// instead of generic "high coverage." Returns the dominant label and a
+// magnitude score that reflects how strongly the headline matched.
+const POSITIVE_NEWS_KEYWORDS = [
+  'beat', 'beats', 'beaten', 'raise', 'raises', 'raised', 'upgrade', 'upgraded',
+  'upgrades', 'outperform', 'outperforms', 'record', 'records', 'surge', 'surges',
+  'soar', 'soars', 'rally', 'rallies', 'crush', 'crushes', 'tops', 'exceed',
+  'exceeds', 'exceeded', 'strong', 'breakout', 'gain', 'gains', 'jumps',
+  'rises', 'climbs', 'profit', 'profits', 'win', 'wins', 'wins', 'milestone',
+  'launches', 'expansion', 'partnership', 'approved', 'approval', 'breakthrough',
+  'positive', 'bullish', 'optimistic'
+];
+const NEGATIVE_NEWS_KEYWORDS = [
+  'miss', 'misses', 'missed', 'cut', 'cuts', 'cutting', 'downgrade', 'downgrades',
+  'downgraded', 'underperform', 'underperforms', 'recall', 'recalls', 'recalled',
+  'lawsuit', 'sued', 'fraud', 'investigation', 'probe', 'probed', 'slump', 'slumps',
+  'plunge', 'plunges', 'plunged', 'tumble', 'tumbles', 'falls', 'fell', 'drops',
+  'dropped', 'decline', 'declines', 'declined', 'loss', 'losses', 'losing',
+  'concern', 'concerns', 'warning', 'warns', 'warned', 'reduces', 'reduced',
+  'layoffs', 'fired', 'firing', 'delays', 'delayed', 'cancels', 'cancelled',
+  'breach', 'hacked', 'fine', 'fined', 'penalty', 'crash', 'crashes',
+  'negative', 'bearish', 'pessimistic', 'risk', 'risks'
+];
+
+function classifyHeadlineTone(headline) {
+  if (!headline || typeof headline !== 'string') {
+    return { label: 'neutral', magnitude: 0 };
+  }
+  const text = headline.toLowerCase();
+  let pos = 0;
+  let neg = 0;
+  for (const w of POSITIVE_NEWS_KEYWORDS) {
+    if (new RegExp(`\\b${w}\\b`, 'i').test(text)) pos++;
+  }
+  for (const w of NEGATIVE_NEWS_KEYWORDS) {
+    if (new RegExp(`\\b${w}\\b`, 'i').test(text)) neg++;
+  }
+  if (pos > neg)  return { label: 'positive', magnitude: pos - neg };
+  if (neg > pos)  return { label: 'negative', magnitude: neg - pos };
+  return { label: 'neutral', magnitude: 0 };
+}
+
 // Async MAE/MFE calculation function
 async function calculateMAEMFEAsync(userId, filterConditions, params) {
   try {
@@ -970,6 +1014,88 @@ const analyticsController = {
         console.error('MAE/MFE calculation error:', error);
         overview.avg_mae = 'N/A';
         overview.avg_mfe = 'N/A';
+      }
+
+      // Streak & momentum metrics — surfaced on the dashboard hero ribbon
+      // and StreakMomentumCard. Computed from the same filtered trade set
+      // so the global account/time filters apply consistently.
+      try {
+        const streakQuery = `
+          WITH daily AS (
+            SELECT
+              trade_date,
+              COALESCE(SUM(pnl), 0)::numeric AS day_pnl,
+              COUNT(*)::integer AS day_trades
+            FROM trades
+            WHERE user_id = $1 ${filterConditions}
+              AND pnl IS NOT NULL
+              AND exit_price IS NOT NULL
+            GROUP BY trade_date
+            ORDER BY trade_date
+          ),
+          tagged AS (
+            SELECT
+              trade_date,
+              day_pnl,
+              day_trades,
+              CASE WHEN day_pnl > 0 THEN 'W'
+                   WHEN day_pnl < 0 THEN 'L'
+                   ELSE 'B' END AS result
+            FROM daily
+          ),
+          grouped AS (
+            SELECT
+              trade_date,
+              result,
+              ROW_NUMBER() OVER (ORDER BY trade_date)
+                - ROW_NUMBER() OVER (PARTITION BY result ORDER BY trade_date) AS grp
+            FROM tagged
+          ),
+          runs AS (
+            SELECT
+              result,
+              COUNT(*)::integer AS run_length,
+              MAX(trade_date) AS run_end
+            FROM grouped
+            GROUP BY result, grp
+          )
+          SELECT
+            (SELECT COUNT(*) FROM daily)::integer AS trading_days,
+            (SELECT COALESCE(AVG(day_trades), 0)::numeric FROM daily) AS avg_daily_trades,
+            (SELECT COALESCE(day_trades, 0)::integer FROM daily
+              WHERE trade_date = CURRENT_DATE) AS today_trade_count,
+            (SELECT COALESCE(day_pnl, 0)::numeric FROM daily
+              WHERE trade_date = CURRENT_DATE) AS today_pnl,
+            (SELECT result FROM tagged ORDER BY trade_date DESC LIMIT 1) AS last_day_result,
+            (SELECT run_length FROM runs
+              ORDER BY run_end DESC LIMIT 1) AS current_run_length,
+            (SELECT COALESCE(MAX(run_length), 0)::integer FROM runs WHERE result = 'W') AS best_win_streak,
+            (SELECT COALESCE(MAX(run_length), 0)::integer FROM runs WHERE result = 'L') AS worst_loss_streak
+        `;
+        const streakResult = await db.query(streakQuery, params);
+        const streak = streakResult.rows[0] || {};
+        const lastResult = streak.last_day_result;
+        const runLen = parseInt(streak.current_run_length) || 0;
+
+        overview.trading_days = parseInt(streak.trading_days) || 0;
+        overview.avg_daily_trades = parseFloat(streak.avg_daily_trades) || 0;
+        overview.today_trade_count = parseInt(streak.today_trade_count) || 0;
+        overview.today_pnl = parseFloat(streak.today_pnl) || 0;
+        // Positive = winning streak, negative = losing streak, 0 = no streak / breakeven
+        overview.current_streak = lastResult === 'W' ? runLen
+          : lastResult === 'L' ? -runLen
+          : 0;
+        overview.best_win_streak = parseInt(streak.best_win_streak) || 0;
+        overview.worst_loss_streak = parseInt(streak.worst_loss_streak) || 0;
+      } catch (streakErr) {
+        console.error('[STREAK] calculation error:', streakErr);
+        overview.trading_days = 0;
+        overview.avg_daily_trades = 0;
+        overview.today_trade_count = 0;
+        overview.today_pnl = 0;
+        overview.current_streak = 0;
+        overview.best_win_streak = 0;
+        overview.worst_loss_streak = 0;
       }
 
       // Clean up temporary fields
@@ -2195,13 +2321,20 @@ const analyticsController = {
   async getRecommendations(req, res, next) {
     try {
       console.log('[AI] Recommendations request started');
-      
+
+      // Dashboard summary mode — short, single insight for the AiInsightCard.
+      // Cheaper than the full recommendation flow; works even when AI is not
+      // configured (falls back to a deterministic insight derived from data).
+      if (req.query.summary === 'true' || req.query.summary === '1') {
+        return analyticsController.getRecommendationSummary(req, res, next);
+      }
+
       const userSettings = await aiService.getUserSettings(req.user.id);
-      
+
       if (!userSettings.provider) {
         console.log('[ERROR] AI provider not configured');
-        return res.status(400).json({ 
-          error: 'AI recommendations are not available. AI provider not configured in settings.' 
+        return res.status(400).json({
+          error: 'AI recommendations are not available. AI provider not configured in settings.'
         });
       }
       
@@ -2761,6 +2894,611 @@ const analyticsController = {
       console.error('Error refreshing sector performance:', error);
       next(error);
     }
+  },
+
+  // Dashboard summary mode: short, single insight for the AiInsightCard.
+  // Falls back to deterministic data-driven insight if AI isn't configured
+  // (so free users still see a useful card). Caches aggressively per user+filter
+  // so the dashboard doesn't burn AI credits on every refresh.
+  async getRecommendationSummary(req, res, next) {
+    try {
+      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+      const params = [req.user.id, ...filterParams];
+      const filterHashKey = createFilterHash(convertQueryToTradeFilters(req.query));
+      const summaryCacheKey = `ai_insight_summary_${req.user.id}_${filterHashKey}`;
+
+      const cached = cache.get(summaryCacheKey);
+      if (cached) {
+        return res.json(cached);
+      }
+
+      // Pull the analytics we need to derive an insight.
+      const dataQuery = `
+        WITH completed AS (
+          SELECT * FROM trades
+          WHERE user_id = $1 ${filterConditions}
+            AND exit_price IS NOT NULL AND pnl IS NOT NULL
+        )
+        SELECT
+          (SELECT COUNT(*) FROM completed)::integer AS total_trades,
+          (SELECT COUNT(*) FROM completed WHERE pnl > 0)::integer AS winning_trades,
+          (SELECT COUNT(*) FROM completed WHERE pnl < 0)::integer AS losing_trades,
+          (SELECT COALESCE(SUM(pnl), 0) FROM completed)::numeric AS total_pnl,
+          (SELECT COALESCE(AVG(pnl), 0) FROM completed WHERE pnl > 0)::numeric AS avg_win,
+          (SELECT COALESCE(AVG(pnl), 0) FROM completed WHERE pnl < 0)::numeric AS avg_loss
+      `;
+      const dataResult = await db.query(dataQuery, params);
+      const m = dataResult.rows[0] || {};
+      const totalTrades = parseInt(m.total_trades) || 0;
+
+      // Not enough data yet — return an empty-state insight.
+      if (totalTrades < 5) {
+        const emptyInsight = {
+          type: 'system',
+          priority: 10,
+          headline: 'Your insights unlock at 10 trades',
+          body: totalTrades === 0
+            ? 'Import your first trades to unlock AI-powered insights about your edge.'
+            : `You've logged ${totalTrades} trade${totalTrades === 1 ? '' : 's'}. Insights become useful around 10+ trades.`,
+          source: 'system',
+          action_label: 'Import trades',
+          action_url: '/import'
+        };
+        const response = {
+          summary: emptyInsight,
+          summaries: [emptyInsight],
+          analysisDate: new Date().toISOString(),
+          tradesAnalyzed: totalTrades
+        };
+        cache.set(summaryCacheKey, response, 60 * 60 * 1000); // 1h
+        return res.json(response);
+      }
+
+      // Compute strongest per-symbol / per-strategy edge.
+      const edgeQuery = `
+        WITH completed AS (
+          SELECT * FROM trades
+          WHERE user_id = $1 ${filterConditions}
+            AND exit_price IS NOT NULL AND pnl IS NOT NULL
+        ),
+        sym AS (
+          SELECT symbol,
+                 COUNT(*) AS n,
+                 COUNT(*) FILTER (WHERE pnl > 0) AS wins,
+                 COALESCE(SUM(pnl), 0) AS pnl
+          FROM completed
+          GROUP BY symbol
+          HAVING COUNT(*) >= 3
+        ),
+        strat AS (
+          SELECT strategy,
+                 COUNT(*) AS n,
+                 COUNT(*) FILTER (WHERE pnl > 0) AS wins,
+                 COALESCE(SUM(pnl), 0) AS pnl
+          FROM completed
+          WHERE strategy IS NOT NULL AND strategy <> ''
+          GROUP BY strategy
+          HAVING COUNT(*) >= 3
+        )
+        SELECT 'symbol' AS kind, symbol AS label, n, wins, pnl
+        FROM sym
+        UNION ALL
+        SELECT 'strategy' AS kind, strategy AS label, n, wins, pnl
+        FROM strat
+        ORDER BY pnl DESC
+      `;
+      const edgeResult = await db.query(edgeQuery, params);
+      const edges = edgeResult.rows;
+      const top = edges[0];
+      const worst = edges[edges.length - 1];
+
+      const winRate = totalTrades > 0
+        ? ((parseInt(m.winning_trades) || 0) / totalTrades * 100)
+        : 0;
+      const avgWin = Math.abs(parseFloat(m.avg_win) || 0);
+      const avgLoss = Math.abs(parseFloat(m.avg_loss) || 0);
+
+      // -- Performance edge insight (existing data-driven behavior) --
+      const edgeInsight = (() => {
+        let headline = '';
+        let body = '';
+        let action_url = '/analytics';
+        let action_label = 'View full analytics';
+
+        if (top && parseFloat(top.pnl) > 0) {
+          const winsRate = top.n > 0 ? (parseInt(top.wins) / parseInt(top.n) * 100) : 0;
+          const sign = parseFloat(top.pnl) >= 0 ? '+' : '';
+          headline = top.kind === 'symbol'
+            ? `${top.label} is carrying your edge`
+            : `Your ${top.label} setup is working`;
+          body = `${winsRate.toFixed(0)}% win rate across ${top.n} ${top.kind === 'symbol' ? 'trades on this symbol' : 'attempts of this setup'}, ${sign}$${parseFloat(top.pnl).toFixed(0)} net.`;
+          action_label = top.kind === 'symbol' ? `View ${top.label} trades` : 'View setup breakdown';
+          action_url = top.kind === 'symbol'
+            ? `/trades?symbol=${encodeURIComponent(top.label)}`
+            : '/analytics#strategies';
+        } else if (worst && parseFloat(worst.pnl) < 0) {
+          headline = worst.kind === 'symbol'
+            ? `${worst.label} is dragging on results`
+            : `${worst.label} setup is leaking edge`;
+          body = `${worst.n} trades, $${parseFloat(worst.pnl).toFixed(0)} net. Consider tighter rules or pausing this ${worst.kind === 'symbol' ? 'symbol' : 'setup'}.`;
+          action_label = 'Investigate';
+          action_url = worst.kind === 'symbol'
+            ? `/trades?symbol=${encodeURIComponent(worst.label)}`
+            : '/analytics#strategies';
+        } else if (winRate >= 60) {
+          headline = `${winRate.toFixed(0)}% win rate — your selection is sharp`;
+          body = `Across ${totalTrades} trades, you're winning ${m.winning_trades} of them. Focus on letting winners run: avg win $${avgWin.toFixed(0)} vs avg loss $${avgLoss.toFixed(0)}.`;
+        } else if (avgWin > 0 && avgLoss > 0 && avgWin / avgLoss > 1.5) {
+          headline = `Your wins are ${(avgWin / avgLoss).toFixed(1)}x your losses`;
+          body = `Strong risk-reward across ${totalTrades} trades (${winRate.toFixed(0)}% wins). The losses you take are well-controlled.`;
+        } else if (avgWin > 0 && avgLoss > 0 && avgLoss / avgWin > 1.5) {
+          headline = 'Your losses are bigger than your wins';
+          body = `Avg loss $${avgLoss.toFixed(0)} vs avg win $${avgWin.toFixed(0)} across ${totalTrades} trades. Tighter stops or more disciplined exits would change everything.`;
+        } else {
+          headline = `${totalTrades} trades analyzed`;
+          body = `Win rate ${winRate.toFixed(0)}%. Avg win $${avgWin.toFixed(0)}, avg loss $${avgLoss.toFixed(0)}. Dig into the breakdowns below for setup-level edge.`;
+        }
+        return {
+          type: 'edge',
+          priority: 30,
+          headline,
+          body,
+          source: 'computed',
+          action_label,
+          action_url
+        };
+      })();
+
+      // -- Open-position context: earnings + news insights --
+      const contextInsights = await analyticsController
+        .computeOpenPositionInsights(req.user.id)
+        .catch(err => {
+          console.warn('[AI] open-position insights failed:', err.message);
+          return [];
+        });
+
+      // Final insights list, sorted by priority desc (higher = more urgent /
+      // more time-sensitive). Caller can render top-N or paginate.
+      let summaries = [...contextInsights, edgeInsight].sort(
+        (a, b) => (b.priority || 0) - (a.priority || 0)
+      );
+
+      // Optionally enrich with AI if (a) user has an AI provider configured
+      // AND (b) billing is disabled OR they're on the Pro tier. The
+      // deterministic insights remain the floor; AI just rewrites the
+      // recommendation bodies with deeper, context-aware analysis.
+      try {
+        const useAI = await analyticsController.shouldUseAIEnrichment(req.user.id);
+        if (useAI) {
+          summaries = await analyticsController.enrichInsightsWithAI(req.user.id, summaries);
+        }
+      } catch (aiErr) {
+        console.warn('[AI] enrichment failed, returning deterministic insights:', aiErr.message);
+      }
+
+      const response = {
+        // Keep `summary` for backward compat (current frontend reads the
+        // single top insight). New clients should iterate `summaries`.
+        summary: summaries[0] || null,
+        summaries,
+        analysisDate: new Date().toISOString(),
+        tradesAnalyzed: totalTrades
+      };
+
+      // 1h cache: earnings and news shift more frequently than pure analytics.
+      // The whole payload (incl. the deterministic edge insight) is cheap to
+      // recompute, so a shorter TTL keeps the dashboard timely without
+      // hammering Finnhub.
+      cache.set(summaryCacheKey, response, 60 * 60 * 1000);
+      return res.json(response);
+    } catch (err) {
+      console.error('[AI] summary error:', err);
+      return res.status(500).json({ error: 'Failed to compute insight summary' });
+    }
+  },
+
+  // Build insights from the user's currently-open positions:
+  //   - Earnings alerts (any open position with earnings inside the next 14d)
+  //   - Per-symbol news insights using actual headlines + position context
+  //
+  // Each insight is enriched with the user's historical performance on the
+  // symbol (win rate, trade count, avg P&L) so recommendations can be
+  // grounded in the user's own track record rather than generic advice.
+  async computeOpenPositionInsights(userId) {
+    const insights = [];
+
+    // Fetch open positions — exit_price IS NULL is the canonical "open" flag.
+    const openQuery = `
+      SELECT symbol,
+             SUM(quantity)::numeric AS total_qty,
+             AVG(entry_price)::numeric AS avg_entry,
+             COALESCE(MIN(side), 'long') AS side
+      FROM trades
+      WHERE user_id = $1
+        AND exit_price IS NULL
+        AND symbol IS NOT NULL
+        AND symbol <> ''
+      GROUP BY symbol
+      HAVING SUM(quantity) IS NOT NULL AND SUM(quantity) <> 0
+      LIMIT 50
+    `;
+    let openRows = [];
+    try {
+      const result = await db.query(openQuery, [userId]);
+      openRows = result.rows;
+    } catch (err) {
+      console.warn('[AI] open-position lookup failed:', err.message);
+      return [];
+    }
+    if (openRows.length === 0) return [];
+
+    const symbols = openRows.map(r => r.symbol);
+    const positionBySymbol = new Map(openRows.map(r => [r.symbol.toUpperCase(), r]));
+
+    // Fetch user's historical performance on each open-position symbol. This
+    // gives every recommendation an evidence base — "you've won 9 of 12 trades
+    // on AAPL" is dramatically more actionable than "consider your handling."
+    const historyBySymbol = new Map();
+    try {
+      const histResult = await db.query(`
+        SELECT
+          UPPER(symbol) AS symbol,
+          COUNT(*)::integer AS trade_count,
+          COUNT(*) FILTER (WHERE pnl > 0)::integer AS wins,
+          COUNT(*) FILTER (WHERE pnl < 0)::integer AS losses,
+          COALESCE(AVG(pnl), 0)::numeric AS avg_pnl,
+          COALESCE(SUM(pnl), 0)::numeric AS total_pnl
+        FROM trades
+        WHERE user_id = $1
+          AND symbol = ANY($2::text[])
+          AND exit_price IS NOT NULL
+          AND pnl IS NOT NULL
+        GROUP BY UPPER(symbol)
+      `, [userId, symbols]);
+      for (const row of histResult.rows) {
+        historyBySymbol.set(row.symbol, {
+          tradeCount: parseInt(row.trade_count) || 0,
+          wins: parseInt(row.wins) || 0,
+          losses: parseInt(row.losses) || 0,
+          avgPnl: parseFloat(row.avg_pnl) || 0,
+          totalPnl: parseFloat(row.total_pnl) || 0,
+          winRate: parseInt(row.trade_count) > 0
+            ? (parseInt(row.wins) / parseInt(row.trade_count)) * 100
+            : null
+        });
+      }
+    } catch (err) {
+      console.warn('[AI] history lookup failed:', err.message);
+      // Continue without per-symbol history; recommendations degrade gracefully.
+    }
+
+    // Wraps the per-symbol historical context into a one-sentence preamble.
+    // Returns "" if there's no history (new symbol for the user) so the
+    // caller can decide whether to include it.
+    const historyClause = (sym) => {
+      const h = historyBySymbol.get(sym);
+      if (!h || h.tradeCount === 0) return '';
+      if (h.tradeCount < 3) {
+        return `You've only traded ${sym} ${h.tradeCount} time${h.tradeCount === 1 ? '' : 's'} before — small sample, edge unproven.`;
+      }
+      const wr = h.winRate;
+      const verdict = wr >= 65 ? 'this is a high-conviction name for you'
+        : wr >= 55 ? 'you have a positive edge here'
+        : wr >= 45 ? 'your edge is roughly coin-flip'
+        : 'your historical performance on this name is poor';
+      return `You've traded ${sym} ${h.tradeCount} times before with a ${wr.toFixed(0)}% win rate — ${verdict}.`;
+    };
+
+    // Specific action recommendation given news tone, position direction,
+    // and the user's historical edge on the symbol. Concrete percentages
+    // beat soft "consider your handling" language.
+    const newsAction = (tone, sideLabel, h) => {
+      const strongEdge = h && h.tradeCount >= 5 && h.winRate >= 60;
+      const weakEdge = h && h.tradeCount >= 5 && h.winRate < 45;
+
+      if (tone === 'positive' && sideLabel === 'long') {
+        if (weakEdge) return 'Action: this is your chance to exit at strength. Trim 50%+ and tighten the stop on the remainder.';
+        if (strongEdge) return 'Action: let it run with a trailing stop, or trim 25% to bank gains and ride the rest.';
+        return 'Action: trim 25–33% to lock in a partial win; move the stop on the remainder to break-even.';
+      }
+      if (tone === 'positive' && sideLabel === 'short') {
+        return 'Action: your short is fighting the tape. Close half now, move stop to break-even on the rest, and reassess the thesis tonight.';
+      }
+      if (tone === 'negative' && sideLabel === 'long') {
+        if (weakEdge) return 'Action: exit fully — you have no edge on this name and the news is against you.';
+        if (strongEdge) return 'Action: trim 25–50% to reduce gross exposure, tighten the stop, and only hold if your specific entry thesis still applies.';
+        return 'Action: trim 25–50% and tighten the stop below the level the news is testing. If your thesis was tied to this news, exit fully.';
+      }
+      if (tone === 'negative' && sideLabel === 'short') {
+        return 'Action: tailwind for your short. Trail the stop down behind the move; consider adding only if the position is small and risk is defined.';
+      }
+      // Neutral tone — soft guidance but still concrete.
+      return 'Action: scan the article and ask if anything changes your thesis. If not, hold; if yes, size down 25%.';
+    };
+
+    // Specific earnings action recommendation given days until report,
+    // position direction, position-size context, and historical edge.
+    const earningsAction = (daysUntil, sideLabel, h) => {
+      const strongEdge = h && h.tradeCount >= 5 && h.winRate >= 60;
+      const weakEdge = h && h.tradeCount >= 5 && h.winRate < 45;
+      const urgent = daysUntil <= 1;
+
+      if (sideLabel === 'long') {
+        if (urgent) {
+          if (weakEdge) return 'Action: close the position before the bell. Your historical edge does not justify binary event risk.';
+          if (strongEdge) return 'Action: you have an edge on this name, but earnings is still binary. Trim to half and let the rest ride if your conviction is high.';
+          return 'Action: trim to half position before the bell, or close fully. The volatility ranges typically blow through normal stops.';
+        }
+        if (daysUntil <= 3) {
+          return `Action: define your plan in the next 24h. Default: trim ${weakEdge ? '50%+' : '25–50%'} now and decide on the remainder by ${daysUntil === 2 ? 'tomorrow' : 'the day before'}.`;
+        }
+        return `Action: ${weakEdge ? 'plan to exit before the report' : 'decide whether to hold through or close before the date'}. Earnings adds binary risk that won't respect your normal stop.`;
+      }
+      // Short position
+      if (urgent) {
+        return 'Action: short into earnings is high-variance. Size down, define max loss with a hard stop, or close partial — short squeezes happen on beats.';
+      }
+      if (daysUntil <= 3) {
+        return 'Action: tighten the stop and reduce size by at least 25% before the report. Asymmetric upside risk against you.';
+      }
+      return 'Action: have an exit plan before earnings day. Short squeezes from surprise beats can take out wide stops.';
+    };
+
+    // === Earnings alerts ===
+    try {
+      const EarningsService = require('../services/earningsService');
+      const earnings = await EarningsService.getEarningsForSymbols(symbols);
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+
+      for (const e of earnings || []) {
+        if (!e || !e.symbol || !e.date) continue;
+        const earningsDate = new Date(e.date);
+        if (Number.isNaN(earningsDate.getTime())) continue;
+        earningsDate.setHours(0, 0, 0, 0);
+        const daysUntil = Math.ceil((earningsDate - now) / (1000 * 60 * 60 * 24));
+        if (daysUntil < 0 || daysUntil > 14) continue;
+
+        const pos = positionBySymbol.get(String(e.symbol).toUpperCase());
+        if (!pos) continue;
+
+        const epsEst = parseFloat(e.epsEstimate);
+        const revEst = parseFloat(e.revenueEstimate);
+        const qty = Math.abs(parseFloat(pos.total_qty) || 0);
+        const avgEntry = parseFloat(pos.avg_entry) || 0;
+        const sideLabel = String(pos.side || 'long').toLowerCase() === 'short' ? 'short' : 'long';
+
+        const whenLabel = daysUntil === 0 ? 'today'
+          : daysUntil === 1 ? 'tomorrow'
+          : `in ${daysUntil} days`;
+        const hourLabel = e.hour === 'bmo' ? 'before open'
+          : e.hour === 'amc' ? 'after close'
+          : '';
+
+        const sym = String(e.symbol).toUpperCase();
+        const history = historyBySymbol.get(sym);
+
+        const bits = [];
+        bits.push(`Your ${sideLabel} position: ${qty} sh @ $${avgEntry.toFixed(2)} avg.`);
+        if (Number.isFinite(epsEst)) bits.push(`Street consensus: $${epsEst.toFixed(2)} EPS.`);
+        if (Number.isFinite(revEst)) {
+          const revB = (revEst / 1e9).toFixed(2);
+          bits.push(`Revenue: $${revB}B est.`);
+        }
+        const hist = historyClause(sym);
+        if (hist) bits.push(hist);
+        bits.push(earningsAction(daysUntil, sideLabel, history));
+
+        insights.push({
+          type: 'earnings',
+          priority: daysUntil <= 1 ? 100 : daysUntil <= 3 ? 80 : 60,
+          headline: `${e.symbol} reports earnings ${whenLabel}${hourLabel ? ` (${hourLabel})` : ''}`,
+          body: bits.join(' '),
+          source: 'context',
+          action_label: `View ${e.symbol} trades`,
+          action_url: `/trades?symbol=${encodeURIComponent(e.symbol)}`
+        });
+      }
+    } catch (err) {
+      console.warn('[AI] earnings insight failed:', err.message);
+    }
+
+    // === Per-symbol news insights ===
+    // For each open position with recent news, surface the most signal-rich
+    // headline and infer rough tone via keyword matching. Finnhub free tier
+    // doesn't include sentiment, so this is intentionally crude — it catches
+    // the obvious signals (beats/raises/upgrades vs. miss/cut/downgrade/
+    // recall) and leaves "neutral" as the safe fallback rather than guessing.
+    try {
+      const NewsService = require('../services/newsService');
+      const newsItems = await NewsService.getNewsForSymbols(symbols);
+      const dayAgo = Date.now() / 1000 - 36 * 60 * 60; // 36h window — catches overnight news
+
+      // Group recent items by symbol.
+      const itemsBySymbol = new Map();
+      for (const item of newsItems || []) {
+        if (!item || !item.symbol || !item.headline) continue;
+        const ts = Number(item.datetime) || 0;
+        if (ts < dayAgo) continue;
+        const sym = String(item.symbol).toUpperCase();
+        if (!itemsBySymbol.has(sym)) itemsBySymbol.set(sym, []);
+        itemsBySymbol.get(sym).push(item);
+      }
+
+      // Sort the per-symbol list and surface up to 4 strongest news insights
+      // overall (so a user with many open positions doesn't drown in news).
+      const ranked = [];
+      for (const [sym, list] of itemsBySymbol.entries()) {
+        const pos = positionBySymbol.get(sym);
+        if (!pos) continue;
+        // Score each headline: keyword tone strength + recency.
+        const scored = list.map(item => {
+          const tone = classifyHeadlineTone(item.headline);
+          const ageHours = Math.max(0, (Date.now() / 1000 - Number(item.datetime || 0)) / 3600);
+          // Stronger keyword signals + fresher articles rank higher.
+          const score = (tone.magnitude * 10) + Math.max(0, 24 - ageHours);
+          return { item, tone, score };
+        }).sort((a, b) => b.score - a.score);
+
+        const top = scored[0];
+        if (!top) continue;
+        ranked.push({ sym, pos, top, count: list.length });
+      }
+
+      // Show up to 4, prioritizing strong tone signals over volume alone.
+      ranked.sort((a, b) => b.top.score - a.top.score);
+
+      for (const { sym, pos, top, count } of ranked.slice(0, 4)) {
+        const sideLabel = String(pos.side || 'long').toLowerCase() === 'short' ? 'short' : 'long';
+        const qty = Math.abs(parseFloat(pos.total_qty) || 0);
+        const headlineText = String(top.item.headline || '').trim();
+        const source = top.item.source ? String(top.item.source).trim() : '';
+        const tone = top.tone.label; // 'positive' | 'negative' | 'neutral'
+        const history = historyBySymbol.get(sym);
+
+        // Headline as the insight headline; body gets context + concrete action.
+        const insightHeadline = `${sym}: ${headlineText}`;
+        const bodyParts = [];
+        if (source) bodyParts.push(source + '.');
+        bodyParts.push(`Your ${sideLabel} position: ${qty} sh.`);
+        if (tone === 'positive' && sideLabel === 'long') bodyParts.push('Headline tone reads positive for the long.');
+        else if (tone === 'positive' && sideLabel === 'short') bodyParts.push('Headline tone reads positive — bad for the short.');
+        else if (tone === 'negative' && sideLabel === 'long') bodyParts.push('Headline tone reads negative — bad for the long.');
+        else if (tone === 'negative' && sideLabel === 'short') bodyParts.push('Headline tone reads negative — good for the short.');
+        else if (count >= 4) bodyParts.push(`${count} headlines in the last 36h — something is moving the name.`);
+
+        const hist = historyClause(sym);
+        if (hist) bodyParts.push(hist);
+        bodyParts.push(newsAction(tone, sideLabel, history));
+
+        // Priority: stronger keyword tone = higher priority. Neutral = lower.
+        const priority = tone === 'neutral'
+          ? 40 + Math.min(15, count * 3)
+          : 70 + Math.min(20, top.tone.magnitude * 5);
+
+        insights.push({
+          type: 'news',
+          priority,
+          tone,
+          headline: insightHeadline,
+          body: bodyParts.join(' '),
+          source: 'context',
+          action_label: top.item.url ? 'Read article' : 'Open news rail',
+          action_url: top.item.url || '/dashboard',
+          external_url: !!top.item.url
+        });
+      }
+    } catch (err) {
+      console.warn('[AI] news insight failed:', err.message);
+    }
+
+    return insights;
+  },
+
+  // Decide whether AI enrichment should run for this user. Two gates:
+  //   1) An AI provider must be configured with whatever credential it needs.
+  //   2) If billing is enabled on the instance, the user must be on Pro tier.
+  //      If billing is disabled (self-hosted), AI runs for everyone.
+  async shouldUseAIEnrichment(userId) {
+    try {
+      const aiSettings = await aiService.getUserSettings(userId);
+      if (!aiSettings || !aiSettings.provider) return false;
+
+      const keyRequired = ['gemini', 'claude', 'openai'];
+      if (keyRequired.includes(aiSettings.provider) && !aiSettings.apiKey) return false;
+
+      const urlRequired = ['ollama', 'local'];
+      if (urlRequired.includes(aiSettings.provider) && !aiSettings.apiUrl) return false;
+
+      const TierService = require('../services/tierService');
+      const billingEnabled = await TierService.isBillingEnabled();
+      if (!billingEnabled) return true;
+
+      const tier = await TierService.getUserTier(userId);
+      return tier === 'pro';
+    } catch (err) {
+      console.warn('[AI] shouldUseAIEnrichment check failed:', err.message);
+      return false;
+    }
+  },
+
+  // Rewrite each insight body via the user's configured AI provider. Sends a
+  // single batched prompt to keep cost/latency bounded regardless of how many
+  // insights are in the list. Falls back to the original deterministic
+  // body on any parsing/AI failure so the dashboard never goes blank.
+  async enrichInsightsWithAI(userId, insights) {
+    if (!Array.isArray(insights) || insights.length === 0) return insights;
+
+    // Pre-strip non-enrichable insights (e.g. system/empty-state). We still
+    // return them in the output so ordering and priorities stay intact.
+    const enrichable = insights
+      .map((ins, idx) => ({ ins, idx }))
+      .filter(({ ins }) => ins.type === 'earnings' || ins.type === 'news' || ins.type === 'edge');
+
+    if (enrichable.length === 0) return insights;
+
+    const numbered = enrichable.map(({ ins }, i) => ({
+      n: i + 1,
+      type: ins.type,
+      tone: ins.tone || null,
+      headline: ins.headline,
+      body: ins.body
+    }));
+
+    const prompt = `You are a senior trading coach. The user already has the following deterministic insights about their open positions and trading performance. Your job is to rewrite ONLY the BODY text of each insight to be sharper, more analytical, and more useful — keep the same data points but add concrete reasoning and a clearer action.
+
+Rules — non-negotiable:
+- Return ONLY a valid JSON array, no commentary, no markdown fences, no preface.
+- Each item: {"n": <number>, "body": "<rewritten body>"}.
+- Same number of items as input, same "n" values.
+- Keep the original facts (position size, EPS, win rate, headline). Do not invent new numbers.
+- Each body ≤ 320 characters. Single paragraph, no line breaks, no bullet points.
+- End each body with a concrete action — a specific percentage to trim, a specific stop type, or an explicit "exit" / "hold" call. No "consider" without a what.
+- Match the tone of the data: positive news + winning history = lean in; negative news + losing history = exit faster.
+
+Input insights:
+${JSON.stringify(numbered, null, 2)}
+
+Respond with the JSON array now.`;
+
+    let raw;
+    try {
+      raw = await aiService.generateResponse(userId, prompt);
+    } catch (err) {
+      console.warn('[AI] enrichment call failed:', err.message);
+      return insights;
+    }
+    if (!raw || typeof raw !== 'string') return insights;
+
+    // Parse defensively — the model may wrap JSON in ```json fences or add
+    // trailing prose despite instructions. Extract the first JSON array.
+    let parsed;
+    try {
+      const match = raw.match(/\[[\s\S]*\]/);
+      if (!match) throw new Error('no JSON array in response');
+      parsed = JSON.parse(match[0]);
+    } catch (err) {
+      console.warn('[AI] enrichment JSON parse failed:', err.message);
+      return insights;
+    }
+    if (!Array.isArray(parsed)) return insights;
+
+    // Build n → body map and apply to the original insights array.
+    const enrichedBodyByN = new Map();
+    for (const item of parsed) {
+      if (item && Number.isFinite(item.n) && typeof item.body === 'string') {
+        enrichedBodyByN.set(item.n, item.body.trim());
+      }
+    }
+
+    const out = insights.slice();
+    enrichable.forEach(({ idx }, i) => {
+      const newBody = enrichedBodyByN.get(i + 1);
+      if (newBody && newBody.length > 20) {
+        out[idx] = { ...out[idx], body: newBody, ai_enhanced: true };
+      }
+    });
+    return out;
   },
 
   buildRecommendationPrompt(metrics, trades, tradingProfile, sectorData) {

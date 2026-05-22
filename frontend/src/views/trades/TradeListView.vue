@@ -8,10 +8,10 @@
       </p>
     </div>
     
-    <!-- Buttons Row -->
-    <div class="flex items-center justify-between mb-6">
-      <button 
-        @click="goBack" 
+    <!-- Back link -->
+    <div class="mb-4">
+      <button
+        @click="goBack"
         class="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
       >
         <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -19,23 +19,10 @@
         </svg>
         Back
       </button>
-      <router-link to="/trades/new" class="btn-primary">
-        Add trade
-      </router-link>
     </div>
 
-    <!-- Enrichment Status -->
-    <EnrichmentStatus />
-
-    <div class="mt-8 card">
-      <div class="card-body">
-        <TradeFilters @filter="handleFilter" />
-      </div>
-    </div>
-
-
-    <!-- Total P/L Summary for Filtered Results -->
-    <div v-if="tradesStore.trades.length > 0" class="mt-6">
+    <!-- Total P/L Summary for Filtered Results (moved to top) -->
+    <div v-if="tradesStore.trades.length > 0" class="mb-6">
       <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-4">
         <!-- Mobile Layout: Stack vertically -->
         <div class="block sm:hidden space-y-4">
@@ -155,7 +142,65 @@
       </div>
     </div>
 
-    <div class="mt-8">
+    <!-- Enrichment Status -->
+    <EnrichmentStatus />
+
+    <!-- Action bar: filters icon + Add trade, just above the table -->
+    <div class="mt-6 mb-4 flex items-center justify-end gap-2">
+      <button
+        @click="showFiltersModal = true"
+        class="relative inline-flex items-center gap-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+        :aria-label="hasActiveFilters ? 'Filters (active)' : 'Filters'"
+      >
+        <FunnelIcon class="h-4 w-4" />
+        <span>Filters</span>
+        <span
+          v-if="hasActiveFilters"
+          class="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-primary-500 ring-2 ring-white dark:ring-gray-900"
+        ></span>
+      </button>
+      <router-link to="/trades/new" class="btn-primary">
+        Add trade
+      </router-link>
+    </div>
+
+    <!-- Filters modal -->
+    <transition
+      enter-active-class="transition-opacity duration-150"
+      enter-from-class="opacity-0"
+      enter-to-class="opacity-100"
+      leave-active-class="transition-opacity duration-150"
+      leave-from-class="opacity-100"
+      leave-to-class="opacity-0"
+    >
+      <div
+        v-if="showFiltersModal"
+        class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm sm:p-6"
+        @click.self="showFiltersModal = false"
+        @keydown.esc="showFiltersModal = false"
+      >
+        <div class="my-8 w-full max-w-4xl rounded-lg bg-white shadow-2xl dark:bg-gray-800">
+          <div class="flex items-center justify-between border-b border-gray-200 px-5 py-3 dark:border-gray-700">
+            <h3 class="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white">
+              <FunnelIcon class="h-5 w-5 text-primary-500" />
+              Filters
+            </h3>
+            <button
+              @click="showFiltersModal = false"
+              class="rounded-md p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+              aria-label="Close filters"
+            >
+              <XMarkIcon class="h-5 w-5" />
+            </button>
+          </div>
+          <div class="p-5">
+            <TradeFilters @filter="handleFilter" />
+          </div>
+        </div>
+      </div>
+    </transition>
+
+    <div class="mt-2">
       <div v-if="tradesStore.initialLoading" class="flex justify-center py-12">
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
       </div>
@@ -989,7 +1034,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { useUserTimezone } from '@/composables/useUserTimezone'
-import { DocumentTextIcon, ChatBubbleLeftIcon } from '@heroicons/vue/24/outline'
+import { DocumentTextIcon, ChatBubbleLeftIcon, FunnelIcon, XMarkIcon } from '@heroicons/vue/24/outline'
 import TradeFilters from '@/components/trades/TradeFilters.vue'
 import TradeCommentsDialog from '@/components/trades/TradeCommentsDialog.vue'
 import EnrichmentStatus from '@/components/trades/EnrichmentStatus.vue'
@@ -1066,6 +1111,10 @@ const selectedTrades = ref([])
 const showDeleteConfirm = ref(false)
 const showBulkTagModal = ref(false)
 const bulkTagsToAdd = ref([])
+
+// Filters modal
+const showFiltersModal = ref(false)
+const hasActiveFilters = ref(false)
 
 // Column management
 const tableColumns = ref([])
@@ -1290,9 +1339,25 @@ function formatTime(datetime) {
   return formatTimeTz(datetime)
 }
 
+function isMeaningfulFilter(key, value) {
+  if (value === null || value === undefined || value === '') return false
+  if (Array.isArray(value) && value.length === 0) return false
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    return Object.values(value).some((v) => v !== null && v !== undefined && v !== '')
+  }
+  const defaultKeywords = new Set(['all', 'All'])
+  if (defaultKeywords.has(value)) return false
+  return true
+}
+
 function handleFilter(filters) {
+  hasActiveFilters.value = Object.entries(filters || {}).some(([key, value]) =>
+    isMeaningfulFilter(key, value)
+  )
   tradesStore.setFilters(filters)
   tradesStore.fetchTrades() // fetchTrades now includes analytics in parallel
+  // Close the filters modal after applying
+  if (showFiltersModal.value) showFiltersModal.value = false
 }
 
 function goToPage(page) {

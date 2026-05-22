@@ -64,21 +64,8 @@
           <div class="hidden sm:flex sm:items-center sm:space-x-6">
             <div v-if="authStore.isAuthenticated" class="flex items-center space-x-4">
               <GlobalAccountSelector />
-              <router-link
-                to="/profile"
-                class="p-2 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
-                :title="authStore.user?.username"
-                :aria-label="`Profile: ${authStore.user?.username}`"
-              >
-                <UserIcon class="h-5 w-5" />
-              </router-link>
               <NotificationBell />
-              <button
-                @click="authStore.logout"
-                class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-              >
-                Logout
-              </button>
+              <UserMenu />
             </div>
             
             <div v-else class="flex items-center space-x-3">
@@ -228,10 +215,38 @@
                 <GlobalAccountSelector />
               </div>
               <div class="px-3 mb-3">
+                <div class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
+                  Signed in as
+                </div>
                 <div class="text-base font-medium text-gray-800 dark:text-gray-200">
                   {{ authStore.user?.username }}
                 </div>
               </div>
+              <router-link
+                to="/profile"
+                @click="isMobileMenuOpen = false"
+                class="block mx-3 px-4 py-3 rounded-lg text-base font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700 transition-all duration-200"
+                :class="{ 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300 shadow-sm': $route.name === 'profile' }"
+              >
+                My Profile
+              </router-link>
+              <router-link
+                to="/settings"
+                @click="isMobileMenuOpen = false"
+                class="block mx-3 px-4 py-3 rounded-lg text-base font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700 transition-all duration-200"
+                :class="{ 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300 shadow-sm': $route.name === 'settings' }"
+              >
+                Settings
+              </router-link>
+              <router-link
+                v-if="isAdmin"
+                to="/admin/users"
+                @click="isMobileMenuOpen = false"
+                class="block mx-3 px-4 py-3 rounded-lg text-base font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700 transition-all duration-200"
+                :class="{ 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300 shadow-sm': $route.name?.startsWith('admin') }"
+              >
+                Admin
+              </router-link>
               <button
                 @click="authStore.logout(); isMobileMenuOpen = false"
                 class="block w-full text-left mx-3 px-4 py-3 rounded-lg text-base font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700 transition-all duration-200"
@@ -283,11 +298,12 @@ import { ref, onMounted, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { useRegistrationMode } from '@/composables/useRegistrationMode'
-import { SunIcon, MoonIcon, Bars3Icon, XMarkIcon, ChevronDownIcon, ChevronUpIcon, UserIcon } from '@heroicons/vue/24/outline'
+import { SunIcon, MoonIcon, Bars3Icon, XMarkIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/vue/24/outline'
 import config from '@/config'
 import NavDropdown from '@/components/common/NavDropdown.vue'
 import NotificationBell from '@/components/common/NotificationBell.vue'
 import GlobalAccountSelector from '@/components/layout/GlobalAccountSelector.vue'
+import UserMenu from '@/components/layout/UserMenu.vue'
 
 const authStore = useAuthStore()
 const uiPreferencesStore = useUiPreferencesStore()
@@ -414,8 +430,7 @@ const baseNavigation = [
     ]
   },
   { name: 'Calendar', to: '/calendar', route: 'calendar' },
-  { name: 'Import', to: '/import', route: 'import' },
-  { name: 'Settings', to: '/settings', route: 'settings' }
+  { name: 'Import', to: '/import', route: 'import' }
 ]
 
 const publicNavigation = computed(() => {
@@ -439,51 +454,10 @@ const publicNavigation = computed(() => {
   return nav
 })
 
-const navigation = computed(() => {
-  const nav = [...baseNavigation]
+const navigation = computed(() => baseNavigation)
 
-  // Add admin navigation for admin users
-  if (authStore.user?.role === 'admin' || authStore.user?.role === 'owner') {
-    const adminItems = [
-      {
-        name: 'User Management',
-        to: '/admin/users',
-        route: 'admin-users',
-        description: 'Manage users and permissions'
-      }
-    ]
-
-    if (isBillingEnabled.value) {
-      adminItems.push(
-        {
-          name: 'OAuth Applications',
-          to: '/admin/oauth',
-          route: 'oauth-clients',
-          description: 'Manage OAuth2 clients and integrations'
-        },
-        {
-          name: 'Testimonials',
-          to: '/admin/testimonials',
-          route: 'admin-testimonials',
-          description: 'Manage user reviews for homepage'
-        }
-      )
-    }
-
-    adminItems.push({
-      name: 'Backup Management',
-      to: '/admin/backups',
-      route: 'admin-backups',
-      description: 'Full site backups and restore'
-    })
-    nav.push({
-      name: 'Admin',
-      type: 'dropdown',
-      items: adminItems
-    })
-  }
-
-  return nav
+const isAdmin = computed(() => {
+  return authStore.user?.role === 'admin' || authStore.user?.role === 'owner'
 })
 
 function toggleDarkMode() {
