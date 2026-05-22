@@ -28,7 +28,11 @@ export default defineConfig(({ command, mode }) => {
   ],
   resolve: {
     alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url))
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+      // vuedraggable 4.1.0 points its package "module" field at a UMD bundle.
+      // That bundle can trip strict self-hosted CSP because it is treated as eval-like
+      // script code, so force Vite to consume the source ESM entry instead.
+      'vuedraggable': fileURLToPath(new URL('./node_modules/vuedraggable/src/vuedraggable.js', import.meta.url))
     }
   },
   server: {
