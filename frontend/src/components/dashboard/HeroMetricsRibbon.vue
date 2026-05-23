@@ -13,42 +13,46 @@
              (never truncated) and a length-aware size class so it always
              reads completely. Sparkline is hidden below xl since the number
              takes priority for available space. -->
-        <div class="lg:flex-[2] min-w-0">
+        <div class="lg:flex-[2] min-w-0 flex flex-col">
           <div class="flex items-baseline justify-between mb-1 gap-2">
             <span class="text-label whitespace-nowrap">Net P&amp;L</span>
             <span class="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{{ rangeLabel }}</span>
           </div>
-          <div class="flex items-center gap-3 min-w-0">
-            <div
-              class="text-mono-num font-semibold tracking-tight leading-none whitespace-nowrap"
-              :class="[pnlValueClass, pnlSizeClass]"
-            >
-              {{ formatSignedCurrency(netPnl) }}
+          <!-- Value block is bottom-anchored with mt-auto so the hero number,
+               win-rate, profit-factor and streak all share a virtual row at
+               the bottom of the ribbon (the outer flex uses items-stretch so
+               every column has the same height). The sub-text below the
+               number lines up with each column's own sub-text. -->
+          <div class="mt-auto pt-1">
+            <div class="flex items-end gap-3 min-w-0">
+              <div
+                class="text-mono-num font-semibold tracking-tight leading-none whitespace-nowrap"
+                :class="[pnlValueClass, pnlSizeClass]"
+              >
+                {{ formatSignedCurrency(netPnl) }}
+              </div>
+              <div
+                v-if="sparklineValues.length >= 2"
+                class="hidden xl:flex flex-1 min-w-0 items-center pb-1"
+              >
+                <Sparkline
+                  :values="sparklineValues"
+                  :width="120"
+                  :height="32"
+                  :stroke-width="1.75"
+                  fill
+                  class="w-full"
+                />
+              </div>
             </div>
-            <!-- Sparkline takes whatever horizontal space the P&L number
-                 doesn't need. min-w-0 + flex-1 lets it shrink to nothing
-                 when the number is huge but grow to fill otherwise. -->
-            <div
-              v-if="sparklineValues.length >= 2"
-              class="hidden xl:flex flex-1 min-w-0 items-center"
-            >
-              <Sparkline
-                :values="sparklineValues"
-                :width="120"
-                :height="32"
-                :stroke-width="1.75"
-                fill
-                class="w-full"
-              />
+            <div class="mt-1 text-xs text-gray-500 dark:text-gray-400 text-mono-num">
+              <span v-if="totalTrades > 0">
+                {{ totalTrades }} {{ totalTrades === 1 ? 'trade' : 'trades' }}<!--
+                --><span v-if="tradingDays > 0"> · {{ tradingDays }} {{ tradingDays === 1 ? 'day' : 'days' }}</span><!--
+                --><span v-if="totalCosts > 0"> · {{ formatCurrency(totalCosts) }} costs</span>
+              </span>
+              <span v-else class="italic">Import trades to see your P&amp;L</span>
             </div>
-          </div>
-          <div class="mt-1 text-xs text-gray-500 dark:text-gray-400 text-mono-num">
-            <span v-if="totalTrades > 0">
-              {{ totalTrades }} {{ totalTrades === 1 ? 'trade' : 'trades' }}<!--
-              --><span v-if="tradingDays > 0"> · {{ tradingDays }} {{ tradingDays === 1 ? 'day' : 'days' }}</span><!--
-              --><span v-if="totalCosts > 0"> · {{ formatCurrency(totalCosts) }} costs</span>
-            </span>
-            <span v-else class="italic">Import trades to see your P&amp;L</span>
           </div>
         </div>
 
