@@ -222,9 +222,12 @@ const streakStats = computed(() => {
   const todayPnl = parseFloat(lastDay?.daily_pnl ?? lastDay?.dailyPnL ?? 0) || 0
   const todayTrades = parseInt(lastDay?.trade_count ?? lastDay?.tradeCount ?? 0) || 0
 
-  // Is the last entry actually today? Compare as YYYY-MM-DD strings to dodge TZ.
+  // Is the last entry actually today? Compare as YYYY-MM-DD strings in LOCAL
+  // time. toISOString returns UTC, which rolls forward in the evening for US
+  // timezones and would otherwise misclassify Friday-evening data as Saturday.
   const lastDateStr = lastDay?.trade_date || lastDay?.tradeDate || ''
-  const todayStr = new Date().toISOString().slice(0, 10)
+  const nowLocal = new Date()
+  const todayStr = `${nowLocal.getFullYear()}-${String(nowLocal.getMonth() + 1).padStart(2, '0')}-${String(nowLocal.getDate()).padStart(2, '0')}`
   const isToday = String(lastDateStr).slice(0, 10) === todayStr
 
   const avgDailyTrades = days.length > 0 ? totalTradeCount / days.length : 0

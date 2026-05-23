@@ -143,7 +143,16 @@ function emptyCellColor() {
   return 'rgba(156, 163, 175, 0.15)'
 }
 
-const todayStr = computed(() => new Date().toISOString().slice(0, 10))
+// Local date (NOT UTC). toISOString() returns UTC, which rolls over to the
+// next day for US timezones in the evening — that's why the "today" dot was
+// landing on Saturday while local Friday was still in progress.
+const todayStr = computed(() => {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+})
 
 const months = computed(() => {
   const result = []

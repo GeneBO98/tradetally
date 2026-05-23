@@ -145,7 +145,10 @@ const streakStats = computed(() => {
     else break
   }
   const current = lastR === 'W' ? lastRun : lastR === 'L' ? -lastRun : 0
-  const todayStr = new Date().toISOString().slice(0, 10)
+  // Local date (NOT UTC) — toISOString rolls forward into tomorrow's date
+  // for US timezones in the evening.
+  const nowLocal = new Date()
+  const todayStr = `${nowLocal.getFullYear()}-${String(nowLocal.getMonth() + 1).padStart(2, '0')}-${String(nowLocal.getDate()).padStart(2, '0')}`
   const hasToday = last.date === todayStr
   return {
     current,
