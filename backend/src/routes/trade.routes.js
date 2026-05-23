@@ -42,9 +42,15 @@ const upload = multer({
   }
 });
 
+// Each CSV import does up to 2 requests against this limiter (/import/validate
+// then /import), and delete operations share the same budget. The default of
+// 100 leaves room for ~50 bulk imports per 15-minute window. Self-hosters can
+// raise it via IMPORT_RATE_LIMIT_MAX if their users routinely bulk-import more.
+const importRateLimitMax = parseInt(process.env.IMPORT_RATE_LIMIT_MAX) || 100;
+const importRateLimitWindowMs = parseInt(process.env.IMPORT_RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000;
 const importLimiter = createRateLimiter({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
+  windowMs: importRateLimitWindowMs,
+  max: importRateLimitMax,
   message: 'Too many import requests. Please try again later.'
 });
 
