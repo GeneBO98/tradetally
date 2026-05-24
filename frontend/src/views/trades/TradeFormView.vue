@@ -1964,6 +1964,17 @@ async function loadTrade() {
           const tradeCommission = parseFloat(tradeData.commission) || 0
           const tradeFees = parseFloat(tradeData.fees) || 0
 
+          // Pre-scan: if ANY execution already carries non-zero commission or fees, those
+          // per-execution values are the source of truth (matches backend pnlEngine logic).
+          // Otherwise the trade-level totals get distributed proportionally across executions.
+          // Without this pre-scan, an option-expired-worthless trade with $2.44 commission on
+          // the entry leg would also get half of trade.commission added to the $0 exit leg,
+          // double-counting on save. (Issue #318)
+          const anyExecHasCost = tradeData.executions.some(e =>
+            (e.commission !== undefined && e.commission !== null && parseFloat(e.commission) !== 0) ||
+            (e.fees !== undefined && e.fees !== null && parseFloat(e.fees) !== 0)
+          )
+
           // Use existing executions - preserve format (grouped vs individual)
           const mapped = tradeData.executions.map(exec => {
             console.log('[TRADE FORM] Processing execution:', exec)
@@ -1972,11 +1983,6 @@ async function loadTrade() {
             const execQuantity = parseFloat(exec.quantity) || 0
             const proportion = totalQuantity > 0 ? execQuantity / totalQuantity : 0
 
-            // Determine commission/fees for this specific execution:
-            // 1. If this execution has a non-zero commission field, use it directly
-            // 2. If no commission field but has non-zero fees, use fees as commission (fresh CSV import)
-            // 3. Otherwise, distribute trade-level costs proportionally. Tradovate imports may
-            //    preserve commission: 0 on executions while broker fee settings live at trade level.
             let execCommission = 0
             let execFees = 0
 
@@ -1984,18 +1990,24 @@ async function loadTrade() {
             const thisExecHasNonZeroFees = exec.fees !== undefined && exec.fees !== null && parseFloat(exec.fees) !== 0
 
             if (thisExecHasNonZeroCommission) {
-              // Execution has a real commission value set (from previous save) - use it directly
+              // Execution has a real commission value set - use it directly
               execCommission = parseFloat(exec.commission) || 0
-              // Only include fees if they're separate from commission
               execFees = parseFloat(exec.fees) || 0
             } else if (thisExecHasNonZeroFees) {
-              // No commission field, but has non-zero fees - use fees as commission
-              // This handles CSV imports where commission is stored in execution.fees
-              // Set fees to 0 to avoid double-counting in P&L calculation
+              // No commission field, but has non-zero fees - use fees as commission.
+              // Handles CSV imports where broker cost is stored in execution.fees only.
               execCommission = parseFloat(exec.fees) || 0
               execFees = 0
+            } else if (anyExecHasCost) {
+              // Another leg carries the cost — this one is genuinely $0 (e.g. option expired
+              // worthless with no exit commission). Do NOT prorate trade-level totals here,
+              // or we'll double-count when the backend sums per-execution costs.
+              execCommission = 0
+              execFees = 0
             } else {
-              // Neither commission field nor non-zero fees - distribute trade-level proportionally
+              // No execution carries any cost - distribute trade-level proportionally.
+              // Tradovate imports preserve commission: 0 on executions while broker fee
+              // settings live at trade level.
               execCommission = tradeCommission * proportion
               execFees = tradeFees * proportion
             }
