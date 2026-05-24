@@ -148,7 +148,7 @@
     <!-- Action bar: filters icon + Add trade, just above the table -->
     <div class="mt-6 mb-4 flex items-center justify-end gap-2">
       <button
-        @click="showFiltersModal = true"
+        @click="openFiltersModal"
         class="relative inline-flex items-center gap-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
         :aria-label="hasActiveFilters ? 'Filters (active)' : 'Filters'"
       >
@@ -1115,6 +1115,18 @@ const bulkTagsToAdd = ref([])
 // Filters modal
 const showFiltersModal = ref(false)
 const hasActiveFilters = ref(false)
+// TradeFilters' onMounted auto-emits 'filter' when saved/store filters exist,
+// which would immediately close a freshly opened modal. Suppress the close
+// for a short window after open so the auto-apply emit doesn't dismiss it.
+const ignoreNextFilterClose = ref(false)
+
+function openFiltersModal() {
+  showFiltersModal.value = true
+  ignoreNextFilterClose.value = true
+  setTimeout(() => {
+    ignoreNextFilterClose.value = false
+  }, 250)
+}
 
 // Column management
 const tableColumns = ref([])
@@ -1356,8 +1368,11 @@ function handleFilter(filters) {
   )
   tradesStore.setFilters(filters)
   tradesStore.fetchTrades() // fetchTrades now includes analytics in parallel
-  // Close the filters modal after applying
-  if (showFiltersModal.value) showFiltersModal.value = false
+  // Close the filters modal after applying — but skip the auto-emit fired by
+  // TradeFilters' onMounted (issue #327: modal flashed open then closed).
+  if (showFiltersModal.value && !ignoreNextFilterClose.value) {
+    showFiltersModal.value = false
+  }
 }
 
 function goToPage(page) {
