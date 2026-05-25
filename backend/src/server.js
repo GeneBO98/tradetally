@@ -75,6 +75,7 @@ const webhookEventBridge = require('./services/webhookEventBridge');
 const crmSyncScheduler = require('./services/crmSyncScheduler');
 const activityTrackingService = require('./services/activityTrackingService');
 const engagementScheduler = require('./services/engagementScheduler');
+const demoTradeActivityScheduler = require('./services/demoTradeActivityScheduler');
 const activityTrackingMiddleware = require('./middleware/activityTracking');
 const emailTrackingRoutes = require('./routes/emailTracking.routes');
 const backgroundWorker = require('./workers/backgroundWorker');
@@ -518,6 +519,14 @@ async function startServer() {
       console.log('Engagement tracking disabled (ENABLE_ENGAGEMENT_TRACKING=false)');
     }
 
+    if (process.env.ENABLE_DEMO_TRADE_AUTOMATION !== 'false') {
+      console.log('Starting demo trade activity scheduler...');
+      demoTradeActivityScheduler.start();
+      console.log('[SUCCESS] Demo trade activity scheduler started');
+    } else {
+      console.log('Demo trade activity scheduler disabled (ENABLE_DEMO_TRADE_AUTOMATION=false)');
+    }
+
     // Initialize push notification service
     if (process.env.ENABLE_PUSH_NOTIFICATIONS === 'true') {
       console.log('✓ Push notification service loaded');
@@ -632,6 +641,7 @@ process.on('SIGTERM', async () => {
   newsScheduler.stop();
   earningsScheduler.stop();
   symbolCategoryScheduler.stop();
+  demoTradeActivityScheduler.stop();
   if (typeof GamificationScheduler.stopScheduler === 'function') GamificationScheduler.stopScheduler();
   if (typeof TrialScheduler.stopScheduler === 'function') TrialScheduler.stopScheduler();
   if (RetentionEmailScheduler.stopScheduler) RetentionEmailScheduler.stopScheduler();
@@ -654,6 +664,7 @@ process.on('SIGINT', async () => {
   newsScheduler.stop();
   earningsScheduler.stop();
   symbolCategoryScheduler.stop();
+  demoTradeActivityScheduler.stop();
   if (typeof GamificationScheduler.stopScheduler === 'function') GamificationScheduler.stopScheduler();
   if (typeof TrialScheduler.stopScheduler === 'function') TrialScheduler.stopScheduler();
   if (RetentionEmailScheduler.stopScheduler) RetentionEmailScheduler.stopScheduler();
