@@ -279,7 +279,7 @@ class OAuth2Service {
       RETURNING id
     `;
 
-    await db.query(query, [
+    const result = await db.query(query, [
       tokenHash,
       data.accessTokenId,
       data.clientId,
