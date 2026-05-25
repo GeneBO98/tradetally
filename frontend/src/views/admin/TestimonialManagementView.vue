@@ -1,5 +1,6 @@
 <template>
   <div class="content-wrapper py-8">
+    <AdminNav />
     <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between mb-6">
       <div>
         <h1 class="heading-page">Testimonial Management</h1>
@@ -122,6 +123,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { StarIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
+import AdminNav from '@/components/admin/AdminNav.vue'
 
 const testimonials = ref([])
 const loading = ref(true)

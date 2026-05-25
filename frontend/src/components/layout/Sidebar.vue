@@ -330,13 +330,33 @@
               <span class="flex-1">Settings</span>
               <ChevronRightIcon class="popover-chevron" />
             </router-link>
+
+            <router-link
+              v-if="isAdmin"
+              to="/admin/users"
+              @click="closeUserMenu"
+              class="popover-item group/item"
+              :class="{ 'popover-item--active': isAdminRouteActive }"
+              :style="{ animationDelay: '70ms' }"
+            >
+              <span
+                class="popover-accent"
+                :class="isAdminRouteActive ? 'scale-y-100' : 'scale-y-0 group-hover/item:scale-y-100'"
+              ></span>
+              <ShieldCheckIcon
+                class="h-4 w-4 shrink-0 transition-colors"
+                :class="isAdminRouteActive ? 'text-primary-500 dark:text-primary-400' : 'text-gray-400 group-hover/item:text-primary-500 dark:text-gray-500 dark:group-hover/item:text-primary-400'"
+              />
+              <span class="flex-1">Admin</span>
+              <ChevronRightIcon class="popover-chevron" />
+            </router-link>
           </div>
 
           <div class="border-t border-gray-200/80 py-1.5 dark:border-gray-700/60">
             <button
               @click="handleLogout"
               class="popover-item popover-item--danger group/item w-full"
-              :style="{ animationDelay: '70ms' }"
+              :style="{ animationDelay: '105ms' }"
             >
               <span class="popover-accent popover-accent--danger scale-y-0 group-hover/item:scale-y-100"></span>
               <ArrowRightOnRectangleIcon class="h-4 w-4 shrink-0 text-gray-400 transition-colors group-hover/item:text-red-500 dark:text-gray-500 dark:group-hover/item:text-red-400" />
@@ -447,6 +467,11 @@ const isAdmin = computed(() =>
   authStore.user?.role === 'admin' || authStore.user?.role === 'owner'
 )
 
+const isAdminRouteActive = computed(() => {
+  const name = route.name
+  return typeof name === 'string' && name.startsWith('admin')
+})
+
 const apiDocsUrl = computed(() => {
   const apiUrl = import.meta.env.VITE_API_URL
   if (apiUrl && apiUrl.startsWith('http')) {
@@ -497,20 +522,6 @@ const navItems = computed(() => {
     { name: 'Calendar', icon: CalendarIcon, to: '/calendar', route: 'calendar' },
     { name: 'Import', icon: ArrowUpTrayIcon, to: '/import', route: 'import' }
   ]
-
-  if (isAdmin.value) {
-    const adminItems = [
-      { name: 'Users', to: '/admin/users', route: 'admin-users' }
-    ]
-    if (isBillingEnabled.value) {
-      adminItems.push(
-        { name: 'OAuth Applications', to: '/admin/oauth', route: 'oauth-clients' },
-        { name: 'Testimonials', to: '/admin/testimonials', route: 'admin-testimonials' }
-      )
-    }
-    adminItems.push({ name: 'Backup Management', to: '/admin/backups', route: 'admin-backups' })
-    items.push({ name: 'Admin', icon: ShieldCheckIcon, items: adminItems })
-  }
 
   return items
 })

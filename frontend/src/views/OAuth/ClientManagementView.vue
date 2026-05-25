@@ -1,5 +1,6 @@
 <template>
   <div class="content-wrapper py-8">
+    <AdminNav />
     <!-- Header -->
     <div class="mb-8">
       <div class="flex items-center justify-between">
@@ -336,6 +337,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import api from '@/services/api'
 import { useUserTimezone } from '@/composables/useUserTimezone'
+import AdminNav from '@/components/admin/AdminNav.vue'
 
 const { formatDateTime: formatDateTimeTz } = useUserTimezone()
 import {

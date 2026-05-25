@@ -1,5 +1,6 @@
 <template>
     <div class="content-wrapper py-8">
+        <AdminNav />
         <div class="mb-8">
             <h1 class="heading-page">Backup Management</h1>
             <p class="mt-2 text-gray-600 dark:text-gray-400">
@@ -799,6 +800,7 @@ import { ref, onMounted } from "vue";
 import api from "@/services/api";
 import { useUserTimezone } from "@/composables/useUserTimezone";
 import { useNotification } from "@/composables/useNotification";
+import AdminNav from "@/components/admin/AdminNav.vue";
 
 const { formatDateTime: formatDateTimeTz } = useUserTimezone();
 const { showDangerConfirmation } = useNotification();

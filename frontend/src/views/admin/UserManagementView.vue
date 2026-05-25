@@ -1,5 +1,6 @@
 <template>
     <div class="content-wrapper py-8">
+        <AdminNav />
         <!-- Page Header + Stats -->
         <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between mb-6">
             <div>
@@ -441,6 +442,7 @@ import api from "@/services/api";
 import { useNotification } from "@/composables/useNotification";
 import { useAuthStore } from "@/stores/auth";
 import MdiIcon from "@/components/MdiIcon.vue";
+import AdminNav from "@/components/admin/AdminNav.vue";
 import { mdiCheckCircle, mdiCloseCircle } from "@mdi/js";
 
 const { showError, showSuccess } = useNotification();
