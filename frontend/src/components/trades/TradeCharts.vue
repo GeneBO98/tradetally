@@ -35,10 +35,10 @@
                             <!-- Try to load as image first -->
                             <img
                                 v-if="
-                                    getDirectImageUrl(chart) &&
+                                    hasResolvedImage(chart) &&
                                     !chart._imageError
                                 "
-                                :src="getDirectImageUrl(chart)"
+                                :src="getResolvedImageUrl(chart)"
                                 :alt="
                                     chart.chartTitle ||
                                     chart.chart_title ||
@@ -48,12 +48,20 @@
                                 @error="(e) => handleChartImageError(e, chart)"
                                 @click.prevent="openInNewTab(chart)"
                             />
-                            <!-- If image fails, show nice preview card -->
+                            <!-- Loading state while fetching authed image -->
                             <div
                                 v-else-if="
-                                    chart._imageError ||
-                                    !getDirectImageUrl(chart)
+                                    getDirectImageUrl(chart) &&
+                                    !chart._imageError &&
+                                    !authedImage.hasError(chart)
                                 "
+                                class="w-full aspect-video flex items-center justify-center bg-gray-100 dark:bg-gray-700"
+                            >
+                                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+                            </div>
+                            <!-- If image fails, show nice preview card -->
+                            <div
+                                v-else
                                 class="w-full p-12 flex flex-col items-center justify-center bg-gradient-to-br from-primary-50 to-primary-100 dark:from-gray-800 dark:to-gray-700 rounded-lg border-2 border-primary-200 dark:border-gray-600 hover:border-primary-400 dark:hover:border-gray-500 transition-colors cursor-pointer"
                                 @click.prevent="openInNewTab(chart)"
                             >
@@ -181,10 +189,10 @@
                 <!-- Try image first -->
                 <img
                     v-if="
-                        getDirectImageUrl(selectedChart) &&
+                        hasResolvedImage(selectedChart) &&
                         !selectedChart._imageError
                     "
-                    :src="getDirectImageUrl(selectedChart)"
+                    :src="getResolvedImageUrl(selectedChart)"
                     :alt="
                         selectedChart.chartTitle ||
                         selectedChart.chart_title ||
@@ -266,7 +274,7 @@
                 <!-- Chart info (only show when image is displayed) -->
                 <div
                     v-if="
-                        getDirectImageUrl(selectedChart) &&
+                        hasResolvedImage(selectedChart) &&
                         !selectedChart._imageError
                     "
                     class="absolute bottom-4 left-4 bg-black bg-opacity-50 text-white px-4 py-2 rounded"
@@ -379,8 +387,9 @@
 </template>
 
 <script setup>
-import { ref } from "vue";
+import { ref, toRef } from "vue";
 import { useNotification } from "@/composables/useNotification";
+import { useAuthedImage } from "@/composables/useAuthedImage";
 import api from "@/services/api";
 
 const props = defineProps({
@@ -443,6 +452,23 @@ function getDirectImageUrl(chart) {
     }
 
     return null;
+}
+
+// Fetch /api/-served chart images via axios (sends Authorization header) and
+// resolve to blob URLs; external image URLs pass through unchanged.
+const authedImage = useAuthedImage(toRef(props, "charts"), (chart) => {
+    if (!chart || !chart.id) return null;
+    const url = getDirectImageUrl(chart);
+    if (!url) return null;
+    return { id: chart.id, url };
+});
+
+function getResolvedImageUrl(chart) {
+    return authedImage.urlFor(chart) || null;
+}
+
+function hasResolvedImage(chart) {
+    return !!authedImage.urlFor(chart);
 }
 
 function getTradingViewImageUrl(chart) {
