@@ -103,6 +103,11 @@
           </div>
         </div>
 
+        <PlaidReviewQueue
+          :account-id="selectedAccountId"
+          @changed="handlePlaidReviewChanged"
+        />
+
         <!-- Cashflow Table -->
         <div class="card">
           <div class="card-body">
@@ -159,6 +164,11 @@
 
       <!-- Right Side: Account Setup Panel (1/3 width on large screens) -->
       <div class="space-y-6">
+        <PlaidFundingPanel
+          :accounts="accounts"
+          @refresh="refreshPlaidConnections"
+        />
+
         <!-- Accounts List -->
         <div class="card">
           <div class="card-body">
@@ -315,6 +325,9 @@
                     {{ formatDate(tx.transactionDate) }}
                     <span v-if="tx.description" class="ml-1">- {{ tx.description }}</span>
                   </div>
+                  <div v-if="tx.sourceType === 'plaid'" class="mt-1 text-[11px] uppercase tracking-wide text-primary-600 dark:text-primary-400">
+                    Imported from Plaid
+                  </div>
                 </div>
                 <button
                   @click="removeTransaction(tx.id)"
@@ -345,13 +358,17 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useAccountsStore } from '@/stores/accounts'
+import { usePlaidFundingStore } from '@/stores/plaidFunding'
 import { useNotification } from '@/composables/useNotification'
 import AccountModal from '@/components/accounts/AccountModal.vue'
+import PlaidFundingPanel from '@/components/accounts/PlaidFundingPanel.vue'
+import PlaidReviewQueue from '@/components/accounts/PlaidReviewQueue.vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 
 const { formatCurrency, formatSignedCurrency, currencySymbol } = useCurrencyFormatter()
 
 const store = useAccountsStore()
+const plaidStore = usePlaidFundingStore()
 const { showSuccess, showError, showDangerConfirmation } = useNotification()
 
 // State
@@ -475,7 +492,10 @@ function resetDateFilter() {
 }
 
 async function loadCashflow() {
-  if (!selectedAccountId.value) return
+  if (!selectedAccountId.value) {
+    await plaidStore.fetchReviewQueue('')
+    return
+  }
 
   try {
     const options = {}
@@ -484,6 +504,7 @@ async function loadCashflow() {
 
     await store.fetchCashflow(selectedAccountId.value, options)
     await store.fetchTransactions(selectedAccountId.value, options)
+    await plaidStore.fetchReviewQueue(selectedAccountId.value)
     // Update transaction form to use selected account
     transactionForm.value.accountId = selectedAccountId.value
   } catch (error) {
@@ -538,6 +559,7 @@ function confirmDeleteAccount(account) {
         if (selectedAccountId.value === account.id) {
           selectedAccountId.value = ''
           store.clearCashflow()
+          await plaidStore.fetchReviewQueue('')
         }
       } catch (error) {
         showError('Error', 'Failed to delete account')
@@ -591,9 +613,27 @@ async function removeTransaction(transactionId) {
   }
 }
 
+async function refreshPlaidConnections() {
+  await Promise.all([
+    store.fetchAccounts(),
+    plaidStore.fetchConnections()
+  ])
+
+  if (selectedAccountId.value) {
+    await loadCashflow()
+  }
+}
+
+async function handlePlaidReviewChanged() {
+  await loadCashflow()
+}
+
 // Lifecycle
 onMounted(async () => {
-  await store.fetchAccounts()
+  await Promise.all([
+    store.fetchAccounts(),
+    plaidStore.fetchConnections()
+  ])
 
   // Auto-select primary account
   if (store.primaryAccount) {

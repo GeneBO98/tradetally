@@ -68,6 +68,7 @@ const TrialScheduler = require('./services/trialScheduler');
 const RetentionEmailScheduler = require('./services/retentionEmailScheduler');
 const OptionsScheduler = require('./services/optionsScheduler');
 const brokerSyncScheduler = require('./services/brokerSync/brokerSyncScheduler');
+const plaidFundingScheduler = require('./services/plaid/plaidFundingScheduler');
 const dividendScheduler = require('./services/dividendScheduler');
 const newsScheduler = require('./services/newsScheduler');
 const earningsScheduler = require('./services/earningsScheduler');
@@ -496,6 +497,14 @@ async function startServer() {
       console.log('Broker sync scheduler disabled (ENABLE_BROKER_SYNC_SCHEDULER=false)');
     }
 
+    if (process.env.ENABLE_PLAID_SYNC_SCHEDULER !== 'false') {
+      console.log('Starting Plaid funding scheduler...');
+      plaidFundingScheduler.start();
+      console.log('[SUCCESS] Plaid funding scheduler started');
+    } else {
+      console.log('Plaid funding scheduler disabled (ENABLE_PLAID_SYNC_SCHEDULER=false)');
+    }
+
     // Start dividend scheduler (for automatic dividend tracking on open positions)
     if (backgroundJobsDisabled) {
       console.log('Dividend scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
@@ -720,6 +729,7 @@ process.on('SIGTERM', async () => {
   await priceMonitoringService.stop();
   OptionsScheduler.stop();
   brokerSyncScheduler.stop();
+  plaidFundingScheduler.stop();
   newsScheduler.stop();
   earningsScheduler.stop();
   symbolCategoryScheduler.stop();
@@ -744,6 +754,7 @@ process.on('SIGINT', async () => {
   await priceMonitoringService.stop();
   OptionsScheduler.stop();
   brokerSyncScheduler.stop();
+  plaidFundingScheduler.stop();
   newsScheduler.stop();
   earningsScheduler.stop();
   symbolCategoryScheduler.stop();
