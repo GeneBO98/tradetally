@@ -2799,7 +2799,13 @@ const tradeController = {
 
       if (openTrades.length === 0) {
         console.log('[PERF] getOpenPositionsWithQuotes total time:', Date.now() - requestStartedAt, 'ms');
-        return res.json({ positions: [] });
+        return res.json({
+          positions: [],
+          quotesAvailable: 0,
+          totalPositions: 0,
+          quotePending: false,
+          quoteFetchedAt: null
+        });
       }
 
       // Parse executions JSON for each trade
@@ -3034,7 +3040,13 @@ const tradeController = {
           return { ...position, currentPrice: null, currentValue: null, unrealizedPnL: null, unrealizedPnLPercent: null, quotePending: true };
         });
         console.log('[PERF] getOpenPositionsWithQuotes total time:', Date.now() - requestStartedAt, 'ms');
-        return res.json({ positions, quotePending: true });
+        return res.json({
+          positions,
+          quotesAvailable: 0,
+          totalPositions: positions.length,
+          quotePending: positions.length > 0,
+          quoteFetchedAt: null
+        });
       }
 
       // Get unique stock/futures symbols for Finnhub quotes (options use Alpaca instead)
@@ -3234,7 +3246,8 @@ const tradeController = {
         positions: enhancedPositions,
         quotesAvailable: Object.keys(quotes).length + Object.keys(alpacaQuotes).length,
         totalPositions: enhancedPositions.length,
-        quotePending
+        quotePending,
+        quoteFetchedAt: new Date().toISOString()
       });
 
     } catch (error) {

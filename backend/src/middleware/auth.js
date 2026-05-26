@@ -8,6 +8,56 @@ const TOKEN_PURPOSES = Object.freeze({
   PRE_2FA: 'pre_2fa'
 });
 
+const authUserCache = new Map();
+const pendingAuthUserLookups = new Map();
+
+function getAuthUserCacheTtlMs() {
+  const parsed = parseInt(process.env.AUTH_USER_CACHE_TTL_MS || '30000', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+async function findActiveUserForAuth(userId) {
+  const ttlMs = getAuthUserCacheTtlMs();
+  const now = Date.now();
+  const cached = ttlMs > 0 ? authUserCache.get(userId) : null;
+
+  if (cached && cached.expiresAt > now) {
+    return cached.user;
+  }
+
+  if (cached) {
+    authUserCache.delete(userId);
+  }
+
+  if (pendingAuthUserLookups.has(userId)) {
+    return pendingAuthUserLookups.get(userId);
+  }
+
+  const lookup = User.findById(userId)
+    .then((user) => {
+      if (user && user.is_active && ttlMs > 0) {
+        authUserCache.set(userId, {
+          user,
+          expiresAt: Date.now() + ttlMs
+        });
+      } else {
+        authUserCache.delete(userId);
+      }
+      return user;
+    })
+    .finally(() => {
+      pendingAuthUserLookups.delete(userId);
+    });
+
+  pendingAuthUserLookups.set(userId, lookup);
+  return lookup;
+}
+
+function clearAuthUserCache() {
+  authUserCache.clear();
+  pendingAuthUserLookups.clear();
+}
+
 class InvalidTokenPurposeError extends Error {
   constructor(expectedPurpose, actualPurpose) {
     super(`Invalid token purpose: expected ${expectedPurpose}, received ${actualPurpose || 'none'}`);
@@ -61,7 +111,7 @@ const authenticate = async (req, res, next) => {
 
     // Verify JWT token
     const decoded = verifyJwtToken(token, { requiredPurpose: TOKEN_PURPOSES.ACCESS });
-    const user = await User.findById(decoded.id);
+    const user = await findActiveUserForAuth(decoded.id);
 
     if (!user || !user.is_active) {
       throw new UnauthenticatedError('User not found or inactive');
@@ -122,7 +172,7 @@ const optionalAuth = async (req, res, next) => {
 
     if (token) {
       const decoded = verifyJwtToken(token, { requiredPurpose: TOKEN_PURPOSES.ACCESS });
-      const user = await User.findById(decoded.id);
+      const user = await findActiveUserForAuth(decoded.id);
 
       if (user && user.is_active) {
         req.user = user;
@@ -191,5 +241,7 @@ module.exports = {
   optionalAuth,
   requireAdmin,
   generateToken,
-  verifyJwtToken
+  verifyJwtToken,
+  clearAuthUserCache,
+  findActiveUserForAuth
 };

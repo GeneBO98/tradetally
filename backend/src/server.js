@@ -381,6 +381,402 @@ app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });
 
+function getPositiveIntEnv(name, fallback) {
+  const parsed = parseInt(process.env[name] || '', 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function scheduleDeferredStartupTask(name, task, delayMs) {
+  const timer = setTimeout(async () => {
+    try {
+      await task();
+    } catch (error) {
+      console.error(`[STARTUP] ${name} failed:`, error.message);
+    }
+  }, delayMs);
+
+  if (typeof timer.unref === 'function') {
+    timer.unref();
+  }
+}
+
+async function runPnlBackfillIfNeeded() {
+  if (process.env.SKIP_PNL_BACKFILL === 'true') {
+    console.log('[BACKFILL] Skipping P&L engine backfill (SKIP_PNL_BACKFILL=true).');
+    return;
+  }
+
+  if (process.env.RUN_PNL_BACKFILL_ON_START !== 'true') {
+    console.log('[BACKFILL] Startup P&L engine backfill disabled (RUN_PNL_BACKFILL_ON_START=true to enable).');
+    return;
+  }
+
+  const db = require('./config/database');
+
+  try {
+    const status = await db.query(
+      `SELECT applied_at FROM pnl_engine_backfill_status WHERE id = 1`
+    );
+    if (status.rows[0]?.applied_at) {
+      console.log(`[BACKFILL] P&L engine backfill already applied at ${status.rows[0].applied_at}.`);
+      return;
+    }
+  } catch (error) {
+    if (error.code === '42P01') {
+      console.log('[BACKFILL] Status table missing; skipping startup backfill until migrations create it.');
+      return;
+    }
+    throw error;
+  }
+
+  const { execFile } = require('child_process');
+  const pathMod = require('path');
+  const scriptPath = pathMod.join(__dirname, '..', 'scripts', 'backfill-pnl-engine.js');
+
+  console.log('[BACKFILL] Spawning canonical P&L engine backfill in background...');
+  const child = execFile('node', [scriptPath, '--apply'], {
+    env: process.env,
+    cwd: pathMod.join(__dirname, '..')
+  }, (err, stdout, stderr) => {
+    if (stdout) process.stdout.write(stdout);
+    if (stderr) process.stderr.write(stderr);
+    if (err) {
+      console.error(`[BACKFILL] Background backfill failed: ${err.message}`);
+    } else {
+      console.log('[BACKFILL] Background backfill complete.');
+    }
+  });
+
+  if (typeof child.unref === 'function') {
+    child.unref();
+  }
+}
+
+async function startTradeEnrichmentWorker() {
+  console.log('Starting background worker for trade enrichment...');
+  let attempts = 0;
+  const maxAttempts = 3;
+
+  while (attempts < maxAttempts) {
+    try {
+      await backgroundWorker.start();
+      console.log('[SUCCESS] Background worker started for trade enrichment');
+      return;
+    } catch (error) {
+      attempts++;
+      console.error(`[ERROR] Failed to start background worker (attempt ${attempts}/${maxAttempts}):`, error.message);
+
+      if (attempts >= maxAttempts) {
+        console.error('[ERROR] CRITICAL: Background worker failed to start after multiple attempts');
+        console.error('[ERROR] This will affect PRO tier trade enrichment features');
+
+        if (process.env.NODE_ENV === 'production') {
+          console.error('[ERROR] Exiting due to critical service failure in production');
+          process.exit(1);
+        }
+      } else {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+  }
+}
+
+function scheduleBackgroundServices(backgroundJobsDisabled) {
+  const initialDelayMs = getPositiveIntEnv('BACKGROUND_JOB_START_DELAY_MS', 5000);
+  const spacingMs = getPositiveIntEnv('BACKGROUND_JOB_START_SPACING_MS', 1000);
+  let nextDelayMs = initialDelayMs;
+
+  const defer = (name, task) => {
+    scheduleDeferredStartupTask(name, task, nextDelayMs);
+    nextDelayMs += spacingMs;
+  };
+
+  defer('pnl-backfill', runPnlBackfillIfNeeded);
+
+  if (backgroundJobsDisabled) {
+    console.log('CUSIP queue processing disabled (DISABLE_BACKGROUND_JOBS=true)');
+  } else {
+    defer('cusip-queue', () => {
+      const cusipQueue = require('./utils/cusipQueue');
+      cusipQueue.startProcessing();
+    });
+  }
+
+  if (backgroundJobsDisabled) {
+    console.log('Price monitoring disabled (DISABLE_BACKGROUND_JOBS=true)');
+  } else if (process.env.ENABLE_PRICE_MONITORING !== 'false') {
+    defer('price-monitoring', async () => {
+      console.log('Starting price monitoring service...');
+      await priceMonitoringService.start();
+    });
+  } else {
+    console.log('Price monitoring disabled (ENABLE_PRICE_MONITORING=false)');
+  }
+
+  if (backgroundJobsDisabled) {
+    console.log('Gamification disabled (DISABLE_BACKGROUND_JOBS=true)');
+  } else if (process.env.ENABLE_GAMIFICATION !== 'false') {
+    defer('gamification', () => {
+      console.log('Starting gamification scheduler...');
+      GamificationScheduler.startScheduler();
+    });
+  } else {
+    console.log('Gamification disabled (ENABLE_GAMIFICATION=false)');
+  }
+
+  if (backgroundJobsDisabled) {
+    console.log('Trial scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
+  } else if (process.env.ENABLE_TRIAL_EMAILS !== 'false') {
+    defer('trial-scheduler', () => {
+      console.log('Starting trial scheduler...');
+      TrialScheduler.startScheduler();
+    });
+  } else {
+    console.log('Trial emails disabled (ENABLE_TRIAL_EMAILS=false)');
+  }
+
+  if (backgroundJobsDisabled) {
+    console.log('Retention email scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
+  } else if (process.env.ENABLE_RETENTION_EMAILS !== 'false') {
+    defer('retention-email-scheduler', () => {
+      console.log('Starting retention email scheduler...');
+      RetentionEmailScheduler.startScheduler();
+    });
+  } else {
+    console.log('Retention emails disabled (ENABLE_RETENTION_EMAILS=false)');
+  }
+
+  if (backgroundJobsDisabled) {
+    console.log('Options scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
+  } else if (process.env.ENABLE_OPTIONS_SCHEDULER !== 'false') {
+    defer('options-scheduler', () => {
+      console.log('Starting options scheduler...');
+      OptionsScheduler.start();
+    });
+  } else {
+    console.log('Options scheduler disabled (ENABLE_OPTIONS_SCHEDULER=false)');
+  }
+
+  if (backgroundJobsDisabled) {
+    console.log('Broker sync scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
+  } else if (process.env.ENABLE_BROKER_SYNC_SCHEDULER !== 'false') {
+    defer('broker-sync-scheduler', () => {
+      console.log('Starting broker sync scheduler...');
+      brokerSyncScheduler.start();
+      console.log('[SUCCESS] Broker sync scheduler started');
+    });
+  } else {
+    console.log('Broker sync scheduler disabled (ENABLE_BROKER_SYNC_SCHEDULER=false)');
+  }
+
+  if (backgroundJobsDisabled) {
+    console.log('Plaid funding scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
+  } else if (process.env.ENABLE_PLAID_SYNC_SCHEDULER !== 'false') {
+    defer('plaid-funding-scheduler', () => {
+      console.log('Starting Plaid funding scheduler...');
+      plaidFundingScheduler.start();
+      console.log('[SUCCESS] Plaid funding scheduler started');
+    });
+  } else {
+    console.log('Plaid funding scheduler disabled (ENABLE_PLAID_SYNC_SCHEDULER=false)');
+  }
+
+  if (backgroundJobsDisabled) {
+    console.log('Dividend scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
+  } else if (process.env.ENABLE_DIVIDEND_SCHEDULER !== 'false') {
+    defer('dividend-scheduler', () => {
+      console.log('Starting dividend scheduler...');
+      dividendScheduler.start();
+      console.log('[SUCCESS] Dividend scheduler started');
+    });
+  } else {
+    console.log('Dividend scheduler disabled (ENABLE_DIVIDEND_SCHEDULER=false)');
+  }
+
+  if (backgroundJobsDisabled) {
+    console.log('News scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
+  } else if (process.env.ENABLE_NEWS_SCHEDULER !== 'false') {
+    defer('news-scheduler', () => {
+      console.log('Starting news scheduler...');
+      newsScheduler.start();
+      console.log('[SUCCESS] News scheduler started');
+    });
+  } else {
+    console.log('News scheduler disabled (ENABLE_NEWS_SCHEDULER=false)');
+  }
+
+  if (backgroundJobsDisabled) {
+    console.log('Earnings scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
+  } else if (process.env.ENABLE_EARNINGS_SCHEDULER !== 'false') {
+    defer('earnings-scheduler', () => {
+      console.log('Starting earnings scheduler...');
+      earningsScheduler.start();
+      console.log('[SUCCESS] Earnings scheduler started');
+    });
+  } else {
+    console.log('Earnings scheduler disabled (ENABLE_EARNINGS_SCHEDULER=false)');
+  }
+
+  if (backgroundJobsDisabled) {
+    console.log('Symbol category scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
+  } else if (process.env.ENABLE_CATEGORY_SCHEDULER !== 'false') {
+    defer('symbol-category-scheduler', () => {
+      console.log('Starting symbol category scheduler...');
+      symbolCategoryScheduler.start();
+      console.log('[SUCCESS] Symbol category scheduler started');
+    });
+  } else {
+    console.log('Symbol category scheduler disabled (ENABLE_CATEGORY_SCHEDULER=false)');
+  }
+
+  if (backgroundJobsDisabled) {
+    console.log('Portfolio snapshot scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
+  } else if (process.env.ENABLE_PORTFOLIO_SNAPSHOT_SCHEDULER !== 'false') {
+    defer('portfolio-snapshot-scheduler', () => {
+      console.log('Starting portfolio snapshot scheduler...');
+      portfolioSnapshotScheduler.start();
+      console.log('[SUCCESS] Portfolio snapshot scheduler started');
+    });
+  } else {
+    console.log('Portfolio snapshot scheduler disabled (ENABLE_PORTFOLIO_SNAPSHOT_SCHEDULER=false)');
+  }
+
+  if (backgroundJobsDisabled) {
+    console.log('Web mention scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
+  } else if (process.env.ENABLE_WEB_MENTION_SCHEDULER !== 'false') {
+    defer('web-mention-scheduler', () => {
+      console.log('Starting web mention scheduler...');
+      webMentionScheduler.start();
+      console.log('[SUCCESS] Web mention scheduler started');
+    });
+  } else {
+    console.log('Web mention scheduler disabled (ENABLE_WEB_MENTION_SCHEDULER=false)');
+  }
+
+  if (process.env.ENABLE_V1_WEBHOOKS === 'true') {
+    defer('v1-webhook-bridge', () => webhookEventBridge.start());
+  }
+
+  if (backgroundJobsDisabled) {
+    console.log('CRM sync disabled (DISABLE_BACKGROUND_JOBS=true)');
+  } else if (process.env.ENABLE_CRM_SYNC === 'true') {
+    defer('crm-sync-scheduler', () => {
+      console.log('Starting CRM sync scheduler...');
+      crmSyncScheduler.start();
+      console.log('[SUCCESS] CRM sync scheduler started');
+    });
+  } else {
+    console.log('CRM sync disabled (ENABLE_CRM_SYNC=false)');
+  }
+
+  if (backgroundJobsDisabled) {
+    console.log('Activity tracking disabled (DISABLE_BACKGROUND_JOBS=true)');
+  } else if (process.env.ENABLE_ACTIVITY_TRACKING !== 'false') {
+    defer('activity-tracking', () => {
+      console.log('Starting activity tracking service...');
+      activityTrackingService.start();
+      console.log('[SUCCESS] Activity tracking service started');
+    });
+  } else {
+    console.log('Activity tracking disabled (ENABLE_ACTIVITY_TRACKING=false)');
+  }
+
+  if (backgroundJobsDisabled) {
+    console.log('Engagement tracking disabled (DISABLE_BACKGROUND_JOBS=true)');
+  } else if (process.env.ENABLE_ENGAGEMENT_TRACKING !== 'false') {
+    defer('engagement-scheduler', () => {
+      console.log('Starting engagement scheduler...');
+      engagementScheduler.start();
+      console.log('[SUCCESS] Engagement scheduler started');
+    });
+  } else {
+    console.log('Engagement tracking disabled (ENABLE_ENGAGEMENT_TRACKING=false)');
+  }
+
+  if (process.env.ENABLE_PUSH_NOTIFICATIONS === 'true') {
+    console.log('Push notification service loaded');
+  } else {
+    console.log('Push notifications disabled (ENABLE_PUSH_NOTIFICATIONS=false)');
+  }
+
+  if (backgroundJobsDisabled) {
+    console.log('Trade enrichment disabled (DISABLE_BACKGROUND_JOBS=true)');
+  } else if (process.env.ENABLE_TRADE_ENRICHMENT !== 'false') {
+    defer('trade-enrichment-worker', startTradeEnrichmentWorker);
+  } else {
+    console.log('Trade enrichment disabled (ENABLE_TRADE_ENRICHMENT=false)');
+  }
+
+  if (backgroundJobsDisabled) {
+    console.log('Job recovery disabled (DISABLE_BACKGROUND_JOBS=true)');
+  } else if (process.env.ENABLE_JOB_RECOVERY !== 'false') {
+    defer('job-recovery', () => {
+      console.log('Starting automatic job recovery service...');
+      jobRecoveryService.start();
+      console.log('[SUCCESS] Job recovery service started (prevents stuck enrichment jobs)');
+    });
+  } else {
+    console.log('Job recovery disabled (ENABLE_JOB_RECOVERY=false)');
+  }
+
+  if (backgroundJobsDisabled) {
+    console.log('Enrichment cache cleanup disabled (DISABLE_BACKGROUND_JOBS=true)');
+  } else if (process.env.ENABLE_ENRICHMENT_CACHE_CLEANUP !== 'false') {
+    defer('enrichment-cache-cleanup', () => {
+      console.log('Starting global enrichment cache cleanup service...');
+      globalEnrichmentCacheCleanupService.start();
+      console.log('[SUCCESS] Global enrichment cache cleanup service started');
+    });
+  } else {
+    console.log('Enrichment cache cleanup disabled (ENABLE_ENRICHMENT_CACHE_CLEANUP=false)');
+  }
+
+  if (backgroundJobsDisabled) {
+    console.log('Backup scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
+  } else if (process.env.ENABLE_BACKUP_SCHEDULER !== 'false') {
+    defer('backup-scheduler', async () => {
+      console.log('Initializing backup scheduler...');
+      await backupScheduler.initialize();
+      console.log('[SUCCESS] Backup scheduler initialized');
+    });
+  } else {
+    console.log('Backup scheduler disabled (ENABLE_BACKUP_SCHEDULER=false)');
+  }
+
+  if (backgroundJobsDisabled) {
+    console.log('Stock scanner disabled (DISABLE_BACKGROUND_JOBS=true)');
+  } else if (process.env.ENABLE_STOCK_SCANNER !== 'false') {
+    defer('stock-scanner-scheduler', async () => {
+      console.log('Initializing stock scanner scheduler...');
+      const StockScannerService = require('./services/stockScannerService');
+      const cleanedUp = await StockScannerService.cleanupStuckScans();
+      if (cleanedUp > 0) {
+        console.log(`[SUCCESS] Cleaned up ${cleanedUp} stuck scan(s)`);
+      }
+
+      stockScannerScheduler.initialize();
+      console.log('[SUCCESS] Stock scanner scheduler initialized (Russell 2000 scan runs quarterly at 3 AM)');
+
+      watchlistPillarsScheduler.initialize();
+      console.log('[SUCCESS] Watchlist pillars scheduler initialized (daily at 4 AM)');
+    });
+  } else {
+    console.log('Stock scanner disabled (ENABLE_STOCK_SCANNER=false)');
+  }
+
+  if (backgroundJobsDisabled) {
+    console.log('Stock split monitoring disabled (DISABLE_BACKGROUND_JOBS=true)');
+  } else if (process.env.ENABLE_STOCK_SPLIT_MONITORING !== 'false') {
+    defer('stock-split-monitoring', () => {
+      const stockSplitService = require('./services/stockSplitService');
+      stockSplitService.startDailyCheck();
+      console.log('[SUCCESS] Stock split monitoring started');
+    });
+  } else {
+    console.log('Stock split monitoring disabled (ENABLE_STOCK_SPLIT_MONITORING=false)');
+  }
+}
+
 // Function to start server with migration
 async function startServer() {
   try {
@@ -402,320 +798,15 @@ async function startServer() {
       logger.info('Skipping migrations (RUN_MIGRATIONS=false)');
     }
 
-    // Run the canonical pnlEngine backfill in the background — idempotent and
-    // does not block startup. Calendar and Trade Detail already fall back to
-    // inline engine computation for unstamped trades, so correctness is not
-    // gated on this completing. The backfill populates executions[].realized_pnl
-    // and executions[].exit_date so analytics queries see consistent stored data.
-    // Opt out with SKIP_PNL_BACKFILL=true.
-    if (process.env.SKIP_PNL_BACKFILL !== 'true') {
-      const { execFile } = require('child_process');
-      const pathMod = require('path');
-      const scriptPath = pathMod.join(__dirname, '..', 'scripts', 'backfill-pnl-engine.js');
-      console.log('[BACKFILL] Spawning canonical P&L engine backfill in background...');
-      execFile('node', [scriptPath, '--apply'], {
-        env: process.env,
-        cwd: pathMod.join(__dirname, '..')
-      }, (err, stdout, stderr) => {
-        if (stdout) process.stdout.write(stdout);
-        if (stderr) process.stderr.write(stderr);
-        if (err) {
-          console.error(`[BACKFILL] Background backfill failed: ${err.message}`);
-        } else {
-          console.log('[BACKFILL] Background backfill complete.');
-        }
-      });
-    } else {
-      console.log('[BACKFILL] Skipping P&L engine backfill (SKIP_PNL_BACKFILL=true).');
-    }
-
-    // Start CUSIP queue processing (after migrations have created the table)
-    const cusipQueue = require('./utils/cusipQueue');
-    cusipQueue.startProcessing();
-
     // Initialize billing service (conditional)
     await BillingService.initialize();
-    
-    // Start price monitoring service for Pro users
-    if (backgroundJobsDisabled) {
-      console.log('Price monitoring disabled (DISABLE_BACKGROUND_JOBS=true)');
-    } else if (process.env.ENABLE_PRICE_MONITORING !== 'false') {
-      console.log('Starting price monitoring service...');
-      await priceMonitoringService.start();
-    } else {
-      console.log('Price monitoring disabled (ENABLE_PRICE_MONITORING=false)');
-    }
-    
-    // Start gamification scheduler
-    if (backgroundJobsDisabled) {
-      console.log('Gamification disabled (DISABLE_BACKGROUND_JOBS=true)');
-    } else if (process.env.ENABLE_GAMIFICATION !== 'false') {
-      console.log('Starting gamification scheduler...');
-      GamificationScheduler.startScheduler();
-    } else {
-      console.log('Gamification disabled (ENABLE_GAMIFICATION=false)');
-    }
-    
-    // Start trial scheduler (for trial expiration emails)
-    if (backgroundJobsDisabled) {
-      console.log('Trial scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
-    } else if (process.env.ENABLE_TRIAL_EMAILS !== 'false') {
-      console.log('Starting trial scheduler...');
-      TrialScheduler.startScheduler();
-    } else {
-      console.log('Trial emails disabled (ENABLE_TRIAL_EMAILS=false)');
-    }
-
-    // Start retention email scheduler (weekly digest, inactive re-engagement)
-    if (backgroundJobsDisabled) {
-      console.log('Retention email scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
-    } else if (process.env.ENABLE_RETENTION_EMAILS !== 'false') {
-      console.log('Starting retention email scheduler...');
-      RetentionEmailScheduler.startScheduler();
-    } else {
-      console.log('Retention emails disabled (ENABLE_RETENTION_EMAILS=false)');
-    }
-
-    // Start options scheduler (for automatic expired options closure)
-    if (backgroundJobsDisabled) {
-      console.log('Options scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
-    } else if (process.env.ENABLE_OPTIONS_SCHEDULER !== 'false') {
-      console.log('Starting options scheduler...');
-      OptionsScheduler.start();
-    } else {
-      console.log('Options scheduler disabled (ENABLE_OPTIONS_SCHEDULER=false)');
-    }
-
-    // Start broker sync scheduler (for automatic trade syncing from connected brokers)
-    if (backgroundJobsDisabled) {
-      console.log('Broker sync scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
-    } else if (process.env.ENABLE_BROKER_SYNC_SCHEDULER !== 'false') {
-      console.log('Starting broker sync scheduler...');
-      brokerSyncScheduler.start();
-      console.log('[SUCCESS] Broker sync scheduler started');
-    } else {
-      console.log('Broker sync scheduler disabled (ENABLE_BROKER_SYNC_SCHEDULER=false)');
-    }
-
-    if (process.env.ENABLE_PLAID_SYNC_SCHEDULER !== 'false') {
-      console.log('Starting Plaid funding scheduler...');
-      plaidFundingScheduler.start();
-      console.log('[SUCCESS] Plaid funding scheduler started');
-    } else {
-      console.log('Plaid funding scheduler disabled (ENABLE_PLAID_SYNC_SCHEDULER=false)');
-    }
-
-    // Start dividend scheduler (for automatic dividend tracking on open positions)
-    if (backgroundJobsDisabled) {
-      console.log('Dividend scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
-    } else if (process.env.ENABLE_DIVIDEND_SCHEDULER !== 'false') {
-      console.log('Starting dividend scheduler...');
-      dividendScheduler.start();
-      console.log('[SUCCESS] Dividend scheduler started');
-    } else {
-      console.log('Dividend scheduler disabled (ENABLE_DIVIDEND_SCHEDULER=false)');
-    }
-
-    // Start news scheduler (pre-fetches company news for dashboard)
-    if (backgroundJobsDisabled) {
-      console.log('News scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
-    } else if (process.env.ENABLE_NEWS_SCHEDULER !== 'false') {
-      console.log('Starting news scheduler...');
-      newsScheduler.start();
-      console.log('[SUCCESS] News scheduler started');
-    } else {
-      console.log('News scheduler disabled (ENABLE_NEWS_SCHEDULER=false)');
-    }
-
-    // Start earnings scheduler (pre-fetches earnings calendar for dashboard)
-    if (backgroundJobsDisabled) {
-      console.log('Earnings scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
-    } else if (process.env.ENABLE_EARNINGS_SCHEDULER !== 'false') {
-      console.log('Starting earnings scheduler...');
-      earningsScheduler.start();
-      console.log('[SUCCESS] Earnings scheduler started');
-    } else {
-      console.log('Earnings scheduler disabled (ENABLE_EARNINGS_SCHEDULER=false)');
-    }
-
-    // Start symbol category scheduler (pre-categorizes traded symbols with industry data)
-    if (backgroundJobsDisabled) {
-      console.log('Symbol category scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
-    } else if (process.env.ENABLE_CATEGORY_SCHEDULER !== 'false') {
-      console.log('Starting symbol category scheduler...');
-      symbolCategoryScheduler.start();
-      console.log('[SUCCESS] Symbol category scheduler started');
-    } else {
-      console.log('Symbol category scheduler disabled (ENABLE_CATEGORY_SCHEDULER=false)');
-    }
-
-    if (backgroundJobsDisabled) {
-      console.log('Portfolio snapshot scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
-    } else if (process.env.ENABLE_PORTFOLIO_SNAPSHOT_SCHEDULER !== 'false') {
-      console.log('Starting portfolio snapshot scheduler...');
-      portfolioSnapshotScheduler.start();
-      console.log('[SUCCESS] Portfolio snapshot scheduler started');
-    } else {
-      console.log('Portfolio snapshot scheduler disabled (ENABLE_PORTFOLIO_SNAPSHOT_SCHEDULER=false)');
-    }
-
-    if (backgroundJobsDisabled) {
-      console.log('Web mention scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
-    } else if (process.env.ENABLE_WEB_MENTION_SCHEDULER !== 'false') {
-      console.log('Starting web mention scheduler...');
-      webMentionScheduler.start();
-      console.log('[SUCCESS] Web mention scheduler started');
-    } else {
-      console.log('Web mention scheduler disabled (ENABLE_WEB_MENTION_SCHEDULER=false)');
-    }
-
-    if (process.env.ENABLE_V1_WEBHOOKS === 'true') {
-      webhookEventBridge.start();
-    }
-
-    // Start CRM sync scheduler (Twenty CRM + Invoice Ninja)
-    if (process.env.ENABLE_CRM_SYNC === 'true') {
-      console.log('Starting CRM sync scheduler...');
-      crmSyncScheduler.start();
-      console.log('[SUCCESS] CRM sync scheduler started');
-    } else {
-      console.log('CRM sync disabled (ENABLE_CRM_SYNC=false)');
-    }
-
-    // Start activity tracking service (buffered event logging)
-    if (backgroundJobsDisabled) {
-      console.log('Activity tracking disabled (DISABLE_BACKGROUND_JOBS=true)');
-    } else if (process.env.ENABLE_ACTIVITY_TRACKING !== 'false') {
-      console.log('Starting activity tracking service...');
-      activityTrackingService.start();
-      console.log('[SUCCESS] Activity tracking service started');
-    } else {
-      console.log('Activity tracking disabled (ENABLE_ACTIVITY_TRACKING=false)');
-    }
-
-    // Start engagement scheduler (recomputes engagement scores every 2 hours)
-    if (backgroundJobsDisabled) {
-      console.log('Engagement tracking disabled (DISABLE_BACKGROUND_JOBS=true)');
-    } else if (process.env.ENABLE_ENGAGEMENT_TRACKING !== 'false') {
-      console.log('Starting engagement scheduler...');
-      engagementScheduler.start();
-      console.log('[SUCCESS] Engagement scheduler started');
-    } else {
-      console.log('Engagement tracking disabled (ENABLE_ENGAGEMENT_TRACKING=false)');
-    }
-
-    // Initialize push notification service
-    if (process.env.ENABLE_PUSH_NOTIFICATIONS === 'true') {
-      console.log('✓ Push notification service loaded');
-    } else {
-      console.log('Push notifications disabled (ENABLE_PUSH_NOTIFICATIONS=false)');
-    }
-
-    // Start background worker for trade enrichment - CRITICAL for PRO tier
-    if (backgroundJobsDisabled) {
-      console.log('Trade enrichment disabled (DISABLE_BACKGROUND_JOBS=true)');
-    } else if (process.env.ENABLE_TRADE_ENRICHMENT !== 'false') {
-      console.log('Starting background worker for trade enrichment...');
-      let attempts = 0;
-      const maxAttempts = 3;
-      
-      while (attempts < maxAttempts) {
-        try {
-          await backgroundWorker.start();
-          console.log('✓ Background worker started for trade enrichment');
-          break;
-        } catch (error) {
-          attempts++;
-          console.error(`[ERROR] Failed to start background worker (attempt ${attempts}/${maxAttempts}):`, error.message);
-          
-          if (attempts >= maxAttempts) {
-            console.error('[ERROR] CRITICAL: Background worker failed to start after multiple attempts');
-            console.error('[ERROR] This will affect PRO tier trade enrichment features');
-            
-            // In production, we should fail fast for critical services
-            if (process.env.NODE_ENV === 'production') {
-              console.error('[ERROR] Exiting due to critical service failure in production');
-              process.exit(1);
-            }
-          } else {
-            // Wait 2 seconds before retry
-            await new Promise(resolve => setTimeout(resolve, 2000));
-          }
-        }
-      }
-    } else {
-      console.log('Trade enrichment disabled (ENABLE_TRADE_ENRICHMENT=false)');
-    }
-
-    // Start automatic job recovery service - CRITICAL for PRO tier reliability
-    if (backgroundJobsDisabled) {
-      console.log('Job recovery disabled (DISABLE_BACKGROUND_JOBS=true)');
-    } else if (process.env.ENABLE_JOB_RECOVERY !== 'false') {
-      console.log('Starting automatic job recovery service...');
-      jobRecoveryService.start();
-      console.log('✓ Job recovery service started (prevents stuck enrichment jobs)');
-    } else {
-      console.log('Job recovery disabled (ENABLE_JOB_RECOVERY=false)');
-    }
-
-    // Start global enrichment cache cleanup service
-    if (backgroundJobsDisabled) {
-      console.log('Enrichment cache cleanup disabled (DISABLE_BACKGROUND_JOBS=true)');
-    } else if (process.env.ENABLE_ENRICHMENT_CACHE_CLEANUP !== 'false') {
-      console.log('Starting global enrichment cache cleanup service...');
-      globalEnrichmentCacheCleanupService.start();
-      console.log('✓ Global enrichment cache cleanup service started');
-    } else {
-      console.log('Enrichment cache cleanup disabled (ENABLE_ENRICHMENT_CACHE_CLEANUP=false)');
-    }
-
-    // Initialize backup scheduler
-    if (backgroundJobsDisabled) {
-      console.log('Backup scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
-    } else if (process.env.ENABLE_BACKUP_SCHEDULER !== 'false') {
-      console.log('Initializing backup scheduler...');
-      await backupScheduler.initialize();
-      console.log('✓ Backup scheduler initialized');
-    } else {
-      console.log('Backup scheduler disabled (ENABLE_BACKUP_SCHEDULER=false)');
-    }
-
-    // Initialize stock scanner scheduler (3 AM quarterly Russell 2000 scan)
-    if (backgroundJobsDisabled) {
-      console.log('Stock scanner disabled (DISABLE_BACKGROUND_JOBS=true)');
-    } else if (process.env.ENABLE_STOCK_SCANNER !== 'false') {
-      console.log('Initializing stock scanner scheduler...');
-      
-      // Clean up any stuck scans on startup
-      const StockScannerService = require('./services/stockScannerService');
-      const cleanedUp = await StockScannerService.cleanupStuckScans();
-      if (cleanedUp > 0) {
-        console.log(`✓ Cleaned up ${cleanedUp} stuck scan(s)`);
-      }
-      
-      stockScannerScheduler.initialize();
-      console.log('✓ Stock scanner scheduler initialized (Russell 2000 scan runs quarterly at 3 AM)');
-
-      watchlistPillarsScheduler.initialize();
-      console.log('✓ Watchlist pillars scheduler initialized (daily at 4 AM)');
-    } else {
-      console.log('Stock scanner disabled (ENABLE_STOCK_SCANNER=false)');
-    }
 
     // Start the server
     app.listen(PORT, () => {
       logger.info(`✓ TradeTally server running on port ${PORT}`);
       logger.info(`✓ Environment: ${process.env.NODE_ENV || 'development'}`);
       logger.info(`✓ Log level: ${process.env.LOG_LEVEL || 'INFO'}`);
-      
-      // Start stock split daily checks
-      if (backgroundJobsDisabled) {
-        console.log('Stock split monitoring disabled (DISABLE_BACKGROUND_JOBS=true)');
-      } else {
-        const stockSplitService = require('./services/stockSplitService');
-        stockSplitService.startDailyCheck();
-        console.log('✓ Stock split monitoring started');
-      }
+      scheduleBackgroundServices(backgroundJobsDisabled);
     });
   } catch (error) {
     logger.error('Failed to start server:', error);

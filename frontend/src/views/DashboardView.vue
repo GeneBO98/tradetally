@@ -1586,6 +1586,7 @@ const hasMoreOpenTrades = computed(
 )
 const quotesLoading = ref(false) // True while Finnhub quotes are being fetched
 const analyticsLoading = ref(true) // True while analytics data is being fetched
+let openPositionsRequestId = 0
 
 // Manual option price tracking (persisted in localStorage)
 const manualOptionPrices = ref({})
@@ -2342,6 +2343,74 @@ function cacheOpenPositions(positions) {
   }
 }
 
+function getOpenPositionKey(position) {
+  if (position.instrumentType === 'option' && position.underlying_symbol && position.strike_price && position.expiration_date && position.option_type) {
+    return [
+      position.underlying_symbol,
+      position.strike_price,
+      String(position.expiration_date).slice(0, 10),
+      position.option_type
+    ].join('_')
+  }
+  return position.symbol
+}
+
+function preserveExistingQuoteData(positions) {
+  const existingByKey = new Map(openTrades.value.map(position => [getOpenPositionKey(position), position]))
+  const quoteFields = [
+    'currentPrice',
+    'dayChange',
+    'dayChangePercent',
+    'high',
+    'low',
+    'open',
+    'previousClose',
+    'quoteSource',
+    'bid',
+    'ask',
+    'quoteTime'
+  ]
+
+  return positions.map(position => {
+    if (position.currentPrice !== null && position.currentPrice !== undefined) return position
+
+    const existing = existingByKey.get(getOpenPositionKey(position))
+    if (!existing || existing.currentPrice === null || existing.currentPrice === undefined) return position
+
+    const merged = { ...position }
+    quoteFields.forEach(field => {
+      if (existing[field] !== undefined) merged[field] = existing[field]
+    })
+
+    const multiplier = merged.instrumentType === 'option'
+      ? (merged.contractSize || 100)
+      : merged.instrumentType === 'future'
+        ? (merged.pointValue || 1)
+        : 1
+    merged.currentValue = merged.currentPrice * merged.totalQuantity * multiplier
+    merged.unrealizedPnL = merged.side === 'short'
+      ? merged.totalCost - merged.currentValue
+      : merged.currentValue - merged.totalCost
+    merged.unrealizedPnLPercent = merged.totalCost !== 0
+      ? (merged.unrealizedPnL / merged.totalCost) * 100
+      : 0
+
+    return merged
+  })
+}
+
+async function fetchOpenPositionsRequest({ skipQuotes = false } = {}) {
+  const params = {}
+  if (selectedAccount.value) {
+    params.accounts = selectedAccount.value
+  }
+  if (skipQuotes) {
+    params.skipQuotes = 'true'
+  }
+
+  return api.get('/trades/open-positions-quotes', { params })
+}
+
 function cleanupManualOptionPrices() {
   const openSymbols = new Set(openTrades.value.filter(p => p.requires_manual_price).map(p => p.symbol))
   let cleaned = false
@@ -2354,14 +2423,30 @@ function cleanupManualOptionPrices() {
   if (cleaned) saveManualOptionPrices()
 }
 
-async function fetchOpenTrades() {
+async function fetchOpenTrades(options = {}) {
+  const { fastFirst = true } = options
+  const requestId = ++openPositionsRequestId
   quotesLoading.value = true
+  let fastRequestSucceeded = false
+
   try {
-    const params = {}
-    if (selectedAccount.value) {
-      params.accounts = selectedAccount.value
+    if (fastFirst) {
+      try {
+        const fastResponse = await fetchOpenPositionsRequest({ skipQuotes: true })
+        if (requestId !== openPositionsRequestId) return
+
+        const fastPositions = preserveExistingQuoteData(fastResponse.data.positions || [])
+        openTrades.value = fastPositions
+        cacheOpenPositions(openTrades.value)
+        cleanupManualOptionPrices()
+        fastRequestSucceeded = true
+      } catch (fastError) {
+        console.error('Failed to fetch open positions fast path:', fastError)
+      }
     }
-    const response = await api.get('/trades/open-positions-quotes', { params })
+
+    const response = await fetchOpenPositionsRequest({ skipQuotes: false })
+    if (requestId !== openPositionsRequestId) return
 
     if (response.data.error) {
       console.warn('Real-time quotes not available:', response.data.error)
@@ -2374,7 +2459,12 @@ async function fetchOpenTrades() {
     console.error('Failed to fetch open trades:', error)
     // Keep existing positions on refresh failure - don't wipe what we have
   } finally {
-    quotesLoading.value = false
+    if (requestId === openPositionsRequestId) {
+      quotesLoading.value = false
+      if (!fastRequestSucceeded && openTrades.value.length === 0) {
+        loadCachedOpenPositions()
+      }
+    }
   }
 }
 
@@ -3016,7 +3106,7 @@ function startAutoUpdate() {
       console.log('Dashboard: Auto-updating open positions and news...')
       try {
         // Only refresh open positions during market hours for price updates
-        await fetchOpenTrades()
+        await fetchOpenTrades({ fastFirst: false })
         lastRefresh.value = new Date()
         console.log('Dashboard: Auto-update completed successfully')
       } catch (error) {
