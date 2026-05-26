@@ -418,6 +418,13 @@ router.beforeEach(async (to, from, next) => {
     fetchRegistrationConfig().catch(() => {})
   }
 
+  // Authenticated users should never see the public root landing page,
+  // regardless of SaaS/private registration mode.
+  if (to.name === 'home' && authStore.isAuthenticated) {
+    next({ name: 'dashboard' })
+    return
+  }
+
   // Handle billing enabled - when FALSE (default), redirect home to login and block public pages
   // When TRUE, show public pages for SaaS offering
   if (!isBillingEnabled.value) {

@@ -27,6 +27,18 @@ async function notificationsTableExists() {
   return result.rows[0]?.exists === true;
 }
 
+async function portfolioTargetsTableExists() {
+  const result = await db.query(
+    `SELECT EXISTS (
+       SELECT FROM information_schema.tables
+       WHERE table_schema = 'public'
+         AND table_name = 'portfolio_targets'
+     ) AS exists`
+  );
+
+  return result.rows[0]?.exists === true;
+}
+
 function round(value, decimals = 2) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) {
     return null;
@@ -323,6 +335,12 @@ class PortfolioService {
 
     const totals = this._buildTotals(mergedPositions);
 
+    // Targets are keyed by symbol (portfolio_targets), so they apply to any
+    // position regardless of whether it came from a manual holding or open
+    // trades. The symbol-keyed value is authoritative; fall back to a legacy
+    // value carried on the holding row only when no symbol target exists.
+    const targetsBySymbol = await this._getTargetsBySymbol(userId);
+
     const positions = mergedPositions.map(position => ({
       ...position,
       currentValue: roundNullable(position.currentValue),
@@ -338,7 +356,12 @@ class PortfolioService {
           ? (position.currentValue / totals.totalValue) * 100
           : 0
       ),
-      targetAllocationPercent: roundNullable(position.targetAllocationPercent, 2)
+      targetAllocationPercent: roundNullable(
+        targetsBySymbol.has(position.symbol)
+          ? targetsBySymbol.get(position.symbol)
+          : position.targetAllocationPercent,
+        2
+      )
     }));
 
     positions.sort((left, right) => {
@@ -822,7 +845,7 @@ class PortfolioService {
     const result = await db.query(
       `SELECT
          id,
-         is_read,
+         read,
          created_at,
          COALESCE(data->>'category', 'portfolio') AS category,
          COALESCE(data->>'symbol', 'Portfolio') AS symbol,
@@ -840,7 +863,7 @@ class PortfolioService {
 
     return result.rows.map(row => ({
       id: row.id,
-      isRead: row.is_read === true,
+      isRead: row.read === true,
       createdAt: row.created_at,
       category: row.category,
       symbol: row.symbol,
@@ -924,6 +947,65 @@ class PortfolioService {
       };
       return accumulator;
     }, {});
+  }
+
+  static async _getTargetsBySymbol(userId) {
+    const map = new Map();
+    if (!await portfolioTargetsTableExists()) {
+      return map;
+    }
+    const result = await db.query(
+      'SELECT symbol, target_allocation_percent FROM portfolio_targets WHERE user_id = $1',
+      [userId]
+    );
+    for (const row of result.rows) {
+      map.set(
+        row.symbol,
+        row.target_allocation_percent !== null ? parseFloat(row.target_allocation_percent) : null
+      );
+    }
+    return map;
+  }
+
+  // Upsert (or clear, when percent is null/empty) the target allocation for a
+  // symbol. Works for any position the user can see, not just manual holdings.
+  static async setTarget(userId, symbol, targetAllocationPercent) {
+    const normalizedSymbol = String(symbol || '').trim();
+    if (!normalizedSymbol) {
+      throw new Error('Symbol is required');
+    }
+
+    let percent = null;
+    if (targetAllocationPercent !== null && targetAllocationPercent !== undefined && targetAllocationPercent !== '') {
+      percent = parseFloat(targetAllocationPercent);
+      if (Number.isNaN(percent) || percent < 0 || percent > 100) {
+        throw new Error('Target allocation must be between 0 and 100');
+      }
+    }
+
+    if (percent === null) {
+      await db.query(
+        'DELETE FROM portfolio_targets WHERE user_id = $1 AND symbol = $2',
+        [userId, normalizedSymbol]
+      );
+    } else {
+      await db.query(
+        `INSERT INTO portfolio_targets (user_id, symbol, target_allocation_percent)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (user_id, symbol)
+         DO UPDATE SET target_allocation_percent = EXCLUDED.target_allocation_percent, updated_at = NOW()`,
+        [userId, normalizedSymbol, percent]
+      );
+    }
+
+    // Keep the legacy holding column in sync so the holding detail view stays
+    // consistent. No-op when the user has no holding row for this symbol.
+    await db.query(
+      'UPDATE investment_holdings SET target_allocation_percent = $3, updated_at = NOW() WHERE user_id = $1 AND symbol = $2',
+      [userId, normalizedSymbol, percent]
+    );
+
+    return { symbol: normalizedSymbol, targetAllocationPercent: percent };
   }
 
   static async _getManualPositions(userId, accounts) {

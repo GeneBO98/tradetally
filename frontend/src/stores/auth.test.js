@@ -110,4 +110,37 @@ describe('auth store', () => {
     expect(store.error).toBe('Admin approval required')
     expect(localStorage.getItem('token')).toBe(null)
   })
+
+  it('checkAuth probes /auth/me and restores the session when the csrf hint is absent', async () => {
+    // No csrf_token cookie in jsdom → store.token starts null. The HttpOnly
+    // session cookie may still be valid, so checkAuth must still hit /auth/me.
+    const { useAuthStore } = await import('./auth')
+    api.get.mockResolvedValueOnce({
+      data: {
+        user: { id: 7, email: 'restored@example.com', onboarding_completed: true },
+        settings: {}
+      }
+    })
+
+    const store = useAuthStore()
+    expect(store.isAuthenticated).toBe(false)
+
+    await store.checkAuth()
+
+    expect(api.get).toHaveBeenCalledWith('/auth/me', expect.objectContaining({ skipAuthRedirect: true }))
+    expect(store.isAuthenticated).toBe(true)
+    expect(store.user.email).toBe('restored@example.com')
+  })
+
+  it('checkAuth stays logged out when /auth/me returns 401', async () => {
+    const { useAuthStore } = await import('./auth')
+    api.get.mockRejectedValueOnce({ response: { status: 401 } })
+
+    const store = useAuthStore()
+    await store.checkAuth()
+
+    expect(api.get).toHaveBeenCalled()
+    expect(store.isAuthenticated).toBe(false)
+    expect(store.user).toBe(null)
+  })
 })

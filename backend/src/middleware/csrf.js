@@ -7,6 +7,7 @@ const MOBILE_CLIENT_HEADERS = ['x-device-id', 'x-platform', 'x-app-version'];
 // Pre-auth endpoints don't need CSRF protection (no session to hijack)
 const CSRF_EXEMPT_PATHS = new Set([
   '/api/auth/login',
+  '/api/auth/verify-2fa',
   '/api/auth/register',
   '/api/v1/auth/login',
   '/api/v1/auth/register',

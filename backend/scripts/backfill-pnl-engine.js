@@ -134,6 +134,14 @@ async function processBatch(rows, args, tzCache, diffWriter, skipWriter, stats) 
   const updates = [];
   for (const trade of rows) {
     stats.processed += 1;
+    if (!trade.user_id) {
+      stats.skippedNoData += 1;
+      if (skipWriter) {
+        skipWriter.write(`,${trade.id},${trade.symbol || ''},${trade.broker || ''},missing_user_id\n`);
+      }
+      continue;
+    }
+
     let executions = parseExecutions(trade.executions);
     let shape = detectShape(executions);
     let synthesized = false;
@@ -323,6 +331,7 @@ async function runApplyOrDryRun(args) {
 
   const whereClauses = [];
   const params = [];
+  whereClauses.push('user_id IS NOT NULL');
   if (args.userId) {
     params.push(args.userId);
     whereClauses.push(`user_id = $${params.length}`);

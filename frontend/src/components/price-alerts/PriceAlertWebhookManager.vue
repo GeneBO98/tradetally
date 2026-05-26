@@ -201,6 +201,12 @@
                                 class="input"
                                 :placeholder="urlPlaceholder"
                             />
+                            <p
+                                v-if="urlDetectedProvider"
+                                class="mt-2 text-xs text-primary-600 dark:text-primary-400"
+                            >
+                                Detected a {{ providerLabel(urlDetectedProvider) }} webhook URL — Destination Type set to {{ providerLabel(urlDetectedProvider) }} automatically.
+                            </p>
                         </div>
 
                         <div v-if="form.providerType === 'custom'" class="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
@@ -297,7 +303,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import api from "@/services/api";
 import { useNotification } from "@/composables/useNotification";
 import MdiIcon from "@/components/MdiIcon.vue";
@@ -341,6 +347,34 @@ const failureTotal = computed(() =>
 );
 
 const hasFailures = computed(() => failureTotal.value > 0);
+
+// Infer the destination type from the URL so a Slack/Discord endpoint can't be
+// saved as the wrong type (which silently 400s). Mirrors the backend.
+function detectProviderTypeFromUrl(url) {
+    let host;
+    try {
+        host = new URL(url).hostname.toLowerCase();
+    } catch {
+        return null;
+    }
+    if (host === "discord.com" || host === "discordapp.com" || host.endsWith(".discord.com")) {
+        return "discord";
+    }
+    if (host === "hooks.slack.com" || host.endsWith(".slack.com")) {
+        return "slack";
+    }
+    return null;
+}
+
+const urlDetectedProvider = computed(() => detectProviderTypeFromUrl(form.value.url));
+
+// When the URL clearly belongs to Slack/Discord, switch the Destination Type to
+// match so the user sees the correction as they paste.
+watch(urlDetectedProvider, (detected) => {
+    if (detected && form.value.providerType !== detected) {
+        form.value.providerType = detected;
+    }
+});
 
 const urlPlaceholder = computed(() => {
     if (form.value.providerType === "slack") {

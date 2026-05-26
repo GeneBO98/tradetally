@@ -55,6 +55,26 @@ function parseTimestampMs(value) {
   return Number.isNaN(ms) ? Number.MAX_SAFE_INTEGER : ms;
 }
 
+// Returns epoch ms for a parseable, plausibly-dated timestamp, or null otherwise.
+// Use this (not parseTimestampMs) when choosing the earliest entry / latest exit:
+//   - parseTimestampMs maps bad values to MAX_SAFE_INTEGER, which always wins the
+//     "latest" comparison and would let an unparseable string (e.g. "24-03-12")
+//     get written verbatim into a timestamp column.
+//   - Date.parse accepts absurd years like a corrupted "0024-03-12" (a mangled
+//     "2024"); selecting it would overwrite good data and, once formatted by
+//     dateInTimezone, yields an out-of-range date string. Reject those here so a
+//     corrupt timestamp is never chosen and COALESCE preserves the stored value.
+const MIN_PLAUSIBLE_YEAR = 1900;
+const MAX_PLAUSIBLE_YEAR = 9999;
+function toEpochMs(value) {
+  if (!value) return null;
+  const ms = Date.parse(value);
+  if (Number.isNaN(ms)) return null;
+  const year = new Date(ms).getUTCFullYear();
+  if (year < MIN_PLAUSIBLE_YEAR || year > MAX_PLAUSIBLE_YEAR) return null;
+  return ms;
+}
+
 function dateInTimezone(value, timezone) {
   if (!value) return null;
   const str = String(value);
@@ -62,12 +82,18 @@ function dateInTimezone(value, timezone) {
   const parsed = new Date(str);
   if (Number.isNaN(parsed.getTime())) return null;
   try {
-    return new Intl.DateTimeFormat('en-CA', {
+    // Intl's year:'numeric' does NOT zero-pad, so a low year (e.g. a corrupt
+    // year-24 timestamp) would format as "24-03-12" — an out-of-range date when
+    // cast to a DB date column. Build the parts and pad the year to 4 digits.
+    const parts = new Intl.DateTimeFormat('en-CA', {
       timeZone: timezone || 'UTC',
       year: 'numeric',
       month: '2-digit',
       day: '2-digit'
-    }).format(parsed);
+    }).formatToParts(parsed);
+    const part = (type) => parts.find((p) => p.type === type)?.value || '';
+    const year = part('year').padStart(4, '0');
+    return `${year}-${part('month')}-${part('day')}`;
   } catch {
     return parsed.toISOString().split('T')[0];
   }
@@ -182,8 +208,8 @@ function processGrouped(input, executions, timezone) {
     }
 
     if (entryTime) {
-      const ms = parseTimestampMs(entryTime);
-      if (ms < earliestEntryMs) {
+      const ms = toEpochMs(entryTime);
+      if (ms != null && ms < earliestEntryMs) {
         earliestEntryMs = ms;
         earliestEntryTs = entryTime;
       }
@@ -206,8 +232,8 @@ function processGrouped(input, executions, timezone) {
       anyClosed = true;
       exitDate = dateInTimezone(exitTime, timezone);
       if (exitTime) {
-        const ms = parseTimestampMs(exitTime);
-        if (ms > latestExitMs) {
+        const ms = toEpochMs(exitTime);
+        if (ms != null && ms > latestExitMs) {
           latestExitMs = ms;
           latestExitTs = exitTime;
         }
@@ -326,8 +352,8 @@ function processFillBased(input, executions, timezone, tradeId) {
         totalEntryQty += qty;
         totalEntryNotional += qty * price;
         if (timestamp) {
-          const ms = parseTimestampMs(timestamp);
-          if (ms < earliestEntryMs) {
+          const ms = toEpochMs(timestamp);
+          if (ms != null && ms < earliestEntryMs) {
             earliestEntryMs = ms;
             earliestEntryTs = timestamp;
           }
@@ -379,8 +405,8 @@ function processFillBased(input, executions, timezone, tradeId) {
       totalExitQty += matchedQty;
       totalExitNotional += matchedQty * price;
       if (timestamp) {
-        const ms = parseTimestampMs(timestamp);
-        if (ms > latestExitMs) {
+        const ms = toEpochMs(timestamp);
+        if (ms != null && ms > latestExitMs) {
           latestExitMs = ms;
           latestExitTs = timestamp;
         }

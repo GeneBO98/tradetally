@@ -3,6 +3,18 @@ const BrokerConnection = require('./BrokerConnection');
 const encryptionService = require('../services/brokerSync/encryptionService');
 
 class PlaidConnection {
+  static async hasSchema() {
+    const result = await db.query(`
+      SELECT
+        to_regclass('public.plaid_connections') IS NOT NULL
+        AND to_regclass('public.plaid_accounts') IS NOT NULL
+        AND to_regclass('public.plaid_transactions') IS NOT NULL
+        AND to_regclass('public.plaid_transaction_rules') IS NOT NULL AS ready
+    `);
+
+    return Boolean(result.rows[0]?.ready);
+  }
+
   static calculateNextSync(syncFrequency, syncTime) {
     return BrokerConnection.calculateNextSync(syncFrequency, syncTime);
   }

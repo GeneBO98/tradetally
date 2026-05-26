@@ -210,6 +210,21 @@ export const useInvestmentsStore = defineStore('investments', () => {
     }
   }
 
+  // Set or clear the target allocation % for a symbol. Works for any position
+  // (manual holding or open-trade-derived) -- the backend stores it by symbol.
+  async function updatePortfolioTarget(symbol, targetAllocationPercent) {
+    try {
+      const response = await api.put('/investments/portfolio/targets', {
+        symbol,
+        targetAllocationPercent
+      })
+      return response.data
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to update target allocation'
+      throw err
+    }
+  }
+
   async function deleteHolding(holdingId) {
     loading.value = true
     error.value = null
@@ -672,6 +687,7 @@ export const useInvestmentsStore = defineStore('investments', () => {
     getHolding,
     createHolding,
     updateHolding,
+    updatePortfolioTarget,
     deleteHolding,
 
     // Lots

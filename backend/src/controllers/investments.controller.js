@@ -784,6 +784,26 @@ const updatePortfolioPreferences = async (req, res) => {
 };
 
 /**
+ * Set (or clear) the target allocation for a symbol. Works for any position,
+ * including positions derived purely from open trades (no holding required).
+ * PUT /api/investments/portfolio/targets
+ */
+const setPortfolioTarget = async (req, res) => {
+  try {
+    const { symbol, targetAllocationPercent } = req.body || {};
+    if (!symbol) {
+      return res.status(400).json({ error: 'Symbol is required' });
+    }
+    const result = await PortfolioService.setTarget(req.user.id, symbol, targetAllocationPercent);
+    res.json(result);
+  } catch (error) {
+    console.error('[INVESTMENTS] Set portfolio target error:', error);
+    const status = /must be between|required/i.test(error.message) ? 400 : 500;
+    res.status(status).json({ error: error.message || 'Failed to set portfolio target' });
+  }
+};
+
+/**
  * Get portfolio summary
  * GET /api/investments/portfolio/summary
  */
@@ -1318,6 +1338,7 @@ module.exports = {
   backfillPortfolioSnapshots,
   getPortfolioPreferences,
   updatePortfolioPreferences,
+  setPortfolioTarget,
   getPortfolioSummary,
   refreshPrices,
 

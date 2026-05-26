@@ -29,148 +29,141 @@
       </div>
 
       <!-- Preferences Form -->
-      <div v-else class="space-y-6">
+      <div v-else class="space-y-10">
         <!-- Trading Notifications -->
-        <div>
-          <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-4 flex items-center">
-            <MdiIcon :icon="chartIcon" :size="16" class="mr-2 text-blue-500" />
-            Trading Notifications
-          </h4>
-          <div class="space-y-4">
-            <div class="flex items-center justify-between">
-              <div class="flex-1">
-                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+        <section>
+          <div class="bg-gray-100 dark:bg-gray-800/60 px-4 py-2.5 rounded-md mb-2">
+            <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-gray-100">
+              Trading Notifications
+            </h4>
+          </div>
+          <div class="divide-y divide-gray-100 dark:divide-gray-800 pl-4">
+            <div class="flex items-center justify-between py-4 px-2 -mx-2 rounded-md hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
+              <div class="flex-1 pr-6">
+                <label class="text-sm font-medium text-gray-900 dark:text-gray-100 block">
                   News on Open Positions
                 </label>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1.5 leading-relaxed">
                   Get notified when news breaks for stocks you currently have open positions in
                 </p>
               </div>
-              <div class="ml-4">
-                <label class="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    v-model="preferences.notify_news_open_positions"
-                    @change="updatePreference('notify_news_open_positions')"
-                    class="sr-only peer"
-                    :disabled="updating"
-                  />
-                  <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary-600"></div>
-                </label>
-              </div>
+              <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                <input
+                  type="checkbox"
+                  v-model="preferences.notify_news_open_positions"
+                  @change="updatePreference('notify_news_open_positions')"
+                  class="sr-only peer"
+                  :disabled="updating"
+                />
+                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary-600"></div>
+              </label>
             </div>
 
-            <div class="flex items-center justify-between">
-              <div class="flex-1">
-                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+            <div class="flex items-center justify-between py-4 px-2 -mx-2 rounded-md hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
+              <div class="flex-1 pr-6">
+                <label class="text-sm font-medium text-gray-900 dark:text-gray-100 block">
                   Earnings Announcements
                 </label>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1.5 leading-relaxed">
                   Receive notifications about upcoming earnings announcements for your watchlist
                 </p>
               </div>
-              <div class="ml-4">
-                <label class="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    v-model="preferences.notify_earnings_announcements"
-                    @change="updatePreference('notify_earnings_announcements')"
-                    class="sr-only peer"
-                    :disabled="updating"
-                  />
-                  <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary-600"></div>
-                </label>
-              </div>
+              <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                <input
+                  type="checkbox"
+                  v-model="preferences.notify_earnings_announcements"
+                  @change="updatePreference('notify_earnings_announcements')"
+                  class="sr-only peer"
+                  :disabled="updating"
+                />
+                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary-600"></div>
+              </label>
             </div>
 
-            <div class="flex items-center justify-between">
-              <div class="flex-1">
-                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+            <div class="flex items-center justify-between py-4 px-2 -mx-2 rounded-md hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
+              <div class="flex-1 pr-6">
+                <label class="text-sm font-medium text-gray-900 dark:text-gray-100 block">
                   Trade Reminders
                 </label>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1.5 leading-relaxed">
                   Receive behavioral analytics alerts for patterns like revenge trading and overconfidence warnings
                 </p>
               </div>
-              <div class="ml-4">
-                <label class="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    v-model="preferences.notify_trade_reminders"
-                    @change="updatePreference('notify_trade_reminders')"
-                    class="sr-only peer"
-                    :disabled="updating"
-                  />
-                  <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary-600"></div>
-                </label>
-              </div>
+              <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                <input
+                  type="checkbox"
+                  v-model="preferences.notify_trade_reminders"
+                  @change="updatePreference('notify_trade_reminders')"
+                  class="sr-only peer"
+                  :disabled="updating"
+                />
+                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary-600"></div>
+              </label>
             </div>
           </div>
-        </div>
+        </section>
 
         <!-- Alert Notifications -->
-        <div>
-          <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-4 flex items-center">
-            <MdiIcon :icon="alertBellIcon" :size="16" class="mr-2 text-orange-500" />
-            Alert Notifications
-          </h4>
-          <div class="space-y-4">
-            <div class="flex items-center justify-between">
-              <div class="flex-1">
-                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+        <section>
+          <div class="bg-gray-100 dark:bg-gray-800/60 px-4 py-2.5 rounded-md mb-2">
+            <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-gray-100">
+              Alert Notifications
+            </h4>
+          </div>
+          <div class="divide-y divide-gray-100 dark:divide-gray-800 pl-4">
+            <div class="flex items-center justify-between py-4 px-2 -mx-2 rounded-md hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
+              <div class="flex-1 pr-6">
+                <label class="text-sm font-medium text-gray-900 dark:text-gray-100 block">
                   Price Alerts
                 </label>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1.5 leading-relaxed">
                   Receive notifications when your price alerts and watchlist triggers are activated
                 </p>
               </div>
-              <div class="ml-4">
-                <label class="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    v-model="preferences.notify_price_alerts"
-                    @change="updatePreference('notify_price_alerts')"
-                    class="sr-only peer"
-                    :disabled="updating"
-                  />
-                  <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary-600"></div>
-                </label>
-              </div>
+              <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                <input
+                  type="checkbox"
+                  v-model="preferences.notify_price_alerts"
+                  @change="updatePreference('notify_price_alerts')"
+                  class="sr-only peer"
+                  :disabled="updating"
+                />
+                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary-600"></div>
+              </label>
             </div>
           </div>
-        </div>
+        </section>
 
         <!-- Email Preferences -->
-        <div>
-          <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-4 flex items-center">
-            <MdiIcon :icon="emailIcon" :size="16" class="mr-2 text-primary-500" />
-            Email Preferences
-          </h4>
-          <div class="space-y-4">
-            <div class="flex items-center justify-between">
-              <div class="flex-1">
-                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+        <section>
+          <div class="bg-gray-100 dark:bg-gray-800/60 px-4 py-2.5 rounded-md mb-2">
+            <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-gray-100">
+              Email Preferences
+            </h4>
+          </div>
+          <div class="divide-y divide-gray-100 dark:divide-gray-800 pl-4">
+            <div class="flex items-center justify-between py-4 px-2 -mx-2 rounded-md hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
+              <div class="flex-1 pr-6">
+                <label class="text-sm font-medium text-gray-900 dark:text-gray-100 block">
                   Marketing Emails
                 </label>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1.5 leading-relaxed">
                   Receive weekly trading summaries, product tips, trial reminders, review requests, and re-engagement emails
                 </p>
               </div>
-              <div class="ml-4">
-                <label class="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    v-model="preferences.marketing_consent"
-                    @change="updatePreference('marketing_consent')"
-                    class="sr-only peer"
-                    :disabled="updating"
-                  />
-                  <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary-600"></div>
-                </label>
-              </div>
+              <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                <input
+                  type="checkbox"
+                  v-model="preferences.marketing_consent"
+                  @change="updatePreference('marketing_consent')"
+                  class="sr-only peer"
+                  :disabled="updating"
+                />
+                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary-600"></div>
+              </label>
             </div>
           </div>
-        </div>
+        </section>
 
 
         <!-- Update Status -->
@@ -214,17 +207,14 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import MdiIcon from '@/components/MdiIcon.vue'
-import { mdiBell, mdiAlert, mdiChartLine, mdiBellAlert, mdiCheck, mdiInformation, mdiEmailOutline } from '@mdi/js'
+import { mdiBell, mdiAlert, mdiCheck, mdiInformation } from '@mdi/js'
 import api from '@/services/api'
 
 // Icons
 const bellIcon = mdiBell
 const alertIcon = mdiAlert
-const chartIcon = mdiChartLine
-const alertBellIcon = mdiBellAlert
 const checkIcon = mdiCheck
 const infoIcon = mdiInformation
-const emailIcon = mdiEmailOutline
 
 // Data
 const preferences = ref({

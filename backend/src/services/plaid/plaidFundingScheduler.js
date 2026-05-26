@@ -8,6 +8,7 @@ class PlaidFundingScheduler {
   constructor() {
     this.interval = null;
     this.isRunning = false;
+    this.schemaWarningLogged = false;
   }
 
   async processDueSyncs() {
@@ -17,6 +18,16 @@ class PlaidFundingScheduler {
 
     this.isRunning = true;
     try {
+      const schemaReady = await PlaidConnection.hasSchema();
+      if (!schemaReady) {
+        if (!this.schemaWarningLogged) {
+          console.warn('[PLAID-SCHEDULER] Plaid tables are missing; skipping scheduled syncs until migrations run');
+          this.schemaWarningLogged = true;
+        }
+        return;
+      }
+
+      this.schemaWarningLogged = false;
       const dueConnections = await PlaidConnection.findDueForSync();
       if (dueConnections.length === 0) {
         return;

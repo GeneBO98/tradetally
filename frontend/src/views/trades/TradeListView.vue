@@ -1487,6 +1487,39 @@ function getNewsBadgeClasses(sentiment) {
   }
 }
 
+// Map URL query params to store filter keys. The view owns this so deep links
+// (e.g. holdings "View Trades" -> /trades?status=open&symbol=X) load correctly
+// even though TradeFilters now lives in a modal that isn't mounted on page load.
+function buildFiltersFromQuery(query) {
+  const f = {}
+  if (query.symbol) f.symbol = query.symbol
+  if (query.symbolExact) f.symbolExact = query.symbolExact === 'true' || query.symbolExact === true
+  if (query.status) f.status = query.status
+  if (query.startDate) f.startDate = query.startDate
+  if (query.endDate) f.endDate = query.endDate
+  if (query.pnlType) f.pnlType = query.pnlType
+  if (query.holdTime) f.holdTime = query.holdTime
+  if (query.minHoldTime) f.minHoldTime = parseInt(query.minHoldTime)
+  if (query.maxHoldTime) f.maxHoldTime = parseInt(query.maxHoldTime)
+  if (query.sector) f.sector = query.sector
+  if (query.sectors) f.sectors = String(query.sectors).split(',').filter(Boolean)
+  if (query.strategy) { f.strategy = query.strategy; f.strategies = [query.strategy] }
+  if (query.strategies) f.strategies = String(query.strategies).split(',').filter(Boolean)
+  if (query.broker) { f.broker = query.broker; f.brokers = [query.broker] }
+  if (query.brokers) f.brokers = String(query.brokers).split(',').filter(Boolean)
+  if (query.tags) f.tags = String(query.tags).split(',').filter(Boolean)
+  if (query.minPrice) f.minPrice = parseFloat(query.minPrice)
+  if (query.maxPrice) f.maxPrice = parseFloat(query.maxPrice)
+  if (query.minQuantity) f.minQuantity = parseInt(query.minQuantity)
+  if (query.maxQuantity) f.maxQuantity = parseInt(query.maxQuantity)
+  if (query.daysOfWeek) f.daysOfWeek = String(query.daysOfWeek).split(',').map(Number)
+  if (query.instrumentTypes) f.instrumentTypes = String(query.instrumentTypes).split(',').filter(Boolean)
+  if (query.optionTypes) f.optionTypes = String(query.optionTypes).split(',').filter(Boolean)
+  if (query.qualityGrades) f.qualityGrades = String(query.qualityGrades).split(',').filter(Boolean)
+  if (query.importId) f.importId = query.importId
+  return f
+}
+
 onMounted(() => {
   // Load fullwidth preference
   loadFullWidthPreference()
@@ -1504,26 +1537,16 @@ onMounted(() => {
     }
   };
 
-  // Check if there are URL parameters that the TradeFilters component should handle
-  const hasFiltersInUrl = !!(
-    route.query.symbol || route.query.startDate || route.query.endDate ||
-    route.query.strategy || route.query.sector || route.query.status ||
-    route.query.minPrice || route.query.maxPrice || route.query.minQuantity ||
-    route.query.maxQuantity || route.query.holdTime || route.query.broker ||
-    route.query.minHoldTime || route.query.maxHoldTime || route.query.pnlType ||
-    route.query.importId
-  )
-
-  if (route.query.importId) {
-    tradesStore.setFilters({ importId: route.query.importId })
-    tradesStore.fetchTrades()
+  // Apply any URL filter params and load trades. We must NOT defer this to
+  // TradeFilters: it now lives inside a modal (v-if="showFiltersModal") that is
+  // closed on page load, so it never mounts to parse the URL — which left deep
+  // links (e.g. holdings "View Trades" -> /trades?status=open&symbol=X) stuck on
+  // the loading spinner forever. The view owns the initial fetch instead.
+  const urlFilters = buildFiltersFromQuery(route.query)
+  if (Object.keys(urlFilters).length > 0) {
+    tradesStore.setFilters(urlFilters)
   }
-
-  // Only fetch trades immediately if there are no URL parameters
-  // TradeFilters component will handle URL parameters and trigger fetch automatically
-  if (!hasFiltersInUrl) {
-    tradesStore.fetchTrades() // fetchTrades now includes analytics in parallel
-  }
+  tradesStore.fetchTrades() // fetchTrades now includes analytics in parallel
 
   // Initialize table scroll width after component is mounted
   setTimeout(() => updateTableScrollWidth(), 200)

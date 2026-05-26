@@ -8,9 +8,33 @@
             </p>
         </div>
 
+        <!-- Tabs -->
+        <div class="border-b border-gray-200 dark:border-gray-700 mb-8">
+            <nav class="-mb-px flex space-x-8 overflow-x-auto" aria-label="Profile sections">
+                <button
+                    v-for="tab in [
+                        { id: 'profile', label: 'Profile' },
+                        { id: 'security', label: 'Security' },
+                        { id: 'notifications', label: 'Notifications' },
+                        { id: 'trading', label: 'Trading Profile' },
+                    ]"
+                    :key="tab.id"
+                    @click="activeTab = tab.id"
+                    :class="[
+                        'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm',
+                        activeTab === tab.id
+                            ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300',
+                    ]"
+                >
+                    {{ tab.label }}
+                </button>
+            </nav>
+        </div>
+
         <div class="space-y-8">
             <!-- Profile Information -->
-            <div class="card">
+            <div v-if="activeTab === 'profile'" class="card">
                 <div class="card-body">
                     <h3
                         class="text-lg font-medium text-gray-900 dark:text-white mb-6"
@@ -144,7 +168,7 @@
             </div>
 
             <!-- Two-Factor Authentication -->
-            <div class="card">
+            <div v-if="activeTab === 'security'" class="card">
                 <div class="card-body">
                     <h3
                         class="text-lg font-medium text-gray-900 dark:text-white mb-6"
@@ -257,7 +281,7 @@
             </div>
 
             <!-- Passkeys -->
-            <div class="card">
+            <div v-if="activeTab === 'security'" class="card">
                 <div class="card-body">
                     <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">
                         Passkeys
@@ -320,7 +344,7 @@
             </div>
 
             <!-- Subscription Status -->
-            <div v-if="billingStatus.billing_available" class="card">
+            <div v-if="activeTab === 'profile' && billingStatus.billing_available" class="card">
                 <div class="card-body">
                     <h3
                         class="text-lg font-medium text-gray-900 dark:text-white mb-6"
@@ -513,7 +537,7 @@
             </div>
 
             <!-- API Key Management -->
-            <div class="card">
+            <div v-if="activeTab === 'security'" class="card">
                 <div class="card-body">
                     <h3
                         class="text-lg font-medium text-gray-900 dark:text-white mb-6"
@@ -646,10 +670,15 @@
             </div>
 
             <!-- Notification Preferences -->
-            <NotificationPreferences />
+            <NotificationPreferences v-if="activeTab === 'notifications'" />
+
+            <!-- Webhook Destinations (Slack / Discord / custom) -->
+            <PriceAlertWebhookManager
+                v-if="activeTab === 'notifications' && isProUser"
+            />
 
             <!-- Trading Profile -->
-            <div class="card">
+            <div v-if="activeTab === 'trading'" class="card">
                 <div class="card-body">
                     <h3
                         class="text-lg font-medium text-gray-900 dark:text-white mb-6"
@@ -663,262 +692,192 @@
 
                     <form
                         @submit.prevent="updateTradingProfile"
-                        class="space-y-8"
+                        class="space-y-10"
                     >
                         <!-- General Trading Information -->
-                        <div>
-                            <h4
-                                class="text-md font-medium text-gray-900 dark:text-white mb-4"
-                            >
-                                General Information
-                            </h4>
-                            <div
-                                class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3"
-                            >
+                        <section>
+                            <div class="bg-gray-100 dark:bg-gray-800/60 px-4 py-2.5 rounded-md mb-4">
+                                <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-gray-100">
+                                    General Information
+                                </h4>
+                            </div>
+                            <div class="pl-4 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
                                 <!-- Risk Tolerance -->
                                 <div>
-                                    <label for="riskTolerance" class="label"
-                                        >Risk Tolerance</label
-                                    >
+                                    <label for="riskTolerance" class="label">Risk Tolerance</label>
                                     <select
                                         id="riskTolerance"
-                                        v-model="
-                                            tradingProfileForm.riskTolerance
-                                        "
+                                        v-model="tradingProfileForm.riskTolerance"
                                         class="input"
                                     >
-                                        <option value="conservative">
-                                            Conservative
-                                        </option>
-                                        <option value="moderate">
-                                            Moderate
-                                        </option>
-                                        <option value="aggressive">
-                                            Aggressive
-                                        </option>
+                                        <option value="conservative">Conservative</option>
+                                        <option value="moderate">Moderate</option>
+                                        <option value="aggressive">Aggressive</option>
                                     </select>
                                 </div>
 
                                 <!-- Experience Level -->
                                 <div>
-                                    <label for="experienceLevel" class="label"
-                                        >Experience Level</label
-                                    >
+                                    <label for="experienceLevel" class="label">Experience Level</label>
                                     <select
                                         id="experienceLevel"
-                                        v-model="
-                                            tradingProfileForm.experienceLevel
-                                        "
+                                        v-model="tradingProfileForm.experienceLevel"
                                         class="input"
                                     >
-                                        <option value="beginner">
-                                            Beginner (0-1 years)
-                                        </option>
-                                        <option value="intermediate">
-                                            Intermediate (1-3 years)
-                                        </option>
-                                        <option value="advanced">
-                                            Advanced (3-5 years)
-                                        </option>
-                                        <option value="expert">
-                                            Expert (5+ years)
-                                        </option>
+                                        <option value="beginner">Beginner (0-1 years)</option>
+                                        <option value="intermediate">Intermediate (1-3 years)</option>
+                                        <option value="advanced">Advanced (3-5 years)</option>
+                                        <option value="expert">Expert (5+ years)</option>
                                     </select>
                                 </div>
 
                                 <!-- Average Position Size -->
                                 <div>
-                                    <label
-                                        for="averagePositionSize"
-                                        class="label"
-                                        >Average Position Size</label
-                                    >
+                                    <label for="averagePositionSize" class="label">Average Position Size</label>
                                     <select
                                         id="averagePositionSize"
-                                        v-model="
-                                            tradingProfileForm.averagePositionSize
-                                        "
+                                        v-model="tradingProfileForm.averagePositionSize"
                                         class="input"
                                     >
-                                        <option value="small">
-                                            Small ($100 - $1,000)
-                                        </option>
-                                        <option value="medium">
-                                            Medium ($1,000 - $10,000)
-                                        </option>
-                                        <option value="large">
-                                            Large ($10,000+)
-                                        </option>
+                                        <option value="small">Small ($100 - $1,000)</option>
+                                        <option value="medium">Medium ($1,000 - $10,000)</option>
+                                        <option value="large">Large ($10,000+)</option>
                                     </select>
                                 </div>
                             </div>
-                        </div>
+                        </section>
 
                         <!-- Trading Preferences -->
-                        <div>
-                            <h4
-                                class="text-md font-medium text-gray-900 dark:text-white mb-4"
-                            >
-                                Trading Preferences
-                            </h4>
-                            <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                        <section>
+                            <div class="bg-gray-100 dark:bg-gray-800/60 px-4 py-2.5 rounded-md mb-4">
+                                <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-gray-100">
+                                    Trading Preferences
+                                </h4>
+                            </div>
+                            <div class="pl-4 space-y-6">
                                 <!-- Trading Strategies -->
                                 <div>
-                                    <label class="label"
-                                        >Trading Strategies</label
-                                    >
-                                    <div class="space-y-2 mt-2">
-                                        <div
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                        Trading Strategies
+                                    </label>
+                                    <div class="flex flex-wrap gap-2">
+                                        <button
                                             v-for="strategy in strategyOptions"
                                             :key="strategy"
-                                            class="flex items-center"
+                                            type="button"
+                                            @click="toggleChip(tradingProfileForm.tradingStrategies, strategy)"
+                                            :class="[
+                                                'inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 dark:focus:ring-offset-gray-900',
+                                                tradingProfileForm.tradingStrategies.includes(strategy)
+                                                    ? 'bg-primary-600 border-primary-600 text-white hover:bg-primary-700'
+                                                    : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500'
+                                            ]"
                                         >
-                                            <input
-                                                :id="`strategy-${strategy}`"
-                                                v-model="
-                                                    tradingProfileForm.tradingStrategies
-                                                "
-                                                :value="strategy"
-                                                type="checkbox"
-                                                class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                                            />
-                                            <label
-                                                :for="`strategy-${strategy}`"
-                                                class="ml-2 text-sm text-gray-700 dark:text-gray-300"
-                                            >
-                                                {{ strategy }}
-                                            </label>
-                                        </div>
+                                            {{ strategy }}
+                                        </button>
                                     </div>
                                 </div>
 
                                 <!-- Trading Styles -->
                                 <div>
-                                    <label class="label">Trading Styles</label>
-                                    <div class="space-y-2 mt-2">
-                                        <div
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                        Trading Styles
+                                    </label>
+                                    <div class="flex flex-wrap gap-2">
+                                        <button
                                             v-for="style in styleOptions"
                                             :key="style"
-                                            class="flex items-center"
+                                            type="button"
+                                            @click="toggleChip(tradingProfileForm.tradingStyles, style)"
+                                            :class="[
+                                                'inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 dark:focus:ring-offset-gray-900',
+                                                tradingProfileForm.tradingStyles.includes(style)
+                                                    ? 'bg-primary-600 border-primary-600 text-white hover:bg-primary-700'
+                                                    : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500'
+                                            ]"
                                         >
-                                            <input
-                                                :id="`style-${style}`"
-                                                v-model="
-                                                    tradingProfileForm.tradingStyles
-                                                "
-                                                :value="style"
-                                                type="checkbox"
-                                                class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                                            />
-                                            <label
-                                                :for="`style-${style}`"
-                                                class="ml-2 text-sm text-gray-700 dark:text-gray-300"
-                                            >
-                                                {{ style }}
-                                            </label>
-                                        </div>
+                                            {{ style }}
+                                        </button>
                                     </div>
                                 </div>
 
                                 <!-- Primary Markets -->
                                 <div>
-                                    <label class="label">Primary Markets</label>
-                                    <div class="space-y-2 mt-2">
-                                        <div
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                        Primary Markets
+                                    </label>
+                                    <div class="flex flex-wrap gap-2">
+                                        <button
                                             v-for="market in marketOptions"
                                             :key="market"
-                                            class="flex items-center"
+                                            type="button"
+                                            @click="toggleChip(tradingProfileForm.primaryMarkets, market)"
+                                            :class="[
+                                                'inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 dark:focus:ring-offset-gray-900',
+                                                tradingProfileForm.primaryMarkets.includes(market)
+                                                    ? 'bg-primary-600 border-primary-600 text-white hover:bg-primary-700'
+                                                    : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500'
+                                            ]"
                                         >
-                                            <input
-                                                :id="`market-${market}`"
-                                                v-model="
-                                                    tradingProfileForm.primaryMarkets
-                                                "
-                                                :value="market"
-                                                type="checkbox"
-                                                class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                                            />
-                                            <label
-                                                :for="`market-${market}`"
-                                                class="ml-2 text-sm text-gray-700 dark:text-gray-300"
-                                            >
-                                                {{ market }}
-                                            </label>
-                                        </div>
+                                            {{ market }}
+                                        </button>
                                     </div>
                                 </div>
 
                                 <!-- Trading Goals -->
                                 <div>
-                                    <label class="label">Trading Goals</label>
-                                    <div class="space-y-2 mt-2">
-                                        <div
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                        Trading Goals
+                                    </label>
+                                    <div class="flex flex-wrap gap-2">
+                                        <button
                                             v-for="goal in goalOptions"
                                             :key="goal"
-                                            class="flex items-center"
+                                            type="button"
+                                            @click="toggleChip(tradingProfileForm.tradingGoals, goal)"
+                                            :class="[
+                                                'inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 dark:focus:ring-offset-gray-900',
+                                                tradingProfileForm.tradingGoals.includes(goal)
+                                                    ? 'bg-primary-600 border-primary-600 text-white hover:bg-primary-700'
+                                                    : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500'
+                                            ]"
                                         >
-                                            <input
-                                                :id="`goal-${goal}`"
-                                                v-model="
-                                                    tradingProfileForm.tradingGoals
-                                                "
-                                                :value="goal"
-                                                type="checkbox"
-                                                class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                                            />
-                                            <label
-                                                :for="`goal-${goal}`"
-                                                class="ml-2 text-sm text-gray-700 dark:text-gray-300"
-                                            >
-                                                {{ goal }}
-                                            </label>
-                                        </div>
+                                            {{ goal }}
+                                        </button>
                                     </div>
                                 </div>
                             </div>
-                        </div>
+                        </section>
 
                         <!-- Sector Preferences -->
-                        <div>
-                            <h4
-                                class="text-md font-medium text-gray-900 dark:text-white mb-4"
-                            >
-                                Sector Preferences
-                            </h4>
-                            <div class="grid grid-cols-1 gap-6">
-                                <!-- Preferred Sectors -->
-                                <div>
-                                    <label class="label"
-                                        >Preferred Sectors</label
+                        <section>
+                            <div class="bg-gray-100 dark:bg-gray-800/60 px-4 py-2.5 rounded-md mb-4">
+                                <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-gray-100">
+                                    Sector Preferences
+                                </h4>
+                            </div>
+                            <div class="pl-4">
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                    Preferred Sectors
+                                </label>
+                                <div class="flex flex-wrap gap-2">
+                                    <button
+                                        v-for="sector in sectorOptions"
+                                        :key="sector"
+                                        type="button"
+                                        @click="toggleChip(tradingProfileForm.preferredSectors, sector)"
+                                        :class="[
+                                            'inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 dark:focus:ring-offset-gray-900',
+                                            tradingProfileForm.preferredSectors.includes(sector)
+                                                ? 'bg-primary-600 border-primary-600 text-white hover:bg-primary-700'
+                                                : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500'
+                                        ]"
                                     >
-                                    <div
-                                        class="grid grid-cols-2 gap-2 mt-2 sm:grid-cols-3 lg:grid-cols-4"
-                                    >
-                                        <div
-                                            v-for="sector in sectorOptions"
-                                            :key="sector"
-                                            class="flex items-center"
-                                        >
-                                            <input
-                                                :id="`sector-${sector}`"
-                                                v-model="
-                                                    tradingProfileForm.preferredSectors
-                                                "
-                                                :value="sector"
-                                                type="checkbox"
-                                                class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                                            />
-                                            <label
-                                                :for="`sector-${sector}`"
-                                                class="ml-2 text-sm text-gray-700 dark:text-gray-300"
-                                            >
-                                                {{ sector }}
-                                            </label>
-                                        </div>
-                                    </div>
+                                        {{ sector }}
+                                    </button>
                                 </div>
                             </div>
-                        </div>
+                        </section>
 
                         <div class="flex justify-end">
                             <button
@@ -937,7 +896,7 @@
             </div>
 
             <!-- Delete Account -->
-            <div class="card border-red-200 dark:border-red-800">
+            <div v-if="activeTab === 'profile'" class="card border-red-200 dark:border-red-800">
                 <div class="card-body">
                     <h3
                         class="text-lg font-medium text-red-600 dark:text-red-400 mb-4"
@@ -1536,18 +1495,39 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from "vue";
-import { useRouter } from "vue-router";
+import { ref, onMounted, computed, watch } from "vue";
+import { useRouter, useRoute } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { useNotification } from "@/composables/useNotification";
 import NotificationPreferences from "@/components/profile/NotificationPreferences.vue";
+import PriceAlertWebhookManager from "@/components/price-alerts/PriceAlertWebhookManager.vue";
 import api from "@/services/api";
 import { TIMEZONE_OPTIONS } from "@/utils/timezone";
 
 const router = useRouter();
+const route = useRoute();
+
+// Tabbed layout. The active tab is mirrored to the ?tab= query param so it can
+// be deep-linked and survives refresh.
+const PROFILE_TABS = ["profile", "security", "notifications", "trading"];
+const activeTab = ref(
+  PROFILE_TABS.includes(route.query.tab) ? route.query.tab : "profile"
+);
+watch(activeTab, (tab) => {
+  if (route.query.tab !== tab) {
+    router.replace({ query: { ...route.query, tab } });
+  }
+});
 
 const authStore = useAuthStore();
 const { showSuccess, showError, showDangerConfirmation } = useNotification();
+
+// Webhook destinations (a notification delivery channel) require Pro. On
+// self-hosted instances billing is disabled, so everyone has access.
+const isProUser = computed(() => {
+  if (authStore.user?.billingEnabled === false) return true;
+  return authStore.user?.tier === "pro";
+});
 
 // Profile form data
 const profileLoading = ref(false);
@@ -1629,6 +1609,13 @@ const deleteAccountError = ref("");
 const deleteAccountForm = ref({
     password: "",
 });
+
+// Toggle a value's presence in a reactive array (used by chip toggles)
+function toggleChip(arr, value) {
+    const idx = arr.indexOf(value);
+    if (idx === -1) arr.push(value);
+    else arr.splice(idx, 1);
+}
 
 // Trading profile options
 const strategyOptions = [

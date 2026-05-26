@@ -368,6 +368,77 @@ describe('pnlEngine.computeTradePnl', () => {
       expect(aggregate.exit_time).toBeNull();
       expect(aggregate.exit_price).toBeNull();
     });
+
+    test('unparseable timestamps (grouped) → null entry/exit/trade_date, P&L intact', () => {
+      // A garbage 2-digit-year timestamp like "24-03-12" must never be chosen
+      // as entry/exit and written verbatim into a timestamp column.
+      const { aggregate } = computeTradePnl({
+        side: 'long',
+        instrumentType: 'stock',
+        executions: [
+          { entry_price: 100, exit_price: 110, quantity: 10, entry_time: '24-03-12', exit_time: '24-03-12' }
+        ],
+        timezone: 'America/New_York'
+      });
+      nearly(aggregate.pnl, 100);
+      expect(aggregate.entry_time).toBeNull();
+      expect(aggregate.exit_time).toBeNull();
+      expect(aggregate.trade_date).toBeNull();
+    });
+
+    test('unparseable timestamps (fill-based) → null entry/exit/trade_date, P&L intact', () => {
+      const { aggregate } = computeTradePnl({
+        side: 'long',
+        instrumentType: 'stock',
+        executions: [
+          { action: 'buy', quantity: 10, price: 100, datetime: '24-03-12' },
+          { action: 'sell', quantity: 10, price: 110, datetime: '24-03-12' }
+        ],
+        timezone: 'America/New_York'
+      });
+      nearly(aggregate.pnl, 100);
+      expect(aggregate.entry_time).toBeNull();
+      expect(aggregate.exit_time).toBeNull();
+      expect(aggregate.trade_date).toBeNull();
+    });
+
+    test('corrupt low-year entry ("0024-...") is not selected; valid exit kept, P&L intact', () => {
+      // Real Webull import data: a mangled year ("0024" for "2024"). Date.parse
+      // accepts it, but it must not become entry_time/trade_date — that would
+      // overwrite good stored data and format to an out-of-range "24-03-12".
+      const { aggregate } = computeTradePnl({
+        side: 'long',
+        instrumentType: 'stock',
+        executions: [
+          {
+            entryPrice: 2.78, exitPrice: 2.6201, quantity: 100,
+            entryTime: '0024-03-12T14:37:02.000Z',
+            exitTime: '2024-03-01T14:37:00.000Z',
+            pnl: '-16.030000', fees: 0.03, commission: 0
+          }
+        ],
+        timezone: 'America/Chicago'
+      });
+      expect(aggregate.entry_time).toBeNull();
+      expect(aggregate.trade_date).toBeNull();
+      expect(aggregate.exit_time).toBe('2024-03-01T14:37:00.000Z');
+      nearly(aggregate.pnl, -16.02, 0.01);
+    });
+
+    test('one parseable, one garbage exit timestamp → picks the parseable one', () => {
+      const { aggregate } = computeTradePnl({
+        side: 'long',
+        instrumentType: 'stock',
+        executions: [
+          { action: 'buy', quantity: 20, price: 100, datetime: '2026-01-05T10:00:00Z' },
+          { action: 'sell', quantity: 10, price: 110, datetime: '24-03-12' },
+          { action: 'sell', quantity: 10, price: 110, datetime: '2026-01-05T15:00:00Z' }
+        ],
+        timezone: 'UTC'
+      });
+      expect(aggregate.is_fully_closed).toBe(true);
+      expect(aggregate.exit_time).toBe('2026-01-05T15:00:00Z');
+    });
   });
 
   describe('timezone-bucketed exit_date', () => {

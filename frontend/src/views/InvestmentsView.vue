@@ -827,10 +827,7 @@
                                         {{ formatPercent(position.actualAllocationPercent, false) }}
                                     </td>
                                     <td class="px-6 py-4 text-right text-sm">
-                                        <div
-                                            v-if="position.holdingId"
-                                            class="flex items-center justify-end gap-2"
-                                        >
+                                        <div class="flex items-center justify-end gap-2">
                                             <input
                                                 v-model="targetAllocationDrafts[position.symbol]"
                                                 type="number"
@@ -845,7 +842,6 @@
                                                 Save
                                             </button>
                                         </div>
-                                        <span v-else class="text-gray-400">N/A</span>
                                     </td>
                                     <td class="px-6 py-4 text-right text-sm">
                                         <div v-if="position.driftPercent !== null">
@@ -1763,16 +1759,12 @@ async function setComparisonAccount(accountValue) {
 }
 
 async function saveTargetAllocation(position) {
-    if (!position.holdingId) return;
-
     try {
         const draftValue = targetAllocationDrafts.value[position.symbol];
-        await investmentsStore.updateHolding(position.holdingId, {
-            targetAllocationPercent:
-                draftValue === "" || draftValue === null
-                    ? null
-                    : Number(draftValue),
-        });
+        await investmentsStore.updatePortfolioTarget(
+            position.symbol,
+            draftValue === "" || draftValue === null ? null : Number(draftValue),
+        );
         periodDataCache.clear();
         await loadPortfolioData({ force: true });
     } catch (error) {

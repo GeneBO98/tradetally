@@ -16,6 +16,7 @@ jest.mock('../../src/services/portfolioService', () => ({
   getRebalancePlan: jest.fn(),
   getPreferences: jest.fn(),
   updatePreferences: jest.fn(),
+  setTarget: jest.fn(),
   evaluateAlerts: jest.fn()
 }));
 
@@ -90,6 +91,39 @@ describe('investments portfolio controller', () => {
       totalReturn: 620,
       allocation: [{ symbol: 'AAPL', value: 5000, percent: 100 }]
     });
+  });
+
+  test('setPortfolioTarget upserts a target by symbol for any position', async () => {
+    const req = { user: { id: 'user-9' }, body: { symbol: 'IAG', targetAllocationPercent: 25 } };
+    const res = createMockRes();
+
+    PortfolioService.setTarget.mockResolvedValue({ symbol: 'IAG', targetAllocationPercent: 25 });
+
+    await investmentsController.setPortfolioTarget(req, res);
+
+    expect(PortfolioService.setTarget).toHaveBeenCalledWith('user-9', 'IAG', 25);
+    expect(res.json).toHaveBeenCalledWith({ symbol: 'IAG', targetAllocationPercent: 25 });
+  });
+
+  test('setPortfolioTarget rejects a missing symbol with 400', async () => {
+    const req = { user: { id: 'user-9' }, body: { targetAllocationPercent: 25 } };
+    const res = createMockRes();
+
+    await investmentsController.setPortfolioTarget(req, res);
+
+    expect(PortfolioService.setTarget).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  test('setPortfolioTarget maps validation errors to 400', async () => {
+    const req = { user: { id: 'user-9' }, body: { symbol: 'IAG', targetAllocationPercent: 250 } };
+    const res = createMockRes();
+
+    PortfolioService.setTarget.mockRejectedValue(new Error('Target allocation must be between 0 and 100'));
+
+    await investmentsController.setPortfolioTarget(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
   });
 
   test('refreshPrices returns count and triggers alert evaluation', async () => {

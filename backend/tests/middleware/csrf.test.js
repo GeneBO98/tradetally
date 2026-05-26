@@ -115,6 +115,31 @@ describe('csrf middleware', () => {
     expect(res.statusCode).toBe(200);
   });
 
+  test('requireCsrf exempts verify-2fa even with a stale auth cookie and mismatched csrf token', () => {
+    // Pre-auth 2FA completion: a lingering auth cookie from a prior session
+    // would otherwise trigger CSRF enforcement, but the login flow never
+    // established a matching csrf_token for the client to send.
+    const req = {
+      method: 'POST',
+      originalUrl: '/api/auth/verify-2fa',
+      cookies: {
+        token: 'stale-cookie',
+        csrf_token: 'stale-csrf'
+      },
+      headers: {
+        [CSRF_HEADER_NAME]: 'different-or-missing'
+      },
+      header: jest.fn(() => undefined)
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    requireCsrf(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(res.statusCode).toBe(200);
+  });
+
   test('requireCsrf exempts stripe webhook path', () => {
     const req = {
       method: 'POST',

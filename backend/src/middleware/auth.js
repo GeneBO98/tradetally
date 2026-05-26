@@ -16,6 +16,17 @@ class InvalidTokenPurposeError extends Error {
   }
 }
 
+// Marks a genuine authentication failure (missing token, unknown/inactive user)
+// as opposed to an unexpected error (e.g. a transient DB failure). Only genuine
+// failures should produce a 401 — an infrastructure hiccup must NOT log the user
+// out, or a valid session gets bounced to /login on a mere DB blip.
+class UnauthenticatedError extends Error {
+  constructor(message = 'Please authenticate') {
+    super(message);
+    this.name = 'UnauthenticatedError';
+  }
+}
+
 function verifyJwtToken(token, { requiredPurpose = TOKEN_PURPOSES.ACCESS } = {}) {
   const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
@@ -45,7 +56,7 @@ const authenticate = async (req, res, next) => {
     const { token, source } = extractAccessToken(req);
 
     if (!token) {
-      throw new Error();
+      throw new UnauthenticatedError('No access token');
     }
 
     // Verify JWT token
@@ -53,7 +64,7 @@ const authenticate = async (req, res, next) => {
     const user = await User.findById(decoded.id);
 
     if (!user || !user.is_active) {
-      throw new Error();
+      throw new UnauthenticatedError('User not found or inactive');
     }
 
     // Add device tracking headers to request
@@ -80,17 +91,28 @@ const authenticate = async (req, res, next) => {
         return sendV1Error(res, 401, 'INVALID_TOKEN', 'Invalid token');
       }
 
-      return res.status(401).json({ 
+      return res.status(401).json({
         error: 'Invalid token',
         code: 'INVALID_TOKEN'
       });
+    } else if (error instanceof UnauthenticatedError) {
+      if (isV1Request(req)) {
+        return sendV1Error(res, 401, 'UNAUTHORIZED', 'Please authenticate');
+      }
+
+      return res.status(401).json({ error: 'Please authenticate' });
     }
 
+    // Unexpected error (e.g. a transient DB failure from User.findById). This is
+    // NOT an authentication failure — returning 401 would make the frontend
+    // delete its session cookie and bounce a logged-in user to /login on a mere
+    // backend hiccup. Surface it as a retryable 503 so the session is preserved.
+    console.error('[AUTH] Unexpected error during authentication:', error);
     if (isV1Request(req)) {
-      return sendV1Error(res, 401, 'UNAUTHORIZED', 'Please authenticate');
+      return sendV1Error(res, 503, 'AUTH_UNAVAILABLE', 'Authentication temporarily unavailable');
     }
-    
-    res.status(401).json({ error: 'Please authenticate' });
+
+    res.status(503).json({ error: 'Authentication temporarily unavailable', code: 'AUTH_UNAVAILABLE' });
   }
 };
 

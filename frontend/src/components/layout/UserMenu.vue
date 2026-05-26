@@ -168,7 +168,8 @@ import {
   ShieldCheckIcon,
   ArrowRightOnRectangleIcon,
   ChevronDownIcon,
-  ChevronRightIcon
+  ChevronRightIcon,
+  BellAlertIcon
 } from '@heroicons/vue/24/outline'
 
 const authStore = useAuthStore()
@@ -228,6 +229,7 @@ const roleBadge = computed(() => {
 const items = computed(() => {
   const list = [
     { name: 'My Profile', to: '/profile', route: 'profile', icon: UserCircleIcon },
+    { name: 'Price Alerts', to: '/price-alerts', route: 'price-alerts', icon: BellAlertIcon },
     { name: 'Settings', to: '/settings', route: 'settings', icon: Cog6ToothIcon }
   ]
   if (isAdmin.value) {

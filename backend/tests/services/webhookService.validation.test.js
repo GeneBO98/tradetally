@@ -4,7 +4,8 @@ const {
   formatDiscordPayload,
   formatSlackPayload,
   validateEventTypes,
-  validateProviderType
+  validateProviderType,
+  detectProviderTypeFromUrl
 } = require('../../src/services/webhookService');
 
 describe('webhook service validation helpers', () => {
@@ -30,6 +31,15 @@ describe('webhook service validation helpers', () => {
     expect(validateProviderType('slack')).toBe('slack');
     expect(validateProviderType('DISCORD')).toBe('discord');
     expect(validateProviderType()).toBe('custom');
+  });
+
+  test('detectProviderTypeFromUrl infers Slack/Discord from the host', () => {
+    expect(detectProviderTypeFromUrl('https://discord.com/api/webhooks/1/abc')).toBe('discord');
+    expect(detectProviderTypeFromUrl('https://canary.discord.com/api/webhooks/1/abc')).toBe('discord');
+    expect(detectProviderTypeFromUrl('https://discordapp.com/api/webhooks/1/abc')).toBe('discord');
+    expect(detectProviderTypeFromUrl('https://hooks.slack.com/services/T/B/x')).toBe('slack');
+    expect(detectProviderTypeFromUrl('https://example.com/webhooks/price-alerts')).toBeNull();
+    expect(detectProviderTypeFromUrl('not a url')).toBeNull();
   });
 
   test('validateProviderType rejects unsupported provider types', () => {

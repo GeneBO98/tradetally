@@ -77,6 +77,34 @@ function validateProviderType(providerType) {
   return normalized;
 }
 
+// Infer the destination type from the webhook URL. Slack and Discord endpoints
+// only accept their own payload shapes, so a recognized host is unambiguous.
+// Returns 'slack' | 'discord' | null (unknown/custom).
+function detectProviderTypeFromUrl(url) {
+  let host;
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+  if (host === 'discord.com' || host === 'discordapp.com' || host.endsWith('.discord.com')) {
+    return 'discord';
+  }
+  if (host === 'hooks.slack.com' || host.endsWith('.slack.com')) {
+    return 'slack';
+  }
+  return null;
+}
+
+// A recognized Slack/Discord host is authoritative — it overrides an incorrect
+// or blank selection so a Discord URL can't be saved as 'custom' and silently
+// 400. Unknown hosts fall back to the validated user choice (default 'custom').
+function resolveProviderType(url, providerType) {
+  const detected = detectProviderTypeFromUrl(url);
+  if (detected) return detected;
+  return validateProviderType(providerType);
+}
+
 function normalizeEventTypes(eventTypes) {
   const normalized = Array.isArray(eventTypes)
     ? eventTypes
@@ -226,7 +254,7 @@ class WebhookService {
     }
 
     await ensureValidatedOutboundUrl(payload.url, { mode: 'public' });
-    const providerType = validateProviderType(payload.providerType);
+    const providerType = resolveProviderType(payload.url, payload.providerType);
 
     const created = await WebhookSubscription.create({
       userId,
@@ -248,8 +276,12 @@ class WebhookService {
     if (payload.url !== undefined) {
       await ensureValidatedOutboundUrl(payload.url, { mode: 'public' });
       updates.url = payload.url;
+      // Re-derive the provider type from the (new) URL so a recognized
+      // Slack/Discord host stays correctly typed regardless of selection.
+      updates.providerType = resolveProviderType(payload.url, payload.providerType);
+    } else if (payload.providerType !== undefined) {
+      updates.providerType = validateProviderType(payload.providerType);
     }
-    if (payload.providerType !== undefined) updates.providerType = validateProviderType(payload.providerType);
     if (payload.description !== undefined) updates.description = payload.description;
     if (payload.isActive !== undefined) updates.isActive = payload.isActive;
     if (payload.customHeaders !== undefined) updates.customHeaders = payload.customHeaders;
@@ -496,6 +528,7 @@ module.exports = {
   formatDiscordPayload,
   formatSlackPayload,
   validateProviderType,
+  detectProviderTypeFromUrl,
   validateEventTypes,
   webhookService: new WebhookService()
 };

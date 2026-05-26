@@ -218,6 +218,13 @@ router.get('/portfolio/preferences', investmentsController.getPortfolioPreferenc
 router.put('/portfolio/preferences', investmentsController.updatePortfolioPreferences);
 
 /**
+ * @route PUT /api/investments/portfolio/targets
+ * @desc Set or clear the target allocation % for a symbol (any position)
+ * @access Pro
+ */
+router.put('/portfolio/targets', investmentsController.setPortfolioTarget);
+
+/**
  * @route GET /api/investments/portfolio/summary
  * @desc Get portfolio summary
  * @access Pro

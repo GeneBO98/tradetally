@@ -313,11 +313,30 @@
             </router-link>
 
             <router-link
+              to="/price-alerts"
+              @click="closeUserMenu"
+              class="popover-item group/item"
+              :class="{ 'popover-item--active': $route.name === 'price-alerts' }"
+              :style="{ animationDelay: '35ms' }"
+            >
+              <span
+                class="popover-accent"
+                :class="$route.name === 'price-alerts' ? 'scale-y-100' : 'scale-y-0 group-hover/item:scale-y-100'"
+              ></span>
+              <BellAlertIcon
+                class="h-4 w-4 shrink-0 transition-colors"
+                :class="$route.name === 'price-alerts' ? 'text-primary-500 dark:text-primary-400' : 'text-gray-400 group-hover/item:text-primary-500 dark:text-gray-500 dark:group-hover/item:text-primary-400'"
+              />
+              <span class="flex-1">Price Alerts</span>
+              <ChevronRightIcon class="popover-chevron" />
+            </router-link>
+
+            <router-link
               to="/settings"
               @click="closeUserMenu"
               class="popover-item group/item"
               :class="{ 'popover-item--active': $route.name === 'settings' }"
-              :style="{ animationDelay: '35ms' }"
+              :style="{ animationDelay: '70ms' }"
             >
               <span
                 class="popover-accent"
@@ -440,6 +459,7 @@ import {
   Cog6ToothIcon,
   ArrowRightOnRectangleIcon,
   CodeBracketSquareIcon,
+  BellAlertIcon,
   SunIcon,
   MoonIcon
 } from '@heroicons/vue/24/outline'
