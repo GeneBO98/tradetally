@@ -7,7 +7,8 @@ jest.mock('../../src/config/database', () => ({
 }));
 jest.mock('../../src/models/BrokerConnection', () => ({
   create: jest.fn().mockResolvedValue({ id: 'connection-1' }),
-  updateStatus: jest.fn().mockResolvedValue()
+  updateStatus: jest.fn().mockResolvedValue(),
+  findById: jest.fn().mockResolvedValue({ id: 'connection-1', brokerType: 'tradestation' })
 }));
 jest.mock('axios', () => ({
   post: jest.fn(),
@@ -18,6 +19,7 @@ const db = require('../../src/config/database');
 const BrokerConnection = require('../../src/models/BrokerConnection');
 const axios = require('axios');
 const brokerSyncController = require('../../src/controllers/brokerSync.controller');
+const tradestationService = require('../../src/services/brokerSync/tradestationService');
 
 function createRes() {
   return {
@@ -37,6 +39,9 @@ describe('Schwab OAuth state — server-side binding', () => {
     process.env.SCHWAB_CLIENT_SECRET = 'secret';
     process.env.SCHWAB_REDIRECT_URI = 'https://example.com/cb';
     process.env.FRONTEND_URL = 'https://example.com';
+    tradestationService.config.clientId = 'ts-client';
+    tradestationService.config.clientSecret = 'ts-secret';
+    tradestationService.config.redirectUri = 'https://example.com/api/broker-sync/connections/tradestation/callback';
   });
 
   test('initSchwabOAuth INSERTs a random state bound to the caller userId', async () => {
@@ -117,5 +122,56 @@ describe('Schwab OAuth state — server-side binding', () => {
     expect(sql).toMatch(/consumed_at IS NULL/);
     expect(sql).toMatch(/expires_at > NOW\(\)/);
     expect(sql).toMatch(/SET consumed_at = NOW\(\)/);
+  });
+
+  test('initBrokerOAuth INSERTs state for direct OAuth brokers', async () => {
+    db.query.mockResolvedValueOnce({ rows: [] });
+
+    const req = {
+      user: { id: 'user-123' },
+      params: { broker: 'tradestation' },
+      body: {}
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await brokerSyncController.initBrokerOAuth(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    const [sql, params] = db.query.mock.calls[0];
+    expect(sql).toMatch(/INSERT INTO oauth_pending_states/);
+    expect(params[1]).toBe('user-123');
+    expect(params[2]).toBe('tradestation');
+    expect(new URL(res.payload.authUrl).searchParams.get('state')).toBe(params[0]);
+  });
+
+  test('handleBrokerOAuthCallback derives userId from state row for direct OAuth brokers', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ user_id: 'real-user-from-db', context: {} }] });
+    axios.post.mockResolvedValueOnce({
+      data: { access_token: 'AT', refresh_token: 'RT', expires_in: 3600, scope: 'ReadAccount' }
+    });
+    axios.get.mockResolvedValueOnce({
+      data: { Accounts: [{ AccountID: 'TS1234' }] }
+    });
+
+    const req = {
+      params: { broker: 'tradestation' },
+      query: { code: 'auth-code', state: 'state-token' }
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await brokerSyncController.handleBrokerOAuthCallback(req, res, next);
+
+    expect(BrokerConnection.create).toHaveBeenCalledWith(
+      'real-user-from-db',
+      expect.objectContaining({
+        brokerType: 'tradestation',
+        oauthAccessToken: 'AT',
+        oauthRefreshToken: 'RT',
+        externalAccountId: 'TS1234'
+      })
+    );
+    expect(res.redirectedTo).toBe('https://example.com/settings/broker-sync?success=tradestation');
   });
 });

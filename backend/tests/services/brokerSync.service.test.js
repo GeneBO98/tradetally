@@ -33,6 +33,7 @@ const Trade = require('../../src/models/Trade');
 const db = require('../../src/config/database');
 const ibkrService = require('../../src/services/brokerSync/ibkrService');
 const schwabService = require('../../src/services/brokerSync/schwabService');
+const alpacaService = require('../../src/services/brokerSync/alpacaService');
 
 describe('broker sync duplicate protection', () => {
   beforeEach(() => {
@@ -276,6 +277,37 @@ describe('broker sync duplicate protection', () => {
       entryPrice: 6.84,
       exitPrice: 7.235,
       pnl: 39.5
+    });
+  });
+
+  test('generic OAuth broker fill pairing closes long trades instead of marking sells as shorts', () => {
+    const trades = alpacaService.mapExecutionsToTrades([
+      {
+        symbol: 'AAPL',
+        qty: '5',
+        filled_avg_price: '100',
+        filled_at: '2026-03-06T14:30:00Z',
+        side: 'buy',
+        id: 'buy-1'
+      },
+      {
+        symbol: 'AAPL',
+        qty: '5',
+        filled_avg_price: '105',
+        filled_at: '2026-03-06T15:00:00Z',
+        side: 'sell',
+        id: 'sell-1'
+      }
+    ]);
+
+    expect(trades).toHaveLength(1);
+    expect(trades[0]).toMatchObject({
+      symbol: 'AAPL',
+      side: 'long',
+      quantity: 5,
+      entryPrice: 100,
+      exitPrice: 105,
+      pnl: 25
     });
   });
 });

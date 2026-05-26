@@ -152,6 +152,20 @@ const brokerStyles = computed(() => {
         bgClass: 'bg-blue-100 dark:bg-blue-900/30',
         textClass: 'text-blue-600 dark:text-blue-400'
       }
+    case 'tradestation':
+      return {
+        name: 'TradeStation',
+        abbrev: 'TS',
+        bgClass: 'bg-emerald-100 dark:bg-emerald-900/30',
+        textClass: 'text-emerald-600 dark:text-emerald-400'
+      }
+    case 'alpaca':
+      return {
+        name: props.connection.brokerEnvironment === 'paper' ? 'Alpaca Paper' : 'Alpaca Live',
+        abbrev: props.connection.brokerEnvironment === 'paper' ? 'AP' : 'AL',
+        bgClass: 'bg-cyan-100 dark:bg-cyan-900/30',
+        textClass: 'text-cyan-600 dark:text-cyan-400'
+      }
     default:
       return {
         name: props.connection.brokerType,
