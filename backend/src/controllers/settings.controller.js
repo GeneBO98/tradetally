@@ -157,6 +157,15 @@ const settingsController = {
       if (body.cusip_ai_api_key === '***') delete body.cusip_ai_api_key;
 
       const settings = await User.updateSettings(req.user.id, body);
+
+      // Settings like breakeven tolerance and statistics calculation change
+      // analytics outputs, so drop this user's cached analytics on any update.
+      try {
+        await AnalyticsCache.invalidate(req.user.id);
+      } catch (cacheErr) {
+        console.warn(`[SETTINGS] AnalyticsCache invalidation failed: ${cacheErr.message}`);
+      }
+
       const safeSettings = settings
         ? {
             ...settings,

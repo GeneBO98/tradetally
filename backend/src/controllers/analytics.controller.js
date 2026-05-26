@@ -715,19 +715,31 @@ const analyticsController = {
       
       // Get user's preference for average vs median calculations
       const User = require('../models/User');
+      const { normalizeTolerance, breakevenPredicate } = require('../utils/breakeven');
       let useMedian = false;
+      let breakevenTolerance = 0;
       try {
         const userSettings = await User.getSettings(req.user.id);
         useMedian = userSettings?.statistics_calculation === 'median';
+        breakevenTolerance = normalizeTolerance(userSettings?.breakeven_tolerance_ticks);
       } catch (error) {
         console.warn('Could not fetch user settings for analytics, using default (average):', error.message);
         useMedian = false;
       }
-      
-      // Include filter hash in cache key to handle different filter combinations
+
+      // Breakeven predicate over the completed_trades CTE (SELECT * from trades).
+      const be = breakevenPredicate({
+        gross: '(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0))',
+        tickSize: 'tick_size',
+        pointValue: 'point_value',
+        quantity: 'quantity'
+      }, breakevenTolerance);
+
+      // Include filter hash in cache key to handle different filter combinations.
+      // Tolerance is part of the key so changing it yields fresh results.
       const normalizedFiltersForCache = convertQueryToTradeFilters(req.query);
       const filterHashKey = createFilterHash(normalizedFiltersForCache);
-      const cacheKey = `analytics_overview_${req.user.id}_${filterHashKey}_${useMedian ? 'median' : 'avg'}`;
+      const cacheKey = `analytics_overview_${req.user.id}_${filterHashKey}_${useMedian ? 'median' : 'avg'}_be${breakevenTolerance}`;
       
       // Check cache first for faster response
       const cachedData = cache.get(cacheKey);
@@ -759,21 +771,23 @@ const analyticsController = {
         )
         SELECT
           (SELECT COUNT(*) FROM completed_trades)::integer as total_trades,
-          (SELECT COUNT(*) FROM completed_trades WHERE pnl > 0)::integer as winning_trades,
-          (SELECT COUNT(*) FROM completed_trades WHERE pnl < 0)::integer as losing_trades,
-          (SELECT COUNT(*) FROM completed_trades WHERE pnl = 0)::integer as breakeven_trades,
+          -- Breakeven = gross P&L within tolerance (exited ~at entry, ignoring
+          -- commissions/fees). Wins/losses use NET P&L among the rest.
+          (SELECT COUNT(*) FROM completed_trades WHERE ${be.isNot} AND pnl > 0)::integer as winning_trades,
+          (SELECT COUNT(*) FROM completed_trades WHERE ${be.isNot} AND pnl < 0)::integer as losing_trades,
+          (SELECT COUNT(*) FROM completed_trades WHERE ${be.is})::integer as breakeven_trades,
           COALESCE(SUM(pnl), 0)::numeric as total_pnl,
           ${useMedian
             ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl), 0)::numeric as avg_pnl'
             : 'COALESCE(AVG(pnl), 0)::numeric as avg_pnl'
           },
           ${useMedian
-            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE pnl > 0), 0)::numeric as avg_win'
-            : 'COALESCE(AVG(pnl) FILTER (WHERE pnl > 0), 0)::numeric as avg_win'
+            ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE ${be.isNot} AND pnl > 0), 0)::numeric as avg_win`
+            : `COALESCE(AVG(pnl) FILTER (WHERE ${be.isNot} AND pnl > 0), 0)::numeric as avg_win`
           },
           ${useMedian
-            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE pnl < 0), 0)::numeric as avg_loss'
-            : 'COALESCE(AVG(pnl) FILTER (WHERE pnl < 0), 0)::numeric as avg_loss'
+            ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE ${be.isNot} AND pnl < 0), 0)::numeric as avg_loss`
+            : `COALESCE(AVG(pnl) FILTER (WHERE ${be.isNot} AND pnl < 0), 0)::numeric as avg_loss`
           },
           ${useMedian
             ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL), 0)::numeric as avg_r_value'
@@ -782,21 +796,21 @@ const analyticsController = {
           COALESCE(SUM(r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL), 0)::numeric as total_r_value,
           -- R-value specific stats (only trades with stop_loss set)
           (SELECT COUNT(*) FROM completed_trades WHERE stop_loss IS NOT NULL)::integer as r_total_trades,
-          (SELECT COUNT(*) FROM completed_trades WHERE pnl > 0 AND stop_loss IS NOT NULL)::integer as r_winning_trades,
-          (SELECT COUNT(*) FROM completed_trades WHERE pnl < 0 AND stop_loss IS NOT NULL)::integer as r_losing_trades,
-          (SELECT COUNT(*) FROM completed_trades WHERE pnl = 0 AND stop_loss IS NOT NULL)::integer as r_breakeven_trades,
+          (SELECT COUNT(*) FROM completed_trades WHERE ${be.isNot} AND pnl > 0 AND stop_loss IS NOT NULL)::integer as r_winning_trades,
+          (SELECT COUNT(*) FROM completed_trades WHERE ${be.isNot} AND pnl < 0 AND stop_loss IS NOT NULL)::integer as r_losing_trades,
+          (SELECT COUNT(*) FROM completed_trades WHERE ${be.is} AND stop_loss IS NOT NULL)::integer as r_breakeven_trades,
           COALESCE(SUM(pnl) FILTER (WHERE stop_loss IS NOT NULL), 0)::numeric as r_total_pnl,
           ${useMedian
             ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE stop_loss IS NOT NULL), 0)::numeric as r_avg_pnl'
             : 'COALESCE(AVG(pnl) FILTER (WHERE stop_loss IS NOT NULL), 0)::numeric as r_avg_pnl'
           },
           ${useMedian
-            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE pnl > 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_win'
-            : 'COALESCE(AVG(pnl) FILTER (WHERE pnl > 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_win'
+            ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE ${be.isNot} AND pnl > 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_win`
+            : `COALESCE(AVG(pnl) FILTER (WHERE ${be.isNot} AND pnl > 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_win`
           },
           ${useMedian
-            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE pnl < 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_loss'
-            : 'COALESCE(AVG(pnl) FILTER (WHERE pnl < 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_loss'
+            ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE ${be.isNot} AND pnl < 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_loss`
+            : `COALESCE(AVG(pnl) FILTER (WHERE ${be.isNot} AND pnl < 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_loss`
           },
           -- Best/worst trades
           (SELECT individual_best_trade FROM individual_trades) as best_trade,
@@ -825,9 +839,9 @@ const analyticsController = {
         console.log('No overview data returned from query.');
         // Send a valid empty response if overview is missing
         return res.json({ 
-          overview: { 
-            total_pnl: 0, win_rate: 0, total_trades: 0, winning_trades: 0, losing_trades: 0, 
-            breakeven_trades: 0, avg_pnl: 0, avg_win: 0, avg_loss: 0, best_trade: 0, 
+          overview: {
+            total_pnl: 0, win_rate: 0, win_rate_excluding_breakeven: 0, total_trades: 0, winning_trades: 0, losing_trades: 0,
+            breakeven_trades: 0, avg_pnl: 0, avg_win: 0, avg_loss: 0, best_trade: 0,
             worst_trade: 0, profit_factor: 0, sqn: '0.00', probability_random: 'N/A', 
             kelly_percentage: '0.00', k_ratio: '0.00', total_commissions: 0, total_fees: 0, 
             avg_mae: 'N/A', avg_mfe: 'N/A' 
@@ -860,8 +874,16 @@ const analyticsController = {
       overview.worst_trade = parseFloat(overview.worst_trade) || 0;
       overview.avg_r_value = parseFloat(overview.avg_r_value) || 0;
 
-      overview.win_rate = overview.total_trades > 0 
+      overview.win_rate = overview.total_trades > 0
         ? (overview.winning_trades / overview.total_trades * 100).toFixed(2)
+        : 0;
+
+      // Win rate excluding breakeven trades (denominator = wins + losses only).
+      // The issue reporter asked for both figures since breakeven-heavy
+      // strategies skew the standard win rate.
+      const decisiveTrades = overview.winning_trades + overview.losing_trades;
+      overview.win_rate_excluding_breakeven = decisiveTrades > 0
+        ? (overview.winning_trades / decisiveTrades * 100).toFixed(2)
         : 0;
 
       // Calculate advanced trading metrics

@@ -406,6 +406,7 @@ const schemas = {
     timezone: Joi.string().max(50),
     timeDisplayFormat: Joi.string().valid('12h', '24h'),
     statisticsCalculation: Joi.string().valid('average', 'median'),
+    breakevenToleranceTicks: Joi.number().min(0).max(1000).allow(null),
     enableTradeGrouping: Joi.boolean(),
     tradeGroupingTimeGapMinutes: Joi.number().integer().min(1).max(1440),
     autoCloseExpiredOptions: Joi.boolean(),

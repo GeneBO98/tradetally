@@ -307,22 +307,26 @@ describe('TradeQueries.getAnalytics characterization', () => {
       expect(sql).toContain('t.exit_price IS NOT NULL');
     });
 
+    // Breakeven is judged on GROSS P&L (net + commission + fees). Wins/losses
+    // exclude gross-breakeven trades and then split on net P&L.
+    const GROSS = '(t.pnl + COALESCE(t.commission, 0) + COALESCE(t.fees, 0))';
+
     test('pnlType profit: also accepts "positive"', async () => {
       await TradeQueries.getAnalytics('user-1', { pnlType: 'positive' });
       const sql = captureSql();
-      expect(sql).toContain('t.pnl > 0');
+      expect(sql).toContain(`${GROSS} <> 0 AND t.pnl > 0`);
     });
 
     test('pnlType loss: also accepts "negative"', async () => {
       await TradeQueries.getAnalytics('user-1', { pnlType: 'negative' });
       const sql = captureSql();
-      expect(sql).toContain('t.pnl < 0');
+      expect(sql).toContain(`${GROSS} <> 0 AND t.pnl < 0`);
     });
 
     test('pnlType breakeven: getAnalytics-only filter (not in findByUser)', async () => {
       await TradeQueries.getAnalytics('user-1', { pnlType: 'breakeven' });
       const sql = captureSql();
-      expect(sql).toContain('t.pnl = 0');
+      expect(sql).toContain(`${GROSS} = 0`);
     });
 
     test('hasNews=true', async () => {

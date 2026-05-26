@@ -317,16 +317,26 @@ class YearWrappedService {
    * Get core trading metrics for the year
    */
   static async getCoreMetrics(userId, year) {
+    const { getBreakevenToleranceTicks, breakevenPredicate } = require('../utils/breakeven');
+    const breakevenTolerance = await getBreakevenToleranceTicks(userId);
+    const be = breakevenPredicate({
+      gross: '(pnl + COALESCE(commission, 0) + COALESCE(fees, 0))',
+      tickSize: 'tick_size',
+      pointValue: 'point_value',
+      quantity: 'quantity'
+    }, breakevenTolerance);
+
     const result = await db.query(`
       SELECT
         COUNT(*) as total_trades,
-        COUNT(*) FILTER (WHERE pnl > 0) as winning_trades,
-        COUNT(*) FILTER (WHERE pnl < 0) as losing_trades,
-        COUNT(*) FILTER (WHERE pnl = 0) as breakeven_trades,
+        -- Breakeven = gross P&L within tolerance; wins/losses by NET P&L.
+        COUNT(*) FILTER (WHERE ${be.isNot} AND pnl > 0) as winning_trades,
+        COUNT(*) FILTER (WHERE ${be.isNot} AND pnl < 0) as losing_trades,
+        COUNT(*) FILTER (WHERE ${be.is}) as breakeven_trades,
         COALESCE(SUM(pnl), 0) as total_pnl,
         COALESCE(AVG(pnl), 0) as avg_pnl,
         CASE WHEN COUNT(*) > 0
-          THEN (COUNT(*) FILTER (WHERE pnl > 0)::float / COUNT(*) * 100)
+          THEN (COUNT(*) FILTER (WHERE ${be.isNot} AND pnl > 0)::float / COUNT(*) * 100)
           ELSE 0
         END as win_rate,
         COUNT(DISTINCT symbol) as unique_symbols,

@@ -131,6 +131,12 @@ export const useTradesStore = defineStore('trades', () => {
     return totalNetPnL.value + totalCosts.value
   })
 
+  // Gross P&L (price only) for a trade — classify breakeven the same way the
+  // backend does: a trade scratched at entry is breakeven, not a fee-driven loss.
+  function grossPnl(t) {
+    return (parseFloat(t.pnl) || 0) + (parseFloat(t.commission) || 0) + (parseFloat(t.fees) || 0)
+  }
+
   const winRate = computed(() => {
     const summaryWinRate = getSummaryMetric('winRate')
     if (summaryWinRate !== undefined) {
@@ -141,9 +147,26 @@ export const useTradesStore = defineStore('trades', () => {
       return '0.00'
     }
 
-    const winning = trades.value.filter(t => t.pnl > 0).length
+    const winning = trades.value.filter(t => grossPnl(t) !== 0 && t.pnl > 0).length
     const total = trades.value.length
     return total > 0 ? (winning / total * 100).toFixed(2) : 0
+  })
+
+  // Win rate excluding breakeven trades (denominator = wins + losses only).
+  const winRateExcludingBreakeven = computed(() => {
+    const summaryMetric = getSummaryMetric('winRateExcludingBreakeven')
+    if (summaryMetric !== undefined) {
+      return parseFloat(summaryMetric).toFixed(2)
+    }
+
+    if (!hasCompleteTradeSetLoaded.value) {
+      return '0.00'
+    }
+
+    const winning = trades.value.filter(t => grossPnl(t) !== 0 && t.pnl > 0).length
+    const losing = trades.value.filter(t => grossPnl(t) !== 0 && t.pnl < 0).length
+    const decisive = winning + losing
+    return decisive > 0 ? (winning / decisive * 100).toFixed(2) : '0.00'
   })
 
   const totalTrades = computed(() => {
@@ -594,6 +617,7 @@ export const useTradesStore = defineStore('trades', () => {
     totalGrossPnL,
     totalCosts,
     winRate,
+    winRateExcludingBreakeven,
     totalTrades,
     fetchTrades,
     fetchRoundTripTrades,

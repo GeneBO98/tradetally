@@ -176,6 +176,12 @@
             <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
               {{ displayOverview.win_rate }}%
             </dd>
+            <dd
+              v-if="displayOverview.breakeven_trades > 0"
+              class="mt-0.5 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap"
+            >
+              {{ displayOverview.win_rate_excluding_breakeven }}% excl. breakeven
+            </dd>
           </div>
         </div>
 
@@ -1371,6 +1377,7 @@ const filters = ref({
 const overview = ref({
   total_pnl: 0,
   win_rate: 0,
+  win_rate_excluding_breakeven: 0,
   total_trades: 0,
   winning_trades: 0,
   losing_trades: 0,
@@ -1501,7 +1508,10 @@ const displayOverview = computed(() => {
   // In R-value mode, use the R-specific stats from the backend
   const rTotalTrades = overview.value.r_total_trades || 0
   const rWinningTrades = overview.value.r_winning_trades || 0
+  const rLosingTrades = overview.value.r_losing_trades || 0
   const rWinRate = rTotalTrades > 0 ? Math.round((rWinningTrades / rTotalTrades) * 100) : 0
+  const rDecisiveTrades = rWinningTrades + rLosingTrades
+  const rWinRateExclBe = rDecisiveTrades > 0 ? (rWinningTrades / rDecisiveTrades * 100).toFixed(2) : 0
 
   // Calculate profit factor for R-value trades
   const rGrossWins = overview.value.r_winning_trades > 0
@@ -1519,6 +1529,7 @@ const displayOverview = computed(() => {
     losing_trades: overview.value.r_losing_trades || 0,
     breakeven_trades: overview.value.r_breakeven_trades || 0,
     win_rate: rWinRate,
+    win_rate_excluding_breakeven: rWinRateExclBe,
     total_pnl: parseFloat(overview.value.r_total_pnl || 0),
     avg_pnl: parseFloat(overview.value.r_avg_pnl || 0),
     avg_win: parseFloat(overview.value.r_avg_win || 0),

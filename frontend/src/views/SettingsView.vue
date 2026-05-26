@@ -84,6 +84,34 @@
                             </div>
 
                             <div>
+                                <label for="breakevenToleranceTicks" class="label"
+                                    >Breakeven Tolerance (ticks)</label
+                                >
+                                <input
+                                    id="breakevenToleranceTicks"
+                                    v-model.number="
+                                        analyticsForm.breakevenToleranceTicks
+                                    "
+                                    type="number"
+                                    min="0"
+                                    step="0.25"
+                                    class="input"
+                                />
+                                <p
+                                    class="mt-1 text-sm text-gray-500 dark:text-gray-400"
+                                >
+                                    Trades whose gross P&L (price only, ignoring
+                                    commissions and fees) lands within this many
+                                    ticks of zero are counted as breakeven rather
+                                    than wins or losses. The threshold scales per
+                                    instrument by tick size, point value, and
+                                    quantity, so it requires those to be set on
+                                    the trade (e.g. futures). Leave at 0 to count
+                                    only trades that exit exactly at entry.
+                                </p>
+                            </div>
+
+                            <div>
                                 <label for="displayCurrency" class="label"
                                     >Display Currency</label
                                 >
@@ -2647,6 +2675,7 @@ const cusipAiLoading = ref(false);
 // Analytics Settings
 const analyticsForm = ref({
     statisticsCalculation: "average",
+    breakevenToleranceTicks: 0,
     autoCloseExpiredOptions: true,
     defaultStopLossType: "percent",
     defaultStopLossPercent: null,
@@ -2952,6 +2981,8 @@ async function loadAnalyticsSettings() {
         analyticsForm.value = {
             statisticsCalculation:
                 response.data.settings.statisticsCalculation || "average",
+            breakevenToleranceTicks:
+                Number(response.data.settings.breakevenToleranceTicks) || 0,
             autoCloseExpiredOptions:
                 response.data.settings.autoCloseExpiredOptions !== undefined
                     ? response.data.settings.autoCloseExpiredOptions
@@ -2971,6 +3002,7 @@ async function loadAnalyticsSettings() {
         console.error("Failed to load analytics settings:", error);
         // Default values if loading fails
         analyticsForm.value.statisticsCalculation = "average";
+        analyticsForm.value.breakevenToleranceTicks = 0;
         analyticsForm.value.autoCloseExpiredOptions = true;
         analyticsForm.value.defaultStopLossType = "percent";
         analyticsForm.value.defaultStopLossPercent = null;
@@ -2985,6 +3017,8 @@ async function updateAnalyticsSettings() {
     try {
         await api.put("/settings", {
             statisticsCalculation: analyticsForm.value.statisticsCalculation,
+            breakevenToleranceTicks:
+                Number(analyticsForm.value.breakevenToleranceTicks) || 0,
             autoCloseExpiredOptions:
                 analyticsForm.value.autoCloseExpiredOptions,
             defaultStopLossType:

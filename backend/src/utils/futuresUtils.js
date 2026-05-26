@@ -50,6 +50,56 @@ function getFuturesPointValue(underlying) {
 }
 
 /**
+ * Get minimum tick size for futures contracts based on underlying asset.
+ * Returns the price increment of one tick (in points), or null if unknown.
+ * Returning null (rather than a guessed default) is deliberate: tick sizes vary
+ * widely across contracts, and a wrong value would distort breakeven tolerance.
+ * @param {string} underlying - The underlying asset symbol (e.g., 'ES', 'MNQ')
+ * @returns {number|null} Tick size in points, or null if unknown
+ */
+function getFuturesTickSize(underlying) {
+  if (!underlying) return null;
+
+  const upperUnderlying = underlying.toUpperCase();
+
+  const tickSizes = {
+    // E-mini equity index
+    'ES': 0.25,    // E-mini S&P 500
+    'NQ': 0.25,    // E-mini NASDAQ-100
+    'YM': 1,       // E-mini Dow
+    'RTY': 0.1,    // E-mini Russell 2000
+
+    // Micro E-mini equity index
+    'MES': 0.25,   // Micro E-mini S&P 500
+    'MNQ': 0.25,   // Micro E-mini NASDAQ-100
+    'MYM': 1,      // Micro E-mini Dow
+    'M2K': 0.1,    // Micro E-mini Russell 2000
+
+    // Energy
+    'CL': 0.01,    // Crude Oil
+    'MCL': 0.01,   // Micro WTI Crude Oil
+    'NG': 0.001,   // Natural Gas
+    'MNG': 0.001,  // Micro Natural Gas
+    'QG': 0.005,   // Mini Natural Gas
+
+    // Metals
+    'GC': 0.1,     // Gold
+    'MGC': 0.1,    // Micro Gold
+    'SI': 0.005,   // Silver
+    'SIL': 0.005,  // Micro Silver
+    'HG': 0.0005,  // Copper
+
+    // Treasuries (fractional ticks)
+    'ZB': 0.03125,    // 30-Year T-Bond (1/32)
+    'ZN': 0.015625,   // 10-Year T-Note (1/64)
+    'ZF': 0.0078125,  // 5-Year T-Note (1/128)
+    'ZT': 0.00390625  // 2-Year T-Note (1/256)
+  };
+
+  return tickSizes[upperUnderlying] ?? null;
+}
+
+/**
  * Extract underlying asset from a futures contract symbol
  * Handles formats like: ESM4, NQU24, MESZ5, CLZ23, etc.
  * @param {string} symbol - The futures contract symbol
@@ -82,6 +132,7 @@ function extractUnderlyingFromFuturesSymbol(symbol) {
 
 module.exports = {
   getFuturesPointValue,
+  getFuturesTickSize,
   extractUnderlyingFromFuturesSymbol
 };
 

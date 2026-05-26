@@ -22,6 +22,12 @@ jest.mock('../../src/utils/timezone', () => ({
 
 jest.mock('../../src/services/achievementService', () => ({}));
 
+// pnlType filters consult the user's breakeven tolerance via User.getSettings;
+// mock it so it doesn't issue its own db.query (keeps the single-query assertion).
+jest.mock('../../src/models/User', () => ({
+  getSettings: jest.fn().mockResolvedValue({ statistics_calculation: 'average' })
+}));
+
 const db = require('../../src/config/database');
 const TradeQueries = require('../../src/services/tradeQueries');
 

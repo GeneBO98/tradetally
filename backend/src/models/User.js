@@ -220,6 +220,7 @@ class User {
       tradingGoals: 'trading_goals',
       preferredSectors: 'preferred_sectors',
       statisticsCalculation: 'statistics_calculation',
+      breakevenToleranceTicks: 'breakeven_tolerance_ticks',
       defaultBroker: 'default_broker',
       enableTradeGrouping: 'enable_trade_grouping',
       tradeGroupingTimeGapMinutes: 'trade_grouping_time_gap_minutes',

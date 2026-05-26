@@ -1,7 +1,7 @@
 const db = require('../config/database');
 const AchievementService = require('../services/achievementService');
 const { getUserLocalDate, getUserTimezone } = require('../utils/timezone');
-const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('../utils/futuresUtils');
+const { getFuturesPointValue, getFuturesTickSize, extractUnderlyingFromFuturesSymbol } = require('../utils/futuresUtils');
 const { computeTradePnl } = require('../services/pnlEngine');
 const logger = require('../utils/logger');
 /**
@@ -109,12 +109,13 @@ class Trade {
     // Auto-set point value and underlying asset for futures trades if not provided
     let finalPointValue = pointValue;
     let finalUnderlyingAsset = underlyingAsset;
+    let finalTickSize = tickSize;
     if (instrumentType === 'future') {
       // If underlying asset is not provided, try to extract it from the symbol
       if (!finalUnderlyingAsset && symbol) {
         finalUnderlyingAsset = extractUnderlyingFromFuturesSymbol(symbol) || underlyingSymbol || null;
       }
-      
+
       // If point value is not provided, look it up based on underlying asset
       if (!finalPointValue && finalUnderlyingAsset) {
         finalPointValue = getFuturesPointValue(finalUnderlyingAsset);
@@ -126,6 +127,14 @@ class Trade {
           finalUnderlyingAsset = extractedUnderlying;
           finalPointValue = getFuturesPointValue(extractedUnderlying);
           console.log(`[TRADE] Auto-set point value for ${symbol}: ${extractedUnderlying} = $${finalPointValue} per point`);
+        }
+      }
+
+      // Mirror the point-value lookup for tick size (needed for breakeven tolerance)
+      if (!finalTickSize && finalUnderlyingAsset) {
+        finalTickSize = getFuturesTickSize(finalUnderlyingAsset);
+        if (finalTickSize) {
+          console.log(`[TRADE] Auto-set tick size for ${symbol}: ${finalUnderlyingAsset} = ${finalTickSize}`);
         }
       }
     }
@@ -537,7 +546,7 @@ class Trade {
       JSON.stringify(newsData.newsEvents || []), newsData.hasNews || false, newsData.sentiment, newsData.checkedAt,
       instrumentType || 'stock', roundToDbPrecision(strikePrice), cleanExpirationDate, optionType || null,
       contractSize || (instrumentType === 'option' ? 100 : null), underlyingSymbol || null,
-      contractMonth || null, contractYear || null, roundToDbPrecision(tickSize), roundToDbPrecision(finalPointValue), finalUnderlyingAsset || null,
+      contractMonth || null, contractYear || null, roundToDbPrecision(finalTickSize), roundToDbPrecision(finalPointValue), finalUnderlyingAsset || null,
       importId || null,
       originalCurrency || 'USD', roundToDbPrecision(exchangeRate) || 1.0,
       roundToDbPrecision(originalEntryPriceCurrency), roundToDbPrecision(originalExitPriceCurrency),
@@ -666,15 +675,19 @@ class Trade {
       await this.ensureTagsExist(userId, tags);
     }
 
-    // Auto-set point value for futures
+    // Auto-set point value and tick size for futures
     let finalPointValue = pointValue;
     let finalUnderlyingAsset = underlyingAsset;
+    let finalTickSize = tickSize;
     if (instrumentType === 'future') {
       if (!finalUnderlyingAsset && symbol) {
         finalUnderlyingAsset = extractUnderlyingFromFuturesSymbol(symbol) || underlyingSymbol || null;
       }
       if (!finalPointValue && finalUnderlyingAsset) {
         finalPointValue = getFuturesPointValue(finalUnderlyingAsset);
+      }
+      if (!finalTickSize && finalUnderlyingAsset) {
+        finalTickSize = getFuturesTickSize(finalUnderlyingAsset);
       }
     }
 
@@ -708,7 +721,7 @@ class Trade {
       confidence || 5, instrumentType || 'stock',
       roundToDbPrecision(strikePrice), expirationDate || null, optionType || null,
       contractSize || (instrumentType === 'option' ? 100 : null), underlyingSymbol || null,
-      contractMonth || null, contractYear || null, roundToDbPrecision(tickSize),
+      contractMonth || null, contractYear || null, roundToDbPrecision(finalTickSize),
       roundToDbPrecision(finalPointValue), finalUnderlyingAsset || null,
       roundToDbPrecision(stopLoss), roundToDbPrecision(takeProfit),
       JSON.stringify(takeProfitTargets || []), chartUrl || null,
@@ -1121,6 +1134,23 @@ class Trade {
             updates.underlyingAsset = finalUnderlying;
           }
           console.log(`[TRADE UPDATE] Auto-set point value for ${symbol}: ${finalUnderlying} = $${autoPointValue} per point`);
+        }
+      }
+
+      // Mirror the above for tick size (needed for breakeven tolerance)
+      if (updates.tickSize === undefined || updates.tickSize === null) {
+        const underlyingAsset = updates.underlyingAsset || currentTrade.underlying_asset;
+        const symbol = updates.symbol || currentTrade.symbol;
+        let finalUnderlying = underlyingAsset;
+        if (!finalUnderlying && symbol) {
+          finalUnderlying = extractUnderlyingFromFuturesSymbol(symbol) || updates.underlyingSymbol || currentTrade.underlying_symbol || null;
+        }
+        if (finalUnderlying && !currentTrade.tick_size) {
+          const autoTickSize = getFuturesTickSize(finalUnderlying);
+          if (autoTickSize) {
+            updates.tickSize = autoTickSize;
+            console.log(`[TRADE UPDATE] Auto-set tick size for ${symbol}: ${finalUnderlying} = ${autoTickSize}`);
+          }
         }
       }
     }
@@ -2854,6 +2884,15 @@ class Trade {
   static async getMonthlyPerformance(userId, year, accounts = null) {
     console.log(`[MONTHLY] Getting monthly performance for user ${userId}, year ${year}, accounts:`, accounts);
 
+    const { getBreakevenToleranceTicks, breakevenPredicate } = require('../utils/breakeven');
+    const breakevenTolerance = await getBreakevenToleranceTicks(userId);
+    const be = breakevenPredicate({
+      gross: '(pnl + COALESCE(commission, 0) + COALESCE(fees, 0))',
+      tickSize: 'tick_size',
+      pointValue: 'point_value',
+      quantity: 'quantity'
+    }, breakevenTolerance);
+
     // Build account filter condition
     let accountFilter = '';
     const params = [userId, year];
@@ -2868,13 +2907,14 @@ class Trade {
         SELECT
           EXTRACT(MONTH FROM trade_date) as month,
           COUNT(*)::integer as total_trades,
-          COUNT(*) FILTER (WHERE pnl > 0)::integer as winning_trades,
-          COUNT(*) FILTER (WHERE pnl < 0)::integer as losing_trades,
-          COUNT(*) FILTER (WHERE pnl = 0)::integer as breakeven_trades,
+          -- Breakeven = gross P&L within tolerance; wins/losses by NET P&L.
+          COUNT(*) FILTER (WHERE ${be.isNot} AND pnl > 0)::integer as winning_trades,
+          COUNT(*) FILTER (WHERE ${be.isNot} AND pnl < 0)::integer as losing_trades,
+          COUNT(*) FILTER (WHERE ${be.is})::integer as breakeven_trades,
           COALESCE(SUM(pnl), 0)::numeric as total_pnl,
           COALESCE(AVG(pnl), 0)::numeric as avg_pnl,
-          COALESCE(AVG(pnl) FILTER (WHERE pnl > 0), 0)::numeric as avg_win,
-          COALESCE(AVG(pnl) FILTER (WHERE pnl < 0), 0)::numeric as avg_loss,
+          COALESCE(AVG(pnl) FILTER (WHERE ${be.isNot} AND pnl > 0), 0)::numeric as avg_win,
+          COALESCE(AVG(pnl) FILTER (WHERE ${be.isNot} AND pnl < 0), 0)::numeric as avg_loss,
           COALESCE(MAX(pnl), 0)::numeric as best_trade,
           COALESCE(MIN(pnl), 0)::numeric as worst_trade,
           COALESCE(AVG(r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL), 0)::numeric as avg_r_value,
