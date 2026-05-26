@@ -29,7 +29,11 @@
                     {{ watchlist.description }}
                 </p>
             </div>
-            <button @click="showAddSymbolModal = true" class="btn-primary">
+            <div class="flex items-center gap-3">
+              <button @click="createWebMentionRule" class="btn-secondary">
+                Web Mentions
+              </button>
+              <button @click="showAddSymbolModal = true" class="btn-primary">
                 <svg
                     class="w-4 h-4 mr-2"
                     fill="none"
@@ -44,7 +48,8 @@
                     ></path>
                 </svg>
                 Add Symbol
-            </button>
+              </button>
+            </div>
         </div>
 
         <!-- Loading State -->
@@ -1094,6 +1099,16 @@ export default {
             router.push({ name: "price-alerts", query: { symbol } });
         };
 
+        const createWebMentionRule = () => {
+            router.push({
+                name: "web-mentions",
+                query: {
+                    watchlist_id: route.params.id,
+                    name: watchlist.value?.name || "Watchlist",
+                },
+            });
+        };
+
         const cancelAddSymbol = () => {
             showAddSymbolModal.value = false;
             symbolForm.value = { symbol: "", notes: "" };
@@ -1224,6 +1239,7 @@ export default {
             editNotes,
             updateNotes,
             createPriceAlert,
+            createWebMentionRule,
             cancelAddSymbol,
             cancelEditNotes,
             loadWatchlistNews,

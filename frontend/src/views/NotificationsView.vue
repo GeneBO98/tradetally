@@ -25,6 +25,14 @@
               {{ markingRead ? 'Marking...' : 'Mark all read' }}
             </button>
             <button
+              v-if="notifications.length > 0"
+              @click="clearAllNotifications"
+              :disabled="deleting"
+              class="btn-secondary text-sm"
+            >
+              {{ deleting ? 'Clearing...' : 'Clear all' }}
+            </button>
+            <button
               @click="() => fetchNotifications(currentPage)"
               :disabled="loading"
               class="btn-primary text-sm"
@@ -93,6 +101,11 @@
                   :class="getIconColorClass(notification.type)"
                 />
                 <BellIcon
+                  v-else-if="notification.type === 'web_mention_alert'"
+                  class="h-5 w-5"
+                  :class="getIconColorClass(notification.type)"
+                />
+                <BellIcon
                   v-else
                   class="h-5 w-5 text-gray-400"
                 />
@@ -137,6 +150,13 @@
                     <p class="text-gray-700 dark:text-gray-300 italic">
                       "{{ notification.comment_text }}"
                     </p>
+                  </div>
+                  <div v-if="notification.type === 'web_mention_alert' && notification.metadata?.top_links?.length" class="text-xs text-gray-500 dark:text-gray-400">
+                    <span class="font-medium">{{ notification.metadata.article_count }}</span>
+                    distinct articles matched
+                    <span v-if="notification.metadata.matched_symbols?.length">
+                      · {{ notification.metadata.matched_symbols.join(', ') }}
+                    </span>
                   </div>
                 </div>
 
@@ -283,6 +303,33 @@ const deleteSelected = async () => {
   }
 }
 
+const clearAllNotifications = async () => {
+  if (!notifications.value.length) return
+  if (!window.confirm('Delete all notifications? This cannot be undone.')) return
+
+  try {
+    deleting.value = true
+
+    const response = await fetch('/api/notifications/all', {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${authStore.token}`
+      }
+    })
+
+    if (response.ok) {
+      notifications.value = []
+      pagination.value = null
+      selectedNotifications.value = []
+      await fetchNotifications(1)
+    }
+  } catch (error) {
+    console.error('Error clearing all notifications:', error)
+  } finally {
+    deleting.value = false
+  }
+}
+
 const handleNotificationClick = (notification) => {
   if (notification.type === 'trade_comment' && notification.trade_id) {
     router.push(`/trades/${notification.trade_id}`)
@@ -296,6 +343,8 @@ const handleNotificationClick = (notification) => {
     router.push('/metrics/behavioral')
   } else if (notification.type === 'portfolio_alert') {
     router.push({ path: '/analysis', query: { tab: 'holdings' } })
+  } else if (notification.type === 'web_mention_alert') {
+    router.push('/web-mentions')
   }
 }
 
@@ -325,6 +374,7 @@ const getTypeLabel = (type) => {
     case 'leaderboard_ranking': return 'Leaderboard'
     case 'behavioral_alert': return 'Behavioral'
     case 'portfolio_alert': return 'Portfolio'
+    case 'web_mention_alert': return 'Web Mention'
     default: return 'Notification'
   }
 }
@@ -342,6 +392,7 @@ const getTypeBadgeClass = (type) => {
     case 'behavioral_alert':
       return 'bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200'
     case 'portfolio_alert':
+    case 'web_mention_alert':
       return 'bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-200'
     default:
       return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
@@ -361,6 +412,7 @@ const getIconBgClass = (type) => {
     case 'behavioral_alert':
       return 'bg-rose-50 dark:bg-rose-900/20'
     case 'portfolio_alert':
+    case 'web_mention_alert':
       return 'bg-primary-50 dark:bg-primary-900/20'
     default:
       return 'bg-gray-50 dark:bg-gray-700'
@@ -380,6 +432,7 @@ const getIconColorClass = (type) => {
     case 'behavioral_alert':
       return 'text-rose-600 dark:text-rose-400'
     case 'portfolio_alert':
+    case 'web_mention_alert':
       return 'text-primary-600 dark:text-primary-300'
     default:
       return 'text-gray-400'

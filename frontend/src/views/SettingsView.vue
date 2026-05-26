@@ -762,6 +762,7 @@
                                         class="input"
                                         @change="onProviderChange"
                                     >
+                                        <option value="">No provider</option>
                                         <option value="gemini">
                                             Google Gemini
                                         </option>
@@ -841,7 +842,12 @@
                                 </p>
                             </div>
 
-                            <div v-if="aiForm.provider !== 'local'">
+                            <div
+                                v-if="
+                                    aiForm.provider &&
+                                    aiForm.provider !== 'local'
+                                "
+                            >
                                 <label for="aiApiKey" class="label"
                                     >API Key</label
                                 >
@@ -852,6 +858,7 @@
                                     class="input"
                                     :placeholder="getApiKeyPlaceholder()"
                                     :required="
+                                        !!aiForm.provider &&
                                         !['ollama', 'lmstudio'].includes(
                                             aiForm.provider,
                                         )
@@ -941,6 +948,7 @@
                                             class="input"
                                             @change="onCusipProviderChange"
                                         >
+                                            <option value="">No provider</option>
                                             <option value="gemini">
                                                 Google Gemini
                                             </option>
@@ -1008,7 +1016,12 @@
                                     />
                                 </div>
 
-                                <div v-if="cusipAiForm.provider !== 'local'">
+                                <div
+                                    v-if="
+                                        cusipAiForm.provider &&
+                                        cusipAiForm.provider !== 'local'
+                                    "
+                                >
                                     <label for="cusipAiApiKey" class="label"
                                         >API Key</label
                                     >
@@ -1021,6 +1034,7 @@
                                             getCusipApiKeyPlaceholder()
                                         "
                                         :required="
+                                            !!cusipAiForm.provider &&
                                             !['ollama', 'lmstudio'].includes(
                                                 cusipAiForm.provider,
                                             )
@@ -1082,6 +1096,7 @@
                                         class="input"
                                         @change="onAdminProviderChange"
                                     >
+                                        <option value="">No provider</option>
                                         <option value="gemini">
                                             Google Gemini
                                         </option>
@@ -1168,7 +1183,12 @@
                                 </p>
                             </div>
 
-                            <div v-if="adminAiForm.provider !== 'local'">
+                            <div
+                                v-if="
+                                    adminAiForm.provider &&
+                                    adminAiForm.provider !== 'local'
+                                "
+                            >
                                 <label for="adminAiApiKey" class="label"
                                     >Default API Key</label
                                 >
@@ -1179,6 +1199,7 @@
                                     class="input"
                                     :placeholder="getAdminApiKeyPlaceholder()"
                                     :required="
+                                        !!adminAiForm.provider &&
                                         !['ollama', 'lmstudio'].includes(
                                             adminAiForm.provider,
                                         )
@@ -1269,6 +1290,7 @@
                                             class="input"
                                             @change="onAdminCusipProviderChange"
                                         >
+                                            <option value="">No provider</option>
                                             <option value="gemini">
                                                 Google Gemini
                                             </option>
@@ -1341,7 +1363,10 @@
                                 </div>
 
                                 <div
-                                    v-if="adminCusipAiForm.provider !== 'local'"
+                                    v-if="
+                                        adminCusipAiForm.provider &&
+                                        adminCusipAiForm.provider !== 'local'
+                                    "
                                 >
                                     <label
                                         for="adminCusipAiApiKey"
@@ -1357,6 +1382,7 @@
                                             getAdminCusipApiKeyPlaceholder()
                                         "
                                         :required="
+                                            !!adminCusipAiForm.provider &&
                                             !['ollama', 'lmstudio'].includes(
                                                 adminCusipAiForm.provider,
                                             )
@@ -2597,7 +2623,7 @@ const tabs = computed(() => {
 
 // AI Provider Settings
 const aiForm = ref({
-    provider: "gemini",
+    provider: "",
     apiKey: "",
     url: "",
     model: "",
@@ -2609,7 +2635,7 @@ const currencyOptions = CURRENCY_OPTIONS;
 
 // CUSIP AI Provider Settings
 const cusipAiForm = ref({
-    provider: "gemini",
+    provider: "",
     apiKey: "",
     url: "",
     model: "",
@@ -2683,7 +2709,7 @@ const weightsTotal = computed(() => {
 
 // Admin AI Settings
 const adminAiForm = ref({
-    provider: "gemini",
+    provider: "",
     apiKey: "",
     url: "",
     model: "",
@@ -2692,7 +2718,7 @@ const adminAiLoading = ref(false);
 
 // Admin CUSIP AI Settings
 const adminCusipAiForm = ref({
-    provider: "gemini",
+    provider: "",
     apiKey: "",
     url: "",
     model: "",
@@ -2797,7 +2823,7 @@ async function loadAISettings() {
     try {
         const response = await api.get("/settings/ai-provider");
         aiForm.value = {
-            provider: response.data.aiProvider || "gemini",
+            provider: response.data.aiProvider || "",
             apiKey: response.data.aiApiKey || "",
             url: response.data.aiApiUrl || "",
             model: response.data.aiModel || "",
@@ -2883,7 +2909,7 @@ async function loadCusipAISettings() {
     try {
         const response = await api.get("/settings/cusip-ai-provider");
         cusipAiForm.value = {
-            provider: response.data.cusipAiProvider || "gemini",
+            provider: response.data.cusipAiProvider || "",
             apiKey: response.data.cusipAiApiKey || "",
             url: response.data.cusipAiApiUrl || "",
             model: response.data.cusipAiModel || "",
@@ -3325,7 +3351,7 @@ async function fetchAdminCusipAISettings() {
     try {
         const response = await api.get("/settings/admin/cusip-ai");
         adminCusipAiForm.value = {
-            provider: response.data.cusipAiProvider || "gemini",
+            provider: response.data.cusipAiProvider || "",
             apiKey: response.data.cusipAiApiKey || "",
             url: response.data.cusipAiApiUrl || "",
             model: response.data.cusipAiModel || "",

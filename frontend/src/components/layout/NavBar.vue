@@ -414,6 +414,13 @@ const baseNavigation = [
         badge: { type: 'pro', text: 'Pro' }
       },
       {
+        name: 'Web Mentions',
+        to: '/web-mentions',
+        route: 'web-mentions',
+        description: 'Monitor curated financial sources for portfolio and watchlist mentions',
+        badge: { type: 'pro', text: 'Pro' }
+      },
+      {
         name: 'Trade Management',
         to: '/analysis/trade-management',
         route: 'trade-management',

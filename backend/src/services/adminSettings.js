@@ -136,7 +136,7 @@ class AdminSettingsService {
       const settings = await this.getAllSettings();
       
       return {
-        provider: settings.default_ai_provider || 'gemini',
+        provider: settings.default_ai_provider || '',
         apiKey: settings.default_ai_api_key || '',
         apiUrl: settings.default_ai_api_url || '',
         model: settings.default_ai_model || ''

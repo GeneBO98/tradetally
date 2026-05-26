@@ -23,6 +23,8 @@ router.delete('/', notificationsController.deleteNotifications);
 router.get('/status', requiresTier('pro'), notificationsController.getConnectionStatus);
 router.post('/test', requiresTier('pro'), notificationsController.sendTestNotification);
 
+router.delete('/all', notificationsController.clearAllNotifications);
+
 // Mobile push notification routes (remove pro tier requirement for basic functionality)
 const mobileRouter = express.Router();
 mobileRouter.use(authenticate);

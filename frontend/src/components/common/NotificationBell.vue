@@ -98,6 +98,10 @@
                     v-else-if="notification.type === 'level_up' || notification.type === 'portfolio_alert'"
                     class="h-5 w-5 text-emerald-500"
                   />
+                  <BellIcon
+                    v-else-if="notification.type === 'web_mention_alert'"
+                    class="h-5 w-5 text-primary-500"
+                  />
                   <BellIcon v-else class="h-5 w-5 text-gray-400" />
                 </div>
 
@@ -117,6 +121,9 @@
                   <!-- Additional info for price alerts -->
                   <div v-if="notification.type === 'price_alert' && notification.trigger_price" class="text-xs text-gray-500 dark:text-gray-400 mt-1">
                     Triggered at ${{ parseFloat(notification.trigger_price).toFixed(2) }}
+                  </div>
+                  <div v-if="notification.type === 'web_mention_alert' && notification.metadata?.article_count" class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    {{ notification.metadata.article_count }} distinct articles
                   </div>
                 </div>
 
@@ -360,9 +367,11 @@ const markAllAsRead = async () => {
       showError('Notifications', message)
       return
     }
+    await response.json()
 
-    // Update local state
-    notifications.value = notifications.value.map(n => ({ ...n, is_read: true }))
+    // The bell only shows unread notifications, so clear them immediately.
+    notifications.value = []
+    setRecentUnreadNotifications([])
     clearUnreadState()
 
     // Refresh the notifications and unread count to make sure they're accurate
@@ -448,6 +457,8 @@ const handleNotificationClick = async (notification) => {
     router.push('/metrics/behavioral')
   } else if (notification.type === 'portfolio_alert') {
     router.push({ path: '/analysis', query: { tab: 'holdings' } })
+  } else if (notification.type === 'web_mention_alert') {
+    router.push('/web-mentions')
   }
   
   closeDropdown()
