@@ -58,7 +58,12 @@ async function autoCalculateMAEMFE(userId, trade) {
       side: trade.side,
       pnl: trade.pnl || trade.profit_loss || 0,
       commission: trade.commission || 0,
-      fees: trade.fees || 0
+      fees: trade.fees || 0,
+      quantity: trade.quantity,
+      instrument_type: trade.instrument_type || trade.instrumentType,
+      point_value: trade.point_value ?? trade.pointValue,
+      underlying_asset: trade.underlying_asset || trade.underlyingAsset,
+      contract_size: trade.contract_size ?? trade.contractSize
     };
 
     if (!MAEEstimator.isValidTradeForEstimation(tradeData)) return;
@@ -2623,7 +2628,8 @@ const tradeController = {
               if (tier === 'pro') {
                 console.log(`[MAE/MFE] Scheduling background calculation for ${imported} imported trades...`);
                 const importedClosedTrades = await db.query(`
-                  SELECT id, symbol, side, entry_time, exit_time, entry_price, exit_price, pnl, commission, fees, mae, mfe
+                  SELECT id, symbol, side, entry_time, exit_time, entry_price, exit_price, pnl, commission, fees, mae, mfe,
+                         quantity, instrument_type, point_value, underlying_asset, contract_size
                   FROM trades
                   WHERE user_id = $1 AND import_id = $2
                   AND exit_time IS NOT NULL AND exit_price IS NOT NULL

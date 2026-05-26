@@ -102,7 +102,11 @@ async function calculateMAEMFEAsync(userId, filterConditions, params) {
           fees,
           trade_date,
           entry_time,
-          exit_time
+          exit_time,
+          instrument_type,
+          point_value,
+          underlying_asset,
+          contract_size
         FROM trades
         WHERE user_id = $1 ${filterConditions}
           AND entry_price IS NOT NULL
