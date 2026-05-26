@@ -25,14 +25,16 @@ const upload = multer({
       mimetype: file.mimetype,
       fieldname: file.fieldname
     });
-    
-    const allowedTypes = /jpeg|jpg|png|gif|csv|text\/csv|application\/csv/;
-    const mimetype = allowedTypes.test(file.mimetype) || file.mimetype === 'text/csv' || file.mimetype === 'application/csv';
-    const extname = allowedTypes.test(file.originalname.toLowerCase()) || file.originalname.toLowerCase().endsWith('.csv');
-    
-    console.log('File validation:', { mimetype, extname, actualMimetype: file.mimetype });
-    
-    if (mimetype && extname) {
+
+    const name = file.originalname.toLowerCase();
+    // Trust the .csv extension — browsers/OSes report CSVs with many mimetypes
+    // (text/csv, application/csv, application/vnd.ms-excel, text/plain, application/octet-stream).
+    const isCsv = name.endsWith('.csv');
+    const isImage = /\.(jpe?g|png|gif)$/.test(name) && /^image\//.test(file.mimetype);
+
+    console.log('File validation:', { isCsv, isImage, actualMimetype: file.mimetype });
+
+    if (isCsv || isImage) {
       return cb(null, true);
     }
     console.log('File rejected - invalid type');

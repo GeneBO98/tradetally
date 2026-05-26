@@ -26,7 +26,8 @@ export const SYNCED_KEYS = Object.freeze([
   'diarySearchQuery',
   'priceAlertsFilters',
   'monthlyPerformanceYear',
-  'lastSelectedBroker'
+  'lastSelectedBroker',
+  'passkey_prompt_dismissed'
 ])
 
 const SYNCED_KEY_SET = new Set(SYNCED_KEYS)

@@ -27,12 +27,16 @@ function getFuturesPointValue(underlying) {
 
     // Energy
     'CL': 1000,    // Crude Oil
+    'MCL': 100,    // Micro WTI Crude Oil (1/10th of CL)
     'NG': 10000,   // Natural Gas
+    'MNG': 1000,   // Micro Natural Gas (1/10th of NG)
     'QG': 2500,    // Mini Natural Gas
 
     // Metals
     'GC': 100,     // Gold
+    'MGC': 10,     // Micro Gold (1/10th of GC)
     'SI': 5000,    // Silver
+    'SIL': 1000,   // Micro Silver
     'HG': 12500,   // Copper
 
     // Treasuries

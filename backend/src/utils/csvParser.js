@@ -1412,6 +1412,12 @@ const brokerParsers = {
     const price = parseFloat(priceStr);
     const side = action === 'BOT' ? 'long' : 'short';
 
+    // Multi-leg spreads (VERTICAL, IRON CONDOR, etc.) are not representable as a
+    // single trade - signal to caller to skip by returning null.
+    if (/^(VERTICAL|DIAGONAL|CALENDAR|BUTTERFLY|CONDOR|IRON\s+CONDOR|IRON\s+BUTTERFLY|STRADDLE|STRANGLE|COVERED|COLLAR|RATIO|BACK\s+RATIO)\b/i.test(symbolPart)) {
+      return null;
+    }
+
     // Detect options: "CRM 100 (Weeklys) 2 APR 26 175 PUT"
     let symbol;
     let optionData = {};
@@ -1435,6 +1441,7 @@ const brokerParsers = {
       };
     } else {
       symbol = symbolPart.trim();
+      if (symbol.length > 30) return null;
     }
 
     // Parse date and time
@@ -2214,8 +2221,6 @@ function normalizeExecutionCollections(trades) {
             execution.orderID ??
             execution.tradeId ??
             execution.tradeID ??
-            execution.sourceIndex ??
-            execution.source_index ??
             null;
 
           if (identifierKey === null || identifierKey === undefined || identifierKey === '') {
@@ -6638,6 +6643,24 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
       const quantity = Math.abs(parseFloat(quantityStr.replace(/,/g, '')));
       const price = parseFloat(priceStr);
 
+      // Detect multi-leg option spreads (VERTICAL, IRON CONDOR, BUTTERFLY, etc.).
+      // ThinkOrSwim emits these as a single row describing the whole spread, but
+      // TradeTally's data model represents trades as single instruments. Skip
+      // them with a clear diagnostic rather than truncating into a bogus symbol.
+      const spreadMatch = symbolPart.match(/^(VERTICAL|DIAGONAL|CALENDAR|BUTTERFLY|CONDOR|IRON\s+CONDOR|IRON\s+BUTTERFLY|STRADDLE|STRANGLE|COVERED|COLLAR|RATIO|BACK\s+RATIO)\b/i);
+      if (spreadMatch) {
+        const spreadType = spreadMatch[1].toUpperCase();
+        console.log(`[TOS] Skipping multi-leg spread (${spreadType}): ${description}`);
+        if (diagnostics) {
+          diagnostics.skippedRows++;
+          diagnostics.skippedReasons.push({
+            row: rowIndex,
+            reason: `Multi-leg option spread (${spreadType}) not supported - import individual legs from a different export or skip these rows`
+          });
+        }
+        continue;
+      }
+
       // Detect options: "CRM 100 (Weeklys) 2 APR 26 175 PUT" or "CRM 100 2 APR 26 175 CALL"
       // Pattern: UNDERLYING MULTIPLIER [optional (series)] DAY MONTH YEAR STRIKE PUT/CALL
       let symbol;
@@ -6664,6 +6687,21 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
       } else {
         // Stock - symbolPart is just the ticker
         symbol = symbolPart.trim();
+      }
+
+      // Defense-in-depth: the trades table caps symbol at varchar(30). If anything
+      // unexpected slips through (e.g. an unrecognized exotic instrument description),
+      // skip it cleanly instead of letting the DB INSERT fail.
+      if (!symbol || symbol.length > 30) {
+        console.log(`[TOS] Skipping row with invalid symbol length (${symbol?.length || 0}): ${description}`);
+        if (diagnostics) {
+          diagnostics.skippedRows++;
+          diagnostics.skippedReasons.push({
+            row: rowIndex,
+            reason: `Unrecognized instrument format: "${(description || '').substring(0, 60)}" - symbol could not be extracted`
+          });
+        }
+        continue;
       }
 
       // Parse fees
@@ -8432,7 +8470,9 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         entryTime: existingPosition.entryTime,
         tradeDate: existingPosition.tradeDate,
         side: existingPosition.side,
-        executions: existingExecutions,
+        // Clone the array so new executions added during this parse do not
+        // mutate the duplicate-detection context mid-import.
+        executions: existingExecutions.map(exec => ({ ...exec })),
         // Use recalculated values from executions for accurate P&L
         totalQuantity: recalcEntryQty,  // Total entry quantity, not remaining
         totalFees: recalcFees,

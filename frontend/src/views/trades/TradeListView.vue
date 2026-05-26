@@ -975,7 +975,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { useUserTimezone } from '@/composables/useUserTimezone'
-import { format } from 'date-fns'
 import { DocumentTextIcon, ChatBubbleLeftIcon } from '@heroicons/vue/24/outline'
 import TradeFilters from '@/components/trades/TradeFilters.vue'
 import TradeCommentsDialog from '@/components/trades/TradeCommentsDialog.vue'
@@ -992,7 +991,7 @@ import { getTradeGrossPnl } from '@/utils/tradePnl'
 const tradesStore = useTradesStore()
 const uiPreferencesStore = useUiPreferencesStore()
 const { formatCurrency, currencySymbol, formatSignedCurrency } = useCurrencyFormatter()
-const { formatTime: formatTimeTz } = useUserTimezone()
+const { formatTime: formatTimeTz, userTimezone } = useUserTimezone()
 const route = useRoute()
 const router = useRouter()
 
@@ -1200,26 +1199,28 @@ function formatQuantity(num) {
   }).format(num)
 }
 
+// Format a UTC datetime in the user's configured timezone (not the browser's).
+// Date-only inputs (no time component) are parsed as-is.
+function dateOnlyParts(date) {
+  const m = date.toString().match(/^(\d{4})-(\d{2})-(\d{2})(?:T00:00:00(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$/)
+  if (!m) return null
+  return { year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) }
+}
+
+function formatInUserTimezone(date, options) {
+  const parts = dateOnlyParts(date)
+  if (parts) {
+    return new Intl.DateTimeFormat('en-US', options).format(new Date(parts.year, parts.month - 1, parts.day))
+  }
+  const dateObj = new Date(date)
+  if (isNaN(dateObj.getTime())) return null
+  return new Intl.DateTimeFormat('en-US', { timeZone: userTimezone.value, ...options }).format(dateObj)
+}
+
 function formatDate(date) {
   if (!date) return 'N/A'
   try {
-    // Parse date string manually to avoid timezone issues
-    // If it's a date-only string (YYYY-MM-DD), parse components directly
-    const dateStr = date.toString()
-
-    // Match date-only format (YYYY-MM-DD) or date with midnight time (YYYY-MM-DDT00:00:00...)
-    const dateOnlyMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})(?:T00:00:00(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$/)
-    if (dateOnlyMatch) {
-      const [, year, month, day] = dateOnlyMatch.map(Number)
-      // Create date in local timezone (month is 0-indexed)
-      const dateObj = new Date(year, month - 1, day)
-      return format(dateObj, 'MMM dd, yyyy')
-    }
-
-    // For datetime strings with non-midnight times, use as-is
-    const dateObj = new Date(date)
-    if (isNaN(dateObj.getTime())) return 'Invalid Date'
-    return format(dateObj, 'MMM dd, yyyy')
+    return formatInUserTimezone(date, { year: 'numeric', month: 'short', day: '2-digit' }) ?? 'Invalid Date'
   } catch (error) {
     console.error('Date formatting error:', error, 'for date:', date)
     return 'Invalid Date'
@@ -1229,17 +1230,7 @@ function formatDate(date) {
 function formatDateMonthDay(date) {
   if (!date) return 'N/A'
   try {
-    const dateStr = date.toString()
-    // Match date-only format (YYYY-MM-DD) or date with midnight time (YYYY-MM-DDT00:00:00...)
-    const dateOnlyMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})(?:T00:00:00(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$/)
-    if (dateOnlyMatch) {
-      const [, year, month, day] = dateOnlyMatch.map(Number)
-      const dateObj = new Date(year, month - 1, day)
-      return format(dateObj, 'MMM dd')
-    }
-    const dateObj = new Date(date)
-    if (isNaN(dateObj.getTime())) return 'N/A'
-    return format(dateObj, 'MMM dd')
+    return formatInUserTimezone(date, { month: 'short', day: '2-digit' }) ?? 'N/A'
   } catch (error) {
     console.error('Date formatting error:', error, 'for date:', date)
     return 'N/A'
@@ -1249,16 +1240,7 @@ function formatDateMonthDay(date) {
 function formatDateYear(date) {
   if (!date) return ''
   try {
-    const dateStr = date.toString()
-    // Match date-only format (YYYY-MM-DD) or date with midnight time (YYYY-MM-DDT00:00:00...)
-    const dateOnlyMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})(?:T00:00:00(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$/)
-    if (dateOnlyMatch) {
-      const [, year] = dateOnlyMatch.map(Number)
-      return year.toString()
-    }
-    const dateObj = new Date(date)
-    if (isNaN(dateObj.getTime())) return ''
-    return format(dateObj, 'yyyy')
+    return formatInUserTimezone(date, { year: 'numeric' }) ?? ''
   } catch (error) {
     console.error('Date formatting error:', error, 'for date:', date)
     return ''
