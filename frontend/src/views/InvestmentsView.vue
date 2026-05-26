@@ -270,322 +270,677 @@
 
         <!-- Holdings Tab -->
         <div v-if="activeTab === 'holdings'">
-            <!-- Portfolio Summary -->
             <div
-                v-if="investmentsStore.portfolioSummary"
-                class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6"
+                v-if="initialLoading || (investmentsStore.portfolioLoading && !investmentsStore.portfolioOverview)"
+                class="flex flex-col items-center justify-center py-24 gap-4"
             >
-                <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-4">
-                    <p class="text-sm text-gray-500 dark:text-gray-400">
-                        Total Value
-                    </p>
-                    <p class="text-2xl font-bold text-gray-900 dark:text-white">
-                        {{
-                            formatCurrency(investmentsStore.totalPortfolioValue)
-                        }}
-                    </p>
-                </div>
-                <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-4">
-                    <p class="text-sm text-gray-500 dark:text-gray-400">
-                        Unrealized P&L
-                    </p>
-                    <p
-                        :class="[
-                            'text-2xl font-bold',
-                            investmentsStore.totalUnrealizedPnL >= 0
-                                ? 'text-green-600'
-                                : 'text-red-600',
-                        ]"
-                    >
-                        {{
-                            formatCurrency(investmentsStore.totalUnrealizedPnL)
-                        }}
-                    </p>
-                </div>
-                <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-4">
-                    <p class="text-sm text-gray-500 dark:text-gray-400">
-                        Total Dividends
-                    </p>
-                    <p class="text-2xl font-bold text-green-600">
-                        {{ formatCurrency(investmentsStore.totalDividends) }}
-                    </p>
-                </div>
-                <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-4">
-                    <p class="text-sm text-gray-500 dark:text-gray-400">
-                        Positions
-                    </p>
-                    <p class="text-2xl font-bold text-gray-900 dark:text-white">
-                        {{ investmentsStore.holdingCount }}
-                    </p>
-                </div>
+                <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600"></div>
+                <p class="text-sm text-gray-500 dark:text-gray-400">Loading portfolio data...</p>
             </div>
 
-            <!-- Holdings List -->
-            <div
-                v-if="investmentsStore.holdings.length > 0"
-                class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden"
-            >
-                <div
-                    class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between"
-                >
-                    <h2
-                        class="text-lg font-medium text-gray-900 dark:text-white"
-                    >
-                        Your Holdings
-                    </h2>
-                    <button
-                        @click="refreshPrices"
-                        :disabled="investmentsStore.loading"
-                        class="text-sm text-primary-600 hover:text-primary-800 disabled:opacity-50"
-                    >
-                        {{
-                            investmentsStore.loading
-                                ? "Refreshing..."
-                                : "Refresh Prices"
-                        }}
-                    </button>
-                </div>
-                <div class="overflow-x-auto">
-                    <table
-                        class="min-w-full divide-y divide-gray-200 dark:divide-gray-700"
-                    >
-                        <thead class="bg-gray-50 dark:bg-gray-700">
-                            <tr>
-                                <th
-                                    class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-                                >
-                                    Symbol
-                                </th>
-                                <th
-                                    class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-                                >
-                                    Shares
-                                </th>
-                                <th
-                                    class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-                                >
-                                    Avg Cost
-                                </th>
-                                <th
-                                    class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-                                >
-                                    Current
-                                </th>
-                                <th
-                                    class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-                                >
-                                    Value
-                                </th>
-                                <th
-                                    class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-                                >
-                                    P&L
-                                </th>
-                                <th
-                                    class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-                                >
-                                    Actions
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody
-                            class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700"
+            <template v-else-if="investmentsStore.portfolioOverview">
+                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+                    <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-5">
+                        <p class="text-sm text-gray-500 dark:text-gray-400">
+                            Portfolio Value
+                        </p>
+                        <p class="text-2xl font-bold text-gray-900 dark:text-white mt-2">
+                            {{ formatCurrency(investmentsStore.totalPortfolioValue) }}
+                        </p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                            {{ selectedAccountLabel }}
+                        </p>
+                    </div>
+                    <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-5">
+                        <p class="text-sm text-gray-500 dark:text-gray-400">
+                            Total Return
+                        </p>
+                        <p
+                            :class="[
+                                'text-2xl font-bold mt-2',
+                                portfolioOverviewReturn >= 0 ? 'text-green-600' : 'text-red-600',
+                            ]"
                         >
-                            <tr
-                                v-for="holding in investmentsStore.holdings"
-                                :key="holding.id"
+                            {{ formatCurrency(investmentsStore.portfolioOverview.totalReturn) }}
+                        </p>
+                        <p
+                            :class="[
+                                'text-xs mt-2',
+                                portfolioOverviewReturn >= 0 ? 'text-green-500' : 'text-red-500',
+                            ]"
+                        >
+                            {{ formatPercent(investmentsStore.portfolioOverview.totalReturnPercent) }}
+                        </p>
+                    </div>
+                    <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-5">
+                        <p class="text-sm text-gray-500 dark:text-gray-400">
+                            Dividend Income
+                        </p>
+                        <p class="text-2xl font-bold text-green-600 mt-2">
+                            {{ formatCurrency(investmentsStore.totalDividends) }}
+                        </p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                            Captured across tracked positions
+                        </p>
+                    </div>
+                    <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-5">
+                        <p class="text-sm text-gray-500 dark:text-gray-400">
+                            Positions
+                        </p>
+                        <p class="text-2xl font-bold text-gray-900 dark:text-white mt-2">
+                            {{ investmentsStore.portfolioOverview.positionCount }}
+                        </p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                            Target coverage {{ formatPercent(investmentsStore.portfolioOverview.targetCoveragePercent, false) }}
+                        </p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-6 mb-6">
+                    <section class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
+                        <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                            <div>
+                                <h2 class="text-lg font-medium text-gray-900 dark:text-white">
+                                    Portfolio vs {{ benchmarkSymbol }}
+                                </h2>
+                                <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                    Historical comparison for {{ selectedAccountLabel }}
+                                </p>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <div
+                                    v-if="investmentsStore.portfolioLoading && investmentsStore.portfolioOverview"
+                                    class="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 mr-1"
+                                >
+                                    <div class="animate-spin rounded-full h-3.5 w-3.5 border-2 border-primary-500 border-t-transparent"></div>
+                                    <span>Updating...</span>
+                                </div>
+                                <button
+                                    v-for="period in portfolioPeriods"
+                                    :key="period"
+                                    @click="setPortfolioPeriod(period)"
+                                    :disabled="investmentsStore.portfolioLoading"
+                                    :class="[
+                                        'px-3 py-1.5 text-xs rounded-full border transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
+                                        portfolioPeriod === period
+                                            ? 'bg-primary-600 text-white border-primary-600'
+                                            : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-primary-400 hover:text-primary-600',
+                                    ]"
+                                >
+                                    {{ period }}
+                                </button>
+                            </div>
+                        </div>
+                        <div class="p-6">
+                            <div
+                                v-if="
+                                    investmentsStore.portfolioPerformance &&
+                                    investmentsStore.portfolioPerformance.series.length > 0
+                                "
                             >
-                                <td class="px-6 py-4 whitespace-nowrap">
-                                    <div class="flex items-center">
-                                        <StockLogo
-                                            :symbol="holding.symbol"
-                                            size-class="w-8 h-8"
-                                            class="mr-3"
+                                <div class="h-[22rem] md:h-[30rem] xl:h-[34rem] 2xl:h-[38rem]">
+                                    <PortfolioPerformanceChart
+                                        :data="investmentsStore.portfolioPerformance.series"
+                                        :benchmark-label="benchmarkSymbol"
+                                    />
+                                </div>
+                                <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mt-6">
+                                    <div class="rounded-lg bg-gray-50 dark:bg-gray-900/40 p-4">
+                                        <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Return</p>
+                                        <p class="text-lg font-semibold text-gray-900 dark:text-white mt-1">
+                                            {{ formatPercent(investmentsStore.portfolioPerformance.metrics.totalReturnPercent) }}
+                                        </p>
+                                        <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Total gain/loss for the selected period</p>
+                                    </div>
+                                    <div class="rounded-lg bg-gray-50 dark:bg-gray-900/40 p-4">
+                                        <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Sharpe Ratio</p>
+                                        <p class="text-lg font-semibold text-gray-900 dark:text-white mt-1">
+                                            {{ formatMetric(investmentsStore.portfolioPerformance.metrics.sharpeRatio, 3) }}
+                                        </p>
+                                        <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Return per unit of risk. Above 1 is good, above 2 is excellent</p>
+                                    </div>
+                                    <div class="rounded-lg bg-gray-50 dark:bg-gray-900/40 p-4">
+                                        <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Beta</p>
+                                        <p class="text-lg font-semibold text-gray-900 dark:text-white mt-1">
+                                            {{ formatMetric(investmentsStore.portfolioPerformance.metrics.beta, 3) }}
+                                        </p>
+                                        <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Sensitivity to {{ benchmarkSymbol }}. 1 = moves with market, &lt;1 = less volatile</p>
+                                    </div>
+                                    <div class="rounded-lg bg-gray-50 dark:bg-gray-900/40 p-4">
+                                        <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Alpha</p>
+                                        <p class="text-lg font-semibold text-gray-900 dark:text-white mt-1">
+                                            {{ formatPercent(investmentsStore.portfolioPerformance.metrics.alphaPercent) }}
+                                        </p>
+                                        <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Excess return vs {{ benchmarkSymbol }} after adjusting for market risk</p>
+                                    </div>
+                                    <div class="rounded-lg bg-gray-50 dark:bg-gray-900/40 p-4">
+                                        <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Volatility</p>
+                                        <p class="text-lg font-semibold text-gray-900 dark:text-white mt-1">
+                                            {{ formatPercent(investmentsStore.portfolioPerformance.metrics.volatilityPercent) }}
+                                        </p>
+                                        <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Annualized price swing. Higher means larger day-to-day moves</p>
+                                    </div>
+                                    <div class="rounded-lg bg-gray-50 dark:bg-gray-900/40 p-4">
+                                        <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Max Drawdown</p>
+                                        <p class="text-lg font-semibold text-red-600 mt-1">
+                                            {{ formatPercent(-Math.abs(investmentsStore.portfolioPerformance.metrics.maxDrawdownPercent || 0)) }}
+                                        </p>
+                                        <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Largest peak-to-trough decline during the period</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div v-else class="text-center py-16 text-gray-500 dark:text-gray-400">
+                                Historical benchmark data is not available yet for the current selection.
+                            </div>
+                        </div>
+                    </section>
+
+                    <aside class="space-y-4">
+                        <section class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
+                            <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                                <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
+                                    Data Status
+                                </h2>
+                                <span
+                                    :class="[
+                                        'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
+                                        portfolioDataStatus.tone === 'good'
+                                            ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                                            : portfolioDataStatus.tone === 'warning'
+                                              ? 'bg-yellow-50 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
+                                              : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+                                    ]"
+                                >
+                                    {{ portfolioDataStatus.label }}
+                                </span>
+                            </div>
+                            <div class="p-4 space-y-3">
+                                <div class="grid grid-cols-3 gap-3">
+                                    <div>
+                                        <p class="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                            Quotes
+                                        </p>
+                                        <p class="text-sm font-semibold text-gray-900 dark:text-white">
+                                            {{ portfolioDataStatus.quoteCoverage }}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <p class="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                            History
+                                        </p>
+                                        <p class="text-sm font-semibold text-gray-900 dark:text-white">
+                                            {{ portfolioDataStatus.historyPointText }}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <p class="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                            Loaded
+                                        </p>
+                                        <p class="text-sm font-semibold text-gray-900 dark:text-white">
+                                            {{ portfolioLoadedAtLabel }}
+                                        </p>
+                                    </div>
+                                </div>
+                                <p class="text-xs text-gray-500 dark:text-gray-400">
+                                    {{ portfolioDataStatus.missingQuoteText }}
+                                </p>
+                                <p class="text-xs text-primary-800 dark:text-primary-200 bg-primary-50 dark:bg-primary-900/20 border border-primary-100 dark:border-primary-800 rounded-md p-2">
+                                    Performance uses a tracked-position index, not TWR/IRR with external cash flows.
+                                </p>
+                            </div>
+                        </section>
+
+                        <section class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
+                            <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                                <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
+                                    Portfolio Controls
+                                </h2>
+                                <button
+                                    @click="refreshPortfolioData"
+                                    :disabled="investmentsStore.loading"
+                                    class="btn-secondary text-xs px-2.5 py-1.5"
+                                >
+                                    {{ investmentsStore.loading ? "Refreshing..." : "Refresh" }}
+                                </button>
+                            </div>
+                            <div class="p-4 space-y-4">
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                                        Benchmark
+                                    </label>
+                                    <SymbolAutocomplete
+                                        v-model="benchmarkSymbol"
+                                        placeholder="e.g., SPY"
+                                        input-class="text-sm"
+                                    />
+                                </div>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                                            Drift %
+                                        </label>
+                                        <input
+                                            v-model.number="portfolioPreferencesForm.driftThresholdPercent"
+                                            type="number"
+                                            min="0"
+                                            step="0.5"
+                                            class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
                                         />
-                                        <span
-                                            class="text-sm font-medium text-gray-900 dark:text-white"
-                                            >{{ holding.symbol }}</span
-                                        >
-                                        <span
-                                            v-if="holding.source === 'trades'"
-                                            class="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
-                                        >
-                                            Open Trade
-                                        </span>
                                     </div>
-                                    <div
-                                        class="text-xs text-gray-500 dark:text-gray-400"
-                                    >
-                                        {{
-                                            holding.source === "trades"
-                                                ? `${holding.lotCount} trade(s)`
-                                                : `${holding.lotCount} lot(s)`
-                                        }}
-                                        <span
-                                            v-if="holding.brokers"
-                                            class="ml-1"
-                                            >- {{ holding.brokers }}</span
-                                        >
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                                            Drawdown %
+                                        </label>
+                                        <input
+                                            v-model.number="portfolioPreferencesForm.drawdownThresholdPercent"
+                                            type="number"
+                                            min="0"
+                                            step="0.5"
+                                            class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+                                        />
                                     </div>
-                                </td>
-                                <td
-                                    class="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-900 dark:text-gray-100"
+                                </div>
+                                <label class="flex items-start gap-2">
+                                    <input
+                                        v-model="portfolioPreferencesForm.alertsEnabled"
+                                        type="checkbox"
+                                        class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                    />
+                                    <span class="text-xs text-gray-700 dark:text-gray-300">
+                                        Send drift and drawdown alerts to Notifications
+                                    </span>
+                                </label>
+                                <button
+                                    @click="savePortfolioSettings"
+                                    :disabled="savingPortfolioSettings"
+                                    class="btn-primary w-full text-sm"
+                                >
+                                    {{ savingPortfolioSettings ? "Saving..." : "Save Settings" }}
+                                </button>
+                                <div
+                                    v-if="investmentsStore.portfolioRebalance"
+                                    class="grid grid-cols-3 gap-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-3"
                                 >
                                     <div>
-                                        {{ formatNumber(holding.totalShares) }}
+                                        <p class="text-[11px] text-gray-500 dark:text-gray-400">Coverage</p>
+                                        <p class="text-xs font-medium text-gray-900 dark:text-white">
+                                            {{ formatPercent(investmentsStore.portfolioRebalance.targetCoveragePercent, false) }}
+                                        </p>
                                     </div>
-                                    <div
-                                        v-if="
-                                            holding.source === 'trades' &&
-                                            holding.totalSharesTraded &&
-                                            holding.totalSharesTraded !==
-                                                holding.totalShares
-                                        "
-                                        class="text-xs text-gray-500 dark:text-gray-400"
-                                    >
-                                        ({{
-                                            formatNumber(
-                                                holding.totalSharesTraded,
-                                            )
-                                        }}
-                                        traded)
+                                    <div>
+                                        <p class="text-[11px] text-gray-500 dark:text-gray-400">Target</p>
+                                        <p class="text-xs font-medium text-gray-900 dark:text-white">
+                                            {{ formatPercent(investmentsStore.portfolioRebalance.targetTotalPercent, false) }}
+                                        </p>
                                     </div>
-                                </td>
-                                <td
-                                    class="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-900 dark:text-gray-100"
-                                >
-                                    {{
-                                        formatCurrency(holding.averageCostBasis)
-                                    }}
-                                </td>
-                                <td
-                                    class="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-900 dark:text-gray-100"
-                                >
-                                    {{
-                                        holding.currentPrice
-                                            ? formatCurrency(
-                                                  holding.currentPrice,
-                                              )
-                                            : "N/A"
-                                    }}
-                                </td>
-                                <td
-                                    class="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-900 dark:text-gray-100"
-                                >
-                                    {{
-                                        holding.currentValue
-                                            ? formatCurrency(
-                                                  holding.currentValue,
-                                              )
-                                            : "N/A"
-                                    }}
-                                </td>
-                                <td
-                                    class="px-6 py-4 whitespace-nowrap text-right text-sm"
-                                >
-                                    <span
-                                        v-if="holding.unrealizedPnl !== null"
-                                        :class="
-                                            holding.unrealizedPnl >= 0
-                                                ? 'text-green-600'
-                                                : 'text-red-600'
-                                        "
-                                    >
-                                        {{
-                                            formatCurrency(
-                                                holding.unrealizedPnl,
-                                            )
-                                        }}
-                                        <span class="text-xs"
-                                            >({{
-                                                formatPercent(
-                                                    holding.unrealizedPnlPercent,
-                                                )
-                                            }})</span
-                                        >
-                                    </span>
-                                    <span v-else class="text-gray-400"
-                                        >N/A</span
-                                    >
-                                </td>
-                                <td
-                                    class="px-6 py-4 whitespace-nowrap text-right text-sm space-x-2"
-                                >
-                                    <button
-                                        v-if="holding.source !== 'trades'"
-                                        @click="viewHolding(holding)"
-                                        class="text-primary-600 hover:text-primary-900"
-                                    >
-                                        View
-                                    </button>
-                                    <router-link
-                                        v-else
-                                        :to="{
-                                            name: 'trades',
-                                            query: {
-                                                status: 'open',
-                                                symbol: holding.symbol,
-                                            },
-                                        }"
-                                        class="text-primary-600 hover:text-primary-900"
-                                    >
-                                        View Trades
-                                    </router-link>
-                                    <button
-                                        @click="analyzeHolding(holding.symbol)"
-                                        class="text-indigo-600 hover:text-indigo-900"
-                                    >
-                                        Analyze
-                                    </button>
-                                    <button
-                                        v-if="holding.source !== 'trades'"
-                                        @click="confirmDeleteHolding(holding)"
-                                        class="text-red-600 hover:text-red-900"
-                                    >
-                                        Delete
-                                    </button>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+                                    <div>
+                                        <p class="text-[11px] text-gray-500 dark:text-gray-400">Drift</p>
+                                        <p class="text-xs font-medium text-gray-900 dark:text-white">
+                                            {{ formatPercent(investmentsStore.portfolioRebalance.driftThresholdPercent, false) }}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
 
-            <!-- Empty Holdings State -->
-            <div
-                v-else
-                class="text-center py-12 bg-white dark:bg-gray-800 rounded-lg shadow-sm"
-            >
-                <svg
-                    class="mx-auto h-12 w-12 text-gray-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                >
-                    <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
-                    ></path>
-                </svg>
-                <h3
-                    class="mt-2 text-sm font-medium text-gray-900 dark:text-white"
-                >
-                    No holdings yet
-                </h3>
-                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    Start tracking your long-term investments.
-                </p>
-                <div class="mt-6">
-                    <button
-                        @click="showAddHoldingModal = true"
-                        class="btn-primary"
-                    >
-                        Add Your First Position
-                    </button>
+                        <section class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
+                            <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                                <div>
+                                    <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
+                                        Portfolio Alerts
+                                    </h2>
+                                </div>
+                                <span
+                                    v-if="investmentsStore.portfolioAlertSummary"
+                                    class="text-xs text-gray-500 dark:text-gray-400"
+                                >
+                                    {{ investmentsStore.portfolioAlertSummary.alertsEnabled ? "Enabled" : "Disabled" }}
+                                </span>
+                            </div>
+                            <div class="p-4 space-y-4">
+                                <div
+                                    v-if="investmentsStore.portfolioAlertSummary?.activeConditions?.length"
+                                    class="space-y-2"
+                                >
+                                    <div
+                                        v-for="condition in investmentsStore.portfolioAlertSummary.activeConditions"
+                                        :key="`${condition.category}-${condition.symbol}`"
+                                        class="rounded-md border border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/20 p-3"
+                                    >
+                                        <div class="flex items-center justify-between gap-3">
+                                            <p class="text-xs font-medium text-yellow-900 dark:text-yellow-100">
+                                                {{ condition.symbol }}
+                                            </p>
+                                            <span class="text-[11px] text-yellow-700 dark:text-yellow-300">
+                                                {{ condition.category === "drawdown" ? "Drawdown" : "Drift" }}
+                                            </span>
+                                        </div>
+                                        <p class="text-xs text-yellow-800 dark:text-yellow-200 mt-1">
+                                            {{ condition.message }}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div
+                                    v-else
+                                    class="rounded-md border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 p-3"
+                                >
+                                    <p class="text-xs font-medium text-green-900 dark:text-green-100">
+                                        No active portfolio alert conditions.
+                                    </p>
+                                </div>
+
+                                <div
+                                    v-if="investmentsStore.portfolioAlertSummary"
+                                    class="grid grid-cols-2 gap-3"
+                                >
+                                    <div class="rounded-md bg-gray-50 dark:bg-gray-900/40 p-3">
+                                        <p class="text-[11px] text-gray-500 dark:text-gray-400">Drift threshold</p>
+                                        <p class="text-xs font-medium text-gray-900 dark:text-white">
+                                            {{ formatPercent(investmentsStore.portfolioAlertSummary.driftThresholdPercent, false) }}
+                                        </p>
+                                    </div>
+                                    <div class="rounded-md bg-gray-50 dark:bg-gray-900/40 p-3">
+                                        <p class="text-[11px] text-gray-500 dark:text-gray-400">Drawdown threshold</p>
+                                        <p class="text-xs font-medium text-gray-900 dark:text-white">
+                                            {{ formatPercent(investmentsStore.portfolioAlertSummary.drawdownThresholdPercent, false) }}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div v-if="investmentsStore.portfolioAlertSummary?.recentAlerts?.length">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <p class="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                            Recent alerts
+                                        </p>
+                                        <router-link
+                                            to="/notifications"
+                                            class="text-[11px] text-primary-600 hover:text-primary-800"
+                                        >
+                                            View all
+                                        </router-link>
+                                    </div>
+                                    <div class="space-y-2">
+                                        <div
+                                            v-for="alert in investmentsStore.portfolioAlertSummary.recentAlerts"
+                                            :key="alert.id"
+                                            class="rounded-md border border-gray-200 dark:border-gray-700 p-3"
+                                        >
+                                            <div class="flex items-center justify-between gap-3">
+                                                <p class="text-xs font-medium text-gray-900 dark:text-white">
+                                                    {{ alert.symbol }}
+                                                </p>
+                                                <span class="text-[11px] text-gray-500 dark:text-gray-400">
+                                                    {{ formatDateTime(alert.createdAt) }}
+                                                </span>
+                                            </div>
+                                            <p class="text-xs text-gray-600 dark:text-gray-300 mt-1">
+                                                {{ alert.message }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
+                            <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                                <div>
+                                    <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
+                                        Account Comparison
+                                    </h2>
+                                </div>
+                                <div
+                                    v-if="accountComparisonLoading"
+                                    class="animate-spin rounded-full h-4 w-4 border-2 border-primary-500 border-t-transparent"
+                                ></div>
+                            </div>
+                            <div v-if="accountComparisonRows.length > 0" class="overflow-x-auto">
+                                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                    <thead class="bg-gray-50 dark:bg-gray-700">
+                                        <tr>
+                                            <th class="px-3 py-2 text-left text-[11px] font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                                Account
+                                            </th>
+                                            <th class="px-3 py-2 text-right text-[11px] font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                                Return
+                                            </th>
+                                            <th class="px-3 py-2 text-right text-[11px] font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                                Drift
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                        <tr
+                                            v-for="row in accountComparisonRows"
+                                            :key="row.value"
+                                            class="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/60"
+                                            @click="setComparisonAccount(row.value)"
+                                        >
+                                            <td class="px-3 py-2">
+                                                <div class="text-xs font-medium text-gray-900 dark:text-white">
+                                                    {{ row.label }}
+                                                </div>
+                                                <div class="text-[11px] text-gray-500 dark:text-gray-400">
+                                                    {{ formatCurrency(row.totalValue) }} · {{ row.positionCount }} pos.
+                                                </div>
+                                            </td>
+                                            <td
+                                                :class="[
+                                                    'px-3 py-2 text-right text-xs font-medium',
+                                                    row.totalReturnPercent >= 0 ? 'text-green-600' : 'text-red-600',
+                                                ]"
+                                            >
+                                                {{ formatPercent(row.totalReturnPercent) }}
+                                            </td>
+                                            <td class="px-3 py-2 text-right text-xs text-gray-900 dark:text-gray-100">
+                                                {{ row.maxDriftPercent === null ? 'N/A' : formatPercent(row.maxDriftPercent) }}
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div v-else class="p-4 text-xs text-gray-500 dark:text-gray-400">
+                                Add at least two accounts to compare portfolios.
+                            </div>
+                        </section>
+                    </aside>
                 </div>
-            </div>
+
+                <div
+                    v-if="investmentsStore.portfolioPositions.length > 0"
+                    class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden"
+                >
+                    <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                        <h2 class="text-lg font-medium text-gray-900 dark:text-white">
+                            Allocation and Rebalancing
+                        </h2>
+                        <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                            Advisory only. Share deltas are suggestions, not broker-ready orders.
+                        </p>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                            <thead class="bg-gray-50 dark:bg-gray-700">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                        Symbol
+                                    </th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider" title="Current market value and average cost basis per share">
+                                        Value
+                                    </th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-help" title="This position's current share of total portfolio value">
+                                        Actual %
+                                    </th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-help" title="Your desired allocation percentage for this position. Edit and save to track rebalancing needs">
+                                        Target %
+                                    </th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-help" title="How far the actual allocation has strayed from your target. Highlighted when it exceeds your drift alert threshold">
+                                        Drift
+                                    </th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-help" title="Estimated number of shares to buy (positive) or sell (negative) to return to your target allocation">
+                                        Share Delta
+                                    </th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-help" title="Estimated dollar value to buy or sell to return to your target allocation">
+                                        Trade Value
+                                    </th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                        Actions
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                <tr
+                                    v-for="position in rebalanceRows"
+                                    :key="position.symbol"
+                                >
+                                    <td class="px-6 py-4 align-top">
+                                        <div class="flex items-center gap-3">
+                                            <StockLogo
+                                                :symbol="position.symbol"
+                                                size-class="w-8 h-8"
+                                            />
+                                            <div>
+                                                <div class="flex items-center gap-2">
+                                                    <span class="text-sm font-medium text-gray-900 dark:text-white">
+                                                        {{ position.symbol }}
+                                                    </span>
+                                                    <span
+                                                        class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+                                                    >
+                                                        {{ positionSourceLabel(position) }}
+                                                    </span>
+                                                </div>
+                                                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                                    {{ formatNumber(position.totalShares) }} shares
+                                                    <span v-if="position.brokers"> • {{ position.brokers }}</span>
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 text-right text-sm text-gray-900 dark:text-gray-100">
+                                        <div>{{ formatCurrency(position.currentValue) }}</div>
+                                        <div class="text-xs text-gray-500 dark:text-gray-400">
+                                            {{ formatCurrency(position.averageCostBasis) }} avg
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 text-right text-sm text-gray-900 dark:text-gray-100">
+                                        {{ formatPercent(position.actualAllocationPercent, false) }}
+                                    </td>
+                                    <td class="px-6 py-4 text-right text-sm">
+                                        <div
+                                            v-if="position.holdingId"
+                                            class="flex items-center justify-end gap-2"
+                                        >
+                                            <input
+                                                v-model="targetAllocationDrafts[position.symbol]"
+                                                type="number"
+                                                min="0"
+                                                step="0.5"
+                                                class="w-24 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md text-right focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+                                            />
+                                            <button
+                                                @click="saveTargetAllocation(position)"
+                                                class="text-xs text-primary-600 hover:text-primary-800"
+                                            >
+                                                Save
+                                            </button>
+                                        </div>
+                                        <span v-else class="text-gray-400">N/A</span>
+                                    </td>
+                                    <td class="px-6 py-4 text-right text-sm">
+                                        <div v-if="position.driftPercent !== null">
+                                            <span
+                                                :class="
+                                                    Math.abs(position.driftPercent) >= portfolioPreferencesForm.driftThresholdPercent
+                                                        ? 'text-red-600 font-medium'
+                                                        : 'text-gray-900 dark:text-gray-100'
+                                                "
+                                            >
+                                                {{ formatPercent(position.driftPercent) }}
+                                            </span>
+                                            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                                {{ rebalanceActionLabel(position) }}
+                                            </div>
+                                        </div>
+                                        <span v-else class="text-gray-400">Target not set</span>
+                                    </td>
+                                    <td class="px-6 py-4 text-right text-sm text-gray-900 dark:text-gray-100">
+                                        <span v-if="position.shareDelta !== null">
+                                            {{ position.action === "buy" ? "+" : "" }}{{ formatNumber(position.shareDelta) }}
+                                        </span>
+                                        <span v-else class="text-gray-400">N/A</span>
+                                    </td>
+                                    <td
+                                        :class="[
+                                            'px-6 py-4 text-right text-sm font-medium',
+                                            position.valueDelta > 0 ? 'text-green-600' : position.valueDelta < 0 ? 'text-red-600' : 'text-gray-900 dark:text-gray-100',
+                                        ]"
+                                    >
+                                        <span v-if="position.valueDelta !== null">
+                                            {{ position.valueDelta > 0 ? '+' : '' }}{{ formatCurrency(position.valueDelta) }}
+                                        </span>
+                                        <span v-else class="text-gray-400">N/A</span>
+                                    </td>
+                                    <td class="px-6 py-4 text-right text-sm space-x-3">
+                                        <button
+                                            @click="openPortfolioPosition(position)"
+                                            class="text-primary-600 hover:text-primary-800"
+                                        >
+                                            {{ position.holdingId ? "View" : "View Trades" }}
+                                        </button>
+                                        <button
+                                            @click="analyzeHolding(position.symbol)"
+                                            class="text-primary-600 hover:text-primary-800"
+                                        >
+                                            Analyze
+                                        </button>
+                                        <button
+                                            v-if="position.holdingId && !position.includesOpenTrades"
+                                            @click="confirmDeleteHolding(position)"
+                                            class="text-red-600 hover:text-red-800"
+                                        >
+                                            Delete
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div
+                    v-else
+                    class="text-center py-12 bg-white dark:bg-gray-800 rounded-lg shadow-sm"
+                >
+                    <svg
+                        class="mx-auto h-12 w-12 text-gray-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+                        ></path>
+                    </svg>
+                    <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-white">
+                        No positions yet
+                    </h3>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        Start tracking long-term holdings or keep an open trade to populate your portfolio.
+                    </p>
+                    <div class="mt-6">
+                        <button
+                            @click="showAddHoldingModal = true"
+                            class="btn-primary"
+                        >
+                            Add Your First Position
+                        </button>
+                    </div>
+                </div>
+            </template>
         </div>
 
         <!-- Stock Scanner Tab -->
@@ -899,7 +1254,9 @@ import PillarFilterChips from "@/components/investments/scanner/PillarFilterChip
 import ScannerResultsTable from "@/components/investments/scanner/ScannerResultsTable.vue";
 import ScanStatusBadge from "@/components/investments/scanner/ScanStatusBadge.vue";
 import StockAnalyzerSection from "@/components/investments/dcf/StockAnalyzerSection.vue";
+import PortfolioPerformanceChart from "@/components/investments/PortfolioPerformanceChart.vue";
 import { useScannerStore } from "@/stores/scanner";
+import { useGlobalAccountFilter } from "@/composables/useGlobalAccountFilter";
 import StockLogo from "@/components/common/StockLogo.vue";
 import SymbolAutocomplete from "@/components/common/SymbolAutocomplete.vue";
 
@@ -908,6 +1265,8 @@ const route = useRoute();
 const investmentsStore = useInvestmentsStore();
 const scannerStore = useScannerStore();
 const { showSuccess, showError } = useNotification();
+const { selectedAccount, selectedAccountLabel, accounts, fetchAccounts, setAccount } =
+    useGlobalAccountFilter();
 
 // Valid tab names
 const validTabs = ["screener", "holdings", "scanner"];
@@ -925,6 +1284,28 @@ const searchSymbol = ref("");
 const showAddHoldingModal = ref(false);
 const showFavoritesOnly = ref(false);
 const holdingToDelete = ref(null);
+const portfolioPeriods = ["1M", "3M", "6M", "1Y", "5Y", "10Y", "YTD"];
+const portfolioPeriod = ref("6M");
+// True from first render until the initial data load finishes. Separate from
+// portfolioLoading because the loading flag is only set inside store actions,
+// not during the preferences/accounts pre-fetch that happens first.
+const initialLoading = ref(true);
+const PORTFOLIO_CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
+// Per-period cache: Map<cacheKey, { fetchedAt, overview, positions, performance, rebalance, alerts }>
+// Key is `period|account|benchmark` so switching back to a previous period is instant.
+const periodDataCache = new Map();
+let _periodDebounceTimer = null; // debounce handle for rapid period clicks
+const benchmarkSymbol = ref("SPY");
+const savingPortfolioSettings = ref(false);
+const targetAllocationDrafts = ref({});
+const portfolioLoadedAt = ref(null);
+const accountComparisonRows = ref([]);
+const accountComparisonLoading = ref(false);
+const portfolioPreferencesForm = ref({
+    driftThresholdPercent: 5,
+    drawdownThresholdPercent: 10,
+    alertsEnabled: true,
+});
 
 // Watchlist modal state
 const showWatchlistModal = ref(false);
@@ -943,20 +1324,212 @@ const filteredSearchHistory = computed(() => {
     }
     return investmentsStore.searchHistory;
 });
+const rebalanceRows = computed(
+    () => investmentsStore.portfolioRebalance?.positions || [],
+);
+const portfolioOverviewReturn = computed(
+    () => investmentsStore.portfolioOverview?.totalReturn || 0,
+);
+const portfolioDataStatus = computed(() => {
+    const positions = investmentsStore.portfolioPositions || [];
+    const totalPositions = positions.length;
+    const missingQuotes = positions.filter((position) => !position.currentPrice || position.currentValue === null).length;
+    const quotedPositions = Math.max(totalPositions - missingQuotes, 0);
+    const quoteCoveragePercent = totalPositions > 0 ? (quotedPositions / totalPositions) * 100 : 0;
+    const performanceSeries = investmentsStore.portfolioPerformance?.series || [];
+    const seriesPoints = performanceSeries.length;
+    const benchmarkPoints = performanceSeries.filter((point) => point.benchmarkIndex !== null && point.benchmarkIndex !== undefined).length;
+
+    let tone = "good";
+    if (totalPositions > 0 && missingQuotes > 0) {
+        tone = missingQuotes === totalPositions ? "danger" : "warning";
+    } else if (seriesPoints === 0) {
+        tone = "warning";
+    }
+
+    return {
+        tone,
+        label: tone === "good" ? "Ready" : tone === "warning" ? "Partial Data" : "Quotes Missing",
+        quoteCoverage: totalPositions > 0 ? `${quotedPositions}/${totalPositions}` : "0/0",
+        missingQuoteText: missingQuotes > 0
+            ? `${missingQuotes} position${missingQuotes === 1 ? "" : "s"} missing a current quote`
+            : "All tracked positions have current quote data",
+        historyPointText: benchmarkPoints > 0 ? `${seriesPoints} / ${benchmarkPoints}` : `${seriesPoints}`,
+    };
+});
+const portfolioLoadedAtLabel = computed(() => {
+    if (!portfolioLoadedAt.value) return "Not loaded";
+    return format(portfolioLoadedAt.value, "h:mm a");
+});
+
+function buildPortfolioParams() {
+    const params = {
+        benchmark: benchmarkSymbol.value.trim().toUpperCase() || "SPY",
+        period: portfolioPeriod.value,
+    };
+
+    if (selectedAccount.value) {
+        params.accounts = selectedAccount.value;
+    }
+
+    return params;
+}
+
+function syncTargetAllocationDrafts(positions = []) {
+    const nextDrafts = {};
+    positions.forEach((position) => {
+        nextDrafts[position.symbol] =
+            position.targetAllocationPercent ?? "";
+    });
+    targetAllocationDrafts.value = nextDrafts;
+}
+
+function buildCacheKey() {
+    return `${portfolioPeriod.value}|${selectedAccount.value || ""}|${benchmarkSymbol.value}`;
+}
+
+// Period-sensitive endpoints (chart, metrics): re-fetched whenever the time
+// range changes.  Period-insensitive endpoints (positions, rebalance): only
+// fetched on initial load, account change, or explicit refresh, because
+// allocation/rebalancing data is point-in-time and doesn't change with period.
+async function loadPortfolioData({ force = false, periodOnly = false } = {}) {
+    const cacheKey = buildCacheKey();
+
+    if (!force) {
+        const cached = periodDataCache.get(cacheKey);
+        if (cached && Date.now() - cached.fetchedAt < PORTFOLIO_CACHE_TTL_MS) {
+            // Restore from cache — no network round-trip.
+            investmentsStore.portfolioOverview = cached.overview;
+            investmentsStore.portfolioPerformance = cached.performance;
+            if (!periodOnly) {
+                investmentsStore.portfolioPositions = cached.positions;
+                investmentsStore.portfolioRebalance = cached.rebalance;
+                investmentsStore.portfolioAlertSummary = cached.alerts;
+                syncTargetAllocationDrafts(cached.positions || []);
+            }
+            portfolioLoadedAt.value = new Date(cached.fetchedAt);
+            return;
+        }
+    }
+
+    const params = buildPortfolioParams();
+
+    if (periodOnly) {
+        // Only update the chart and metrics. Positions and the allocation
+        // table stay visible with their current data — they don't depend on
+        // the selected time range so there's no need to blank them out.
+        await Promise.allSettled([
+            investmentsStore.fetchPortfolioOverview(params),
+            investmentsStore.fetchPortfolioPerformance(params),
+        ]);
+    } else {
+        const results = await Promise.allSettled([
+            investmentsStore.fetchPortfolioOverview(params),
+            investmentsStore.fetchPortfolioPositions(params),
+            investmentsStore.fetchPortfolioPerformance(params),
+            investmentsStore.fetchPortfolioRebalance(params),
+            investmentsStore.fetchPortfolioAlerts(params),
+        ]);
+        const positions = results[1].status === "fulfilled" ? results[1].value : [];
+        syncTargetAllocationDrafts(positions);
+    }
+
+    // Save freshly-fetched data. For period-only loads, preserve the cached
+    // positions and rebalance so switching back is still instant.
+    const prev = periodDataCache.get(cacheKey);
+    periodDataCache.set(cacheKey, {
+        fetchedAt: Date.now(),
+        overview: investmentsStore.portfolioOverview,
+        performance: investmentsStore.portfolioPerformance,
+        positions: periodOnly ? (prev?.positions ?? investmentsStore.portfolioPositions) : investmentsStore.portfolioPositions,
+        rebalance: periodOnly ? (prev?.rebalance ?? investmentsStore.portfolioRebalance) : investmentsStore.portfolioRebalance,
+        alerts: periodOnly ? (prev?.alerts ?? investmentsStore.portfolioAlertSummary) : investmentsStore.portfolioAlertSummary,
+    });
+    portfolioLoadedAt.value = new Date();
+}
+
+async function loadAccountComparison() {
+    const comparableAccounts = accounts.value
+        .filter((account) => account.value && account.value !== "__unsorted__")
+        .slice(0, 6);
+
+    if (comparableAccounts.length < 2) {
+        accountComparisonRows.value = [];
+        return;
+    }
+
+    accountComparisonLoading.value = true;
+    try {
+        const rows = await Promise.all(
+            comparableAccounts.map(async (account) => {
+                const params = {
+                    benchmark: benchmarkSymbol.value.trim().toUpperCase() || "SPY",
+                    period: portfolioPeriod.value,
+                    accounts: account.value,
+                };
+                const [overviewResult, rebalanceResult] = await Promise.allSettled([
+                    api.get("/investments/portfolio/overview", { params }),
+                    api.get("/investments/portfolio/rebalance", { params }),
+                ]);
+                const overview = overviewResult.status === "fulfilled" ? overviewResult.value.data : {};
+                const rebalance = rebalanceResult.status === "fulfilled" ? rebalanceResult.value.data : {};
+                const maxDriftPercent = (rebalance.positions || []).reduce((max, position) => {
+                    if (position.driftPercent === null || position.driftPercent === undefined) {
+                        return max;
+                    }
+                    const absoluteDrift = Math.abs(Number(position.driftPercent));
+                    return max === null || absoluteDrift > max ? absoluteDrift : max;
+                }, null);
+
+                return {
+                    value: account.value,
+                    label: account.label,
+                    totalValue: overview.totalValue || 0,
+                    totalReturnPercent: overview.totalReturnPercent || 0,
+                    positionCount: overview.positionCount || 0,
+                    maxDriftPercent,
+                };
+            }),
+        );
+
+        accountComparisonRows.value = rows.sort((left, right) => right.totalReturnPercent - left.totalReturnPercent);
+    } catch (error) {
+        console.error("Failed to load account comparison:", error);
+        accountComparisonRows.value = [];
+    } finally {
+        accountComparisonLoading.value = false;
+    }
+}
 
 onMounted(async () => {
-    const promises = [
-        investmentsStore.fetchHoldings(),
-        investmentsStore.fetchPortfolioSummary(),
-        investmentsStore.fetchSearchHistory(),
-    ];
+    try {
+        const [preferences] = await Promise.all([
+            investmentsStore.fetchPortfolioPreferences(),
+            investmentsStore.fetchSearchHistory(),
+            fetchAccounts(),
+        ]);
+
+        benchmarkSymbol.value =
+            preferences?.defaultBenchmarkSymbol || "SPY";
+        portfolioPreferencesForm.value = {
+            driftThresholdPercent:
+                preferences?.driftThresholdPercent ?? 5,
+            drawdownThresholdPercent:
+                preferences?.drawdownThresholdPercent ?? 10,
+            alertsEnabled: preferences?.alertsEnabled ?? true,
+        };
+        await loadPortfolioData();
+        await loadAccountComparison();
+    } catch (error) {
+        console.error("Failed to load portfolio data:", error);
+    } finally {
+        initialLoading.value = false;
+    }
 
     // If starting on scanner tab, also load scanner data
     if (activeTab.value === "scanner") {
-        promises.push(loadScannerData());
+        await loadScannerData();
     }
-
-    await Promise.all(promises);
 });
 
 // Watch for tab changes to load scanner data and update URL
@@ -966,6 +1539,19 @@ watch(activeTab, async (newTab) => {
 
     if (newTab === "scanner") {
         await loadScannerData();
+    }
+
+    if (newTab === "holdings") {
+        await loadPortfolioData(); // cached — instant if still fresh
+        await loadAccountComparison();
+    }
+});
+
+watch(selectedAccount, async () => {
+    if (activeTab.value === "holdings") {
+        periodDataCache.clear(); // different account = different data for all periods
+        await loadPortfolioData({ force: true });
+        await loadAccountComparison();
     }
 });
 
@@ -1055,16 +1641,20 @@ function addToHoldings(analysis) {
     showAddHoldingModal.value = true;
 }
 
-function viewHolding(holding) {
-    router.push({ name: "holding-detail", params: { id: holding.id } });
+function viewHolding(holdingId) {
+    router.push({ name: "holding-detail", params: { id: holdingId } });
 }
 
 async function toggleFavorite(symbol) {
     await investmentsStore.toggleFavorite(symbol);
 }
 
-async function refreshPrices() {
+async function refreshPortfolioData() {
+    // Clear entire cache so re-visiting any period gets fresh data.
+    periodDataCache.clear();
     await investmentsStore.refreshPrices();
+    await loadPortfolioData({ force: true });
+    await loadAccountComparison();
 }
 
 function confirmDeleteHolding(holding) {
@@ -1073,14 +1663,122 @@ function confirmDeleteHolding(holding) {
 
 async function deleteHolding() {
     if (!holdingToDelete.value) return;
-    await investmentsStore.deleteHolding(holdingToDelete.value.id);
+    await investmentsStore.deleteHolding(holdingToDelete.value.holdingId);
     holdingToDelete.value = null;
+    periodDataCache.clear();
+    await loadPortfolioData({ force: true });
 }
 
 async function onHoldingCreated() {
     showAddHoldingModal.value = false;
-    await investmentsStore.fetchHoldings();
-    await investmentsStore.fetchPortfolioSummary();
+    periodDataCache.clear();
+    await loadPortfolioData({ force: true });
+}
+
+function positionSourceLabel(position) {
+    if (position.source === "mixed") return "Holding + Open Trade";
+    if (position.source === "trades") return "Open Trade";
+    return "Holding";
+}
+
+function openPortfolioPosition(position) {
+    if (position.holdingId) {
+        viewHolding(position.holdingId);
+        return;
+    }
+
+    router.push({
+        name: "trades",
+        query: {
+            status: "open",
+            symbol: position.symbol,
+        },
+    });
+}
+
+function setPortfolioPeriod(period) {
+    if (portfolioPeriod.value === period) return;
+    portfolioPeriod.value = period;
+    // Debounce: if the user clicks several periods quickly, cancel the
+    // previous pending fetch and only send one request for the final pick.
+    clearTimeout(_periodDebounceTimer);
+    _periodDebounceTimer = setTimeout(() => {
+        _periodDebounceTimer = null;
+        // periodOnly=true keeps the allocation/rebalancing table visible
+        // unchanged while only the chart and metrics update.
+        loadPortfolioData({ periodOnly: true });
+        loadAccountComparison();
+    }, 200);
+}
+
+async function savePortfolioSettings() {
+    savingPortfolioSettings.value = true;
+
+    try {
+        const preferences = await investmentsStore.updatePortfolioPreferences({
+            defaultBenchmarkSymbol: benchmarkSymbol.value
+                .trim()
+                .toUpperCase(),
+            driftThresholdPercent:
+                portfolioPreferencesForm.value.driftThresholdPercent,
+            drawdownThresholdPercent:
+                portfolioPreferencesForm.value.drawdownThresholdPercent,
+            alertsEnabled: portfolioPreferencesForm.value.alertsEnabled,
+        });
+
+        benchmarkSymbol.value = preferences.defaultBenchmarkSymbol;
+        portfolioPreferencesForm.value = {
+            driftThresholdPercent: preferences.driftThresholdPercent,
+            drawdownThresholdPercent:
+                preferences.drawdownThresholdPercent,
+            alertsEnabled: preferences.alertsEnabled,
+        };
+        periodDataCache.clear(); // benchmark may have changed, all keys stale
+        await loadPortfolioData({ force: true });
+        await loadAccountComparison();
+    } catch (error) {
+        console.error("Failed to save portfolio settings:", error);
+        showError("Error", "Failed to save portfolio settings");
+    } finally {
+        savingPortfolioSettings.value = false;
+    }
+}
+
+function rebalanceActionLabel(position) {
+    if (position.driftPercent === null || position.driftPercent === undefined) {
+        return "Target not set";
+    }
+
+    if (Math.abs(position.driftPercent) < portfolioPreferencesForm.value.driftThresholdPercent) {
+        return "Inside threshold";
+    }
+
+    if (position.action === "buy") return "Under target";
+    if (position.action === "sell") return "Over target";
+    return "On target";
+}
+
+async function setComparisonAccount(accountValue) {
+    setAccount(accountValue);
+}
+
+async function saveTargetAllocation(position) {
+    if (!position.holdingId) return;
+
+    try {
+        const draftValue = targetAllocationDrafts.value[position.symbol];
+        await investmentsStore.updateHolding(position.holdingId, {
+            targetAllocationPercent:
+                draftValue === "" || draftValue === null
+                    ? null
+                    : Number(draftValue),
+        });
+        periodDataCache.clear();
+        await loadPortfolioData({ force: true });
+    } catch (error) {
+        console.error("Failed to save target allocation:", error);
+        showError("Error", "Failed to save target allocation");
+    }
 }
 
 // Watchlist functions
@@ -1165,14 +1863,24 @@ function formatNumber(value) {
     }).format(value);
 }
 
-function formatPercent(value) {
+function formatPercent(value, showSign = true) {
     if (value === null || value === undefined) return "";
-    const sign = value >= 0 ? "+" : "";
+    const sign = showSign && value >= 0 ? "+" : "";
     return `${sign}${value.toFixed(2)}%`;
+}
+
+function formatMetric(value, decimals = 2) {
+    if (value === null || value === undefined) return "N/A";
+    return Number(value).toFixed(decimals);
 }
 
 function formatDate(date) {
     if (!date) return "";
     return format(new Date(date), "MMM d, yyyy");
+}
+
+function formatDateTime(date) {
+    if (!date) return "";
+    return format(new Date(date), "MMM d, h:mm a");
 }
 </script>

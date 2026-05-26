@@ -162,6 +162,62 @@ router.post('/holdings/:id/dividends', validate(schemas.investmentDividendCreate
 // ========================================
 
 /**
+ * @route GET /api/investments/portfolio/overview
+ * @desc Get portfolio overview
+ * @access Pro
+ */
+router.get('/portfolio/overview', investmentsController.getPortfolioOverview);
+
+/**
+ * @route GET /api/investments/portfolio/positions
+ * @desc Get account-aware portfolio positions
+ * @access Pro
+ */
+router.get('/portfolio/positions', investmentsController.getPortfolioPositions);
+
+/**
+ * @route GET /api/investments/portfolio/performance
+ * @desc Get portfolio performance versus benchmark
+ * @access Pro
+ */
+router.get('/portfolio/performance', investmentsController.getPortfolioPerformance);
+
+/**
+ * @route GET /api/investments/portfolio/rebalance
+ * @desc Get advisory rebalance plan
+ * @access Pro
+ */
+router.get('/portfolio/rebalance', investmentsController.getPortfolioRebalance);
+
+/**
+ * @route GET /api/investments/portfolio/alerts
+ * @desc Get current portfolio alert state and recent portfolio alerts
+ * @access Pro
+ */
+router.get('/portfolio/alerts', investmentsController.getPortfolioAlerts);
+
+/**
+ * @route POST /api/investments/portfolio/snapshots/backfill
+ * @desc Backfill portfolio snapshots for current user
+ * @access Pro
+ */
+router.post('/portfolio/snapshots/backfill', investmentsController.backfillPortfolioSnapshots);
+
+/**
+ * @route GET /api/investments/portfolio/preferences
+ * @desc Get portfolio preferences
+ * @access Pro
+ */
+router.get('/portfolio/preferences', investmentsController.getPortfolioPreferences);
+
+/**
+ * @route PUT /api/investments/portfolio/preferences
+ * @desc Update portfolio preferences
+ * @access Pro
+ */
+router.put('/portfolio/preferences', investmentsController.updatePortfolioPreferences);
+
+/**
  * @route GET /api/investments/portfolio/summary
  * @desc Get portfolio summary
  * @access Pro

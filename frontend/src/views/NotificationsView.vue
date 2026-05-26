@@ -88,7 +88,7 @@
                   :class="getIconColorClass(notification.type)"
                 />
                 <ArrowTrendingUpIcon
-                  v-else-if="notification.type === 'level_up'"
+                  v-else-if="notification.type === 'level_up' || notification.type === 'portfolio_alert'"
                   class="h-5 w-5"
                   :class="getIconColorClass(notification.type)"
                 />
@@ -294,6 +294,8 @@ const handleNotificationClick = (notification) => {
     router.push('/leaderboard')
   } else if (notification.type === 'behavioral_alert') {
     router.push('/metrics/behavioral')
+  } else if (notification.type === 'portfolio_alert') {
+    router.push({ path: '/analysis', query: { tab: 'holdings' } })
   }
 }
 
@@ -322,6 +324,7 @@ const getTypeLabel = (type) => {
     case 'challenge_completed': return 'Challenge'
     case 'leaderboard_ranking': return 'Leaderboard'
     case 'behavioral_alert': return 'Behavioral'
+    case 'portfolio_alert': return 'Portfolio'
     default: return 'Notification'
   }
 }
@@ -338,6 +341,8 @@ const getTypeBadgeClass = (type) => {
       return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200'
     case 'behavioral_alert':
       return 'bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200'
+    case 'portfolio_alert':
+      return 'bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-200'
     default:
       return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
   }
@@ -355,6 +360,8 @@ const getIconBgClass = (type) => {
       return 'bg-emerald-50 dark:bg-emerald-900/20'
     case 'behavioral_alert':
       return 'bg-rose-50 dark:bg-rose-900/20'
+    case 'portfolio_alert':
+      return 'bg-primary-50 dark:bg-primary-900/20'
     default:
       return 'bg-gray-50 dark:bg-gray-700'
   }
@@ -372,6 +379,8 @@ const getIconColorClass = (type) => {
       return 'text-emerald-600 dark:text-emerald-400'
     case 'behavioral_alert':
       return 'text-rose-600 dark:text-rose-400'
+    case 'portfolio_alert':
+      return 'text-primary-600 dark:text-primary-300'
     default:
       return 'text-gray-400'
   }

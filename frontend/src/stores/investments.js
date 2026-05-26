@@ -7,11 +7,18 @@ export const useInvestmentsStore = defineStore('investments', () => {
   const currentAnalysis = ref(null)
   const holdings = ref([])
   const portfolioSummary = ref(null)
+  const portfolioOverview = ref(null)
+  const portfolioPositions = ref([])
+  const portfolioPerformance = ref(null)
+  const portfolioRebalance = ref(null)
+  const portfolioAlertSummary = ref(null)
+  const portfolioPreferences = ref(null)
   const searchHistory = ref([])
   const loading = ref(false)
   const error = ref(null)
   const analysisLoading = ref(false)
   const holdingsLoading = ref(false)
+  const portfolioLoading = ref(false)
 
   // DCF Valuation State
   const dcfMetrics = ref(null)
@@ -20,10 +27,10 @@ export const useInvestmentsStore = defineStore('investments', () => {
   const dcfLoading = ref(false)
 
   // Getters
-  const totalPortfolioValue = computed(() => portfolioSummary.value?.totalValue || 0)
-  const totalUnrealizedPnL = computed(() => portfolioSummary.value?.unrealizedPnL || 0)
-  const totalDividends = computed(() => portfolioSummary.value?.totalDividends || 0)
-  const holdingCount = computed(() => holdings.value.length)
+  const totalPortfolioValue = computed(() => portfolioOverview.value?.totalValue ?? portfolioSummary.value?.totalValue ?? 0)
+  const totalUnrealizedPnL = computed(() => portfolioOverview.value?.unrealizedPnL ?? portfolioSummary.value?.unrealizedPnL ?? 0)
+  const totalDividends = computed(() => portfolioOverview.value?.totalDividends ?? portfolioSummary.value?.totalDividends ?? 0)
+  const holdingCount = computed(() => portfolioOverview.value?.positionCount ?? portfolioPositions.value.length ?? holdings.value.length)
 
   // ========================================
   // 8 PILLARS ANALYSIS
@@ -314,6 +321,125 @@ export const useInvestmentsStore = defineStore('investments', () => {
     }
   }
 
+  async function fetchPortfolioOverview(params = {}) {
+    portfolioLoading.value = true
+    error.value = null
+
+    try {
+      const response = await api.get('/investments/portfolio/overview', { params })
+      portfolioOverview.value = response.data
+      portfolioSummary.value = {
+        holdingCount: response.data.positionCount,
+        totalValue: response.data.totalValue,
+        totalCostBasis: response.data.totalCostBasis,
+        unrealizedPnL: response.data.unrealizedPnL,
+        unrealizedPnLPercent: response.data.unrealizedPnLPercent,
+        totalDividends: response.data.totalDividends,
+        totalReturn: response.data.totalReturn,
+        allocation: response.data.allocation
+      }
+      return response.data
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to fetch portfolio overview'
+      throw err
+    } finally {
+      portfolioLoading.value = false
+    }
+  }
+
+  async function fetchPortfolioPositions(params = {}) {
+    portfolioLoading.value = true
+    error.value = null
+
+    try {
+      const response = await api.get('/investments/portfolio/positions', { params })
+      portfolioPositions.value = response.data
+      return response.data
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to fetch portfolio positions'
+      throw err
+    } finally {
+      portfolioLoading.value = false
+    }
+  }
+
+  async function fetchPortfolioPerformance(params = {}) {
+    portfolioLoading.value = true
+    error.value = null
+    portfolioPerformance.value = null
+
+    try {
+      const response = await api.get('/investments/portfolio/performance', { params })
+      portfolioPerformance.value = response.data
+      return response.data
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to fetch portfolio performance'
+      throw err
+    } finally {
+      portfolioLoading.value = false
+    }
+  }
+
+  async function fetchPortfolioRebalance(params = {}) {
+    portfolioLoading.value = true
+    error.value = null
+    portfolioRebalance.value = null
+
+    try {
+      const response = await api.get('/investments/portfolio/rebalance', { params })
+      portfolioRebalance.value = response.data
+      return response.data
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to fetch rebalance plan'
+      throw err
+    } finally {
+      portfolioLoading.value = false
+    }
+  }
+
+  async function fetchPortfolioAlerts(params = {}) {
+    portfolioLoading.value = true
+    error.value = null
+
+    try {
+      const response = await api.get('/investments/portfolio/alerts', { params })
+      portfolioAlertSummary.value = response.data
+      return response.data
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to fetch portfolio alerts'
+      throw err
+    } finally {
+      portfolioLoading.value = false
+    }
+  }
+
+  async function fetchPortfolioPreferences() {
+    try {
+      const response = await api.get('/investments/portfolio/preferences')
+      portfolioPreferences.value = response.data
+      return response.data
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to fetch portfolio preferences'
+      throw err
+    }
+  }
+
+  async function updatePortfolioPreferences(data) {
+    loading.value = true
+    error.value = null
+
+    try {
+      const response = await api.put('/investments/portfolio/preferences', data)
+      portfolioPreferences.value = response.data
+      return response.data
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to update portfolio preferences'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function refreshPrices() {
     loading.value = true
     error.value = null
@@ -322,6 +448,12 @@ export const useInvestmentsStore = defineStore('investments', () => {
       const response = await api.post('/investments/portfolio/refresh')
       await fetchHoldings()
       await fetchPortfolioSummary()
+      if (portfolioPositions.value.length > 0 || portfolioOverview.value) {
+        await Promise.allSettled([
+          fetchPortfolioOverview(),
+          fetchPortfolioPositions()
+        ])
+      }
       return response.data
     } catch (err) {
       error.value = err.response?.data?.error || 'Failed to refresh prices'
@@ -479,11 +611,18 @@ export const useInvestmentsStore = defineStore('investments', () => {
     currentAnalysis.value = null
     holdings.value = []
     portfolioSummary.value = null
+    portfolioOverview.value = null
+    portfolioPositions.value = []
+    portfolioPerformance.value = null
+    portfolioRebalance.value = null
+    portfolioAlertSummary.value = null
+    portfolioPreferences.value = null
     searchHistory.value = []
     loading.value = false
     error.value = null
     analysisLoading.value = false
     holdingsLoading.value = false
+    portfolioLoading.value = false
     // DCF reset
     dcfMetrics.value = null
     dcfResults.value = null
@@ -496,11 +635,18 @@ export const useInvestmentsStore = defineStore('investments', () => {
     currentAnalysis,
     holdings,
     portfolioSummary,
+    portfolioOverview,
+    portfolioPositions,
+    portfolioPerformance,
+    portfolioRebalance,
+    portfolioAlertSummary,
+    portfolioPreferences,
     searchHistory,
     loading,
     error,
     analysisLoading,
     holdingsLoading,
+    portfolioLoading,
 
     // Getters
     totalPortfolioValue,
@@ -539,6 +685,13 @@ export const useInvestmentsStore = defineStore('investments', () => {
 
     // Portfolio
     fetchPortfolioSummary,
+    fetchPortfolioOverview,
+    fetchPortfolioPositions,
+    fetchPortfolioPerformance,
+    fetchPortfolioRebalance,
+    fetchPortfolioAlerts,
+    fetchPortfolioPreferences,
+    updatePortfolioPreferences,
     refreshPrices,
 
     // Screener
