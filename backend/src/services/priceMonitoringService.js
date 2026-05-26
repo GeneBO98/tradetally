@@ -8,6 +8,7 @@ const TierService = require('./tierService');
 const NotificationPreferenceService = require('./notificationPreferenceService');
 const emailDeliveryService = require('./emailDeliveryService');
 const EmailService = require('./emailService');
+const { publish } = require('../events/domainEvents');
 const escapeHtml = require('../utils/escapeHtml');
 
 function maskEmail(email) {
@@ -385,6 +386,7 @@ class PriceMonitoringService {
       const targetPriceNum = parseFloat(target_price);
       const changePercentNum = parseFloat(change_percent);
       const percentChangeNum = parseFloat(alert.percent_change);
+      const triggeredAt = new Date().toISOString();
       
       switch (alert_type) {
         case 'above':
@@ -422,6 +424,22 @@ class PriceMonitoringService {
         );
         console.log(`Alert triggered for ${symbol} (repeat enabled, keeping alert)`);
       }
+
+      await publish('price_alert.triggered', {
+        alertId: id,
+        userId: user_id,
+        symbol,
+        alertType: alert_type,
+        currentPrice: currentPriceNum,
+        targetPrice: Number.isFinite(targetPriceNum) ? targetPriceNum : null,
+        changePercent: Number.isFinite(changePercentNum) ? changePercentNum : null,
+        observedPercentChange: Number.isFinite(percentChangeNum) ? percentChangeNum : null,
+        message,
+        repeatEnabled: Boolean(alert.repeat_enabled),
+        triggeredAt
+      }, {
+        source: 'priceMonitoringService.triggerAlert'
+      });
 
       console.log(`Alert triggered for ${symbol}: ${message}`);
 
