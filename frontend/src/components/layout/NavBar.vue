@@ -357,7 +357,7 @@ const baseNavigation = [
       },
       {
         name: 'Community Forum',
-        href: 'https://forum.tradetally.io',
+        href: 'https://tradetally.io/forum',
         external: true,
         description: 'Discuss strategies and connect with fellow traders'
       }

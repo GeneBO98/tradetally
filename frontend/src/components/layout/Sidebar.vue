@@ -514,7 +514,7 @@ const navItems = computed(() => {
         { name: 'Account & Cashflow', to: '/cashflow', route: 'cashflow' },
         { name: 'Leaderboard', to: '/leaderboard', route: 'leaderboard' },
         { name: 'Public Trades', to: '/public', route: 'public-trades' },
-        { name: 'Community Forum', href: 'https://forum.tradetally.io', external: true }
+        { name: 'Community Forum', href: 'https://tradetally.io/forum', external: true }
       ]
     },
     { name: 'Trades', icon: ChartBarSquareIcon, to: '/trades', route: 'trades' },

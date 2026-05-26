@@ -4,7 +4,7 @@
       <div class="flex flex-col items-center justify-center gap-4">
         <div class="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400">
           <a
-            href="https://docs.tradetally.io"
+            href="https://tradetally.io/docs"
             target="_blank"
             rel="noopener noreferrer"
             class="inline-flex items-center hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
@@ -28,7 +28,7 @@
           </button>
           <span>&bull;</span>
           <a
-            href="https://forum.tradetally.io"
+            href="https://tradetally.io/forum"
             target="_blank"
             rel="noopener noreferrer"
             class="inline-flex items-center hover:text-primary-600 dark:hover:text-primary-400 transition-colors"

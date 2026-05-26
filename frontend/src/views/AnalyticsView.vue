@@ -116,6 +116,25 @@
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
       </div>
 
+      <!-- Section Tabs -->
+      <div v-show="!initialLoading" class="border-b border-gray-200 dark:border-gray-700">
+        <nav class="-mb-px flex space-x-8 overflow-x-auto" aria-label="Analytics sections">
+          <button
+            v-for="tab in analyticsTabs"
+            :key="tab.id"
+            @click="activeAnalyticsTab = tab.id"
+            :class="[
+              'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors',
+              activeAnalyticsTab === tab.id
+                ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+            ]"
+          >
+            {{ tab.label }}
+          </button>
+        </nav>
+      </div>
+
       <!-- Draggable Grid Container with refresh indicator -->
       <div v-show="!initialLoading" class="relative">
         <!-- Subtle refresh indicator -->
@@ -126,7 +145,7 @@
           </div>
         </div>
       <draggable
-        v-model="chartLayout"
+        v-model="tabCharts"
         :disabled="!isCustomizing"
         item-key="id"
         class="grid grid-cols-1 lg:grid-cols-2 gap-8"
@@ -1436,24 +1455,33 @@ const showCompletionMessage = ref(false)
 
 // Chart layout customization
 const chartDefinitions = [
-  { id: 'overview', title: 'Overview Stats', defaultSize: 'full', category: 'stats' },
-  { id: 'detailed-stats', title: 'Detailed Stats', defaultSize: 'full', category: 'stats' },
-  { id: 'performance-chart', title: 'Performance Over Time', defaultSize: 'full', category: 'charts' },
-  { id: 'sector-performance', title: 'Sector Performance', defaultSize: 'full', category: 'charts' },
-  { id: 'drawdown-chart', title: 'Drawdown Analysis', defaultSize: 'half', category: 'charts' },
-  { id: 'daily-volume-chart', title: 'Daily Volume', defaultSize: 'half', category: 'charts' },
-  { id: 'day-of-week', title: 'Day of Week Performance', defaultSize: 'half', category: 'charts' },
-  { id: 'performance-by-hold-time', title: 'Performance by Hold Time', defaultSize: 'half', category: 'charts' },
-  { id: 'trade-distribution', title: 'Trade Distribution by Price', defaultSize: 'half', category: 'charts' },
-  { id: 'performance-by-price', title: 'Performance by Price', defaultSize: 'half', category: 'charts' },
-  { id: 'performance-by-volume', title: 'Performance by Volume', defaultSize: 'half', category: 'charts' },
-  { id: 'performance-by-position-size', title: 'Performance by Position Size', defaultSize: 'half', category: 'charts' },
-  { id: 'news-sentiment', title: 'News Sentiment Correlation', defaultSize: 'full', category: 'charts' },
-  { id: 'tag-performance', title: 'Tag Performance', defaultSize: 'full', category: 'tables' },
-  { id: 'strategy-performance', title: 'Strategy/Setup Performance', defaultSize: 'full', category: 'tables' },
-  { id: 'hour-of-day-performance', title: 'Hour of Day Performance', defaultSize: 'full', category: 'tables' },
-  { id: 'mae-mfe-analysis', title: 'MAE / MFE Analysis', defaultSize: 'full', category: 'charts' }
+  { id: 'overview', title: 'Overview Stats', defaultSize: 'full', category: 'stats', tab: 'overview' },
+  { id: 'detailed-stats', title: 'Detailed Stats', defaultSize: 'full', category: 'stats', tab: 'overview' },
+  { id: 'performance-chart', title: 'Performance Over Time', defaultSize: 'full', category: 'charts', tab: 'time' },
+  { id: 'sector-performance', title: 'Sector Performance', defaultSize: 'full', category: 'charts', tab: 'symbol' },
+  { id: 'drawdown-chart', title: 'Drawdown Analysis', defaultSize: 'half', category: 'charts', tab: 'time' },
+  { id: 'daily-volume-chart', title: 'Daily Volume', defaultSize: 'half', category: 'charts', tab: 'time' },
+  { id: 'day-of-week', title: 'Day of Week Performance', defaultSize: 'half', category: 'charts', tab: 'time' },
+  { id: 'performance-by-hold-time', title: 'Performance by Hold Time', defaultSize: 'half', category: 'charts', tab: 'time' },
+  { id: 'trade-distribution', title: 'Trade Distribution by Price', defaultSize: 'half', category: 'charts', tab: 'size' },
+  { id: 'performance-by-price', title: 'Performance by Price', defaultSize: 'half', category: 'charts', tab: 'size' },
+  { id: 'performance-by-volume', title: 'Performance by Volume', defaultSize: 'half', category: 'charts', tab: 'size' },
+  { id: 'performance-by-position-size', title: 'Performance by Position Size', defaultSize: 'half', category: 'charts', tab: 'size' },
+  { id: 'news-sentiment', title: 'News Sentiment Correlation', defaultSize: 'full', category: 'charts', tab: 'symbol' },
+  { id: 'tag-performance', title: 'Tag Performance', defaultSize: 'full', category: 'tables', tab: 'symbol' },
+  { id: 'strategy-performance', title: 'Strategy/Setup Performance', defaultSize: 'full', category: 'tables', tab: 'symbol' },
+  { id: 'hour-of-day-performance', title: 'Hour of Day Performance', defaultSize: 'full', category: 'tables', tab: 'time' },
+  { id: 'mae-mfe-analysis', title: 'MAE / MFE Analysis', defaultSize: 'full', category: 'charts', tab: 'time' }
 ]
+
+const analyticsTabs = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'time', label: 'By Time' },
+  { id: 'symbol', label: 'By Symbol & Strategy' },
+  { id: 'size', label: 'By Trade Size' }
+]
+
+const activeAnalyticsTab = ref('overview')
 
 const defaultChartLayout = chartDefinitions.map(chart => ({
   id: chart.id,
@@ -1541,6 +1569,29 @@ const displayOverview = computed(() => {
 // Computed property for visible charts in order
 const visibleCharts = computed(() => {
   return chartLayout.value.filter(chart => chart.visible)
+})
+
+// Charts belonging to the active analytics tab. Writable so draggable can
+// reorder within a tab while preserving the order of charts on other tabs.
+const tabCharts = computed({
+  get: () => chartLayout.value.filter(c => {
+    const def = chartDefinitions.find(d => d.id === c.id)
+    return def?.tab === activeAnalyticsTab.value
+  }),
+  set: (newOrder) => {
+    const otherCharts = chartLayout.value.filter(c => {
+      const def = chartDefinitions.find(d => d.id === c.id)
+      return def?.tab !== activeAnalyticsTab.value
+    })
+    chartLayout.value = [...otherCharts, ...newOrder]
+  }
+})
+
+// When the user changes tabs, the new tab's canvases mount fresh.
+// Re-run chart init so Chart.js binds to the newly-mounted canvas elements.
+watch(activeAnalyticsTab, async () => {
+  await nextTick()
+  initializeAllCharts()
 })
 
 // Get chart definition by ID

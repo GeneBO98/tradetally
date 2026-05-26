@@ -231,7 +231,7 @@
                 </p>
                 <div class="mt-3 flex flex-col sm:flex-row gap-2">
                   <a
-                    href="https://docs.tradetally.io/usage/importing-trades/#supported-brokers"
+                    href="https://tradetally.io/docs/usage/importing-trades/#supported-brokers"
                     target="_blank"
                     rel="noopener noreferrer"
                     class="inline-flex items-center justify-center px-3 py-1.5 text-sm font-medium text-primary-700 dark:text-primary-300 bg-white dark:bg-gray-800 border border-primary-300 dark:border-primary-600 rounded-md hover:bg-primary-50 dark:hover:bg-primary-900/30"

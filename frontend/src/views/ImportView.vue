@@ -3174,7 +3174,7 @@ function pollImportStatus(importId) {
             `The import completed but no trades were found.\n\nSuggestions:\n${suggestions.map((s, i) => `${i + 1}. ${s}`).join('\n')}`,
             {
               confirmText: 'OK',
-              linkUrl: 'https://docs.tradetally.io/usage/importing-trades/#supported-brokers',
+              linkUrl: 'https://tradetally.io/docs/usage/importing-trades/#supported-brokers',
               linkText: 'View Documentation'
             }
           )
