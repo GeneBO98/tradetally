@@ -2,7 +2,10 @@
   <div class="card-dense h-full">
     <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
       <h3 class="heading-card">Momentum</h3>
-      <span class="text-xs text-gray-500 dark:text-gray-400">Last {{ Math.min(recentDays.length, 14) }} days</span>
+      <span class="text-xs text-gray-500 dark:text-gray-400">
+        <template v-if="scope === 'day'">Last {{ Math.min(recentDays.length, 14) }} days</template>
+        <template v-else>Last {{ stripCells.length }} trades</template>
+      </span>
     </div>
     <div class="card-dense-body">
       <!-- Empty state -->
@@ -13,6 +16,30 @@
       </div>
 
       <template v-else>
+        <!-- Streak scope toggle: by-day (default) vs by-trade -->
+        <div v-if="hasTradeData" class="mb-3 inline-flex rounded-md border border-gray-200 dark:border-gray-700 p-0.5 text-xs">
+          <button
+            type="button"
+            @click="scope = 'day'"
+            class="px-2.5 py-1 rounded transition-colors"
+            :class="scope === 'day'
+              ? 'bg-primary-600 text-white'
+              : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'"
+          >
+            By day
+          </button>
+          <button
+            type="button"
+            @click="scope = 'trade'"
+            class="px-2.5 py-1 rounded transition-colors"
+            :class="scope === 'trade'
+              ? 'bg-primary-600 text-white'
+              : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'"
+          >
+            By trade
+          </button>
+        </div>
+
         <!-- Main streak -->
         <div class="flex items-baseline gap-3">
           <div
@@ -22,26 +49,35 @@
             {{ streakLabel }}
           </div>
           <div class="text-xs text-gray-500 dark:text-gray-400">
-            <div v-if="currentStreak > 0">{{ currentStreak === 1 ? 'winning day' : 'winning days' }} in a row</div>
-            <div v-else-if="currentStreak < 0">{{ Math.abs(currentStreak) === 1 ? 'losing day' : 'losing days' }} in a row</div>
-            <div v-else>no current streak</div>
+            <template v-if="scope === 'day'">
+              <div v-if="currentStreak > 0">{{ currentStreak === 1 ? 'winning day' : 'winning days' }} in a row</div>
+              <div v-else-if="currentStreak < 0">{{ Math.abs(currentStreak) === 1 ? 'losing day' : 'losing days' }} in a row</div>
+              <div v-else>no current streak</div>
+            </template>
+            <template v-else>
+              <div v-if="currentStreak > 0">{{ currentStreak === 1 ? 'winning trade' : 'winning trades' }} in a row</div>
+              <div v-else-if="currentStreak < 0">{{ Math.abs(currentStreak) === 1 ? 'losing trade' : 'losing trades' }} in a row</div>
+              <div v-else>no current streak</div>
+            </template>
           </div>
         </div>
 
-        <!-- Last N days strip -->
+        <!-- Recent strip: last N days OR last N trades -->
         <div class="mt-4">
           <div class="flex items-center gap-1">
             <div
-              v-for="(day, idx) in recentDaysSliced"
-              :key="`day-${idx}`"
+              v-for="(cell, idx) in stripCells"
+              :key="`cell-${idx}`"
               class="flex-1 h-8 rounded-sm transition-transform hover:scale-y-110"
-              :class="day.cellClass"
-              :title="day.title"
+              :class="cell.cellClass"
+              :title="cell.title"
             />
           </div>
           <div class="mt-1 flex justify-between text-[10px] text-gray-400 dark:text-gray-500 text-mono-num">
-            <span>{{ recentDaysSliced[0]?.shortDate }}</span>
-            <span>{{ recentDaysSliced[recentDaysSliced.length - 1]?.shortDate }}</span>
+            <span v-if="scope === 'day'">{{ stripCells[0]?.shortDate }}</span>
+            <span v-else>oldest</span>
+            <span v-if="scope === 'day'">{{ stripCells[stripCells.length - 1]?.shortDate }}</span>
+            <span v-else>most recent</span>
           </div>
         </div>
 
@@ -82,17 +118,23 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 
 const props = defineProps({
   dailyPnL: {
     type: Array,
     default: () => []
+  },
+  recentTradePnls: {
+    type: Array,
+    default: () => []
   }
 })
 
 const { formatSignedCurrency } = useCurrencyFormatter()
+
+const scope = ref('day') // 'day' | 'trade'
 
 const recentDays = computed(() => {
   return (props.dailyPnL || []).map(d => ({
@@ -101,6 +143,15 @@ const recentDays = computed(() => {
     count: parseInt(d.trade_count ?? d.tradeCount ?? 0) || 0
   }))
 })
+
+const recentTrades = computed(() => {
+  return (props.recentTradePnls || []).map(t => ({
+    date: String(t.trade_date || t.tradeDate || '').slice(0, 10),
+    pnl: parseFloat(t.pnl ?? 0) || 0
+  }))
+})
+
+const hasTradeData = computed(() => recentTrades.value.length > 0)
 
 const recentDaysSliced = computed(() => {
   const slice = recentDays.value.slice(-14)
@@ -120,54 +171,88 @@ const recentDaysSliced = computed(() => {
   })
 })
 
-const streakStats = computed(() => {
-  const days = recentDays.value
-  if (days.length === 0) {
-    return { current: 0, bestWin: 0, worstLoss: 0, todayPnl: 0, todayTrades: 0, avgDailyTrades: 0, hasToday: false }
+const recentTradesSliced = computed(() => {
+  const slice = recentTrades.value.slice(-30)
+  return slice.map(t => {
+    const isWin = t.pnl > 0
+    const isLoss = t.pnl < 0
+    return {
+      ...t,
+      cellClass: isWin
+        ? 'bg-green-500/80 dark:bg-green-500'
+        : isLoss
+          ? 'bg-red-500/80 dark:bg-red-500'
+          : 'bg-gray-300 dark:bg-gray-600',
+      title: `${t.date}: ${t.pnl > 0 ? '+' : ''}${t.pnl.toFixed(2)}`
+    }
+  })
+})
+
+const stripCells = computed(() =>
+  scope.value === 'trade' ? recentTradesSliced.value : recentDaysSliced.value
+)
+
+// Compute current/best/worst streaks over an array of pnl-bearing items in
+// chronological order. Wins are pnl > 0; losses are pnl < 0; breakeven (== 0)
+// neither extends nor breaks a run.
+function computeStreaks(items) {
+  if (!items || items.length === 0) {
+    return { current: 0, bestWin: 0, worstLoss: 0 }
   }
-  let bestWin = 0, worstLoss = 0, totalCount = 0
+  let bestWin = 0, worstLoss = 0
   let prev = null, run = 0
-  for (let i = 0; i < days.length; i++) {
-    const r = days[i].pnl > 0 ? 'W' : (days[i].pnl < 0 ? 'L' : 'B')
+  for (let i = 0; i < items.length; i++) {
+    const r = items[i].pnl > 0 ? 'W' : (items[i].pnl < 0 ? 'L' : 'B')
     if (r === prev) run++
     else { prev = r; run = 1 }
     if (r === 'W' && run > bestWin) bestWin = run
     if (r === 'L' && run > worstLoss) worstLoss = run
-    totalCount += days[i].count
   }
-  // Current streak from end
-  const last = days[days.length - 1]
+  const last = items[items.length - 1]
   const lastR = last.pnl > 0 ? 'W' : (last.pnl < 0 ? 'L' : 'B')
   let lastRun = 0
-  for (let i = days.length - 1; i >= 0; i--) {
-    const r = days[i].pnl > 0 ? 'W' : (days[i].pnl < 0 ? 'L' : 'B')
+  for (let i = items.length - 1; i >= 0; i--) {
+    const r = items[i].pnl > 0 ? 'W' : (items[i].pnl < 0 ? 'L' : 'B')
     if (r === lastR) lastRun++
     else break
   }
   const current = lastR === 'W' ? lastRun : lastR === 'L' ? -lastRun : 0
+  return { current, bestWin, worstLoss }
+}
+
+const dayStreakStats = computed(() => {
+  const stats = computeStreaks(recentDays.value)
+  const days = recentDays.value
+  let totalCount = 0
+  for (const d of days) totalCount += d.count
   // Local date (NOT UTC) — toISOString rolls forward into tomorrow's date
   // for US timezones in the evening.
   const nowLocal = new Date()
   const todayStr = `${nowLocal.getFullYear()}-${String(nowLocal.getMonth() + 1).padStart(2, '0')}-${String(nowLocal.getDate()).padStart(2, '0')}`
-  const hasToday = last.date === todayStr
+  const last = days[days.length - 1]
+  const hasToday = last ? last.date === todayStr : false
   return {
-    current,
-    bestWin,
-    worstLoss,
-    todayPnl: hasToday ? last.pnl : 0,
-    todayTrades: hasToday ? last.count : 0,
+    ...stats,
+    todayPnl: hasToday && last ? last.pnl : 0,
+    todayTrades: hasToday && last ? last.count : 0,
     avgDailyTrades: days.length > 0 ? totalCount / days.length : 0,
     hasToday
   }
 })
 
-const currentStreak = computed(() => streakStats.value.current)
-const bestWinStreak = computed(() => streakStats.value.bestWin)
-const worstLossStreak = computed(() => streakStats.value.worstLoss)
-const hasToday = computed(() => streakStats.value.hasToday)
-const todayPnl = computed(() => streakStats.value.todayPnl)
-const todayTrades = computed(() => streakStats.value.todayTrades)
-const avgDailyTrades = computed(() => streakStats.value.avgDailyTrades)
+const tradeStreakStats = computed(() => computeStreaks(recentTrades.value))
+
+const activeStats = computed(() =>
+  scope.value === 'trade' ? tradeStreakStats.value : dayStreakStats.value
+)
+
+const currentStreak = computed(() => activeStats.value.current)
+const bestWinStreak = computed(() => activeStats.value.bestWin)
+const worstLossStreak = computed(() => activeStats.value.worstLoss)
+const hasToday = computed(() => scope.value === 'day' && dayStreakStats.value.hasToday)
+const todayPnl = computed(() => dayStreakStats.value.todayPnl)
+const todayTrades = computed(() => dayStreakStats.value.todayTrades)
+const avgDailyTrades = computed(() => dayStreakStats.value.avgDailyTrades)
 
 const streakLabel = computed(() => {
   if (currentStreak.value === 0) return '—'

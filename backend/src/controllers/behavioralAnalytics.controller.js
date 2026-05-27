@@ -279,9 +279,50 @@ const behavioralAnalyticsController = {
     try {
       const userId = req.user.id;
 
+      // Mirror the trade-list/analytics filter shape so dashboard filters
+      // (tags, strategies, accounts, date range, etc.) flow through to the
+      // derived-signal SQL via TradeQueries._buildWhereClause.
+      const {
+        startDate, endDate, symbol, symbolExact, sector, strategy, tags,
+        strategies, sectors,
+        side, minPrice, maxPrice, minQuantity, maxQuantity,
+        status, minPnl, maxPnl, broker, brokers, importId, accounts, hasNews,
+        holdTime, daysOfWeek, instrumentTypes, optionTypes, qualityGrades
+      } = req.query;
+
+      const filters = {
+        startDate,
+        endDate,
+        symbol,
+        symbolExact: symbolExact === 'true',
+        sector,
+        strategy,
+        tags: tags ? ensureString(tags).split(',').map(t => t.trim()).filter(Boolean) : undefined,
+        strategies: strategies ? ensureString(strategies).split(',') : undefined,
+        sectors: sectors ? ensureString(sectors).split(',') : undefined,
+        side,
+        minPrice,
+        maxPrice,
+        minQuantity,
+        maxQuantity,
+        status,
+        minPnl,
+        maxPnl,
+        broker: broker || undefined,
+        brokers: brokers || undefined,
+        importId,
+        accounts: accounts ? ensureString(accounts).split(',') : undefined,
+        hasNews,
+        holdTime,
+        daysOfWeek: daysOfWeek ? ensureString(daysOfWeek).split(',').map(d => parseInt(d)) : undefined,
+        instrumentTypes: instrumentTypes ? ensureString(instrumentTypes).split(',') : undefined,
+        optionTypes: optionTypes ? ensureString(optionTypes).split(',') : undefined,
+        qualityGrades: qualityGrades ? ensureString(qualityGrades).split(',') : undefined
+      };
+
       // === Layer 1: trade-derived signals (always computed) ===
       const derived = await behavioralAnalyticsController
-        .computeDerivedRiskSignals(userId)
+        .computeDerivedRiskSignals(userId, filters)
         .catch(err => {
           console.warn('[BEHAVIORAL] derived signals failed:', err.message);
           return null;
@@ -369,9 +410,23 @@ const behavioralAnalyticsController = {
   // something useful to render when the user has trade history: if no
   // risk thresholds fire, we still emit at least one informational signal
   // about their current state so "all clear" actually means something.
-  async computeDerivedRiskSignals(userId) {
+  async computeDerivedRiskSignals(userId, filters = {}) {
     const db = require('../config/database');
+    const TradeQueries = require('../services/tradeQueries');
     const signals = [];
+
+    // Apply the user's dashboard filter spec (tags, strategies, accounts, etc.)
+    // via the canonical WHERE builder so signals stay consistent with the
+    // trade list and analytics. Default to a 180-day floor only when no
+    // explicit startDate is supplied — keeps existing default-window behavior.
+    const { whereClause: userWhere, values } = await TradeQueries._buildWhereClause(
+      userId,
+      filters,
+      { includeSampleData: true }
+    );
+    const defaultWindowClause = !filters.startDate
+      ? `AND t.trade_date >= CURRENT_DATE - INTERVAL '180 days'`
+      : '';
 
     // 180-day window so signals work for demo / sparse-recent-activity users.
     // Streak detection only needs the tail of this; everything else uses the
@@ -379,20 +434,20 @@ const behavioralAnalyticsController = {
     const ctx = await db.query(`
       WITH closed AS (
         SELECT
-          id, trade_date, entry_time, exit_time, pnl, quantity, side,
-          symbol, strategy,
+          t.id, t.trade_date, t.entry_time, t.exit_time, t.pnl, t.quantity, t.side,
+          t.symbol, t.strategy,
           -- Notional size proxy: weight raw quantity by contract multiplier so
           -- comparisons stay coherent across instrument types. Futures use
           -- point_value (ES=50, MES=5), stocks/options fall back to entry_price.
           -- Without this, 1 ES contract reads as a "sizing down" vs 7 MES even
           -- though ES is 10x the notional. See GitHub issue #330.
-          (quantity * COALESCE(NULLIF(point_value, 0), entry_price, 1))::numeric AS notional
-        FROM trades
-        WHERE user_id = $1
-          AND exit_price IS NOT NULL
-          AND pnl IS NOT NULL
-          AND trade_date >= CURRENT_DATE - INTERVAL '180 days'
-        ORDER BY trade_date DESC, entry_time DESC
+          (t.quantity * COALESCE(NULLIF(t.point_value, 0), t.entry_price, 1))::numeric AS notional
+        FROM trades t
+        ${userWhere}
+          AND t.exit_price IS NOT NULL
+          AND t.pnl IS NOT NULL
+          ${defaultWindowClause}
+        ORDER BY t.trade_date DESC, t.entry_time DESC
       ),
       recent30 AS (
         SELECT * FROM closed WHERE trade_date >= CURRENT_DATE - INTERVAL '30 days'
@@ -427,7 +482,7 @@ const behavioralAnalyticsController = {
             FROM closed
           ) ordered
           WHERE rn <= 100) AS recent_trade_pnls
-    `, [userId]);
+    `, values);
     const row = ctx.rows[0] || {};
     const recentCount = parseInt(row.recent_count) || 0;
 
@@ -437,9 +492,10 @@ const behavioralAnalyticsController = {
     }
 
     const avgLoss = parseFloat(row.avg_loss) || 0;
-    const avgQty = parseFloat(row.avg_qty) || 0;
-    const recentAvgQty = parseFloat(row.recent_avg_qty) || 0;
+    const avgNotional = parseFloat(row.avg_notional) || 0;
+    const recentAvgNotional = parseFloat(row.recent_avg_notional) || 0;
     const daily = Array.isArray(row.daily_rows) ? row.daily_rows : [];
+    const recentTradePnls = Array.isArray(row.recent_trade_pnls) ? row.recent_trade_pnls : [];
     const r30Count = parseInt(row.r30_count) || 0;
     const r30Wins = parseInt(row.r30_wins) || 0;
     const r30Losses = parseInt(row.r30_losses) || 0;
@@ -450,12 +506,12 @@ const behavioralAnalyticsController = {
     try {
       const revenge = await db.query(`
         WITH closed AS (
-          SELECT id, entry_time, exit_time, pnl
-          FROM trades
-          WHERE user_id = $1
-            AND exit_price IS NOT NULL
-            AND pnl IS NOT NULL
-            AND trade_date >= CURRENT_DATE - INTERVAL '60 days'
+          SELECT t.id, t.entry_time, t.exit_time, t.pnl
+          FROM trades t
+          ${userWhere}
+            AND t.exit_price IS NOT NULL
+            AND t.pnl IS NOT NULL
+            AND t.trade_date >= CURRENT_DATE - INTERVAL '60 days'
         )
         SELECT COUNT(*)::integer AS hits
         FROM closed t1
@@ -463,7 +519,7 @@ const behavioralAnalyticsController = {
           ON t2.entry_time > t1.exit_time
          AND t2.entry_time <= t1.exit_time + INTERVAL '30 minutes'
         WHERE t1.pnl < 0
-      `, [userId]);
+      `, values);
       const hits = parseInt(revenge.rows[0]?.hits) || 0;
       if (hits >= 2) {
         signals.push({
@@ -509,9 +565,46 @@ const behavioralAnalyticsController = {
       });
     }
 
+    // --- 2b. Per-trade win/loss streak.
+    // Walks the most recent closed trades by exit_time. Independent of the
+    // daily streak above — a single bad day can hide a long losing run inside
+    // it (or a great day can mask a cold streak that ended on one big win).
+    let tradeStreak = 0;
+    let tradeStreakKind = null;
+    for (const p of recentTradePnls) {
+      const pnl = parseFloat(p);
+      if (!Number.isFinite(pnl)) continue;
+      const kind = pnl > 0 ? 'W' : pnl < 0 ? 'L' : 'B';
+      if (tradeStreakKind === null) tradeStreakKind = kind;
+      if (kind === tradeStreakKind && kind !== 'B') tradeStreak++;
+      else if (kind !== tradeStreakKind) break;
+    }
+    if (tradeStreakKind === 'W' && tradeStreak >= 5) {
+      signals.push({
+        key: 'hot_trade_streak',
+        label: 'Hot trade streak',
+        severity: tradeStreak >= 10 ? 'high' : 'medium',
+        value: tradeStreak,
+        unit: 'winning trades in a row',
+        message: `${tradeStreak} winning trades in a row. Strong run — stay mechanical and don't let confidence push you into oversized or off-plan entries.`
+      });
+    } else if (tradeStreakKind === 'L' && tradeStreak >= 3) {
+      signals.push({
+        key: 'cold_trade_streak',
+        label: 'Cold trade streak',
+        severity: tradeStreak >= 6 ? 'high' : 'medium',
+        value: tradeStreak,
+        unit: 'losing trades in a row',
+        message: `${tradeStreak} losing trades in a row. Step away from the screen, review the losers for a common thread, and reduce size on the next entry.`
+      });
+    }
+
     // --- 3. Position-size drift.
-    if (avgQty > 0 && recentAvgQty > 0) {
-      const ratio = recentAvgQty / avgQty;
+    // Uses notional (quantity * point_value or entry_price), not raw quantity,
+    // so it doesn't misread a switch from 7 MES contracts to 1 ES contract as
+    // "sizing down" when notional actually grew. See issue #330.
+    if (avgNotional > 0 && recentAvgNotional > 0) {
+      const ratio = recentAvgNotional / avgNotional;
       if (ratio >= 1.4) {
         signals.push({
           key: 'size_drift_up',
@@ -519,7 +612,7 @@ const behavioralAnalyticsController = {
           severity: ratio >= 2 ? 'high' : 'medium',
           value: ratio.toFixed(2) + 'x',
           unit: 'vs your 180d average',
-          message: `Your last-14-day average size is ${ratio.toFixed(1)}x your historical average. Either you've intentionally sized up or you're risking more — confirm it's deliberate and that your stops scaled with it.`
+          message: `Your last-14-day average position notional is ${ratio.toFixed(1)}x your historical average. Either you've intentionally sized up or you're risking more — confirm it's deliberate and that your stops scaled with it.`
         });
       } else if (ratio <= 0.6) {
         signals.push({
@@ -528,7 +621,7 @@ const behavioralAnalyticsController = {
           severity: 'low',
           value: `${(ratio * 100).toFixed(0)}%`,
           unit: 'of normal size',
-          message: `Your recent size is only ${(ratio * 100).toFixed(0)}% of your historical average. Small sizes after losses are healthy, but undersizing when your edge is intact leaves edge on the table.`
+          message: `Your recent position notional is only ${(ratio * 100).toFixed(0)}% of your historical average. Small sizes after losses are healthy, but undersizing when your edge is intact leaves edge on the table.`
         });
       }
     }
@@ -554,14 +647,14 @@ const behavioralAnalyticsController = {
       const baselineCount = recentCount - r30Count;
       if (baselineCount >= 20) {
         const baseWinsResult = await db.query(`
-          SELECT COUNT(*) FILTER (WHERE pnl > 0)::numeric AS wins,
+          SELECT COUNT(*) FILTER (WHERE t.pnl > 0)::numeric AS wins,
                  COUNT(*)::numeric AS total
-          FROM trades
-          WHERE user_id = $1
-            AND exit_price IS NOT NULL AND pnl IS NOT NULL
-            AND trade_date < CURRENT_DATE - INTERVAL '30 days'
-            AND trade_date >= CURRENT_DATE - INTERVAL '180 days'
-        `, [userId]);
+          FROM trades t
+          ${userWhere}
+            AND t.exit_price IS NOT NULL AND t.pnl IS NOT NULL
+            AND t.trade_date < CURRENT_DATE - INTERVAL '30 days'
+            AND t.trade_date >= CURRENT_DATE - INTERVAL '180 days'
+        `, values);
         const baseTotal = parseFloat(baseWinsResult.rows[0]?.total) || 0;
         const baseWins = parseFloat(baseWinsResult.rows[0]?.wins) || 0;
         if (baseTotal > 0) {

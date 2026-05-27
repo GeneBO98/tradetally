@@ -37,7 +37,7 @@ jest.mock('../../src/models/User', () => ({
 const db = require('../../src/config/database');
 const TradeQueries = require('../../src/services/tradeQueries');
 
-// Default mock for all 7 fan-out queries: minimal shapes that satisfy
+// Default mock for all 8 fan-out queries: minimal shapes that satisfy
 // downstream processing without affecting WHERE-clause assertions.
 function defaultDbResponse() {
   return {
@@ -73,7 +73,7 @@ function defaultDbResponse() {
 
 function captureValues() {
   expect(db.query).toHaveBeenCalled();
-  // All 7 fan-out queries share the same values array. Use the first call.
+  // All 8 fan-out queries share the same values array. Use the first call.
   return db.query.mock.calls[0][1];
 }
 
@@ -107,9 +107,9 @@ describe('TradeQueries.getAnalytics characterization', () => {
       expect(sql).not.toContain("NOT COALESCE('sample' = ANY(t.tags), false)");
     });
 
-    test('all 7 fan-out queries receive identical values', async () => {
+    test('all 8 fan-out queries receive identical values', async () => {
       await TradeQueries.getAnalytics('user-1', { startDate: '2026-01-01', endDate: '2026-01-31' });
-      expect(db.query).toHaveBeenCalledTimes(7);
+      expect(db.query).toHaveBeenCalledTimes(8);
       const allValues = db.query.mock.calls.map(c => c[1]);
       // Every call gets the same params array reference (or equal values).
       const first = allValues[0];
@@ -405,7 +405,7 @@ describe('TradeQueries.getAnalytics characterization', () => {
         endDate: '2026-01-31',
         accounts: ['ACCT-1']
       });
-      expect(db.query).toHaveBeenCalledTimes(7);
+      expect(db.query).toHaveBeenCalledTimes(8);
     });
   });
 });

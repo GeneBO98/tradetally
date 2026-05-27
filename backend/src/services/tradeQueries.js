@@ -201,16 +201,17 @@ class TradeQueries {
     // +/- N ticks, scaled per-instrument. Wins/losses are decided by NET P&L
     // among the non-breakeven trades.
     if (filters.pnlType) {
-      const { getBreakevenToleranceTicks, breakevenPredicate } = require('../utils/breakeven');
-      const tolerance = filters.breakevenToleranceTicks !== undefined
-        ? filters.breakevenToleranceTicks
-        : await getBreakevenToleranceTicks(userId);
+      const { getBreakevenToleranceConfig, breakevenPredicate } = require('../utils/breakeven');
+      const config = filters.breakevenToleranceConfig !== undefined
+        ? filters.breakevenToleranceConfig
+        : await getBreakevenToleranceConfig(userId);
       const be = breakevenPredicate({
         gross: '(t.pnl + COALESCE(t.commission, 0) + COALESCE(t.fees, 0))',
         tickSize: 't.tick_size',
         pointValue: 't.point_value',
-        quantity: 't.quantity'
-      }, tolerance);
+        quantity: 't.quantity',
+        underlying: 't.underlying_asset'
+      }, config);
       if (filters.pnlType === 'profit' || filters.pnlType === 'positive') {
         whereClause += ` AND ${be.isNot} AND t.pnl > 0`;
       } else if (filters.pnlType === 'loss' || filters.pnlType === 'negative') {
@@ -360,22 +361,25 @@ class TradeQueries {
     console.log('Getting analytics for user:', userId, 'with filters:', filters);
 
     const User = require('../models/User');
-    const { normalizeTolerance, breakevenPredicate } = require('../utils/breakeven');
+    const { normalizeConfig, breakevenPredicate } = require('../utils/breakeven');
     let useMedian = false;
-    let breakevenTolerance = 0;
+    let breakevenConfig = { default: 0, byUnderlying: {} };
     try {
       const userSettings = await User.getSettings(userId);
       useMedian = userSettings?.statistics_calculation === 'median';
-      breakevenTolerance = normalizeTolerance(userSettings?.breakeven_tolerance_ticks);
+      breakevenConfig = normalizeConfig({
+        default: userSettings?.breakeven_tolerance_ticks,
+        byUnderlying: userSettings?.breakeven_tolerance_ticks_by_underlying
+      });
     } catch (error) {
       console.warn('Could not fetch user settings for analytics, using default (average):', error.message);
     }
 
-    // Pass the tolerance we just fetched into the WHERE builder so it doesn't
+    // Pass the config we just fetched into the WHERE builder so it doesn't
     // re-query user settings for the pnlType filter.
     const { whereClause, values } = await this._buildWhereClause(userId, {
       ...filters,
-      breakevenToleranceTicks: breakevenTolerance
+      breakevenToleranceConfig: breakevenConfig
     }, {
       includeSampleData: true
     });
@@ -386,14 +390,16 @@ class TradeQueries {
       gross: '(trade_pnl + trade_costs)',
       tickSize: 'tick_size',
       pointValue: 'point_value',
-      quantity: 'quantity'
-    }, breakevenTolerance);
+      quantity: 'quantity',
+      underlying: 'underlying_asset'
+    }, breakevenConfig);
     const beDaily = breakevenPredicate({
       gross: '(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0))',
       tickSize: 'tick_size',
       pointValue: 'point_value',
-      quantity: 'quantity'
-    }, breakevenTolerance);
+      quantity: 'quantity',
+      underlying: 'underlying_asset'
+    }, breakevenConfig);
 
     const executionCountQuery = `
       SELECT COUNT(*) as execution_count
@@ -411,6 +417,7 @@ class TradeQueries {
           tick_size,
           point_value,
           quantity,
+          underlying_asset,
           1 as execution_count,
           pnl_percent as avg_return_pct,
           trade_date as first_trade_date,
@@ -542,7 +549,8 @@ class TradeQueries {
       dailyPnLResult,
       dailyWinRateResult,
       topTradesResult,
-      bestWorstResult
+      bestWorstResult,
+      recentTradePnlsResult
     ] = await Promise.all([
       timedDbQuery('analytics.executionCountQuery', executionCountQuery, values),
       timedDbQuery('analytics.analyticsQuery', analyticsQuery, values),
@@ -635,6 +643,26 @@ class TradeQueries {
           ORDER BY pnl ASC
           LIMIT 1
         )
+      `, values),
+      // Recent closed-trade P&Ls (chronological) for per-trade streak detection
+      // on the dashboard StreakMomentumCard. Capped at 500 — far more than any
+      // realistic winning/losing run, but still a small payload (~5 KB).
+      timedDbQuery('analytics.recentTradePnlsQuery', `
+        SELECT pnl, trade_date, exit_time
+        FROM (
+          SELECT pnl, trade_date, entry_time, exit_time
+          FROM trades t
+          ${whereClause}
+            AND pnl IS NOT NULL
+            AND exit_price IS NOT NULL
+          ORDER BY exit_time DESC NULLS LAST,
+                   trade_date DESC,
+                   entry_time DESC NULLS LAST
+          LIMIT 500
+        ) recent
+        ORDER BY exit_time ASC NULLS LAST,
+                 trade_date ASC,
+                 entry_time ASC NULLS LAST
       `, values)
     ]);
 
@@ -684,6 +712,7 @@ class TradeQueries {
       performanceBySymbol: symbolResult.rows,
       dailyPnL: dailyPnLResult.rows,
       dailyWinRate: dailyWinRateResult.rows,
+      recentTradePnls: recentTradePnlsResult.rows,
       topTrades: {
         best: topTradesResult.rows.filter(t => t.type === 'best'),
         worst: topTradesResult.rows.filter(t => t.type === 'worst')

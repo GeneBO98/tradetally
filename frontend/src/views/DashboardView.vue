@@ -91,6 +91,27 @@
             />
           </div>
 
+          <!-- Advanced filters (tags, strategies, brokers, etc.) — opens the
+               shared TradeFilters panel in a modal. Subtle icon-only button to
+               match the rest of the header; shows the active filter count when
+               anything beyond the time range is set. -->
+          <button
+            @click="showFiltersModal = true"
+            class="relative w-10 h-10 inline-flex items-center justify-center rounded-md border bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            type="button"
+            :title="activeAdvancedFilterCount > 0 ? `${activeAdvancedFilterCount} filter${activeAdvancedFilterCount === 1 ? '' : 's'} active` : 'More filters'"
+            aria-label="More filters"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+            </svg>
+            <span
+              v-if="activeAdvancedFilterCount > 0"
+              class="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center rounded-full bg-primary-600 text-white text-[10px] font-semibold ring-2 ring-white dark:ring-gray-900"
+              aria-hidden="true"
+            >{{ activeAdvancedFilterCount }}</span>
+          </button>
+
           <button
             v-if="isCustomizing"
             @click="resetDashboardLayout"
@@ -476,7 +497,10 @@
             <!-- Momentum + Risk Signals (side-by-side) -->
             <template v-if="element.id === 'momentum-and-risk'">
               <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <StreakMomentumCard :daily-pn-l="analytics?.dailyPnL || []" />
+                <StreakMomentumCard
+                  :daily-pn-l="analytics?.dailyPnL || []"
+                  :recent-trade-pnls="analytics?.recentTradePnls || []"
+                />
                 <BehavioralAlertsCard
                   :summary="behavioralSummary"
                   :loading="behavioralLoading"
@@ -1505,6 +1529,48 @@
       </div>
     </div>
 
+    <!-- Advanced filters modal -->
+    <div
+      v-if="showFiltersModal"
+      class="fixed inset-0 z-50 overflow-y-auto"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="dashboard-filters-modal-title"
+    >
+      <div class="flex min-h-full items-start justify-center p-4 sm:p-6">
+        <div
+          class="fixed inset-0 bg-gray-900/50 transition-opacity"
+          @click="showFiltersModal = false"
+        ></div>
+        <div class="relative w-full max-w-5xl bg-white dark:bg-gray-800 rounded-lg shadow-xl">
+          <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <h3 id="dashboard-filters-modal-title" class="heading-card">Filter dashboard</h3>
+            <div class="flex items-center gap-2">
+              <button
+                v-if="activeAdvancedFilterCount > 0"
+                type="button"
+                @click="clearAdvancedFilters"
+                class="text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
+              >Clear all</button>
+              <button
+                type="button"
+                @click="showFiltersModal = false"
+                class="rounded-md p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                aria-label="Close filters"
+              >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="px-6 py-5 max-h-[calc(100vh-8rem)] overflow-y-auto">
+            <TradeFilters @filter="handleAdvancedFilter" />
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
@@ -1533,6 +1599,7 @@ import YearWrappedBanner from '@/components/yearWrapped/YearWrappedBanner.vue'
 import YearWrappedModal from '@/components/yearWrapped/YearWrappedModal.vue'
 import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
 import StockLogo from '@/components/common/StockLogo.vue'
+import TradeFilters from '@/components/trades/TradeFilters.vue'
 import { useYearWrappedStore } from '@/stores/yearWrapped'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
@@ -1632,6 +1699,60 @@ const filters = ref({
   endDate: ''
 })
 
+// Advanced filter spec from the shared TradeFilters component (tags, strategies,
+// brokers, instrument types, etc.). Date/account come from the dashboard's own
+// controls, so we strip those before applying so they don't double up.
+const appliedFilters = ref({})
+const showFiltersModal = ref(false)
+
+// Keys that are managed by the dashboard's primary controls (time range +
+// global account selector). We ignore them in the advanced-filter spec so the
+// modal doesn't quietly override the header dropdowns.
+const ADVANCED_FILTER_IGNORE_KEYS = new Set([
+  'startDate', 'endDate', 'accounts'
+])
+
+const activeAdvancedFilterCount = computed(() => {
+  let count = 0
+  for (const [k, v] of Object.entries(appliedFilters.value || {})) {
+    if (ADVANCED_FILTER_IGNORE_KEYS.has(k)) continue
+    if (v === null || v === undefined || v === '') continue
+    if (Array.isArray(v) && v.length === 0) continue
+    count++
+  }
+  return count
+})
+
+function appendAdvancedFilterParams(params) {
+  for (const [k, v] of Object.entries(appliedFilters.value || {})) {
+    if (ADVANCED_FILTER_IGNORE_KEYS.has(k)) continue
+    if (v === null || v === undefined || v === '') continue
+    if (Array.isArray(v) && v.length === 0) continue
+    params.append(k, Array.isArray(v) ? v.join(',') : String(v))
+  }
+}
+
+function handleAdvancedFilter(newFilters) {
+  appliedFilters.value = newFilters || {}
+  showFiltersModal.value = false
+  // Same refresh set as the time-range / global-account watchers.
+  fetchAnalytics()
+  fetchAiInsight()
+  fetchRecentTrades()
+  fetchBehavioralSummary()
+}
+
+function clearAdvancedFilters() {
+  // Only resets the dashboard's view of the filter spec — the shared
+  // TradeFilters component reads from localStorage on mount (used by the
+  // trade list / analytics views), so we don't touch that here.
+  appliedFilters.value = {}
+  fetchAnalytics()
+  fetchAiInsight()
+  fetchRecentTrades()
+  fetchBehavioralSummary()
+}
+
 const showTimeRangeDropdown = ref(false)
 
 const timeRangeOptions = [
@@ -1719,6 +1840,7 @@ async function fetchAiInsight() {
     if (dateRange.startDate) params.append('startDate', dateRange.startDate)
     if (dateRange.endDate) params.append('endDate', dateRange.endDate)
     if (selectedAccount.value) params.append('accounts', selectedAccount.value)
+    appendAdvancedFilterParams(params)
     const response = await api.get(`/analytics/recommendations?${params}`)
     const payload = response.data || {}
     if (Array.isArray(payload.summaries) && payload.summaries.length > 0) {
@@ -1750,7 +1872,14 @@ async function fetchBehavioralSummary() {
   behavioralUpgradeRequired.value = false
   behavioralError.value = null
   try {
-    const response = await api.get('/behavioral-analytics/dashboard-summary')
+    const params = new URLSearchParams()
+    const dateRange = getDateRange(filters.value.timeRange)
+    if (dateRange.startDate) params.append('startDate', dateRange.startDate)
+    if (dateRange.endDate) params.append('endDate', dateRange.endDate)
+    if (selectedAccount.value) params.append('accounts', selectedAccount.value)
+    appendAdvancedFilterParams(params)
+    const qs = params.toString()
+    const response = await api.get(`/behavioral-analytics/dashboard-summary${qs ? `?${qs}` : ''}`)
     behavioralSummary.value = response.data?.data || null
     behavioralFetchStatus.value = 'ok'
   } catch (err) {
@@ -1779,6 +1908,7 @@ async function fetchRecentTrades() {
   try {
     const params = new URLSearchParams({ limit: '10', status: 'closed', skipCount: 'true' })
     if (selectedAccount.value) params.append('accounts', selectedAccount.value)
+    appendAdvancedFilterParams(params)
     const response = await api.get(`/trades?${params}`)
     recentTrades.value = response.data?.trades || []
   } catch (err) {
@@ -2209,7 +2339,24 @@ function getDateRange(range) {
 
 function getAnalyticsCacheKey() {
   const dateRange = getDateRange(filters.value.timeRange)
-  const parts = [dateRange.startDate || '', dateRange.endDate || '', selectedAccount.value || '']
+  // Stable serialisation of advanced filters: sort keys, drop nulls/empties.
+  const advancedParts = Object.keys(appliedFilters.value || {})
+    .filter(k => !ADVANCED_FILTER_IGNORE_KEYS.has(k))
+    .filter(k => {
+      const v = appliedFilters.value[k]
+      if (v === null || v === undefined || v === '') return false
+      if (Array.isArray(v) && v.length === 0) return false
+      return true
+    })
+    .sort()
+    .map(k => `${k}=${Array.isArray(appliedFilters.value[k]) ? appliedFilters.value[k].slice().sort().join(',') : appliedFilters.value[k]}`)
+    .join('&')
+  const parts = [
+    dateRange.startDate || '',
+    dateRange.endDate || '',
+    selectedAccount.value || '',
+    advancedParts
+  ]
   return 'dashboard_analytics_' + parts.join('_')
 }
 
@@ -2245,6 +2392,8 @@ async function fetchAnalytics() {
     if (dateRange.endDate) params.append('endDate', dateRange.endDate)
     // Use global account filter
     if (selectedAccount.value) params.append('accounts', selectedAccount.value)
+    // Advanced filters from the filter modal (tags, strategies, brokers, etc.)
+    appendAdvancedFilterParams(params)
 
     const response = await api.get(`/trades/analytics?${params}`)
     analytics.value = response.data
@@ -2849,6 +2998,7 @@ function applyFilters() {
   fetchOpenTrades()
   fetchAiInsight()
   fetchRecentTrades()
+  fetchBehavioralSummary()
 }
 
 function navigateToTradesWithSymbol(symbol) {
