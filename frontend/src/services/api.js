@@ -54,7 +54,7 @@ api.interceptors.response.use(
     rateLimitState.isLimited = false
     return response
   },
-  error => {
+  async error => {
     // Handle 429 Too Many Requests
     if (error.response?.status === 429) {
       const retryAfter = parseInt(error.response.headers['retry-after']) || 60
@@ -91,6 +91,32 @@ api.interceptors.response.use(
         sessionAuthToken = null
         window.location.href = '/login'
       }
+    }
+
+    if (
+      error.response?.status === 403 &&
+      error.response?.data?.code === 'INVALID_CSRF_TOKEN' &&
+      !error.config?._csrfRetry
+    ) {
+      document.cookie = 'csrf_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
+      document.cookie = `csrf_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=${window.location.hostname}`
+
+      const retryConfig = {
+        ...error.config,
+        _csrfRetry: true,
+        headers: {
+          ...(error.config.headers || {})
+        }
+      }
+      delete retryConfig.headers['X-CSRF-Token']
+      delete retryConfig.headers['x-csrf-token']
+
+      await api.get('/auth/me', {
+        skipAuthRedirect: true,
+        _csrfRetry: true
+      })
+
+      return api.request(retryConfig)
     }
     return Promise.reject(error)
   }

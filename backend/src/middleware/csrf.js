@@ -61,6 +61,7 @@ function requireCsrf(req, res, next) {
   const headerToken = req.headers[CSRF_HEADER_NAME];
 
   if (!cookieToken || !headerToken || cookieToken !== headerToken) {
+    res.cookie(CSRF_COOKIE_NAME, generateCsrfToken(), buildCsrfCookieOptions(req));
     return res.status(403).json({
       error: 'Invalid CSRF token',
       code: 'INVALID_CSRF_TOKEN'

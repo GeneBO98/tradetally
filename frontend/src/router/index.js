@@ -410,8 +410,10 @@ router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
   const { registrationConfig, fetchRegistrationConfig, isClosedMode, isBillingEnabled, showSEOPages } = useRegistrationMode()
 
-  // Only block navigation when the route depends on registration/billing mode.
-  const requiresRegistrationMode = to.name === 'home' || to.meta.requiresOpen
+  // Block navigation when the route depends on registration/billing mode.
+  // Tier-gated routes must wait too, otherwise the guard can briefly assume
+  // billing is disabled and let the user reach a page the backend will 403.
+  const requiresRegistrationMode = to.name === 'home' || to.meta.requiresOpen || to.meta.requiresTier || to.meta.requiresAdmin
   if (requiresRegistrationMode && !registrationConfig.value) {
     await fetchRegistrationConfig()
   } else if (!registrationConfig.value) {

@@ -144,7 +144,7 @@
             <!-- Saved Valuations (visible even with no current analysis) -->
             <StockAnalyzerSection
                 v-else
-                :symbol="''"
+                :symbol="selectedDcfSymbol"
                 :current-price="null"
                 :pending-valuation-id="pendingValuationId"
                 :analyzer-loading="investmentsStore.analysisLoading"
@@ -1313,6 +1313,7 @@ const addingToWatchlist = ref(false);
 
 // DCF analyzer state (now part of screener flow)
 const pendingValuationId = ref(null);
+const selectedDcfSymbol = ref("");
 
 const filteredSearchHistory = computed(() => {
     if (showFavoritesOnly.value) {
@@ -1592,15 +1593,19 @@ async function handleAnalyzerSymbolSelect({ symbol, valuationId }) {
 
 async function analyzeSymbol() {
     if (!searchSymbol.value) return;
+    const symbol = searchSymbol.value.toUpperCase();
+    selectedDcfSymbol.value = symbol;
+    investmentsStore.clearAnalysis();
+
     try {
         // Always force refresh when user explicitly clicks Analyze button
         await investmentsStore.analyzeStock(
-            searchSymbol.value.toUpperCase(),
+            symbol,
             true,
         );
         await investmentsStore.fetchSearchHistory();
     } catch (error) {
-        console.error("Analysis failed:", error);
+        console.error("Analysis failed:", error.response?.data || error);
     }
 }
 
