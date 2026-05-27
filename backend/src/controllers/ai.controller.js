@@ -151,6 +151,14 @@ const aiController = {
         });
       }
 
+      if (error.code === 'AI_FOLLOWUP_NOT_TRADING_RELATED') {
+        return res.status(400).json({
+          success: false,
+          error: 'Question must be trading-related',
+          message: error.message
+        });
+      }
+
       next(error);
     }
   },

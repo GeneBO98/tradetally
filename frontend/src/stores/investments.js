@@ -336,8 +336,10 @@ export const useInvestmentsStore = defineStore('investments', () => {
     }
   }
 
-  async function fetchPortfolioOverview(params = {}) {
-    portfolioLoading.value = true
+  // `silent` is used by the price-polling loop: it skips the loading toggle so
+  // the UI doesn't flash spinners / disable controls on every background poll.
+  async function fetchPortfolioOverview(params = {}, { silent = false } = {}) {
+    if (!silent) portfolioLoading.value = true
     error.value = null
 
     try {
@@ -358,12 +360,12 @@ export const useInvestmentsStore = defineStore('investments', () => {
       error.value = err.response?.data?.error || 'Failed to fetch portfolio overview'
       throw err
     } finally {
-      portfolioLoading.value = false
+      if (!silent) portfolioLoading.value = false
     }
   }
 
-  async function fetchPortfolioPositions(params = {}) {
-    portfolioLoading.value = true
+  async function fetchPortfolioPositions(params = {}, { silent = false } = {}) {
+    if (!silent) portfolioLoading.value = true
     error.value = null
 
     try {
@@ -374,7 +376,7 @@ export const useInvestmentsStore = defineStore('investments', () => {
       error.value = err.response?.data?.error || 'Failed to fetch portfolio positions'
       throw err
     } finally {
-      portfolioLoading.value = false
+      if (!silent) portfolioLoading.value = false
     }
   }
 
@@ -395,10 +397,12 @@ export const useInvestmentsStore = defineStore('investments', () => {
     }
   }
 
-  async function fetchPortfolioRebalance(params = {}) {
-    portfolioLoading.value = true
+  async function fetchPortfolioRebalance(params = {}, { silent = false } = {}) {
+    if (!silent) portfolioLoading.value = true
     error.value = null
-    portfolioRebalance.value = null
+    // Don't blank the table during a silent poll — keep showing current rows
+    // and let them update in place once the response arrives.
+    if (!silent) portfolioRebalance.value = null
 
     try {
       const response = await api.get('/investments/portfolio/rebalance', { params })
@@ -408,7 +412,7 @@ export const useInvestmentsStore = defineStore('investments', () => {
       error.value = err.response?.data?.error || 'Failed to fetch rebalance plan'
       throw err
     } finally {
-      portfolioLoading.value = false
+      if (!silent) portfolioLoading.value = false
     }
   }
 

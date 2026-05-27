@@ -1811,7 +1811,12 @@ const settingsController = {
         aiProvider: settings.provider,
         aiApiKey: settings.apiKey ? '***' : '', // Mask the API key in response
         aiApiUrl: settings.apiUrl,
-        aiModel: settings.model
+        aiModel: settings.model,
+        aiClassifierEnabled: settings.classifier?.enabled || false,
+        aiClassifierProvider: settings.classifier?.provider || '',
+        aiClassifierApiKey: settings.classifier?.apiKey ? '***' : '',
+        aiClassifierApiUrl: settings.classifier?.apiUrl || '',
+        aiClassifierModel: settings.classifier?.model || ''
       });
     } catch (error) {
       next(error);
@@ -1825,8 +1830,21 @@ const settingsController = {
         return res.status(403).json({ error: 'Admin access required' });
       }
 
-      const { aiProvider, aiApiKey, aiApiUrl, aiModel } = req.body;
+      const {
+        aiProvider,
+        aiApiKey,
+        aiApiUrl,
+        aiModel,
+        aiClassifierEnabled,
+        aiClassifierProvider,
+        aiClassifierApiKey,
+        aiClassifierApiUrl,
+        aiClassifierModel
+      } = req.body;
       const normalizedProvider = aiProvider ? String(aiProvider).trim() : '';
+      const normalizedClassifierProvider = aiClassifierProvider ? String(aiClassifierProvider).trim() : '';
+      const apiKeyUpdate = aiApiKey === '***' ? undefined : aiApiKey;
+      const classifierApiKeyUpdate = aiClassifierApiKey === '***' ? undefined : aiClassifierApiKey;
 
       // Validate AI provider
       const validProviders = ['gemini', 'claude', 'openai', 'ollama', 'lmstudio', 'perplexity', 'local'];
@@ -1836,12 +1854,23 @@ const settingsController = {
         });
       }
 
+      if (normalizedClassifierProvider && !validProviders.includes(normalizedClassifierProvider)) {
+        return res.status(400).json({
+          error: 'Invalid AI checking provider. Must be one of: ' + validProviders.join(', ')
+        });
+      }
+
       if (!normalizedProvider) {
         const success = await adminSettingsService.updateDefaultAISettings({
           provider: null,
           apiKey: null,
           apiUrl: null,
-          model: null
+          model: null,
+          classifierEnabled: false,
+          classifierProvider: null,
+          classifierApiKey: null,
+          classifierApiUrl: null,
+          classifierModel: null
         });
 
         if (!success) {
@@ -1853,7 +1882,12 @@ const settingsController = {
           aiProvider: '',
           aiApiKey: '',
           aiApiUrl: '',
-          aiModel: ''
+          aiModel: '',
+          aiClassifierEnabled: false,
+          aiClassifierProvider: '',
+          aiClassifierApiKey: '',
+          aiClassifierApiUrl: '',
+          aiClassifierModel: ''
         });
       }
 
@@ -1874,11 +1908,50 @@ const settingsController = {
         await validateAiProviderUrl(normalizedProvider, aiApiUrl);
       }
 
+      if (aiClassifierEnabled) {
+        const effectiveClassifierProvider = normalizedClassifierProvider || normalizedProvider;
+        if (!effectiveClassifierProvider) {
+          return res.status(400).json({
+            error: 'AI checking model requires either a checking provider or a default AI provider'
+          });
+        }
+
+        const classifierUsesMainProvider = effectiveClassifierProvider === normalizedProvider;
+        if (
+          !classifierUsesMainProvider &&
+          !['local', 'ollama', 'lmstudio'].includes(effectiveClassifierProvider) &&
+          !aiClassifierApiKey
+        ) {
+          return res.status(400).json({
+            error: 'API key is required for the AI checking provider'
+          });
+        }
+
+        if (
+          !classifierUsesMainProvider &&
+          ['local', 'ollama', 'lmstudio'].includes(effectiveClassifierProvider) &&
+          !aiClassifierApiUrl
+        ) {
+          return res.status(400).json({
+            error: 'API URL is required for the AI checking provider'
+          });
+        }
+
+        if (aiClassifierApiUrl) {
+          await validateAiProviderUrl(effectiveClassifierProvider, aiClassifierApiUrl);
+        }
+      }
+
       const aiSettings = {
         provider: normalizedProvider,
-        apiKey: aiApiKey,
+        apiKey: apiKeyUpdate,
         apiUrl: aiApiUrl,
-        model: aiModel
+        model: aiModel,
+        classifierEnabled: aiClassifierEnabled === true,
+        classifierProvider: normalizedClassifierProvider,
+        classifierApiKey: classifierApiKeyUpdate,
+        classifierApiUrl: aiClassifierApiUrl,
+        classifierModel: aiClassifierModel
       };
 
       const success = await adminSettingsService.updateDefaultAISettings(aiSettings);
@@ -1892,7 +1965,12 @@ const settingsController = {
         aiProvider: normalizedProvider,
         aiApiKey: aiApiKey ? '***' : '', // Mask the API key in response
         aiApiUrl: aiApiUrl,
-        aiModel: aiModel
+        aiModel: aiModel,
+        aiClassifierEnabled: aiClassifierEnabled === true,
+        aiClassifierProvider: normalizedClassifierProvider,
+        aiClassifierApiKey: aiClassifierApiKey ? '***' : '',
+        aiClassifierApiUrl: aiClassifierApiUrl,
+        aiClassifierModel: aiClassifierModel
       });
     } catch (error) {
       if (error.code === 'INVALID_OUTBOUND_URL') {
@@ -2017,6 +2095,9 @@ const settingsController = {
       const maskedSettings = { ...settings };
       if (maskedSettings.default_ai_api_key) {
         maskedSettings.default_ai_api_key = '***';
+      }
+      if (maskedSettings.default_ai_classifier_api_key) {
+        maskedSettings.default_ai_classifier_api_key = '***';
       }
 
       res.json({ settings: maskedSettings });

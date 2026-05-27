@@ -601,7 +601,12 @@ class TradeQueries {
           CASE
             WHEN COUNT(*) > 0 THEN ROUND((COUNT(*) FILTER (WHERE ${beDaily.isNot} AND COALESCE(pnl, 0) > 0)::decimal / COUNT(*)::decimal) * 100, 2)
             ELSE 0
-          END as win_rate
+          END as win_rate,
+          CASE
+            WHEN AVG(pnl) FILTER (WHERE ${beDaily.isNot} AND pnl < 0) IS NULL THEN
+              CASE WHEN AVG(pnl) FILTER (WHERE ${beDaily.isNot} AND pnl > 0) IS NOT NULL THEN 999.99 ELSE 0 END
+            ELSE ROUND(ABS(AVG(pnl) FILTER (WHERE ${beDaily.isNot} AND pnl > 0) / AVG(pnl) FILTER (WHERE ${beDaily.isNot} AND pnl < 0))::numeric, 2)
+          END as pl_ratio
         FROM trades t
         ${whereClause}
         GROUP BY trade_date

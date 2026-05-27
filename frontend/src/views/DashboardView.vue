@@ -471,18 +471,22 @@
             <template v-if="element.id === 'equity-and-calendar'">
               <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div class="lg:col-span-2">
-                  <div class="card-dense h-full">
+                  <div class="card-dense h-full flex flex-col">
                     <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
                       <h3 class="heading-card">Cumulative P&amp;L</h3>
                       <span class="text-xs text-gray-500 dark:text-gray-400 text-mono-num">
                         {{ analytics?.dailyPnL?.length || 0 }} {{ analytics?.dailyPnL?.length === 1 ? 'day' : 'days' }}
                       </span>
                     </div>
-                    <div class="card-dense-body">
-                      <div v-if="(analytics?.dailyPnL?.length || 0) === 0" class="text-center py-10 text-sm text-gray-500 dark:text-gray-400">
+                    <!-- Body grows to fill the card so the chart matches the
+                         height of the calendar beside it. flex-1 + min-h-0
+                         lets the chart container stretch; the 280px floor
+                         keeps it usable when stacked on mobile. -->
+                    <div class="card-dense-body flex-1 min-h-0 flex flex-col">
+                      <div v-if="(analytics?.dailyPnL?.length || 0) === 0" class="flex-1 flex items-center justify-center text-center text-sm text-gray-500 dark:text-gray-400">
                         Your equity curve appears here once you log trades.
                       </div>
-                      <div v-else style="height: 280px;">
+                      <div v-else class="flex-1 min-h-[280px]">
                         <canvas ref="equityCurveCanvas" />
                       </div>
                     </div>
@@ -1281,7 +1285,7 @@
                 <div class="card">
                   <div class="card-body">
                     <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
-                      Daily Win Rate
+                      Daily Win Rate &amp; P/L Ratio
                     </h3>
                     <div class="h-80">
                       <canvas ref="winRateChart"></canvas>
@@ -1808,7 +1812,7 @@ const sectionDefinitions = [
   { id: 'key-metrics', title: 'Key Metrics (legacy)', category: 'stats', defaultVisible: false },
   { id: 'additional-metrics', title: 'Additional Metrics (legacy)', category: 'stats', defaultVisible: false },
   { id: 'charts', title: 'Win/Loss Doughnut (legacy)', category: 'charts', defaultVisible: false },
-  { id: 'win-rate-chart', title: 'Daily Win Rate Chart', category: 'charts', defaultVisible: false },
+  { id: 'win-rate-chart', title: 'Daily Win Rate & P/L Ratio Chart', category: 'charts', defaultVisible: false },
   { id: 'performance-tables', title: 'Performance by Symbol & Top Trades', category: 'tables', defaultVisible: false },
   { id: 'additional-stats', title: 'Additional Statistics', category: 'stats', defaultVisible: false },
   { id: 'recent-trades', title: 'Recent Trades (standalone)', category: 'tables', defaultVisible: false },
@@ -2886,17 +2890,40 @@ function createWinRateChart() {
   }
   const winRateColors = winRateData.map(d => barColorPair(d.win_rate))
 
+  // Cap P/L ratio display at 5.0 so a single outsized day doesn't squash
+  // the rest of the scale. Tooltips still show the true value.
+  const PL_DISPLAY_CAP = 5
+  const rawPlRatios = winRateData.map(d => parseFloat(d.pl_ratio) || 0)
+  const cappedPlRatios = rawPlRatios.map(v => Math.min(v, PL_DISPLAY_CAP))
+
   winRateChartInstance = new Chart(ctx, {
     type: 'bar',
     data: {
       labels: winRateData.map(d => format(new Date(d.trade_date), 'MMM dd')),
-      datasets: [{
-        label: 'Win Rate (%)',
-        data: winRateData.map(d => parseFloat(d.win_rate) || 0),
-        backgroundColor: winRateColors.map(c => c.fill),
-        borderColor: winRateColors.map(c => c.border),
-        borderWidth: 1
-      }]
+      datasets: [
+        {
+          label: 'Win Rate (%)',
+          data: winRateData.map(d => parseFloat(d.win_rate) || 0),
+          backgroundColor: winRateColors.map(c => c.fill),
+          borderColor: winRateColors.map(c => c.border),
+          borderWidth: 1,
+          borderRadius: 4,
+          borderSkipped: false,
+          yAxisID: 'y'
+        },
+        {
+          type: 'line',
+          label: 'P/L Ratio',
+          data: cappedPlRatios,
+          showLine: false,
+          pointStyle: 'line',
+          pointRadius: 8,
+          pointHoverRadius: 10,
+          pointBorderColor: '#3f3f46',  // zinc-700
+          pointBorderWidth: 2,
+          yAxisID: 'yPL'
+        }
+      ]
     },
     options: {
       responsive: true,
@@ -2910,13 +2937,34 @@ function createWinRateChart() {
       },
       plugins: {
         legend: {
-          display: false
+          display: true,
+          position: 'top',
+          align: 'end',
+          labels: {
+            usePointStyle: true,
+            boxWidth: 8,
+            font: { size: 11 }
+          }
+        },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              if (context.dataset.label === 'P/L Ratio') {
+                const raw = rawPlRatios[context.dataIndex] || 0
+                if (raw >= 999) return ' P/L Ratio: ∞ (no losses)'
+                if (raw > PL_DISPLAY_CAP) return ` P/L Ratio: ${raw.toFixed(2)} (capped at ${PL_DISPLAY_CAP} on chart)`
+                return ` P/L Ratio: ${raw.toFixed(2)}`
+              }
+              return ` Win Rate: ${(parseFloat(context.raw) || 0).toFixed(1)}%`
+            }
+          }
         }
       },
       scales: {
         y: {
           beginAtZero: true,
           max: 100,
+          position: 'left',
           grid: {
             color: 'rgba(156, 163, 175, 0.1)'
           },
@@ -2924,6 +2972,25 @@ function createWinRateChart() {
             callback: function(value) {
               return value + '%'
             }
+          },
+          title: {
+            display: true,
+            text: 'Win Rate'
+          }
+        },
+        yPL: {
+          beginAtZero: true,
+          max: PL_DISPLAY_CAP,
+          position: 'right',
+          grid: { display: false },
+          ticks: {
+            callback: function(value) {
+              return value === PL_DISPLAY_CAP ? `${value}+` : value
+            }
+          },
+          title: {
+            display: true,
+            text: 'P/L Ratio'
           }
         },
         x: {

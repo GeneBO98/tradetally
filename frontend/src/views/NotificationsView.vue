@@ -212,12 +212,14 @@ import {
   TrophyIcon,
   ArrowTrendingUpIcon
 } from '@heroicons/vue/24/outline'
-import { useAuthStore } from '@/stores/auth'
 import { useUserTimezone } from '@/composables/useUserTimezone'
+import { useNotification } from '@/composables/useNotification'
+import { useNotificationCenter } from '@/composables/useNotificationCenter'
 
 const router = useRouter()
-const authStore = useAuthStore()
 const { formatDateTime: formatDateTimeTz } = useUserTimezone()
+const { showDangerConfirmation } = useNotification()
+const { clearUnreadState } = useNotificationCenter()
 
 // Component state
 const notifications = ref([])
@@ -303,31 +305,38 @@ const deleteSelected = async () => {
   }
 }
 
-const clearAllNotifications = async () => {
+const performClearAllNotifications = async () => {
   if (!notifications.value.length) return
-  if (!window.confirm('Delete all notifications? This cannot be undone.')) return
 
   try {
     deleting.value = true
 
-    const response = await fetch('/api/notifications/all', {
-      method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${authStore.token}`
-      }
-    })
+    await api.delete('/notifications/all')
 
-    if (response.ok) {
-      notifications.value = []
-      pagination.value = null
-      selectedNotifications.value = []
-      await fetchNotifications(1)
-    }
+    notifications.value = []
+    pagination.value = null
+    selectedNotifications.value = []
+    clearUnreadState()
+    await fetchNotifications(1)
   } catch (error) {
     console.error('Error clearing all notifications:', error)
   } finally {
     deleting.value = false
   }
+}
+
+const clearAllNotifications = () => {
+  if (!notifications.value.length || deleting.value) return
+
+  showDangerConfirmation(
+    'Delete all notifications?',
+    'This cannot be undone.',
+    performClearAllNotifications,
+    {
+      confirmText: 'Delete all',
+      cancelText: 'Cancel'
+    }
+  )
 }
 
 const handleNotificationClick = (notification) => {

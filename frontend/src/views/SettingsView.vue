@@ -1291,6 +1291,175 @@
                                 </p>
                             </div>
 
+                            <div class="border-t border-gray-200 dark:border-gray-700 pt-6">
+                                <div
+                                    class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
+                                >
+                                    <div>
+                                        <h4
+                                            class="text-base font-medium text-gray-900 dark:text-white"
+                                        >
+                                            Follow-up Question Checker
+                                        </h4>
+                                        <p
+                                            class="mt-1 text-sm text-gray-500 dark:text-gray-400"
+                                        >
+                                            Optional smaller model used to
+                                            approve trading-related follow-up
+                                            questions before the default model
+                                            runs.
+                                        </p>
+                                    </div>
+                                    <label
+                                        for="adminAiClassifierEnabled"
+                                        class="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300"
+                                    >
+                                        <input
+                                            id="adminAiClassifierEnabled"
+                                            v-model="
+                                                adminAiForm.classifierEnabled
+                                            "
+                                            type="checkbox"
+                                            class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                                        />
+                                        Enabled
+                                    </label>
+                                </div>
+
+                                <fieldset
+                                    class="mt-6 space-y-6"
+                                    :class="
+                                        !adminAiForm.classifierEnabled
+                                            ? 'opacity-60'
+                                            : ''
+                                    "
+                                    :disabled="!adminAiForm.classifierEnabled"
+                                >
+                                    <div
+                                        class="grid grid-cols-1 gap-6 sm:grid-cols-2"
+                                    >
+                                        <div>
+                                            <label
+                                                for="adminAiClassifierProvider"
+                                                class="label"
+                                            >
+                                                Checking Provider
+                                            </label>
+                                            <select
+                                                id="adminAiClassifierProvider"
+                                                v-model="
+                                                    adminAiForm.classifierProvider
+                                                "
+                                                class="input"
+                                                @change="
+                                                    onAdminClassifierProviderChange
+                                                "
+                                            >
+                                                <option value="">
+                                                    Use default provider
+                                                </option>
+                                                <option value="gemini">
+                                                    Google Gemini
+                                                </option>
+                                                <option value="claude">
+                                                    Anthropic Claude
+                                                </option>
+                                                <option value="openai">
+                                                    OpenAI
+                                                </option>
+                                                <option value="ollama">
+                                                    Ollama
+                                                </option>
+                                                <option value="lmstudio">
+                                                    LM Studio
+                                                </option>
+                                                <option value="perplexity">
+                                                    Perplexity AI
+                                                </option>
+                                                <option value="local">
+                                                    Local/Custom
+                                                </option>
+                                            </select>
+                                        </div>
+
+                                        <div>
+                                            <label
+                                                for="adminAiClassifierModel"
+                                                class="label"
+                                            >
+                                                Checking Model
+                                            </label>
+                                            <input
+                                                id="adminAiClassifierModel"
+                                                v-model="
+                                                    adminAiForm.classifierModel
+                                                "
+                                                type="text"
+                                                class="input"
+                                                :placeholder="
+                                                    getAdminClassifierModelPlaceholder()
+                                                "
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div
+                                        v-if="
+                                            adminAiForm.classifierProvider ===
+                                                'local' ||
+                                            adminAiForm.classifierProvider ===
+                                                'ollama' ||
+                                            adminAiForm.classifierProvider ===
+                                                'lmstudio'
+                                        "
+                                    >
+                                        <label
+                                            for="adminAiClassifierUrl"
+                                            class="label"
+                                        >
+                                            Checking API URL
+                                        </label>
+                                        <input
+                                            id="adminAiClassifierUrl"
+                                            v-model="
+                                                adminAiForm.classifierUrl
+                                            "
+                                            type="url"
+                                            class="input"
+                                            :placeholder="
+                                                getAdminClassifierUrlPlaceholder()
+                                            "
+                                        />
+                                    </div>
+
+                                    <div
+                                        v-if="
+                                            adminAiForm.classifierProvider &&
+                                            adminAiForm.classifierProvider !==
+                                                'local'
+                                        "
+                                    >
+                                        <label
+                                            for="adminAiClassifierApiKey"
+                                            class="label"
+                                        >
+                                            Checking API Key
+                                        </label>
+                                        <input
+                                            id="adminAiClassifierApiKey"
+                                            v-model="
+                                                adminAiForm.classifierApiKey
+                                            "
+                                            type="password"
+                                            class="input"
+                                            :placeholder="
+                                                getAdminClassifierApiKeyPlaceholder()
+                                            "
+                                        />
+                                    </div>
+                                </fieldset>
+                            </div>
+
                             <div class="flex justify-end">
                                 <button
                                     type="submit"
@@ -2825,6 +2994,11 @@ const adminAiForm = ref({
     apiKey: "",
     url: "",
     model: "",
+    classifierEnabled: false,
+    classifierProvider: "",
+    classifierApiKey: "",
+    classifierUrl: "",
+    classifierModel: "",
 });
 const adminAiLoading = ref(false);
 
@@ -3374,10 +3548,15 @@ async function fetchAdminAISettings() {
     try {
         const response = await api.get("/settings/admin/ai");
         adminAiForm.value = {
-            provider: response.data.aiProvider,
-            apiKey: response.data.aiApiKey,
-            url: response.data.aiApiUrl,
-            model: response.data.aiModel,
+            provider: response.data.aiProvider || "",
+            apiKey: response.data.aiApiKey || "",
+            url: response.data.aiApiUrl || "",
+            model: response.data.aiModel || "",
+            classifierEnabled: response.data.aiClassifierEnabled === true,
+            classifierProvider: response.data.aiClassifierProvider || "",
+            classifierApiKey: response.data.aiClassifierApiKey || "",
+            classifierUrl: response.data.aiClassifierApiUrl || "",
+            classifierModel: response.data.aiClassifierModel || "",
         };
     } catch (error) {
         console.error("Failed to fetch admin AI settings:", error);
@@ -3393,6 +3572,11 @@ async function updateAdminAISettings() {
             aiApiKey: adminAiForm.value.apiKey,
             aiApiUrl: adminAiForm.value.url,
             aiModel: adminAiForm.value.model,
+            aiClassifierEnabled: adminAiForm.value.classifierEnabled,
+            aiClassifierProvider: adminAiForm.value.classifierProvider,
+            aiClassifierApiKey: adminAiForm.value.classifierApiKey,
+            aiClassifierApiUrl: adminAiForm.value.classifierUrl,
+            aiClassifierModel: adminAiForm.value.classifierModel,
         });
         showSuccess(
             "Success",
@@ -3414,6 +3598,81 @@ function onAdminProviderChange() {
     adminAiForm.value.apiKey = "";
     adminAiForm.value.url = "";
     adminAiForm.value.model = "";
+    if (!adminAiForm.value.classifierProvider) {
+        adminAiForm.value.classifierApiKey = "";
+        adminAiForm.value.classifierUrl = "";
+    }
+}
+
+function onAdminClassifierEnabledChange() {
+    if (!adminAiForm.value.classifierEnabled) {
+        adminAiForm.value.classifierProvider = "";
+        adminAiForm.value.classifierApiKey = "";
+        adminAiForm.value.classifierUrl = "";
+        adminAiForm.value.classifierModel = "";
+    }
+}
+
+function onAdminClassifierProviderChange() {
+    adminAiForm.value.classifierApiKey = "";
+    adminAiForm.value.classifierUrl = "";
+    adminAiForm.value.classifierModel = "";
+}
+
+function getEffectiveAdminClassifierProvider() {
+    return adminAiForm.value.classifierProvider || adminAiForm.value.provider;
+}
+
+function getAdminClassifierModelPlaceholder() {
+    switch (getEffectiveAdminClassifierProvider()) {
+        case "gemini":
+            return "gemini-1.5-flash";
+        case "claude":
+            return "claude-3-haiku-20240307";
+        case "openai":
+            return "gpt-4o-mini";
+        case "ollama":
+            return "llama3.1";
+        case "lmstudio":
+            return "local-model";
+        case "perplexity":
+            return "sonar";
+        case "local":
+            return "custom-model";
+        default:
+            return "Smaller checking model";
+    }
+}
+
+function getAdminClassifierUrlPlaceholder() {
+    switch (adminAiForm.value.classifierProvider) {
+        case "ollama":
+            return "http://localhost:11434";
+        case "lmstudio":
+            return "http://localhost:1234";
+        case "local":
+            return "http://localhost:8000";
+        default:
+            return "API URL";
+    }
+}
+
+function getAdminClassifierApiKeyPlaceholder() {
+    switch (adminAiForm.value.classifierProvider) {
+        case "gemini":
+            return "Enter Google Gemini API key";
+        case "claude":
+            return "Enter Anthropic Claude API key";
+        case "openai":
+            return "Enter OpenAI API key";
+        case "perplexity":
+            return "Enter Perplexity API key";
+        case "ollama":
+        case "lmstudio":
+            return "Optional API key";
+        default:
+            return "Enter API key";
+    }
 }
 
 function getAdminModelPlaceholder() {

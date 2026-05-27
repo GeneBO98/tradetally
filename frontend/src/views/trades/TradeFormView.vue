@@ -1241,7 +1241,7 @@
         </div>
 
         <div class="flex justify-end space-x-3">
-          <router-link to="/trades" class="btn-secondary">
+          <router-link :to="isEdit ? `/trades/${route.params.id}` : '/trades'" class="btn-secondary">
             Cancel
           </router-link>
           <button

@@ -16,6 +16,10 @@ const CSRF_EXEMPT_PATHS = new Set([
   '/api/v1/auth/login/device',
 ]);
 
+function isReadOnlyPostExempt(req) {
+  return req.method === 'POST' && /^\/api\/investments\/dcf\/[^/]+\/calculate(?:\?|$)/.test(req.originalUrl);
+}
+
 function generateCsrfToken() {
   return crypto.randomBytes(32).toString('hex');
 }
@@ -49,6 +53,10 @@ function requireCsrf(req, res, next) {
   }
 
   if (CSRF_EXEMPT_PATHS.has(req.originalUrl.split('?')[0])) {
+    return next();
+  }
+
+  if (isReadOnlyPostExempt(req)) {
     return next();
   }
 

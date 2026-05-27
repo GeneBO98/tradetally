@@ -8,6 +8,15 @@ const NotificationService = require('./notificationService');
 const UNSORTED_ACCOUNT = '__unsorted__';
 const DEFAULT_BENCHMARK = 'SPY';
 const DEFAULT_PERIOD = '6M';
+// A cached quote newer than this is considered "fresh". Older (or missing)
+// quotes are still shown to the user, but the position is flagged stale and a
+// background refresh is triggered so the UI can stream in the new price.
+const PRICE_FRESH_MS = 10 * 60 * 1000;
+// Symbols currently being fetched in the background. Shared across all
+// concurrent requests so the overview/positions/rebalance endpoints (which all
+// fire at once on page load) don't each kick off duplicate Finnhub calls for
+// the same symbol.
+const inFlightPriceSymbols = new Set();
 const DEFAULT_PREFERENCES = {
   defaultBenchmarkSymbol: DEFAULT_BENCHMARK,
   driftThresholdPercent: 5,
@@ -1227,6 +1236,13 @@ class PortfolioService {
     return Array.from(bySymbol.values());
   }
 
+  // Applies cached prices to positions WITHOUT blocking on the market-data
+  // API. We read whatever is already in price_monitoring (regardless of age)
+  // so the page can render immediately, flag any position whose quote is
+  // missing or stale, and kick off a non-blocking background refresh for those
+  // symbols. The frontend polls afterward to stream in the updated prices.
+  // This is what keeps the Holdings tab fast even for large portfolios that
+  // would otherwise serialize behind Finnhub's rate limit.
   static async _applyCurrentPrices(userId, positions) {
     if (!positions || positions.length === 0) {
       return;
@@ -1234,30 +1250,32 @@ class PortfolioService {
 
     const symbols = [...new Set(positions.map(position => position.symbol))];
     const cacheResult = await db.query(
-      `SELECT symbol, current_price
+      `SELECT symbol, current_price, last_updated
        FROM price_monitoring
-       WHERE symbol = ANY($1)
-         AND last_updated > NOW() - INTERVAL '10 minutes'`,
+       WHERE symbol = ANY($1)`,
       [symbols]
     );
 
-    const cachedPrices = cacheResult.rows.reduce((accumulator, row) => {
-      accumulator[row.symbol] = parseFloat(row.current_price);
-      return accumulator;
-    }, {});
+    const now = Date.now();
+    const cachedPrices = new Map();
+    for (const row of cacheResult.rows) {
+      const price = parseFloat(row.current_price);
+      cachedPrices.set(row.symbol, {
+        price: Number.isFinite(price) ? price : null,
+        updatedAt: row.last_updated ? new Date(row.last_updated) : null
+      });
+    }
+
+    const symbolsNeedingRefresh = new Set();
 
     for (const position of positions) {
-      let currentPrice = cachedPrices[position.symbol];
+      const cached = cachedPrices.get(position.symbol);
+      const currentPrice = cached && cached.price !== null ? cached.price : null;
+      const ageMs = cached?.updatedAt ? now - cached.updatedAt.getTime() : Infinity;
+      const priceStale = currentPrice === null || ageMs > PRICE_FRESH_MS;
 
-      if (!currentPrice) {
-        try {
-          const quote = finnhub.isCryptoSymbol(position.symbol)
-            ? await finnhub.getCryptoQuote(position.symbol, userId)
-            : await finnhub.getQuote(position.symbol, userId);
-          currentPrice = quote?.c ? parseFloat(quote.c) : null;
-        } catch (error) {
-          currentPrice = null;
-        }
+      if (priceStale) {
+        symbolsNeedingRefresh.add(position.symbol);
       }
 
       const valueMultiplier = position.source === 'trades'
@@ -1281,7 +1299,51 @@ class PortfolioService {
       position.dividendYieldOnCost = position.totalCostBasis > 0 && position.totalDividendsReceived > 0
         ? (position.totalDividendsReceived / position.totalCostBasis) * 100
         : position.dividendYieldOnCost;
+      position.priceAsOf = cached?.updatedAt ? cached.updatedAt.toISOString() : null;
+      position.priceStale = priceStale;
     }
+
+    // Fire-and-forget: refresh stale/missing quotes in the background and let
+    // the client poll for the results. Intentionally NOT awaited.
+    if (symbolsNeedingRefresh.size > 0) {
+      this._refreshPricesInBackground([...symbolsNeedingRefresh]);
+    }
+  }
+
+  // Fetches fresh quotes for the given symbols off the request path and writes
+  // them to price_monitoring. Deduplicated via inFlightPriceSymbols so the
+  // several endpoints that load on the Holdings tab don't fetch the same
+  // symbol multiple times concurrently. Chunked to respect the API rate limit.
+  static _refreshPricesInBackground(symbols) {
+    const toFetch = symbols.filter(symbol => !inFlightPriceSymbols.has(symbol));
+    if (toFetch.length === 0) {
+      return;
+    }
+
+    toFetch.forEach(symbol => inFlightPriceSymbols.add(symbol));
+
+    // Detach from the caller so the HTTP response returns immediately.
+    (async () => {
+      // Lazy require avoids a circular dependency at module load time.
+      const priceMonitoringService = require('./priceMonitoringService');
+      const chunkSize = finnhub.maxCallsPerSecond || 1;
+
+      try {
+        for (let i = 0; i < toFetch.length; i += chunkSize) {
+          const chunk = toFetch.slice(i, i + chunkSize);
+          if (i > 0) {
+            await new Promise(resolve => setTimeout(resolve, 1050));
+          }
+          await Promise.allSettled(
+            chunk.map(symbol => priceMonitoringService.updateSymbolPrice(symbol))
+          );
+        }
+      } catch (error) {
+        console.error(`[PORTFOLIO] Background price refresh failed: ${error.message}`);
+      } finally {
+        toFetch.forEach(symbol => inFlightPriceSymbols.delete(symbol));
+      }
+    })();
   }
 
   static _buildTotals(positions) {

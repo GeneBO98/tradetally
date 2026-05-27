@@ -190,11 +190,24 @@ class PriceMonitoringService {
         return false;
       }
 
-      // Use fallback manager to get quote (handles Finnhub 403 -> Schwab fallback)
-      const { data: priceData, source: dataSource, error } = await priceFallbackManager.getQuoteWithFallback(
-        symbol,
-        (sym) => finnhub.getQuote(sym)
-      );
+      // Crypto symbols are served by CoinGecko (no rate limit), not Finnhub.
+      // Equities go through the fallback manager (Finnhub 403 -> Schwab, etc.).
+      let priceData;
+      let dataSource;
+      let error;
+      if (finnhub.isCryptoSymbol(symbol)) {
+        try {
+          priceData = await finnhub.getCryptoQuote(symbol);
+          dataSource = 'coingecko';
+        } catch (cryptoError) {
+          error = cryptoError;
+        }
+      } else {
+        ({ data: priceData, source: dataSource, error } = await priceFallbackManager.getQuoteWithFallback(
+          symbol,
+          (sym) => finnhub.getQuote(sym)
+        ));
+      }
 
       if (!priceData) {
         // Both sources failed - track failure

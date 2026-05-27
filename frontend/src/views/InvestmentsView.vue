@@ -336,7 +336,8 @@
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-6 mb-6">
+                <div class="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-6 mb-6 items-start">
+                    <div class="space-y-6 min-w-0">
                     <section class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
                         <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                             <div>
@@ -434,7 +435,251 @@
                             </div>
                         </div>
                     </section>
-
+                    <!-- Allocation table fills the space beside the tall sidebar -->
+                <div
+                    v-if="investmentsStore.portfolioPositions.length > 0"
+                    class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden"
+                >
+                    <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-start justify-between gap-4">
+                        <div>
+                            <h2 class="text-lg font-medium text-gray-900 dark:text-white">
+                                Allocation and Rebalancing
+                            </h2>
+                            <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                Advisory only. Share deltas are suggestions, not broker-ready orders.
+                            </p>
+                        </div>
+                        <div class="flex items-center gap-3 shrink-0">
+                            <div
+                                v-if="pricesUpdating && pendingPriceCount > 0"
+                                class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400"
+                            >
+                                <div class="animate-spin rounded-full h-3.5 w-3.5 border-2 border-primary-500 border-t-transparent"></div>
+                                <span>Updating prices ({{ pendingPriceCount }} remaining)…</span>
+                            </div>
+                            <button
+                                v-if="dirtyTargetSymbols.length > 0"
+                                @click="saveAllTargetAllocations"
+                                :disabled="targetSaving"
+                                class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {{ targetSaving ? "Saving…" : `Save all (${dirtyTargetSymbols.length})` }}
+                            </button>
+                        </div>
+                    </div>
+                    <!-- Targets are normalized to 100% before drift is computed;
+                         warn when the entered targets don't already sum to 100%. -->
+                    <div
+                        v-if="targetsNeedNormalizing"
+                        class="mx-6 mt-4 rounded-md border border-yellow-200 dark:border-yellow-900/40 bg-yellow-50 dark:bg-yellow-900/20 px-4 py-3"
+                    >
+                        <p class="text-sm font-medium text-yellow-800 dark:text-yellow-300">
+                            Your targets add up to {{ formatPercent(targetTotalPercent, false) }}, not 100%.
+                        </p>
+                        <p class="mt-1 text-xs text-yellow-700 dark:text-yellow-400">
+                            Drift, share deltas, and trade values are measured against normalized weights —
+                            each target is scaled to {{ Math.round(targetScalePercent) }}% of what you entered<template v-if="targetNormalizationExample">, so {{ targetNormalizationExample.symbol }}'s {{ formatPercent(targetNormalizationExample.raw, false) }} target counts as {{ formatPercent(targetNormalizationExample.normalized, false) }}</template>.
+                            Adjust your targets to total 100% to use them exactly as entered.
+                        </p>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                            <thead class="bg-gray-50 dark:bg-gray-700">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                        Symbol
+                                    </th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider" title="Current market value and average cost basis per share">
+                                        Value
+                                    </th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-help" title="This position's current share of total portfolio value">
+                                        Actual %
+                                    </th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-help" title="Your desired allocation percentage for this position. Edit and save to track rebalancing needs">
+                                        Target %
+                                    </th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-help" title="How far the actual allocation has strayed from your target. Highlighted when it exceeds your drift alert threshold">
+                                        Drift
+                                    </th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-help" title="Estimated number of shares to buy (positive) or sell (negative) to return to your target allocation">
+                                        Share Delta
+                                    </th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-help" title="Cash impact of rebalancing: what buying would cost you (shown negative) or what selling would bring in (shown positive)">
+                                        Trade Value
+                                    </th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                        Actions
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                <tr
+                                    v-for="position in rebalanceRows"
+                                    :key="position.symbol"
+                                >
+                                    <td class="px-6 py-4 align-top">
+                                        <div class="flex items-center gap-3">
+                                            <StockLogo
+                                                :symbol="position.symbol"
+                                                size-class="w-8 h-8"
+                                            />
+                                            <div>
+                                                <div class="flex items-center gap-2">
+                                                    <span class="text-sm font-medium text-gray-900 dark:text-white">
+                                                        {{ position.symbol }}
+                                                    </span>
+                                                    <span
+                                                        class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+                                                    >
+                                                        {{ positionSourceLabel(position) }}
+                                                    </span>
+                                                </div>
+                                                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                                    {{ formatNumber(position.totalShares) }} shares
+                                                    <span v-if="position.brokers"> • {{ position.brokers }}</span>
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 text-right text-sm text-gray-900 dark:text-gray-100">
+                                        <div class="flex items-center justify-end gap-1.5">
+                                            <div
+                                                v-if="position.priceStale && pricesUpdating"
+                                                class="animate-spin rounded-full h-3 w-3 border-2 border-primary-500 border-t-transparent"
+                                                title="Fetching the latest price…"
+                                            ></div>
+                                            <span>{{ position.currentValue === null ? "—" : formatCurrency(position.currentValue) }}</span>
+                                        </div>
+                                        <div class="text-xs text-gray-500 dark:text-gray-400">
+                                            {{ formatCurrency(position.averageCostBasis) }} avg
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 text-right text-sm text-gray-900 dark:text-gray-100">
+                                        {{ formatPercent(position.actualAllocationPercent, false) }}
+                                    </td>
+                                    <td class="px-6 py-4 text-right text-sm">
+                                        <div class="flex items-center justify-end gap-2">
+                                            <input
+                                                v-model="targetAllocationDrafts[position.symbol]"
+                                                type="number"
+                                                min="0"
+                                                step="0.5"
+                                                class="w-24 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md text-right focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+                                            />
+                                            <span
+                                                v-if="savedTargets[position.symbol]"
+                                                class="text-xs font-medium text-green-600 dark:text-green-400"
+                                            >
+                                                Saved
+                                            </span>
+                                            <button
+                                                v-else
+                                                @click="saveTargetAllocation(position)"
+                                                :disabled="targetSaving"
+                                                class="text-xs text-primary-600 hover:text-primary-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                Save
+                                            </button>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 text-right text-sm">
+                                        <div v-if="position.driftPercent !== null">
+                                            <span
+                                                :class="
+                                                    Math.abs(position.driftPercent) >= portfolioPreferencesForm.driftThresholdPercent
+                                                        ? 'text-red-600 font-medium'
+                                                        : 'text-gray-900 dark:text-gray-100'
+                                                "
+                                            >
+                                                {{ formatPercent(position.driftPercent) }}
+                                            </span>
+                                            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                                {{ rebalanceActionLabel(position) }}
+                                            </div>
+                                        </div>
+                                        <span v-else class="text-gray-400">Target not set</span>
+                                    </td>
+                                    <td class="px-6 py-4 text-right text-sm text-gray-900 dark:text-gray-100">
+                                        <span v-if="position.shareDelta !== null">
+                                            {{ position.action === "buy" ? "+" : "" }}{{ formatNumber(position.shareDelta) }}
+                                        </span>
+                                        <span v-else class="text-gray-400">N/A</span>
+                                    </td>
+                                    <!-- Cash impact, not delta-to-target: buying spends cash
+                                         (negative/red), selling brings cash in (positive/green). -->
+                                    <td
+                                        :class="[
+                                            'px-6 py-4 text-right text-sm font-medium',
+                                            position.valueDelta < 0 ? 'text-green-600' : position.valueDelta > 0 ? 'text-red-600' : 'text-gray-900 dark:text-gray-100',
+                                        ]"
+                                    >
+                                        <span v-if="position.valueDelta !== null">
+                                            {{ position.valueDelta < 0 ? '+' : '' }}{{ formatCurrency(-position.valueDelta) }}
+                                            <span class="block text-xs font-normal text-gray-400 dark:text-gray-500">
+                                                {{ position.valueDelta > 0 ? 'cost' : position.valueDelta < 0 ? 'proceeds' : '' }}
+                                            </span>
+                                        </span>
+                                        <span v-else class="text-gray-400">N/A</span>
+                                    </td>
+                                    <td class="px-6 py-4 text-right text-sm space-x-3">
+                                        <button
+                                            @click="openPortfolioPosition(position)"
+                                            class="text-primary-600 hover:text-primary-800"
+                                        >
+                                            {{ position.holdingId ? "View" : "View Trades" }}
+                                        </button>
+                                        <button
+                                            @click="analyzeHolding(position.symbol)"
+                                            class="text-primary-600 hover:text-primary-800"
+                                        >
+                                            Analyze
+                                        </button>
+                                        <button
+                                            v-if="position.holdingId && !position.includesOpenTrades"
+                                            @click="confirmDeleteHolding(position)"
+                                            class="text-red-600 hover:text-red-800"
+                                        >
+                                            Delete
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div
+                    v-else
+                    class="text-center py-12 bg-white dark:bg-gray-800 rounded-lg shadow-sm"
+                >
+                    <svg
+                        class="mx-auto h-12 w-12 text-gray-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+                        ></path>
+                    </svg>
+                    <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-white">
+                        No positions yet
+                    </h3>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        Start tracking long-term holdings or keep an open trade to populate your portfolio.
+                    </p>
+                    <div class="mt-6">
+                        <button
+                            @click="showAddHoldingModal = true"
+                            class="btn-primary"
+                        >
+                            Add Your First Position
+                        </button>
+                    </div>
+                </div>
+                    </div>
                     <aside class="space-y-4">
                         <section class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
                             <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
@@ -745,197 +990,6 @@
                         </section>
                     </aside>
                 </div>
-
-                <div
-                    v-if="investmentsStore.portfolioPositions.length > 0"
-                    class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden"
-                >
-                    <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                        <h2 class="text-lg font-medium text-gray-900 dark:text-white">
-                            Allocation and Rebalancing
-                        </h2>
-                        <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                            Advisory only. Share deltas are suggestions, not broker-ready orders.
-                        </p>
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                            <thead class="bg-gray-50 dark:bg-gray-700">
-                                <tr>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Symbol
-                                    </th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider" title="Current market value and average cost basis per share">
-                                        Value
-                                    </th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-help" title="This position's current share of total portfolio value">
-                                        Actual %
-                                    </th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-help" title="Your desired allocation percentage for this position. Edit and save to track rebalancing needs">
-                                        Target %
-                                    </th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-help" title="How far the actual allocation has strayed from your target. Highlighted when it exceeds your drift alert threshold">
-                                        Drift
-                                    </th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-help" title="Estimated number of shares to buy (positive) or sell (negative) to return to your target allocation">
-                                        Share Delta
-                                    </th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-help" title="Estimated dollar value to buy or sell to return to your target allocation">
-                                        Trade Value
-                                    </th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Actions
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                                <tr
-                                    v-for="position in rebalanceRows"
-                                    :key="position.symbol"
-                                >
-                                    <td class="px-6 py-4 align-top">
-                                        <div class="flex items-center gap-3">
-                                            <StockLogo
-                                                :symbol="position.symbol"
-                                                size-class="w-8 h-8"
-                                            />
-                                            <div>
-                                                <div class="flex items-center gap-2">
-                                                    <span class="text-sm font-medium text-gray-900 dark:text-white">
-                                                        {{ position.symbol }}
-                                                    </span>
-                                                    <span
-                                                        class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
-                                                    >
-                                                        {{ positionSourceLabel(position) }}
-                                                    </span>
-                                                </div>
-                                                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                                    {{ formatNumber(position.totalShares) }} shares
-                                                    <span v-if="position.brokers"> • {{ position.brokers }}</span>
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td class="px-6 py-4 text-right text-sm text-gray-900 dark:text-gray-100">
-                                        <div>{{ formatCurrency(position.currentValue) }}</div>
-                                        <div class="text-xs text-gray-500 dark:text-gray-400">
-                                            {{ formatCurrency(position.averageCostBasis) }} avg
-                                        </div>
-                                    </td>
-                                    <td class="px-6 py-4 text-right text-sm text-gray-900 dark:text-gray-100">
-                                        {{ formatPercent(position.actualAllocationPercent, false) }}
-                                    </td>
-                                    <td class="px-6 py-4 text-right text-sm">
-                                        <div class="flex items-center justify-end gap-2">
-                                            <input
-                                                v-model="targetAllocationDrafts[position.symbol]"
-                                                type="number"
-                                                min="0"
-                                                step="0.5"
-                                                class="w-24 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md text-right focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
-                                            />
-                                            <button
-                                                @click="saveTargetAllocation(position)"
-                                                class="text-xs text-primary-600 hover:text-primary-800"
-                                            >
-                                                Save
-                                            </button>
-                                        </div>
-                                    </td>
-                                    <td class="px-6 py-4 text-right text-sm">
-                                        <div v-if="position.driftPercent !== null">
-                                            <span
-                                                :class="
-                                                    Math.abs(position.driftPercent) >= portfolioPreferencesForm.driftThresholdPercent
-                                                        ? 'text-red-600 font-medium'
-                                                        : 'text-gray-900 dark:text-gray-100'
-                                                "
-                                            >
-                                                {{ formatPercent(position.driftPercent) }}
-                                            </span>
-                                            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                                {{ rebalanceActionLabel(position) }}
-                                            </div>
-                                        </div>
-                                        <span v-else class="text-gray-400">Target not set</span>
-                                    </td>
-                                    <td class="px-6 py-4 text-right text-sm text-gray-900 dark:text-gray-100">
-                                        <span v-if="position.shareDelta !== null">
-                                            {{ position.action === "buy" ? "+" : "" }}{{ formatNumber(position.shareDelta) }}
-                                        </span>
-                                        <span v-else class="text-gray-400">N/A</span>
-                                    </td>
-                                    <td
-                                        :class="[
-                                            'px-6 py-4 text-right text-sm font-medium',
-                                            position.valueDelta > 0 ? 'text-green-600' : position.valueDelta < 0 ? 'text-red-600' : 'text-gray-900 dark:text-gray-100',
-                                        ]"
-                                    >
-                                        <span v-if="position.valueDelta !== null">
-                                            {{ position.valueDelta > 0 ? '+' : '' }}{{ formatCurrency(position.valueDelta) }}
-                                        </span>
-                                        <span v-else class="text-gray-400">N/A</span>
-                                    </td>
-                                    <td class="px-6 py-4 text-right text-sm space-x-3">
-                                        <button
-                                            @click="openPortfolioPosition(position)"
-                                            class="text-primary-600 hover:text-primary-800"
-                                        >
-                                            {{ position.holdingId ? "View" : "View Trades" }}
-                                        </button>
-                                        <button
-                                            @click="analyzeHolding(position.symbol)"
-                                            class="text-primary-600 hover:text-primary-800"
-                                        >
-                                            Analyze
-                                        </button>
-                                        <button
-                                            v-if="position.holdingId && !position.includesOpenTrades"
-                                            @click="confirmDeleteHolding(position)"
-                                            class="text-red-600 hover:text-red-800"
-                                        >
-                                            Delete
-                                        </button>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <div
-                    v-else
-                    class="text-center py-12 bg-white dark:bg-gray-800 rounded-lg shadow-sm"
-                >
-                    <svg
-                        class="mx-auto h-12 w-12 text-gray-400"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
-                        ></path>
-                    </svg>
-                    <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-white">
-                        No positions yet
-                    </h3>
-                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                        Start tracking long-term holdings or keep an open trade to populate your portfolio.
-                    </p>
-                    <div class="mt-6">
-                        <button
-                            @click="showAddHoldingModal = true"
-                            class="btn-primary"
-                        >
-                            Add Your First Position
-                        </button>
-                    </div>
-                </div>
             </template>
         </div>
 
@@ -1236,7 +1290,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { useInvestmentsStore } from "@/stores/investments";
 import { useNotification } from "@/composables/useNotification";
@@ -1294,7 +1348,17 @@ let _periodDebounceTimer = null; // debounce handle for rapid period clicks
 const benchmarkSymbol = ref("SPY");
 const savingPortfolioSettings = ref(false);
 const targetAllocationDrafts = ref({});
+const targetSaving = ref(false);
+const savedTargets = ref({}); // symbol -> true, shown briefly after a successful save
+const savedTargetTimers = {};
 const portfolioLoadedAt = ref(null);
+// Live price streaming: positions render immediately with cached prices, then
+// we poll until the backend has filled in fresh quotes for every stale symbol.
+const PRICE_POLL_INTERVAL_MS = 3000;
+const PRICE_POLL_MAX_MS = 90 * 1000; // give up after this so we never poll forever
+let pricePollTimer = null;
+let pricePollStartedAt = 0;
+const pricesUpdating = ref(false);
 const accountComparisonRows = ref([]);
 const accountComparisonLoading = ref(false);
 const portfolioPreferencesForm = ref({
@@ -1324,8 +1388,64 @@ const filteredSearchHistory = computed(() => {
 const rebalanceRows = computed(
     () => investmentsStore.portfolioRebalance?.positions || [],
 );
+
+// A target input is "dirty" when its draft differs from the saved server value.
+// Used to drive the "Save all" button and to preserve unsaved edits across the
+// reload that follows a single-row save.
+const dirtyTargetSymbols = computed(() => {
+    return rebalanceRows.value
+        .filter((row) => {
+            const draft = targetAllocationDrafts.value[row.symbol];
+            if (draft === undefined) return false;
+            const draftNorm = draft === "" || draft === null ? "" : Number(draft);
+            const serverNorm =
+                row.targetAllocationPercent === null || row.targetAllocationPercent === undefined
+                    ? ""
+                    : Number(row.targetAllocationPercent);
+            return String(draftNorm) !== String(serverNorm);
+        })
+        .map((row) => row.symbol);
+});
+
+// Sum of all entered targets. The backend normalizes these to 100% before
+// computing drift/share deltas, so when this isn't ~100% the displayed target
+// differs from the one actually used — we warn about that.
+const targetTotalPercent = computed(
+    () => investmentsStore.portfolioRebalance?.targetTotalPercent ?? 0,
+);
+const targetsNeedNormalizing = computed(() => {
+    const total = targetTotalPercent.value;
+    return total > 0 && Math.abs(total - 100) > 0.5;
+});
+// What fraction of each entered target is actually applied, as a percent
+// (targets summing to 200% are each scaled to 50% of their value).
+const targetScalePercent = computed(() => {
+    const total = targetTotalPercent.value;
+    return total > 0 ? (100 / total) * 100 : 100;
+});
+// A concrete row to illustrate the scaling in the warning banner.
+const targetNormalizationExample = computed(() => {
+    const row = rebalanceRows.value.find(
+        (r) =>
+            r.targetAllocationPercent !== null &&
+            r.targetAllocationPercent !== undefined &&
+            r.normalizedTargetPercent !== null &&
+            r.normalizedTargetPercent !== undefined,
+    );
+    if (!row) return null;
+    return {
+        symbol: row.symbol,
+        raw: row.targetAllocationPercent,
+        normalized: row.normalizedTargetPercent,
+    };
+});
 const portfolioOverviewReturn = computed(
     () => investmentsStore.portfolioOverview?.totalReturn || 0,
+);
+// Number of positions still waiting on a fresh quote from the API. Drives the
+// "Updating prices" indicator and tells the poll loop when it can stop.
+const pendingPriceCount = computed(
+    () => (investmentsStore.portfolioPositions || []).filter((position) => position.priceStale).length,
 );
 const portfolioDataStatus = computed(() => {
     const positions = investmentsStore.portfolioPositions || [];
@@ -1372,11 +1492,20 @@ function buildPortfolioParams() {
     return params;
 }
 
-function syncTargetAllocationDrafts(positions = []) {
+// Rebuild the draft map from server data. With `preserveEdits`, any input the
+// user has changed but not yet saved (draft differs from the incoming server
+// value) is kept instead of being overwritten — this is what stops a single
+// row's Save from clearing the other rows' pending edits.
+function syncTargetAllocationDrafts(positions = [], { preserveEdits = false } = {}) {
+    const prevDrafts = targetAllocationDrafts.value;
     const nextDrafts = {};
     positions.forEach((position) => {
+        const serverValue = position.targetAllocationPercent ?? "";
+        const currentDraft = prevDrafts[position.symbol];
+        const draftDiffers =
+            currentDraft !== undefined && String(currentDraft) !== String(serverValue);
         nextDrafts[position.symbol] =
-            position.targetAllocationPercent ?? "";
+            preserveEdits && draftDiffers ? currentDraft : serverValue;
     });
     targetAllocationDrafts.value = nextDrafts;
 }
@@ -1389,8 +1518,11 @@ function buildCacheKey() {
 // range changes.  Period-insensitive endpoints (positions, rebalance): only
 // fetched on initial load, account change, or explicit refresh, because
 // allocation/rebalancing data is point-in-time and doesn't change with period.
-async function loadPortfolioData({ force = false, periodOnly = false } = {}) {
+async function loadPortfolioData({ force = false, periodOnly = false, preserveTargetEdits = false } = {}) {
     const cacheKey = buildCacheKey();
+    // Cancel any in-flight poll; we'll restart it below if the freshly-loaded
+    // data still has stale quotes.
+    if (!periodOnly) stopPricePolling();
 
     if (!force) {
         const cached = periodDataCache.get(cacheKey);
@@ -1402,7 +1534,8 @@ async function loadPortfolioData({ force = false, periodOnly = false } = {}) {
                 investmentsStore.portfolioPositions = cached.positions;
                 investmentsStore.portfolioRebalance = cached.rebalance;
                 investmentsStore.portfolioAlertSummary = cached.alerts;
-                syncTargetAllocationDrafts(cached.positions || []);
+                syncTargetAllocationDrafts(cached.positions || [], { preserveEdits: preserveTargetEdits });
+                maybeStartPricePolling();
             }
             portfolioLoadedAt.value = new Date(cached.fetchedAt);
             return;
@@ -1428,7 +1561,7 @@ async function loadPortfolioData({ force = false, periodOnly = false } = {}) {
             investmentsStore.fetchPortfolioAlerts(params),
         ]);
         const positions = results[1].status === "fulfilled" ? results[1].value : [];
-        syncTargetAllocationDrafts(positions);
+        syncTargetAllocationDrafts(positions, { preserveEdits: preserveTargetEdits });
     }
 
     // Save freshly-fetched data. For period-only loads, preserve the cached
@@ -1443,6 +1576,74 @@ async function loadPortfolioData({ force = false, periodOnly = false } = {}) {
         alerts: periodOnly ? (prev?.alerts ?? investmentsStore.portfolioAlertSummary) : investmentsStore.portfolioAlertSummary,
     });
     portfolioLoadedAt.value = new Date();
+
+    if (!periodOnly) {
+        maybeStartPricePolling();
+    }
+}
+
+function stopPricePolling() {
+    if (pricePollTimer) {
+        clearTimeout(pricePollTimer);
+        pricePollTimer = null;
+    }
+    pricesUpdating.value = false;
+}
+
+// Poll the portfolio endpoints (silently) until every position has a fresh
+// quote, then stop. This is what makes prices "stream in" after the table has
+// already rendered with whatever was cached.
+function maybeStartPricePolling() {
+    stopPricePolling();
+
+    if (activeTab.value !== "holdings" || pendingPriceCount.value === 0) {
+        return;
+    }
+
+    pricesUpdating.value = true;
+    pricePollStartedAt = Date.now();
+    pricePollTimer = setTimeout(runPricePoll, PRICE_POLL_INTERVAL_MS);
+}
+
+async function runPricePoll() {
+    // Bail if the user navigated away from the Holdings tab.
+    if (activeTab.value !== "holdings") {
+        stopPricePolling();
+        return;
+    }
+
+    const params = buildPortfolioParams();
+    try {
+        await Promise.allSettled([
+            investmentsStore.fetchPortfolioOverview(params, { silent: true }),
+            investmentsStore.fetchPortfolioPositions(params, { silent: true }),
+            investmentsStore.fetchPortfolioRebalance(params, { silent: true }),
+        ]);
+
+        // Keep the period cache in sync so switching periods/tabs shows the
+        // streamed-in prices rather than the original stale snapshot.
+        const cacheKey = buildCacheKey();
+        const prev = periodDataCache.get(cacheKey) || {};
+        periodDataCache.set(cacheKey, {
+            ...prev,
+            fetchedAt: Date.now(),
+            overview: investmentsStore.portfolioOverview,
+            positions: investmentsStore.portfolioPositions,
+            rebalance: investmentsStore.portfolioRebalance,
+        });
+        portfolioLoadedAt.value = new Date();
+    } catch (error) {
+        // Ignore transient poll errors; we'll try again on the next tick.
+        console.warn("[INVESTMENTS] Price poll failed:", error);
+    }
+
+    const timedOut = Date.now() - pricePollStartedAt > PRICE_POLL_MAX_MS;
+    if (pendingPriceCount.value === 0 || timedOut || activeTab.value !== "holdings") {
+        stopPricePolling();
+        return;
+    }
+
+    pricePollTimer = setTimeout(runPricePoll, PRICE_POLL_INTERVAL_MS);
 }
 
 async function loadAccountComparison() {
@@ -1534,6 +1735,10 @@ watch(activeTab, async (newTab) => {
     // Update URL with current tab (replace to avoid cluttering browser history)
     router.replace({ query: { ...route.query, tab: newTab } });
 
+    if (newTab !== "holdings") {
+        stopPricePolling();
+    }
+
     if (newTab === "scanner") {
         await loadScannerData();
     }
@@ -1542,6 +1747,10 @@ watch(activeTab, async (newTab) => {
         await loadPortfolioData(); // cached — instant if still fresh
         await loadAccountComparison();
     }
+});
+
+onBeforeUnmount(() => {
+    stopPricePolling();
 });
 
 watch(selectedAccount, async () => {
@@ -1763,18 +1972,81 @@ async function setComparisonAccount(accountValue) {
     setAccount(accountValue);
 }
 
+// Briefly flag a row as just-saved so the UI can show "Saved" feedback.
+function flashSaved(symbol) {
+    savedTargets.value = { ...savedTargets.value, [symbol]: true };
+    if (savedTargetTimers[symbol]) clearTimeout(savedTargetTimers[symbol]);
+    savedTargetTimers[symbol] = setTimeout(() => {
+        const next = { ...savedTargets.value };
+        delete next[symbol];
+        savedTargets.value = next;
+        delete savedTargetTimers[symbol];
+    }, 2500);
+}
+
+// Saving a target only affects the rebalance table (targets are normalized
+// across rows), so refresh just that endpoint in place — no chart/metrics
+// reload. Silent fetch keeps the current rows visible and updates them when
+// the response lands.
+async function refreshRebalanceOnly() {
+    const params = buildPortfolioParams();
+    await investmentsStore.fetchPortfolioRebalance(params, { silent: true });
+    syncTargetAllocationDrafts(
+        investmentsStore.portfolioRebalance?.positions || [],
+        { preserveEdits: true },
+    );
+    // Keep the current period's cache entry consistent; drop the rest so other
+    // periods refetch the updated targets lazily on next visit.
+    const cacheKey = buildCacheKey();
+    const prev = periodDataCache.get(cacheKey);
+    periodDataCache.clear();
+    if (prev) {
+        periodDataCache.set(cacheKey, {
+            ...prev,
+            rebalance: investmentsStore.portfolioRebalance,
+            fetchedAt: Date.now(),
+        });
+    }
+}
+
 async function saveTargetAllocation(position) {
+    targetSaving.value = true;
     try {
         const draftValue = targetAllocationDrafts.value[position.symbol];
         await investmentsStore.updatePortfolioTarget(
             position.symbol,
             draftValue === "" || draftValue === null ? null : Number(draftValue),
         );
-        periodDataCache.clear();
-        await loadPortfolioData({ force: true });
+        await refreshRebalanceOnly();
+        flashSaved(position.symbol);
     } catch (error) {
         console.error("Failed to save target allocation:", error);
         showError("Error", "Failed to save target allocation");
+    } finally {
+        targetSaving.value = false;
+    }
+}
+
+// Save every row whose target was edited in one pass, then refresh once.
+async function saveAllTargetAllocations() {
+    const symbols = dirtyTargetSymbols.value;
+    if (symbols.length === 0) return;
+    targetSaving.value = true;
+    try {
+        for (const symbol of symbols) {
+            const draftValue = targetAllocationDrafts.value[symbol];
+            await investmentsStore.updatePortfolioTarget(
+                symbol,
+                draftValue === "" || draftValue === null ? null : Number(draftValue),
+            );
+        }
+        await refreshRebalanceOnly();
+        symbols.forEach((symbol) => flashSaved(symbol));
+    } catch (error) {
+        console.error("Failed to save target allocations:", error);
+        showError("Error", "Failed to save one or more target allocations");
+    } finally {
+        targetSaving.value = false;
     }
 }
 

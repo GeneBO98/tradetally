@@ -1567,7 +1567,7 @@ class EmailService {
       </div>
     `;
 
-    const html = this.getBaseTemplate(`[Support] ${subject}`, content);
+    const html = this.getBaseTemplate(`[Support] ${safeSubject}`, content);
 
     let mailOptions = {
       from: {
@@ -1590,7 +1590,7 @@ class EmailService {
           username: username || 'Unknown',
           user_email: userEmail,
           tier,
-          support_subject: subject,
+          support_subject: safeSubject,
           message_html: safeMessage
         },
         text: `Support Request\n\nFrom: ${username} (${userEmail})\nPlan: ${tier}\nSubject: ${subject}\n\n${message}`

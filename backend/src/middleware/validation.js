@@ -51,7 +51,7 @@ const validate = (schema) => {
     // Normalize snake_case to camelCase before validation
     req.body = normalizeFieldNames(req.body);
     
-    const { error } = schema.validate(req.body);
+    const { error, value } = schema.validate(req.body);
     if (error) {
       const fields = error.details.map(d => ({
         field: d.path.join('.'),
@@ -77,6 +77,7 @@ const validate = (schema) => {
         fields
       });
     }
+    req.body = value;
     next();
   };
 };
@@ -841,10 +842,15 @@ const schemas = {
   }).unknown(true),
 
   adminAiSettings: Joi.object({
-    aiProvider: aiProviderSchema.required(),
+    aiProvider: aiProviderSchema.allow('').required(),
     aiApiKey: nullableString(4096),
     aiApiUrl: nullableString(2048),
-    aiModel: nullableString(255)
+    aiModel: nullableString(255),
+    aiClassifierEnabled: Joi.boolean().default(false),
+    aiClassifierProvider: aiProviderSchema.allow('', null),
+    aiClassifierApiKey: nullableString(4096),
+    aiClassifierApiUrl: nullableString(2048),
+    aiClassifierModel: nullableString(255)
   }),
 
   testimonialSubmit: Joi.object({

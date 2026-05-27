@@ -11,8 +11,8 @@
              number shrink to fit inside the flex item instead of pushing
              out into the sub-stats. The number itself uses whitespace-nowrap
              (never truncated) and a length-aware size class so it always
-             reads completely. Sparkline is hidden below xl since the number
-             takes priority for available space. -->
+             reads completely. The bar chart is hidden below xl since the
+             number takes priority for available space. -->
         <div class="lg:flex-[2] min-w-0 flex flex-col">
           <div class="flex items-baseline justify-between mb-1 gap-2">
             <span class="text-label whitespace-nowrap">Net P&amp;L</span>
@@ -24,22 +24,23 @@
                every column has the same height). The sub-text below the
                number lines up with each column's own sub-text. -->
           <div class="mt-auto pt-1">
-            <div class="flex items-end gap-3 min-w-0">
+            <div class="flex items-end gap-4 min-w-0">
               <div
                 class="text-mono-num font-semibold tracking-tight leading-none whitespace-nowrap"
                 :class="[pnlValueClass, pnlSizeClass]"
               >
                 {{ formatSignedCurrency(netPnl) }}
               </div>
+              <!-- Recent daily P&L bars: distinct from the cumulative equity
+                   curve below — shows per-day rhythm and magnitude. -->
               <div
-                v-if="sparklineValues.length >= 2"
+                v-if="dailyBarValues.length >= 2"
                 class="hidden xl:flex flex-1 min-w-0 items-center pb-1"
               >
-                <Sparkline
-                  :values="sparklineValues"
-                  :width="120"
-                  :height="32"
-                  :stroke-width="1.75"
+                <MiniBarChart
+                  :values="dailyBarValues"
+                  :labels="dailyBarLabels"
+                  :height="40"
                   fill
                   class="w-full"
                 />
@@ -133,7 +134,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import Sparkline from '@/components/common/Sparkline.vue'
+import MiniBarChart from '@/components/common/MiniBarChart.vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 
 const props = defineProps({
@@ -308,10 +309,20 @@ const todayPnlClass = computed(() => {
   return 'text-gray-700 dark:text-gray-300'
 })
 
-// Cumulative P&L sparkline values
-const sparklineValues = computed(() => {
-  return dailyPnL.value
-    .map(d => parseFloat(d.cumulative_pnl ?? d.cumulativePnl ?? 0))
-    .filter(v => Number.isFinite(v))
-})
+// Recent daily P&L for the mini bar chart (last 30 trading days). Uses the
+// per-day P&L — NOT cumulative — so it reads differently from the equity
+// curve below and surfaces recent rhythm and volatility at a glance.
+const recentDays = computed(() => dailyPnL.value.slice(-30))
+
+const dailyBarValues = computed(() =>
+  recentDays.value.map(d => parseFloat(d.daily_pnl ?? d.dailyPnL ?? 0) || 0)
+)
+
+const dailyBarLabels = computed(() =>
+  recentDays.value.map(d => {
+    const date = String(d.trade_date ?? d.tradeDate ?? '').slice(0, 10)
+    const pnl = parseFloat(d.daily_pnl ?? d.dailyPnL ?? 0) || 0
+    return date ? `${date}: ${formatSignedCurrency(pnl)}` : formatSignedCurrency(pnl)
+  })
+)
 </script>
