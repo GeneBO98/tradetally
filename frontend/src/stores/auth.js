@@ -176,8 +176,8 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function fetchUser(options = {}) {
-    const { redirectOnUnauthorized = true } = options
-    if (!token.value) return
+    const { redirectOnUnauthorized = true, force = false } = options
+    if (!token.value && !force) return
 
     try {
       const response = await api.get('/auth/me', {
@@ -273,14 +273,15 @@ export const useAuthStore = defineStore('auth', () => {
     // Probe /auth/me to discover the session state. A 200 calls markAuthenticated
     // which sets token.value, so a logged-in user with a valid HttpOnly auth
     // cookie is restored even if the JS-readable csrf hint was missing. A 401
-    // calls clearAuthState(), so anonymous users stay anonymous. Do NOT
-    // optimistically set token.value before the probe resolves — that flips
-    // isAuthenticated true for one microtask, which is enough to bounce
-    // anonymous users from /login → /dashboard, where the 401 interceptor
-    // hard-redirects to /login, restarting the cycle.
+    // calls clearAuthState(), so anonymous users stay anonymous. `force: true`
+    // bypasses fetchUser's null-token short-circuit; we don't pre-seed
+    // token.value because that flips isAuthenticated true for one microtask
+    // and bounces anonymous users from /login → /dashboard, where the 401
+    // interceptor hard-redirects to /login and restarts the cycle.
     await fetchUser({
       skipAuthRedirect: true,
-      redirectOnUnauthorized: false
+      redirectOnUnauthorized: false,
+      force: true
     })
   }
 
