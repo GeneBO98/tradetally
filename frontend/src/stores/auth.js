@@ -270,16 +270,14 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function checkAuth() {
-    // The HttpOnly `token` cookie is the real session and may still be valid even
-    // when the JS-readable `csrf_token` hint is missing (e.g. a transient 401
-    // cleared it). Probe /auth/me regardless so a valid session is restored — the
-    // 200 response also re-issues the csrf hint via the backend's ensureCsrfCookie.
-    // /auth/me returns 401 for genuinely logged-out users, which clears the
-    // optimistic hint below. Without this, losing only the csrf cookie strands a
-    // logged-in user at /login with no way to recover except re-logging in.
-    if (!token.value) {
-      token.value = 'cookie-session'
-    }
+    // Probe /auth/me to discover the session state. A 200 calls markAuthenticated
+    // which sets token.value, so a logged-in user with a valid HttpOnly auth
+    // cookie is restored even if the JS-readable csrf hint was missing. A 401
+    // calls clearAuthState(), so anonymous users stay anonymous. Do NOT
+    // optimistically set token.value before the probe resolves — that flips
+    // isAuthenticated true for one microtask, which is enough to bounce
+    // anonymous users from /login → /dashboard, where the 401 interceptor
+    // hard-redirects to /login, restarting the cycle.
     await fetchUser({
       skipAuthRedirect: true,
       redirectOnUnauthorized: false
