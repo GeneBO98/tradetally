@@ -70,8 +70,13 @@ function setAuthCookies(req, res, token, csrfToken) {
 }
 
 function clearAuthCookies(req, res) {
-  res.clearCookie(AUTH_COOKIE_NAME, buildAuthCookieOptions(req));
-  res.clearCookie(CSRF_COOKIE_NAME, buildCsrfCookieOptions(req));
+  // Strip maxAge — when both Max-Age and Expires are present in a Set-Cookie
+  // header, RFC 6265 says Max-Age wins, which would keep the empty cookie alive
+  // for ACCESS_COOKIE_MAX_AGE_MS instead of deleting it. Pass only path/domain/
+  // sameSite/secure so res.clearCookie's Expires=epoch actually takes effect.
+  const baseOpts = getCookieBaseOptions(req);
+  res.clearCookie(AUTH_COOKIE_NAME, { ...baseOpts, httpOnly: true });
+  res.clearCookie(CSRF_COOKIE_NAME, { ...baseOpts, httpOnly: false });
 }
 
 module.exports = {

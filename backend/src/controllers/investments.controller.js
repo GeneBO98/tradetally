@@ -10,6 +10,49 @@ const PortfolioService = require('../services/portfolioService');
 const DCFValuationService = require('../services/dcfValuationService');
 const db = require('../config/database');
 
+// Map service-layer errors to accurate HTTP responses. Without this every
+// thrown Error from a service becomes a generic 500 with no client-actionable
+// detail, which hides the real cause (e.g. an expired upstream API key vs a
+// symbol that genuinely lacks data).
+function sendServiceError(res, error, fallbackMessage) {
+  const message = error?.message || fallbackMessage;
+  const lower = message.toLowerCase();
+
+  // Upstream auth failure — admin must rotate the key. Surface as 503 so the
+  // client can show "service temporarily unavailable" rather than "your data
+  // is bad."
+  if (/(finnhub|alpha vantage|openfigi|gemini|databento).*(401|invalid api key|unauthorized)/i.test(message)) {
+    return res.status(503).json({
+      error: 'Upstream market data provider rejected credentials',
+      code: 'UPSTREAM_AUTH_FAILED',
+      detail: message
+    });
+  }
+
+  if (lower.includes('rate limit') || lower.includes('429')) {
+    return res.status(429).json({
+      error: 'Upstream market data provider rate limit hit',
+      code: 'UPSTREAM_RATE_LIMITED',
+      detail: message
+    });
+  }
+
+  // Insufficient financial data from any provider — request is well-formed,
+  // but the symbol doesn't have enough history to compute. 422 fits per RFC.
+  if (lower.includes('insufficient financial data') || lower.includes('need at least')) {
+    return res.status(422).json({
+      error: message,
+      code: 'DATA_INSUFFICIENT',
+      detail: 'Upstream returned no usable periods. This may mean the symbol is new, delisted, or the data provider returned an empty payload.'
+    });
+  }
+
+  return res.status(500).json({
+    error: message || fallbackMessage,
+    code: 'INTERNAL_ERROR'
+  });
+}
+
 // ========================================
 // 8 PILLARS ANALYSIS
 // ========================================
@@ -99,7 +142,7 @@ const analyzeStock = async (req, res) => {
     res.json({ ...analysis, type: 'stock' });
   } catch (error) {
     console.error('[INVESTMENTS] Analysis error:', error);
-    res.status(500).json({ error: error.message || 'Failed to analyze stock' });
+    sendServiceError(res, error, 'Failed to analyze stock');
   }
 };
 
@@ -122,7 +165,7 @@ const refreshAnalysis = async (req, res) => {
     res.json(analysis);
   } catch (error) {
     console.error('[INVESTMENTS] Refresh error:', error);
-    res.status(500).json({ error: error.message || 'Failed to refresh analysis' });
+    sendServiceError(res, error, 'Failed to refresh analysis');
   }
 };
 
@@ -148,7 +191,7 @@ const getFinancials = async (req, res) => {
     });
   } catch (error) {
     console.error('[INVESTMENTS] Financials error:', error);
-    res.status(500).json({ error: error.message || 'Failed to get financials' });
+    sendServiceError(res, error, 'Failed to get financials');
   }
 };
 
@@ -282,7 +325,7 @@ const getStatement = async (req, res) => {
     });
   } catch (error) {
     console.error('[INVESTMENTS] Statement error:', error);
-    res.status(500).json({ error: error.message || 'Failed to get statement' });
+    sendServiceError(res, error, 'Failed to get statement');
   }
 };
 
@@ -394,7 +437,7 @@ const getMetrics = async (req, res) => {
     });
   } catch (error) {
     console.error('[INVESTMENTS] Metrics error:', error);
-    res.status(500).json({ error: error.message || 'Failed to get metrics' });
+    sendServiceError(res, error, 'Failed to get metrics');
   }
 };
 
@@ -414,7 +457,7 @@ const getProfile = async (req, res) => {
     });
   } catch (error) {
     console.error('[INVESTMENTS] Profile error:', error);
-    res.status(500).json({ error: error.message || 'Failed to get profile' });
+    sendServiceError(res, error, 'Failed to get profile');
   }
 };
 

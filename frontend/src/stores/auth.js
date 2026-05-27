@@ -7,7 +7,15 @@ import { useUiPreferencesStore } from '@/stores/uiPreferences'
 
 function hasSessionCookie() {
   if (typeof document === 'undefined') return false
-  return document.cookie.split('; ').some((entry) => entry.startsWith('csrf_token='))
+  // Require a non-empty value. An empty csrf_token=' ' cookie can linger if
+  // the backend's clearAuthCookies emitted a Set-Cookie without proper expiry,
+  // and treating that as "session present" re-triggers the optimistic-auth
+  // loop we're trying to avoid.
+  return document.cookie.split('; ').some((entry) => {
+    if (!entry.startsWith('csrf_token=')) return false
+    const value = entry.slice('csrf_token='.length)
+    return value.length > 0
+  })
 }
 
 export const useAuthStore = defineStore('auth', () => {

@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { isV1Request, sendV1Error } = require('../utils/apiResponse');
-const { AUTH_COOKIE_NAME } = require('../utils/authCookies');
+const { AUTH_COOKIE_NAME, clearAuthCookies } = require('../utils/authCookies');
 
 const TOKEN_PURPOSES = Object.freeze({
   ACCESS: 'access',
@@ -126,17 +126,28 @@ const authenticate = async (req, res, next) => {
     
     next();
   } catch (error) {
+    // Genuine auth failures (bad/expired/missing token, unknown user) mean the
+    // browser is carrying a useless auth cookie. Clear it on the response so
+    // the next request goes through the anonymous path — otherwise the cookie
+    // keeps triggering ensureCsrfCookie's reissue, the frontend keeps reading
+    // a csrf hint as "session present", and unauth users get bounced into a
+    // /login → /dashboard redirect loop. The 503 path below (transient errors)
+    // deliberately skips this so a real session isn't logged out on a DB blip.
+    const isCookieAuth = req.cookies?.[AUTH_COOKIE_NAME];
+
     if (error.name === 'TokenExpiredError') {
+      if (isCookieAuth) clearAuthCookies(req, res);
       if (isV1Request(req)) {
         return sendV1Error(res, 401, 'TOKEN_EXPIRED', 'Access token has expired. Please refresh your token.');
       }
 
-      return res.status(401).json({ 
+      return res.status(401).json({
         error: 'Token expired',
         code: 'TOKEN_EXPIRED',
         message: 'Access token has expired. Please refresh your token.'
       });
     } else if (error.name === 'JsonWebTokenError' || error.name === 'InvalidTokenPurposeError') {
+      if (isCookieAuth) clearAuthCookies(req, res);
       if (isV1Request(req)) {
         return sendV1Error(res, 401, 'INVALID_TOKEN', 'Invalid token');
       }
@@ -146,6 +157,7 @@ const authenticate = async (req, res, next) => {
         code: 'INVALID_TOKEN'
       });
     } else if (error instanceof UnauthenticatedError) {
+      if (isCookieAuth) clearAuthCookies(req, res);
       if (isV1Request(req)) {
         return sendV1Error(res, 401, 'UNAUTHORIZED', 'Please authenticate');
       }
