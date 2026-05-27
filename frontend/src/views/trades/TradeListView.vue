@@ -76,10 +76,13 @@
           </div>
           <div>
             <div class="text-sm text-gray-500 dark:text-gray-400 mb-1">Win Rate</div>
-            <div class="text-lg font-medium text-gray-900 dark:text-white">{{ tradesStore.winRate }}%</div>
+            <div class="text-lg font-medium text-gray-900 dark:text-white">
+              {{ tradesStore.winRate }}%<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
+            </div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">{{ tradesStore.winRateExcludingBreakeven }}% excl. BE</div>
           </div>
         </div>
-        
+
         <!-- Desktop Layout: Side by side -->
         <div class="hidden sm:flex items-center justify-between">
           <div class="flex items-center space-x-6">
@@ -122,7 +125,10 @@
           <div class="flex items-center gap-6">
             <div class="text-right">
               <div class="text-sm text-gray-500 dark:text-gray-400">Win Rate</div>
-              <div class="text-lg font-medium text-gray-900 dark:text-white">{{ tradesStore.winRate }}%</div>
+              <div class="text-lg font-medium text-gray-900 dark:text-white">
+                {{ tradesStore.winRate }}%<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
+              </div>
+              <div class="text-xs text-gray-500 dark:text-gray-400">{{ tradesStore.winRateExcludingBreakeven }}% excl. BE</div>
             </div>
             <!-- Fullwidth Toggle -->
             <button

@@ -2884,14 +2884,15 @@ class Trade {
   static async getMonthlyPerformance(userId, year, accounts = null) {
     console.log(`[MONTHLY] Getting monthly performance for user ${userId}, year ${year}, accounts:`, accounts);
 
-    const { getBreakevenToleranceTicks, breakevenPredicate } = require('../utils/breakeven');
-    const breakevenTolerance = await getBreakevenToleranceTicks(userId);
+    const { getBreakevenToleranceConfig, breakevenPredicate } = require('../utils/breakeven');
+    const breakevenConfig = await getBreakevenToleranceConfig(userId);
     const be = breakevenPredicate({
       gross: '(pnl + COALESCE(commission, 0) + COALESCE(fees, 0))',
       tickSize: 'tick_size',
       pointValue: 'point_value',
-      quantity: 'quantity'
-    }, breakevenTolerance);
+      quantity: 'quantity',
+      underlying: 'underlying_asset'
+    }, breakevenConfig);
 
     // Build account filter condition
     let accountFilter = '';
@@ -2951,6 +2952,10 @@ class Trade {
           WHEN COALESCE(mt.total_trades, 0) = 0 THEN 0
           ELSE (COALESCE(mt.winning_trades, 0) * 100.0 / mt.total_trades)
         END as win_rate,
+        CASE
+          WHEN (COALESCE(mt.winning_trades, 0) + COALESCE(mt.losing_trades, 0)) = 0 THEN 0
+          ELSE (COALESCE(mt.winning_trades, 0) * 100.0 / (mt.winning_trades + mt.losing_trades))
+        END as win_rate_excluding_breakeven,
         TO_CHAR(TO_DATE(am.month::text, 'MM'), 'Month') as month_name
       FROM all_months am
       LEFT JOIN monthly_trades mt ON am.month = mt.month
@@ -2980,6 +2985,7 @@ class Trade {
         },
         metrics: {
           winRate: parseFloat(row.win_rate) || 0,
+          winRateExcludingBreakeven: parseFloat(row.win_rate_excluding_breakeven) || 0,
           avgRValue: parseFloat(row.avg_r_value) || 0,
           totalRValue: parseFloat(row.total_r_value) || 0,
           symbolsTraded: parseInt(row.symbols_traded) || 0,
@@ -3021,6 +3027,9 @@ class Trade {
       yearTotals.metrics = {
         winRate: yearTotals.trades.total > 0
           ? (yearTotals.trades.wins * 100.0 / yearTotals.trades.total)
+          : 0,
+        winRateExcludingBreakeven: (yearTotals.trades.wins + yearTotals.trades.losses) > 0
+          ? (yearTotals.trades.wins * 100.0 / (yearTotals.trades.wins + yearTotals.trades.losses))
           : 0,
         avgRValue: yearTotals.trades.total > 0
           ? yearTotals.totalRValue / yearTotals.trades.total

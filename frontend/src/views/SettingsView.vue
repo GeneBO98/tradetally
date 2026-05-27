@@ -85,7 +85,7 @@
 
                             <div>
                                 <label for="breakevenToleranceTicks" class="label"
-                                    >Breakeven Tolerance (ticks)</label
+                                    >Default Breakeven Tolerance (ticks)</label
                                 >
                                 <input
                                     id="breakevenToleranceTicks"
@@ -94,21 +94,72 @@
                                     "
                                     type="number"
                                     min="0"
-                                    step="0.25"
+                                    step="1"
                                     class="input"
                                 />
                                 <p
                                     class="mt-1 text-sm text-gray-500 dark:text-gray-400"
                                 >
                                     Trades whose gross P&L (price only, ignoring
-                                    commissions and fees) lands within this many
+                                    commissions and fees) land within this many
                                     ticks of zero are counted as breakeven rather
-                                    than wins or losses. The threshold scales per
-                                    instrument by tick size, point value, and
-                                    quantity, so it requires those to be set on
-                                    the trade (e.g. futures). Leave at 0 to count
-                                    only trades that exit exactly at entry.
+                                    than wins or losses. This default applies to
+                                    every instrument; add per-instrument overrides
+                                    below. It only affects trades that have a tick
+                                    size and point value (e.g. futures). Leave at 0
+                                    to count only trades that exit exactly at entry.
                                 </p>
+
+                                <!-- Per-instrument overrides -->
+                                <div class="mt-4">
+                                    <span class="label"
+                                        >Per-Instrument Overrides</span
+                                    >
+                                    <p
+                                        class="mt-1 mb-2 text-sm text-gray-500 dark:text-gray-400"
+                                    >
+                                        Set a different tolerance for specific
+                                        instruments by their underlying symbol -
+                                        e.g. 2 ticks on ES but 5 on NQ. Instruments
+                                        not listed use the default above.
+                                    </p>
+                                    <div class="space-y-2">
+                                        <div
+                                            v-for="(row, idx) in breakevenToleranceRows"
+                                            :key="idx"
+                                            class="flex items-center gap-2"
+                                        >
+                                            <input
+                                                v-model="row.underlying"
+                                                type="text"
+                                                placeholder="ES"
+                                                class="input flex-1 uppercase"
+                                            />
+                                            <input
+                                                v-model.number="row.ticks"
+                                                type="number"
+                                                min="0"
+                                                step="1"
+                                                placeholder="ticks"
+                                                class="input w-28"
+                                            />
+                                            <button
+                                                type="button"
+                                                class="btn-secondary px-3"
+                                                @click="removeBreakevenToleranceRow(idx)"
+                                            >
+                                                Remove
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        class="btn-secondary mt-2"
+                                        @click="addBreakevenToleranceRow"
+                                    >
+                                        Add Instrument
+                                    </button>
+                                </div>
                             </div>
 
                             <div>
@@ -2686,6 +2737,38 @@ const analyticsForm = ref({
 
 const analyticsLoading = ref(false);
 
+// Per-instrument breakeven tolerance overrides, edited as rows then serialized
+// to a { UNDERLYING: ticks } map on save.
+const breakevenToleranceRows = ref([]);
+
+function addBreakevenToleranceRow() {
+    breakevenToleranceRows.value.push({ underlying: "", ticks: 0 });
+}
+
+function removeBreakevenToleranceRow(idx) {
+    breakevenToleranceRows.value.splice(idx, 1);
+}
+
+function breakevenRowsFromMap(map) {
+    if (!map || typeof map !== "object") return [];
+    return Object.entries(map).map(([underlying, ticks]) => ({
+        underlying,
+        ticks: Number(ticks) || 0,
+    }));
+}
+
+function breakevenMapFromRows() {
+    const map = {};
+    for (const row of breakevenToleranceRows.value) {
+        const key = String(row.underlying || "").trim().toUpperCase();
+        if (!/^[A-Z0-9]+$/.test(key)) continue;
+        const ticks = Number(row.ticks);
+        if (!Number.isFinite(ticks) || ticks < 0) continue;
+        map[key] = ticks;
+    }
+    return map;
+}
+
 // Privacy Settings
 const privacyForm = ref({
     publicProfile: false,
@@ -2998,6 +3081,9 @@ async function loadAnalyticsSettings() {
             displayCurrency:
                 response.data.settings.displayCurrency || "USD",
         };
+        breakevenToleranceRows.value = breakevenRowsFromMap(
+            response.data.settings.breakevenToleranceTicksByUnderlying,
+        );
     } catch (error) {
         console.error("Failed to load analytics settings:", error);
         // Default values if loading fails
@@ -3019,6 +3105,7 @@ async function updateAnalyticsSettings() {
             statisticsCalculation: analyticsForm.value.statisticsCalculation,
             breakevenToleranceTicks:
                 Number(analyticsForm.value.breakevenToleranceTicks) || 0,
+            breakevenToleranceTicksByUnderlying: breakevenMapFromRows(),
             autoCloseExpiredOptions:
                 analyticsForm.value.autoCloseExpiredOptions,
             defaultStopLossType:

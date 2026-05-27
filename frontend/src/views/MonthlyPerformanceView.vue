@@ -103,9 +103,15 @@
                                 }}
                             </div>
                             <div
+                                v-if="yearTotals.trades.breakeven > 0"
+                                class="text-xs font-medium text-gray-700 dark:text-gray-300 mt-0.5"
+                            >
+                                {{ formatPercentage(yearTotals.metrics.winRateExcludingBreakeven) }} excl. BE
+                            </div>
+                            <div
                                 class="text-xs text-gray-600 dark:text-gray-400 mt-1"
                             >
-                                Win Rate
+                                Win Rate (incl. BE)
                             </div>
                         </div>
 
@@ -525,7 +531,7 @@ const monthlyData = ref([]);
 const yearTotals = ref({
     trades: { total: 0, wins: 0, losses: 0, breakeven: 0 },
     pnl: { total: 0, best: 0, worst: 0, avgMonthly: 0 },
-    metrics: { winRate: 0, avgRValue: 0, totalRValue: 0 },
+    metrics: { winRate: 0, winRateExcludingBreakeven: 0, avgRValue: 0, totalRValue: 0 },
 });
 
 const showRValue = ref(false);

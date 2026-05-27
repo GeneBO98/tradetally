@@ -193,13 +193,13 @@
               Win Rate{{ rValueMode ? ' (R-Trades)' : '' }}
             </dt>
             <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
-              {{ displayOverview.win_rate }}%
+              {{ displayOverview.win_rate }}%<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
             </dd>
             <dd
               v-if="displayOverview.breakeven_trades > 0"
-              class="mt-0.5 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap"
+              class="mt-0.5 text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap"
             >
-              {{ displayOverview.win_rate_excluding_breakeven }}% excl. breakeven
+              {{ displayOverview.win_rate_excluding_breakeven }}%<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">excl. BE</span>
             </dd>
           </div>
         </div>
@@ -519,7 +519,7 @@
                 <div class="flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-1 -m-1">
                   <span class="text-sm text-gray-500 dark:text-gray-400">Breakeven Trades</span>
                   <span class="text-sm font-medium text-gray-500">
-                    {{ displayOverview.breakeven_trades }}
+                    {{ displayOverview.breakeven_trades }} ({{ getBreakevenPercentage() }}%)
                   </span>
                 </div>
                 <div class="flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-1 -m-1">
@@ -1821,6 +1821,11 @@ function getWinPercentage() {
 function getLossPercentage() {
   if (displayOverview.value.total_trades === 0) return 0
   return ((displayOverview.value.losing_trades / displayOverview.value.total_trades) * 100).toFixed(1)
+}
+
+function getBreakevenPercentage() {
+  if (displayOverview.value.total_trades === 0) return 0
+  return ((displayOverview.value.breakeven_trades / displayOverview.value.total_trades) * 100).toFixed(1)
 }
 
 function getSQNInterpretation(sqn) {

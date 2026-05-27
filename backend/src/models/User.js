@@ -221,6 +221,7 @@ class User {
       preferredSectors: 'preferred_sectors',
       statisticsCalculation: 'statistics_calculation',
       breakevenToleranceTicks: 'breakeven_tolerance_ticks',
+      breakevenToleranceTicksByUnderlying: 'breakeven_tolerance_ticks_by_underlying',
       defaultBroker: 'default_broker',
       enableTradeGrouping: 'enable_trade_grouping',
       tradeGroupingTimeGapMinutes: 'trade_grouping_time_gap_minutes',
@@ -240,7 +241,7 @@ class User {
       if (key !== 'user_id' && key !== 'id') {
         const dbColumn = columnMapping[key] || key;
         // For JSONB columns, ensure proper casting and JSON serialization
-        if (dbColumn === 'analytics_chart_layout' || dbColumn === 'dashboard_layout' || dbColumn === 'ui_preferences') {
+        if (dbColumn === 'analytics_chart_layout' || dbColumn === 'dashboard_layout' || dbColumn === 'ui_preferences' || dbColumn === 'breakeven_tolerance_ticks_by_underlying') {
           fields.push(`${dbColumn} = $${paramCount}::jsonb`);
           // PostgreSQL JSONB requires JSON string, not JavaScript object.
           // ui_preferences is NOT NULL DEFAULT '{}', so coerce null/undefined to an empty object.

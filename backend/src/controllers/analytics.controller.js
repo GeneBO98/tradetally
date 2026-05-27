@@ -708,6 +708,21 @@ function buildCalendarOverviewRows(trades, startDateStr, endDateStr, timezone) {
       daily_pnl: data.dailyPnl
     }));
 }
+// Build the breakeven predicate (gross P&L within per-instrument tolerance) over
+// raw `trades` columns, for the per-symbol/sector/tag/etc. breakdown queries so
+// their win/loss counts stay consistent with the overview. Falls back to the
+// exact `gross = 0` form when the user has no tolerance configured.
+async function rawBreakevenPredicate(userId) {
+  const { getBreakevenToleranceConfig, breakevenPredicate } = require('../utils/breakeven');
+  return breakevenPredicate({
+    gross: '(pnl + COALESCE(commission, 0) + COALESCE(fees, 0))',
+    tickSize: 'tick_size',
+    pointValue: 'point_value',
+    quantity: 'quantity',
+    underlying: 'underlying_asset'
+  }, await getBreakevenToleranceConfig(userId));
+}
+
 const analyticsController = {
   async getOverview(req, res, next) {
     try {
@@ -715,13 +730,16 @@ const analyticsController = {
       
       // Get user's preference for average vs median calculations
       const User = require('../models/User');
-      const { normalizeTolerance, breakevenPredicate } = require('../utils/breakeven');
+      const { normalizeConfig, breakevenPredicate, toleranceCacheKey } = require('../utils/breakeven');
       let useMedian = false;
-      let breakevenTolerance = 0;
+      let breakevenConfig = { default: 0, byUnderlying: {} };
       try {
         const userSettings = await User.getSettings(req.user.id);
         useMedian = userSettings?.statistics_calculation === 'median';
-        breakevenTolerance = normalizeTolerance(userSettings?.breakeven_tolerance_ticks);
+        breakevenConfig = normalizeConfig({
+          default: userSettings?.breakeven_tolerance_ticks,
+          byUnderlying: userSettings?.breakeven_tolerance_ticks_by_underlying
+        });
       } catch (error) {
         console.warn('Could not fetch user settings for analytics, using default (average):', error.message);
         useMedian = false;
@@ -732,14 +750,15 @@ const analyticsController = {
         gross: '(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0))',
         tickSize: 'tick_size',
         pointValue: 'point_value',
-        quantity: 'quantity'
-      }, breakevenTolerance);
+        quantity: 'quantity',
+        underlying: 'underlying_asset'
+      }, breakevenConfig);
 
       // Include filter hash in cache key to handle different filter combinations.
-      // Tolerance is part of the key so changing it yields fresh results.
+      // Tolerance config is part of the key so changing it yields fresh results.
       const normalizedFiltersForCache = convertQueryToTradeFilters(req.query);
       const filterHashKey = createFilterHash(normalizedFiltersForCache);
-      const cacheKey = `analytics_overview_${req.user.id}_${filterHashKey}_${useMedian ? 'median' : 'avg'}_be${breakevenTolerance}`;
+      const cacheKey = `analytics_overview_${req.user.id}_${filterHashKey}_${useMedian ? 'median' : 'avg'}_be${toleranceCacheKey(breakevenConfig)}`;
       
       // Check cache first for faster response
       const cachedData = cache.get(cacheKey);
@@ -1338,11 +1357,12 @@ const analyticsController = {
       
       params.push(sanitizedLimit);
 
+      const be = await rawBreakevenPredicate(req.user.id);
       const symbolQuery = `
-        SELECT 
+        SELECT
           symbol,
           COUNT(*) as total_trades,
-          COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades,
+          COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
           COALESCE(SUM(pnl), 0) as total_pnl,
           COALESCE(AVG(pnl), 0) as avg_pnl,
           COALESCE(AVG(pnl_percent), 0) as avg_pnl_percent
@@ -1366,11 +1386,12 @@ const analyticsController = {
       const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
       const params = [req.user.id, ...filterParams];
 
+      const be = await rawBreakevenPredicate(req.user.id);
       const tagQuery = `
         SELECT
           UNNEST(tags) as tag,
           COUNT(*) as total_trades,
-          COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades,
+          COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
           COALESCE(SUM(pnl), 0) as total_pnl,
           COALESCE(AVG(pnl), 0) as avg_pnl,
           COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
@@ -1395,11 +1416,12 @@ const analyticsController = {
       const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
       const params = [req.user.id, ...filterParams];
 
+      const be = await rawBreakevenPredicate(req.user.id);
       const strategyQuery = `
         SELECT
           strategy,
           COUNT(*) as total_trades,
-          COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades,
+          COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
           COALESCE(SUM(pnl), 0) as total_pnl,
           COALESCE(AVG(pnl), 0) as avg_pnl,
           COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
@@ -1435,11 +1457,12 @@ const analyticsController = {
 
       // Convert entry_time from UTC to user's timezone for hour extraction
       // For timestamptz columns, "AT TIME ZONE 'tz'" converts the UTC time to that timezone
+      const be = await rawBreakevenPredicate(req.user.id);
       const hourQuery = `
         SELECT
           EXTRACT(HOUR FROM (entry_time AT TIME ZONE $${tzParam})) as hour,
           COUNT(*) as total_trades,
-          COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades,
+          COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
           COALESCE(SUM(pnl), 0) as total_pnl,
           COALESCE(AVG(pnl), 0) as avg_pnl,
           COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
@@ -2395,19 +2418,21 @@ const analyticsController = {
       // Use buildFilterConditions for consistency
       const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
       const params = [req.user.id, ...filterParams];
-      
+
       const { startDate, endDate } = req.query;
+
+      const be = await rawBreakevenPredicate(req.user.id);
 
       // Get overview metrics
       console.log('[DATA] Fetching trade metrics...');
       const overviewQuery = `
-        SELECT 
+        SELECT
           COUNT(*) as total_trades,
-          COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades,
+          COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
           COALESCE(SUM(pnl), 0) as total_pnl,
           COALESCE(AVG(pnl), 0) as avg_pnl,
-          COALESCE(AVG(CASE WHEN pnl > 0 THEN pnl END), 0) as avg_win,
-          COALESCE(AVG(CASE WHEN pnl < 0 THEN pnl END), 0) as avg_loss,
+          COALESCE(AVG(CASE WHEN ${be.isNot} AND pnl > 0 THEN pnl END), 0) as avg_win,
+          COALESCE(AVG(CASE WHEN ${be.isNot} AND pnl < 0 THEN pnl END), 0) as avg_loss,
           COALESCE(MAX(pnl), 0) as best_trade,
           COALESCE(MIN(pnl), 0) as worst_trade
         FROM trades
@@ -2477,11 +2502,11 @@ const analyticsController = {
       try {
         // Get symbols and their P&L
         const symbolQuery = `
-          SELECT 
+          SELECT
             symbol,
             COUNT(*) as total_trades,
             COALESCE(SUM(pnl), 0) as total_pnl,
-            COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades
+            COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades
           FROM trades
           WHERE user_id = $1 ${filterConditions}
           GROUP BY symbol
@@ -2594,13 +2619,14 @@ const analyticsController = {
 
       // Get all symbols and their P&L from trades
       console.log('[QUERY] Fetching symbols and P&L from trades...');
+      const be = await rawBreakevenPredicate(req.user.id);
       const symbolQuery = `
-        SELECT 
+        SELECT
           symbol,
           COUNT(*) as total_trades,
           COALESCE(SUM(pnl), 0) as total_pnl,
           COALESCE(AVG(pnl), 0) as avg_pnl,
-          COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades
+          COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades
         FROM trades
         WHERE user_id = $1 ${filterConditions}
         GROUP BY symbol
@@ -2816,13 +2842,14 @@ const analyticsController = {
       const { startDate, endDate } = req.query;
 
       // Get all symbols and their P&L from trades
+      const be = await rawBreakevenPredicate(req.user.id);
       const symbolQuery = `
-        SELECT 
+        SELECT
           symbol,
           COUNT(*) as total_trades,
           COALESCE(SUM(pnl), 0) as total_pnl,
           COALESCE(AVG(pnl), 0) as avg_pnl,
-          COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades
+          COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades
         FROM trades
         WHERE user_id = $1 ${filterConditions}
         GROUP BY symbol
@@ -2946,6 +2973,8 @@ const analyticsController = {
         return res.json(cached);
       }
 
+      const be = await rawBreakevenPredicate(req.user.id);
+
       // Pull the analytics we need to derive an insight.
       const dataQuery = `
         WITH completed AS (
@@ -2955,11 +2984,11 @@ const analyticsController = {
         )
         SELECT
           (SELECT COUNT(*) FROM completed)::integer AS total_trades,
-          (SELECT COUNT(*) FROM completed WHERE pnl > 0)::integer AS winning_trades,
-          (SELECT COUNT(*) FROM completed WHERE pnl < 0)::integer AS losing_trades,
+          (SELECT COUNT(*) FROM completed WHERE ${be.isNot} AND pnl > 0)::integer AS winning_trades,
+          (SELECT COUNT(*) FROM completed WHERE ${be.isNot} AND pnl < 0)::integer AS losing_trades,
           (SELECT COALESCE(SUM(pnl), 0) FROM completed)::numeric AS total_pnl,
-          (SELECT COALESCE(AVG(pnl), 0) FROM completed WHERE pnl > 0)::numeric AS avg_win,
-          (SELECT COALESCE(AVG(pnl), 0) FROM completed WHERE pnl < 0)::numeric AS avg_loss
+          (SELECT COALESCE(AVG(pnl), 0) FROM completed WHERE ${be.isNot} AND pnl > 0)::numeric AS avg_win,
+          (SELECT COALESCE(AVG(pnl), 0) FROM completed WHERE ${be.isNot} AND pnl < 0)::numeric AS avg_loss
       `;
       const dataResult = await db.query(dataQuery, params);
       const m = dataResult.rows[0] || {};
@@ -2998,7 +3027,7 @@ const analyticsController = {
         sym AS (
           SELECT symbol,
                  COUNT(*) AS n,
-                 COUNT(*) FILTER (WHERE pnl > 0) AS wins,
+                 COUNT(*) FILTER (WHERE ${be.isNot} AND pnl > 0) AS wins,
                  COALESCE(SUM(pnl), 0) AS pnl
           FROM completed
           GROUP BY symbol
@@ -3007,7 +3036,7 @@ const analyticsController = {
         strat AS (
           SELECT strategy,
                  COUNT(*) AS n,
-                 COUNT(*) FILTER (WHERE pnl > 0) AS wins,
+                 COUNT(*) FILTER (WHERE ${be.isNot} AND pnl > 0) AS wins,
                  COALESCE(SUM(pnl), 0) AS pnl
           FROM completed
           WHERE strategy IS NOT NULL AND strategy <> ''
@@ -3174,12 +3203,13 @@ const analyticsController = {
     // on AAPL" is dramatically more actionable than "consider your handling."
     const historyBySymbol = new Map();
     try {
+      const be = await rawBreakevenPredicate(userId);
       const histResult = await db.query(`
         SELECT
           UPPER(symbol) AS symbol,
           COUNT(*)::integer AS trade_count,
-          COUNT(*) FILTER (WHERE pnl > 0)::integer AS wins,
-          COUNT(*) FILTER (WHERE pnl < 0)::integer AS losses,
+          COUNT(*) FILTER (WHERE ${be.isNot} AND pnl > 0)::integer AS wins,
+          COUNT(*) FILTER (WHERE ${be.isNot} AND pnl < 0)::integer AS losses,
           COALESCE(AVG(pnl), 0)::numeric AS avg_pnl,
           COALESCE(SUM(pnl), 0)::numeric AS total_pnl
         FROM trades
