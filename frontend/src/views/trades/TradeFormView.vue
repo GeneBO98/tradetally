@@ -632,7 +632,7 @@
               step="any"
               class="input"
               placeholder="0"
-              title="Maximum loss during trade"
+              title="Maximum loss from entry to exit"
             />
           </div>
 
@@ -645,7 +645,21 @@
               step="any"
               class="input"
               placeholder="0"
-              title="Maximum profit during trade"
+              title="Maximum profit from entry to exit"
+            />
+          </div>
+
+          <div>
+            <label for="postExitWindowOverrideMinutes" class="label">After-Trade Window Override (minutes)</label>
+            <input
+              id="postExitWindowOverrideMinutes"
+              v-model="form.postExitWindowOverrideMinutes"
+              type="number"
+              min="1"
+              step="1"
+              class="input"
+              placeholder="Auto"
+              title="Optional per-trade override for after-trade MAE/MFE tracking"
             />
           </div>
 
@@ -1748,6 +1762,7 @@ const form = ref({
   fees: 0,
   mae: null,
   mfe: null,
+  postExitWindowOverrideMinutes: null,
   broker: '',
   account_identifier: '',
   strategy: '',
@@ -1904,6 +1919,7 @@ async function loadTrade() {
       fees: tradeData.fees != null ? Number(tradeData.fees) : 0,
       mae: tradeData.mae != null ? Number(tradeData.mae) : null,
       mfe: tradeData.mfe != null ? Number(tradeData.mfe) : null,
+      postExitWindowOverrideMinutes: tradeData.post_exit_window_override_minutes ?? tradeData.postExitWindowOverrideMinutes ?? null,
       stopLoss: (tradeData.stop_loss || tradeData.stopLoss) != null ? Number(tradeData.stop_loss || tradeData.stopLoss) : null,
       // Take profit values: use take_profit_targets array as source of truth
       // This prevents stale data issues when editing from multiple tabs
@@ -2447,6 +2463,7 @@ async function handleSubmit(opts = {}) {
       fees: calculatedFees,
       mae: form.value.mae ? parseFloat(form.value.mae) : null,
       mfe: form.value.mfe ? parseFloat(form.value.mfe) : null,
+      postExitWindowOverrideMinutes: form.value.postExitWindowOverrideMinutes ? parseInt(form.value.postExitWindowOverrideMinutes, 10) : null,
       confidence: parseInt(form.value.confidence) || 5,
       broker: form.value.broker || '',
       account_identifier: form.value.account_identifier || '',

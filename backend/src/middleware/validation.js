@@ -171,6 +171,8 @@ const schemas = {
     fees: Joi.number().default(0),  // Can be negative for rebates
     mae: Joi.number().allow(null, ''),
     mfe: Joi.number().allow(null, ''),
+    postExitWindowOverrideMinutes: Joi.number().integer().positive().allow(null, ''),
+    post_exit_window_override_minutes: Joi.number().integer().positive().allow(null, ''),
     notes: Joi.string().allow(''),
     isPublic: Joi.boolean().default(false),
     broker: Joi.string().max(50).allow(''),
@@ -316,6 +318,14 @@ const schemas = {
     fees: Joi.number(),  // Can be negative for rebates
     mae: Joi.number().allow(null, ''),
     mfe: Joi.number().allow(null, ''),
+    postExitMae: Joi.number().allow(null, ''),
+    postExitMfe: Joi.number().allow(null, ''),
+    postExitWindowOverrideMinutes: Joi.number().integer().positive().allow(null, ''),
+    postExitWindowMinutes: Joi.number().integer().positive().allow(null, ''),
+    postExitWindowSource: Joi.string().max(30).allow(null, ''),
+    postExitWindowEnd: Joi.date().iso().allow(null, ''),
+    postExitCalculatedAt: Joi.date().iso().allow(null, ''),
+    post_exit_window_override_minutes: Joi.number().integer().positive().allow(null, ''),
     notes: Joi.string().allow(''),
     isPublic: Joi.boolean(),
     broker: Joi.string().max(50).allow(''),

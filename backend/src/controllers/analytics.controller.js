@@ -1216,10 +1216,16 @@ const analyticsController = {
           r_value,
           mae,
           mfe,
+          post_exit_mae,
+          post_exit_mfe,
+          post_exit_window_minutes,
+          post_exit_window_source,
+          post_exit_window_end,
           stop_loss,
           entry_price,
           exit_price,
           quantity,
+          executions,
           instrument_type,
           contract_size,
           point_value,
@@ -1248,19 +1254,40 @@ const analyticsController = {
           t.underlying_asset
         );
 
+        const executions = Array.isArray(t.executions)
+          ? t.executions
+          : (typeof t.executions === 'string' ? (() => {
+              try { return JSON.parse(t.executions); } catch { return []; }
+            })() : []);
+        const exitAction = t.side === 'short' ? 'buy' : 'sell';
+        const exitFills = executions.filter(exec => String(exec.action || exec.side || '').toLowerCase() === exitAction);
+        const pnl = parseFloat(t.pnl) || 0;
+        const isScratch = Math.abs(pnl) < 0.01;
+        const outcome = isScratch
+          ? 'scratch'
+          : (pnl > 0 && exitFills.length > 1 ? 'partial_winner' : (pnl > 0 ? 'winner' : 'loser'));
+
         return {
           id: t.id,
           symbol: t.symbol,
           side: t.side,
-          pnl: parseFloat(t.pnl) || 0,
+          pnl,
           r_value: t.r_value != null ? parseFloat(t.r_value) : null,
           mae: parseFloat(t.mae),
           mfe: parseFloat(t.mfe),
+          post_exit_mae: t.post_exit_mae != null ? parseFloat(t.post_exit_mae) : null,
+          post_exit_mfe: t.post_exit_mfe != null ? parseFloat(t.post_exit_mfe) : null,
+          post_exit_mfe_delta: t.post_exit_mfe != null ? Math.max(0, parseFloat(t.post_exit_mfe) - parseFloat(t.mfe)) : null,
+          missed_after_exit: t.post_exit_mfe != null ? Math.max(0, parseFloat(t.post_exit_mfe) - (parseFloat(t.pnl) || 0)) : null,
+          post_exit_window_minutes: t.post_exit_window_minutes,
+          post_exit_window_source: t.post_exit_window_source,
+          post_exit_window_end: t.post_exit_window_end,
           risk_amount: riskAmount != null ? parseFloat(riskAmount.toFixed(2)) : null,
           quantity: t.quantity != null ? parseFloat(t.quantity) : null,
           instrument_type: t.instrument_type || 'stock',
           point_value: t.point_value != null ? parseFloat(t.point_value) : null,
-          is_winner: t.is_winner
+          is_winner: t.is_winner,
+          outcome
         };
       });
 
@@ -1279,6 +1306,10 @@ const analyticsController = {
       const avgMfeVsPnlGap = trades.length > 0
         ? trades.reduce((s, t) => s + (t.mfe - t.pnl), 0) / trades.length
         : null;
+      const postExitTrades = trades.filter(t => t.post_exit_mfe != null);
+      const avgPostExitMfe = avg(postExitTrades, 'post_exit_mfe');
+      const avgPostExitMfeDelta = avg(postExitTrades, 'post_exit_mfe_delta');
+      const avgMissedAfterExit = avg(postExitTrades, 'missed_after_exit');
 
       res.json({
         success: true,
@@ -1288,7 +1319,11 @@ const analyticsController = {
           winners_avg_mae: winnersAvgMae != null ? parseFloat(winnersAvgMae.toFixed(2)) : null,
           losers_avg_mfe: losersAvgMfe != null ? parseFloat(losersAvgMfe.toFixed(2)) : null,
           avg_profit_left: avgProfitLeft != null ? parseFloat(avgProfitLeft.toFixed(2)) : null,
-          avg_mfe_vs_pnl_gap: avgMfeVsPnlGap != null ? parseFloat(avgMfeVsPnlGap.toFixed(2)) : null
+          avg_mfe_vs_pnl_gap: avgMfeVsPnlGap != null ? parseFloat(avgMfeVsPnlGap.toFixed(2)) : null,
+          trades_with_post_exit_data: postExitTrades.length,
+          avg_post_exit_mfe: avgPostExitMfe != null ? parseFloat(avgPostExitMfe.toFixed(2)) : null,
+          avg_post_exit_mfe_delta: avgPostExitMfeDelta != null ? parseFloat(avgPostExitMfeDelta.toFixed(2)) : null,
+          avg_missed_after_exit: avgMissedAfterExit != null ? parseFloat(avgMissedAfterExit.toFixed(2)) : null
         }
       });
     } catch (error) {

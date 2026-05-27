@@ -142,6 +142,132 @@ function getPositiveIntEnv(name, fallback) {
 const OPEN_POSITIONS_ALPACA_TIMEOUT_MS = getPositiveIntEnv('OPEN_POSITIONS_ALPACA_TIMEOUT_MS', 3000);
 const OPEN_POSITIONS_FINNHUB_TIMEOUT_MS = getPositiveIntEnv('OPEN_POSITIONS_FINNHUB_TIMEOUT_MS', 3000);
 
+function getPositiveInt(value) {
+  const parsed = parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function resolveStyleWindowMinutes(styles = []) {
+  const normalized = styles.map(style => String(style).toLowerCase());
+  if (normalized.some(style => style.includes('scalp'))) return 30;
+  if (normalized.some(style => style.includes('day'))) return 120;
+  if (normalized.some(style => style.includes('swing'))) return 390;
+  if (normalized.some(style => style.includes('position'))) return 1440;
+  return null;
+}
+
+function clampPostExitMinutes(minutes) {
+  if (!Number.isFinite(minutes) || minutes <= 0) return null;
+  return Math.max(30, Math.min(Math.round(minutes), 1440));
+}
+
+async function resolvePostExitWindow(userId, trade) {
+  const exitTime = trade.exit_time || trade.exitTime;
+  if (!exitTime || isNaN(new Date(exitTime))) return null;
+
+  const tradeOverride = getPositiveInt(trade.post_exit_window_override_minutes || trade.postExitWindowOverrideMinutes);
+  if (tradeOverride) {
+    return {
+      minutes: clampPostExitMinutes(tradeOverride),
+      source: 'trade_override',
+      end: new Date(new Date(exitTime).getTime() + clampPostExitMinutes(tradeOverride) * 60000).toISOString()
+    };
+  }
+
+  const settings = await User.getSettings(userId);
+  const manualMinutes = getPositiveInt(settings?.post_exit_excursion_window_minutes);
+  if (settings?.post_exit_excursion_window_mode === 'manual' && manualMinutes) {
+    return {
+      minutes: clampPostExitMinutes(manualMinutes),
+      source: 'profile_manual',
+      end: new Date(new Date(exitTime).getTime() + clampPostExitMinutes(manualMinutes) * 60000).toISOString()
+    };
+  }
+
+  const personalityResult = await db.query(`
+    SELECT primary_personality, avg_hold_time_minutes
+    FROM trading_personality_profiles
+    WHERE user_id = $1
+    ORDER BY analysis_end_date DESC, created_at DESC
+    LIMIT 1
+  `, [userId]);
+
+  const profile = personalityResult.rows[0];
+  const personalityDefaults = {
+    scalper: 30,
+    momentum: 120,
+    mean_reversion: 60,
+    swing: 390,
+    hybrid: null
+  };
+
+  let inferredMinutes = null;
+  let source = 'default';
+
+  if (profile) {
+    inferredMinutes = personalityDefaults[profile.primary_personality] || getPositiveInt(profile.avg_hold_time_minutes);
+    source = 'personality';
+  }
+
+  if (!inferredMinutes) {
+    inferredMinutes = resolveStyleWindowMinutes(settings?.trading_styles || []);
+    source = inferredMinutes ? 'profile_style' : 'default';
+  }
+
+  const minutes = clampPostExitMinutes(inferredMinutes || 60);
+  return {
+    minutes,
+    source,
+    end: new Date(new Date(exitTime).getTime() + minutes * 60000).toISOString()
+  };
+}
+
+async function autoCalculatePostExitMAEMFE(userId, trade) {
+  try {
+    const tier = await TierService.getUserTier(userId);
+    if (tier !== 'pro') return;
+
+    const tradeData = {
+      symbol: trade.symbol,
+      entry_time: trade.entry_time || trade.entryTime,
+      exit_time: trade.exit_time || trade.exitTime,
+      entry_price: trade.entry_price || trade.entryPrice,
+      exit_price: trade.exit_price || trade.exitPrice,
+      side: trade.side,
+      pnl: trade.pnl || trade.profit_loss || 0,
+      commission: trade.commission || 0,
+      fees: trade.fees || 0,
+      quantity: trade.quantity,
+      instrument_type: trade.instrument_type || trade.instrumentType,
+      point_value: trade.point_value ?? trade.pointValue,
+      underlying_asset: trade.underlying_asset || trade.underlyingAsset,
+      contract_size: trade.contract_size ?? trade.contractSize,
+      post_exit_window_override_minutes: trade.post_exit_window_override_minutes || trade.postExitWindowOverrideMinutes
+    };
+
+    if (!MAEEstimator.isValidTradeForEstimation(tradeData)) return;
+
+    const window = await resolvePostExitWindow(userId, tradeData);
+    if (!window) return;
+
+    console.log(`[MAE/MFE] Auto-calculating post-exit window for trade ${trade.id} (${trade.symbol})`);
+    const { post_exit_mae, post_exit_mfe } = await MAEEstimator.calculatePostExitFromCandleData(tradeData, window.end);
+
+    await Trade.update(trade.id, userId, {
+      postExitMae: post_exit_mae,
+      postExitMfe: post_exit_mfe,
+      postExitWindowMinutes: window.minutes,
+      postExitWindowSource: window.source,
+      postExitWindowEnd: window.end,
+      postExitCalculatedAt: new Date().toISOString()
+    });
+    await AnalyticsCache.invalidate(userId);
+    console.log(`[MAE/MFE] Updated post-exit trade ${trade.id}: MAE=$${post_exit_mae.toFixed(2)}, MFE=$${post_exit_mfe.toFixed(2)}, window=${window.minutes}m`);
+  } catch (error) {
+    console.warn(`[MAE/MFE] Post-exit auto-calculation failed for trade ${trade.id}: ${error.message}`);
+  }
+}
+
 async function timeAsyncOperation(label, operation) {
   const startedAt = Date.now();
 
@@ -638,6 +764,9 @@ const tradeController = {
       if (normalizedBody.take_profit !== undefined && normalizedBody.takeProfit === undefined) {
         normalizedBody.takeProfit = normalizedBody.take_profit;
       }
+      if (normalizedBody.post_exit_window_override_minutes !== undefined && normalizedBody.postExitWindowOverrideMinutes === undefined) {
+        normalizedBody.postExitWindowOverrideMinutes = normalizedBody.post_exit_window_override_minutes;
+      }
 
       // Log incoming trade data for debugging
       if (normalizedBody.strategy || normalizedBody.setup) {
@@ -663,6 +792,7 @@ const tradeController = {
 
       // Fire-and-forget: auto-calculate MAE/MFE for closed trades (Pro only)
       autoCalculateMAEMFE(req.user.id, trade).catch(() => {});
+      autoCalculatePostExitMAEMFE(req.user.id, trade).catch(() => {});
     } catch (error) {
       next(error);
     }
@@ -680,6 +810,9 @@ const tradeController = {
       }
       if (normalizedBody.take_profit !== undefined && normalizedBody.takeProfit === undefined) {
         normalizedBody.takeProfit = normalizedBody.take_profit;
+      }
+      if (normalizedBody.post_exit_window_override_minutes !== undefined && normalizedBody.postExitWindowOverrideMinutes === undefined) {
+        normalizedBody.postExitWindowOverrideMinutes = normalizedBody.post_exit_window_override_minutes;
       }
 
       const trade = await Trade.createShell(req.user.id, normalizedBody);
@@ -894,6 +1027,7 @@ const tradeController = {
       if (!manualMAE || !manualMFE) {
         autoCalculateMAEMFE(req.user.id, trade).catch(() => {});
       }
+      autoCalculatePostExitMAEMFE(req.user.id, trade).catch(() => {});
     } catch (error) {
       next(error);
     }
@@ -2629,11 +2763,12 @@ const tradeController = {
                 console.log(`[MAE/MFE] Scheduling background calculation for ${imported} imported trades...`);
                 const importedClosedTrades = await db.query(`
                   SELECT id, symbol, side, entry_time, exit_time, entry_price, exit_price, pnl, commission, fees, mae, mfe,
+                         post_exit_mae, post_exit_mfe, post_exit_window_override_minutes,
                          quantity, instrument_type, point_value, underlying_asset, contract_size
                   FROM trades
                   WHERE user_id = $1 AND import_id = $2
                   AND exit_time IS NOT NULL AND exit_price IS NOT NULL
-                  AND (mae IS NULL OR mfe IS NULL)
+                  AND (mae IS NULL OR mfe IS NULL OR post_exit_mae IS NULL OR post_exit_mfe IS NULL)
                 `, [fileUserId, importId]);
 
                 if (importedClosedTrades.rows.length > 0) {
@@ -2644,8 +2779,26 @@ const tradeController = {
                     for (const trade of importedClosedTrades.rows) {
                       try {
                         if (!MAEEstimator.isValidTradeForEstimation(trade)) continue;
-                        const { mae, mfe } = await MAEEstimator.calculateFromCandleData(trade);
-                        await Trade.update(trade.id, fileUserId, { mae, mfe });
+                        const updates = {};
+                        if (trade.mae == null || trade.mfe == null) {
+                          const { mae, mfe } = await MAEEstimator.calculateFromCandleData(trade);
+                          updates.mae = mae;
+                          updates.mfe = mfe;
+                        }
+                        if (trade.post_exit_mae == null || trade.post_exit_mfe == null) {
+                          const window = await resolvePostExitWindow(fileUserId, trade);
+                          if (window) {
+                            const { post_exit_mae, post_exit_mfe } = await MAEEstimator.calculatePostExitFromCandleData(trade, window.end);
+                            updates.postExitMae = post_exit_mae;
+                            updates.postExitMfe = post_exit_mfe;
+                            updates.postExitWindowMinutes = window.minutes;
+                            updates.postExitWindowSource = window.source;
+                            updates.postExitWindowEnd = window.end;
+                            updates.postExitCalculatedAt = new Date().toISOString();
+                          }
+                        }
+                        if (Object.keys(updates).length === 0) continue;
+                        await Trade.update(trade.id, fileUserId, updates);
                         calculated++;
                         console.log(`[MAE/MFE] Calculated for ${trade.symbol} (${calculated}/${importedClosedTrades.rows.length})`);
                         // Rate limit: ~2 seconds between calls

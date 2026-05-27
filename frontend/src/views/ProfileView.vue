@@ -747,6 +747,44 @@
                             </div>
                         </section>
 
+                        <section>
+                            <div class="bg-gray-100 dark:bg-gray-800/60 px-4 py-2.5 rounded-md mb-4">
+                                <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-gray-100">
+                                    After-Trade Excursion Tracking
+                                </h4>
+                            </div>
+                            <div class="pl-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
+                                <div>
+                                    <label for="postExitExcursionWindowMode" class="label">Tracking Window</label>
+                                    <select
+                                        id="postExitExcursionWindowMode"
+                                        v-model="tradingProfileForm.postExitExcursionWindowMode"
+                                        class="input"
+                                    >
+                                        <option value="auto">Auto from trading profile</option>
+                                        <option value="manual">Manual duration</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label for="postExitExcursionWindowMinutes" class="label">Manual Duration (minutes)</label>
+                                    <input
+                                        id="postExitExcursionWindowMinutes"
+                                        v-model.number="tradingProfileForm.postExitExcursionWindowMinutes"
+                                        type="number"
+                                        min="1"
+                                        step="1"
+                                        class="input"
+                                        :disabled="tradingProfileForm.postExitExcursionWindowMode !== 'manual'"
+                                        placeholder="60"
+                                    />
+                                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                        Auto mode uses your personality/profile. Individual trades can still override this.
+                                    </p>
+                                </div>
+                            </div>
+                        </section>
+
                         <!-- Trading Preferences -->
                         <section>
                             <div class="bg-gray-100 dark:bg-gray-800/60 px-4 py-2.5 rounded-md mb-4">
@@ -1600,6 +1638,8 @@ const tradingProfileForm = ref({
     averagePositionSize: "medium",
     tradingGoals: [],
     preferredSectors: [],
+    postExitExcursionWindowMode: "auto",
+    postExitExcursionWindowMinutes: null,
 });
 
 // Delete account data
@@ -2162,6 +2202,8 @@ async function fetchTradingProfile() {
             averagePositionSize: profile.averagePositionSize || "medium",
             tradingGoals: profile.tradingGoals || [],
             preferredSectors: profile.preferredSectors || [],
+            postExitExcursionWindowMode: profile.postExitExcursionWindowMode || "auto",
+            postExitExcursionWindowMinutes: profile.postExitExcursionWindowMinutes || null,
         };
     } catch (error) {
         console.error("Failed to fetch trading profile:", error);

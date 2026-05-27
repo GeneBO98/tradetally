@@ -140,6 +140,75 @@ class MAEEstimator {
     return { mae, mfe };
   }
 
+  static resolveQuantity(trade) {
+    const { entry_price, exit_price, side, pnl, commission, fees } = trade;
+    const multiplier = this.resolveMultiplier(trade);
+    const priceMove = side === 'long' ?
+      (parseFloat(exit_price) - parseFloat(entry_price)) :
+      (parseFloat(entry_price) - parseFloat(exit_price));
+
+    const netPnl = parseFloat(pnl) + parseFloat(commission || 0) + parseFloat(fees || 0);
+    const storedQuantity = parseFloat(trade.quantity);
+    const quantity = isFinite(storedQuantity) && storedQuantity > 0
+      ? storedQuantity
+      : Math.abs(netPnl / (priceMove * multiplier));
+
+    if (!quantity || quantity <= 0 || !isFinite(quantity)) {
+      throw new Error(`Invalid calculated quantity: ${quantity}`);
+    }
+
+    return { quantity, multiplier };
+  }
+
+  static calculateExcursionsFromCandles(trade, candles) {
+    const { entry_price, side } = trade;
+    const { quantity, multiplier } = this.resolveQuantity(trade);
+
+    let worstPrice = parseFloat(entry_price);
+    let bestPrice = parseFloat(entry_price);
+
+    for (let i = 0; i < candles.c.length; i++) {
+      const high = candles.h[i];
+      const low = candles.l[i];
+
+      if (side === 'long') {
+        worstPrice = Math.min(worstPrice, low);
+        bestPrice = Math.max(bestPrice, high);
+      } else {
+        worstPrice = Math.max(worstPrice, high);
+        bestPrice = Math.min(bestPrice, low);
+      }
+    }
+
+    return {
+      mae: Math.abs((worstPrice - parseFloat(entry_price)) * quantity * multiplier),
+      mfe: Math.abs((bestPrice - parseFloat(entry_price)) * quantity * multiplier)
+    };
+  }
+
+  static async calculatePostExitFromCandleData(trade, windowEnd) {
+    if (!windowEnd || isNaN(new Date(windowEnd))) {
+      throw new Error('Invalid post-exit window end');
+    }
+
+    const resolution = this.getResolutionForTrade(trade.entry_time, windowEnd);
+    const from = Math.floor(new Date(trade.entry_time).getTime() / 1000);
+    const to = Math.floor(new Date(windowEnd).getTime() / 1000);
+
+    if (to <= from) {
+      throw new Error('Post-exit window must end after entry time');
+    }
+
+    const candles = await finnhub.getCandles(trade.symbol, resolution, from, to);
+
+    if (!candles || candles.c.length === 0) {
+      throw new Error('No candle data returned from Finnhub');
+    }
+
+    const { mae, mfe } = this.calculateExcursionsFromCandles(trade, candles);
+    return { post_exit_mae: mae, post_exit_mfe: mfe };
+  }
+
   /**
    * Simple estimation fallback when API data is unavailable
    * @param {Object} trade - Trade object

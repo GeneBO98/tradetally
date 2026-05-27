@@ -219,6 +219,8 @@ class User {
       averagePositionSize: 'average_position_size',
       tradingGoals: 'trading_goals',
       preferredSectors: 'preferred_sectors',
+      postExitExcursionWindowMode: 'post_exit_excursion_window_mode',
+      postExitExcursionWindowMinutes: 'post_exit_excursion_window_minutes',
       statisticsCalculation: 'statistics_calculation',
       breakevenToleranceTicks: 'breakeven_tolerance_ticks',
       breakevenToleranceTicksByUnderlying: 'breakeven_tolerance_ticks_by_underlying',

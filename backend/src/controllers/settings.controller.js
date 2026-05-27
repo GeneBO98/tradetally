@@ -519,7 +519,9 @@ const settingsController = {
             experienceLevel: 'intermediate',
             averagePositionSize: 'medium',
             tradingGoals: [],
-            preferredSectors: []
+            preferredSectors: [],
+            postExitExcursionWindowMode: 'auto',
+            postExitExcursionWindowMinutes: null
           }
         });
       }
@@ -532,7 +534,9 @@ const settingsController = {
         experienceLevel: settings.experience_level || 'intermediate',
         averagePositionSize: settings.average_position_size || 'medium',
         tradingGoals: settings.trading_goals || [],
-        preferredSectors: settings.preferred_sectors || []
+        preferredSectors: settings.preferred_sectors || [],
+        postExitExcursionWindowMode: settings.post_exit_excursion_window_mode || 'auto',
+        postExitExcursionWindowMinutes: settings.post_exit_excursion_window_minutes || null
       };
 
       res.json({ tradingProfile });
@@ -551,13 +555,16 @@ const settingsController = {
         experienceLevel,
         averagePositionSize,
         tradingGoals,
-        preferredSectors
+        preferredSectors,
+        postExitExcursionWindowMode,
+        postExitExcursionWindowMinutes
       } = req.body;
 
       // Validate the data
       const validRiskLevels = ['conservative', 'moderate', 'aggressive'];
       const validExperienceLevels = ['beginner', 'intermediate', 'advanced', 'expert'];
       const validPositionSizes = ['small', 'medium', 'large'];
+      const validPostExitWindowModes = ['auto', 'manual'];
 
       if (riskTolerance && !validRiskLevels.includes(riskTolerance)) {
         return res.status(400).json({ error: 'Invalid risk tolerance level' });
@@ -571,6 +578,18 @@ const settingsController = {
         return res.status(400).json({ error: 'Invalid position size' });
       }
 
+      if (postExitExcursionWindowMode && !validPostExitWindowModes.includes(postExitExcursionWindowMode)) {
+        return res.status(400).json({ error: 'Invalid post-exit excursion window mode' });
+      }
+
+      const parsedPostExitMinutes = postExitExcursionWindowMinutes === null || postExitExcursionWindowMinutes === ''
+        ? null
+        : parseInt(postExitExcursionWindowMinutes, 10);
+
+      if (parsedPostExitMinutes !== null && (!Number.isInteger(parsedPostExitMinutes) || parsedPostExitMinutes <= 0)) {
+        return res.status(400).json({ error: 'Invalid post-exit excursion window minutes' });
+      }
+
       const profileData = {
         tradingStrategies: tradingStrategies || [],
         tradingStyles: tradingStyles || [],
@@ -579,7 +598,9 @@ const settingsController = {
         experienceLevel: experienceLevel || 'intermediate',
         averagePositionSize: averagePositionSize || 'medium',
         tradingGoals: tradingGoals || [],
-        preferredSectors: preferredSectors || []
+        preferredSectors: preferredSectors || [],
+        postExitExcursionWindowMode: postExitExcursionWindowMode || 'auto',
+        postExitExcursionWindowMinutes: parsedPostExitMinutes
       };
 
       const updatedSettings = await User.updateSettings(req.user.id, profileData);

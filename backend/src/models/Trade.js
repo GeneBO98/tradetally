@@ -78,11 +78,14 @@ class Trade {
       originalFeesCurrency,
       stopLoss, takeProfit, takeProfitTargets, chartUrl,
       brokerConnectionId, accountIdentifier, account_identifier,
-      conid, manualTargetHitFirst
+      conid, manualTargetHitFirst,
+      postExitWindowOverrideMinutes, post_exit_window_override_minutes
     } = tradeData;
 
     // Use snake_case version if provided, fallback to camelCase for legacy support
     const finalAccountIdentifier = account_identifier || accountIdentifier;
+    const rawPostExitWindowOverrideMinutes = postExitWindowOverrideMinutes ?? post_exit_window_override_minutes ?? null;
+    const finalPostExitWindowOverrideMinutes = rawPostExitWindowOverrideMinutes === '' ? null : rawPostExitWindowOverrideMinutes;
 
     // Convert empty strings to null for optional fields
     const cleanExitTime = exitTime === '' ? null : exitTime;
@@ -528,9 +531,10 @@ class Trade {
         contract_month, contract_year, tick_size, point_value, underlying_asset, import_id,
         original_currency, exchange_rate, original_entry_price_currency, original_exit_price_currency,
         original_pnl_currency, original_commission_currency, original_fees_currency,
-        stop_loss, take_profit, take_profit_targets, r_value, chart_url, broker_connection_id, account_identifier, conid, manual_target_hit_first
+        stop_loss, take_profit, take_profit_targets, r_value, chart_url, broker_connection_id, account_identifier, conid, manual_target_hit_first,
+        post_exit_window_override_minutes
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62)
       RETURNING *
     `;
 
@@ -554,7 +558,8 @@ class Trade {
       roundToDbPrecision(finalStopLoss), roundToDbPrecision(finalTakeProfit), JSON.stringify(aggregatedTakeProfitTargets || []),
       roundToDbPrecision(rValue), chartUrl || null, brokerConnectionId || null, finalAccountIdentifier ? String(finalAccountIdentifier).substring(0, 50) : null,
       conid || null,
-      manualTargetHitFirst || null
+      manualTargetHitFirst || null,
+      finalPostExitWindowOverrideMinutes
     ];
 
     const result = await db.query(query, values);
@@ -1092,7 +1097,8 @@ class Trade {
     // Round all numeric fields to fit database precision (DECIMAL(20,8))
     const numericFields = [
       'entryPrice', 'exitPrice', 'quantity', 'commission', 'entryCommission', 'exitCommission',
-      'fees', 'pnl', 'pnlPercent', 'mae', 'mfe', 'strikePrice', 'tickSize', 'pointValue',
+      'fees', 'pnl', 'pnlPercent', 'mae', 'mfe', 'postExitMae', 'postExitMfe',
+      'postExitWindowOverrideMinutes', 'postExitWindowMinutes', 'strikePrice', 'tickSize', 'pointValue',
       'stopLoss', 'takeProfit', 'rValue', 'exchangeRate',
       'originalEntryPriceCurrency', 'originalExitPriceCurrency', 'originalPnlCurrency',
       'originalCommissionCurrency', 'originalFeesCurrency'
