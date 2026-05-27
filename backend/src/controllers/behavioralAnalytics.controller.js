@@ -380,7 +380,13 @@ const behavioralAnalyticsController = {
       WITH closed AS (
         SELECT
           id, trade_date, entry_time, exit_time, pnl, quantity, side,
-          symbol, strategy
+          symbol, strategy,
+          -- Notional size proxy: weight raw quantity by contract multiplier so
+          -- comparisons stay coherent across instrument types. Futures use
+          -- point_value (ES=50, MES=5), stocks/options fall back to entry_price.
+          -- Without this, 1 ES contract reads as a "sizing down" vs 7 MES even
+          -- though ES is 10x the notional. See GitHub issue #330.
+          (quantity * COALESCE(NULLIF(point_value, 0), entry_price, 1))::numeric AS notional
         FROM trades
         WHERE user_id = $1
           AND exit_price IS NOT NULL
@@ -406,13 +412,21 @@ const behavioralAnalyticsController = {
         (SELECT COUNT(*) FILTER (WHERE pnl < 0) FROM recent30)::integer AS r30_losses,
         (SELECT COALESCE(SUM(pnl), 0) FROM recent30)::numeric AS r30_pnl,
         (SELECT COALESCE(AVG(ABS(pnl)), 0) FROM closed WHERE pnl < 0)::numeric AS avg_loss,
-        (SELECT COALESCE(AVG(quantity), 0) FROM closed)::numeric AS avg_qty,
-        (SELECT COALESCE(AVG(quantity), 0) FROM closed
-          WHERE trade_date >= CURRENT_DATE - INTERVAL '14 days')::numeric AS recent_avg_qty,
+        (SELECT COALESCE(AVG(notional), 0) FROM closed)::numeric AS avg_notional,
+        (SELECT COALESCE(AVG(notional), 0) FROM closed
+          WHERE trade_date >= CURRENT_DATE - INTERVAL '14 days')::numeric AS recent_avg_notional,
         (SELECT pnl FROM closed ORDER BY trade_date DESC, exit_time DESC NULLS LAST LIMIT 1) AS last_pnl,
         (SELECT json_agg(json_build_object('day', trade_date, 'pnl', day_pnl, 'count', day_trades)
                 ORDER BY trade_date)
-          FROM daily) AS daily_rows
+          FROM daily) AS daily_rows,
+        (SELECT json_agg(pnl ORDER BY rn) FROM (
+            SELECT pnl,
+                   ROW_NUMBER() OVER (ORDER BY exit_time DESC NULLS LAST,
+                                               trade_date DESC,
+                                               entry_time DESC NULLS LAST) AS rn
+            FROM closed
+          ) ordered
+          WHERE rn <= 100) AS recent_trade_pnls
     `, [userId]);
     const row = ctx.rows[0] || {};
     const recentCount = parseInt(row.recent_count) || 0;

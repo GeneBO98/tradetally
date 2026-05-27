@@ -1428,11 +1428,16 @@ const analyticsController = {
       const { getUserTimezone } = require('../utils/timezone');
       const userTimezone = await getUserTimezone(req.user.id);
 
+      // Timezone is appended after user_id ($1) and all filter params, so its
+      // placeholder index depends on how many filters are active.
+      const tzParam = params.length + 1;
+      const hourParams = params.concat([userTimezone]);
+
       // Convert entry_time from UTC to user's timezone for hour extraction
       // For timestamptz columns, "AT TIME ZONE 'tz'" converts the UTC time to that timezone
       const hourQuery = `
         SELECT
-          EXTRACT(HOUR FROM (entry_time AT TIME ZONE $2)) as hour,
+          EXTRACT(HOUR FROM (entry_time AT TIME ZONE $${tzParam})) as hour,
           COUNT(*) as total_trades,
           COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades,
           COALESCE(SUM(pnl), 0) as total_pnl,
@@ -1443,10 +1448,9 @@ const analyticsController = {
         FROM trades
         WHERE user_id = $1 ${filterConditions}
           AND entry_time IS NOT NULL
-        GROUP BY EXTRACT(HOUR FROM (entry_time AT TIME ZONE $2))
+        GROUP BY EXTRACT(HOUR FROM (entry_time AT TIME ZONE $${tzParam}))
         ORDER BY hour
       `;
-      const hourParams = params.concat([userTimezone]);
 
       const result = await db.query(hourQuery, hourParams);
 
@@ -2134,19 +2138,23 @@ const analyticsController = {
       const { getUserTimezone } = require('../utils/timezone');
       const userTimezone = await getUserTimezone(req.user.id);
 
+      // Timezone is appended after user_id ($1) and all filter params, so its
+      // placeholder index depends on how many filters are active.
+      const dowTzParam = params.length + 1;
+      const dayOfWeekParams = params.concat([userTimezone]);
+
       const dayOfWeekQuery = `
         SELECT
-          EXTRACT(DOW FROM (entry_time AT TIME ZONE $2)) as day_of_week,
+          EXTRACT(DOW FROM (entry_time AT TIME ZONE $${dowTzParam})) as day_of_week,
           COUNT(*) as trade_count,
           COALESCE(SUM(pnl), 0) as total_pnl,
           COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value
         FROM trades
         WHERE user_id = $1 ${filterConditions}
-          AND EXTRACT(DOW FROM (entry_time AT TIME ZONE $2)) NOT IN (0, 6) -- Exclude weekends
-        GROUP BY EXTRACT(DOW FROM (entry_time AT TIME ZONE $2))
-        ORDER BY EXTRACT(DOW FROM (entry_time AT TIME ZONE $2))
+          AND EXTRACT(DOW FROM (entry_time AT TIME ZONE $${dowTzParam})) NOT IN (0, 6) -- Exclude weekends
+        GROUP BY EXTRACT(DOW FROM (entry_time AT TIME ZONE $${dowTzParam}))
+        ORDER BY EXTRACT(DOW FROM (entry_time AT TIME ZONE $${dowTzParam}))
       `;
-      const dayOfWeekParams = params.concat([userTimezone]);
 
       const dayOfWeekResult = await db.query(dayOfWeekQuery, dayOfWeekParams);
 
