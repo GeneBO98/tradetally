@@ -279,6 +279,18 @@
                   </dd>
                 </div>
                 <div>
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">After-Trade MAE</dt>
+                  <dd class="mt-1 text-sm font-mono" :class="(trade.post_exit_mae ?? trade.postExitMae) !== null && (trade.post_exit_mae ?? trade.postExitMae) !== undefined ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'">
+                    {{ (trade.post_exit_mae ?? trade.postExitMae) !== null && (trade.post_exit_mae ?? trade.postExitMae) !== undefined ? formatCurrency(trade.post_exit_mae ?? trade.postExitMae) : '—' }}
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">After-Trade MFE</dt>
+                  <dd class="mt-1 text-sm font-mono" :class="(trade.post_exit_mfe ?? trade.postExitMfe) !== null && (trade.post_exit_mfe ?? trade.postExitMfe) !== undefined ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'">
+                    {{ (trade.post_exit_mfe ?? trade.postExitMfe) !== null && (trade.post_exit_mfe ?? trade.postExitMfe) !== undefined ? formatCurrency(trade.post_exit_mfe ?? trade.postExitMfe) : '—' }}
+                  </dd>
+                </div>
+                <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
                     {{ trade.instrument_type === 'option' ? 'Contracts' : (!trade.exit_time ? 'Quantity Held' : 'Total Traded') }}
                   </dt>

@@ -650,6 +650,32 @@
           </div>
 
           <div>
+            <label for="postExitMae" class="label">After-Trade MAE</label>
+            <input
+              id="postExitMae"
+              v-model="form.postExitMae"
+              type="number"
+              step="any"
+              class="input"
+              placeholder="0"
+              title="Max adverse excursion observed after exit (manual entry for instruments without intraday data, e.g. futures)"
+            />
+          </div>
+
+          <div>
+            <label for="postExitMfe" class="label">After-Trade MFE</label>
+            <input
+              id="postExitMfe"
+              v-model="form.postExitMfe"
+              type="number"
+              step="any"
+              class="input"
+              placeholder="0"
+              title="Max favorable excursion observed after exit (manual entry for instruments without intraday data, e.g. futures)"
+            />
+          </div>
+
+          <div>
             <label for="postExitWindowOverrideMinutes" class="label">After-Trade Window Override (minutes)</label>
             <input
               id="postExitWindowOverrideMinutes"
@@ -1762,6 +1788,8 @@ const form = ref({
   fees: 0,
   mae: null,
   mfe: null,
+  postExitMae: null,
+  postExitMfe: null,
   postExitWindowOverrideMinutes: null,
   broker: '',
   account_identifier: '',
@@ -1919,6 +1947,8 @@ async function loadTrade() {
       fees: tradeData.fees != null ? Number(tradeData.fees) : 0,
       mae: tradeData.mae != null ? Number(tradeData.mae) : null,
       mfe: tradeData.mfe != null ? Number(tradeData.mfe) : null,
+      postExitMae: (tradeData.post_exit_mae ?? tradeData.postExitMae) != null ? Number(tradeData.post_exit_mae ?? tradeData.postExitMae) : null,
+      postExitMfe: (tradeData.post_exit_mfe ?? tradeData.postExitMfe) != null ? Number(tradeData.post_exit_mfe ?? tradeData.postExitMfe) : null,
       postExitWindowOverrideMinutes: tradeData.post_exit_window_override_minutes ?? tradeData.postExitWindowOverrideMinutes ?? null,
       stopLoss: (tradeData.stop_loss || tradeData.stopLoss) != null ? Number(tradeData.stop_loss || tradeData.stopLoss) : null,
       // Take profit values: use take_profit_targets array as source of truth
@@ -2461,8 +2491,10 @@ async function handleSubmit(opts = {}) {
       quantity: calculatedQuantity,
       commission: calculatedCommission,
       fees: calculatedFees,
-      mae: form.value.mae ? parseFloat(form.value.mae) : null,
-      mfe: form.value.mfe ? parseFloat(form.value.mfe) : null,
+      mae: form.value.mae !== null && form.value.mae !== '' ? parseFloat(form.value.mae) : null,
+      mfe: form.value.mfe !== null && form.value.mfe !== '' ? parseFloat(form.value.mfe) : null,
+      postExitMae: form.value.postExitMae !== null && form.value.postExitMae !== '' ? parseFloat(form.value.postExitMae) : null,
+      postExitMfe: form.value.postExitMfe !== null && form.value.postExitMfe !== '' ? parseFloat(form.value.postExitMfe) : null,
       postExitWindowOverrideMinutes: form.value.postExitWindowOverrideMinutes ? parseInt(form.value.postExitWindowOverrideMinutes, 10) : null,
       confidence: parseInt(form.value.confidence) || 5,
       broker: form.value.broker || '',

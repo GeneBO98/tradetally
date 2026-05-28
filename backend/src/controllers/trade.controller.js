@@ -767,6 +767,12 @@ const tradeController = {
       if (normalizedBody.post_exit_window_override_minutes !== undefined && normalizedBody.postExitWindowOverrideMinutes === undefined) {
         normalizedBody.postExitWindowOverrideMinutes = normalizedBody.post_exit_window_override_minutes;
       }
+      if (normalizedBody.post_exit_mae !== undefined && normalizedBody.postExitMae === undefined) {
+        normalizedBody.postExitMae = normalizedBody.post_exit_mae;
+      }
+      if (normalizedBody.post_exit_mfe !== undefined && normalizedBody.postExitMfe === undefined) {
+        normalizedBody.postExitMfe = normalizedBody.post_exit_mfe;
+      }
 
       // Log incoming trade data for debugging
       if (normalizedBody.strategy || normalizedBody.setup) {
@@ -790,9 +796,18 @@ const tradeController = {
       // Fire-and-forget: fetch company metadata for new symbols created outside CSV import.
       ensureSymbolMetadata(trade.symbol).catch(() => {});
 
-      // Fire-and-forget: auto-calculate MAE/MFE for closed trades (Pro only)
-      autoCalculateMAEMFE(req.user.id, trade).catch(() => {});
-      autoCalculatePostExitMAEMFE(req.user.id, trade).catch(() => {});
+      // Fire-and-forget: auto-calculate MAE/MFE for closed trades (Pro only).
+      // Skip per-field when the user supplied the value manually (e.g., futures, where free APIs have no candle data).
+      const createdManualMAE = normalizedBody.mae !== undefined && normalizedBody.mae !== null && normalizedBody.mae !== '';
+      const createdManualMFE = normalizedBody.mfe !== undefined && normalizedBody.mfe !== null && normalizedBody.mfe !== '';
+      if (!createdManualMAE || !createdManualMFE) {
+        autoCalculateMAEMFE(req.user.id, trade).catch(() => {});
+      }
+      const createdManualPostExitMAE = normalizedBody.postExitMae !== undefined && normalizedBody.postExitMae !== null && normalizedBody.postExitMae !== '';
+      const createdManualPostExitMFE = normalizedBody.postExitMfe !== undefined && normalizedBody.postExitMfe !== null && normalizedBody.postExitMfe !== '';
+      if (!createdManualPostExitMAE || !createdManualPostExitMFE) {
+        autoCalculatePostExitMAEMFE(req.user.id, trade).catch(() => {});
+      }
     } catch (error) {
       next(error);
     }
@@ -998,6 +1013,12 @@ const tradeController = {
       if (normalizedBody.take_profit !== undefined && normalizedBody.takeProfit === undefined) {
         normalizedBody.takeProfit = normalizedBody.take_profit;
       }
+      if (normalizedBody.post_exit_mae !== undefined && normalizedBody.postExitMae === undefined) {
+        normalizedBody.postExitMae = normalizedBody.post_exit_mae;
+      }
+      if (normalizedBody.post_exit_mfe !== undefined && normalizedBody.postExitMfe === undefined) {
+        normalizedBody.postExitMfe = normalizedBody.post_exit_mfe;
+      }
       // Log incoming update data for debugging
       if (normalizedBody.strategy !== undefined || normalizedBody.setup !== undefined) {
         console.log(`[TRADE CONTROLLER] Updating trade ${req.params.id} with strategy="${normalizedBody.strategy || 'null'}", setup="${normalizedBody.setup || 'null'}"`);
@@ -1021,13 +1042,18 @@ const tradeController = {
 
       res.json({ trade });
 
-      // Fire-and-forget: auto-calculate MAE/MFE if not manually provided (Pro only)
+      // Fire-and-forget: auto-calculate MAE/MFE if not manually provided (Pro only).
+      // Skip per-field when the user supplied the value manually (e.g., futures, where free APIs have no candle data).
       const manualMAE = normalizedBody.mae !== undefined && normalizedBody.mae !== null && normalizedBody.mae !== '';
       const manualMFE = normalizedBody.mfe !== undefined && normalizedBody.mfe !== null && normalizedBody.mfe !== '';
       if (!manualMAE || !manualMFE) {
         autoCalculateMAEMFE(req.user.id, trade).catch(() => {});
       }
-      autoCalculatePostExitMAEMFE(req.user.id, trade).catch(() => {});
+      const manualPostExitMAE = normalizedBody.postExitMae !== undefined && normalizedBody.postExitMae !== null && normalizedBody.postExitMae !== '';
+      const manualPostExitMFE = normalizedBody.postExitMfe !== undefined && normalizedBody.postExitMfe !== null && normalizedBody.postExitMfe !== '';
+      if (!manualPostExitMAE || !manualPostExitMFE) {
+        autoCalculatePostExitMAEMFE(req.user.id, trade).catch(() => {});
+      }
     } catch (error) {
       next(error);
     }
