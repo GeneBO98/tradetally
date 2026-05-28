@@ -341,8 +341,29 @@
                     <section class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
                         <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                             <div>
-                                <h2 class="text-lg font-medium text-gray-900 dark:text-white">
-                                    Portfolio vs {{ benchmarkSymbol }}
+                                <h2 class="text-lg font-medium text-gray-900 dark:text-white flex items-center gap-2">
+                                    <span>Portfolio vs</span>
+                                    <input
+                                        v-if="editingBenchmark"
+                                        ref="benchmarkInput"
+                                        v-model="benchmarkSymbol"
+                                        @blur="commitBenchmarkEdit"
+                                        @keydown.enter.prevent="commitBenchmarkEdit"
+                                        @keydown.escape.prevent="cancelBenchmarkEdit"
+                                        type="text"
+                                        maxlength="6"
+                                        class="px-2 py-0.5 w-24 text-lg font-medium uppercase border border-primary-500 rounded focus:outline-none focus:ring-1 focus:ring-primary-500 dark:bg-gray-700 dark:text-white"
+                                    />
+                                    <button
+                                        v-else
+                                        type="button"
+                                        @click="startBenchmarkEdit"
+                                        :disabled="savingPortfolioSettings"
+                                        class="px-1 -mx-1 rounded underline decoration-dotted decoration-gray-400 underline-offset-4 hover:bg-gray-100 dark:hover:bg-gray-700/60 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        title="Click to change benchmark"
+                                    >
+                                        {{ benchmarkSymbol }}
+                                    </button>
                                 </h2>
                                 <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
                                     Historical comparison for {{ selectedAccountLabel }}
@@ -369,6 +390,13 @@
                                     ]"
                                 >
                                     {{ period }}
+                                </button>
+                                <button
+                                    @click="refreshPortfolioData"
+                                    :disabled="investmentsStore.loading"
+                                    class="ml-2 btn-secondary text-xs px-2.5 py-1.5"
+                                >
+                                    {{ investmentsStore.loading ? "Refreshing..." : "Refresh" }}
                                 </button>
                             </div>
                         </div>
@@ -491,6 +519,64 @@
                             Adjust your targets to total 100% — or click Normalize to save the scaled weights as your new targets.
                         </p>
                     </div>
+
+                    <!-- Cash flow + realized P&L if every suggested trade in the Allocation
+                         table below were executed. Lets the user check feasibility (will
+                         the sells cover the buys, or is fresh cash required?) before
+                         placing orders. -->
+                    <div
+                        v-if="rebalanceImpact.hasTrades"
+                        class="mx-6 mt-4 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4"
+                    >
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div>
+                                <p class="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Buy total</p>
+                                <p class="text-sm font-semibold text-red-600 mt-0.5">
+                                    -{{ formatCurrency(rebalanceImpact.cashToBuy) }}
+                                </p>
+                                <p class="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">Cash needed</p>
+                            </div>
+                            <div>
+                                <p class="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Sell proceeds</p>
+                                <p class="text-sm font-semibold text-green-600 mt-0.5">
+                                    +{{ formatCurrency(rebalanceImpact.cashFromSells) }}
+                                </p>
+                                <p class="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">Cash released</p>
+                            </div>
+                            <div>
+                                <p class="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Net cash</p>
+                                <p
+                                    class="text-sm font-semibold mt-0.5"
+                                    :class="rebalanceImpact.selfFunded ? 'text-green-600' : 'text-red-600'"
+                                >
+                                    <template v-if="rebalanceImpact.selfFunded">Self-funded</template>
+                                    <template v-else>Need {{ formatCurrency(rebalanceImpact.additionalCashNeeded) }}</template>
+                                </p>
+                                <p class="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
+                                    <template v-if="rebalanceImpact.selfFunded && rebalanceImpact.excessCash > 0">
+                                        {{ formatCurrency(rebalanceImpact.excessCash) }} excess after trades
+                                    </template>
+                                    <template v-else-if="rebalanceImpact.selfFunded">
+                                        Sells exactly cover buys
+                                    </template>
+                                    <template v-else>
+                                        Additional funds required
+                                    </template>
+                                </p>
+                            </div>
+                            <div>
+                                <p class="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Realized P&amp;L</p>
+                                <p
+                                    class="text-sm font-semibold mt-0.5"
+                                    :class="rebalanceImpact.realizedPnl >= 0 ? 'text-green-600' : 'text-red-600'"
+                                >
+                                    {{ rebalanceImpact.realizedPnl >= 0 ? '+' : '' }}{{ formatCurrency(rebalanceImpact.realizedPnl) }}
+                                </p>
+                                <p class="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">If all sells execute</p>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                             <thead class="bg-gray-50 dark:bg-gray-700">
@@ -983,63 +1069,6 @@
 
                         <section class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
                             <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                                <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
-                                    Benchmark &amp; Snapshot
-                                </h2>
-                                <button
-                                    @click="refreshPortfolioData"
-                                    :disabled="investmentsStore.loading"
-                                    class="btn-secondary text-xs px-2.5 py-1.5"
-                                >
-                                    {{ investmentsStore.loading ? "Refreshing..." : "Refresh" }}
-                                </button>
-                            </div>
-                            <div class="p-4 space-y-4">
-                                <div>
-                                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                                        Benchmark
-                                    </label>
-                                    <SymbolAutocomplete
-                                        v-model="benchmarkSymbol"
-                                        placeholder="e.g., SPY"
-                                        input-class="text-sm"
-                                    />
-                                </div>
-                                <button
-                                    @click="savePortfolioSettings"
-                                    :disabled="savingPortfolioSettings"
-                                    class="btn-primary w-full text-sm"
-                                >
-                                    {{ savingPortfolioSettings ? "Saving..." : "Save Benchmark" }}
-                                </button>
-                                <div
-                                    v-if="investmentsStore.portfolioRebalance"
-                                    class="grid grid-cols-3 gap-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-3"
-                                >
-                                    <div>
-                                        <p class="text-[11px] text-gray-500 dark:text-gray-400">Coverage</p>
-                                        <p class="text-xs font-medium text-gray-900 dark:text-white">
-                                            {{ formatPercent(investmentsStore.portfolioRebalance.targetCoveragePercent, false) }}
-                                        </p>
-                                    </div>
-                                    <div>
-                                        <p class="text-[11px] text-gray-500 dark:text-gray-400">Target</p>
-                                        <p class="text-xs font-medium text-gray-900 dark:text-white">
-                                            {{ formatPercent(investmentsStore.portfolioRebalance.targetTotalPercent, false) }}
-                                        </p>
-                                    </div>
-                                    <div>
-                                        <p class="text-[11px] text-gray-500 dark:text-gray-400">Drift</p>
-                                        <p class="text-xs font-medium text-gray-900 dark:text-white">
-                                            {{ formatPercent(investmentsStore.portfolioRebalance.driftThresholdPercent, false) }}
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        </section>
-
-                        <section class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
-                            <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
                                 <div>
                                     <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
                                         Portfolio Alerts
@@ -1501,7 +1530,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
+import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { useInvestmentsStore } from "@/stores/investments";
 import { useNotification } from "@/composables/useNotification";
@@ -1557,6 +1586,10 @@ const PORTFOLIO_CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
 const periodDataCache = new Map();
 let _periodDebounceTimer = null; // debounce handle for rapid period clicks
 const benchmarkSymbol = ref("SPY");
+const editingBenchmark = ref(false);
+const benchmarkInput = ref(null);
+// Stored when entering edit mode so Escape can revert.
+let benchmarkBeforeEdit = "";
 const savingPortfolioSettings = ref(false);
 const targetAllocationDrafts = ref({});
 const targetSaving = ref(false);
@@ -1678,6 +1711,76 @@ const targetsNeedNormalizing = computed(() => {
     const total = targetTotalPercent.value;
     return total > 0 && Math.abs(total - 100) > 0.5;
 });
+
+// Aggregate cash flow and realized P&L the user would incur if they executed
+// every suggested trade in the Allocation table. Positive valueDelta = position
+// is over target = sell (cash IN). Negative valueDelta = under target = buy
+// (cash OUT). Realized P&L is computed per-sell from current price minus the
+// position's average cost basis.
+const rebalanceImpact = computed(() => {
+    const positions = rebalanceRows.value || [];
+    let cashToBuy = 0;
+    let cashFromSells = 0;
+    let realizedPnl = 0;
+
+    for (const position of positions) {
+        const valueDelta = Number(position.valueDelta);
+        if (!Number.isFinite(valueDelta) || valueDelta === 0) continue;
+        if (valueDelta > 0) {
+            cashToBuy += valueDelta;
+        } else {
+            const proceeds = -valueDelta;
+            cashFromSells += proceeds;
+            const sharesToSell = Math.abs(Number(position.shareDelta) || 0);
+            const totalShares = Number(position.totalShares) || 0;
+            const currentValue = Number(position.currentValue) || 0;
+            const avgCostBasis = Number(position.averageCostBasis);
+            if (sharesToSell > 0 && totalShares > 0 && Number.isFinite(avgCostBasis)) {
+                const pricePerShare = currentValue / totalShares;
+                realizedPnl += sharesToSell * (pricePerShare - avgCostBasis);
+            }
+        }
+    }
+
+    return {
+        cashToBuy,
+        cashFromSells,
+        hasTrades: cashToBuy > 0 || cashFromSells > 0,
+        selfFunded: cashFromSells >= cashToBuy,
+        additionalCashNeeded: Math.max(0, cashToBuy - cashFromSells),
+        excessCash: Math.max(0, cashFromSells - cashToBuy),
+        realizedPnl,
+    };
+});
+
+function startBenchmarkEdit() {
+    benchmarkBeforeEdit = benchmarkSymbol.value;
+    editingBenchmark.value = true;
+    nextTick(() => {
+        benchmarkInput.value?.focus();
+        benchmarkInput.value?.select();
+    });
+}
+
+function cancelBenchmarkEdit() {
+    benchmarkSymbol.value = benchmarkBeforeEdit;
+    editingBenchmark.value = false;
+}
+
+// Commit the inline benchmark edit. Reverts on empty/unchanged input;
+// otherwise normalizes to uppercase and triggers savePortfolioSettings
+// which already persists benchmark + alert thresholds together.
+async function commitBenchmarkEdit() {
+    if (!editingBenchmark.value) return;
+    editingBenchmark.value = false;
+    const next = (benchmarkSymbol.value || "").trim().toUpperCase();
+    if (!next || next === benchmarkBeforeEdit) {
+        benchmarkSymbol.value = benchmarkBeforeEdit;
+        return;
+    }
+    benchmarkSymbol.value = next;
+    await savePortfolioSettings();
+}
 // What fraction of each entered target is actually applied, as a percent
 // (targets summing to 200% are each scaled to 50% of their value).
 const targetScalePercent = computed(() => {
