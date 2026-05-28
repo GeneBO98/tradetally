@@ -559,9 +559,12 @@
               No data available
             </div>
             <div v-else>
-              <!-- Column Headers -->
+              <!-- Column Headers — must mirror the body row's flex structure
+                   (logo w-8, gap-2, symbol w-16, gap-2, trades count) so the
+                   header labels sit directly above their values. -->
               <div class="flex items-center justify-between pb-2 mb-2 border-b border-gray-200 dark:border-gray-700">
-                <div class="flex items-baseline">
+                <div class="flex items-baseline gap-2">
+                  <span class="w-8" aria-hidden="true"></span>
                   <span class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-16">Symbol</span>
                   <span class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Trades</span>
                 </div>
