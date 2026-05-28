@@ -3723,12 +3723,19 @@ const tradeController = {
   async getMonthlyPerformance(req, res, next) {
     try {
       const year = parseInt(req.query.year) || new Date().getFullYear();
-      const { accounts } = req.query;
-      const accountsArray = accounts ? ensureString(accounts).split(',') : null;
+      const { accounts, tags, strategies } = req.query;
+      const accountsArray = accounts ? ensureString(accounts).split(',').filter(Boolean) : null;
+      // tags / strategies arrive as comma-separated strings from the query string;
+      // normalize to arrays so the model's filter clauses can splice them in.
+      const tagsArray = tags ? ensureString(tags).split(',').filter(Boolean) : null;
+      const strategiesArray = strategies ? ensureString(strategies).split(',').filter(Boolean) : null;
 
-      console.log('[MONTHLY] Getting monthly performance for user:', req.user.id, 'year:', year, 'accounts:', accountsArray);
+      console.log('[MONTHLY] Getting monthly performance for user:', req.user.id, 'year:', year, 'accounts:', accountsArray, 'tags:', tagsArray, 'strategies:', strategiesArray);
 
-      const data = await Trade.getMonthlyPerformance(req.user.id, year, accountsArray);
+      const data = await Trade.getMonthlyPerformance(req.user.id, year, accountsArray, {
+        tags: tagsArray,
+        strategies: strategiesArray
+      });
 
       res.json({
         year,

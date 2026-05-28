@@ -961,6 +961,9 @@
                     Trades
                   </th>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Breakeven
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Win Rate
                   </th>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -981,8 +984,19 @@
                   <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                     {{ tag.total_trades }}
                   </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm">
+                    <span v-if="(Number(tag.breakeven_trades) || 0) > 0" class="px-2 py-0.5 bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200 text-xs rounded-full">
+                      {{ tag.breakeven_trades }}
+                    </span>
+                    <span v-else class="text-gray-400">-</span>
+                  </td>
                   <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                    {{ (tag.winning_trades / tag.total_trades * 100).toFixed(1) }}%
+                    <div class="flex flex-col">
+                      <span>{{ winRateInclBE(tag) }}%<span v-if="(Number(tag.breakeven_trades) || 0) > 0" class="ml-1 text-[10px] font-normal text-gray-500 dark:text-gray-400">incl. BE</span></span>
+                      <span v-if="(Number(tag.breakeven_trades) || 0) > 0" class="text-[10px] text-gray-500 dark:text-gray-400">
+                        {{ winRateExclBE(tag) }}% excl. BE
+                      </span>
+                    </div>
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap text-sm" :class="[
                     (rValueMode ? tag.total_r_value : tag.total_pnl) >= 0 ? 'text-green-600' : 'text-red-600'
@@ -1020,6 +1034,9 @@
                     Trades
                   </th>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Breakeven
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Win Rate
                   </th>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -1040,8 +1057,19 @@
                   <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                     {{ strategy.total_trades }}
                   </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm">
+                    <span v-if="(Number(strategy.breakeven_trades) || 0) > 0" class="px-2 py-0.5 bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200 text-xs rounded-full">
+                      {{ strategy.breakeven_trades }}
+                    </span>
+                    <span v-else class="text-gray-400">-</span>
+                  </td>
                   <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                    {{ (strategy.winning_trades / strategy.total_trades * 100).toFixed(1) }}%
+                    <div class="flex flex-col">
+                      <span>{{ winRateInclBE(strategy) }}%<span v-if="(Number(strategy.breakeven_trades) || 0) > 0" class="ml-1 text-[10px] font-normal text-gray-500 dark:text-gray-400">incl. BE</span></span>
+                      <span v-if="(Number(strategy.breakeven_trades) || 0) > 0" class="text-[10px] text-gray-500 dark:text-gray-400">
+                        {{ winRateExclBE(strategy) }}% excl. BE
+                      </span>
+                    </div>
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap text-sm" :class="[
                     (rValueMode ? strategy.total_r_value : strategy.total_pnl) >= 0 ? 'text-green-600' : 'text-red-600'
@@ -1079,6 +1107,9 @@
                     Trades
                   </th>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Breakeven
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Win Rate
                   </th>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -1099,8 +1130,19 @@
                   <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                     {{ hour.total_trades }}
                   </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm">
+                    <span v-if="(Number(hour.breakeven_trades) || 0) > 0" class="px-2 py-0.5 bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200 text-xs rounded-full">
+                      {{ hour.breakeven_trades }}
+                    </span>
+                    <span v-else class="text-gray-400">-</span>
+                  </td>
                   <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                    {{ (hour.winning_trades / hour.total_trades * 100).toFixed(1) }}%
+                    <div class="flex flex-col">
+                      <span>{{ winRateInclBE(hour) }}%<span v-if="(Number(hour.breakeven_trades) || 0) > 0" class="ml-1 text-[10px] font-normal text-gray-500 dark:text-gray-400">incl. BE</span></span>
+                      <span v-if="(Number(hour.breakeven_trades) || 0) > 0" class="text-[10px] text-gray-500 dark:text-gray-400">
+                        {{ winRateExclBE(hour) }}% excl. BE
+                      </span>
+                    </div>
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap text-sm" :class="[
                     (rValueMode ? hour.total_r_value : hour.total_pnl) >= 0 ? 'text-green-600' : 'text-red-600'
@@ -1811,6 +1853,24 @@ function formatHour(hour) {
     return `${h - 12}:00 PM`
   }
   return `${String(h).padStart(2, '0')}:00`
+}
+
+// Win rate helpers for tag / strategy / hour rows. Mirrors the overview pattern:
+// "incl. BE" uses wins / total; "excl. BE" uses wins / (wins + losses) so a
+// scratch (breakeven) trade no longer dilutes the rate.
+function winRateInclBE(row) {
+  const total = Number(row?.total_trades) || 0
+  if (total === 0) return '0.0'
+  const wins = Number(row?.winning_trades) || 0
+  return ((wins / total) * 100).toFixed(1)
+}
+
+function winRateExclBE(row) {
+  const wins = Number(row?.winning_trades) || 0
+  const losses = Number(row?.losing_trades) || 0
+  const decisive = wins + losses
+  if (decisive === 0) return '0.0'
+  return ((wins / decisive) * 100).toFixed(1)
 }
 
 function getWinPercentage() {

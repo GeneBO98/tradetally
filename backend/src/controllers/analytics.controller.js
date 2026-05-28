@@ -1422,11 +1422,16 @@ const analyticsController = {
       const params = [req.user.id, ...filterParams];
 
       const be = await rawBreakevenPredicate(req.user.id);
+      // Mirror the overview/monthly pattern: classify trades as wins/losses/BE
+      // using the breakeven predicate, then expose both inclusive and exclusive
+      // win rates so the frontend can show "X% incl. BE" with "Y% excl. BE".
       const tagQuery = `
         SELECT
           UNNEST(tags) as tag,
           COUNT(*) as total_trades,
           COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
+          COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
+          COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
           COALESCE(SUM(pnl), 0) as total_pnl,
           COALESCE(AVG(pnl), 0) as avg_pnl,
           COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
@@ -1457,6 +1462,8 @@ const analyticsController = {
           strategy,
           COUNT(*) as total_trades,
           COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
+          COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
+          COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
           COALESCE(SUM(pnl), 0) as total_pnl,
           COALESCE(AVG(pnl), 0) as avg_pnl,
           COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
@@ -1498,6 +1505,8 @@ const analyticsController = {
           EXTRACT(HOUR FROM (entry_time AT TIME ZONE $${tzParam})) as hour,
           COUNT(*) as total_trades,
           COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
+          COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
+          COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
           COALESCE(SUM(pnl), 0) as total_pnl,
           COALESCE(AVG(pnl), 0) as avg_pnl,
           COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,

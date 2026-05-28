@@ -487,6 +487,13 @@ export const useTradesStore = defineStore('trades', () => {
       if (options.accounts) {
         params.accounts = options.accounts
       }
+      // Tag / strategy filters — backend accepts comma-separated lists.
+      if (Array.isArray(options.tags) && options.tags.length > 0) {
+        params.tags = options.tags.join(',')
+      }
+      if (Array.isArray(options.strategies) && options.strategies.length > 0) {
+        params.strategies = options.strategies.join(',')
+      }
       const response = await api.get('/trades/analytics/monthly', { params })
       console.log('[STORE] Monthly performance response:', response.data)
       return response.data

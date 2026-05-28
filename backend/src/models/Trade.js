@@ -2887,8 +2887,8 @@ class Trade {
     };
   }
 
-  static async getMonthlyPerformance(userId, year, accounts = null) {
-    console.log(`[MONTHLY] Getting monthly performance for user ${userId}, year ${year}, accounts:`, accounts);
+  static async getMonthlyPerformance(userId, year, accounts = null, filters = {}) {
+    console.log(`[MONTHLY] Getting monthly performance for user ${userId}, year ${year}, accounts:`, accounts, 'filters:', filters);
 
     const { getBreakevenToleranceConfig, breakevenPredicate } = require('../utils/breakeven');
     const breakevenConfig = await getBreakevenToleranceConfig(userId);
@@ -2900,13 +2900,28 @@ class Trade {
       underlying: 'underlying_asset'
     }, breakevenConfig);
 
-    // Build account filter condition
-    let accountFilter = '';
+    // Build account + tag + strategy filter conditions. Param index starts at 3
+    // because $1=userId and $2=year. We append conditions in the order they're
+    // added to params to keep placeholders aligned.
+    let extraFilter = '';
     const params = [userId, year];
+    let paramIndex = 3;
+
     if (accounts && accounts.length > 0) {
-      const placeholders = accounts.map((_, i) => `$${i + 3}`).join(',');
-      accountFilter = ` AND account_identifier IN (${placeholders})`;
+      const placeholders = accounts.map(() => `$${paramIndex++}`).join(',');
+      extraFilter += ` AND account_identifier IN (${placeholders})`;
       params.push(...accounts);
+    }
+
+    if (filters.tags && filters.tags.length > 0) {
+      extraFilter += ` AND tags && $${paramIndex++}`;
+      params.push(filters.tags);
+    }
+
+    if (filters.strategies && filters.strategies.length > 0) {
+      const placeholders = filters.strategies.map(() => `$${paramIndex++}`).join(',');
+      extraFilter += ` AND strategy IN (${placeholders})`;
+      params.push(...filters.strategies);
     }
 
     const monthlyQuery = `
@@ -2932,7 +2947,7 @@ class Trade {
         WHERE user_id = $1
           AND EXTRACT(YEAR FROM trade_date) = $2
           AND exit_price IS NOT NULL
-          AND pnl IS NOT NULL${accountFilter}
+          AND pnl IS NOT NULL${extraFilter}
         GROUP BY EXTRACT(MONTH FROM trade_date)
       ),
       all_months AS (
