@@ -555,26 +555,22 @@ class TradeQueries {
       timedDbQuery('analytics.executionCountQuery', executionCountQuery, values),
       timedDbQuery('analytics.analyticsQuery', analyticsQuery, values),
       timedDbQuery('analytics.symbolBreakdownQuery', `
-        WITH symbol_trades AS (
-          SELECT
-            symbol,
-            trade_date,
-            SUM(COALESCE(pnl, 0)) as trade_pnl,
-            SUM(quantity) as trade_volume,
-            COUNT(*) as execution_count,
-            CASE WHEN SUM(pnl) IS NOT NULL THEN 1 ELSE 0 END as is_completed
-          FROM trades t
-          ${whereClause}
-          GROUP BY symbol, trade_date
-        )
+        -- One row per completed round-trip trade — matches analyticsQuery's
+        -- completed_trades semantics so this widget's "Trades" column agrees
+        -- with the Win Rate card's total. The old version pre-aggregated by
+        -- (symbol, trade_date), which counted trading days per symbol instead
+        -- of trades, hiding multiple intraday round-trips. See issue #330.
         SELECT
           symbol,
-          COUNT(*) FILTER (WHERE is_completed = 1) as trades,
-          SUM(trade_pnl) as total_pnl,
-          AVG(trade_pnl) FILTER (WHERE is_completed = 1) as avg_pnl,
-          COUNT(*) FILTER (WHERE is_completed = 1 AND trade_pnl > 0) as wins,
-          SUM(trade_volume) as total_volume
-        FROM symbol_trades
+          COUNT(*) as trades,
+          SUM(pnl) as total_pnl,
+          AVG(pnl) as avg_pnl,
+          COUNT(*) FILTER (WHERE pnl > 0) as wins,
+          SUM(quantity) as total_volume
+        FROM trades t
+        ${whereClause}
+          AND exit_price IS NOT NULL
+          AND pnl IS NOT NULL
         GROUP BY symbol
         ORDER BY total_pnl DESC
         LIMIT 10
