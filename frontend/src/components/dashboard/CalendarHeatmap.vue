@@ -8,7 +8,10 @@
       <div class="min-w-0">
         <h3 class="heading-card">Trading Calendar</h3>
         <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 text-mono-num">
-          <span v-if="hasData">{{ winDays }}W · {{ lossDays }}L · {{ breakevenDays }}B</span>
+          <!-- Counts days, not trades — the squares are one-per-day, colored
+               by NET daily P&L. Spell out "days" to keep this from being
+               mistaken for the Win Rate card's per-trade W/L/BE. -->
+          <span v-if="hasData">{{ winDays }} win {{ winDays === 1 ? 'day' : 'days' }} · {{ lossDays }} loss {{ lossDays === 1 ? 'day' : 'days' }} · {{ breakevenDays }} BE {{ breakevenDays === 1 ? 'day' : 'days' }}</span>
           <span v-else>Trade days light up here</span>
         </p>
       </div>
