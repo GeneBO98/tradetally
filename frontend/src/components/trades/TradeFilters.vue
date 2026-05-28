@@ -696,6 +696,15 @@ import { formatLocalDate } from '@/utils/date'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import SymbolAutocomplete from '@/components/common/SymbolAutocomplete.vue'
 
+const props = defineProps({
+  // When true (default), TradeFilters auto-emits a `filter` event on mount
+  // if saved/route filters are present. The trade list and analytics views
+  // rely on this to restore filters when the user lands from another page.
+  // The dashboard renders this component inside a modal that's only opened
+  // by an explicit user click, so the mount-time emit would slam the modal
+  // shut the instant it opens — those callers should pass false.
+  autoApplyOnMount: { type: Boolean, default: true }
+})
 const emit = defineEmits(['filter'])
 const route = useRoute()
 const router = useRouter()
@@ -1797,8 +1806,9 @@ onMounted(() => {
     showAdvanced.value = true
   }
   
-  // Auto-apply the filter when coming from dashboard/other pages
-  if (shouldApply) {
+  // Auto-apply the filter when coming from dashboard/other pages. Skipped
+  // when the parent opts out (e.g. dashboard modal — see prop comment).
+  if (shouldApply && props.autoApplyOnMount) {
     applyFilters()
   }
 })

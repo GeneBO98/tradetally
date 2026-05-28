@@ -1569,7 +1569,9 @@
             </div>
           </div>
           <div class="px-6 py-5 max-h-[calc(100vh-8rem)] overflow-y-auto">
-            <TradeFilters @filter="handleAdvancedFilter" />
+            <!-- :auto-apply-on-mount="false" prevents the mount-time emit
+                 from immediately closing the modal we just opened. -->
+            <TradeFilters :auto-apply-on-mount="false" @filter="handleAdvancedFilter" />
           </div>
         </div>
       </div>
