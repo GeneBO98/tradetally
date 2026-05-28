@@ -85,6 +85,10 @@ router.get('/onboarding-status', authenticate, userController.getOnboardingStatu
  */
 router.post('/avatar', authenticate, upload.single('avatar'), userController.uploadAvatar);
 router.delete('/avatar', authenticate, userController.deleteAvatar);
+// Public serving endpoint — avatars are shown on public profile pages, so no
+// auth required to fetch one (anyone with the URL can view it, as with any
+// avatar system). Filename is sanitized in the controller.
+router.get('/avatar/:filename', userController.getAvatar);
 
 /**
  * @swagger

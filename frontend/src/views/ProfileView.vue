@@ -33,6 +33,93 @@
         </div>
 
         <div class="space-y-8">
+            <!-- Profile Picture -->
+            <div v-if="activeTab === 'profile'" class="card">
+                <div class="card-body">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                        Profile Picture
+                    </h3>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+                        Used in the navbar and on your public profile. PNG, JPG, or WebP — max 50&nbsp;MB, resized to 512×512.
+                    </p>
+
+                    <div class="flex flex-col sm:flex-row sm:items-center gap-6">
+                        <!-- Preview / current avatar -->
+                        <div class="shrink-0">
+                            <div class="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-primary-400 to-primary-600 shadow-md ring-1 ring-white/40 dark:ring-white/10">
+                                <img
+                                    v-if="avatarDisplayUrl"
+                                    :src="avatarDisplayUrl"
+                                    alt="Profile picture preview"
+                                    class="h-full w-full object-cover"
+                                />
+                                <span v-else class="text-2xl font-bold tracking-wider text-white drop-shadow-sm">
+                                    {{ avatarInitials }}
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Controls -->
+                        <div class="flex-1 min-w-0">
+                            <input
+                                ref="avatarFileInput"
+                                type="file"
+                                accept="image/png,image/jpeg,image/jpg,image/webp"
+                                class="hidden"
+                                @change="onAvatarFileSelected"
+                            />
+
+                            <div v-if="avatarPreviewFile" class="space-y-3">
+                                <p class="text-sm text-gray-700 dark:text-gray-300 break-all">
+                                    Selected: <span class="font-medium">{{ avatarPreviewFile.name }}</span>
+                                    <span class="text-gray-500 dark:text-gray-400">({{ formatBytes(avatarPreviewFile.size) }})</span>
+                                </p>
+                                <div class="flex flex-wrap gap-3">
+                                    <button
+                                        type="button"
+                                        @click="uploadAvatar"
+                                        :disabled="avatarUploading"
+                                        class="btn-primary"
+                                    >
+                                        <span v-if="avatarUploading">Uploading...</span>
+                                        <span v-else>Save photo</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        @click="cancelAvatarSelection"
+                                        :disabled="avatarUploading"
+                                        class="btn-secondary"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div v-else class="flex flex-wrap gap-3">
+                                <button
+                                    type="button"
+                                    @click="triggerAvatarFilePicker"
+                                    :disabled="avatarRemoving"
+                                    class="btn-primary"
+                                >
+                                    {{ authStore.user?.avatar_url ? 'Change photo' : 'Upload photo' }}
+                                </button>
+                                <button
+                                    v-if="authStore.user?.avatar_url"
+                                    type="button"
+                                    @click="removeAvatar"
+                                    :disabled="avatarRemoving"
+                                    class="btn-secondary"
+                                >
+                                    <span v-if="avatarRemoving">Removing...</span>
+                                    <span v-else>Remove photo</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Profile Information -->
             <div v-if="activeTab === 'profile'" class="card">
                 <div class="card-body">
@@ -1533,7 +1620,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, watch } from "vue";
+import { ref, onMounted, onBeforeUnmount, computed, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { useNotification } from "@/composables/useNotification";
@@ -1576,6 +1663,16 @@ const profileForm = ref({
     timezone: "UTC",
     timeDisplayFormat: "24h",
 });
+
+// Avatar upload state. `avatarPreviewFile` holds the freshly-picked File until
+// the user confirms the upload; `avatarPreviewUrl` is the object URL we render
+// in the preview circle (revoked when superseded or cleared). When no file is
+// pending we fall back to the avatar already stored on the user.
+const avatarFileInput = ref(null);
+const avatarPreviewFile = ref(null);
+const avatarPreviewUrl = ref(null);
+const avatarUploading = ref(false);
+const avatarRemoving = ref(false);
 
 // 2FA data
 const twoFactorLoading = ref(false);
@@ -1774,6 +1871,128 @@ const canManageApiKeys = computed(() => {
 
     return subscription.value.tier === "pro";
 });
+
+// Avatar helpers and methods
+// Mirrors UserMenu.vue's initials fallback so the preview circle stays visually
+// consistent with the navbar avatar when no image is set.
+const avatarInitials = computed(() => {
+    const u = authStore.user;
+    if (!u) return '?';
+    const full = u.full_name?.trim();
+    if (full) {
+        const parts = full.split(/\s+/);
+        if (parts.length >= 2) {
+            return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+        }
+        return parts[0].slice(0, 2).toUpperCase();
+    }
+    const uname = u.username?.trim();
+    if (uname) return uname.slice(0, 2).toUpperCase();
+    const email = u.email?.trim();
+    if (email) return email.slice(0, 2).toUpperCase();
+    return '?';
+});
+
+// Preview URL takes precedence so the user sees what they're about to upload.
+const avatarDisplayUrl = computed(
+    () => avatarPreviewUrl.value || authStore.user?.avatar_url || null
+);
+
+function formatBytes(bytes) {
+    if (!bytes && bytes !== 0) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function triggerAvatarFilePicker() {
+    avatarFileInput.value?.click();
+}
+
+function clearAvatarPreview() {
+    if (avatarPreviewUrl.value) {
+        URL.revokeObjectURL(avatarPreviewUrl.value);
+    }
+    avatarPreviewFile.value = null;
+    avatarPreviewUrl.value = null;
+    // Reset the input so picking the same file again still fires @change.
+    if (avatarFileInput.value) {
+        avatarFileInput.value.value = '';
+    }
+}
+
+function onAvatarFileSelected(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Matches the backend multer limit (50MB) and the image MIME filter.
+    const MAX_BYTES = 50 * 1024 * 1024;
+    if (!file.type.startsWith('image/')) {
+        showError('Invalid file', 'Please choose an image file (PNG, JPG, or WebP).');
+        event.target.value = '';
+        return;
+    }
+    if (file.size > MAX_BYTES) {
+        showError('File too large', 'Profile picture must be 50 MB or smaller.');
+        event.target.value = '';
+        return;
+    }
+
+    if (avatarPreviewUrl.value) {
+        URL.revokeObjectURL(avatarPreviewUrl.value);
+    }
+    avatarPreviewFile.value = file;
+    avatarPreviewUrl.value = URL.createObjectURL(file);
+}
+
+function cancelAvatarSelection() {
+    clearAvatarPreview();
+}
+
+async function uploadAvatar() {
+    if (!avatarPreviewFile.value) return;
+    avatarUploading.value = true;
+    try {
+        const formData = new FormData();
+        formData.append('avatar', avatarPreviewFile.value);
+        // Don't set Content-Type — axios sets the multipart boundary header,
+        // and api.js skips its application/json default for FormData payloads.
+        await api.post('/users/avatar', formData);
+        clearAvatarPreview();
+        await authStore.fetchUser();
+        showSuccess('Success', 'Profile picture updated.');
+    } catch (error) {
+        showError(
+            'Error',
+            error.response?.data?.error || 'Failed to upload profile picture.'
+        );
+    } finally {
+        avatarUploading.value = false;
+    }
+}
+
+async function removeAvatar() {
+    showDangerConfirmation(
+        'Remove profile picture',
+        'Are you sure you want to remove your profile picture?',
+        async () => {
+            avatarRemoving.value = true;
+            try {
+                await api.delete('/users/avatar');
+                clearAvatarPreview();
+                await authStore.fetchUser();
+                showSuccess('Success', 'Profile picture removed.');
+            } catch (error) {
+                showError(
+                    'Error',
+                    error.response?.data?.error || 'Failed to remove profile picture.'
+                );
+            } finally {
+                avatarRemoving.value = false;
+            }
+        }
+    );
+}
 
 // Profile methods
 async function updateProfile() {
@@ -2252,6 +2471,14 @@ function formatDate(dateString) {
         day: "numeric",
     });
 }
+
+// Release the object URL backing the pending avatar preview, if any, so we
+// don't leak it when the user navigates away mid-selection.
+onBeforeUnmount(() => {
+    if (avatarPreviewUrl.value) {
+        URL.revokeObjectURL(avatarPreviewUrl.value);
+    }
+});
 
 // Initialize data on component mount
 onMounted(async () => {

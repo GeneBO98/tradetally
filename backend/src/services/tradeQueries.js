@@ -12,7 +12,6 @@
 const db = require('../config/database');
 const Trade = require('../models/Trade');
 const { getUserTimezone } = require('../utils/timezone');
-const SAMPLE_DATA_EXCLUSION_WHERE = ` AND NOT COALESCE('sample' = ANY(t.tags), false)`;
 
 async function timedDbQuery(label, query, values = []) {
   const startedAt = Date.now();
@@ -34,14 +33,14 @@ class TradeQueries {
   //     The WHERE clause itself uses EXISTS subqueries for sector filtering,
   //     so this flag is purely about the SELECT list.
   //
-  // options.includeSampleData (bool, default false): when false, excludes
-  //   trades tagged 'sample'. Analytics passes true to keep historical
-  //   "less restrictive" behavior.
-  static async _buildWhereClause(userId, filters = {}, options = {}) {
-    const { includeSampleData = false } = options;
+  // Sample trades (tag 'sample', seeded by SampleDataService for new users on
+  // billing-enabled instances) are treated as normal trades by this builder.
+  // Users remove them via the "Remove sample data" action or by deleting them
+  // individually like any other trade.
+  static async _buildWhereClause(userId, filters = {}) {
     const values = [userId];
     let paramCount = 2;
-    let whereClause = `WHERE t.user_id = $1${includeSampleData ? '' : SAMPLE_DATA_EXCLUSION_WHERE}`;
+    let whereClause = `WHERE t.user_id = $1`;
     let needsSectorOuterJoin = false;
 
     if (filters.symbol) {
@@ -305,9 +304,7 @@ class TradeQueries {
     console.log('[PERF] findByUser started for user:', userId);
 
     const { whereClause, values, paramCount: pcAfterWhere, needsSectorOuterJoin } =
-      await this._buildWhereClause(userId, filters, {
-        includeSampleData: !!filters.includeSampleData
-      });
+      await this._buildWhereClause(userId, filters);
 
     let paramCount = pcAfterWhere;
     let subquery = `SELECT t.id FROM trades t`;
@@ -380,8 +377,6 @@ class TradeQueries {
     const { whereClause, values } = await this._buildWhereClause(userId, {
       ...filters,
       breakevenToleranceConfig: breakevenConfig
-    }, {
-      includeSampleData: true
     });
 
     // Breakeven predicates: one over the completed_trades CTE aliases

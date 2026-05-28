@@ -58,6 +58,13 @@
               <div v-if="currentStreak > 0">{{ currentStreak === 1 ? 'winning trade' : 'winning trades' }} in a row</div>
               <div v-else-if="currentStreak < 0">{{ Math.abs(currentStreak) === 1 ? 'losing trade' : 'losing trades' }} in a row</div>
               <div v-else>no current streak</div>
+              <!-- Breakeven trades are gaps in a By-trade run. When the lenient
+                   count above includes BE, surface the strict count too so the
+                   user can read both numbers at a glance (matches the calendar's
+                   W/L/B convention). -->
+              <div v-if="showExclBeNote" class="mt-0.5 text-[10px] text-gray-400 dark:text-gray-500">
+                {{ currentStreakExclBe }} excl. BE
+              </div>
             </template>
           </div>
         </div>
@@ -193,8 +200,9 @@ const stripCells = computed(() =>
 )
 
 // Compute current/best/worst streaks over an array of pnl-bearing items in
-// chronological order. Wins are pnl > 0; losses are pnl < 0; breakeven (== 0)
-// neither extends nor breaks a run.
+// chronological order. Strict variant: wins are pnl > 0, losses are pnl < 0,
+// and breakeven (== 0) breaks both runs. Used for the By-day view where a
+// zero-net day is rare and naturally separates winning from losing periods.
 function computeStreaks(items) {
   if (!items || items.length === 0) {
     return { current: 0, bestWin: 0, worstLoss: 0 }
@@ -240,7 +248,70 @@ const dayStreakStats = computed(() => {
   }
 })
 
-const tradeStreakStats = computed(() => computeStreaks(recentTrades.value))
+// Trade-level streaks: BE trades are treated as gaps — they don't extend a
+// run (so a BE doesn't count as a win) but they don't break it either. This
+// matches the calendar's W/L/B convention and the user's mental model: "I've
+// gone N trades since my last loss, and X of them were actual wins."
+// Returns the same shape as computeStreaks plus `currentExclBe`, which is the
+// number of strict wins (or losses) within the current run — the rest of the
+// magnitude is BE.
+function computeTradeStreaks(items) {
+  if (!items || items.length === 0) {
+    return { current: 0, currentExclBe: 0, bestWin: 0, worstLoss: 0 }
+  }
+
+  // Best/worst keep the strict semantic: longest pure W and L runs. Mixing in
+  // BE here would let "best streak" exceed the count of real wins, which we
+  // don't want — "5W" should mean five winning trades.
+  let bestWin = 0, worstLoss = 0
+  let winRun = 0, lossRun = 0
+  for (const t of items) {
+    if (t.pnl > 0) {
+      winRun++
+      lossRun = 0
+      if (winRun > bestWin) bestWin = winRun
+    } else if (t.pnl < 0) {
+      lossRun++
+      winRun = 0
+      if (lossRun > worstLoss) worstLoss = lossRun
+    } else {
+      winRun = 0
+      lossRun = 0
+    }
+  }
+
+  // Direction of the current run = sign of the most recent non-BE trade.
+  let direction = 0
+  for (let i = items.length - 1; i >= 0; i--) {
+    if (items[i].pnl > 0) { direction = 1; break }
+    if (items[i].pnl < 0) { direction = -1; break }
+  }
+  if (direction === 0) {
+    return { current: 0, currentExclBe: 0, bestWin, worstLoss }
+  }
+
+  // Walk backward, counting consecutive non-opposite trades. BE counts toward
+  // the lenient length (`inclBe`) but not the strict count (`exclBe`).
+  let inclBe = 0, exclBe = 0
+  for (let i = items.length - 1; i >= 0; i--) {
+    const pnl = items[i].pnl
+    if (direction === 1 && pnl < 0) break
+    if (direction === -1 && pnl > 0) break
+    inclBe++
+    if ((direction === 1 && pnl > 0) || (direction === -1 && pnl < 0)) {
+      exclBe++
+    }
+  }
+
+  return {
+    current: direction * inclBe,
+    currentExclBe: exclBe,
+    bestWin,
+    worstLoss
+  }
+}
+
+const tradeStreakStats = computed(() => computeTradeStreaks(recentTrades.value))
 
 const activeStats = computed(() =>
   scope.value === 'trade' ? tradeStreakStats.value : dayStreakStats.value
@@ -249,6 +320,20 @@ const activeStats = computed(() =>
 const currentStreak = computed(() => activeStats.value.current)
 const bestWinStreak = computed(() => activeStats.value.bestWin)
 const worstLossStreak = computed(() => activeStats.value.worstLoss)
+
+// Strict (excl. BE) magnitude of the current trade-mode run. Only meaningful
+// in By-trade mode — surfaced so the template can render an "X excl. BE"
+// caption when BE trades sit inside the current streak.
+const currentStreakExclBe = computed(() => {
+  if (scope.value !== 'trade') return Math.abs(currentStreak.value)
+  return tradeStreakStats.value.currentExclBe || 0
+})
+
+const showExclBeNote = computed(() =>
+  scope.value === 'trade' &&
+  currentStreak.value !== 0 &&
+  currentStreakExclBe.value < Math.abs(currentStreak.value)
+)
 const hasToday = computed(() => scope.value === 'day' && dayStreakStats.value.hasToday)
 const todayPnl = computed(() => dayStreakStats.value.todayPnl)
 const todayTrades = computed(() => dayStreakStats.value.todayTrades)

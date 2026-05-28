@@ -6,16 +6,30 @@ const ApiUsageService = require('../services/apiUsageService');
 const sequenzySubscriberSyncService = require('../services/sequenzySubscriberSyncService');
 const db = require('../config/database');
 const path = require('path');
+const fs = require('fs').promises;
 const imageProcessor = require('../utils/imageProcessor');
 
 const PROTECTED_EMAIL = (process.env.DEMO_EMAIL || 'demo@example.com').toLowerCase();
+
+// URL prefix exposed to clients. Files are stored on disk at uploads/avatars
+// but served through a controller GET route (see getAvatar) so vite's /api
+// proxy reaches them in dev and so we don't need a separate express.static
+// mount. The legacy '/uploads/avatars/' prefix is still accepted when
+// resolving a stored URL back to a file path on delete — in case any record
+// was written before the switch — but new uploads use the API-routed form.
+const AVATAR_URL_PREFIX = '/api/users/avatar/';
+const LEGACY_AVATAR_URL_PREFIX = '/uploads/avatars/';
 
 function getAvatarUploadsDir() {
   return path.join(__dirname, '../../uploads/avatars');
 }
 
 function getAvatarPathFromUrl(avatarUrl) {
-  if (!avatarUrl || typeof avatarUrl !== 'string' || !avatarUrl.startsWith('/uploads/avatars/')) {
+  if (!avatarUrl || typeof avatarUrl !== 'string') {
+    return null;
+  }
+
+  if (!avatarUrl.startsWith(AVATAR_URL_PREFIX) && !avatarUrl.startsWith(LEGACY_AVATAR_URL_PREFIX)) {
     return null;
   }
 
@@ -186,7 +200,7 @@ const userController = {
         req.user.id
       );
       const savedImage = await imageProcessor.saveImage(processedImage, getAvatarUploadsDir());
-      const avatarUrl = `/uploads/avatars/${savedImage.filename}`;
+      const avatarUrl = `${AVATAR_URL_PREFIX}${savedImage.filename}`;
       const user = await User.update(req.user.id, { avatar_url: avatarUrl });
 
       const previousAvatarPath = getAvatarPathFromUrl(existingUser?.avatar_url);
@@ -211,6 +225,40 @@ const userController = {
       }
 
       res.json({ user });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // Public route — avatars are shown on public profiles, so no auth.
+  // Mirrors the trade/diary image-serving pattern: sanitize the filename via
+  // path.basename, resolve under the avatars directory, and refuse anything
+  // that escapes (defense in depth even though basename already strips '..').
+  async getAvatar(req, res, next) {
+    try {
+      const rawFilename = req.params.filename || '';
+      const sanitizedFilename = path.basename(rawFilename);
+      if (!sanitizedFilename || sanitizedFilename === '.' || sanitizedFilename === '..') {
+        return res.status(400).json({ error: 'Invalid filename' });
+      }
+
+      const uploadsDir = path.resolve(getAvatarUploadsDir());
+      const resolvedPath = path.resolve(path.join(uploadsDir, sanitizedFilename));
+
+      if (!resolvedPath.startsWith(uploadsDir + path.sep) && resolvedPath !== uploadsDir) {
+        return res.status(400).json({ error: 'Invalid file path' });
+      }
+
+      try {
+        await fs.access(resolvedPath);
+      } catch (_) {
+        return res.status(404).json({ error: 'Avatar not found' });
+      }
+
+      // Avatars are always processed to WebP by imageProcessor.processAvatar.
+      res.setHeader('Content-Type', 'image/webp');
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      res.sendFile(resolvedPath);
     } catch (error) {
       next(error);
     }

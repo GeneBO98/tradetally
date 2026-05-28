@@ -160,9 +160,13 @@ class PushNotificationService {
       return { success: false, reason: 'preference_disabled' };
     }
 
+    // Prefer a caller-supplied message (handles change_percent alerts, which
+    // have no target price). Fall back to a generated body for direct callers.
+    const fallbackBody = `${alertData.symbol} ${alertData.condition} $${alertData.targetPrice}`;
+
     const notificationData = {
       title: 'Price Alert Triggered',
-      body: `${alertData.symbol} ${alertData.condition} $${alertData.targetPrice}`,
+      body: alertData.body || fallbackBody,
       symbol: alertData.symbol,
       alertType: 'price_alert',
       currentPrice: alertData.currentPrice,

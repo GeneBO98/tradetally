@@ -421,8 +421,7 @@ const behavioralAnalyticsController = {
     // explicit startDate is supplied — keeps existing default-window behavior.
     const { whereClause: userWhere, values } = await TradeQueries._buildWhereClause(
       userId,
-      filters,
-      { includeSampleData: true }
+      filters
     );
     const defaultWindowClause = !filters.startDate
       ? `AND t.trade_date >= CURRENT_DATE - INTERVAL '180 days'`

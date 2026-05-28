@@ -199,6 +199,16 @@ export const useAuthStore = defineStore('auth', () => {
         onboarding_completed: u.onboarding_completed ?? false,
         onboarding_step: u.onboarding_step ?? 0,
         pro_onboarding_step: u.pro_onboarding_step ?? 0,
+        // /auth/me historically returns these as camelCase, but display
+        // components (UserMenu, UserProfileView, ProfileView) follow
+        // CLAUDE.md's snake_case-everywhere convention. Alias here so every
+        // consumer reads one consistent key — falling back to the legacy
+        // camelCase shape so we don't break anyone in transit.
+        avatar_url: u.avatar_url ?? u.avatarUrl ?? null,
+        full_name: u.full_name ?? u.fullName ?? null,
+        is_verified: u.is_verified ?? u.isVerified ?? false,
+        admin_approved: u.admin_approved ?? u.adminApproved ?? false,
+        created_at: u.created_at ?? u.createdAt ?? null,
         settings: {
           publicProfile: settings.public_profile ?? false,
           emailNotifications: settings.email_notifications ?? true,

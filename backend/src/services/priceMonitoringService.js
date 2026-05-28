@@ -6,6 +6,7 @@ const historicalPriceCache = require('../utils/historicalPriceCache');
 const { uuidv4 } = require('../utils/uuid');
 const TierService = require('./tierService');
 const NotificationPreferenceService = require('./notificationPreferenceService');
+const pushNotificationService = require('./pushNotificationService');
 const emailDeliveryService = require('./emailDeliveryService');
 const EmailService = require('./emailService');
 const { publish } = require('../events/domainEvents');
@@ -421,6 +422,22 @@ class PriceMonitoringService {
       // Create browser notification record (actual browser notification would be handled by frontend WebSocket/SSE)
       if (browser_enabled) {
         await this.createBrowserNotification(alert, message);
+      }
+
+      // Send iOS push notification. sendPriceAlert re-checks the user's
+      // notify_price_alerts preference and silently no-ops if they have no
+      // active iOS devices, so this is safe to always call.
+      try {
+        await pushNotificationService.sendPriceAlert(user_id, {
+          symbol,
+          body: message,
+          currentPrice: Number.isFinite(currentPriceNum) ? currentPriceNum : undefined,
+          targetPrice: Number.isFinite(targetPriceNum) ? targetPriceNum : undefined
+        });
+        await this.logNotification(id, user_id, symbol, 'push', message, alert, 'sent');
+      } catch (pushError) {
+        logger.logError('Error sending push notification for alert:', pushError);
+        await this.logNotification(id, user_id, symbol, 'push', message, alert, 'failed', pushError.message);
       }
 
       // If repeat is not enabled, mark as inactive; otherwise update triggered_at timestamp
