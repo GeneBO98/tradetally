@@ -1054,7 +1054,7 @@ function getTradingViewFuturesInstrumentData(symbol) {
   const exchangeMatch = normalizedSymbol.match(/^([^:]+):(.+)$/);
   const contractSymbol = exchangeMatch ? exchangeMatch[2] : normalizedSymbol;
 
-  const standardMatch = contractSymbol.match(/^([A-Z]+?)([FGHJKMNQUVXZ])(\d{1,4})$/);
+  const standardMatch = contractSymbol.match(/^([A-Z][A-Z0-9]*?)([FGHJKMNQUVXZ])(\d{1,4})$/);
   if (standardMatch) {
     const monthCodes = { F: '01', G: '02', H: '03', J: '04', K: '05', M: '06', N: '07', Q: '08', U: '09', V: '10', X: '11', Z: '12' };
     let year = parseInt(standardMatch[3], 10);
@@ -4698,11 +4698,13 @@ function parseInstrumentData(symbol) {
   }
 
   // Futures format detection: "ESM4", "NQU24", "CLZ23", "NYMEX_MINI:QG1!", etc.
+  // Base symbol may contain digits (e.g. M2K = Micro Russell 2000), so allow
+  // alphanumerics after a required leading letter rather than letters only.
   const futuresPatterns = [
-    /^([A-Z]{1,3})([FGHJKMNQUVXZ])(\d{1,2})$/,  // Standard: ESM4, NQU24, CLZ23
+    /^([A-Z][A-Z0-9]{0,2})([FGHJKMNQUVXZ])(\d{1,2})$/,  // Standard: ESM4, NQU24, CLZ23, M2KM6
     /^([A-Z_]+):([A-Z0-9]+)!?$/,                 // TradingView: NYMEX_MINI:QG1!
-    /^\/([A-Z]{1,3})([FGHJKMNQUVXZ])(\d{2})$/,   // Slash notation: /ESM24
-    /^F\.[A-Z]{2,}\.([A-Z]{1,3})([FGHJKMNQUVXZ])(\d{1,2})$/  // AvaTrade: F.US.MESM26
+    /^\/([A-Z][A-Z0-9]{0,2})([FGHJKMNQUVXZ])(\d{2})$/,   // Slash notation: /ESM24
+    /^F\.[A-Z]{2,}\.([A-Z][A-Z0-9]{0,2})([FGHJKMNQUVXZ])(\d{1,2})$/  // AvaTrade: F.US.MESM26
   ];
 
   for (const pattern of futuresPatterns) {
@@ -4713,7 +4715,7 @@ function parseInstrumentData(symbol) {
       if (pattern.source.includes(':')) {
         // TradingView format
         const [, , contractSymbol] = match;
-        const standardTvMatch = contractSymbol.match(/^([A-Z]+?)([FGHJKMNQUVXZ])(\d{1,4})$/);
+        const standardTvMatch = contractSymbol.match(/^([A-Z][A-Z0-9]*?)([FGHJKMNQUVXZ])(\d{1,4})$/);
         const continuousTvMatch = contractSymbol.match(/^([A-Z]+)\d+$/);
 
         if (standardTvMatch) {
@@ -7516,7 +7518,7 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
 
     if (isFutures) {
       // Parse futures contract: MNQH2026 -> MNQ (product), H (month), 2026 (year)
-      const futuresMatch = rawContract.match(/^([A-Z]+?)([FGHJKMNQUVXZ])(\d{2,4})$/);
+      const futuresMatch = rawContract.match(/^([A-Z][A-Z0-9]*?)([FGHJKMNQUVXZ])(\d{2,4})$/);
       const baseProduct = futuresMatch
         ? futuresMatch[1]
         : instrumentData.underlyingAsset || extractUnderlyingFromFuturesSymbol(symbol) || rawContract.replace(/[FGHJKMNQUVXZ]\d+$/, '');
@@ -10099,7 +10101,7 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
     };
 
     // Parse contract month/year from symbol (e.g., MESZ5 -> Z = December, 5 = 2025)
-    const contractMatch = symbol.match(/^([A-Z]+)([FGHJKMNQUVXZ])(\d{1,2})$/);
+    const contractMatch = symbol.match(/^([A-Z][A-Z0-9]*)([FGHJKMNQUVXZ])(\d{1,2})$/);
     if (contractMatch) {
       const [, , monthCode, yearDigit] = contractMatch;
       const monthCodes = { F: '01', G: '02', H: '03', J: '04', K: '05', M: '06', N: '07', Q: '08', U: '09', V: '10', X: '11', Z: '12' };

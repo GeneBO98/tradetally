@@ -2346,7 +2346,9 @@ const tradeController = {
                     // Try to extract base futures symbol
                     // Futures format: BASE + MONTH_CODE + YEAR (e.g., MESZ5, ESH25, NQM24)
                     // Month codes: F,G,H,J,K,M,N,Q,U,V,X,Z
-                    const futuresMatch = symbol.match(/^([A-Z]{2,4})([FGHJKMNQUVXZ])(\d{1,2})$/);
+                    // Base symbol may contain digits (e.g. M2K = Micro Russell 2000),
+                    // so allow alphanumerics after a required leading letter.
+                    const futuresMatch = symbol.match(/^([A-Z][A-Z0-9]{1,3})([FGHJKMNQUVXZ])(\d{1,2})$/);
                     if (futuresMatch) {
                       const baseSymbol = futuresMatch[1];
                       feeSettings = feeSettingsMap.get(baseSymbol);
@@ -2405,7 +2407,7 @@ const tradeController = {
                       matchType = 'exact-symbol';
                     } else {
                       // Check if we matched on base futures symbol
-                      const futuresMatch = symbol.match(/^([A-Z]{2,4})([FGHJKMNQUVXZ])(\d{1,2})$/);
+                      const futuresMatch = symbol.match(/^([A-Z][A-Z0-9]{1,3})([FGHJKMNQUVXZ])(\d{1,2})$/);
                       if (futuresMatch && feeSettingsMap.has(futuresMatch[1])) {
                         matchType = `base-symbol (${futuresMatch[1]})`;
                       }

@@ -101,7 +101,7 @@ function getFuturesTickSize(underlying) {
 
 /**
  * Extract underlying asset from a futures contract symbol
- * Handles formats like: ESM4, NQU24, MESZ5, CLZ23, etc.
+ * Handles formats like: ESM4, NQU24, MESZ5, CLZ23, M2KM6, etc.
  * @param {string} symbol - The futures contract symbol
  * @returns {string|null} The underlying asset symbol or null if not a futures format
  */
@@ -109,10 +109,11 @@ function extractUnderlyingFromFuturesSymbol(symbol) {
   if (!symbol) return null;
 
   const normalizedSymbol = symbol.toString().toUpperCase().trim();
-  
-  // Standard futures format: BASE + MONTH_CODE + YEAR (e.g., ESM4, NQU24, MESZ5, CLZ23)
+
+  // Standard futures format: BASE + MONTH_CODE + YEAR (e.g., ESM4, NQU24, MESZ5, CLZ23, M2KM6)
+  // Base may contain digits (e.g. M2K = Micro Russell 2000), so allow alphanumerics after a leading letter.
   // Month codes: F,G,H,J,K,M,N,Q,U,V,X,Z
-  const futuresMatch = normalizedSymbol.match(/^([A-Z]{1,4})([FGHJKMNQUVXZ])(\d{1,2})$/);
+  const futuresMatch = normalizedSymbol.match(/^([A-Z][A-Z0-9]{0,3})([FGHJKMNQUVXZ])(\d{1,2})$/);
   if (futuresMatch) {
     return futuresMatch[1]; // Return the base symbol (underlying asset)
   }
