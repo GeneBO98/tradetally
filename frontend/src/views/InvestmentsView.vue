@@ -473,13 +473,22 @@
                         v-if="targetsNeedNormalizing"
                         class="mx-6 mt-4 rounded-md border border-yellow-200 dark:border-yellow-900/40 bg-yellow-50 dark:bg-yellow-900/20 px-4 py-3"
                     >
-                        <p class="text-sm font-medium text-yellow-800 dark:text-yellow-300">
-                            Your targets add up to {{ formatPercent(targetTotalPercent, false) }}, not 100%.
-                        </p>
+                        <div class="flex items-start justify-between gap-3">
+                            <p class="text-sm font-medium text-yellow-800 dark:text-yellow-300">
+                                Your targets add up to {{ formatPercent(targetTotalPercent, false) }}, not 100%.
+                            </p>
+                            <button
+                                @click="normalizeTargetAllocations"
+                                :disabled="targetSaving"
+                                class="text-xs px-2.5 py-1 rounded border border-yellow-300 dark:border-yellow-700 bg-white dark:bg-gray-800 text-yellow-800 dark:text-yellow-200 hover:bg-yellow-100 dark:hover:bg-yellow-900/40 disabled:opacity-50 whitespace-nowrap"
+                            >
+                                {{ targetSaving ? "Saving…" : "Normalize" }}
+                            </button>
+                        </div>
                         <p class="mt-1 text-xs text-yellow-700 dark:text-yellow-400">
                             Drift, share deltas, and trade values are measured against normalized weights —
                             each target is scaled to {{ Math.round(targetScalePercent) }}% of what you entered<template v-if="targetNormalizationExample">, so {{ targetNormalizationExample.symbol }}'s {{ formatPercent(targetNormalizationExample.raw, false) }} target counts as {{ formatPercent(targetNormalizationExample.normalized, false) }}</template>.
-                            Adjust your targets to total 100% to use them exactly as entered.
+                            Adjust your targets to total 100% — or click Normalize to save the scaled weights as your new targets.
                         </p>
                     </div>
                     <div class="overflow-x-auto">
@@ -682,6 +691,243 @@
                     </div>
                     <aside class="space-y-4">
                         <section class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
+                            <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                                <div class="flex items-center justify-between gap-2">
+                                    <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
+                                        Account Comparison
+                                    </h2>
+                                    <div
+                                        v-if="accountComparisonLoading"
+                                        class="animate-spin rounded-full h-4 w-4 border-2 border-primary-500 border-t-transparent"
+                                    ></div>
+                                </div>
+                                <div
+                                    v-if="selectedComparisonAccounts.size > 0"
+                                    class="flex flex-wrap items-center justify-between gap-2 mt-2"
+                                >
+                                    <span
+                                        v-if="inCompareMode"
+                                        class="text-[11px] text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-900/30 border border-primary-200 dark:border-primary-800 rounded-full px-2 py-0.5 whitespace-nowrap"
+                                    >
+                                        Comparing {{ selectedComparisonAccounts.size }}
+                                    </span>
+                                    <span v-else class="text-[11px] text-gray-500 dark:text-gray-400">
+                                        1 selected
+                                    </span>
+                                    <div class="flex items-center gap-3 ml-auto">
+                                        <button
+                                            v-if="inCompareMode"
+                                            type="button"
+                                            @click="openFullCompare"
+                                            class="text-[11px] text-primary-600 hover:text-primary-800 whitespace-nowrap font-medium"
+                                        >
+                                            Compare in full →
+                                        </button>
+                                        <button
+                                            type="button"
+                                            @click="clearComparisonSelection"
+                                            class="text-[11px] text-primary-600 hover:text-primary-800 whitespace-nowrap"
+                                        >
+                                            Back to all
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Compare view: side-by-side metrics with delta vs leader.
+                                 Always shown above the row list so the user can keep adding/removing
+                                 accounts while seeing the comparison update live. -->
+                            <div v-if="inCompareMode && selectedComparisonRows.length >= 2" class="overflow-x-auto border-b border-gray-200 dark:border-gray-700">
+                                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-xs">
+                                    <thead class="bg-gray-50 dark:bg-gray-700">
+                                        <tr>
+                                            <th class="px-3 py-2 text-left text-[11px] font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                                Metric
+                                            </th>
+                                            <th
+                                                v-for="row in selectedComparisonRows"
+                                                :key="row.value"
+                                                class="px-3 py-2 text-right text-[11px] font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                            >
+                                                <div class="text-gray-900 dark:text-white normal-case font-medium">
+                                                    {{ row.label }}
+                                                </div>
+                                                <div v-if="row.isLeader" class="text-[10px] text-primary-600 dark:text-primary-400 normal-case font-normal">
+                                                    leader
+                                                </div>
+                                            </th>
+                                            <th
+                                                v-if="isPairCompare"
+                                                class="px-3 py-2 text-right text-[11px] font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                                :title="`Difference: ${pairDifferenceRow.label} minus leader`"
+                                            >
+                                                Difference
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                        <tr>
+                                            <td class="px-3 py-2 text-gray-700 dark:text-gray-300">Return</td>
+                                            <td
+                                                v-for="row in selectedComparisonRows"
+                                                :key="row.value"
+                                                class="px-3 py-2 text-right"
+                                            >
+                                                <span
+                                                    :class="row.totalReturnPercent >= 0 ? 'text-green-600' : 'text-red-600'"
+                                                    class="font-medium"
+                                                >
+                                                    {{ formatPercent(row.totalReturnPercent) }}
+                                                </span>
+                                                <span
+                                                    v-if="!row.isLeader && !isPairCompare"
+                                                    :class="row.returnDelta >= 0 ? 'text-green-600' : 'text-red-600'"
+                                                    class="block text-[10px]"
+                                                >
+                                                    {{ row.returnDelta >= 0 ? '+' : '' }}{{ row.returnDelta.toFixed(2) }}%
+                                                </span>
+                                            </td>
+                                            <td
+                                                v-if="isPairCompare"
+                                                class="px-3 py-2 text-right font-medium"
+                                                :class="pairDifferenceRow.returnDelta >= 0 ? 'text-green-600' : 'text-red-600'"
+                                            >
+                                                {{ pairDifferenceRow.returnDelta >= 0 ? '+' : '' }}{{ pairDifferenceRow.returnDelta.toFixed(2) }}%
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td class="px-3 py-2 text-gray-700 dark:text-gray-300">Value</td>
+                                            <td
+                                                v-for="row in selectedComparisonRows"
+                                                :key="row.value"
+                                                class="px-3 py-2 text-right text-gray-900 dark:text-gray-100"
+                                            >
+                                                <span class="font-medium">{{ formatCurrency(row.totalValue) }}</span>
+                                                <span
+                                                    v-if="!row.isLeader && !isPairCompare"
+                                                    class="block text-[10px] text-gray-500 dark:text-gray-400"
+                                                >
+                                                    {{ row.valueDelta >= 0 ? '+' : '-' }}{{ formatCurrency(Math.abs(row.valueDelta)) }}
+                                                </span>
+                                            </td>
+                                            <td
+                                                v-if="isPairCompare"
+                                                class="px-3 py-2 text-right font-medium text-gray-700 dark:text-gray-300"
+                                            >
+                                                {{ pairDifferenceRow.valueDelta >= 0 ? '+' : '-' }}{{ formatCurrency(Math.abs(pairDifferenceRow.valueDelta)) }}
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td class="px-3 py-2 text-gray-700 dark:text-gray-300">Positions</td>
+                                            <td
+                                                v-for="row in selectedComparisonRows"
+                                                :key="row.value"
+                                                class="px-3 py-2 text-right text-gray-900 dark:text-gray-100"
+                                            >
+                                                <span class="font-medium">{{ row.positionCount }}</span>
+                                                <span
+                                                    v-if="!row.isLeader && !isPairCompare"
+                                                    class="block text-[10px] text-gray-500 dark:text-gray-400"
+                                                >
+                                                    {{ row.positionsDelta >= 0 ? '+' : '' }}{{ row.positionsDelta }}
+                                                </span>
+                                            </td>
+                                            <td
+                                                v-if="isPairCompare"
+                                                class="px-3 py-2 text-right font-medium text-gray-700 dark:text-gray-300"
+                                            >
+                                                {{ pairDifferenceRow.positionsDelta >= 0 ? '+' : '' }}{{ pairDifferenceRow.positionsDelta }}
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td class="px-3 py-2 text-gray-700 dark:text-gray-300">Max Drift</td>
+                                            <td
+                                                v-for="row in selectedComparisonRows"
+                                                :key="row.value"
+                                                class="px-3 py-2 text-right text-gray-900 dark:text-gray-100"
+                                            >
+                                                <span class="font-medium">
+                                                    {{ row.maxDriftPercent === null ? 'N/A' : formatPercent(row.maxDriftPercent) }}
+                                                </span>
+                                                <span
+                                                    v-if="!row.isLeader && !isPairCompare && row.driftDelta !== null"
+                                                    :class="row.driftDelta <= 0 ? 'text-green-600' : 'text-red-600'"
+                                                    class="block text-[10px]"
+                                                >
+                                                    {{ row.driftDelta >= 0 ? '+' : '' }}{{ row.driftDelta.toFixed(2) }}%
+                                                </span>
+                                            </td>
+                                            <td
+                                                v-if="isPairCompare"
+                                                class="px-3 py-2 text-right font-medium"
+                                                :class="pairDifferenceRow.driftDelta === null ? 'text-gray-500 dark:text-gray-400' : pairDifferenceRow.driftDelta <= 0 ? 'text-green-600' : 'text-red-600'"
+                                            >
+                                                <template v-if="pairDifferenceRow.driftDelta === null">—</template>
+                                                <template v-else>{{ pairDifferenceRow.driftDelta >= 0 ? '+' : '' }}{{ pairDifferenceRow.driftDelta.toFixed(2) }}%</template>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <!-- Row list: always rendered when data exists, so the user can
+                                 add or remove accounts from the comparison set at any time. -->
+                            <div v-if="accountComparisonRows.length > 0" class="overflow-x-auto">
+                                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                    <thead class="bg-gray-50 dark:bg-gray-700">
+                                        <tr>
+                                            <th class="px-3 py-2 text-left text-[11px] font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                                Account
+                                            </th>
+                                            <th class="px-3 py-2 text-right text-[11px] font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                                Return
+                                            </th>
+                                            <th class="px-3 py-2 text-right text-[11px] font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                                Drift
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                        <tr
+                                            v-for="row in accountComparisonRows"
+                                            :key="row.value"
+                                            :class="[
+                                                'cursor-pointer transition-colors',
+                                                selectedComparisonAccounts.has(row.value)
+                                                    ? 'bg-primary-50 dark:bg-primary-900/20 border-l-4 border-primary-500'
+                                                    : 'hover:bg-gray-50 dark:hover:bg-gray-700/60 border-l-4 border-transparent',
+                                            ]"
+                                            @click="toggleComparisonAccount(row.value)"
+                                        >
+                                            <td class="px-3 py-2">
+                                                <div class="text-xs font-medium text-gray-900 dark:text-white">
+                                                    {{ row.label }}
+                                                </div>
+                                                <div class="text-[11px] text-gray-500 dark:text-gray-400">
+                                                    {{ formatCurrency(row.totalValue) }} · {{ row.positionCount }} pos.
+                                                </div>
+                                            </td>
+                                            <td
+                                                :class="[
+                                                    'px-3 py-2 text-right text-xs font-medium',
+                                                    row.totalReturnPercent >= 0 ? 'text-green-600' : 'text-red-600',
+                                                ]"
+                                            >
+                                                {{ formatPercent(row.totalReturnPercent) }}
+                                            </td>
+                                            <td class="px-3 py-2 text-right text-xs text-gray-900 dark:text-gray-100">
+                                                {{ row.maxDriftPercent === null ? 'N/A' : formatPercent(row.maxDriftPercent) }}
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div v-else class="p-4 text-xs text-gray-500 dark:text-gray-400">
+                                Add at least two accounts to compare portfolios.
+                            </div>
+                        </section>
+
+                        <section class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
                             <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
                                 <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
                                     Data Status
@@ -738,7 +984,7 @@
                         <section class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
                             <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
                                 <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
-                                    Portfolio Controls
+                                    Benchmark &amp; Snapshot
                                 </h2>
                                 <button
                                     @click="refreshPortfolioData"
@@ -759,48 +1005,12 @@
                                         input-class="text-sm"
                                     />
                                 </div>
-                                <div class="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                                            Drift %
-                                        </label>
-                                        <input
-                                            v-model.number="portfolioPreferencesForm.driftThresholdPercent"
-                                            type="number"
-                                            min="0"
-                                            step="0.5"
-                                            class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                                            Drawdown %
-                                        </label>
-                                        <input
-                                            v-model.number="portfolioPreferencesForm.drawdownThresholdPercent"
-                                            type="number"
-                                            min="0"
-                                            step="0.5"
-                                            class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
-                                        />
-                                    </div>
-                                </div>
-                                <label class="flex items-start gap-2">
-                                    <input
-                                        v-model="portfolioPreferencesForm.alertsEnabled"
-                                        type="checkbox"
-                                        class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                                    />
-                                    <span class="text-xs text-gray-700 dark:text-gray-300">
-                                        Send drift and drawdown alerts to Notifications
-                                    </span>
-                                </label>
                                 <button
                                     @click="savePortfolioSettings"
                                     :disabled="savingPortfolioSettings"
                                     class="btn-primary w-full text-sm"
                                 >
-                                    {{ savingPortfolioSettings ? "Saving..." : "Save Settings" }}
+                                    {{ savingPortfolioSettings ? "Saving..." : "Save Benchmark" }}
                                 </button>
                                 <div
                                     v-if="investmentsStore.portfolioRebalance"
@@ -843,63 +1053,126 @@
                                 </span>
                             </div>
                             <div class="p-4 space-y-4">
-                                <div
-                                    v-if="investmentsStore.portfolioAlertSummary?.activeConditions?.length"
-                                    class="space-y-2"
-                                >
-                                    <div
-                                        v-for="condition in investmentsStore.portfolioAlertSummary.activeConditions"
-                                        :key="`${condition.category}-${condition.symbol}`"
-                                        class="rounded-md border border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/20 p-3"
-                                    >
-                                        <div class="flex items-center justify-between gap-3">
-                                            <p class="text-xs font-medium text-yellow-900 dark:text-yellow-100">
-                                                {{ condition.symbol }}
-                                            </p>
-                                            <span class="text-[11px] text-yellow-700 dark:text-yellow-300">
-                                                {{ condition.category === "drawdown" ? "Drawdown" : "Drift" }}
-                                            </span>
-                                        </div>
-                                        <p class="text-xs text-yellow-800 dark:text-yellow-200 mt-1">
-                                            {{ condition.message }}
+                                <div>
+                                    <div class="mb-2">
+                                        <p class="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                            Alert thresholds
+                                        </p>
+                                        <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                                            Holdings crossing these limits show under Active now and trigger notifications.
                                         </p>
                                     </div>
-                                </div>
-                                <div
-                                    v-else
-                                    class="rounded-md border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 p-3"
-                                >
-                                    <p class="text-xs font-medium text-green-900 dark:text-green-100">
-                                        No active portfolio alert conditions.
-                                    </p>
+                                    <div class="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                                                Drift %
+                                            </label>
+                                            <input
+                                                v-model.number="portfolioPreferencesForm.driftThresholdPercent"
+                                                type="number"
+                                                min="0"
+                                                step="0.5"
+                                                class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+                                            />
+                                            <p
+                                                v-if="investmentsStore.portfolioAlertSummary"
+                                                class="text-[10px] text-gray-500 dark:text-gray-400 mt-1"
+                                            >
+                                                Saved: {{ formatPercent(investmentsStore.portfolioAlertSummary.driftThresholdPercent, false) }}
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                                                Drawdown %
+                                            </label>
+                                            <input
+                                                v-model.number="portfolioPreferencesForm.drawdownThresholdPercent"
+                                                type="number"
+                                                min="0"
+                                                step="0.5"
+                                                class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+                                            />
+                                            <p
+                                                v-if="investmentsStore.portfolioAlertSummary"
+                                                class="text-[10px] text-gray-500 dark:text-gray-400 mt-1"
+                                            >
+                                                Saved: {{ formatPercent(investmentsStore.portfolioAlertSummary.drawdownThresholdPercent, false) }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <label class="flex items-start gap-2 mt-3">
+                                        <input
+                                            v-model="portfolioPreferencesForm.alertsEnabled"
+                                            type="checkbox"
+                                            class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                        />
+                                        <span class="text-xs text-gray-700 dark:text-gray-300">
+                                            Send drift and drawdown alerts to Notifications
+                                        </span>
+                                    </label>
+                                    <button
+                                        @click="savePortfolioSettings"
+                                        :disabled="savingPortfolioSettings"
+                                        class="btn-primary w-full text-sm mt-3"
+                                    >
+                                        {{ savingPortfolioSettings ? "Saving..." : "Save Alert Settings" }}
+                                    </button>
                                 </div>
 
-                                <div
-                                    v-if="investmentsStore.portfolioAlertSummary"
-                                    class="grid grid-cols-2 gap-3"
-                                >
-                                    <div class="rounded-md bg-gray-50 dark:bg-gray-900/40 p-3">
-                                        <p class="text-[11px] text-gray-500 dark:text-gray-400">Drift threshold</p>
-                                        <p class="text-xs font-medium text-gray-900 dark:text-white">
-                                            {{ formatPercent(investmentsStore.portfolioAlertSummary.driftThresholdPercent, false) }}
+                                <div>
+                                    <div class="mb-2">
+                                        <p class="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                            Active now
+                                        </p>
+                                        <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                                            Holdings currently breaching your thresholds. Updated live each time you open this page.
                                         </p>
                                     </div>
-                                    <div class="rounded-md bg-gray-50 dark:bg-gray-900/40 p-3">
-                                        <p class="text-[11px] text-gray-500 dark:text-gray-400">Drawdown threshold</p>
-                                        <p class="text-xs font-medium text-gray-900 dark:text-white">
-                                            {{ formatPercent(investmentsStore.portfolioAlertSummary.drawdownThresholdPercent, false) }}
+                                    <div
+                                        v-if="investmentsStore.portfolioAlertSummary?.activeConditions?.length"
+                                        class="space-y-2"
+                                    >
+                                        <div
+                                            v-for="condition in investmentsStore.portfolioAlertSummary.activeConditions"
+                                            :key="`${condition.category}-${condition.symbol}`"
+                                            class="rounded-md border border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/20 p-3"
+                                        >
+                                            <div class="flex items-center justify-between gap-3">
+                                                <p class="text-xs font-medium text-yellow-900 dark:text-yellow-100">
+                                                    {{ condition.symbol }}
+                                                </p>
+                                                <span class="text-[11px] text-yellow-700 dark:text-yellow-300">
+                                                    {{ condition.category === "drawdown" ? "Drawdown" : "Drift" }}
+                                                </span>
+                                            </div>
+                                            <p class="text-xs text-yellow-800 dark:text-yellow-200 mt-1">
+                                                {{ condition.message }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div
+                                        v-else
+                                        class="rounded-md border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 p-3"
+                                    >
+                                        <p class="text-xs font-medium text-green-900 dark:text-green-100">
+                                            No active portfolio alert conditions.
                                         </p>
                                     </div>
                                 </div>
 
                                 <div v-if="investmentsStore.portfolioAlertSummary?.recentAlerts?.length">
-                                    <div class="flex items-center justify-between mb-2">
-                                        <p class="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                            Recent alerts
-                                        </p>
+                                    <div class="flex items-start justify-between gap-3 mb-2">
+                                        <div>
+                                            <p class="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                                Recent alerts
+                                            </p>
+                                            <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                                                Notifications previously sent. Values shown are from when each alert fired, not today.
+                                            </p>
+                                        </div>
                                         <router-link
                                             to="/notifications"
-                                            class="text-[11px] text-primary-600 hover:text-primary-800"
+                                            class="text-[11px] text-primary-600 hover:text-primary-800 whitespace-nowrap"
                                         >
                                             View all
                                         </router-link>
@@ -924,68 +1197,6 @@
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-                        </section>
-
-                        <section class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
-                            <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                                <div>
-                                    <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
-                                        Account Comparison
-                                    </h2>
-                                </div>
-                                <div
-                                    v-if="accountComparisonLoading"
-                                    class="animate-spin rounded-full h-4 w-4 border-2 border-primary-500 border-t-transparent"
-                                ></div>
-                            </div>
-                            <div v-if="accountComparisonRows.length > 0" class="overflow-x-auto">
-                                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                                    <thead class="bg-gray-50 dark:bg-gray-700">
-                                        <tr>
-                                            <th class="px-3 py-2 text-left text-[11px] font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                                Account
-                                            </th>
-                                            <th class="px-3 py-2 text-right text-[11px] font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                                Return
-                                            </th>
-                                            <th class="px-3 py-2 text-right text-[11px] font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                                Drift
-                                            </th>
-                                        </tr>
-                                    </thead>
-                                    <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                                        <tr
-                                            v-for="row in accountComparisonRows"
-                                            :key="row.value"
-                                            class="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/60"
-                                            @click="setComparisonAccount(row.value)"
-                                        >
-                                            <td class="px-3 py-2">
-                                                <div class="text-xs font-medium text-gray-900 dark:text-white">
-                                                    {{ row.label }}
-                                                </div>
-                                                <div class="text-[11px] text-gray-500 dark:text-gray-400">
-                                                    {{ formatCurrency(row.totalValue) }} · {{ row.positionCount }} pos.
-                                                </div>
-                                            </td>
-                                            <td
-                                                :class="[
-                                                    'px-3 py-2 text-right text-xs font-medium',
-                                                    row.totalReturnPercent >= 0 ? 'text-green-600' : 'text-red-600',
-                                                ]"
-                                            >
-                                                {{ formatPercent(row.totalReturnPercent) }}
-                                            </td>
-                                            <td class="px-3 py-2 text-right text-xs text-gray-900 dark:text-gray-100">
-                                                {{ row.maxDriftPercent === null ? 'N/A' : formatPercent(row.maxDriftPercent) }}
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                            <div v-else class="p-4 text-xs text-gray-500 dark:text-gray-400">
-                                Add at least two accounts to compare portfolios.
                             </div>
                         </section>
                     </aside>
@@ -1315,7 +1526,7 @@ const route = useRoute();
 const investmentsStore = useInvestmentsStore();
 const scannerStore = useScannerStore();
 const { showSuccess, showError } = useNotification();
-const { selectedAccount, selectedAccountLabel, accounts, fetchAccounts, setAccount } =
+const { selectedAccount, selectedAccountLabel, accounts, fetchAccounts, setAccount, clearAccount } =
     useGlobalAccountFilter();
 
 // Valid tab names
@@ -1358,8 +1569,58 @@ const PRICE_POLL_INTERVAL_MS = 3000;
 const PRICE_POLL_MAX_MS = 90 * 1000; // give up after this so we never poll forever
 let pricePollTimer = null;
 let pricePollStartedAt = 0;
+// Stall detection: if the number of positions awaiting a quote stops dropping
+// for a few polls, the remaining symbols simply can't be quoted (delisted,
+// unsupported, no API key, etc.) — stop polling rather than spin indefinitely.
+const PRICE_POLL_MAX_STALLS = 3;
+let pricePollStallCount = 0;
+let pricePollLastPending = 0;
 const pricesUpdating = ref(false);
 const accountComparisonRows = ref([]);
+// Local multi-select for the Account Comparison panel. Decoupled from the global
+// account filter so multi-select doesn't propagate to pages that only handle a
+// single account value.
+const selectedComparisonAccounts = ref(new Set());
+const inCompareMode = computed(() => selectedComparisonAccounts.value.size >= 2);
+const selectedComparisonRows = computed(() => {
+    if (!inCompareMode.value) return [];
+    const ordered = accountComparisonRows.value.filter((row) =>
+        selectedComparisonAccounts.value.has(row.value),
+    );
+    if (ordered.length === 0) return [];
+    let leaderIndex = 0;
+    ordered.forEach((row, idx) => {
+        if (row.totalReturnPercent > ordered[leaderIndex].totalReturnPercent) {
+            leaderIndex = idx;
+        }
+    });
+    const leader = ordered[leaderIndex];
+    return ordered.map((row, idx) => {
+        const isLeader = idx === leaderIndex;
+        const driftDelta =
+            row.maxDriftPercent === null || leader.maxDriftPercent === null
+                ? null
+                : Number(row.maxDriftPercent) - Number(leader.maxDriftPercent);
+        return {
+            ...row,
+            isLeader,
+            returnDelta: Number(row.totalReturnPercent) - Number(leader.totalReturnPercent),
+            valueDelta: Number(row.totalValue) - Number(leader.totalValue),
+            positionsDelta: Number(row.positionCount) - Number(leader.positionCount),
+            driftDelta,
+        };
+    });
+});
+
+// True when exactly two accounts are being compared — that's the case where
+// a single "Difference" column makes sense. With 3+ selected, deltas stay
+// inline beneath each non-leader value instead.
+const isPairCompare = computed(() => selectedComparisonRows.value.length === 2);
+
+// The non-leader row in a pair compare, used to populate the Difference column.
+const pairDifferenceRow = computed(() =>
+    isPairCompare.value ? selectedComparisonRows.value.find((row) => !row.isLeader) : null,
+);
 const accountComparisonLoading = ref(false);
 const portfolioPreferencesForm = ref({
     driftThresholdPercent: 5,
@@ -1496,7 +1757,12 @@ function buildPortfolioParams() {
 // user has changed but not yet saved (draft differs from the incoming server
 // value) is kept instead of being overwritten — this is what stops a single
 // row's Save from clearing the other rows' pending edits.
-function syncTargetAllocationDrafts(positions = [], { preserveEdits = false } = {}) {
+// `preserveEdits` keeps in-progress (unsaved) edits in other rows when one row
+// is refreshed. `forceSymbols` overrides that for symbols we just persisted —
+// their entry boxes must snap to the authoritative server value (e.g. the
+// scaled weights produced by Normalize), even though that differs from the
+// pre-save draft.
+function syncTargetAllocationDrafts(positions = [], { preserveEdits = false, forceSymbols = null } = {}) {
     const prevDrafts = targetAllocationDrafts.value;
     const nextDrafts = {};
     positions.forEach((position) => {
@@ -1504,8 +1770,9 @@ function syncTargetAllocationDrafts(positions = [], { preserveEdits = false } = 
         const currentDraft = prevDrafts[position.symbol];
         const draftDiffers =
             currentDraft !== undefined && String(currentDraft) !== String(serverValue);
+        const forced = forceSymbols ? forceSymbols.has(position.symbol) : false;
         nextDrafts[position.symbol] =
-            preserveEdits && draftDiffers ? currentDraft : serverValue;
+            !forced && preserveEdits && draftDiffers ? currentDraft : serverValue;
     });
     targetAllocationDrafts.value = nextDrafts;
 }
@@ -1602,6 +1869,8 @@ function maybeStartPricePolling() {
 
     pricesUpdating.value = true;
     pricePollStartedAt = Date.now();
+    pricePollStallCount = 0;
+    pricePollLastPending = pendingPriceCount.value;
     pricePollTimer = setTimeout(runPricePoll, PRICE_POLL_INTERVAL_MS);
 }
 
@@ -1637,8 +1906,19 @@ async function runPricePoll() {
         console.warn("[INVESTMENTS] Price poll failed:", error);
     }
 
+    // Track whether we're still making progress. No drop in pending count means
+    // the remaining symbols aren't resolving.
+    const pending = pendingPriceCount.value;
+    if (pending >= pricePollLastPending) {
+        pricePollStallCount += 1;
+    } else {
+        pricePollStallCount = 0;
+    }
+    pricePollLastPending = pending;
+
     const timedOut = Date.now() - pricePollStartedAt > PRICE_POLL_MAX_MS;
-    if (pendingPriceCount.value === 0 || timedOut || activeTab.value !== "holdings") {
+    const stalled = pricePollStallCount >= PRICE_POLL_MAX_STALLS;
+    if (pending === 0 || timedOut || stalled || activeTab.value !== "holdings") {
         stopPricePolling();
         return;
     }
@@ -1691,11 +1971,28 @@ async function loadAccountComparison() {
         );
 
         accountComparisonRows.value = rows.sort((left, right) => right.totalReturnPercent - left.totalReturnPercent);
+        pruneComparisonSelection();
     } catch (error) {
         console.error("Failed to load account comparison:", error);
         accountComparisonRows.value = [];
+        pruneComparisonSelection();
     } finally {
         accountComparisonLoading.value = false;
+    }
+}
+
+// Drop any selected account values that no longer appear in the comparison rows
+// (e.g. after a refresh removed them). Keeps the local set in sync with the
+// table without surprising the user.
+function pruneComparisonSelection() {
+    if (selectedComparisonAccounts.value.size === 0) return;
+    const visible = new Set(accountComparisonRows.value.map((row) => row.value));
+    const next = new Set();
+    for (const value of selectedComparisonAccounts.value) {
+        if (visible.has(value)) next.add(value);
+    }
+    if (next.size !== selectedComparisonAccounts.value.size) {
+        selectedComparisonAccounts.value = next;
     }
 }
 
@@ -1718,6 +2015,7 @@ onMounted(async () => {
         };
         await loadPortfolioData();
         await loadAccountComparison();
+        restoreComparisonSelectionFromQuery();
     } catch (error) {
         console.error("Failed to load portfolio data:", error);
     } finally {
@@ -1968,8 +2266,62 @@ function rebalanceActionLabel(position) {
     return "On target";
 }
 
-async function setComparisonAccount(accountValue) {
-    setAccount(accountValue);
+// Toggle a row in/out of the local multi-select. Reconcile the global filter
+// only when the resulting size is 0 or 1 — past that, the comparison is
+// panel-local and the global filter stays put.
+function toggleComparisonAccount(accountValue) {
+    const next = new Set(selectedComparisonAccounts.value);
+    if (next.has(accountValue)) {
+        next.delete(accountValue);
+    } else {
+        next.add(accountValue);
+    }
+    selectedComparisonAccounts.value = next;
+
+    if (next.size === 0) {
+        clearAccount();
+    } else if (next.size === 1) {
+        const [only] = next;
+        setAccount(only);
+    }
+    // size >= 2: leave global filter alone
+}
+
+function clearComparisonSelection() {
+    selectedComparisonAccounts.value = new Set();
+    clearAccount();
+}
+
+// Rehydrate the comparison set from a ?compare=A,B,C URL query so a user
+// returning from the full compare view keeps their selection intact. Only
+// keeps account values that actually exist in the freshly loaded rows.
+function restoreComparisonSelectionFromQuery() {
+    const raw = route.query.compare;
+    if (!raw) return;
+    const requested = String(raw)
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean);
+    if (requested.length === 0) return;
+    const visible = new Set(accountComparisonRows.value.map((row) => row.value));
+    const restored = new Set(requested.filter((value) => visible.has(value)));
+    if (restored.size > 0) {
+        selectedComparisonAccounts.value = restored;
+    }
+}
+
+// Navigate to the full-screen side-by-side compare view, carrying the current
+// selection plus period and benchmark via the URL so the view is shareable.
+function openFullCompare() {
+    if (selectedComparisonAccounts.value.size < 2) return;
+    router.push({
+        name: "analysis-compare",
+        query: {
+            accounts: Array.from(selectedComparisonAccounts.value).join(","),
+            period: portfolioPeriod.value,
+            benchmark: (benchmarkSymbol.value || "SPY").trim().toUpperCase(),
+        },
+    });
 }
 
 // Briefly flag a row as just-saved so the UI can show "Saved" feedback.
@@ -1988,12 +2340,12 @@ function flashSaved(symbol) {
 // across rows), so refresh just that endpoint in place — no chart/metrics
 // reload. Silent fetch keeps the current rows visible and updates them when
 // the response lands.
-async function refreshRebalanceOnly() {
+async function refreshRebalanceOnly(syncedSymbols = []) {
     const params = buildPortfolioParams();
     await investmentsStore.fetchPortfolioRebalance(params, { silent: true });
     syncTargetAllocationDrafts(
         investmentsStore.portfolioRebalance?.positions || [],
-        { preserveEdits: true },
+        { preserveEdits: true, forceSymbols: new Set(syncedSymbols) },
     );
     // Keep the current period's cache entry consistent; drop the rest so other
     // periods refetch the updated targets lazily on next visit.
@@ -2017,7 +2369,7 @@ async function saveTargetAllocation(position) {
             position.symbol,
             draftValue === "" || draftValue === null ? null : Number(draftValue),
         );
-        await refreshRebalanceOnly();
+        await refreshRebalanceOnly([position.symbol]);
         flashSaved(position.symbol);
     } catch (error) {
         console.error("Failed to save target allocation:", error);
@@ -2040,11 +2392,44 @@ async function saveAllTargetAllocations() {
                 draftValue === "" || draftValue === null ? null : Number(draftValue),
             );
         }
-        await refreshRebalanceOnly();
+        await refreshRebalanceOnly(symbols);
         symbols.forEach((symbol) => flashSaved(symbol));
     } catch (error) {
         console.error("Failed to save target allocations:", error);
         showError("Error", "Failed to save one or more target allocations");
+    } finally {
+        targetSaving.value = false;
+    }
+}
+
+// Scale every entered target by 100 / total so the new saved values sum to 100%.
+// Tiny rounding remainders (e.g. 33.33 × 3 = 99.99) are within the 0.5% tolerance
+// used by targetsNeedNormalizing, so the warning clears after saving.
+async function normalizeTargetAllocations() {
+    const total = targetTotalPercent.value;
+    if (!total || Math.abs(total - 100) <= 0.5) return;
+    const scale = 100 / total;
+    const updates = rebalanceRows.value
+        .filter((row) =>
+            row.targetAllocationPercent !== null &&
+            row.targetAllocationPercent !== undefined &&
+            Number(row.targetAllocationPercent) > 0,
+        )
+        .map((row) => ({
+            symbol: row.symbol,
+            value: Math.round(Number(row.targetAllocationPercent) * scale * 100) / 100,
+        }));
+    if (updates.length === 0) return;
+    targetSaving.value = true;
+    try {
+        for (const { symbol, value } of updates) {
+            await investmentsStore.updatePortfolioTarget(symbol, value);
+        }
+        await refreshRebalanceOnly(updates.map(({ symbol }) => symbol));
+        updates.forEach(({ symbol }) => flashSaved(symbol));
+    } catch (error) {
+        console.error("Failed to normalize target allocations:", error);
+        showError("Error", "Failed to normalize target allocations");
     } finally {
         targetSaving.value = false;
     }

@@ -10,6 +10,36 @@
     <!-- IBKR Maintenance Notice -->
     <IBKRNoticeBanner />
 
+    <!-- Broker sync is becoming a Pro feature: grace-period notice for existing free connections -->
+    <div v-if="showGraceBanner" class="mb-6 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+      <div class="flex">
+        <svg class="h-5 w-5 text-amber-400 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+        </svg>
+        <div class="ml-3 text-sm text-amber-700 dark:text-amber-300">
+          <strong>Broker sync is becoming a Pro feature.</strong>
+          Your connected brokers will keep syncing until <strong>{{ graceEndsAtFormatted }}</strong>.
+          <router-link :to="pricingLink" class="font-medium underline">Upgrade to Pro</router-link>
+          to keep automatic syncing after that.
+        </div>
+      </div>
+    </div>
+
+    <!-- Grace window ended: sync paused for free users -->
+    <div v-else-if="showSyncPausedBanner" class="mb-6 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+      <div class="flex">
+        <svg class="h-5 w-5 text-amber-400 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+        </svg>
+        <div class="ml-3 text-sm text-amber-700 dark:text-amber-300">
+          <strong>Broker sync is paused.</strong>
+          Automatic syncing is now a Pro feature.
+          <router-link :to="pricingLink" class="font-medium underline">Upgrade to Pro</router-link>
+          to resume, or use CSV import. Your existing connections and trades are unchanged.
+        </div>
+      </div>
+    </div>
+
     <!-- Success/Error Messages -->
     <div v-if="successMessage" class="mb-6 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
       <div class="flex">
@@ -45,6 +75,7 @@
             v-for="connection in store.connections"
             :key="connection.id"
             :connection="connection"
+            :sync-disabled="!canSync"
             @sync="handleSync"
             @test="handleTest"
             @settings="openSettingsModal"
@@ -54,8 +85,8 @@
         </div>
       </div>
 
-      <!-- Add New Connection -->
-      <div class="card">
+      <!-- Add New Connection (Pro only) -->
+      <div v-if="canCreate" class="card">
         <div class="card-body">
           <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">Add Broker Connection</h3>
 
@@ -174,6 +205,13 @@
         </div>
       </div>
 
+      <!-- Pro gate for free users (shown instead of the add-connection card) -->
+      <ProUpgradePrompt
+        v-else-if="showUpgradeGate"
+        variant="card"
+        description="Broker sync is a Pro feature. Connect Interactive Brokers, Schwab, TradeStation, or Alpaca to import your trades automatically. Free accounts can still import via CSV (up to 100 trades per import)."
+      />
+
       <!-- Sync History -->
       <div class="card">
         <div class="card-body">
@@ -257,7 +295,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useBrokerSyncStore } from '@/stores/brokerSync'
 import { useTradesStore } from '@/stores/trades'
@@ -266,12 +304,38 @@ import BrokerConnectionCard from '@/components/broker-sync/BrokerConnectionCard.
 import IBKRConnectionModal from '@/components/broker-sync/IBKRConnectionModal.vue'
 import ConnectionSettingsModal from '@/components/broker-sync/ConnectionSettingsModal.vue'
 import IBKRNoticeBanner from '@/components/broker-sync/IBKRNoticeBanner.vue'
+import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
 
 const store = useBrokerSyncStore()
 const tradesStore = useTradesStore()
 const route = useRoute()
 const router = useRouter()
 const { showConfirmation, showDangerConfirmation } = useNotification()
+
+// Broker sync is a Pro feature. The backend returns the authoritative access
+// status (gated only when billing is enabled, i.e. cloud). Until it loads we
+// treat access as permissive to avoid flashing the upgrade prompt to Pro users.
+const billingEnabled = computed(() => store.access?.billingEnabled === true)
+const isPro = computed(() => store.access ? store.access.isPro : true)
+const canCreate = computed(() => store.access ? store.access.canCreate : true)
+const canSync = computed(() => store.access ? store.access.canSync : true)
+const inGracePeriod = computed(() => store.access?.inGracePeriod === true)
+
+// Show the Pro gate only for free users on a billing-enabled (cloud) instance.
+const showUpgradeGate = computed(() => billingEnabled.value && !isPro.value)
+// Grandfathered free users still syncing during the grace window.
+const showGraceBanner = computed(() => showUpgradeGate.value && inGracePeriod.value && store.hasConnections)
+// Grace window has ended for a free user who still has connections.
+const showSyncPausedBanner = computed(() => showUpgradeGate.value && !canSync.value && store.hasConnections)
+
+const graceEndsAtFormatted = computed(() => {
+  if (!store.access?.graceEndsAt) return ''
+  return new Date(store.access.graceEndsAt).toLocaleDateString(undefined, {
+    year: 'numeric', month: 'long', day: 'numeric'
+  })
+})
+
+const pricingLink = computed(() => `/pricing?redirect=${encodeURIComponent(route.fullPath)}`)
 
 const showIBKRModal = ref(false)
 const showSettingsModal = ref(false)
@@ -356,7 +420,9 @@ async function consumeOAuthCallbackState(query) {
     scheduleSuccessMessage('Alpaca account connected successfully. Ready to sync trades.')
   }
 
-  if (query.error) {
+  if (query.error === 'pro_required') {
+    store.error = 'Broker sync is a Pro feature. Upgrade to Pro to connect your brokerage.'
+  } else if (query.error) {
     const detail = typeof query.details === 'string' ? decodeURIComponent(query.details) : ''
     store.error = detail
       ? `Connection failed: ${detail}`
@@ -440,6 +506,11 @@ async function handleBrokerOAuthConnect(broker, options = {}) {
 }
 
 async function handleSync(connection) {
+  // Broker sync is a Pro feature; once the grace window ends, free users can't sync.
+  if (!canSync.value) {
+    store.error = 'Broker sync is a Pro feature. Upgrade to Pro to resume syncing, or use CSV import.'
+    return
+  }
   try {
     await store.triggerSync(connection.id)
     scheduleSuccessMessage('Sync started. Check the history below for results.')

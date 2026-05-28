@@ -94,8 +94,9 @@
 
           <button
             @click="emit('sync', connection)"
-            :disabled="syncing"
-            class="btn-primary text-sm py-1.5 px-3"
+            :disabled="syncing || syncDisabled"
+            :title="syncDisabled ? 'Broker sync is a Pro feature' : ''"
+            class="btn-primary text-sm py-1.5 px-3 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <span v-if="syncing" class="flex items-center">
               <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
@@ -125,6 +126,11 @@ const props = defineProps({
   connection: {
     type: Object,
     required: true
+  },
+  // Disable the Sync button when broker sync isn't available (free tier, post-grace)
+  syncDisabled: {
+    type: Boolean,
+    default: false
   }
 })
 

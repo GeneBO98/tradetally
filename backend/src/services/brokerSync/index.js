@@ -27,6 +27,25 @@ class BrokerSyncService {
       throw new Error('Connection not found');
     }
 
+    // Broker sync is a Pro feature. This is the single funnel for every sync
+    // path (manual, scheduled, retry), so gating here covers them all.
+    // - Scheduled syncs for a gated free user are skipped cleanly: no sync log,
+    //   no failure counter, so the connection isn't marked 'error' and the
+    //   scheduler simply resumes automatically if the user upgrades.
+    // - Manual syncs throw (the controller already returns a 403 before this,
+    //   so this is defense-in-depth).
+    const TierService = require('../tierService');
+    const syncAccess = await TierService.canSyncBrokerConnection(connection.userId);
+    if (!syncAccess.allowed) {
+      if (syncType === 'scheduled') {
+        console.log(`[BROKER-SYNC] Skipping scheduled sync for connection ${connectionId}: broker sync is Pro-only for this free user`);
+        return { success: false, skippedForTier: true, reason: 'tier_pro_required', imported: 0, duplicates: 0 };
+      }
+      const tierError = new Error(syncAccess.message);
+      tierError.code = syncAccess.code;
+      throw tierError;
+    }
+
     if (connection.connectionStatus !== 'active') {
       throw new Error(`Cannot sync: connection status is ${connection.connectionStatus}`);
     }
