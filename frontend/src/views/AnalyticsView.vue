@@ -598,8 +598,17 @@
                     ]">
                       {{ formatCurrency(symbol.total_pnl) }}
                     </div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400 w-12 text-right">
-                      {{ (symbol.winning_trades / symbol.total_trades * 100).toFixed(0) }}%
+                    <div class="w-12 text-right">
+                      <div class="text-xs text-gray-500 dark:text-gray-400">
+                        {{ (symbol.winning_trades / symbol.total_trades * 100).toFixed(0) }}%
+                      </div>
+                      <div
+                        v-if="(Number(symbol.breakeven_trades) || 0) > 0"
+                        class="text-[10px] text-gray-400 dark:text-gray-500 leading-tight"
+                        :title="`Excludes ${symbol.breakeven_trades} breakeven trade${Number(symbol.breakeven_trades) === 1 ? '' : 's'}`"
+                      >
+                        {{ symbolWinRateExclBE(symbol) }}% BE
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1874,6 +1883,16 @@ function winRateExclBE(row) {
   const decisive = wins + losses
   if (decisive === 0) return '0.0'
   return ((wins / decisive) * 100).toFixed(1)
+}
+
+// Integer-rounded variant for the compact Top Performing Symbols list where
+// a 1-decimal "100.0%" overflows the w-12 column.
+function symbolWinRateExclBE(row) {
+  const wins = Number(row?.winning_trades) || 0
+  const losses = Number(row?.losing_trades) || 0
+  const decisive = wins + losses
+  if (decisive === 0) return '0'
+  return ((wins / decisive) * 100).toFixed(0)
 }
 
 function getWinPercentage() {

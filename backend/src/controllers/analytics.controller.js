@@ -1393,11 +1393,16 @@ const analyticsController = {
       params.push(sanitizedLimit);
 
       const be = await rawBreakevenPredicate(req.user.id);
+      // Return losing + breakeven counts so the dashboard symbol list can show
+      // an "excl. BE" win-rate line beneath the inclusive rate, matching the
+      // overview and per-tag/strategy/hour tables.
       const symbolQuery = `
         SELECT
           symbol,
           COUNT(*) as total_trades,
           COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
+          COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
+          COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
           COALESCE(SUM(pnl), 0) as total_pnl,
           COALESCE(AVG(pnl), 0) as avg_pnl,
           COALESCE(AVG(pnl_percent), 0) as avg_pnl_percent
