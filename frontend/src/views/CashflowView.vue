@@ -247,20 +247,24 @@
             <form @submit.prevent="submitTransaction" class="space-y-4">
               <div>
                 <label class="label">Account</label>
-                <select v-model="transactionForm.accountId" class="input w-full" required>
-                  <option value="" disabled>Select account</option>
-                  <option v-for="account in accounts" :key="account.id" :value="account.id">
-                    {{ account.accountName }}
-                  </option>
-                </select>
+                <BaseSelect
+                  v-model="transactionForm.accountId"
+                  :options="accounts"
+                  value-key="id"
+                  label-key="accountName"
+                  placeholder="Select account"
+                />
               </div>
 
               <div>
                 <label class="label">Type</label>
-                <select v-model="transactionForm.type" class="input w-full" required>
-                  <option value="deposit">Deposit</option>
-                  <option value="withdrawal">Withdrawal</option>
-                </select>
+                <BaseSelect
+                  v-model="transactionForm.type"
+                  :options="[
+                    { value: 'deposit', label: 'Deposit' },
+                    { value: 'withdrawal', label: 'Withdrawal' }
+                  ]"
+                />
               </div>
 
               <div>
@@ -363,6 +367,7 @@ import { useNotification } from '@/composables/useNotification'
 import AccountModal from '@/components/accounts/AccountModal.vue'
 import PlaidFundingPanel from '@/components/accounts/PlaidFundingPanel.vue'
 import PlaidReviewQueue from '@/components/accounts/PlaidReviewQueue.vue'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 
 const { formatCurrency, formatSignedCurrency, currencySymbol } = useCurrencyFormatter()

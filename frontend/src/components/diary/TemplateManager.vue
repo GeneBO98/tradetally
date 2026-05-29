@@ -167,10 +167,13 @@
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       Entry Type
                     </label>
-                    <select v-model="templateForm.entryType" class="input">
-                      <option value="diary">Diary</option>
-                      <option value="playbook">Playbook</option>
-                    </select>
+                    <BaseSelect
+                      v-model="templateForm.entryType"
+                      :options="[
+                        { value: 'diary', label: 'Diary' },
+                        { value: 'playbook', label: 'Playbook' }
+                      ]"
+                    />
                   </div>
 
                   <!-- Set as Default -->
@@ -207,12 +210,15 @@
                       <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                         Market Bias
                       </label>
-                      <select v-model="templateForm.marketBias" class="input">
-                        <option value="">None</option>
-                        <option value="bullish">Bullish</option>
-                        <option value="bearish">Bearish</option>
-                        <option value="neutral">Neutral</option>
-                      </select>
+                      <BaseSelect
+                        v-model="templateForm.marketBias"
+                        placeholder="None"
+                        :options="[
+                          { value: 'bullish', label: 'Bullish' },
+                          { value: 'bearish', label: 'Bearish' },
+                          { value: 'neutral', label: 'Neutral' }
+                        ]"
+                      />
                     </div>
 
                     <!-- Content -->
@@ -263,11 +269,14 @@
                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                           Did you follow your plan? (Default)
                         </label>
-                        <select v-model="templateForm.followedPlan" class="input">
-                          <option :value="null">Not set</option>
-                          <option :value="true">Yes</option>
-                          <option :value="false">No</option>
-                        </select>
+                        <BaseSelect
+                          v-model="templateForm.followedPlan"
+                          :options="[
+                            { value: null, label: 'Not set' },
+                            { value: true, label: 'Yes' },
+                            { value: false, label: 'No' }
+                          ]"
+                        />
                       </div>
 
                       <!-- Lessons Learned -->
@@ -359,6 +368,7 @@ import {
   DocumentDuplicateIcon,
   DocumentTextIcon
 } from '@heroicons/vue/24/outline'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 
 const emit = defineEmits(['apply-template', 'template-created'])
 

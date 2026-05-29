@@ -170,11 +170,14 @@
                                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                     Destination Type
                                 </label>
-                                <select v-model="form.providerType" class="input" required>
-                                    <option value="slack">Slack</option>
-                                    <option value="discord">Discord</option>
-                                    <option value="custom">Custom</option>
-                                </select>
+                                <BaseSelect
+                                    v-model="form.providerType"
+                                    :options="[
+                                        { value: 'slack', label: 'Slack' },
+                                        { value: 'discord', label: 'Discord' },
+                                        { value: 'custom', label: 'Custom' },
+                                    ]"
+                                />
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -307,6 +310,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import api from "@/services/api";
 import { useNotification } from "@/composables/useNotification";
 import MdiIcon from "@/components/MdiIcon.vue";
+import BaseSelect from "@/components/common/BaseSelect.vue";
 import {
     mdiChevronDown,
     mdiChevronUp,

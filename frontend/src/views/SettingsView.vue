@@ -53,18 +53,13 @@
                                 <label for="statisticsCalculation" class="label"
                                     >Statistics Calculation Method</label
                                 >
-                                <select
-                                    id="statisticsCalculation"
-                                    v-model="
-                                        analyticsForm.statisticsCalculation
-                                    "
-                                    class="input"
-                                >
-                                    <option value="average">
-                                        Average (Mean)
-                                    </option>
-                                    <option value="median">Median</option>
-                                </select>
+                                <BaseSelect
+                                    v-model="analyticsForm.statisticsCalculation"
+                                    :options="[
+                                        { value: 'average', label: 'Average (Mean)' },
+                                        { value: 'median', label: 'Median' }
+                                    ]"
+                                />
                                 <p
                                     class="mt-1 text-sm text-gray-500 dark:text-gray-400"
                                 >
@@ -166,21 +161,10 @@
                                 <label for="displayCurrency" class="label"
                                     >Display Currency</label
                                 >
-                                <select
-                                    id="displayCurrency"
-                                    v-model="
-                                        analyticsForm.displayCurrency
-                                    "
-                                    class="input"
-                                >
-                                    <option
-                                        v-for="c in currencyOptions"
-                                        :key="c.code"
-                                        :value="c.code"
-                                    >
-                                        {{ c.code }} - {{ c.name }}
-                                    </option>
-                                </select>
+                                <BaseSelect
+                                    v-model="analyticsForm.displayCurrency"
+                                    :options="currencySelectOptions"
+                                />
                                 <p
                                     class="mt-1 text-sm text-gray-500 dark:text-gray-400"
                                 >
@@ -246,19 +230,14 @@
                                 <label for="defaultStopLossType" class="label"
                                     >Default Stop Loss Type</label
                                 >
-                                <select
-                                    id="defaultStopLossType"
+                                <BaseSelect
                                     v-model="analyticsForm.defaultStopLossType"
-                                    class="input"
-                                >
-                                    <option value="percent">Percentage</option>
-                                    <option value="dollar">
-                                        Dollar amount
-                                    </option>
-                                    <option value="lod">
-                                        Low of Day (LoD)
-                                    </option>
-                                </select>
+                                    :options="[
+                                        { value: 'percent', label: 'Percentage' },
+                                        { value: 'dollar', label: 'Dollar amount' },
+                                        { value: 'lod', label: 'Low of Day (LoD)' }
+                                    ]"
+                                />
                                 <p
                                     class="mt-1 text-sm text-gray-500 dark:text-gray-400"
                                 >
@@ -835,31 +814,20 @@
                                     <label for="aiProvider" class="label"
                                         >AI Provider</label
                                     >
-                                    <select
-                                        id="aiProvider"
+                                    <BaseSelect
                                         v-model="aiForm.provider"
-                                        class="input"
+                                        :options="[
+                                            { value: 'gemini', label: 'Google Gemini' },
+                                            { value: 'claude', label: 'Anthropic Claude' },
+                                            { value: 'openai', label: 'OpenAI' },
+                                            { value: 'ollama', label: 'Ollama' },
+                                            { value: 'lmstudio', label: 'LM Studio' },
+                                            { value: 'perplexity', label: 'Perplexity AI' },
+                                            { value: 'local', label: 'Local/Custom' }
+                                        ]"
+                                        placeholder="No provider"
                                         @change="onProviderChange"
-                                    >
-                                        <option value="">No provider</option>
-                                        <option value="gemini">
-                                            Google Gemini
-                                        </option>
-                                        <option value="claude">
-                                            Anthropic Claude
-                                        </option>
-                                        <option value="openai">OpenAI</option>
-                                        <option value="ollama">Ollama</option>
-                                        <option value="lmstudio">
-                                            LM Studio
-                                        </option>
-                                        <option value="perplexity">
-                                            Perplexity AI
-                                        </option>
-                                        <option value="local">
-                                            Local/Custom
-                                        </option>
-                                    </select>
+                                    />
                                     <p
                                         class="mt-1 text-sm text-gray-500 dark:text-gray-400"
                                     >
@@ -1021,35 +989,20 @@
                                             class="label"
                                             >CUSIP AI Provider</label
                                         >
-                                        <select
-                                            id="cusipAiProvider"
+                                        <BaseSelect
                                             v-model="cusipAiForm.provider"
-                                            class="input"
+                                            :options="[
+                                                { value: 'gemini', label: 'Google Gemini' },
+                                                { value: 'claude', label: 'Anthropic Claude' },
+                                                { value: 'openai', label: 'OpenAI' },
+                                                { value: 'ollama', label: 'Ollama' },
+                                                { value: 'lmstudio', label: 'LM Studio' },
+                                                { value: 'perplexity', label: 'Perplexity AI' },
+                                                { value: 'local', label: 'Local/Custom' }
+                                            ]"
+                                            placeholder="No provider"
                                             @change="onCusipProviderChange"
-                                        >
-                                            <option value="">No provider</option>
-                                            <option value="gemini">
-                                                Google Gemini
-                                            </option>
-                                            <option value="claude">
-                                                Anthropic Claude
-                                            </option>
-                                            <option value="openai">
-                                                OpenAI
-                                            </option>
-                                            <option value="ollama">
-                                                Ollama
-                                            </option>
-                                            <option value="lmstudio">
-                                                LM Studio
-                                            </option>
-                                            <option value="perplexity">
-                                                Perplexity AI
-                                            </option>
-                                            <option value="local">
-                                                Local/Custom
-                                            </option>
-                                        </select>
+                                        />
                                     </div>
 
                                     <div>
@@ -1169,31 +1122,20 @@
                                     <label for="adminAiProvider" class="label"
                                         >Default AI Provider</label
                                     >
-                                    <select
-                                        id="adminAiProvider"
+                                    <BaseSelect
                                         v-model="adminAiForm.provider"
-                                        class="input"
+                                        :options="[
+                                            { value: 'gemini', label: 'Google Gemini' },
+                                            { value: 'claude', label: 'Anthropic Claude' },
+                                            { value: 'openai', label: 'OpenAI' },
+                                            { value: 'ollama', label: 'Ollama' },
+                                            { value: 'lmstudio', label: 'LM Studio' },
+                                            { value: 'perplexity', label: 'Perplexity AI' },
+                                            { value: 'local', label: 'Local/Custom' }
+                                        ]"
+                                        placeholder="No provider"
                                         @change="onAdminProviderChange"
-                                    >
-                                        <option value="">No provider</option>
-                                        <option value="gemini">
-                                            Google Gemini
-                                        </option>
-                                        <option value="claude">
-                                            Anthropic Claude
-                                        </option>
-                                        <option value="openai">OpenAI</option>
-                                        <option value="ollama">Ollama</option>
-                                        <option value="lmstudio">
-                                            LM Studio
-                                        </option>
-                                        <option value="perplexity">
-                                            Perplexity AI
-                                        </option>
-                                        <option value="local">
-                                            Local/Custom
-                                        </option>
-                                    </select>
+                                    />
                                     <p
                                         class="mt-1 text-sm text-gray-500 dark:text-gray-400"
                                     >
@@ -1345,41 +1287,20 @@
                                             >
                                                 Checking Provider
                                             </label>
-                                            <select
-                                                id="adminAiClassifierProvider"
-                                                v-model="
-                                                    adminAiForm.classifierProvider
-                                                "
-                                                class="input"
-                                                @change="
-                                                    onAdminClassifierProviderChange
-                                                "
-                                            >
-                                                <option value="">
-                                                    Use default provider
-                                                </option>
-                                                <option value="gemini">
-                                                    Google Gemini
-                                                </option>
-                                                <option value="claude">
-                                                    Anthropic Claude
-                                                </option>
-                                                <option value="openai">
-                                                    OpenAI
-                                                </option>
-                                                <option value="ollama">
-                                                    Ollama
-                                                </option>
-                                                <option value="lmstudio">
-                                                    LM Studio
-                                                </option>
-                                                <option value="perplexity">
-                                                    Perplexity AI
-                                                </option>
-                                                <option value="local">
-                                                    Local/Custom
-                                                </option>
-                                            </select>
+                                            <BaseSelect
+                                                v-model="adminAiForm.classifierProvider"
+                                                :options="[
+                                                    { value: 'gemini', label: 'Google Gemini' },
+                                                    { value: 'claude', label: 'Anthropic Claude' },
+                                                    { value: 'openai', label: 'OpenAI' },
+                                                    { value: 'ollama', label: 'Ollama' },
+                                                    { value: 'lmstudio', label: 'LM Studio' },
+                                                    { value: 'perplexity', label: 'Perplexity AI' },
+                                                    { value: 'local', label: 'Local/Custom' }
+                                                ]"
+                                                placeholder="Use default provider"
+                                                @change="onAdminClassifierProviderChange"
+                                            />
                                         </div>
 
                                         <div>
@@ -1532,35 +1453,20 @@
                                             class="label"
                                             >Default CUSIP AI Provider</label
                                         >
-                                        <select
-                                            id="adminCusipAiProvider"
+                                        <BaseSelect
                                             v-model="adminCusipAiForm.provider"
-                                            class="input"
+                                            :options="[
+                                                { value: 'gemini', label: 'Google Gemini' },
+                                                { value: 'claude', label: 'Anthropic Claude' },
+                                                { value: 'openai', label: 'OpenAI' },
+                                                { value: 'ollama', label: 'Ollama' },
+                                                { value: 'lmstudio', label: 'LM Studio' },
+                                                { value: 'perplexity', label: 'Perplexity AI' },
+                                                { value: 'local', label: 'Local/Custom' }
+                                            ]"
+                                            placeholder="No provider"
                                             @change="onAdminCusipProviderChange"
-                                        >
-                                            <option value="">No provider</option>
-                                            <option value="gemini">
-                                                Google Gemini
-                                            </option>
-                                            <option value="claude">
-                                                Anthropic Claude
-                                            </option>
-                                            <option value="openai">
-                                                OpenAI
-                                            </option>
-                                            <option value="ollama">
-                                                Ollama
-                                            </option>
-                                            <option value="lmstudio">
-                                                LM Studio
-                                            </option>
-                                            <option value="perplexity">
-                                                Perplexity AI
-                                            </option>
-                                            <option value="local">
-                                                Local/Custom
-                                            </option>
-                                        </select>
+                                        />
                                     </div>
 
                                     <div>
@@ -2254,44 +2160,23 @@
                                         <label for="brokerName" class="label"
                                             >Broker</label
                                         >
-                                        <select
-                                            id="brokerName"
+                                        <BaseSelect
                                             v-model="brokerFeeForm.broker"
-                                            class="input"
                                             :disabled="editingBrokerFee"
-                                        >
-                                            <option value="">
-                                                Select a broker
-                                            </option>
-                                            <option value="avatrade">
-                                                AvaTrade
-                                            </option>
-                                            <option value="tradovate">
-                                                Tradovate
-                                            </option>
-                                            <option value="ninjatrader">
-                                                NinjaTrader
-                                            </option>
-                                            <option value="thinkorswim">
-                                                ThinkorSwim
-                                            </option>
-                                            <option value="ibkr">
-                                                Interactive Brokers
-                                            </option>
-                                            <option value="schwab">
-                                                Charles Schwab
-                                            </option>
-                                            <option value="lightspeed">
-                                                Lightspeed
-                                            </option>
-                                            <option value="webull">
-                                                Webull
-                                            </option>
-                                            <option value="etrade">
-                                                E*TRADE
-                                            </option>
-                                            <option value="other">Other</option>
-                                        </select>
+                                            :options="[
+                                                { value: 'avatrade', label: 'AvaTrade' },
+                                                { value: 'tradovate', label: 'Tradovate' },
+                                                { value: 'ninjatrader', label: 'NinjaTrader' },
+                                                { value: 'thinkorswim', label: 'ThinkorSwim' },
+                                                { value: 'ibkr', label: 'Interactive Brokers' },
+                                                { value: 'schwab', label: 'Charles Schwab' },
+                                                { value: 'lightspeed', label: 'Lightspeed' },
+                                                { value: 'webull', label: 'Webull' },
+                                                { value: 'etrade', label: 'E*TRADE' },
+                                                { value: 'other', label: 'Other' }
+                                            ]"
+                                            placeholder="Select a broker"
+                                        />
                                     </div>
 
                                     <div>
@@ -2841,6 +2726,7 @@ import {
     ArrowTopRightOnSquareIcon,
 } from "@heroicons/vue/24/outline";
 import LogsViewer from "@/components/admin/LogsViewer.vue";
+import BaseSelect from "@/components/common/BaseSelect.vue";
 
 const authStore = useAuthStore();
 const versionStore = useVersionStore();
@@ -2880,6 +2766,9 @@ const aiForm = ref({
 const aiLoading = ref(false);
 
 const currencyOptions = CURRENCY_OPTIONS;
+const currencySelectOptions = computed(() =>
+    currencyOptions.map((c) => ({ value: c.code, label: `${c.code} - ${c.name}` }))
+);
 
 // CUSIP AI Provider Settings
 const cusipAiForm = ref({

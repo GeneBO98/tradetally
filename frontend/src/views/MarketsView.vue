@@ -334,10 +334,13 @@
                             class="text-sm font-medium text-gray-700 dark:text-gray-300"
                             >Status:</label
                         >
-                        <select v-model="filters.activeOnly" class="input">
-                            <option value="true">Active Only</option>
-                            <option value="false">All Alerts</option>
-                        </select>
+                        <BaseSelect
+                            v-model="filters.activeOnly"
+                            :options="[
+                                { value: 'true', label: 'Active Only' },
+                                { value: 'false', label: 'All Alerts' },
+                            ]"
+                        />
                     </div>
                     <button @click="loadAlerts" class="btn-secondary">
                         Refresh
@@ -709,18 +712,15 @@
                                     class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
                                     >Alert Type</label
                                 >
-                                <select
+                                <BaseSelect
                                     id="alertType"
                                     v-model="alertForm.alert_type"
-                                    required
-                                    class="input"
-                                >
-                                    <option value="above">Price Above</option>
-                                    <option value="below">Price Below</option>
-                                    <option value="change_percent">
-                                        % Change
-                                    </option>
-                                </select>
+                                    :options="[
+                                        { value: 'above', label: 'Price Above' },
+                                        { value: 'below', label: 'Price Below' },
+                                        { value: 'change_percent', label: '% Change' },
+                                    ]"
+                                />
                             </div>
                         </div>
 
@@ -852,6 +852,7 @@ import PriceAlertWebhookManager from "@/components/price-alerts/PriceAlertWebhoo
 import { mdiBell, mdiRepeat } from "@mdi/js";
 import { getMarketStatus } from "@/utils/marketStatus";
 import SymbolAutocomplete from "@/components/common/SymbolAutocomplete.vue";
+import BaseSelect from "@/components/common/BaseSelect.vue";
 
 const route = useRoute();
 const router = useRouter();

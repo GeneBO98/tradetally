@@ -7,11 +7,20 @@ const getAllTags = async (req, res) => {
   try {
     const userId = req.user.id;
 
+    // Include the hidden flag and a usage count (how many trades carry the
+    // tag) so the management UI can show counts and let users hide tags.
     const result = await pool.query(
-      `SELECT id, name, color, created_at as "createdAt"
-       FROM tags
-       WHERE user_id = $1
-       ORDER BY name ASC`,
+      `SELECT t.id, t.name, t.color, t.hidden, t.created_at as "createdAt",
+              COALESCE(tc.count, 0)::int AS count
+       FROM tags t
+       LEFT JOIN (
+         SELECT tag AS name, COUNT(*) AS count
+         FROM trades, unnest(trades.tags) AS tag
+         WHERE trades.user_id = $1 AND trades.tags IS NOT NULL
+         GROUP BY tag
+       ) tc ON tc.name = t.name
+       WHERE t.user_id = $1
+       ORDER BY count DESC, t.name ASC`,
       [userId]
     );
 
@@ -103,13 +112,13 @@ const updateTag = async (req, res) => {
   try {
     const userId = req.user.id;
     const { id } = req.params;
-    const { name, color } = req.body;
+    const { name, color, hidden } = req.body;
 
     // Validation
-    if (!name && !color) {
+    if (!name && !color && hidden === undefined) {
       return res.status(400).json({
         success: false,
-        message: 'At least one field (name or color) must be provided'
+        message: 'At least one field (name, color, or hidden) must be provided'
       });
     }
 
@@ -174,13 +183,18 @@ const updateTag = async (req, res) => {
       values.push(color);
     }
 
+    if (hidden !== undefined) {
+      updates.push(`hidden = $${paramCount++}`);
+      values.push(Boolean(hidden));
+    }
+
     values.push(id, userId);
 
     const result = await pool.query(
       `UPDATE tags
        SET ${updates.join(', ')}
        WHERE id = $${paramCount++} AND user_id = $${paramCount}
-       RETURNING id, name, color, created_at as "createdAt"`,
+       RETURNING id, name, color, hidden, created_at as "createdAt"`,
       values
     );
 

@@ -702,17 +702,12 @@
               <div v-else class="space-y-5">
                 <div>
                   <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Playbook</label>
-                  <select v-model="selectedPlaybookId" @change="onPlaybookChange" class="input">
-                    <option value="">Select a playbook</option>
-                    <option
-                      v-for="playbook in playbooks"
-                      :key="playbook.id"
-                      :value="playbook.id"
-                      :disabled="playbook.isActive === false && playbook.id !== trade.playbookId"
-                    >
-                      {{ playbook.name }}{{ playbook.isActive === false ? ' (Archived)' : '' }}
-                    </option>
-                  </select>
+                  <BaseSelect
+                    v-model="selectedPlaybookId"
+                    :options="playbookOptions"
+                    placeholder="Select a playbook"
+                    @change="onPlaybookChange"
+                  />
                 </div>
 
                 <div v-if="selectedPlaybook" class="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
@@ -764,11 +759,14 @@
                   <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-4">
                     <div>
                       <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Followed plan?</label>
-                      <select v-model="reviewForm.followedPlan" class="input">
-                        <option value="">Not set</option>
-                        <option value="true">Yes</option>
-                        <option value="false">No</option>
-                      </select>
+                      <BaseSelect
+                        v-model="reviewForm.followedPlan"
+                        :options="[
+                          { value: 'true', label: 'Yes' },
+                          { value: 'false', label: 'No' }
+                        ]"
+                        placeholder="Not set"
+                      />
                     </div>
 
                     <div>
@@ -1522,6 +1520,7 @@ import TradeCharts from '@/components/trades/TradeCharts.vue'
 import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
 import AIConversationPanel from '@/components/ai/AIConversationPanel.vue'
 import AIReportRenderer from '@/components/ai/AIReportRenderer.vue'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 import { useAIStore } from '@/stores/ai'
 
 const route = useRoute()
@@ -1540,6 +1539,13 @@ const splittingTrade = ref(false)
 const splitMode = ref(false)
 const selectedExecutions = ref(new Set())
 const playbooks = ref([])
+const playbookOptions = computed(() =>
+  playbooks.value.map(playbook => ({
+    value: playbook.id,
+    label: `${playbook.name}${playbook.isActive === false ? ' (Archived)' : ''}`,
+    disabled: playbook.isActive === false && playbook.id !== trade.value?.playbookId
+  }))
+)
 const loadingPlaybooks = ref(false)
 const savingPlaybookReview = ref(false)
 const showAIPanel = ref(false)

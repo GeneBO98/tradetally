@@ -191,25 +191,11 @@
                                 <label for="timezone" class="label"
                                     >Timezone</label
                                 >
-                                <select
-                                    id="timezone"
+                                <BaseSelect
                                     v-model="profileForm.timezone"
-                                    class="input"
-                                >
-                                    <optgroup
-                                        v-for="group in timezoneGroups"
-                                        :key="group.name"
-                                        :label="group.name"
-                                    >
-                                        <option
-                                            v-for="tz in group.options"
-                                            :key="tz.value"
-                                            :value="tz.value"
-                                        >
-                                            {{ tz.label }}
-                                        </option>
-                                    </optgroup>
-                                </select>
+                                    noun="timezones"
+                                    :options="timezoneSelectGroups"
+                                />
                                 <p
                                     class="mt-1 text-sm text-gray-500 dark:text-gray-400"
                                 >
@@ -222,16 +208,13 @@
                                 <label for="timeDisplayFormat" class="label"
                                     >Time format</label
                                 >
-                                <select
-                                    id="timeDisplayFormat"
+                                <BaseSelect
                                     v-model="profileForm.timeDisplayFormat"
-                                    class="input"
-                                >
-                                    <option value="24h">24-hour (14:00)</option>
-                                    <option value="12h">
-                                        12-hour (2:00 PM)
-                                    </option>
-                                </select>
+                                    :options="[
+                                        { value: '24h', label: '24-hour (14:00)' },
+                                        { value: '12h', label: '12-hour (2:00 PM)' }
+                                    ]"
+                                />
                                 <p
                                     class="mt-1 text-sm text-gray-500 dark:text-gray-400"
                                 >
@@ -792,44 +775,41 @@
                                 <!-- Risk Tolerance -->
                                 <div>
                                     <label for="riskTolerance" class="label">Risk Tolerance</label>
-                                    <select
-                                        id="riskTolerance"
+                                    <BaseSelect
                                         v-model="tradingProfileForm.riskTolerance"
-                                        class="input"
-                                    >
-                                        <option value="conservative">Conservative</option>
-                                        <option value="moderate">Moderate</option>
-                                        <option value="aggressive">Aggressive</option>
-                                    </select>
+                                        :options="[
+                                            { value: 'conservative', label: 'Conservative' },
+                                            { value: 'moderate', label: 'Moderate' },
+                                            { value: 'aggressive', label: 'Aggressive' }
+                                        ]"
+                                    />
                                 </div>
 
                                 <!-- Experience Level -->
                                 <div>
                                     <label for="experienceLevel" class="label">Experience Level</label>
-                                    <select
-                                        id="experienceLevel"
+                                    <BaseSelect
                                         v-model="tradingProfileForm.experienceLevel"
-                                        class="input"
-                                    >
-                                        <option value="beginner">Beginner (0-1 years)</option>
-                                        <option value="intermediate">Intermediate (1-3 years)</option>
-                                        <option value="advanced">Advanced (3-5 years)</option>
-                                        <option value="expert">Expert (5+ years)</option>
-                                    </select>
+                                        :options="[
+                                            { value: 'beginner', label: 'Beginner (0-1 years)' },
+                                            { value: 'intermediate', label: 'Intermediate (1-3 years)' },
+                                            { value: 'advanced', label: 'Advanced (3-5 years)' },
+                                            { value: 'expert', label: 'Expert (5+ years)' }
+                                        ]"
+                                    />
                                 </div>
 
                                 <!-- Average Position Size -->
                                 <div>
                                     <label for="averagePositionSize" class="label">Average Position Size</label>
-                                    <select
-                                        id="averagePositionSize"
+                                    <BaseSelect
                                         v-model="tradingProfileForm.averagePositionSize"
-                                        class="input"
-                                    >
-                                        <option value="small">Small ($100 - $1,000)</option>
-                                        <option value="medium">Medium ($1,000 - $10,000)</option>
-                                        <option value="large">Large ($10,000+)</option>
-                                    </select>
+                                        :options="[
+                                            { value: 'small', label: 'Small ($100 - $1,000)' },
+                                            { value: 'medium', label: 'Medium ($1,000 - $10,000)' },
+                                            { value: 'large', label: 'Large ($10,000+)' }
+                                        ]"
+                                    />
                                 </div>
                             </div>
                         </section>
@@ -843,14 +823,13 @@
                             <div class="pl-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
                                 <div>
                                     <label for="postExitExcursionWindowMode" class="label">Tracking Window</label>
-                                    <select
-                                        id="postExitExcursionWindowMode"
+                                    <BaseSelect
                                         v-model="tradingProfileForm.postExitExcursionWindowMode"
-                                        class="input"
-                                    >
-                                        <option value="auto">Auto from trading profile</option>
-                                        <option value="manual">Manual duration</option>
-                                    </select>
+                                        :options="[
+                                            { value: 'auto', label: 'Auto from trading profile' },
+                                            { value: 'manual', label: 'Manual duration' }
+                                        ]"
+                                    />
                                 </div>
 
                                 <div>
@@ -1404,17 +1383,17 @@
                             <label for="apiKeyExpiry" class="label"
                                 >Expires in (days)</label
                             >
-                            <select
-                                id="apiKeyExpiry"
+                            <BaseSelect
                                 v-model="createApiKeyForm.expiresIn"
-                                class="input"
-                            >
-                                <option :value="null">Never</option>
-                                <option :value="30">30 days</option>
-                                <option :value="90">90 days</option>
-                                <option :value="180">180 days</option>
-                                <option :value="365">1 year</option>
-                            </select>
+                                :searchable="false"
+                                :options="[
+                                    { value: null, label: 'Never' },
+                                    { value: 30, label: '30 days' },
+                                    { value: 90, label: '90 days' },
+                                    { value: 180, label: '180 days' },
+                                    { value: 365, label: '1 year' },
+                                ]"
+                            />
                         </div>
 
                         <div class="flex justify-end space-x-3 pt-4">
@@ -1628,6 +1607,7 @@ import NotificationPreferences from "@/components/profile/NotificationPreference
 import PriceAlertWebhookManager from "@/components/price-alerts/PriceAlertWebhookManager.vue";
 import api from "@/services/api";
 import { TIMEZONE_OPTIONS } from "@/utils/timezone";
+import BaseSelect from "@/components/common/BaseSelect.vue";
 
 const router = useRouter();
 const route = useRoute();
@@ -1830,6 +1810,11 @@ const timezoneGroups = computed(() => {
         options: groups[name],
     }));
 });
+
+// Shape timezone groups for BaseSelect (which expects `label`/`options`).
+const timezoneSelectGroups = computed(() =>
+    timezoneGroups.value.map((g) => ({ label: g.name, options: g.options })),
+);
 
 // Computed property to determine if upgrade button should be shown
 const shouldShowUpgradeButton = computed(() => {

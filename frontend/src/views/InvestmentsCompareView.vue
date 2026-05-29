@@ -18,19 +18,12 @@
       </div>
       <div class="flex items-center gap-3">
         <label class="text-xs text-gray-500 dark:text-gray-400">Period</label>
-        <select
-          v-model="period"
-          class="px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white"
-        >
-          <option value="1M">1M</option>
-          <option value="3M">3M</option>
-          <option value="6M">6M</option>
-          <option value="YTD">YTD</option>
-          <option value="1Y">1Y</option>
-          <option value="3Y">3Y</option>
-          <option value="5Y">5Y</option>
-          <option value="ALL">ALL</option>
-        </select>
+        <div class="w-28">
+          <BaseSelect
+            v-model="period"
+            :options="['1M', '3M', '6M', 'YTD', '1Y', '3Y', '5Y', 'ALL']"
+          />
+        </div>
         <span class="text-xs text-gray-500 dark:text-gray-400">vs {{ benchmark }}</span>
       </div>
     </div>
@@ -226,6 +219,7 @@ import { useRouter, useRoute } from 'vue-router'
 import api from '@/services/api'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import PortfolioPerformanceChart from '@/components/investments/PortfolioPerformanceChart.vue'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 
 const router = useRouter()
 const route = useRoute()

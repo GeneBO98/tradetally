@@ -7,17 +7,20 @@
         <!-- Log limit selector -->
         <div class="flex items-center space-x-2">
           <label class="text-sm text-gray-700 dark:text-gray-300">Show:</label>
-          <select
-            v-model="logLimit"
-            @change="handleLimitChange"
-            class="text-sm rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:ring-primary-500 focus:border-primary-500"
-          >
-            <option :value="50">50 logs</option>
-            <option :value="100">100 logs</option>
-            <option :value="200">200 logs</option>
-            <option :value="500">500 logs</option>
-            <option :value="1000">1000 logs</option>
-          </select>
+          <div class="text-sm w-32">
+            <BaseSelect
+              v-model="logLimit"
+              @change="handleLimitChange"
+              :searchable="false"
+              :options="[
+                { value: 50, label: '50 logs' },
+                { value: 100, label: '100 logs' },
+                { value: 200, label: '200 logs' },
+                { value: 500, label: '500 logs' },
+                { value: 1000, label: '1000 logs' },
+              ]"
+            />
+          </div>
         </div>
 
         <!-- Auto-refresh toggle -->
@@ -139,6 +142,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import api from '@/services/api'
 import { useUserTimezone } from '@/composables/useUserTimezone'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 
 const { formatTime: formatTimeTz } = useUserTimezone()
 

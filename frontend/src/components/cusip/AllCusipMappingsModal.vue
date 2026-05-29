@@ -53,25 +53,29 @@
                                 class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
                             />
                         </div>
-                        <select
-                            v-model="statusFilter"
-                            @change="loadMappings(1)"
-                            class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
-                        >
-                            <option value="">All Status</option>
-                            <option value="mapped">Mapped</option>
-                            <option value="unmapped">Unmapped</option>
-                        </select>
-                        <select
-                            v-model="sourceFilter"
-                            @change="loadMappings(1)"
-                            class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
-                        >
-                            <option value="">All Sources</option>
-                            <option value="finnhub">Finnhub</option>
-                            <option value="ai">AI</option>
-                            <option value="manual">Manual</option>
-                        </select>
+                        <div class="min-w-40">
+                            <BaseSelect
+                                v-model="statusFilter"
+                                @change="loadMappings(1)"
+                                placeholder="All Status"
+                                :options="[
+                                    { value: 'mapped', label: 'Mapped' },
+                                    { value: 'unmapped', label: 'Unmapped' }
+                                ]"
+                            />
+                        </div>
+                        <div class="min-w-40">
+                            <BaseSelect
+                                v-model="sourceFilter"
+                                @change="loadMappings(1)"
+                                placeholder="All Sources"
+                                :options="[
+                                    { value: 'finnhub', label: 'Finnhub' },
+                                    { value: 'ai', label: 'AI' },
+                                    { value: 'manual', label: 'Manual' }
+                                ]"
+                            />
+                        </div>
                         <button
                             @click="loadMappings(1)"
                             :disabled="loading"
@@ -420,6 +424,7 @@ import {
 import { useAuthStore } from "@/stores/auth";
 import { useNotification } from "@/composables/useNotification";
 import CusipMappingModal from "./CusipMappingModal.vue";
+import BaseSelect from "@/components/common/BaseSelect.vue";
 // Simple debounce implementation to avoid lodash-es dependency
 const debounce = (func, wait) => {
     let timeout;

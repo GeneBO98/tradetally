@@ -74,39 +74,51 @@
                         </div>
                         <div>
                             <label class="label">Role</label>
-                            <select v-model="filters.role" class="input">
-                                <option value="all">All roles</option>
-                                <option value="user">User</option>
-                                <option value="admin">Admin</option>
-                                <option value="owner">Owner</option>
-                            </select>
+                            <BaseSelect
+                                v-model="filters.role"
+                                :options="[
+                                    { value: 'all', label: 'All roles' },
+                                    { value: 'user', label: 'User' },
+                                    { value: 'admin', label: 'Admin' },
+                                    { value: 'owner', label: 'Owner' },
+                                ]"
+                            />
                         </div>
                         <div>
                             <label class="label">Status</label>
-                            <select v-model="filters.status" class="input">
-                                <option value="all">All statuses</option>
-                                <option value="active">Active</option>
-                                <option value="inactive">Inactive</option>
-                                <option value="pending_approval">Pending</option>
-                                <option value="unverified">Unverified</option>
-                            </select>
+                            <BaseSelect
+                                v-model="filters.status"
+                                :options="[
+                                    { value: 'all', label: 'All statuses' },
+                                    { value: 'active', label: 'Active' },
+                                    { value: 'inactive', label: 'Inactive' },
+                                    { value: 'pending_approval', label: 'Pending' },
+                                    { value: 'unverified', label: 'Unverified' },
+                                ]"
+                            />
                         </div>
                         <div>
                             <label class="label">Tier</label>
-                            <select v-model="filters.tier" class="input">
-                                <option value="all">All tiers</option>
-                                <option value="free">Free</option>
-                                <option value="pro">Pro</option>
-                                <option value="trial">Trial</option>
-                            </select>
+                            <BaseSelect
+                                v-model="filters.tier"
+                                :options="[
+                                    { value: 'all', label: 'All tiers' },
+                                    { value: 'free', label: 'Free' },
+                                    { value: 'pro', label: 'Pro' },
+                                    { value: 'trial', label: 'Trial' },
+                                ]"
+                            />
                         </div>
                         <div>
                             <label class="label">Marketing</label>
-                            <select v-model="filters.marketing" class="input">
-                                <option value="all">All</option>
-                                <option value="subscribed">Subscribed</option>
-                                <option value="unsubscribed">Unsubscribed</option>
-                            </select>
+                            <BaseSelect
+                                v-model="filters.marketing"
+                                :options="[
+                                    { value: 'all', label: 'All' },
+                                    { value: 'subscribed', label: 'Subscribed' },
+                                    { value: 'unsubscribed', label: 'Unsubscribed' },
+                                ]"
+                            />
                         </div>
                         <div>
                             <label class="label">Joined From</label>
@@ -166,15 +178,18 @@
                                 <!-- Role / Tier -->
                                 <td class="px-4 py-3 whitespace-nowrap">
                                     <div class="flex items-center gap-2">
-                                        <select
-                                            :value="user.role"
-                                            @change="updateUserRole(user, $event.target.value)"
-                                            :disabled="isUpdating || (user.role === 'admin' && adminCount <= 1)"
-                                            class="input py-1 px-2 text-xs w-20 disabled:opacity-50 disabled:cursor-not-allowed"
-                                        >
-                                            <option value="user">User</option>
-                                            <option value="admin">Admin</option>
-                                        </select>
+                                        <div class="w-20 text-xs">
+                                            <BaseSelect
+                                                :model-value="user.role"
+                                                @change="val => updateUserRole(user, val)"
+                                                :disabled="isUpdating || (user.role === 'admin' && adminCount <= 1)"
+                                                :searchable="false"
+                                                :options="[
+                                                    { value: 'user', label: 'User' },
+                                                    { value: 'admin', label: 'Admin' },
+                                                ]"
+                                            />
+                                        </div>
                                         <span :class="getTierBadgeClass(getUserDisplayTier(user))" class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium">
                                             {{ getUserDisplayTier(user) }}
                                         </span>
@@ -401,10 +416,13 @@
                     <div class="card card-body">
                         <p class="text-sm font-semibold text-gray-900 dark:text-white">Set tier override</p>
                         <div class="mt-3 space-y-3">
-                            <select v-model="overrideTier" class="input">
-                                <option value="free">Free</option>
-                                <option value="pro">Pro</option>
-                            </select>
+                            <BaseSelect
+                                v-model="overrideTier"
+                                :options="[
+                                    { value: 'free', label: 'Free' },
+                                    { value: 'pro', label: 'Pro' },
+                                ]"
+                            />
                             <input v-model="overrideExpiry" type="date" class="input" />
                             <input v-model="overrideReason" type="text" placeholder="Reason for override" class="input" />
                             <button @click="setTierOverride" :disabled="isUpdating" class="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed">
@@ -443,6 +461,7 @@ import { useNotification } from "@/composables/useNotification";
 import { useAuthStore } from "@/stores/auth";
 import MdiIcon from "@/components/MdiIcon.vue";
 import AdminNav from "@/components/admin/AdminNav.vue";
+import BaseSelect from "@/components/common/BaseSelect.vue";
 import { mdiCheckCircle, mdiCloseCircle } from "@mdi/js";
 
 const { showError, showSuccess } = useNotification();

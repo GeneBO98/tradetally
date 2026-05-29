@@ -98,7 +98,7 @@
               </label>
             </div>
             <div class="border-t border-gray-200 dark:border-gray-600">
-              <div v-for="strategy in strategyOptions" :key="strategy.value" class="p-1">
+              <div v-for="strategy in visibleStrategyOptions" :key="strategy.value" class="p-1">
                 <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
                   <input
                     type="checkbox"
@@ -110,10 +110,27 @@
                 </label>
               </div>
             </div>
+            <div v-if="strategyUsage.length" class="border-t border-gray-200 dark:border-gray-600 p-1">
+              <button
+                @click.stop="openStrategyManager"
+                type="button"
+                class="flex items-center w-full px-3 py-2 text-sm text-primary-600 dark:text-primary-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+              >
+                Manage strategies
+              </button>
+            </div>
           </div>
         </div>
       </div>
     </div>
+
+    <DropdownItemManager
+      v-model:show="showStrategyManager"
+      title="Manage Strategies"
+      :items="strategyUsage"
+      :hidden="hiddenStrategies"
+      @toggle="toggleStrategy"
+    />
 
     <!-- Second Row of Basic Filters -->
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -690,6 +707,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { ChevronRightIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
 import TagManagement from './TagManagement.vue'
+import DropdownItemManager from './DropdownItemManager.vue'
+import { useHiddenDropdownItems } from '@/composables/useHiddenDropdownItems'
 import { useTradesStore } from '@/stores/trades'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { formatLocalDate } from '@/utils/date'
@@ -908,6 +927,19 @@ const defaultStrategyOptions = [
   { value: 'news_uncertainty', label: 'News Uncertainty' }
 ]
 const strategyOptions = ref([...defaultStrategyOptions])
+
+// Hide/manage strategies in the dropdown
+const { hiddenStrategies, refresh: refreshHiddenItems, toggleStrategy } = useHiddenDropdownItems()
+const strategyUsage = ref([]) // [{ name, count }] for the manage modal
+const showStrategyManager = ref(false)
+
+// Drop hidden strategies from the dropdown, but always keep currently selected
+// ones visible so an active filter is never silently lost.
+const visibleStrategyOptions = computed(() =>
+  strategyOptions.value.filter(
+    opt => !hiddenStrategies.value.includes(opt.value) || (filters.value.strategies || []).includes(opt.value)
+  )
+)
 
 // Initialize filters with defaults, then load from localStorage
 const defaultFilters = {
@@ -1399,6 +1431,11 @@ async function fetchAvailableBrokers() {
   }
 }
 
+function openStrategyManager() {
+  showStrategyDropdown.value = false
+  showStrategyManager.value = true
+}
+
 function mergeStrategyOptions(strategies = []) {
   const merged = new Map(defaultStrategyOptions.map((option) => [option.value, option]))
 
@@ -1422,6 +1459,7 @@ async function fetchAvailableStrategies() {
     loadingStrategies.value = true
     const response = await api.get('/trades/strategies')
     mergeStrategyOptions(response.data?.strategies || [])
+    strategyUsage.value = response.data?.usage || []
   } catch (error) {
     console.warn('Failed to fetch available strategies:', error)
   } finally {
@@ -1568,6 +1606,7 @@ onMounted(() => {
   }, 100)
 
   // Fetch available dropdown options
+  refreshHiddenItems()
   fetchAvailableStrategies()
   fetchAvailableSectors()
   fetchAvailableBrokers()

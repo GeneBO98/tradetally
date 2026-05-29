@@ -3102,25 +3102,29 @@ class Trade {
   }
 
   static async getStrategyList(userId) {
+    // Return each strategy with how many trades use it, most-used first, so
+    // dropdowns can surface the strategies the user actually relies on.
     const query = `
-      SELECT DISTINCT strategy
+      SELECT strategy AS name, COUNT(*)::int AS count
       FROM trades
       WHERE user_id = $1 AND strategy IS NOT NULL AND strategy != ''
-      ORDER BY strategy
+      GROUP BY strategy
+      ORDER BY count DESC, strategy ASC
     `;
     const result = await db.query(query, [userId]);
-    return result.rows.map(row => row.strategy);
+    return result.rows;
   }
 
   static async getSetupList(userId) {
     const query = `
-      SELECT DISTINCT setup
+      SELECT setup AS name, COUNT(*)::int AS count
       FROM trades
       WHERE user_id = $1 AND setup IS NOT NULL AND setup != ''
-      ORDER BY setup
+      GROUP BY setup
+      ORDER BY count DESC, setup ASC
     `;
     const result = await db.query(query, [userId]);
-    return result.rows.map(row => row.setup);
+    return result.rows;
   }
 
   static async getBrokerList(userId) {

@@ -86,22 +86,30 @@
             <div class="grid grid-cols-1 gap-4 border-t border-gray-200 p-4 dark:border-gray-700 sm:grid-cols-2">
               <div>
                 <label for="delimiter" class="label">Delimiter</label>
-                <select id="delimiter" v-model="mappingForm.delimiter" class="input">
-                  <option value=",">Comma (,)</option>
-                  <option value=";">Semicolon (;)</option>
-                  <option value="\t">Tab</option>
-                  <option value="|">Pipe (|)</option>
-                </select>
+                <BaseSelect
+                  id="delimiter"
+                  v-model="mappingForm.delimiter"
+                  :options="[
+                    { value: ',', label: 'Comma (,)' },
+                    { value: ';', label: 'Semicolon (;)' },
+                    { value: '\t', label: 'Tab' },
+                    { value: '|', label: 'Pipe (|)' }
+                  ]"
+                />
               </div>
               <div>
                 <label for="dateFormat" class="label">Date format</label>
-                <select id="dateFormat" v-model="mappingForm.date_format" class="input">
-                  <option value="MM/DD/YYYY">MM/DD/YYYY</option>
-                  <option value="DD/MM/YYYY">DD/MM/YYYY</option>
-                  <option value="YYYY-MM-DD">YYYY-MM-DD</option>
-                  <option value="MM-DD-YYYY">MM-DD-YYYY</option>
-                  <option value="DD-MM-YYYY">DD-MM-YYYY</option>
-                </select>
+                <BaseSelect
+                  id="dateFormat"
+                  v-model="mappingForm.date_format"
+                  :options="[
+                    { value: 'MM/DD/YYYY', label: 'MM/DD/YYYY' },
+                    { value: 'DD/MM/YYYY', label: 'DD/MM/YYYY' },
+                    { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD' },
+                    { value: 'MM-DD-YYYY', label: 'MM-DD-YYYY' },
+                    { value: 'DD-MM-YYYY', label: 'DD-MM-YYYY' }
+                  ]"
+                />
               </div>
               <div class="flex items-center sm:col-span-2">
                 <input
@@ -176,6 +184,7 @@
 <script setup>
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { XMarkIcon } from '@heroicons/vue/24/outline'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 import api from '@/services/api'
 import { useNotification } from '@/composables/useNotification'
 

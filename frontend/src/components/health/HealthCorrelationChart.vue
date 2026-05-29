@@ -6,26 +6,26 @@
           Health-Trading Correlations
         </h3>
         <div class="flex items-center space-x-2">
-          <select
+          <BaseSelect
             v-model="selectedMetric"
             @change="updateChart"
-            class="text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md px-3 py-2"
-          >
-            <option value="heart_rate">Heart Rate</option>
-            <option value="sleep_score">Sleep Quality</option>
-            <option value="sleep_hours">Sleep Hours</option>
-            <option value="stress_level">Stress Level</option>
-          </select>
-          <select
+            :options="[
+              { value: 'heart_rate', label: 'Heart Rate' },
+              { value: 'sleep_score', label: 'Sleep Quality' },
+              { value: 'sleep_hours', label: 'Sleep Hours' },
+              { value: 'stress_level', label: 'Stress Level' },
+            ]"
+          />
+          <BaseSelect
             v-model="selectedPeriod"
             @change="loadCorrelationData"
-            class="text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md px-3 py-2"
-          >
-            <option value="7">Last 7 Days</option>
-            <option value="30">Last 30 Days</option>
-            <option value="90">Last 90 Days</option>
-            <option value="all">All Time</option>
-          </select>
+            :options="[
+              { value: '7', label: 'Last 7 Days' },
+              { value: '30', label: 'Last 30 Days' },
+              { value: '90', label: 'Last 90 Days' },
+              { value: 'all', label: 'All Time' },
+            ]"
+          />
           <label class="flex items-center text-sm text-gray-700 dark:text-gray-300">
             <input
               type="checkbox"
@@ -123,6 +123,7 @@
 import { ref, onMounted, computed, watch, nextTick } from 'vue'
 import { Chart, registerables } from 'chart.js'
 import api from '@/services/api'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 
 Chart.register(...registerables)
 

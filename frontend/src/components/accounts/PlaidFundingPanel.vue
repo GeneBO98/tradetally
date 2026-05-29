@@ -173,30 +173,24 @@
 
                 <!-- Linking controls -->
                 <div class="mt-2 grid gap-1.5 sm:grid-cols-2">
-                  <select
+                  <BaseSelect
                     v-model="selectedAccountIds[plaidAccount.id]"
-                    class="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                    style="min-height: 0; font-size: 12px;"
-                  >
-                    <option value="">Select TradeTally account</option>
-                    <option
-                      v-for="account in accounts"
-                      :key="account.id"
-                      :value="account.id"
-                    >
-                      {{ account.accountName }}
-                    </option>
-                  </select>
+                    :options="accounts"
+                    value-key="id"
+                    label-key="accountName"
+                    placeholder="Select TradeTally account"
+                  />
 
                   <div class="flex items-center gap-1">
-                    <select
-                      v-model="trackingModes[plaidAccount.id]"
-                      class="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                      style="min-height: 0; font-size: 12px;"
-                    >
-                      <option value="tracked_account">Track directly</option>
-                      <option value="funding_source">Funding source</option>
-                    </select>
+                    <div class="w-full">
+                      <BaseSelect
+                        v-model="trackingModes[plaidAccount.id]"
+                        :options="[
+                          { value: 'tracked_account', label: 'Track directly' },
+                          { value: 'funding_source', label: 'Funding source' }
+                        ]"
+                      />
+                    </div>
                     <div class="group relative shrink-0">
                       <button
                         type="button"
@@ -254,6 +248,7 @@
 <script setup>
 import { computed, reactive, ref, watch } from 'vue'
 import { usePlaidFundingStore } from '@/stores/plaidFunding'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 import { useNotification } from '@/composables/useNotification'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 

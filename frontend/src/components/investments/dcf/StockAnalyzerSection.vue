@@ -258,14 +258,14 @@
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Alert me when price is
             </label>
-            <select
+            <BaseSelect
               v-model="alertForm.alert_type"
-              class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
-            >
-              <option value="above">Above target price</option>
-              <option value="below">Below target price</option>
-              <option value="change_percent">Changes by percent</option>
-            </select>
+              :options="[
+                { value: 'above', label: 'Above target price' },
+                { value: 'below', label: 'Below target price' },
+                { value: 'change_percent', label: 'Changes by percent' },
+              ]"
+            />
           </div>
 
           <div v-if="alertForm.alert_type !== 'change_percent'">
@@ -351,6 +351,7 @@ import { useNotification } from '@/composables/useNotification'
 import api from '@/services/api'
 import DCFCalculator from './DCFCalculator.vue'
 import SavedValuationsList from './SavedValuationsList.vue'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 
 const props = defineProps({
   symbol: {

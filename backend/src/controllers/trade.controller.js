@@ -3786,8 +3786,10 @@ const tradeController = {
 
   async getStrategyList(req, res, next) {
     try {
-      const strategies = await Trade.getStrategyList(req.user.id);
-      res.json({ strategies });
+      const usage = await Trade.getStrategyList(req.user.id);
+      // `strategies` keeps the legacy string-array shape (now most-used first);
+      // `usage` adds per-item trade counts for the manage/hide UI.
+      res.json({ strategies: usage.map(u => u.name), usage });
     } catch (error) {
       next(error);
     }
@@ -3795,8 +3797,8 @@ const tradeController = {
 
   async getSetupList(req, res, next) {
     try {
-      const setups = await Trade.getSetupList(req.user.id);
-      res.json({ setups });
+      const usage = await Trade.getSetupList(req.user.id);
+      res.json({ setups: usage.map(u => u.name), usage });
     } catch (error) {
       next(error);
     }

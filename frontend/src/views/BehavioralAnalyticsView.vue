@@ -5636,26 +5636,15 @@
                                 >
                                     Detection Sensitivity
                                 </label>
-                                <select
-                                    v-model="
-                                        settings.revengeTrading.sensitivity
-                                    "
+                                <BaseSelect
+                                    v-model="settings.revengeTrading.sensitivity"
+                                    :options="[
+                                        { value: 'low', label: 'Low - 5%+ account loss triggers detection' },
+                                        { value: 'medium', label: 'Medium - 3%+ account loss triggers detection' },
+                                        { value: 'high', label: 'High - 1%+ account loss triggers detection' }
+                                    ]"
                                     @change="onSensitivityChange"
-                                    class="input"
-                                >
-                                    <option value="low">
-                                        Low - 5%+ account loss triggers
-                                        detection
-                                    </option>
-                                    <option value="medium">
-                                        Medium - 3%+ account loss triggers
-                                        detection
-                                    </option>
-                                    <option value="high">
-                                        High - 1%+ account loss triggers
-                                        detection
-                                    </option>
-                                </select>
+                                />
                             </div>
                         </div>
 
@@ -5715,6 +5704,7 @@ import { useUserTimezone } from "@/composables/useUserTimezone";
 import ProUpgradePrompt from "@/components/ProUpgradePrompt.vue";
 import MdiIcon from "@/components/MdiIcon.vue";
 import TradeFilters from "@/components/trades/TradeFilters.vue";
+import BaseSelect from "@/components/common/BaseSelect.vue";
 import {
     mdiChartBox,
     mdiTrendingDown,

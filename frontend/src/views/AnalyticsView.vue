@@ -625,11 +625,17 @@
         <div class="card-body">
           <div class="flex items-center justify-between mb-4">
             <h3 class="heading-card">Performance Over Time</h3>
-            <select v-model="performancePeriod" @change="fetchPerformance" class="input w-auto">
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-            </select>
+            <div class="w-auto">
+              <BaseSelect
+                v-model="performancePeriod"
+                :options="[
+                  { value: 'daily', label: 'Daily' },
+                  { value: 'weekly', label: 'Weekly' },
+                  { value: 'monthly', label: 'Monthly' }
+                ]"
+                @change="fetchPerformance"
+              />
+            </div>
           </div>
           <div class="h-80">
             <PerformanceChart :data="performanceData" :r-value-mode="rValueMode" />
@@ -1317,6 +1323,7 @@ import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
 import AIReportRenderer from '@/components/ai/AIReportRenderer.vue'
 import AIConversationPanel from '@/components/ai/AIConversationPanel.vue'
 import StockLogo from '@/components/common/StockLogo.vue'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 import { useAIStore } from '@/stores/ai'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { usePricingExperiment } from '@/composables/usePricingExperiment'

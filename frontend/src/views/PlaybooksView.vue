@@ -215,21 +215,27 @@
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Side</label>
-                <select v-model="form.side" class="input">
-                  <option value="both">Both</option>
-                  <option value="long">Long</option>
-                  <option value="short">Short</option>
-                </select>
+                <BaseSelect
+                  v-model="form.side"
+                  :options="[
+                    { value: 'both', label: 'Both' },
+                    { value: 'long', label: 'Long' },
+                    { value: 'short', label: 'Short' },
+                  ]"
+                />
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Timeframe</label>
-                <select v-model="form.timeframe" class="input">
-                  <option value="">Any</option>
-                  <option value="scalper">Scalper</option>
-                  <option value="day_trading">Day Trading</option>
-                  <option value="swing">Swing</option>
-                  <option value="position">Position</option>
-                </select>
+                <BaseSelect
+                  v-model="form.timeframe"
+                  placeholder="Any"
+                  :options="[
+                    { value: 'scalper', label: 'Scalper' },
+                    { value: 'day_trading', label: 'Day Trading' },
+                    { value: 'swing', label: 'Swing' },
+                    { value: 'position', label: 'Position' },
+                  ]"
+                />
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Minimum Target R</label>
@@ -247,17 +253,13 @@
                   @keydown.enter.prevent="showStrategyInput = false"
                   @blur="showStrategyInput = false"
                 />
-                <select
+                <BaseSelect
                   v-else
-                  :value="form.requiredStrategy"
-                  class="input"
+                  :model-value="form.requiredStrategy"
+                  placeholder="Any strategy"
+                  :options="strategySelectOptions"
                   @change="handleStrategySelect"
-                >
-                  <option value="">Any strategy</option>
-                  <option v-if="form.requiredStrategy && !strategiesList.includes(form.requiredStrategy)" :value="form.requiredStrategy">{{ form.requiredStrategy }}</option>
-                  <option v-for="strategy in strategiesList" :key="strategy" :value="strategy">{{ strategy }}</option>
-                  <option value="__custom__">+ Add New Strategy</option>
-                </select>
+                />
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Required Setup</label>
@@ -271,17 +273,13 @@
                   @keydown.enter.prevent="showSetupInput = false"
                   @blur="showSetupInput = false"
                 />
-                <select
+                <BaseSelect
                   v-else
-                  :value="form.requiredSetup"
-                  class="input"
+                  :model-value="form.requiredSetup"
+                  placeholder="Any setup"
+                  :options="setupSelectOptions"
                   @change="handleSetupSelect"
-                >
-                  <option value="">Any setup</option>
-                  <option v-if="form.requiredSetup && !setupsList.includes(form.requiredSetup)" :value="form.requiredSetup">{{ form.requiredSetup }}</option>
-                  <option v-for="setup in setupsList" :key="setup" :value="setup">{{ setup }}</option>
-                  <option value="__custom__">+ Add New Setup</option>
-                </select>
+                />
               </div>
               <div class="md:col-span-2">
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Required Tags</label>
@@ -303,16 +301,13 @@
                   </span>
                 </div>
                 <div class="flex gap-2">
-                  <select
+                  <BaseSelect
                     v-if="!showTagInput"
-                    :value="''"
-                    class="input"
+                    :model-value="''"
+                    :placeholder="availableTagSuggestions.length > 0 ? 'Add a tag…' : 'No existing tags — add a new one'"
+                    :options="tagSelectOptions"
                     @change="handleTagSelect"
-                  >
-                    <option value="">{{ availableTagSuggestions.length > 0 ? 'Add a tag…' : 'No existing tags — add a new one' }}</option>
-                    <option v-for="tag in availableTagSuggestions" :key="tag" :value="tag">{{ tag }}</option>
-                    <option value="__custom__">+ Add New Tag</option>
-                  </select>
+                  />
                   <input
                     v-else
                     v-model="newTagDraft"
@@ -389,6 +384,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import api from '@/services/api'
 import { useNotification } from '@/composables/useNotification'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 
 const { showSuccess, showError, showConfirmation } = useNotification()
 
@@ -422,8 +418,7 @@ const availableTagSuggestions = computed(() => {
   return tagsList.value.filter(tag => !current.has(tag.toLowerCase()))
 })
 
-function handleStrategySelect(event) {
-  const value = event.target.value
+function handleStrategySelect(value) {
   if (value === '__custom__') {
     form.requiredStrategy = ''
     showStrategyInput.value = true
@@ -432,8 +427,7 @@ function handleStrategySelect(event) {
   form.requiredStrategy = value
 }
 
-function handleSetupSelect(event) {
-  const value = event.target.value
+function handleSetupSelect(value) {
   if (value === '__custom__') {
     form.requiredSetup = ''
     showSetupInput.value = true
@@ -442,8 +436,7 @@ function handleSetupSelect(event) {
   form.requiredSetup = value
 }
 
-function handleTagSelect(event) {
-  const value = event.target.value
+function handleTagSelect(value) {
   if (!value) return
   if (value === '__custom__') {
     newTagDraft.value = ''
@@ -451,8 +444,37 @@ function handleTagSelect(event) {
     return
   }
   addTagToRequired(value)
-  event.target.value = ''
 }
+
+const strategySelectOptions = computed(() => {
+  const options = []
+  if (form.requiredStrategy && !strategiesList.value.includes(form.requiredStrategy)) {
+    options.push({ value: form.requiredStrategy, label: form.requiredStrategy })
+  }
+  strategiesList.value.forEach(strategy => {
+    options.push({ value: strategy, label: strategy })
+  })
+  options.push({ value: '__custom__', label: '+ Add New Strategy' })
+  return options
+})
+
+const setupSelectOptions = computed(() => {
+  const options = []
+  if (form.requiredSetup && !setupsList.value.includes(form.requiredSetup)) {
+    options.push({ value: form.requiredSetup, label: form.requiredSetup })
+  }
+  setupsList.value.forEach(setup => {
+    options.push({ value: setup, label: setup })
+  })
+  options.push({ value: '__custom__', label: '+ Add New Setup' })
+  return options
+})
+
+const tagSelectOptions = computed(() => {
+  const options = availableTagSuggestions.value.map(tag => ({ value: tag, label: tag }))
+  options.push({ value: '__custom__', label: '+ Add New Tag' })
+  return options
+})
 
 function addTagToRequired(tag) {
   const trimmed = String(tag || '').trim()

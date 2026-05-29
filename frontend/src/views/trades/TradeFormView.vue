@@ -84,21 +84,19 @@
 
             <div v-if="!hasGroupedExecutions">
               <label for="side" class="label">Side *</label>
-              <select id="side" v-model="form.side" required class="input">
-                <option value="">Select side</option>
-                <option value="long">Long</option>
-                <option value="short">Short</option>
-              </select>
+              <BaseSelect
+                v-model="form.side"
+                placeholder="Select side"
+                :options="[{ value: 'long', label: 'Long' }, { value: 'short', label: 'Short' }]"
+              />
             </div>
 
             <div>
               <label for="instrumentType" class="label">Instrument Type *</label>
-              <select id="instrumentType" v-model="form.instrumentType" required class="input">
-                <option value="stock">Stock</option>
-                <option value="option">Option</option>
-                <option value="future">Future</option>
-                <option value="crypto">Crypto</option>
-              </select>
+              <BaseSelect
+                v-model="form.instrumentType"
+                :options="[{ value: 'stock', label: 'Stock' }, { value: 'option', label: 'Option' }, { value: 'future', label: 'Future' }, { value: 'crypto', label: 'Crypto' }]"
+              />
             </div>
           </div>
 
@@ -204,15 +202,10 @@
             <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
               Manually specify which target was hit first (for R-Multiple analysis)
             </p>
-            <select
-              id="manualTargetHitFirst"
+            <BaseSelect
               v-model="form.manualTargetHitFirst"
-              class="input"
-            >
-              <option :value="null">-- Auto-detect (requires API) --</option>
-              <option value="take_profit">Take Profit Hit First</option>
-              <option value="stop_loss">Stop Loss Hit First</option>
-            </select>
+              :options="[{ value: null, label: '-- Auto-detect (requires API) --' }, { value: 'take_profit', label: 'Take Profit Hit First' }, { value: 'stop_loss', label: 'Stop Loss Hit First' }]"
+            />
           </div>
 
           <!-- Info message when fields are hidden -->
@@ -299,16 +292,11 @@
                 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
                     <label :for="`exec-side-${index}`" class="label">Side *</label>
-                    <select
-                      :id="`exec-side-${index}`"
+                    <BaseSelect
                       v-model="execution.side"
-                      required
-                      class="input"
-                    >
-                      <option value="">Select</option>
-                      <option value="long">Long</option>
-                      <option value="short">Short</option>
-                    </select>
+                      placeholder="Select"
+                      :options="[{ value: 'long', label: 'Long' }, { value: 'short', label: 'Short' }]"
+                    />
                   </div>
 
                   <div>
@@ -529,16 +517,11 @@
 
                 <div>
                   <label :for="`exec-action-${index}`" class="label">Action *</label>
-                  <select
-                    :id="`exec-action-${index}`"
+                  <BaseSelect
                     v-model="execution.action"
-                    required
-                    class="input"
-                  >
-                    <option value="">Select</option>
-                    <option value="buy">Buy</option>
-                    <option value="sell">Sell</option>
-                  </select>
+                    placeholder="Select"
+                    :options="[{ value: 'buy', label: 'Buy' }, { value: 'sell', label: 'Sell' }]"
+                  />
                 </div>
 
                 <div>
@@ -702,18 +685,16 @@
                 @keydown.enter.prevent="handleBrokerInputEnter"
                 @blur="handleBrokerInputBlur"
               />
-              <select
+              <BaseSelect
                 v-else
-                id="broker"
-                v-model="form.broker"
-                class="input pr-20"
-                @change="handleBrokerSelect"
-              >
-                <option value="">Select broker</option>
-                <option v-if="form.broker && !brokersList.includes(form.broker)" :value="form.broker">{{ form.broker }}</option>
-                <option v-for="broker in brokersList" :key="broker" :value="broker">{{ broker }}</option>
-                <option value="__custom__">+ Add New Broker</option>
-              </select>
+                noun="brokers"
+                placeholder="Select broker"
+                add-label="Add New Broker"
+                :options="brokersList"
+                :model-value="form.broker"
+                @update:model-value="form.broker = $event"
+                @add="startAddBroker"
+              />
               <button
                 v-if="showBrokerInput"
                 type="button"
@@ -738,18 +719,16 @@
                 @keydown.enter.prevent="handleAccountInputEnter"
                 @blur="handleAccountInputBlur"
               />
-              <select
+              <BaseSelect
                 v-else
-                id="account_identifier"
-                v-model="form.account_identifier"
-                class="input pr-20"
-                @change="handleAccountSelect"
-              >
-                <option value="">Select account</option>
-                <option v-if="form.account_identifier && !accountsList.includes(form.account_identifier)" :value="form.account_identifier">{{ form.account_identifier }}</option>
-                <option v-for="account in accountsList" :key="account" :value="account">{{ account }}</option>
-                <option value="__custom__">+ Add New Account</option>
-              </select>
+                noun="accounts"
+                placeholder="Select account"
+                add-label="Add New Account"
+                :options="accountsList"
+                :model-value="form.account_identifier"
+                @update:model-value="form.account_identifier = $event"
+                @add="startAddAccount"
+              />
               <button
                 v-if="showAccountInput"
                 type="button"
@@ -823,15 +802,17 @@
           <div class="sm:col-span-2 flex items-center justify-between">
             <h3 class="text-md font-medium text-gray-900 dark:text-white">Option Details</h3>
             <div class="flex items-center gap-2">
-              <select
-                v-model="selectedOptionsTemplate"
-                @change="applyOptionsTemplate"
-                :disabled="optionsTemplates.length === 0"
-                class="text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-2 py-1 disabled:opacity-50"
-              >
-                <option value="">{{ optionsTemplates.length === 0 ? 'No templates saved' : 'Load Template...' }}</option>
-                <option v-for="t in optionsTemplates" :key="t.id" :value="t.id">{{ t.name }}</option>
-              </select>
+              <div class="w-44">
+                <BaseSelect
+                  v-model="selectedOptionsTemplate"
+                  :options="optionsTemplates"
+                  value-key="id"
+                  label-key="name"
+                  :placeholder="optionsTemplates.length === 0 ? 'No templates saved' : 'Load Template...'"
+                  :disabled="optionsTemplates.length === 0"
+                  @change="applyOptionsTemplate"
+                />
+              </div>
               <button
                 type="button"
                 @click="showSaveOptionsTemplateModal = true"
@@ -864,11 +845,11 @@
 
           <div>
             <label for="optionType" class="label">Option Type *</label>
-            <select id="optionType" v-model="form.optionType" :required="form.instrumentType === 'option'" class="input">
-              <option value="">Select type</option>
-              <option value="call">Call</option>
-              <option value="put">Put</option>
-            </select>
+            <BaseSelect
+              v-model="form.optionType"
+              placeholder="Select type"
+              :options="[{ value: 'call', label: 'Call' }, { value: 'put', label: 'Put' }]"
+            />
           </div>
 
           <div>
@@ -914,15 +895,17 @@
           <div class="sm:col-span-2 flex items-center justify-between">
             <h3 class="text-md font-medium text-gray-900 dark:text-white">Futures Details</h3>
             <div class="flex items-center gap-2">
-              <select
-                v-model="selectedFuturesTemplate"
-                @change="applyFuturesTemplate"
-                :disabled="futuresTemplates.length === 0"
-                class="text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-2 py-1 disabled:opacity-50"
-              >
-                <option value="">{{ futuresTemplates.length === 0 ? 'No templates saved' : 'Load Template...' }}</option>
-                <option v-for="t in futuresTemplates" :key="t.id" :value="t.id">{{ t.name }}</option>
-              </select>
+              <div class="w-44">
+                <BaseSelect
+                  v-model="selectedFuturesTemplate"
+                  :options="futuresTemplates"
+                  value-key="id"
+                  label-key="name"
+                  :placeholder="futuresTemplates.length === 0 ? 'No templates saved' : 'Load Template...'"
+                  :disabled="futuresTemplates.length === 0"
+                  @change="applyFuturesTemplate"
+                />
+              </div>
               <button
                 type="button"
                 @click="showSaveFuturesTemplateModal = true"
@@ -955,21 +938,18 @@
 
           <div>
             <label for="contractMonth" class="label">Contract Month *</label>
-            <select id="contractMonth" v-model="form.contractMonth" :required="form.instrumentType === 'future'" class="input">
-              <option value="">Select month</option>
-              <option value="JAN">January</option>
-              <option value="FEB">February</option>
-              <option value="MAR">March</option>
-              <option value="APR">April</option>
-              <option value="MAY">May</option>
-              <option value="JUN">June</option>
-              <option value="JUL">July</option>
-              <option value="AUG">August</option>
-              <option value="SEP">September</option>
-              <option value="OCT">October</option>
-              <option value="NOV">November</option>
-              <option value="DEC">December</option>
-            </select>
+            <BaseSelect
+              v-model="form.contractMonth"
+              placeholder="Select month"
+              :options="[
+                { value: 'JAN', label: 'January' }, { value: 'FEB', label: 'February' },
+                { value: 'MAR', label: 'March' }, { value: 'APR', label: 'April' },
+                { value: 'MAY', label: 'May' }, { value: 'JUN', label: 'June' },
+                { value: 'JUL', label: 'July' }, { value: 'AUG', label: 'August' },
+                { value: 'SEP', label: 'September' }, { value: 'OCT', label: 'October' },
+                { value: 'NOV', label: 'November' }, { value: 'DEC', label: 'December' }
+              ]"
+            />
           </div>
 
           <div>
@@ -1013,7 +993,7 @@
         </div>
 
         <!-- Strategy Field (Collapsible) -->
-        <div class="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+        <div class="border border-gray-200 dark:border-gray-700 rounded-lg">
           <button
             type="button"
             @click="showStrategy = !showStrategy"
@@ -1042,24 +1022,25 @@
                 @keydown.enter.prevent="handleStrategyInputEnter"
                 @blur="handleStrategyInputBlur"
               />
-              <select
+              <BaseSelect
                 v-else
-                id="strategy"
-                v-model="form.strategy"
-                class="input"
-                @change="handleStrategySelect"
-              >
-                <option value="">Select strategy</option>
-                <option v-if="form.strategy && !strategiesList.includes(form.strategy)" :value="form.strategy">{{ form.strategy }}</option>
-                <option v-for="strategy in strategiesList" :key="strategy" :value="strategy">{{ strategy }}</option>
-                <option value="__custom__">+ Add New Strategy</option>
-              </select>
+                noun="strategies"
+                placeholder="Select strategy"
+                add-label="Add New Strategy"
+                manage-label="Manage strategies"
+                :options="visibleStrategies"
+                :show-manage="strategiesList.length > 0"
+                :model-value="form.strategy"
+                @update:model-value="form.strategy = $event"
+                @add="startAddStrategy"
+                @manage="showStrategyManager = true"
+              />
             </div>
           </div>
         </div>
 
         <!-- Setup Field (Collapsible) -->
-        <div class="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+        <div class="border border-gray-200 dark:border-gray-700 rounded-lg">
           <button
             type="button"
             @click="showSetup = !showSetup"
@@ -1088,21 +1069,38 @@
                 @keydown.enter.prevent="handleSetupInputEnter"
                 @blur="handleSetupInputBlur"
               />
-              <select
+              <BaseSelect
                 v-else
-                id="setup"
-                v-model="form.setup"
-                class="input"
-                @change="handleSetupSelect"
-              >
-                <option value="">Select setup</option>
-                <option v-if="form.setup && !setupsList.includes(form.setup)" :value="form.setup">{{ form.setup }}</option>
-                <option v-for="setup in setupsList" :key="setup" :value="setup">{{ setup }}</option>
-                <option value="__custom__">+ Add New Setup</option>
-              </select>
+                noun="setups"
+                placeholder="Select setup"
+                add-label="Add New Setup"
+                manage-label="Manage setups"
+                :options="visibleSetups"
+                :show-manage="setupsList.length > 0"
+                :model-value="form.setup"
+                @update:model-value="form.setup = $event"
+                @add="startAddSetup"
+                @manage="showSetupManager = true"
+              />
             </div>
           </div>
         </div>
+
+        <!-- Strategy / Setup manage-hide modals -->
+        <DropdownItemManager
+          v-model:show="showStrategyManager"
+          title="Manage Strategies"
+          :items="strategyUsage"
+          :hidden="hiddenStrategies"
+          @toggle="toggleStrategy"
+        />
+        <DropdownItemManager
+          v-model:show="showSetupManager"
+          title="Manage Setups"
+          :items="setupUsage"
+          :hidden="hiddenSetups"
+          @toggle="toggleSetup"
+        />
 
         <!-- Tags Field (Collapsible) -->
         <div class="border border-gray-200 dark:border-gray-700 rounded-lg">
@@ -1538,6 +1536,9 @@ import ChartUpload from '@/components/trades/ChartUpload.vue'
 import TradeCharts from '@/components/trades/TradeCharts.vue'
 import api from '@/services/api'
 import SymbolAutocomplete from '@/components/common/SymbolAutocomplete.vue'
+import DropdownItemManager from '@/components/trades/DropdownItemManager.vue'
+import BaseSelect from '@/components/common/BaseSelect.vue'
+import { useHiddenDropdownItems } from '@/composables/useHiddenDropdownItems'
 
 // Load section preferences from localStorage
 const defaultSectionPrefs = {
@@ -1851,6 +1852,30 @@ const showBrokerInput = ref(false)
 const showAccountInput = ref(false)
 const showStrategyInput = ref(false)
 const showSetupInput = ref(false)
+
+// Hide/manage strategies and setups in the dropdowns
+const {
+  hiddenStrategies,
+  hiddenSetups,
+  refresh: refreshHiddenItems,
+  isStrategyHidden,
+  isSetupHidden,
+  toggleStrategy,
+  toggleSetup
+} = useHiddenDropdownItems()
+const strategyUsage = ref([]) // [{ name, count }] most-used first
+const setupUsage = ref([])
+const showStrategyManager = ref(false)
+const showSetupManager = ref(false)
+
+// Strategies shown in the dropdown: drop hidden ones, but always keep the
+// currently selected value visible so editing a trade never loses its strategy.
+const visibleStrategies = computed(() =>
+  strategiesList.value.filter(s => !isStrategyHidden(s) || s === form.value.strategy)
+)
+const visibleSetups = computed(() =>
+  setupsList.value.filter(s => !isSetupHidden(s) || s === form.value.setup)
+)
 
 function formatDateTimeLocal(date) {
   if (!date) return ''
@@ -2868,13 +2893,15 @@ watch(() => form.value.entryTime, async (newTime) => {
 
 async function fetchLists() {
   try {
-    // Fetch strategies list
+    // Fetch strategies list (most-used first) plus per-item usage counts
     const strategiesResponse = await api.get('/trades/strategies')
     strategiesList.value = strategiesResponse.data.strategies || []
+    strategyUsage.value = strategiesResponse.data.usage || []
 
     // Fetch setups list
     const setupsResponse = await api.get('/trades/setups')
     setupsList.value = setupsResponse.data.setups || []
+    setupUsage.value = setupsResponse.data.usage || []
 
     // Fetch brokers list
     const brokersResponse = await api.get('/trades/brokers')
@@ -2907,10 +2934,11 @@ async function fetchTags() {
   try {
     const response = await api.get('/tags')
     const tags = response.data?.tags || []
-    // Store only unique tag names, sorted alphabetically
+    // Store only unique, non-hidden tag names, sorted alphabetically
     const names = Array.from(
       new Set(
         tags
+          .filter(tag => !tag.hidden)
           .map(tag => tag.name)
           .filter(name => typeof name === 'string' && name.trim().length > 0)
       )
@@ -3022,15 +3050,13 @@ function applyActiveTagSuggestion(event) {
   }
 }
 
-function handleBrokerSelect(event) {
-  if (event.target.value === '__custom__') {
-    form.value.broker = ''
-    showBrokerInput.value = true
-    // Focus the input after a brief delay to allow DOM update
-    setTimeout(() => {
-      document.getElementById('broker')?.focus()
-    }, 100)
-  }
+function startAddBroker() {
+  form.value.broker = ''
+  showBrokerInput.value = true
+  // Focus the input after a brief delay to allow DOM update
+  setTimeout(() => {
+    document.getElementById('broker')?.focus()
+  }, 100)
 }
 
 function handleBrokerInputEnter() {
@@ -3056,15 +3082,13 @@ function handleBrokerInputBlur() {
   showBrokerInput.value = false
 }
 
-function handleAccountSelect(event) {
-  if (event.target.value === '__custom__') {
-    form.value.account_identifier = ''
-    showAccountInput.value = true
-    // Focus the input after a brief delay to allow DOM update
-    setTimeout(() => {
-      document.getElementById('account_identifier')?.focus()
-    }, 100)
-  }
+function startAddAccount() {
+  form.value.account_identifier = ''
+  showAccountInput.value = true
+  // Focus the input after a brief delay to allow DOM update
+  setTimeout(() => {
+    document.getElementById('account_identifier')?.focus()
+  }, 100)
 }
 
 async function createAccountRecord(identifier) {
@@ -3117,14 +3141,12 @@ function handleAccountInputBlur() {
   showAccountInput.value = false
 }
 
-function handleStrategySelect(event) {
-  if (event.target.value === '__custom__') {
-    form.value.strategy = ''
-    showStrategyInput.value = true
-    setTimeout(() => {
-      document.getElementById('strategy')?.focus()
-    }, 100)
-  }
+function startAddStrategy() {
+  form.value.strategy = ''
+  showStrategyInput.value = true
+  setTimeout(() => {
+    document.getElementById('strategy')?.focus()
+  }, 100)
 }
 
 function handleStrategyInputEnter() {
@@ -3150,14 +3172,12 @@ function handleStrategyInputBlur() {
   showStrategyInput.value = false
 }
 
-function handleSetupSelect(event) {
-  if (event.target.value === '__custom__') {
-    form.value.setup = ''
-    showSetupInput.value = true
-    setTimeout(() => {
-      document.getElementById('setup')?.focus()
-    }, 100)
-  }
+function startAddSetup() {
+  form.value.setup = ''
+  showSetupInput.value = true
+  setTimeout(() => {
+    document.getElementById('setup')?.focus()
+  }, 100)
 }
 
 function handleSetupInputEnter() {
@@ -3368,6 +3388,7 @@ async function deleteTemplate(id, type) {
 }
 
 onMounted(async () => {
+  refreshHiddenItems()
   await checkProAccess()
   await fetchLists()
   await fetchUserSettings()

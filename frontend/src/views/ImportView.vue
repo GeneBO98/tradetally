@@ -152,36 +152,11 @@
 
             <div>
               <label for="broker" class="label">Broker Format</label>
-              <select id="broker" v-model="selectedBroker" required class="input">
-                <option value="auto">Auto-Detect (Recommended)</option>
-                <option disabled>--- Or select your broker ---</option>
-                <option value="generic">Generic CSV</option>
-                <option value="lightspeed">Lightspeed Trader</option>
-                <option value="schwab">Charles Schwab</option>
-                <option value="thinkorswim">ThinkorSwim</option>
-                <option value="ibkr">Interactive Brokers</option>
-                <option value="captrader">CapTrader</option>
-                <option value="webull">Webull</option>
-                <option value="etrade">E*TRADE</option>
-                <option value="firstrade">Firstrade (Alpha)</option>
-                <option value="papermoney">PaperMoney</option>
-                <option value="tradervue">TraderVue</option>
-                <option value="tradingview">TradingView</option>
-                <option value="avatrade">AvaTrade</option>
-                <option value="tradovate">Tradovate</option>
-                <option value="questrade">Questrade</option>
-                <option value="tradestation">TradeStation</option>
-                <option value="tastytrade">Tastytrade</option>
-                <optgroup v-if="customMappings.length > 0" label="Custom Importers">
-                  <option
-                    v-for="mapping in customMappings"
-                    :key="mapping.id"
-                    :value="`custom:${mapping.id}`"
-                  >
-                    {{ mapping.mapping_name }}
-                  </option>
-                </optgroup>
-              </select>
+              <BaseSelect
+                v-model="selectedBroker"
+                noun="brokers"
+                :options="brokerFormatOptions"
+              />
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 We'll automatically detect your broker from the CSV file. Select a specific broker only if auto-detection doesn't work.
               </p>
@@ -190,13 +165,7 @@
             <!-- Account Selection (only shown if user has defined accounts) -->
             <div v-if="requiresAccountSelection">
               <label for="account" class="label">Trading Account</label>
-              <select id="account" v-model="selectedAccountId" class="input">
-                <option :value="null">Select account...</option>
-                <option v-for="account in accounts" :key="account.id" :value="account.id">
-                  {{ account.name }}{{ account.identifier ? ` (${redactAccountId(account.identifier)})` : '' }}{{ account.broker ? ` - ${formatBrokerName(account.broker)}` : '' }}
-                </option>
-                <option value="none">None (different broker/account)</option>
-              </select>
+              <BaseSelect id="account" v-model="selectedAccountId" :options="accountOptions" />
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 Select a trading account to associate with this import, or choose "None" if importing from a different broker.
                 <router-link to="/accounts" class="text-primary-600 hover:text-primary-500">Manage accounts</router-link>
@@ -1257,6 +1226,7 @@ const CSVColumnMappingModal = defineAsyncComponent(() => import('@/components/im
 const BrokerMismatchModal = defineAsyncComponent(() => import('@/components/import/BrokerMismatchModal.vue'))
 const ImportResultsModal = defineAsyncComponent(() => import('@/components/import/ImportResultsModal.vue'))
 import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotifications'
 
 const tradesStore = useTradesStore()
@@ -1358,6 +1328,43 @@ const csvHeaders = ref([])
 const csvSampleRows = ref({})
 const currentMappingFile = ref(null)
 const customMappings = ref([])
+
+// Grouped options for the Broker Format dropdown: auto-detect on its own,
+// then the supported brokers, then any user-defined custom importers.
+const brokerFormatOptions = computed(() => {
+  const groups = [
+    { label: null, options: [{ value: 'auto', label: 'Auto-Detect (Recommended)' }] },
+    {
+      label: 'Or select your broker',
+      options: [
+        { value: 'generic', label: 'Generic CSV' },
+        { value: 'lightspeed', label: 'Lightspeed Trader' },
+        { value: 'schwab', label: 'Charles Schwab' },
+        { value: 'thinkorswim', label: 'ThinkorSwim' },
+        { value: 'ibkr', label: 'Interactive Brokers' },
+        { value: 'captrader', label: 'CapTrader' },
+        { value: 'webull', label: 'Webull' },
+        { value: 'etrade', label: 'E*TRADE' },
+        { value: 'firstrade', label: 'Firstrade (Alpha)' },
+        { value: 'papermoney', label: 'PaperMoney' },
+        { value: 'tradervue', label: 'TraderVue' },
+        { value: 'tradingview', label: 'TradingView' },
+        { value: 'avatrade', label: 'AvaTrade' },
+        { value: 'tradovate', label: 'Tradovate' },
+        { value: 'questrade', label: 'Questrade' },
+        { value: 'tradestation', label: 'TradeStation' },
+        { value: 'tastytrade', label: 'Tastytrade' }
+      ]
+    }
+  ]
+  if (customMappings.value.length > 0) {
+    groups.push({
+      label: 'Custom Importers',
+      options: customMappings.value.map(m => ({ value: `custom:${m.id}`, label: m.mapping_name }))
+    })
+  }
+  return groups
+})
 const showCustomMappings = ref(false)
 const showCusipManagement = ref(false)
 const deletingMappingId = ref(null)
@@ -1600,6 +1607,17 @@ const accountReadinessMessage = computed(() => {
   if (selectedAccountId.value === 'none') return 'Trades will be imported without linking to an existing account.'
   if (selectedAccountId.value !== null) return 'Trades will be attached to your selected account.'
   return 'Pick an account before starting import.'
+})
+
+const accountOptions = computed(() => {
+  const opts = [{ value: null, label: 'Select account...' }]
+  for (const account of accounts.value) {
+    const identifier = account.identifier ? ` (${redactAccountId(account.identifier)})` : ''
+    const broker = account.broker ? ` - ${formatBrokerName(account.broker)}` : ''
+    opts.push({ value: account.id, label: `${account.name}${identifier}${broker}` })
+  }
+  opts.push({ value: 'none', label: 'None (different broker/account)' })
+  return opts
 })
 
 const fileReadinessMessage = computed(() => {

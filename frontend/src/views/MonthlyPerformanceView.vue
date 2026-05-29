@@ -17,19 +17,13 @@
                         class="text-sm font-medium text-gray-700 dark:text-gray-300"
                         >Year:</label
                     >
-                    <select
-                        v-model="selectedYear"
-                        @change="loadMonthlyData"
-                        class="input text-sm"
-                    >
-                        <option
-                            v-for="year in availableYears"
-                            :key="year"
-                            :value="year"
-                        >
-                            {{ year }}
-                        </option>
-                    </select>
+                    <div class="text-sm">
+                        <BaseSelect
+                            v-model="selectedYear"
+                            :options="availableYears"
+                            @change="loadMonthlyData"
+                        />
+                    </div>
                 </div>
             </div>
 
@@ -716,6 +710,7 @@ import { Chart, registerables } from "chart.js";
 import { useGlobalAccountFilter } from "@/composables/useGlobalAccountFilter";
 import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
 import api from "@/services/api";
+import BaseSelect from "@/components/common/BaseSelect.vue";
 
 Chart.register(...registerables);
 

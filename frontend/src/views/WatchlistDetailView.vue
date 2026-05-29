@@ -260,16 +260,16 @@
                         Recent News
                     </h2>
                     <div class="flex items-center space-x-2">
-                        <select
+                        <BaseSelect
                             v-model="newsFilter.days"
                             @change="loadWatchlistNews"
-                            class="text-sm border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white"
-                        >
-                            <option value="3">Last 3 days</option>
-                            <option value="7">Last 7 days</option>
-                            <option value="14">Last 14 days</option>
-                            <option value="30">Last 30 days</option>
-                        </select>
+                            :options="[
+                                { value: 3, label: 'Last 3 days' },
+                                { value: 7, label: 'Last 7 days' },
+                                { value: 14, label: 'Last 14 days' },
+                                { value: 30, label: 'Last 30 days' },
+                            ]"
+                        />
                         <button
                             @click="loadWatchlistNews"
                             :disabled="loadingNews"
@@ -397,15 +397,15 @@
                         Upcoming Earnings
                     </h2>
                     <div class="flex items-center space-x-2">
-                        <select
+                        <BaseSelect
                             v-model="earningsFilter.days"
                             @change="loadWatchlistEarnings"
-                            class="text-sm border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white"
-                        >
-                            <option value="14">Next 14 days</option>
-                            <option value="30">Next 30 days</option>
-                            <option value="60">Next 60 days</option>
-                        </select>
+                            :options="[
+                                { value: 14, label: 'Next 14 days' },
+                                { value: 30, label: 'Next 30 days' },
+                                { value: 60, label: 'Next 60 days' },
+                            ]"
+                        />
                         <button
                             @click="loadWatchlistEarnings"
                             :disabled="loadingEarnings"
@@ -843,12 +843,14 @@ import { useInvestmentsStore } from "@/stores/investments";
 import api from "@/services/api";
 import SymbolAutocomplete from "@/components/common/SymbolAutocomplete.vue";
 import StockLogo from "@/components/common/StockLogo.vue";
+import BaseSelect from "@/components/common/BaseSelect.vue";
 
 export default {
     name: "WatchlistDetailView",
     components: {
         SymbolAutocomplete,
         StockLogo,
+        BaseSelect,
     },
     setup() {
         const route = useRoute();

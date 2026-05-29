@@ -43,14 +43,13 @@
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Alert Type
             </label>
-            <select
+            <BaseSelect
               v-model="alertForm.alertType"
-              class="input"
-              required
-            >
-              <option value="above">Above</option>
-              <option value="below">Below</option>
-            </select>
+              :options="[
+                { value: 'above', label: 'Above' },
+                { value: 'below', label: 'Below' }
+              ]"
+            />
           </div>
 
           <!-- Target Price -->
@@ -127,6 +126,7 @@
 import { ref } from 'vue'
 import { PlusCircleIcon, BellAlertIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 
 const props = defineProps({
   symbol: {
