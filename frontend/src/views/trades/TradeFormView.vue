@@ -1267,9 +1267,9 @@
         </div>
 
         <div class="flex justify-end space-x-3">
-          <router-link :to="isEdit ? `/trades/${route.params.id}` : '/trades'" class="btn-secondary">
+          <button type="button" @click="handleCancel" class="btn-secondary">
             Cancel
-          </router-link>
+          </button>
           <button
             type="submit"
             :disabled="loading"
@@ -2680,6 +2680,23 @@ async function handleSubmit(opts = {}) {
     nextTick(() => errorRef.value?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
   } finally {
     loading.value = false
+  }
+}
+
+function handleCancel() {
+  if (!isEdit.value) {
+    router.push('/trades')
+    return
+  }
+  // If edit was opened from trade detail, use real history back to avoid
+  // leaving a duplicate detail entry that traps the detail page's Back arrow.
+  const fromQuery = route.query.from
+  const cameFromTradeDetail = fromQuery === 'trade-detail' || (Array.isArray(fromQuery) && fromQuery.includes('trade-detail'))
+
+  if (cameFromTradeDetail && window.history.length > 1) {
+    router.back()
+  } else {
+    router.replace(`/trades/${route.params.id}`)
   }
 }
 

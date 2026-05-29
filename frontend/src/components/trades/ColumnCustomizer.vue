@@ -176,6 +176,7 @@ const defaultColumns = [
   { key: 'commission', label: 'Commission', visible: false, width: 'auto' },
   { key: 'fees', label: 'Fees', visible: false, width: 'auto' },
   { key: 'strategy', label: 'Strategy', visible: true, width: 'auto' },
+  { key: 'setup', label: 'Setup', visible: false, width: 'auto' },
   { key: 'broker', label: 'Broker', visible: false, width: 'auto' },
   { key: 'account', label: 'Account', visible: false, width: 'auto' },
   { key: 'tags', label: 'Tags', visible: false, width: 'auto' },

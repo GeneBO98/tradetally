@@ -691,12 +691,18 @@
                   {{ trade.fees ? formatCurrency(trade.fees) : '-' }}
                 </td>
                 
-                <td v-else-if="column.visible && column.key === 'strategy'" 
-                    :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']" 
+                <td v-else-if="column.visible && column.key === 'strategy'"
+                    :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   {{ trade.strategy || '-' }}
                 </td>
-                
+
+                <td v-else-if="column.visible && column.key === 'setup'"
+                    :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  {{ trade.setup || '-' }}
+                </td>
+
                 <td v-else-if="column.visible && column.key === 'broker'"
                     :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
