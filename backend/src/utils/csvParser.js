@@ -1540,7 +1540,7 @@ const brokerParsers = {
 
   schwab: (row) => {
     // Schwab provides completed trades with entry and exit data
-    const quantity = Math.abs(parseInt(row.Quantity || 0));
+    const quantity = Math.abs(parseFloat(row.Quantity || 0));
     const isShort = parseFloat(row['Cost Per Share'] || 0) > parseFloat(row['Proceeds Per Share'] || 0) &&
                     parseFloat(row['Gain/Loss ($)'] || 0) > 0;
     
@@ -6026,7 +6026,7 @@ async function parseSchwabTrades(records, existingPositions = {}, context = {}) 
         symbol = record[0];
         openedDate = record[3];
         closedDate = record[2];
-        quantity = Math.abs(parseInt(record[4]?.replace(/,/g, '') || 0));
+        quantity = Math.abs(parseFloat(record[4]?.replace(/,/g, '') || 0));
         proceedsPerShare = parseFloat(record[5]?.replace(/[$,]/g, '') || 0);
         costPerShare = parseFloat(record[6]?.replace(/[$,]/g, '') || 0);
         costBasis = parseFloat(record[8]?.replace(/[$,]/g, '') || 0);
@@ -6036,7 +6036,7 @@ async function parseSchwabTrades(records, existingPositions = {}, context = {}) 
       } else {
         // Handle original named columns format
         symbol = record['Symbol'];
-        quantity = Math.abs(parseInt(record['Quantity']?.replace(/,/g, '') || 0));
+        quantity = Math.abs(parseFloat(record['Quantity']?.replace(/,/g, '') || 0));
         costPerShare = parseFloat(record['Cost Per Share']?.replace(/[$,]/g, '') || 0);
         proceedsPerShare = parseFloat(record['Proceeds Per Share']?.replace(/[$,]/g, '') || 0);
         gainLoss = parseFloat(record['Gain/Loss ($)']?.replace(/[$,]/g, '') || 0);
