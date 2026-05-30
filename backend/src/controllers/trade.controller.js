@@ -2639,6 +2639,7 @@ const tradeController = {
                 const {
                   totalQuantity, entryValue, exitValue, isExistingPosition,
                   existingTradeId, isUpdate, executionData, totalFees, totalFeesForSymbol,
+                  totalCommission, realizedPnl,
                   pnl, pnlPercent, profitLoss, newExecutionsAdded,
                   groupedTrades, originalNotes, existingExecutions,
                   ...cleanTradeData
