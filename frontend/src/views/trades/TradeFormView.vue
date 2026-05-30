@@ -1090,9 +1090,11 @@
         <DropdownItemManager
           v-model:show="showStrategyManager"
           title="Manage Strategies"
-          :items="strategyUsage"
+          reorderable
+          :items="orderedStrategyUsage"
           :hidden="hiddenStrategies"
           @toggle="toggleStrategy"
+          @move="handleStrategyMove"
         />
         <DropdownItemManager
           v-model:show="showSetupManager"
@@ -1539,6 +1541,7 @@ import SymbolAutocomplete from '@/components/common/SymbolAutocomplete.vue'
 import DropdownItemManager from '@/components/trades/DropdownItemManager.vue'
 import BaseSelect from '@/components/common/BaseSelect.vue'
 import { useHiddenDropdownItems } from '@/composables/useHiddenDropdownItems'
+import { useStrategyOrder } from '@/composables/useStrategyOrder'
 
 // Load section preferences from localStorage
 const defaultSectionPrefs = {
@@ -1863,15 +1866,30 @@ const {
   toggleStrategy,
   toggleSetup
 } = useHiddenDropdownItems()
+const {
+  orderNames: orderStrategyNames,
+  orderUsageItems: orderStrategyUsageItems,
+  moveStrategyInUsage,
+  refresh: refreshStrategyOrder
+} = useStrategyOrder()
 const strategyUsage = ref([]) // [{ name, count }] most-used first
 const setupUsage = ref([])
 const showStrategyManager = ref(false)
 const showSetupManager = ref(false)
 
+const orderedStrategyUsage = computed(() => orderStrategyUsageItems(strategyUsage.value))
+
+function handleStrategyMove({ name, direction }) {
+  moveStrategyInUsage(strategyUsage.value, name, direction)
+  strategiesList.value = orderStrategyNames(strategiesList.value)
+}
+
 // Strategies shown in the dropdown: drop hidden ones, but always keep the
 // currently selected value visible so editing a trade never loses its strategy.
 const visibleStrategies = computed(() =>
-  strategiesList.value.filter(s => !isStrategyHidden(s) || s === form.value.strategy)
+  orderStrategyNames(
+    strategiesList.value.filter(s => !isStrategyHidden(s) || s === form.value.strategy)
+  )
 )
 const visibleSetups = computed(() =>
   setupsList.value.filter(s => !isSetupHidden(s) || s === form.value.setup)
@@ -2895,8 +2913,8 @@ async function fetchLists() {
   try {
     // Fetch strategies list (most-used first) plus per-item usage counts
     const strategiesResponse = await api.get('/trades/strategies')
-    strategiesList.value = strategiesResponse.data.strategies || []
     strategyUsage.value = strategiesResponse.data.usage || []
+    strategiesList.value = orderStrategyNames(strategiesResponse.data.strategies || [])
 
     // Fetch setups list
     const setupsResponse = await api.get('/trades/setups')
@@ -3389,6 +3407,7 @@ async function deleteTemplate(id, type) {
 
 onMounted(async () => {
   refreshHiddenItems()
+  refreshStrategyOrder()
   await checkProAccess()
   await fetchLists()
   await fetchUserSettings()

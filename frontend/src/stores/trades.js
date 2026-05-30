@@ -438,12 +438,12 @@ export const useTradesStore = defineStore('trades', () => {
     }
   }
 
-  async function importTrades(file, broker, mappingId = null, accountId = null) {
+  async function importTrades(file, broker, mappingId = null, accountId = null, strategy = null) {
     loading.value = true
     error.value = null
 
     try {
-      console.log('Creating FormData with file:', file.name, 'broker:', broker, 'mappingId:', mappingId, 'accountId:', accountId)
+      console.log('Creating FormData with file:', file.name, 'broker:', broker, 'mappingId:', mappingId, 'accountId:', accountId, 'strategy:', strategy)
       const formData = new FormData()
       formData.append('file', file)
       formData.append('broker', broker)
@@ -452,6 +452,9 @@ export const useTradesStore = defineStore('trades', () => {
       }
       if (accountId) {
         formData.append('accountId', accountId)
+      }
+      if (strategy && String(strategy).trim()) {
+        formData.append('strategy', String(strategy).trim())
       }
 
       console.log('FormData contents:')

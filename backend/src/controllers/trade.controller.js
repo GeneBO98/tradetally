@@ -1762,7 +1762,10 @@ const tradeController = {
       }
 
       const importId = uuidv4();
-      const { broker = 'generic', mappingId = null, accountId = null } = req.body;
+      const { broker = 'generic', mappingId = null, accountId = null, strategy: importStrategy = null } = req.body;
+      const defaultImportStrategy = importStrategy && String(importStrategy).trim()
+        ? String(importStrategy).trim()
+        : null;
 
       console.log('Selected broker:', broker);
       console.log('Mapping ID:', mappingId);
@@ -2653,6 +2656,9 @@ const tradeController = {
               } else {
                 // Add import ID to track which import this trade came from
                 tradeData.importId = importId;
+                if (defaultImportStrategy) {
+                  tradeData.strategy = defaultImportStrategy;
+                }
                 await Trade.create(req.user.id, tradeData, { skipAchievements: true, skipApiCalls: true });
               }
               imported++;

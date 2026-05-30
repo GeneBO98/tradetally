@@ -16,11 +16,12 @@
 
       <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">
         Hidden items stay on existing trades but are removed from the dropdowns to keep them clean.
+        <span v-if="reorderable"> Use the arrows to change dropdown order.</span>
       </p>
 
       <div class="space-y-2 max-h-72 overflow-y-auto">
         <div
-          v-for="item in items"
+          v-for="(item, index) in items"
           :key="item.name"
           class="flex items-center justify-between p-2 rounded border border-gray-200 dark:border-gray-600"
         >
@@ -32,6 +33,30 @@
             <span class="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">
               {{ item.count }} {{ item.count === 1 ? 'trade' : 'trades' }}
             </span>
+          </div>
+          <div v-if="reorderable" class="flex flex-col flex-shrink-0 ml-1">
+            <button
+              type="button"
+              class="p-0.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-30"
+              :disabled="index === 0"
+              title="Move up"
+              @click="$emit('move', { name: item.name, direction: 'up' })"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              class="p-0.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-30"
+              :disabled="index === items.length - 1"
+              title="Move down"
+              @click="$emit('move', { name: item.name, direction: 'down' })"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
           </div>
           <button
             @click="$emit('toggle', item.name)"
@@ -65,10 +90,11 @@ const props = defineProps({
   show: { type: Boolean, default: false },
   title: { type: String, default: 'Manage' },
   items: { type: Array, default: () => [] }, // [{ name, count }]
-  hidden: { type: Array, default: () => [] } // hidden names
+  hidden: { type: Array, default: () => [] }, // hidden names
+  reorderable: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['update:show', 'toggle'])
+const emit = defineEmits(['update:show', 'toggle', 'move'])
 
 function isHidden(name) {
   return props.hidden.includes(name)

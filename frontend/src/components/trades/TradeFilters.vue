@@ -127,9 +127,11 @@
     <DropdownItemManager
       v-model:show="showStrategyManager"
       title="Manage Strategies"
-      :items="strategyUsage"
+      reorderable
+      :items="orderedStrategyUsage"
       :hidden="hiddenStrategies"
       @toggle="toggleStrategy"
+      @move="handleStrategyMove"
     />
 
     <!-- Second Row of Basic Filters -->
@@ -709,6 +711,7 @@ import api from '@/services/api'
 import TagManagement from './TagManagement.vue'
 import DropdownItemManager from './DropdownItemManager.vue'
 import { useHiddenDropdownItems } from '@/composables/useHiddenDropdownItems'
+import { useStrategyOrder } from '@/composables/useStrategyOrder'
 import { useTradesStore } from '@/stores/trades'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { formatLocalDate } from '@/utils/date'
@@ -930,16 +933,32 @@ const strategyOptions = ref([...defaultStrategyOptions])
 
 // Hide/manage strategies in the dropdown
 const { hiddenStrategies, refresh: refreshHiddenItems, toggleStrategy } = useHiddenDropdownItems()
+const {
+  orderNames: orderStrategyNames,
+  orderUsageItems: orderStrategyUsageItems,
+  moveStrategyInUsage,
+  refresh: refreshStrategyOrder
+} = useStrategyOrder()
 const strategyUsage = ref([]) // [{ name, count }] for the manage modal
 const showStrategyManager = ref(false)
 
+const orderedStrategyUsage = computed(() => orderStrategyUsageItems(strategyUsage.value))
+
+function handleStrategyMove({ name, direction }) {
+  moveStrategyInUsage(strategyUsage.value, name, direction)
+  mergeStrategyOptions(strategyUsage.value.map((u) => u.name))
+}
+
 // Drop hidden strategies from the dropdown, but always keep currently selected
 // ones visible so an active filter is never silently lost.
-const visibleStrategyOptions = computed(() =>
-  strategyOptions.value.filter(
+const visibleStrategyOptions = computed(() => {
+  const visible = strategyOptions.value.filter(
     opt => !hiddenStrategies.value.includes(opt.value) || (filters.value.strategies || []).includes(opt.value)
   )
-)
+  const orderedValues = orderStrategyNames(visible.map((opt) => opt.value))
+  const byValue = new Map(visible.map((opt) => [opt.value, opt]))
+  return orderedValues.map((value) => byValue.get(value)).filter(Boolean)
+})
 
 // Initialize filters with defaults, then load from localStorage
 const defaultFilters = {
@@ -1451,7 +1470,16 @@ function mergeStrategyOptions(strategies = []) {
       }
     })
 
-  strategyOptions.value = Array.from(merged.values())
+  const frequencyNames = [
+    ...strategyUsage.value.map((u) => u.name),
+    ...strategies,
+    ...defaultStrategyOptions.map((o) => o.value)
+  ]
+  const uniqueNames = [...new Set(frequencyNames.filter(Boolean))]
+  const orderedValues = orderStrategyNames(uniqueNames)
+  strategyOptions.value = orderedValues
+    .map((value) => merged.get(value))
+    .filter(Boolean)
 }
 
 async function fetchAvailableStrategies() {
@@ -1607,6 +1635,7 @@ onMounted(() => {
 
   // Fetch available dropdown options
   refreshHiddenItems()
+  refreshStrategyOrder()
   fetchAvailableStrategies()
   fetchAvailableSectors()
   fetchAvailableBrokers()

@@ -172,6 +172,20 @@
               </p>
             </div>
 
+            <div>
+              <label for="import-strategy" class="label">Strategy (optional)</label>
+              <BaseSelect
+                id="import-strategy"
+                v-model="selectedImportStrategy"
+                noun="strategies"
+                placeholder="Auto-detect from trade data"
+                :options="importStrategyOptions"
+              />
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Leave unset to classify each trade automatically. Choose a strategy to apply it to every trade in this import.
+              </p>
+            </div>
+
             <div v-if="selectedFile" class="rounded-2xl border border-gray-200 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-gray-900/50">
               <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
@@ -1228,6 +1242,7 @@ const ImportResultsModal = defineAsyncComponent(() => import('@/components/impor
 import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
 import BaseSelect from '@/components/common/BaseSelect.vue'
 import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotifications'
+import { useStrategyOrder } from '@/composables/useStrategyOrder'
 import { parseCSVHeaders, parseCSVSampleRows } from '@/utils/csvImportParse'
 
 const tradesStore = useTradesStore()
@@ -1263,6 +1278,9 @@ const startingTrial = ref(false)
 const accounts = ref([])
 const requiresAccountSelection = ref(false)
 const selectedAccountId = ref(null)
+const selectedImportStrategy = ref('')
+const importStrategiesList = ref([])
+const { orderNames: orderImportStrategyNames, refresh: refreshStrategyOrder } = useStrategyOrder()
 const currencyProMessage = ref('')
 const fileInput = ref(null)
 const selectAllCheckbox = ref(null)
@@ -1628,6 +1646,28 @@ const fileReadinessMessage = computed(() => {
   if (!fileAnalysis.value.formatDetected) return 'This file may need Generic CSV or column mapping.'
   return `This file looks import-ready${fileAnalysis.value.detectedBroker ? ` for ${formatBrokerName(fileAnalysis.value.detectedBroker)}` : ''}.`
 })
+
+const importStrategyOptions = computed(() =>
+  orderImportStrategyNames(importStrategiesList.value).map((strategy) => ({
+    value: strategy,
+    label: strategy.replace(/_/g, ' ')
+  }))
+)
+
+function resolveImportStrategyParam() {
+  const value = selectedImportStrategy.value?.trim()
+  return value || null
+}
+
+async function fetchImportStrategies() {
+  try {
+    const response = await api.get('/trades/strategies')
+    importStrategiesList.value = response.data?.strategies || []
+  } catch (err) {
+    console.warn('[IMPORT] Failed to load strategies for import:', err?.message)
+    importStrategiesList.value = []
+  }
+}
 
 const importButtonLabel = computed(() => {
   if (fileAnalysis.value.rowCount && fileAnalysis.value.rowCount > 0) {
@@ -2177,7 +2217,13 @@ async function handleImport() {
     }
 
     importStage.value = `Uploading and processing${tradeCount ? ` ~${tradeCount} trades` : ''}...`
-    const result = await tradesStore.importTrades(selectedFile.value, broker, mappingId, accountIdToSend)
+    const result = await tradesStore.importTrades(
+      selectedFile.value,
+      broker,
+      mappingId,
+      accountIdToSend,
+      resolveImportStrategyParam()
+    )
     console.log('Import result:', result)
     importStage.value = 'Processing trades...'
     showSuccess('Import Started', `Import has been queued. Import ID: ${result.importId}`)
@@ -2185,7 +2231,8 @@ async function handleImport() {
       broker,
       mapping_id: mappingId,
       import_id: result.importId,
-      estimated_rows: tradeCount
+      estimated_rows: tradeCount,
+      import_strategy: resolveImportStrategyParam() || 'auto'
     })
 
     // Save broker preference to localStorage
@@ -2331,7 +2378,13 @@ async function handleKeepBrokerSelected(selectedBrokerValue) {
       accountIdToSend = selectedAccountId.value
     }
 
-    const result = await tradesStore.importTrades(selectedFile.value, broker, mappingId, accountIdToSend)
+    const result = await tradesStore.importTrades(
+      selectedFile.value,
+      broker,
+      mappingId,
+      accountIdToSend,
+      resolveImportStrategyParam()
+    )
     console.log('Import result:', result)
     importStage.value = 'Processing trades...'
     showSuccess('Import Started', `Import has been queued. Import ID: ${result.importId}`)
@@ -2339,6 +2392,7 @@ async function handleKeepBrokerSelected(selectedBrokerValue) {
       broker,
       mapping_id: mappingId,
       import_id: result.importId,
+      import_strategy: resolveImportStrategyParam() || 'auto',
       path: 'broker_mismatch_keep_selected'
     })
 
@@ -3290,7 +3344,13 @@ async function handleMappingSaved(mapping) {
   try {
     // Import with the mapping ID (convert "none" to null)
     const accountIdToSend = selectedAccountId.value === 'none' ? null : selectedAccountId.value
-    const result = await tradesStore.importTrades(currentMappingFile.value, 'generic', mapping.id, accountIdToSend)
+    const result = await tradesStore.importTrades(
+      currentMappingFile.value,
+      'generic',
+      mapping.id,
+      accountIdToSend,
+      resolveImportStrategyParam()
+    )
     console.log('Import result:', result)
     importStage.value = 'Processing trades...'
     showSuccess('Import Started', `Import has been queued. Import ID: ${result.importId}`)
@@ -3414,6 +3474,9 @@ onMounted(() => {
     onboarding_step: authStore.onboardingStep || null,
     has_existing_imports: importHistory.value.length > 0
   })
+
+  refreshStrategyOrder()
+  runWhenIdle(() => fetchImportStrategies())
 
   // Load saved broker preference
   const savedBroker = localStorage.getItem('lastSelectedBroker')
