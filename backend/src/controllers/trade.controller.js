@@ -2638,6 +2638,7 @@ const tradeController = {
                   existingTradeId, isUpdate, executionData, totalFees, totalFeesForSymbol,
                   pnl, pnlPercent, profitLoss, newExecutionsAdded,
                   groupedTrades, originalNotes, existingExecutions,
+                  totalCommission, // internal accumulator — not a DB column
                   ...cleanTradeData
                 } = tradeData;
 
