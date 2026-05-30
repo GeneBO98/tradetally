@@ -3307,11 +3307,22 @@ const tradeController = {
             console.log('Fetching uncached symbols from Finnhub:', uncachedSymbols);
             try {
               const freshQuotes = await timeAsyncOperation('openPositions.finnhubQuoteFetch', () => withTimeout(
-                finnhub.getBatchQuotes(uncachedSymbols),
+                finnhub.getBatchQuotes(uncachedSymbols, {
+                  source: 'open_positions',
+                  priority: 0,
+                  userId: req.user.id,
+                  maxQueueWaitMs: OPEN_POSITIONS_FINNHUB_TIMEOUT_MS
+                }),
                 OPEN_POSITIONS_FINNHUB_TIMEOUT_MS,
                 'Open positions Finnhub quote fetch'
               ));
               Object.assign(quotes, freshQuotes);
+              const quoteFailures = freshQuotes?._failures || {};
+              for (const [symbol, failure] of Object.entries(quoteFailures)) {
+                if (failure?.code === 'FINNHUB_SCHEDULER_TIMEOUT' || failure?.code === 'FINNHUB_SCHEDULER_SKIPPED') {
+                  pendingStockSymbols.add(symbol);
+                }
+              }
             } catch (quoteError) {
               if (quoteError.code === 'ETIMEOUT') {
                 pendingStockSymbols = new Set(uncachedSymbols);

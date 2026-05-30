@@ -27,6 +27,8 @@ jest.mock('../../src/events/domainEvents', () => ({
 const db = require('../../src/config/database');
 const NotificationPreferenceService = require('../../src/services/notificationPreferenceService');
 const { publish } = require('../../src/events/domainEvents');
+const finnhub = require('../../src/utils/finnhub');
+const priceFallbackManager = require('../../src/utils/priceFallbackManager');
 const priceMonitoringService = require('../../src/services/priceMonitoringService');
 
 describe('priceMonitoringService price alert webhook publication', () => {
@@ -34,6 +36,9 @@ describe('priceMonitoringService price alert webhook publication', () => {
     jest.clearAllMocks();
     NotificationPreferenceService.isNotificationEnabled.mockResolvedValue(true);
     db.query.mockResolvedValue({ rows: [] });
+    finnhub.isCryptoSymbol = jest.fn(() => false);
+    priceFallbackManager.getQuoteWithFallback = jest.fn();
+    priceMonitoringService.failedSymbols.clear();
     priceMonitoringService.emailTransporter = null;
   });
 
@@ -72,5 +77,21 @@ describe('priceMonitoringService price alert webhook publication', () => {
       }),
       { source: 'priceMonitoringService.triggerAlert' }
     );
+  });
+
+  test('skips saturated Finnhub background quotes without recording symbol failure', async () => {
+    priceFallbackManager.getQuoteWithFallback.mockResolvedValue({
+      data: null,
+      source: 'none',
+      error: {
+        code: 'FINNHUB_SCHEDULER_SKIPPED',
+        message: 'provider capacity reserved for active requests'
+      }
+    });
+
+    await expect(priceMonitoringService.updateSymbolPrice('AAPL')).resolves.toBe('skipped');
+
+    expect(priceMonitoringService.failedSymbols.has('AAPL')).toBe(false);
+    expect(db.query).not.toHaveBeenCalled();
   });
 });
