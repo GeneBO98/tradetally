@@ -2229,6 +2229,40 @@ function getTradeValueMultiplier(trade) {
   return 1;
 }
 
+function normalizeParsedTradeInstrumentData(trade) {
+  if (!trade || !trade.symbol) return trade;
+
+  const parsed = parseInstrumentData(trade.symbol);
+  const currentType = trade.instrumentType || trade.instrument_type;
+  const currentContractSize = trade.contractSize ?? trade.contract_size;
+  const currentPointValue = trade.pointValue ?? trade.point_value;
+
+  if ((!currentType || currentType === 'stock') && parsed.instrumentType && parsed.instrumentType !== 'stock') {
+    trade.instrumentType = parsed.instrumentType;
+    if (parsed.underlyingSymbol && !trade.underlyingSymbol && !trade.underlying_symbol) {
+      trade.underlyingSymbol = parsed.underlyingSymbol;
+    }
+    if (parsed.strikePrice != null && trade.strikePrice == null && trade.strike_price == null) {
+      trade.strikePrice = parsed.strikePrice;
+    }
+    if (parsed.expirationDate && !trade.expirationDate && !trade.expiration_date) {
+      trade.expirationDate = parsed.expirationDate;
+    }
+    if (parsed.optionType && !trade.optionType && !trade.option_type) {
+      trade.optionType = parsed.optionType;
+    }
+  }
+
+  const normalizedType = trade.instrumentType || trade.instrument_type;
+  if (normalizedType === 'option' && (currentContractSize == null || Number(currentContractSize) <= 0)) {
+    trade.contractSize = Number(parsed.contractSize || 100);
+  } else if (normalizedType === 'future' && (currentPointValue == null || Number(currentPointValue) <= 0) && parsed.pointValue) {
+    trade.pointValue = Number(parsed.pointValue);
+  }
+
+  return trade;
+}
+
 function cloneTradeMetadata(trade) {
   return {
     symbol: trade.symbol,
@@ -2596,6 +2630,7 @@ function wrapResultWithDiagnostics(trades, diagnostics, unresolvedCusips = [], u
   }
 
   normalizeExecutionCollections(trades);
+  trades = trades.map(trade => normalizeParsedTradeInstrumentData(trade));
   trades = repairTradeReversals(trades, diagnostics);
 
   // Update diagnostics with final counts
@@ -3526,6 +3561,13 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
               fees: trade.fees,
               currency: trade.currency,
               notes: trade.notes,
+              instrumentType: trade.instrumentType,
+              strikePrice: trade.strikePrice,
+              expirationDate: trade.expirationDate,
+              optionType: trade.optionType,
+              contractSize: trade.contractSize,
+              pointValue: trade.pointValue,
+              underlyingSymbol: trade.underlyingSymbol,
               raw: record
             });
           }
@@ -3562,19 +3604,26 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
           // Determine if this completes a trade
           if (prevPosition === 0) {
             // Starting new trade
-            completedTrades.push({
-              symbol: transaction.symbol,
-              tradeDate: transaction.date,
-              entryTime: transaction.datetime,
-              entryPrice: transaction.price,
+              completedTrades.push({
+                symbol: transaction.symbol,
+                tradeDate: transaction.date,
+                entryTime: transaction.datetime,
+                entryPrice: transaction.price,
               quantity: transaction.quantity,
               side: isBuy ? 'long' : 'short',
               commission: transaction.commission,
-              fees: transaction.fees || 0,
-              currency: transaction.currency,
-              broker: 'tradestation',
-              notes: transaction.notes
-            });
+                fees: transaction.fees || 0,
+                currency: transaction.currency,
+                broker: 'tradestation',
+                notes: transaction.notes,
+                instrumentType: transaction.instrumentType,
+                strikePrice: transaction.strikePrice,
+                expirationDate: transaction.expirationDate,
+                optionType: transaction.optionType,
+                contractSize: transaction.contractSize,
+                pointValue: transaction.pointValue,
+                underlyingSymbol: transaction.underlyingSymbol
+              });
           } else if ((prevPosition > 0 && currentPosition <= 0) || (prevPosition < 0 && currentPosition >= 0)) {
             // Closing or reversing position
             const lastTrade = completedTrades[completedTrades.length - 1];
