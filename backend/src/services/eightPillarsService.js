@@ -42,6 +42,8 @@ class EightPillarsService {
       const cached = await this.getCachedAnalysis(symbolUpper);
       if (cached) {
         console.log(`[8PILLARS] Using cached analysis for ${symbolUpper}`);
+        // Keep the scanner list row consistent even when served from cache.
+        await this.syncScanRow(cached);
         return cached;
       }
     }
@@ -232,7 +234,26 @@ class EightPillarsService {
     // Cache the analysis
     await this.cacheAnalysis(analysis);
 
+    // Write-through: keep the scanner list row for this symbol consistent with
+    // this fresh result so the list and the detail view can never disagree.
+    await this.syncScanRow(analysis);
+
     return analysis;
+  }
+
+  /**
+   * Propagate an analysis into the scanner list row for the same symbol so the
+   * list can never contradict the detail view. Lazy require avoids a circular
+   * dependency (the scanner requires this service). Failures are non-fatal.
+   * @param {Object} analysis - Analysis object
+   */
+  static async syncScanRow(analysis) {
+    try {
+      const StockScannerService = require('./stockScannerService');
+      await StockScannerService.syncScanResult(analysis);
+    } catch (err) {
+      console.error(`[8PILLARS] Failed to sync scan result for ${analysis?.symbol}: ${err.message}`);
+    }
   }
 
   /**
