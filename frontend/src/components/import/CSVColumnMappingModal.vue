@@ -34,9 +34,15 @@
               <div>Sample value</div>
               <div>TradeTally field</div>
             </div>
+            <p
+              v-if="isReparsing"
+              class="border-t border-gray-200 px-4 py-2 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400"
+            >
+              Updating column preview…
+            </p>
             <div class="divide-y divide-gray-200 dark:divide-gray-700">
               <div
-                v-for="header in csvHeaders"
+                v-for="header in displayHeaders"
                 :key="header"
                 class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)] items-center gap-3 px-4 py-2.5"
               >
@@ -187,6 +193,7 @@ import { XMarkIcon } from '@heroicons/vue/24/outline'
 import BaseSelect from '@/components/common/BaseSelect.vue'
 import api from '@/services/api'
 import { useNotification } from '@/composables/useNotification'
+import { parseCSVFilePreview } from '@/utils/csvImportParse'
 
 const props = defineProps({
   isOpen: {
@@ -234,6 +241,10 @@ onBeforeUnmount(() => {
 
 const loading = ref(false)
 const error = ref(null)
+const isReparsing = ref(false)
+const isInitializing = ref(false)
+const displayHeaders = ref([])
+const displaySampleRows = ref({})
 
 const FIELD_OPTIONS = [
   { value: 'symbol_column', label: 'Symbol', required: true },
@@ -323,7 +334,7 @@ function rowSelectClass(header) {
 }
 
 function getSampleText(header) {
-  const samples = props.csvSampleRows?.[header]
+  const samples = displaySampleRows.value?.[header]
   if (!samples || samples.length === 0) return ''
   // Show first non-empty sample, truncate if too long
   const first = samples.find(s => s !== undefined && s !== null && String(s).trim() !== '') ?? ''
@@ -337,28 +348,93 @@ const supportMailtoLink = computed(() => {
     `I need help mapping this CSV for import.\n\n` +
     `Selected broker: ${props.selectedBroker || 'N/A'}\n` +
     `File name: ${props.csvFile?.name || 'N/A'}\n` +
-    `Headers:\n${props.csvHeaders.join(', ')}\n\n` +
+    `Headers:\n${displayHeaders.value.join(', ')}\n\n` +
     `Notes:\n`
   )
 
   return `mailto:support@tradetally.io?subject=${subject}&body=${body}`
 })
 
-// Auto-detect common column mappings when headers change
-watch(() => props.csvHeaders, (headers) => {
-  if (headers.length > 0) {
-    autoDetectMappings(headers)
+function clearColumnMappings() {
+  for (const fieldName of COLUMN_FIELD_NAMES) {
+    mappingForm.value[fieldName] = ''
   }
-}, { immediate: true })
+}
 
-// Reset form when modal opens
-watch(() => props.isOpen, (isOpen) => {
+function detectDateFormatFromSamples(sampleRows) {
+  const timeKey = Object.keys(sampleRows).find(k => k.toLowerCase() === 'time')
+  if (!timeKey) return
+
+  const samples = sampleRows[timeKey] || []
+  for (const sample of samples) {
+    const text = String(sample).trim()
+    const match = text.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+    if (!match) continue
+
+    const first = parseInt(match[1], 10)
+    const second = parseInt(match[2], 10)
+    if (first > 12 && second <= 12) {
+      mappingForm.value.date_format = 'DD/MM/YYYY'
+    }
+    return
+  }
+}
+
+async function refreshPreviewFromFile(autoDetectDelimiter = false) {
+  if (!props.csvFile) {
+    displayHeaders.value = [...props.csvHeaders]
+    displaySampleRows.value = { ...props.csvSampleRows }
+    return
+  }
+
+  isReparsing.value = true
+  try {
+    const { headers, sampleRows, delimiter } = await parseCSVFilePreview(props.csvFile, {
+      delimiter: autoDetectDelimiter ? undefined : mappingForm.value.delimiter,
+      has_header_row: mappingForm.value.has_header_row
+    })
+
+    displayHeaders.value = headers
+    displaySampleRows.value = sampleRows
+
+    if (autoDetectDelimiter && delimiter) {
+      mappingForm.value.delimiter = delimiter
+    }
+
+    if (headers.length > 0) {
+      clearColumnMappings()
+      autoDetectMappings(headers)
+      detectDateFormatFromSamples(sampleRows)
+    }
+  } finally {
+    isReparsing.value = false
+  }
+}
+
+// Reset form and re-parse when modal opens
+watch(() => props.isOpen, async (isOpen) => {
   if (isOpen) {
+    isInitializing.value = true
     mappingForm.value.mapping_name = ''
     mappingForm.value.description = ''
+    mappingForm.value.delimiter = ','
+    mappingForm.value.date_format = 'MM/DD/YYYY'
+    mappingForm.value.has_header_row = true
     error.value = null
+    await refreshPreviewFromFile(true)
+    isInitializing.value = false
   }
 })
+
+// Re-parse when CSV settings change (delimiter / header row)
+watch(
+  () => [mappingForm.value.delimiter, mappingForm.value.has_header_row],
+  async () => {
+    if (props.isOpen && props.csvFile && !isInitializing.value) {
+      await refreshPreviewFromFile(false)
+    }
+  }
+)
 
 function autoDetectMappings(headers) {
   const lowerHeaders = headers.map(h => ({ original: h, lower: h.toLowerCase() }))
@@ -396,7 +472,7 @@ function autoDetectMappings(headers) {
 
   const dateMatch = lowerHeaders.find(h =>
     h.lower.includes('trade date') || h.lower.includes('entry date') || h.lower === 'date' ||
-    h.lower === 'day'
+    h.lower === 'day' || h.lower === 'time'
   )
   if (dateMatch) mappingForm.value.entry_date_column = dateMatch.original
 

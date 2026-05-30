@@ -1228,6 +1228,7 @@ const ImportResultsModal = defineAsyncComponent(() => import('@/components/impor
 import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
 import BaseSelect from '@/components/common/BaseSelect.vue'
 import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotifications'
+import { parseCSVHeaders, parseCSVSampleRows } from '@/utils/csvImportParse'
 
 const tradesStore = useTradesStore()
 const authStore = useAuthStore()
@@ -1800,128 +1801,6 @@ async function countCSVRows(file) {
   })
 }
 
-// Parse CSV headers from file
-async function parseCSVSampleRows(file, headers, count = 2) {
-  if (!file || !headers || headers.length === 0) return {}
-  return new Promise((resolve) => {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      try {
-        const text = e.target.result
-        const lines = text.split('\n')
-
-        let headerLineIdx = -1
-        for (let i = 0; i < Math.min(15, lines.length); i++) {
-          const line = lines[i].trim()
-          if (!line || !line.includes(',')) continue
-          const lower = line.toLowerCase()
-          if ((lower.includes('date') && lower.includes('time') && lower.includes('type')) ||
-              (lower.includes('symbol') && (lower.includes('quantity') || lower.includes('qty') || lower.includes('price'))) ||
-              (lower.includes('action') && lower.includes('description')) ||
-              (lower.includes('trade number') || lower.includes('order id'))) {
-            headerLineIdx = i
-            break
-          }
-          if (headerLineIdx === -1) headerLineIdx = i
-        }
-
-        if (headerLineIdx === -1) {
-          resolve({})
-          return
-        }
-
-        const delimiters = [',', ';', '\t', '|']
-        let delimiter = ','
-        for (const d of delimiters) {
-          if (lines[headerLineIdx].split(d).length > 1) {
-            delimiter = d
-            break
-          }
-        }
-
-        const samples = {}
-        headers.forEach(h => { samples[h] = [] })
-        let collected = 0
-        for (let i = headerLineIdx + 1; i < lines.length && collected < count; i++) {
-          const line = lines[i].trim()
-          if (!line) continue
-          const cols = line.split(delimiter).map(c => c.trim().replace(/^["']|["']$/g, ''))
-          headers.forEach((h, idx) => {
-            if (cols[idx] !== undefined) samples[h].push(cols[idx])
-          })
-          collected++
-        }
-        resolve(samples)
-      } catch {
-        resolve({})
-      }
-    }
-    reader.onerror = () => resolve({})
-    reader.readAsText(file)
-  })
-}
-
-async function parseCSVHeaders(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      try {
-        const text = e.target.result
-        const lines = text.split('\n')
-
-        // Find the header line - prefer lines that look like actual column headers
-        // (e.g., containing "date", "time", "type") over title/section rows
-        // This handles ThinkorSwim CSVs that start with "Account Statement for..."
-        let headerLine = ''
-        let fallbackLine = ''
-        for (let i = 0; i < Math.min(15, lines.length); i++) {
-          const line = lines[i].trim()
-          if (!line || !line.includes(',')) continue
-          const lower = line.toLowerCase()
-          // Check if this looks like a real header row with column names
-          if ((lower.includes('date') && lower.includes('time') && lower.includes('type')) ||
-              (lower.includes('symbol') && (lower.includes('quantity') || lower.includes('qty') || lower.includes('price'))) ||
-              (lower.includes('action') && lower.includes('description')) ||
-              (lower.includes('trade number') || lower.includes('order id'))) {
-            headerLine = line
-            break
-          }
-          // Keep the first non-empty line as a fallback
-          if (!fallbackLine) {
-            fallbackLine = line
-          }
-        }
-        if (!headerLine) {
-          headerLine = fallbackLine
-        }
-
-        if (!headerLine) {
-          resolve([])
-          return
-        }
-
-        // Try different delimiters
-        let headers = []
-        const delimiters = [',', ';', '\t', '|']
-
-        for (const delimiter of delimiters) {
-          const cols = headerLine.split(delimiter).map(h => h.trim().replace(/^["']|["']$/g, ''))
-          if (cols.length > 1) {
-            headers = cols
-            break
-          }
-        }
-
-        resolve(headers.filter(h => h))
-      } catch (error) {
-        reject(error)
-      }
-    }
-    reader.onerror = () => reject(reader.error)
-    reader.readAsText(file)
-  })
-}
-
 function detectBrokerFromHeaders(headers) {
   if (!headers || headers.length === 0) return false
 
@@ -2019,6 +1898,13 @@ function detectBrokerFromHeaders(headers) {
     return 'tradovate'
   }
 
+  // NinjaTrader grid export (semicolon-delimited, European decimals in price)
+  if (headersStr.includes('instrument') && headersStr.includes('action') &&
+      headersStr.includes('quantity') && headersStr.includes('price') &&
+      (headersStr.includes('e/x') || headersStr.includes('order id'))) {
+    return 'generic'
+  }
+
   // Questrade detection
   if (headersStr.includes('fill qty') && headersStr.includes('fill price') &&
       headersStr.includes('exec time') && headersStr.includes('option') &&
@@ -2042,7 +1928,9 @@ function detectBrokerFromHeaders(headers) {
 
   // Generic CSV detection - check if it has basic required fields
   // Include common non-English equivalents for broader detection
-  const hasSymbol = lowerHeaders.some(h => h.includes('symbol') || h.includes('ticker') || h.includes('stock'))
+  const hasSymbol = lowerHeaders.some(h =>
+    h.includes('symbol') || h.includes('ticker') || h.includes('stock') || h === 'instrument'
+  )
   const hasSide = lowerHeaders.some(h => h.includes('side') || h.includes('direction') || h.includes('type') || h.includes('action') ||
     h.includes('seite') || h.includes('côté') || h.includes('lado'))
   const hasQuantity = lowerHeaders.some(h => h.includes('quantity') || h.includes('qty') || h.includes('shares') || h.includes('size') ||

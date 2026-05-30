@@ -975,6 +975,14 @@ function detectBrokerFormat(fileBuffer) {
       return 'generic';
     }
 
+    // NinjaTrader grid export (semicolon-delimited; European decimal commas in price)
+    if (headers.includes('instrument') && headers.includes('action') &&
+        headers.includes('quantity') && headers.includes('price') &&
+        (headers.includes('e/x') || headers.includes('order id'))) {
+      console.log('[AUTO-DETECT] Detected: NinjaTrader grid export (routed to generic parser)');
+      return 'generic';
+    }
+
     // Default to generic if no specific format detected
     console.log('[AUTO-DETECT] No specific format detected, using generic parser');
     return 'generic';
@@ -989,7 +997,7 @@ function findLikelyDelimitedHeaderLine(lines, maxLines = 15) {
   const headerKeywords = [
     'date', 'time', 'symbol', 'side', 'type', 'action', 'price', 'qty', 'quantity',
     'commission', 'description', 'order', 'profit', 'pnl', 'fill', 'entry', 'exit',
-    'trade', 'status', 'account'
+    'trade', 'status', 'account', 'instrument', 'position', 'rate', 'connection'
   ];
   const delimiters = [',', ';', '\t'];
   let fallback = null;
@@ -3154,6 +3162,19 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       const previewLineCount = Math.min(csvString.split('\n').length, 5);
       console.log(`Prepared IBKR CSV for parsing (preview lines redacted, count=${previewLineCount})`);
     }
+
+    // Custom mapping delimiter, or auto-detect semicolon/tab (e.g. NinjaTrader grid exports).
+    // Must run after broker-specific parseOptions overrides so saved mappings win.
+    if (context.customMapping?.delimiter) {
+      parseOptions.delimiter = context.customMapping.delimiter;
+      console.log(`[CUSTOM MAPPING] Using delimiter from mapping: ${JSON.stringify(context.customMapping.delimiter)}`);
+    } else {
+      const headerInfo = findLikelyDelimitedHeaderLine(csvString.split('\n'));
+      if (headerInfo?.delimiter) {
+        parseOptions.delimiter = headerInfo.delimiter;
+        console.log(`[CSV] Auto-detected delimiter: ${JSON.stringify(headerInfo.delimiter)}`);
+      }
+    }
     
     let records;
     try {
@@ -4825,8 +4846,15 @@ function parseInstrumentData(symbol) {
 function parseNumeric(value, defaultValue = 0) {
   if (value === null || value === undefined || value === '') return defaultValue;
 
-  let cleanValue = value.toString().trim().replace(/[$,]/g, '');
+  let cleanValue = value.toString().trim().replace(/\$/g, '');
   if (cleanValue === '') return defaultValue;
+
+  // European decimal comma (e.g. NinjaTrader 7200,75) — not a thousands separator
+  if (/^-?\d{1,3}(\.\d{3})*,\d{1,2}$/.test(cleanValue) || /^-?\d+,\d{1,2}$/.test(cleanValue)) {
+    cleanValue = cleanValue.replace(/\./g, '').replace(',', '.');
+  } else {
+    cleanValue = cleanValue.replace(/,/g, '');
+  }
 
   // Handle accounting-style negative: (123.45) -> -123.45
   const parenMatch = cleanValue.match(/^\((.+)\)$/);
