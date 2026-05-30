@@ -280,6 +280,133 @@ describe('broker sync duplicate protection', () => {
     });
   });
 
+  test('Schwab option transactions save the underlying ticker and option metadata', () => {
+    const parsed = schwabService.parseTransactionDetails({
+      type: 'TRADE',
+      orderId: 'option-buy-1',
+      tradeDate: '2026-05-27',
+      time: '2026-05-27T14:30:00Z',
+      transferItems: [
+        {
+          instrument: {
+            assetType: 'OPTION',
+            symbol: 'SPY 260527C00753000'
+          },
+          price: 1.25,
+          amount: 1,
+          positionEffect: 'OPENING'
+        }
+      ]
+    });
+
+    expect(parsed).toMatchObject({
+      symbol: 'SPY',
+      matchingSymbol: 'SPY 260527C00753000',
+      instrumentType: 'option',
+      underlyingSymbol: 'SPY',
+      optionType: 'call',
+      strikePrice: 753,
+      expirationDate: '2026-05-27'
+    });
+  });
+
+  test('Schwab option grouping keeps different contracts separate after symbol normalization', () => {
+    const schwabOptionTrade = ({ orderId, symbol, time, price, amount, positionEffect }) => ({
+      type: 'TRADE',
+      orderId,
+      tradeDate: time.split('T')[0],
+      time,
+      transferItems: [
+        {
+          instrument: {
+            assetType: 'OPTION',
+            symbol
+          },
+          price,
+          amount,
+          positionEffect
+        }
+      ]
+    });
+
+    const trades = schwabService.parseTransactions([
+      schwabOptionTrade({
+        orderId: 'open-753',
+        symbol: 'SPY 260527C00753000',
+        time: '2026-05-27T14:30:00Z',
+        price: 1.25,
+        amount: 1,
+        positionEffect: 'OPENING'
+      }),
+      schwabOptionTrade({
+        orderId: 'close-753',
+        symbol: 'SPY 260527C00753000',
+        time: '2026-05-27T15:00:00Z',
+        price: 1.5,
+        amount: -1,
+        positionEffect: 'CLOSING'
+      }),
+      schwabOptionTrade({
+        orderId: 'open-754',
+        symbol: 'SPY 260527C00754000',
+        time: '2026-05-27T15:30:00Z',
+        price: 1.1,
+        amount: 1,
+        positionEffect: 'OPENING'
+      }),
+      schwabOptionTrade({
+        orderId: 'close-754',
+        symbol: 'SPY 260527C00754000',
+        time: '2026-05-27T16:00:00Z',
+        price: 1.35,
+        amount: -1,
+        positionEffect: 'CLOSING'
+      })
+    ]);
+
+    expect(trades).toHaveLength(2);
+    expect(trades.map(trade => trade.symbol)).toEqual(['SPY', 'SPY']);
+    expect(trades.map(trade => trade.strikePrice).sort((a, b) => a - b)).toEqual([753, 754]);
+    expect(trades.every(trade => trade.instrumentType === 'option')).toBe(true);
+  });
+
+  test('Schwab duplicate detection recognizes previously synced full option symbols', () => {
+    const isDuplicate = schwabService.isDuplicateTrade(
+      {
+        symbol: 'SPY',
+        matchingSymbol: 'SPY 260527C00753000',
+        side: 'long',
+        quantity: 1,
+        entryPrice: 1.25,
+        exitPrice: 1.5,
+        pnl: 25,
+        tradeDate: '2026-05-27',
+        instrumentType: 'option',
+        underlyingSymbol: 'SPY',
+        optionType: 'call',
+        strikePrice: 753,
+        expirationDate: '2026-05-27'
+      },
+      [
+        {
+          symbol: 'SPY 260527C00753000',
+          side: 'long',
+          quantity: 1,
+          entry_price: 1.25,
+          exit_price: 1.5,
+          pnl: 25,
+          trade_date: '2026-05-27',
+          instrument_type: 'option',
+          option_type: 'call',
+          strike_price: 753,
+          expiration_date: '2026-05-27'
+        }
+      ]
+    );
+
+    expect(isDuplicate).toBe(true);
+  });
+
   test('generic OAuth broker fill pairing closes long trades instead of marking sells as shorts', () => {
     const trades = alpacaService.mapExecutionsToTrades([
       {
