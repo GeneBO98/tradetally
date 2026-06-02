@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '@/services/api'
 import router from '@/router'
+import { useUiPreferencesStore } from '@/stores/uiPreferences'
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref(null)
@@ -137,6 +138,9 @@ export const useAuthStore = defineStore('auth', () => {
       localStorage.removeItem('calendar_year')
       localStorage.removeItem('calendar_expanded_month')
       localStorage.removeItem('calendar_expanded_year')
+      try {
+        useUiPreferencesStore().reset()
+      } catch (_) {}
       router.push({ name: 'home' })
     }
   }

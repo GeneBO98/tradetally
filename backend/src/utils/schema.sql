@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS user_settings (
     public_profile BOOLEAN DEFAULT FALSE,
     default_tags TEXT[],
     import_settings JSONB DEFAULT '{}',
+    ui_preferences JSONB NOT NULL DEFAULT '{}'::jsonb,
     theme VARCHAR(20) DEFAULT 'light',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP

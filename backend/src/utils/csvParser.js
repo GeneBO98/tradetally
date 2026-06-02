@@ -742,6 +742,8 @@ function getCsvSampleRows(fileBuffer, maxRows = 5) {
   }
 }
 
+const TOS_UNSUPPORTED_SPREAD_RE = /^(VERTICAL|DIAGONAL|CALENDAR|BUTTERFLY|CONDOR|IRON\s+CONDOR|IRON\s+BUTTERFLY|STRADDLE|STRANGLE|COVERED|COLLAR|RATIO|BACK\s+RATIO)\b/i;
+
 const brokerParsers = {
   generic: (row) => {
     // Enhanced generic parser with flexible column mapping
@@ -887,6 +889,10 @@ const brokerParsers = {
     const price = parseFloat(priceStr);
     const side = action === 'BOT' ? 'long' : 'short';
 
+    if (TOS_UNSUPPORTED_SPREAD_RE.test(symbolPart)) {
+      return null;
+    }
+
     // Detect options: "CRM 100 (Weeklys) 2 APR 26 175 PUT"
     let symbol;
     let optionData = {};
@@ -910,6 +916,7 @@ const brokerParsers = {
       };
     } else {
       symbol = symbolPart.trim();
+      if (symbol.length > 30) return null;
     }
 
     // Parse date and time
@@ -1702,8 +1709,6 @@ function normalizeExecutionCollections(trades) {
             execution.orderID ??
             execution.tradeId ??
             execution.tradeID ??
-            execution.sourceIndex ??
-            execution.source_index ??
             null;
 
           if (identifierKey === null || identifierKey === undefined || identifierKey === '') {
@@ -5217,6 +5222,20 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
       const quantity = Math.abs(parseFloat(quantityStr.replace(/,/g, '')));
       const price = parseFloat(priceStr);
 
+      const spreadMatch = symbolPart.match(TOS_UNSUPPORTED_SPREAD_RE);
+      if (spreadMatch) {
+        const spreadType = spreadMatch[1].toUpperCase();
+        console.log(`[TOS] Skipping multi-leg spread (${spreadType}): ${description}`);
+        if (diagnostics) {
+          diagnostics.skippedRows++;
+          diagnostics.skippedReasons.push({
+            row: rowIndex,
+            reason: `Multi-leg option spread (${spreadType}) not supported - import individual legs from a different export or skip these rows`
+          });
+        }
+        continue;
+      }
+
       // Detect options: "CRM 100 (Weeklys) 2 APR 26 175 PUT" or "CRM 100 2 APR 26 175 CALL"
       // Pattern: UNDERLYING MULTIPLIER [optional (series)] DAY MONTH YEAR STRIKE PUT/CALL
       let symbol;
@@ -5243,6 +5262,18 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
       } else {
         // Stock - symbolPart is just the ticker
         symbol = symbolPart.trim();
+      }
+
+      if (!symbol || symbol.length > 30) {
+        console.log(`[TOS] Skipping row with invalid symbol length (${symbol?.length || 0}): ${description}`);
+        if (diagnostics) {
+          diagnostics.skippedRows++;
+          diagnostics.skippedReasons.push({
+            row: rowIndex,
+            reason: `Unrecognized instrument format: "${(description || '').substring(0, 60)}" - symbol could not be extracted`
+          });
+        }
+        continue;
       }
 
       // Parse fees
@@ -7009,7 +7040,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         entryTime: existingPosition.entryTime,
         tradeDate: existingPosition.tradeDate,
         side: existingPosition.side,
-        executions: existingExecutions,
+        executions: existingExecutions.map(exec => ({ ...exec })),
         // Use recalculated values from executions for accurate P&L
         totalQuantity: recalcEntryQty,  // Total entry quantity, not remaining
         totalFees: recalcFees,
@@ -7674,7 +7705,7 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
       entryTime: existingPosition.entryTime,
       tradeDate: existingPosition.tradeDate,
       side: existingPosition.side,
-      executions: existingExecutions,
+      executions: existingExecutions.map(exec => ({ ...exec })),
       totalQuantity: existingPosition.quantity,
       totalFees: existingPosition.commission || 0,
       entryValue: existingPosition.quantity * existingPosition.entryPrice * valueMultiplier,

@@ -121,7 +121,7 @@
             @click="dismissPasskeyPrompt"
             class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
           >
-            Skip for now
+            No thanks
           </button>
         </div>
       </div>
@@ -200,6 +200,7 @@ import EmailVerificationBanner from '@/components/common/EmailVerificationBanner
 import VersionDisplay from '@/components/common/VersionDisplay.vue'
 import CookieConsentBanner from '@/components/common/CookieConsentBanner.vue'
 import { useRegistrationMode } from '@/composables/useRegistrationMode'
+import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import api from '@/services/api'
 import { requestSudoToken, sudoHeaders } from '@/services/sudo'
 
@@ -210,6 +211,7 @@ const lastRateLimitNotification = ref(0)
 const route = useRoute()
 const authStore = useAuthStore()
 const versionStore = useVersionStore()
+const uiPreferencesStore = useUiPreferencesStore()
 const { isBillingEnabled } = useRegistrationMode()
 
 // Initialize price alert notifications globally
@@ -273,6 +275,7 @@ const PASSKEY_PROMPT_DISMISSED_KEY = 'passkey_prompt_dismissed'
 let previousToken = authStore.token
 watch(() => authStore.token, async (newToken) => {
   if (newToken && !previousToken) {
+    await uiPreferencesStore.init()
     if (localStorage.getItem(PASSKEY_PROMPT_DISMISSED_KEY)) {
       previousToken = newToken
       return
@@ -333,6 +336,7 @@ async function registerPasskey() {
 function dismissPasskeyPrompt() {
   showPasskeyPrompt.value = false
   localStorage.setItem(PASSKEY_PROMPT_DISMISSED_KEY, 'true')
+  uiPreferencesStore.notifyChanged(PASSKEY_PROMPT_DISMISSED_KEY, true)
 }
 
 // Version check polling interval (6 hours)

@@ -173,6 +173,34 @@ describe('ThinkorSwim parser', () => {
     // Dividend row should be skipped
     expect(result.trades.length).toBeGreaterThanOrEqual(1);
   });
+
+  test('imports single-leg option rows and skips spread rows from account statement exports', async () => {
+    const csv = [
+      'Cash Balance',
+      'DATE,TIME,TYPE,REF #,DESCRIPTION,Misc Fees,Commissions & Fees,AMOUNT,BALANCE',
+      '5/5/26,07:31:00,TRD,="5337400962",SOLD -1 VERTICAL SPY 100 (Weeklys) 5 JUN 26 715/714 PUT @.34,-0.04,-1.30,34.00,"98,898.76"',
+      '5/5/26,08:13:43,TRD,="5337576468",SOLD -1 VERTICAL SPX 100 (Weeklys) 9 JUN 26 7050/7025 PUT @4.50,-1.06,-1.30,450.00,"99,346.40"',
+      '5/6/26,09:45:00,TRD,="5338000000",BOT +1 AAPL 100 19 JUN 26 200 CALL @1.25,$0.00,-$1.30,-$126.30,"99,220.10"',
+      '5/7/26,10:15:00,TRD,="5338000001",SOLD -1 AAPL 100 19 JUN 26 200 CALL @1.75,$0.00,-$1.30,$173.70,"99,393.80"'
+    ].join('\n');
+
+    const result = await parseCSV(buf(csv), 'thinkorswim', {});
+
+    expectValidResult(result);
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0]).toEqual(expect.objectContaining({
+      symbol: 'AAPL',
+      instrumentType: 'option',
+      underlyingSymbol: 'AAPL',
+      optionType: 'call',
+      strikePrice: 200
+    }));
+    expect(result.diagnostics.skippedReasons).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        reason: expect.stringContaining('Multi-leg option spread (VERTICAL) not supported')
+      })
+    ]));
+  });
 });
 
 // ──────────────────────────────────────────────
@@ -253,6 +281,54 @@ describe('IBKR parser', () => {
       expect.objectContaining({ action: 'buy', quantity: 100, price: 8.45, datetime: '2026-04-07T06:41:26' }),
       expect.objectContaining({ action: 'sell', quantity: 200, price: 8.28, datetime: '2026-04-07T06:42:12' })
     ]);
+  });
+
+  test('keeps same-second partial close fills when updating an existing IBKR option position', async () => {
+    const openShortCsv = [
+      'Symbol,DateTime,Quantity,Price,Commission,Code,Conid',
+      "AVAV  260109C00320000,'2026-01-05 10:23:00,-1,0.9,-0.05204,O;P,834720350",
+      "AVAV  260109C00320000,'2026-01-05 10:23:00,-1,0.9,0.64796,O;P,834720350",
+      "AVAV  260109C00320000,'2026-01-05 10:23:00,-2,0.9,0.59592,O;P,834720350",
+      "AVAV  260109C00320000,'2026-01-05 10:23:00,-1,0.9,0.29796,O;P,834720350",
+      "AVAV  260109C00320000,'2026-01-05 10:23:00,-1,0.9,0.29796,O;P,834720350",
+      "AVAV  260109C00320000,'2026-01-05 10:23:03,-1,0.9,0.29796,O;P,834720350"
+    ].join('\n');
+    const partialCloseCsv = [
+      'Symbol,DateTime,Quantity,Price,Commission,Code,Conid',
+      "AVAV  260109C00320000,'2026-01-08 10:46:38,1,0.45,-0.04875,C;P,834720350",
+      "AVAV  260109C00320000,'2026-01-08 10:46:38,1,0.45,0.65125,C;P,834720350"
+    ].join('\n');
+
+    const initialResult = await parseCSV(buf(openShortCsv), 'ibkr', {});
+    const existingTrade = { ...initialResult.trades[0], id: 'trade-1' };
+    const optionKey = `${existingTrade.underlyingSymbol}_${existingTrade.strikePrice}_${existingTrade.expirationDate}_${existingTrade.optionType}`;
+    const existingPositions = {
+      [existingTrade.symbol]: existingTrade,
+      [`conid_${existingTrade.conid}`]: existingTrade,
+      [optionKey]: existingTrade
+    };
+    const existingExecutions = {
+      [existingTrade.symbol]: existingTrade.executions,
+      [`conid_${existingTrade.conid}`]: existingTrade.executions,
+      [optionKey]: existingTrade.executions
+    };
+
+    const result = await parseCSV(buf(partialCloseCsv), 'ibkr', {
+      existingPositions,
+      existingExecutions
+    });
+
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0].quantity).toBe(5);
+    expect(result.trades[0].executions).toHaveLength(8);
+    expect(
+      result.trades[0].executions.filter(exec =>
+        exec.action === 'buy' &&
+        exec.quantity === 1 &&
+        exec.price === 0.45 &&
+        exec.datetime === '2026-01-08T10:46:38'
+      )
+    ).toHaveLength(2);
   });
 
   test('parses trade confirmation format', async () => {

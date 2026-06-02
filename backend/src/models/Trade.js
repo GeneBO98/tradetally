@@ -1578,9 +1578,10 @@ class Trade {
     const values = [];
     let paramCount = 1;
 
-    // Only update trade_date when entryTime changes (trade_date should always reflect entry date)
+    // Resolve trade_date in the user's timezone. entryTime may arrive as UTC,
+    // so splitting the raw timestamp can shift non-UTC users by one day.
     if (updates.entryTime) {
-      updates.tradeDate = extractLocalDate(updates.entryTime);
+      updates.tradeDate = await getUserLocalDate(userId, updates.entryTime);
     }
 
     // Check if user is manually setting strategy - do this first to prevent re-classification from overwriting it

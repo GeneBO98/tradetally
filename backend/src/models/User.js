@@ -215,6 +215,7 @@ class User {
       autoCloseExpiredOptions: 'auto_close_expired_options',
       analyticsChartLayout: 'analytics_chart_layout',
       dashboardLayout: 'dashboard_layout',
+      uiPreferences: 'ui_preferences',
       defaultStopLossPercent: 'default_stop_loss_percent',
       defaultTakeProfitPercent: 'default_take_profit_percent',
       defaultStopLossType: 'default_stop_loss_type',
@@ -227,10 +228,12 @@ class User {
       if (key !== 'user_id' && key !== 'id') {
         const dbColumn = columnMapping[key] || key;
         // For JSONB columns, ensure proper casting and JSON serialization
-        if (dbColumn === 'analytics_chart_layout' || dbColumn === 'dashboard_layout') {
+        if (dbColumn === 'analytics_chart_layout' || dbColumn === 'dashboard_layout' || dbColumn === 'ui_preferences') {
           fields.push(`${dbColumn} = $${paramCount}::jsonb`);
-          // PostgreSQL JSONB requires JSON string, not JavaScript object
-          values.push(value ? JSON.stringify(value) : null);
+          const jsonValue = dbColumn === 'ui_preferences'
+            ? JSON.stringify(value ?? {})
+            : (value ? JSON.stringify(value) : null);
+          values.push(jsonValue);
         } else {
           fields.push(`${dbColumn} = $${paramCount}`);
           values.push(value);

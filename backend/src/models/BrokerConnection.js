@@ -9,6 +9,17 @@ const { sanitizeForLogging } = require('../utils/logSanitizer');
 
 const SYNC_CLAIM_TTL_MINUTES = 30;
 
+function toDateOnlyString(value) {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) {
+    const yyyy = value.getFullYear();
+    const mm = String(value.getMonth() + 1).padStart(2, '0');
+    const dd = String(value.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  return String(value).slice(0, 10);
+}
+
 class BrokerConnection {
   /**
    * Create a new broker connection
@@ -542,6 +553,7 @@ class BrokerConnection {
       autoSyncEnabled: row.auto_sync_enabled,
       syncFrequency: row.sync_frequency,
       syncTime: row.sync_time,
+      syncStartDate: toDateOnlyString(row.sync_start_date),
       lastSyncAt: row.last_sync_at,
       lastSyncStatus: row.last_sync_status,
       lastSyncMessage: row.last_sync_message,
@@ -708,8 +720,8 @@ class BrokerConnection {
       tradesSkipped: row.trades_skipped,
       tradesFailed: row.trades_failed,
       duplicatesDetected: row.duplicates_detected,
-      syncStartDate: row.sync_start_date,
-      syncEndDate: row.sync_end_date,
+      syncStartDate: toDateOnlyString(row.sync_start_date),
+      syncEndDate: toDateOnlyString(row.sync_end_date),
       startedAt: row.started_at,
       completedAt: row.completed_at,
       durationMs: row.duration_ms,

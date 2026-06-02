@@ -9,6 +9,7 @@ const MAEEstimator = require('../utils/maeEstimator');
 const symbolCategories = require('../utils/symbolCategories');
 const { sendV1NotImplemented } = require('../utils/apiResponse');
 const ensureString = require('../utils/ensureString');
+const { getUserTimezone } = require('../utils/timezone');
 const SAMPLE_DATA_EXCLUSION_SQL = ` AND NOT COALESCE('sample' = ANY(tags), false)`;
 
 // Helper function to create a short but collision-resistant hash for cache keys
@@ -443,6 +444,378 @@ function buildCalendarRiskMetrics(rows = []) {
   });
 
   return metricsByDate;
+}
+
+function parseNumericValue(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeExecutionAction(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ');
+}
+
+function isBuyAction(action) {
+  return /\b(buy|bot|long)\b/.test(action);
+}
+
+function isSellAction(action) {
+  return /\b(sell|sold|short|sld)\b/.test(action);
+}
+
+function getExecutionDateString(timezone, ...candidates) {
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+
+    const str = String(candidate);
+    const dateOnly = str.match(/^(\d{4}-\d{2}-\d{2})$/);
+    if (dateOnly) return dateOnly[1];
+
+    const parsed = new Date(str);
+    if (Number.isNaN(parsed.getTime())) continue;
+
+    try {
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone: timezone || 'UTC',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(parsed);
+    } catch (err) {
+      return parsed.toISOString().split('T')[0];
+    }
+  }
+
+  return null;
+}
+
+function getTradeValueMultiplier(trade) {
+  if (trade.instrument_type === 'future') {
+    const pointValue = parseNumericValue(trade.point_value);
+    return pointValue != null && pointValue > 0 ? pointValue : 1;
+  }
+
+  if (trade.instrument_type === 'option') {
+    const contractSize = parseNumericValue(trade.contract_size);
+    return contractSize != null && contractSize > 0 ? contractSize : 100;
+  }
+
+  return 1;
+}
+
+function hasGroupedExecutions(executions = []) {
+  return executions.some((execution) =>
+    execution && (
+      execution.entryPrice !== undefined ||
+      execution.entry_price !== undefined ||
+      execution.entryTime !== undefined ||
+      execution.entry_time !== undefined
+    )
+  );
+}
+
+function computeGroupedExecutionExitEvents(trade, executions, timezone) {
+  const valueMultiplier = getTradeValueMultiplier(trade);
+
+  return executions
+    .filter(Boolean)
+    .map((execution) => {
+      const quantity = Math.abs(parseNumericValue(execution.quantity) || 0);
+      const entryPrice = parseNumericValue(execution.entryPrice ?? execution.entry_price);
+      const exitPrice = parseNumericValue(execution.exitPrice ?? execution.exit_price);
+      const commission = parseNumericValue(execution.commission) || 0;
+      const fees = parseNumericValue(execution.fees ?? execution.fee) || 0;
+      const side = execution.side || trade.side;
+      const date = getExecutionDateString(
+        timezone,
+        execution.exitTime,
+        execution.exit_time,
+        execution.datetime
+      );
+
+      if (!date || quantity <= 0 || exitPrice == null) return null;
+
+      let pnl = null;
+      if (entryPrice != null) {
+        pnl = side === 'long'
+          ? (exitPrice - entryPrice) * quantity * valueMultiplier - commission - fees
+          : (entryPrice - exitPrice) * quantity * valueMultiplier - commission - fees;
+      } else {
+        pnl = parseNumericValue(execution.pnl ?? execution.p_l ?? execution.profit_loss);
+      }
+
+      return pnl == null ? null : { date, pnl };
+    })
+    .filter(Boolean);
+}
+
+function computeFillExecutionExitEvents(trade, executions, timezone) {
+  const valueMultiplier = getTradeValueMultiplier(trade);
+  const tradeSide = trade.side;
+  const tradeCommission = parseNumericValue(trade.commission) || 0;
+  const tradeFees = parseNumericValue(trade.fees) || 0;
+  const totalQuantity = executions.reduce((sum, execution) => {
+    const quantity = Math.abs(parseNumericValue(execution?.quantity) || 0);
+    return sum + quantity;
+  }, 0);
+  const entryQueue = [];
+
+  const sortedExecutions = [...executions]
+    .filter(Boolean)
+    .sort((a, b) => {
+      const left = Date.parse(a.datetime || a.entry_time || a.exitTime || a.exit_time || a.entryTime || '');
+      const right = Date.parse(b.datetime || b.entry_time || b.exitTime || b.exit_time || b.entryTime || '');
+
+      if (Number.isNaN(left) && Number.isNaN(right)) return 0;
+      if (Number.isNaN(left)) return 1;
+      if (Number.isNaN(right)) return -1;
+      return left - right;
+    });
+
+  const exitEvents = [];
+
+  sortedExecutions.forEach((execution) => {
+    const quantity = Math.abs(parseNumericValue(execution.quantity) || 0);
+    const price = parseNumericValue(
+      execution.price ??
+      execution.entryPrice ??
+      execution.entry_price ??
+      execution.exitPrice ??
+      execution.exit_price
+    );
+    const action = normalizeExecutionAction(execution.action || execution.side || execution.type);
+    const hasCommission = execution.commission !== undefined && execution.commission !== null;
+    const hasFees = execution.fees !== undefined && execution.fees !== null;
+    const proportion = totalQuantity > 0 ? quantity / totalQuantity : 0;
+
+    let commission = 0;
+    let fees = 0;
+
+    if (hasCommission && hasFees) {
+      commission = parseNumericValue(execution.commission) || 0;
+      fees = parseNumericValue(execution.fees) || 0;
+    } else if (hasCommission) {
+      commission = parseNumericValue(execution.commission) || 0;
+    } else if (hasFees) {
+      commission = parseNumericValue(execution.fees) || 0;
+    } else {
+      commission = tradeCommission * proportion;
+      fees = tradeFees * proportion;
+    }
+
+    const totalCost = commission + fees;
+    const isOpening =
+      (tradeSide === 'long' && isBuyAction(action)) ||
+      (tradeSide === 'short' && isSellAction(action));
+
+    if (isOpening) {
+      if (quantity > 0 && price != null) {
+        entryQueue.push({
+          quantity,
+          price,
+          commission: totalCost,
+          remainingQty: quantity
+        });
+      }
+      return;
+    }
+
+    let executionPnl = null;
+    let totalMatchedValue = 0;
+    let totalMatchedQty = 0;
+    let totalMatchedEntryCommission = 0;
+    let remainingExitQty = quantity;
+
+    while (remainingExitQty > 0 && entryQueue.length > 0) {
+      const entry = entryQueue[0];
+      const matchQty = Math.min(remainingExitQty, entry.remainingQty);
+
+      totalMatchedValue += matchQty * entry.price;
+      totalMatchedQty += matchQty;
+
+      if (entry.commission && entry.quantity > 0) {
+        totalMatchedEntryCommission += (entry.commission * matchQty) / entry.quantity;
+      }
+
+      remainingExitQty -= matchQty;
+      entry.remainingQty -= matchQty;
+
+      if (entry.remainingQty <= 0) {
+        entryQueue.shift();
+      }
+    }
+
+    if (totalMatchedQty > 0 && price != null) {
+      const matchedEntryPrice = totalMatchedValue / totalMatchedQty;
+      executionPnl = tradeSide === 'long'
+        ? (price - matchedEntryPrice) * totalMatchedQty * valueMultiplier - totalCost - totalMatchedEntryCommission
+        : (matchedEntryPrice - price) * totalMatchedQty * valueMultiplier - totalCost - totalMatchedEntryCommission;
+    } else {
+      executionPnl = parseNumericValue(execution.pnl ?? execution.p_l ?? execution.profit_loss);
+    }
+
+    const date = getExecutionDateString(
+      timezone,
+      execution.exitTime,
+      execution.exit_time,
+      execution.datetime
+    );
+
+    if (date && executionPnl != null) {
+      exitEvents.push({ date, pnl: executionPnl });
+    }
+  });
+
+  return exitEvents;
+}
+
+function computeTradeExitEvents(trade, timezone) {
+  const executions = Array.isArray(trade.executions) ? trade.executions : [];
+  if (executions.length === 0) return [];
+
+  if (hasGroupedExecutions(executions)) {
+    return computeGroupedExecutionExitEvents(trade, executions, timezone);
+  }
+
+  return computeFillExecutionExitEvents(trade, executions, timezone);
+}
+
+function buildCalendarDayContributions(trades, dateStr, timezone) {
+  return trades
+    .map((trade) => {
+      const exitEvents = computeTradeExitEvents(trade, timezone);
+      const exitEventsOnDay = exitEvents.filter((event) => event.date === dateStr);
+      const exactTradePnl = parseNumericValue(trade.pnl);
+      const computedTradePnl = exitEvents.reduce((sum, event) => sum + (event.pnl || 0), 0);
+      const uniqueExitDates = new Set(exitEvents.map((event) => event.date).filter(Boolean));
+      const shouldUseExactTradePnl =
+        uniqueExitDates.size === 1 &&
+        exactTradePnl != null &&
+        Math.abs(computedTradePnl - exactTradePnl) < 0.05;
+
+      let pnl = null;
+      let exitCount = 0;
+      let totalExitCount = exitEvents.length;
+
+      if (exitEventsOnDay.length > 0) {
+        pnl = shouldUseExactTradePnl
+          ? exactTradePnl
+          : exitEventsOnDay.reduce((sum, event) => sum + (event.pnl || 0), 0);
+        exitCount = exitEventsOnDay.length;
+      } else if (
+        totalExitCount === 0 &&
+        exactTradePnl != null &&
+        getExecutionDateString(timezone, trade.exit_time) === dateStr
+      ) {
+        pnl = exactTradePnl;
+        exitCount = 1;
+        totalExitCount = 1;
+      }
+
+      if (pnl == null || exitCount === 0) return null;
+
+      const riskAmount = Trade.calculateRiskAmount(
+        trade.entry_price,
+        trade.stop_loss,
+        trade.quantity,
+        trade.side,
+        trade.instrument_type,
+        trade.contract_size,
+        trade.point_value,
+        trade.symbol,
+        trade.underlying_asset
+      );
+
+      return {
+        trade_id: trade.trade_id,
+        symbol: trade.symbol,
+        side: trade.side,
+        pnl,
+        r_value: (exitCount === totalExitCount && trade.r_value != null && trade.stop_loss != null)
+          ? parseFloat(trade.r_value)
+          : null,
+        risk_amount: riskAmount != null ? Math.round(riskAmount * 100) / 100 : null,
+        exit_count: exitCount,
+        is_partial: exitCount < totalExitCount
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => (a.trade_id || '').localeCompare(b.trade_id || ''));
+}
+
+function addCalendarOverviewContribution(calendarByDate, tradeId, tradeDate, pnl) {
+  if (!tradeDate || pnl == null) return;
+
+  let day = calendarByDate.get(tradeDate);
+  if (!day) {
+    day = {
+      tradeIds: new Set(),
+      dailyPnl: 0
+    };
+    calendarByDate.set(tradeDate, day);
+  }
+
+  day.tradeIds.add(tradeId);
+  day.dailyPnl += pnl;
+}
+
+function buildCalendarOverviewRows(trades, startDateStr, endDateStr, timezone) {
+  const calendarByDate = new Map();
+
+  trades.forEach((trade) => {
+    const tradeId = trade.trade_id;
+    const exitEvents = computeTradeExitEvents(trade, timezone);
+    const exitEventsInRange = exitEvents.filter((event) =>
+      event.date &&
+      event.date >= startDateStr &&
+      event.date <= endDateStr
+    );
+    const exactTradePnl = parseNumericValue(trade.pnl);
+
+    if (exitEvents.length > 0) {
+      const computedTradePnl = exitEvents.reduce((sum, event) => sum + (event.pnl || 0), 0);
+      const uniqueExitDates = new Set(exitEvents.map((event) => event.date).filter(Boolean));
+      const shouldUseExactTradePnl =
+        uniqueExitDates.size === 1 &&
+        exactTradePnl != null &&
+        Math.abs(computedTradePnl - exactTradePnl) < 0.05;
+
+      if (shouldUseExactTradePnl) {
+        const [tradeDate] = uniqueExitDates;
+        if (tradeDate >= startDateStr && tradeDate <= endDateStr) {
+          addCalendarOverviewContribution(calendarByDate, tradeId, tradeDate, exactTradePnl);
+        }
+        return;
+      }
+
+      exitEventsInRange.forEach((event) => {
+        addCalendarOverviewContribution(calendarByDate, tradeId, event.date, event.pnl);
+      });
+      return;
+    }
+
+    const tradeDate = getExecutionDateString(timezone, trade.exit_time);
+    if (
+      exactTradePnl != null &&
+      tradeDate &&
+      tradeDate >= startDateStr &&
+      tradeDate <= endDateStr
+    ) {
+      addCalendarOverviewContribution(calendarByDate, tradeId, tradeDate, exactTradePnl);
+    }
+  });
+
+  return Array.from(calendarByDate.entries())
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([tradeDate, data]) => ({
+      trade_date: tradeDate,
+      trades: data.tradeIds.size,
+      daily_pnl: data.dailyPnl
+    }));
 }
 
 const analyticsController = {
@@ -1012,6 +1385,8 @@ const analyticsController = {
       const startDate = `${sanitizedYear}-01-01`;
       const endDate = `${sanitizedYear}-12-31`;
 
+      const userTz = await getUserTimezone(req.user.id);
+
       // Build filter conditions without date range - dates are handled explicitly in each CTE
       // Using req.query directly avoids adding trade_date filters that exclude trades whose
       // trade_date moved to a different year (e.g. partial exits spanning calendar years)
@@ -1121,7 +1496,7 @@ const analyticsController = {
 
       const riskMetricsQuery = `
         SELECT
-          (${tableAlias}.exit_time::timestamp)::date::text AS trade_date,
+          (${tableAlias}.exit_time AT TIME ZONE $${paramOffset + 3})::date::text AS trade_date,
           ${tableAlias}.r_value,
           ${tableAlias}.entry_price,
           ${tableAlias}.stop_loss,
@@ -1135,20 +1510,84 @@ const analyticsController = {
         FROM trades ${tableAlias}
         WHERE ${tableAlias}.user_id = $1
           AND ${tableAlias}.exit_time IS NOT NULL
-          AND (${tableAlias}.exit_time::timestamp)::date >= $${paramOffset + 1}::date
-          AND (${tableAlias}.exit_time::timestamp)::date <= $${paramOffset + 2}::date
+          AND (${tableAlias}.exit_time AT TIME ZONE $${paramOffset + 3})::date >= $${paramOffset + 1}::date
+          AND (${tableAlias}.exit_time AT TIME ZONE $${paramOffset + 3})::date <= $${paramOffset + 2}::date
           ${fc}
       `;
 
-      // Add start and end date to params
-      const finalParams = [...params, startDate, endDate];
-      const [calendarResult, riskMetricsResult] = await Promise.all([
-        db.query(calendarQuery, finalParams),
+      const calendarTradesQuery = `
+        SELECT
+          ${tableAlias}.id AS trade_id,
+          ${tableAlias}.symbol,
+          ${tableAlias}.side,
+          ${tableAlias}.pnl,
+          ${tableAlias}.commission,
+          ${tableAlias}.fees,
+          ${tableAlias}.r_value,
+          ${tableAlias}.stop_loss,
+          ${tableAlias}.entry_price,
+          ${tableAlias}.quantity,
+          ${tableAlias}.instrument_type,
+          ${tableAlias}.contract_size,
+          ${tableAlias}.point_value,
+          ${tableAlias}.underlying_asset,
+          ${tableAlias}.exit_time,
+          ${tableAlias}.executions
+        FROM trades ${tableAlias}
+        WHERE ${tableAlias}.user_id = $1
+          AND (
+            (
+              ${tableAlias}.pnl IS NOT NULL
+              AND (${tableAlias}.exit_time AT TIME ZONE $${paramOffset + 3})::date >= $${paramOffset + 1}::date
+              AND (${tableAlias}.exit_time AT TIME ZONE $${paramOffset + 3})::date <= $${paramOffset + 2}::date
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM jsonb_array_elements(COALESCE(${tableAlias}.executions, '[]'::jsonb)) AS arr(exec)
+              WHERE (exec->>'quantity') IS NOT NULL
+                AND COALESCE(exec->>'exitTime', exec->>'exit_time', exec->>'datetime') IS NOT NULL
+                AND (
+                  exec->>'exitTime' IS NOT NULL
+                  OR exec->>'exit_time' IS NOT NULL
+                  OR exec->>'exitPrice' IS NOT NULL
+                  OR exec->>'exit_price' IS NOT NULL
+                  OR (
+                    ${tableAlias}.side IN ('long', 'buy')
+                    AND (
+                      (exec->>'action') IN ('sell', 'short')
+                      OR (exec->>'type') IN ('sell', 'short', 'exit')
+                    )
+                  )
+                  OR (
+                    ${tableAlias}.side IN ('short', 'sell')
+                    AND (
+                      (exec->>'action') IN ('buy', 'long')
+                      OR (exec->>'type') IN ('buy', 'long', 'exit')
+                    )
+                  )
+                )
+                AND ((COALESCE(exec->>'exitTime', exec->>'exit_time', exec->>'datetime'))::timestamptz AT TIME ZONE $${paramOffset + 3})::date >= $${paramOffset + 1}::date
+                AND ((COALESCE(exec->>'exitTime', exec->>'exit_time', exec->>'datetime'))::timestamptz AT TIME ZONE $${paramOffset + 3})::date <= $${paramOffset + 2}::date
+            )
+          )
+          ${fc}
+        ORDER BY ${tableAlias}.id
+      `;
+
+      const finalParams = [...params, startDate, endDate, userTz];
+      const [calendarTradesResult, riskMetricsResult] = await Promise.all([
+        db.query(calendarTradesQuery, finalParams),
         db.query(riskMetricsQuery, finalParams)
       ]);
 
+      const calendarResultRows = buildCalendarOverviewRows(
+        calendarTradesResult.rows,
+        startDate,
+        endDate,
+        userTz
+      );
       const riskMetricsByDate = buildCalendarRiskMetrics(riskMetricsResult.rows);
-      const calendarRows = calendarResult.rows.map((row) => {
+      const calendarRows = calendarResultRows.map((row) => {
         const riskMetrics = riskMetricsByDate.get(row.trade_date) || {
           dailyRValue: 0,
           dailyRiskAmount: 0,
@@ -1186,10 +1625,70 @@ const analyticsController = {
         return res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD' });
       }
 
+      const userTz = await getUserTimezone(req.user.id);
       const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
-      const params = [req.user.id, ...filterParams, dateStr, dateStr];
+      const params = [req.user.id, ...filterParams, dateStr, userTz];
+      const dateParam = params.length - 1;
+      const tzParam = params.length;
       const paramLen = params.length;
       const fc = filterConditions ? filterConditions.replace(/\btrade_date\b/g, 't.trade_date').replace(/\bsymbol\b/g, 't.symbol').replace(/\bstrategy\b/g, 't.strategy').replace(/\bside\b/g, 't.side') : '';
+
+      const calendarDayRowsQuery = `
+        SELECT
+          t.id AS trade_id,
+          t.symbol,
+          t.side,
+          t.pnl,
+          t.commission,
+          t.fees,
+          t.r_value,
+          t.stop_loss,
+          t.entry_price,
+          t.quantity,
+          t.instrument_type,
+          t.contract_size,
+          t.point_value,
+          t.underlying_asset,
+          t.exit_time,
+          t.executions
+        FROM trades t
+        WHERE t.user_id = $1
+          AND (
+            (t.pnl IS NOT NULL AND (t.exit_time AT TIME ZONE $${tzParam})::date = $${dateParam}::date)
+            OR EXISTS (
+              SELECT 1
+              FROM jsonb_array_elements(COALESCE(t.executions, '[]'::jsonb)) AS arr(exec)
+              WHERE (exec->>'quantity') IS NOT NULL
+                AND COALESCE(exec->>'exitTime', exec->>'exit_time', exec->>'datetime') IS NOT NULL
+                AND (
+                  exec->>'exitTime' IS NOT NULL
+                  OR exec->>'exit_time' IS NOT NULL
+                  OR exec->>'exitPrice' IS NOT NULL
+                  OR exec->>'exit_price' IS NOT NULL
+                  OR (
+                    t.side IN ('long', 'buy')
+                    AND (
+                      (exec->>'action') IN ('sell', 'short')
+                      OR (exec->>'type') IN ('sell', 'short', 'exit')
+                    )
+                  )
+                  OR (
+                    t.side IN ('short', 'sell')
+                    AND (
+                      (exec->>'action') IN ('buy', 'long')
+                      OR (exec->>'type') IN ('buy', 'long', 'exit')
+                    )
+                  )
+                )
+                AND ((COALESCE(exec->>'exitTime', exec->>'exit_time', exec->>'datetime'))::timestamptz AT TIME ZONE $${tzParam})::date = $${dateParam}::date
+            )
+          )
+          ${fc}
+        ORDER BY t.id
+      `;
+      const calendarDayRowsResult = await db.query(calendarDayRowsQuery, params);
+      const calendarDayContributions = buildCalendarDayContributions(calendarDayRowsResult.rows, dateStr, userTz);
+      return res.json({ date: dateStr, contributions: calendarDayContributions });
 
       const dayQuery = `
         WITH exit_execs AS (
