@@ -3127,7 +3127,7 @@ const analyticsController = {
           action_label = top.kind === 'symbol' ? `View ${top.label} trades` : 'View setup breakdown';
           action_url = top.kind === 'symbol'
             ? `/trades?symbol=${encodeURIComponent(top.label)}`
-            : '/analytics#strategies';
+            : '/metrics#strategies';
         } else if (worst && parseFloat(worst.pnl) < 0) {
           headline = worst.kind === 'symbol'
             ? `${worst.label} is dragging on results`
@@ -3136,7 +3136,7 @@ const analyticsController = {
           action_label = 'Investigate';
           action_url = worst.kind === 'symbol'
             ? `/trades?symbol=${encodeURIComponent(worst.label)}`
-            : '/analytics#strategies';
+            : '/metrics#strategies';
         } else if (winRate >= 60) {
           headline = `${winRate.toFixed(0)}% win rate — your selection is sharp`;
           body = `Across ${totalTrades} trades, you're winning ${m.winning_trades} of them. Focus on letting winners run: avg win $${avgWin.toFixed(0)} vs avg loss $${avgLoss.toFixed(0)}.`;

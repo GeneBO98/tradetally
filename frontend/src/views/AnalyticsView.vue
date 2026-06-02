@@ -1038,7 +1038,7 @@
 
             <!-- Strategy/Setup Performance -->
             <template v-else-if="element.id === 'strategy-performance'">
-      <div v-if="filteredStrategyStats.length > 0" class="card">
+      <div v-if="filteredStrategyStats.length > 0" id="strategies" class="card">
         <div class="card-body">
           <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Strategy/Setup Performance</h3>
           <div class="overflow-x-auto">
@@ -3727,6 +3727,17 @@ onMounted(async () => {
       const drawdownChart = chartLayout.value.find(c => c.id === 'drawdown-chart')
       if (drawdownChart && !drawdownChart.visible) {
         drawdownChart.visible = true
+      }
+    }
+
+    // The Strategy/Setup Performance table lives on the "By Symbol & Strategy"
+    // tab and may be hidden via layout customization. Switch to that tab and
+    // force the section visible so the scroll target actually renders.
+    if (route.hash === '#strategies') {
+      activeAnalyticsTab.value = 'symbol'
+      const strategyTable = chartLayout.value.find(c => c.id === 'strategy-performance')
+      if (strategyTable && !strategyTable.visible) {
+        strategyTable.visible = true
       }
     }
 
