@@ -420,7 +420,12 @@ const publicNavigation = computed(() => {
   const nav = [
     { name: 'Public Trades', to: '/public', route: 'public-trades' }
   ]
-  
+
+  // Pricing only on billing-enabled (cloud) instances
+  if (isBillingEnabled.value) {
+    nav.push({ name: 'Pricing', to: '/pricing', route: 'pricing' })
+  }
+
   // Add SEO pages only when in open mode
   if (showSEOPages.value) {
     nav.push(
@@ -430,7 +435,7 @@ const publicNavigation = computed(() => {
       { name: 'Compare', to: '/compare', route: 'compare' }
     )
   }
-  
+
   return nav
 })
 

@@ -299,7 +299,7 @@ const featureTabs = [
 
 const tabContent = {
   dashboard: {
-    image: '/images/screenshot-dashboard.png',
+    image: '/images/screenshot-dashboard.webp',
     alt: 'TradeTally Dashboard with P&L charts, win rate, and open positions',
     badge: 'ANALYTICS',
     badgeClass: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300',
@@ -314,7 +314,7 @@ const tabContent = {
     ]
   },
   journal: {
-    image: '/images/screenshot-journal.png',
+    image: '/images/screenshot-journal.webp',
     alt: 'TradeTally Trading Journal with daily entries, market bias, and watchlists',
     badge: 'JOURNAL',
     badgeClass: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300',
@@ -329,7 +329,7 @@ const tabContent = {
     ]
   },
   'trade-mgmt': {
-    image: '/images/screenshot-trade-management.png',
+    image: '/images/screenshot-trade-management.webp',
     alt: 'TradeTally Trade Management with R-Multiple performance chart',
     badge: 'RISK MANAGEMENT',
     badgeClass: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300',
@@ -344,7 +344,7 @@ const tabContent = {
     ]
   },
   'stock-analyzer': {
-    image: '/images/screenshot-stock-analyzer.png',
+    image: '/images/screenshot-stock-analyzer.webp',
     alt: 'TradeTally Stock Analyzer with DCF valuation calculator',
     badge: 'INVESTMENTS',
     badgeClass: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300',
