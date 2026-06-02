@@ -266,6 +266,484 @@ const behavioralAnalyticsController = {
     }
   },
 
+  // Dashboard BehavioralAlertsCard summary. Two layers of data:
+  //   1) Lightweight `derived` signals computed on the fly from the user's
+  //      trades — works for everyone (free and Pro), no behavioral pipeline
+  //      required. Surfaces revenge proxy, hot/cold streak, position-size
+  //      drift, big-loss recency.
+  //   2) `pro` block: full behavioral pipeline data (patterns + alerts).
+  //      Populated only when the user is on Pro and the service responds.
+  //      Free users see `pro: { upgrade_required: true }` so the frontend
+  //      can render the upsell.
+  async getDashboardSummary(req, res, next) {
+    try {
+      const userId = req.user.id;
+
+      // Mirror the trade-list/analytics filter shape so dashboard filters
+      // (tags, strategies, accounts, date range, etc.) flow through to the
+      // derived-signal SQL via TradeQueries._buildWhereClause.
+      const {
+        startDate, endDate, symbol, symbolExact, sector, strategy, tags,
+        strategies, sectors,
+        side, minPrice, maxPrice, minQuantity, maxQuantity,
+        status, minPnl, maxPnl, broker, brokers, importId, accounts, hasNews,
+        holdTime, daysOfWeek, instrumentTypes, optionTypes, qualityGrades
+      } = req.query;
+
+      const filters = {
+        startDate,
+        endDate,
+        symbol,
+        symbolExact: symbolExact === 'true',
+        sector,
+        strategy,
+        tags: tags ? ensureString(tags).split(',').map(t => t.trim()).filter(Boolean) : undefined,
+        strategies: strategies ? ensureString(strategies).split(',') : undefined,
+        sectors: sectors ? ensureString(sectors).split(',') : undefined,
+        side,
+        minPrice,
+        maxPrice,
+        minQuantity,
+        maxQuantity,
+        status,
+        minPnl,
+        maxPnl,
+        broker: broker || undefined,
+        brokers: brokers || undefined,
+        importId,
+        accounts: accounts ? ensureString(accounts).split(',') : undefined,
+        hasNews,
+        holdTime,
+        daysOfWeek: daysOfWeek ? ensureString(daysOfWeek).split(',').map(d => parseInt(d)) : undefined,
+        instrumentTypes: instrumentTypes ? ensureString(instrumentTypes).split(',') : undefined,
+        optionTypes: optionTypes ? ensureString(optionTypes).split(',') : undefined,
+        qualityGrades: qualityGrades ? ensureString(qualityGrades).split(',') : undefined
+      };
+
+      // === Layer 1: trade-derived signals (always computed) ===
+      const derived = await behavioralAnalyticsController
+        .computeDerivedRiskSignals(userId, filters)
+        .catch(err => {
+          console.warn('[BEHAVIORAL] derived signals failed:', err.message);
+          return null;
+        });
+
+      // === Layer 2: Pro behavioral pipeline (Pro users only) ===
+      let proBlock = null;
+      try {
+        const TierService = require('../services/tierService');
+        const billingEnabled = await TierService.isBillingEnabled();
+        const tier = billingEnabled ? await TierService.getUserTier(userId) : 'pro';
+
+        if (tier === 'pro') {
+          const [overview, alerts] = await Promise.all([
+            BehavioralAnalyticsService.getBehavioralOverview(userId, {}).catch(() => null),
+            BehavioralAnalyticsService.getActiveAlerts(userId).catch(() => [])
+          ]);
+
+          const topAlert = (alerts && alerts.length > 0) ? alerts[0] : null;
+          const patterns = (overview && overview.patterns) ? overview.patterns : [];
+          const signals = patterns.map(p => ({
+            pattern_type: p.pattern_type,
+            total_occurrences: parseInt(p.total_occurrences) || 0,
+            high_severity_count: parseInt(p.high_severity_count) || 0,
+            last_occurrence: p.last_occurrence
+          })).slice(0, 3);
+
+          proBlock = {
+            available: true,
+            active_alert: topAlert ? {
+              id: topAlert.id,
+              alert_type: topAlert.alert_type,
+              pattern_type: topAlert.pattern_type,
+              severity: topAlert.pattern_severity || topAlert.severity,
+              title: topAlert.title,
+              message: topAlert.message,
+              created_at: topAlert.created_at
+            } : null,
+            active_alert_count: alerts ? alerts.length : 0,
+            signals
+          };
+        } else {
+          proBlock = { available: false, upgrade_required: true };
+        }
+      } catch (err) {
+        console.warn('[BEHAVIORAL] pro pipeline lookup failed:', err.message);
+        proBlock = { available: false };
+      }
+
+      // Combine for top-level convenience fields the existing frontend
+      // already reads. Derived signals fill in when no Pro alert/signals.
+      const proSignals = proBlock?.signals || [];
+      const hasProData = !!(proBlock?.active_alert || proSignals.length > 0);
+      const derivedSignals = derived?.signals || [];
+      const allClear = !hasProData && derivedSignals.length === 0;
+
+      return res.json({
+        success: true,
+        data: {
+          // Top-level fields kept for the existing frontend contract.
+          active_alert: proBlock?.active_alert || null,
+          active_alert_count: proBlock?.active_alert_count || 0,
+          signals: proSignals,
+          all_clear: allClear,
+          // New fields.
+          derived,                 // { signals: [...], summary: {...} }
+          pro: proBlock            // { available, active_alert?, ... } | { available:false, upgrade_required:true }
+        }
+      });
+    } catch (error) {
+      if (error.message && error.message.includes('requires Pro tier')) {
+        return res.status(403).json({
+          error: 'Pro tier required',
+          message: error.message,
+          upgradeRequired: true
+        });
+      }
+      next(error);
+    }
+  },
+
+  // Compute lightweight risk signals from the user's trades. No external
+  // services, no heavy pipeline — just SQL over the trades table. Returns
+  // an array of signal objects sorted by severity. The card always has
+  // something useful to render when the user has trade history: if no
+  // risk thresholds fire, we still emit at least one informational signal
+  // about their current state so "all clear" actually means something.
+  async computeDerivedRiskSignals(userId, filters = {}) {
+    const db = require('../config/database');
+    const TradeQueries = require('../services/tradeQueries');
+    const signals = [];
+
+    // Apply the user's dashboard filter spec (tags, strategies, accounts, etc.)
+    // via the canonical WHERE builder so signals stay consistent with the
+    // trade list and analytics. Default to a 180-day floor only when no
+    // explicit startDate is supplied — keeps existing default-window behavior.
+    const { whereClause: userWhere, values } = await TradeQueries._buildWhereClause(
+      userId,
+      filters
+    );
+    const defaultWindowClause = !filters.startDate
+      ? `AND t.trade_date >= CURRENT_DATE - INTERVAL '180 days'`
+      : '';
+
+    // 180-day window so signals work for demo / sparse-recent-activity users.
+    // Streak detection only needs the tail of this; everything else uses the
+    // full window for stability.
+    const ctx = await db.query(`
+      WITH closed AS (
+        SELECT
+          t.id, t.trade_date, t.entry_time, t.exit_time, t.pnl, t.quantity, t.side,
+          t.symbol, t.strategy,
+          -- Notional size proxy: weight raw quantity by contract multiplier so
+          -- comparisons stay coherent across instrument types. Futures use
+          -- point_value (ES=50, MES=5), stocks/options fall back to entry_price.
+          -- Without this, 1 ES contract reads as a "sizing down" vs 7 MES even
+          -- though ES is 10x the notional. See GitHub issue #330.
+          (t.quantity * COALESCE(NULLIF(t.point_value, 0), t.entry_price, 1))::numeric AS notional
+        FROM trades t
+        ${userWhere}
+          AND t.exit_price IS NOT NULL
+          AND t.pnl IS NOT NULL
+          ${defaultWindowClause}
+        ORDER BY t.trade_date DESC, t.entry_time DESC
+      ),
+      recent30 AS (
+        SELECT * FROM closed WHERE trade_date >= CURRENT_DATE - INTERVAL '30 days'
+      ),
+      daily AS (
+        SELECT trade_date,
+               COALESCE(SUM(pnl), 0)::numeric AS day_pnl,
+               COUNT(*)::integer AS day_trades
+        FROM closed
+        GROUP BY trade_date
+        ORDER BY trade_date
+      )
+      SELECT
+        (SELECT COUNT(*) FROM closed)::integer AS recent_count,
+        (SELECT COUNT(*) FROM recent30)::integer AS r30_count,
+        (SELECT COUNT(*) FILTER (WHERE pnl > 0) FROM recent30)::integer AS r30_wins,
+        (SELECT COUNT(*) FILTER (WHERE pnl < 0) FROM recent30)::integer AS r30_losses,
+        (SELECT COALESCE(SUM(pnl), 0) FROM recent30)::numeric AS r30_pnl,
+        (SELECT COALESCE(AVG(ABS(pnl)), 0) FROM closed WHERE pnl < 0)::numeric AS avg_loss,
+        (SELECT COALESCE(AVG(notional), 0) FROM closed)::numeric AS avg_notional,
+        (SELECT COALESCE(AVG(notional), 0) FROM closed
+          WHERE trade_date >= CURRENT_DATE - INTERVAL '14 days')::numeric AS recent_avg_notional,
+        (SELECT pnl FROM closed ORDER BY trade_date DESC, exit_time DESC NULLS LAST LIMIT 1) AS last_pnl,
+        (SELECT json_agg(json_build_object('day', trade_date, 'pnl', day_pnl, 'count', day_trades)
+                ORDER BY trade_date)
+          FROM daily) AS daily_rows,
+        (SELECT json_agg(pnl ORDER BY rn) FROM (
+            SELECT pnl,
+                   ROW_NUMBER() OVER (ORDER BY exit_time DESC NULLS LAST,
+                                               trade_date DESC,
+                                               entry_time DESC NULLS LAST) AS rn
+            FROM closed
+          ) ordered
+          WHERE rn <= 100) AS recent_trade_pnls
+    `, values);
+    const row = ctx.rows[0] || {};
+    const recentCount = parseInt(row.recent_count) || 0;
+
+    // Need at least some history to compute anything meaningful.
+    if (recentCount < 10) {
+      return { signals: [], summary: { recent_trades: recentCount, ready: false } };
+    }
+
+    const avgLoss = parseFloat(row.avg_loss) || 0;
+    const avgNotional = parseFloat(row.avg_notional) || 0;
+    const recentAvgNotional = parseFloat(row.recent_avg_notional) || 0;
+    const daily = Array.isArray(row.daily_rows) ? row.daily_rows : [];
+    const recentTradePnls = Array.isArray(row.recent_trade_pnls) ? row.recent_trade_pnls : [];
+    const r30Count = parseInt(row.r30_count) || 0;
+    const r30Wins = parseInt(row.r30_wins) || 0;
+    const r30Losses = parseInt(row.r30_losses) || 0;
+    const r30Pnl = parseFloat(row.r30_pnl) || 0;
+    const r30WinRate = r30Count > 0 ? (r30Wins / r30Count) * 100 : null;
+
+    // --- 1. Revenge-trade proxy: trade opened within 30 min of a losing exit.
+    try {
+      const revenge = await db.query(`
+        WITH closed AS (
+          SELECT t.id, t.entry_time, t.exit_time, t.pnl
+          FROM trades t
+          ${userWhere}
+            AND t.exit_price IS NOT NULL
+            AND t.pnl IS NOT NULL
+            AND t.trade_date >= CURRENT_DATE - INTERVAL '60 days'
+        )
+        SELECT COUNT(*)::integer AS hits
+        FROM closed t1
+        JOIN closed t2
+          ON t2.entry_time > t1.exit_time
+         AND t2.entry_time <= t1.exit_time + INTERVAL '30 minutes'
+        WHERE t1.pnl < 0
+      `, values);
+      const hits = parseInt(revenge.rows[0]?.hits) || 0;
+      if (hits >= 2) {
+        signals.push({
+          key: 'revenge_proxy',
+          label: 'Revenge-trade pattern',
+          severity: hits >= 8 ? 'high' : hits >= 4 ? 'medium' : 'low',
+          value: hits,
+          unit: 'within 30m of a loss · 60 days',
+          message: `You've opened ${hits} trade${hits === 1 ? '' : 's'} within 30 minutes of a loss in the last 60 days. Set a cooling-off rule of at least 15 minutes after any loss before entering a new position.`
+        });
+      }
+    } catch (err) {
+      console.warn('[BEHAVIORAL] revenge proxy failed:', err.message);
+    }
+
+    // --- 2. Win/loss day streak.
+    let streak = 0;
+    let streakKind = null;
+    for (let i = daily.length - 1; i >= 0; i--) {
+      const p = parseFloat(daily[i].pnl) || 0;
+      const kind = p > 0 ? 'W' : p < 0 ? 'L' : 'B';
+      if (streakKind === null) streakKind = kind;
+      if (kind === streakKind && kind !== 'B') streak++;
+      else if (kind !== streakKind) break;
+    }
+    if (streakKind === 'W' && streak >= 4) {
+      signals.push({
+        key: 'hot_streak',
+        label: 'Hot streak — watch for overconfidence',
+        severity: streak >= 7 ? 'high' : 'medium',
+        value: streak,
+        unit: 'winning days in a row',
+        message: `${streak} winning days in a row. Stay mechanical — overconfidence creep is the usual end of streaks. Don't size up just because you've been right.`
+      });
+    } else if (streakKind === 'L' && streak >= 2) {
+      signals.push({
+        key: 'cold_streak',
+        label: 'Cold streak — pause and reset',
+        severity: streak >= 4 ? 'high' : 'medium',
+        value: streak,
+        unit: 'losing days in a row',
+        message: `${streak} losing days in a row. Cut size in half on the next session or step away entirely until you've reviewed what's misaligned with your model.`
+      });
+    }
+
+    // --- 2b. Per-trade win/loss streak.
+    // Walks the most recent closed trades by exit_time. Independent of the
+    // daily streak above — a single bad day can hide a long losing run inside
+    // it (or a great day can mask a cold streak that ended on one big win).
+    let tradeStreak = 0;
+    let tradeStreakKind = null;
+    for (const p of recentTradePnls) {
+      const pnl = parseFloat(p);
+      if (!Number.isFinite(pnl)) continue;
+      const kind = pnl > 0 ? 'W' : pnl < 0 ? 'L' : 'B';
+      if (tradeStreakKind === null) tradeStreakKind = kind;
+      if (kind === tradeStreakKind && kind !== 'B') tradeStreak++;
+      else if (kind !== tradeStreakKind) break;
+    }
+    if (tradeStreakKind === 'W' && tradeStreak >= 5) {
+      signals.push({
+        key: 'hot_trade_streak',
+        label: 'Hot trade streak',
+        severity: tradeStreak >= 10 ? 'high' : 'medium',
+        value: tradeStreak,
+        unit: 'winning trades in a row',
+        message: `${tradeStreak} winning trades in a row. Strong run — stay mechanical and don't let confidence push you into oversized or off-plan entries.`
+      });
+    } else if (tradeStreakKind === 'L' && tradeStreak >= 3) {
+      signals.push({
+        key: 'cold_trade_streak',
+        label: 'Cold trade streak',
+        severity: tradeStreak >= 6 ? 'high' : 'medium',
+        value: tradeStreak,
+        unit: 'losing trades in a row',
+        message: `${tradeStreak} losing trades in a row. Step away from the screen, review the losers for a common thread, and reduce size on the next entry.`
+      });
+    }
+
+    // --- 3. Position-size drift.
+    // Uses notional (quantity * point_value or entry_price), not raw quantity,
+    // so it doesn't misread a switch from 7 MES contracts to 1 ES contract as
+    // "sizing down" when notional actually grew. See issue #330.
+    if (avgNotional > 0 && recentAvgNotional > 0) {
+      const ratio = recentAvgNotional / avgNotional;
+      if (ratio >= 1.4) {
+        signals.push({
+          key: 'size_drift_up',
+          label: 'Position size has crept up',
+          severity: ratio >= 2 ? 'high' : 'medium',
+          value: ratio.toFixed(2) + 'x',
+          unit: 'vs your 180d average',
+          message: `Your last-14-day average position notional is ${ratio.toFixed(1)}x your historical average. Either you've intentionally sized up or you're risking more — confirm it's deliberate and that your stops scaled with it.`
+        });
+      } else if (ratio <= 0.6) {
+        signals.push({
+          key: 'size_drift_down',
+          label: 'Trading scared — sizing down',
+          severity: 'low',
+          value: `${(ratio * 100).toFixed(0)}%`,
+          unit: 'of normal size',
+          message: `Your recent position notional is only ${(ratio * 100).toFixed(0)}% of your historical average. Small sizes after losses are healthy, but undersizing when your edge is intact leaves edge on the table.`
+        });
+      }
+    }
+
+    // --- 4. Outsized last loss.
+    const lastPnl = parseFloat(row.last_pnl);
+    if (Number.isFinite(lastPnl) && lastPnl < 0 && avgLoss > 0) {
+      const ratio = Math.abs(lastPnl) / avgLoss;
+      if (ratio >= 2) {
+        signals.push({
+          key: 'oversize_loss',
+          label: 'Recent loss was outsized',
+          severity: ratio >= 4 ? 'high' : ratio >= 3 ? 'medium' : 'low',
+          value: ratio.toFixed(1) + 'x',
+          unit: 'your avg loss',
+          message: `Your last loss was ${ratio.toFixed(1)}x your average loss. That usually means a stop wasn't honored or position size grew unchecked — revisit the trade and reinforce the rule.`
+        });
+      }
+    }
+
+    // --- 5. Recent win rate drift (last 30 days vs 180-day baseline).
+    if (r30Count >= 10 && recentCount >= 30) {
+      const baselineCount = recentCount - r30Count;
+      if (baselineCount >= 20) {
+        const baseWinsResult = await db.query(`
+          SELECT COUNT(*) FILTER (WHERE t.pnl > 0)::numeric AS wins,
+                 COUNT(*)::numeric AS total
+          FROM trades t
+          ${userWhere}
+            AND t.exit_price IS NOT NULL AND t.pnl IS NOT NULL
+            AND t.trade_date < CURRENT_DATE - INTERVAL '30 days'
+            AND t.trade_date >= CURRENT_DATE - INTERVAL '180 days'
+        `, values);
+        const baseTotal = parseFloat(baseWinsResult.rows[0]?.total) || 0;
+        const baseWins = parseFloat(baseWinsResult.rows[0]?.wins) || 0;
+        if (baseTotal > 0) {
+          const baseWinRate = (baseWins / baseTotal) * 100;
+          const delta = r30WinRate - baseWinRate;
+          if (delta <= -10) {
+            signals.push({
+              key: 'win_rate_drop',
+              label: 'Win rate has dropped',
+              severity: delta <= -20 ? 'high' : 'medium',
+              value: `${delta.toFixed(0)}%`,
+              unit: 'vs 31-180d baseline',
+              message: `Your last 30 days have a ${r30WinRate.toFixed(0)}% win rate vs ${baseWinRate.toFixed(0)}% over the prior 5 months. Pull a sample of recent losers and identify what's broken before scaling up.`
+            });
+          } else if (delta >= 10) {
+            signals.push({
+              key: 'win_rate_jump',
+              label: 'Win rate is unusually high',
+              severity: 'low',
+              value: `+${delta.toFixed(0)}%`,
+              unit: 'vs 31-180d baseline',
+              message: `Last 30 days at ${r30WinRate.toFixed(0)}% win rate vs ${baseWinRate.toFixed(0)}% baseline. Could be a strong period or could be a small sample — verify before sizing up.`
+            });
+          }
+        }
+      }
+    }
+
+    // --- 6. ALWAYS-ON info signal: recent state snapshot.
+    // Ensures the card never reads "all clear" while invisible context exists.
+    // Prefers a 30-day window for "freshness", but falls back to the full
+    // 180-day window when the user has no activity in the last month
+    // (e.g. demo data, sparse-trading users) so the card still has content.
+    let snapshotWindow = '30 days';
+    let snapshotCount = r30Count;
+    let snapshotWins = r30Wins;
+    let snapshotLosses = r30Losses;
+    let snapshotPnl = r30Pnl;
+    if (r30Count === 0 && recentCount > 0) {
+      // Fall back to the full 180-day window using data we already have.
+      snapshotWindow = '180 days';
+      snapshotCount = recentCount;
+      // Compute wins/losses/pnl for the full window from the daily rollup.
+      let wins = 0, losses = 0, pnl = 0;
+      for (const d of daily) {
+        const p = parseFloat(d.pnl) || 0;
+        pnl += p;
+        // daily.pnl is the SUM of trade pnls for that day; we don't have per-trade
+        // breakdown here, so wins/losses are inferred from daily P&L sign. Close
+        // enough for a summary snapshot.
+        if (p > 0) wins += parseInt(d.count) || 0;
+        else if (p < 0) losses += parseInt(d.count) || 0;
+      }
+      snapshotWins = wins;
+      snapshotLosses = losses;
+      snapshotPnl = pnl;
+    }
+    if (snapshotCount > 0) {
+      const wr = snapshotCount > 0 ? (snapshotWins / snapshotCount) * 100 : null;
+      const wrLabel = wr !== null ? `${wr.toFixed(0)}% win rate` : '';
+      const pnlSign = snapshotPnl >= 0 ? '+' : '';
+      const pnlLabel = `${pnlSign}$${snapshotPnl.toFixed(0)}`;
+      const streakLabel = streakKind === 'W' && streak > 0 ? `, ${streak}W streak`
+        : streakKind === 'L' && streak > 0 ? `, ${streak}L streak`
+        : '';
+      signals.push({
+        key: 'recent_snapshot',
+        label: `Last ${snapshotWindow}`,
+        severity: 'info',
+        value: pnlLabel,
+        unit: `${snapshotCount} trades${streakLabel}`,
+        message: `${snapshotCount} trades · ${wrLabel} · ${pnlLabel} net. ${snapshotPnl >= 0 ? 'Stable risk profile — keep doing what you\'re doing.' : 'Net negative — review your last 10 losers to find the common thread.'}`
+      });
+    }
+
+    // Sort: high → medium → low → info.
+    signals.sort((a, b) => {
+      const order = { high: 4, medium: 3, low: 2, info: 1 };
+      return (order[b.severity] || 0) - (order[a.severity] || 0);
+    });
+
+    return {
+      signals,
+      summary: {
+        recent_trades: recentCount,
+        ready: true
+      }
+    };
+  },
+
   // Validate settings format
   validateSettings(settings) {
     if (!settings || typeof settings !== 'object') return false;

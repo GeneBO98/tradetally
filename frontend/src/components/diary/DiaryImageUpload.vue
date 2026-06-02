@@ -105,12 +105,24 @@
           class="relative group"
         >
           <div class="aspect-square bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden">
+            <div
+              v-if="authedImage.hasError(image)"
+              class="w-full h-full flex items-center justify-center bg-gray-200 dark:bg-gray-600 text-gray-500 text-xs text-center px-2"
+            >
+              Failed to load
+            </div>
+            <div
+              v-else-if="!authedImage.urlFor(image)"
+              class="w-full h-full flex items-center justify-center"
+            >
+              <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
+            </div>
             <img
-              :src="getImageUrl(image)"
+              v-else
+              :src="authedImage.urlFor(image)"
               :alt="image.file_name"
               class="w-full h-full object-cover cursor-pointer"
               @click="openImagePreview(image)"
-              @error="handleImageError($event, image)"
             />
           </div>
 
@@ -182,7 +194,7 @@
           </svg>
         </button>
         <img
-          :src="getImageUrl(previewImage)"
+          :src="authedImage.urlFor(previewImage)"
           :alt="previewImage.file_name"
           class="max-w-full max-h-[85vh] object-contain rounded-lg"
           @click.stop
@@ -193,8 +205,9 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, toRef } from 'vue'
 import { useNotification } from '@/composables/useNotification'
+import { useAuthedImage } from '@/composables/useAuthedImage'
 import api from '@/services/api'
 
 const props = defineProps({
@@ -219,6 +232,8 @@ const deleting = ref(null)
 const uploadResults = ref([])
 const previewImage = ref(null)
 
+const authedImage = useAuthedImage(toRef(props, 'existingImages'))
+
 // Supported file types
 const supportedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
 
@@ -226,19 +241,6 @@ const pasteShortcut = computed(() => {
   const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
   return isMac ? '⌘V' : 'Ctrl+V'
 })
-
-function getImageUrl(image) {
-  // file_url already includes /api prefix, so use origin only (not VITE_API_URL which includes /api)
-  const origin = window.location.origin
-  const url = `${origin}${image.file_url}`
-  return url
-}
-
-function handleImageError(event, image) {
-  console.error('Failed to load image:', image.file_url)
-  // Set a placeholder or hide the broken image
-  event.target.style.display = 'none'
-}
 
 function handleFileSelect(event) {
   const files = Array.from(event.target.files)

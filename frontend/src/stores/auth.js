@@ -7,7 +7,15 @@ import { useUiPreferencesStore } from '@/stores/uiPreferences'
 
 function hasSessionCookie() {
   if (typeof document === 'undefined') return false
-  return document.cookie.split('; ').some((entry) => entry.startsWith('csrf_token='))
+  // Require a non-empty value. An empty csrf_token=' ' cookie can linger if
+  // the backend's clearAuthCookies emitted a Set-Cookie without proper expiry,
+  // and treating that as "session present" re-triggers the optimistic-auth
+  // loop we're trying to avoid.
+  return document.cookie.split('; ').some((entry) => {
+    if (!entry.startsWith('csrf_token=')) return false
+    const value = entry.slice('csrf_token='.length)
+    return value.length > 0
+  })
 }
 
 export const useAuthStore = defineStore('auth', () => {
@@ -176,8 +184,8 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function fetchUser(options = {}) {
-    const { redirectOnUnauthorized = true } = options
-    if (!token.value) return
+    const { redirectOnUnauthorized = true, force = false } = options
+    if (!token.value && !force) return
 
     try {
       const response = await api.get('/auth/me', {
@@ -191,6 +199,16 @@ export const useAuthStore = defineStore('auth', () => {
         onboarding_completed: u.onboarding_completed ?? false,
         onboarding_step: u.onboarding_step ?? 0,
         pro_onboarding_step: u.pro_onboarding_step ?? 0,
+        // /auth/me historically returns these as camelCase, but display
+        // components (UserMenu, UserProfileView, ProfileView) follow
+        // CLAUDE.md's snake_case-everywhere convention. Alias here so every
+        // consumer reads one consistent key — falling back to the legacy
+        // camelCase shape so we don't break anyone in transit.
+        avatar_url: u.avatar_url ?? u.avatarUrl ?? null,
+        full_name: u.full_name ?? u.fullName ?? null,
+        is_verified: u.is_verified ?? u.isVerified ?? false,
+        admin_approved: u.admin_approved ?? u.adminApproved ?? false,
+        created_at: u.created_at ?? u.createdAt ?? null,
         settings: {
           publicProfile: settings.public_profile ?? false,
           emailNotifications: settings.email_notifications ?? true,
@@ -270,9 +288,18 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function checkAuth() {
+    // Probe /auth/me to discover the session state. A 200 calls markAuthenticated
+    // which sets token.value, so a logged-in user with a valid HttpOnly auth
+    // cookie is restored even if the JS-readable csrf hint was missing. A 401
+    // calls clearAuthState(), so anonymous users stay anonymous. `force: true`
+    // bypasses fetchUser's null-token short-circuit; we don't pre-seed
+    // token.value because that flips isAuthenticated true for one microtask
+    // and bounces anonymous users from /login → /dashboard, where the 401
+    // interceptor hard-redirects to /login and restarts the cycle.
     await fetchUser({
       skipAuthRedirect: true,
-      redirectOnUnauthorized: false
+      redirectOnUnauthorized: false,
+      force: true
     })
   }
 

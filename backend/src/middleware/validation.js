@@ -12,6 +12,7 @@ const WEBHOOK_EVENT_TYPES = Object.freeze([
   'price_alert.triggered',
   'enrichment.completed'
 ]);
+const WEBHOOK_PROVIDER_TYPES = Object.freeze(['custom', 'slack', 'discord']);
 
 // Normalize snake_case fields to camelCase for API compatibility
 const normalizeFieldNames = (body) => {
@@ -50,7 +51,7 @@ const validate = (schema) => {
     // Normalize snake_case to camelCase before validation
     req.body = normalizeFieldNames(req.body);
     
-    const { error } = schema.validate(req.body);
+    const { error, value } = schema.validate(req.body);
     if (error) {
       const fields = error.details.map(d => ({
         field: d.path.join('.'),
@@ -76,6 +77,7 @@ const validate = (schema) => {
         fields
       });
     }
+    req.body = value;
     next();
   };
 };
@@ -170,6 +172,12 @@ const schemas = {
     fees: Joi.number().default(0),  // Can be negative for rebates
     mae: Joi.number().allow(null, ''),
     mfe: Joi.number().allow(null, ''),
+    postExitMae: Joi.number().allow(null, ''),
+    postExitMfe: Joi.number().allow(null, ''),
+    post_exit_mae: Joi.number().allow(null, ''),
+    post_exit_mfe: Joi.number().allow(null, ''),
+    postExitWindowOverrideMinutes: Joi.number().integer().positive().allow(null, ''),
+    post_exit_window_override_minutes: Joi.number().integer().positive().allow(null, ''),
     notes: Joi.string().allow(''),
     isPublic: Joi.boolean().default(false),
     broker: Joi.string().max(50).allow(''),
@@ -315,6 +323,16 @@ const schemas = {
     fees: Joi.number(),  // Can be negative for rebates
     mae: Joi.number().allow(null, ''),
     mfe: Joi.number().allow(null, ''),
+    postExitMae: Joi.number().allow(null, ''),
+    postExitMfe: Joi.number().allow(null, ''),
+    post_exit_mae: Joi.number().allow(null, ''),
+    post_exit_mfe: Joi.number().allow(null, ''),
+    postExitWindowOverrideMinutes: Joi.number().integer().positive().allow(null, ''),
+    postExitWindowMinutes: Joi.number().integer().positive().allow(null, ''),
+    postExitWindowSource: Joi.string().max(30).allow(null, ''),
+    postExitWindowEnd: Joi.date().iso().allow(null, ''),
+    postExitCalculatedAt: Joi.date().iso().allow(null, ''),
+    post_exit_window_override_minutes: Joi.number().integer().positive().allow(null, ''),
     notes: Joi.string().allow(''),
     isPublic: Joi.boolean(),
     broker: Joi.string().max(50).allow(''),
@@ -405,6 +423,10 @@ const schemas = {
     timezone: Joi.string().max(50),
     timeDisplayFormat: Joi.string().valid('12h', '24h'),
     statisticsCalculation: Joi.string().valid('average', 'median'),
+    breakevenToleranceTicks: Joi.number().integer().min(0).max(1000).allow(null),
+    breakevenToleranceTicksByUnderlying: Joi.object()
+      .pattern(/^[A-Za-z0-9]+$/, Joi.number().integer().min(0).max(1000))
+      .allow(null),
     enableTradeGrouping: Joi.boolean(),
     tradeGroupingTimeGapMinutes: Joi.number().integer().min(1).max(1440),
     autoCloseExpiredOptions: Joi.boolean(),
@@ -538,6 +560,7 @@ const schemas = {
   // Webhook validation schemas
   createWebhook: Joi.object({
     url: Joi.string().uri({ scheme: ['http', 'https'] }).required(),
+    providerType: Joi.string().valid(...WEBHOOK_PROVIDER_TYPES).default('custom'),
     description: Joi.string().max(500).allow('', null),
     eventTypes: Joi.array().items(Joi.string().valid(...WEBHOOK_EVENT_TYPES)).min(1).optional(),
     customHeaders: Joi.object().pattern(Joi.string(), Joi.string().max(1000)).default({}),
@@ -547,6 +570,7 @@ const schemas = {
 
   updateWebhook: Joi.object({
     url: Joi.string().uri({ scheme: ['http', 'https'] }),
+    providerType: Joi.string().valid(...WEBHOOK_PROVIDER_TYPES),
     description: Joi.string().max(500).allow('', null),
     eventTypes: Joi.array().items(Joi.string().valid(...WEBHOOK_EVENT_TYPES)).min(1),
     customHeaders: Joi.object().pattern(Joi.string(), Joi.string().max(1000)),
@@ -824,10 +848,15 @@ const schemas = {
   }).unknown(true),
 
   adminAiSettings: Joi.object({
-    aiProvider: aiProviderSchema.required(),
+    aiProvider: aiProviderSchema.allow('').required(),
     aiApiKey: nullableString(4096),
     aiApiUrl: nullableString(2048),
-    aiModel: nullableString(255)
+    aiModel: nullableString(255),
+    aiClassifierEnabled: Joi.boolean().default(false),
+    aiClassifierProvider: aiProviderSchema.allow('', null),
+    aiClassifierApiKey: nullableString(4096),
+    aiClassifierApiUrl: nullableString(2048),
+    aiClassifierModel: nullableString(255)
   }),
 
   testimonialSubmit: Joi.object({

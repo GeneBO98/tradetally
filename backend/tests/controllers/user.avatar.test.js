@@ -47,7 +47,7 @@ describe('userController avatar storage', () => {
     });
     User.update.mockResolvedValue({
       id: 'user-1',
-      avatar_url: '/uploads/avatars/avatar_user-1_123_profile.webp'
+      avatar_url: '/api/users/avatar/avatar_user-1_123_profile.webp'
     });
 
     const req = {
@@ -74,7 +74,7 @@ describe('userController avatar storage', () => {
       expect.stringContaining(path.join('uploads', 'avatars'))
     );
     expect(User.update).toHaveBeenCalledWith('user-1', {
-      avatar_url: '/uploads/avatars/avatar_user-1_123_profile.webp'
+      avatar_url: '/api/users/avatar/avatar_user-1_123_profile.webp'
     });
     expect(imageProcessor.deleteImage).toHaveBeenCalledWith(
       expect.stringContaining(path.join('uploads', 'avatars', 'old-avatar.webp'))
@@ -82,7 +82,7 @@ describe('userController avatar storage', () => {
     expect(res.payload).toEqual({
       user: {
         id: 'user-1',
-        avatar_url: '/uploads/avatars/avatar_user-1_123_profile.webp'
+        avatar_url: '/api/users/avatar/avatar_user-1_123_profile.webp'
       }
     });
   });

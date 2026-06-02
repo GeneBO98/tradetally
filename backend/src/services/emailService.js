@@ -1567,12 +1567,20 @@ class EmailService {
       </div>
     `;
 
-    const html = this.getBaseTemplate(`[Support] ${subject}`, content);
+    const html = this.getBaseTemplate(`[Support] ${safeSubject}`, content);
 
-    let mailOptions = {
+    // Send as raw HTML so the inline `<br>` line breaks render correctly.
+    // The Sequenzy slug-based path is intentionally avoided here because
+    // Sequenzy's Handlebars renderer HTML-escapes `{{var}}` by default,
+    // which turned `<br>` into literal text in the delivered email.
+    // SMTP uses nodemailer; Sequenzy uses emailDeliveryService — both
+    // accept this same mailOptions shape via createTransporter().
+    const mailOptions = {
       from: {
         name: 'TradeTally Support',
-        address: process.env.EMAIL_FROM || 'noreply@tradetally.io'
+        address: this.isSequenzyProvider()
+          ? this.getTransactionalFromAddress()
+          : (process.env.EMAIL_FROM || 'noreply@tradetally.io')
       },
       replyTo: userEmail,
       to: to,
@@ -1580,22 +1588,6 @@ class EmailService {
       html: html,
       text: `Support Request\n\nFrom: ${username} (${userEmail})\nPlan: ${tier}\nSubject: ${subject}\n\n${message}`
     };
-    if (this.isSequenzyProvider()) {
-      mailOptions = {
-        from: { name: 'TradeTally Support', address: this.getTransactionalFromAddress() },
-        replyTo: userEmail,
-        to,
-        slug: 'support-request',
-        variables: {
-          username: username || 'Unknown',
-          user_email: userEmail,
-          tier,
-          support_subject: subject,
-          message_html: safeMessage
-        },
-        text: `Support Request\n\nFrom: ${username} (${userEmail})\nPlan: ${tier}\nSubject: ${subject}\n\n${message}`
-      };
-    }
 
     try {
       const transporter = this.createTransporter();

@@ -14,6 +14,8 @@ jest.mock('../../src/controllers/brokerSync.controller', () => ({
     res.json({ success: true, auth_url: 'https://example.com/oauth' });
   }),
   handleSchwabCallback: jest.fn(),
+  initBrokerOAuth: jest.fn(),
+  handleBrokerOAuthCallback: jest.fn(),
   updateConnection: jest.fn(),
   deleteConnection: jest.fn(),
   triggerSync: jest.fn(),

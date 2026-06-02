@@ -74,7 +74,7 @@
               </div>
               <div class="flex flex-col gap-3 sm:flex-row sm:items-stretch xl:justify-end">
                 <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <div class="card card-mobile-safe min-w-[210px] border-l-4 border-l-primary-500">
+                  <div class="card card-mobile-safe min-w-[210px] bg-primary-50 dark:bg-primary-900/15">
                     <div class="card-body">
                       <dt class="text-data-secondary truncate">
                         {{ format(expandedMonth, 'MMMM') }} {{ showRValue ? 'R-Value' : 'P&L' }}
@@ -87,7 +87,7 @@
                       </div>
                     </div>
                   </div>
-                  <div class="card card-mobile-safe min-w-[210px] border-l-4 border-l-sky-500">
+                  <div class="card card-mobile-safe min-w-[210px] bg-gray-100 dark:bg-gray-800/60">
                     <div class="card-body">
                       <dt class="text-data-secondary truncate">
                         Avg Initial Risk
@@ -102,7 +102,7 @@
                       </div>
                     </div>
                   </div>
-                  <div class="card card-mobile-safe min-w-[210px] border-l-4 border-l-amber-500">
+                  <div class="card card-mobile-safe min-w-[210px] bg-primary-100/60 dark:bg-primary-900/25">
                     <div class="card-body">
                       <dt class="text-data-secondary truncate">
                         Year To Date

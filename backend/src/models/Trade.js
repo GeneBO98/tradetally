@@ -1,10 +1,9 @@
 const db = require('../config/database');
 const AchievementService = require('../services/achievementService');
-const { getUserLocalDate } = require('../utils/timezone');
-const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('../utils/futuresUtils');
+const { getUserLocalDate, getUserTimezone } = require('../utils/timezone');
+const { getFuturesPointValue, getFuturesTickSize, extractUnderlyingFromFuturesSymbol } = require('../utils/futuresUtils');
+const { computeTradePnl } = require('../services/pnlEngine');
 const logger = require('../utils/logger');
-const SAMPLE_DATA_EXCLUSION_WHERE = ` AND NOT COALESCE('sample' = ANY(t.tags), false)`;
-
 /**
  * Round a numeric value to fit database precision
  * DECIMAL(20, 8) allows up to 12 integer digits and 8 decimal places
@@ -79,11 +78,19 @@ class Trade {
       originalFeesCurrency,
       stopLoss, takeProfit, takeProfitTargets, chartUrl,
       brokerConnectionId, accountIdentifier, account_identifier,
-      conid, manualTargetHitFirst
+      conid, manualTargetHitFirst,
+      postExitWindowOverrideMinutes, post_exit_window_override_minutes,
+      postExitMae, postExitMfe, post_exit_mae, post_exit_mfe
     } = tradeData;
 
     // Use snake_case version if provided, fallback to camelCase for legacy support
     const finalAccountIdentifier = account_identifier || accountIdentifier;
+    const rawPostExitWindowOverrideMinutes = postExitWindowOverrideMinutes ?? post_exit_window_override_minutes ?? null;
+    const finalPostExitWindowOverrideMinutes = rawPostExitWindowOverrideMinutes === '' ? null : rawPostExitWindowOverrideMinutes;
+    const rawPostExitMae = postExitMae ?? post_exit_mae ?? null;
+    const rawPostExitMfe = postExitMfe ?? post_exit_mfe ?? null;
+    const finalPostExitMae = rawPostExitMae === '' ? null : rawPostExitMae;
+    const finalPostExitMfe = rawPostExitMfe === '' ? null : rawPostExitMfe;
 
     // Convert empty strings to null for optional fields
     const cleanExitTime = exitTime === '' ? null : exitTime;
@@ -110,12 +117,13 @@ class Trade {
     // Auto-set point value and underlying asset for futures trades if not provided
     let finalPointValue = pointValue;
     let finalUnderlyingAsset = underlyingAsset;
+    let finalTickSize = tickSize;
     if (instrumentType === 'future') {
       // If underlying asset is not provided, try to extract it from the symbol
       if (!finalUnderlyingAsset && symbol) {
         finalUnderlyingAsset = extractUnderlyingFromFuturesSymbol(symbol) || underlyingSymbol || null;
       }
-      
+
       // If point value is not provided, look it up based on underlying asset
       if (!finalPointValue && finalUnderlyingAsset) {
         finalPointValue = getFuturesPointValue(finalUnderlyingAsset);
@@ -129,12 +137,57 @@ class Trade {
           console.log(`[TRADE] Auto-set point value for ${symbol}: ${extractedUnderlying} = $${finalPointValue} per point`);
         }
       }
+
+      // Mirror the point-value lookup for tick size (needed for breakeven tolerance)
+      if (!finalTickSize && finalUnderlyingAsset) {
+        finalTickSize = getFuturesTickSize(finalUnderlyingAsset);
+        if (finalTickSize) {
+          console.log(`[TRADE] Auto-set tick size for ${symbol}: ${finalUnderlyingAsset} = ${finalTickSize}`);
+        }
+      }
     }
 
-    // Use provided P&L if available (e.g., from Schwab), otherwise calculate it
-    // Use finalPointValue which may have been auto-set for futures
-    const pnl = providedPnL !== undefined ? providedPnL : this.calculatePnL(entryPrice, cleanExitPrice, quantity, side, commission, fees, instrumentType, contractSize, finalPointValue);
-    const pnlPercent = providedPnLPercent !== undefined ? providedPnLPercent : this.calculatePnLPercent(entryPrice, cleanExitPrice, side, pnl, quantity, instrumentType, finalPointValue);
+    const userTimezone = await getUserTimezone(userId);
+    const rawExecutions = executions || executionData || [];
+    let engineExecutions = Array.isArray(rawExecutions) ? rawExecutions.filter(Boolean) : [];
+    if (engineExecutions.length === 0) {
+      const syntheticEntry = {
+        action: side === 'short' ? 'sell' : 'buy',
+        quantity,
+        price: entryPrice,
+        datetime: finalEntryTime
+      };
+      engineExecutions = [syntheticEntry];
+      if (cleanExitTime && cleanExitPrice != null && cleanExitPrice !== '') {
+        engineExecutions.push({
+          action: side === 'short' ? 'buy' : 'sell',
+          quantity,
+          price: cleanExitPrice,
+          datetime: cleanExitTime
+        });
+      }
+    }
+
+    const engineResult = computeTradePnl({
+      side,
+      instrumentType: instrumentType || 'stock',
+      contractSize: contractSize || (instrumentType === 'option' ? 100 : null),
+      pointValue: finalPointValue,
+      fallbackCommission: commission != null ? commission : null,
+      fallbackFees: fees != null ? fees : null,
+      executions: engineExecutions,
+      timezone: userTimezone
+    });
+
+    const annotatedExecutions = engineResult.annotatedExecutions;
+    const aggregate = engineResult.aggregate;
+    const pnl = aggregate.pnl;
+    const pnlPercent = aggregate.pnl_percent;
+    const computedEntryPrice = aggregate.entry_price != null ? aggregate.entry_price : entryPrice;
+    const computedExitPrice = aggregate.exit_price != null ? aggregate.exit_price : cleanExitPrice;
+    const computedQuantity = aggregate.quantity > 0 ? aggregate.quantity : quantity;
+    const computedCommission = aggregate.commission;
+    const computedFees = aggregate.fees;
 
     // Calculate R-Multiple later after applying default stop loss
     // Will be calculated after finalStopLoss is determined
@@ -417,7 +470,16 @@ class Trade {
     // Calculate R-Multiple if stop loss and exit price are provided
     // R-Multiple = Profit / Risk (where Risk = distance from entry to stop loss)
     if (finalStopLoss && cleanExitPrice && entryPrice && side) {
-      rValue = this.calculateRValue(entryPrice, finalStopLoss, cleanExitPrice, side);
+      rValue = this.calculateRValue(entryPrice, finalStopLoss, cleanExitPrice, side, {
+        quantity,
+        commission,
+        fees,
+        instrumentType,
+        contractSize,
+        pointValue: finalPointValue,
+        symbol,
+        underlyingAsset: finalUnderlyingAsset
+      });
     }
 
     // Aggregate take profit targets from executions to trade level
@@ -474,25 +536,26 @@ class Trade {
         contract_month, contract_year, tick_size, point_value, underlying_asset, import_id,
         original_currency, exchange_rate, original_entry_price_currency, original_exit_price_currency,
         original_pnl_currency, original_commission_currency, original_fees_currency,
-        stop_loss, take_profit, take_profit_targets, r_value, chart_url, broker_connection_id, account_identifier, conid, manual_target_hit_first
+        stop_loss, take_profit, take_profit_targets, r_value, chart_url, broker_connection_id, account_identifier, conid, manual_target_hit_first,
+        post_exit_window_override_minutes, post_exit_mae, post_exit_mfe
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63, $64)
       RETURNING *
     `;
 
     const values = [
       userId, symbol.toUpperCase(), finalTradeDate, finalEntryTime, cleanExitTime,
-      roundToDbPrecision(entryPrice), roundToDbPrecision(cleanExitPrice),
-      roundToDbPrecision(quantity), side,
-      roundToDbPrecision(commission) || 0, roundToDbPrecision(entryCommission) || 0, roundToDbPrecision(exitCommission) || 0,
-      roundToDbPrecision(fees) || 0, roundToDbPrecision(pnl), roundToDbPrecision(pnlPercent), notes, isPublic || false,
-      broker, finalStrategy, setup, tags || [], JSON.stringify(executions || executionData || []),
+      roundToDbPrecision(computedEntryPrice), roundToDbPrecision(computedExitPrice),
+      roundToDbPrecision(computedQuantity), side,
+      roundToDbPrecision(computedCommission) || 0, roundToDbPrecision(entryCommission) || 0, roundToDbPrecision(exitCommission) || 0,
+      roundToDbPrecision(computedFees) || 0, roundToDbPrecision(pnl), roundToDbPrecision(pnlPercent), notes, isPublic || false,
+      broker, finalStrategy, setup, tags || [], JSON.stringify(annotatedExecutions),
       roundToDbPrecision(mae), roundToDbPrecision(mfe), confidence || 5,
       strategyConfidence, classificationMethod, JSON.stringify(classificationMetadata), manualOverride,
       JSON.stringify(newsData.newsEvents || []), newsData.hasNews || false, newsData.sentiment, newsData.checkedAt,
       instrumentType || 'stock', roundToDbPrecision(strikePrice), cleanExpirationDate, optionType || null,
       contractSize || (instrumentType === 'option' ? 100 : null), underlyingSymbol || null,
-      contractMonth || null, contractYear || null, roundToDbPrecision(tickSize), roundToDbPrecision(finalPointValue), finalUnderlyingAsset || null,
+      contractMonth || null, contractYear || null, roundToDbPrecision(finalTickSize), roundToDbPrecision(finalPointValue), finalUnderlyingAsset || null,
       importId || null,
       originalCurrency || 'USD', roundToDbPrecision(exchangeRate) || 1.0,
       roundToDbPrecision(originalEntryPriceCurrency), roundToDbPrecision(originalExitPriceCurrency),
@@ -500,7 +563,10 @@ class Trade {
       roundToDbPrecision(finalStopLoss), roundToDbPrecision(finalTakeProfit), JSON.stringify(aggregatedTakeProfitTargets || []),
       roundToDbPrecision(rValue), chartUrl || null, brokerConnectionId || null, finalAccountIdentifier ? String(finalAccountIdentifier).substring(0, 50) : null,
       conid || null,
-      manualTargetHitFirst || null
+      manualTargetHitFirst || null,
+      finalPostExitWindowOverrideMinutes,
+      roundToDbPrecision(finalPostExitMae),
+      roundToDbPrecision(finalPostExitMfe)
     ];
 
     const result = await db.query(query, values);
@@ -621,15 +687,19 @@ class Trade {
       await this.ensureTagsExist(userId, tags);
     }
 
-    // Auto-set point value for futures
+    // Auto-set point value and tick size for futures
     let finalPointValue = pointValue;
     let finalUnderlyingAsset = underlyingAsset;
+    let finalTickSize = tickSize;
     if (instrumentType === 'future') {
       if (!finalUnderlyingAsset && symbol) {
         finalUnderlyingAsset = extractUnderlyingFromFuturesSymbol(symbol) || underlyingSymbol || null;
       }
       if (!finalPointValue && finalUnderlyingAsset) {
         finalPointValue = getFuturesPointValue(finalUnderlyingAsset);
+      }
+      if (!finalTickSize && finalUnderlyingAsset) {
+        finalTickSize = getFuturesTickSize(finalUnderlyingAsset);
       }
     }
 
@@ -663,7 +733,7 @@ class Trade {
       confidence || 5, instrumentType || 'stock',
       roundToDbPrecision(strikePrice), expirationDate || null, optionType || null,
       contractSize || (instrumentType === 'option' ? 100 : null), underlyingSymbol || null,
-      contractMonth || null, contractYear || null, roundToDbPrecision(tickSize),
+      contractMonth || null, contractYear || null, roundToDbPrecision(finalTickSize),
       roundToDbPrecision(finalPointValue), finalUnderlyingAsset || null,
       roundToDbPrecision(stopLoss), roundToDbPrecision(takeProfit),
       JSON.stringify(takeProfitTargets || []), chartUrl || null,
@@ -750,14 +820,35 @@ class Trade {
     };
     executions.push(newFill);
 
-    // Recalculate aggregate fields from all fills
-    const aggregates = this.recalculateFromFills(trade, executions);
+    const fillTimezone = await getUserTimezone(userId);
+    const engineResult = computeTradePnl({
+      side: trade.side,
+      instrumentType: trade.instrument_type || 'stock',
+      contractSize: trade.contract_size,
+      pointValue: trade.point_value,
+      fallbackCommission: null,
+      fallbackFees: null,
+      executions,
+      timezone: fillTimezone,
+      tradeId: trade.id
+    });
+    const annotated = engineResult.annotatedExecutions;
+    const aggregates = engineResult.aggregate;
 
-    // Calculate R-value if stop_loss and exit_price exist
     let rValue = null;
     if (trade.stop_loss && aggregates.exit_price && aggregates.entry_price) {
       rValue = this.calculateRValue(
-        aggregates.entry_price, trade.stop_loss, aggregates.exit_price, trade.side
+        aggregates.entry_price, trade.stop_loss, aggregates.exit_price, trade.side,
+        {
+          quantity: aggregates.quantity,
+          commission: aggregates.commission,
+          fees: aggregates.fees,
+          instrumentType: trade.instrument_type || 'stock',
+          contractSize: trade.contract_size,
+          pointValue: trade.point_value,
+          symbol: trade.symbol,
+          underlyingAsset: trade.underlying_asset
+        }
       );
     }
 
@@ -782,7 +873,7 @@ class Trade {
     `;
 
     const updateValues = [
-      JSON.stringify(executions),
+      JSON.stringify(annotated),
       roundToDbPrecision(aggregates.entry_price),
       roundToDbPrecision(aggregates.exit_price),
       roundToDbPrecision(aggregates.quantity),
@@ -806,93 +897,10 @@ class Trade {
     return updatedTrade;
   }
 
-  /**
-   * Pure function: recalculate aggregate trade fields from an array of fills.
-   * Returns computed entry_price, exit_price, quantity, entry_time, exit_time,
-   * trade_date, commission, fees, pnl, pnl_percent.
-   */
-  static recalculateFromFills(trade, executions) {
-    const side = trade.side;
-
-    // Separate entry and exit fills
-    const entryFills = executions.filter(e =>
-      (side === 'long' && e.action === 'buy') || (side === 'short' && e.action === 'sell')
-    );
-    const exitFills = executions.filter(e =>
-      (side === 'long' && e.action === 'sell') || (side === 'short' && e.action === 'buy')
-    );
-
-    // Entry aggregates
-    let entry_price = null;
-    let entry_time = null;
-    let quantity = null;
-    let trade_date = null;
-
-    if (entryFills.length > 0) {
-      // Volume-weighted average price
-      const totalQty = entryFills.reduce((sum, f) => sum + parseFloat(f.quantity), 0);
-      const totalNotional = entryFills.reduce((sum, f) => sum + parseFloat(f.quantity) * parseFloat(f.price), 0);
-      entry_price = totalNotional / totalQty;
-      quantity = totalQty;
-
-      // Earliest entry fill datetime
-      const entryTimes = entryFills.map(f => new Date(f.datetime));
-      entry_time = new Date(Math.min(...entryTimes)).toISOString();
-      trade_date = entry_time.split('T')[0];
-    }
-
-    // Exit aggregates — only set exit_price/exit_time on the trade when fully closed.
-    // This keeps the trade status "open" for partial exits since status is derived
-    // from exit_price being NULL (open) vs NOT NULL (closed).
-    let exit_price = null;
-    let exit_time = null;
-    const totalEntryQty = entryFills.reduce((sum, f) => sum + parseFloat(f.quantity), 0);
-    const totalExitQty = exitFills.reduce((sum, f) => sum + parseFloat(f.quantity), 0);
-    const isFullyClosed = exitFills.length > 0 && totalExitQty >= totalEntryQty;
-
-    // VWAP of exit fills (used for P&L calc even on partial exits)
-    let exitVwap = null;
-    if (exitFills.length > 0) {
-      const totalExitNotional = exitFills.reduce((sum, f) => sum + parseFloat(f.quantity) * parseFloat(f.price), 0);
-      exitVwap = totalExitNotional / totalExitQty;
-
-      // Only write exit_price/exit_time to the trade when position is fully closed
-      if (isFullyClosed) {
-        exit_price = exitVwap;
-        const exitTimes = exitFills.map(f => new Date(f.datetime));
-        exit_time = new Date(Math.max(...exitTimes)).toISOString();
-      }
-    }
-
-    // Sum all commissions and fees
-    const commission = executions.reduce((sum, f) => sum + (parseFloat(f.commission) || 0), 0);
-    const fees = executions.reduce((sum, f) => sum + (parseFloat(f.fees) || 0), 0);
-
-    // Calculate P&L if we have both entry fills and exit fills
-    let pnl = null;
-    let pnl_percent = null;
-
-    if (entry_price != null && exitVwap != null && quantity > 0) {
-      const instrumentType = trade.instrument_type || 'stock';
-      const contractSize = trade.contract_size;
-      const pointValue = trade.point_value;
-
-      pnl = this.calculatePnL(entry_price, exitVwap, totalExitQty, side, commission, fees, instrumentType, contractSize, pointValue);
-      pnl_percent = this.calculatePnLPercent(entry_price, exitVwap, side, pnl, totalExitQty, instrumentType, pointValue);
-    }
-
-    return {
-      entry_price,
-      exit_price,
-      quantity,
-      entry_time,
-      exit_time,
-      trade_date,
-      commission,
-      fees,
-      pnl,
-      pnl_percent
-    };
+  // recalculateFromFills was removed — pnlEngine.computeTradePnl is the single source of truth.
+  // The stub below remains only to avoid hard breaks if any out-of-tree caller exists.
+  static recalculateFromFills() {
+    throw new Error('Trade.recalculateFromFills was removed — use services/pnlEngine.computeTradePnl');
   }
 
   static async findById(id, userId = null) {
@@ -959,6 +967,33 @@ class Trade {
       }
     } else if (trade) {
       trade.executions = [];
+    }
+
+    // If executions haven't been stamped by the engine yet (pre-backfill trades),
+    // annotate them on the fly so the Trade Detail page can render per-row P&L
+    // without requiring the bulk backfill to have finished. Read-only mutation
+    // of the response — does not touch the DB.
+    if (trade && Array.isArray(trade.executions) && trade.executions.length > 0 && trade.side) {
+      const hasStamped = trade.executions.some((e) => e && e.realized_pnl !== undefined && e.realized_pnl !== null);
+      if (!hasStamped) {
+        try {
+          const tz = await getUserTimezone(trade.user_id);
+          const engineResult = computeTradePnl({
+            side: trade.side,
+            instrumentType: trade.instrument_type || 'stock',
+            contractSize: trade.contract_size,
+            pointValue: trade.point_value,
+            fallbackCommission: trade.commission != null ? parseFloat(trade.commission) : null,
+            fallbackFees: trade.fees != null ? parseFloat(trade.fees) : null,
+            executions: trade.executions,
+            timezone: tz,
+            tradeId: trade.id
+          });
+          trade.executions = engineResult.annotatedExecutions;
+        } catch (err) {
+          console.warn(`[findById] Engine annotation failed for trade ${trade.id}: ${err.message}`);
+        }
+      }
     }
 
     // Convert charts from snake_case to camelCase for frontend
@@ -1069,7 +1104,8 @@ class Trade {
     // Round all numeric fields to fit database precision (DECIMAL(20,8))
     const numericFields = [
       'entryPrice', 'exitPrice', 'quantity', 'commission', 'entryCommission', 'exitCommission',
-      'fees', 'pnl', 'pnlPercent', 'mae', 'mfe', 'strikePrice', 'tickSize', 'pointValue',
+      'fees', 'pnl', 'pnlPercent', 'mae', 'mfe', 'postExitMae', 'postExitMfe',
+      'postExitWindowOverrideMinutes', 'postExitWindowMinutes', 'strikePrice', 'tickSize', 'pointValue',
       'stopLoss', 'takeProfit', 'rValue', 'exchangeRate',
       'originalEntryPriceCurrency', 'originalExitPriceCurrency', 'originalPnlCurrency',
       'originalCommissionCurrency', 'originalFeesCurrency'
@@ -1111,6 +1147,23 @@ class Trade {
             updates.underlyingAsset = finalUnderlying;
           }
           console.log(`[TRADE UPDATE] Auto-set point value for ${symbol}: ${finalUnderlying} = $${autoPointValue} per point`);
+        }
+      }
+
+      // Mirror the above for tick size (needed for breakeven tolerance)
+      if (updates.tickSize === undefined || updates.tickSize === null) {
+        const underlyingAsset = updates.underlyingAsset || currentTrade.underlying_asset;
+        const symbol = updates.symbol || currentTrade.symbol;
+        let finalUnderlying = underlyingAsset;
+        if (!finalUnderlying && symbol) {
+          finalUnderlying = extractUnderlyingFromFuturesSymbol(symbol) || updates.underlyingSymbol || currentTrade.underlying_symbol || null;
+        }
+        if (finalUnderlying && !currentTrade.tick_size) {
+          const autoTickSize = getFuturesTickSize(finalUnderlying);
+          if (autoTickSize) {
+            updates.tickSize = autoTickSize;
+            console.log(`[TRADE UPDATE] Auto-set tick size for ${symbol}: ${finalUnderlying} = ${autoTickSize}`);
+          }
         }
       }
     }
@@ -1413,6 +1466,92 @@ class Trade {
     // Always remove executions from updates since we handle it separately
     delete updates.executions;
 
+    const roundForChange = (num, decimals = 6) => {
+      if (num === null || num === undefined || isNaN(num)) return null;
+      return Math.round(parseFloat(num) * Math.pow(10, decimals)) / Math.pow(10, decimals);
+    };
+
+    const hasPnLAffectingChange = (
+      (updates.entryPrice !== undefined && roundForChange(updates.entryPrice) !== roundForChange(currentTrade.entry_price)) ||
+      (updates.exitPrice !== undefined && roundForChange(updates.exitPrice) !== roundForChange(currentTrade.exit_price)) ||
+      (updates.quantity !== undefined && roundForChange(updates.quantity) !== roundForChange(currentTrade.quantity)) ||
+      (updates.side !== undefined && updates.side !== currentTrade.side) ||
+      (updates.commission !== undefined && roundForChange(updates.commission) !== roundForChange(currentTrade.commission)) ||
+      (updates.fees !== undefined && roundForChange(updates.fees) !== roundForChange(currentTrade.fees)) ||
+      (updates.instrumentType !== undefined && updates.instrumentType !== currentTrade.instrument_type) ||
+      (updates.contractSize !== undefined && roundForChange(updates.contractSize) !== roundForChange(currentTrade.contract_size)) ||
+      (updates.pointValue !== undefined && roundForChange(updates.pointValue) !== roundForChange(currentTrade.point_value)) ||
+      (updates.tickSize !== undefined && roundForChange(updates.tickSize) !== roundForChange(currentTrade.tick_size))
+    );
+
+    if (executionsToSet !== null || hasPnLAffectingChange) {
+      const side = updates.side || currentTrade.side;
+      const instrumentType = updates.instrumentType || currentTrade.instrument_type || 'stock';
+      const contractSize = updates.contractSize !== undefined
+        ? updates.contractSize
+        : (currentTrade.contract_size || (instrumentType === 'option' ? 100 : null));
+      const pointValue = updates.pointValue !== undefined ? updates.pointValue : currentTrade.point_value;
+      const fallbackCommission = updates.commission !== undefined ? updates.commission : currentTrade.commission;
+      const fallbackFees = updates.fees !== undefined ? updates.fees : currentTrade.fees;
+
+      let parsedCurrentExecs = currentTrade.executions || [];
+      if (typeof parsedCurrentExecs === 'string') {
+        try { parsedCurrentExecs = JSON.parse(parsedCurrentExecs); } catch { parsedCurrentExecs = []; }
+      }
+      let engineExecs = (executionsToSet !== null) ? executionsToSet : parsedCurrentExecs;
+      if (!Array.isArray(engineExecs)) engineExecs = [];
+
+      if (engineExecs.length === 0) {
+        const entryPriceFinal = updates.entryPrice !== undefined ? updates.entryPrice : currentTrade.entry_price;
+        const exitPriceFinal = updates.exitPrice !== undefined ? updates.exitPrice : currentTrade.exit_price;
+        const quantityFinal = updates.quantity !== undefined ? updates.quantity : currentTrade.quantity;
+        const entryTimeFinal = updates.entryTime || currentTrade.entry_time;
+        const exitTimeFinal = updates.exitTime !== undefined ? updates.exitTime : currentTrade.exit_time;
+
+        if (entryPriceFinal != null && quantityFinal != null && entryTimeFinal) {
+          engineExecs = [{
+            action: side === 'short' ? 'sell' : 'buy',
+            quantity: quantityFinal,
+            price: entryPriceFinal,
+            datetime: entryTimeFinal
+          }];
+          if (exitTimeFinal && exitPriceFinal != null && exitPriceFinal !== '') {
+            engineExecs.push({
+              action: side === 'short' ? 'buy' : 'sell',
+              quantity: quantityFinal,
+              price: exitPriceFinal,
+              datetime: exitTimeFinal
+            });
+          }
+        }
+      }
+
+      const updateTz = await getUserTimezone(userId);
+      const engineResult = computeTradePnl({
+        side,
+        instrumentType,
+        contractSize,
+        pointValue,
+        fallbackCommission: fallbackCommission != null ? fallbackCommission : null,
+        fallbackFees: fallbackFees != null ? fallbackFees : null,
+        executions: engineExecs,
+        timezone: updateTz,
+        tradeId: id
+      });
+
+      executionsToSet = engineResult.annotatedExecutions;
+      updates.pnl = engineResult.aggregate.pnl;
+      updates.pnlPercent = engineResult.aggregate.pnl_percent;
+      updates.commission = engineResult.aggregate.commission;
+      updates.fees = engineResult.aggregate.fees;
+      if (engineResult.aggregate.entry_price != null) updates.entryPrice = engineResult.aggregate.entry_price;
+      if (engineResult.aggregate.exit_price != null) updates.exitPrice = engineResult.aggregate.exit_price;
+      if (engineResult.aggregate.quantity > 0) updates.quantity = engineResult.aggregate.quantity;
+      if (engineResult.aggregate.entry_time) updates.entryTime = engineResult.aggregate.entry_time;
+      if (engineResult.aggregate.is_fully_closed && engineResult.aggregate.exit_time) updates.exitTime = engineResult.aggregate.exit_time;
+      if (engineResult.aggregate.trade_date) updates.tradeDate = engineResult.aggregate.trade_date;
+    }
+
     // Aggregate take profit targets from executions to trade level
     // This REPLACES trade-level targets with execution-level targets (source of truth)
     // Keep payload's trade-level targets when they have more (e.g. user edited main form or single-execution sync)
@@ -1488,79 +1627,7 @@ class Trade {
       paramCount++;
     }
 
-    // Check if any P&L-affecting field was actually CHANGED (not just provided)
-    // This prevents recalculation when opening and closing a trade without changes
-    // Use rounding to avoid floating-point precision issues (e.g., 102.5 vs 102.49999999999999)
-    const roundTo = (num, decimals = 6) => {
-      if (num === null || num === undefined || isNaN(num)) return null;
-      return Math.round(parseFloat(num) * Math.pow(10, decimals)) / Math.pow(10, decimals);
-    };
-
-    // Debug logging for P&L update detection
-    if (updates.pointValue !== undefined) {
-      console.log('[PNL DEBUG] pointValue update check:', {
-        updateValue: updates.pointValue,
-        currentValue: currentTrade.point_value,
-        roundedUpdate: roundTo(updates.pointValue),
-        roundedCurrent: roundTo(currentTrade.point_value),
-        isDifferent: roundTo(updates.pointValue) !== roundTo(currentTrade.point_value)
-      });
-    }
-
-    const hasPnLUpdate = (
-      (updates.entryPrice !== undefined && roundTo(updates.entryPrice) !== roundTo(currentTrade.entry_price)) ||
-      (updates.exitPrice !== undefined && roundTo(updates.exitPrice) !== roundTo(currentTrade.exit_price)) ||
-      (updates.quantity !== undefined && roundTo(updates.quantity) !== roundTo(currentTrade.quantity)) ||
-      (updates.side !== undefined && updates.side !== currentTrade.side) ||
-      (updates.commission !== undefined && roundTo(updates.commission) !== roundTo(currentTrade.commission)) ||
-      (updates.fees !== undefined && roundTo(updates.fees) !== roundTo(currentTrade.fees)) ||
-      (updates.instrumentType !== undefined && updates.instrumentType !== currentTrade.instrument_type) ||
-      (updates.contractSize !== undefined && roundTo(updates.contractSize) !== roundTo(currentTrade.contract_size)) ||
-      (updates.pointValue !== undefined && roundTo(updates.pointValue) !== roundTo(currentTrade.point_value)) ||
-      (updates.tickSize !== undefined && roundTo(updates.tickSize) !== roundTo(currentTrade.tick_size))
-    );
-
-    console.log('[PNL DEBUG] hasPnLUpdate result:', hasPnLUpdate);
-
-    if (hasPnLUpdate) {
-      console.log('[PNL UPDATE] Values actually changed, recalculating P&L');
-      const instrumentType = updates.instrumentType || currentTrade.instrument_type || 'stock';
-      const quantity = updates.quantity !== undefined ? updates.quantity : currentTrade.quantity;
-      const pointValue = updates.pointValue !== undefined ? updates.pointValue : currentTrade.point_value;
-      const contractSize = updates.contractSize !== undefined ? updates.contractSize : (currentTrade.contract_size || (instrumentType === 'option' ? 100 : 1));
-      // Use !== undefined to properly handle 0 values for commission and fees
-      const commission = updates.commission !== undefined ? updates.commission : currentTrade.commission;
-      const fees = updates.fees !== undefined ? updates.fees : currentTrade.fees;
-
-      const pnl = this.calculatePnL(
-        updates.entryPrice !== undefined ? updates.entryPrice : currentTrade.entry_price,
-        updates.exitPrice !== undefined ? updates.exitPrice : currentTrade.exit_price,
-        quantity,
-        updates.side || currentTrade.side,
-        commission,
-        fees,
-        instrumentType,
-        contractSize,
-        pointValue
-      );
-      const pnlPercent = this.calculatePnLPercent(
-        updates.entryPrice !== undefined ? updates.entryPrice : currentTrade.entry_price,
-        updates.exitPrice !== undefined ? updates.exitPrice : currentTrade.exit_price,
-        updates.side || currentTrade.side,
-        pnl,
-        quantity,
-        instrumentType,
-        pointValue
-      );
-
-      fields.push(`pnl = $${paramCount}`);
-      values.push(pnl);
-      paramCount++;
-
-      fields.push(`pnl_percent = $${paramCount}`);
-      values.push(pnlPercent);
-      paramCount++;
-    }
+    // P&L is computed exclusively by the engine block above; no recalculation needed here.
 
     // Recalculate R-Multiple if any of the relevant fields are updated
     // R-Multiple = Profit / Risk (where Risk = distance from entry to stop loss)
@@ -1570,11 +1637,22 @@ class Trade {
       executionsForRCalc.some(ex => ex.stopLoss !== null && ex.stopLoss !== undefined);
 
     if (updates.entryPrice !== undefined || updates.exitPrice !== undefined ||
-        updates.stopLoss !== undefined || updates.side || executionsToSet !== null) {
+        updates.stopLoss !== undefined || updates.side || executionsToSet !== null ||
+        updates.quantity !== undefined || updates.commission !== undefined ||
+        updates.fees !== undefined || updates.instrumentType !== undefined ||
+        updates.contractSize !== undefined || updates.pointValue !== undefined ||
+        updates.underlyingAsset !== undefined) {
       let entryPrice = updates.entryPrice || currentTrade.entry_price;
       let exitPrice = updates.exitPrice !== undefined ? updates.exitPrice : currentTrade.exit_price;
       let stopLoss = updates.stopLoss !== undefined ? updates.stopLoss : currentTrade.stop_loss;
       const side = updates.side || currentTrade.side;
+      const quantity = updates.quantity !== undefined ? updates.quantity : currentTrade.quantity;
+      const commission = updates.commission !== undefined ? updates.commission : currentTrade.commission;
+      const fees = updates.fees !== undefined ? updates.fees : currentTrade.fees;
+      const instrumentType = updates.instrumentType || currentTrade.instrument_type || 'stock';
+      const contractSize = updates.contractSize !== undefined ? updates.contractSize : currentTrade.contract_size;
+      const pointValue = updates.pointValue !== undefined ? updates.pointValue : currentTrade.point_value;
+      const underlyingAsset = updates.underlyingAsset !== undefined ? updates.underlyingAsset : currentTrade.underlying_asset;
 
       // If stopLoss is in executions, calculate weighted average
       if (!stopLoss && hasExecutionStopLoss) {
@@ -1605,7 +1683,16 @@ class Trade {
       // Calculate R-Multiple if stop loss and exit price are provided
       // R-Multiple = Profit / Risk (where Risk = distance from entry to stop loss)
       const rValue = (stopLoss && exitPrice && entryPrice && side)
-        ? this.calculateRValue(entryPrice, stopLoss, exitPrice, side)
+        ? this.calculateRValue(entryPrice, stopLoss, exitPrice, side, {
+          quantity,
+          commission,
+          fees,
+          instrumentType,
+          contractSize,
+          pointValue,
+          symbol: currentTrade.symbol,
+          underlyingAsset
+        })
         : null;
 
       console.log('[R-MULTIPLE CALC] Result:', rValue);
@@ -1986,7 +2073,7 @@ class Trade {
    * @param {string} side - The trade side ('long' or 'short')
    * @returns {number|null} The calculated R-Multiple, or null if inputs are invalid
    */
-  static calculateRValue(entryPrice, stopLoss, exitPrice, side) {
+  static calculateRValue(entryPrice, stopLoss, exitPrice, side, options = {}) {
     // Validate inputs - all required for calculation
     if (!entryPrice || !stopLoss || !exitPrice || !side) {
       console.warn('[R-MULTIPLE] Missing required inputs:', { entryPrice, stopLoss, exitPrice, side });
@@ -2037,7 +2124,45 @@ class Trade {
       return null;
     }
 
-    const rMultiple = actualProfit / riskAmount;
+    const {
+      quantity,
+      commission = 0,
+      fees = 0,
+      instrumentType = 'stock',
+      contractSize = null,
+      pointValue = null,
+      symbol = null,
+      underlyingAsset = null
+    } = options || {};
+
+    let rMultiple;
+    const parsedQty = parseFloat(quantity);
+
+    if (isFinite(parsedQty) && parsedQty > 0) {
+      const totalRiskAmount = this.calculateRiskAmount(
+        entryPrice,
+        stopLoss,
+        parsedQty,
+        side,
+        instrumentType,
+        contractSize,
+        pointValue,
+        symbol,
+        underlyingAsset
+      );
+
+      if (!totalRiskAmount || totalRiskAmount <= 0) {
+        console.warn('[R-MULTIPLE] Total risk amount must be positive, got:', totalRiskAmount);
+        return null;
+      }
+
+      const multiplier = totalRiskAmount / (riskAmount * parsedQty);
+      const grossProfit = actualProfit * parsedQty * multiplier;
+      const netProfit = grossProfit - (parseFloat(commission) || 0) - (parseFloat(fees) || 0);
+      rMultiple = netProfit / totalRiskAmount;
+    } else {
+      rMultiple = actualProfit / riskAmount;
+    }
 
     // Guard against NaN or Infinity (negative values are allowed)
     if (!isFinite(rMultiple)) {
@@ -2071,7 +2196,8 @@ class Trade {
 
       // Find all trades without a stop loss that have the necessary data
       const tradesQuery = `
-        SELECT id, entry_price, exit_price, side
+        SELECT id, symbol, entry_price, exit_price, side, quantity, commission,
+               fees, instrument_type, contract_size, point_value, underlying_asset
         FROM trades
         WHERE user_id = $1
           AND stop_loss IS NULL
@@ -2093,7 +2219,20 @@ class Trade {
 
       // Update each trade with the calculated stop loss
       for (const trade of trades) {
-        const { id, entry_price, exit_price, side } = trade;
+        const {
+          id,
+          symbol,
+          entry_price,
+          exit_price,
+          side,
+          quantity,
+          commission,
+          fees,
+          instrument_type,
+          contract_size,
+          point_value,
+          underlying_asset
+        } = trade;
 
         // Calculate stop loss based on entry price and side
         let stopLoss;
@@ -2112,7 +2251,16 @@ class Trade {
         // Calculate R value if exit price exists
         let rValue = null;
         if (exit_price) {
-          rValue = this.calculateRValue(entry_price, stopLoss, exit_price, side);
+          rValue = this.calculateRValue(entry_price, stopLoss, exit_price, side, {
+            quantity,
+            commission,
+            fees,
+            instrumentType: instrument_type || 'stock',
+            contractSize: contract_size,
+            pointValue: point_value,
+            symbol,
+            underlyingAsset: underlying_asset
+          });
         }
 
         // Update the trade
@@ -2158,7 +2306,8 @@ class Trade {
       await client.query('BEGIN');
 
       const tradesQuery = `
-        SELECT id, entry_price, exit_price, side, quantity, instrument_type, contract_size, point_value
+        SELECT id, symbol, entry_price, exit_price, side, quantity, commission,
+               fees, instrument_type, contract_size, point_value, underlying_asset
         FROM trades
         WHERE user_id = $1
           AND stop_loss IS NULL
@@ -2181,7 +2330,20 @@ class Trade {
       let updatedCount = 0;
 
       for (const trade of trades) {
-        const { id, entry_price, exit_price, side, quantity, instrument_type, contract_size, point_value } = trade;
+        const {
+          id,
+          symbol,
+          entry_price,
+          exit_price,
+          side,
+          quantity,
+          commission,
+          fees,
+          instrument_type,
+          contract_size,
+          point_value,
+          underlying_asset
+        } = trade;
 
         const instrumentType = instrument_type || 'stock';
         const priceMove = this.getDollarStopLossPriceMove(defaultStopLossDollars, quantity, instrumentType, contract_size, point_value);
@@ -2204,7 +2366,16 @@ class Trade {
 
         let rValue = null;
         if (exit_price) {
-          rValue = this.calculateRValue(entry_price, stopLoss, exit_price, side);
+          rValue = this.calculateRValue(entry_price, stopLoss, exit_price, side, {
+            quantity,
+            commission,
+            fees,
+            instrumentType,
+            contractSize: contract_size,
+            pointValue: point_value,
+            symbol,
+            underlyingAsset: underlying_asset
+          });
         }
 
         const updateQuery = `
@@ -2439,7 +2610,7 @@ class Trade {
     console.log('[PARTIAL-EXIT] Getting partial exit analytics for user:', userId);
 
     // Build WHERE clause using the same filter pattern as getAnalytics
-    let whereClause = `WHERE t.user_id = $1${filters.includeSampleData ? '' : SAMPLE_DATA_EXCLUSION_WHERE} AND t.exit_price IS NOT NULL`;
+    let whereClause = `WHERE t.user_id = $1 AND t.exit_price IS NOT NULL`;
     const values = [userId];
     let paramCount = 2;
 
@@ -2723,16 +2894,41 @@ class Trade {
     };
   }
 
-  static async getMonthlyPerformance(userId, year, accounts = null) {
-    console.log(`[MONTHLY] Getting monthly performance for user ${userId}, year ${year}, accounts:`, accounts);
+  static async getMonthlyPerformance(userId, year, accounts = null, filters = {}) {
+    console.log(`[MONTHLY] Getting monthly performance for user ${userId}, year ${year}, accounts:`, accounts, 'filters:', filters);
 
-    // Build account filter condition
-    let accountFilter = '';
+    const { getBreakevenToleranceConfig, breakevenPredicate } = require('../utils/breakeven');
+    const breakevenConfig = await getBreakevenToleranceConfig(userId);
+    const be = breakevenPredicate({
+      gross: '(pnl + COALESCE(commission, 0) + COALESCE(fees, 0))',
+      tickSize: 'tick_size',
+      pointValue: 'point_value',
+      quantity: 'quantity',
+      underlying: 'underlying_asset'
+    }, breakevenConfig);
+
+    // Build account + tag + strategy filter conditions. Param index starts at 3
+    // because $1=userId and $2=year. We append conditions in the order they're
+    // added to params to keep placeholders aligned.
+    let extraFilter = '';
     const params = [userId, year];
+    let paramIndex = 3;
+
     if (accounts && accounts.length > 0) {
-      const placeholders = accounts.map((_, i) => `$${i + 3}`).join(',');
-      accountFilter = ` AND account_identifier IN (${placeholders})`;
+      const placeholders = accounts.map(() => `$${paramIndex++}`).join(',');
+      extraFilter += ` AND account_identifier IN (${placeholders})`;
       params.push(...accounts);
+    }
+
+    if (filters.tags && filters.tags.length > 0) {
+      extraFilter += ` AND tags && $${paramIndex++}`;
+      params.push(filters.tags);
+    }
+
+    if (filters.strategies && filters.strategies.length > 0) {
+      const placeholders = filters.strategies.map(() => `$${paramIndex++}`).join(',');
+      extraFilter += ` AND strategy IN (${placeholders})`;
+      params.push(...filters.strategies);
     }
 
     const monthlyQuery = `
@@ -2740,13 +2936,14 @@ class Trade {
         SELECT
           EXTRACT(MONTH FROM trade_date) as month,
           COUNT(*)::integer as total_trades,
-          COUNT(*) FILTER (WHERE pnl > 0)::integer as winning_trades,
-          COUNT(*) FILTER (WHERE pnl < 0)::integer as losing_trades,
-          COUNT(*) FILTER (WHERE pnl = 0)::integer as breakeven_trades,
+          -- Breakeven = gross P&L within tolerance; wins/losses by NET P&L.
+          COUNT(*) FILTER (WHERE ${be.isNot} AND pnl > 0)::integer as winning_trades,
+          COUNT(*) FILTER (WHERE ${be.isNot} AND pnl < 0)::integer as losing_trades,
+          COUNT(*) FILTER (WHERE ${be.is})::integer as breakeven_trades,
           COALESCE(SUM(pnl), 0)::numeric as total_pnl,
           COALESCE(AVG(pnl), 0)::numeric as avg_pnl,
-          COALESCE(AVG(pnl) FILTER (WHERE pnl > 0), 0)::numeric as avg_win,
-          COALESCE(AVG(pnl) FILTER (WHERE pnl < 0), 0)::numeric as avg_loss,
+          COALESCE(AVG(pnl) FILTER (WHERE ${be.isNot} AND pnl > 0), 0)::numeric as avg_win,
+          COALESCE(AVG(pnl) FILTER (WHERE ${be.isNot} AND pnl < 0), 0)::numeric as avg_loss,
           COALESCE(MAX(pnl), 0)::numeric as best_trade,
           COALESCE(MIN(pnl), 0)::numeric as worst_trade,
           COALESCE(AVG(r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL), 0)::numeric as avg_r_value,
@@ -2757,7 +2954,7 @@ class Trade {
         WHERE user_id = $1
           AND EXTRACT(YEAR FROM trade_date) = $2
           AND exit_price IS NOT NULL
-          AND pnl IS NOT NULL${accountFilter}
+          AND pnl IS NOT NULL${extraFilter}
         GROUP BY EXTRACT(MONTH FROM trade_date)
       ),
       all_months AS (
@@ -2783,6 +2980,10 @@ class Trade {
           WHEN COALESCE(mt.total_trades, 0) = 0 THEN 0
           ELSE (COALESCE(mt.winning_trades, 0) * 100.0 / mt.total_trades)
         END as win_rate,
+        CASE
+          WHEN (COALESCE(mt.winning_trades, 0) + COALESCE(mt.losing_trades, 0)) = 0 THEN 0
+          ELSE (COALESCE(mt.winning_trades, 0) * 100.0 / (mt.winning_trades + mt.losing_trades))
+        END as win_rate_excluding_breakeven,
         TO_CHAR(TO_DATE(am.month::text, 'MM'), 'Month') as month_name
       FROM all_months am
       LEFT JOIN monthly_trades mt ON am.month = mt.month
@@ -2812,6 +3013,7 @@ class Trade {
         },
         metrics: {
           winRate: parseFloat(row.win_rate) || 0,
+          winRateExcludingBreakeven: parseFloat(row.win_rate_excluding_breakeven) || 0,
           avgRValue: parseFloat(row.avg_r_value) || 0,
           totalRValue: parseFloat(row.total_r_value) || 0,
           symbolsTraded: parseInt(row.symbols_traded) || 0,
@@ -2853,6 +3055,9 @@ class Trade {
       yearTotals.metrics = {
         winRate: yearTotals.trades.total > 0
           ? (yearTotals.trades.wins * 100.0 / yearTotals.trades.total)
+          : 0,
+        winRateExcludingBreakeven: (yearTotals.trades.wins + yearTotals.trades.losses) > 0
+          ? (yearTotals.trades.wins * 100.0 / (yearTotals.trades.wins + yearTotals.trades.losses))
           : 0,
         avgRValue: yearTotals.trades.total > 0
           ? yearTotals.totalRValue / yearTotals.trades.total
@@ -2897,25 +3102,29 @@ class Trade {
   }
 
   static async getStrategyList(userId) {
+    // Return each strategy with how many trades use it, most-used first, so
+    // dropdowns can surface the strategies the user actually relies on.
     const query = `
-      SELECT DISTINCT strategy
+      SELECT strategy AS name, COUNT(*)::int AS count
       FROM trades
       WHERE user_id = $1 AND strategy IS NOT NULL AND strategy != ''
-      ORDER BY strategy
+      GROUP BY strategy
+      ORDER BY count DESC, strategy ASC
     `;
     const result = await db.query(query, [userId]);
-    return result.rows.map(row => row.strategy);
+    return result.rows;
   }
 
   static async getSetupList(userId) {
     const query = `
-      SELECT DISTINCT setup
+      SELECT setup AS name, COUNT(*)::int AS count
       FROM trades
       WHERE user_id = $1 AND setup IS NOT NULL AND setup != ''
-      ORDER BY setup
+      GROUP BY setup
+      ORDER BY count DESC, setup ASC
     `;
     const result = await db.query(query, [userId]);
-    return result.rows.map(row => row.setup);
+    return result.rows;
   }
 
   static async getBrokerList(userId) {

@@ -612,23 +612,11 @@
                                     >
                                         Trading Strategy
                                     </label>
-                                    <select
+                                    <BaseSelect
                                         v-model="filters.strategy"
+                                        :options="strategyFilterOptions"
                                         @change="applyFilters"
-                                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white text-sm"
-                                    >
-                                        <option value="all">
-                                            All Strategies
-                                        </option>
-                                        <option
-                                            v-for="strategy in filterOptions.strategies ||
-                                            []"
-                                            :key="strategy.value"
-                                            :value="strategy.value"
-                                        >
-                                            {{ strategy.label }}
-                                        </option>
-                                    </select>
+                                    />
                                 </div>
 
                                 <!-- Position Size Filter -->
@@ -638,19 +626,13 @@
                                     >
                                         Average Position Size
                                     </label>
-                                    <select
+                                    <BaseSelect
                                         v-model="filters.volumeRange"
+                                        :options="volumeRanges"
+                                        value-key="value"
+                                        label-key="label"
                                         @change="applyFilters"
-                                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white text-sm"
-                                    >
-                                        <option
-                                            v-for="range in volumeRanges"
-                                            :key="range.value"
-                                            :value="range.value"
-                                        >
-                                            {{ range.label }}
-                                        </option>
-                                    </select>
+                                    />
                                 </div>
 
                                 <!-- Profit Per Trade Filter -->
@@ -660,19 +642,13 @@
                                     >
                                         Average Profit Per Trade
                                     </label>
-                                    <select
+                                    <BaseSelect
                                         v-model="filters.pnlRange"
+                                        :options="pnlRanges"
+                                        value-key="value"
+                                        label-key="label"
                                         @change="applyFilters"
-                                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white text-sm"
-                                    >
-                                        <option
-                                            v-for="range in pnlRanges"
-                                            :key="range.value"
-                                            :value="range.value"
-                                        >
-                                            {{ range.label }}
-                                        </option>
-                                    </select>
+                                    />
                                 </div>
                             </div>
 
@@ -1086,6 +1062,7 @@ import { ref, computed, onMounted, watch, nextTick } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import api from "@/services/api";
 import MdiIcon from "@/components/MdiIcon.vue";
+import BaseSelect from "@/components/common/BaseSelect.vue";
 import { useNotification } from "@/composables/useNotification";
 import {
     usePriceAlertNotifications,
@@ -1113,6 +1090,7 @@ export default {
     name: "GamificationView",
     components: {
         MdiIcon,
+        BaseSelect,
     },
     setup() {
         const { showSuccess, showError, showWarning } = useNotification();
@@ -1585,6 +1563,13 @@ export default {
                 console.error("Error clearing filters:", error);
             }
         };
+
+        // Options for the strategy filter dropdown: a leading "all" entry plus
+        // the API-provided strategies (already shaped as { value, label }).
+        const strategyFilterOptions = computed(() => [
+            { value: "all", label: "All Strategies" },
+            ...(filterOptions.value.strategies || []),
+        ]);
 
         // Computed property to check if any filters are applied
         const hasFiltersApplied = computed(() => {
@@ -2308,6 +2293,7 @@ export default {
             filters,
             volumeRanges,
             pnlRanges,
+            strategyFilterOptions,
             hasFiltersApplied,
             applyFilters,
             clearFilters,

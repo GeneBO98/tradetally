@@ -124,20 +124,17 @@
                         <label for="syncFrequency" class="label"
                             >Sync Frequency</label
                         >
-                        <select
-                            id="syncFrequency"
+                        <BaseSelect
                             v-model="form.syncFrequency"
-                            class="input"
-                        >
-                            <option value="hourly">Every hour</option>
-                            <option value="every_4_hours">Every 4 hours</option>
-                            <option value="every_6_hours">Every 6 hours</option>
-                            <option value="every_12_hours">
-                                Every 12 hours
-                            </option>
-                            <option value="daily">Daily</option>
-                            <option value="manual">Manual only</option>
-                        </select>
+                            :options="[
+                                { value: 'hourly', label: 'Every hour' },
+                                { value: 'every_4_hours', label: 'Every 4 hours' },
+                                { value: 'every_6_hours', label: 'Every 6 hours' },
+                                { value: 'every_12_hours', label: 'Every 12 hours' },
+                                { value: 'daily', label: 'Daily' },
+                                { value: 'manual', label: 'Manual only' },
+                            ]"
+                        />
                         <p
                             class="mt-1 text-sm text-gray-500 dark:text-gray-400"
                         >
@@ -283,6 +280,7 @@
 
 <script setup>
 import { ref, computed, watch } from "vue";
+import BaseSelect from "@/components/common/BaseSelect.vue";
 import { syncRangePresets, applyPresetToForm, resolveActivePreset, todayIso } from "@/utils/syncRangePresets";
 
 const props = defineProps({

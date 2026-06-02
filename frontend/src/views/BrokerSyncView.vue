@@ -10,6 +10,36 @@
     <!-- IBKR Maintenance Notice -->
     <IBKRNoticeBanner />
 
+    <!-- Broker sync is becoming a Pro feature: grace-period notice for existing free connections -->
+    <div v-if="showGraceBanner" class="mb-6 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+      <div class="flex">
+        <svg class="h-5 w-5 text-amber-400 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+        </svg>
+        <div class="ml-3 text-sm text-amber-700 dark:text-amber-300">
+          <strong>Broker sync is becoming a Pro feature.</strong>
+          Your connected brokers will keep syncing until <strong>{{ graceEndsAtFormatted }}</strong>.
+          <router-link :to="pricingLink" class="font-medium underline">Upgrade to Pro</router-link>
+          to keep automatic syncing after that.
+        </div>
+      </div>
+    </div>
+
+    <!-- Grace window ended: sync paused for free users -->
+    <div v-else-if="showSyncPausedBanner" class="mb-6 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+      <div class="flex">
+        <svg class="h-5 w-5 text-amber-400 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+        </svg>
+        <div class="ml-3 text-sm text-amber-700 dark:text-amber-300">
+          <strong>Broker sync is paused.</strong>
+          Automatic syncing is now a Pro feature.
+          <router-link :to="pricingLink" class="font-medium underline">Upgrade to Pro</router-link>
+          to resume, or use CSV import. Your existing connections and trades are unchanged.
+        </div>
+      </div>
+    </div>
+
     <!-- Success/Error Messages -->
     <div v-if="successMessage" class="mb-6 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
       <div class="flex">
@@ -45,6 +75,7 @@
             v-for="connection in store.connections"
             :key="connection.id"
             :connection="connection"
+            :sync-disabled="!canSync"
             @sync="handleSync"
             @test="handleTest"
             @settings="openSettingsModal"
@@ -54,8 +85,8 @@
         </div>
       </div>
 
-      <!-- Add New Connection -->
-      <div class="card">
+      <!-- Add New Connection (Pro only) -->
+      <div v-if="canCreate" class="card">
         <div class="card-body">
           <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">Add Broker Connection</h3>
 
@@ -103,6 +134,66 @@
                 </div>
               </div>
             </div>
+
+            <!-- TradeStation Card -->
+            <div
+              class="p-6 border-2 rounded-lg transition-colors"
+              :class="brokerCardClass('tradestation')"
+              @click="canConnectBroker('tradestation') && handleBrokerOAuthConnect('tradestation')"
+            >
+              <div class="flex items-center space-x-4">
+                <div class="flex-shrink-0 w-12 h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg flex items-center justify-center">
+                  <div v-if="brokerConnecting.tradestation" class="animate-spin h-6 w-6 rounded-full border-2 border-emerald-200 border-t-emerald-600"></div>
+                  <span v-else class="text-emerald-600 dark:text-emerald-400 font-bold text-lg">TS</span>
+                </div>
+                <div>
+                  <h4 class="font-medium text-gray-900 dark:text-white">TradeStation</h4>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ brokerConnection('tradestation') ? 'Already connected' : brokerConnecting.tradestation ? 'Connecting...' : 'Connect via OAuth' }}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Alpaca Live Card -->
+            <div
+              class="p-6 border-2 rounded-lg transition-colors"
+              :class="brokerCardClass('alpaca', 'live')"
+              @click="canConnectBroker('alpaca', 'live') && handleBrokerOAuthConnect('alpaca', { environment: 'live' })"
+            >
+              <div class="flex items-center space-x-4">
+                <div class="flex-shrink-0 w-12 h-12 bg-cyan-100 dark:bg-cyan-900/30 rounded-lg flex items-center justify-center">
+                  <div v-if="brokerConnecting.alpacaLive" class="animate-spin h-6 w-6 rounded-full border-2 border-cyan-200 border-t-cyan-600"></div>
+                  <span v-else class="text-cyan-600 dark:text-cyan-400 font-bold text-lg">AL</span>
+                </div>
+                <div>
+                  <h4 class="font-medium text-gray-900 dark:text-white">Alpaca Live</h4>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ brokerConnection('alpaca', 'live') ? 'Already connected' : brokerConnecting.alpacaLive ? 'Connecting...' : 'Connect via OAuth' }}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Alpaca Paper Card -->
+            <div
+              class="p-6 border-2 rounded-lg transition-colors"
+              :class="brokerCardClass('alpaca', 'paper')"
+              @click="canConnectBroker('alpaca', 'paper') && handleBrokerOAuthConnect('alpaca', { environment: 'paper' })"
+            >
+              <div class="flex items-center space-x-4">
+                <div class="flex-shrink-0 w-12 h-12 bg-sky-100 dark:bg-sky-900/30 rounded-lg flex items-center justify-center">
+                  <div v-if="brokerConnecting.alpacaPaper" class="animate-spin h-6 w-6 rounded-full border-2 border-sky-200 border-t-sky-600"></div>
+                  <span v-else class="text-sky-600 dark:text-sky-400 font-bold text-lg">AP</span>
+                </div>
+                <div>
+                  <h4 class="font-medium text-gray-900 dark:text-white">Alpaca Paper</h4>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ brokerConnection('alpaca', 'paper') ? 'Already connected' : brokerConnecting.alpacaPaper ? 'Connecting...' : 'Connect via OAuth' }}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- Schwab Note -->
@@ -113,6 +204,13 @@
           </div>
         </div>
       </div>
+
+      <!-- Pro gate for free users (shown instead of the add-connection card) -->
+      <ProUpgradePrompt
+        v-else-if="showUpgradeGate"
+        variant="card"
+        description="Broker sync is a Pro feature. Connect Interactive Brokers, Schwab, TradeStation, or Alpaca to import your trades automatically. Free accounts can still import via CSV (up to 100 trades per import)."
+      />
 
       <!-- Sync History -->
       <div class="card">
@@ -197,7 +295,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useBrokerSyncStore } from '@/stores/brokerSync'
 import { useTradesStore } from '@/stores/trades'
@@ -206,6 +304,7 @@ import BrokerConnectionCard from '@/components/broker-sync/BrokerConnectionCard.
 import IBKRConnectionModal from '@/components/broker-sync/IBKRConnectionModal.vue'
 import ConnectionSettingsModal from '@/components/broker-sync/ConnectionSettingsModal.vue'
 import IBKRNoticeBanner from '@/components/broker-sync/IBKRNoticeBanner.vue'
+import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
 
 const store = useBrokerSyncStore()
 const tradesStore = useTradesStore()
@@ -213,12 +312,68 @@ const route = useRoute()
 const router = useRouter()
 const { showConfirmation, showDangerConfirmation } = useNotification()
 
+// Broker sync is a Pro feature. The backend returns the authoritative access
+// status (gated only when billing is enabled, i.e. cloud). Until it loads we
+// treat access as permissive to avoid flashing the upgrade prompt to Pro users.
+const billingEnabled = computed(() => store.access?.billingEnabled === true)
+const isPro = computed(() => store.access ? store.access.isPro : true)
+const canCreate = computed(() => store.access ? store.access.canCreate : true)
+const canSync = computed(() => store.access ? store.access.canSync : true)
+const inGracePeriod = computed(() => store.access?.inGracePeriod === true)
+
+// Show the Pro gate only for free users on a billing-enabled (cloud) instance.
+const showUpgradeGate = computed(() => billingEnabled.value && !isPro.value)
+// Grandfathered free users still syncing during the grace window.
+const showGraceBanner = computed(() => showUpgradeGate.value && inGracePeriod.value && store.hasConnections)
+// Grace window has ended for a free user who still has connections.
+const showSyncPausedBanner = computed(() => showUpgradeGate.value && !canSync.value && store.hasConnections)
+
+const graceEndsAtFormatted = computed(() => {
+  if (!store.access?.graceEndsAt) return ''
+  return new Date(store.access.graceEndsAt).toLocaleDateString(undefined, {
+    year: 'numeric', month: 'long', day: 'numeric'
+  })
+})
+
+const pricingLink = computed(() => `/pricing?redirect=${encodeURIComponent(route.fullPath)}`)
+
 const showIBKRModal = ref(false)
 const showSettingsModal = ref(false)
 const selectedConnection = ref(null)
 const successMessage = ref('')
 const schwabConnecting = ref(false)
+const brokerConnecting = ref({
+  tradestation: false,
+  alpacaLive: false,
+  alpacaPaper: false
+})
 const SCHWAB_PENDING_STORAGE_KEY = 'broker_sync_schwab_pending'
+const BROKER_PENDING_STORAGE_KEY = 'broker_sync_pending'
+
+function brokerConnection(broker, environment = null) {
+  return store.connections.find(connection =>
+    connection.brokerType === broker &&
+    (!environment || (connection.brokerEnvironment || 'live') === environment)
+  )
+}
+
+function pendingKeyFor(broker, options = {}) {
+  if (broker === 'alpaca') {
+    return options.environment === 'paper' ? 'alpacaPaper' : 'alpacaLive'
+  }
+  return broker
+}
+
+function canConnectBroker(broker, environment = null) {
+  const key = pendingKeyFor(broker, { environment })
+  return !brokerConnection(broker, environment) && !brokerConnecting.value[key]
+}
+
+function brokerCardClass(broker, environment = null) {
+  return canConnectBroker(broker, environment)
+    ? 'border-dashed border-gray-300 dark:border-gray-600 hover:border-primary-500 dark:hover:border-primary-400 cursor-pointer'
+    : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 opacity-50 cursor-not-allowed'
+}
 
 function scheduleSuccessMessage(message) {
   successMessage.value = message
@@ -226,19 +381,30 @@ function scheduleSuccessMessage(message) {
 }
 
 async function consumeOAuthCallbackState(query) {
-  const hasCallbackState = query.success === 'schwab' || Boolean(query.error)
+  const supportedSuccess = ['schwab', 'tradestation', 'alpaca']
+  const hasCallbackState = supportedSuccess.includes(query.success) || Boolean(query.error)
 
   if (!hasCallbackState) {
     if (typeof window !== 'undefined' && window.sessionStorage.getItem(SCHWAB_PENDING_STORAGE_KEY) === 'true') {
       schwabConnecting.value = true
     }
+    if (typeof window !== 'undefined') {
+      const pending = window.sessionStorage.getItem(BROKER_PENDING_STORAGE_KEY)
+      if (pending && brokerConnecting.value[pending] !== undefined) {
+        brokerConnecting.value[pending] = true
+      }
+    }
     return
   }
 
   schwabConnecting.value = false
+  Object.keys(brokerConnecting.value).forEach(key => {
+    brokerConnecting.value[key] = false
+  })
 
   if (typeof window !== 'undefined') {
     window.sessionStorage.removeItem(SCHWAB_PENDING_STORAGE_KEY)
+    window.sessionStorage.removeItem(BROKER_PENDING_STORAGE_KEY)
   }
 
   await Promise.all([
@@ -248,9 +414,15 @@ async function consumeOAuthCallbackState(query) {
 
   if (query.success === 'schwab') {
     scheduleSuccessMessage('Schwab account connected successfully. Ready to sync trades.')
+  } else if (query.success === 'tradestation') {
+    scheduleSuccessMessage('TradeStation account connected successfully. Ready to sync trades.')
+  } else if (query.success === 'alpaca') {
+    scheduleSuccessMessage('Alpaca account connected successfully. Ready to sync trades.')
   }
 
-  if (query.error) {
+  if (query.error === 'pro_required') {
+    store.error = 'Broker sync is a Pro feature. Upgrade to Pro to connect your brokerage.'
+  } else if (query.error) {
     const detail = typeof query.details === 'string' ? decodeURIComponent(query.details) : ''
     store.error = detail
       ? `Connection failed: ${detail}`
@@ -316,7 +488,29 @@ async function handleSchwabConnect() {
   }
 }
 
+async function handleBrokerOAuthConnect(broker, options = {}) {
+  const key = pendingKeyFor(broker, options)
+  try {
+    brokerConnecting.value[key] = true
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem(BROKER_PENDING_STORAGE_KEY, key)
+    }
+    const authUrl = await store.initBrokerOAuth(broker, options)
+    window.location.href = authUrl
+  } catch (error) {
+    brokerConnecting.value[key] = false
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.removeItem(BROKER_PENDING_STORAGE_KEY)
+    }
+  }
+}
+
 async function handleSync(connection) {
+  // Broker sync is a Pro feature; once the grace window ends, free users can't sync.
+  if (!canSync.value) {
+    store.error = 'Broker sync is a Pro feature. Upgrade to Pro to resume syncing, or use CSV import.'
+    return
+  }
   try {
     await store.triggerSync(connection.id)
     scheduleSuccessMessage('Sync started. Check the history below for results.')

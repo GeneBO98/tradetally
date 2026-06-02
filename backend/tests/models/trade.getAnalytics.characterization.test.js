@@ -37,7 +37,7 @@ jest.mock('../../src/models/User', () => ({
 const db = require('../../src/config/database');
 const TradeQueries = require('../../src/services/tradeQueries');
 
-// Default mock for all 7 fan-out queries: minimal shapes that satisfy
+// Default mock for all 8 fan-out queries: minimal shapes that satisfy
 // downstream processing without affecting WHERE-clause assertions.
 function defaultDbResponse() {
   return {
@@ -73,7 +73,7 @@ function defaultDbResponse() {
 
 function captureValues() {
   expect(db.query).toHaveBeenCalled();
-  // All 7 fan-out queries share the same values array. Use the first call.
+  // All 8 fan-out queries share the same values array. Use the first call.
   return db.query.mock.calls[0][1];
 }
 
@@ -107,9 +107,9 @@ describe('TradeQueries.getAnalytics characterization', () => {
       expect(sql).not.toContain("NOT COALESCE('sample' = ANY(t.tags), false)");
     });
 
-    test('all 7 fan-out queries receive identical values', async () => {
+    test('all 8 fan-out queries receive identical values', async () => {
       await TradeQueries.getAnalytics('user-1', { startDate: '2026-01-01', endDate: '2026-01-31' });
-      expect(db.query).toHaveBeenCalledTimes(7);
+      expect(db.query).toHaveBeenCalledTimes(8);
       const allValues = db.query.mock.calls.map(c => c[1]);
       // Every call gets the same params array reference (or equal values).
       const first = allValues[0];
@@ -307,22 +307,26 @@ describe('TradeQueries.getAnalytics characterization', () => {
       expect(sql).toContain('t.exit_price IS NOT NULL');
     });
 
+    // Breakeven is judged on GROSS P&L (net + commission + fees). Wins/losses
+    // exclude gross-breakeven trades and then split on net P&L.
+    const GROSS = '(t.pnl + COALESCE(t.commission, 0) + COALESCE(t.fees, 0))';
+
     test('pnlType profit: also accepts "positive"', async () => {
       await TradeQueries.getAnalytics('user-1', { pnlType: 'positive' });
       const sql = captureSql();
-      expect(sql).toContain('t.pnl > 0');
+      expect(sql).toContain(`${GROSS} <> 0 AND t.pnl > 0`);
     });
 
     test('pnlType loss: also accepts "negative"', async () => {
       await TradeQueries.getAnalytics('user-1', { pnlType: 'negative' });
       const sql = captureSql();
-      expect(sql).toContain('t.pnl < 0');
+      expect(sql).toContain(`${GROSS} <> 0 AND t.pnl < 0`);
     });
 
     test('pnlType breakeven: getAnalytics-only filter (not in findByUser)', async () => {
       await TradeQueries.getAnalytics('user-1', { pnlType: 'breakeven' });
       const sql = captureSql();
-      expect(sql).toContain('t.pnl = 0');
+      expect(sql).toContain(`${GROSS} = 0`);
     });
 
     test('hasNews=true', async () => {
@@ -401,7 +405,7 @@ describe('TradeQueries.getAnalytics characterization', () => {
         endDate: '2026-01-31',
         accounts: ['ACCT-1']
       });
-      expect(db.query).toHaveBeenCalledTimes(7);
+      expect(db.query).toHaveBeenCalledTimes(8);
     });
   });
 });

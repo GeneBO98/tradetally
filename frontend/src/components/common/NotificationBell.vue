@@ -28,7 +28,8 @@
     >
       <div
         v-if="isOpen"
-        class="absolute right-0 mt-2 w-96 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50"
+        class="absolute w-96 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50"
+        :class="placementClasses"
         @click.stop
       >
         <!-- Header -->
@@ -94,8 +95,12 @@
                     class="h-5 w-5 text-amber-500"
                   />
                   <ArrowTrendingUpIcon
-                    v-else-if="notification.type === 'level_up'"
+                    v-else-if="notification.type === 'level_up' || notification.type === 'portfolio_alert'"
                     class="h-5 w-5 text-emerald-500"
+                  />
+                  <BellIcon
+                    v-else-if="notification.type === 'web_mention_alert'"
+                    class="h-5 w-5 text-primary-500"
                   />
                   <BellIcon v-else class="h-5 w-5 text-gray-400" />
                 </div>
@@ -116,6 +121,9 @@
                   <!-- Additional info for price alerts -->
                   <div v-if="notification.type === 'price_alert' && notification.trigger_price" class="text-xs text-gray-500 dark:text-gray-400 mt-1">
                     Triggered at ${{ parseFloat(notification.trigger_price).toFixed(2) }}
+                  </div>
+                  <div v-if="notification.type === 'web_mention_alert' && notification.metadata?.article_count" class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    {{ notification.metadata.article_count }} distinct articles
                   </div>
                 </div>
 
@@ -168,6 +176,21 @@ import {
 } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
+
+const props = defineProps({
+  placement: {
+    type: String,
+    default: 'bottom-right',
+    validator: (v) => ['bottom-right', 'top-left'].includes(v)
+  }
+})
+
+const placementClasses = computed(() => {
+  if (props.placement === 'top-left') {
+    return 'bottom-full left-0 mb-2'
+  }
+  return 'right-0 mt-2'
+})
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { useNotificationCenter } from '@/composables/useNotificationCenter'
 import { useNotification } from '@/composables/useNotification'
@@ -344,9 +367,11 @@ const markAllAsRead = async () => {
       showError('Notifications', message)
       return
     }
+    await response.json()
 
-    // Update local state
-    notifications.value = notifications.value.map(n => ({ ...n, is_read: true }))
+    // The bell only shows unread notifications, so clear them immediately.
+    notifications.value = []
+    setRecentUnreadNotifications([])
     clearUnreadState()
 
     // Refresh the notifications and unread count to make sure they're accurate
@@ -430,6 +455,10 @@ const handleNotificationClick = async (notification) => {
     router.push('/leaderboard')
   } else if (notification.type === 'behavioral_alert') {
     router.push('/metrics/behavioral')
+  } else if (notification.type === 'portfolio_alert') {
+    router.push({ path: '/analysis', query: { tab: 'holdings' } })
+  } else if (notification.type === 'web_mention_alert') {
+    router.push('/web-mentions')
   }
   
   closeDropdown()

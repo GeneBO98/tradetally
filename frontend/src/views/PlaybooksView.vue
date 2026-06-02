@@ -215,21 +215,27 @@
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Side</label>
-                <select v-model="form.side" class="input">
-                  <option value="both">Both</option>
-                  <option value="long">Long</option>
-                  <option value="short">Short</option>
-                </select>
+                <BaseSelect
+                  v-model="form.side"
+                  :options="[
+                    { value: 'both', label: 'Both' },
+                    { value: 'long', label: 'Long' },
+                    { value: 'short', label: 'Short' },
+                  ]"
+                />
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Timeframe</label>
-                <select v-model="form.timeframe" class="input">
-                  <option value="">Any</option>
-                  <option value="scalper">Scalper</option>
-                  <option value="day_trading">Day Trading</option>
-                  <option value="swing">Swing</option>
-                  <option value="position">Position</option>
-                </select>
+                <BaseSelect
+                  v-model="form.timeframe"
+                  placeholder="Any"
+                  :options="[
+                    { value: 'scalper', label: 'Scalper' },
+                    { value: 'day_trading', label: 'Day Trading' },
+                    { value: 'swing', label: 'Swing' },
+                    { value: 'position', label: 'Position' },
+                  ]"
+                />
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Minimum Target R</label>
@@ -237,15 +243,81 @@
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Required Strategy</label>
-                <input v-model="form.requiredStrategy" type="text" class="input" maxlength="100" />
+                <input
+                  v-if="showStrategyInput"
+                  v-model="form.requiredStrategy"
+                  type="text"
+                  class="input"
+                  maxlength="100"
+                  placeholder="Enter strategy name"
+                  @keydown.enter.prevent="showStrategyInput = false"
+                  @blur="showStrategyInput = false"
+                />
+                <BaseSelect
+                  v-else
+                  :model-value="form.requiredStrategy"
+                  placeholder="Any strategy"
+                  :options="strategySelectOptions"
+                  @change="handleStrategySelect"
+                />
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Required Setup</label>
-                <input v-model="form.requiredSetup" type="text" class="input" maxlength="100" />
+                <input
+                  v-if="showSetupInput"
+                  v-model="form.requiredSetup"
+                  type="text"
+                  class="input"
+                  maxlength="100"
+                  placeholder="Enter setup name"
+                  @keydown.enter.prevent="showSetupInput = false"
+                  @blur="showSetupInput = false"
+                />
+                <BaseSelect
+                  v-else
+                  :model-value="form.requiredSetup"
+                  placeholder="Any setup"
+                  :options="setupSelectOptions"
+                  @change="handleSetupSelect"
+                />
               </div>
               <div class="md:col-span-2">
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Required Tags</label>
-                <input v-model="requiredTagsInput" type="text" class="input" placeholder="Comma-separated tags" />
+                <div class="flex flex-wrap gap-1.5 mb-2" v-if="selectedTags.length > 0">
+                  <span
+                    v-for="tag in selectedTags"
+                    :key="tag"
+                    class="inline-flex items-center gap-1 rounded-full bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 px-2.5 py-1 text-xs font-medium"
+                  >
+                    {{ tag }}
+                    <button
+                      type="button"
+                      @click="removeTagFromRequired(tag)"
+                      class="hover:text-primary-900 dark:hover:text-primary-100"
+                      :aria-label="`Remove ${tag}`"
+                    >
+                      &times;
+                    </button>
+                  </span>
+                </div>
+                <div class="flex gap-2">
+                  <BaseSelect
+                    v-if="!showTagInput"
+                    :model-value="''"
+                    :placeholder="availableTagSuggestions.length > 0 ? 'Add a tag…' : 'No existing tags — add a new one'"
+                    :options="tagSelectOptions"
+                    @change="handleTagSelect"
+                  />
+                  <input
+                    v-else
+                    v-model="newTagDraft"
+                    type="text"
+                    class="input"
+                    placeholder="Type new tag and press Enter"
+                    @keydown.enter.prevent="commitNewTag"
+                    @blur="commitNewTag"
+                  />
+                </div>
               </div>
               <label class="inline-flex items-center gap-3 rounded-xl border border-gray-200 dark:border-gray-700 px-4 py-3 md:col-span-2">
                 <input v-model="form.requireStopLoss" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
@@ -312,6 +384,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import api from '@/services/api'
 import { useNotification } from '@/composables/useNotification'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 
 const { showSuccess, showError, showConfirmation } = useNotification()
 
@@ -325,6 +398,108 @@ const analytics = ref({
 })
 const selectedPlaybookId = ref(null)
 const requiredTagsInput = ref('')
+const strategiesList = ref([])
+const setupsList = ref([])
+const tagsList = ref([])
+const showStrategyInput = ref(false)
+const showSetupInput = ref(false)
+const showTagInput = ref(false)
+const newTagDraft = ref('')
+
+const selectedTags = computed(() =>
+  requiredTagsInput.value
+    .split(',')
+    .map(tag => tag.trim())
+    .filter(Boolean)
+)
+
+const availableTagSuggestions = computed(() => {
+  const current = new Set(selectedTags.value.map(tag => tag.toLowerCase()))
+  return tagsList.value.filter(tag => !current.has(tag.toLowerCase()))
+})
+
+function handleStrategySelect(value) {
+  if (value === '__custom__') {
+    form.requiredStrategy = ''
+    showStrategyInput.value = true
+    return
+  }
+  form.requiredStrategy = value
+}
+
+function handleSetupSelect(value) {
+  if (value === '__custom__') {
+    form.requiredSetup = ''
+    showSetupInput.value = true
+    return
+  }
+  form.requiredSetup = value
+}
+
+function handleTagSelect(value) {
+  if (!value) return
+  if (value === '__custom__') {
+    newTagDraft.value = ''
+    showTagInput.value = true
+    return
+  }
+  addTagToRequired(value)
+}
+
+const strategySelectOptions = computed(() => {
+  const options = []
+  if (form.requiredStrategy && !strategiesList.value.includes(form.requiredStrategy)) {
+    options.push({ value: form.requiredStrategy, label: form.requiredStrategy })
+  }
+  strategiesList.value.forEach(strategy => {
+    options.push({ value: strategy, label: strategy })
+  })
+  options.push({ value: '__custom__', label: '+ Add New Strategy' })
+  return options
+})
+
+const setupSelectOptions = computed(() => {
+  const options = []
+  if (form.requiredSetup && !setupsList.value.includes(form.requiredSetup)) {
+    options.push({ value: form.requiredSetup, label: form.requiredSetup })
+  }
+  setupsList.value.forEach(setup => {
+    options.push({ value: setup, label: setup })
+  })
+  options.push({ value: '__custom__', label: '+ Add New Setup' })
+  return options
+})
+
+const tagSelectOptions = computed(() => {
+  const options = availableTagSuggestions.value.map(tag => ({ value: tag, label: tag }))
+  options.push({ value: '__custom__', label: '+ Add New Tag' })
+  return options
+})
+
+function addTagToRequired(tag) {
+  const trimmed = String(tag || '').trim()
+  if (!trimmed) return
+  if (selectedTags.value.some(part => part.toLowerCase() === trimmed.toLowerCase())) {
+    return
+  }
+  const next = [...selectedTags.value, trimmed]
+  requiredTagsInput.value = next.join(', ')
+}
+
+function removeTagFromRequired(tag) {
+  requiredTagsInput.value = selectedTags.value
+    .filter(part => part.toLowerCase() !== tag.toLowerCase())
+    .join(', ')
+}
+
+function commitNewTag() {
+  const value = newTagDraft.value.trim()
+  if (value) {
+    addTagToRequired(value)
+  }
+  newTagDraft.value = ''
+  showTagInput.value = false
+}
 
 let checklistLocalId = 0
 
@@ -374,11 +549,19 @@ function resetForm() {
   form.requireStopLoss = false
   form.minimumTargetR = null
   form.checklistItems = [createChecklistItem()]
+  showStrategyInput.value = false
+  showSetupInput.value = false
+  showTagInput.value = false
+  newTagDraft.value = ''
 }
 
 function selectPlaybook(playbook) {
   selectedPlaybookId.value = playbook.id
   requiredTagsInput.value = (playbook.requiredTags || []).join(', ')
+  showStrategyInput.value = false
+  showSetupInput.value = false
+  showTagInput.value = false
+  newTagDraft.value = ''
   form.id = playbook.id
   form.name = playbook.name
   form.description = playbook.description || ''
@@ -418,13 +601,25 @@ function removeChecklistItem(index) {
 async function loadData() {
   try {
     loading.value = true
-    const [playbookResponse, analyticsResponse] = await Promise.all([
+    const [playbookResponse, analyticsResponse, strategiesResponse, setupsResponse, tagsResponse] = await Promise.all([
       api.get('/playbooks', { params: { includeArchived: true } }),
-      api.get('/playbooks/analytics')
+      api.get('/playbooks/analytics'),
+      api.get('/trades/strategies').catch(() => ({ data: { strategies: [] } })),
+      api.get('/trades/setups').catch(() => ({ data: { setups: [] } })),
+      api.get('/tags').catch(() => ({ data: { tags: [] } }))
     ])
 
     playbooks.value = playbookResponse.data.playbooks || []
     analytics.value = analyticsResponse.data
+    strategiesList.value = strategiesResponse.data?.strategies || []
+    setupsList.value = setupsResponse.data?.setups || []
+    tagsList.value = Array.from(
+      new Set(
+        (tagsResponse.data?.tags || [])
+          .map(tag => (typeof tag === 'string' ? tag : tag?.name))
+          .filter(name => typeof name === 'string' && name.trim().length > 0)
+      )
+    ).sort((a, b) => a.localeCompare(b))
 
     if (selectedPlaybookId.value) {
       const selected = playbooks.value.find(playbook => playbook.id === selectedPlaybookId.value)

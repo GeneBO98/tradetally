@@ -22,6 +22,12 @@ jest.mock('../../src/utils/timezone', () => ({
 
 jest.mock('../../src/services/achievementService', () => ({}));
 
+// pnlType filters consult the user's breakeven tolerance via User.getSettings;
+// mock it so it doesn't issue its own db.query (keeps the single-query assertion).
+jest.mock('../../src/models/User', () => ({
+  getSettings: jest.fn().mockResolvedValue({ statistics_calculation: 'average' })
+}));
+
 const db = require('../../src/config/database');
 const TradeQueries = require('../../src/services/tradeQueries');
 
@@ -40,17 +46,13 @@ describe('TradeQueries.findByUser characterization', () => {
   });
 
   describe('baseline', () => {
-    test('no filters: only user_id binding, sample-data excluded by default', async () => {
+    test('no filters: only user_id binding, sample trades treated as normal', async () => {
       await TradeQueries.findByUser('user-1', {});
       const { sql, values } = captureQuery();
       expect(values).toEqual(['user-1']);
       expect(sql).toContain('WHERE t.user_id = $1');
-      expect(sql).toContain("NOT COALESCE('sample' = ANY(t.tags), false)");
-    });
-
-    test('includeSampleData=true: sample-data exclusion is dropped', async () => {
-      await TradeQueries.findByUser('user-1', { includeSampleData: true });
-      const { sql } = captureQuery();
+      // Sample-tagged trades are no longer excluded by the WHERE builder; they
+      // are treated as normal trades and removed via the dedicated action.
       expect(sql).not.toContain("NOT COALESCE('sample' = ANY(t.tags), false)");
     });
   });
@@ -375,14 +377,11 @@ describe('TradeQueries.findByUser characterization', () => {
   });
 
   describe('sample-data exclusion interactions', () => {
-    test('default: sample exclusion appears before any user-supplied filters', async () => {
+    test('no sample exclusion is injected alongside user-supplied filters', async () => {
       await TradeQueries.findByUser('user-1', { side: 'long' });
       const { sql } = captureQuery();
-      const sampleIdx = sql.indexOf("NOT COALESCE('sample' = ANY(t.tags), false)");
-      const sideIdx = sql.indexOf('t.side = $2');
-      expect(sampleIdx).toBeGreaterThan(-1);
-      expect(sideIdx).toBeGreaterThan(-1);
-      expect(sampleIdx).toBeLessThan(sideIdx);
+      expect(sql).not.toContain("NOT COALESCE('sample' = ANY(t.tags), false)");
+      expect(sql).toContain('t.side = $2');
     });
   });
 });

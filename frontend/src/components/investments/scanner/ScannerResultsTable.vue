@@ -9,17 +9,19 @@
 
       <div class="flex items-center space-x-2">
         <label class="text-sm text-gray-500 dark:text-gray-400">Sort by:</label>
-        <select
-          :value="sortBy"
-          @change="handleSortChange"
-          class="text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 rounded-md focus:ring-primary-500 focus:border-primary-500"
-        >
-          <option value="pillars_passed">Pillars Passed</option>
-          <option value="symbol">Symbol</option>
-          <option value="company_name">Company</option>
-          <option value="current_price">Price</option>
-          <option value="market_cap">Market Cap</option>
-        </select>
+        <div class="w-44">
+          <BaseSelect
+            :model-value="sortBy"
+            @change="handleSortChange"
+            :options="[
+              { value: 'pillars_passed', label: 'Pillars Passed' },
+              { value: 'symbol', label: 'Symbol' },
+              { value: 'company_name', label: 'Company' },
+              { value: 'current_price', label: 'Price' },
+              { value: 'market_cap', label: 'Market Cap' },
+            ]"
+          />
+        </div>
       </div>
     </div>
 
@@ -164,6 +166,7 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useScannerStore } from '@/stores/scanner'
 import StockLogo from '@/components/common/StockLogo.vue'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 
 const router = useRouter()
 const scannerStore = useScannerStore()
@@ -174,8 +177,8 @@ const loading = computed(() => scannerStore.loading)
 const sortBy = computed(() => scannerStore.sortBy)
 const pillarNames = scannerStore.pillarNames
 
-function handleSortChange(event) {
-  scannerStore.setSort(event.target.value)
+function handleSortChange(value) {
+  scannerStore.setSort(value)
   scannerStore.fetchResults(1)
 }
 

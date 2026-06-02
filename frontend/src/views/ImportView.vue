@@ -152,36 +152,11 @@
 
             <div>
               <label for="broker" class="label">Broker Format</label>
-              <select id="broker" v-model="selectedBroker" required class="input">
-                <option value="auto">Auto-Detect (Recommended)</option>
-                <option disabled>--- Or select your broker ---</option>
-                <option value="generic">Generic CSV</option>
-                <option value="lightspeed">Lightspeed Trader</option>
-                <option value="schwab">Charles Schwab</option>
-                <option value="thinkorswim">ThinkorSwim</option>
-                <option value="ibkr">Interactive Brokers</option>
-                <option value="captrader">CapTrader</option>
-                <option value="webull">Webull</option>
-                <option value="etrade">E*TRADE</option>
-                <option value="firstrade">Firstrade (Alpha)</option>
-                <option value="papermoney">PaperMoney</option>
-                <option value="tradervue">TraderVue</option>
-                <option value="tradingview">TradingView</option>
-                <option value="avatrade">AvaTrade</option>
-                <option value="tradovate">Tradovate</option>
-                <option value="questrade">Questrade</option>
-                <option value="tradestation">TradeStation</option>
-                <option value="tastytrade">Tastytrade</option>
-                <optgroup v-if="customMappings.length > 0" label="Custom Importers">
-                  <option
-                    v-for="mapping in customMappings"
-                    :key="mapping.id"
-                    :value="`custom:${mapping.id}`"
-                  >
-                    {{ mapping.mapping_name }}
-                  </option>
-                </optgroup>
-              </select>
+              <BaseSelect
+                v-model="selectedBroker"
+                noun="brokers"
+                :options="brokerFormatOptions"
+              />
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 We'll automatically detect your broker from the CSV file. Select a specific broker only if auto-detection doesn't work.
               </p>
@@ -190,16 +165,24 @@
             <!-- Account Selection (only shown if user has defined accounts) -->
             <div v-if="requiresAccountSelection">
               <label for="account" class="label">Trading Account</label>
-              <select id="account" v-model="selectedAccountId" class="input">
-                <option :value="null">Select account...</option>
-                <option v-for="account in accounts" :key="account.id" :value="account.id">
-                  {{ account.name }}{{ account.identifier ? ` (${redactAccountId(account.identifier)})` : '' }}{{ account.broker ? ` - ${formatBrokerName(account.broker)}` : '' }}
-                </option>
-                <option value="none">None (different broker/account)</option>
-              </select>
+              <BaseSelect id="account" v-model="selectedAccountId" :options="accountOptions" />
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 Select a trading account to associate with this import, or choose "None" if importing from a different broker.
                 <router-link to="/accounts" class="text-primary-600 hover:text-primary-500">Manage accounts</router-link>
+              </p>
+            </div>
+
+            <div>
+              <label for="import-strategy" class="label">Strategy (optional)</label>
+              <BaseSelect
+                id="import-strategy"
+                v-model="selectedImportStrategy"
+                noun="strategies"
+                placeholder="Auto-detect from trade data"
+                :options="importStrategyOptions"
+              />
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Leave unset to classify each trade automatically. Choose a strategy to apply it to every trade in this import.
               </p>
             </div>
 
@@ -1257,7 +1240,10 @@ const CSVColumnMappingModal = defineAsyncComponent(() => import('@/components/im
 const BrokerMismatchModal = defineAsyncComponent(() => import('@/components/import/BrokerMismatchModal.vue'))
 const ImportResultsModal = defineAsyncComponent(() => import('@/components/import/ImportResultsModal.vue'))
 import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotifications'
+import { useStrategyOrder } from '@/composables/useStrategyOrder'
+import { parseCSVHeaders, parseCSVSampleRows } from '@/utils/csvImportParse'
 
 const tradesStore = useTradesStore()
 const authStore = useAuthStore()
@@ -1292,6 +1278,9 @@ const startingTrial = ref(false)
 const accounts = ref([])
 const requiresAccountSelection = ref(false)
 const selectedAccountId = ref(null)
+const selectedImportStrategy = ref('')
+const importStrategiesList = ref([])
+const { orderNames: orderImportStrategyNames, refresh: refreshStrategyOrder } = useStrategyOrder()
 const currencyProMessage = ref('')
 const fileInput = ref(null)
 const selectAllCheckbox = ref(null)
@@ -1358,6 +1347,43 @@ const csvHeaders = ref([])
 const csvSampleRows = ref({})
 const currentMappingFile = ref(null)
 const customMappings = ref([])
+
+// Grouped options for the Broker Format dropdown: auto-detect on its own,
+// then the supported brokers, then any user-defined custom importers.
+const brokerFormatOptions = computed(() => {
+  const groups = [
+    { label: null, options: [{ value: 'auto', label: 'Auto-Detect (Recommended)' }] },
+    {
+      label: 'Or select your broker',
+      options: [
+        { value: 'generic', label: 'Generic CSV' },
+        { value: 'lightspeed', label: 'Lightspeed Trader' },
+        { value: 'schwab', label: 'Charles Schwab' },
+        { value: 'thinkorswim', label: 'ThinkorSwim' },
+        { value: 'ibkr', label: 'Interactive Brokers' },
+        { value: 'captrader', label: 'CapTrader' },
+        { value: 'webull', label: 'Webull' },
+        { value: 'etrade', label: 'E*TRADE' },
+        { value: 'firstrade', label: 'Firstrade (Alpha)' },
+        { value: 'papermoney', label: 'PaperMoney' },
+        { value: 'tradervue', label: 'TraderVue' },
+        { value: 'tradingview', label: 'TradingView' },
+        { value: 'avatrade', label: 'AvaTrade' },
+        { value: 'tradovate', label: 'Tradovate' },
+        { value: 'questrade', label: 'Questrade' },
+        { value: 'tradestation', label: 'TradeStation' },
+        { value: 'tastytrade', label: 'Tastytrade' }
+      ]
+    }
+  ]
+  if (customMappings.value.length > 0) {
+    groups.push({
+      label: 'Custom Importers',
+      options: customMappings.value.map(m => ({ value: `custom:${m.id}`, label: m.mapping_name }))
+    })
+  }
+  return groups
+})
 const showCustomMappings = ref(false)
 const showCusipManagement = ref(false)
 const deletingMappingId = ref(null)
@@ -1602,6 +1628,17 @@ const accountReadinessMessage = computed(() => {
   return 'Pick an account before starting import.'
 })
 
+const accountOptions = computed(() => {
+  const opts = [{ value: null, label: 'Select account...' }]
+  for (const account of accounts.value) {
+    const identifier = account.identifier ? ` (${redactAccountId(account.identifier)})` : ''
+    const broker = account.broker ? ` - ${formatBrokerName(account.broker)}` : ''
+    opts.push({ value: account.id, label: `${account.name}${identifier}${broker}` })
+  }
+  opts.push({ value: 'none', label: 'None (different broker/account)' })
+  return opts
+})
+
 const fileReadinessMessage = computed(() => {
   if (!selectedFile.value) return 'Upload a CSV file to start.'
   if (isAnalyzingFile.value) return 'Analyzing your file before import.'
@@ -1609,6 +1646,28 @@ const fileReadinessMessage = computed(() => {
   if (!fileAnalysis.value.formatDetected) return 'This file may need Generic CSV or column mapping.'
   return `This file looks import-ready${fileAnalysis.value.detectedBroker ? ` for ${formatBrokerName(fileAnalysis.value.detectedBroker)}` : ''}.`
 })
+
+const importStrategyOptions = computed(() =>
+  orderImportStrategyNames(importStrategiesList.value).map((strategy) => ({
+    value: strategy,
+    label: strategy.replace(/_/g, ' ')
+  }))
+)
+
+function resolveImportStrategyParam() {
+  const value = selectedImportStrategy.value?.trim()
+  return value || null
+}
+
+async function fetchImportStrategies() {
+  try {
+    const response = await api.get('/trades/strategies')
+    importStrategiesList.value = response.data?.strategies || []
+  } catch (err) {
+    console.warn('[IMPORT] Failed to load strategies for import:', err?.message)
+    importStrategiesList.value = []
+  }
+}
 
 const importButtonLabel = computed(() => {
   if (fileAnalysis.value.rowCount && fileAnalysis.value.rowCount > 0) {
@@ -1782,128 +1841,6 @@ async function countCSVRows(file) {
   })
 }
 
-// Parse CSV headers from file
-async function parseCSVSampleRows(file, headers, count = 2) {
-  if (!file || !headers || headers.length === 0) return {}
-  return new Promise((resolve) => {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      try {
-        const text = e.target.result
-        const lines = text.split('\n')
-
-        let headerLineIdx = -1
-        for (let i = 0; i < Math.min(15, lines.length); i++) {
-          const line = lines[i].trim()
-          if (!line || !line.includes(',')) continue
-          const lower = line.toLowerCase()
-          if ((lower.includes('date') && lower.includes('time') && lower.includes('type')) ||
-              (lower.includes('symbol') && (lower.includes('quantity') || lower.includes('qty') || lower.includes('price'))) ||
-              (lower.includes('action') && lower.includes('description')) ||
-              (lower.includes('trade number') || lower.includes('order id'))) {
-            headerLineIdx = i
-            break
-          }
-          if (headerLineIdx === -1) headerLineIdx = i
-        }
-
-        if (headerLineIdx === -1) {
-          resolve({})
-          return
-        }
-
-        const delimiters = [',', ';', '\t', '|']
-        let delimiter = ','
-        for (const d of delimiters) {
-          if (lines[headerLineIdx].split(d).length > 1) {
-            delimiter = d
-            break
-          }
-        }
-
-        const samples = {}
-        headers.forEach(h => { samples[h] = [] })
-        let collected = 0
-        for (let i = headerLineIdx + 1; i < lines.length && collected < count; i++) {
-          const line = lines[i].trim()
-          if (!line) continue
-          const cols = line.split(delimiter).map(c => c.trim().replace(/^["']|["']$/g, ''))
-          headers.forEach((h, idx) => {
-            if (cols[idx] !== undefined) samples[h].push(cols[idx])
-          })
-          collected++
-        }
-        resolve(samples)
-      } catch {
-        resolve({})
-      }
-    }
-    reader.onerror = () => resolve({})
-    reader.readAsText(file)
-  })
-}
-
-async function parseCSVHeaders(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      try {
-        const text = e.target.result
-        const lines = text.split('\n')
-
-        // Find the header line - prefer lines that look like actual column headers
-        // (e.g., containing "date", "time", "type") over title/section rows
-        // This handles ThinkorSwim CSVs that start with "Account Statement for..."
-        let headerLine = ''
-        let fallbackLine = ''
-        for (let i = 0; i < Math.min(15, lines.length); i++) {
-          const line = lines[i].trim()
-          if (!line || !line.includes(',')) continue
-          const lower = line.toLowerCase()
-          // Check if this looks like a real header row with column names
-          if ((lower.includes('date') && lower.includes('time') && lower.includes('type')) ||
-              (lower.includes('symbol') && (lower.includes('quantity') || lower.includes('qty') || lower.includes('price'))) ||
-              (lower.includes('action') && lower.includes('description')) ||
-              (lower.includes('trade number') || lower.includes('order id'))) {
-            headerLine = line
-            break
-          }
-          // Keep the first non-empty line as a fallback
-          if (!fallbackLine) {
-            fallbackLine = line
-          }
-        }
-        if (!headerLine) {
-          headerLine = fallbackLine
-        }
-
-        if (!headerLine) {
-          resolve([])
-          return
-        }
-
-        // Try different delimiters
-        let headers = []
-        const delimiters = [',', ';', '\t', '|']
-
-        for (const delimiter of delimiters) {
-          const cols = headerLine.split(delimiter).map(h => h.trim().replace(/^["']|["']$/g, ''))
-          if (cols.length > 1) {
-            headers = cols
-            break
-          }
-        }
-
-        resolve(headers.filter(h => h))
-      } catch (error) {
-        reject(error)
-      }
-    }
-    reader.onerror = () => reject(reader.error)
-    reader.readAsText(file)
-  })
-}
-
 function detectBrokerFromHeaders(headers) {
   if (!headers || headers.length === 0) return false
 
@@ -2001,6 +1938,13 @@ function detectBrokerFromHeaders(headers) {
     return 'tradovate'
   }
 
+  // NinjaTrader grid export (semicolon-delimited, European decimals in price)
+  if (headersStr.includes('instrument') && headersStr.includes('action') &&
+      headersStr.includes('quantity') && headersStr.includes('price') &&
+      (headersStr.includes('e/x') || headersStr.includes('order id'))) {
+    return 'generic'
+  }
+
   // Questrade detection
   if (headersStr.includes('fill qty') && headersStr.includes('fill price') &&
       headersStr.includes('exec time') && headersStr.includes('option') &&
@@ -2024,7 +1968,9 @@ function detectBrokerFromHeaders(headers) {
 
   // Generic CSV detection - check if it has basic required fields
   // Include common non-English equivalents for broader detection
-  const hasSymbol = lowerHeaders.some(h => h.includes('symbol') || h.includes('ticker') || h.includes('stock'))
+  const hasSymbol = lowerHeaders.some(h =>
+    h.includes('symbol') || h.includes('ticker') || h.includes('stock') || h === 'instrument'
+  )
   const hasSide = lowerHeaders.some(h => h.includes('side') || h.includes('direction') || h.includes('type') || h.includes('action') ||
     h.includes('seite') || h.includes('côté') || h.includes('lado'))
   const hasQuantity = lowerHeaders.some(h => h.includes('quantity') || h.includes('qty') || h.includes('shares') || h.includes('size') ||
@@ -2271,7 +2217,13 @@ async function handleImport() {
     }
 
     importStage.value = `Uploading and processing${tradeCount ? ` ~${tradeCount} trades` : ''}...`
-    const result = await tradesStore.importTrades(selectedFile.value, broker, mappingId, accountIdToSend)
+    const result = await tradesStore.importTrades(
+      selectedFile.value,
+      broker,
+      mappingId,
+      accountIdToSend,
+      resolveImportStrategyParam()
+    )
     console.log('Import result:', result)
     importStage.value = 'Processing trades...'
     showSuccess('Import Started', `Import has been queued. Import ID: ${result.importId}`)
@@ -2279,7 +2231,8 @@ async function handleImport() {
       broker,
       mapping_id: mappingId,
       import_id: result.importId,
-      estimated_rows: tradeCount
+      estimated_rows: tradeCount,
+      import_strategy: resolveImportStrategyParam() || 'auto'
     })
 
     // Save broker preference to localStorage
@@ -2425,7 +2378,13 @@ async function handleKeepBrokerSelected(selectedBrokerValue) {
       accountIdToSend = selectedAccountId.value
     }
 
-    const result = await tradesStore.importTrades(selectedFile.value, broker, mappingId, accountIdToSend)
+    const result = await tradesStore.importTrades(
+      selectedFile.value,
+      broker,
+      mappingId,
+      accountIdToSend,
+      resolveImportStrategyParam()
+    )
     console.log('Import result:', result)
     importStage.value = 'Processing trades...'
     showSuccess('Import Started', `Import has been queued. Import ID: ${result.importId}`)
@@ -2433,6 +2392,7 @@ async function handleKeepBrokerSelected(selectedBrokerValue) {
       broker,
       mapping_id: mappingId,
       import_id: result.importId,
+      import_strategy: resolveImportStrategyParam() || 'auto',
       path: 'broker_mismatch_keep_selected'
     })
 
@@ -3174,7 +3134,7 @@ function pollImportStatus(importId) {
             `The import completed but no trades were found.\n\nSuggestions:\n${suggestions.map((s, i) => `${i + 1}. ${s}`).join('\n')}`,
             {
               confirmText: 'OK',
-              linkUrl: 'https://docs.tradetally.io/usage/importing-trades/#supported-brokers',
+              linkUrl: 'https://tradetally.io/docs/usage/importing-trades/#supported-brokers',
               linkText: 'View Documentation'
             }
           )
@@ -3384,7 +3344,13 @@ async function handleMappingSaved(mapping) {
   try {
     // Import with the mapping ID (convert "none" to null)
     const accountIdToSend = selectedAccountId.value === 'none' ? null : selectedAccountId.value
-    const result = await tradesStore.importTrades(currentMappingFile.value, 'generic', mapping.id, accountIdToSend)
+    const result = await tradesStore.importTrades(
+      currentMappingFile.value,
+      'generic',
+      mapping.id,
+      accountIdToSend,
+      resolveImportStrategyParam()
+    )
     console.log('Import result:', result)
     importStage.value = 'Processing trades...'
     showSuccess('Import Started', `Import has been queued. Import ID: ${result.importId}`)
@@ -3508,6 +3474,9 @@ onMounted(() => {
     onboarding_step: authStore.onboardingStep || null,
     has_existing_imports: importHistory.value.length > 0
   })
+
+  refreshStrategyOrder()
+  runWhenIdle(() => fetchImportStrategies())
 
   // Load saved broker preference
   const savedBroker = localStorage.getItem('lastSelectedBroker')

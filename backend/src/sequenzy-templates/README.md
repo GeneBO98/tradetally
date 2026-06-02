@@ -52,7 +52,3 @@ Suggested slugs and variables:
 `subscription-welcome.html`
 - Slug: `subscription-welcome`
 - Vars: `username`, `plan_name`, `support_email`, `dashboard_url`
-
-`support-request.html`
-- Slug: `support-request`
-- Vars: `username`, `user_email`, `tier`, `support_subject`, `message_html`

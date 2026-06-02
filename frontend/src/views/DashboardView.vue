@@ -37,20 +37,28 @@
           </div>
         </div>
         
-        <!-- Filters and Customization Controls -->
-        <div class="mt-4 sm:mt-0 flex flex-wrap gap-3 items-center justify-end">
+        <!-- Filters and Customization Controls — icon-only to keep the header
+             clean. Filter button shows a dot when a non-default range is
+             active. Customize button highlights primary when in edit mode. -->
+        <div class="mt-4 sm:mt-0 flex flex-wrap gap-2 items-center justify-end">
           <div class="relative" data-dropdown="timeRange">
             <button
               @click.stop="showTimeRangeDropdown = !showTimeRangeDropdown"
-              class="input text-sm text-left flex items-center justify-between min-w-[160px]"
+              class="relative w-10 h-10 inline-flex items-center justify-center rounded-md border bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
               type="button"
+              :title="`Date range: ${getSelectedTimeRangeText()}`"
+              aria-label="Date range filter"
             >
-              <span class="truncate">{{ getSelectedTimeRangeText() }}</span>
-              <svg class="h-4 w-4 text-gray-400 ml-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h18M6 8h12M10 12h4M11 16h2" />
               </svg>
+              <span
+                v-if="filters.timeRange !== 'all'"
+                class="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-primary-500 ring-2 ring-white dark:ring-gray-900"
+                aria-hidden="true"
+              />
             </button>
-            <div v-if="showTimeRangeDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+            <div v-if="showTimeRangeDropdown" class="absolute right-0 z-10 mt-1 w-44 bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
               <div
                 v-for="option in timeRangeOptions"
                 :key="option.value"
@@ -83,36 +91,50 @@
             />
           </div>
 
-          <!-- Customization Controls -->
-          <div class="flex gap-2 ml-auto">
-            <button
-              @click="toggleCustomization"
-              class="px-3 py-2 text-sm font-medium border rounded-md transition-colors"
-              :class="isCustomizing ? 'bg-primary-100 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 border-primary-300 dark:border-primary-700' : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'"
-            >
-              <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-              {{ isCustomizing ? 'Done' : 'Reorder Sections' }}
-            </button>
-            <button
-              @click="showLayoutSettings = true"
-              class="px-3 py-2 text-sm font-medium border rounded-md transition-colors bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
-            >
-              <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-              </svg>
-              Show/Hide Sections
-            </button>
-            <button
-              v-if="isCustomizing"
-              @click="resetDashboardLayout"
-              class="px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-            >
-              Reset to Default
-            </button>
-          </div>
+          <!-- Advanced filters (tags, strategies, brokers, etc.) — opens the
+               shared TradeFilters panel in a modal. Subtle icon-only button to
+               match the rest of the header; shows the active filter count when
+               anything beyond the time range is set. -->
+          <button
+            @click="showFiltersModal = true"
+            class="relative w-10 h-10 inline-flex items-center justify-center rounded-md border bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            type="button"
+            :title="activeAdvancedFilterCount > 0 ? `${activeAdvancedFilterCount} filter${activeAdvancedFilterCount === 1 ? '' : 's'} active` : 'More filters'"
+            aria-label="More filters"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+            </svg>
+            <span
+              v-if="activeAdvancedFilterCount > 0"
+              class="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center rounded-full bg-primary-600 text-white text-[10px] font-semibold ring-2 ring-white dark:ring-gray-900"
+              aria-hidden="true"
+            >{{ activeAdvancedFilterCount }}</span>
+          </button>
+
+          <button
+            v-if="isCustomizing"
+            @click="resetDashboardLayout"
+            class="px-3 h-10 text-sm font-medium border rounded-md transition-colors bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+            title="Reset layout to defaults"
+          >
+            Reset
+          </button>
+          <button
+            @click="isCustomizing = !isCustomizing"
+            class="w-10 h-10 inline-flex items-center justify-center rounded-md border transition-colors"
+            :class="isCustomizing
+              ? 'bg-primary-600 text-white border-primary-600 hover:bg-primary-700'
+              : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'"
+            :title="isCustomizing ? 'Exit customize mode' : 'Customize dashboard'"
+            :aria-label="isCustomizing ? 'Exit customize mode' : 'Customize dashboard'"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path v-if="!isCustomizing" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path v-if="!isCustomizing" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path v-else stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+          </button>
           <!-- Account filter is now global in the navbar -->
         </div>
       </div>
@@ -314,9 +336,9 @@
             <button
               type="button"
               class="btn-secondary"
-              @click="showLayoutSettings = true"
+              @click="isCustomizing = true"
             >
-              Show/Hide Sections
+              Customize
             </button>
             <button
               type="button"
@@ -328,50 +350,196 @@
           </div>
         </div>
       </div>
-      
-      <!-- Customization Mode Message -->
-      <div v-if="isCustomizing" class="card bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
-        <div class="card-body">
-          <div class="flex items-center gap-3">
-            <svg class="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <div>
-              <p class="text-sm font-medium text-blue-900 dark:text-blue-100">Customization Mode Active</p>
-              <p class="text-xs text-blue-700 dark:text-blue-300 mt-1">Drag and drop sections to reorder them. Use "Show/Hide Sections" to control visibility.</p>
+
+      <!-- Customize-mode banner -->
+      <div
+        v-if="isCustomizing"
+        class="mb-4 card bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800"
+      >
+        <div class="card-body py-3">
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2 text-sm text-primary-900 dark:text-primary-100">
+              <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>Drag sections by the handle to reorder · click the eye to show or hide</span>
             </div>
+            <button
+              type="button"
+              class="text-sm font-medium text-primary-700 dark:text-primary-300 hover:text-primary-900 dark:hover:text-white"
+              @click="isCustomizing = false"
+            >
+              Done
+            </button>
           </div>
         </div>
       </div>
-      
-      <!-- Draggable Dashboard Sections -->
+
+      <!-- Two-column layout: main draggable dashboard + sticky news rail.
+           News + Earnings live in the rail, OUT of the dashboard flow, so
+           they stay visible while the user scrolls and scroll their own
+           internal content independently. -->
+      <div class="flex flex-col lg:flex-row gap-6">
+        <!-- Main column — all the draggable dashboard sections -->
+        <div class="flex-1 min-w-0">
+      <!-- Draggable Dashboard Sections.
+           Auto-scroll while dragging is handled manually via @start/@end
+           hooks because SortableJS 1.14's built-in scroll/bubbleScroll
+           doesn't reliably scroll the window when there is no overflow
+           scroll-parent in the chain. -->
       <draggable
         v-model="dashboardLayout"
         :disabled="!isCustomizing"
         item-key="id"
-        class="space-y-8"
+        class="space-y-6"
         handle=".drag-handle"
-        @end="onDragEnd"
+        @start="onSectionDragStart"
+        @end="onSectionDragEnd"
         @change="onDragChange"
       >
         <template #item="{ element }">
           <div
-            v-if="element.visible"
-            :class="[
-              isCustomizing ? 'ring-2 ring-primary-300 dark:ring-primary-700 rounded-lg transition-all' : '',
-              'relative'
-            ]"
+            class="relative"
+            :class="{
+              'opacity-50': isCustomizing && !element.visible,
+              'hidden': getSectionDefinition(element.id)?.location === 'rail'
+                || (!element.visible && !isCustomizing)
+            }"
           >
-            <!-- Drag Handle (only visible in customize mode) -->
-            <div v-if="isCustomizing" class="drag-handle flex items-center justify-center py-2 bg-gray-100 dark:bg-gray-800 rounded-t-lg cursor-move hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors mb-0">
-              <div class="flex items-center gap-2">
-                <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16" />
+            <!-- Customize-mode header: drag handle, title, visibility toggle -->
+            <div
+              v-if="isCustomizing"
+              class="flex items-center justify-between gap-2 px-3 py-1.5 mb-1.5 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md"
+            >
+              <button
+                type="button"
+                class="drag-handle flex items-center gap-2 cursor-grab active:cursor-grabbing text-gray-500 hover:text-gray-900 dark:hover:text-white"
+                title="Drag to reorder"
+              >
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <circle cx="7" cy="5" r="1.5" />
+                  <circle cx="13" cy="5" r="1.5" />
+                  <circle cx="7" cy="10" r="1.5" />
+                  <circle cx="13" cy="10" r="1.5" />
+                  <circle cx="7" cy="15" r="1.5" />
+                  <circle cx="13" cy="15" r="1.5" />
                 </svg>
-                <span class="text-xs text-gray-500 dark:text-gray-400">{{ getSectionDefinition(element.id)?.title }}</span>
+                <span class="text-xs font-medium">{{ getSectionDefinition(element.id)?.title || element.id }}</span>
+              </button>
+              <button
+                type="button"
+                class="flex items-center gap-1 px-2 py-1 text-xs font-medium rounded transition-colors"
+                :class="element.visible
+                  ? 'text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/30'
+                  : 'text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'"
+                :title="element.visible ? 'Hide section' : 'Show section'"
+                @click="toggleSectionVisibility(element.id)"
+              >
+                <svg v-if="element.visible" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+                <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                </svg>
+                <span class="hidden sm:inline">{{ element.visible ? 'Visible' : 'Hidden' }}</span>
+              </button>
+            </div>
+
+            <div v-if="!element.visible && isCustomizing" class="card-dense">
+              <div class="card-dense-body text-center text-sm text-gray-500 dark:text-gray-400">
+                This section is hidden. Click the eye icon to show it.
               </div>
             </div>
-            
+            <template v-else>
+            <!-- Hero Metrics Ribbon -->
+            <template v-if="element.id === 'hero-metrics'">
+              <HeroMetricsRibbon :analytics="analytics" :range-label="heroRangeLabel" />
+            </template>
+
+            <!-- AI Insight of the Day -->
+            <template v-if="element.id === 'ai-insight'">
+              <AiInsightCard
+                :insights="aiInsights"
+                :loading="aiInsightLoading"
+                :error="aiInsightError"
+                @refresh="fetchAiInsight"
+              />
+            </template>
+
+            <!-- Equity Curve + Calendar Heatmap -->
+            <template v-if="element.id === 'equity-and-calendar'">
+              <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="lg:col-span-2">
+                  <div class="card-dense h-full flex flex-col">
+                    <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                      <h3 class="heading-card">Cumulative P&amp;L</h3>
+                      <span class="text-xs text-gray-500 dark:text-gray-400 text-mono-num">
+                        {{ analytics?.dailyPnL?.length || 0 }} {{ analytics?.dailyPnL?.length === 1 ? 'day' : 'days' }}
+                      </span>
+                    </div>
+                    <!-- Body grows to fill the card so the chart matches the
+                         height of the calendar beside it. flex-1 + min-h-0
+                         lets the chart container stretch; the 280px floor
+                         keeps it usable when stacked on mobile. -->
+                    <div class="card-dense-body flex-1 min-h-0 flex flex-col">
+                      <div v-if="(analytics?.dailyPnL?.length || 0) === 0" class="flex-1 flex items-center justify-center text-center text-sm text-gray-500 dark:text-gray-400">
+                        Your equity curve appears here once you log trades.
+                      </div>
+                      <div v-else class="flex-1 min-h-[280px]">
+                        <canvas ref="equityCurveCanvas" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <CalendarHeatmap :daily-pn-l="analytics?.dailyPnL || []" />
+                </div>
+              </div>
+            </template>
+
+            <!-- Momentum + Risk Signals (side-by-side) -->
+            <template v-if="element.id === 'momentum-and-risk'">
+              <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <StreakMomentumCard
+                  :daily-pn-l="analytics?.dailyPnL || []"
+                  :recent-trade-pnls="analytics?.recentTradePnls || []"
+                />
+                <BehavioralAlertsCard
+                  :summary="behavioralSummary"
+                  :loading="behavioralLoading"
+                  :upgrade-required="behavioralUpgradeRequired"
+                  :fetch-status="behavioralFetchStatus"
+                  :error="behavioralError"
+                />
+              </div>
+            </template>
+
+            <!-- Recent Trades Timeline (standalone — legacy / power-user) -->
+            <template v-if="element.id === 'recent-trades'">
+              <RecentTradesTimeline :trades="recentTrades" :loading="recentTradesLoading" />
+            </template>
+
+            <!-- Recent Trades + Win/Loss Distribution (combined, default).
+                 Split is 3fr / 2fr — Recent Trades stays larger but Win Rate
+                 gets meaningfully more breathing room than a 2/1 split. -->
+            <template v-if="element.id === 'recent-trades-and-distribution'">
+              <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                <div class="lg:col-span-3">
+                  <RecentTradesTimeline :trades="recentTrades" :loading="recentTradesLoading" />
+                </div>
+                <div class="lg:col-span-2">
+                  <WinLossPulse
+                    :summary="analytics?.summary || {}"
+                    @navigate="navigateToTradesByPnLType"
+                  />
+                </div>
+              </div>
+            </template>
+
+            <!-- News + Upcoming Earnings now render in the sticky right rail
+                 outside the draggable area, not as a section. -->
+
             <!-- Today's Journal Entry -->
             <template v-if="element.id === 'journal-entry'">
               <TodaysJournalEntry />
@@ -403,7 +571,7 @@
                   </div>
                   <!-- Mobile Card View -->
                   <div class="block lg:hidden space-y-3">
-            <div v-for="position in openTrades" :key="position.symbol" class="table-card-item">
+            <div v-for="position in displayedOpenTrades" :key="position.symbol" class="table-card-item">
               <!-- Position Header -->
               <div class="flex justify-between items-start mb-3 pb-3 border-b border-gray-200 dark:border-gray-700">
                 <div class="flex items-center gap-3">
@@ -604,7 +772,7 @@
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                <template v-for="position in openTrades" :key="position.symbol">
+                <template v-for="position in displayedOpenTrades" :key="position.symbol">
                   <!-- Position Summary Row -->
                   <tr class="bg-gray-50 dark:bg-gray-800/50 font-medium">
                     <td class="px-3 py-2 text-sm font-bold text-gray-900 dark:text-white">
@@ -815,6 +983,33 @@
               </tfoot>
             </table>
                   </div>
+
+                  <!-- Show all / Show less toggle. Only rendered when the
+                       user actually has more positions than the preview cap,
+                       to avoid a useless button when they have ≤5. -->
+                  <div
+                    v-if="hasMoreOpenTrades"
+                    class="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-center"
+                  >
+                    <button
+                      type="button"
+                      class="inline-flex items-center gap-1 text-sm font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors"
+                      @click="showAllOpenTrades = !showAllOpenTrades"
+                    >
+                      <template v-if="showAllOpenTrades">
+                        Show less
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+                        </svg>
+                      </template>
+                      <template v-else>
+                        Show all {{ openTrades.length }} positions
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </template>
+                    </button>
+                  </div>
                 </div>
               </div>
             </template>
@@ -1024,35 +1219,19 @@
 
             <!-- Charts Row -->
             <template v-if="element.id === 'charts'">
-              <div v-if="analyticsLoading" class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div class="lg:col-span-2 card">
-                  <div class="card-body">
-                    <div class="h-4 w-48 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-4"></div>
-                    <div class="h-80 bg-gray-100 dark:bg-gray-800 rounded animate-pulse"></div>
-                  </div>
-                </div>
-                <div class="lg:col-span-1 card">
+              <!-- Equity curve moved to the equity-and-calendar section.
+                   This section now hosts just the Win/Loss Distribution. -->
+              <div v-if="analyticsLoading" class="grid grid-cols-1 gap-6">
+                <div class="card">
                   <div class="card-body">
                     <div class="h-4 w-40 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-4"></div>
                     <div class="h-64 bg-gray-100 dark:bg-gray-800 rounded animate-pulse"></div>
                   </div>
                 </div>
               </div>
-              <div v-else class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <!-- P&L Over Time Chart (2/3 width) -->
-                <div class="lg:col-span-2 card">
-                  <div class="card-body">
-                    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
-                      Cumulative P&L Over Time
-                    </h3>
-                    <div class="h-80">
-                      <canvas ref="pnlChart"></canvas>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Win/Loss Distribution (1/3 width) -->
-                <div class="lg:col-span-1 card">
+              <div v-else class="grid grid-cols-1">
+                <!-- Win/Loss Distribution -->
+                <div class="card">
                   <div class="card-body">
                     <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
                       Win/Loss Distribution
@@ -1106,7 +1285,7 @@
                 <div class="card">
                   <div class="card-body">
                     <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
-                      Daily Win Rate
+                      Daily Win Rate &amp; P/L Ratio
                     </h3>
                     <div class="h-80">
                       <canvas ref="winRateChart"></canvas>
@@ -1244,36 +1423,39 @@
                   <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
                     Additional Statistics
                   </h3>
+                  <!-- Each cell is a flex column with the value pushed to the
+                       bottom via mt-auto so values always align across the row
+                       even when one label happens to wrap to two lines. -->
                   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                    <div>
+                    <div class="flex flex-col">
                       <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
                         Sharpe Ratio
                       </dt>
-                      <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+                      <dd class="mt-auto pt-1 text-lg font-semibold text-gray-900 dark:text-white">
                         {{ formatNumber(analytics.summary.sharpeRatio) }}
                       </dd>
                     </div>
-                    <div>
+                    <div class="flex flex-col">
                       <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                        Total Commissions
+                        Commissions
                       </dt>
-                      <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+                      <dd class="mt-auto pt-1 text-lg font-semibold text-gray-900 dark:text-white">
                         {{ formatCurrency(analytics.summary.totalCosts) }}
                       </dd>
                     </div>
-                    <div>
+                    <div class="flex flex-col">
                       <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
                         Symbols Traded
                       </dt>
-                      <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+                      <dd class="mt-auto pt-1 text-lg font-semibold text-gray-900 dark:text-white">
                         {{ analytics.summary.symbolsTraded }}
                       </dd>
                     </div>
-                    <div>
+                    <div class="flex flex-col">
                       <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
                         Trading Days
                       </dt>
-                      <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+                      <dd class="mt-auto pt-1 text-lg font-semibold text-gray-900 dark:text-white">
                         {{ analytics.summary.tradingDays }}
                       </dd>
                     </div>
@@ -1281,68 +1463,122 @@
                 </div>
               </div>
             </template>
+            </template>
           </div>
         </template>
       </draggable>
-    </div>
-    
-    <!-- Layout Settings Modal -->
-    <div v-if="showLayoutSettings" class="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true" @click="showLayoutSettings = false">
-      <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-        <div class="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" @click="showLayoutSettings = false"></div>
-        <span class="hidden sm:inline-block sm:align-middle sm:h-screen"></span>
-        <div
-          class="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full sm:p-6"
-          @click.stop
-        >
-          <div class="flex items-center justify-between mb-6">
-            <h3 class="heading-card">
-              Section Visibility
-            </h3>
-            <button
-              @click="showLayoutSettings = false"
-              aria-label="Close"
-              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500 rounded"
-            >
-              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
+        </div>
 
-          <div class="space-y-6">
-            <div v-for="section in sectionDefinitions" :key="section.id" class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-              <div class="flex items-center gap-3">
-                <label class="flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    :checked="dashboardLayout.find(s => s.id === section.id)?.visible"
-                    @change="toggleSectionVisibility(section.id)"
-                    class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                  />
-                  <span class="ml-2 text-sm text-gray-900 dark:text-white">{{ section.title }}</span>
-                </label>
+        <!-- Right rail: News + Upcoming Earnings. Pro-gated and only shown
+             when the user has open positions to query. Sticky to the top of
+             the viewport on desktop with its own internal scroll so it stays
+             visible while the main dashboard scrolls. On mobile it collapses
+             to a regular block below the main column. Visibility is wired to
+             the `news-rail` section in the dashboardLayout so the user can
+             hide it from Customize. -->
+        <aside
+          v-if="showNewsRail"
+          class="lg:w-80 xl:w-96 shrink-0"
+        >
+          <div
+            class="space-y-6 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto lg:pr-1"
+          >
+            <!-- Customize header on the rail — only visible in customize mode.
+                 No drag handle (the rail isn't reorderable), just a title and
+                 the visibility toggle so users can hide the whole rail. -->
+            <div
+              v-if="isCustomizing"
+              class="flex items-center justify-between gap-2 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md"
+            >
+              <span class="text-xs font-medium text-gray-700 dark:text-gray-200">
+                News &amp; Earnings (right rail)
+              </span>
+              <button
+                type="button"
+                class="flex items-center gap-1 px-2 py-1 text-xs font-medium rounded transition-colors"
+                :class="newsRailUserVisible
+                  ? 'text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/30'
+                  : 'text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'"
+                :title="newsRailUserVisible ? 'Hide news rail' : 'Show news rail'"
+                @click="toggleSectionVisibility('news-rail')"
+              >
+                <svg v-if="newsRailUserVisible" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+                <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                </svg>
+                <span class="hidden sm:inline">{{ newsRailUserVisible ? 'Visible' : 'Hidden' }}</span>
+              </button>
+            </div>
+
+            <!-- Hidden-state placeholder shown only in customize mode so the
+                 user has something visible to click the eye on. -->
+            <div
+              v-if="isCustomizing && !newsRailUserVisible"
+              class="card-dense opacity-60"
+            >
+              <div class="card-dense-body text-center text-sm text-gray-500 dark:text-gray-400">
+                The news rail is hidden. Click the eye icon above to show it.
               </div>
             </div>
-          </div>
 
-          <div class="mt-6 flex justify-between">
-            <button
-              @click="resetDashboardLayout"
-              class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600"
-            >
-              Reset to Defaults
-            </button>
-            <button
-              @click="showLayoutSettings = false"
-              class="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-md hover:bg-primary-700"
-            >
-              Done
-            </button>
+            <template v-if="newsRailUserVisible">
+              <TradeNewsSection :symbols="openTradeSymbols" />
+              <UpcomingEarningsSection :symbols="openTradeSymbols" />
+            </template>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <!-- Advanced filters modal -->
+    <div
+      v-if="showFiltersModal"
+      class="fixed inset-0 z-50 overflow-y-auto"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="dashboard-filters-modal-title"
+    >
+      <div class="flex min-h-full items-start justify-center p-4 sm:p-6">
+        <div
+          class="fixed inset-0 bg-gray-900/50 transition-opacity"
+          @click="showFiltersModal = false"
+        ></div>
+        <div class="relative w-full max-w-5xl bg-white dark:bg-gray-800 rounded-lg shadow-xl">
+          <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <h3 id="dashboard-filters-modal-title" class="heading-card">Filter dashboard</h3>
+            <div class="flex items-center gap-2">
+              <button
+                v-if="activeAdvancedFilterCount > 0"
+                type="button"
+                @click="clearAdvancedFilters"
+                class="text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
+              >Clear all</button>
+              <button
+                type="button"
+                @click="showFiltersModal = false"
+                class="rounded-md p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                aria-label="Close filters"
+              >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="px-6 py-5">
+            <!-- :auto-apply-on-mount="false" prevents the mount-time emit
+                 from immediately closing the modal we just opened.
+                 No max-h/overflow here — would clip TradeFilters' absolutely
+                 positioned dropdowns. Outer modal (`overflow-y-auto`) scrolls. -->
+            <TradeFilters :auto-apply-on-mount="false" @filter="handleAdvancedFilter" />
           </div>
         </div>
       </div>
     </div>
+
   </div>
 </template>
 
@@ -1357,6 +1593,13 @@ import api from '@/services/api'
 import TradeNewsSection from '@/components/dashboard/TradeNewsSection.vue'
 import UpcomingEarningsSection from '@/components/dashboard/UpcomingEarningsSection.vue'
 import TodaysJournalEntry from '@/components/diary/TodaysJournalEntry.vue'
+import HeroMetricsRibbon from '@/components/dashboard/HeroMetricsRibbon.vue'
+import AiInsightCard from '@/components/dashboard/AiInsightCard.vue'
+import CalendarHeatmap from '@/components/dashboard/CalendarHeatmap.vue'
+import StreakMomentumCard from '@/components/dashboard/StreakMomentumCard.vue'
+import BehavioralAlertsCard from '@/components/dashboard/BehavioralAlertsCard.vue'
+import RecentTradesTimeline from '@/components/dashboard/RecentTradesTimeline.vue'
+import WinLossPulse from '@/components/dashboard/WinLossPulse.vue'
 import MdiIcon from '@/components/MdiIcon.vue'
 import { mdiCheckCircle } from '@mdi/js'
 import { getRefreshInterval, shouldRefreshPrices, getMarketStatus } from '@/utils/marketHours'
@@ -1364,6 +1607,7 @@ import YearWrappedBanner from '@/components/yearWrapped/YearWrappedBanner.vue'
 import YearWrappedModal from '@/components/yearWrapped/YearWrappedModal.vue'
 import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
 import StockLogo from '@/components/common/StockLogo.vue'
+import TradeFilters from '@/components/trades/TradeFilters.vue'
 import { useYearWrappedStore } from '@/stores/yearWrapped'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
@@ -1400,8 +1644,24 @@ const calculationMethod = computed(() => {
   return userSettings.value?.statisticsCalculation === 'median' ? 'Median' : 'Average'
 })
 const openTrades = ref([])
+
+// Open positions are capped at 5 by default to keep the card from
+// dominating the dashboard when a user has many active positions.
+// "Show all" expands to render the full list inline; "Show less"
+// collapses back. Totals row stays unchanged (it computes across
+// the full openTrades array, not the displayed slice).
+const OPEN_TRADES_PREVIEW_COUNT = 5
+const showAllOpenTrades = ref(false)
+const displayedOpenTrades = computed(() => {
+  if (showAllOpenTrades.value) return openTrades.value
+  return openTrades.value.slice(0, OPEN_TRADES_PREVIEW_COUNT)
+})
+const hasMoreOpenTrades = computed(
+  () => openTrades.value.length > OPEN_TRADES_PREVIEW_COUNT
+)
 const quotesLoading = ref(false) // True while Finnhub quotes are being fetched
 const analyticsLoading = ref(true) // True while analytics data is being fetched
+let openPositionsRequestId = 0
 
 // Manual option price tracking (persisted in localStorage)
 const manualOptionPrices = ref({})
@@ -1447,32 +1707,68 @@ const filters = ref({
   endDate: ''
 })
 
-const showTimeRangeDropdown = ref(false)
+// Advanced filter spec from the shared TradeFilters component (tags, strategies,
+// brokers, instrument types, etc.). Date/account come from the dashboard's own
+// controls, so we strip those before applying so they don't double up.
+const appliedFilters = ref({})
+const showFiltersModal = ref(false)
 
-// Generate month options dynamically (last 12 months including current)
-function generateMonthOptions() {
-  const months = []
-  const now = new Date()
-  for (let i = 0; i < 12; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    const year = d.getFullYear()
-    const month = d.getMonth() // 0-indexed
-    const label = d.toLocaleString('default', { month: 'long', year: 'numeric' })
-    const value = `month_${year}_${month}`
-    months.push({ value, label })
+// Keys that are managed by the dashboard's primary controls (time range +
+// global account selector). We ignore them in the advanced-filter spec so the
+// modal doesn't quietly override the header dropdowns.
+const ADVANCED_FILTER_IGNORE_KEYS = new Set([
+  'startDate', 'endDate', 'accounts'
+])
+
+const activeAdvancedFilterCount = computed(() => {
+  let count = 0
+  for (const [k, v] of Object.entries(appliedFilters.value || {})) {
+    if (ADVANCED_FILTER_IGNORE_KEYS.has(k)) continue
+    if (v === null || v === undefined || v === '') continue
+    if (Array.isArray(v) && v.length === 0) continue
+    count++
   }
-  return months
+  return count
+})
+
+function appendAdvancedFilterParams(params) {
+  for (const [k, v] of Object.entries(appliedFilters.value || {})) {
+    if (ADVANCED_FILTER_IGNORE_KEYS.has(k)) continue
+    if (v === null || v === undefined || v === '') continue
+    if (Array.isArray(v) && v.length === 0) continue
+    params.append(k, Array.isArray(v) ? v.join(',') : String(v))
+  }
 }
+
+function handleAdvancedFilter(newFilters) {
+  appliedFilters.value = newFilters || {}
+  showFiltersModal.value = false
+  // Same refresh set as the time-range / global-account watchers.
+  fetchAnalytics()
+  fetchAiInsight()
+  fetchRecentTrades()
+  fetchBehavioralSummary()
+}
+
+function clearAdvancedFilters() {
+  // Only resets the dashboard's view of the filter spec — the shared
+  // TradeFilters component reads from localStorage on mount (used by the
+  // trade list / analytics views), so we don't touch that here.
+  appliedFilters.value = {}
+  fetchAnalytics()
+  fetchAiInsight()
+  fetchRecentTrades()
+  fetchBehavioralSummary()
+}
+
+const showTimeRangeDropdown = ref(false)
 
 const timeRangeOptions = [
   { value: 'all', label: 'All Time' },
-  { value: 'custom', label: 'Custom Range' },
-  ...generateMonthOptions(),
   { value: '7d', label: 'Last 7 Days' },
   { value: '30d', label: 'Last 30 Days' },
-  { value: '90d', label: 'Last 90 Days' },
-  { value: '1y', label: 'Last Year' },
-  { value: 'ytd', label: 'Year to Date' }
+  { value: 'ytd', label: 'Year to Date' },
+  { value: 'custom', label: 'Custom Range' }
 ]
 
 function getSelectedTimeRangeText() {
@@ -1489,35 +1785,170 @@ function selectTimeRange(value) {
 const pnlChart = ref(null)
 const distributionChart = ref(null)
 const winRateChart = ref(null)
+const equityCurveCanvas = ref(null) // command-center equity curve in new equity-and-calendar section
 let pnlChartInstance = null
 let distributionChartInstance = null
 let winRateChartInstance = null
+let equityCurveChartInstance = null
 let updateInterval = null
 let countdownInterval = null
 
 // Dashboard layout customization
+// Default section order — optimized for "what convinces in 5 seconds":
+// hero metrics → journal → AI insight → equity+calendar → positions →
+// momentum + risk signals → recent trades + win/loss → news+earnings.
+// `defaultVisible: false` marks sections that exist in the registry but
+// are hidden by default to keep the dashboard focused. Power users can
+// re-enable any of them via the Customize panel.
 const sectionDefinitions = [
-  { id: 'journal-entry', title: "Today's Journal Entry", category: 'content' },
-  { id: 'open-positions', title: 'Open Positions', category: 'content' },
-  { id: 'upcoming-earnings', title: 'Upcoming Earnings', category: 'content' },
-  { id: 'trade-news', title: 'Trade News', category: 'content' },
-  { id: 'key-metrics', title: 'Key Metrics', category: 'stats' },
-  { id: 'additional-metrics', title: 'Additional Metrics', category: 'stats' },
-  { id: 'charts', title: 'P&L & Distribution Charts', category: 'charts' },
-  { id: 'win-rate-chart', title: 'Daily Win Rate Chart', category: 'charts' },
-  { id: 'performance-tables', title: 'Performance Tables', category: 'tables' },
-  { id: 'additional-stats', title: 'Additional Statistics', category: 'stats' }
+  { id: 'hero-metrics', title: 'Hero Metrics Ribbon', category: 'stats', defaultVisible: true },
+  { id: 'journal-entry', title: "Today's Journal Entry", category: 'content', defaultVisible: true },
+  { id: 'ai-insight', title: 'AI Insight of the Day', category: 'stats', defaultVisible: true },
+  { id: 'equity-and-calendar', title: 'Equity Curve & Calendar', category: 'charts', defaultVisible: true },
+  { id: 'open-positions', title: 'Open Positions', category: 'content', defaultVisible: true },
+  { id: 'momentum-and-risk', title: 'Momentum & Risk Signals', category: 'stats', defaultVisible: true },
+  { id: 'recent-trades-and-distribution', title: 'Recent Trades & Win Rate', category: 'tables', defaultVisible: true },
+  // News + Earnings live in a sticky right rail outside the draggable flow.
+  // `location: 'rail'` flags it so the draggable template skips rendering it,
+  // but the standard visibility toggle still works from customize mode.
+  { id: 'news-rail', title: 'News & Earnings (right rail)', category: 'content', defaultVisible: true, location: 'rail' },
+  // Legacy / power-user sections — hidden by default but available in Customize.
+  { id: 'key-metrics', title: 'Key Metrics (legacy)', category: 'stats', defaultVisible: false },
+  { id: 'additional-metrics', title: 'Additional Metrics (legacy)', category: 'stats', defaultVisible: false },
+  { id: 'charts', title: 'Win/Loss Doughnut (legacy)', category: 'charts', defaultVisible: false },
+  { id: 'win-rate-chart', title: 'Daily Win Rate & P/L Ratio Chart', category: 'charts', defaultVisible: false },
+  { id: 'performance-tables', title: 'Performance by Symbol & Top Trades', category: 'tables', defaultVisible: false },
+  { id: 'additional-stats', title: 'Additional Statistics', category: 'stats', defaultVisible: false },
+  { id: 'recent-trades', title: 'Recent Trades (standalone)', category: 'tables', defaultVisible: false },
+  { id: 'upcoming-earnings', title: 'Upcoming Earnings (standalone)', category: 'content', defaultVisible: false },
+  { id: 'trade-news', title: 'Trade News (standalone)', category: 'content', defaultVisible: false }
 ]
 
 const defaultDashboardLayout = sectionDefinitions.map(section => ({
   id: section.id,
-  visible: true
+  visible: section.defaultVisible !== false
 }))
 
 const dashboardLayout = ref(JSON.parse(JSON.stringify(defaultDashboardLayout)))
 const hasVisibleDashboardSections = computed(() => dashboardLayout.value.some(section => section.visible))
+
+// AI Insight Card state (driven by /analytics/recommendations?summary=true).
+// Backend returns `summaries: [Insight, ...]` ordered by priority.
+// Falls back to the single `summary` field for older backend builds.
+const aiInsights = ref([])
+const aiInsightLoading = ref(false)
+const aiInsightError = ref(null)
+
+async function fetchAiInsight() {
+  aiInsightLoading.value = true
+  aiInsightError.value = null
+  try {
+    const params = new URLSearchParams({ summary: 'true' })
+    const dateRange = getDateRange(filters.value.timeRange)
+    if (dateRange.startDate) params.append('startDate', dateRange.startDate)
+    if (dateRange.endDate) params.append('endDate', dateRange.endDate)
+    if (selectedAccount.value) params.append('accounts', selectedAccount.value)
+    appendAdvancedFilterParams(params)
+    const response = await api.get(`/analytics/recommendations?${params}`)
+    const payload = response.data || {}
+    if (Array.isArray(payload.summaries) && payload.summaries.length > 0) {
+      aiInsights.value = payload.summaries
+    } else if (payload.summary) {
+      aiInsights.value = [payload.summary]
+    } else {
+      aiInsights.value = []
+    }
+  } catch (err) {
+    console.warn('[DASHBOARD] AI insight summary failed:', err?.message)
+    aiInsightError.value = err?.response?.data?.error || err?.message || 'unavailable'
+  } finally {
+    aiInsightLoading.value = false
+  }
+}
+
+// Behavioral alerts summary (Pro-tier; gracefully degrades for free users).
+const behavioralSummary = ref(null)
+const behavioralLoading = ref(false)
+const behavioralUpgradeRequired = ref(false)
+// Track the fetch outcome explicitly so the card can distinguish "didn't
+// load yet" / "endpoint missing" from "loaded but no signals to show."
+const behavioralFetchStatus = ref('idle') // 'idle' | 'ok' | 'error' | 'forbidden'
+const behavioralError = ref(null)
+
+async function fetchBehavioralSummary() {
+  behavioralLoading.value = true
+  behavioralUpgradeRequired.value = false
+  behavioralError.value = null
+  try {
+    const params = new URLSearchParams()
+    const dateRange = getDateRange(filters.value.timeRange)
+    if (dateRange.startDate) params.append('startDate', dateRange.startDate)
+    if (dateRange.endDate) params.append('endDate', dateRange.endDate)
+    if (selectedAccount.value) params.append('accounts', selectedAccount.value)
+    appendAdvancedFilterParams(params)
+    const qs = params.toString()
+    const response = await api.get(`/behavioral-analytics/dashboard-summary${qs ? `?${qs}` : ''}`)
+    behavioralSummary.value = response.data?.data || null
+    behavioralFetchStatus.value = 'ok'
+  } catch (err) {
+    behavioralSummary.value = null
+    if (err?.response?.status === 403) {
+      behavioralUpgradeRequired.value = true
+      behavioralFetchStatus.value = 'forbidden'
+    } else {
+      console.warn('[DASHBOARD] Behavioral summary failed:', err?.message)
+      behavioralFetchStatus.value = 'error'
+      behavioralError.value = err?.response?.status === 404
+        ? 'Endpoint not found. Restart the backend to pick up the latest routes.'
+        : (err?.response?.data?.error || err?.message || 'Request failed')
+    }
+  } finally {
+    behavioralLoading.value = false
+  }
+}
+
+// Recent trades (top 10 closed) — drives RecentTradesTimeline.
+const recentTrades = ref([])
+const recentTradesLoading = ref(false)
+
+async function fetchRecentTrades() {
+  recentTradesLoading.value = true
+  try {
+    const params = new URLSearchParams({ limit: '10', status: 'closed', skipCount: 'true' })
+    if (selectedAccount.value) params.append('accounts', selectedAccount.value)
+    appendAdvancedFilterParams(params)
+    const response = await api.get(`/trades?${params}`)
+    recentTrades.value = response.data?.trades || []
+  } catch (err) {
+    console.warn('[DASHBOARD] Recent trades fetch failed:', err?.message)
+  } finally {
+    recentTradesLoading.value = false
+  }
+}
+
+// Range label shown in HeroMetricsRibbon
+const heroRangeLabel = computed(() => getSelectedTimeRangeText())
+
+// News + Earnings live in a sticky right rail outside the draggable dashboard
+// flow. Shown when:
+//   1) The user toggled it visible in Customize (default: visible).
+//   2) They're Pro and have at least one open position to query.
+// In customize mode itself we keep rendering the rail wrapper even when
+// "hidden" so the user has a header to re-enable it.
+const newsRailSection = computed(
+  () => dashboardLayout.value.find(s => s.id === 'news-rail')
+)
+const newsRailUserVisible = computed(() => newsRailSection.value?.visible !== false)
+const showNewsRail = computed(() => {
+  if (openTradeSymbols.value.length === 0) return false
+  if (authStore.user?.tier !== 'pro') return false
+  // While customizing, keep the rail mounted so the toggle/header is visible.
+  return newsRailUserVisible.value || isCustomizing.value
+})
+// Customize mode is inline on the dashboard surface: users see a drag
+// handle + visibility toggle on each section, hidden sections render as
+// ghosted placeholders so they can be re-enabled in place.
 const isCustomizing = ref(false)
-const showLayoutSettings = ref(false)
 const onboardingStatus = ref(null)
 const onboardingBannerDismissed = ref(false)
 const hasSampleData = ref(false)
@@ -1553,9 +1984,55 @@ function onDragEnd() {
   })
 }
 
-// Toggle customization mode
-function toggleCustomization() {
-  isCustomizing.value = !isCustomizing.value
+// Edge-of-viewport auto-scroll while dragging a section. SortableJS 1.14's
+// built-in scroll feature doesn't reliably scroll the window when no
+// overflow-scroll parent is present in the chain, so we run our own loop.
+let dragScrollRAF = null
+let dragPointerY = 0
+const DRAG_EDGE_PX = 100      // distance from viewport edge that triggers scroll
+const DRAG_MAX_SPEED = 22     // max pixels per animation frame
+
+function onDragPointerMove(event) {
+  dragPointerY = event.clientY
+}
+
+function dragScrollLoop() {
+  const viewportH = window.innerHeight
+  let dy = 0
+  if (dragPointerY < DRAG_EDGE_PX) {
+    // Closer to the edge → faster scroll, smooth ramp 0→max
+    const factor = (DRAG_EDGE_PX - dragPointerY) / DRAG_EDGE_PX
+    dy = -DRAG_MAX_SPEED * Math.max(0, Math.min(1, factor))
+  } else if (dragPointerY > viewportH - DRAG_EDGE_PX) {
+    const factor = (dragPointerY - (viewportH - DRAG_EDGE_PX)) / DRAG_EDGE_PX
+    dy = DRAG_MAX_SPEED * Math.max(0, Math.min(1, factor))
+  }
+  if (dy !== 0) {
+    window.scrollBy(0, dy)
+  }
+  dragScrollRAF = requestAnimationFrame(dragScrollLoop)
+}
+
+function onSectionDragStart(event) {
+  // Seed pointer position with the start event so the loop has a value
+  // before the first pointermove fires.
+  if (event?.originalEvent) {
+    dragPointerY = event.originalEvent.clientY ?? 0
+  }
+  document.addEventListener('pointermove', onDragPointerMove, { passive: true })
+  document.addEventListener('dragover', onDragPointerMove, { passive: true })
+  if (dragScrollRAF) cancelAnimationFrame(dragScrollRAF)
+  dragScrollRAF = requestAnimationFrame(dragScrollLoop)
+}
+
+function onSectionDragEnd(event) {
+  document.removeEventListener('pointermove', onDragPointerMove)
+  document.removeEventListener('dragover', onDragPointerMove)
+  if (dragScrollRAF) {
+    cancelAnimationFrame(dragScrollRAF)
+    dragScrollRAF = null
+  }
+  onDragEnd(event)
 }
 
 // Toggle section visibility
@@ -1587,7 +2064,30 @@ async function saveDashboardLayout() {
   }
 }
 
-// Load dashboard layout from user settings
+// Load dashboard layout from user settings.
+// Migration behavior: new sections are appended at the end with their
+// defaultVisible from the registry. When a redesigned combined section is
+// appended (it wasn't in the user's saved layout), the legacy sections it
+// replaces are auto-hidden in the user's layout so they don't see duplicate
+// data. The user can still re-enable any legacy section via Customize.
+//
+// Replacement map: when this NEW section is visible, hide these LEGACY
+// sections in the layout to avoid duplicate data.
+//   - hero-metrics ribbon shows Net P&L / Win Rate / Profit Factor / Streak,
+//     fully replacing the old "Key Metrics" 4-card grid.
+//   - recent-trades-and-distribution embeds Win Rate gauge with avg win,
+//     avg loss, best, worst, expectancy — replacing both the old doughnut
+//     and the "Additional Metrics" (Avg Win / Avg Loss / Best / Worst) row.
+const SECTION_REPLACES = {
+  'hero-metrics': ['key-metrics'],
+  'recent-trades-and-distribution': ['charts', 'recent-trades', 'additional-metrics']
+}
+
+// Legacy sections that have moved OUT of the draggable dashboard entirely.
+// News + Earnings now render in a sticky right rail. These sections should
+// always be hidden so users don't see duplicate Pro news/earnings blocks.
+const ALWAYS_HIDE_SECTIONS = ['upcoming-earnings', 'trade-news']
+
 function loadDashboardLayout() {
   if (userSettings.value?.dashboardLayout && Array.isArray(userSettings.value.dashboardLayout)) {
     const savedLayout = userSettings.value.dashboardLayout
@@ -1604,22 +2104,55 @@ function loadDashboardLayout() {
         continue
       }
 
+      const visible = typeof savedSection === 'object' && savedSection && typeof savedSection.visible === 'boolean'
+        ? savedSection.visible
+        : true
+
       normalizedLayout.push({
         ...defaultSection,
         ...(typeof savedSection === 'object' && savedSection ? savedSection : {}),
         id: savedId,
-        visible: typeof savedSection === 'object' && savedSection && typeof savedSection.visible === 'boolean'
-          ? savedSection.visible
-          : true
+        visible
       })
 
       normalizedById.delete(savedId)
     }
 
-    // Add any new sections that were not present in the saved layout.
+    // Hide legacy sections whenever their canonical replacement is also
+    // visible. This handles both first-time migration AND users who landed
+    // in a duplicate state from earlier iterations of the redesign.
+    // If a user genuinely wants the legacy section back, they can re-enable
+    // it via Customize and it stays enabled as long as the replacement
+    // isn't also enabled at the same time.
+    const newSectionVisible = id => {
+      const inSaved = normalizedLayout.find(s => s.id === id)
+      if (inSaved) return !!inSaved.visible
+      // Not yet in saved layout — being appended now. Use its default.
+      const def = normalizedById.get(id)
+      return !!def && def.visible !== false
+    }
+    const legacyToHide = new Set(ALWAYS_HIDE_SECTIONS)
+    for (const newId of Object.keys(SECTION_REPLACES)) {
+      if (newSectionVisible(newId)) {
+        for (const legacyId of SECTION_REPLACES[newId]) {
+          legacyToHide.add(legacyId)
+        }
+      }
+    }
+    if (legacyToHide.size > 0) {
+      for (const section of normalizedLayout) {
+        if (legacyToHide.has(section.id) && section.visible) {
+          section.visible = false
+        }
+      }
+    }
+
+    // Append new sections at the end using their registry defaults.
+    const appendedNew = Array.from(normalizedById.values())
+
     dashboardLayout.value = [
       ...normalizedLayout,
-      ...Array.from(normalizedById.values())
+      ...appendedNew
     ]
   }
 }
@@ -1814,7 +2347,24 @@ function getDateRange(range) {
 
 function getAnalyticsCacheKey() {
   const dateRange = getDateRange(filters.value.timeRange)
-  const parts = [dateRange.startDate || '', dateRange.endDate || '', selectedAccount.value || '']
+  // Stable serialisation of advanced filters: sort keys, drop nulls/empties.
+  const advancedParts = Object.keys(appliedFilters.value || {})
+    .filter(k => !ADVANCED_FILTER_IGNORE_KEYS.has(k))
+    .filter(k => {
+      const v = appliedFilters.value[k]
+      if (v === null || v === undefined || v === '') return false
+      if (Array.isArray(v) && v.length === 0) return false
+      return true
+    })
+    .sort()
+    .map(k => `${k}=${Array.isArray(appliedFilters.value[k]) ? appliedFilters.value[k].slice().sort().join(',') : appliedFilters.value[k]}`)
+    .join('&')
+  const parts = [
+    dateRange.startDate || '',
+    dateRange.endDate || '',
+    selectedAccount.value || '',
+    advancedParts
+  ]
   return 'dashboard_analytics_' + parts.join('_')
 }
 
@@ -1850,6 +2400,8 @@ async function fetchAnalytics() {
     if (dateRange.endDate) params.append('endDate', dateRange.endDate)
     // Use global account filter
     if (selectedAccount.value) params.append('accounts', selectedAccount.value)
+    // Advanced filters from the filter modal (tags, strategies, brokers, etc.)
+    appendAdvancedFilterParams(params)
 
     const response = await api.get(`/trades/analytics?${params}`)
     analytics.value = response.data
@@ -1948,6 +2500,74 @@ function cacheOpenPositions(positions) {
   }
 }
 
+function getOpenPositionKey(position) {
+  if (position.instrumentType === 'option' && position.underlying_symbol && position.strike_price && position.expiration_date && position.option_type) {
+    return [
+      position.underlying_symbol,
+      position.strike_price,
+      String(position.expiration_date).slice(0, 10),
+      position.option_type
+    ].join('_')
+  }
+  return position.symbol
+}
+
+function preserveExistingQuoteData(positions) {
+  const existingByKey = new Map(openTrades.value.map(position => [getOpenPositionKey(position), position]))
+  const quoteFields = [
+    'currentPrice',
+    'dayChange',
+    'dayChangePercent',
+    'high',
+    'low',
+    'open',
+    'previousClose',
+    'quoteSource',
+    'bid',
+    'ask',
+    'quoteTime'
+  ]
+
+  return positions.map(position => {
+    if (position.currentPrice !== null && position.currentPrice !== undefined) return position
+
+    const existing = existingByKey.get(getOpenPositionKey(position))
+    if (!existing || existing.currentPrice === null || existing.currentPrice === undefined) return position
+
+    const merged = { ...position }
+    quoteFields.forEach(field => {
+      if (existing[field] !== undefined) merged[field] = existing[field]
+    })
+
+    const multiplier = merged.instrumentType === 'option'
+      ? (merged.contractSize || 100)
+      : merged.instrumentType === 'future'
+        ? (merged.pointValue || 1)
+        : 1
+    merged.currentValue = merged.currentPrice * merged.totalQuantity * multiplier
+    merged.unrealizedPnL = merged.side === 'short'
+      ? merged.totalCost - merged.currentValue
+      : merged.currentValue - merged.totalCost
+    merged.unrealizedPnLPercent = merged.totalCost !== 0
+      ? (merged.unrealizedPnL / merged.totalCost) * 100
+      : 0
+
+    return merged
+  })
+}
+
+async function fetchOpenPositionsRequest({ skipQuotes = false } = {}) {
+  const params = {}
+  if (selectedAccount.value) {
+    params.accounts = selectedAccount.value
+  }
+  if (skipQuotes) {
+    params.skipQuotes = 'true'
+  }
+
+  return api.get('/trades/open-positions-quotes', { params })
+}
+
 function cleanupManualOptionPrices() {
   const openSymbols = new Set(openTrades.value.filter(p => p.requires_manual_price).map(p => p.symbol))
   let cleaned = false
@@ -1960,14 +2580,30 @@ function cleanupManualOptionPrices() {
   if (cleaned) saveManualOptionPrices()
 }
 
-async function fetchOpenTrades() {
+async function fetchOpenTrades(options = {}) {
+  const { fastFirst = true } = options
+  const requestId = ++openPositionsRequestId
   quotesLoading.value = true
+  let fastRequestSucceeded = false
+
   try {
-    const params = {}
-    if (selectedAccount.value) {
-      params.accounts = selectedAccount.value
+    if (fastFirst) {
+      try {
+        const fastResponse = await fetchOpenPositionsRequest({ skipQuotes: true })
+        if (requestId !== openPositionsRequestId) return
+
+        const fastPositions = preserveExistingQuoteData(fastResponse.data.positions || [])
+        openTrades.value = fastPositions
+        cacheOpenPositions(openTrades.value)
+        cleanupManualOptionPrices()
+        fastRequestSucceeded = true
+      } catch (fastError) {
+        console.error('Failed to fetch open positions fast path:', fastError)
+      }
     }
-    const response = await api.get('/trades/open-positions-quotes', { params })
+
+    const response = await fetchOpenPositionsRequest({ skipQuotes: false })
+    if (requestId !== openPositionsRequestId) return
 
     if (response.data.error) {
       console.warn('Real-time quotes not available:', response.data.error)
@@ -1980,7 +2616,12 @@ async function fetchOpenTrades() {
     console.error('Failed to fetch open trades:', error)
     // Keep existing positions on refresh failure - don't wipe what we have
   } finally {
-    quotesLoading.value = false
+    if (requestId === openPositionsRequestId) {
+      quotesLoading.value = false
+      if (!fastRequestSucceeded && openTrades.value.length === 0) {
+        loadCachedOpenPositions()
+      }
+    }
   }
 }
 
@@ -2061,6 +2702,96 @@ function createPnLChart() {
     console.log('Dashboard: P&L chart created successfully');
   } catch (error) {
     console.error('Dashboard: Error creating P&L chart:', error);
+  }
+}
+
+// Command-center equity curve, used by the new equity-and-calendar section.
+// Separate from createPnLChart because it renders to a different canvas ref
+// (equityCurveCanvas) and has a sparser, more command-center style.
+function createEquityCurveChart() {
+  if (equityCurveChartInstance) {
+    equityCurveChartInstance.destroy()
+  }
+  if (!equityCurveCanvas.value) return
+
+  const ctx = equityCurveCanvas.value.getContext('2d')
+  const dailyData = analytics.value.dailyPnL || []
+  if (dailyData.length === 0) return
+
+  const pnlValues = dailyData.map(d => parseFloat(d.cumulative_pnl) || 0)
+  const positiveColor = 'rgba(22, 163, 74, 1)'
+  const negativeColor = 'rgba(220, 38, 38, 1)'
+  const positiveFill = 'rgba(22, 163, 74, 0.12)'
+  const negativeFill = 'rgba(220, 38, 38, 0.12)'
+
+  try {
+    equityCurveChartInstance = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: dailyData.map(d => format(new Date(d.trade_date), 'MMM dd')),
+        datasets: [{
+          label: 'Cumulative P&L',
+          data: pnlValues,
+          fill: {
+            target: 'origin',
+            above: positiveFill,
+            below: negativeFill
+          },
+          segment: {
+            borderColor: c => (c.p1.parsed.y >= 0 ? positiveColor : negativeColor)
+          },
+          borderWidth: 2,
+          tension: 0.15,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          pointHoverBackgroundColor: '#F0812A',
+          pointHoverBorderColor: '#F0812A'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'nearest', intersect: false },
+        onClick: (_event, elements) => {
+          if (elements.length > 0) {
+            navigateToTradesByDate(dailyData[elements[0].index].trade_date)
+          }
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: 'rgba(17, 24, 39, 0.95)',
+            titleColor: '#fff',
+            bodyColor: '#e5e7eb',
+            padding: 8,
+            displayColors: false,
+            callbacks: {
+              label: ctx => `${currencySymbol.value}${Number(ctx.parsed.y).toLocaleString()}`
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: false,
+            grid: { color: 'rgba(156, 163, 175, 0.08)' },
+            ticks: {
+              font: { family: 'ui-monospace, SFMono-Regular, Menlo, monospace', size: 10 },
+              callback: v => currencySymbol.value + Number(v).toLocaleString()
+            }
+          },
+          x: {
+            grid: { display: false },
+            ticks: {
+              font: { family: 'ui-monospace, SFMono-Regular, Menlo, monospace', size: 10 },
+              maxRotation: 0,
+              autoSkipPadding: 24
+            }
+          }
+        }
+      }
+    })
+  } catch (error) {
+    console.error('[DASHBOARD] equity curve chart create failed:', error)
   }
 }
 
@@ -2149,17 +2880,54 @@ function createWinRateChart() {
   
   console.log('Dashboard: Processed winRateData for chart:', winRateData)
   
+  // Color each bar by its win rate using four discrete bands:
+  //   <40%      red    — meaningfully losing day
+  //   40–50%    orange — slightly underwater
+  //   50–60%    yellow — barely profitable
+  //   ≥60%      green  — solid winning day
+  const barColorPair = pct => {
+    const v = parseFloat(pct) || 0
+    if (v >= 60) return { fill: 'rgba(22, 163, 74, 0.7)',  border: '#16a34a' }  // green-600
+    if (v >= 50) return { fill: 'rgba(234, 179, 8, 0.7)',  border: '#eab308' }  // yellow-500
+    if (v >= 40) return { fill: 'rgba(240, 129, 42, 0.7)', border: '#F0812A' }  // primary orange
+    return         { fill: 'rgba(220, 38, 38, 0.7)',  border: '#dc2626' }       // red-600
+  }
+  const winRateColors = winRateData.map(d => barColorPair(d.win_rate))
+
+  // Cap P/L ratio display at 5.0 so a single outsized day doesn't squash
+  // the rest of the scale. Tooltips still show the true value.
+  const PL_DISPLAY_CAP = 5
+  const rawPlRatios = winRateData.map(d => parseFloat(d.pl_ratio) || 0)
+  const cappedPlRatios = rawPlRatios.map(v => Math.min(v, PL_DISPLAY_CAP))
+
   winRateChartInstance = new Chart(ctx, {
     type: 'bar',
     data: {
       labels: winRateData.map(d => format(new Date(d.trade_date), 'MMM dd')),
-      datasets: [{
-        label: 'Win Rate (%)',
-        data: winRateData.map(d => parseFloat(d.win_rate) || 0),
-        backgroundColor: 'rgba(16, 185, 129, 0.6)',
-        borderColor: '#10b981',
-        borderWidth: 1
-      }]
+      datasets: [
+        {
+          label: 'Win Rate (%)',
+          data: winRateData.map(d => parseFloat(d.win_rate) || 0),
+          backgroundColor: winRateColors.map(c => c.fill),
+          borderColor: winRateColors.map(c => c.border),
+          borderWidth: 1,
+          borderRadius: 4,
+          borderSkipped: false,
+          yAxisID: 'y'
+        },
+        {
+          type: 'line',
+          label: 'P/L Ratio',
+          data: cappedPlRatios,
+          showLine: false,
+          pointStyle: 'line',
+          pointRadius: 8,
+          pointHoverRadius: 10,
+          pointBorderColor: '#3f3f46',  // zinc-700
+          pointBorderWidth: 2,
+          yAxisID: 'yPL'
+        }
+      ]
     },
     options: {
       responsive: true,
@@ -2173,13 +2941,34 @@ function createWinRateChart() {
       },
       plugins: {
         legend: {
-          display: false
+          display: true,
+          position: 'top',
+          align: 'end',
+          labels: {
+            usePointStyle: true,
+            boxWidth: 8,
+            font: { size: 11 }
+          }
+        },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              if (context.dataset.label === 'P/L Ratio') {
+                const raw = rawPlRatios[context.dataIndex] || 0
+                if (raw >= 999) return ' P/L Ratio: ∞ (no losses)'
+                if (raw > PL_DISPLAY_CAP) return ` P/L Ratio: ${raw.toFixed(2)} (capped at ${PL_DISPLAY_CAP} on chart)`
+                return ` P/L Ratio: ${raw.toFixed(2)}`
+              }
+              return ` Win Rate: ${(parseFloat(context.raw) || 0).toFixed(1)}%`
+            }
+          }
         }
       },
       scales: {
         y: {
           beginAtZero: true,
           max: 100,
+          position: 'left',
           grid: {
             color: 'rgba(156, 163, 175, 0.1)'
           },
@@ -2187,6 +2976,25 @@ function createWinRateChart() {
             callback: function(value) {
               return value + '%'
             }
+          },
+          title: {
+            display: true,
+            text: 'Win Rate'
+          }
+        },
+        yPL: {
+          beginAtZero: true,
+          max: PL_DISPLAY_CAP,
+          position: 'right',
+          grid: { display: false },
+          ticks: {
+            callback: function(value) {
+              return value === PL_DISPLAY_CAP ? `${value}+` : value
+            }
+          },
+          title: {
+            display: true,
+            text: 'P/L Ratio'
           }
         },
         x: {
@@ -2211,6 +3019,9 @@ function createCharts() {
   // This allows charts to render even if some layout sections are hidden
   if (pnlChart.value) {
     createPnLChart()
+  }
+  if (equityCurveCanvas.value) {
+    createEquityCurveChart()
   }
   if (distributionChart.value) {
     createDistributionChart()
@@ -2256,6 +3067,9 @@ function applyFilters() {
   saveFiltersToStorage()
   fetchAnalytics()
   fetchOpenTrades()
+  fetchAiInsight()
+  fetchRecentTrades()
+  fetchBehavioralSummary()
 }
 
 function navigateToTradesWithSymbol(symbol) {
@@ -2443,6 +3257,9 @@ watch(selectedAccount, () => {
   console.log('Dashboard: Global account filter changed to:', selectedAccount.value || 'All Accounts')
   fetchAnalytics()
   fetchOpenTrades()
+  fetchAiInsight()
+  fetchRecentTrades()
+  fetchBehavioralSummary()
 })
 
 async function fetchUserSettings() {
@@ -2510,7 +3327,7 @@ function startAutoUpdate() {
       console.log('Dashboard: Auto-updating open positions and news...')
       try {
         // Only refresh open positions during market hours for price updates
-        await fetchOpenTrades()
+        await fetchOpenTrades({ fastFirst: false })
         lastRefresh.value = new Date()
         console.log('Dashboard: Auto-update completed successfully')
       } catch (error) {
@@ -2617,8 +3434,8 @@ function handleClickOutside(event) {
 
 function handleDashboardEscape(event) {
   if (event.key !== 'Escape') return
-  if (showLayoutSettings.value) {
-    showLayoutSettings.value = false
+  if (isCustomizing.value) {
+    isCustomizing.value = false
   } else if (showTimeRangeDropdown.value) {
     showTimeRangeDropdown.value = false
   }
@@ -2661,6 +3478,11 @@ onMounted(async () => {
   fetchAnalytics()
   fetchOpenTrades()
   fetchExpiredOptionsCount()
+
+  // New dashboard sections — fire-and-forget; cards show their own loading states.
+  fetchAiInsight()
+  fetchBehavioralSummary()
+  fetchRecentTrades()
 
   // Check Year Wrapped banner status (non-blocking)
   yearWrappedStore.checkBannerStatus()

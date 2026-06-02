@@ -6,6 +6,7 @@ const encryptionService = require('./brokerSync/encryptionService');
 // rows continue to work and get re-encrypted on next update.
 const ENCRYPTED_ADMIN_KEYS = new Set([
   'default_ai_api_key',
+  'default_ai_classifier_api_key',
   'default_cusip_ai_api_key'
 ]);
 
@@ -136,10 +137,17 @@ class AdminSettingsService {
       const settings = await this.getAllSettings();
       
       return {
-        provider: settings.default_ai_provider || 'gemini',
+        provider: settings.default_ai_provider || '',
         apiKey: settings.default_ai_api_key || '',
         apiUrl: settings.default_ai_api_url || '',
-        model: settings.default_ai_model || ''
+        model: settings.default_ai_model || '',
+        classifier: {
+          enabled: settings.default_ai_classifier_enabled === 'true',
+          provider: settings.default_ai_classifier_provider || '',
+          apiKey: settings.default_ai_classifier_api_key || '',
+          apiUrl: settings.default_ai_classifier_api_url || '',
+          model: settings.default_ai_classifier_model || ''
+        }
       };
     } catch (error) {
       console.error('Error getting default AI settings:', error);
@@ -147,7 +155,14 @@ class AdminSettingsService {
         provider: 'gemini',
         apiKey: '',
         apiUrl: '',
-        model: ''
+        model: '',
+        classifier: {
+          enabled: false,
+          provider: '',
+          apiKey: '',
+          apiUrl: '',
+          model: ''
+        }
       };
     }
   }
@@ -171,6 +186,21 @@ class AdminSettingsService {
     }
     if (aiSettings.model !== undefined) {
       settings.default_ai_model = aiSettings.model;
+    }
+    if (aiSettings.classifierEnabled !== undefined) {
+      settings.default_ai_classifier_enabled = aiSettings.classifierEnabled ? 'true' : 'false';
+    }
+    if (aiSettings.classifierProvider !== undefined) {
+      settings.default_ai_classifier_provider = aiSettings.classifierProvider;
+    }
+    if (aiSettings.classifierApiKey !== undefined) {
+      settings.default_ai_classifier_api_key = aiSettings.classifierApiKey;
+    }
+    if (aiSettings.classifierApiUrl !== undefined) {
+      settings.default_ai_classifier_api_url = aiSettings.classifierApiUrl;
+    }
+    if (aiSettings.classifierModel !== undefined) {
+      settings.default_ai_classifier_model = aiSettings.classifierModel;
     }
 
     return await this.updateSettings(settings);

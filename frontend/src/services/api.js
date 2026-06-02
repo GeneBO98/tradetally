@@ -10,6 +10,17 @@ function getCookie(name) {
   return cookieEntry ? decodeURIComponent(cookieEntry.split('=').slice(1).join('=')) : null
 }
 
+function cloneHeadersWithoutCsrf(headers = {}) {
+  const source = typeof headers.toJSON === 'function' ? headers.toJSON() : headers
+
+  return Object.entries(source).reduce((cleanHeaders, [name, value]) => {
+    if (name.toLowerCase() !== 'x-csrf-token') {
+      cleanHeaders[name] = value
+    }
+    return cleanHeaders
+  }, {})
+}
+
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
   withCredentials: true // Enable sending cookies with requests
@@ -54,7 +65,7 @@ api.interceptors.response.use(
     rateLimitState.isLimited = false
     return response
   },
-  error => {
+  async error => {
     // Handle 429 Too Many Requests
     if (error.response?.status === 429) {
       const retryAfter = parseInt(error.response.headers['retry-after']) || 60
@@ -91,6 +102,33 @@ api.interceptors.response.use(
         sessionAuthToken = null
         window.location.href = '/login'
       }
+    }
+
+    if (
+      error.response?.status === 403 &&
+      error.response?.data?.code === 'INVALID_CSRF_TOKEN' &&
+      !error.config?._csrfRetry
+    ) {
+      const retryConfig = {
+        ...error.config,
+        _csrfRetry: true,
+        headers: cloneHeadersWithoutCsrf(error.config.headers)
+      }
+
+      document.cookie = 'csrf_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
+      document.cookie = `csrf_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=${window.location.hostname}`
+
+      await api.get('/auth/me', {
+        skipAuthRedirect: true,
+        _csrfRetry: true
+      })
+
+      const refreshedCsrfToken = getCookie('csrf_token')
+      if (refreshedCsrfToken) {
+        retryConfig.headers['X-CSRF-Token'] = refreshedCsrfToken
+      }
+
+      return api.request(retryConfig)
     }
     return Promise.reject(error)
   }

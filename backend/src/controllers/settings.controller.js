@@ -3,6 +3,55 @@ const db = require('../config/database');
 const adminSettingsService = require('../services/adminSettings');
 const { validateAiProviderUrl } = require('../utils/urlSecurity');
 const encryptionService = require('../services/brokerSync/encryptionService');
+const { computeTradePnl } = require('../services/pnlEngine');
+const { getUserTimezone } = require('../utils/timezone');
+const AnalyticsCache = require('../services/analyticsCache');
+
+function recomputeImportedTradePnl(trade, timezone) {
+  const executions = trade.executions || trade.executionData || trade.execution_data;
+  if (!Array.isArray(executions) || executions.length === 0) return trade;
+
+  const side = trade.side ?? trade.Side;
+  if (!side) return trade;
+
+  const instrumentType = trade.instrument_type || trade.instrumentType || 'stock';
+  const contractSize = trade.contract_size ?? trade.contractSize ?? (instrumentType === 'option' ? 100 : null);
+  const pointValue = trade.point_value ?? trade.pointValue ?? null;
+  const fallbackCommission = trade.commission ?? null;
+  const fallbackFees = trade.fees ?? null;
+
+  const result = computeTradePnl({
+    side,
+    instrumentType,
+    contractSize,
+    pointValue,
+    fallbackCommission,
+    fallbackFees,
+    executions,
+    timezone: timezone || 'UTC'
+  });
+
+  return {
+    ...trade,
+    executions: result.annotatedExecutions,
+    pnl: result.aggregate.pnl,
+    pnl_percent: result.aggregate.pnl_percent,
+    pnlPercent: result.aggregate.pnl_percent,
+    commission: result.aggregate.commission,
+    fees: result.aggregate.fees,
+    entry_price: result.aggregate.entry_price ?? trade.entry_price ?? trade.entryPrice,
+    entryPrice: result.aggregate.entry_price ?? trade.entry_price ?? trade.entryPrice,
+    exit_price: result.aggregate.exit_price ?? trade.exit_price ?? trade.exitPrice,
+    exitPrice: result.aggregate.exit_price ?? trade.exit_price ?? trade.exitPrice,
+    quantity: result.aggregate.quantity > 0 ? result.aggregate.quantity : trade.quantity,
+    entry_time: result.aggregate.entry_time || trade.entry_time || trade.entryTime,
+    entryTime: result.aggregate.entry_time || trade.entry_time || trade.entryTime,
+    exit_time: result.aggregate.is_fully_closed ? result.aggregate.exit_time : (trade.exit_time || trade.exitTime || null),
+    exitTime: result.aggregate.is_fully_closed ? result.aggregate.exit_time : (trade.exit_time || trade.exitTime || null),
+    trade_date: result.aggregate.trade_date || trade.trade_date || trade.tradeDate,
+    tradeDate: result.aggregate.trade_date || trade.trade_date || trade.tradeDate
+  };
+}
 
 // Encrypt third-party AI provider keys on import paths that write to
 // user_settings directly. Safe with already-encrypted values.
@@ -108,6 +157,15 @@ const settingsController = {
       if (body.cusip_ai_api_key === '***') delete body.cusip_ai_api_key;
 
       const settings = await User.updateSettings(req.user.id, body);
+
+      // Settings like breakeven tolerance and statistics calculation change
+      // analytics outputs, so drop this user's cached analytics on any update.
+      try {
+        await AnalyticsCache.invalidate(req.user.id);
+      } catch (cacheErr) {
+        console.warn(`[SETTINGS] AnalyticsCache invalidation failed: ${cacheErr.message}`);
+      }
+
       const safeSettings = settings
         ? {
             ...settings,
@@ -237,7 +295,7 @@ const settingsController = {
       
       if (!settings) {
         return res.json({
-          aiProvider: 'gemini',
+          aiProvider: '',
           aiApiKey: '',
           aiApiUrl: '',
           aiModel: ''
@@ -245,7 +303,7 @@ const settingsController = {
       }
 
       res.json({
-        aiProvider: settings.ai_provider || 'gemini',
+        aiProvider: settings.ai_provider || '',
         aiApiKey: settings.ai_api_key ? '***' : '',
         aiApiUrl: settings.ai_api_url || '',
         aiModel: settings.ai_model || ''
@@ -258,34 +316,52 @@ const settingsController = {
   async updateAIProviderSettings(req, res, next) {
     try {
       const { aiProvider, aiApiKey, aiApiUrl, aiModel } = req.body;
+      const normalizedProvider = aiProvider ? String(aiProvider).trim() : '';
 
       // Validate AI provider
       const validProviders = ['gemini', 'claude', 'openai', 'ollama', 'lmstudio', 'perplexity', 'local'];
-      if (aiProvider && !validProviders.includes(aiProvider)) {
+      if (normalizedProvider && !validProviders.includes(normalizedProvider)) {
         return res.status(400).json({ 
           error: 'Invalid AI provider. Must be one of: ' + validProviders.join(', ')
         });
       }
 
-      // Validate required fields
-      if (aiProvider && !['local', 'ollama', 'lmstudio'].includes(aiProvider) && !aiApiKey) {
-        return res.status(400).json({ 
-          error: 'API key is required for ' + aiProvider 
+      if (!normalizedProvider) {
+        const settings = await User.updateSettings(req.user.id, {
+          ai_provider: null,
+          ai_api_key: null,
+          ai_api_url: null,
+          ai_model: null
+        });
+
+        return res.json({
+          message: 'AI provider settings cleared successfully',
+          aiProvider: settings.ai_provider || '',
+          aiApiKey: '',
+          aiApiUrl: settings.ai_api_url || '',
+          aiModel: settings.ai_model || ''
         });
       }
 
-      if (['local', 'ollama', 'lmstudio'].includes(aiProvider) && !aiApiUrl) {
+      // Validate required fields
+      if (!['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !aiApiKey) {
         return res.status(400).json({ 
-          error: 'API URL is required for ' + aiProvider 
+          error: 'API key is required for ' + normalizedProvider 
+        });
+      }
+
+      if (['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !aiApiUrl) {
+        return res.status(400).json({ 
+          error: 'API URL is required for ' + normalizedProvider 
         });
       }
 
       if (aiApiUrl) {
-        await validateAiProviderUrl(aiProvider, aiApiUrl);
+        await validateAiProviderUrl(normalizedProvider, aiApiUrl);
       }
 
       const aiSettings = {
-        ai_provider: aiProvider,
+        ai_provider: normalizedProvider,
         ai_api_url: aiApiUrl,
         ai_model: aiModel
       };
@@ -344,9 +420,10 @@ const settingsController = {
   async updateCusipAIProviderSettings(req, res, next) {
     try {
       const { cusipAiProvider, cusipAiApiKey, cusipAiApiUrl, cusipAiModel, useMainProvider } = req.body;
+      const normalizedProvider = cusipAiProvider ? String(cusipAiProvider).trim() : '';
 
       // If useMainProvider is true, clear CUSIP-specific settings
-      if (useMainProvider) {
+      if (useMainProvider || !normalizedProvider) {
         const cusipAiSettings = {
           cusip_ai_provider: null,
           cusip_ai_api_key: null,
@@ -364,31 +441,31 @@ const settingsController = {
 
       // Validate AI provider
       const validProviders = ['gemini', 'claude', 'openai', 'ollama', 'lmstudio', 'perplexity', 'local'];
-      if (cusipAiProvider && !validProviders.includes(cusipAiProvider)) {
+      if (normalizedProvider && !validProviders.includes(normalizedProvider)) {
         return res.status(400).json({
           error: 'Invalid AI provider. Must be one of: ' + validProviders.join(', ')
         });
       }
 
       // Validate required fields based on provider type
-      if (cusipAiProvider && !['local', 'ollama', 'lmstudio'].includes(cusipAiProvider) && !cusipAiApiKey) {
+      if (!['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !cusipAiApiKey) {
         return res.status(400).json({
-          error: 'API key is required for ' + cusipAiProvider
+          error: 'API key is required for ' + normalizedProvider
         });
       }
 
-      if (['local', 'ollama', 'lmstudio'].includes(cusipAiProvider) && !cusipAiApiUrl) {
+      if (['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !cusipAiApiUrl) {
         return res.status(400).json({
-          error: 'API URL is required for ' + cusipAiProvider
+          error: 'API URL is required for ' + normalizedProvider
         });
       }
 
       if (cusipAiApiUrl) {
-        await validateAiProviderUrl(cusipAiProvider, cusipAiApiUrl);
+        await validateAiProviderUrl(normalizedProvider, cusipAiApiUrl);
       }
 
       const cusipAiSettings = {
-        cusip_ai_provider: cusipAiProvider,
+        cusip_ai_provider: normalizedProvider,
         cusip_ai_api_url: cusipAiApiUrl,
         cusip_ai_model: cusipAiModel
       };
@@ -442,7 +519,9 @@ const settingsController = {
             experienceLevel: 'intermediate',
             averagePositionSize: 'medium',
             tradingGoals: [],
-            preferredSectors: []
+            preferredSectors: [],
+            postExitExcursionWindowMode: 'auto',
+            postExitExcursionWindowMinutes: null
           }
         });
       }
@@ -455,7 +534,9 @@ const settingsController = {
         experienceLevel: settings.experience_level || 'intermediate',
         averagePositionSize: settings.average_position_size || 'medium',
         tradingGoals: settings.trading_goals || [],
-        preferredSectors: settings.preferred_sectors || []
+        preferredSectors: settings.preferred_sectors || [],
+        postExitExcursionWindowMode: settings.post_exit_excursion_window_mode || 'auto',
+        postExitExcursionWindowMinutes: settings.post_exit_excursion_window_minutes || null
       };
 
       res.json({ tradingProfile });
@@ -474,13 +555,16 @@ const settingsController = {
         experienceLevel,
         averagePositionSize,
         tradingGoals,
-        preferredSectors
+        preferredSectors,
+        postExitExcursionWindowMode,
+        postExitExcursionWindowMinutes
       } = req.body;
 
       // Validate the data
       const validRiskLevels = ['conservative', 'moderate', 'aggressive'];
       const validExperienceLevels = ['beginner', 'intermediate', 'advanced', 'expert'];
       const validPositionSizes = ['small', 'medium', 'large'];
+      const validPostExitWindowModes = ['auto', 'manual'];
 
       if (riskTolerance && !validRiskLevels.includes(riskTolerance)) {
         return res.status(400).json({ error: 'Invalid risk tolerance level' });
@@ -494,6 +578,18 @@ const settingsController = {
         return res.status(400).json({ error: 'Invalid position size' });
       }
 
+      if (postExitExcursionWindowMode && !validPostExitWindowModes.includes(postExitExcursionWindowMode)) {
+        return res.status(400).json({ error: 'Invalid post-exit excursion window mode' });
+      }
+
+      const parsedPostExitMinutes = postExitExcursionWindowMinutes === null || postExitExcursionWindowMinutes === ''
+        ? null
+        : parseInt(postExitExcursionWindowMinutes, 10);
+
+      if (parsedPostExitMinutes !== null && (!Number.isInteger(parsedPostExitMinutes) || parsedPostExitMinutes <= 0)) {
+        return res.status(400).json({ error: 'Invalid post-exit excursion window minutes' });
+      }
+
       const profileData = {
         tradingStrategies: tradingStrategies || [],
         tradingStyles: tradingStyles || [],
@@ -502,7 +598,9 @@ const settingsController = {
         experienceLevel: experienceLevel || 'intermediate',
         averagePositionSize: averagePositionSize || 'medium',
         tradingGoals: tradingGoals || [],
-        preferredSectors: preferredSectors || []
+        preferredSectors: preferredSectors || [],
+        postExitExcursionWindowMode: postExitExcursionWindowMode || 'auto',
+        postExitExcursionWindowMinutes: parsedPostExitMinutes
       };
 
       const updatedSettings = await User.updateSettings(req.user.id, profileData);
@@ -999,8 +1097,11 @@ const settingsController = {
         if (importData.trades && importData.trades.length > 0) {
           console.log(`[IMPORT] Processing ${importData.trades.length} trades (v3: ${isV3})...`);
 
+          const importTimezone = await getUserTimezone(userId);
+
           for (let i = 0; i < importData.trades.length; i++) {
-            const trade = importData.trades[i];
+            const rawTrade = importData.trades[i];
+            const trade = recomputeImportedTradePnl(rawTrade, importTimezone);
             try {
               // Duplicate detection: same for both v2 and v3
               const symbol = trade.symbol ?? trade[toSnakeCase('symbol')];
@@ -1651,6 +1752,14 @@ const settingsController = {
         await client.query('COMMIT');
         console.log('[IMPORT] Transaction committed successfully');
 
+        if (tradesAdded > 0) {
+          try {
+            await AnalyticsCache.invalidate(userId);
+          } catch (cacheErr) {
+            console.warn(`[IMPORT] AnalyticsCache invalidation failed: ${cacheErr.message}`);
+          }
+        }
+
         const additionalMsg = Object.entries(additionalTablesImported)
           .filter(([, count]) => count > 0)
           .map(([table, count]) => `${count} ${table}`)
@@ -1702,7 +1811,12 @@ const settingsController = {
         aiProvider: settings.provider,
         aiApiKey: settings.apiKey ? '***' : '', // Mask the API key in response
         aiApiUrl: settings.apiUrl,
-        aiModel: settings.model
+        aiModel: settings.model,
+        aiClassifierEnabled: settings.classifier?.enabled || false,
+        aiClassifierProvider: settings.classifier?.provider || '',
+        aiClassifierApiKey: settings.classifier?.apiKey ? '***' : '',
+        aiClassifierApiUrl: settings.classifier?.apiUrl || '',
+        aiClassifierModel: settings.classifier?.model || ''
       });
     } catch (error) {
       next(error);
@@ -1716,38 +1830,128 @@ const settingsController = {
         return res.status(403).json({ error: 'Admin access required' });
       }
 
-      const { aiProvider, aiApiKey, aiApiUrl, aiModel } = req.body;
+      const {
+        aiProvider,
+        aiApiKey,
+        aiApiUrl,
+        aiModel,
+        aiClassifierEnabled,
+        aiClassifierProvider,
+        aiClassifierApiKey,
+        aiClassifierApiUrl,
+        aiClassifierModel
+      } = req.body;
+      const normalizedProvider = aiProvider ? String(aiProvider).trim() : '';
+      const normalizedClassifierProvider = aiClassifierProvider ? String(aiClassifierProvider).trim() : '';
+      const apiKeyUpdate = aiApiKey === '***' ? undefined : aiApiKey;
+      const classifierApiKeyUpdate = aiClassifierApiKey === '***' ? undefined : aiClassifierApiKey;
 
       // Validate AI provider
       const validProviders = ['gemini', 'claude', 'openai', 'ollama', 'lmstudio', 'perplexity', 'local'];
-      if (aiProvider && !validProviders.includes(aiProvider)) {
+      if (normalizedProvider && !validProviders.includes(normalizedProvider)) {
         return res.status(400).json({ 
           error: 'Invalid AI provider. Must be one of: ' + validProviders.join(', ')
         });
       }
 
-      // Validate required fields
-      if (aiProvider && !['local', 'ollama', 'lmstudio'].includes(aiProvider) && !aiApiKey) {
-        return res.status(400).json({ 
-          error: 'API key is required for ' + aiProvider 
+      if (normalizedClassifierProvider && !validProviders.includes(normalizedClassifierProvider)) {
+        return res.status(400).json({
+          error: 'Invalid AI checking provider. Must be one of: ' + validProviders.join(', ')
         });
       }
 
-      if (['local', 'ollama', 'lmstudio'].includes(aiProvider) && !aiApiUrl) {
+      if (!normalizedProvider) {
+        const success = await adminSettingsService.updateDefaultAISettings({
+          provider: null,
+          apiKey: null,
+          apiUrl: null,
+          model: null,
+          classifierEnabled: false,
+          classifierProvider: null,
+          classifierApiKey: null,
+          classifierApiUrl: null,
+          classifierModel: null
+        });
+
+        if (!success) {
+          return res.status(500).json({ error: 'Failed to update admin AI settings' });
+        }
+
+        return res.json({
+          message: 'Admin AI provider settings cleared successfully',
+          aiProvider: '',
+          aiApiKey: '',
+          aiApiUrl: '',
+          aiModel: '',
+          aiClassifierEnabled: false,
+          aiClassifierProvider: '',
+          aiClassifierApiKey: '',
+          aiClassifierApiUrl: '',
+          aiClassifierModel: ''
+        });
+      }
+
+      // Validate required fields
+      if (!['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !aiApiKey) {
         return res.status(400).json({ 
-          error: 'API URL is required for ' + aiProvider 
+          error: 'API key is required for ' + normalizedProvider 
+        });
+      }
+
+      if (['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !aiApiUrl) {
+        return res.status(400).json({ 
+          error: 'API URL is required for ' + normalizedProvider 
         });
       }
 
       if (aiApiUrl) {
-        await validateAiProviderUrl(aiProvider, aiApiUrl);
+        await validateAiProviderUrl(normalizedProvider, aiApiUrl);
+      }
+
+      if (aiClassifierEnabled) {
+        const effectiveClassifierProvider = normalizedClassifierProvider || normalizedProvider;
+        if (!effectiveClassifierProvider) {
+          return res.status(400).json({
+            error: 'AI checking model requires either a checking provider or a default AI provider'
+          });
+        }
+
+        const classifierUsesMainProvider = effectiveClassifierProvider === normalizedProvider;
+        if (
+          !classifierUsesMainProvider &&
+          !['local', 'ollama', 'lmstudio'].includes(effectiveClassifierProvider) &&
+          !aiClassifierApiKey
+        ) {
+          return res.status(400).json({
+            error: 'API key is required for the AI checking provider'
+          });
+        }
+
+        if (
+          !classifierUsesMainProvider &&
+          ['local', 'ollama', 'lmstudio'].includes(effectiveClassifierProvider) &&
+          !aiClassifierApiUrl
+        ) {
+          return res.status(400).json({
+            error: 'API URL is required for the AI checking provider'
+          });
+        }
+
+        if (aiClassifierApiUrl) {
+          await validateAiProviderUrl(effectiveClassifierProvider, aiClassifierApiUrl);
+        }
       }
 
       const aiSettings = {
-        provider: aiProvider,
-        apiKey: aiApiKey,
+        provider: normalizedProvider,
+        apiKey: apiKeyUpdate,
         apiUrl: aiApiUrl,
-        model: aiModel
+        model: aiModel,
+        classifierEnabled: aiClassifierEnabled === true,
+        classifierProvider: normalizedClassifierProvider,
+        classifierApiKey: classifierApiKeyUpdate,
+        classifierApiUrl: aiClassifierApiUrl,
+        classifierModel: aiClassifierModel
       };
 
       const success = await adminSettingsService.updateDefaultAISettings(aiSettings);
@@ -1758,10 +1962,15 @@ const settingsController = {
       
       res.json({
         message: 'Admin AI provider settings updated successfully',
-        aiProvider: aiProvider,
+        aiProvider: normalizedProvider,
         aiApiKey: aiApiKey ? '***' : '', // Mask the API key in response
         aiApiUrl: aiApiUrl,
-        aiModel: aiModel
+        aiModel: aiModel,
+        aiClassifierEnabled: aiClassifierEnabled === true,
+        aiClassifierProvider: normalizedClassifierProvider,
+        aiClassifierApiKey: aiClassifierApiKey ? '***' : '',
+        aiClassifierApiUrl: aiClassifierApiUrl,
+        aiClassifierModel: aiClassifierModel
       });
     } catch (error) {
       if (error.code === 'INVALID_OUTBOUND_URL') {
@@ -1800,9 +2009,10 @@ const settingsController = {
       }
 
       const { cusipAiProvider, cusipAiApiKey, cusipAiApiUrl, cusipAiModel, useMainProvider } = req.body;
+      const normalizedProvider = cusipAiProvider ? String(cusipAiProvider).trim() : '';
 
       // If useMainProvider is true, clear CUSIP-specific settings
-      if (useMainProvider) {
+      if (useMainProvider || !normalizedProvider) {
         const success = await adminSettingsService.updateDefaultCusipAISettings({
           provider: '',
           apiKey: '',
@@ -1822,31 +2032,31 @@ const settingsController = {
 
       // Validate AI provider
       const validProviders = ['gemini', 'claude', 'openai', 'ollama', 'lmstudio', 'perplexity', 'local'];
-      if (cusipAiProvider && !validProviders.includes(cusipAiProvider)) {
+      if (normalizedProvider && !validProviders.includes(normalizedProvider)) {
         return res.status(400).json({
           error: 'Invalid AI provider. Must be one of: ' + validProviders.join(', ')
         });
       }
 
       // Validate required fields based on provider type
-      if (cusipAiProvider && !['local', 'ollama', 'lmstudio'].includes(cusipAiProvider) && !cusipAiApiKey) {
+      if (!['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !cusipAiApiKey) {
         return res.status(400).json({
-          error: 'API key is required for ' + cusipAiProvider
+          error: 'API key is required for ' + normalizedProvider
         });
       }
 
-      if (['local', 'ollama', 'lmstudio'].includes(cusipAiProvider) && !cusipAiApiUrl) {
+      if (['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !cusipAiApiUrl) {
         return res.status(400).json({
-          error: 'API URL is required for ' + cusipAiProvider
+          error: 'API URL is required for ' + normalizedProvider
         });
       }
 
       if (cusipAiApiUrl) {
-        await validateAiProviderUrl(cusipAiProvider, cusipAiApiUrl);
+        await validateAiProviderUrl(normalizedProvider, cusipAiApiUrl);
       }
 
       const success = await adminSettingsService.updateDefaultCusipAISettings({
-        provider: cusipAiProvider,
+        provider: normalizedProvider,
         apiKey: cusipAiApiKey,
         apiUrl: cusipAiApiUrl,
         model: cusipAiModel
@@ -1858,7 +2068,7 @@ const settingsController = {
 
       res.json({
         message: 'Admin CUSIP AI provider settings updated successfully',
-        cusipAiProvider: cusipAiProvider,
+        cusipAiProvider: normalizedProvider,
         cusipAiApiKey: cusipAiApiKey ? '***' : '',
         cusipAiApiUrl: cusipAiApiUrl,
         cusipAiModel: cusipAiModel,
@@ -1885,6 +2095,9 @@ const settingsController = {
       const maskedSettings = { ...settings };
       if (maskedSettings.default_ai_api_key) {
         maskedSettings.default_ai_api_key = '***';
+      }
+      if (maskedSettings.default_ai_classifier_api_key) {
+        maskedSettings.default_ai_classifier_api_key = '***';
       }
 
       res.json({ settings: maskedSettings });

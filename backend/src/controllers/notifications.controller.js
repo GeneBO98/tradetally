@@ -274,6 +274,7 @@ const notificationsController = {
               WHEN n.type IN ('challenge_joined', 'challenge_completed') THEN COALESCE(n.data->'challenge'->>'name', 'Challenge')
               WHEN n.type = 'leaderboard_ranking' THEN COALESCE(n.data->>'leaderboard', 'Leaderboard')
               WHEN n.type = 'behavioral_alert' THEN 'Behavioral Alert'
+              WHEN n.type = 'portfolio_alert' THEN COALESCE(n.data->>'symbol', 'Portfolio')
               ELSE 'Notification'
             END AS symbol,
             CASE
@@ -283,6 +284,7 @@ const notificationsController = {
               WHEN n.type = 'challenge_completed' THEN CONCAT('Completed challenge: ', COALESCE(n.data->'challenge'->>'name', 'Challenge'))
               WHEN n.type = 'leaderboard_ranking' THEN CONCAT('Leaderboard update: ', COALESCE(n.data->>'leaderboard', 'Leaderboard'))
               WHEN n.type = 'behavioral_alert' THEN COALESCE(n.data->>'message', 'Behavioral alert')
+              WHEN n.type = 'portfolio_alert' THEN COALESCE(n.data->>'message', 'Portfolio alert')
               ELSE COALESCE(n.data->>'message', 'Notification')
             END AS message,
             NULL::numeric AS trigger_price,
@@ -478,7 +480,6 @@ const notificationsController = {
         WHERE an.user_id = $1 
           AND an.deleted_at IS NULL
           AND nrs.id IS NULL
-          AND an.sent_at > NOW() - INTERVAL '30 days'
         ON CONFLICT (user_id, notification_type, notification_id) 
         DO UPDATE SET read_at = CURRENT_TIMESTAMP
       `, [userId]));
@@ -499,7 +500,6 @@ const notificationsController = {
           AND t.is_public = true
           AND tc.deleted_at IS NULL
           AND nrs.id IS NULL
-          AND tc.created_at > NOW() - INTERVAL '30 days'
         ON CONFLICT (user_id, notification_type, notification_id) 
         DO UPDATE SET read_at = CURRENT_TIMESTAMP
       `, [userId]));
@@ -510,7 +510,6 @@ const notificationsController = {
           SET read = true
           WHERE user_id = $1
             AND COALESCE(read, false) = false
-            AND created_at > NOW() - INTERVAL '30 days'
         `, [userId]));
       }
 
@@ -542,7 +541,6 @@ const notificationsController = {
           WHERE an.user_id = $1 
             AND an.deleted_at IS NULL
             AND nrs.id IS NULL
-            AND an.sent_at > NOW() - INTERVAL '30 days'
         `, [userId]),
         db.query(`
           SELECT COUNT(*) as count
@@ -558,7 +556,6 @@ const notificationsController = {
             AND t.is_public = true
             AND tc.deleted_at IS NULL
             AND nrs.id IS NULL
-            AND tc.created_at > NOW() - INTERVAL '30 days'
         `, [userId])
       ];
 
@@ -568,7 +565,6 @@ const notificationsController = {
           FROM notifications
           WHERE user_id = $1
             AND COALESCE(read, false) = false
-            AND created_at > NOW() - INTERVAL '30 days'
         `, [userId]));
       }
 
@@ -645,6 +641,49 @@ const notificationsController = {
       });
     } catch (error) {
       logger.logError('Error deleting notifications:', error);
+      next(error);
+    }
+  },
+
+  async clearAllNotifications(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const hasNotificationsTable = await notificationsTableExists();
+
+      const [priceAlertsResult, tradeCommentsResult, generalNotificationsResult] = await Promise.all([
+        db.query(`
+          UPDATE alert_notifications
+          SET deleted_at = CURRENT_TIMESTAMP
+          WHERE user_id = $1 AND deleted_at IS NULL
+        `, [userId]),
+        db.query(`
+          UPDATE trade_comments
+          SET deleted_at = CURRENT_TIMESTAMP
+          WHERE id IN (
+            SELECT tc.id
+            FROM trade_comments tc
+            JOIN trades t ON tc.trade_id = t.id
+            WHERE t.user_id = $1
+              AND tc.user_id != $1
+              AND tc.deleted_at IS NULL
+          )
+        `, [userId]),
+        hasNotificationsTable
+          ? db.query('DELETE FROM notifications WHERE user_id = $1', [userId])
+          : Promise.resolve({ rowCount: 0 })
+      ]);
+
+      const deletedCount =
+        (priceAlertsResult.rowCount || 0) +
+        (tradeCommentsResult.rowCount || 0) +
+        (generalNotificationsResult.rowCount || 0);
+
+      res.json({
+        success: true,
+        message: `${deletedCount} notifications deleted`
+      });
+    } catch (error) {
+      logger.logError('Error clearing all notifications:', error);
       next(error);
     }
   },

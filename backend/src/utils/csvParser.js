@@ -564,27 +564,10 @@ function extractIBKRActivityStatementSection(csvString) {
     }
   };
 
-  // Locate header line + section type. CapTrader has multiple Transaction
-  // History layouts: some put `Date` immediately after `Header`, others put
-  // it at the end of the row (the "7D-3" variant). Detect by parsing the
-  // candidate row and confirming it contains the required column names,
-  // rather than by column order.
+  // Locate header line + section type
   let headerLineIndex = -1;
   let section = null; // 'Trades' | 'TransactionHistory'
   let headerFields = null;
-
-  const looksLikeTransactionHistoryHeader = (fields) => {
-    if (!fields || fields.length < 5) return false;
-    if (!/^"?Transaction History"?$/i.test(fields[0].trim())) return false;
-    if (!/^"?Header"?$/i.test(fields[1].trim())) return false;
-    const stripped = fields.slice(2).map(f => f.trim().toLowerCase());
-    // Must include a date column AND a transaction-type column AND a symbol
-    // column for this to be the trade-execution header.
-    const hasDate = stripped.some(f => f === 'date' || f === 'datum');
-    const hasTxType = stripped.some(f => f === 'transaction type' || f === 'transaktionstyp');
-    const hasSymbol = stripped.some(f => f === 'symbol');
-    return hasDate && hasTxType && hasSymbol;
-  };
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -598,11 +581,9 @@ function extractIBKRActivityStatementSection(csvString) {
       headerFields = fields.slice(2);
       break;
     }
-    // Cheap pre-check on the raw line before parsing, then validate column
-    // names by content (handles Date-at-end and German-localized variants).
-    if (/^"?Transaction History"?\s*,\s*"?Header"?\s*,/i.test(line)) {
+    if (/^"?Transaction History"?\s*,\s*"?Header"?\s*,\s*"?(?:Date|Datum)"?\s*,/i.test(line)) {
       const fields = parseLine(line);
-      if (!looksLikeTransactionHistoryHeader(fields)) continue;
+      if (!fields) continue;
       headerLineIndex = i;
       section = 'TransactionHistory';
       headerFields = fields.slice(2);
@@ -623,15 +604,13 @@ function extractIBKRActivityStatementSection(csvString) {
 
   // For Trades: only `DataDiscriminator = Order` rows are real executions
   // (SubTotal/Total/etc. have different layouts).
-  // For Transaction History: filter to `Transaction Type` ∈ {Buy, Sell, Kauf,
-  // Verkauf}. CapTrader German exports localize Buy/Sell.
+  // For Transaction History: filter to `Transaction Type` ∈ {Buy, Sell}.
   const transactionTypeIndex = section === 'TransactionHistory'
-    ? headerFields.findIndex((f) => /^(?:transaction type|transaktionstyp)$/i.test(f.trim()))
+    ? headerFields.findIndex((f) => /^transaction type$/i.test(f.trim()))
     : -1;
   const dataDiscriminatorIndex = section === 'Trades'
     ? 0 // DataDiscriminator is the first field after stripping "Trades,Header"
     : -1;
-  const TRADE_TX_TYPES = new Set(['buy', 'sell', 'kauf', 'verkauf']);
 
   const collectedRows = [];
   for (let i = headerLineIndex + 1; i < lines.length; i++) {
@@ -650,8 +629,8 @@ function extractIBKRActivityStatementSection(csvString) {
       const discriminator = (stripped[dataDiscriminatorIndex] || '').trim();
       if (discriminator !== 'Order') continue;
     } else if (transactionTypeIndex >= 0) {
-      const txType = (stripped[transactionTypeIndex] || '').trim().toLowerCase();
-      if (!TRADE_TX_TYPES.has(txType)) continue;
+      const txType = (stripped[transactionTypeIndex] || '').trim();
+      if (txType !== 'Buy' && txType !== 'Sell') continue;
     }
 
     collectedRows.push(stripped);
@@ -703,20 +682,9 @@ function detectBrokerFormat(fileBuffer) {
       const line = lines[i];
       if (!line) continue;
       if (!multiSectionDetected) {
-        // Trades section header (Activity Statement)
-        if (/^"?Trades"?\s*,\s*"?Header"?\s*,\s*"?DataDiscriminator"?/i.test(line)) {
+        if (/^"?Trades"?\s*,\s*"?Header"?\s*,\s*"?DataDiscriminator"?/i.test(line) ||
+            /^"?Transaction History"?\s*,\s*"?Header"?\s*,\s*"?(?:Date|Datum)"?\s*,/i.test(line)) {
           multiSectionDetected = true;
-        } else if (/^"?Transaction History"?\s*,\s*"?Header"?\s*,/i.test(line)) {
-          // Transaction History header — column order varies (some CapTrader
-          // variants put Date at the end). Confirm by looking for both a
-          // date-like column AND a transaction-type-like column anywhere
-          // in the row.
-          const lower = line.toLowerCase();
-          const hasDate = /,\s*"?(?:date|datum)"?\s*(?:,|$)/i.test(lower);
-          const hasTxType = /,\s*"?(?:transaction type|transaktionstyp)"?\s*(?:,|$)/i.test(lower);
-          if (hasDate && hasTxType) {
-            multiSectionDetected = true;
-          }
         }
       }
       if (!captraderMarkerFound) {
@@ -1007,6 +975,14 @@ function detectBrokerFormat(fileBuffer) {
       return 'generic';
     }
 
+    // NinjaTrader grid export (semicolon-delimited; European decimal commas in price)
+    if (headers.includes('instrument') && headers.includes('action') &&
+        headers.includes('quantity') && headers.includes('price') &&
+        (headers.includes('e/x') || headers.includes('order id'))) {
+      console.log('[AUTO-DETECT] Detected: NinjaTrader grid export (routed to generic parser)');
+      return 'generic';
+    }
+
     // Default to generic if no specific format detected
     console.log('[AUTO-DETECT] No specific format detected, using generic parser');
     return 'generic';
@@ -1021,7 +997,7 @@ function findLikelyDelimitedHeaderLine(lines, maxLines = 15) {
   const headerKeywords = [
     'date', 'time', 'symbol', 'side', 'type', 'action', 'price', 'qty', 'quantity',
     'commission', 'description', 'order', 'profit', 'pnl', 'fill', 'entry', 'exit',
-    'trade', 'status', 'account'
+    'trade', 'status', 'account', 'instrument', 'position', 'rate', 'connection'
   ];
   const delimiters = [',', ';', '\t'];
   let fallback = null;
@@ -1086,7 +1062,7 @@ function getTradingViewFuturesInstrumentData(symbol) {
   const exchangeMatch = normalizedSymbol.match(/^([^:]+):(.+)$/);
   const contractSymbol = exchangeMatch ? exchangeMatch[2] : normalizedSymbol;
 
-  const standardMatch = contractSymbol.match(/^([A-Z]+?)([FGHJKMNQUVXZ])(\d{1,4})$/);
+  const standardMatch = contractSymbol.match(/^([A-Z][A-Z0-9]*?)([FGHJKMNQUVXZ])(\d{1,4})$/);
   if (standardMatch) {
     const monthCodes = { F: '01', G: '02', H: '03', J: '04', K: '05', M: '06', N: '07', Q: '08', U: '09', V: '10', X: '11', Z: '12' };
     let year = parseInt(standardMatch[3], 10);
@@ -1572,7 +1548,7 @@ const brokerParsers = {
 
   schwab: (row) => {
     // Schwab provides completed trades with entry and exit data
-    const quantity = Math.abs(parseInt(row.Quantity || 0));
+    const quantity = Math.abs(parseFloat(row.Quantity || 0));
     const isShort = parseFloat(row['Cost Per Share'] || 0) > parseFloat(row['Proceeds Per Share'] || 0) &&
                     parseFloat(row['Gain/Loss ($)'] || 0) > 0;
     
@@ -2261,6 +2237,40 @@ function getTradeValueMultiplier(trade) {
   return 1;
 }
 
+function normalizeParsedTradeInstrumentData(trade) {
+  if (!trade || !trade.symbol) return trade;
+
+  const parsed = parseInstrumentData(trade.symbol);
+  const currentType = trade.instrumentType || trade.instrument_type;
+  const currentContractSize = trade.contractSize ?? trade.contract_size;
+  const currentPointValue = trade.pointValue ?? trade.point_value;
+
+  if ((!currentType || currentType === 'stock') && parsed.instrumentType && parsed.instrumentType !== 'stock') {
+    trade.instrumentType = parsed.instrumentType;
+    if (parsed.underlyingSymbol && !trade.underlyingSymbol && !trade.underlying_symbol) {
+      trade.underlyingSymbol = parsed.underlyingSymbol;
+    }
+    if (parsed.strikePrice != null && trade.strikePrice == null && trade.strike_price == null) {
+      trade.strikePrice = parsed.strikePrice;
+    }
+    if (parsed.expirationDate && !trade.expirationDate && !trade.expiration_date) {
+      trade.expirationDate = parsed.expirationDate;
+    }
+    if (parsed.optionType && !trade.optionType && !trade.option_type) {
+      trade.optionType = parsed.optionType;
+    }
+  }
+
+  const normalizedType = trade.instrumentType || trade.instrument_type;
+  if (normalizedType === 'option' && (currentContractSize == null || Number(currentContractSize) <= 0)) {
+    trade.contractSize = Number(parsed.contractSize || 100);
+  } else if (normalizedType === 'future' && (currentPointValue == null || Number(currentPointValue) <= 0) && parsed.pointValue) {
+    trade.pointValue = Number(parsed.pointValue);
+  }
+
+  return trade;
+}
+
 function cloneTradeMetadata(trade) {
   return {
     symbol: trade.symbol,
@@ -2628,6 +2638,7 @@ function wrapResultWithDiagnostics(trades, diagnostics, unresolvedCusips = [], u
   }
 
   normalizeExecutionCollections(trades);
+  trades = trades.map(trade => normalizeParsedTradeInstrumentData(trade));
   trades = repairTradeReversals(trades, diagnostics);
 
   // Update diagnostics with final counts
@@ -3151,6 +3162,19 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       const previewLineCount = Math.min(csvString.split('\n').length, 5);
       console.log(`Prepared IBKR CSV for parsing (preview lines redacted, count=${previewLineCount})`);
     }
+
+    // Custom mapping delimiter, or auto-detect semicolon/tab (e.g. NinjaTrader grid exports).
+    // Must run after broker-specific parseOptions overrides so saved mappings win.
+    if (context.customMapping?.delimiter) {
+      parseOptions.delimiter = context.customMapping.delimiter;
+      console.log(`[CUSTOM MAPPING] Using delimiter from mapping: ${JSON.stringify(context.customMapping.delimiter)}`);
+    } else {
+      const headerInfo = findLikelyDelimitedHeaderLine(csvString.split('\n'));
+      if (headerInfo?.delimiter) {
+        parseOptions.delimiter = headerInfo.delimiter;
+        console.log(`[CSV] Auto-detected delimiter: ${JSON.stringify(headerInfo.delimiter)}`);
+      }
+    }
     
     let records;
     try {
@@ -3558,6 +3582,13 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
               fees: trade.fees,
               currency: trade.currency,
               notes: trade.notes,
+              instrumentType: trade.instrumentType,
+              strikePrice: trade.strikePrice,
+              expirationDate: trade.expirationDate,
+              optionType: trade.optionType,
+              contractSize: trade.contractSize,
+              pointValue: trade.pointValue,
+              underlyingSymbol: trade.underlyingSymbol,
               raw: record
             });
           }
@@ -3594,19 +3625,26 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
           // Determine if this completes a trade
           if (prevPosition === 0) {
             // Starting new trade
-            completedTrades.push({
-              symbol: transaction.symbol,
-              tradeDate: transaction.date,
-              entryTime: transaction.datetime,
-              entryPrice: transaction.price,
+              completedTrades.push({
+                symbol: transaction.symbol,
+                tradeDate: transaction.date,
+                entryTime: transaction.datetime,
+                entryPrice: transaction.price,
               quantity: transaction.quantity,
               side: isBuy ? 'long' : 'short',
               commission: transaction.commission,
-              fees: transaction.fees || 0,
-              currency: transaction.currency,
-              broker: 'tradestation',
-              notes: transaction.notes
-            });
+                fees: transaction.fees || 0,
+                currency: transaction.currency,
+                broker: 'tradestation',
+                notes: transaction.notes,
+                instrumentType: transaction.instrumentType,
+                strikePrice: transaction.strikePrice,
+                expirationDate: transaction.expirationDate,
+                optionType: transaction.optionType,
+                contractSize: transaction.contractSize,
+                pointValue: transaction.pointValue,
+                underlyingSymbol: transaction.underlyingSymbol
+              });
           } else if ((prevPosition > 0 && currentPosition <= 0) || (prevPosition < 0 && currentPosition >= 0)) {
             // Closing or reversing position
             const lastTrade = completedTrades[completedTrades.length - 1];
@@ -4730,11 +4768,13 @@ function parseInstrumentData(symbol) {
   }
 
   // Futures format detection: "ESM4", "NQU24", "CLZ23", "NYMEX_MINI:QG1!", etc.
+  // Base symbol may contain digits (e.g. M2K = Micro Russell 2000), so allow
+  // alphanumerics after a required leading letter rather than letters only.
   const futuresPatterns = [
-    /^([A-Z]{1,3})([FGHJKMNQUVXZ])(\d{1,2})$/,  // Standard: ESM4, NQU24, CLZ23
+    /^([A-Z][A-Z0-9]{0,2})([FGHJKMNQUVXZ])(\d{1,2})$/,  // Standard: ESM4, NQU24, CLZ23, M2KM6
     /^([A-Z_]+):([A-Z0-9]+)!?$/,                 // TradingView: NYMEX_MINI:QG1!
-    /^\/([A-Z]{1,3})([FGHJKMNQUVXZ])(\d{2})$/,   // Slash notation: /ESM24
-    /^F\.[A-Z]{2,}\.([A-Z]{1,3})([FGHJKMNQUVXZ])(\d{1,2})$/  // AvaTrade: F.US.MESM26
+    /^\/([A-Z][A-Z0-9]{0,2})([FGHJKMNQUVXZ])(\d{2})$/,   // Slash notation: /ESM24
+    /^F\.[A-Z]{2,}\.([A-Z][A-Z0-9]{0,2})([FGHJKMNQUVXZ])(\d{1,2})$/  // AvaTrade: F.US.MESM26
   ];
 
   for (const pattern of futuresPatterns) {
@@ -4745,7 +4785,7 @@ function parseInstrumentData(symbol) {
       if (pattern.source.includes(':')) {
         // TradingView format
         const [, , contractSymbol] = match;
-        const standardTvMatch = contractSymbol.match(/^([A-Z]+?)([FGHJKMNQUVXZ])(\d{1,4})$/);
+        const standardTvMatch = contractSymbol.match(/^([A-Z][A-Z0-9]*?)([FGHJKMNQUVXZ])(\d{1,4})$/);
         const continuousTvMatch = contractSymbol.match(/^([A-Z]+)\d+$/);
 
         if (standardTvMatch) {
@@ -4806,8 +4846,15 @@ function parseInstrumentData(symbol) {
 function parseNumeric(value, defaultValue = 0) {
   if (value === null || value === undefined || value === '') return defaultValue;
 
-  let cleanValue = value.toString().trim().replace(/[$,]/g, '');
+  let cleanValue = value.toString().trim().replace(/\$/g, '');
   if (cleanValue === '') return defaultValue;
+
+  // European decimal comma (e.g. NinjaTrader 7200,75) — not a thousands separator
+  if (/^-?\d{1,3}(\.\d{3})*,\d{1,2}$/.test(cleanValue) || /^-?\d+,\d{1,2}$/.test(cleanValue)) {
+    cleanValue = cleanValue.replace(/\./g, '').replace(',', '.');
+  } else {
+    cleanValue = cleanValue.replace(/,/g, '');
+  }
 
   // Handle accounting-style negative: (123.45) -> -123.45
   const parenMatch = cleanValue.match(/^\((.+)\)$/);
@@ -6056,7 +6103,7 @@ async function parseSchwabTrades(records, existingPositions = {}, context = {}) 
         symbol = record[0];
         openedDate = record[3];
         closedDate = record[2];
-        quantity = Math.abs(parseInt(record[4]?.replace(/,/g, '') || 0));
+        quantity = Math.abs(parseFloat(record[4]?.replace(/,/g, '') || 0));
         proceedsPerShare = parseFloat(record[5]?.replace(/[$,]/g, '') || 0);
         costPerShare = parseFloat(record[6]?.replace(/[$,]/g, '') || 0);
         costBasis = parseFloat(record[8]?.replace(/[$,]/g, '') || 0);
@@ -6066,7 +6113,7 @@ async function parseSchwabTrades(records, existingPositions = {}, context = {}) 
       } else {
         // Handle original named columns format
         symbol = record['Symbol'];
-        quantity = Math.abs(parseInt(record['Quantity']?.replace(/,/g, '') || 0));
+        quantity = Math.abs(parseFloat(record['Quantity']?.replace(/,/g, '') || 0));
         costPerShare = parseFloat(record['Cost Per Share']?.replace(/[$,]/g, '') || 0);
         proceedsPerShare = parseFloat(record['Proceeds Per Share']?.replace(/[$,]/g, '') || 0);
         gainLoss = parseFloat(record['Gain/Loss ($)']?.replace(/[$,]/g, '') || 0);
@@ -7548,7 +7595,7 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
 
     if (isFutures) {
       // Parse futures contract: MNQH2026 -> MNQ (product), H (month), 2026 (year)
-      const futuresMatch = rawContract.match(/^([A-Z]+?)([FGHJKMNQUVXZ])(\d{2,4})$/);
+      const futuresMatch = rawContract.match(/^([A-Z][A-Z0-9]*?)([FGHJKMNQUVXZ])(\d{2,4})$/);
       const baseProduct = futuresMatch
         ? futuresMatch[1]
         : instrumentData.underlyingAsset || extractUnderlyingFromFuturesSymbol(symbol) || rawContract.replace(/[FGHJKMNQUVXZ]\d+$/, '');
@@ -10131,7 +10178,7 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
     };
 
     // Parse contract month/year from symbol (e.g., MESZ5 -> Z = December, 5 = 2025)
-    const contractMatch = symbol.match(/^([A-Z]+)([FGHJKMNQUVXZ])(\d{1,2})$/);
+    const contractMatch = symbol.match(/^([A-Z][A-Z0-9]*)([FGHJKMNQUVXZ])(\d{1,2})$/);
     if (contractMatch) {
       const [, , monthCode, yearDigit] = contractMatch;
       const monthCodes = { F: '01', G: '02', H: '03', J: '04', K: '05', M: '06', N: '07', Q: '08', U: '09', V: '10', X: '11', Z: '12' };

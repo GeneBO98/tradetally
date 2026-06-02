@@ -317,16 +317,27 @@ class YearWrappedService {
    * Get core trading metrics for the year
    */
   static async getCoreMetrics(userId, year) {
+    const { getBreakevenToleranceConfig, breakevenPredicate } = require('../utils/breakeven');
+    const breakevenConfig = await getBreakevenToleranceConfig(userId);
+    const be = breakevenPredicate({
+      gross: '(pnl + COALESCE(commission, 0) + COALESCE(fees, 0))',
+      tickSize: 'tick_size',
+      pointValue: 'point_value',
+      quantity: 'quantity',
+      underlying: 'underlying_asset'
+    }, breakevenConfig);
+
     const result = await db.query(`
       SELECT
         COUNT(*) as total_trades,
-        COUNT(*) FILTER (WHERE pnl > 0) as winning_trades,
-        COUNT(*) FILTER (WHERE pnl < 0) as losing_trades,
-        COUNT(*) FILTER (WHERE pnl = 0) as breakeven_trades,
+        -- Breakeven = gross P&L within tolerance; wins/losses by NET P&L.
+        COUNT(*) FILTER (WHERE ${be.isNot} AND pnl > 0) as winning_trades,
+        COUNT(*) FILTER (WHERE ${be.isNot} AND pnl < 0) as losing_trades,
+        COUNT(*) FILTER (WHERE ${be.is}) as breakeven_trades,
         COALESCE(SUM(pnl), 0) as total_pnl,
         COALESCE(AVG(pnl), 0) as avg_pnl,
         CASE WHEN COUNT(*) > 0
-          THEN (COUNT(*) FILTER (WHERE pnl > 0)::float / COUNT(*) * 100)
+          THEN (COUNT(*) FILTER (WHERE ${be.isNot} AND pnl > 0)::float / COUNT(*) * 100)
           ELSE 0
         END as win_rate,
         COUNT(DISTINCT symbol) as unique_symbols,
@@ -398,14 +409,23 @@ class YearWrappedService {
    * Get the top symbol by total P&L
    */
   static async getTopSymbol(userId, year) {
+    const { getBreakevenToleranceConfig, breakevenPredicate } = require('../utils/breakeven');
+    const be = breakevenPredicate({
+      gross: '(pnl + COALESCE(commission, 0) + COALESCE(fees, 0))',
+      tickSize: 'tick_size',
+      pointValue: 'point_value',
+      quantity: 'quantity',
+      underlying: 'underlying_asset'
+    }, await getBreakevenToleranceConfig(userId));
+
     const result = await db.query(`
       SELECT
         symbol,
         SUM(pnl) as total_pnl,
         COUNT(*) as trade_count,
-        COUNT(*) FILTER (WHERE pnl > 0) as wins,
+        COUNT(*) FILTER (WHERE ${be.isNot} AND pnl > 0) as wins,
         CASE WHEN COUNT(*) > 0
-          THEN (COUNT(*) FILTER (WHERE pnl > 0)::float / COUNT(*) * 100)
+          THEN (COUNT(*) FILTER (WHERE ${be.isNot} AND pnl > 0)::float / COUNT(*) * 100)
           ELSE 0
         END as win_rate
       FROM trades
@@ -826,13 +846,22 @@ class YearWrappedService {
   static async getYearOverYearComparison(userId, year) {
     const prevYear = year - 1;
 
+    const { getBreakevenToleranceConfig, breakevenPredicate } = require('../utils/breakeven');
+    const be = breakevenPredicate({
+      gross: '(pnl + COALESCE(commission, 0) + COALESCE(fees, 0))',
+      tickSize: 'tick_size',
+      pointValue: 'point_value',
+      quantity: 'quantity',
+      underlying: 'underlying_asset'
+    }, await getBreakevenToleranceConfig(userId));
+
     const result = await db.query(`
       SELECT
         EXTRACT(YEAR FROM trade_date) as year,
         COUNT(*) as total_trades,
         COALESCE(SUM(pnl), 0) as total_pnl,
         CASE WHEN COUNT(*) > 0
-          THEN (COUNT(*) FILTER (WHERE pnl > 0)::float / COUNT(*) * 100)
+          THEN (COUNT(*) FILTER (WHERE ${be.isNot} AND pnl > 0)::float / COUNT(*) * 100)
           ELSE 0
         END as win_rate
       FROM trades
@@ -892,18 +921,27 @@ class YearWrappedService {
    * Get monthly breakdown for the year
    */
   static async getMonthlyBreakdown(userId, year) {
+    const { getBreakevenToleranceConfig, breakevenPredicate } = require('../utils/breakeven');
+    const be = breakevenPredicate({
+      gross: '(pnl + COALESCE(commission, 0) + COALESCE(fees, 0))',
+      tickSize: 'tick_size',
+      pointValue: 'point_value',
+      quantity: 'quantity',
+      underlying: 'underlying_asset'
+    }, await getBreakevenToleranceConfig(userId));
+
     const result = await db.query(`
       SELECT
         EXTRACT(MONTH FROM trade_date) as month,
         COUNT(*) as total_trades,
-        COUNT(*) FILTER (WHERE pnl > 0) as wins,
-        COUNT(*) FILTER (WHERE pnl < 0) as losses,
+        COUNT(*) FILTER (WHERE ${be.isNot} AND pnl > 0) as wins,
+        COUNT(*) FILTER (WHERE ${be.isNot} AND pnl < 0) as losses,
         COALESCE(SUM(pnl), 0) as total_pnl,
         COALESCE(AVG(pnl), 0) as avg_pnl,
         MAX(pnl) as best_trade,
         MIN(pnl) as worst_trade,
         CASE WHEN COUNT(*) > 0
-          THEN (COUNT(*) FILTER (WHERE pnl > 0)::float / COUNT(*) * 100)
+          THEN (COUNT(*) FILTER (WHERE ${be.isNot} AND pnl > 0)::float / COUNT(*) * 100)
           ELSE 0
         END as win_rate
       FROM trades

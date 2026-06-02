@@ -957,6 +957,27 @@ describe('TradeStation parser', () => {
       fees: 0.10
     }));
   });
+
+  test('preserves option instrument metadata and contract size for OCC symbols', async () => {
+    const optionCsv = [
+      'Account,T/D,S/D,Currency,Type,Side,Symbol,Qty,Price,Exec Time,Comm,SEC,TAF,NSCC,Nasdaq,ECN Remove,ECN Add,Gross Proceeds,Net Proceeds,Clr Broker,Liq,Note',
+      '12345,05/29/2026,06/01/2026,USD,2,B,SPCE260529C00004500,10,0.27,09:48:09,1,0,0,0,0,0,0,-270.00,-271.00,VLAMP,,',
+      '12345,05/29/2026,06/01/2026,USD,2,S,SPCE260529C00004500,10,1.51,14:53:58,1,0,0,0,0,0,0,1510.00,1509.00,VCTDLOPT,,'
+    ].join('\n');
+
+    const result = await parseCSV(buf(optionCsv), 'tradestation', {});
+
+    expectValidResult(result);
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0]).toEqual(expect.objectContaining({
+      symbol: 'SPCE260529C00004500',
+      instrumentType: 'option',
+      underlyingSymbol: 'SPCE',
+      optionType: 'call',
+      strikePrice: 4.5,
+      contractSize: 100
+    }));
+  });
 });
 
 // ──────────────────────────────────────────────

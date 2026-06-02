@@ -82,6 +82,12 @@
                             Record Dividend
                         </button>
                         <button
+                            @click="createWebMentionRule"
+                            class="btn-secondary"
+                        >
+                            Web Mentions
+                        </button>
+                        <button
                             @click="confirmDelete"
                             class="btn-secondary text-red-600 hover:text-red-700"
                         >
@@ -740,6 +746,16 @@ async function deleteHolding() {
     } catch (err) {
         console.error("Failed to delete holding:", err);
     }
+}
+
+function createWebMentionRule() {
+    if (!holding.value) return;
+    router.push({
+        name: "web-mentions",
+        query: {
+            symbol: holding.value.symbol,
+        },
+    });
 }
 
 async function onLotCreated() {

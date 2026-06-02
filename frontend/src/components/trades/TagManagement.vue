@@ -48,10 +48,10 @@
 
                 <!-- Available tags -->
                 <div
-                    v-if="availableTags.length > 0"
+                    v-if="visibleTags.length > 0"
                     class="border-t border-gray-200 dark:border-gray-600"
                 >
-                    <div v-for="tag in availableTags" :key="tag.id" class="p-1">
+                    <div v-for="tag in visibleTags" :key="tag.id" class="p-1">
                         <label
                             class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer"
                         >
@@ -181,19 +181,50 @@
                         :key="tag.id"
                         class="flex items-center justify-between p-2 rounded border border-gray-200 dark:border-gray-600"
                     >
-                        <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-2 flex-1 min-w-0">
+                            <label
+                                class="relative inline-flex flex-shrink-0 cursor-pointer"
+                                :title="`Change color for ${tag.name}`"
+                            >
+                                <span
+                                    class="block w-5 h-5 rounded-full border border-gray-300 dark:border-gray-500"
+                                    :style="{ backgroundColor: tag.color }"
+                                ></span>
+                                <input
+                                    type="color"
+                                    :value="tag.color"
+                                    @change="updateTagColor(tag, $event.target.value)"
+                                    class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                />
+                            </label>
                             <span
-                                class="w-4 h-4 rounded-full flex-shrink-0"
-                                :style="{ backgroundColor: tag.color }"
-                            ></span>
-                            <span
-                                class="text-sm text-gray-900 dark:text-white"
+                                class="text-sm truncate"
+                                :class="tag.hidden ? 'text-gray-400 dark:text-gray-500 line-through' : 'text-gray-900 dark:text-white'"
                                 >{{ tag.name }}</span
+                            >
+                            <span
+                                v-if="typeof tag.count === 'number'"
+                                class="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0"
+                                >{{ tag.count }} {{ tag.count === 1 ? 'trade' : 'trades' }}</span
                             >
                         </div>
                         <button
+                            @click="toggleTagHidden(tag)"
+                            class="ml-2 flex-shrink-0 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                            :class="tag.hidden ? 'text-gray-400 dark:text-gray-500' : 'text-primary-600 dark:text-primary-400'"
+                            :title="tag.hidden ? 'Show in dropdowns' : 'Hide from dropdowns'"
+                        >
+                            <svg v-if="!tag.hidden" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                            <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                            </svg>
+                        </button>
+                        <button
                             @click="deleteTag(tag.id)"
-                            class="text-red-600 hover:text-red-700 text-sm"
+                            class="text-red-600 hover:text-red-700 text-sm ml-2 flex-shrink-0"
                             title="Delete tag"
                         >
                             <svg
@@ -225,7 +256,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import api from "@/services/api";
 import { useNotification } from "@/composables/useNotification";
 
@@ -235,6 +266,14 @@ const props = defineProps({
         default: () => [],
     },
 });
+
+// Tags to show in the selection dropdown: drop hidden ones, but keep any that
+// are currently selected so an active filter is never silently lost.
+const visibleTags = computed(() =>
+    availableTags.value.filter(
+        (tag) => !tag.hidden || (props.modelValue || []).includes(tag.name),
+    ),
+);
 
 const emit = defineEmits(["update:modelValue"]);
 const { showDangerConfirmation } = useNotification();
@@ -295,6 +334,33 @@ async function createTag() {
         alert(error.response?.data?.message || "Failed to create tag");
     } finally {
         creatingTag.value = false;
+    }
+}
+
+async function updateTagColor(tag, newColor) {
+    if (!newColor || newColor === tag.color) return;
+
+    const previousColor = tag.color;
+    tag.color = newColor;
+
+    try {
+        await api.put(`/tags/${tag.id}`, { color: newColor });
+    } catch (error) {
+        console.error("[ERROR] Failed to update tag color:", error);
+        tag.color = previousColor;
+        alert(error.response?.data?.message || "Failed to update tag color");
+    }
+}
+
+async function toggleTagHidden(tag) {
+    const next = !tag.hidden;
+    tag.hidden = next; // optimistic
+    try {
+        await api.put(`/tags/${tag.id}`, { hidden: next });
+    } catch (error) {
+        console.error("[ERROR] Failed to update tag visibility:", error);
+        tag.hidden = !next; // revert
+        alert(error.response?.data?.message || "Failed to update tag");
     }
 }
 

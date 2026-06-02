@@ -19,7 +19,7 @@ const brokerSyncLimiter = createRateLimiter({
 // All routes require authentication (except OAuth callback)
 router.use((req, res, next) => {
   // Skip auth for OAuth callback route
-  if (req.path === '/connections/schwab/callback') {
+  if (req.path === '/connections/schwab/callback' || /^\/connections\/[^/]+\/callback$/.test(req.path)) {
     return next();
   }
   return authenticate(req, res, next);
@@ -45,6 +45,12 @@ router.post('/connections/schwab/init', brokerSyncLimiter, brokerSyncController.
 
 // Handle Schwab OAuth callback (no auth required - user redirected from Schwab)
 router.get('/connections/schwab/callback', brokerSyncController.handleSchwabCallback);
+
+// Initialize direct broker OAuth flow
+router.post('/connections/:broker/init', brokerSyncController.initBrokerOAuth);
+
+// Handle direct broker OAuth callback (no auth required - user redirected from broker)
+router.get('/connections/:broker/callback', brokerSyncController.handleBrokerOAuthCallback);
 
 // Update connection settings
 router.put('/connections/:id', brokerSyncLimiter, validate(schemas.brokerSyncConnectionUpdate), brokerSyncController.updateConnection);

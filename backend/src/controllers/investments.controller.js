@@ -6,8 +6,52 @@
 const EightPillarsService = require('../services/eightPillarsService');
 const FundamentalDataService = require('../services/fundamentalDataService');
 const HoldingsService = require('../services/holdingsService');
+const PortfolioService = require('../services/portfolioService');
 const DCFValuationService = require('../services/dcfValuationService');
 const db = require('../config/database');
+
+// Map service-layer errors to accurate HTTP responses. Without this every
+// thrown Error from a service becomes a generic 500 with no client-actionable
+// detail, which hides the real cause (e.g. an expired upstream API key vs a
+// symbol that genuinely lacks data).
+function sendServiceError(res, error, fallbackMessage) {
+  const message = error?.message || fallbackMessage;
+  const lower = message.toLowerCase();
+
+  // Upstream auth failure — admin must rotate the key. Surface as 503 so the
+  // client can show "service temporarily unavailable" rather than "your data
+  // is bad."
+  if (/(finnhub|alpha vantage|openfigi|gemini|databento).*(401|invalid api key|unauthorized)/i.test(message)) {
+    return res.status(503).json({
+      error: 'Upstream market data provider rejected credentials',
+      code: 'UPSTREAM_AUTH_FAILED',
+      detail: message
+    });
+  }
+
+  if (lower.includes('rate limit') || lower.includes('429')) {
+    return res.status(429).json({
+      error: 'Upstream market data provider rate limit hit',
+      code: 'UPSTREAM_RATE_LIMITED',
+      detail: message
+    });
+  }
+
+  // Insufficient financial data from any provider — request is well-formed,
+  // but the symbol doesn't have enough history to compute. 422 fits per RFC.
+  if (lower.includes('insufficient financial data') || lower.includes('need at least')) {
+    return res.status(422).json({
+      error: message,
+      code: 'DATA_INSUFFICIENT',
+      detail: 'Upstream returned no usable periods. This may mean the symbol is new, delisted, or the data provider returned an empty payload.'
+    });
+  }
+
+  return res.status(500).json({
+    error: message || fallbackMessage,
+    code: 'INTERNAL_ERROR'
+  });
+}
 
 // ========================================
 // 8 PILLARS ANALYSIS
@@ -98,7 +142,7 @@ const analyzeStock = async (req, res) => {
     res.json({ ...analysis, type: 'stock' });
   } catch (error) {
     console.error('[INVESTMENTS] Analysis error:', error);
-    res.status(500).json({ error: error.message || 'Failed to analyze stock' });
+    sendServiceError(res, error, 'Failed to analyze stock');
   }
 };
 
@@ -121,7 +165,7 @@ const refreshAnalysis = async (req, res) => {
     res.json(analysis);
   } catch (error) {
     console.error('[INVESTMENTS] Refresh error:', error);
-    res.status(500).json({ error: error.message || 'Failed to refresh analysis' });
+    sendServiceError(res, error, 'Failed to refresh analysis');
   }
 };
 
@@ -147,7 +191,7 @@ const getFinancials = async (req, res) => {
     });
   } catch (error) {
     console.error('[INVESTMENTS] Financials error:', error);
-    res.status(500).json({ error: error.message || 'Failed to get financials' });
+    sendServiceError(res, error, 'Failed to get financials');
   }
 };
 
@@ -281,7 +325,7 @@ const getStatement = async (req, res) => {
     });
   } catch (error) {
     console.error('[INVESTMENTS] Statement error:', error);
-    res.status(500).json({ error: error.message || 'Failed to get statement' });
+    sendServiceError(res, error, 'Failed to get statement');
   }
 };
 
@@ -393,7 +437,7 @@ const getMetrics = async (req, res) => {
     });
   } catch (error) {
     console.error('[INVESTMENTS] Metrics error:', error);
-    res.status(500).json({ error: error.message || 'Failed to get metrics' });
+    sendServiceError(res, error, 'Failed to get metrics');
   }
 };
 
@@ -413,7 +457,7 @@ const getProfile = async (req, res) => {
     });
   } catch (error) {
     console.error('[INVESTMENTS] Profile error:', error);
-    res.status(500).json({ error: error.message || 'Failed to get profile' });
+    sendServiceError(res, error, 'Failed to get profile');
   }
 };
 
@@ -660,19 +704,165 @@ const recordDividend = async (req, res) => {
 // PORTFOLIO
 // ========================================
 
+function buildPortfolioOptions(query = {}) {
+  return {
+    accounts: query.accounts,
+    benchmark: query.benchmark,
+    period: query.period
+  };
+}
+
+/**
+ * Get portfolio overview
+ * GET /api/investments/portfolio/overview
+ */
+const getPortfolioOverview = async (req, res) => {
+  try {
+    const options = buildPortfolioOptions(req.query);
+    const overview = await PortfolioService.getOverview(req.user.id, options);
+    await PortfolioService.evaluateAlerts(req.user.id, options);
+    res.json(overview);
+  } catch (error) {
+    console.error('[INVESTMENTS] Portfolio overview error:', error);
+    res.status(500).json({ error: error.message || 'Failed to get portfolio overview' });
+  }
+};
+
+/**
+ * Get portfolio positions
+ * GET /api/investments/portfolio/positions
+ */
+const getPortfolioPositions = async (req, res) => {
+  try {
+    const positions = await PortfolioService.getPositions(req.user.id, buildPortfolioOptions(req.query));
+    res.json(positions);
+  } catch (error) {
+    console.error('[INVESTMENTS] Portfolio positions error:', error);
+    res.status(500).json({ error: error.message || 'Failed to get portfolio positions' });
+  }
+};
+
+/**
+ * Get portfolio performance versus benchmark
+ * GET /api/investments/portfolio/performance
+ */
+const getPortfolioPerformance = async (req, res) => {
+  try {
+    const performance = await PortfolioService.getPerformance(req.user.id, buildPortfolioOptions(req.query));
+    res.json(performance);
+  } catch (error) {
+    console.error('[INVESTMENTS] Portfolio performance error:', error);
+    res.status(500).json({ error: error.message || 'Failed to get portfolio performance' });
+  }
+};
+
+/**
+ * Get advisory rebalance plan
+ * GET /api/investments/portfolio/rebalance
+ */
+const getPortfolioRebalance = async (req, res) => {
+  try {
+    const rebalance = await PortfolioService.getRebalancePlan(req.user.id, buildPortfolioOptions(req.query));
+    res.json(rebalance);
+  } catch (error) {
+    console.error('[INVESTMENTS] Portfolio rebalance error:', error);
+    res.status(500).json({ error: error.message || 'Failed to get rebalance plan' });
+  }
+};
+
+/**
+ * Get portfolio alert summary
+ * GET /api/investments/portfolio/alerts
+ */
+const getPortfolioAlerts = async (req, res) => {
+  try {
+    const alerts = await PortfolioService.getAlertSummary(req.user.id, buildPortfolioOptions(req.query));
+    res.json(alerts);
+  } catch (error) {
+    console.error('[INVESTMENTS] Portfolio alerts error:', error);
+    res.status(500).json({ error: error.message || 'Failed to get portfolio alerts' });
+  }
+};
+
+/**
+ * Backfill portfolio snapshots for current user
+ * POST /api/investments/portfolio/snapshots/backfill
+ */
+const backfillPortfolioSnapshots = async (req, res) => {
+  try {
+    const result = await PortfolioService.backfillSnapshotsForUser(req.user.id, req.body || {});
+    res.json(result);
+  } catch (error) {
+    console.error('[INVESTMENTS] Portfolio snapshot backfill error:', error);
+    res.status(500).json({ error: error.message || 'Failed to backfill portfolio snapshots' });
+  }
+};
+
+/**
+ * Get portfolio preferences
+ * GET /api/investments/portfolio/preferences
+ */
+const getPortfolioPreferences = async (req, res) => {
+  try {
+    const preferences = await PortfolioService.getPreferences(req.user.id);
+    res.json(preferences);
+  } catch (error) {
+    console.error('[INVESTMENTS] Portfolio preferences error:', error);
+    res.status(500).json({ error: error.message || 'Failed to get portfolio preferences' });
+  }
+};
+
+/**
+ * Update portfolio preferences
+ * PUT /api/investments/portfolio/preferences
+ */
+const updatePortfolioPreferences = async (req, res) => {
+  try {
+    const preferences = await PortfolioService.updatePreferences(req.user.id, req.body || {});
+    res.json(preferences);
+  } catch (error) {
+    console.error('[INVESTMENTS] Update portfolio preferences error:', error);
+    res.status(500).json({ error: error.message || 'Failed to update portfolio preferences' });
+  }
+};
+
+/**
+ * Set (or clear) the target allocation for a symbol. Works for any position,
+ * including positions derived purely from open trades (no holding required).
+ * PUT /api/investments/portfolio/targets
+ */
+const setPortfolioTarget = async (req, res) => {
+  try {
+    const { symbol, targetAllocationPercent } = req.body || {};
+    if (!symbol) {
+      return res.status(400).json({ error: 'Symbol is required' });
+    }
+    const result = await PortfolioService.setTarget(req.user.id, symbol, targetAllocationPercent);
+    res.json(result);
+  } catch (error) {
+    console.error('[INVESTMENTS] Set portfolio target error:', error);
+    const status = /must be between|required/i.test(error.message) ? 400 : 500;
+    res.status(status).json({ error: error.message || 'Failed to set portfolio target' });
+  }
+};
+
 /**
  * Get portfolio summary
  * GET /api/investments/portfolio/summary
  */
 const getPortfolioSummary = async (req, res) => {
   try {
-    // Refresh prices first to ensure accurate portfolio values
-    // Use the returned holdings (with prices populated) for the summary calculation
-    const holdingsWithPrices = await HoldingsService.refreshPrices(req.user.id);
-
-    const summary = await HoldingsService.getPortfolioSummary(req.user.id, holdingsWithPrices);
-
-    res.json(summary);
+    const overview = await PortfolioService.getOverview(req.user.id, buildPortfolioOptions(req.query));
+    res.json({
+      holdingCount: overview.positionCount,
+      totalValue: overview.totalValue,
+      totalCostBasis: overview.totalCostBasis,
+      unrealizedPnL: overview.unrealizedPnL,
+      unrealizedPnLPercent: overview.unrealizedPnLPercent,
+      totalDividends: overview.totalDividends,
+      totalReturn: overview.totalReturn,
+      allocation: overview.allocation
+    });
   } catch (error) {
     console.error('[INVESTMENTS] Portfolio summary error:', error);
     res.status(500).json({ error: error.message || 'Failed to get portfolio summary' });
@@ -686,11 +876,12 @@ const getPortfolioSummary = async (req, res) => {
 const refreshPrices = async (req, res) => {
   try {
     const updated = await HoldingsService.refreshPrices(req.user.id);
+    await PortfolioService.evaluateAlerts(req.user.id);
 
     res.json({
       success: true,
-      message: `Refreshed ${updated} holdings`,
-      updated
+      message: `Refreshed ${updated.length} holdings`,
+      updated: updated.length
     });
   } catch (error) {
     console.error('[INVESTMENTS] Refresh prices error:', error);
@@ -1182,6 +1373,15 @@ module.exports = {
   recordDividend,
 
   // Portfolio
+  getPortfolioOverview,
+  getPortfolioPositions,
+  getPortfolioPerformance,
+  getPortfolioRebalance,
+  getPortfolioAlerts,
+  backfillPortfolioSnapshots,
+  getPortfolioPreferences,
+  updatePortfolioPreferences,
+  setPortfolioTarget,
   getPortfolioSummary,
   refreshPrices,
 

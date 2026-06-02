@@ -388,7 +388,7 @@
       </div>
       <div class="flex flex-wrap justify-center gap-6 text-sm">
         <a
-          href="https://docs.tradetally.io"
+          href="https://tradetally.io/docs"
           target="_blank"
           rel="noopener noreferrer"
           class="text-primary-600 hover:text-primary-500"

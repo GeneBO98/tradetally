@@ -245,6 +245,76 @@
   .table-col-hide-tablet {
     @apply hidden lg:table-cell;
   }
+
+  /* Command-center dashboard utilities */
+
+  /* Tabular monospace numbers for stat panels — gives the terminal feel
+     and aligns numeric columns vertically. */
+  .text-mono-num {
+    font-feature-settings: 'tnum' 1, 'lnum' 1;
+    font-variant-numeric: tabular-nums lining-nums;
+    @apply tabular-nums;
+  }
+
+  /* Dense card variant — sharper border, no shadow, tighter padding
+     than the standard .card. Use for ribbons & dense panels. */
+  .card-dense {
+    @apply bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg;
+  }
+
+  .card-dense-body {
+    @apply p-3 sm:p-4;
+  }
+
+  /* Orange glow on hero P&L number in dark mode (and subtle in light). */
+  .hero-glow-positive {
+    text-shadow: 0 0 24px rgba(22, 163, 74, 0.25);
+  }
+  .dark .hero-glow-positive {
+    text-shadow: 0 0 32px rgba(34, 197, 94, 0.45);
+  }
+  .hero-glow-negative {
+    text-shadow: 0 0 24px rgba(220, 38, 38, 0.2);
+  }
+  .dark .hero-glow-negative {
+    text-shadow: 0 0 32px rgba(248, 113, 113, 0.4);
+  }
+
+  /* Live pulse used on real-time price cells */
+  .pulse-dot {
+    position: relative;
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+    background-color: #10b981;
+  }
+  .pulse-dot::after {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: 9999px;
+    background-color: rgba(16, 185, 129, 0.5);
+    animation: pulse-ring 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  /* Heatmap cell — base. Color comes via inline style. */
+  .heatmap-cell {
+    @apply rounded-sm cursor-pointer transition-transform;
+    width: 12px;
+    height: 12px;
+  }
+  .heatmap-cell:hover {
+    transform: scale(1.4);
+    z-index: 10;
+    position: relative;
+  }
+}
+
+@keyframes pulse-ring {
+  0%   { transform: scale(0.8); opacity: 0.7; }
+  80%  { transform: scale(1.8); opacity: 0; }
+  100% { transform: scale(1.8); opacity: 0; }
 }
 
 /* Scroll reveal animations */

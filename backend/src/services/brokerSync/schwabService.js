@@ -129,6 +129,35 @@ class SchwabService {
 
     return String(a.orderId || '').localeCompare(String(b.orderId || ''));
   }
+
+  _parseSchwabOptionSymbol(symbol) {
+    if (!symbol) return null;
+
+    const normalized = String(symbol).toUpperCase().replace(/\s+/g, ' ').trim();
+    const compact = normalized.replace(/\s+/g, '');
+    const match = normalized.match(/^([A-Z]{1,6})\s+(\d{6})([CP])(\d{8})$/) ||
+      compact.match(/^([A-Z]{1,6})(\d{6})([CP])(\d{8})$/);
+
+    if (!match) return null;
+
+    const [, underlyingSymbol, expiry, type, strike] = match;
+    const year = 2000 + parseInt(expiry.slice(0, 2), 10);
+    const month = parseInt(expiry.slice(2, 4), 10);
+    const day = parseInt(expiry.slice(4, 6), 10);
+
+    if (month < 1 || month > 12 || day < 1 || day > 31) {
+      return null;
+    }
+
+    return {
+      underlyingSymbol,
+      expirationDate: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+      optionType: type === 'C' ? 'call' : 'put',
+      strikePrice: parseInt(strike, 10) / 1000,
+      contractSize: 100
+    };
+  }
+
   /**
    * Check if tokens need refresh and refresh if necessary
    * @param {object} connection - BrokerConnection with credentials
@@ -509,6 +538,7 @@ class SchwabService {
 
     for (const tx of sorted) {
       const symbol = tx.symbol;
+      const positionKey = tx.matchingSymbol || symbol;
 
       // Handle transactions without positionEffect - try to infer from context
       let positionEffect = tx.positionEffect;
@@ -518,7 +548,7 @@ class SchwabService {
         // Otherwise, assume it's opening
         console.log(`[SCHWAB] Transaction without positionEffect: ${symbol} qty=${tx.quantity} price=${tx.price} - attempting to infer`);
 
-        if (openPositions[symbol] && openPositions[symbol].length > 0) {
+        if (openPositions[positionKey] && openPositions[positionKey].length > 0) {
           positionEffect = 'CLOSING';
           console.log(`[SCHWAB] Inferred as CLOSING (found open positions)`);
         } else {
@@ -529,14 +559,15 @@ class SchwabService {
 
       if (positionEffect === 'OPENING') {
         // Add to open positions queue
-        if (!openPositions[symbol]) {
-          openPositions[symbol] = [];
+        if (!openPositions[positionKey]) {
+          openPositions[positionKey] = [];
         }
         // If position was flat (empty queue), this starts a new round-trip
-        if (openPositions[symbol].length === 0) {
-          roundTripCounters[symbol] = (roundTripCounters[symbol] || 0) + 1;
+        if (openPositions[positionKey].length === 0) {
+          roundTripCounters[positionKey] = (roundTripCounters[positionKey] || 0) + 1;
         }
-        openPositions[symbol].push({
+        openPositions[positionKey].push({
+          symbol,
           qty: tx.quantity,
           price: tx.price,
           time: tx.time,
@@ -548,14 +579,15 @@ class SchwabService {
           strikePrice: tx.strikePrice,
           expirationDate: tx.expirationDate,
           underlyingSymbol: tx.underlyingSymbol,
+          matchingSymbol: tx.matchingSymbol,
           cusip: tx.cusip,
           orderId: tx.orderId,
           accountIdentifier: tx.accountIdentifier,
-          roundTripId: roundTripCounters[symbol]
+          roundTripId: roundTripCounters[positionKey]
         });
       } else if (positionEffect === 'CLOSING') {
         // Match against open positions using FIFO
-        if (!openPositions[symbol] || openPositions[symbol].length === 0) {
+        if (!openPositions[positionKey] || openPositions[positionKey].length === 0) {
           // No matching open - position was opened before sync window
           // Use Schwab's netAmount for P&L
           rawTrades.push({
@@ -576,6 +608,7 @@ class SchwabService {
             strikePrice: tx.strikePrice,
             expirationDate: tx.expirationDate,
             underlyingSymbol: tx.underlyingSymbol,
+            matchingSymbol: tx.matchingSymbol,
             cusip: tx.cusip,
             accountIdentifier: tx.accountIdentifier,
             roundTripId: 0, // No matching open - unique round-trip
@@ -593,8 +626,8 @@ class SchwabService {
 
         let remainingCloseQty = tx.quantity;
 
-        while (remainingCloseQty > 0 && openPositions[symbol] && openPositions[symbol].length > 0) {
-          const openPos = openPositions[symbol][0];
+        while (remainingCloseQty > 0 && openPositions[positionKey] && openPositions[positionKey].length > 0) {
+          const openPos = openPositions[positionKey][0];
           const matchQty = Math.min(remainingCloseQty, openPos.qty);
 
           // Create matched trade
@@ -618,6 +651,7 @@ class SchwabService {
             strikePrice: openPos.strikePrice,
             expirationDate: openPos.expirationDate,
             underlyingSymbol: openPos.underlyingSymbol,
+            matchingSymbol: openPos.matchingSymbol,
             cusip: openPos.cusip,
             accountIdentifier: openPos.accountIdentifier,
             roundTripId: openPos.roundTripId,
@@ -645,19 +679,19 @@ class SchwabService {
           openPos.qty -= matchQty;
 
           if (openPos.qty <= 0) {
-            openPositions[symbol].shift();
+            openPositions[positionKey].shift();
           }
         }
       }
     }
 
     // Add remaining open positions as open trades
-    for (const [symbol, positions] of Object.entries(openPositions)) {
+    for (const [positionKey, positions] of Object.entries(openPositions)) {
       for (const pos of positions) {
         if (pos.qty > 0) {
-          console.log(`[SCHWAB] Remaining open position: ${symbol} qty=${pos.qty} side=${pos.side} time=${pos.time}`);
+          console.log(`[SCHWAB] Remaining open position: ${positionKey} qty=${pos.qty} side=${pos.side} time=${pos.time}`);
           rawTrades.push({
-            symbol,
+            symbol: pos.symbol,
             side: pos.side,
             quantity: pos.qty,
             entryPrice: pos.price,
@@ -674,6 +708,7 @@ class SchwabService {
             strikePrice: pos.strikePrice,
             expirationDate: pos.expirationDate,
             underlyingSymbol: pos.underlyingSymbol,
+            matchingSymbol: pos.matchingSymbol,
             cusip: pos.cusip,
             accountIdentifier: pos.accountIdentifier,
             roundTripId: pos.roundTripId,
@@ -714,7 +749,15 @@ class SchwabService {
     for (const trade of rawTrades) {
       // Create group key: symbol + trade date + side + account + round-trip
       // roundTripId ensures separate round-trips (position went flat then re-opened) are not merged
-      const key = `${trade.symbol}|${trade.tradeDate}|${trade.side}|${trade.accountIdentifier || 'default'}|${trade.roundTripId || 0}`;
+      const instrumentKey = trade.instrumentType === 'option'
+        ? [
+            trade.matchingSymbol || trade.symbol,
+            trade.expirationDate || '',
+            trade.optionType || '',
+            trade.strikePrice ?? ''
+          ].join('|')
+        : (trade.matchingSymbol || trade.symbol);
+      const key = `${instrumentKey}|${trade.tradeDate}|${trade.side}|${trade.accountIdentifier || 'default'}|${trade.roundTripId || 0}`;
 
       if (!groupedMap.has(key)) {
         groupedMap.set(key, {
@@ -907,19 +950,20 @@ class SchwabService {
       return null;
     }
 
-    const symbol = instrument.symbol;
-    if (!symbol) {
+    const rawSymbol = instrument.symbol;
+    if (!rawSymbol) {
       return null;
     }
+    const matchingSymbol = String(rawSymbol).toUpperCase().replace(/\s+/g, ' ').trim();
 
     // Skip currency symbols (but allow futures symbols like /ES, /NQ that TOS uses)
-    if (symbol.startsWith('CURRENCY_') || symbol === 'USD' || symbol === 'CASH') {
+    if (matchingSymbol.startsWith('CURRENCY_') || matchingSymbol === 'USD' || matchingSymbol === 'CASH') {
       return null;
     }
 
     // Log TOS futures symbols for debugging (they typically start with /)
-    if (symbol.startsWith('/')) {
-      console.log(`[SCHWAB] Processing TOS futures symbol: ${symbol}`);
+    if (matchingSymbol.startsWith('/')) {
+      console.log(`[SCHWAB] Processing TOS futures symbol: ${matchingSymbol}`);
     }
 
     // Get price and quantity
@@ -954,14 +998,17 @@ class SchwabService {
     let strikePrice = null;
     let expirationDate = null;
     let underlyingSymbol = null;
+    let symbol = matchingSymbol;
 
     if (assetType === 'OPTION') {
       instrumentType = 'option';
+      const parsedOption = this._parseSchwabOptionSymbol(matchingSymbol);
       // Parse option details from instrument if available
-      optionType = instrument.putCall?.toLowerCase();
-      strikePrice = instrument.strikePrice;
-      expirationDate = instrument.expirationDate;
-      underlyingSymbol = instrument.underlyingSymbol;
+      optionType = instrument.putCall?.toLowerCase() || parsedOption?.optionType || null;
+      strikePrice = instrument.strikePrice ?? parsedOption?.strikePrice ?? null;
+      expirationDate = instrument.expirationDate || parsedOption?.expirationDate || null;
+      underlyingSymbol = instrument.underlyingSymbol || parsedOption?.underlyingSymbol || null;
+      symbol = underlyingSymbol || matchingSymbol;
     } else if (assetType === 'FUTURE') {
       instrumentType = 'future';
     }
@@ -991,6 +1038,7 @@ class SchwabService {
       quantity,
       price,
       time,
+      matchingSymbol,
       positionEffect, // OPENING or CLOSING
       commission,
       fees,
@@ -1149,6 +1197,7 @@ class SchwabService {
           strike_price: tradeData.strikePrice || null,
           expiration_date: tradeData.expirationDate || null,
           option_type: tradeData.optionType || null,
+          underlying_symbol: tradeData.underlyingSymbol || null,
           account_identifier: tradeData.accountIdentifier || null
         });
       } catch (error) {
@@ -1187,7 +1236,7 @@ class SchwabService {
     let query = `
       SELECT symbol, side, quantity, entry_price, exit_price, entry_time, exit_time,
              executions, trade_date, pnl, instrument_type, strike_price,
-             expiration_date, option_type, account_identifier
+             expiration_date, option_type, underlying_symbol, account_identifier
       FROM trades
       WHERE user_id = $1
     `;
@@ -1230,7 +1279,7 @@ class SchwabService {
     const newAccountIdentifier = newTrade.accountIdentifier || null;
 
     for (const existing of existingTrades) {
-      if (existing.symbol?.toUpperCase() !== symbol) continue;
+      if (!this._tradeSymbolsMatch(newTrade, existing)) continue;
 
       if (newAccountIdentifier && existing.account_identifier && newAccountIdentifier !== existing.account_identifier) {
         continue;
@@ -1326,6 +1375,27 @@ class SchwabService {
     }
 
     return false;
+  }
+
+  _tradeSymbolsMatch(newTrade, existingTrade) {
+    const newSymbol = newTrade.symbol?.toUpperCase();
+    const existingSymbol = existingTrade.symbol?.toUpperCase();
+
+    if (!newSymbol || !existingSymbol) return false;
+    if (existingSymbol === newSymbol) return true;
+
+    const newInstrumentType = newTrade.instrumentType || newTrade.instrument_type || 'stock';
+    const existingInstrumentType = existingTrade.instrument_type || existingTrade.instrumentType || 'stock';
+    if (newInstrumentType !== 'option' || existingInstrumentType !== 'option') {
+      return false;
+    }
+
+    const parsedExisting = this._parseSchwabOptionSymbol(existingSymbol);
+    const parsedNew = this._parseSchwabOptionSymbol(newTrade.matchingSymbol || newTrade.symbol);
+    const existingUnderlying = existingTrade.underlying_symbol || existingTrade.underlyingSymbol || parsedExisting?.underlyingSymbol || existingSymbol;
+    const newUnderlying = newTrade.underlyingSymbol || newTrade.underlying_symbol || parsedNew?.underlyingSymbol || newSymbol;
+
+    return existingUnderlying?.toUpperCase() === newUnderlying?.toUpperCase();
   }
 
   getTradeDateRange(trades) {

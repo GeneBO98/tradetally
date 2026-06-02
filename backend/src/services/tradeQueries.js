@@ -12,7 +12,6 @@
 const db = require('../config/database');
 const Trade = require('../models/Trade');
 const { getUserTimezone } = require('../utils/timezone');
-const SAMPLE_DATA_EXCLUSION_WHERE = ` AND NOT COALESCE('sample' = ANY(t.tags), false)`;
 
 async function timedDbQuery(label, query, values = []) {
   const startedAt = Date.now();
@@ -34,14 +33,14 @@ class TradeQueries {
   //     The WHERE clause itself uses EXISTS subqueries for sector filtering,
   //     so this flag is purely about the SELECT list.
   //
-  // options.includeSampleData (bool, default false): when false, excludes
-  //   trades tagged 'sample'. Analytics passes true to keep historical
-  //   "less restrictive" behavior.
-  static async _buildWhereClause(userId, filters = {}, options = {}) {
-    const { includeSampleData = false } = options;
+  // Sample trades (tag 'sample', seeded by SampleDataService for new users on
+  // billing-enabled instances) are treated as normal trades by this builder.
+  // Users remove them via the "Remove sample data" action or by deleting them
+  // individually like any other trade.
+  static async _buildWhereClause(userId, filters = {}) {
     const values = [userId];
     let paramCount = 2;
-    let whereClause = `WHERE t.user_id = $1${includeSampleData ? '' : SAMPLE_DATA_EXCLUSION_WHERE}`;
+    let whereClause = `WHERE t.user_id = $1`;
     let needsSectorOuterJoin = false;
 
     if (filters.symbol) {
@@ -195,12 +194,30 @@ class TradeQueries {
       paramCount++;
     }
 
-    if (filters.pnlType === 'profit' || filters.pnlType === 'positive') {
-      whereClause += ` AND t.pnl > 0`;
-    } else if (filters.pnlType === 'loss' || filters.pnlType === 'negative') {
-      whereClause += ` AND t.pnl < 0`;
-    } else if (filters.pnlType === 'breakeven') {
-      whereClause += ` AND t.pnl = 0`;
+    // Breakeven is judged on GROSS P&L (price only), so a trade scratched at
+    // entry isn't miscounted as a loss purely because of commissions/fees. The
+    // per-user tolerance (in ticks) widens "breakeven" to gross P&L within
+    // +/- N ticks, scaled per-instrument. Wins/losses are decided by NET P&L
+    // among the non-breakeven trades.
+    if (filters.pnlType) {
+      const { getBreakevenToleranceConfig, breakevenPredicate } = require('../utils/breakeven');
+      const config = filters.breakevenToleranceConfig !== undefined
+        ? filters.breakevenToleranceConfig
+        : await getBreakevenToleranceConfig(userId);
+      const be = breakevenPredicate({
+        gross: '(t.pnl + COALESCE(t.commission, 0) + COALESCE(t.fees, 0))',
+        tickSize: 't.tick_size',
+        pointValue: 't.point_value',
+        quantity: 't.quantity',
+        underlying: 't.underlying_asset'
+      }, config);
+      if (filters.pnlType === 'profit' || filters.pnlType === 'positive') {
+        whereClause += ` AND ${be.isNot} AND t.pnl > 0`;
+      } else if (filters.pnlType === 'loss' || filters.pnlType === 'negative') {
+        whereClause += ` AND ${be.isNot} AND t.pnl < 0`;
+      } else if (filters.pnlType === 'breakeven') {
+        whereClause += ` AND ${be.is}`;
+      }
     }
 
     if (filters.daysOfWeek && filters.daysOfWeek.length > 0) {
@@ -287,9 +304,7 @@ class TradeQueries {
     console.log('[PERF] findByUser started for user:', userId);
 
     const { whereClause, values, paramCount: pcAfterWhere, needsSectorOuterJoin } =
-      await this._buildWhereClause(userId, filters, {
-        includeSampleData: !!filters.includeSampleData
-      });
+      await this._buildWhereClause(userId, filters);
 
     let paramCount = pcAfterWhere;
     let subquery = `SELECT t.id FROM trades t`;
@@ -343,17 +358,43 @@ class TradeQueries {
     console.log('Getting analytics for user:', userId, 'with filters:', filters);
 
     const User = require('../models/User');
+    const { normalizeConfig, breakevenPredicate } = require('../utils/breakeven');
     let useMedian = false;
+    let breakevenConfig = { default: 0, byUnderlying: {} };
     try {
       const userSettings = await User.getSettings(userId);
       useMedian = userSettings?.statistics_calculation === 'median';
+      breakevenConfig = normalizeConfig({
+        default: userSettings?.breakeven_tolerance_ticks,
+        byUnderlying: userSettings?.breakeven_tolerance_ticks_by_underlying
+      });
     } catch (error) {
       console.warn('Could not fetch user settings for analytics, using default (average):', error.message);
     }
 
-    const { whereClause, values } = await this._buildWhereClause(userId, filters, {
-      includeSampleData: true
+    // Pass the config we just fetched into the WHERE builder so it doesn't
+    // re-query user settings for the pnlType filter.
+    const { whereClause, values } = await this._buildWhereClause(userId, {
+      ...filters,
+      breakevenToleranceConfig: breakevenConfig
     });
+
+    // Breakeven predicates: one over the completed_trades CTE aliases
+    // (trade_pnl / trade_costs), one over the raw columns used by the daily query.
+    const beCte = breakevenPredicate({
+      gross: '(trade_pnl + trade_costs)',
+      tickSize: 'tick_size',
+      pointValue: 'point_value',
+      quantity: 'quantity',
+      underlying: 'underlying_asset'
+    }, breakevenConfig);
+    const beDaily = breakevenPredicate({
+      gross: '(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0))',
+      tickSize: 'tick_size',
+      pointValue: 'point_value',
+      quantity: 'quantity',
+      underlying: 'underlying_asset'
+    }, breakevenConfig);
 
     const executionCountQuery = `
       SELECT COUNT(*) as execution_count
@@ -368,6 +409,10 @@ class TradeQueries {
           id as trade_group,
           pnl as trade_pnl,
           (COALESCE(commission, 0) + COALESCE(fees, 0)) as trade_costs,
+          tick_size,
+          point_value,
+          quantity,
+          underlying_asset,
           1 as execution_count,
           pnl_percent as avg_return_pct,
           trade_date as first_trade_date,
@@ -382,18 +427,20 @@ class TradeQueries {
       trade_stats AS (
         SELECT
           COUNT(*)::integer as total_trades,
-          COUNT(CASE WHEN trade_pnl > 0 THEN 1 END)::integer as winning_trades,
-          COUNT(CASE WHEN trade_pnl < 0 THEN 1 END)::integer as losing_trades,
-          COUNT(CASE WHEN trade_pnl = 0 THEN 1 END)::integer as breakeven_trades,
+          -- Breakeven = gross P&L within tolerance (exited ~at entry, ignoring
+          -- commissions/fees). Wins/losses use NET P&L among the rest.
+          COUNT(CASE WHEN ${beCte.isNot} AND trade_pnl > 0 THEN 1 END)::integer as winning_trades,
+          COUNT(CASE WHEN ${beCte.isNot} AND trade_pnl < 0 THEN 1 END)::integer as losing_trades,
+          COUNT(CASE WHEN ${beCte.is} THEN 1 END)::integer as breakeven_trades,
           SUM(trade_pnl) as total_pnl,
           SUM(trade_costs) as total_costs,
           ${useMedian
             ? `PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY trade_pnl) as avg_pnl,
-               PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY trade_pnl) FILTER (WHERE trade_pnl > 0) as avg_win,
-               PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY trade_pnl) FILTER (WHERE trade_pnl < 0) as avg_loss,`
+               PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY trade_pnl) FILTER (WHERE ${beCte.isNot} AND trade_pnl > 0) as avg_win,
+               PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY trade_pnl) FILTER (WHERE ${beCte.isNot} AND trade_pnl < 0) as avg_loss,`
             : `AVG(trade_pnl) as avg_pnl,
-               AVG(CASE WHEN trade_pnl > 0 THEN trade_pnl END) as avg_win,
-               AVG(CASE WHEN trade_pnl < 0 THEN trade_pnl END) as avg_loss,`}
+               AVG(CASE WHEN ${beCte.isNot} AND trade_pnl > 0 THEN trade_pnl END) as avg_win,
+               AVG(CASE WHEN ${beCte.isNot} AND trade_pnl < 0 THEN trade_pnl END) as avg_loss,`}
           MAX(trade_pnl) as best_trade,
           MIN(trade_pnl) as worst_trade,
           COUNT(DISTINCT symbol) as symbols_traded,
@@ -466,6 +513,10 @@ class TradeQueries {
           ELSE (ts.winning_trades * 100.0 / ts.total_trades)
         END as win_rate,
         CASE
+          WHEN (ts.winning_trades + ts.losing_trades) = 0 THEN 0
+          ELSE (ts.winning_trades * 100.0 / (ts.winning_trades + ts.losing_trades))
+        END as win_rate_excluding_breakeven,
+        CASE
           WHEN ts.pnl_stddev = 0 OR ts.pnl_stddev IS NULL THEN 0
           ELSE (ts.avg_pnl / ts.pnl_stddev)
         END as sharpe_ratio
@@ -493,31 +544,28 @@ class TradeQueries {
       dailyPnLResult,
       dailyWinRateResult,
       topTradesResult,
-      bestWorstResult
+      bestWorstResult,
+      recentTradePnlsResult
     ] = await Promise.all([
       timedDbQuery('analytics.executionCountQuery', executionCountQuery, values),
       timedDbQuery('analytics.analyticsQuery', analyticsQuery, values),
       timedDbQuery('analytics.symbolBreakdownQuery', `
-        WITH symbol_trades AS (
-          SELECT
-            symbol,
-            trade_date,
-            SUM(COALESCE(pnl, 0)) as trade_pnl,
-            SUM(quantity) as trade_volume,
-            COUNT(*) as execution_count,
-            CASE WHEN SUM(pnl) IS NOT NULL THEN 1 ELSE 0 END as is_completed
-          FROM trades t
-          ${whereClause}
-          GROUP BY symbol, trade_date
-        )
+        -- One row per completed round-trip trade — matches analyticsQuery's
+        -- completed_trades semantics so this widget's "Trades" column agrees
+        -- with the Win Rate card's total. The old version pre-aggregated by
+        -- (symbol, trade_date), which counted trading days per symbol instead
+        -- of trades, hiding multiple intraday round-trips. See issue #330.
         SELECT
           symbol,
-          COUNT(*) FILTER (WHERE is_completed = 1) as trades,
-          SUM(trade_pnl) as total_pnl,
-          AVG(trade_pnl) FILTER (WHERE is_completed = 1) as avg_pnl,
-          COUNT(*) FILTER (WHERE is_completed = 1 AND trade_pnl > 0) as wins,
-          SUM(trade_volume) as total_volume
-        FROM symbol_trades
+          COUNT(*) as trades,
+          SUM(pnl) as total_pnl,
+          AVG(pnl) as avg_pnl,
+          COUNT(*) FILTER (WHERE pnl > 0) as wins,
+          SUM(quantity) as total_volume
+        FROM trades t
+        ${whereClause}
+          AND exit_price IS NOT NULL
+          AND pnl IS NOT NULL
         GROUP BY symbol
         ORDER BY total_pnl DESC
         LIMIT 10
@@ -537,14 +585,19 @@ class TradeQueries {
       timedDbQuery('analytics.dailyWinRateQuery', `
         SELECT
           trade_date,
-          COUNT(*) FILTER (WHERE COALESCE(pnl, 0) > 0) as wins,
-          COUNT(*) FILTER (WHERE COALESCE(pnl, 0) < 0) as losses,
-          COUNT(*) FILTER (WHERE COALESCE(pnl, 0) = 0) as breakeven,
+          COUNT(*) FILTER (WHERE ${beDaily.isNot} AND COALESCE(pnl, 0) > 0) as wins,
+          COUNT(*) FILTER (WHERE ${beDaily.isNot} AND COALESCE(pnl, 0) < 0) as losses,
+          COUNT(*) FILTER (WHERE ${beDaily.is}) as breakeven,
           COUNT(*) as total_trades,
           CASE
-            WHEN COUNT(*) > 0 THEN ROUND((COUNT(*) FILTER (WHERE COALESCE(pnl, 0) > 0)::decimal / COUNT(*)::decimal) * 100, 2)
+            WHEN COUNT(*) > 0 THEN ROUND((COUNT(*) FILTER (WHERE ${beDaily.isNot} AND COALESCE(pnl, 0) > 0)::decimal / COUNT(*)::decimal) * 100, 2)
             ELSE 0
-          END as win_rate
+          END as win_rate,
+          CASE
+            WHEN AVG(pnl) FILTER (WHERE ${beDaily.isNot} AND pnl < 0) IS NULL THEN
+              CASE WHEN AVG(pnl) FILTER (WHERE ${beDaily.isNot} AND pnl > 0) IS NOT NULL THEN 999.99 ELSE 0 END
+            ELSE ROUND(ABS(AVG(pnl) FILTER (WHERE ${beDaily.isNot} AND pnl > 0) / AVG(pnl) FILTER (WHERE ${beDaily.isNot} AND pnl < 0))::numeric, 2)
+          END as pl_ratio
         FROM trades t
         ${whereClause}
         GROUP BY trade_date
@@ -586,6 +639,26 @@ class TradeQueries {
           ORDER BY pnl ASC
           LIMIT 1
         )
+      `, values),
+      // Recent closed-trade P&Ls (chronological) for per-trade streak detection
+      // on the dashboard StreakMomentumCard. Capped at 500 — far more than any
+      // realistic winning/losing run, but still a small payload (~5 KB).
+      timedDbQuery('analytics.recentTradePnlsQuery', `
+        SELECT pnl, trade_date, exit_time
+        FROM (
+          SELECT pnl, trade_date, entry_time, exit_time
+          FROM trades t
+          ${whereClause}
+            AND pnl IS NOT NULL
+            AND exit_price IS NOT NULL
+          ORDER BY exit_time DESC NULLS LAST,
+                   trade_date DESC,
+                   entry_time DESC NULLS LAST
+          LIMIT 500
+        ) recent
+        ORDER BY exit_time ASC NULLS LAST,
+                 trade_date ASC,
+                 entry_time ASC NULLS LAST
       `, values)
     ]);
 
@@ -621,6 +694,7 @@ class TradeQueries {
         worstTrade: parseFloat(analytics.worst_trade) || 0,
         totalCosts,
         winRate: parseFloat(analytics.win_rate) || 0,
+        winRateExcludingBreakeven: parseFloat(analytics.win_rate_excluding_breakeven) || 0,
         profitFactor: parseFloat(analytics.profit_factor) || 0,
         sharpeRatio: parseFloat(analytics.sharpe_ratio) || 0,
         maxDrawdown: parseFloat(analytics.max_drawdown) || 0,
@@ -634,6 +708,7 @@ class TradeQueries {
       performanceBySymbol: symbolResult.rows,
       dailyPnL: dailyPnLResult.rows,
       dailyWinRate: dailyWinRateResult.rows,
+      recentTradePnls: recentTradePnlsResult.rows,
       topTrades: {
         best: topTradesResult.rows.filter(t => t.type === 'best'),
         worst: topTradesResult.rows.filter(t => t.type === 'worst')

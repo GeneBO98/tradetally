@@ -1223,7 +1223,17 @@ const tradeManagementController = {
           parseFloat(updatedTrade.entry_price),
           parseFloat(updatedTrade.stop_loss),
           parseFloat(updatedTrade.exit_price),
-          updatedTrade.side
+          updatedTrade.side,
+          {
+            quantity: updatedTrade.quantity,
+            commission: updatedTrade.commission,
+            fees: updatedTrade.fees,
+            instrumentType: updatedTrade.instrument_type || 'stock',
+            contractSize: updatedTrade.contract_size,
+            pointValue: updatedTrade.point_value,
+            symbol: updatedTrade.symbol,
+            underlyingAsset: updatedTrade.underlying_asset
+          }
         );
 
         if (rValue !== null) {

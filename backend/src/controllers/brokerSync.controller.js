@@ -6,7 +6,10 @@
 const BrokerConnection = require('../models/BrokerConnection');
 const ibkrService = require('../services/brokerSync/ibkrService');
 const schwabService = require('../services/brokerSync/schwabService');
+const tradestationService = require('../services/brokerSync/tradestationService');
+const alpacaService = require('../services/brokerSync/alpacaService');
 const brokerSyncService = require('../services/brokerSync');
+const TierService = require('../services/tierService');
 const AnalyticsCache = require('../services/analyticsCache');
 const logger = require('../utils/logger');
 const db = require('../config/database');
@@ -14,11 +17,28 @@ const crypto = require('crypto');
 
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
+const OAUTH_BROKER_SERVICES = {
+  tradestation: tradestationService,
+  alpaca: alpacaService
+};
+
 function redactAccountNumber(accountNumber) {
   if (!accountNumber) return null;
   const value = String(accountNumber);
   if (value.length <= 4) return value;
   return `****${value.slice(-4)}`;
+}
+
+// Send a consistent 403 when a free user hits a Pro-only broker-sync action.
+function sendProRequired(res, check) {
+  return res.status(403).json({
+    success: false,
+    error: check.message,
+    code: check.code || 'PRO_FEATURE_REQUIRED',
+    feature: check.feature || 'broker_sync',
+    requiredTier: 'pro',
+    currentTier: check.tier
+  });
 }
 
 const brokerSyncController = {
@@ -29,10 +49,12 @@ const brokerSyncController = {
     try {
       const userId = req.user.id;
       const connections = await BrokerConnection.findByUserId(userId);
+      const access = await TierService.getBrokerSyncAccess(userId, req.headers?.host);
 
       res.json({
         success: true,
-        data: connections
+        data: connections,
+        access
       });
     } catch (error) {
       logger.logError('Error fetching broker connections:', error);
@@ -73,6 +95,13 @@ const brokerSyncController = {
   async addIBKRConnection(req, res, next) {
     try {
       const userId = req.user.id;
+
+      // Broker sync is a Pro feature
+      const access = await TierService.canCreateBrokerConnection(userId, req.headers?.host);
+      if (!access.allowed) {
+        return sendProRequired(res, access);
+      }
+
       const {
         flexToken,
         flexQueryId,
@@ -147,6 +176,12 @@ const brokerSyncController = {
   async initSchwabOAuth(req, res, next) {
     try {
       const userId = req.user.id;
+
+      // Broker sync is a Pro feature
+      const access = await TierService.canCreateBrokerConnection(userId, req.headers?.host);
+      if (!access.allowed) {
+        return sendProRequired(res, access);
+      }
 
       // Check if Schwab OAuth is configured
       if (!process.env.SCHWAB_CLIENT_ID || !process.env.SCHWAB_CLIENT_SECRET) {
@@ -226,6 +261,14 @@ const brokerSyncController = {
 
       const userId = stateLookup.rows[0].user_id;
 
+      // Broker sync is a Pro feature. The init endpoint already gates this, but
+      // re-check here in case the user's tier changed mid-flow.
+      const access = await TierService.canCreateBrokerConnection(userId, req.headers?.host);
+      if (!access.allowed) {
+        console.warn('[SCHWAB-OAUTH] Rejected callback: broker sync is Pro-only for this free user');
+        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=pro_required`);
+      }
+
       // Exchange code for tokens
       console.log('[SCHWAB-OAUTH] Exchanging authorization code for tokens...');
       console.log('[SCHWAB-OAUTH] Redirect URI:', process.env.SCHWAB_REDIRECT_URI);
@@ -303,6 +346,113 @@ const brokerSyncController = {
       const errorCode = error.response?.status || 'unknown';
       const errorMsg = encodeURIComponent(error.message || 'oauth_failed');
       res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=oauth_failed&details=${errorMsg}&status=${errorCode}`);
+    }
+  },
+
+  /**
+   * Initialize a generic direct broker OAuth flow.
+   */
+  async initBrokerOAuth(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const { broker } = req.params;
+      const { environment } = req.body || {};
+      const service = OAUTH_BROKER_SERVICES[broker];
+
+      // Broker sync is a Pro feature
+      const access = await TierService.canCreateBrokerConnection(userId, req.headers?.host);
+      if (!access.allowed) {
+        return sendProRequired(res, access);
+      }
+
+      if (!service) {
+        return res.status(404).json({
+          success: false,
+          error: 'Broker OAuth integration not found'
+        });
+      }
+
+      if (!service.isConfigured()) {
+        return res.status(503).json({
+          success: false,
+          error: `${service.config.displayName} integration is not configured on this server`
+        });
+      }
+
+      const stateToken = crypto.randomBytes(32).toString('hex');
+      const expiresAt = new Date(Date.now() + OAUTH_STATE_TTL_MS);
+      const context = { environment: environment || null };
+
+      await db.query(
+        `INSERT INTO oauth_pending_states (state_token, user_id, provider, expires_at, context)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [stateToken, userId, broker, expiresAt, JSON.stringify(context)]
+      );
+
+      res.json({
+        success: true,
+        authUrl: service.getAuthorizationUrl(stateToken, context)
+      });
+    } catch (error) {
+      logger.logError('Error initiating broker OAuth:', error);
+      next(error);
+    }
+  },
+
+  /**
+   * Handle a generic direct broker OAuth callback.
+   */
+  async handleBrokerOAuthCallback(req, res, next) {
+    try {
+      const { broker } = req.params;
+      const { code, state, error: oauthError } = req.query;
+      const service = OAUTH_BROKER_SERVICES[broker];
+
+      if (!service) {
+        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=unsupported_broker`);
+      }
+
+      if (oauthError) {
+        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=${encodeURIComponent(oauthError)}&broker=${broker}`);
+      }
+
+      if (!code || !state) {
+        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=missing_params&broker=${broker}`);
+      }
+
+      const stateLookup = await db.query(
+        `UPDATE oauth_pending_states
+            SET consumed_at = NOW()
+          WHERE state_token = $1
+            AND provider = $2
+            AND consumed_at IS NULL
+            AND expires_at > NOW()
+          RETURNING user_id, context`,
+        [state, broker]
+      );
+
+      if (stateLookup.rows.length === 0) {
+        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=invalid_state&broker=${broker}`);
+      }
+
+      const userId = stateLookup.rows[0].user_id;
+
+      // Broker sync is a Pro feature. The init endpoint already gates this, but
+      // re-check here in case the user's tier changed mid-flow.
+      const access = await TierService.canCreateBrokerConnection(userId, req.headers?.host);
+      if (!access.allowed) {
+        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=pro_required&broker=${broker}`);
+      }
+
+      const context = stateLookup.rows[0].context || {};
+      const tokens = await service.exchangeCodeForTokens(code);
+      await service.createConnectionFromTokens(userId, tokens, context);
+
+      res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?success=${broker}`);
+    } catch (error) {
+      logger.logError('Error handling broker OAuth callback:', error);
+      const errorMsg = encodeURIComponent(error.message || 'oauth_failed');
+      res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=oauth_failed&details=${errorMsg}`);
     }
   },
 
@@ -409,6 +559,14 @@ const brokerSyncController = {
           success: false,
           error: 'Broker connection not found'
         });
+      }
+
+      // Broker sync is a Pro feature (free users with an existing connection
+      // keep syncing until the grace cutoff). Checked here so the user gets an
+      // immediate 403 rather than a silently-failed background sync.
+      const access = await TierService.canSyncBrokerConnection(userId, req.headers?.host);
+      if (!access.allowed) {
+        return sendProRequired(res, access);
       }
 
       // Check connection status
@@ -535,6 +693,14 @@ const brokerSyncController = {
           } catch (error) {
             testResult = { valid: false, message: `Schwab connection test failed: ${error.message}` };
           }
+        }
+      } else if (OAUTH_BROKER_SERVICES[connection.brokerType]) {
+        const service = OAUTH_BROKER_SERVICES[connection.brokerType];
+        const { accessToken, needsReauth } = await service.ensureValidToken(connection);
+        if (needsReauth) {
+          testResult = { valid: false, message: `${service.config.displayName} authentication expired. Please reconnect.` };
+        } else {
+          testResult = { valid: true, message: `${service.config.displayName} connection is valid` };
         }
       }
 

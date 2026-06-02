@@ -8,10 +8,10 @@
       </p>
     </div>
     
-    <!-- Buttons Row -->
-    <div class="flex items-center justify-between mb-6">
-      <button 
-        @click="goBack" 
+    <!-- Back link -->
+    <div class="mb-4">
+      <button
+        @click="goBack"
         class="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
       >
         <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -19,23 +19,10 @@
         </svg>
         Back
       </button>
-      <router-link to="/trades/new" class="btn-primary">
-        Add trade
-      </router-link>
     </div>
 
-    <!-- Enrichment Status -->
-    <EnrichmentStatus />
-
-    <div class="mt-8 card">
-      <div class="card-body">
-        <TradeFilters @filter="handleFilter" />
-      </div>
-    </div>
-
-
-    <!-- Total P/L Summary for Filtered Results -->
-    <div v-if="tradesStore.trades.length > 0" class="mt-6">
+    <!-- Total P/L Summary for Filtered Results (moved to top) -->
+    <div v-if="tradesStore.trades.length > 0" class="mb-6">
       <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-4">
         <!-- Mobile Layout: Stack vertically -->
         <div class="block sm:hidden space-y-4">
@@ -89,10 +76,13 @@
           </div>
           <div>
             <div class="text-sm text-gray-500 dark:text-gray-400 mb-1">Win Rate</div>
-            <div class="text-lg font-medium text-gray-900 dark:text-white">{{ tradesStore.winRate }}%</div>
+            <div class="text-lg font-medium text-gray-900 dark:text-white">
+              {{ tradesStore.winRate }}%<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
+            </div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">{{ tradesStore.winRateExcludingBreakeven }}% excl. BE</div>
           </div>
         </div>
-        
+
         <!-- Desktop Layout: Side by side -->
         <div class="hidden sm:flex items-center justify-between">
           <div class="flex items-center space-x-6">
@@ -135,7 +125,10 @@
           <div class="flex items-center gap-6">
             <div class="text-right">
               <div class="text-sm text-gray-500 dark:text-gray-400">Win Rate</div>
-              <div class="text-lg font-medium text-gray-900 dark:text-white">{{ tradesStore.winRate }}%</div>
+              <div class="text-lg font-medium text-gray-900 dark:text-white">
+                {{ tradesStore.winRate }}%<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
+              </div>
+              <div class="text-xs text-gray-500 dark:text-gray-400">{{ tradesStore.winRateExcludingBreakeven }}% excl. BE</div>
             </div>
             <!-- Fullwidth Toggle -->
             <button
@@ -155,7 +148,65 @@
       </div>
     </div>
 
-    <div class="mt-8">
+    <!-- Enrichment Status -->
+    <EnrichmentStatus />
+
+    <!-- Action bar: filters icon + Add trade, just above the table -->
+    <div class="mt-6 mb-4 flex items-center justify-end gap-2">
+      <button
+        @click="openFiltersModal"
+        class="relative inline-flex items-center gap-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+        :aria-label="hasActiveFilters ? 'Filters (active)' : 'Filters'"
+      >
+        <FunnelIcon class="h-4 w-4" />
+        <span>Filters</span>
+        <span
+          v-if="hasActiveFilters"
+          class="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-primary-500 ring-2 ring-white dark:ring-gray-900"
+        ></span>
+      </button>
+      <router-link to="/trades/new" class="btn-primary">
+        Add trade
+      </router-link>
+    </div>
+
+    <!-- Filters modal -->
+    <transition
+      enter-active-class="transition-opacity duration-150"
+      enter-from-class="opacity-0"
+      enter-to-class="opacity-100"
+      leave-active-class="transition-opacity duration-150"
+      leave-from-class="opacity-100"
+      leave-to-class="opacity-0"
+    >
+      <div
+        v-if="showFiltersModal"
+        class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm sm:p-6"
+        @click.self="showFiltersModal = false"
+        @keydown.esc="showFiltersModal = false"
+      >
+        <div class="my-8 w-full max-w-4xl rounded-lg bg-white shadow-2xl dark:bg-gray-800">
+          <div class="flex items-center justify-between border-b border-gray-200 px-5 py-3 dark:border-gray-700">
+            <h3 class="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white">
+              <FunnelIcon class="h-5 w-5 text-primary-500" />
+              Filters
+            </h3>
+            <button
+              @click="showFiltersModal = false"
+              class="rounded-md p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+              aria-label="Close filters"
+            >
+              <XMarkIcon class="h-5 w-5" />
+            </button>
+          </div>
+          <div class="p-5">
+            <TradeFilters @filter="handleFilter" />
+          </div>
+        </div>
+      </div>
+    </transition>
+
+    <div class="mt-2">
       <div v-if="tradesStore.initialLoading" class="flex justify-center py-12">
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
       </div>
@@ -640,12 +691,18 @@
                   {{ trade.fees ? formatCurrency(trade.fees) : '-' }}
                 </td>
                 
-                <td v-else-if="column.visible && column.key === 'strategy'" 
-                    :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']" 
+                <td v-else-if="column.visible && column.key === 'strategy'"
+                    :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   {{ trade.strategy || '-' }}
                 </td>
-                
+
+                <td v-else-if="column.visible && column.key === 'setup'"
+                    :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  {{ trade.setup || '-' }}
+                </td>
+
                 <td v-else-if="column.visible && column.key === 'broker'"
                     :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
@@ -722,6 +779,20 @@
                     {{ Number(trade.rValue).toFixed(1) }}R
                   </div>
                   <div v-else class="text-sm text-gray-500">-</div>
+                </td>
+
+                <td v-else-if="column.visible && column.key === 'mae'"
+                    :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  <span v-if="trade.mae != null" class="text-sm font-mono text-red-600 dark:text-red-400">{{ formatCurrency(trade.mae) }}</span>
+                  <span v-else class="text-sm text-gray-400">—</span>
+                </td>
+
+                <td v-else-if="column.visible && column.key === 'mfe'"
+                    :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  <span v-if="trade.mfe != null" class="text-sm font-mono text-green-600 dark:text-green-400">{{ formatCurrency(trade.mfe) }}</span>
+                  <span v-else class="text-sm text-gray-400">—</span>
                 </td>
 
                 <!-- Options/Futures Fields -->
@@ -975,7 +1046,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { useUserTimezone } from '@/composables/useUserTimezone'
-import { DocumentTextIcon, ChatBubbleLeftIcon } from '@heroicons/vue/24/outline'
+import { DocumentTextIcon, ChatBubbleLeftIcon, FunnelIcon, XMarkIcon } from '@heroicons/vue/24/outline'
 import TradeFilters from '@/components/trades/TradeFilters.vue'
 import TradeCommentsDialog from '@/components/trades/TradeCommentsDialog.vue'
 import EnrichmentStatus from '@/components/trades/EnrichmentStatus.vue'
@@ -1052,6 +1123,22 @@ const selectedTrades = ref([])
 const showDeleteConfirm = ref(false)
 const showBulkTagModal = ref(false)
 const bulkTagsToAdd = ref([])
+
+// Filters modal
+const showFiltersModal = ref(false)
+const hasActiveFilters = ref(false)
+// TradeFilters' onMounted auto-emits 'filter' when saved/store filters exist,
+// which would immediately close a freshly opened modal. Suppress the close
+// for a short window after open so the auto-apply emit doesn't dismiss it.
+const ignoreNextFilterClose = ref(false)
+
+function openFiltersModal() {
+  showFiltersModal.value = true
+  ignoreNextFilterClose.value = true
+  setTimeout(() => {
+    ignoreNextFilterClose.value = false
+  }, 250)
+}
 
 // Column management
 const tableColumns = ref([])
@@ -1276,9 +1363,28 @@ function formatTime(datetime) {
   return formatTimeTz(datetime)
 }
 
+function isMeaningfulFilter(key, value) {
+  if (value === null || value === undefined || value === '') return false
+  if (Array.isArray(value) && value.length === 0) return false
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    return Object.values(value).some((v) => v !== null && v !== undefined && v !== '')
+  }
+  const defaultKeywords = new Set(['all', 'All'])
+  if (defaultKeywords.has(value)) return false
+  return true
+}
+
 function handleFilter(filters) {
+  hasActiveFilters.value = Object.entries(filters || {}).some(([key, value]) =>
+    isMeaningfulFilter(key, value)
+  )
   tradesStore.setFilters(filters)
   tradesStore.fetchTrades() // fetchTrades now includes analytics in parallel
+  // Close the filters modal after applying — but skip the auto-emit fired by
+  // TradeFilters' onMounted (issue #327: modal flashed open then closed).
+  if (showFiltersModal.value && !ignoreNextFilterClose.value) {
+    showFiltersModal.value = false
+  }
 }
 
 function goToPage(page) {
@@ -1393,6 +1499,39 @@ function getNewsBadgeClasses(sentiment) {
   }
 }
 
+// Map URL query params to store filter keys. The view owns this so deep links
+// (e.g. holdings "View Trades" -> /trades?status=open&symbol=X) load correctly
+// even though TradeFilters now lives in a modal that isn't mounted on page load.
+function buildFiltersFromQuery(query) {
+  const f = {}
+  if (query.symbol) f.symbol = query.symbol
+  if (query.symbolExact) f.symbolExact = query.symbolExact === 'true' || query.symbolExact === true
+  if (query.status) f.status = query.status
+  if (query.startDate) f.startDate = query.startDate
+  if (query.endDate) f.endDate = query.endDate
+  if (query.pnlType) f.pnlType = query.pnlType
+  if (query.holdTime) f.holdTime = query.holdTime
+  if (query.minHoldTime) f.minHoldTime = parseInt(query.minHoldTime)
+  if (query.maxHoldTime) f.maxHoldTime = parseInt(query.maxHoldTime)
+  if (query.sector) f.sector = query.sector
+  if (query.sectors) f.sectors = String(query.sectors).split(',').filter(Boolean)
+  if (query.strategy) { f.strategy = query.strategy; f.strategies = [query.strategy] }
+  if (query.strategies) f.strategies = String(query.strategies).split(',').filter(Boolean)
+  if (query.broker) { f.broker = query.broker; f.brokers = [query.broker] }
+  if (query.brokers) f.brokers = String(query.brokers).split(',').filter(Boolean)
+  if (query.tags) f.tags = String(query.tags).split(',').filter(Boolean)
+  if (query.minPrice) f.minPrice = parseFloat(query.minPrice)
+  if (query.maxPrice) f.maxPrice = parseFloat(query.maxPrice)
+  if (query.minQuantity) f.minQuantity = parseInt(query.minQuantity)
+  if (query.maxQuantity) f.maxQuantity = parseInt(query.maxQuantity)
+  if (query.daysOfWeek) f.daysOfWeek = String(query.daysOfWeek).split(',').map(Number)
+  if (query.instrumentTypes) f.instrumentTypes = String(query.instrumentTypes).split(',').filter(Boolean)
+  if (query.optionTypes) f.optionTypes = String(query.optionTypes).split(',').filter(Boolean)
+  if (query.qualityGrades) f.qualityGrades = String(query.qualityGrades).split(',').filter(Boolean)
+  if (query.importId) f.importId = query.importId
+  return f
+}
+
 onMounted(() => {
   // Load fullwidth preference
   loadFullWidthPreference()
@@ -1410,26 +1549,16 @@ onMounted(() => {
     }
   };
 
-  // Check if there are URL parameters that the TradeFilters component should handle
-  const hasFiltersInUrl = !!(
-    route.query.symbol || route.query.startDate || route.query.endDate ||
-    route.query.strategy || route.query.sector || route.query.status ||
-    route.query.minPrice || route.query.maxPrice || route.query.minQuantity ||
-    route.query.maxQuantity || route.query.holdTime || route.query.broker ||
-    route.query.minHoldTime || route.query.maxHoldTime || route.query.pnlType ||
-    route.query.importId
-  )
-
-  if (route.query.importId) {
-    tradesStore.setFilters({ importId: route.query.importId })
-    tradesStore.fetchTrades()
+  // Apply any URL filter params and load trades. We must NOT defer this to
+  // TradeFilters: it now lives inside a modal (v-if="showFiltersModal") that is
+  // closed on page load, so it never mounts to parse the URL — which left deep
+  // links (e.g. holdings "View Trades" -> /trades?status=open&symbol=X) stuck on
+  // the loading spinner forever. The view owns the initial fetch instead.
+  const urlFilters = buildFiltersFromQuery(route.query)
+  if (Object.keys(urlFilters).length > 0) {
+    tradesStore.setFilters(urlFilters)
   }
-
-  // Only fetch trades immediately if there are no URL parameters
-  // TradeFilters component will handle URL parameters and trigger fetch automatically
-  if (!hasFiltersInUrl) {
-    tradesStore.fetchTrades() // fetchTrades now includes analytics in parallel
-  }
+  tradesStore.fetchTrades() // fetchTrades now includes analytics in parallel
 
   // Initialize table scroll width after component is mounted
   setTimeout(() => updateTableScrollWidth(), 200)

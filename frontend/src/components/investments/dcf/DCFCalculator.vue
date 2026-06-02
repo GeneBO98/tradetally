@@ -211,14 +211,16 @@
       <div class="text-sm text-gray-500 dark:text-gray-400">
         <label class="inline-flex items-center gap-2">
           <span>Years of Analysis</span>
-          <select
-            v-model.number="inputs.projection_years"
-            class="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-2 py-1 text-sm"
-          >
-            <option :value="5">5</option>
-            <option :value="10">10</option>
-            <option :value="15">15</option>
-          </select>
+          <div class="w-20">
+            <BaseSelect
+              v-model="inputs.projection_years"
+              :options="[
+                { value: 5, label: '5' },
+                { value: 10, label: '10' },
+                { value: 15, label: '15' },
+              ]"
+            />
+          </div>
         </label>
       </div>
     </div>
@@ -308,6 +310,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import DCFResultCard from './DCFResultCard.vue'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 
 const props = defineProps({
   metrics: {

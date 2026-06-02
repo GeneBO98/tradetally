@@ -53,18 +53,13 @@
                                 <label for="statisticsCalculation" class="label"
                                     >Statistics Calculation Method</label
                                 >
-                                <select
-                                    id="statisticsCalculation"
-                                    v-model="
-                                        analyticsForm.statisticsCalculation
-                                    "
-                                    class="input"
-                                >
-                                    <option value="average">
-                                        Average (Mean)
-                                    </option>
-                                    <option value="median">Median</option>
-                                </select>
+                                <BaseSelect
+                                    v-model="analyticsForm.statisticsCalculation"
+                                    :options="[
+                                        { value: 'average', label: 'Average (Mean)' },
+                                        { value: 'median', label: 'Median' }
+                                    ]"
+                                />
                                 <p
                                     class="mt-1 text-sm text-gray-500 dark:text-gray-400"
                                 >
@@ -84,24 +79,92 @@
                             </div>
 
                             <div>
+                                <label for="breakevenToleranceTicks" class="label"
+                                    >Default Breakeven Tolerance (ticks)</label
+                                >
+                                <input
+                                    id="breakevenToleranceTicks"
+                                    v-model.number="
+                                        analyticsForm.breakevenToleranceTicks
+                                    "
+                                    type="number"
+                                    min="0"
+                                    step="1"
+                                    class="input"
+                                />
+                                <p
+                                    class="mt-1 text-sm text-gray-500 dark:text-gray-400"
+                                >
+                                    Trades whose gross P&L (price only, ignoring
+                                    commissions and fees) land within this many
+                                    ticks of zero are counted as breakeven rather
+                                    than wins or losses. This default applies to
+                                    every instrument; add per-instrument overrides
+                                    below. It only affects trades that have a tick
+                                    size and point value (e.g. futures). Leave at 0
+                                    to count only trades that exit exactly at entry.
+                                </p>
+
+                                <!-- Per-instrument overrides -->
+                                <div class="mt-4">
+                                    <span class="label"
+                                        >Per-Instrument Overrides</span
+                                    >
+                                    <p
+                                        class="mt-1 mb-2 text-sm text-gray-500 dark:text-gray-400"
+                                    >
+                                        Set a different tolerance for specific
+                                        instruments by their underlying symbol -
+                                        e.g. 2 ticks on ES but 5 on NQ. Instruments
+                                        not listed use the default above.
+                                    </p>
+                                    <div class="space-y-2">
+                                        <div
+                                            v-for="(row, idx) in breakevenToleranceRows"
+                                            :key="idx"
+                                            class="flex items-center gap-2"
+                                        >
+                                            <input
+                                                v-model="row.underlying"
+                                                type="text"
+                                                placeholder="ES"
+                                                class="input flex-1 uppercase"
+                                            />
+                                            <input
+                                                v-model.number="row.ticks"
+                                                type="number"
+                                                min="0"
+                                                step="1"
+                                                placeholder="ticks"
+                                                class="input w-28"
+                                            />
+                                            <button
+                                                type="button"
+                                                class="btn-secondary px-3"
+                                                @click="removeBreakevenToleranceRow(idx)"
+                                            >
+                                                Remove
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        class="btn-secondary mt-2"
+                                        @click="addBreakevenToleranceRow"
+                                    >
+                                        Add Instrument
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div>
                                 <label for="displayCurrency" class="label"
                                     >Display Currency</label
                                 >
-                                <select
-                                    id="displayCurrency"
-                                    v-model="
-                                        analyticsForm.displayCurrency
-                                    "
-                                    class="input"
-                                >
-                                    <option
-                                        v-for="c in currencyOptions"
-                                        :key="c.code"
-                                        :value="c.code"
-                                    >
-                                        {{ c.code }} - {{ c.name }}
-                                    </option>
-                                </select>
+                                <BaseSelect
+                                    v-model="analyticsForm.displayCurrency"
+                                    :options="currencySelectOptions"
+                                />
                                 <p
                                     class="mt-1 text-sm text-gray-500 dark:text-gray-400"
                                 >
@@ -167,19 +230,14 @@
                                 <label for="defaultStopLossType" class="label"
                                     >Default Stop Loss Type</label
                                 >
-                                <select
-                                    id="defaultStopLossType"
+                                <BaseSelect
                                     v-model="analyticsForm.defaultStopLossType"
-                                    class="input"
-                                >
-                                    <option value="percent">Percentage</option>
-                                    <option value="dollar">
-                                        Dollar amount
-                                    </option>
-                                    <option value="lod">
-                                        Low of Day (LoD)
-                                    </option>
-                                </select>
+                                    :options="[
+                                        { value: 'percent', label: 'Percentage' },
+                                        { value: 'dollar', label: 'Dollar amount' },
+                                        { value: 'lod', label: 'Low of Day (LoD)' }
+                                    ]"
+                                />
                                 <p
                                     class="mt-1 text-sm text-gray-500 dark:text-gray-400"
                                 >
@@ -756,30 +814,20 @@
                                     <label for="aiProvider" class="label"
                                         >AI Provider</label
                                     >
-                                    <select
-                                        id="aiProvider"
+                                    <BaseSelect
                                         v-model="aiForm.provider"
-                                        class="input"
+                                        :options="[
+                                            { value: 'gemini', label: 'Google Gemini' },
+                                            { value: 'claude', label: 'Anthropic Claude' },
+                                            { value: 'openai', label: 'OpenAI' },
+                                            { value: 'ollama', label: 'Ollama' },
+                                            { value: 'lmstudio', label: 'LM Studio' },
+                                            { value: 'perplexity', label: 'Perplexity AI' },
+                                            { value: 'local', label: 'Local/Custom' }
+                                        ]"
+                                        placeholder="No provider"
                                         @change="onProviderChange"
-                                    >
-                                        <option value="gemini">
-                                            Google Gemini
-                                        </option>
-                                        <option value="claude">
-                                            Anthropic Claude
-                                        </option>
-                                        <option value="openai">OpenAI</option>
-                                        <option value="ollama">Ollama</option>
-                                        <option value="lmstudio">
-                                            LM Studio
-                                        </option>
-                                        <option value="perplexity">
-                                            Perplexity AI
-                                        </option>
-                                        <option value="local">
-                                            Local/Custom
-                                        </option>
-                                    </select>
+                                    />
                                     <p
                                         class="mt-1 text-sm text-gray-500 dark:text-gray-400"
                                     >
@@ -841,7 +889,12 @@
                                 </p>
                             </div>
 
-                            <div v-if="aiForm.provider !== 'local'">
+                            <div
+                                v-if="
+                                    aiForm.provider &&
+                                    aiForm.provider !== 'local'
+                                "
+                            >
                                 <label for="aiApiKey" class="label"
                                     >API Key</label
                                 >
@@ -852,6 +905,7 @@
                                     class="input"
                                     :placeholder="getApiKeyPlaceholder()"
                                     :required="
+                                        !!aiForm.provider &&
                                         !['ollama', 'lmstudio'].includes(
                                             aiForm.provider,
                                         )
@@ -935,34 +989,20 @@
                                             class="label"
                                             >CUSIP AI Provider</label
                                         >
-                                        <select
-                                            id="cusipAiProvider"
+                                        <BaseSelect
                                             v-model="cusipAiForm.provider"
-                                            class="input"
+                                            :options="[
+                                                { value: 'gemini', label: 'Google Gemini' },
+                                                { value: 'claude', label: 'Anthropic Claude' },
+                                                { value: 'openai', label: 'OpenAI' },
+                                                { value: 'ollama', label: 'Ollama' },
+                                                { value: 'lmstudio', label: 'LM Studio' },
+                                                { value: 'perplexity', label: 'Perplexity AI' },
+                                                { value: 'local', label: 'Local/Custom' }
+                                            ]"
+                                            placeholder="No provider"
                                             @change="onCusipProviderChange"
-                                        >
-                                            <option value="gemini">
-                                                Google Gemini
-                                            </option>
-                                            <option value="claude">
-                                                Anthropic Claude
-                                            </option>
-                                            <option value="openai">
-                                                OpenAI
-                                            </option>
-                                            <option value="ollama">
-                                                Ollama
-                                            </option>
-                                            <option value="lmstudio">
-                                                LM Studio
-                                            </option>
-                                            <option value="perplexity">
-                                                Perplexity AI
-                                            </option>
-                                            <option value="local">
-                                                Local/Custom
-                                            </option>
-                                        </select>
+                                        />
                                     </div>
 
                                     <div>
@@ -1008,7 +1048,12 @@
                                     />
                                 </div>
 
-                                <div v-if="cusipAiForm.provider !== 'local'">
+                                <div
+                                    v-if="
+                                        cusipAiForm.provider &&
+                                        cusipAiForm.provider !== 'local'
+                                    "
+                                >
                                     <label for="cusipAiApiKey" class="label"
                                         >API Key</label
                                     >
@@ -1021,6 +1066,7 @@
                                             getCusipApiKeyPlaceholder()
                                         "
                                         :required="
+                                            !!cusipAiForm.provider &&
                                             !['ollama', 'lmstudio'].includes(
                                                 cusipAiForm.provider,
                                             )
@@ -1076,30 +1122,20 @@
                                     <label for="adminAiProvider" class="label"
                                         >Default AI Provider</label
                                     >
-                                    <select
-                                        id="adminAiProvider"
+                                    <BaseSelect
                                         v-model="adminAiForm.provider"
-                                        class="input"
+                                        :options="[
+                                            { value: 'gemini', label: 'Google Gemini' },
+                                            { value: 'claude', label: 'Anthropic Claude' },
+                                            { value: 'openai', label: 'OpenAI' },
+                                            { value: 'ollama', label: 'Ollama' },
+                                            { value: 'lmstudio', label: 'LM Studio' },
+                                            { value: 'perplexity', label: 'Perplexity AI' },
+                                            { value: 'local', label: 'Local/Custom' }
+                                        ]"
+                                        placeholder="No provider"
                                         @change="onAdminProviderChange"
-                                    >
-                                        <option value="gemini">
-                                            Google Gemini
-                                        </option>
-                                        <option value="claude">
-                                            Anthropic Claude
-                                        </option>
-                                        <option value="openai">OpenAI</option>
-                                        <option value="ollama">Ollama</option>
-                                        <option value="lmstudio">
-                                            LM Studio
-                                        </option>
-                                        <option value="perplexity">
-                                            Perplexity AI
-                                        </option>
-                                        <option value="local">
-                                            Local/Custom
-                                        </option>
-                                    </select>
+                                    />
                                     <p
                                         class="mt-1 text-sm text-gray-500 dark:text-gray-400"
                                     >
@@ -1168,7 +1204,12 @@
                                 </p>
                             </div>
 
-                            <div v-if="adminAiForm.provider !== 'local'">
+                            <div
+                                v-if="
+                                    adminAiForm.provider &&
+                                    adminAiForm.provider !== 'local'
+                                "
+                            >
                                 <label for="adminAiApiKey" class="label"
                                     >Default API Key</label
                                 >
@@ -1179,6 +1220,7 @@
                                     class="input"
                                     :placeholder="getAdminApiKeyPlaceholder()"
                                     :required="
+                                        !!adminAiForm.provider &&
                                         !['ollama', 'lmstudio'].includes(
                                             adminAiForm.provider,
                                         )
@@ -1189,6 +1231,154 @@
                                 >
                                     {{ getAdminApiKeyHelp() }}
                                 </p>
+                            </div>
+
+                            <div class="border-t border-gray-200 dark:border-gray-700 pt-6">
+                                <div
+                                    class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
+                                >
+                                    <div>
+                                        <h4
+                                            class="text-base font-medium text-gray-900 dark:text-white"
+                                        >
+                                            Follow-up Question Checker
+                                        </h4>
+                                        <p
+                                            class="mt-1 text-sm text-gray-500 dark:text-gray-400"
+                                        >
+                                            Optional smaller model used to
+                                            approve trading-related follow-up
+                                            questions before the default model
+                                            runs.
+                                        </p>
+                                    </div>
+                                    <label
+                                        for="adminAiClassifierEnabled"
+                                        class="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300"
+                                    >
+                                        <input
+                                            id="adminAiClassifierEnabled"
+                                            v-model="
+                                                adminAiForm.classifierEnabled
+                                            "
+                                            type="checkbox"
+                                            class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                                        />
+                                        Enabled
+                                    </label>
+                                </div>
+
+                                <fieldset
+                                    class="mt-6 space-y-6"
+                                    :class="
+                                        !adminAiForm.classifierEnabled
+                                            ? 'opacity-60'
+                                            : ''
+                                    "
+                                    :disabled="!adminAiForm.classifierEnabled"
+                                >
+                                    <div
+                                        class="grid grid-cols-1 gap-6 sm:grid-cols-2"
+                                    >
+                                        <div>
+                                            <label
+                                                for="adminAiClassifierProvider"
+                                                class="label"
+                                            >
+                                                Checking Provider
+                                            </label>
+                                            <BaseSelect
+                                                v-model="adminAiForm.classifierProvider"
+                                                :options="[
+                                                    { value: 'gemini', label: 'Google Gemini' },
+                                                    { value: 'claude', label: 'Anthropic Claude' },
+                                                    { value: 'openai', label: 'OpenAI' },
+                                                    { value: 'ollama', label: 'Ollama' },
+                                                    { value: 'lmstudio', label: 'LM Studio' },
+                                                    { value: 'perplexity', label: 'Perplexity AI' },
+                                                    { value: 'local', label: 'Local/Custom' }
+                                                ]"
+                                                placeholder="Use default provider"
+                                                @change="onAdminClassifierProviderChange"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label
+                                                for="adminAiClassifierModel"
+                                                class="label"
+                                            >
+                                                Checking Model
+                                            </label>
+                                            <input
+                                                id="adminAiClassifierModel"
+                                                v-model="
+                                                    adminAiForm.classifierModel
+                                                "
+                                                type="text"
+                                                class="input"
+                                                :placeholder="
+                                                    getAdminClassifierModelPlaceholder()
+                                                "
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div
+                                        v-if="
+                                            adminAiForm.classifierProvider ===
+                                                'local' ||
+                                            adminAiForm.classifierProvider ===
+                                                'ollama' ||
+                                            adminAiForm.classifierProvider ===
+                                                'lmstudio'
+                                        "
+                                    >
+                                        <label
+                                            for="adminAiClassifierUrl"
+                                            class="label"
+                                        >
+                                            Checking API URL
+                                        </label>
+                                        <input
+                                            id="adminAiClassifierUrl"
+                                            v-model="
+                                                adminAiForm.classifierUrl
+                                            "
+                                            type="url"
+                                            class="input"
+                                            :placeholder="
+                                                getAdminClassifierUrlPlaceholder()
+                                            "
+                                        />
+                                    </div>
+
+                                    <div
+                                        v-if="
+                                            adminAiForm.classifierProvider &&
+                                            adminAiForm.classifierProvider !==
+                                                'local'
+                                        "
+                                    >
+                                        <label
+                                            for="adminAiClassifierApiKey"
+                                            class="label"
+                                        >
+                                            Checking API Key
+                                        </label>
+                                        <input
+                                            id="adminAiClassifierApiKey"
+                                            v-model="
+                                                adminAiForm.classifierApiKey
+                                            "
+                                            type="password"
+                                            class="input"
+                                            :placeholder="
+                                                getAdminClassifierApiKeyPlaceholder()
+                                            "
+                                        />
+                                    </div>
+                                </fieldset>
                             </div>
 
                             <div class="flex justify-end">
@@ -1263,34 +1453,20 @@
                                             class="label"
                                             >Default CUSIP AI Provider</label
                                         >
-                                        <select
-                                            id="adminCusipAiProvider"
+                                        <BaseSelect
                                             v-model="adminCusipAiForm.provider"
-                                            class="input"
+                                            :options="[
+                                                { value: 'gemini', label: 'Google Gemini' },
+                                                { value: 'claude', label: 'Anthropic Claude' },
+                                                { value: 'openai', label: 'OpenAI' },
+                                                { value: 'ollama', label: 'Ollama' },
+                                                { value: 'lmstudio', label: 'LM Studio' },
+                                                { value: 'perplexity', label: 'Perplexity AI' },
+                                                { value: 'local', label: 'Local/Custom' }
+                                            ]"
+                                            placeholder="No provider"
                                             @change="onAdminCusipProviderChange"
-                                        >
-                                            <option value="gemini">
-                                                Google Gemini
-                                            </option>
-                                            <option value="claude">
-                                                Anthropic Claude
-                                            </option>
-                                            <option value="openai">
-                                                OpenAI
-                                            </option>
-                                            <option value="ollama">
-                                                Ollama
-                                            </option>
-                                            <option value="lmstudio">
-                                                LM Studio
-                                            </option>
-                                            <option value="perplexity">
-                                                Perplexity AI
-                                            </option>
-                                            <option value="local">
-                                                Local/Custom
-                                            </option>
-                                        </select>
+                                        />
                                     </div>
 
                                     <div>
@@ -1341,7 +1517,10 @@
                                 </div>
 
                                 <div
-                                    v-if="adminCusipAiForm.provider !== 'local'"
+                                    v-if="
+                                        adminCusipAiForm.provider &&
+                                        adminCusipAiForm.provider !== 'local'
+                                    "
                                 >
                                     <label
                                         for="adminCusipAiApiKey"
@@ -1357,6 +1536,7 @@
                                             getAdminCusipApiKeyPlaceholder()
                                         "
                                         :required="
+                                            !!adminCusipAiForm.provider &&
                                             !['ollama', 'lmstudio'].includes(
                                                 adminCusipAiForm.provider,
                                             )
@@ -1980,44 +2160,23 @@
                                         <label for="brokerName" class="label"
                                             >Broker</label
                                         >
-                                        <select
-                                            id="brokerName"
+                                        <BaseSelect
                                             v-model="brokerFeeForm.broker"
-                                            class="input"
                                             :disabled="editingBrokerFee"
-                                        >
-                                            <option value="">
-                                                Select a broker
-                                            </option>
-                                            <option value="avatrade">
-                                                AvaTrade
-                                            </option>
-                                            <option value="tradovate">
-                                                Tradovate
-                                            </option>
-                                            <option value="ninjatrader">
-                                                NinjaTrader
-                                            </option>
-                                            <option value="thinkorswim">
-                                                ThinkorSwim
-                                            </option>
-                                            <option value="ibkr">
-                                                Interactive Brokers
-                                            </option>
-                                            <option value="schwab">
-                                                Charles Schwab
-                                            </option>
-                                            <option value="lightspeed">
-                                                Lightspeed
-                                            </option>
-                                            <option value="webull">
-                                                Webull
-                                            </option>
-                                            <option value="etrade">
-                                                E*TRADE
-                                            </option>
-                                            <option value="other">Other</option>
-                                        </select>
+                                            :options="[
+                                                { value: 'avatrade', label: 'AvaTrade' },
+                                                { value: 'tradovate', label: 'Tradovate' },
+                                                { value: 'ninjatrader', label: 'NinjaTrader' },
+                                                { value: 'thinkorswim', label: 'ThinkorSwim' },
+                                                { value: 'ibkr', label: 'Interactive Brokers' },
+                                                { value: 'schwab', label: 'Charles Schwab' },
+                                                { value: 'lightspeed', label: 'Lightspeed' },
+                                                { value: 'webull', label: 'Webull' },
+                                                { value: 'etrade', label: 'E*TRADE' },
+                                                { value: 'other', label: 'Other' }
+                                            ]"
+                                            placeholder="Select a broker"
+                                        />
                                     </div>
 
                                     <div>
@@ -2567,6 +2726,7 @@ import {
     ArrowTopRightOnSquareIcon,
 } from "@heroicons/vue/24/outline";
 import LogsViewer from "@/components/admin/LogsViewer.vue";
+import BaseSelect from "@/components/common/BaseSelect.vue";
 
 const authStore = useAuthStore();
 const versionStore = useVersionStore();
@@ -2597,7 +2757,7 @@ const tabs = computed(() => {
 
 // AI Provider Settings
 const aiForm = ref({
-    provider: "gemini",
+    provider: "",
     apiKey: "",
     url: "",
     model: "",
@@ -2606,10 +2766,13 @@ const aiForm = ref({
 const aiLoading = ref(false);
 
 const currencyOptions = CURRENCY_OPTIONS;
+const currencySelectOptions = computed(() =>
+    currencyOptions.map((c) => ({ value: c.code, label: `${c.code} - ${c.name}` }))
+);
 
 // CUSIP AI Provider Settings
 const cusipAiForm = ref({
-    provider: "gemini",
+    provider: "",
     apiKey: "",
     url: "",
     model: "",
@@ -2621,6 +2784,7 @@ const cusipAiLoading = ref(false);
 // Analytics Settings
 const analyticsForm = ref({
     statisticsCalculation: "average",
+    breakevenToleranceTicks: 0,
     autoCloseExpiredOptions: true,
     defaultStopLossType: "percent",
     defaultStopLossPercent: null,
@@ -2630,6 +2794,38 @@ const analyticsForm = ref({
 });
 
 const analyticsLoading = ref(false);
+
+// Per-instrument breakeven tolerance overrides, edited as rows then serialized
+// to a { UNDERLYING: ticks } map on save.
+const breakevenToleranceRows = ref([]);
+
+function addBreakevenToleranceRow() {
+    breakevenToleranceRows.value.push({ underlying: "", ticks: 0 });
+}
+
+function removeBreakevenToleranceRow(idx) {
+    breakevenToleranceRows.value.splice(idx, 1);
+}
+
+function breakevenRowsFromMap(map) {
+    if (!map || typeof map !== "object") return [];
+    return Object.entries(map).map(([underlying, ticks]) => ({
+        underlying,
+        ticks: Number(ticks) || 0,
+    }));
+}
+
+function breakevenMapFromRows() {
+    const map = {};
+    for (const row of breakevenToleranceRows.value) {
+        const key = String(row.underlying || "").trim().toUpperCase();
+        if (!/^[A-Z0-9]+$/.test(key)) continue;
+        const ticks = Number(row.ticks);
+        if (!Number.isFinite(ticks) || ticks < 0) continue;
+        map[key] = ticks;
+    }
+    return map;
+}
 
 // Privacy Settings
 const privacyForm = ref({
@@ -2683,16 +2879,21 @@ const weightsTotal = computed(() => {
 
 // Admin AI Settings
 const adminAiForm = ref({
-    provider: "gemini",
+    provider: "",
     apiKey: "",
     url: "",
     model: "",
+    classifierEnabled: false,
+    classifierProvider: "",
+    classifierApiKey: "",
+    classifierUrl: "",
+    classifierModel: "",
 });
 const adminAiLoading = ref(false);
 
 // Admin CUSIP AI Settings
 const adminCusipAiForm = ref({
-    provider: "gemini",
+    provider: "",
     apiKey: "",
     url: "",
     model: "",
@@ -2797,7 +2998,7 @@ async function loadAISettings() {
     try {
         const response = await api.get("/settings/ai-provider");
         aiForm.value = {
-            provider: response.data.aiProvider || "gemini",
+            provider: response.data.aiProvider || "",
             apiKey: response.data.aiApiKey || "",
             url: response.data.aiApiUrl || "",
             model: response.data.aiModel || "",
@@ -2883,7 +3084,7 @@ async function loadCusipAISettings() {
     try {
         const response = await api.get("/settings/cusip-ai-provider");
         cusipAiForm.value = {
-            provider: response.data.cusipAiProvider || "gemini",
+            provider: response.data.cusipAiProvider || "",
             apiKey: response.data.cusipAiApiKey || "",
             url: response.data.cusipAiApiUrl || "",
             model: response.data.cusipAiModel || "",
@@ -2926,6 +3127,8 @@ async function loadAnalyticsSettings() {
         analyticsForm.value = {
             statisticsCalculation:
                 response.data.settings.statisticsCalculation || "average",
+            breakevenToleranceTicks:
+                Number(response.data.settings.breakevenToleranceTicks) || 0,
             autoCloseExpiredOptions:
                 response.data.settings.autoCloseExpiredOptions !== undefined
                     ? response.data.settings.autoCloseExpiredOptions
@@ -2941,10 +3144,14 @@ async function loadAnalyticsSettings() {
             displayCurrency:
                 response.data.settings.displayCurrency || "USD",
         };
+        breakevenToleranceRows.value = breakevenRowsFromMap(
+            response.data.settings.breakevenToleranceTicksByUnderlying,
+        );
     } catch (error) {
         console.error("Failed to load analytics settings:", error);
         // Default values if loading fails
         analyticsForm.value.statisticsCalculation = "average";
+        analyticsForm.value.breakevenToleranceTicks = 0;
         analyticsForm.value.autoCloseExpiredOptions = true;
         analyticsForm.value.defaultStopLossType = "percent";
         analyticsForm.value.defaultStopLossPercent = null;
@@ -2959,6 +3166,9 @@ async function updateAnalyticsSettings() {
     try {
         await api.put("/settings", {
             statisticsCalculation: analyticsForm.value.statisticsCalculation,
+            breakevenToleranceTicks:
+                Number(analyticsForm.value.breakevenToleranceTicks) || 0,
+            breakevenToleranceTicksByUnderlying: breakevenMapFromRows(),
             autoCloseExpiredOptions:
                 analyticsForm.value.autoCloseExpiredOptions,
             defaultStopLossType:
@@ -3227,10 +3437,15 @@ async function fetchAdminAISettings() {
     try {
         const response = await api.get("/settings/admin/ai");
         adminAiForm.value = {
-            provider: response.data.aiProvider,
-            apiKey: response.data.aiApiKey,
-            url: response.data.aiApiUrl,
-            model: response.data.aiModel,
+            provider: response.data.aiProvider || "",
+            apiKey: response.data.aiApiKey || "",
+            url: response.data.aiApiUrl || "",
+            model: response.data.aiModel || "",
+            classifierEnabled: response.data.aiClassifierEnabled === true,
+            classifierProvider: response.data.aiClassifierProvider || "",
+            classifierApiKey: response.data.aiClassifierApiKey || "",
+            classifierUrl: response.data.aiClassifierApiUrl || "",
+            classifierModel: response.data.aiClassifierModel || "",
         };
     } catch (error) {
         console.error("Failed to fetch admin AI settings:", error);
@@ -3246,6 +3461,11 @@ async function updateAdminAISettings() {
             aiApiKey: adminAiForm.value.apiKey,
             aiApiUrl: adminAiForm.value.url,
             aiModel: adminAiForm.value.model,
+            aiClassifierEnabled: adminAiForm.value.classifierEnabled,
+            aiClassifierProvider: adminAiForm.value.classifierProvider,
+            aiClassifierApiKey: adminAiForm.value.classifierApiKey,
+            aiClassifierApiUrl: adminAiForm.value.classifierUrl,
+            aiClassifierModel: adminAiForm.value.classifierModel,
         });
         showSuccess(
             "Success",
@@ -3267,6 +3487,81 @@ function onAdminProviderChange() {
     adminAiForm.value.apiKey = "";
     adminAiForm.value.url = "";
     adminAiForm.value.model = "";
+    if (!adminAiForm.value.classifierProvider) {
+        adminAiForm.value.classifierApiKey = "";
+        adminAiForm.value.classifierUrl = "";
+    }
+}
+
+function onAdminClassifierEnabledChange() {
+    if (!adminAiForm.value.classifierEnabled) {
+        adminAiForm.value.classifierProvider = "";
+        adminAiForm.value.classifierApiKey = "";
+        adminAiForm.value.classifierUrl = "";
+        adminAiForm.value.classifierModel = "";
+    }
+}
+
+function onAdminClassifierProviderChange() {
+    adminAiForm.value.classifierApiKey = "";
+    adminAiForm.value.classifierUrl = "";
+    adminAiForm.value.classifierModel = "";
+}
+
+function getEffectiveAdminClassifierProvider() {
+    return adminAiForm.value.classifierProvider || adminAiForm.value.provider;
+}
+
+function getAdminClassifierModelPlaceholder() {
+    switch (getEffectiveAdminClassifierProvider()) {
+        case "gemini":
+            return "gemini-1.5-flash";
+        case "claude":
+            return "claude-3-haiku-20240307";
+        case "openai":
+            return "gpt-4o-mini";
+        case "ollama":
+            return "llama3.1";
+        case "lmstudio":
+            return "local-model";
+        case "perplexity":
+            return "sonar";
+        case "local":
+            return "custom-model";
+        default:
+            return "Smaller checking model";
+    }
+}
+
+function getAdminClassifierUrlPlaceholder() {
+    switch (adminAiForm.value.classifierProvider) {
+        case "ollama":
+            return "http://localhost:11434";
+        case "lmstudio":
+            return "http://localhost:1234";
+        case "local":
+            return "http://localhost:8000";
+        default:
+            return "API URL";
+    }
+}
+
+function getAdminClassifierApiKeyPlaceholder() {
+    switch (adminAiForm.value.classifierProvider) {
+        case "gemini":
+            return "Enter Google Gemini API key";
+        case "claude":
+            return "Enter Anthropic Claude API key";
+        case "openai":
+            return "Enter OpenAI API key";
+        case "perplexity":
+            return "Enter Perplexity API key";
+        case "ollama":
+        case "lmstudio":
+            return "Optional API key";
+        default:
+            return "Enter API key";
+    }
 }
 
 function getAdminModelPlaceholder() {
@@ -3325,7 +3620,7 @@ async function fetchAdminCusipAISettings() {
     try {
         const response = await api.get("/settings/admin/cusip-ai");
         adminCusipAiForm.value = {
-            provider: response.data.cusipAiProvider || "gemini",
+            provider: response.data.cusipAiProvider || "",
             apiKey: response.data.cusipAiApiKey || "",
             url: response.data.cusipAiApiUrl || "",
             model: response.data.cusipAiModel || "",

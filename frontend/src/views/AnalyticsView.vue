@@ -116,6 +116,25 @@
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
       </div>
 
+      <!-- Section Tabs -->
+      <div v-show="!initialLoading" class="border-b border-gray-200 dark:border-gray-700">
+        <nav class="-mb-px flex space-x-8 overflow-x-auto" aria-label="Analytics sections">
+          <button
+            v-for="tab in analyticsTabs"
+            :key="tab.id"
+            @click="activeAnalyticsTab = tab.id"
+            :class="[
+              'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors',
+              activeAnalyticsTab === tab.id
+                ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+            ]"
+          >
+            {{ tab.label }}
+          </button>
+        </nav>
+      </div>
+
       <!-- Draggable Grid Container with refresh indicator -->
       <div v-show="!initialLoading" class="relative">
         <!-- Subtle refresh indicator -->
@@ -126,7 +145,7 @@
           </div>
         </div>
       <draggable
-        v-model="chartLayout"
+        v-model="tabCharts"
         :disabled="!isCustomizing"
         item-key="id"
         class="grid grid-cols-1 lg:grid-cols-2 gap-8"
@@ -174,7 +193,13 @@
               Win Rate{{ rValueMode ? ' (R-Trades)' : '' }}
             </dt>
             <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
-              {{ displayOverview.win_rate }}%
+              {{ displayOverview.win_rate }}%<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
+            </dd>
+            <dd
+              v-if="displayOverview.breakeven_trades > 0"
+              class="mt-0.5 text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap"
+            >
+              {{ displayOverview.win_rate_excluding_breakeven }}%<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">excl. BE</span>
             </dd>
           </div>
         </div>
@@ -494,7 +519,7 @@
                 <div class="flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-1 -m-1">
                   <span class="text-sm text-gray-500 dark:text-gray-400">Breakeven Trades</span>
                   <span class="text-sm font-medium text-gray-500">
-                    {{ displayOverview.breakeven_trades }}
+                    {{ displayOverview.breakeven_trades }} ({{ getBreakevenPercentage() }}%)
                   </span>
                 </div>
                 <div class="flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-1 -m-1">
@@ -534,9 +559,12 @@
               No data available
             </div>
             <div v-else>
-              <!-- Column Headers -->
+              <!-- Column Headers — must mirror the body row's flex structure
+                   (logo w-8, gap-2, symbol w-16, gap-2, trades count) so the
+                   header labels sit directly above their values. -->
               <div class="flex items-center justify-between pb-2 mb-2 border-b border-gray-200 dark:border-gray-700">
-                <div class="flex items-baseline">
+                <div class="flex items-baseline gap-2">
+                  <span class="w-8" aria-hidden="true"></span>
                   <span class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-16">Symbol</span>
                   <span class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Trades</span>
                 </div>
@@ -570,8 +598,17 @@
                     ]">
                       {{ formatCurrency(symbol.total_pnl) }}
                     </div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400 w-12 text-right">
-                      {{ (symbol.winning_trades / symbol.total_trades * 100).toFixed(0) }}%
+                    <div class="w-12 text-right">
+                      <div class="text-xs text-gray-500 dark:text-gray-400">
+                        {{ (symbol.winning_trades / symbol.total_trades * 100).toFixed(0) }}%
+                      </div>
+                      <div
+                        v-if="(Number(symbol.breakeven_trades) || 0) > 0"
+                        class="text-[10px] text-gray-400 dark:text-gray-500 leading-tight"
+                        :title="`Excludes ${symbol.breakeven_trades} breakeven trade${Number(symbol.breakeven_trades) === 1 ? '' : 's'}`"
+                      >
+                        {{ symbolWinRateExclBE(symbol) }}% BE
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -588,11 +625,17 @@
         <div class="card-body">
           <div class="flex items-center justify-between mb-4">
             <h3 class="heading-card">Performance Over Time</h3>
-            <select v-model="performancePeriod" @change="fetchPerformance" class="input w-auto">
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-            </select>
+            <div class="w-auto">
+              <BaseSelect
+                v-model="performancePeriod"
+                :options="[
+                  { value: 'daily', label: 'Daily' },
+                  { value: 'weekly', label: 'Weekly' },
+                  { value: 'monthly', label: 'Monthly' }
+                ]"
+                @change="fetchPerformance"
+              />
+            </div>
           </div>
           <div class="h-80">
             <PerformanceChart :data="performanceData" :r-value-mode="rValueMode" />
@@ -936,6 +979,9 @@
                     Trades
                   </th>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Breakeven
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Win Rate
                   </th>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -956,8 +1002,19 @@
                   <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                     {{ tag.total_trades }}
                   </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm">
+                    <span v-if="(Number(tag.breakeven_trades) || 0) > 0" class="px-2 py-0.5 bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200 text-xs rounded-full">
+                      {{ tag.breakeven_trades }}
+                    </span>
+                    <span v-else class="text-gray-400">-</span>
+                  </td>
                   <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                    {{ (tag.winning_trades / tag.total_trades * 100).toFixed(1) }}%
+                    <div class="flex flex-col">
+                      <span>{{ winRateInclBE(tag) }}%<span v-if="(Number(tag.breakeven_trades) || 0) > 0" class="ml-1 text-[10px] font-normal text-gray-500 dark:text-gray-400">incl. BE</span></span>
+                      <span v-if="(Number(tag.breakeven_trades) || 0) > 0" class="text-[10px] text-gray-500 dark:text-gray-400">
+                        {{ winRateExclBE(tag) }}% excl. BE
+                      </span>
+                    </div>
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap text-sm" :class="[
                     (rValueMode ? tag.total_r_value : tag.total_pnl) >= 0 ? 'text-green-600' : 'text-red-600'
@@ -995,6 +1052,9 @@
                     Trades
                   </th>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Breakeven
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Win Rate
                   </th>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -1015,8 +1075,19 @@
                   <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                     {{ strategy.total_trades }}
                   </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm">
+                    <span v-if="(Number(strategy.breakeven_trades) || 0) > 0" class="px-2 py-0.5 bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200 text-xs rounded-full">
+                      {{ strategy.breakeven_trades }}
+                    </span>
+                    <span v-else class="text-gray-400">-</span>
+                  </td>
                   <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                    {{ (strategy.winning_trades / strategy.total_trades * 100).toFixed(1) }}%
+                    <div class="flex flex-col">
+                      <span>{{ winRateInclBE(strategy) }}%<span v-if="(Number(strategy.breakeven_trades) || 0) > 0" class="ml-1 text-[10px] font-normal text-gray-500 dark:text-gray-400">incl. BE</span></span>
+                      <span v-if="(Number(strategy.breakeven_trades) || 0) > 0" class="text-[10px] text-gray-500 dark:text-gray-400">
+                        {{ winRateExclBE(strategy) }}% excl. BE
+                      </span>
+                    </div>
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap text-sm" :class="[
                     (rValueMode ? strategy.total_r_value : strategy.total_pnl) >= 0 ? 'text-green-600' : 'text-red-600'
@@ -1054,6 +1125,9 @@
                     Trades
                   </th>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Breakeven
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Win Rate
                   </th>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -1074,8 +1148,19 @@
                   <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                     {{ hour.total_trades }}
                   </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm">
+                    <span v-if="(Number(hour.breakeven_trades) || 0) > 0" class="px-2 py-0.5 bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200 text-xs rounded-full">
+                      {{ hour.breakeven_trades }}
+                    </span>
+                    <span v-else class="text-gray-400">-</span>
+                  </td>
                   <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                    {{ (hour.winning_trades / hour.total_trades * 100).toFixed(1) }}%
+                    <div class="flex flex-col">
+                      <span>{{ winRateInclBE(hour) }}%<span v-if="(Number(hour.breakeven_trades) || 0) > 0" class="ml-1 text-[10px] font-normal text-gray-500 dark:text-gray-400">incl. BE</span></span>
+                      <span v-if="(Number(hour.breakeven_trades) || 0) > 0" class="text-[10px] text-gray-500 dark:text-gray-400">
+                        {{ winRateExclBE(hour) }}% excl. BE
+                      </span>
+                    </div>
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap text-sm" :class="[
                     (rValueMode ? hour.total_r_value : hour.total_pnl) >= 0 ? 'text-green-600' : 'text-red-600'
@@ -1095,6 +1180,11 @@
           </div>
         </div>
       </div>
+            </template>
+
+            <!-- MAE / MFE Analysis -->
+            <template v-else-if="element.id === 'mae-mfe-analysis'">
+      <MaeMfeAnalysis :filters="filters" />
             </template>
 
           </div>
@@ -1226,12 +1316,14 @@ import api from '@/services/api'
 import PerformanceChart from '@/components/charts/PerformanceChart.vue'
 import MdiIcon from '@/components/MdiIcon.vue'
 import NewsCorrelationAnalytics from '@/components/analytics/NewsCorrelationAnalytics.vue'
+import MaeMfeAnalysis from '@/components/analytics/MaeMfeAnalysis.vue'
 import TagManagement from '@/components/trades/TagManagement.vue'
 import TradeFilters from '@/components/trades/TradeFilters.vue'
 import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
 import AIReportRenderer from '@/components/ai/AIReportRenderer.vue'
 import AIConversationPanel from '@/components/ai/AIConversationPanel.vue'
 import StockLogo from '@/components/common/StockLogo.vue'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 import { useAIStore } from '@/stores/ai'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { usePricingExperiment } from '@/composables/usePricingExperiment'
@@ -1365,6 +1457,7 @@ const filters = ref({
 const overview = ref({
   total_pnl: 0,
   win_rate: 0,
+  win_rate_excluding_breakeven: 0,
   total_trades: 0,
   winning_trades: 0,
   losing_trades: 0,
@@ -1423,23 +1516,33 @@ const showCompletionMessage = ref(false)
 
 // Chart layout customization
 const chartDefinitions = [
-  { id: 'overview', title: 'Overview Stats', defaultSize: 'full', category: 'stats' },
-  { id: 'detailed-stats', title: 'Detailed Stats', defaultSize: 'full', category: 'stats' },
-  { id: 'performance-chart', title: 'Performance Over Time', defaultSize: 'full', category: 'charts' },
-  { id: 'sector-performance', title: 'Sector Performance', defaultSize: 'full', category: 'charts' },
-  { id: 'drawdown-chart', title: 'Drawdown Analysis', defaultSize: 'half', category: 'charts' },
-  { id: 'daily-volume-chart', title: 'Daily Volume', defaultSize: 'half', category: 'charts' },
-  { id: 'day-of-week', title: 'Day of Week Performance', defaultSize: 'half', category: 'charts' },
-  { id: 'performance-by-hold-time', title: 'Performance by Hold Time', defaultSize: 'half', category: 'charts' },
-  { id: 'trade-distribution', title: 'Trade Distribution by Price', defaultSize: 'half', category: 'charts' },
-  { id: 'performance-by-price', title: 'Performance by Price', defaultSize: 'half', category: 'charts' },
-  { id: 'performance-by-volume', title: 'Performance by Volume', defaultSize: 'half', category: 'charts' },
-  { id: 'performance-by-position-size', title: 'Performance by Position Size', defaultSize: 'half', category: 'charts' },
-  { id: 'news-sentiment', title: 'News Sentiment Correlation', defaultSize: 'full', category: 'charts' },
-  { id: 'tag-performance', title: 'Tag Performance', defaultSize: 'full', category: 'tables' },
-  { id: 'strategy-performance', title: 'Strategy/Setup Performance', defaultSize: 'full', category: 'tables' },
-  { id: 'hour-of-day-performance', title: 'Hour of Day Performance', defaultSize: 'full', category: 'tables' }
+  { id: 'overview', title: 'Overview Stats', defaultSize: 'full', category: 'stats', tab: 'overview' },
+  { id: 'detailed-stats', title: 'Detailed Stats', defaultSize: 'full', category: 'stats', tab: 'overview' },
+  { id: 'performance-chart', title: 'Performance Over Time', defaultSize: 'full', category: 'charts', tab: 'time' },
+  { id: 'sector-performance', title: 'Sector Performance', defaultSize: 'full', category: 'charts', tab: 'symbol' },
+  { id: 'drawdown-chart', title: 'Drawdown Analysis', defaultSize: 'half', category: 'charts', tab: 'time' },
+  { id: 'daily-volume-chart', title: 'Daily Volume', defaultSize: 'half', category: 'charts', tab: 'time' },
+  { id: 'day-of-week', title: 'Day of Week Performance', defaultSize: 'half', category: 'charts', tab: 'time' },
+  { id: 'performance-by-hold-time', title: 'Performance by Hold Time', defaultSize: 'half', category: 'charts', tab: 'time' },
+  { id: 'trade-distribution', title: 'Trade Distribution by Price', defaultSize: 'half', category: 'charts', tab: 'size' },
+  { id: 'performance-by-price', title: 'Performance by Price', defaultSize: 'half', category: 'charts', tab: 'size' },
+  { id: 'performance-by-volume', title: 'Performance by Volume', defaultSize: 'half', category: 'charts', tab: 'size' },
+  { id: 'performance-by-position-size', title: 'Performance by Position Size', defaultSize: 'half', category: 'charts', tab: 'size' },
+  { id: 'news-sentiment', title: 'News Sentiment Correlation', defaultSize: 'full', category: 'charts', tab: 'symbol' },
+  { id: 'tag-performance', title: 'Tag Performance', defaultSize: 'full', category: 'tables', tab: 'symbol' },
+  { id: 'strategy-performance', title: 'Strategy/Setup Performance', defaultSize: 'full', category: 'tables', tab: 'symbol' },
+  { id: 'hour-of-day-performance', title: 'Hour of Day Performance', defaultSize: 'full', category: 'tables', tab: 'time' },
+  { id: 'mae-mfe-analysis', title: 'MAE / MFE Analysis', defaultSize: 'full', category: 'charts', tab: 'time' }
 ]
+
+const analyticsTabs = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'time', label: 'By Time' },
+  { id: 'symbol', label: 'By Symbol & Strategy' },
+  { id: 'size', label: 'By Trade Size' }
+]
+
+const activeAnalyticsTab = ref('overview')
 
 const defaultChartLayout = chartDefinitions.map(chart => ({
   id: chart.id,
@@ -1494,7 +1597,10 @@ const displayOverview = computed(() => {
   // In R-value mode, use the R-specific stats from the backend
   const rTotalTrades = overview.value.r_total_trades || 0
   const rWinningTrades = overview.value.r_winning_trades || 0
+  const rLosingTrades = overview.value.r_losing_trades || 0
   const rWinRate = rTotalTrades > 0 ? Math.round((rWinningTrades / rTotalTrades) * 100) : 0
+  const rDecisiveTrades = rWinningTrades + rLosingTrades
+  const rWinRateExclBe = rDecisiveTrades > 0 ? (rWinningTrades / rDecisiveTrades * 100).toFixed(2) : 0
 
   // Calculate profit factor for R-value trades
   const rGrossWins = overview.value.r_winning_trades > 0
@@ -1512,6 +1618,7 @@ const displayOverview = computed(() => {
     losing_trades: overview.value.r_losing_trades || 0,
     breakeven_trades: overview.value.r_breakeven_trades || 0,
     win_rate: rWinRate,
+    win_rate_excluding_breakeven: rWinRateExclBe,
     total_pnl: parseFloat(overview.value.r_total_pnl || 0),
     avg_pnl: parseFloat(overview.value.r_avg_pnl || 0),
     avg_win: parseFloat(overview.value.r_avg_win || 0),
@@ -1523,6 +1630,29 @@ const displayOverview = computed(() => {
 // Computed property for visible charts in order
 const visibleCharts = computed(() => {
   return chartLayout.value.filter(chart => chart.visible)
+})
+
+// Charts belonging to the active analytics tab. Writable so draggable can
+// reorder within a tab while preserving the order of charts on other tabs.
+const tabCharts = computed({
+  get: () => chartLayout.value.filter(c => {
+    const def = chartDefinitions.find(d => d.id === c.id)
+    return def?.tab === activeAnalyticsTab.value
+  }),
+  set: (newOrder) => {
+    const otherCharts = chartLayout.value.filter(c => {
+      const def = chartDefinitions.find(d => d.id === c.id)
+      return def?.tab !== activeAnalyticsTab.value
+    })
+    chartLayout.value = [...otherCharts, ...newOrder]
+  }
+})
+
+// When the user changes tabs, the new tab's canvases mount fresh.
+// Re-run chart init so Chart.js binds to the newly-mounted canvas elements.
+watch(activeAnalyticsTab, async () => {
+  await nextTick()
+  initializeAllCharts()
 })
 
 // Get chart definition by ID
@@ -1744,6 +1874,34 @@ function formatHour(hour) {
   return `${String(h).padStart(2, '0')}:00`
 }
 
+// Win rate helpers for tag / strategy / hour rows. Mirrors the overview pattern:
+// "incl. BE" uses wins / total; "excl. BE" uses wins / (wins + losses) so a
+// scratch (breakeven) trade no longer dilutes the rate.
+function winRateInclBE(row) {
+  const total = Number(row?.total_trades) || 0
+  if (total === 0) return '0.0'
+  const wins = Number(row?.winning_trades) || 0
+  return ((wins / total) * 100).toFixed(1)
+}
+
+function winRateExclBE(row) {
+  const wins = Number(row?.winning_trades) || 0
+  const losses = Number(row?.losing_trades) || 0
+  const decisive = wins + losses
+  if (decisive === 0) return '0.0'
+  return ((wins / decisive) * 100).toFixed(1)
+}
+
+// Integer-rounded variant for the compact Top Performing Symbols list where
+// a 1-decimal "100.0%" overflows the w-12 column.
+function symbolWinRateExclBE(row) {
+  const wins = Number(row?.winning_trades) || 0
+  const losses = Number(row?.losing_trades) || 0
+  const decisive = wins + losses
+  if (decisive === 0) return '0'
+  return ((wins / decisive) * 100).toFixed(0)
+}
+
 function getWinPercentage() {
   if (displayOverview.value.total_trades === 0) return 0
   return ((displayOverview.value.winning_trades / displayOverview.value.total_trades) * 100).toFixed(1)
@@ -1752,6 +1910,11 @@ function getWinPercentage() {
 function getLossPercentage() {
   if (displayOverview.value.total_trades === 0) return 0
   return ((displayOverview.value.losing_trades / displayOverview.value.total_trades) * 100).toFixed(1)
+}
+
+function getBreakevenPercentage() {
+  if (displayOverview.value.total_trades === 0) return 0
+  return ((displayOverview.value.breakeven_trades / displayOverview.value.total_trades) * 100).toFixed(1)
 }
 
 function getSQNInterpretation(sqn) {

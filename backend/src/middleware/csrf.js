@@ -7,6 +7,7 @@ const MOBILE_CLIENT_HEADERS = ['x-device-id', 'x-platform', 'x-app-version'];
 // Pre-auth endpoints don't need CSRF protection (no session to hijack)
 const CSRF_EXEMPT_PATHS = new Set([
   '/api/auth/login',
+  '/api/auth/verify-2fa',
   '/api/auth/register',
   '/api/v1/auth/login',
   '/api/v1/auth/register',
@@ -14,6 +15,10 @@ const CSRF_EXEMPT_PATHS = new Set([
   '/api/auth/reset-password',
   '/api/v1/auth/login/device',
 ]);
+
+function isReadOnlyPostExempt(req) {
+  return req.method === 'POST' && /^\/api\/investments\/dcf\/[^/]+\/calculate(?:\?|$)/.test(req.originalUrl);
+}
 
 function generateCsrfToken() {
   return crypto.randomBytes(32).toString('hex');
@@ -51,6 +56,10 @@ function requireCsrf(req, res, next) {
     return next();
   }
 
+  if (isReadOnlyPostExempt(req)) {
+    return next();
+  }
+
   const hasAuthCookie = Boolean(req.cookies?.[AUTH_COOKIE_NAME]);
   if (!hasAuthCookie || hasBearerAuthorization(req) || req.headers['x-api-key'] || isMobileClient(req)) {
     return next();
@@ -60,6 +69,7 @@ function requireCsrf(req, res, next) {
   const headerToken = req.headers[CSRF_HEADER_NAME];
 
   if (!cookieToken || !headerToken || cookieToken !== headerToken) {
+    res.cookie(CSRF_COOKIE_NAME, generateCsrfToken(), buildCsrfCookieOptions(req));
     return res.status(403).json({
       error: 'Invalid CSRF token',
       code: 'INVALID_CSRF_TOKEN'

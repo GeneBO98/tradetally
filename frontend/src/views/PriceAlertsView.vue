@@ -10,15 +10,43 @@
                     Get notified when your stocks reach target prices
                 </p>
             </div>
-            <button
+            <div
                 v-if="isProUser"
-                @click="showCreateAlertModal = true"
-                class="mt-4 sm:mt-0 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                class="mt-4 sm:mt-0 flex flex-wrap gap-3"
             >
-                <MdiIcon :icon="mdiBell" :size="16" classes="mr-2" />
-                Create Alert
-            </button>
+                <a
+                    href="#webhook-destinations"
+                    class="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                >
+                    Webhook Destinations
+                </a>
+                <button
+                    @click="showCreateAlertModal = true"
+                    class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                >
+                    <MdiIcon :icon="mdiBell" :size="16" classes="mr-2" />
+                    Create Alert
+                </button>
+            </div>
         </div>
+
+        <section id="webhook-destinations" class="mb-8">
+            <div class="mb-4">
+                <h2 class="text-xl font-semibold text-gray-900 dark:text-gray-100">
+                    Webhook Destinations
+                </h2>
+                <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                    Send triggered price alerts to Slack, Discord, or a custom endpoint.
+                </p>
+            </div>
+
+            <PriceAlertWebhookManager v-if="isProUser" />
+            <ProUpgradePrompt
+                v-else
+                variant="card"
+                description="Webhook destinations for price alerts are available for Pro users."
+            />
+        </section>
 
         <!-- Pro Feature Notice -->
         <ProUpgradePrompt
@@ -122,10 +150,13 @@
                     class="text-sm font-medium text-gray-700 dark:text-gray-300"
                     >Status:</label
                 >
-                <select v-model="filters.activeOnly" class="input">
-                    <option value="true">Active Only</option>
-                    <option value="false">All Alerts</option>
-                </select>
+                <BaseSelect
+                    v-model="filters.activeOnly"
+                    :options="[
+                        { value: 'true', label: 'Active Only' },
+                        { value: 'false', label: 'All Alerts' },
+                    ]"
+                />
             </div>
             <button @click="loadAlerts" class="btn-secondary">Refresh</button>
         </div>
@@ -394,18 +425,14 @@
                                     class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
                                     >Alert Type</label
                                 >
-                                <select
-                                    id="alertType"
+                                <BaseSelect
                                     v-model="alertForm.alert_type"
-                                    required
-                                    class="input"
-                                >
-                                    <option value="above">Price Above</option>
-                                    <option value="below">Price Below</option>
-                                    <option value="change_percent">
-                                        % Change
-                                    </option>
-                                </select>
+                                    :options="[
+                                        { value: 'above', label: 'Price Above' },
+                                        { value: 'below', label: 'Price Below' },
+                                        { value: 'change_percent', label: '% Change' },
+                                    ]"
+                                />
                             </div>
                         </div>
 
@@ -532,9 +559,11 @@ import { useUiPreferencesStore } from "@/stores/uiPreferences";
 import api from "@/services/api";
 import ProUpgradePrompt from "@/components/ProUpgradePrompt.vue";
 import MdiIcon from "@/components/MdiIcon.vue";
+import PriceAlertWebhookManager from "@/components/price-alerts/PriceAlertWebhookManager.vue";
 import { mdiBell, mdiRepeat } from "@mdi/js";
 import { getMarketStatus } from "@/utils/marketStatus";
 import SymbolAutocomplete from "@/components/common/SymbolAutocomplete.vue";
+import BaseSelect from "@/components/common/BaseSelect.vue";
 import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
 
 export default {
@@ -542,7 +571,9 @@ export default {
     components: {
         ProUpgradePrompt,
         MdiIcon,
+        PriceAlertWebhookManager,
         SymbolAutocomplete,
+        BaseSelect,
     },
     setup() {
         const route = useRoute();
@@ -562,9 +593,7 @@ export default {
 
         // Market status tracking
         const marketStatus = ref(getMarketStatus());
-
-        // Update market status every minute
-        setInterval(() => {
+        const marketStatusInterval = setInterval(() => {
             marketStatus.value = getMarketStatus();
         }, 60000);
 
@@ -801,6 +830,7 @@ export default {
         });
 
         onBeforeUnmount(() => {
+            clearInterval(marketStatusInterval);
             window.removeEventListener("keydown", handleEscape);
         });
 

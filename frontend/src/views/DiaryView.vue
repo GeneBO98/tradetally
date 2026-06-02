@@ -97,15 +97,17 @@
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             Type
           </label>
-          <select
-            v-model="filters.entryType"
-            @change="applyFilters"
-            class="input text-sm"
-          >
-            <option value="">All Types</option>
-            <option value="diary">Diary</option>
-            <option value="playbook">Playbook</option>
-          </select>
+          <div class="text-sm">
+            <BaseSelect
+              v-model="filters.entryType"
+              @change="applyFilters"
+              placeholder="All Types"
+              :options="[
+                { value: 'diary', label: 'Diary' },
+                { value: 'playbook', label: 'Playbook' }
+              ]"
+            />
+          </div>
         </div>
 
         <!-- Market Bias Filter -->
@@ -113,16 +115,18 @@
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             Market Bias
           </label>
-          <select
-            v-model="filters.marketBias"
-            @change="applyFilters"
-            class="input text-sm"
-          >
-            <option value="">All Bias</option>
-            <option value="bullish">Bullish</option>
-            <option value="bearish">Bearish</option>
-            <option value="neutral">Neutral</option>
-          </select>
+          <div class="text-sm">
+            <BaseSelect
+              v-model="filters.marketBias"
+              @change="applyFilters"
+              placeholder="All Bias"
+              :options="[
+                { value: 'bullish', label: 'Bullish' },
+                { value: 'bearish', label: 'Bearish' },
+                { value: 'neutral', label: 'Neutral' }
+              ]"
+            />
+          </div>
         </div>
 
         <!-- Date Range Filter -->
@@ -588,6 +592,7 @@ import TemplateManager from '@/components/diary/TemplateManager.vue'
 import LinkedTradesList from '@/components/diary/LinkedTradesList.vue'
 import WatchlistSymbol from '@/components/diary/WatchlistSymbol.vue'
 import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 import {
   PlusIcon,
   PencilIcon,

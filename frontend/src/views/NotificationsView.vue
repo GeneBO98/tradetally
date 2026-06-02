@@ -25,6 +25,14 @@
               {{ markingRead ? 'Marking...' : 'Mark all read' }}
             </button>
             <button
+              v-if="notifications.length > 0"
+              @click="clearAllNotifications"
+              :disabled="deleting"
+              class="btn-secondary text-sm"
+            >
+              {{ deleting ? 'Clearing...' : 'Clear all' }}
+            </button>
+            <button
               @click="() => fetchNotifications(currentPage)"
               :disabled="loading"
               class="btn-primary text-sm"
@@ -88,7 +96,12 @@
                   :class="getIconColorClass(notification.type)"
                 />
                 <ArrowTrendingUpIcon
-                  v-else-if="notification.type === 'level_up'"
+                  v-else-if="notification.type === 'level_up' || notification.type === 'portfolio_alert'"
+                  class="h-5 w-5"
+                  :class="getIconColorClass(notification.type)"
+                />
+                <BellIcon
+                  v-else-if="notification.type === 'web_mention_alert'"
                   class="h-5 w-5"
                   :class="getIconColorClass(notification.type)"
                 />
@@ -137,6 +150,13 @@
                     <p class="text-gray-700 dark:text-gray-300 italic">
                       "{{ notification.comment_text }}"
                     </p>
+                  </div>
+                  <div v-if="notification.type === 'web_mention_alert' && notification.metadata?.top_links?.length" class="text-xs text-gray-500 dark:text-gray-400">
+                    <span class="font-medium">{{ notification.metadata.article_count }}</span>
+                    distinct articles matched
+                    <span v-if="notification.metadata.matched_symbols?.length">
+                      · {{ notification.metadata.matched_symbols.join(', ') }}
+                    </span>
                   </div>
                 </div>
 
@@ -192,12 +212,14 @@ import {
   TrophyIcon,
   ArrowTrendingUpIcon
 } from '@heroicons/vue/24/outline'
-import { useAuthStore } from '@/stores/auth'
 import { useUserTimezone } from '@/composables/useUserTimezone'
+import { useNotification } from '@/composables/useNotification'
+import { useNotificationCenter } from '@/composables/useNotificationCenter'
 
 const router = useRouter()
-const authStore = useAuthStore()
 const { formatDateTime: formatDateTimeTz } = useUserTimezone()
+const { showDangerConfirmation } = useNotification()
+const { clearUnreadState } = useNotificationCenter()
 
 // Component state
 const notifications = ref([])
@@ -283,6 +305,40 @@ const deleteSelected = async () => {
   }
 }
 
+const performClearAllNotifications = async () => {
+  if (!notifications.value.length) return
+
+  try {
+    deleting.value = true
+
+    await api.delete('/notifications/all')
+
+    notifications.value = []
+    pagination.value = null
+    selectedNotifications.value = []
+    clearUnreadState()
+    await fetchNotifications(1)
+  } catch (error) {
+    console.error('Error clearing all notifications:', error)
+  } finally {
+    deleting.value = false
+  }
+}
+
+const clearAllNotifications = () => {
+  if (!notifications.value.length || deleting.value) return
+
+  showDangerConfirmation(
+    'Delete all notifications?',
+    'This cannot be undone.',
+    performClearAllNotifications,
+    {
+      confirmText: 'Delete all',
+      cancelText: 'Cancel'
+    }
+  )
+}
+
 const handleNotificationClick = (notification) => {
   if (notification.type === 'trade_comment' && notification.trade_id) {
     router.push(`/trades/${notification.trade_id}`)
@@ -294,6 +350,10 @@ const handleNotificationClick = (notification) => {
     router.push('/leaderboard')
   } else if (notification.type === 'behavioral_alert') {
     router.push('/metrics/behavioral')
+  } else if (notification.type === 'portfolio_alert') {
+    router.push({ path: '/analysis', query: { tab: 'holdings' } })
+  } else if (notification.type === 'web_mention_alert') {
+    router.push('/web-mentions')
   }
 }
 
@@ -322,6 +382,8 @@ const getTypeLabel = (type) => {
     case 'challenge_completed': return 'Challenge'
     case 'leaderboard_ranking': return 'Leaderboard'
     case 'behavioral_alert': return 'Behavioral'
+    case 'portfolio_alert': return 'Portfolio'
+    case 'web_mention_alert': return 'Web Mention'
     default: return 'Notification'
   }
 }
@@ -338,6 +400,9 @@ const getTypeBadgeClass = (type) => {
       return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200'
     case 'behavioral_alert':
       return 'bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200'
+    case 'portfolio_alert':
+    case 'web_mention_alert':
+      return 'bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-200'
     default:
       return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
   }
@@ -355,6 +420,9 @@ const getIconBgClass = (type) => {
       return 'bg-emerald-50 dark:bg-emerald-900/20'
     case 'behavioral_alert':
       return 'bg-rose-50 dark:bg-rose-900/20'
+    case 'portfolio_alert':
+    case 'web_mention_alert':
+      return 'bg-primary-50 dark:bg-primary-900/20'
     default:
       return 'bg-gray-50 dark:bg-gray-700'
   }
@@ -372,6 +440,9 @@ const getIconColorClass = (type) => {
       return 'text-emerald-600 dark:text-emerald-400'
     case 'behavioral_alert':
       return 'text-rose-600 dark:text-rose-400'
+    case 'portfolio_alert':
+    case 'web_mention_alert':
+      return 'text-primary-600 dark:text-primary-300'
     default:
       return 'text-gray-400'
   }

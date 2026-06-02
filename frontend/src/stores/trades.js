@@ -131,6 +131,12 @@ export const useTradesStore = defineStore('trades', () => {
     return totalNetPnL.value + totalCosts.value
   })
 
+  // Gross P&L (price only) for a trade — classify breakeven the same way the
+  // backend does: a trade scratched at entry is breakeven, not a fee-driven loss.
+  function grossPnl(t) {
+    return (parseFloat(t.pnl) || 0) + (parseFloat(t.commission) || 0) + (parseFloat(t.fees) || 0)
+  }
+
   const winRate = computed(() => {
     const summaryWinRate = getSummaryMetric('winRate')
     if (summaryWinRate !== undefined) {
@@ -141,9 +147,26 @@ export const useTradesStore = defineStore('trades', () => {
       return '0.00'
     }
 
-    const winning = trades.value.filter(t => t.pnl > 0).length
+    const winning = trades.value.filter(t => grossPnl(t) !== 0 && t.pnl > 0).length
     const total = trades.value.length
     return total > 0 ? (winning / total * 100).toFixed(2) : 0
+  })
+
+  // Win rate excluding breakeven trades (denominator = wins + losses only).
+  const winRateExcludingBreakeven = computed(() => {
+    const summaryMetric = getSummaryMetric('winRateExcludingBreakeven')
+    if (summaryMetric !== undefined) {
+      return parseFloat(summaryMetric).toFixed(2)
+    }
+
+    if (!hasCompleteTradeSetLoaded.value) {
+      return '0.00'
+    }
+
+    const winning = trades.value.filter(t => grossPnl(t) !== 0 && t.pnl > 0).length
+    const losing = trades.value.filter(t => grossPnl(t) !== 0 && t.pnl < 0).length
+    const decisive = winning + losing
+    return decisive > 0 ? (winning / decisive * 100).toFixed(2) : '0.00'
   })
 
   const totalTrades = computed(() => {
@@ -415,12 +438,12 @@ export const useTradesStore = defineStore('trades', () => {
     }
   }
 
-  async function importTrades(file, broker, mappingId = null, accountId = null) {
+  async function importTrades(file, broker, mappingId = null, accountId = null, strategy = null) {
     loading.value = true
     error.value = null
 
     try {
-      console.log('Creating FormData with file:', file.name, 'broker:', broker, 'mappingId:', mappingId, 'accountId:', accountId)
+      console.log('Creating FormData with file:', file.name, 'broker:', broker, 'mappingId:', mappingId, 'accountId:', accountId, 'strategy:', strategy)
       const formData = new FormData()
       formData.append('file', file)
       formData.append('broker', broker)
@@ -429,6 +452,9 @@ export const useTradesStore = defineStore('trades', () => {
       }
       if (accountId) {
         formData.append('accountId', accountId)
+      }
+      if (strategy && String(strategy).trim()) {
+        formData.append('strategy', String(strategy).trim())
       }
 
       console.log('FormData contents:')
@@ -463,6 +489,13 @@ export const useTradesStore = defineStore('trades', () => {
       // Support account filtering
       if (options.accounts) {
         params.accounts = options.accounts
+      }
+      // Tag / strategy filters — backend accepts comma-separated lists.
+      if (Array.isArray(options.tags) && options.tags.length > 0) {
+        params.tags = options.tags.join(',')
+      }
+      if (Array.isArray(options.strategies) && options.strategies.length > 0) {
+        params.strategies = options.strategies.join(',')
       }
       const response = await api.get('/trades/analytics/monthly', { params })
       console.log('[STORE] Monthly performance response:', response.data)
@@ -594,6 +627,7 @@ export const useTradesStore = defineStore('trades', () => {
     totalGrossPnL,
     totalCosts,
     winRate,
+    winRateExcludingBreakeven,
     totalTrades,
     fetchTrades,
     fetchRoundTripTrades,

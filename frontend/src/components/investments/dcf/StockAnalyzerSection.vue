@@ -17,7 +17,31 @@
       ref="calculatorCardRef"
       class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6"
     >
-      <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Stock Valuation Calculator</h2>
+      <div class="flex items-start justify-between gap-4 mb-2">
+        <h2 class="text-lg font-medium text-gray-900 dark:text-white">Stock Valuation Calculator</h2>
+        <div v-if="isProUser" class="flex shrink-0 gap-2">
+          <button
+            type="button"
+            @click="openWatchlistModal"
+            class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
+          >
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.562.562 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+            </svg>
+            <span class="hidden sm:inline">Add to </span>Watchlist
+          </button>
+          <button
+            type="button"
+            @click="openAlertModal"
+            class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
+          >
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+            </svg>
+            <span class="hidden sm:inline">Set </span>Price Alert
+          </button>
+        </div>
+      </div>
       <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">
         Review historical metrics and enter your assumptions to calculate fair value. Each calculation is saved automatically below.
       </p>
@@ -147,15 +171,187 @@
         </div>
       </div>
     </div>
+
+    <!-- Add to Watchlist Modal -->
+    <div
+      v-if="showWatchlistModal"
+      class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50"
+    >
+      <div class="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+        <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
+          Add {{ symbol }} to Watchlist
+        </h3>
+
+        <!-- Loading State -->
+        <div v-if="watchlistsLoading" class="flex justify-center py-4">
+          <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
+        </div>
+
+        <!-- No Watchlists -->
+        <div v-else-if="watchlists.length === 0" class="text-center py-4">
+          <p class="text-gray-600 dark:text-gray-400 mb-4">
+            You don't have any watchlists yet.
+          </p>
+          <router-link to="/watchlists" class="text-primary-600 hover:text-primary-800">
+            Create your first watchlist
+          </router-link>
+        </div>
+
+        <!-- Watchlist Selection -->
+        <div v-else class="space-y-2 mb-6">
+          <label
+            v-for="watchlist in watchlists"
+            :key="watchlist.id"
+            class="flex items-center p-3 border border-gray-200 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700"
+            :class="{
+              'border-primary-500 bg-primary-50 dark:bg-primary-900/20':
+                selectedWatchlistId === watchlist.id
+            }"
+          >
+            <input
+              type="radio"
+              v-model="selectedWatchlistId"
+              :value="watchlist.id"
+              class="text-primary-600 focus:ring-primary-500"
+            />
+            <div class="ml-3">
+              <span class="font-medium text-gray-900 dark:text-white">{{ watchlist.name }}</span>
+              <span class="ml-2 text-sm text-gray-500 dark:text-gray-400">({{ watchlist.item_count }} symbols)</span>
+              <span
+                v-if="watchlist.is_default"
+                class="ml-2 text-xs text-primary-600 dark:text-primary-400"
+              >Default</span>
+            </div>
+          </label>
+        </div>
+
+        <div class="flex justify-end space-x-3">
+          <button @click="closeWatchlistModal" class="btn-secondary">Cancel</button>
+          <button
+            v-if="watchlists.length > 0"
+            @click="addToWatchlist"
+            :disabled="!selectedWatchlistId || addingToWatchlist"
+            class="btn-primary"
+          >
+            {{ addingToWatchlist ? 'Adding...' : 'Add to Watchlist' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Set Price Alert Modal -->
+    <div
+      v-if="showAlertModal"
+      class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50"
+    >
+      <div class="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+        <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-1">
+          Set Price Alert for {{ symbol }}
+        </h3>
+        <p v-if="currentPrice" class="text-sm text-gray-500 dark:text-gray-400 mb-4">
+          Current price:
+          <span class="font-medium text-gray-900 dark:text-white">{{ formatPrice(currentPrice) }}</span>
+        </p>
+
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Alert me when price is
+            </label>
+            <BaseSelect
+              v-model="alertForm.alert_type"
+              :options="[
+                { value: 'above', label: 'Above target price' },
+                { value: 'below', label: 'Below target price' },
+                { value: 'change_percent', label: 'Changes by percent' },
+              ]"
+            />
+          </div>
+
+          <div v-if="alertForm.alert_type !== 'change_percent'">
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Target price ($)
+            </label>
+            <input
+              v-model.number="alertForm.target_price"
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="e.g. 150.00"
+              class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+            />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ alertForm.alert_type === 'above'
+                ? 'Must be higher than the current price.'
+                : 'Must be lower than the current price.' }}
+            </p>
+          </div>
+
+          <div v-else>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Change percent (%)
+            </label>
+            <input
+              v-model.number="alertForm.change_percent"
+              type="number"
+              step="0.1"
+              placeholder="e.g. 5"
+              class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+            />
+          </div>
+
+          <div class="space-y-2">
+            <label class="flex items-center text-sm text-gray-700 dark:text-gray-300">
+              <input
+                type="checkbox"
+                v-model="alertForm.email_enabled"
+                class="rounded text-primary-600 focus:ring-primary-500 mr-2"
+              />
+              Email notification
+            </label>
+            <label class="flex items-center text-sm text-gray-700 dark:text-gray-300">
+              <input
+                type="checkbox"
+                v-model="alertForm.browser_enabled"
+                class="rounded text-primary-600 focus:ring-primary-500 mr-2"
+              />
+              Browser notification
+            </label>
+            <label class="flex items-center text-sm text-gray-700 dark:text-gray-300">
+              <input
+                type="checkbox"
+                v-model="alertForm.repeat_enabled"
+                class="rounded text-primary-600 focus:ring-primary-500 mr-2"
+              />
+              Repeat (re-trigger after it fires)
+            </label>
+          </div>
+        </div>
+
+        <div class="flex justify-end space-x-3 mt-6">
+          <button @click="closeAlertModal" class="btn-secondary">Cancel</button>
+          <button
+            @click="saveAlert"
+            :disabled="savingAlert || !alertIsValid"
+            class="btn-primary"
+          >
+            {{ savingAlert ? 'Saving...' : 'Create Alert' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch, nextTick, onMounted } from 'vue'
 import { useInvestmentsStore } from '@/stores/investments'
+import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
+import api from '@/services/api'
 import DCFCalculator from './DCFCalculator.vue'
 import SavedValuationsList from './SavedValuationsList.vue'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 
 const props = defineProps({
   symbol: {
@@ -179,7 +375,17 @@ const props = defineProps({
 const emit = defineEmits(['select-symbol', 'pending-consumed'])
 
 const store = useInvestmentsStore()
+const authStore = useAuthStore()
 const { showSuccess, showError } = useNotification()
+
+// Watchlist and price alerts are Pro features (the backend gates both routes
+// with requiresTier('pro')). Mirror the frontend check used elsewhere so we
+// only surface the action buttons to users who can actually use them.
+// Self-hosted instances (billing disabled) grant full access.
+const isProUser = computed(() => {
+  if (authStore.user?.billingEnabled === false) return true
+  return authStore.user?.tier === 'pro'
+})
 
 const PAGE_SIZE = 10
 
@@ -455,5 +661,134 @@ async function handleDeleteValuation(id) {
   } catch (err) {
     showError('Delete Failed', err.message || 'Failed to delete valuation')
   }
+}
+
+// --- Add to watchlist ---------------------------------------------------
+// Self-contained here (rather than emitting up to InvestmentsView) because
+// StockAnalyzerSection is mounted in several places; keeping the modal local
+// means the action works the same wherever the analyzer appears.
+const showWatchlistModal = ref(false)
+const watchlists = ref([])
+const watchlistsLoading = ref(false)
+const selectedWatchlistId = ref(null)
+const addingToWatchlist = ref(false)
+
+async function openWatchlistModal() {
+  if (!props.symbol) return
+  showWatchlistModal.value = true
+  selectedWatchlistId.value = null
+  await loadWatchlists()
+}
+
+function closeWatchlistModal() {
+  showWatchlistModal.value = false
+  selectedWatchlistId.value = null
+}
+
+async function loadWatchlists() {
+  watchlistsLoading.value = true
+  try {
+    const response = await api.get('/watchlists')
+    watchlists.value = response.data.data || []
+    // Auto-select the default watchlist so the common case is one click.
+    const defaultWatchlist = watchlists.value.find(w => w.is_default)
+    if (defaultWatchlist) selectedWatchlistId.value = defaultWatchlist.id
+  } catch (err) {
+    console.error('Error loading watchlists:', err)
+    showError('Error', 'Failed to load watchlists')
+  } finally {
+    watchlistsLoading.value = false
+  }
+}
+
+async function addToWatchlist() {
+  if (!selectedWatchlistId.value || !props.symbol) return
+  addingToWatchlist.value = true
+  try {
+    await api.post(`/watchlists/${selectedWatchlistId.value}/items`, {
+      symbol: props.symbol
+    })
+    const watchlistName = watchlists.value.find(w => w.id === selectedWatchlistId.value)?.name || 'watchlist'
+    showSuccess('Added to Watchlist', `${props.symbol} has been added to ${watchlistName}`)
+    closeWatchlistModal()
+  } catch (err) {
+    console.error('Error adding to watchlist:', err)
+    if (err.response?.data?.error?.includes('already in this watchlist')) {
+      showError('Already in Watchlist', `${props.symbol} is already in this watchlist`)
+    } else {
+      showError('Error', 'Failed to add symbol to watchlist')
+    }
+  } finally {
+    addingToWatchlist.value = false
+  }
+}
+
+// --- Set price alert ----------------------------------------------------
+const showAlertModal = ref(false)
+const savingAlert = ref(false)
+const alertForm = ref({
+  alert_type: 'above',
+  target_price: null,
+  change_percent: null,
+  email_enabled: true,
+  browser_enabled: true,
+  repeat_enabled: false
+})
+
+const alertIsValid = computed(() => {
+  // The backend requires at least one notification method.
+  if (!alertForm.value.email_enabled && !alertForm.value.browser_enabled) return false
+  if (alertForm.value.alert_type === 'change_percent') {
+    return Number.isFinite(alertForm.value.change_percent) && alertForm.value.change_percent !== 0
+  }
+  return Number.isFinite(alertForm.value.target_price) && alertForm.value.target_price > 0
+})
+
+function openAlertModal() {
+  if (!props.symbol) return
+  alertForm.value = {
+    alert_type: 'above',
+    target_price: null,
+    change_percent: null,
+    email_enabled: true,
+    browser_enabled: true,
+    repeat_enabled: false
+  }
+  showAlertModal.value = true
+}
+
+function closeAlertModal() {
+  showAlertModal.value = false
+}
+
+async function saveAlert() {
+  if (!props.symbol || !alertIsValid.value) return
+  savingAlert.value = true
+  try {
+    const isPercent = alertForm.value.alert_type === 'change_percent'
+    await api.post('/price-alerts', {
+      symbol: props.symbol,
+      alert_type: alertForm.value.alert_type,
+      target_price: isPercent ? null : alertForm.value.target_price,
+      change_percent: isPercent ? alertForm.value.change_percent : null,
+      email_enabled: alertForm.value.email_enabled,
+      browser_enabled: alertForm.value.browser_enabled,
+      repeat_enabled: alertForm.value.repeat_enabled
+    })
+    showSuccess('Price Alert Created', `You'll be notified about ${props.symbol}`)
+    closeAlertModal()
+  } catch (err) {
+    console.error('Error creating price alert:', err)
+    // The backend returns a helpful message for direction/current-price
+    // mismatches and duplicates — surface it directly.
+    showError('Error', err.response?.data?.error || 'Failed to create price alert')
+  } finally {
+    savingAlert.value = false
+  }
+}
+
+function formatPrice(value) {
+  if (value === null || value === undefined) return 'N/A'
+  return `$${Number(value).toFixed(2)}`
 }
 </script>
