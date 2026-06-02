@@ -1,5 +1,5 @@
 <template>
-  <div class="relative">
+  <div ref="rootRef" class="relative">
     <!-- Bell Icon Button -->
     <button
       @click="toggleDropdown"
@@ -28,7 +28,8 @@
     >
       <div
         v-if="isOpen"
-        class="absolute right-0 mt-2 w-96 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50"
+        class="absolute w-96 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50"
+        :class="placementClasses"
         @click.stop
       >
         <!-- Header -->
@@ -89,6 +90,18 @@
                     v-else-if="notification.type === 'trade_comment'"
                     class="h-5 w-5 text-blue-500"
                   />
+                  <TrophyIcon
+                    v-else-if="notification.type === 'achievement_earned'"
+                    class="h-5 w-5 text-amber-500"
+                  />
+                  <ArrowTrendingUpIcon
+                    v-else-if="notification.type === 'level_up' || notification.type === 'portfolio_alert'"
+                    class="h-5 w-5 text-emerald-500"
+                  />
+                  <BellIcon
+                    v-else-if="notification.type === 'web_mention_alert'"
+                    class="h-5 w-5 text-primary-500"
+                  />
                   <BellIcon v-else class="h-5 w-5 text-gray-400" />
                 </div>
 
@@ -104,10 +117,13 @@
                   <p class="text-sm text-gray-600 dark:text-gray-300 mt-1">
                     {{ notification.message }}
                   </p>
-                  
+
                   <!-- Additional info for price alerts -->
                   <div v-if="notification.type === 'price_alert' && notification.trigger_price" class="text-xs text-gray-500 dark:text-gray-400 mt-1">
                     Triggered at ${{ parseFloat(notification.trigger_price).toFixed(2) }}
+                  </div>
+                  <div v-if="notification.type === 'web_mention_alert' && notification.metadata?.article_count" class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    {{ notification.metadata.article_count }} distinct articles
                   </div>
                 </div>
 
@@ -115,6 +131,18 @@
                 <div v-if="!notification.is_read" class="flex-shrink-0">
                   <div class="w-2 h-2 bg-primary-500 rounded-full"></div>
                 </div>
+
+                <!-- Dismiss (mark single as read without navigating) -->
+                <button
+                  v-if="!notification.is_read"
+                  @click.stop="dismissNotification(notification)"
+                  :disabled="dismissingIds.has(notification.id)"
+                  class="flex-shrink-0 p-1 -m-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label="Dismiss notification"
+                  title="Dismiss"
+                >
+                  <XMarkIcon class="h-4 w-4" />
+                </button>
               </div>
             </div>
           </div>
@@ -132,40 +160,64 @@
         </div>
       </div>
     </transition>
-
-    <!-- Overlay to close dropdown when clicking outside -->
-    <div
-      v-if="isOpen"
-      class="fixed inset-0 z-40"
-      @click="closeDropdown"
-    ></div>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { 
-  BellIcon, 
-  BellSlashIcon, 
-  ChatBubbleLeftRightIcon 
+import {
+  BellIcon,
+  BellSlashIcon,
+  ChatBubbleLeftRightIcon,
+  TrophyIcon,
+  ArrowTrendingUpIcon,
+  XMarkIcon
 } from '@heroicons/vue/24/outline'
-import { useAuthStore } from '@/stores/auth'
-import { useUserTimezone } from '@/composables/useUserTimezone'
 import api from '@/services/api'
+import { useAuthStore } from '@/stores/auth'
+
+const props = defineProps({
+  placement: {
+    type: String,
+    default: 'bottom-right',
+    validator: (v) => ['bottom-right', 'top-left'].includes(v)
+  }
+})
+
+const placementClasses = computed(() => {
+  if (props.placement === 'top-left') {
+    return 'bottom-full left-0 mb-2'
+  }
+  return 'right-0 mt-2'
+})
+import { useUserTimezone } from '@/composables/useUserTimezone'
+import { useNotificationCenter } from '@/composables/useNotificationCenter'
+import { useNotification } from '@/composables/useNotification'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const { formatDateTime: formatDateTimeTz } = useUserTimezone()
+const { showError } = useNotification()
+const {
+  unreadCount,
+  recentUnreadNotifications,
+  addUnreadNotifications,
+  reconcileUnreadCount,
+  setRecentUnreadNotifications,
+  decrementUnreadCount,
+  clearUnreadState
+} = useNotificationCenter()
 
 // Component state
+const rootRef = ref(null)
 const isOpen = ref(false)
 const notifications = ref([])
-const unreadCount = ref(0)
 const loading = ref(false)
 const markingAsRead = ref(false)
 const pollInterval = ref(null)
 const pollingDisabled = ref(false)
+const dismissingIds = ref(new Set())
 
 // Computed
 const isAuthenticated = computed(() => authStore.isAuthenticated)
@@ -173,15 +225,53 @@ const isAuthenticated = computed(() => authStore.isAuthenticated)
 // Methods
 const toggleDropdown = async () => {
   if (!isAuthenticated.value) return
-  
+
   isOpen.value = !isOpen.value
   if (isOpen.value) {
+    if (recentUnreadNotifications.value.length > 0) {
+      notifications.value = recentUnreadNotifications.value
+    }
     await fetchNotifications()
   }
 }
 
 const closeDropdown = () => {
   isOpen.value = false
+}
+
+const handleDocumentClick = (event) => {
+  if (!isOpen.value) return
+  if (rootRef.value && !rootRef.value.contains(event.target)) {
+    closeDropdown()
+  }
+}
+
+const handleEscKey = (event) => {
+  if (event.key === 'Escape' && isOpen.value) {
+    closeDropdown()
+  }
+}
+
+const handleNotificationsUpdated = async (event) => {
+  if (!isAuthenticated.value || pollingDisabled.value) return
+
+  const unreadDelta = Number(event?.detail?.unreadDelta || 0)
+  const incomingNotifications = Array.isArray(event?.detail?.notifications)
+    ? event.detail.notifications
+    : []
+
+  addUnreadNotifications(unreadDelta, incomingNotifications)
+
+  if (incomingNotifications.length > 0 && isOpen.value) {
+    notifications.value = recentUnreadNotifications.value
+  }
+
+  window.setTimeout(async () => {
+    await fetchUnreadCount()
+    if (isOpen.value) {
+      await fetchNotifications()
+    }
+  }, 250)
 }
 
 const stopPolling = () => {
@@ -198,26 +288,34 @@ const disablePolling = () => {
 
 const fetchNotifications = async () => {
   if (!isAuthenticated.value || pollingDisabled.value) return
-  
+
   try {
     loading.value = true
     // Only fetch unread notifications for the bell dropdown
-    const response = await api.get('/notifications', {
-      params: {
-        limit: 10,
-        unread_only: true
-      }
+    const response = await fetch(`/api/notifications?limit=10&unread_only=true&_t=${Date.now()}`, {
+      cache: 'no-store'
     })
-    notifications.value = response.data.data || []
-  } catch (error) {
-    if (error.response?.status === 401 || error.response?.status === 403) {
+
+    if (response.ok) {
+      const data = await response.json()
+      const fetchedNotifications = data.data || []
+
+      if (fetchedNotifications.length > 0) {
+        notifications.value = fetchedNotifications
+        setRecentUnreadNotifications(fetchedNotifications)
+      } else if (recentUnreadNotifications.value.length > 0) {
+        notifications.value = recentUnreadNotifications.value
+      } else {
+        notifications.value = []
+      }
+    } else if (response.status === 401 || response.status === 403) {
       notifications.value = []
-      unreadCount.value = 0
+      clearUnreadState()
       isOpen.value = false
       disablePolling()
-    } else {
-      console.error('Error fetching notifications:', error)
     }
+  } catch (error) {
+    console.error('Error fetching notifications:', error)
   } finally {
     loading.value = false
   }
@@ -225,37 +323,99 @@ const fetchNotifications = async () => {
 
 const fetchUnreadCount = async () => {
   if (!isAuthenticated.value || pollingDisabled.value) return
-  
+
   try {
-    const response = await api.get('/notifications/unread-count')
-    unreadCount.value = response.data.unread_count || 0
-  } catch (error) {
-    if (error.response?.status === 401 || error.response?.status === 403) {
-      unreadCount.value = 0
+    const response = await fetch(`/api/notifications/unread-count?_t=${Date.now()}`, {
+      cache: 'no-store'
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      reconcileUnreadCount(data.unread_count || 0)
+    } else if (response.status === 401 || response.status === 403) {
+      clearUnreadState()
       disablePolling()
-    } else {
-      console.error('Error fetching unread count:', error)
     }
+  } catch (error) {
+    console.error('Error fetching unread count:', error)
+  }
+}
+
+async function readErrorMessage(response, fallback) {
+  try {
+    const data = await response.json()
+    return data?.message || data?.error || fallback
+  } catch {
+    return fallback
   }
 }
 
 const markAllAsRead = async () => {
   if (!isAuthenticated.value || markingAsRead.value) return
-  
+
   try {
     markingAsRead.value = true
-    await api.post('/notifications/mark-all-read')
-    
-    // Update local state
-    notifications.value = notifications.value.map(n => ({ ...n, is_read: true }))
-    unreadCount.value = 0
-    
+
+    try {
+      await api.post('/notifications/mark-all-read')
+    } catch (error) {
+      const message =
+        error.response?.data?.message
+        || error.response?.data?.error
+        || 'Could not mark notifications as read. Please try again.'
+      console.error('Failed to mark all notifications as read:', message)
+      showError('Notifications', message)
+      return
+    }
+    await response.json()
+
+    // The bell only shows unread notifications, so clear them immediately.
+    notifications.value = []
+    setRecentUnreadNotifications([])
+    clearUnreadState()
+
     // Refresh the notifications and unread count to make sure they're accurate
     await Promise.all([fetchNotifications(), fetchUnreadCount()])
   } catch (error) {
-    console.error('Error marking all notifications as read:', error.response?.data || error)
+    console.error('Error marking all notifications as read:', error)
+    showError('Notifications', 'Could not mark notifications as read. Please try again.')
   } finally {
     markingAsRead.value = false
+  }
+}
+
+const markSingleAsRead = async (notification) => {
+  try {
+    await api.post('/notifications/mark-read', {
+      notifications: [{ id: notification.id, type: notification.type }]
+    })
+  } catch (error) {
+    const message =
+      error.response?.data?.message
+      || error.response?.data?.error
+      || 'Could not dismiss notification. Please try again.'
+    throw new Error(message)
+  }
+}
+
+const dismissNotification = async (notification) => {
+  if (!isAuthenticated.value || dismissingIds.value.has(notification.id)) return
+
+  dismissingIds.value.add(notification.id)
+  // Trigger reactivity since Set mutations aren't tracked by Vue
+  dismissingIds.value = new Set(dismissingIds.value)
+
+  try {
+    await markSingleAsRead(notification)
+    notifications.value = notifications.value.filter(n => n.id !== notification.id)
+    setRecentUnreadNotifications(notifications.value)
+    decrementUnreadCount()
+  } catch (error) {
+    console.error('Error dismissing notification:', error)
+    showError('Notifications', error.message || 'Could not dismiss notification.')
+  } finally {
+    dismissingIds.value.delete(notification.id)
+    dismissingIds.value = new Set(dismissingIds.value)
   }
 }
 
@@ -263,27 +423,44 @@ const handleNotificationClick = async (notification) => {
   // Mark this notification as read
   if (!notification.is_read) {
     try {
-      await api.post('/notifications/mark-read', {
-        notifications: [{ id: notification.id, type: notification.type }]
-      })
-      
+      await markSingleAsRead(notification)
+
       // Remove the notification from the list (since we only show unread)
       notifications.value = notifications.value.filter(n => n.id !== notification.id)
-      
+
       // Update unread count
-      unreadCount.value = Math.max(0, unreadCount.value - 1)
+      setRecentUnreadNotifications(notifications.value)
+      decrementUnreadCount()
     } catch (error) {
-      console.error('Error marking notification as read:', error.response?.data || error)
+      console.error('Error marking notification as read:', error)
+      showError('Notifications', error.message || 'Could not mark notification as read.')
     }
   }
-  
+
   // Navigate based on notification type
   if (notification.type === 'trade_comment' && notification.trade_id) {
     router.push(`/trades/${notification.trade_id}`)
   } else if (notification.type === 'price_alert') {
     router.push('/price-alerts')
+  } else if (['achievement_earned', 'level_up', 'challenge_joined', 'challenge_completed'].includes(notification.type)) {
+    // For achievement_earned notifications we pass the specific achievement
+    // id so the destination page can fire the cannon for that exact card and
+    // scroll/highlight it. Other types fall back to a generic celebration.
+    const achievementId = notification.type === 'achievement_earned'
+      ? notification.metadata?.achievement?.id
+      : null
+    const celebrate = achievementId || '1'
+    router.push({ path: '/leaderboard', query: { tab: 'achievements', celebrate } })
+  } else if (notification.type === 'leaderboard_ranking') {
+    router.push('/leaderboard')
+  } else if (notification.type === 'behavioral_alert') {
+    router.push('/metrics/behavioral')
+  } else if (notification.type === 'portfolio_alert') {
+    router.push({ path: '/analysis', query: { tab: 'holdings' } })
+  } else if (notification.type === 'web_mention_alert') {
+    router.push('/web-mentions')
   }
-  
+
   closeDropdown()
 }
 
@@ -310,10 +487,17 @@ onMounted(() => {
     // Poll for unread count every 30 seconds
     pollInterval.value = setInterval(fetchUnreadCount, 30000)
   }
+
+  window.addEventListener('notifications-updated', handleNotificationsUpdated)
+  document.addEventListener('mousedown', handleDocumentClick)
+  document.addEventListener('keydown', handleEscKey)
 })
 
 onUnmounted(() => {
   stopPolling()
+  window.removeEventListener('notifications-updated', handleNotificationsUpdated)
+  document.removeEventListener('mousedown', handleDocumentClick)
+  document.removeEventListener('keydown', handleEscKey)
 })
 
 // Watch for auth changes
@@ -329,7 +513,7 @@ watch(isAuthenticated, (newValue) => {
     pollingDisabled.value = false
     stopPolling()
     notifications.value = []
-    unreadCount.value = 0
+    clearUnreadState()
     isOpen.value = false
   }
 })

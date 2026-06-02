@@ -1,12 +1,30 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '@/services/api'
+import { setSessionAuthToken } from '@/services/api'
 import router from '@/router'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
 
+function hasSessionCookie() {
+  if (typeof document === 'undefined') return false
+  // Require a non-empty value. An empty csrf_token=' ' cookie can linger if
+  // the backend's clearAuthCookies emitted a Set-Cookie without proper expiry,
+  // and treating that as "session present" re-triggers the optimistic-auth
+  // loop we're trying to avoid.
+  return document.cookie.split('; ').some((entry) => {
+    if (!entry.startsWith('csrf_token=')) return false
+    const value = entry.slice('csrf_token='.length)
+    return value.length > 0
+  })
+}
+
 export const useAuthStore = defineStore('auth', () => {
   const user = ref(null)
-  const token = ref(localStorage.getItem('token'))
+  // Cookie-based session: the `token` cookie is HttpOnly so it can't be read here,
+  // but the companion `csrf_token` cookie is JS-readable. Use it as a synchronous
+  // hint that a session exists so router guards don't bounce us to /login before
+  // checkAuth() can verify with /auth/me.
+  const token = ref(hasSessionCookie() ? 'cookie-session' : null)
   const loading = ref(false)
   const error = ref(null)
   const registrationConfig = ref(null)
@@ -29,6 +47,26 @@ export const useAuthStore = defineStore('auth', () => {
     if (!user.value) return 0
     return user.value.pro_onboarding_step || 0
   })
+
+  function markAuthenticated(sessionToken = null) {
+    const normalizedToken = sessionToken || 'cookie-session'
+    token.value = normalizedToken
+    setSessionAuthToken(normalizedToken === 'cookie-session' ? null : normalizedToken)
+  }
+
+  function clearAuthState() {
+    user.value = null
+    token.value = null
+    setSessionAuthToken(null)
+    // Clear the JS-readable csrf_token cookie so the synchronous session hint
+    // doesn't keep us in an authenticated-looking state after the real session
+    // has been invalidated. Try a few path/domain variants for safety.
+    if (typeof document !== 'undefined') {
+      const expired = 'csrf_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
+      document.cookie = expired
+      document.cookie = `${expired}; domain=${window.location.hostname}`
+    }
+  }
 
   async function login(credentials, returnUrl = null) {
     loading.value = true
@@ -55,11 +93,7 @@ export const useAuthStore = defineStore('auth', () => {
         throw twoFactorError
       }
 
-      const { token: authToken } = response.data
-
-      token.value = authToken
-      localStorage.setItem('token', authToken)
-      api.defaults.headers.common['Authorization'] = `Bearer ${authToken}`
+      markAuthenticated(response.data.token)
 
       if (response.data.is_first_login === true) {
         pendingOnboarding.value = true
@@ -82,15 +116,19 @@ export const useAuthStore = defineStore('auth', () => {
 
   function navigateAfterLogin(returnUrl = null) {
     if (returnUrl) {
-      const decoded = decodeURIComponent(returnUrl)
-      if (decoded.startsWith('/')) {
-        router.push(decoded)
-      } else {
-        window.location.href = decoded
+      try {
+        const decoded = decodeURIComponent(returnUrl)
+        // Only accept absolute same-origin paths. Reject protocol-relative (//evil),
+        // absolute URLs (http://...), and dangerous schemes (javascript:, data:).
+        if (/^\/(?!\/)/.test(decoded)) {
+          router.push(decoded)
+          return
+        }
+      } catch (_) {
+        // fall through to dashboard on malformed URL
       }
-    } else {
-      router.push({ name: 'dashboard' })
     }
+    router.push({ name: 'dashboard' })
   }
 
   async function register(userData) {
@@ -103,9 +141,7 @@ export const useAuthStore = defineStore('auth', () => {
       // Auto-login: if backend returned a token, sign in immediately
       const { token: authToken } = response.data
       if (authToken) {
-        token.value = authToken
-        localStorage.setItem('token', authToken)
-        api.defaults.headers.common['Authorization'] = `Bearer ${authToken}`
+        markAuthenticated(authToken)
 
         if (response.data.is_first_login) {
           pendingOnboarding.value = true
@@ -132,24 +168,29 @@ export const useAuthStore = defineStore('auth', () => {
     } catch (err) {
       console.error('Logout error:', err)
     } finally {
-      user.value = null
-      token.value = null
-      localStorage.removeItem('token')
+      clearAuthState()
       localStorage.removeItem('calendar_year')
       localStorage.removeItem('calendar_expanded_month')
       localStorage.removeItem('calendar_expanded_year')
+      // Drop synced UI preferences so the next user on this device starts clean
+      // and re-hydrates from their own server values on login.
       try {
         useUiPreferencesStore().reset()
-      } catch (_) {}
+      } catch (_) {
+        // store may not exist yet (e.g. logout before login) — ignore.
+      }
       router.push({ name: 'home' })
     }
   }
 
-  async function fetchUser() {
-    if (!token.value) return
+  async function fetchUser(options = {}) {
+    const { redirectOnUnauthorized = true, force = false } = options
+    if (!token.value && !force) return
 
     try {
-      const response = await api.get('/auth/me')
+      const response = await api.get('/auth/me', {
+        skipAuthRedirect: options.skipAuthRedirect === true
+      })
       // Merge settings into user object (convert snake_case to camelCase)
       const settings = response.data.settings || {}
       const u = response.data.user || {}
@@ -158,6 +199,16 @@ export const useAuthStore = defineStore('auth', () => {
         onboarding_completed: u.onboarding_completed ?? false,
         onboarding_step: u.onboarding_step ?? 0,
         pro_onboarding_step: u.pro_onboarding_step ?? 0,
+        // /auth/me historically returns these as camelCase, but display
+        // components (UserMenu, UserProfileView, ProfileView) follow
+        // CLAUDE.md's snake_case-everywhere convention. Alias here so every
+        // consumer reads one consistent key — falling back to the legacy
+        // camelCase shape so we don't break anyone in transit.
+        avatar_url: u.avatar_url ?? u.avatarUrl ?? null,
+        full_name: u.full_name ?? u.fullName ?? null,
+        is_verified: u.is_verified ?? u.isVerified ?? false,
+        admin_approved: u.admin_approved ?? u.adminApproved ?? false,
+        created_at: u.created_at ?? u.createdAt ?? null,
         settings: {
           publicProfile: settings.public_profile ?? false,
           emailNotifications: settings.email_notifications ?? true,
@@ -167,10 +218,25 @@ export const useAuthStore = defineStore('auth', () => {
           ...settings
         }
       }
+      markAuthenticated(token.value)
+
+      // Hydrate cross-device UI preferences from the server. Awaited so any
+      // component that mounts after this point (NavBar, view filters, etc.)
+      // reads the freshly-synced localStorage values.
+      try {
+        await useUiPreferencesStore().init()
+      } catch (prefsErr) {
+        console.warn('[AUTH] UI preference hydration failed:', prefsErr?.message)
+      }
+
       return user.value
     } catch (err) {
       if (err.response?.status === 401) {
-        logout()
+        clearAuthState()
+        if (redirectOnUnauthorized) {
+          router.push({ name: 'login' })
+        }
+        return null
       }
       throw err
     }
@@ -222,11 +288,19 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function checkAuth() {
-    if (token.value) {
-      // Set the authorization header for subsequent requests
-      api.defaults.headers.common['Authorization'] = `Bearer ${token.value}`
-      await fetchUser()
-    }
+    // Probe /auth/me to discover the session state. A 200 calls markAuthenticated
+    // which sets token.value, so a logged-in user with a valid HttpOnly auth
+    // cookie is restored even if the JS-readable csrf hint was missing. A 401
+    // calls clearAuthState(), so anonymous users stay anonymous. `force: true`
+    // bypasses fetchUser's null-token short-circuit; we don't pre-seed
+    // token.value because that flips isAuthenticated true for one microtask
+    // and bounces anonymous users from /login → /dashboard, where the 401
+    // interceptor hard-redirects to /login and restarts the cycle.
+    await fetchUser({
+      skipAuthRedirect: true,
+      redirectOnUnauthorized: false,
+      force: true
+    })
   }
 
   async function verify2FA(tempToken, twoFactorCode) {
@@ -244,15 +318,13 @@ export const useAuthStore = defineStore('auth', () => {
         twoFactorCode: normalizedCode
       })
       
-      const { user: userData, token: authToken } = response.data
+      const { token: authToken } = response.data
 
       if (response.data.is_first_login === true) {
         pendingOnboarding.value = true
       }
 
-      token.value = authToken
-      localStorage.setItem('token', authToken)
-      api.defaults.headers.common['Authorization'] = `Bearer ${authToken}`
+      markAuthenticated(authToken)
 
       await fetchUser()
 
@@ -295,11 +367,7 @@ export const useAuthStore = defineStore('auth', () => {
         throw twoFactorError
       }
 
-      const { token: authToken } = verifyRes.data
-
-      token.value = authToken
-      localStorage.setItem('token', authToken)
-      api.defaults.headers.common['Authorization'] = `Bearer ${authToken}`
+      markAuthenticated(verifyRes.data.token)
 
       if (verifyRes.data.is_first_login === true) {
         pendingOnboarding.value = true
@@ -384,7 +452,8 @@ export const useAuthStore = defineStore('auth', () => {
           return {
             registrationMode: 'open',
             emailVerificationEnabled: false,
-            allowRegistration: true
+            allowRegistration: true,
+            billingEnabled: true
           }
         })
         .finally(() => {

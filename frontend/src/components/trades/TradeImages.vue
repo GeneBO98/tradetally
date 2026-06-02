@@ -12,12 +12,24 @@
         class="relative group max-w-4xl mx-auto"
       >
         <div class="bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden shadow-lg">
+          <div
+            v-if="authedImage.hasError(image)"
+            class="w-full aspect-video flex items-center justify-center bg-gray-200 dark:bg-gray-600 text-gray-500 text-sm"
+          >
+            Failed to load
+          </div>
+          <div
+            v-else-if="!authedImage.urlFor(image)"
+            class="w-full aspect-video flex items-center justify-center bg-gray-100 dark:bg-gray-700"
+          >
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+          </div>
           <img
-            :src="getImageUrl(image)"
+            v-else
+            :src="authedImage.urlFor(image)"
             :alt="image.file_name"
             class="w-full h-auto cursor-pointer hover:opacity-95 transition-opacity duration-200"
             @click="openImage(image)"
-            @error="handleImageError"
           />
         </div>
         
@@ -53,7 +65,7 @@
     >
       <div class="relative max-w-4xl max-h-full p-4">
         <img
-          :src="getImageUrl(selectedImage)"
+          :src="authedImage.urlFor(selectedImage)"
           :alt="selectedImage.file_name"
           class="max-w-full max-h-full object-contain"
         />
@@ -132,8 +144,9 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, toRef } from 'vue'
 import { useNotification } from '@/composables/useNotification'
+import { useAuthedImage } from '@/composables/useAuthedImage'
 import api from '@/services/api'
 
 const props = defineProps({
@@ -158,20 +171,7 @@ const { showSuccess, showError } = useNotification()
 const selectedImage = ref(null)
 const imageToDelete = ref(null)
 
-function getImageUrl(image) {
-  let baseUrl
-  
-  // Since file_url already includes '/api/', we just need to use it directly
-  // without adding api.defaults.baseURL which would create '/api/api/...'
-  if (image.file_url.startsWith('/api/')) {
-    baseUrl = image.file_url
-  } else {
-    // If it's a relative path, prepend the API base URL
-    baseUrl = `${api.defaults.baseURL}${image.file_url}`
-  }
-  
-  return baseUrl
-}
+const authedImage = useAuthedImage(toRef(props, 'images'))
 
 function openImage(image) {
   selectedImage.value = image
@@ -179,17 +179,6 @@ function openImage(image) {
 
 function closeImage() {
   selectedImage.value = null
-}
-
-function handleImageError(event) {
-  console.error('Failed to load image:', event.target.src)
-  // Remove the image element to prevent infinite loading loop
-  event.target.style.display = 'none'
-  // Show a placeholder div instead
-  const placeholder = document.createElement('div')
-  placeholder.className = 'w-full h-full bg-gray-200 dark:bg-gray-600 flex items-center justify-center text-gray-500 text-sm'
-  placeholder.textContent = 'Failed to load'
-  event.target.parentNode.appendChild(placeholder)
 }
 
 function deleteImage(image) {

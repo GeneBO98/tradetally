@@ -1,5 +1,6 @@
 <template>
     <div class="content-wrapper py-8">
+        <AdminNav />
         <div class="mb-8">
             <h1 class="heading-page">Backup Management</h1>
             <p class="mt-2 text-gray-600 dark:text-gray-400">
@@ -42,6 +43,48 @@
                         <p class="text-sm text-red-800 dark:text-red-400">
                             {{ errorMessage }}
                         </p>
+                    </div>
+
+                    <div
+                        v-if="backupWarnings.length"
+                        class="mb-4 rounded-md border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20"
+                    >
+                        <h4
+                            class="text-sm font-medium text-amber-800 dark:text-amber-300"
+                        >
+                            Backup Warnings
+                        </h4>
+                        <ul
+                            class="mt-2 space-y-2 text-sm text-amber-700 dark:text-amber-400"
+                        >
+                            <li
+                                v-for="warning in backupWarnings"
+                                :key="warning"
+                            >
+                                {{ warning }}
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div
+                        v-if="storageWarnings.length"
+                        class="mb-4 rounded-md border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20"
+                    >
+                        <h4
+                            class="text-sm font-medium text-amber-800 dark:text-amber-300"
+                        >
+                            Storage Warnings
+                        </h4>
+                        <ul
+                            class="mt-2 space-y-2 text-sm text-amber-700 dark:text-amber-400"
+                        >
+                            <li
+                                v-for="warning in storageWarnings"
+                                :key="warning"
+                            >
+                                {{ warning }}
+                            </li>
+                        </ul>
                     </div>
 
                     <div class="space-y-4">
@@ -89,21 +132,20 @@
                             >
                                 Backup Schedule
                             </label>
-                            <select
-                                v-model="settings.schedule"
-                                @change="saveSettings"
-                                :disabled="savingSettings"
-                                class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md"
-                            >
-                                <option value="hourly">Hourly</option>
-                                <option value="daily">Daily (2 AM)</option>
-                                <option value="weekly">
-                                    Weekly (Sunday 2 AM)
-                                </option>
-                                <option value="monthly">
-                                    Monthly (1st day, 2 AM)
-                                </option>
-                            </select>
+                            <div class="mt-1 block w-full">
+                                <BaseSelect
+                                    v-model="settings.schedule"
+                                    @change="saveSettings"
+                                    :disabled="savingSettings"
+                                    :searchable="false"
+                                    :options="[
+                                        { value: 'hourly', label: 'Hourly' },
+                                        { value: 'daily', label: 'Daily (2 AM)' },
+                                        { value: 'weekly', label: 'Weekly (Sunday 2 AM)' },
+                                        { value: 'monthly', label: 'Monthly (1st day, 2 AM)' },
+                                    ]"
+                                />
+                            </div>
                         </div>
 
                         <!-- Retention Days -->
@@ -295,7 +337,7 @@
                                         <span
                                             :class="[
                                                 backup.backupType === 'manual'
-                                                    ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400'
+                                                    ? 'bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-300'
                                                     : 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400',
                                                 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
                                             ]"
@@ -757,6 +799,8 @@ import { ref, onMounted } from "vue";
 import api from "@/services/api";
 import { useUserTimezone } from "@/composables/useUserTimezone";
 import { useNotification } from "@/composables/useNotification";
+import AdminNav from "@/components/admin/AdminNav.vue";
+import BaseSelect from "@/components/common/BaseSelect.vue";
 
 const { formatDateTime: formatDateTimeTz } = useUserTimezone();
 const { showDangerConfirmation } = useNotification();
@@ -784,6 +828,8 @@ const settings = ref({
     retentionDays: 30,
     lastBackup: null,
 });
+const backupWarnings = ref([]);
+const storageWarnings = ref([]);
 
 // Fetch backup settings and history
 async function loadData() {
@@ -791,9 +837,10 @@ async function loadData() {
         loading.value = true;
         errorMessage.value = "";
 
-        const [settingsRes, backupsRes] = await Promise.all([
+        const [settingsRes, backupsRes, healthRes] = await Promise.all([
             api.get("/admin/backup/settings"),
             api.get("/admin/backup"),
+            api.get("/health"),
         ]);
 
         settings.value = {
@@ -802,6 +849,9 @@ async function loadData() {
             retentionDays: settingsRes.data.retention_days,
             lastBackup: settingsRes.data.last_backup,
         };
+        backupWarnings.value = settingsRes.data.health?.warnings || [];
+        storageWarnings.value =
+            healthRes.data?.services?.storage?.warnings || [];
 
         backups.value = backupsRes.data.backups.map((b) => ({
             id: b.id,

@@ -3,6 +3,7 @@ const logger = require('../utils/logger');
 const { hasScope, resolveEffectiveScopes } = require('../utils/apiScopes');
 const { isV1Request, sendV1Error } = require('../utils/apiResponse');
 const { TOKEN_PURPOSES, verifyJwtToken } = require('./auth');
+const { AUTH_COOKIE_NAME } = require('../utils/authCookies');
 const { getRedisClient, getRedisNamespace, isRedisConfigured } = require('../services/redisClient');
 
 const apiKeyRateLimitBuckets = new Map();
@@ -253,6 +254,22 @@ const flexibleAuth = async (req, res, next) => {
     if (apiKeyHeader) {
       return apiKeyAuth(req, res, next);
     }
+
+    const cookieToken = req.cookies?.[AUTH_COOKIE_NAME];
+    if (cookieToken) {
+      try {
+        const decoded = verifyJwtToken(cookieToken, { requiredPurpose: TOKEN_PURPOSES.ACCESS });
+        const user = await User.findById(decoded.id || decoded.userId);
+        if (user && user.is_active) {
+          req.user = user;
+          req.authMethod = 'jwt';
+          return next();
+        }
+        return sendAuthError(req, res, 401, 'INVALID_TOKEN', 'Invalid or expired token');
+      } catch (_) {
+        return sendAuthError(req, res, 401, 'INVALID_TOKEN', 'Invalid or expired token');
+      }
+    }
     
     // No valid authentication method found
     return sendAuthError(req, res, 401, 'UNAUTHORIZED', 'Authentication required');
@@ -317,9 +334,10 @@ const flexibleOptionalAuth = async (req, res, next) => {
     }
 
     // Check for cookie-based JWT (same as optionalAuth)
-    if (req.cookies && req.cookies.token) {
+    const cookieToken = req.cookies?.[AUTH_COOKIE_NAME];
+    if (cookieToken) {
       try {
-        const decoded = verifyJwtToken(req.cookies.token, { requiredPurpose: TOKEN_PURPOSES.ACCESS });
+        const decoded = verifyJwtToken(cookieToken, { requiredPurpose: TOKEN_PURPOSES.ACCESS });
         const user = await User.findById(decoded.id || decoded.userId);
         if (user && user.is_active) {
           req.user = user;

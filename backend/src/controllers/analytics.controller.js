@@ -10,12 +10,55 @@ const symbolCategories = require('../utils/symbolCategories');
 const { sendV1NotImplemented } = require('../utils/apiResponse');
 const ensureString = require('../utils/ensureString');
 const { getUserTimezone } = require('../utils/timezone');
-const SAMPLE_DATA_EXCLUSION_SQL = ` AND NOT COALESCE('sample' = ANY(tags), false)`;
 
 // Helper function to create a short but collision-resistant hash for cache keys
 function createFilterHash(filters) {
   const str = JSON.stringify(filters);
   return crypto.createHash('md5').update(str).digest('hex').slice(0, 16);
+}
+
+// Lightweight keyword-based tone classifier for news headlines. NOT a real
+// sentiment model — it just catches the obvious bull/bear signals so the
+// dashboard insight reads as "likely positive/negative for your position"
+// instead of generic "high coverage." Returns the dominant label and a
+// magnitude score that reflects how strongly the headline matched.
+const POSITIVE_NEWS_KEYWORDS = [
+  'beat', 'beats', 'beaten', 'raise', 'raises', 'raised', 'upgrade', 'upgraded',
+  'upgrades', 'outperform', 'outperforms', 'record', 'records', 'surge', 'surges',
+  'soar', 'soars', 'rally', 'rallies', 'crush', 'crushes', 'tops', 'exceed',
+  'exceeds', 'exceeded', 'strong', 'breakout', 'gain', 'gains', 'jumps',
+  'rises', 'climbs', 'profit', 'profits', 'win', 'wins', 'wins', 'milestone',
+  'launches', 'expansion', 'partnership', 'approved', 'approval', 'breakthrough',
+  'positive', 'bullish', 'optimistic'
+];
+const NEGATIVE_NEWS_KEYWORDS = [
+  'miss', 'misses', 'missed', 'cut', 'cuts', 'cutting', 'downgrade', 'downgrades',
+  'downgraded', 'underperform', 'underperforms', 'recall', 'recalls', 'recalled',
+  'lawsuit', 'sued', 'fraud', 'investigation', 'probe', 'probed', 'slump', 'slumps',
+  'plunge', 'plunges', 'plunged', 'tumble', 'tumbles', 'falls', 'fell', 'drops',
+  'dropped', 'decline', 'declines', 'declined', 'loss', 'losses', 'losing',
+  'concern', 'concerns', 'warning', 'warns', 'warned', 'reduces', 'reduced',
+  'layoffs', 'fired', 'firing', 'delays', 'delayed', 'cancels', 'cancelled',
+  'breach', 'hacked', 'fine', 'fined', 'penalty', 'crash', 'crashes',
+  'negative', 'bearish', 'pessimistic', 'risk', 'risks'
+];
+
+function classifyHeadlineTone(headline) {
+  if (!headline || typeof headline !== 'string') {
+    return { label: 'neutral', magnitude: 0 };
+  }
+  const text = headline.toLowerCase();
+  let pos = 0;
+  let neg = 0;
+  for (const w of POSITIVE_NEWS_KEYWORDS) {
+    if (new RegExp(`\\b${w}\\b`, 'i').test(text)) pos++;
+  }
+  for (const w of NEGATIVE_NEWS_KEYWORDS) {
+    if (new RegExp(`\\b${w}\\b`, 'i').test(text)) neg++;
+  }
+  if (pos > neg)  return { label: 'positive', magnitude: pos - neg };
+  if (neg > pos)  return { label: 'negative', magnitude: neg - pos };
+  return { label: 'neutral', magnitude: 0 };
 }
 
 // Async MAE/MFE calculation function
@@ -59,7 +102,11 @@ async function calculateMAEMFEAsync(userId, filterConditions, params) {
           fees,
           trade_date,
           entry_time,
-          exit_time
+          exit_time,
+          instrument_type,
+          point_value,
+          underlying_asset,
+          contract_size
         FROM trades
         WHERE user_id = $1 ${filterConditions}
           AND entry_price IS NOT NULL
@@ -155,8 +202,7 @@ function convertQueryToTradeFilters(query) {
     optionTypes: toArray(query.optionTypes),
     holdTime: validHoldTimes.includes(holdTimeVal) ? holdTimeVal : undefined,
     hasRValue: query.hasRValue,
-    accounts: toArray(query.accounts),
-    includeSampleData: query.includeSampleData === 'true' || query.includeSampleData === true
+    accounts: toArray(query.accounts)
   };
 }
 
@@ -217,10 +263,6 @@ function buildFilterConditions(query) {
   let filterConditions = '';
   const params = [];
   let paramIndex = 2; // $1 is reserved for user_id in callers
-
-  if (!filters.includeSampleData) {
-    filterConditions += SAMPLE_DATA_EXCLUSION_SQL;
-  }
 
   // Date filters
   if (filters.startDate) {
@@ -452,21 +494,8 @@ function parseNumericValue(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function normalizeExecutionAction(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[_-]+/g, ' ');
-}
-
-function isBuyAction(action) {
-  return /\b(buy|bot|long)\b/.test(action);
-}
-
-function isSellAction(action) {
-  return /\b(sell|sold|short|sld)\b/.test(action);
-}
-
+// Returns YYYY-MM-DD for a timestamp candidate, interpreted in the given timezone.
+// Used for the legacy fallback when a trade has no annotated executions.
 function getExecutionDateString(timezone, ...candidates) {
   for (const candidate of candidates) {
     if (!candidate) continue;
@@ -507,205 +536,97 @@ function getTradeValueMultiplier(trade) {
   return 1;
 }
 
-function hasGroupedExecutions(executions = []) {
-  return executions.some((execution) =>
-    execution && (
-      execution.entryPrice !== undefined ||
-      execution.entry_price !== undefined ||
-      execution.entryTime !== undefined ||
-      execution.entry_time !== undefined
-    )
+// Convert a stored execution into { date, pnl } if it represents a closing leg.
+// Prefers engine-stamped realized_pnl + exit_date; falls back to legacy reconstruction
+// for trades that pre-date the canonical engine (pre-backfill).
+function getExitEventFromExecution(execution, trade, timezone) {
+  const realized = parseNumericValue(execution.realized_pnl);
+  if (realized != null) {
+    const date = execution.exit_date
+      ? execution.exit_date
+      : getExecutionDateString(
+          timezone,
+          execution.exitTime,
+          execution.exit_time,
+          execution.datetime
+        );
+    if (date) return { date, pnl: realized };
+  }
+
+  return legacyExitEventFromExecution(execution, trade, timezone);
+}
+
+function legacyExitEventFromExecution(execution, trade, timezone) {
+  const date = getExecutionDateString(
+    timezone,
+    execution.exitTime,
+    execution.exit_time,
+    execution.datetime
   );
+  if (!date) return null;
+
+  const stored = parseNumericValue(execution.pnl ?? execution.p_l ?? execution.profit_loss);
+  if (stored != null) return { date, pnl: stored };
+
+  const exitPrice = parseNumericValue(execution.exitPrice ?? execution.exit_price);
+  const entryPrice = parseNumericValue(execution.entryPrice ?? execution.entry_price);
+  const quantity = Math.abs(parseNumericValue(execution.quantity) || 0);
+  if (exitPrice == null || entryPrice == null || quantity <= 0) return null;
+
+  const multiplier = getTradeValueMultiplier(trade);
+  const side = execution.side || trade.side;
+  const commission = parseNumericValue(execution.commission) || 0;
+  const fees = parseNumericValue(execution.fees ?? execution.fee) || 0;
+
+  const gross = side === 'short'
+    ? (entryPrice - exitPrice) * quantity * multiplier
+    : (exitPrice - entryPrice) * quantity * multiplier;
+  return { date, pnl: gross - commission - fees };
 }
 
-function computeGroupedExecutionExitEvents(trade, executions, timezone) {
-  const valueMultiplier = getTradeValueMultiplier(trade);
-
-  return executions
-    .filter(Boolean)
-    .map((execution) => {
-      const quantity = Math.abs(parseNumericValue(execution.quantity) || 0);
-      const entryPrice = parseNumericValue(execution.entryPrice ?? execution.entry_price);
-      const exitPrice = parseNumericValue(execution.exitPrice ?? execution.exit_price);
-      const commission = parseNumericValue(execution.commission) || 0;
-      const fees = parseNumericValue(execution.fees ?? execution.fee) || 0;
-      const side = execution.side || trade.side;
-      const date = getExecutionDateString(
-        timezone,
-        execution.exitTime,
-        execution.exit_time,
-        execution.datetime
-      );
-
-      if (!date || quantity <= 0 || exitPrice == null) return null;
-
-      let pnl = null;
-      if (entryPrice != null) {
-        pnl = side === 'long'
-          ? (exitPrice - entryPrice) * quantity * valueMultiplier - commission - fees
-          : (entryPrice - exitPrice) * quantity * valueMultiplier - commission - fees;
-      } else {
-        pnl = parseNumericValue(execution.pnl ?? execution.p_l ?? execution.profit_loss);
-      }
-
-      return pnl == null ? null : { date, pnl };
-    })
-    .filter(Boolean);
-}
-
-function computeFillExecutionExitEvents(trade, executions, timezone) {
-  const valueMultiplier = getTradeValueMultiplier(trade);
-  const tradeSide = trade.side;
-  const tradeCommission = parseNumericValue(trade.commission) || 0;
-  const tradeFees = parseNumericValue(trade.fees) || 0;
-  const totalQuantity = executions.reduce((sum, execution) => {
-    const quantity = Math.abs(parseNumericValue(execution?.quantity) || 0);
-    return sum + quantity;
-  }, 0);
-  const entryQueue = [];
-
-  const sortedExecutions = [...executions]
-    .filter(Boolean)
-    .sort((a, b) => {
-      const left = Date.parse(a.datetime || a.entry_time || a.exitTime || a.exit_time || a.entryTime || '');
-      const right = Date.parse(b.datetime || b.entry_time || b.exitTime || b.exit_time || b.entryTime || '');
-
-      if (Number.isNaN(left) && Number.isNaN(right)) return 0;
-      if (Number.isNaN(left)) return 1;
-      if (Number.isNaN(right)) return -1;
-      return left - right;
-    });
-
-  const exitEvents = [];
-
-  sortedExecutions.forEach((execution) => {
-    const quantity = Math.abs(parseNumericValue(execution.quantity) || 0);
-    const price = parseNumericValue(
-      execution.price ??
-      execution.entryPrice ??
-      execution.entry_price ??
-      execution.exitPrice ??
-      execution.exit_price
-    );
-    const action = normalizeExecutionAction(execution.action || execution.side || execution.type);
-    const hasCommission = execution.commission !== undefined && execution.commission !== null;
-    const hasFees = execution.fees !== undefined && execution.fees !== null;
-    const proportion = totalQuantity > 0 ? quantity / totalQuantity : 0;
-
-    let commission = 0;
-    let fees = 0;
-
-    if (hasCommission && hasFees) {
-      commission = parseNumericValue(execution.commission) || 0;
-      fees = parseNumericValue(execution.fees) || 0;
-    } else if (hasCommission) {
-      commission = parseNumericValue(execution.commission) || 0;
-    } else if (hasFees) {
-      commission = parseNumericValue(execution.fees) || 0;
-    } else {
-      commission = tradeCommission * proportion;
-      fees = tradeFees * proportion;
-    }
-
-    const totalCost = commission + fees;
-    const isOpening =
-      (tradeSide === 'long' && isBuyAction(action)) ||
-      (tradeSide === 'short' && isSellAction(action));
-
-    if (isOpening) {
-      if (quantity > 0 && price != null) {
-        entryQueue.push({
-          quantity,
-          price,
-          commission: totalCost,
-          remainingQty: quantity
-        });
-      }
-      return;
-    }
-
-    let executionPnl = null;
-    let totalMatchedValue = 0;
-    let totalMatchedQty = 0;
-    let totalMatchedEntryCommission = 0;
-    let remainingExitQty = quantity;
-
-    while (remainingExitQty > 0 && entryQueue.length > 0) {
-      const entry = entryQueue[0];
-      const matchQty = Math.min(remainingExitQty, entry.remainingQty);
-
-      totalMatchedValue += matchQty * entry.price;
-      totalMatchedQty += matchQty;
-
-      if (entry.commission && entry.quantity > 0) {
-        totalMatchedEntryCommission += (entry.commission * matchQty) / entry.quantity;
-      }
-
-      remainingExitQty -= matchQty;
-      entry.remainingQty -= matchQty;
-
-      if (entry.remainingQty <= 0) {
-        entryQueue.shift();
-      }
-    }
-
-    if (totalMatchedQty > 0 && price != null) {
-      const matchedEntryPrice = totalMatchedValue / totalMatchedQty;
-      executionPnl = tradeSide === 'long'
-        ? (price - matchedEntryPrice) * totalMatchedQty * valueMultiplier - totalCost - totalMatchedEntryCommission
-        : (matchedEntryPrice - price) * totalMatchedQty * valueMultiplier - totalCost - totalMatchedEntryCommission;
-    } else {
-      executionPnl = parseNumericValue(execution.pnl ?? execution.p_l ?? execution.profit_loss);
-    }
-
-    const date = getExecutionDateString(
-      timezone,
-      execution.exitTime,
-      execution.exit_time,
-      execution.datetime
-    );
-
-    if (date && executionPnl != null) {
-      exitEvents.push({ date, pnl: executionPnl });
-    }
-  });
-
-  return exitEvents;
-}
-
-function computeTradeExitEvents(trade, timezone) {
+function tradeExitEvents(trade, timezone) {
   const executions = Array.isArray(trade.executions) ? trade.executions : [];
   if (executions.length === 0) return [];
 
-  if (hasGroupedExecutions(executions)) {
-    return computeGroupedExecutionExitEvents(trade, executions, timezone);
+  const hasStamped = executions.some((e) => e && parseNumericValue(e.realized_pnl) != null);
+  if (hasStamped) {
+    return executions
+      .map((exec) => exec && getExitEventFromExecution(exec, trade, timezone))
+      .filter(Boolean);
   }
 
-  return computeFillExecutionExitEvents(trade, executions, timezone);
+  const { computeTradePnl } = require('../services/pnlEngine');
+  const engineResult = computeTradePnl({
+    side: trade.side,
+    instrumentType: trade.instrument_type || 'stock',
+    contractSize: trade.contract_size,
+    pointValue: trade.point_value,
+    fallbackCommission: trade.commission != null ? parseNumericValue(trade.commission) : null,
+    fallbackFees: trade.fees != null ? parseNumericValue(trade.fees) : null,
+    executions,
+    timezone,
+    tradeId: trade.trade_id || trade.id
+  });
+
+  return engineResult.annotatedExecutions
+    .filter((e) => parseNumericValue(e.realized_pnl) != null && e.exit_date)
+    .map((e) => ({ date: e.exit_date, pnl: parseNumericValue(e.realized_pnl) }));
 }
 
 function buildCalendarDayContributions(trades, dateStr, timezone) {
   return trades
     .map((trade) => {
-      const exitEvents = computeTradeExitEvents(trade, timezone);
-      const exitEventsOnDay = exitEvents.filter((event) => event.date === dateStr);
+      const exitEvents = tradeExitEvents(trade, timezone);
+      const eventsOnDay = exitEvents.filter((e) => e.date === dateStr);
       const exactTradePnl = parseNumericValue(trade.pnl);
-      const computedTradePnl = exitEvents.reduce((sum, event) => sum + (event.pnl || 0), 0);
-      const uniqueExitDates = new Set(exitEvents.map((event) => event.date).filter(Boolean));
-      const shouldUseExactTradePnl =
-        uniqueExitDates.size === 1 &&
-        exactTradePnl != null &&
-        Math.abs(computedTradePnl - exactTradePnl) < 0.05;
 
       let pnl = null;
       let exitCount = 0;
       let totalExitCount = exitEvents.length;
 
-      if (exitEventsOnDay.length > 0) {
-        pnl = shouldUseExactTradePnl
-          ? exactTradePnl
-          : exitEventsOnDay.reduce((sum, event) => sum + (event.pnl || 0), 0);
-        exitCount = exitEventsOnDay.length;
+      if (eventsOnDay.length > 0) {
+        pnl = eventsOnDay.reduce((sum, e) => sum + (e.pnl || 0), 0);
+        exitCount = eventsOnDay.length;
       } else if (
         totalExitCount === 0 &&
         exactTradePnl != null &&
@@ -747,75 +668,59 @@ function buildCalendarDayContributions(trades, dateStr, timezone) {
     .sort((a, b) => (a.trade_id || '').localeCompare(b.trade_id || ''));
 }
 
-function addCalendarOverviewContribution(calendarByDate, tradeId, tradeDate, pnl) {
-  if (!tradeDate || pnl == null) return;
-
-  let day = calendarByDate.get(tradeDate);
-  if (!day) {
-    day = {
-      tradeIds: new Set(),
-      dailyPnl: 0
-    };
-    calendarByDate.set(tradeDate, day);
-  }
-
-  day.tradeIds.add(tradeId);
-  day.dailyPnl += pnl;
-}
-
 function buildCalendarOverviewRows(trades, startDateStr, endDateStr, timezone) {
-  const calendarByDate = new Map();
+  const byDate = new Map();
+
+  const add = (tradeId, date, pnl) => {
+    if (!date || pnl == null) return;
+    let day = byDate.get(date);
+    if (!day) {
+      day = { tradeIds: new Set(), dailyPnl: 0 };
+      byDate.set(date, day);
+    }
+    day.tradeIds.add(tradeId);
+    day.dailyPnl += pnl;
+  };
 
   trades.forEach((trade) => {
-    const tradeId = trade.trade_id;
-    const exitEvents = computeTradeExitEvents(trade, timezone);
-    const exitEventsInRange = exitEvents.filter((event) =>
-      event.date &&
-      event.date >= startDateStr &&
-      event.date <= endDateStr
-    );
-    const exactTradePnl = parseNumericValue(trade.pnl);
-
+    const exitEvents = tradeExitEvents(trade, timezone);
     if (exitEvents.length > 0) {
-      const computedTradePnl = exitEvents.reduce((sum, event) => sum + (event.pnl || 0), 0);
-      const uniqueExitDates = new Set(exitEvents.map((event) => event.date).filter(Boolean));
-      const shouldUseExactTradePnl =
-        uniqueExitDates.size === 1 &&
-        exactTradePnl != null &&
-        Math.abs(computedTradePnl - exactTradePnl) < 0.05;
-
-      if (shouldUseExactTradePnl) {
-        const [tradeDate] = uniqueExitDates;
-        if (tradeDate >= startDateStr && tradeDate <= endDateStr) {
-          addCalendarOverviewContribution(calendarByDate, tradeId, tradeDate, exactTradePnl);
+      exitEvents.forEach((event) => {
+        if (event.date >= startDateStr && event.date <= endDateStr) {
+          add(trade.trade_id, event.date, event.pnl);
         }
-        return;
-      }
-
-      exitEventsInRange.forEach((event) => {
-        addCalendarOverviewContribution(calendarByDate, tradeId, event.date, event.pnl);
       });
       return;
     }
 
-    const tradeDate = getExecutionDateString(timezone, trade.exit_time);
-    if (
-      exactTradePnl != null &&
-      tradeDate &&
-      tradeDate >= startDateStr &&
-      tradeDate <= endDateStr
-    ) {
-      addCalendarOverviewContribution(calendarByDate, tradeId, tradeDate, exactTradePnl);
+    const exactPnl = parseNumericValue(trade.pnl);
+    const date = getExecutionDateString(timezone, trade.exit_time);
+    if (exactPnl != null && date && date >= startDateStr && date <= endDateStr) {
+      add(trade.trade_id, date, exactPnl);
     }
   });
 
-  return Array.from(calendarByDate.entries())
+  return Array.from(byDate.entries())
     .sort(([left], [right]) => left.localeCompare(right))
-    .map(([tradeDate, data]) => ({
-      trade_date: tradeDate,
+    .map(([date, data]) => ({
+      trade_date: date,
       trades: data.tradeIds.size,
       daily_pnl: data.dailyPnl
     }));
+}
+// Build the breakeven predicate (gross P&L within per-instrument tolerance) over
+// raw `trades` columns, for the per-symbol/sector/tag/etc. breakdown queries so
+// their win/loss counts stay consistent with the overview. Falls back to the
+// exact `gross = 0` form when the user has no tolerance configured.
+async function rawBreakevenPredicate(userId) {
+  const { getBreakevenToleranceConfig, breakevenPredicate } = require('../utils/breakeven');
+  return breakevenPredicate({
+    gross: '(pnl + COALESCE(commission, 0) + COALESCE(fees, 0))',
+    tickSize: 'tick_size',
+    pointValue: 'point_value',
+    quantity: 'quantity',
+    underlying: 'underlying_asset'
+  }, await getBreakevenToleranceConfig(userId));
 }
 
 const analyticsController = {
@@ -825,19 +730,35 @@ const analyticsController = {
       
       // Get user's preference for average vs median calculations
       const User = require('../models/User');
+      const { normalizeConfig, breakevenPredicate, toleranceCacheKey } = require('../utils/breakeven');
       let useMedian = false;
+      let breakevenConfig = { default: 0, byUnderlying: {} };
       try {
         const userSettings = await User.getSettings(req.user.id);
         useMedian = userSettings?.statistics_calculation === 'median';
+        breakevenConfig = normalizeConfig({
+          default: userSettings?.breakeven_tolerance_ticks,
+          byUnderlying: userSettings?.breakeven_tolerance_ticks_by_underlying
+        });
       } catch (error) {
         console.warn('Could not fetch user settings for analytics, using default (average):', error.message);
         useMedian = false;
       }
-      
-      // Include filter hash in cache key to handle different filter combinations
+
+      // Breakeven predicate over the completed_trades CTE (SELECT * from trades).
+      const be = breakevenPredicate({
+        gross: '(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0))',
+        tickSize: 'tick_size',
+        pointValue: 'point_value',
+        quantity: 'quantity',
+        underlying: 'underlying_asset'
+      }, breakevenConfig);
+
+      // Include filter hash in cache key to handle different filter combinations.
+      // Tolerance config is part of the key so changing it yields fresh results.
       const normalizedFiltersForCache = convertQueryToTradeFilters(req.query);
       const filterHashKey = createFilterHash(normalizedFiltersForCache);
-      const cacheKey = `analytics_overview_${req.user.id}_${filterHashKey}_${useMedian ? 'median' : 'avg'}`;
+      const cacheKey = `analytics_overview_${req.user.id}_${filterHashKey}_${useMedian ? 'median' : 'avg'}_be${toleranceCacheKey(breakevenConfig)}`;
       
       // Check cache first for faster response
       const cachedData = cache.get(cacheKey);
@@ -869,21 +790,23 @@ const analyticsController = {
         )
         SELECT
           (SELECT COUNT(*) FROM completed_trades)::integer as total_trades,
-          (SELECT COUNT(*) FROM completed_trades WHERE pnl > 0)::integer as winning_trades,
-          (SELECT COUNT(*) FROM completed_trades WHERE pnl < 0)::integer as losing_trades,
-          (SELECT COUNT(*) FROM completed_trades WHERE pnl = 0)::integer as breakeven_trades,
+          -- Breakeven = gross P&L within tolerance (exited ~at entry, ignoring
+          -- commissions/fees). Wins/losses use NET P&L among the rest.
+          (SELECT COUNT(*) FROM completed_trades WHERE ${be.isNot} AND pnl > 0)::integer as winning_trades,
+          (SELECT COUNT(*) FROM completed_trades WHERE ${be.isNot} AND pnl < 0)::integer as losing_trades,
+          (SELECT COUNT(*) FROM completed_trades WHERE ${be.is})::integer as breakeven_trades,
           COALESCE(SUM(pnl), 0)::numeric as total_pnl,
           ${useMedian
             ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl), 0)::numeric as avg_pnl'
             : 'COALESCE(AVG(pnl), 0)::numeric as avg_pnl'
           },
           ${useMedian
-            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE pnl > 0), 0)::numeric as avg_win'
-            : 'COALESCE(AVG(pnl) FILTER (WHERE pnl > 0), 0)::numeric as avg_win'
+            ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE ${be.isNot} AND pnl > 0), 0)::numeric as avg_win`
+            : `COALESCE(AVG(pnl) FILTER (WHERE ${be.isNot} AND pnl > 0), 0)::numeric as avg_win`
           },
           ${useMedian
-            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE pnl < 0), 0)::numeric as avg_loss'
-            : 'COALESCE(AVG(pnl) FILTER (WHERE pnl < 0), 0)::numeric as avg_loss'
+            ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE ${be.isNot} AND pnl < 0), 0)::numeric as avg_loss`
+            : `COALESCE(AVG(pnl) FILTER (WHERE ${be.isNot} AND pnl < 0), 0)::numeric as avg_loss`
           },
           ${useMedian
             ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL), 0)::numeric as avg_r_value'
@@ -892,21 +815,21 @@ const analyticsController = {
           COALESCE(SUM(r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL), 0)::numeric as total_r_value,
           -- R-value specific stats (only trades with stop_loss set)
           (SELECT COUNT(*) FROM completed_trades WHERE stop_loss IS NOT NULL)::integer as r_total_trades,
-          (SELECT COUNT(*) FROM completed_trades WHERE pnl > 0 AND stop_loss IS NOT NULL)::integer as r_winning_trades,
-          (SELECT COUNT(*) FROM completed_trades WHERE pnl < 0 AND stop_loss IS NOT NULL)::integer as r_losing_trades,
-          (SELECT COUNT(*) FROM completed_trades WHERE pnl = 0 AND stop_loss IS NOT NULL)::integer as r_breakeven_trades,
+          (SELECT COUNT(*) FROM completed_trades WHERE ${be.isNot} AND pnl > 0 AND stop_loss IS NOT NULL)::integer as r_winning_trades,
+          (SELECT COUNT(*) FROM completed_trades WHERE ${be.isNot} AND pnl < 0 AND stop_loss IS NOT NULL)::integer as r_losing_trades,
+          (SELECT COUNT(*) FROM completed_trades WHERE ${be.is} AND stop_loss IS NOT NULL)::integer as r_breakeven_trades,
           COALESCE(SUM(pnl) FILTER (WHERE stop_loss IS NOT NULL), 0)::numeric as r_total_pnl,
           ${useMedian
             ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE stop_loss IS NOT NULL), 0)::numeric as r_avg_pnl'
             : 'COALESCE(AVG(pnl) FILTER (WHERE stop_loss IS NOT NULL), 0)::numeric as r_avg_pnl'
           },
           ${useMedian
-            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE pnl > 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_win'
-            : 'COALESCE(AVG(pnl) FILTER (WHERE pnl > 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_win'
+            ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE ${be.isNot} AND pnl > 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_win`
+            : `COALESCE(AVG(pnl) FILTER (WHERE ${be.isNot} AND pnl > 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_win`
           },
           ${useMedian
-            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE pnl < 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_loss'
-            : 'COALESCE(AVG(pnl) FILTER (WHERE pnl < 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_loss'
+            ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE ${be.isNot} AND pnl < 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_loss`
+            : `COALESCE(AVG(pnl) FILTER (WHERE ${be.isNot} AND pnl < 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_loss`
           },
           -- Best/worst trades
           (SELECT individual_best_trade FROM individual_trades) as best_trade,
@@ -935,9 +858,9 @@ const analyticsController = {
         console.log('No overview data returned from query.');
         // Send a valid empty response if overview is missing
         return res.json({ 
-          overview: { 
-            total_pnl: 0, win_rate: 0, total_trades: 0, winning_trades: 0, losing_trades: 0, 
-            breakeven_trades: 0, avg_pnl: 0, avg_win: 0, avg_loss: 0, best_trade: 0, 
+          overview: {
+            total_pnl: 0, win_rate: 0, win_rate_excluding_breakeven: 0, total_trades: 0, winning_trades: 0, losing_trades: 0,
+            breakeven_trades: 0, avg_pnl: 0, avg_win: 0, avg_loss: 0, best_trade: 0,
             worst_trade: 0, profit_factor: 0, sqn: '0.00', probability_random: 'N/A', 
             kelly_percentage: '0.00', k_ratio: '0.00', total_commissions: 0, total_fees: 0, 
             avg_mae: 'N/A', avg_mfe: 'N/A' 
@@ -970,8 +893,16 @@ const analyticsController = {
       overview.worst_trade = parseFloat(overview.worst_trade) || 0;
       overview.avg_r_value = parseFloat(overview.avg_r_value) || 0;
 
-      overview.win_rate = overview.total_trades > 0 
+      overview.win_rate = overview.total_trades > 0
         ? (overview.winning_trades / overview.total_trades * 100).toFixed(2)
+        : 0;
+
+      // Win rate excluding breakeven trades (denominator = wins + losses only).
+      // The issue reporter asked for both figures since breakeven-heavy
+      // strategies skew the standard win rate.
+      const decisiveTrades = overview.winning_trades + overview.losing_trades;
+      overview.win_rate_excluding_breakeven = decisiveTrades > 0
+        ? (overview.winning_trades / decisiveTrades * 100).toFixed(2)
         : 0;
 
       // Calculate advanced trading metrics
@@ -1130,6 +1061,88 @@ const analyticsController = {
         overview.avg_mfe = 'N/A';
       }
 
+      // Streak & momentum metrics — surfaced on the dashboard hero ribbon
+      // and StreakMomentumCard. Computed from the same filtered trade set
+      // so the global account/time filters apply consistently.
+      try {
+        const streakQuery = `
+          WITH daily AS (
+            SELECT
+              trade_date,
+              COALESCE(SUM(pnl), 0)::numeric AS day_pnl,
+              COUNT(*)::integer AS day_trades
+            FROM trades
+            WHERE user_id = $1 ${filterConditions}
+              AND pnl IS NOT NULL
+              AND exit_price IS NOT NULL
+            GROUP BY trade_date
+            ORDER BY trade_date
+          ),
+          tagged AS (
+            SELECT
+              trade_date,
+              day_pnl,
+              day_trades,
+              CASE WHEN day_pnl > 0 THEN 'W'
+                   WHEN day_pnl < 0 THEN 'L'
+                   ELSE 'B' END AS result
+            FROM daily
+          ),
+          grouped AS (
+            SELECT
+              trade_date,
+              result,
+              ROW_NUMBER() OVER (ORDER BY trade_date)
+                - ROW_NUMBER() OVER (PARTITION BY result ORDER BY trade_date) AS grp
+            FROM tagged
+          ),
+          runs AS (
+            SELECT
+              result,
+              COUNT(*)::integer AS run_length,
+              MAX(trade_date) AS run_end
+            FROM grouped
+            GROUP BY result, grp
+          )
+          SELECT
+            (SELECT COUNT(*) FROM daily)::integer AS trading_days,
+            (SELECT COALESCE(AVG(day_trades), 0)::numeric FROM daily) AS avg_daily_trades,
+            (SELECT COALESCE(day_trades, 0)::integer FROM daily
+              WHERE trade_date = CURRENT_DATE) AS today_trade_count,
+            (SELECT COALESCE(day_pnl, 0)::numeric FROM daily
+              WHERE trade_date = CURRENT_DATE) AS today_pnl,
+            (SELECT result FROM tagged ORDER BY trade_date DESC LIMIT 1) AS last_day_result,
+            (SELECT run_length FROM runs
+              ORDER BY run_end DESC LIMIT 1) AS current_run_length,
+            (SELECT COALESCE(MAX(run_length), 0)::integer FROM runs WHERE result = 'W') AS best_win_streak,
+            (SELECT COALESCE(MAX(run_length), 0)::integer FROM runs WHERE result = 'L') AS worst_loss_streak
+        `;
+        const streakResult = await db.query(streakQuery, params);
+        const streak = streakResult.rows[0] || {};
+        const lastResult = streak.last_day_result;
+        const runLen = parseInt(streak.current_run_length) || 0;
+
+        overview.trading_days = parseInt(streak.trading_days) || 0;
+        overview.avg_daily_trades = parseFloat(streak.avg_daily_trades) || 0;
+        overview.today_trade_count = parseInt(streak.today_trade_count) || 0;
+        overview.today_pnl = parseFloat(streak.today_pnl) || 0;
+        // Positive = winning streak, negative = losing streak, 0 = no streak / breakeven
+        overview.current_streak = lastResult === 'W' ? runLen
+          : lastResult === 'L' ? -runLen
+          : 0;
+        overview.best_win_streak = parseInt(streak.best_win_streak) || 0;
+        overview.worst_loss_streak = parseInt(streak.worst_loss_streak) || 0;
+      } catch (streakErr) {
+        console.error('[STREAK] calculation error:', streakErr);
+        overview.trading_days = 0;
+        overview.avg_daily_trades = 0;
+        overview.today_trade_count = 0;
+        overview.today_pnl = 0;
+        overview.current_streak = 0;
+        overview.best_win_streak = 0;
+        overview.worst_loss_streak = 0;
+      }
+
       // Clean up temporary fields
       delete overview.pnl_array;
       delete overview.pnl_stddev;
@@ -1189,10 +1202,139 @@ const analyticsController = {
     }
   },
 
+  async getMAEMFETrades(req, res, next) {
+    try {
+      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+      const params = [req.user.id, ...filterParams];
+
+      const query = `
+        SELECT
+          id,
+          symbol,
+          side,
+          pnl,
+          r_value,
+          mae,
+          mfe,
+          post_exit_mae,
+          post_exit_mfe,
+          post_exit_window_minutes,
+          post_exit_window_source,
+          post_exit_window_end,
+          stop_loss,
+          entry_price,
+          exit_price,
+          quantity,
+          executions,
+          instrument_type,
+          contract_size,
+          point_value,
+          underlying_asset,
+          CASE WHEN pnl > 0 THEN true ELSE false END AS is_winner
+        FROM trades
+        WHERE user_id = $1 ${filterConditions}
+          AND exit_time IS NOT NULL
+          AND mae IS NOT NULL
+          AND mfe IS NOT NULL
+        ORDER BY trade_date DESC
+        LIMIT 2000
+      `;
+
+      const result = await db.query(query, params);
+      const trades = result.rows.map(t => {
+        const riskAmount = Trade.calculateRiskAmount(
+          t.entry_price,
+          t.stop_loss,
+          t.quantity,
+          t.side,
+          t.instrument_type || 'stock',
+          t.contract_size,
+          t.point_value,
+          t.symbol,
+          t.underlying_asset
+        );
+
+        const executions = Array.isArray(t.executions)
+          ? t.executions
+          : (typeof t.executions === 'string' ? (() => {
+              try { return JSON.parse(t.executions); } catch { return []; }
+            })() : []);
+        const exitAction = t.side === 'short' ? 'buy' : 'sell';
+        const exitFills = executions.filter(exec => String(exec.action || exec.side || '').toLowerCase() === exitAction);
+        const pnl = parseFloat(t.pnl) || 0;
+        const isScratch = Math.abs(pnl) < 0.01;
+        const outcome = isScratch
+          ? 'scratch'
+          : (pnl > 0 && exitFills.length > 1 ? 'partial_winner' : (pnl > 0 ? 'winner' : 'loser'));
+
+        return {
+          id: t.id,
+          symbol: t.symbol,
+          side: t.side,
+          pnl,
+          r_value: t.r_value != null ? parseFloat(t.r_value) : null,
+          mae: parseFloat(t.mae),
+          mfe: parseFloat(t.mfe),
+          post_exit_mae: t.post_exit_mae != null ? parseFloat(t.post_exit_mae) : null,
+          post_exit_mfe: t.post_exit_mfe != null ? parseFloat(t.post_exit_mfe) : null,
+          post_exit_mfe_delta: t.post_exit_mfe != null ? Math.max(0, parseFloat(t.post_exit_mfe) - parseFloat(t.mfe)) : null,
+          missed_after_exit: t.post_exit_mfe != null ? Math.max(0, parseFloat(t.post_exit_mfe) - (parseFloat(t.pnl) || 0)) : null,
+          post_exit_window_minutes: t.post_exit_window_minutes,
+          post_exit_window_source: t.post_exit_window_source,
+          post_exit_window_end: t.post_exit_window_end,
+          risk_amount: riskAmount != null ? parseFloat(riskAmount.toFixed(2)) : null,
+          quantity: t.quantity != null ? parseFloat(t.quantity) : null,
+          instrument_type: t.instrument_type || 'stock',
+          point_value: t.point_value != null ? parseFloat(t.point_value) : null,
+          is_winner: t.is_winner,
+          outcome
+        };
+      });
+
+      const winners = trades.filter(t => t.is_winner);
+      const losers = trades.filter(t => !t.is_winner);
+
+      const avg = (arr, key) => arr.length > 0
+        ? arr.reduce((s, t) => s + (t[key] || 0), 0) / arr.length
+        : null;
+
+      const winnersAvgMae = avg(winners, 'mae');
+      const losersAvgMfe = avg(losers, 'mfe');
+      const avgProfitLeft = winners.length > 0
+        ? winners.reduce((s, t) => s + Math.max(0, t.mfe - t.pnl), 0) / winners.length
+        : null;
+      const avgMfeVsPnlGap = trades.length > 0
+        ? trades.reduce((s, t) => s + (t.mfe - t.pnl), 0) / trades.length
+        : null;
+      const postExitTrades = trades.filter(t => t.post_exit_mfe != null);
+      const avgPostExitMfe = avg(postExitTrades, 'post_exit_mfe');
+      const avgPostExitMfeDelta = avg(postExitTrades, 'post_exit_mfe_delta');
+      const avgMissedAfterExit = avg(postExitTrades, 'missed_after_exit');
+
+      res.json({
+        success: true,
+        trades,
+        stats: {
+          trades_with_data: trades.length,
+          winners_avg_mae: winnersAvgMae != null ? parseFloat(winnersAvgMae.toFixed(2)) : null,
+          losers_avg_mfe: losersAvgMfe != null ? parseFloat(losersAvgMfe.toFixed(2)) : null,
+          avg_profit_left: avgProfitLeft != null ? parseFloat(avgProfitLeft.toFixed(2)) : null,
+          avg_mfe_vs_pnl_gap: avgMfeVsPnlGap != null ? parseFloat(avgMfeVsPnlGap.toFixed(2)) : null,
+          trades_with_post_exit_data: postExitTrades.length,
+          avg_post_exit_mfe: avgPostExitMfe != null ? parseFloat(avgPostExitMfe.toFixed(2)) : null,
+          avg_post_exit_mfe_delta: avgPostExitMfeDelta != null ? parseFloat(avgPostExitMfeDelta.toFixed(2)) : null,
+          avg_missed_after_exit: avgMissedAfterExit != null ? parseFloat(avgMissedAfterExit.toFixed(2)) : null
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async getPerformance(req, res, next) {
     try {
       const { period = 'daily' } = req.query;
-      
+
       // Whitelist allowed periods to prevent SQL injection
       const allowedPeriods = ['daily', 'weekly', 'monthly'];
       const sanitizedPeriod = allowedPeriods.includes(period) ? period : 'daily';
@@ -1250,11 +1392,17 @@ const analyticsController = {
       
       params.push(sanitizedLimit);
 
+      const be = await rawBreakevenPredicate(req.user.id);
+      // Return losing + breakeven counts so the dashboard symbol list can show
+      // an "excl. BE" win-rate line beneath the inclusive rate, matching the
+      // overview and per-tag/strategy/hour tables.
       const symbolQuery = `
-        SELECT 
+        SELECT
           symbol,
           COUNT(*) as total_trades,
-          COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades,
+          COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
+          COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
+          COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
           COALESCE(SUM(pnl), 0) as total_pnl,
           COALESCE(AVG(pnl), 0) as avg_pnl,
           COALESCE(AVG(pnl_percent), 0) as avg_pnl_percent
@@ -1278,11 +1426,17 @@ const analyticsController = {
       const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
       const params = [req.user.id, ...filterParams];
 
+      const be = await rawBreakevenPredicate(req.user.id);
+      // Mirror the overview/monthly pattern: classify trades as wins/losses/BE
+      // using the breakeven predicate, then expose both inclusive and exclusive
+      // win rates so the frontend can show "X% incl. BE" with "Y% excl. BE".
       const tagQuery = `
         SELECT
           UNNEST(tags) as tag,
           COUNT(*) as total_trades,
-          COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades,
+          COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
+          COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
+          COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
           COALESCE(SUM(pnl), 0) as total_pnl,
           COALESCE(AVG(pnl), 0) as avg_pnl,
           COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
@@ -1307,11 +1461,14 @@ const analyticsController = {
       const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
       const params = [req.user.id, ...filterParams];
 
+      const be = await rawBreakevenPredicate(req.user.id);
       const strategyQuery = `
         SELECT
           strategy,
           COUNT(*) as total_trades,
-          COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades,
+          COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
+          COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
+          COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
           COALESCE(SUM(pnl), 0) as total_pnl,
           COALESCE(AVG(pnl), 0) as avg_pnl,
           COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
@@ -1340,13 +1497,21 @@ const analyticsController = {
       const { getUserTimezone } = require('../utils/timezone');
       const userTimezone = await getUserTimezone(req.user.id);
 
+      // Timezone is appended after user_id ($1) and all filter params, so its
+      // placeholder index depends on how many filters are active.
+      const tzParam = params.length + 1;
+      const hourParams = params.concat([userTimezone]);
+
       // Convert entry_time from UTC to user's timezone for hour extraction
       // For timestamptz columns, "AT TIME ZONE 'tz'" converts the UTC time to that timezone
+      const be = await rawBreakevenPredicate(req.user.id);
       const hourQuery = `
         SELECT
-          EXTRACT(HOUR FROM (entry_time AT TIME ZONE $2)) as hour,
+          EXTRACT(HOUR FROM (entry_time AT TIME ZONE $${tzParam})) as hour,
           COUNT(*) as total_trades,
-          COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades,
+          COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
+          COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
+          COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
           COALESCE(SUM(pnl), 0) as total_pnl,
           COALESCE(AVG(pnl), 0) as avg_pnl,
           COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
@@ -1355,10 +1520,9 @@ const analyticsController = {
         FROM trades
         WHERE user_id = $1 ${filterConditions}
           AND entry_time IS NOT NULL
-        GROUP BY EXTRACT(HOUR FROM (entry_time AT TIME ZONE $2))
+        GROUP BY EXTRACT(HOUR FROM (entry_time AT TIME ZONE $${tzParam}))
         ORDER BY hour
       `;
-      const hourParams = params.concat([userTimezone]);
 
       const result = await db.query(hourQuery, hourParams);
 
@@ -1385,6 +1549,8 @@ const analyticsController = {
       const startDate = `${sanitizedYear}-01-01`;
       const endDate = `${sanitizedYear}-12-31`;
 
+      // Bucket trades by the user's configured timezone so cross-midnight UTC
+      // trades land on the correct calendar day from the user's perspective.
       const userTz = await getUserTimezone(req.user.id);
 
       // Build filter conditions without date range - dates are handled explicitly in each CTE
@@ -1393,128 +1559,16 @@ const analyticsController = {
       const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
       const params = [req.user.id, ...filterParams];
 
-      // Execution-level calendar: each exit execution contributes P&L on the date it occurred
+      // Execution-level calendar: aggregate yearly rows with the same execution
+      // reconstruction logic used by the day-detail modal so historical legacy
+      // trades stay consistent even when stored trade P&L is stale.
       const paramOffset = params.length;
       const tableAlias = 't';
       const fc = filterConditions ? filterConditions.replace(/\btrade_date\b/g, `${tableAlias}.trade_date`).replace(/\bsymbol\b/g, `${tableAlias}.symbol`).replace(/\bstrategy\b/g, `${tableAlias}.strategy`).replace(/\bside\b/g, `${tableAlias}.side`) : '';
-      const calendarQuery = `
-        WITH exit_executions AS (
-          SELECT ${tableAlias}.id AS trade_id, ${tableAlias}.pnl AS trade_pnl,
-            (COALESCE(exec->>'datetime', exec->>'exitTime', exec->>'exit_time'))::timestamp::date AS exec_date,
-            (exec->>'quantity')::numeric AS exec_qty
-          FROM trades ${tableAlias}
-          CROSS JOIN LATERAL jsonb_array_elements(COALESCE(${tableAlias}.executions, '[]'::jsonb)) WITH ORDINALITY AS arr(exec, ord)
-          WHERE ${tableAlias}.user_id = $1
-            AND ${tableAlias}.pnl IS NOT NULL
-            AND (exec->>'datetime' IS NOT NULL OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL)
-            AND (
-              (${tableAlias}.side IN ('long','buy') AND (
-                (exec->>'action') IN ('sell','short') OR (exec->>'type') IN ('sell','short')
-                OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL
-              ))
-              OR (${tableAlias}.side IN ('short','sell') AND (
-                (exec->>'action') IN ('buy','long') OR (exec->>'type') IN ('buy','long')
-                OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL
-              ))
-            )
-            AND (COALESCE(exec->>'datetime', exec->>'exitTime', exec->>'exit_time'))::timestamp::date >= $${paramOffset + 1}::date
-            AND (COALESCE(exec->>'datetime', exec->>'exitTime', exec->>'exit_time'))::timestamp::date <= $${paramOffset + 2}::date
-            ${fc}
-        ),
-        trade_exit_totals AS (
-          SELECT ${tableAlias}.id AS trade_id, SUM((exec->>'quantity')::numeric) AS total_exit_qty
-          FROM trades ${tableAlias}
-          CROSS JOIN LATERAL jsonb_array_elements(COALESCE(${tableAlias}.executions, '[]'::jsonb)) AS arr(exec)
-          WHERE ${tableAlias}.user_id = $1
-            AND ${tableAlias}.pnl IS NOT NULL
-            AND (exec->>'datetime' IS NOT NULL OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL)
-            AND (
-              (${tableAlias}.side IN ('long','buy') AND (
-                (exec->>'action') IN ('sell','short') OR (exec->>'type') IN ('sell','short')
-                OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL
-              ))
-              OR (${tableAlias}.side IN ('short','sell') AND (
-                (exec->>'action') IN ('buy','long') OR (exec->>'type') IN ('buy','long')
-                OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL
-              ))
-            )
-            ${fc}
-          GROUP BY ${tableAlias}.id
-        ),
-        trade_exit_dates AS (
-          SELECT trade_id, COUNT(DISTINCT exec_date) AS distinct_dates
-          FROM exit_executions
-          GROUP BY trade_id
-        ),
-        daily_from_exec AS (
-          -- Single exit date: use exact trade P&L to avoid proration rounding errors
-          SELECT e.trade_id, e.exec_date AS trade_date, e.trade_pnl AS pnl
-          FROM exit_executions e
-          JOIN trade_exit_dates d ON e.trade_id = d.trade_id
-          WHERE d.distinct_dates = 1
-          GROUP BY e.trade_id, e.exec_date, e.trade_pnl
-          UNION ALL
-          -- Multiple exit dates: prorate P&L proportionally by execution quantity
-          SELECT e.trade_id, e.exec_date AS trade_date,
-            e.trade_pnl * (e.exec_qty / NULLIF(t.total_exit_qty, 0)) AS pnl
-          FROM exit_executions e
-          JOIN trade_exit_totals t ON e.trade_id = t.trade_id
-          JOIN trade_exit_dates d ON e.trade_id = d.trade_id
-          WHERE d.distinct_dates > 1
-            AND t.total_exit_qty > 0
-        ),
-        daily_from_trade AS (
-          SELECT ${tableAlias}.id AS trade_id, (${tableAlias}.exit_time::timestamp)::date AS trade_date, ${tableAlias}.pnl
-          FROM trades ${tableAlias}
-          WHERE ${tableAlias}.user_id = $1
-            AND ${tableAlias}.exit_time IS NOT NULL
-            AND ${tableAlias}.pnl IS NOT NULL
-            AND NOT EXISTS (
-              SELECT 1 FROM trade_exit_totals tet WHERE tet.trade_id = ${tableAlias}.id
-            )
-            AND (${tableAlias}.exit_time::timestamp)::date >= $${paramOffset + 1}::date
-            AND (${tableAlias}.exit_time::timestamp)::date <= $${paramOffset + 2}::date
-            ${fc}
-        ),
-        combined AS (
-          SELECT trade_id, trade_date, pnl FROM daily_from_exec
-          UNION ALL
-          SELECT trade_id, trade_date, pnl FROM daily_from_trade
-        ),
-        pnl_by_date AS (
-          SELECT trade_date, COUNT(DISTINCT trade_id)::int AS trades, COALESCE(SUM(pnl), 0)::numeric AS daily_pnl
-          FROM combined
-          GROUP BY trade_date
-        )
-        SELECT
-          p.trade_date::text,
-          p.trades,
-          p.daily_pnl
-        FROM pnl_by_date p
-        ORDER BY p.trade_date
-      `;
-
-      const riskMetricsQuery = `
-        SELECT
-          (${tableAlias}.exit_time AT TIME ZONE $${paramOffset + 3})::date::text AS trade_date,
-          ${tableAlias}.r_value,
-          ${tableAlias}.entry_price,
-          ${tableAlias}.stop_loss,
-          ${tableAlias}.quantity,
-          ${tableAlias}.side,
-          ${tableAlias}.instrument_type,
-          ${tableAlias}.contract_size,
-          ${tableAlias}.point_value,
-          ${tableAlias}.symbol,
-          ${tableAlias}.underlying_asset
-        FROM trades ${tableAlias}
-        WHERE ${tableAlias}.user_id = $1
-          AND ${tableAlias}.exit_time IS NOT NULL
-          AND (${tableAlias}.exit_time AT TIME ZONE $${paramOffset + 3})::date >= $${paramOffset + 1}::date
-          AND (${tableAlias}.exit_time AT TIME ZONE $${paramOffset + 3})::date <= $${paramOffset + 2}::date
-          ${fc}
-      `;
-
+      // Note: do NOT require trade.pnl IS NOT NULL here. Open positions with partial
+      // closes have realized P&L in their executions JSONB but trade.pnl stays NULL
+      // until the position is fully closed (see csvParser.js IBKR open-position branch).
+      // The execution-level aggregator handles those rows correctly.
       const calendarTradesQuery = `
         SELECT
           ${tableAlias}.id AS trade_id,
@@ -1574,6 +1628,28 @@ const analyticsController = {
         ORDER BY ${tableAlias}.id
       `;
 
+      const riskMetricsQuery = `
+        SELECT
+          (${tableAlias}.exit_time AT TIME ZONE $${paramOffset + 3})::date::text AS trade_date,
+          ${tableAlias}.r_value,
+          ${tableAlias}.entry_price,
+          ${tableAlias}.stop_loss,
+          ${tableAlias}.quantity,
+          ${tableAlias}.side,
+          ${tableAlias}.instrument_type,
+          ${tableAlias}.contract_size,
+          ${tableAlias}.point_value,
+          ${tableAlias}.symbol,
+          ${tableAlias}.underlying_asset
+        FROM trades ${tableAlias}
+        WHERE ${tableAlias}.user_id = $1
+          AND ${tableAlias}.exit_time IS NOT NULL
+          AND (${tableAlias}.exit_time AT TIME ZONE $${paramOffset + 3})::date >= $${paramOffset + 1}::date
+          AND (${tableAlias}.exit_time AT TIME ZONE $${paramOffset + 3})::date <= $${paramOffset + 2}::date
+          ${fc}
+      `;
+
+      // Add start date, end date, and user timezone to params
       const finalParams = [...params, startDate, endDate, userTz];
       const [calendarTradesResult, riskMetricsResult] = await Promise.all([
         db.query(calendarTradesQuery, finalParams),
@@ -1625,15 +1701,19 @@ const analyticsController = {
         return res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD' });
       }
 
+      // Bucket trades by the user's configured timezone so the day modal matches
+      // the calendar overview's cross-midnight handling.
       const userTz = await getUserTimezone(req.user.id);
       const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
       const params = [req.user.id, ...filterParams, dateStr, userTz];
       const dateParam = params.length - 1;
       const tzParam = params.length;
-      const paramLen = params.length;
       const fc = filterConditions ? filterConditions.replace(/\btrade_date\b/g, 't.trade_date').replace(/\bsymbol\b/g, 't.symbol').replace(/\bstrategy\b/g, 't.strategy').replace(/\bside\b/g, 't.side') : '';
 
-      const calendarDayRowsQuery = `
+      // Note: do NOT require trade.pnl IS NOT NULL here. Open positions with partial
+      // closes have realized P&L in their executions JSONB but trade.pnl stays NULL
+      // until the position is fully closed.
+      const dayQuery = `
         SELECT
           t.id AS trade_id,
           t.symbol,
@@ -1669,14 +1749,14 @@ const analyticsController = {
                     t.side IN ('long', 'buy')
                     AND (
                       (exec->>'action') IN ('sell', 'short')
-                      OR (exec->>'type') IN ('sell', 'short', 'exit')
+                      OR (exec->>'type') IN ('sell', 'short')
                     )
                   )
                   OR (
                     t.side IN ('short', 'sell')
                     AND (
                       (exec->>'action') IN ('buy', 'long')
-                      OR (exec->>'type') IN ('buy', 'long', 'exit')
+                      OR (exec->>'type') IN ('buy', 'long')
                     )
                   )
                 )
@@ -1686,157 +1766,8 @@ const analyticsController = {
           ${fc}
         ORDER BY t.id
       `;
-      const calendarDayRowsResult = await db.query(calendarDayRowsQuery, params);
-      const calendarDayContributions = buildCalendarDayContributions(calendarDayRowsResult.rows, dateStr, userTz);
-      return res.json({ date: dateStr, contributions: calendarDayContributions });
-
-      const dayQuery = `
-        WITH exit_execs AS (
-          SELECT t.id AS trade_id, t.symbol, t.side, t.pnl AS trade_pnl,
-            (exec->>'quantity')::numeric AS exec_qty
-          FROM trades t
-          CROSS JOIN LATERAL jsonb_array_elements(COALESCE(t.executions, '[]'::jsonb)) WITH ORDINALITY AS arr(exec, ord)
-          WHERE t.user_id = $1
-            AND t.pnl IS NOT NULL
-            AND (exec->>'datetime' IS NOT NULL OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL)
-            AND (
-              (t.side IN ('long','buy') AND (
-                (exec->>'action') IN ('sell','short') OR (exec->>'type') IN ('sell','short')
-                OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL
-              ))
-              OR (t.side IN ('short','sell') AND (
-                (exec->>'action') IN ('buy','long') OR (exec->>'type') IN ('buy','long')
-                OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL
-              ))
-            )
-            AND (COALESCE(exec->>'datetime', exec->>'exitTime', exec->>'exit_time'))::timestamp::date >= $${paramLen - 1}::date
-            AND (COALESCE(exec->>'datetime', exec->>'exitTime', exec->>'exit_time'))::timestamp::date <= $${paramLen}::date
-            ${fc}
-        ),
-        trade_exit_totals AS (
-          SELECT t.id AS trade_id,
-            SUM((exec->>'quantity')::numeric) AS total_exit_qty,
-            COUNT(*)::int AS total_exit_count
-          FROM trades t
-          CROSS JOIN LATERAL jsonb_array_elements(COALESCE(t.executions, '[]'::jsonb)) AS arr(exec)
-          WHERE t.user_id = $1
-            AND t.pnl IS NOT NULL
-            AND (exec->>'datetime' IS NOT NULL OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL)
-            AND (
-              (t.side IN ('long','buy') AND ((exec->>'action') IN ('sell','short') OR (exec->>'type') IN ('sell','short') OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL))
-              OR (t.side IN ('short','sell') AND ((exec->>'action') IN ('buy','long') OR (exec->>'type') IN ('buy','long') OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL))
-            )
-            ${fc}
-          GROUP BY t.id
-        ),
-        day_exit_summary AS (
-          SELECT trade_id, symbol, side, trade_pnl,
-            COUNT(*)::int AS exit_count,
-            SUM(exec_qty) AS day_exit_qty
-          FROM exit_execs
-          GROUP BY trade_id, symbol, side, trade_pnl
-        ),
-        grouped_by_trade AS (
-          SELECT d.trade_id, d.symbol, d.side,
-            CASE
-              WHEN d.day_exit_qty = t.total_exit_qty THEN d.trade_pnl
-              ELSE d.trade_pnl * (d.day_exit_qty / NULLIF(t.total_exit_qty, 0))
-            END AS total_pnl,
-            d.exit_count
-          FROM day_exit_summary d
-          JOIN trade_exit_totals t ON d.trade_id = t.trade_id
-          WHERE t.total_exit_qty > 0
-        )
-        SELECT g.trade_id, g.symbol, g.side, g.total_pnl AS exec_pnl, g.exit_count,
-               COALESCE(tt.total_exit_count, 1) AS total_exit_count,
-               tr.r_value, tr.stop_loss, tr.entry_price, tr.quantity,
-               tr.instrument_type, tr.contract_size, tr.point_value, tr.underlying_asset
-        FROM grouped_by_trade g
-        LEFT JOIN trade_exit_totals tt ON g.trade_id = tt.trade_id
-        LEFT JOIN trades tr ON g.trade_id = tr.id
-        ORDER BY g.trade_id
-      `;
-      const execResult = await db.query(dayQuery, params);
-
-      const rows = execResult.rows.map(r => {
-        const exitCountOnDay = r.exit_count != null ? parseInt(r.exit_count, 10) : 1;
-        const totalExitCount = r.total_exit_count != null ? parseInt(r.total_exit_count, 10) : 1;
-        const isPartial = exitCountOnDay < totalExitCount;
-        const riskAmount = Trade.calculateRiskAmount(
-          r.entry_price,
-          r.stop_loss,
-          r.quantity,
-          r.side,
-          r.instrument_type,
-          r.contract_size,
-          r.point_value,
-          r.symbol,
-          r.underlying_asset
-        );
-        return {
-          trade_id: r.trade_id,
-          symbol: r.symbol,
-          side: r.side,
-          pnl: r.exec_pnl != null ? parseFloat(r.exec_pnl) : null,
-          // Only show r_value for fully closed trades (not partial exits)
-          r_value: (!isPartial && r.r_value != null && r.stop_loss != null) ? parseFloat(r.r_value) : null,
-          risk_amount: riskAmount != null ? Math.round(riskAmount * 100) / 100 : null,
-          exit_count: exitCountOnDay,
-          // Only mark as partial if exits span multiple days (not all exits are on this day)
-          is_partial: isPartial
-        };
-      });
-
-      // Fallback: trades without exit executions (no executions array, or no exit execs with quantity)
-      const tradeLevelFallbackQuery = `
-        SELECT t.id AS trade_id, t.symbol, t.side, t.exit_time AS exec_datetime, t.pnl, t.quantity, t.exit_price AS price,
-               t.r_value, t.stop_loss, t.entry_price, t.instrument_type, t.contract_size, t.point_value, t.underlying_asset
-        FROM trades t
-        WHERE t.user_id = $1
-          AND t.exit_time IS NOT NULL
-          AND t.pnl IS NOT NULL
-          AND NOT EXISTS (
-            SELECT 1 FROM jsonb_array_elements(COALESCE(t.executions, '[]'::jsonb)) AS e(exec)
-            WHERE (exec->>'quantity') IS NOT NULL
-              AND (exec->>'datetime' IS NOT NULL OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL)
-              AND (
-                (t.side IN ('long','buy') AND ((exec->>'action') IN ('sell','short') OR (exec->>'type') IN ('sell','short') OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL))
-                OR (t.side IN ('short','sell') AND ((exec->>'action') IN ('buy','long') OR (exec->>'type') IN ('buy','long') OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL))
-              )
-          )
-          AND (t.exit_time::timestamp)::date >= $${paramLen - 1}::date
-          AND (t.exit_time::timestamp)::date <= $${paramLen}::date
-          ${fc}
-      `;
-      const tradeResult = await db.query(tradeLevelFallbackQuery, params);
-      const fallbackRows = tradeResult.rows.map(r => {
-        const riskAmount = Trade.calculateRiskAmount(
-          r.entry_price,
-          r.stop_loss,
-          r.quantity,
-          r.side,
-          r.instrument_type,
-          r.contract_size,
-          r.point_value,
-          r.symbol,
-          r.underlying_asset
-        );
-
-        return {
-          trade_id: r.trade_id,
-          symbol: r.symbol,
-          side: r.side,
-          pnl: r.pnl != null ? parseFloat(r.pnl) : null,
-          r_value: (r.r_value != null && r.stop_loss != null) ? parseFloat(r.r_value) : null,
-          risk_amount: riskAmount != null ? Math.round(riskAmount * 100) / 100 : null,
-          exit_count: 1,
-          is_partial: false
-        };
-      });
-
-      const contributions = [...rows, ...fallbackRows].sort((a, b) =>
-        (a.trade_id || '').localeCompare(b.trade_id || '')
-      );
+      const tradeResult = await db.query(dayQuery, params);
+      const contributions = buildCalendarDayContributions(tradeResult.rows, dateStr, userTz);
       res.json({ date: dateStr, contributions });
     } catch (error) {
       console.error('Calendar day detail error:', error);
@@ -1970,10 +1901,10 @@ const analyticsController = {
             CASE
               WHEN executions IS NOT NULL AND jsonb_array_length(executions) > 0 THEN
                 (
-                  SELECT COALESCE(SUM((exec->>'quantity')::integer), 0)
+                  SELECT COALESCE(SUM((exec->>'quantity')::numeric), 0)
                   FROM jsonb_array_elements(executions) AS exec
                 )
-              ELSE quantity  -- Fallback to trade quantity if no executions data
+              ELSE quantity  -- Fractional quantities (crypto) require numeric, not integer
             END as total_volume,
             pnl,
             r_value,
@@ -2279,19 +2210,23 @@ const analyticsController = {
       const { getUserTimezone } = require('../utils/timezone');
       const userTimezone = await getUserTimezone(req.user.id);
 
+      // Timezone is appended after user_id ($1) and all filter params, so its
+      // placeholder index depends on how many filters are active.
+      const dowTzParam = params.length + 1;
+      const dayOfWeekParams = params.concat([userTimezone]);
+
       const dayOfWeekQuery = `
         SELECT
-          EXTRACT(DOW FROM (entry_time AT TIME ZONE $2)) as day_of_week,
+          EXTRACT(DOW FROM (entry_time AT TIME ZONE $${dowTzParam})) as day_of_week,
           COUNT(*) as trade_count,
           COALESCE(SUM(pnl), 0) as total_pnl,
           COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value
         FROM trades
         WHERE user_id = $1 ${filterConditions}
-          AND EXTRACT(DOW FROM (entry_time AT TIME ZONE $2)) NOT IN (0, 6) -- Exclude weekends
-        GROUP BY EXTRACT(DOW FROM (entry_time AT TIME ZONE $2))
-        ORDER BY EXTRACT(DOW FROM (entry_time AT TIME ZONE $2))
+          AND EXTRACT(DOW FROM (entry_time AT TIME ZONE $${dowTzParam})) NOT IN (0, 6) -- Exclude weekends
+        GROUP BY EXTRACT(DOW FROM (entry_time AT TIME ZONE $${dowTzParam}))
+        ORDER BY EXTRACT(DOW FROM (entry_time AT TIME ZONE $${dowTzParam}))
       `;
-      const dayOfWeekParams = params.concat([userTimezone]);
 
       const dayOfWeekResult = await db.query(dayOfWeekQuery, dayOfWeekParams);
 
@@ -2315,10 +2250,10 @@ const analyticsController = {
             CASE 
               WHEN executions IS NOT NULL AND jsonb_array_length(executions) > 0 THEN
                 (
-                  SELECT COALESCE(SUM((exec->>'quantity')::integer), 0)
+                  SELECT COALESCE(SUM((exec->>'quantity')::numeric), 0)
                   FROM jsonb_array_elements(executions) AS exec
                 )
-              ELSE quantity  -- Fallback to trade quantity if no executions data
+              ELSE quantity  -- Fractional quantities (crypto) require numeric, not integer
             END as trade_volume
           FROM trades
           WHERE user_id = $1 ${filterConditions}
@@ -2492,13 +2427,20 @@ const analyticsController = {
   async getRecommendations(req, res, next) {
     try {
       console.log('[AI] Recommendations request started');
-      
+
+      // Dashboard summary mode — short, single insight for the AiInsightCard.
+      // Cheaper than the full recommendation flow; works even when AI is not
+      // configured (falls back to a deterministic insight derived from data).
+      if (req.query.summary === 'true' || req.query.summary === '1') {
+        return analyticsController.getRecommendationSummary(req, res, next);
+      }
+
       const userSettings = await aiService.getUserSettings(req.user.id);
-      
+
       if (!userSettings.provider) {
         console.log('[ERROR] AI provider not configured');
-        return res.status(400).json({ 
-          error: 'AI recommendations are not available. AI provider not configured in settings.' 
+        return res.status(400).json({
+          error: 'AI recommendations are not available. AI provider not configured in settings.'
         });
       }
       
@@ -2525,19 +2467,21 @@ const analyticsController = {
       // Use buildFilterConditions for consistency
       const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
       const params = [req.user.id, ...filterParams];
-      
+
       const { startDate, endDate } = req.query;
+
+      const be = await rawBreakevenPredicate(req.user.id);
 
       // Get overview metrics
       console.log('[DATA] Fetching trade metrics...');
       const overviewQuery = `
-        SELECT 
+        SELECT
           COUNT(*) as total_trades,
-          COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades,
+          COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
           COALESCE(SUM(pnl), 0) as total_pnl,
           COALESCE(AVG(pnl), 0) as avg_pnl,
-          COALESCE(AVG(CASE WHEN pnl > 0 THEN pnl END), 0) as avg_win,
-          COALESCE(AVG(CASE WHEN pnl < 0 THEN pnl END), 0) as avg_loss,
+          COALESCE(AVG(CASE WHEN ${be.isNot} AND pnl > 0 THEN pnl END), 0) as avg_win,
+          COALESCE(AVG(CASE WHEN ${be.isNot} AND pnl < 0 THEN pnl END), 0) as avg_loss,
           COALESCE(MAX(pnl), 0) as best_trade,
           COALESCE(MIN(pnl), 0) as worst_trade
         FROM trades
@@ -2607,11 +2551,11 @@ const analyticsController = {
       try {
         // Get symbols and their P&L
         const symbolQuery = `
-          SELECT 
+          SELECT
             symbol,
             COUNT(*) as total_trades,
             COALESCE(SUM(pnl), 0) as total_pnl,
-            COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades
+            COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades
           FROM trades
           WHERE user_id = $1 ${filterConditions}
           GROUP BY symbol
@@ -2724,13 +2668,14 @@ const analyticsController = {
 
       // Get all symbols and their P&L from trades
       console.log('[QUERY] Fetching symbols and P&L from trades...');
+      const be = await rawBreakevenPredicate(req.user.id);
       const symbolQuery = `
-        SELECT 
+        SELECT
           symbol,
           COUNT(*) as total_trades,
           COALESCE(SUM(pnl), 0) as total_pnl,
           COALESCE(AVG(pnl), 0) as avg_pnl,
-          COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades
+          COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades
         FROM trades
         WHERE user_id = $1 ${filterConditions}
         GROUP BY symbol
@@ -2946,13 +2891,14 @@ const analyticsController = {
       const { startDate, endDate } = req.query;
 
       // Get all symbols and their P&L from trades
+      const be = await rawBreakevenPredicate(req.user.id);
       const symbolQuery = `
-        SELECT 
+        SELECT
           symbol,
           COUNT(*) as total_trades,
           COALESCE(SUM(pnl), 0) as total_pnl,
           COALESCE(AVG(pnl), 0) as avg_pnl,
-          COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades
+          COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades
         FROM trades
         WHERE user_id = $1 ${filterConditions}
         GROUP BY symbol
@@ -3060,6 +3006,614 @@ const analyticsController = {
     }
   },
 
+  // Dashboard summary mode: short, single insight for the AiInsightCard.
+  // Falls back to deterministic data-driven insight if AI isn't configured
+  // (so free users still see a useful card). Caches aggressively per user+filter
+  // so the dashboard doesn't burn AI credits on every refresh.
+  async getRecommendationSummary(req, res, next) {
+    try {
+      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+      const params = [req.user.id, ...filterParams];
+      const filterHashKey = createFilterHash(convertQueryToTradeFilters(req.query));
+      const summaryCacheKey = `ai_insight_summary_${req.user.id}_${filterHashKey}`;
+
+      const cached = cache.get(summaryCacheKey);
+      if (cached) {
+        return res.json(cached);
+      }
+
+      const be = await rawBreakevenPredicate(req.user.id);
+
+      // Pull the analytics we need to derive an insight.
+      const dataQuery = `
+        WITH completed AS (
+          SELECT * FROM trades
+          WHERE user_id = $1 ${filterConditions}
+            AND exit_price IS NOT NULL AND pnl IS NOT NULL
+        )
+        SELECT
+          (SELECT COUNT(*) FROM completed)::integer AS total_trades,
+          (SELECT COUNT(*) FROM completed WHERE ${be.isNot} AND pnl > 0)::integer AS winning_trades,
+          (SELECT COUNT(*) FROM completed WHERE ${be.isNot} AND pnl < 0)::integer AS losing_trades,
+          (SELECT COALESCE(SUM(pnl), 0) FROM completed)::numeric AS total_pnl,
+          (SELECT COALESCE(AVG(pnl), 0) FROM completed WHERE ${be.isNot} AND pnl > 0)::numeric AS avg_win,
+          (SELECT COALESCE(AVG(pnl), 0) FROM completed WHERE ${be.isNot} AND pnl < 0)::numeric AS avg_loss
+      `;
+      const dataResult = await db.query(dataQuery, params);
+      const m = dataResult.rows[0] || {};
+      const totalTrades = parseInt(m.total_trades) || 0;
+
+      // Not enough data yet — return an empty-state insight.
+      if (totalTrades < 5) {
+        const emptyInsight = {
+          type: 'system',
+          priority: 10,
+          headline: 'Your insights unlock at 10 trades',
+          body: totalTrades === 0
+            ? 'Import your first trades to unlock AI-powered insights about your edge.'
+            : `You've logged ${totalTrades} trade${totalTrades === 1 ? '' : 's'}. Insights become useful around 10+ trades.`,
+          source: 'system',
+          action_label: 'Import trades',
+          action_url: '/import'
+        };
+        const response = {
+          summary: emptyInsight,
+          summaries: [emptyInsight],
+          analysisDate: new Date().toISOString(),
+          tradesAnalyzed: totalTrades
+        };
+        cache.set(summaryCacheKey, response, 60 * 60 * 1000); // 1h
+        return res.json(response);
+      }
+
+      // Compute strongest per-symbol / per-strategy edge.
+      const edgeQuery = `
+        WITH completed AS (
+          SELECT * FROM trades
+          WHERE user_id = $1 ${filterConditions}
+            AND exit_price IS NOT NULL AND pnl IS NOT NULL
+        ),
+        sym AS (
+          SELECT symbol,
+                 COUNT(*) AS n,
+                 COUNT(*) FILTER (WHERE ${be.isNot} AND pnl > 0) AS wins,
+                 COALESCE(SUM(pnl), 0) AS pnl
+          FROM completed
+          GROUP BY symbol
+          HAVING COUNT(*) >= 3
+        ),
+        strat AS (
+          SELECT strategy,
+                 COUNT(*) AS n,
+                 COUNT(*) FILTER (WHERE ${be.isNot} AND pnl > 0) AS wins,
+                 COALESCE(SUM(pnl), 0) AS pnl
+          FROM completed
+          WHERE strategy IS NOT NULL AND strategy <> ''
+          GROUP BY strategy
+          HAVING COUNT(*) >= 3
+        )
+        SELECT 'symbol' AS kind, symbol AS label, n, wins, pnl
+        FROM sym
+        UNION ALL
+        SELECT 'strategy' AS kind, strategy AS label, n, wins, pnl
+        FROM strat
+        ORDER BY pnl DESC
+      `;
+      const edgeResult = await db.query(edgeQuery, params);
+      const edges = edgeResult.rows;
+      const top = edges[0];
+      const worst = edges[edges.length - 1];
+
+      const winRate = totalTrades > 0
+        ? ((parseInt(m.winning_trades) || 0) / totalTrades * 100)
+        : 0;
+      const avgWin = Math.abs(parseFloat(m.avg_win) || 0);
+      const avgLoss = Math.abs(parseFloat(m.avg_loss) || 0);
+
+      // -- Performance edge insight (existing data-driven behavior) --
+      const edgeInsight = (() => {
+        let headline = '';
+        let body = '';
+        let action_url = '/analytics';
+        let action_label = 'View full analytics';
+
+        if (top && parseFloat(top.pnl) > 0) {
+          const winsRate = top.n > 0 ? (parseInt(top.wins) / parseInt(top.n) * 100) : 0;
+          const sign = parseFloat(top.pnl) >= 0 ? '+' : '';
+          headline = top.kind === 'symbol'
+            ? `${top.label} is carrying your edge`
+            : `Your ${top.label} setup is working`;
+          body = `${winsRate.toFixed(0)}% win rate across ${top.n} ${top.kind === 'symbol' ? 'trades on this symbol' : 'attempts of this setup'}, ${sign}$${parseFloat(top.pnl).toFixed(0)} net.`;
+          action_label = top.kind === 'symbol' ? `View ${top.label} trades` : 'View setup breakdown';
+          action_url = top.kind === 'symbol'
+            ? `/trades?symbol=${encodeURIComponent(top.label)}`
+            : '/analytics#strategies';
+        } else if (worst && parseFloat(worst.pnl) < 0) {
+          headline = worst.kind === 'symbol'
+            ? `${worst.label} is dragging on results`
+            : `${worst.label} setup is leaking edge`;
+          body = `${worst.n} trades, $${parseFloat(worst.pnl).toFixed(0)} net. Consider tighter rules or pausing this ${worst.kind === 'symbol' ? 'symbol' : 'setup'}.`;
+          action_label = 'Investigate';
+          action_url = worst.kind === 'symbol'
+            ? `/trades?symbol=${encodeURIComponent(worst.label)}`
+            : '/analytics#strategies';
+        } else if (winRate >= 60) {
+          headline = `${winRate.toFixed(0)}% win rate — your selection is sharp`;
+          body = `Across ${totalTrades} trades, you're winning ${m.winning_trades} of them. Focus on letting winners run: avg win $${avgWin.toFixed(0)} vs avg loss $${avgLoss.toFixed(0)}.`;
+        } else if (avgWin > 0 && avgLoss > 0 && avgWin / avgLoss > 1.5) {
+          headline = `Your wins are ${(avgWin / avgLoss).toFixed(1)}x your losses`;
+          body = `Strong risk-reward across ${totalTrades} trades (${winRate.toFixed(0)}% wins). The losses you take are well-controlled.`;
+        } else if (avgWin > 0 && avgLoss > 0 && avgLoss / avgWin > 1.5) {
+          headline = 'Your losses are bigger than your wins';
+          body = `Avg loss $${avgLoss.toFixed(0)} vs avg win $${avgWin.toFixed(0)} across ${totalTrades} trades. Tighter stops or more disciplined exits would change everything.`;
+        } else {
+          headline = `${totalTrades} trades analyzed`;
+          body = `Win rate ${winRate.toFixed(0)}%. Avg win $${avgWin.toFixed(0)}, avg loss $${avgLoss.toFixed(0)}. Dig into the breakdowns below for setup-level edge.`;
+        }
+        return {
+          type: 'edge',
+          priority: 30,
+          headline,
+          body,
+          source: 'computed',
+          action_label,
+          action_url
+        };
+      })();
+
+      // -- Open-position context: earnings + news insights --
+      const contextInsights = await analyticsController
+        .computeOpenPositionInsights(req.user.id)
+        .catch(err => {
+          console.warn('[AI] open-position insights failed:', err.message);
+          return [];
+        });
+
+      // Final insights list, sorted by priority desc (higher = more urgent /
+      // more time-sensitive). Caller can render top-N or paginate.
+      let summaries = [...contextInsights, edgeInsight].sort(
+        (a, b) => (b.priority || 0) - (a.priority || 0)
+      );
+
+      // Optionally enrich with AI if (a) user has an AI provider configured
+      // AND (b) billing is disabled OR they're on the Pro tier. The
+      // deterministic insights remain the floor; AI just rewrites the
+      // recommendation bodies with deeper, context-aware analysis.
+      try {
+        const useAI = await analyticsController.shouldUseAIEnrichment(req.user.id);
+        if (useAI) {
+          summaries = await analyticsController.enrichInsightsWithAI(req.user.id, summaries);
+        }
+      } catch (aiErr) {
+        console.warn('[AI] enrichment failed, returning deterministic insights:', aiErr.message);
+      }
+
+      const response = {
+        // Keep `summary` for backward compat (current frontend reads the
+        // single top insight). New clients should iterate `summaries`.
+        summary: summaries[0] || null,
+        summaries,
+        analysisDate: new Date().toISOString(),
+        tradesAnalyzed: totalTrades
+      };
+
+      // 1h cache: earnings and news shift more frequently than pure analytics.
+      // The whole payload (incl. the deterministic edge insight) is cheap to
+      // recompute, so a shorter TTL keeps the dashboard timely without
+      // hammering Finnhub.
+      cache.set(summaryCacheKey, response, 60 * 60 * 1000);
+      return res.json(response);
+    } catch (err) {
+      console.error('[AI] summary error:', err);
+      return res.status(500).json({ error: 'Failed to compute insight summary' });
+    }
+  },
+
+  // Build insights from the user's currently-open positions:
+  //   - Earnings alerts (any open position with earnings inside the next 14d)
+  //   - Per-symbol news insights using actual headlines + position context
+  //
+  // Each insight is enriched with the user's historical performance on the
+  // symbol (win rate, trade count, avg P&L) so recommendations can be
+  // grounded in the user's own track record rather than generic advice.
+  async computeOpenPositionInsights(userId) {
+    const insights = [];
+
+    // Fetch open positions — exit_price IS NULL is the canonical "open" flag.
+    const openQuery = `
+      SELECT symbol,
+             SUM(quantity)::numeric AS total_qty,
+             AVG(entry_price)::numeric AS avg_entry,
+             COALESCE(MIN(side), 'long') AS side
+      FROM trades
+      WHERE user_id = $1
+        AND exit_price IS NULL
+        AND symbol IS NOT NULL
+        AND symbol <> ''
+      GROUP BY symbol
+      HAVING SUM(quantity) IS NOT NULL AND SUM(quantity) <> 0
+      LIMIT 50
+    `;
+    let openRows = [];
+    try {
+      const result = await db.query(openQuery, [userId]);
+      openRows = result.rows;
+    } catch (err) {
+      console.warn('[AI] open-position lookup failed:', err.message);
+      return [];
+    }
+    if (openRows.length === 0) return [];
+
+    const symbols = openRows.map(r => r.symbol);
+    const positionBySymbol = new Map(openRows.map(r => [r.symbol.toUpperCase(), r]));
+
+    // Fetch user's historical performance on each open-position symbol. This
+    // gives every recommendation an evidence base — "you've won 9 of 12 trades
+    // on AAPL" is dramatically more actionable than "consider your handling."
+    const historyBySymbol = new Map();
+    try {
+      const be = await rawBreakevenPredicate(userId);
+      const histResult = await db.query(`
+        SELECT
+          UPPER(symbol) AS symbol,
+          COUNT(*)::integer AS trade_count,
+          COUNT(*) FILTER (WHERE ${be.isNot} AND pnl > 0)::integer AS wins,
+          COUNT(*) FILTER (WHERE ${be.isNot} AND pnl < 0)::integer AS losses,
+          COALESCE(AVG(pnl), 0)::numeric AS avg_pnl,
+          COALESCE(SUM(pnl), 0)::numeric AS total_pnl
+        FROM trades
+        WHERE user_id = $1
+          AND symbol = ANY($2::text[])
+          AND exit_price IS NOT NULL
+          AND pnl IS NOT NULL
+        GROUP BY UPPER(symbol)
+      `, [userId, symbols]);
+      for (const row of histResult.rows) {
+        historyBySymbol.set(row.symbol, {
+          tradeCount: parseInt(row.trade_count) || 0,
+          wins: parseInt(row.wins) || 0,
+          losses: parseInt(row.losses) || 0,
+          avgPnl: parseFloat(row.avg_pnl) || 0,
+          totalPnl: parseFloat(row.total_pnl) || 0,
+          winRate: parseInt(row.trade_count) > 0
+            ? (parseInt(row.wins) / parseInt(row.trade_count)) * 100
+            : null
+        });
+      }
+    } catch (err) {
+      console.warn('[AI] history lookup failed:', err.message);
+      // Continue without per-symbol history; recommendations degrade gracefully.
+    }
+
+    // Wraps the per-symbol historical context into a one-sentence preamble.
+    // Returns "" if there's no history (new symbol for the user) so the
+    // caller can decide whether to include it.
+    const historyClause = (sym) => {
+      const h = historyBySymbol.get(sym);
+      if (!h || h.tradeCount === 0) return '';
+      if (h.tradeCount < 3) {
+        return `You've only traded ${sym} ${h.tradeCount} time${h.tradeCount === 1 ? '' : 's'} before — small sample, edge unproven.`;
+      }
+      const wr = h.winRate;
+      const verdict = wr >= 65 ? 'this is a high-conviction name for you'
+        : wr >= 55 ? 'you have a positive edge here'
+        : wr >= 45 ? 'your edge is roughly coin-flip'
+        : 'your historical performance on this name is poor';
+      return `You've traded ${sym} ${h.tradeCount} times before with a ${wr.toFixed(0)}% win rate — ${verdict}.`;
+    };
+
+    // Specific action recommendation given news tone, position direction,
+    // and the user's historical edge on the symbol. Concrete percentages
+    // beat soft "consider your handling" language.
+    const newsAction = (tone, sideLabel, h) => {
+      const strongEdge = h && h.tradeCount >= 5 && h.winRate >= 60;
+      const weakEdge = h && h.tradeCount >= 5 && h.winRate < 45;
+
+      if (tone === 'positive' && sideLabel === 'long') {
+        if (weakEdge) return 'Action: this is your chance to exit at strength. Trim 50%+ and tighten the stop on the remainder.';
+        if (strongEdge) return 'Action: let it run with a trailing stop, or trim 25% to bank gains and ride the rest.';
+        return 'Action: trim 25–33% to lock in a partial win; move the stop on the remainder to break-even.';
+      }
+      if (tone === 'positive' && sideLabel === 'short') {
+        return 'Action: your short is fighting the tape. Close half now, move stop to break-even on the rest, and reassess the thesis tonight.';
+      }
+      if (tone === 'negative' && sideLabel === 'long') {
+        if (weakEdge) return 'Action: exit fully — you have no edge on this name and the news is against you.';
+        if (strongEdge) return 'Action: trim 25–50% to reduce gross exposure, tighten the stop, and only hold if your specific entry thesis still applies.';
+        return 'Action: trim 25–50% and tighten the stop below the level the news is testing. If your thesis was tied to this news, exit fully.';
+      }
+      if (tone === 'negative' && sideLabel === 'short') {
+        return 'Action: tailwind for your short. Trail the stop down behind the move; consider adding only if the position is small and risk is defined.';
+      }
+      // Neutral tone — soft guidance but still concrete.
+      return 'Action: scan the article and ask if anything changes your thesis. If not, hold; if yes, size down 25%.';
+    };
+
+    // Specific earnings action recommendation given days until report,
+    // position direction, position-size context, and historical edge.
+    const earningsAction = (daysUntil, sideLabel, h) => {
+      const strongEdge = h && h.tradeCount >= 5 && h.winRate >= 60;
+      const weakEdge = h && h.tradeCount >= 5 && h.winRate < 45;
+      const urgent = daysUntil <= 1;
+
+      if (sideLabel === 'long') {
+        if (urgent) {
+          if (weakEdge) return 'Action: close the position before the bell. Your historical edge does not justify binary event risk.';
+          if (strongEdge) return 'Action: you have an edge on this name, but earnings is still binary. Trim to half and let the rest ride if your conviction is high.';
+          return 'Action: trim to half position before the bell, or close fully. The volatility ranges typically blow through normal stops.';
+        }
+        if (daysUntil <= 3) {
+          return `Action: define your plan in the next 24h. Default: trim ${weakEdge ? '50%+' : '25–50%'} now and decide on the remainder by ${daysUntil === 2 ? 'tomorrow' : 'the day before'}.`;
+        }
+        return `Action: ${weakEdge ? 'plan to exit before the report' : 'decide whether to hold through or close before the date'}. Earnings adds binary risk that won't respect your normal stop.`;
+      }
+      // Short position
+      if (urgent) {
+        return 'Action: short into earnings is high-variance. Size down, define max loss with a hard stop, or close partial — short squeezes happen on beats.';
+      }
+      if (daysUntil <= 3) {
+        return 'Action: tighten the stop and reduce size by at least 25% before the report. Asymmetric upside risk against you.';
+      }
+      return 'Action: have an exit plan before earnings day. Short squeezes from surprise beats can take out wide stops.';
+    };
+
+    // === Earnings alerts ===
+    try {
+      const EarningsService = require('../services/earningsService');
+      const earnings = await EarningsService.getEarningsForSymbols(symbols);
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+
+      for (const e of earnings || []) {
+        if (!e || !e.symbol || !e.date) continue;
+        const earningsDate = new Date(e.date);
+        if (Number.isNaN(earningsDate.getTime())) continue;
+        earningsDate.setHours(0, 0, 0, 0);
+        const daysUntil = Math.ceil((earningsDate - now) / (1000 * 60 * 60 * 24));
+        if (daysUntil < 0 || daysUntil > 14) continue;
+
+        const pos = positionBySymbol.get(String(e.symbol).toUpperCase());
+        if (!pos) continue;
+
+        const epsEst = parseFloat(e.epsEstimate);
+        const revEst = parseFloat(e.revenueEstimate);
+        const qty = Math.abs(parseFloat(pos.total_qty) || 0);
+        const avgEntry = parseFloat(pos.avg_entry) || 0;
+        const sideLabel = String(pos.side || 'long').toLowerCase() === 'short' ? 'short' : 'long';
+
+        const whenLabel = daysUntil === 0 ? 'today'
+          : daysUntil === 1 ? 'tomorrow'
+          : `in ${daysUntil} days`;
+        const hourLabel = e.hour === 'bmo' ? 'before open'
+          : e.hour === 'amc' ? 'after close'
+          : '';
+
+        const sym = String(e.symbol).toUpperCase();
+        const history = historyBySymbol.get(sym);
+
+        const bits = [];
+        bits.push(`Your ${sideLabel} position: ${qty} sh @ $${avgEntry.toFixed(2)} avg.`);
+        if (Number.isFinite(epsEst)) bits.push(`Street consensus: $${epsEst.toFixed(2)} EPS.`);
+        if (Number.isFinite(revEst)) {
+          const revB = (revEst / 1e9).toFixed(2);
+          bits.push(`Revenue: $${revB}B est.`);
+        }
+        const hist = historyClause(sym);
+        if (hist) bits.push(hist);
+        bits.push(earningsAction(daysUntil, sideLabel, history));
+
+        insights.push({
+          type: 'earnings',
+          priority: daysUntil <= 1 ? 100 : daysUntil <= 3 ? 80 : 60,
+          headline: `${e.symbol} reports earnings ${whenLabel}${hourLabel ? ` (${hourLabel})` : ''}`,
+          body: bits.join(' '),
+          source: 'context',
+          action_label: `View ${e.symbol} trades`,
+          action_url: `/trades?symbol=${encodeURIComponent(e.symbol)}`
+        });
+      }
+    } catch (err) {
+      console.warn('[AI] earnings insight failed:', err.message);
+    }
+
+    // === Per-symbol news insights ===
+    // For each open position with recent news, surface the most signal-rich
+    // headline and infer rough tone via keyword matching. Finnhub free tier
+    // doesn't include sentiment, so this is intentionally crude — it catches
+    // the obvious signals (beats/raises/upgrades vs. miss/cut/downgrade/
+    // recall) and leaves "neutral" as the safe fallback rather than guessing.
+    try {
+      const NewsService = require('../services/newsService');
+      const newsItems = await NewsService.getNewsForSymbols(symbols);
+      const dayAgo = Date.now() / 1000 - 36 * 60 * 60; // 36h window — catches overnight news
+
+      // Group recent items by symbol.
+      const itemsBySymbol = new Map();
+      for (const item of newsItems || []) {
+        if (!item || !item.symbol || !item.headline) continue;
+        const ts = Number(item.datetime) || 0;
+        if (ts < dayAgo) continue;
+        const sym = String(item.symbol).toUpperCase();
+        if (!itemsBySymbol.has(sym)) itemsBySymbol.set(sym, []);
+        itemsBySymbol.get(sym).push(item);
+      }
+
+      // Sort the per-symbol list and surface up to 4 strongest news insights
+      // overall (so a user with many open positions doesn't drown in news).
+      const ranked = [];
+      for (const [sym, list] of itemsBySymbol.entries()) {
+        const pos = positionBySymbol.get(sym);
+        if (!pos) continue;
+        // Score each headline: keyword tone strength + recency.
+        const scored = list.map(item => {
+          const tone = classifyHeadlineTone(item.headline);
+          const ageHours = Math.max(0, (Date.now() / 1000 - Number(item.datetime || 0)) / 3600);
+          // Stronger keyword signals + fresher articles rank higher.
+          const score = (tone.magnitude * 10) + Math.max(0, 24 - ageHours);
+          return { item, tone, score };
+        }).sort((a, b) => b.score - a.score);
+
+        const top = scored[0];
+        if (!top) continue;
+        ranked.push({ sym, pos, top, count: list.length });
+      }
+
+      // Show up to 4, prioritizing strong tone signals over volume alone.
+      ranked.sort((a, b) => b.top.score - a.top.score);
+
+      for (const { sym, pos, top, count } of ranked.slice(0, 4)) {
+        const sideLabel = String(pos.side || 'long').toLowerCase() === 'short' ? 'short' : 'long';
+        const qty = Math.abs(parseFloat(pos.total_qty) || 0);
+        const headlineText = String(top.item.headline || '').trim();
+        const source = top.item.source ? String(top.item.source).trim() : '';
+        const tone = top.tone.label; // 'positive' | 'negative' | 'neutral'
+        const history = historyBySymbol.get(sym);
+
+        // Headline as the insight headline; body gets context + concrete action.
+        const insightHeadline = `${sym}: ${headlineText}`;
+        const bodyParts = [];
+        if (source) bodyParts.push(source + '.');
+        bodyParts.push(`Your ${sideLabel} position: ${qty} sh.`);
+        if (tone === 'positive' && sideLabel === 'long') bodyParts.push('Headline tone reads positive for the long.');
+        else if (tone === 'positive' && sideLabel === 'short') bodyParts.push('Headline tone reads positive — bad for the short.');
+        else if (tone === 'negative' && sideLabel === 'long') bodyParts.push('Headline tone reads negative — bad for the long.');
+        else if (tone === 'negative' && sideLabel === 'short') bodyParts.push('Headline tone reads negative — good for the short.');
+        else if (count >= 4) bodyParts.push(`${count} headlines in the last 36h — something is moving the name.`);
+
+        const hist = historyClause(sym);
+        if (hist) bodyParts.push(hist);
+        bodyParts.push(newsAction(tone, sideLabel, history));
+
+        // Priority: stronger keyword tone = higher priority. Neutral = lower.
+        const priority = tone === 'neutral'
+          ? 40 + Math.min(15, count * 3)
+          : 70 + Math.min(20, top.tone.magnitude * 5);
+
+        insights.push({
+          type: 'news',
+          priority,
+          tone,
+          headline: insightHeadline,
+          body: bodyParts.join(' '),
+          source: 'context',
+          action_label: top.item.url ? 'Read article' : 'Open news rail',
+          action_url: top.item.url || '/dashboard',
+          external_url: !!top.item.url
+        });
+      }
+    } catch (err) {
+      console.warn('[AI] news insight failed:', err.message);
+    }
+
+    return insights;
+  },
+
+  // Decide whether AI enrichment should run for this user. Two gates:
+  //   1) An AI provider must be configured with whatever credential it needs.
+  //   2) If billing is enabled on the instance, the user must be on Pro tier.
+  //      If billing is disabled (self-hosted), AI runs for everyone.
+  async shouldUseAIEnrichment(userId) {
+    try {
+      const aiSettings = await aiService.getUserSettings(userId);
+      if (!aiSettings || !aiSettings.provider) return false;
+
+      const keyRequired = ['gemini', 'claude', 'openai'];
+      if (keyRequired.includes(aiSettings.provider) && !aiSettings.apiKey) return false;
+
+      const urlRequired = ['ollama', 'local'];
+      if (urlRequired.includes(aiSettings.provider) && !aiSettings.apiUrl) return false;
+
+      const TierService = require('../services/tierService');
+      const billingEnabled = await TierService.isBillingEnabled();
+      if (!billingEnabled) return true;
+
+      const tier = await TierService.getUserTier(userId);
+      return tier === 'pro';
+    } catch (err) {
+      console.warn('[AI] shouldUseAIEnrichment check failed:', err.message);
+      return false;
+    }
+  },
+
+  // Rewrite each insight body via the user's configured AI provider. Sends a
+  // single batched prompt to keep cost/latency bounded regardless of how many
+  // insights are in the list. Falls back to the original deterministic
+  // body on any parsing/AI failure so the dashboard never goes blank.
+  async enrichInsightsWithAI(userId, insights) {
+    if (!Array.isArray(insights) || insights.length === 0) return insights;
+
+    // Pre-strip non-enrichable insights (e.g. system/empty-state). We still
+    // return them in the output so ordering and priorities stay intact.
+    const enrichable = insights
+      .map((ins, idx) => ({ ins, idx }))
+      .filter(({ ins }) => ins.type === 'earnings' || ins.type === 'news' || ins.type === 'edge');
+
+    if (enrichable.length === 0) return insights;
+
+    const numbered = enrichable.map(({ ins }, i) => ({
+      n: i + 1,
+      type: ins.type,
+      tone: ins.tone || null,
+      headline: ins.headline,
+      body: ins.body
+    }));
+
+    const prompt = `You are a senior trading coach. The user already has the following deterministic insights about their open positions and trading performance. Your job is to rewrite ONLY the BODY text of each insight to be sharper, more analytical, and more useful — keep the same data points but add concrete reasoning and a clearer action.
+
+Rules — non-negotiable:
+- Return ONLY a valid JSON array, no commentary, no markdown fences, no preface.
+- Each item: {"n": <number>, "body": "<rewritten body>"}.
+- Same number of items as input, same "n" values.
+- Keep the original facts (position size, EPS, win rate, headline). Do not invent new numbers.
+- Each body ≤ 320 characters. Single paragraph, no line breaks, no bullet points.
+- End each body with a concrete action — a specific percentage to trim, a specific stop type, or an explicit "exit" / "hold" call. No "consider" without a what.
+- Match the tone of the data: positive news + winning history = lean in; negative news + losing history = exit faster.
+
+Input insights:
+${JSON.stringify(numbered, null, 2)}
+
+Respond with the JSON array now.`;
+
+    let raw;
+    try {
+      raw = await aiService.generateResponse(userId, prompt);
+    } catch (err) {
+      console.warn('[AI] enrichment call failed:', err.message);
+      return insights;
+    }
+    if (!raw || typeof raw !== 'string') return insights;
+
+    // Parse defensively — the model may wrap JSON in ```json fences or add
+    // trailing prose despite instructions. Extract the first JSON array.
+    let parsed;
+    try {
+      const match = raw.match(/\[[\s\S]*\]/);
+      if (!match) throw new Error('no JSON array in response');
+      parsed = JSON.parse(match[0]);
+    } catch (err) {
+      console.warn('[AI] enrichment JSON parse failed:', err.message);
+      return insights;
+    }
+    if (!Array.isArray(parsed)) return insights;
+
+    // Build n → body map and apply to the original insights array.
+    const enrichedBodyByN = new Map();
+    for (const item of parsed) {
+      if (item && Number.isFinite(item.n) && typeof item.body === 'string') {
+        enrichedBodyByN.set(item.n, item.body.trim());
+      }
+    }
+
+    const out = insights.slice();
+    enrichable.forEach(({ idx }, i) => {
+      const newBody = enrichedBodyByN.get(i + 1);
+      if (newBody && newBody.length > 20) {
+        out[idx] = { ...out[idx], body: newBody, ai_enhanced: true };
+      }
+    });
+    return out;
+  },
+
   buildRecommendationPrompt(metrics, trades, tradingProfile, sectorData) {
     const sectorAnalysis = sectorData && sectorData.length > 0 
       ? `\n\nSector Performance Analysis:\n${sectorData.map(s => 
@@ -3141,21 +3695,18 @@ Keep recommendations practical, specific, and actionable. Focus on data-driven i
   }
 };
 
+const { escapeCsv } = require('../utils/csvEscape');
+
 function convertToCSV(data) {
   if (data.length === 0) return '';
-  
+
   const headers = Object.keys(data[0]);
-  const csvHeaders = headers.join(',');
-  
-  const csvRows = data.map(row => {
-    return headers.map(header => {
-      const value = row[header];
-      return typeof value === 'string' && value.includes(',') 
-        ? `"${value}"` 
-        : value;
-    }).join(',');
-  });
-  
+  const csvHeaders = headers.map(escapeCsv).join(',');
+
+  const csvRows = data.map(row =>
+    headers.map(header => escapeCsv(row[header])).join(',')
+  );
+
   return [csvHeaders, ...csvRows].join('\n');
 }
 

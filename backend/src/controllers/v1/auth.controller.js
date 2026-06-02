@@ -2,6 +2,7 @@ const User = require('../../models/User');
 const refreshTokenService = require('../../services/refreshToken.service');
 const deviceService = require('../../services/device.service');
 const { sendVerificationEmailInBackground } = require('../auth.controller');
+const sequenzySubscriberSyncService = require('../../services/sequenzySubscriberSyncService');
 const crypto = require('crypto');
 
 function useDetailedErrors() {
@@ -68,9 +69,9 @@ const authV1Controller = {
       
       let verificationToken = null;
       let verificationExpires = null;
-      let isVerified = !emailConfigured; // Auto-verify if email not configured
+      let isVerified = !emailConfigured || isFirstUser; // Auto-verify if email not configured OR if first user
 
-      if (emailConfigured) {
+      if (emailConfigured && !isFirstUser) {
         verificationToken = crypto.randomBytes(32).toString('hex');
         verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
       }
@@ -87,6 +88,7 @@ const authV1Controller = {
       });
       
       await User.createSettings(user.id);
+      sequenzySubscriberSyncService.queueSyncUserById(user.id);
 
       // Register device if provided
       let device = null;
@@ -239,7 +241,7 @@ const authV1Controller = {
         const existingDevice = await deviceService.findDeviceByFingerprint(user.id, deviceInfo.fingerprint);
         
         if (existingDevice) {
-          device = await deviceService.updateDeviceInfo(existingDevice.id, deviceInfo);
+          device = await deviceService.updateDeviceInfo(existingDevice.id, user.id, deviceInfo);
         } else {
           device = await deviceService.registerDevice(user.id, deviceInfo);
         }
@@ -350,7 +352,7 @@ const authV1Controller = {
         return res.status(400).json({ error: 'Device ID is required' });
       }
 
-      await refreshTokenService.revokeDeviceTokens(deviceId, 'device_logout');
+      await refreshTokenService.revokeDeviceTokens(deviceId, req.user.id, 'device_logout');
       
       res.json({ message: 'Device logout successful' });
     } catch (error) {

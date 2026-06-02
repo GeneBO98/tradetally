@@ -12,6 +12,7 @@ const WEBHOOK_EVENT_TYPES = Object.freeze([
   'price_alert.triggered',
   'enrichment.completed'
 ]);
+const WEBHOOK_PROVIDER_TYPES = Object.freeze(['custom', 'slack', 'discord']);
 
 // Normalize snake_case fields to camelCase for API compatibility
 const normalizeFieldNames = (body) => {
@@ -50,7 +51,7 @@ const validate = (schema) => {
     // Normalize snake_case to camelCase before validation
     req.body = normalizeFieldNames(req.body);
     
-    const { error } = schema.validate(req.body);
+    const { error, value } = schema.validate(req.body);
     if (error) {
       const fields = error.details.map(d => ({
         field: d.path.join('.'),
@@ -76,9 +77,19 @@ const validate = (schema) => {
         fields
       });
     }
+    req.body = value;
     next();
   };
 };
+
+const nullableString = (max = 255) => Joi.string().max(max).allow('', null);
+const nullableDate = Joi.alternatives().try(
+  Joi.date().iso(),
+  Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/),
+  Joi.valid(null, '')
+);
+const nullableNumber = Joi.alternatives().try(Joi.number(), Joi.valid(null, ''));
+const aiProviderSchema = Joi.string().valid('gemini', 'claude', 'openai', 'ollama', 'lmstudio', 'perplexity', 'local');
 
 const schemas = {
   register: Joi.object({
@@ -109,6 +120,42 @@ const schemas = {
     password: Joi.string().required()
   }),
 
+  internalCrmSyncRun: Joi.object({
+    targets: Joi.array()
+      .items(Joi.string().valid('twenty', 'invoiceNinja'))
+      .min(1)
+      .optional(),
+    reason: Joi.string().max(255).allow('', null).optional()
+  }),
+
+  internalCrmSyncUserRun: Joi.object({
+    targets: Joi.array()
+      .items(Joi.string().valid('twenty', 'invoiceNinja'))
+      .min(1)
+      .optional(),
+    reason: Joi.string().max(255).allow('', null).optional()
+  }),
+
+  forgotPassword: Joi.object({
+    email: Joi.string().email().required()
+  }),
+
+  resetPassword: Joi.object({
+    token: Joi.string().required(),
+    password: Joi.string().min(8).required()
+  }),
+
+  verify2FA: Joi.object({
+    tempToken: Joi.string().allow('', null),
+    temp_token: Joi.string().allow('', null),
+    token: Joi.string().allow('', null),
+    twoFactorCode: Joi.string().allow('', null),
+    two_factor_code: Joi.string().allow('', null),
+    code: Joi.string().allow('', null)
+  }).or('tempToken', 'temp_token', 'token')
+    .or('twoFactorCode', 'two_factor_code', 'code'),
+
+
   createTrade: Joi.object({
     symbol: Joi.string().max(20).required(),
     entryTime: Joi.date().iso().required(),
@@ -125,6 +172,12 @@ const schemas = {
     fees: Joi.number().default(0),  // Can be negative for rebates
     mae: Joi.number().allow(null, ''),
     mfe: Joi.number().allow(null, ''),
+    postExitMae: Joi.number().allow(null, ''),
+    postExitMfe: Joi.number().allow(null, ''),
+    post_exit_mae: Joi.number().allow(null, ''),
+    post_exit_mfe: Joi.number().allow(null, ''),
+    postExitWindowOverrideMinutes: Joi.number().integer().positive().allow(null, ''),
+    post_exit_window_override_minutes: Joi.number().integer().positive().allow(null, ''),
     notes: Joi.string().allow(''),
     isPublic: Joi.boolean().default(false),
     broker: Joi.string().max(50).allow(''),
@@ -182,7 +235,7 @@ const schemas = {
             shares: Joi.number().integer().positive().allow(null).optional(),
             percentage: Joi.number().min(1).max(100).allow(null).optional()
           })).default([]).optional()
-        }),
+        }).unknown(true),
         // Grouped round-trip format
         Joi.object({
           side: Joi.string().valid('long', 'short').required(),
@@ -201,7 +254,7 @@ const schemas = {
             shares: Joi.number().integer().positive().allow(null).optional(),
             percentage: Joi.number().min(1).max(100).allow(null).optional()
           })).default([]).optional()
-        })
+        }).unknown(true)
       )
     ).optional()
   }),
@@ -270,6 +323,16 @@ const schemas = {
     fees: Joi.number(),  // Can be negative for rebates
     mae: Joi.number().allow(null, ''),
     mfe: Joi.number().allow(null, ''),
+    postExitMae: Joi.number().allow(null, ''),
+    postExitMfe: Joi.number().allow(null, ''),
+    post_exit_mae: Joi.number().allow(null, ''),
+    post_exit_mfe: Joi.number().allow(null, ''),
+    postExitWindowOverrideMinutes: Joi.number().integer().positive().allow(null, ''),
+    postExitWindowMinutes: Joi.number().integer().positive().allow(null, ''),
+    postExitWindowSource: Joi.string().max(30).allow(null, ''),
+    postExitWindowEnd: Joi.date().iso().allow(null, ''),
+    postExitCalculatedAt: Joi.date().iso().allow(null, ''),
+    post_exit_window_override_minutes: Joi.number().integer().positive().allow(null, ''),
     notes: Joi.string().allow(''),
     isPublic: Joi.boolean(),
     broker: Joi.string().max(50).allow(''),
@@ -327,7 +390,7 @@ const schemas = {
             shares: Joi.number().integer().positive().allow(null).optional(),
             percentage: Joi.number().min(1).max(100).allow(null).optional()
           })).default([]).optional()
-        }),
+        }).unknown(true),
         // Grouped round-trip format
         Joi.object({
           side: Joi.string().valid('long', 'short').required(),
@@ -346,7 +409,7 @@ const schemas = {
             shares: Joi.number().integer().positive().allow(null).optional(),
             percentage: Joi.number().min(1).max(100).allow(null).optional()
           })).default([]).optional()
-        })
+        }).unknown(true)
       )
     ).optional()
   }).min(1),
@@ -360,6 +423,10 @@ const schemas = {
     timezone: Joi.string().max(50),
     timeDisplayFormat: Joi.string().valid('12h', '24h'),
     statisticsCalculation: Joi.string().valid('average', 'median'),
+    breakevenToleranceTicks: Joi.number().integer().min(0).max(1000).allow(null),
+    breakevenToleranceTicksByUnderlying: Joi.object()
+      .pattern(/^[A-Za-z0-9]+$/, Joi.number().integer().min(0).max(1000))
+      .allow(null),
     enableTradeGrouping: Joi.boolean(),
     tradeGroupingTimeGapMinutes: Joi.number().integer().min(1).max(1440),
     autoCloseExpiredOptions: Joi.boolean(),
@@ -459,8 +526,6 @@ const schemas = {
     priority: Joi.number().integer().min(1).max(10).default(5)
   }),
 
-  // Reuse existing schemas with aliases
-  trade: Joi.ref('createTrade'),
   journalEntry: Joi.object({
     content: Joi.string().required(),
     type: Joi.string().valid('note', 'lesson', 'emotion', 'setup').default('note'),
@@ -495,6 +560,7 @@ const schemas = {
   // Webhook validation schemas
   createWebhook: Joi.object({
     url: Joi.string().uri({ scheme: ['http', 'https'] }).required(),
+    providerType: Joi.string().valid(...WEBHOOK_PROVIDER_TYPES).default('custom'),
     description: Joi.string().max(500).allow('', null),
     eventTypes: Joi.array().items(Joi.string().valid(...WEBHOOK_EVENT_TYPES)).min(1).optional(),
     customHeaders: Joi.object().pattern(Joi.string(), Joi.string().max(1000)).default({}),
@@ -504,6 +570,7 @@ const schemas = {
 
   updateWebhook: Joi.object({
     url: Joi.string().uri({ scheme: ['http', 'https'] }),
+    providerType: Joi.string().valid(...WEBHOOK_PROVIDER_TYPES),
     description: Joi.string().max(500).allow('', null),
     eventTypes: Joi.array().items(Joi.string().valid(...WEBHOOK_EVENT_TYPES)).min(1),
     customHeaders: Joi.object().pattern(Joi.string(), Joi.string().max(1000)),
@@ -593,9 +660,213 @@ const schemas = {
     ).required(),
     followedPlan: Joi.boolean().allow(null),
     reviewNotes: Joi.string().allow('', null)
+  }),
+
+  billingCheckout: Joi.object({
+    priceId: Joi.string().required(),
+    redirectUrl: Joi.string().max(2048).allow('', null),
+    referral: nullableString(255)
+  }),
+
+  billingCancelSubscription: Joi.object({
+    cancellationReason: Joi.string().max(100).required(),
+    feedbackText: nullableString(2000)
+  }),
+
+  billingAppleReceipt: Joi.object({
+    transaction_id: Joi.string().required(),
+    product_id: Joi.string().required(),
+    receipt_data: Joi.string().required(),
+    environment: Joi.string().valid('Sandbox', 'Production', 'Xcode', 'LocalTesting').allow('', null)
+  }),
+
+  supportContact: Joi.object({
+    subject: Joi.string().trim().max(200).required(),
+    message: Joi.string().trim().max(5000).required()
+  }),
+
+  aiCreateSession: Joi.object({
+    filters: Joi.object().unknown(true).default({}),
+    tradeId: Joi.string().trim().max(64),
+    analysisType: Joi.string().valid('single_trade'),
+    apiKey: Joi.string().trim().max(500),
+    modelName: Joi.string().trim().max(200)
+  }),
+
+  aiFollowup: Joi.object({
+    message: Joi.string().trim().max(4000).required(),
+    apiKey: Joi.string().trim().max(500),
+    modelName: Joi.string().trim().max(200)
+  }),
+
+  brokerSyncIbkrConnection: Joi.object({
+    flexToken: Joi.string().trim().required(),
+    flexQueryId: Joi.string().trim().required(),
+    accountLabel: nullableString(255),
+    autoSyncEnabled: Joi.boolean().default(false),
+    syncFrequency: Joi.string().valid('manual', 'hourly', 'daily', 'weekly').default('manual'),
+    syncTime: nullableString(10),
+    syncStartDate: nullableDate
+  }),
+
+  brokerSyncConnectionUpdate: Joi.object({
+    accountLabel: nullableString(255),
+    autoSyncEnabled: Joi.boolean(),
+    syncFrequency: Joi.string().valid('manual', 'hourly', 'daily', 'weekly'),
+    syncTime: nullableString(10),
+    syncStartDate: nullableDate
+  }).min(1),
+
+  brokerSyncManualSync: Joi.object({
+    startDate: nullableDate,
+    endDate: nullableDate
+  }),
+
+  accountCreate: Joi.object({
+    accountName: Joi.string().trim().max(255).required(),
+    accountIdentifier: nullableString(100),
+    broker: nullableString(100),
+    initialBalance: Joi.number().min(0).default(0),
+    initialBalanceDate: nullableDate.required(),
+    isPrimary: Joi.boolean().default(false),
+    notes: nullableString(2000)
+  }),
+
+  accountUpdate: Joi.object({
+    accountName: Joi.string().trim().max(255),
+    accountIdentifier: nullableString(100),
+    broker: nullableString(100),
+    initialBalance: Joi.number().min(0),
+    initialBalanceDate: nullableDate,
+    isPrimary: Joi.boolean(),
+    notes: nullableString(2000)
+  }).min(1),
+
+  accountTransaction: Joi.object({
+    transactionType: Joi.string().valid('deposit', 'withdrawal').required(),
+    amount: Joi.number().positive().required(),
+    transactionDate: nullableDate.required(),
+    description: nullableString(1000)
+  }),
+
+  accountTransactionUpdate: Joi.object({
+    transactionType: Joi.string().valid('deposit', 'withdrawal'),
+    amount: Joi.number().positive(),
+    transactionDate: nullableDate,
+    description: nullableString(1000)
+  }).min(1),
+
+  accountLinkTrades: Joi.object({
+    sourceIdentifier: nullableString(100),
+    linkAll: Joi.boolean().default(false)
+  }).custom((value, helpers) => {
+    if (!value.sourceIdentifier && !value.linkAll) {
+      return helpers.error('any.invalid');
+    }
+    return value;
+  }, 'link trades validation').messages({
+    'any.invalid': 'Must provide sourceIdentifier or set linkAll to true'
+  }),
+
+  investmentHoldingCreate: Joi.object({
+    symbol: Joi.string().trim().max(20).required(),
+    shares: Joi.number().positive().required(),
+    costPerShare: Joi.number().positive().required(),
+    purchaseDate: nullableDate,
+    notes: nullableString(2000),
+    broker: nullableString(100),
+    accountIdentifier: nullableString(100)
+  }),
+
+  investmentHoldingUpdate: Joi.object({
+    notes: nullableString(2000),
+    targetAllocationPercent: nullableNumber,
+    sector: nullableString(100)
+  }).min(1),
+
+  investmentLotCreate: Joi.object({
+    shares: Joi.number().positive().required(),
+    costPerShare: Joi.number().positive().required(),
+    purchaseDate: nullableDate,
+    broker: nullableString(100),
+    accountIdentifier: nullableString(100),
+    notes: nullableString(2000)
+  }),
+
+  investmentDividendCreate: Joi.object({
+    dividendPerShare: Joi.number().positive().required(),
+    sharesHeld: Joi.number().positive().required(),
+    paymentDate: nullableDate.required(),
+    exDividendDate: nullableDate,
+    isDrip: Joi.boolean().default(false),
+    dripShares: nullableNumber,
+    dripPrice: nullableNumber,
+    notes: nullableString(2000)
+  }),
+
+  investmentFavoriteToggle: Joi.object({
+    symbol: Joi.string().trim().max(20).required()
+  }),
+
+  investmentCompare: Joi.object({
+    symbols: Joi.array().items(Joi.string().trim().max(20)).min(2).max(3).required()
+  }),
+
+  investmentDcfCalculate: Joi.object({
+    revenue_growth_low: nullableNumber,
+    revenue_growth_medium: nullableNumber,
+    revenue_growth_high: nullableNumber,
+    profit_margin_low: nullableNumber,
+    profit_margin_medium: nullableNumber,
+    profit_margin_high: nullableNumber,
+    fcf_margin_low: nullableNumber,
+    fcf_margin_medium: nullableNumber,
+    fcf_margin_high: nullableNumber,
+    pe_low: nullableNumber,
+    pe_medium: nullableNumber,
+    pe_high: nullableNumber,
+    pfcf_low: nullableNumber,
+    pfcf_medium: nullableNumber,
+    pfcf_high: nullableNumber,
+    desired_return_low: nullableNumber,
+    desired_return_medium: nullableNumber,
+    desired_return_high: nullableNumber,
+    projection_years: Joi.number().integer().min(1).max(30).default(10)
+  }).unknown(false),
+
+  gamificationChallengeCreate: Joi.object({
+    key: Joi.string().trim().max(100).required(),
+    title: Joi.string().trim().max(255).required(),
+    description: nullableString(2000),
+    challengeType: Joi.string().trim().max(100),
+    metricType: Joi.string().trim().max(100),
+    targetValue: Joi.number(),
+    startDate: nullableDate,
+    endDate: nullableDate,
+    rewardPoints: Joi.number().integer().min(0),
+    isActive: Joi.boolean()
+  }).unknown(true),
+
+  adminAiSettings: Joi.object({
+    aiProvider: aiProviderSchema.allow('').required(),
+    aiApiKey: nullableString(4096),
+    aiApiUrl: nullableString(2048),
+    aiModel: nullableString(255),
+    aiClassifierEnabled: Joi.boolean().default(false),
+    aiClassifierProvider: aiProviderSchema.allow('', null),
+    aiClassifierApiKey: nullableString(4096),
+    aiClassifierApiUrl: nullableString(2048),
+    aiClassifierModel: nullableString(255)
+  }),
+
+  testimonialSubmit: Joi.object({
+    rating: Joi.number().integer().min(1).max(5).required(),
+    body: Joi.string().trim().max(2000).required(),
+    display_name: nullableString(100)
   })
 };
 
+schemas.trade = schemas.createTrade;
 schemas.bulkUpdateTrades = Joi.object({
   trades: Joi.array()
     .items(schemas.updateTrade.keys({

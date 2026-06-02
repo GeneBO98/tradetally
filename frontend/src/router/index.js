@@ -51,7 +51,12 @@ const router = createRouter({
       path: '/unsubscribe',
       name: 'unsubscribe',
       component: () => import('@/views/auth/UnsubscribeView.vue'),
-      meta: { guest: true }
+      meta: { public: true }
+    },
+    {
+      path: '/trial-feedback',
+      name: 'trial-feedback',
+      component: () => import('@/views/auth/TrialFeedbackView.vue')
     },
     {
       path: '/dashboard',
@@ -320,6 +325,12 @@ const router = createRouter({
       meta: { requiresAuth: true, requiresTier: 'pro' }
     },
     {
+      path: '/analysis/compare',
+      name: 'analysis-compare',
+      component: () => import('@/views/InvestmentsCompareView.vue'),
+      meta: { requiresAuth: true, requiresTier: 'pro' }
+    },
+    {
       path: '/analysis/analyze/:symbol',
       name: 'stock-analysis',
       component: () => import('@/views/StockAnalysisView.vue'),
@@ -347,6 +358,12 @@ const router = createRouter({
       path: '/price-alerts',
       name: 'price-alerts',
       component: () => import('@/views/PriceAlertsView.vue'),
+      meta: { requiresAuth: true, requiresTier: 'pro' }
+    },
+    {
+      path: '/web-mentions',
+      name: 'web-mentions',
+      component: () => import('@/views/WebMentionsView.vue'),
       meta: { requiresAuth: true, requiresTier: 'pro' }
     },
     {
@@ -405,12 +422,21 @@ router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
   const { registrationConfig, fetchRegistrationConfig, isClosedMode, isBillingEnabled, showSEOPages } = useRegistrationMode()
 
-  // Only block navigation when the route depends on registration/billing mode.
-  const requiresRegistrationMode = to.name === 'home' || to.meta.requiresOpen
+  // Block navigation when the route depends on registration/billing mode.
+  // Tier-gated routes must wait too, otherwise the guard can briefly assume
+  // billing is disabled and let the user reach a page the backend will 403.
+  const requiresRegistrationMode = to.name === 'home' || to.meta.requiresOpen || to.meta.requiresTier || to.meta.requiresAdmin
   if (requiresRegistrationMode && !registrationConfig.value) {
     await fetchRegistrationConfig()
   } else if (!registrationConfig.value) {
     fetchRegistrationConfig().catch(() => {})
+  }
+
+  // Authenticated users should never see the public root landing page,
+  // regardless of SaaS/private registration mode.
+  if (to.name === 'home' && authStore.isAuthenticated) {
+    next({ name: 'dashboard' })
+    return
   }
 
   // Handle billing enabled - when FALSE (default), redirect home to login and block public pages
@@ -519,7 +545,7 @@ router.beforeEach(async (to, from, next) => {
   }
 })
 
-// PostHog: identify user and track feature adoption on navigation (authenticated routes only)
+// PostHog: identify user and track navigation for both public and authenticated routes
 router.afterEach((to) => {
   const authStore = useAuthStore()
   const { identifyUser, trackPageView, trackFeatureUsage } = useAnalytics()
@@ -531,8 +557,14 @@ router.afterEach((to) => {
     })
   }
 
+  if (to.name) {
+    trackPageView(to.name, {
+      path: to.path,
+      requires_auth: to.meta.requiresAuth === true
+    })
+  }
+
   if (to.name && to.meta.requiresAuth) {
-    trackPageView(to.name, { path: to.path })
     trackFeatureUsage(to.name, { path: to.path })
   }
 })

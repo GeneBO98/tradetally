@@ -6,7 +6,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+cd "$SCRIPT_DIR/.."
 
 echo "[DEPLOY] Starting native deployment..."
 
@@ -16,22 +16,16 @@ git pull origin main
 
 # Install backend dependencies if package.json changed
 echo "[DEPLOY] Checking backend dependencies..."
-cd backend
-npm install --production
-cd ..
+pnpm install --filter tradetally-backend --prod --frozen-lockfile
 
 # Build frontend
 echo "[DEPLOY] Building frontend..."
-cd frontend
-npm install
-npm run build
-cd ..
+pnpm install --filter tradetally-frontend --frozen-lockfile
+pnpm --dir frontend run build
 
 # Run database migrations
 echo "[DEPLOY] Running database migrations..."
-cd backend
-npm run migrate
-cd ..
+pnpm --dir backend run migrate
 
 # Restart backend
 echo "[DEPLOY] Restarting backend..."

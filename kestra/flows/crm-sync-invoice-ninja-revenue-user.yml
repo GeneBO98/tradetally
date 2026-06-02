@@ -1,0 +1,37 @@
+id: tradetally_invoice_ninja_revenue_user_sync
+namespace: tradetally.crm
+
+description: >
+  Manual Invoice Ninja revenue backfill for a single TradeTally user.
+  Use this when the client record exists in Invoice Ninja but the paid invoice
+  was not mirrored from Stripe.
+
+inputs:
+  - id: user_id
+    type: STRING
+    description: TradeTally user ID to backfill into Invoice Ninja revenue records.
+
+tasks:
+  - id: crm_sync_status
+    type: io.kestra.plugin.core.http.Request
+    uri: "{{secret('TRADETALLY_API_BASE_URL')}}/api/internal/kestra/crm-sync/status"
+    method: GET
+    headers:
+      X-Internal-Service-Secret: "{{secret('KESTRA_INTERNAL_API_SECRET')}}"
+      X-Internal-Service-Name: "kestra"
+
+  - id: invoice_ninja_revenue_backfill
+    type: io.kestra.plugin.core.http.Request
+    uri: "{{secret('TRADETALLY_API_BASE_URL')}}/api/internal/kestra/crm-sync/users/{{ inputs.user_id }}/invoice-ninja/revenue"
+    method: POST
+    contentType: application/json
+    options:
+      readTimeout: PT10M
+    headers:
+      X-Internal-Service-Secret: "{{secret('KESTRA_INTERNAL_API_SECRET')}}"
+      X-Internal-Service-Name: "kestra"
+    body: |
+      {
+        "reason": "kestra_manual_invoice_ninja_revenue_backfill",
+        "userId": "{{ inputs.user_id }}"
+      }

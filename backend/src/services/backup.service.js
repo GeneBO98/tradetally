@@ -4,6 +4,43 @@ const path = require('path');
 const archiver = require('archiver');
 const { createWriteStream } = require('fs');
 
+function recomputeRestoredTradePnl(tradeData, timezone) {
+  const { computeTradePnl } = require('./pnlEngine');
+  let executions = tradeData.executions;
+  if (typeof executions === 'string') {
+    try { executions = JSON.parse(executions); } catch { executions = []; }
+  }
+  if (!Array.isArray(executions) || executions.length === 0) return tradeData;
+  if (!tradeData.side) return tradeData;
+
+  const instrumentType = tradeData.instrument_type || 'stock';
+  const result = computeTradePnl({
+    side: tradeData.side,
+    instrumentType,
+    contractSize: tradeData.contract_size ?? (instrumentType === 'option' ? 100 : null),
+    pointValue: tradeData.point_value ?? null,
+    fallbackCommission: tradeData.commission != null ? tradeData.commission : null,
+    fallbackFees: tradeData.fees != null ? tradeData.fees : null,
+    executions,
+    timezone: timezone || 'UTC'
+  });
+
+  return {
+    ...tradeData,
+    executions: result.annotatedExecutions,
+    entry_price: result.aggregate.entry_price ?? tradeData.entry_price,
+    exit_price: result.aggregate.exit_price ?? tradeData.exit_price,
+    quantity: result.aggregate.quantity > 0 ? result.aggregate.quantity : tradeData.quantity,
+    commission: result.aggregate.commission,
+    fees: result.aggregate.fees,
+    pnl: result.aggregate.pnl,
+    pnl_percent: result.aggregate.pnl_percent,
+    entry_time: result.aggregate.entry_time || tradeData.entry_time,
+    exit_time: result.aggregate.is_fully_closed ? result.aggregate.exit_time : (tradeData.exit_time || null),
+    trade_date: result.aggregate.trade_date || tradeData.trade_date
+  };
+}
+
 function maskEmail(email) {
   if (!email || !email.includes('@')) return '***';
   const [localPart, domain] = email.split('@');
@@ -17,8 +54,7 @@ function maskEmail(email) {
  */
 class BackupService {
   constructor() {
-    this.backupDir = path.resolve(__dirname, '../data/backups');
-    this.ensureBackupDirectory();
+    this.backupDir = path.resolve(process.env.BACKUP_DIR || path.join(__dirname, '../data/backups'));
   }
 
   resolveBackupPath(filePath) {
@@ -42,6 +78,7 @@ class BackupService {
       await fs.mkdir(this.backupDir, { recursive: true });
     } catch (error) {
       console.error('[BACKUP] Error creating backup directory:', error);
+      throw error;
     }
   }
 
@@ -53,6 +90,8 @@ class BackupService {
    */
   async createFullSiteBackup(userId, type = 'manual') {
     console.log(`[BACKUP] Starting full site backup (type: ${type})`);
+
+    await this.ensureBackupDirectory();
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const backupFileName = `tradetally-backup-${timestamp}.json`;
@@ -282,6 +321,57 @@ class BackupService {
     }
 
     return result.rows[0];
+  }
+
+  async getBackupHealth() {
+    const settings = await this.getBackupSettings();
+    const warnings = [];
+    const scheduleWindows = {
+      hourly: 2 * 60 * 60 * 1000,
+      daily: 2 * 24 * 60 * 60 * 1000,
+      weekly: 14 * 24 * 60 * 60 * 1000,
+      monthly: 62 * 24 * 60 * 60 * 1000
+    };
+
+    const schedulerEnabled = process.env.ENABLE_BACKUP_SCHEDULER !== 'false';
+    const localOnlyStorage = this.backupDir.includes('/backend/src/data/backups');
+    const health = {
+      scheduler_enabled: schedulerEnabled,
+      backups_enabled: Boolean(settings.enabled),
+      backup_dir: this.backupDir,
+      local_only_storage: localOnlyStorage,
+      last_backup: settings.last_backup || null,
+      status: 'OK',
+      warnings
+    };
+
+    if (!schedulerEnabled) {
+      warnings.push('Automatic backup scheduler is disabled by environment configuration.');
+    }
+
+    if (!settings.enabled) {
+      warnings.push('Backups are disabled in backup settings.');
+    }
+
+    if (!settings.last_backup) {
+      warnings.push('No successful backup has been recorded yet.');
+    } else {
+      const maxAge = scheduleWindows[settings.schedule] || scheduleWindows.daily;
+      const backupAgeMs = Date.now() - new Date(settings.last_backup).getTime();
+      if (backupAgeMs > maxAge) {
+        warnings.push(`Last backup is stale for the configured ${settings.schedule} schedule.`);
+      }
+    }
+
+    if (localOnlyStorage) {
+      warnings.push('Backups are stored on the app host filesystem only.');
+    }
+
+    if (warnings.length > 0) {
+      health.status = 'DEGRADED';
+    }
+
+    return health;
   }
 
   /**
@@ -530,14 +620,17 @@ class BackupService {
       // Restore trades with per-record fault tolerance
       // Uses per-record savepoints so one bad trade doesn't roll back all trades
       // ~3000 savepoints is well within PostgreSQL shared memory limits
+      const restoredUserIds = new Set();
       if (tables.trades && tables.trades.length > 0) {
         console.log(`[RESTORE] Processing ${tables.trades.length} trades...`);
 
         const excludeColumns = ['import_id', 'round_trip_id'];
         const validTradeCols = await getValidColumns('trades');
+        const tzCache = new Map();
+        const { getUserTimezone } = require('../utils/timezone');
 
         for (const trade of tables.trades) {
-          const tradeData = { ...trade };
+          let tradeData = { ...trade };
           if (userIdMapping.has(tradeData.user_id)) {
             tradeData.user_id = userIdMapping.get(tradeData.user_id);
           }
@@ -546,6 +639,13 @@ class BackupService {
             results.trades.skipped++;
             continue;
           }
+
+          let tz = tzCache.get(tradeData.user_id);
+          if (!tz) {
+            tz = await getUserTimezone(tradeData.user_id);
+            tzCache.set(tradeData.user_id, tz);
+          }
+          tradeData = recomputeRestoredTradePnl(tradeData, tz);
 
           const columns = [];
           const values = [];
@@ -575,6 +675,7 @@ class BackupService {
 
             if (insertResult.rows.length > 0) {
               results.trades.added++;
+              if (tradeData.user_id) restoredUserIds.add(tradeData.user_id);
             } else {
               results.trades.skipped++;
             }
@@ -590,6 +691,7 @@ class BackupService {
 
         console.log(`[RESTORE] Trades: ${results.trades.added} added, ${results.trades.skipped} skipped, ${results.trades.errors} errors`);
       }
+      this._restoredUserIds = restoredUserIds;
 
       // Restore diary entries with per-record fault tolerance
       const diaryEntriesData = getTableData('diaryEntries', 'diary_entries');
@@ -908,6 +1010,18 @@ class BackupService {
           .map(([name, r]) => `${name}: ${r.errors}`)
           .join(', ');
         message += ` [${totalErrors} errors in: ${errorTables}]`;
+      }
+
+      if (this._restoredUserIds && this._restoredUserIds.size > 0) {
+        const AnalyticsCache = require('./analyticsCache');
+        for (const uid of this._restoredUserIds) {
+          try {
+            await AnalyticsCache.invalidate(uid);
+          } catch (cacheErr) {
+            console.warn(`[RESTORE] AnalyticsCache invalidation failed for ${uid}: ${cacheErr.message}`);
+          }
+        }
+        this._restoredUserIds.clear();
       }
 
       return {

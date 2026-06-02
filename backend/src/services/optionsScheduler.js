@@ -3,6 +3,7 @@ const db = require('../config/database');
 class OptionsScheduler {
   constructor() {
     this.interval = null;
+    this.initialRunTimeout = null;
   }
 
   async closeExpiredOptions() {
@@ -101,16 +102,22 @@ class OptionsScheduler {
     console.log('[OPTIONS SCHEDULER] Starting options scheduler...');
 
     // Run immediately on startup to catch any options that expired while server was down
-    setTimeout(async () => {
+    this.initialRunTimeout = setTimeout(async () => {
       console.log('[OPTIONS SCHEDULER] Running initial expired options check on startup');
       await this.closeExpiredOptions();
     }, 5000); // Wait 5 seconds after startup
+    if (typeof this.initialRunTimeout.unref === 'function') {
+      this.initialRunTimeout.unref();
+    }
 
     // Run every hour to catch newly expired options
     this.interval = setInterval(async () => {
       console.log('[OPTIONS SCHEDULER] Running scheduled expired options closure');
       await this.closeExpiredOptions();
     }, 60 * 60 * 1000); // 1 hour
+    if (typeof this.interval.unref === 'function') {
+      this.interval.unref();
+    }
 
     console.log('[OPTIONS SCHEDULER] Scheduler started - will run every hour');
   }
@@ -120,6 +127,10 @@ class OptionsScheduler {
       clearInterval(this.interval);
       this.interval = null;
       console.log('[OPTIONS SCHEDULER] Scheduler stopped');
+    }
+    if (this.initialRunTimeout) {
+      clearTimeout(this.initialRunTimeout);
+      this.initialRunTimeout = null;
     }
   }
 

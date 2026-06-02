@@ -58,4 +58,23 @@ describe('backup service hardening', () => {
     );
     expect(db.query).not.toHaveBeenCalled();
   });
+
+  test('createFullSiteBackup ensures backup directory before writing file', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [{
+          id: 'backup-1',
+          filename: 'backup.json',
+          file_path: path.join(backupService.backupDir, 'backup.json'),
+          status: 'completed'
+        }]
+      });
+
+    await backupService.createFullSiteBackup('user-1', 'manual');
+
+    expect(fs.mkdir).toHaveBeenCalledWith(backupService.backupDir, { recursive: true });
+    expect(fs.writeFile).toHaveBeenCalledTimes(1);
+    expect(fs.mkdir.mock.invocationCallOrder[0]).toBeLessThan(fs.writeFile.mock.invocationCallOrder[0]);
+  });
 });

@@ -53,25 +53,29 @@
                                 class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
                             />
                         </div>
-                        <select
-                            v-model="statusFilter"
-                            @change="loadMappings(1)"
-                            class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
-                        >
-                            <option value="">All Status</option>
-                            <option value="mapped">Mapped</option>
-                            <option value="unmapped">Unmapped</option>
-                        </select>
-                        <select
-                            v-model="sourceFilter"
-                            @change="loadMappings(1)"
-                            class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
-                        >
-                            <option value="">All Sources</option>
-                            <option value="finnhub">Finnhub</option>
-                            <option value="ai">AI</option>
-                            <option value="manual">Manual</option>
-                        </select>
+                        <div class="min-w-40">
+                            <BaseSelect
+                                v-model="statusFilter"
+                                @change="loadMappings(1)"
+                                placeholder="All Status"
+                                :options="[
+                                    { value: 'mapped', label: 'Mapped' },
+                                    { value: 'unmapped', label: 'Unmapped' }
+                                ]"
+                            />
+                        </div>
+                        <div class="min-w-40">
+                            <BaseSelect
+                                v-model="sourceFilter"
+                                @change="loadMappings(1)"
+                                placeholder="All Sources"
+                                :options="[
+                                    { value: 'finnhub', label: 'Finnhub' },
+                                    { value: 'ai', label: 'AI' },
+                                    { value: 'manual', label: 'Manual' }
+                                ]"
+                            />
+                        </div>
                         <button
                             @click="loadMappings(1)"
                             :disabled="loading"
@@ -417,9 +421,10 @@ import {
     PencilIcon,
     TrashIcon,
 } from "@heroicons/vue/24/outline";
+import { useAuthStore } from "@/stores/auth";
 import { useNotification } from "@/composables/useNotification";
-import api from "@/services/api";
 import CusipMappingModal from "./CusipMappingModal.vue";
+import BaseSelect from "@/components/common/BaseSelect.vue";
 // Simple debounce implementation to avoid lodash-es dependency
 const debounce = (func, wait) => {
     let timeout;
@@ -442,6 +447,7 @@ const props = defineProps({
 
 const emit = defineEmits(["close", "mappingChanged"]);
 
+const authStore = useAuthStore();
 const { showDangerConfirmation } = useNotification();
 
 // Component state
@@ -471,28 +477,38 @@ const loadMappings = async (page = 1) => {
         else if (statusFilter.value === "unmapped")
             params.append("verified", "false");
 
-        console.log("API request URL:", `/cusip-mappings?${params}`);
+        console.log("API request URL:", `/api/cusip-mappings?${params}`);
 
         // Get all CUSIPs (mapped and unmapped) from the main API
-        const response = await api.get("/cusip-mappings", {
-            params: Object.fromEntries(params),
-        });
+        const response = await fetch(`/api/cusip-mappings?${params}`);
 
         console.log("API response status:", response.status);
-        console.log("API response data:", response.data);
 
-        // Apply status filter on frontend since backend doesn't handle it directly
-        let filteredMappings = response.data.data || [];
+        if (response.ok) {
+            const data = await response.json();
+            console.log("API response data:", data);
 
-        if (statusFilter.value === "mapped") {
-            filteredMappings = filteredMappings.filter((m) => m.ticker);
-        } else if (statusFilter.value === "unmapped") {
-            filteredMappings = filteredMappings.filter((m) => !m.ticker);
+            // Apply status filter on frontend since backend doesn't handle it directly
+            let filteredMappings = data.data || [];
+
+            if (statusFilter.value === "mapped") {
+                filteredMappings = filteredMappings.filter((m) => m.ticker);
+            } else if (statusFilter.value === "unmapped") {
+                filteredMappings = filteredMappings.filter((m) => !m.ticker);
+            }
+
+            console.log("Setting mappings:", filteredMappings.length, "items");
+            mappings.value = filteredMappings;
+            pagination.value = data.pagination;
+        } else {
+            const errorText = await response.text();
+            console.error(
+                "Failed to load mappings:",
+                response.status,
+                response.statusText,
+                errorText,
+            );
         }
-
-        console.log("Setting mappings:", filteredMappings.length, "items");
-        mappings.value = filteredMappings;
-        pagination.value = response.data.pagination;
     } catch (error) {
         console.error("Error loading mappings:", error);
     } finally {
@@ -513,9 +529,18 @@ const debouncedSearch = debounce(() => {
 
 const verifyMapping = async (cusip) => {
     try {
-        await api.patch(`/cusip-mappings/${cusip}/verify`, { verified: true });
-        await loadMappings(pagination.value?.page || 1);
-        emit("mappingChanged");
+            const response = await fetch(`/api/cusip-mappings/${cusip}/verify`, {
+                method: "PATCH",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ verified: true }),
+            });
+
+        if (response.ok) {
+            await loadMappings(pagination.value?.page || 1);
+            emit("mappingChanged");
+        }
     } catch (error) {
         console.error("Error verifying mapping:", error);
     }
@@ -531,9 +556,14 @@ const deleteMapping = (cusip) => {
         "Delete this user override? This will revert to the global mapping if one exists.",
         async () => {
             try {
-                await api.delete(`/cusip-mappings/${cusip}`);
-                await loadMappings(pagination.value?.page || 1);
-                emit("mappingChanged");
+                const response = await fetch(`/api/cusip-mappings/${cusip}`, {
+                    method: "DELETE",
+                });
+
+                if (response.ok) {
+                    await loadMappings(pagination.value?.page || 1);
+                    emit("mappingChanged");
+                }
             } catch (error) {
                 console.error("Error deleting mapping:", error);
             }

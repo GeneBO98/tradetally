@@ -44,20 +44,13 @@
 
                 <div class="flex items-start justify-between">
                     <div class="flex items-center">
-                        <img
-                            v-if="profile?.logo"
-                            :src="profile.logo"
-                            :alt="holding.symbol"
-                            class="w-16 h-16 rounded-lg mr-4"
+                        <StockLogo
+                            :symbol="holding.symbol"
+                            :logo-url="profile?.logo"
+                            size-class="w-16 h-16"
+                            fallback-text-class="text-xl font-bold"
+                            class="mr-4"
                         />
-                        <div
-                            v-else
-                            class="w-16 h-16 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center mr-4"
-                        >
-                            <span class="text-xl font-bold text-gray-500">{{
-                                holding.symbol.slice(0, 2)
-                            }}</span>
-                        </div>
                         <div>
                             <h1 class="heading-page">{{ holding.symbol }}</h1>
                             <p
@@ -87,6 +80,12 @@
                             class="btn-secondary"
                         >
                             Record Dividend
+                        </button>
+                        <button
+                            @click="createWebMentionRule"
+                            class="btn-secondary"
+                        >
+                            Web Mentions
                         </button>
                         <button
                             @click="confirmDelete"
@@ -585,6 +584,7 @@ import { format, parseISO } from "date-fns";
 import EightPillarsCard from "@/components/investments/EightPillarsCard.vue";
 import AddLotModal from "@/components/investments/AddLotModal.vue";
 import RecordDividendModal from "@/components/investments/RecordDividendModal.vue";
+import StockLogo from "@/components/common/StockLogo.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -746,6 +746,16 @@ async function deleteHolding() {
     } catch (err) {
         console.error("Failed to delete holding:", err);
     }
+}
+
+function createWebMentionRule() {
+    if (!holding.value) return;
+    router.push({
+        name: "web-mentions",
+        query: {
+            symbol: holding.value.symbol,
+        },
+    });
 }
 
 async function onLotCreated() {

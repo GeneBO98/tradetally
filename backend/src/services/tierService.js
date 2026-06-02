@@ -1,6 +1,6 @@
 const User = require('../models/User');
 const db = require('../config/database');
-const { getTierLimits, hasReachedLimit, getRemainingQuota, PRICING } = require('../config/tierLimits');
+const { getTierLimits, hasReachedLimit, getRemainingQuota, PRICING, BROKER_SYNC_ACCESS } = require('../config/tierLimits');
 
 class TierService {
   // Cache for environment-based billing override so we only log once per process
@@ -300,6 +300,102 @@ class TierService {
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // Broker sync access (Pro feature)
+  //
+  // Broker sync is Pro-only. Without billing (self-hosted) everyone is 'pro',
+  // so these all allow. On cloud, free users are gated: they cannot create new
+  // connections, and existing connections keep syncing only until the grace
+  // cutoff (BROKER_SYNC_ACCESS.graceEndsAt) to avoid rug-pulling early users.
+  // ---------------------------------------------------------------------------
+
+  static _brokerSyncGraceEndsAt() {
+    return new Date(BROKER_SYNC_ACCESS.graceEndsAt);
+  }
+
+  // Can the user connect a NEW broker? Pro-only, no grace period on creation.
+  static async canCreateBrokerConnection(userId, hostHeader = null) {
+    const billingEnabled = await this.isBillingEnabled(hostHeader);
+    if (!billingEnabled) {
+      return { allowed: true };
+    }
+
+    const tier = await this.getUserTier(userId, hostHeader);
+    if (tier === 'pro') {
+      return { allowed: true, tier };
+    }
+
+    return {
+      allowed: false,
+      tier,
+      code: 'PRO_FEATURE_REQUIRED',
+      feature: 'broker_sync',
+      requiredTier: 'pro',
+      message: 'Broker sync is a Pro feature. Upgrade to Pro to connect your brokerage and import trades automatically.'
+    };
+  }
+
+  // Can the user SYNC an existing connection? Pro-only, but free users with an
+  // existing connection keep syncing until the grace cutoff.
+  static async canSyncBrokerConnection(userId, hostHeader = null) {
+    const billingEnabled = await this.isBillingEnabled(hostHeader);
+    if (!billingEnabled) {
+      return { allowed: true };
+    }
+
+    const tier = await this.getUserTier(userId, hostHeader);
+    if (tier === 'pro') {
+      return { allowed: true, tier };
+    }
+
+    const graceEndsAt = this._brokerSyncGraceEndsAt();
+    const inGracePeriod = new Date() < graceEndsAt;
+
+    if (inGracePeriod) {
+      return { allowed: true, tier, inGracePeriod: true, graceEndsAt: graceEndsAt.toISOString() };
+    }
+
+    return {
+      allowed: false,
+      tier,
+      inGracePeriod: false,
+      graceEndsAt: graceEndsAt.toISOString(),
+      code: 'PRO_FEATURE_REQUIRED',
+      feature: 'broker_sync',
+      requiredTier: 'pro',
+      message: 'Broker sync is now a Pro feature. Upgrade to Pro to resume automatic syncing, or use CSV import.'
+    };
+  }
+
+  // Combined broker-sync access status for the frontend (drives gating + grace banner).
+  static async getBrokerSyncAccess(userId, hostHeader = null) {
+    const billingEnabled = await this.isBillingEnabled(hostHeader);
+    if (!billingEnabled) {
+      return {
+        isPro: true,
+        billingEnabled: false,
+        canCreate: true,
+        canSync: true,
+        inGracePeriod: false,
+        graceEndsAt: null
+      };
+    }
+
+    const tier = await this.getUserTier(userId, hostHeader);
+    const isPro = tier === 'pro';
+    const graceEndsAt = this._brokerSyncGraceEndsAt();
+    const inGracePeriod = !isPro && new Date() < graceEndsAt;
+
+    return {
+      isPro,
+      billingEnabled: true,
+      canCreate: isPro,
+      canSync: isPro || inGracePeriod,
+      inGracePeriod,
+      graceEndsAt: graceEndsAt.toISOString()
+    };
+  }
+
   // Get user's current usage statistics
   static async getUserUsageStats(userId) {
     const tier = await this.getUserTier(userId);
@@ -380,6 +476,7 @@ class TierService {
         interval: 'month',
         features: [
           'Unlimited batch imports',
+          'Automatic broker sync (IBKR, Schwab, TradeStation, Alpaca)',
           'Financial news feed + upcoming earnings',
           'All advanced analytics (SQN, Kelly, MAE/MFE, K-ratio, sector breakdowns, time-of-day)',
           'Behavioral analytics suite (revenge trading, loss aversion, personality typing)',

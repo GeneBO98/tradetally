@@ -8,8 +8,7 @@ const db = require('../config/database');
 const imageProcessor = require('../utils/imageProcessor');
 const path = require('path');
 const fs = require('fs').promises;
-const { verifyJwtToken } = require('../middleware/auth');
-const { hasDisabledQueryToken, queryToken } = require('../utils/requestAuthToken');
+const { verifyJwtToken, TOKEN_PURPOSES } = require('../middleware/auth');
 
 
 // Get diary entries for user with filtering and pagination
@@ -345,19 +344,12 @@ const getDiaryImage = async (req, res) => {
       return res.status(400).json({ error: 'Invalid filename' });
     }
 
-    // Check if token is provided as query parameter (for direct image access)
+    // Check if token is provided as query parameter (for direct image access).
+    // Require an access-purpose JWT so pre_2fa temp tokens cannot unlock diary images.
     let user = req.user;
-    if (!user && hasDisabledQueryToken(req)) {
-      return res.status(401).json({
-        error: 'Query-string token auth is disabled',
-        code: 'QUERY_TOKEN_DISABLED'
-      });
-    }
-
-    const imageQueryToken = queryToken(req);
-    if (!user && imageQueryToken) {
+    if (!user && req.query.token) {
       try {
-        const decoded = verifyJwtToken(imageQueryToken);
+        const decoded = verifyJwtToken(req.query.token, { requiredPurpose: TOKEN_PURPOSES.ACCESS });
         user = { id: decoded.id };
       } catch (error) {
         return res.status(401).json({ error: 'Invalid token' });

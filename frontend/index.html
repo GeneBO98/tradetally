@@ -19,24 +19,83 @@
     <meta property="og:description" content="Free open-source trading journal and investment tracker. Auto-sync Schwab and IBKR, stock analyzer, real-time holdings P&L, AI insights.">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://tradetally.io">
-    <meta property="og:image" content="https://tradetally.io/tradetally-banner.svg">
+    <meta property="og:image" content="https://tradetally.io/social-preview.png">
+    <meta property="og:image:secure_url" content="https://tradetally.io/social-preview.png">
+    <meta property="og:image:type" content="image/png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
     <meta property="og:image:alt" content="TradeTally Trading Journal Platform">
     <meta property="og:site_name" content="TradeTally">
     <meta property="og:locale" content="en_US">
 
     <!-- Twitter Card Meta Tags -->
     <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:site" content="@TradeTallyIO">
+    <meta name="twitter:creator" content="@TradeTallyIO">
     <meta name="twitter:title" content="TradeTally - Free Trading Journal and Investment Tracker">
     <meta name="twitter:description" content="Free open-source trading journal and investment tracker. Auto-sync Schwab and IBKR, stock analyzer, real-time holdings P&L, AI insights.">
-    <meta name="twitter:image" content="https://tradetally.io/tradetally-banner.svg">
+    <meta name="twitter:image" content="https://tradetally.io/social-preview.png">
+    <meta name="twitter:image:alt" content="TradeTally Trading Journal Platform">
+    <link rel="me" href="https://x.com/TradeTallyIO">
 
     <!-- Additional SEO Meta Tags -->
     <meta name="application-name" content="TradeTally">
     <meta name="theme-color" content="#3B82F6">
     <meta name="format-detection" content="telephone=no">
 
-    <link rel="stylesheet" href="/app-shell.css">
-    <script src="/app-bootstrap.js"></script>
+    <!-- iOS Smart App Banner (renders natively in iOS Safari) -->
+    <meta name="apple-itunes-app" content="app-id=6748022992">
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": "TradeTally",
+        "url": "https://tradetally.io",
+        "logo": "https://tradetally.io/apple-touch-icon.png",
+        "sameAs": [
+          "https://x.com/TradeTallyIO",
+          "https://github.com/GeneBO98/tradetally"
+        ]
+      }
+    </script>
+
+    <!-- Loader is shown for JS-enabled browsers until Vue mounts -->
+    <style>
+      /* Loading spinner while Vue bootstraps */
+      #app-loading{display:none;justify-content:center;align-items:center;min-height:100vh;background:#fff}
+      #app-loading .spinner{width:3rem;height:3rem;border:3px solid #e5e7eb;border-top-color:#2563eb;border-radius:50%;animation:tt-spin 0.7s linear infinite}
+      @keyframes tt-spin{to{transform:rotate(360deg)}}
+      @media(prefers-color-scheme:dark){#app-loading{background:#111827}#app-loading .spinner{border-color:#374151;border-top-color:#3b82f6}}
+      /* If JS is enabled, hide static fallback and show loader immediately */
+      .tt-js #app-loading{display:flex}
+      .tt-js #app-fallback{display:none}
+
+      #app-fallback{max-width:72rem;margin:0 auto;padding:4rem 1rem;text-align:center;font-family:system-ui,-apple-system,sans-serif}
+      #app-fallback h1{font-size:2.25rem;font-weight:800;color:#111827;line-height:1.2;margin:0 0 1.25rem}
+      #app-fallback .hero-sub{font-size:1.25rem;color:#6b7280;line-height:1.75;max-width:48rem;margin:0 auto}
+      #app-fallback .hero-cta{margin-top:2rem;display:flex;justify-content:center;gap:1rem}
+      #app-fallback .hero-cta a{display:inline-block;padding:0.75rem 2rem;border-radius:0.5rem;font-weight:600;font-size:1.125rem;text-decoration:none}
+      #app-fallback .hero-cta a:first-child{background:#2563eb;color:#fff}
+      #app-fallback .hero-cta a:last-child{background:#f3f4f6;color:#374151}
+      #app-fallback .seo-sections{display:block;margin-top:2.5rem;text-align:left}
+      #app-fallback .seo-sections section{max-width:54rem;margin:0 auto 1rem;padding:1rem 1.25rem;background:#f9fafb;border:1px solid #e5e7eb;border-radius:0.75rem}
+      #app-fallback .seo-sections h2{margin:0 0 0.5rem;color:#111827;font-size:1.25rem}
+      #app-fallback .seo-sections p{margin:0;color:#4b5563;line-height:1.65}
+      #app-fallback .seo-sections nav{margin-top:0.75rem;display:flex;flex-wrap:wrap;gap:0.75rem}
+      #app-fallback .seo-sections a{color:#1d4ed8;text-decoration:none}
+      #app-fallback .seo-sections a:hover{text-decoration:underline}
+    </style>
+    <!-- Mark JS-enabled clients before body paint -->
+    <script>
+      try {
+        document.documentElement.classList.add('tt-js')
+        if (localStorage.getItem('token')) {
+          document.documentElement.classList.add('tt-has-token')
+        }
+      } catch (e) {
+        document.documentElement.classList.add('tt-js')
+      }
+    </script>
   </head>
   <body>
     <div id="app">
@@ -80,6 +139,7 @@
             <a href="/faq">FAQ</a>
             <a href="/privacy">Privacy Policy</a>
             <a href="/public">Public Trades</a>
+            <a href="https://x.com/TradeTallyIO" target="_blank" rel="me noopener noreferrer">TradeTally on X</a>
             <a href="/login">Login</a>
             <a href="/register">Create Account</a>
           </nav>
@@ -102,6 +162,7 @@
       </main>
       </div>
     </div>
+    <script src="/runtime-config.js"></script>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

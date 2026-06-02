@@ -1,6 +1,30 @@
 const finnhub = require('./finnhub');
+const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('./futuresUtils');
 
 class MAEEstimator {
+  /**
+   * Resolve per-unit dollar multiplier for a trade.
+   * Futures: point_value (looked up by underlying if missing).
+   * Options: contract_size (default 100).
+   * Stocks: 1.
+   */
+  static resolveMultiplier(trade) {
+    const instrumentType = trade.instrument_type || 'stock';
+
+    if (instrumentType === 'future') {
+      const stored = parseFloat(trade.point_value);
+      if (isFinite(stored) && stored > 0) return stored;
+      const underlying = trade.underlying_asset || extractUnderlyingFromFuturesSymbol(trade.symbol);
+      return getFuturesPointValue(underlying);
+    }
+
+    if (instrumentType === 'option') {
+      const size = parseFloat(trade.contract_size);
+      return isFinite(size) && size > 0 ? size : 100;
+    }
+
+    return 1;
+  }
   /**
    * Estimate MAE and MFE for multiple trades using historical data
    * @param {Array} trades - Array of trade objects
@@ -63,21 +87,27 @@ class MAEEstimator {
    */
   static async calculateFromCandleData(trade) {
     const { symbol, entry_time, exit_time, entry_price, exit_price, side, pnl, commission, fees } = trade;
-    
-    // Calculate quantity from P&L since stored quantity is 0
-    const priceMove = side === 'long' ? 
+
+    const multiplier = this.resolveMultiplier(trade);
+
+    // Calculate quantity from P&L since stored quantity may be 0.
+    // P&L = priceMove * quantity * multiplier, so quantity = netPnl / (priceMove * multiplier).
+    const priceMove = side === 'long' ?
       (parseFloat(exit_price) - parseFloat(entry_price)) :
       (parseFloat(entry_price) - parseFloat(exit_price));
-    
+
     const netPnl = parseFloat(pnl) + parseFloat(commission || 0) + parseFloat(fees || 0);
-    const quantity = Math.abs(netPnl / priceMove);
-    
-    console.log(`Calculated quantity for ${symbol}: ${quantity} (P&L: ${pnl}, price move: ${priceMove})`);
-    
+    const storedQuantity = parseFloat(trade.quantity);
+    const quantity = isFinite(storedQuantity) && storedQuantity > 0
+      ? storedQuantity
+      : Math.abs(netPnl / (priceMove * multiplier));
+
+    console.log(`Calculated quantity for ${symbol}: ${quantity} (P&L: ${pnl}, price move: ${priceMove}, multiplier: ${multiplier})`);
+
     if (!quantity || quantity <= 0 || !isFinite(quantity)) {
       throw new Error(`Invalid calculated quantity: ${quantity}`);
     }
-    
+
     const resolution = this.getResolutionForTrade(entry_time, exit_time);
     const from = Math.floor(new Date(entry_time).getTime() / 1000);
     const to = Math.floor(new Date(exit_time).getTime() / 1000);
@@ -104,10 +134,79 @@ class MAEEstimator {
       }
     }
 
-    const mae = Math.abs((worstPrice - parseFloat(entry_price)) * quantity);
-    const mfe = Math.abs((bestPrice - parseFloat(entry_price)) * quantity);
+    const mae = Math.abs((worstPrice - parseFloat(entry_price)) * quantity * multiplier);
+    const mfe = Math.abs((bestPrice - parseFloat(entry_price)) * quantity * multiplier);
 
     return { mae, mfe };
+  }
+
+  static resolveQuantity(trade) {
+    const { entry_price, exit_price, side, pnl, commission, fees } = trade;
+    const multiplier = this.resolveMultiplier(trade);
+    const priceMove = side === 'long' ?
+      (parseFloat(exit_price) - parseFloat(entry_price)) :
+      (parseFloat(entry_price) - parseFloat(exit_price));
+
+    const netPnl = parseFloat(pnl) + parseFloat(commission || 0) + parseFloat(fees || 0);
+    const storedQuantity = parseFloat(trade.quantity);
+    const quantity = isFinite(storedQuantity) && storedQuantity > 0
+      ? storedQuantity
+      : Math.abs(netPnl / (priceMove * multiplier));
+
+    if (!quantity || quantity <= 0 || !isFinite(quantity)) {
+      throw new Error(`Invalid calculated quantity: ${quantity}`);
+    }
+
+    return { quantity, multiplier };
+  }
+
+  static calculateExcursionsFromCandles(trade, candles) {
+    const { entry_price, side } = trade;
+    const { quantity, multiplier } = this.resolveQuantity(trade);
+
+    let worstPrice = parseFloat(entry_price);
+    let bestPrice = parseFloat(entry_price);
+
+    for (let i = 0; i < candles.c.length; i++) {
+      const high = candles.h[i];
+      const low = candles.l[i];
+
+      if (side === 'long') {
+        worstPrice = Math.min(worstPrice, low);
+        bestPrice = Math.max(bestPrice, high);
+      } else {
+        worstPrice = Math.max(worstPrice, high);
+        bestPrice = Math.min(bestPrice, low);
+      }
+    }
+
+    return {
+      mae: Math.abs((worstPrice - parseFloat(entry_price)) * quantity * multiplier),
+      mfe: Math.abs((bestPrice - parseFloat(entry_price)) * quantity * multiplier)
+    };
+  }
+
+  static async calculatePostExitFromCandleData(trade, windowEnd) {
+    if (!windowEnd || isNaN(new Date(windowEnd))) {
+      throw new Error('Invalid post-exit window end');
+    }
+
+    const resolution = this.getResolutionForTrade(trade.entry_time, windowEnd);
+    const from = Math.floor(new Date(trade.entry_time).getTime() / 1000);
+    const to = Math.floor(new Date(windowEnd).getTime() / 1000);
+
+    if (to <= from) {
+      throw new Error('Post-exit window must end after entry time');
+    }
+
+    const candles = await finnhub.getCandles(trade.symbol, resolution, from, to);
+
+    if (!candles || candles.c.length === 0) {
+      throw new Error('No candle data returned from Finnhub');
+    }
+
+    const { mae, mfe } = this.calculateExcursionsFromCandles(trade, candles);
+    return { post_exit_mae: mae, post_exit_mfe: mfe };
   }
 
   /**
@@ -117,48 +216,55 @@ class MAEEstimator {
    */
   static calculateSimpleEstimation(trade) {
     const { entry_price, exit_price, side, pnl, commission, fees } = trade;
-    
-    // Calculate quantity from P&L
-    const priceMove = side === 'long' ? 
+
+    const multiplier = this.resolveMultiplier(trade);
+
+    // P&L = priceMove * quantity * multiplier, so quantity = netPnl / (priceMove * multiplier).
+    const priceMove = side === 'long' ?
       (parseFloat(exit_price) - parseFloat(entry_price)) :
       (parseFloat(entry_price) - parseFloat(exit_price));
-    
+
     const netPnl = parseFloat(pnl) + parseFloat(commission || 0) + parseFloat(fees || 0);
-    const quantity = Math.abs(netPnl / priceMove);
-    
+    const storedQuantity = parseFloat(trade.quantity);
+    const quantity = isFinite(storedQuantity) && storedQuantity > 0
+      ? storedQuantity
+      : Math.abs(netPnl / (priceMove * multiplier));
+
     if (!quantity || quantity <= 0 || !isFinite(quantity)) {
       throw new Error(`Invalid calculated quantity: ${quantity}`);
     }
-    
+
     const entryPrice = parseFloat(entry_price);
     const exitPrice = parseFloat(exit_price);
     const grossPnl = parseFloat(pnl);
-    
-    // Simple estimation based on price movement and trade outcome
+
+    // Simple estimation based on price movement and trade outcome.
+    // All "price * quantity" terms are multiplied by `multiplier` so dollar
+    // amounts are correct for futures (point_value) and options (contract_size).
     let mae, mfe;
-    
+
     if (side === 'long') {
       if (grossPnl >= 0) {
         // Winning long trade - estimate MAE as small retracement
-        mae = Math.abs(entryPrice * 0.02 * quantity); // 2% retracement
-        mfe = Math.abs((exitPrice - entryPrice) * quantity * 1.1); // 10% overshoot
+        mae = Math.abs(entryPrice * 0.02 * quantity * multiplier); // 2% retracement
+        mfe = Math.abs((exitPrice - entryPrice) * quantity * multiplier * 1.1); // 10% overshoot
       } else {
         // Losing long trade - exit was likely near the worst
         mae = Math.abs(grossPnl);
-        mfe = Math.abs(entryPrice * 0.01 * quantity); // 1% favorable move
+        mfe = Math.abs(entryPrice * 0.01 * quantity * multiplier); // 1% favorable move
       }
     } else {
       if (grossPnl >= 0) {
         // Winning short trade
-        mae = Math.abs(entryPrice * 0.02 * quantity); // 2% adverse move
-        mfe = Math.abs((entryPrice - exitPrice) * quantity * 1.1); // 10% overshoot
+        mae = Math.abs(entryPrice * 0.02 * quantity * multiplier); // 2% adverse move
+        mfe = Math.abs((entryPrice - exitPrice) * quantity * multiplier * 1.1); // 10% overshoot
       } else {
         // Losing short trade
         mae = Math.abs(grossPnl);
-        mfe = Math.abs(entryPrice * 0.01 * quantity); // 1% favorable move
+        mfe = Math.abs(entryPrice * 0.01 * quantity * multiplier); // 1% favorable move
       }
     }
-    
+
     return { mae, mfe };
   }
 

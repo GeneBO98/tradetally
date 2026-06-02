@@ -6,10 +6,21 @@
 const BrokerConnection = require('../models/BrokerConnection');
 const ibkrService = require('../services/brokerSync/ibkrService');
 const schwabService = require('../services/brokerSync/schwabService');
+const tradestationService = require('../services/brokerSync/tradestationService');
+const alpacaService = require('../services/brokerSync/alpacaService');
 const brokerSyncService = require('../services/brokerSync');
+const TierService = require('../services/tierService');
 const AnalyticsCache = require('../services/analyticsCache');
-const cache = require('../utils/cache');
 const logger = require('../utils/logger');
+const db = require('../config/database');
+const crypto = require('crypto');
+
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+const OAUTH_BROKER_SERVICES = {
+  tradestation: tradestationService,
+  alpaca: alpacaService
+};
 
 function redactAccountNumber(accountNumber) {
   if (!accountNumber) return null;
@@ -18,13 +29,16 @@ function redactAccountNumber(accountNumber) {
   return `****${value.slice(-4)}`;
 }
 
-// Helper function to invalidate in-memory analytics cache for a user
-function invalidateInMemoryCache(userId) {
-  const cacheKeys = Object.keys(cache.data || {}).filter(key =>
-    key.startsWith(`analytics:user_${userId}:`)
-  );
-  cacheKeys.forEach(key => cache.del(key));
-  console.log(`[BROKER-SYNC] Invalidated ${cacheKeys.length} in-memory analytics cache entries for user ${userId}`);
+// Send a consistent 403 when a free user hits a Pro-only broker-sync action.
+function sendProRequired(res, check) {
+  return res.status(403).json({
+    success: false,
+    error: check.message,
+    code: check.code || 'PRO_FEATURE_REQUIRED',
+    feature: check.feature || 'broker_sync',
+    requiredTier: 'pro',
+    currentTier: check.tier
+  });
 }
 
 const brokerSyncController = {
@@ -35,10 +49,12 @@ const brokerSyncController = {
     try {
       const userId = req.user.id;
       const connections = await BrokerConnection.findByUserId(userId);
+      const access = await TierService.getBrokerSyncAccess(userId, req.headers?.host);
 
       res.json({
         success: true,
-        data: connections
+        data: connections,
+        access
       });
     } catch (error) {
       logger.logError('Error fetching broker connections:', error);
@@ -96,13 +112,21 @@ const brokerSyncController = {
   async addIBKRConnection(req, res, next) {
     try {
       const userId = req.user.id;
+
+      // Broker sync is a Pro feature
+      const access = await TierService.canCreateBrokerConnection(userId, req.headers?.host);
+      if (!access.allowed) {
+        return sendProRequired(res, access);
+      }
+
       const {
         flexToken,
         flexQueryId,
         accountLabel = '',
         autoSyncEnabled = false,
         syncFrequency = 'daily',
-        syncTime = '06:00:00'
+        syncTime = '06:00:00',
+        syncStartDate = null
       } = req.body;
 
       // Validate required fields
@@ -132,7 +156,8 @@ const brokerSyncController = {
         accountLabel: accountLabel || null,
         autoSyncEnabled,
         syncFrequency,
-        syncTime
+        syncTime,
+        syncStartDate
       });
 
       // Update status to active after validation
@@ -169,6 +194,12 @@ const brokerSyncController = {
     try {
       const userId = req.user.id;
 
+      // Broker sync is a Pro feature
+      const access = await TierService.canCreateBrokerConnection(userId, req.headers?.host);
+      if (!access.allowed) {
+        return sendProRequired(res, access);
+      }
+
       // Check if Schwab OAuth is configured
       if (!process.env.SCHWAB_CLIENT_ID || !process.env.SCHWAB_CLIENT_SECRET) {
         return res.status(503).json({
@@ -177,13 +208,17 @@ const brokerSyncController = {
         });
       }
 
-      // Generate state token for CSRF protection
-      const crypto = require('crypto');
-      const state = crypto.randomBytes(32).toString('hex');
+      // Generate a random state token and persist it server-side. The callback
+      // looks up the row to recover the initiating userId — never trusting the
+      // client-supplied state blob (which was forgeable in the legacy design).
+      const stateToken = crypto.randomBytes(32).toString('hex');
+      const expiresAt = new Date(Date.now() + OAUTH_STATE_TTL_MS);
 
-      // Store state in session or temporary storage
-      // For now, we'll encode user ID in the state
-      const encodedState = Buffer.from(JSON.stringify({ userId, nonce: state })).toString('base64');
+      await db.query(
+        `INSERT INTO oauth_pending_states (state_token, user_id, provider, expires_at)
+         VALUES ($1, $2, $3, $4)`,
+        [stateToken, userId, 'schwab', expiresAt]
+      );
 
       // Build authorization URL
       const authUrl = new URL('https://api.schwabapi.com/v1/oauth/authorize');
@@ -191,7 +226,7 @@ const brokerSyncController = {
       authUrl.searchParams.set('client_id', process.env.SCHWAB_CLIENT_ID);
       authUrl.searchParams.set('redirect_uri', process.env.SCHWAB_REDIRECT_URI);
       authUrl.searchParams.set('scope', 'api');
-      authUrl.searchParams.set('state', encodedState);
+      authUrl.searchParams.set('state', stateToken);
 
       console.log(`[BROKER-SYNC] Initiating Schwab OAuth for user ${userId}`);
 
@@ -222,15 +257,34 @@ const brokerSyncController = {
         return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=missing_params`);
       }
 
-      // Decode state to get user ID
-      let stateData;
-      try {
-        stateData = JSON.parse(Buffer.from(state, 'base64').toString());
-      } catch {
+      // Look up the state server-side. The row recovers the initiating userId;
+      // the client-supplied state payload is never trusted. Mark the row
+      // consumed atomically so the same state can't be replayed.
+      const stateLookup = await db.query(
+        `UPDATE oauth_pending_states
+            SET consumed_at = NOW()
+          WHERE state_token = $1
+            AND provider = 'schwab'
+            AND consumed_at IS NULL
+            AND expires_at > NOW()
+          RETURNING user_id`,
+        [state]
+      );
+
+      if (stateLookup.rows.length === 0) {
+        console.warn('[SCHWAB-OAUTH] Rejected callback with invalid, expired, or reused state');
         return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=invalid_state`);
       }
 
-      const { userId } = stateData;
+      const userId = stateLookup.rows[0].user_id;
+
+      // Broker sync is a Pro feature. The init endpoint already gates this, but
+      // re-check here in case the user's tier changed mid-flow.
+      const access = await TierService.canCreateBrokerConnection(userId, req.headers?.host);
+      if (!access.allowed) {
+        console.warn('[SCHWAB-OAUTH] Rejected callback: broker sync is Pro-only for this free user');
+        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=pro_required`);
+      }
 
       // Exchange code for tokens
       console.log('[SCHWAB-OAUTH] Exchanging authorization code for tokens...');
@@ -313,13 +367,120 @@ const brokerSyncController = {
   },
 
   /**
+   * Initialize a generic direct broker OAuth flow.
+   */
+  async initBrokerOAuth(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const { broker } = req.params;
+      const { environment } = req.body || {};
+      const service = OAUTH_BROKER_SERVICES[broker];
+
+      // Broker sync is a Pro feature
+      const access = await TierService.canCreateBrokerConnection(userId, req.headers?.host);
+      if (!access.allowed) {
+        return sendProRequired(res, access);
+      }
+
+      if (!service) {
+        return res.status(404).json({
+          success: false,
+          error: 'Broker OAuth integration not found'
+        });
+      }
+
+      if (!service.isConfigured()) {
+        return res.status(503).json({
+          success: false,
+          error: `${service.config.displayName} integration is not configured on this server`
+        });
+      }
+
+      const stateToken = crypto.randomBytes(32).toString('hex');
+      const expiresAt = new Date(Date.now() + OAUTH_STATE_TTL_MS);
+      const context = { environment: environment || null };
+
+      await db.query(
+        `INSERT INTO oauth_pending_states (state_token, user_id, provider, expires_at, context)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [stateToken, userId, broker, expiresAt, JSON.stringify(context)]
+      );
+
+      res.json({
+        success: true,
+        authUrl: service.getAuthorizationUrl(stateToken, context)
+      });
+    } catch (error) {
+      logger.logError('Error initiating broker OAuth:', error);
+      next(error);
+    }
+  },
+
+  /**
+   * Handle a generic direct broker OAuth callback.
+   */
+  async handleBrokerOAuthCallback(req, res, next) {
+    try {
+      const { broker } = req.params;
+      const { code, state, error: oauthError } = req.query;
+      const service = OAUTH_BROKER_SERVICES[broker];
+
+      if (!service) {
+        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=unsupported_broker`);
+      }
+
+      if (oauthError) {
+        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=${encodeURIComponent(oauthError)}&broker=${broker}`);
+      }
+
+      if (!code || !state) {
+        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=missing_params&broker=${broker}`);
+      }
+
+      const stateLookup = await db.query(
+        `UPDATE oauth_pending_states
+            SET consumed_at = NOW()
+          WHERE state_token = $1
+            AND provider = $2
+            AND consumed_at IS NULL
+            AND expires_at > NOW()
+          RETURNING user_id, context`,
+        [state, broker]
+      );
+
+      if (stateLookup.rows.length === 0) {
+        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=invalid_state&broker=${broker}`);
+      }
+
+      const userId = stateLookup.rows[0].user_id;
+
+      // Broker sync is a Pro feature. The init endpoint already gates this, but
+      // re-check here in case the user's tier changed mid-flow.
+      const access = await TierService.canCreateBrokerConnection(userId, req.headers?.host);
+      if (!access.allowed) {
+        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=pro_required&broker=${broker}`);
+      }
+
+      const context = stateLookup.rows[0].context || {};
+      const tokens = await service.exchangeCodeForTokens(code);
+      await service.createConnectionFromTokens(userId, tokens, context);
+
+      res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?success=${broker}`);
+    } catch (error) {
+      logger.logError('Error handling broker OAuth callback:', error);
+      const errorMsg = encodeURIComponent(error.message || 'oauth_failed');
+      res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=oauth_failed&details=${errorMsg}`);
+    }
+  },
+
+  /**
    * Update broker connection settings
    */
   async updateConnection(req, res, next) {
     try {
       const userId = req.user.id;
       const { id } = req.params;
-      const { autoSyncEnabled, syncFrequency, syncTime } = req.body;
+      const { accountLabel, autoSyncEnabled, syncFrequency, syncTime, syncStartDate } = req.body;
 
       // Verify ownership
       const connection = await BrokerConnection.findById(id, false);
@@ -330,12 +491,20 @@ const brokerSyncController = {
         });
       }
 
-      // Update settings
-      const updated = await BrokerConnection.update(id, {
+      // Update settings. syncStartDate and accountLabel may be explicitly null
+      // (meaning "all time" / "clear label"), so only forward them when present.
+      const updates = {
         autoSyncEnabled,
         syncFrequency,
         syncTime
-      });
+      };
+      if (Object.prototype.hasOwnProperty.call(req.body, 'syncStartDate')) {
+        updates.syncStartDate = syncStartDate;
+      }
+      if (Object.prototype.hasOwnProperty.call(req.body, 'accountLabel')) {
+        updates.accountLabel = accountLabel;
+      }
+      const updated = await BrokerConnection.update(id, updates);
 
       // Recalculate next sync time
       if (autoSyncEnabled && syncFrequency !== 'manual') {
@@ -407,6 +576,14 @@ const brokerSyncController = {
           success: false,
           error: 'Broker connection not found'
         });
+      }
+
+      // Broker sync is a Pro feature (free users with an existing connection
+      // keep syncing until the grace cutoff). Checked here so the user gets an
+      // immediate 403 rather than a silently-failed background sync.
+      const access = await TierService.canSyncBrokerConnection(userId, req.headers?.host);
+      if (!access.allowed) {
+        return sendProRequired(res, access);
       }
 
       // Check connection status
@@ -534,6 +711,14 @@ const brokerSyncController = {
             testResult = { valid: false, message: `Schwab connection test failed: ${error.message}` };
           }
         }
+      } else if (OAUTH_BROKER_SERVICES[connection.brokerType]) {
+        const service = OAUTH_BROKER_SERVICES[connection.brokerType];
+        const { accessToken, needsReauth } = await service.ensureValidToken(connection);
+        if (needsReauth) {
+          testResult = { valid: false, message: `${service.config.displayName} authentication expired. Please reconnect.` };
+        } else {
+          testResult = { valid: true, message: `${service.config.displayName} connection is valid` };
+        }
       }
 
       if (testResult.valid) {
@@ -609,11 +794,9 @@ const brokerSyncController = {
       const deletedCount = result.rowCount;
       console.log(`[BROKER-SYNC] Deleted ${deletedCount} synced trades for connection ${id} (user ${userId})`);
 
-      // Invalidate both database and in-memory analytics cache after deleting trades
       if (deletedCount > 0) {
         console.log(`[BROKER-SYNC] Invalidating analytics cache for user ${userId}`);
-        await AnalyticsCache.invalidateUserCache(userId);
-        invalidateInMemoryCache(userId);
+        await AnalyticsCache.invalidate(userId);
       }
 
       res.json({

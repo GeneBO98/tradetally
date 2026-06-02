@@ -15,7 +15,7 @@ A comprehensive trading journal and analytics platform built with Vue.js fronten
 - **Live Demo**: [tradetally.io](https://tradetally.io)
 - **Documentation**: [docs.tradetally.io](https://docs.tradetally.io)
 - **Forum**: [forum.tradetally.io](https://forum.tradetally.io)
-- **iOS TestFlight**: [Join the beta](https://testflight.apple.com/join/11shUY3t)
+- **iOS App**: [Download Here](https://apps.apple.com/us/app/tradetally/id6748022992)
 - **Docker Hub**: [potentialmidas/tradetally](https://hub.docker.com/r/potentialmidas/tradetally)
 
 ### Demo Account
@@ -49,14 +49,15 @@ A comprehensive trading journal and analytics platform built with Vue.js fronten
 - **Forum Integration** - Join discussions at [forum.tradetally.io](https://forum.tradetally.io)
 
 ### Mobile App
-- **iOS App** - Native iOS application available on [TestFlight](https://testflight.apple.com/join/11shUY3t)
+- **iOS App** - Native iOS application available in app store
 - Full feature parity with web application
 - Optimized mobile trading journal experience
+- Required for the health tracking feature
 
 ## Deployment Options
 
 ### SaaS Platform
-Fully hosted solution at [tradetally.io](https://tradetally.io) with subscription at $8.00/month or $80/year.
+Fully hosted solution at [tradetally.io](https://tradetally.io)
 
 ### Self-Hosted
 Free, open-source deployment with all Pro features included. Perfect for:
@@ -77,6 +78,17 @@ Free, open-source deployment with all Pro features included. Perfect for:
 ## Getting Started
 
 For detailed installation and setup instructions, visit the [documentation site](https://docs.tradetally.io).
+
+### Local Development
+
+TradeTally uses pnpm for dependency management. Install pnpm, then install dependencies from the repository root:
+
+```bash
+npm install -g pnpm@10.13.1
+pnpm install
+pnpm --dir backend run dev
+pnpm --dir frontend run dev
+```
 
 ### Quick Start with Docker
 
@@ -133,4 +145,4 @@ This project is open source software.
 
 ## Support Development
 
-Feel free to [throw me a couple of bucks](https://www.paypal.com/donate/?business=EHMBRET4CNELL&no_recurring=0&currency_code=USD) if you got some use out of this.
+Feel free to [throw me a couple of bucks](https://buymeacoffee.com/BrennonO) if you got some use out of this.

@@ -1,11 +1,14 @@
 const Trade = require('../models/Trade');
+const TradeQueries = require('../services/tradeQueries');
 const User = require('../models/User');
 const { parseCSV, detectBrokerFormat, getCsvHeaderLine, getCsvSampleRows } = require('../utils/csvParser');
-const { v4: uuidv4 } = require('uuid');
+const { uuidv4 } = require('../utils/uuid');
 const db = require('../config/database');
 const logger = require('../utils/logger');
 const finnhub = require('../utils/finnhub');
 const cache = require('../utils/cache');
+const AnalyticsCache = require('../services/analyticsCache');
+const { computeTradePnl } = require('../services/pnlEngine');
 const symbolCategories = require('../utils/symbolCategories');
 const imageProcessor = require('../utils/imageProcessor');
 const ensureString = require('../utils/ensureString');
@@ -20,8 +23,8 @@ const { getUserTimezone } = require('../utils/timezone');
 const Playbook = require('../models/Playbook');
 const MAEEstimator = require('../utils/maeEstimator');
 const TierService = require('../services/tierService');
-const { verifyJwtToken } = require('../middleware/auth');
-const { hasDisabledQueryToken, queryToken } = require('../utils/requestAuthToken');
+const { verifyJwtToken, TOKEN_PURPOSES } = require('../middleware/auth');
+const { escapeCsv } = require('../utils/csvEscape');
 
 /**
  * Auto-calculate MAE/MFE for a closed trade using Finnhub candle data.
@@ -55,7 +58,12 @@ async function autoCalculateMAEMFE(userId, trade) {
       side: trade.side,
       pnl: trade.pnl || trade.profit_loss || 0,
       commission: trade.commission || 0,
-      fees: trade.fees || 0
+      fees: trade.fees || 0,
+      quantity: trade.quantity,
+      instrument_type: trade.instrument_type || trade.instrumentType,
+      point_value: trade.point_value ?? trade.pointValue,
+      underlying_asset: trade.underlying_asset || trade.underlyingAsset,
+      contract_size: trade.contract_size ?? trade.contractSize
     };
 
     if (!MAEEstimator.isValidTradeForEstimation(tradeData)) return;
@@ -65,9 +73,26 @@ async function autoCalculateMAEMFE(userId, trade) {
 
     // Update the trade with calculated values
     await Trade.update(trade.id, userId, { mae, mfe });
+    await AnalyticsCache.invalidate(userId);
     console.log(`[MAE/MFE] Updated trade ${trade.id}: MAE=$${mae.toFixed(2)}, MFE=$${mfe.toFixed(2)}`);
   } catch (error) {
     console.warn(`[MAE/MFE] Auto-calculation failed for trade ${trade.id}: ${error.message}`);
+  }
+}
+
+async function ensureSymbolMetadata(symbol) {
+  const normalizedSymbol = typeof symbol === 'string' ? symbol.trim().toUpperCase() : '';
+  if (!normalizedSymbol) return;
+
+  try {
+    const category = await symbolCategories.getSymbolCategory(normalizedSymbol);
+    if (category) {
+      console.log(`[SYMBOLS] Enriched metadata for ${normalizedSymbol}`);
+    } else {
+      console.log(`[SYMBOLS] No metadata available for ${normalizedSymbol}`);
+    }
+  } catch (error) {
+    console.warn(`[SYMBOLS] Failed to enrich metadata for ${normalizedSymbol}: ${error.message}`);
   }
 }
 
@@ -107,6 +132,176 @@ function getTradeMultiplier(trade) {
   }
 
   return 1;
+}
+
+function getPositiveIntEnv(name, fallback) {
+  const parsed = parseInt(process.env[name] || '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+const OPEN_POSITIONS_ALPACA_TIMEOUT_MS = getPositiveIntEnv('OPEN_POSITIONS_ALPACA_TIMEOUT_MS', 3000);
+const OPEN_POSITIONS_FINNHUB_TIMEOUT_MS = getPositiveIntEnv('OPEN_POSITIONS_FINNHUB_TIMEOUT_MS', 3000);
+
+function getPositiveInt(value) {
+  const parsed = parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function resolveStyleWindowMinutes(styles = []) {
+  const normalized = styles.map(style => String(style).toLowerCase());
+  if (normalized.some(style => style.includes('scalp'))) return 30;
+  if (normalized.some(style => style.includes('day'))) return 120;
+  if (normalized.some(style => style.includes('swing'))) return 390;
+  if (normalized.some(style => style.includes('position'))) return 1440;
+  return null;
+}
+
+function clampPostExitMinutes(minutes) {
+  if (!Number.isFinite(minutes) || minutes <= 0) return null;
+  return Math.max(30, Math.min(Math.round(minutes), 1440));
+}
+
+async function resolvePostExitWindow(userId, trade) {
+  const exitTime = trade.exit_time || trade.exitTime;
+  if (!exitTime || isNaN(new Date(exitTime))) return null;
+
+  const tradeOverride = getPositiveInt(trade.post_exit_window_override_minutes || trade.postExitWindowOverrideMinutes);
+  if (tradeOverride) {
+    return {
+      minutes: clampPostExitMinutes(tradeOverride),
+      source: 'trade_override',
+      end: new Date(new Date(exitTime).getTime() + clampPostExitMinutes(tradeOverride) * 60000).toISOString()
+    };
+  }
+
+  const settings = await User.getSettings(userId);
+  const manualMinutes = getPositiveInt(settings?.post_exit_excursion_window_minutes);
+  if (settings?.post_exit_excursion_window_mode === 'manual' && manualMinutes) {
+    return {
+      minutes: clampPostExitMinutes(manualMinutes),
+      source: 'profile_manual',
+      end: new Date(new Date(exitTime).getTime() + clampPostExitMinutes(manualMinutes) * 60000).toISOString()
+    };
+  }
+
+  const personalityResult = await db.query(`
+    SELECT primary_personality, avg_hold_time_minutes
+    FROM trading_personality_profiles
+    WHERE user_id = $1
+    ORDER BY analysis_end_date DESC, created_at DESC
+    LIMIT 1
+  `, [userId]);
+
+  const profile = personalityResult.rows[0];
+  const personalityDefaults = {
+    scalper: 30,
+    momentum: 120,
+    mean_reversion: 60,
+    swing: 390,
+    hybrid: null
+  };
+
+  let inferredMinutes = null;
+  let source = 'default';
+
+  if (profile) {
+    inferredMinutes = personalityDefaults[profile.primary_personality] || getPositiveInt(profile.avg_hold_time_minutes);
+    source = 'personality';
+  }
+
+  if (!inferredMinutes) {
+    inferredMinutes = resolveStyleWindowMinutes(settings?.trading_styles || []);
+    source = inferredMinutes ? 'profile_style' : 'default';
+  }
+
+  const minutes = clampPostExitMinutes(inferredMinutes || 60);
+  return {
+    minutes,
+    source,
+    end: new Date(new Date(exitTime).getTime() + minutes * 60000).toISOString()
+  };
+}
+
+async function autoCalculatePostExitMAEMFE(userId, trade) {
+  try {
+    const tier = await TierService.getUserTier(userId);
+    if (tier !== 'pro') return;
+
+    const tradeData = {
+      symbol: trade.symbol,
+      entry_time: trade.entry_time || trade.entryTime,
+      exit_time: trade.exit_time || trade.exitTime,
+      entry_price: trade.entry_price || trade.entryPrice,
+      exit_price: trade.exit_price || trade.exitPrice,
+      side: trade.side,
+      pnl: trade.pnl || trade.profit_loss || 0,
+      commission: trade.commission || 0,
+      fees: trade.fees || 0,
+      quantity: trade.quantity,
+      instrument_type: trade.instrument_type || trade.instrumentType,
+      point_value: trade.point_value ?? trade.pointValue,
+      underlying_asset: trade.underlying_asset || trade.underlyingAsset,
+      contract_size: trade.contract_size ?? trade.contractSize,
+      post_exit_window_override_minutes: trade.post_exit_window_override_minutes || trade.postExitWindowOverrideMinutes
+    };
+
+    if (!MAEEstimator.isValidTradeForEstimation(tradeData)) return;
+
+    const window = await resolvePostExitWindow(userId, tradeData);
+    if (!window) return;
+
+    console.log(`[MAE/MFE] Auto-calculating post-exit window for trade ${trade.id} (${trade.symbol})`);
+    const { post_exit_mae, post_exit_mfe } = await MAEEstimator.calculatePostExitFromCandleData(tradeData, window.end);
+
+    await Trade.update(trade.id, userId, {
+      postExitMae: post_exit_mae,
+      postExitMfe: post_exit_mfe,
+      postExitWindowMinutes: window.minutes,
+      postExitWindowSource: window.source,
+      postExitWindowEnd: window.end,
+      postExitCalculatedAt: new Date().toISOString()
+    });
+    await AnalyticsCache.invalidate(userId);
+    console.log(`[MAE/MFE] Updated post-exit trade ${trade.id}: MAE=$${post_exit_mae.toFixed(2)}, MFE=$${post_exit_mfe.toFixed(2)}, window=${window.minutes}m`);
+  } catch (error) {
+    console.warn(`[MAE/MFE] Post-exit auto-calculation failed for trade ${trade.id}: ${error.message}`);
+  }
+}
+
+async function timeAsyncOperation(label, operation) {
+  const startedAt = Date.now();
+
+  try {
+    const result = await operation();
+    console.log(`[PERF] ${label} took ${Date.now() - startedAt}ms`);
+    return result;
+  } catch (error) {
+    console.warn(`[PERF] ${label} failed after ${Date.now() - startedAt}ms: ${error.message}`);
+    throw error;
+  }
+}
+
+async function withTimeout(promise, timeoutMs, label) {
+  if (!timeoutMs || timeoutMs <= 0) {
+    return promise;
+  }
+
+  let timeoutId;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+          const error = new Error(`${label} timed out after ${timeoutMs}ms`);
+          error.code = 'ETIMEOUT';
+          reject(error);
+        }, timeoutMs);
+      })
+    ]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 function calculateRemainingOpenQuantity(trade) {
@@ -165,20 +360,6 @@ function enrichOpenTradePnL(trade) {
     : null;
 }
 
-// Helper function to invalidate analytics cache for a user
-function invalidateAnalyticsCache(userId) {
-  // Clear all analytics cache entries for this user
-  const cacheKeys = Object.keys(cache.data).filter(key =>
-    key.startsWith(`analytics:user_${userId}:`) ||
-    key.startsWith(`analytics_overview_${userId}_`) ||
-    key.startsWith(`analytics_chart_data_${userId}_`) ||
-    key.startsWith(`performance_${userId}_`) ||
-    key.startsWith(`partial_exit_analytics:user_${userId}:`)
-  );
-  cacheKeys.forEach(key => cache.del(key));
-  console.log(`[CACHE] Invalidated ${cacheKeys.length} analytics cache entries for user ${userId}`);
-}
-
 const tradeController = {
   async getUserTrades(req, res, next) {
     const requestStartTime = Date.now();
@@ -188,9 +369,16 @@ const tradeController = {
         symbol, symbolExact, startDate, endDate, exitStartDate, exitEndDate, tags, strategy, sector,
         strategies, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
         side, minPrice, maxPrice, minQuantity, maxQuantity,
-        status, minPnl, maxPnl, pnlType, broker, brokers, accounts,
-        limit = 50, offset = 0
+        status, minPnl, maxPnl, pnlType, broker, brokers, importId, accounts,
+        limit = 50, offset, page
       } = req.query;
+
+      const parsedLimit = parseInt(limit);
+      const parsedOffset = offset !== undefined && offset !== ''
+        ? parseInt(offset)
+        : (page !== undefined && page !== '' && parseInt(page) > 0
+            ? (parseInt(page) - 1) * parsedLimit
+            : 0);
 
       const filters = {
         symbol,
@@ -222,10 +410,11 @@ const tradeController = {
         pnlType,
         broker, // Keep for backward compatibility
         brokers, // New multi-select broker filter
+        importId,
         accounts: accounts ? ensureString(accounts).split(',') : undefined, // Account identifier filter
         // Pagination
-        limit: parseInt(limit),
-        offset: parseInt(offset)
+        limit: parsedLimit,
+        offset: parsedOffset
       };
 
       if (filters.tags && filters.tags.length > 0) {
@@ -240,9 +429,9 @@ const tradeController = {
       const skipCount = req.query.skipCount === 'true' || req.query.skipCount === '1';
       
       // Get trades with pagination
-      console.log('[PERF] About to call Trade.findByUser, elapsed:', Date.now() - requestStartTime, 'ms');
-      const trades = await Trade.findByUser(req.user.id, filters);
-      console.log('[PERF] Trade.findByUser completed, elapsed:', Date.now() - requestStartTime, 'ms');
+      console.log('[PERF] About to call TradeQueries.findByUser, elapsed:', Date.now() - requestStartTime, 'ms');
+      const trades = await TradeQueries.findByUser(req.user.id, filters);
+      console.log('[PERF] TradeQueries.findByUser completed, elapsed:', Date.now() - requestStartTime, 'ms');
 
       // Map snake_case database fields to camelCase for API response
       trades.forEach(trade => {
@@ -320,7 +509,7 @@ const tradeController = {
         symbol, startDate, endDate, tags, strategy, sector,
         strategies, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
         side, minPrice, maxPrice, minQuantity, maxQuantity,
-        status, minPnl, maxPnl, pnlType, broker, brokers
+        status, minPnl, maxPnl, pnlType, broker, brokers, importId
       } = req.query;
 
       const filters = {
@@ -347,7 +536,8 @@ const tradeController = {
         maxPnl: (maxPnl !== undefined && maxPnl !== null && maxPnl !== '') ? parseFloat(maxPnl) : undefined,
         pnlType,
         broker,
-        brokers: brokers ? ensureString(brokers).split(',') : undefined
+        brokers: brokers ? ensureString(brokers).split(',') : undefined,
+        importId
       };
 
       const total = await Trade.getCountWithFilters(req.user.id, filters);
@@ -401,7 +591,7 @@ const tradeController = {
         offset: 0
       };
 
-      const trades = await Trade.findByUser(req.user.id, filters);
+      const trades = await TradeQueries.findByUser(req.user.id, filters);
 
       // Convert trades to CSV format with generic headers
       const csvHeaders = [
@@ -429,17 +619,6 @@ const tradeController = {
       ].join(',');
 
       const csvRows = trades.map(trade => {
-        // Helper function to escape CSV values
-        const escapeCsv = (value) => {
-          if (value === null || value === undefined) return '';
-          const str = String(value);
-          // If the value contains comma, newline, or quotes, wrap in quotes and escape quotes
-          if (str.includes(',') || str.includes('\n') || str.includes('"')) {
-            return `"${str.replace(/"/g, '""')}"`;
-          }
-          return str;
-        };
-
         // Format dates
         const formatDate = (date) => {
           if (!date) return '';
@@ -585,6 +764,15 @@ const tradeController = {
       if (normalizedBody.take_profit !== undefined && normalizedBody.takeProfit === undefined) {
         normalizedBody.takeProfit = normalizedBody.take_profit;
       }
+      if (normalizedBody.post_exit_window_override_minutes !== undefined && normalizedBody.postExitWindowOverrideMinutes === undefined) {
+        normalizedBody.postExitWindowOverrideMinutes = normalizedBody.post_exit_window_override_minutes;
+      }
+      if (normalizedBody.post_exit_mae !== undefined && normalizedBody.postExitMae === undefined) {
+        normalizedBody.postExitMae = normalizedBody.post_exit_mae;
+      }
+      if (normalizedBody.post_exit_mfe !== undefined && normalizedBody.postExitMfe === undefined) {
+        normalizedBody.postExitMfe = normalizedBody.post_exit_mfe;
+      }
 
       // Log incoming trade data for debugging
       if (normalizedBody.strategy || normalizedBody.setup) {
@@ -601,12 +789,25 @@ const tradeController = {
       }
 
       // Invalidate analytics cache for this user
-      invalidateAnalyticsCache(req.user.id);
+      await AnalyticsCache.invalidate(req.user.id);
 
       res.status(201).json({ trade });
 
-      // Fire-and-forget: auto-calculate MAE/MFE for closed trades (Pro only)
-      autoCalculateMAEMFE(req.user.id, trade).catch(() => {});
+      // Fire-and-forget: fetch company metadata for new symbols created outside CSV import.
+      ensureSymbolMetadata(trade.symbol).catch(() => {});
+
+      // Fire-and-forget: auto-calculate MAE/MFE for closed trades (Pro only).
+      // Skip per-field when the user supplied the value manually (e.g., futures, where free APIs have no candle data).
+      const createdManualMAE = normalizedBody.mae !== undefined && normalizedBody.mae !== null && normalizedBody.mae !== '';
+      const createdManualMFE = normalizedBody.mfe !== undefined && normalizedBody.mfe !== null && normalizedBody.mfe !== '';
+      if (!createdManualMAE || !createdManualMFE) {
+        autoCalculateMAEMFE(req.user.id, trade).catch(() => {});
+      }
+      const createdManualPostExitMAE = normalizedBody.postExitMae !== undefined && normalizedBody.postExitMae !== null && normalizedBody.postExitMae !== '';
+      const createdManualPostExitMFE = normalizedBody.postExitMfe !== undefined && normalizedBody.postExitMfe !== null && normalizedBody.postExitMfe !== '';
+      if (!createdManualPostExitMAE || !createdManualPostExitMFE) {
+        autoCalculatePostExitMAEMFE(req.user.id, trade).catch(() => {});
+      }
     } catch (error) {
       next(error);
     }
@@ -625,19 +826,14 @@ const tradeController = {
       if (normalizedBody.take_profit !== undefined && normalizedBody.takeProfit === undefined) {
         normalizedBody.takeProfit = normalizedBody.take_profit;
       }
+      if (normalizedBody.post_exit_window_override_minutes !== undefined && normalizedBody.postExitWindowOverrideMinutes === undefined) {
+        normalizedBody.postExitWindowOverrideMinutes = normalizedBody.post_exit_window_override_minutes;
+      }
 
       const trade = await Trade.createShell(req.user.id, normalizedBody);
 
       // Invalidate analytics cache
-      invalidateAnalyticsCache(req.user.id);
-
-      // Invalidate database analytics cache
-      try {
-        const AnalyticsCache = require('../services/analyticsCache');
-        await AnalyticsCache.invalidateUserCache(req.user.id);
-      } catch (cacheError) {
-        console.warn('[WARNING] Failed to invalidate analytics DB cache:', cacheError.message);
-      }
+      await AnalyticsCache.invalidate(req.user.id);
 
       res.status(201).json({ trade });
     } catch (error) {
@@ -658,15 +854,7 @@ const tradeController = {
       const trade = await Trade.addFill(tradeId, req.user.id, req.body);
 
       // Invalidate analytics cache
-      invalidateAnalyticsCache(req.user.id);
-
-      // Invalidate database analytics cache
-      try {
-        const AnalyticsCache = require('../services/analyticsCache');
-        await AnalyticsCache.invalidateUserCache(req.user.id);
-      } catch (cacheError) {
-        console.warn('[WARNING] Failed to invalidate analytics DB cache:', cacheError.message);
-      }
+      await AnalyticsCache.invalidate(req.user.id);
 
       res.status(200).json({ trade });
     } catch (error) {
@@ -825,6 +1013,12 @@ const tradeController = {
       if (normalizedBody.take_profit !== undefined && normalizedBody.takeProfit === undefined) {
         normalizedBody.takeProfit = normalizedBody.take_profit;
       }
+      if (normalizedBody.post_exit_mae !== undefined && normalizedBody.postExitMae === undefined) {
+        normalizedBody.postExitMae = normalizedBody.post_exit_mae;
+      }
+      if (normalizedBody.post_exit_mfe !== undefined && normalizedBody.postExitMfe === undefined) {
+        normalizedBody.postExitMfe = normalizedBody.post_exit_mfe;
+      }
       // Log incoming update data for debugging
       if (normalizedBody.strategy !== undefined || normalizedBody.setup !== undefined) {
         console.log(`[TRADE CONTROLLER] Updating trade ${req.params.id} with strategy="${normalizedBody.strategy || 'null'}", setup="${normalizedBody.setup || 'null'}"`);
@@ -844,15 +1038,21 @@ const tradeController = {
       }
 
       // Invalidate analytics cache for this user
-      invalidateAnalyticsCache(req.user.id);
+      await AnalyticsCache.invalidate(req.user.id);
 
       res.json({ trade });
 
-      // Fire-and-forget: auto-calculate MAE/MFE if not manually provided (Pro only)
+      // Fire-and-forget: auto-calculate MAE/MFE if not manually provided (Pro only).
+      // Skip per-field when the user supplied the value manually (e.g., futures, where free APIs have no candle data).
       const manualMAE = normalizedBody.mae !== undefined && normalizedBody.mae !== null && normalizedBody.mae !== '';
       const manualMFE = normalizedBody.mfe !== undefined && normalizedBody.mfe !== null && normalizedBody.mfe !== '';
       if (!manualMAE || !manualMFE) {
         autoCalculateMAEMFE(req.user.id, trade).catch(() => {});
+      }
+      const manualPostExitMAE = normalizedBody.postExitMae !== undefined && normalizedBody.postExitMae !== null && normalizedBody.postExitMae !== '';
+      const manualPostExitMFE = normalizedBody.postExitMfe !== undefined && normalizedBody.postExitMfe !== null && normalizedBody.postExitMfe !== '';
+      if (!manualPostExitMAE || !manualPostExitMFE) {
+        autoCalculatePostExitMAEMFE(req.user.id, trade).catch(() => {});
       }
     } catch (error) {
       next(error);
@@ -884,7 +1084,7 @@ const tradeController = {
       }
 
       // Invalidate analytics cache for this user
-      invalidateAnalyticsCache(req.user.id);
+      await AnalyticsCache.invalidate(req.user.id);
 
       res.json({ message: 'Trade deleted successfully' });
     } catch (error) {
@@ -1035,37 +1235,41 @@ const tradeController = {
       }
 
       if (isPartialSplit) {
-        // Update original trade: remove split-out entries, recalculate fields
         const selectedSet = new Set(execution_indices);
         const remainingExecutions = executions.filter((_, i) => !selectedSet.has(i));
 
-        const remainingEntryQty = fillsToKeep.reduce((s, e) => s + e.quantity, 0);
-        const newEntryPrice = fillsToKeep.reduce((s, e) => s + e.price * e.quantity, 0) / remainingEntryQty;
-
-        // Determine instrument multiplier
-        const isOption = (trade.instrument_type || trade.instrumentType) === 'option';
-        const isFuture = (trade.instrument_type || trade.instrumentType) === 'future';
-        const contractSize = isOption ? (trade.contract_size || trade.contractSize || 100) : 1;
-        const pointValue = isFuture ? (trade.point_value || trade.pointValue || 1) : 1;
-        const multiplier = isFuture ? pointValue : contractSize;
-
-        // Recalculate PnL
-        let newPnl;
-        if (side === 'long') {
-          newPnl = (avgExitPrice - newEntryPrice) * remainingEntryQty * multiplier;
-        } else {
-          newPnl = (newEntryPrice - avgExitPrice) * remainingEntryQty * multiplier;
-        }
-
-        // Recalculate remaining fees
-        const remainingEntryFees = fillsToKeep.reduce((s, e) => s + (e.fees || 0), 0);
-        const remainingExitFeeShare = totalExitFees * (remainingEntryQty / (totalSplitQty + remainingEntryQty));
-        const totalRemainingFees = remainingEntryFees + remainingExitFeeShare;
-        newPnl -= totalRemainingFees;
+        const splitTimezone = await getUserTimezone(req.user.id);
+        const instrumentType = trade.instrument_type || trade.instrumentType || 'stock';
+        const splitEngineResult = computeTradePnl({
+          side,
+          instrumentType,
+          contractSize: trade.contract_size || trade.contractSize || (instrumentType === 'option' ? 100 : null),
+          pointValue: trade.point_value || trade.pointValue,
+          fallbackCommission: trade.commission != null ? trade.commission : null,
+          fallbackFees: trade.fees != null ? trade.fees : null,
+          executions: remainingExecutions,
+          timezone: splitTimezone,
+          tradeId: req.params.id
+        });
+        const splitAgg = splitEngineResult.aggregate;
 
         await db.query(
-          `UPDATE trades SET executions = $1, entry_price = $2, quantity = $3, pnl = $4 WHERE id = $5 AND user_id = $6`,
-          [JSON.stringify(remainingExecutions), newEntryPrice, remainingEntryQty, newPnl, req.params.id, req.user.id]
+          `UPDATE trades SET executions = $1, entry_price = $2, exit_price = $3, quantity = $4, commission = $5, fees = $6, pnl = $7, pnl_percent = $8, exit_time = $9, entry_time = $10, trade_date = $11 WHERE id = $12 AND user_id = $13`,
+          [
+            JSON.stringify(splitEngineResult.annotatedExecutions),
+            splitAgg.entry_price,
+            splitAgg.exit_price,
+            splitAgg.quantity,
+            splitAgg.commission,
+            splitAgg.fees,
+            splitAgg.pnl,
+            splitAgg.pnl_percent,
+            splitAgg.is_fully_closed ? splitAgg.exit_time : null,
+            splitAgg.entry_time,
+            splitAgg.trade_date,
+            req.params.id,
+            req.user.id
+          ]
         );
       } else {
         // Delete the original grouped trade (all entries were split)
@@ -1073,7 +1277,7 @@ const tradeController = {
       }
 
       // Invalidate caches
-      invalidateAnalyticsCache(req.user.id);
+      await AnalyticsCache.invalidate(req.user.id);
 
       res.json({
         message: isPartialSplit
@@ -1143,7 +1347,7 @@ const tradeController = {
       }
 
       // Invalidate analytics cache for this user
-      invalidateAnalyticsCache(req.user.id);
+      await AnalyticsCache.invalidate(req.user.id);
 
       res.json({
         message: `Bulk delete completed. ${deletedCount} trades deleted successfully.`,
@@ -1247,16 +1451,31 @@ const tradeController = {
       }
 
       const trade = await Trade.findById(req.params.id, req.user.id);
-      if (!trade) {
+      if (!trade || trade.user_id !== req.user.id) {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
-      const fileUrl = `/uploads/${req.file.filename}`;
+      if (!req.file.mimetype || !req.file.mimetype.startsWith('image/')) {
+        return res.status(400).json({ error: 'Only image attachments are supported' });
+      }
+
+      await imageProcessor.validateImage(req.file.buffer);
+
+      const uploadsDir = path.join(__dirname, '../../uploads/trades');
+      const processedImage = await imageProcessor.processImage(
+        req.file.buffer,
+        req.file.originalname,
+        req.user.id,
+        req.params.id
+      );
+      const savedImage = await imageProcessor.saveImage(processedImage, uploadsDir);
+
+      const fileUrl = `/api/trades/${req.params.id}/images/${savedImage.filename}`;
       const attachment = await Trade.addAttachment(req.params.id, {
         fileUrl,
-        fileType: req.file.mimetype,
+        fileType: savedImage.mimeType,
         fileName: req.file.originalname,
-        fileSize: req.file.size
+        fileSize: savedImage.size
       });
 
       res.status(201).json({ attachment });
@@ -1543,7 +1762,10 @@ const tradeController = {
       }
 
       const importId = uuidv4();
-      const { broker = 'generic', mappingId = null, accountId = null } = req.body;
+      const { broker = 'generic', mappingId = null, accountId = null, strategy: importStrategy = null } = req.body;
+      const defaultImportStrategy = importStrategy && String(importStrategy).trim()
+        ? String(importStrategy).trim()
+        : null;
 
       console.log('Selected broker:', broker);
       console.log('Mapping ID:', mappingId);
@@ -1589,7 +1811,18 @@ const tradeController = {
             const Account = require('../models/Account');
             const selectedAccount = await Account.findById(accountId, req.user.id);
             if (selectedAccount) {
-              selectedAccountId = selectedAccount.account_identifier;
+              selectedAccountId = selectedAccount.account_identifier || selectedAccount.account_name?.trim() || null;
+
+              // Trades are keyed by account_identifier throughout analytics and filtering.
+              // If a managed account exists without an identifier, persist a stable fallback
+              // based on the account name so imports remain filterable.
+              if (!selectedAccount.account_identifier && selectedAccountId) {
+                await Account.update(accountId, req.user.id, {
+                  accountIdentifier: selectedAccountId
+                });
+                logger.logImport(`Backfilled missing account identifier for selected account: ${selectedAccountId}`);
+              }
+
               logger.logImport(`Using selected account: ${selectedAccount.account_name} (${selectedAccountId})`);
             }
           }
@@ -1783,6 +2016,7 @@ const tradeController = {
             existingPositions,
             existingExecutions,
             userId: req.user.id,
+            fileName,
             userTimezone,
             tradeGroupingSettings: {
               enabled: userSettings.enable_trade_grouping ?? true,
@@ -1791,26 +2025,6 @@ const tradeController = {
             customMapping,
             selectedAccountId
           };
-
-          // Track auto-detection if broker is 'auto'
-          let detectedBrokerForTracking = null;
-          if (broker === 'auto') {
-            detectedBrokerForTracking = detectBrokerFormat(fileBuffer);
-            if (detectedBrokerForTracking === 'generic') {
-              const headerLine = getCsvHeaderLine(fileBuffer);
-              if (headerLine) {
-                try {
-                  const sampleData = getCsvSampleRows(fileBuffer);
-                  await db.query(`
-                    INSERT INTO unknown_csv_headers (user_id, header_line, broker_attempted, outcome, file_name, detected_broker, selected_broker, sample_data)
-                    VALUES ($1, $2, 'auto', 'no_parser_match', $3, $4, 'auto', $5)
-                  `, [fileUserId, headerLine.substring(0, 10000), fileName, 'generic', sampleData?.substring(0, 10000) || null]);
-                } catch (recordErr) {
-                  logger.logWarn(`[CSV] Failed to record unknown headers: ${recordErr.message}`);
-                }
-              }
-            }
-          }
 
           const parseResult = await parseCSV(fileBuffer, broker, context);
 
@@ -1888,7 +2102,6 @@ const tradeController = {
 
             // Collect unique account identifiers from parsed trades
             const accountIdentifiers = new Set();
-            const accountIdentifierCounts = new Map();
             logger.logImport(`[ACCOUNTS] Checking ${trades.length} trades for account identifiers`);
             trades.forEach((trade, index) => {
               if (index < 3) {
@@ -1896,10 +2109,6 @@ const tradeController = {
               }
               if (trade.accountIdentifier) {
                 accountIdentifiers.add(trade.accountIdentifier);
-                accountIdentifierCounts.set(
-                  trade.accountIdentifier,
-                  (accountIdentifierCounts.get(trade.accountIdentifier) || 0) + 1
-                );
               }
             });
 
@@ -1928,16 +2137,9 @@ const tradeController = {
 
               for (const identifier of accountIdentifiers) {
                 if (!existingIdentifiers.has(identifier)) {
-                  await Account.recordImportReconciliation(req.user.id, {
-                    importId,
-                    accountIdentifier: identifier,
-                    broker: broker !== 'auto' && broker !== 'generic' ? broker : null,
-                    status: 'pending',
-                    sampleCount: accountIdentifierCounts.get(identifier) || 0
-                  });
                   try {
                     const brokerName = brokerNames[broker] || 'Trading';
-                    const account = await Account.create(req.user.id, {
+                    await Account.create(req.user.id, {
                       accountName: `${brokerName} Account`,
                       accountIdentifier: identifier,
                       broker: broker !== 'auto' && broker !== 'generic' ? broker : null,
@@ -1945,34 +2147,10 @@ const tradeController = {
                       initialBalanceDate: new Date().toISOString().split('T')[0],
                       isPrimary: existingAccounts.length === 0 && accountIdentifiers.size === 1
                     });
-                    await Account.recordImportReconciliation(req.user.id, {
-                      importId,
-                      accountIdentifier: identifier,
-                      broker: broker !== 'auto' && broker !== 'generic' ? broker : null,
-                      status: 'resolved',
-                      resolvedAccountId: account.id,
-                      sampleCount: 0
-                    });
                     logger.logImport(`[ACCOUNTS] Auto-created account for identifier: ${identifier}`);
                   } catch (createError) {
-                    await Account.recordImportReconciliation(req.user.id, {
-                      importId,
-                      accountIdentifier: identifier,
-                      broker: broker !== 'auto' && broker !== 'generic' ? broker : null,
-                      status: 'pending',
-                      sampleCount: 0,
-                      lastError: createError.message
-                    });
                     logger.logImport(`[ACCOUNTS] Failed to auto-create account for ${identifier}: ${createError.message}`);
                   }
-                } else {
-                  await Account.recordImportReconciliation(req.user.id, {
-                    importId,
-                    accountIdentifier: identifier,
-                    broker: broker !== 'auto' && broker !== 'generic' ? broker : null,
-                    status: 'resolved',
-                    sampleCount: accountIdentifierCounts.get(identifier) || 0
-                  });
                 }
               }
             } else {
@@ -2171,7 +2349,9 @@ const tradeController = {
                     // Try to extract base futures symbol
                     // Futures format: BASE + MONTH_CODE + YEAR (e.g., MESZ5, ESH25, NQM24)
                     // Month codes: F,G,H,J,K,M,N,Q,U,V,X,Z
-                    const futuresMatch = symbol.match(/^([A-Z]{2,4})([FGHJKMNQUVXZ])(\d{1,2})$/);
+                    // Base symbol may contain digits (e.g. M2K = Micro Russell 2000),
+                    // so allow alphanumerics after a required leading letter.
+                    const futuresMatch = symbol.match(/^([A-Z][A-Z0-9]{1,3})([FGHJKMNQUVXZ])(\d{1,2})$/);
                     if (futuresMatch) {
                       const baseSymbol = futuresMatch[1];
                       feeSettings = feeSettingsMap.get(baseSymbol);
@@ -2230,7 +2410,7 @@ const tradeController = {
                       matchType = 'exact-symbol';
                     } else {
                       // Check if we matched on base futures symbol
-                      const futuresMatch = symbol.match(/^([A-Z]{2,4})([FGHJKMNQUVXZ])(\d{1,2})$/);
+                      const futuresMatch = symbol.match(/^([A-Z][A-Z0-9]{1,3})([FGHJKMNQUVXZ])(\d{1,2})$/);
                       if (futuresMatch && feeSettingsMap.has(futuresMatch[1])) {
                         matchType = `base-symbol (${futuresMatch[1]})`;
                       }
@@ -2459,6 +2639,7 @@ const tradeController = {
                 const {
                   totalQuantity, entryValue, exitValue, isExistingPosition,
                   existingTradeId, isUpdate, executionData, totalFees, totalFeesForSymbol,
+                  totalCommission, realizedPnl,
                   pnl, pnlPercent, profitLoss, newExecutionsAdded,
                   groupedTrades, originalNotes, existingExecutions,
                   ...cleanTradeData
@@ -2476,6 +2657,9 @@ const tradeController = {
               } else {
                 // Add import ID to track which import this trade came from
                 tradeData.importId = importId;
+                if (defaultImportStrategy) {
+                  tradeData.strategy = defaultImportStrategy;
+                }
                 await Trade.create(req.user.id, tradeData, { skipAchievements: true, skipApiCalls: true });
               }
               imported++;
@@ -2516,7 +2700,9 @@ const tradeController = {
               warnings: parseDiagnostics.warnings || [],
               detectedBroker: parseDiagnostics.detectedBroker,
               selectedBroker: parseDiagnostics.selectedBroker,
-              headerAnalysis: parseDiagnostics.headerAnalysis
+              headerAnalysis: parseDiagnostics.headerAnalysis,
+              reason_breakdown: parseDiagnostics.reason_breakdown || [],
+              user_summary: parseDiagnostics.user_summary || null
             } : null
           };
 
@@ -2567,7 +2753,7 @@ const tradeController = {
 
           // Invalidate analytics cache after successful import so counts/P&L update immediately
           try {
-            invalidateAnalyticsCache(fileUserId);
+            await AnalyticsCache.invalidate(fileUserId);
             console.log('[SUCCESS] Analytics cache invalidated after import completion');
           } catch (cacheError) {
             console.warn('[WARNING] Failed to invalidate analytics cache:', cacheError.message);
@@ -2611,11 +2797,13 @@ const tradeController = {
               if (tier === 'pro') {
                 console.log(`[MAE/MFE] Scheduling background calculation for ${imported} imported trades...`);
                 const importedClosedTrades = await db.query(`
-                  SELECT id, symbol, side, entry_time, exit_time, entry_price, exit_price, pnl, commission, fees, mae, mfe
+                  SELECT id, symbol, side, entry_time, exit_time, entry_price, exit_price, pnl, commission, fees, mae, mfe,
+                         post_exit_mae, post_exit_mfe, post_exit_window_override_minutes,
+                         quantity, instrument_type, point_value, underlying_asset, contract_size
                   FROM trades
                   WHERE user_id = $1 AND import_id = $2
                   AND exit_time IS NOT NULL AND exit_price IS NOT NULL
-                  AND (mae IS NULL OR mfe IS NULL)
+                  AND (mae IS NULL OR mfe IS NULL OR post_exit_mae IS NULL OR post_exit_mfe IS NULL)
                 `, [fileUserId, importId]);
 
                 if (importedClosedTrades.rows.length > 0) {
@@ -2626,8 +2814,26 @@ const tradeController = {
                     for (const trade of importedClosedTrades.rows) {
                       try {
                         if (!MAEEstimator.isValidTradeForEstimation(trade)) continue;
-                        const { mae, mfe } = await MAEEstimator.calculateFromCandleData(trade);
-                        await Trade.update(trade.id, fileUserId, { mae, mfe });
+                        const updates = {};
+                        if (trade.mae == null || trade.mfe == null) {
+                          const { mae, mfe } = await MAEEstimator.calculateFromCandleData(trade);
+                          updates.mae = mae;
+                          updates.mfe = mfe;
+                        }
+                        if (trade.post_exit_mae == null || trade.post_exit_mfe == null) {
+                          const window = await resolvePostExitWindow(fileUserId, trade);
+                          if (window) {
+                            const { post_exit_mae, post_exit_mfe } = await MAEEstimator.calculatePostExitFromCandleData(trade, window.end);
+                            updates.postExitMae = post_exit_mae;
+                            updates.postExitMfe = post_exit_mfe;
+                            updates.postExitWindowMinutes = window.minutes;
+                            updates.postExitWindowSource = window.source;
+                            updates.postExitWindowEnd = window.end;
+                            updates.postExitCalculatedAt = new Date().toISOString();
+                          }
+                        }
+                        if (Object.keys(updates).length === 0) continue;
+                        await Trade.update(trade.id, fileUserId, updates);
                         calculated++;
                         console.log(`[MAE/MFE] Calculated for ${trade.symbol} (${calculated}/${importedClosedTrades.rows.length})`);
                         // Rate limit: ~2 seconds between calls
@@ -2635,6 +2841,9 @@ const tradeController = {
                       } catch (err) {
                         console.warn(`[MAE/MFE] Failed for ${trade.symbol}: ${err.message}`);
                       }
+                    }
+                    if (calculated > 0) {
+                      await AnalyticsCache.invalidate(fileUserId);
                     }
                     console.log(`[MAE/MFE] Background calculation complete: ${calculated}/${importedClosedTrades.rows.length} trades`);
                   })().catch(err => console.warn('[MAE/MFE] Background batch failed:', err.message));
@@ -2755,11 +2964,12 @@ const tradeController = {
   },
 
   async getOpenPositionsWithQuotes(req, res, next) {
+    const requestStartedAt = Date.now();
     try {
       console.log('getOpenPositionsWithQuotes called for user:', req.user.id);
-      const finnhub = require('../utils/finnhub');
       const alpacaMarketData = require('../utils/alpacaMarketData');
       const { accounts, skipQuotes } = req.query;
+      const accountFilters = accounts ? ensureString(accounts).split(',') : undefined;
       
       // Check if Finnhub is configured
       if (!finnhub.isConfigured()) {
@@ -2768,16 +2978,22 @@ const tradeController = {
 
       // Get open trades
       console.log('Fetching open trades...');
-      const openTrades = await Trade.findByUser(req.user.id, {
-        status: 'open',
+      const openTrades = await timeAsyncOperation('openPositions.loadOpenTrades', () => Trade.findOpenPositionsByUser(req.user.id, {
         limit: 200,
-        accounts: accounts ? ensureString(accounts).split(',') : undefined
-      });
+        accounts: accountFilters
+      }));
 
       console.log(`Found ${openTrades.length} open trades`);
 
       if (openTrades.length === 0) {
-        return res.json({ positions: [] });
+        console.log('[PERF] getOpenPositionsWithQuotes total time:', Date.now() - requestStartedAt, 'ms');
+        return res.json({
+          positions: [],
+          quotesAvailable: 0,
+          totalPositions: 0,
+          quotePending: false,
+          quoteFetchedAt: null
+        });
       }
 
       // Parse executions JSON for each trade
@@ -2879,23 +3095,23 @@ const tradeController = {
         const posKey = getPositionKey(trade);
 
         if (!Object.hasOwn(positionMap, posKey)) {
-        positionMap[posKey] = {
-          symbol: trade.symbol,
-          side: null, // Will be determined by net position
-          trades: [],
-          totalQuantity: 0,        // Net position (shares still held)
-          totalSharesTraded: 0,    // Total shares traded (all executions count positive)
-          totalCost: 0,
-          avgPrice: 0,
-          instrumentType: trade.instrument_type || 'stock',
-          contractSize: trade.contract_size || (trade.instrument_type === 'option' ? 100 : 1),
-          pointValue: trade.point_value || null,
-          // Option metadata for Alpaca pricing
-          underlying_symbol: trade.underlying_symbol || null,
-          expiration_date: trade.expiration_date || null,
-          option_type: trade.option_type || null,
-          strike_price: trade.strike_price || null
-        };
+          positionMap[posKey] = {
+            symbol: trade.symbol,
+            side: null, // Will be determined by net position
+            trades: [],
+            totalQuantity: 0,        // Net position (shares still held)
+            totalSharesTraded: 0,    // Total shares traded (all executions count positive)
+            totalCost: 0,
+            avgPrice: 0,
+            instrumentType: trade.instrument_type || 'stock',
+            contractSize: trade.contract_size || (trade.instrument_type === 'option' ? 100 : 1),
+            pointValue: trade.point_value || null,
+            // Option metadata for Alpaca pricing
+            underlying_symbol: trade.underlying_symbol || null,
+            expiration_date: trade.expiration_date || null,
+            option_type: trade.option_type || null,
+            strike_price: trade.strike_price || null
+          };
         }
 
         positionMap[posKey].trades.push(trade);
@@ -3011,7 +3227,14 @@ const tradeController = {
           }
           return { ...position, currentPrice: null, currentValue: null, unrealizedPnL: null, unrealizedPnLPercent: null, quotePending: true };
         });
-        return res.json({ positions, quotePending: true });
+        console.log('[PERF] getOpenPositionsWithQuotes total time:', Date.now() - requestStartedAt, 'ms');
+        return res.json({
+          positions,
+          quotesAvailable: 0,
+          totalPositions: positions.length,
+          quotePending: positions.length > 0,
+          quoteFetchedAt: null
+        });
       }
 
       // Get unique stock/futures symbols for Finnhub quotes (options use Alpaca instead)
@@ -3021,18 +3244,33 @@ const tradeController = {
 
       // Fetch Alpaca quotes for option positions (independent of Finnhub)
       let alpacaQuotes = {};
+      let pendingOptionPositionKeys = new Set();
       const optionPositions = Object.values(positionMap).filter(p => p.instrumentType === 'option');
       if (optionPositions.length > 0 && alpacaMarketData.isConfigured()) {
+        const positionsWithKeys = optionPositions.map(p => ({
+          ...p,
+          _positionKey: getPositionKey({
+            instrument_type: p.instrumentType,
+            underlying_symbol: p.underlying_symbol,
+            strike_price: p.strike_price,
+            expiration_date: p.expiration_date,
+            option_type: p.option_type,
+            symbol: p.symbol
+          })
+        }));
+
         try {
           console.log(`[ALPACA] Fetching quotes for ${optionPositions.length} option positions`);
-          // Pass positions with unique keys for mapping quotes back per contract
-          const positionsWithKeys = optionPositions.map(p => ({
-            ...p,
-            _positionKey: `${p.underlying_symbol}_${p.strike_price}_${normalizeExpDate(p.expiration_date)}_${p.option_type}`
-          }));
-          alpacaQuotes = await alpacaMarketData.getOptionSnapshots(positionsWithKeys);
+          alpacaQuotes = await timeAsyncOperation('openPositions.alpacaQuoteFetch', () => withTimeout(
+            alpacaMarketData.getOptionSnapshots(positionsWithKeys),
+            OPEN_POSITIONS_ALPACA_TIMEOUT_MS,
+            'Open positions Alpaca quote fetch'
+          ));
           console.log(`[ALPACA] Received quotes for ${Object.keys(alpacaQuotes).length} options`);
         } catch (alpacaError) {
+          if (alpacaError.code === 'ETIMEOUT') {
+            pendingOptionPositionKeys = new Set(positionsWithKeys.map(position => position._positionKey));
+          }
           console.error('[ALPACA] Failed to fetch option quotes:', alpacaError.message);
         }
       } else if (optionPositions.length > 0) {
@@ -3041,18 +3279,19 @@ const tradeController = {
 
       // Fetch stock/futures quotes from Finnhub
       let quotes = {};
+      let pendingStockSymbols = new Set();
       if (symbols.length > 0 && finnhub.isConfigured()) {
         try {
           // Try cached prices from price_monitoring first, fallback to Finnhub for uncached
           console.log('Checking price_monitoring cache for position quotes...');
-          const cacheResult = await db.query(
+          const cacheResult = await timeAsyncOperation('openPositions.priceMonitoringCacheLookup', () => db.query(
             `SELECT symbol, current_price, previous_price, price_change, percent_change,
                     high_of_day, low_of_day, open_price
              FROM price_monitoring
              WHERE symbol = ANY($1)
                AND last_updated > NOW() - INTERVAL '2 minutes'`,
             [symbols]
-          );
+          ));
 
           for (const row of cacheResult.rows) {
             quotes[row.symbol] = {
@@ -3073,8 +3312,31 @@ const tradeController = {
           // Fallback to Finnhub for any uncached symbols
           if (uncachedSymbols.length > 0) {
             console.log('Fetching uncached symbols from Finnhub:', uncachedSymbols);
-            const freshQuotes = await finnhub.getBatchQuotes(uncachedSymbols);
-            Object.assign(quotes, freshQuotes);
+            try {
+              const freshQuotes = await timeAsyncOperation('openPositions.finnhubQuoteFetch', () => withTimeout(
+                finnhub.getBatchQuotes(uncachedSymbols, {
+                  source: 'open_positions',
+                  priority: 0,
+                  userId: req.user.id,
+                  maxQueueWaitMs: OPEN_POSITIONS_FINNHUB_TIMEOUT_MS
+                }),
+                OPEN_POSITIONS_FINNHUB_TIMEOUT_MS,
+                'Open positions Finnhub quote fetch'
+              ));
+              Object.assign(quotes, freshQuotes);
+              const quoteFailures = freshQuotes?._failures || {};
+              for (const [symbol, failure] of Object.entries(quoteFailures)) {
+                if (failure?.code === 'FINNHUB_SCHEDULER_TIMEOUT' || failure?.code === 'FINNHUB_SCHEDULER_SKIPPED') {
+                  pendingStockSymbols.add(symbol);
+                }
+              }
+            } catch (quoteError) {
+              if (quoteError.code === 'ETIMEOUT') {
+                pendingStockSymbols = new Set(uncachedSymbols);
+              } else {
+                console.error('Failed to get stock quotes:', quoteError.message);
+              }
+            }
           }
           console.log('Received quotes:', quotes);
         } catch (quoteError) {
@@ -3118,7 +3380,8 @@ const tradeController = {
             currentValue: null,
             unrealizedPnL: null,
             unrealizedPnLPercent: null,
-            requires_manual_price: true
+            requires_manual_price: true,
+            quotePending: pendingOptionPositionKeys.has(posKey)
           };
         }
 
@@ -3161,7 +3424,8 @@ const tradeController = {
             currentValue: null,
             unrealizedPnL: null,
             unrealizedPnLPercent: null,
-            error: `No quote available for ${position.symbol}`
+            quotePending: pendingStockSymbols.has(position.symbol),
+            error: pendingStockSymbols.has(position.symbol) ? null : `No quote available for ${position.symbol}`
           };
         }
       });
@@ -3173,13 +3437,20 @@ const tradeController = {
         return Math.abs(b.unrealizedPnL) - Math.abs(a.unrealizedPnL);
       });
 
+      const quotePending = pendingStockSymbols.size > 0 || pendingOptionPositionKeys.size > 0;
+
+      console.log('[PERF] getOpenPositionsWithQuotes total time:', Date.now() - requestStartedAt, 'ms');
+
       res.json({
         positions: enhancedPositions,
         quotesAvailable: Object.keys(quotes).length + Object.keys(alpacaQuotes).length,
-        totalPositions: enhancedPositions.length
+        totalPositions: enhancedPositions.length,
+        quotePending,
+        quoteFetchedAt: new Date().toISOString()
       });
 
     } catch (error) {
+      console.log('[PERF] getOpenPositionsWithQuotes total time before error:', Date.now() - requestStartedAt, 'ms');
       console.error('Failed to get open positions:', error);
       next(error);
     }
@@ -3225,7 +3496,7 @@ const tradeController = {
       await db.query(`DELETE FROM import_logs WHERE id = $1`, [importId]);
 
       // Invalidate analytics cache for this user so totals recalculate
-      invalidateAnalyticsCache(req.user.id);
+      await AnalyticsCache.invalidate(req.user.id);
 
       // Invalidate sector performance cache for this user
       try {
@@ -3296,7 +3567,7 @@ const tradeController = {
       await db.query(`DELETE FROM import_logs WHERE id IN (${importPlaceholders})`, validIds);
 
       // Invalidate caches
-      invalidateAnalyticsCache(req.user.id);
+      await AnalyticsCache.invalidate(req.user.id);
       try {
         await cache.invalidate('sector_performance');
         console.log('[SUCCESS] Sector performance cache invalidated after bulk import deletion');
@@ -3377,7 +3648,7 @@ const tradeController = {
         startDate, endDate, symbol, symbolExact, sector, strategy, tags,
         strategies, sectors, // Add multi-select parameters
         side, minPrice, maxPrice, minQuantity, maxQuantity,
-        status, minPnl, maxPnl, pnlType, broker, brokers, accounts, hasNews,
+        status, minPnl, maxPnl, pnlType, broker, brokers, importId, accounts, hasNews,
         holdTime, minHoldTime, maxHoldTime, daysOfWeek, instrumentTypes, optionTypes, qualityGrades
       } = req.query;
 
@@ -3403,6 +3674,7 @@ const tradeController = {
         pnlType,
         broker: broker || undefined,
         brokers: brokers || undefined,  // Support both broker and brokers
+        importId,
         accounts: accounts ? ensureString(accounts).split(',') : undefined, // Account identifier filter
         hasNews,
         holdTime,
@@ -3426,11 +3698,8 @@ const tradeController = {
         }
       }
 
-      // Generate cache key based on userId and filters
-      const cacheKey = `analytics:user_${req.user.id}:${JSON.stringify(filters)}`;
+      const cacheKey = TradeQueries.cacheKey(req.user.id, filters);
 
-      // Cache until invalidated - invalidateAnalyticsCache() clears on trade mutations
-      // (import, create, update, delete, sync). No need for time-based expiry.
       const cached = cache.get(cacheKey);
       if (cached) {
         console.log('[CACHE] Analytics cache hit for user:', req.user.id);
@@ -3438,9 +3707,9 @@ const tradeController = {
       }
 
       console.log('[CACHE] Analytics cache miss for user:', req.user.id);
-      const analytics = await Trade.getAnalytics(req.user.id, filters);
+      const analytics = await TradeQueries.getAnalytics(req.user.id, filters);
 
-      // Cache for 24h - effectively permanent since invalidateAnalyticsCache() clears on mutations
+      // 24h TTL — AnalyticsCache.invalidate() clears on trade mutations.
       cache.set(cacheKey, analytics, 86400000);
 
       res.json(analytics);
@@ -3500,12 +3769,19 @@ const tradeController = {
   async getMonthlyPerformance(req, res, next) {
     try {
       const year = parseInt(req.query.year) || new Date().getFullYear();
-      const { accounts } = req.query;
-      const accountsArray = accounts ? ensureString(accounts).split(',') : null;
+      const { accounts, tags, strategies } = req.query;
+      const accountsArray = accounts ? ensureString(accounts).split(',').filter(Boolean) : null;
+      // tags / strategies arrive as comma-separated strings from the query string;
+      // normalize to arrays so the model's filter clauses can splice them in.
+      const tagsArray = tags ? ensureString(tags).split(',').filter(Boolean) : null;
+      const strategiesArray = strategies ? ensureString(strategies).split(',').filter(Boolean) : null;
 
-      console.log('[MONTHLY] Getting monthly performance for user:', req.user.id, 'year:', year, 'accounts:', accountsArray);
+      console.log('[MONTHLY] Getting monthly performance for user:', req.user.id, 'year:', year, 'accounts:', accountsArray, 'tags:', tagsArray, 'strategies:', strategiesArray);
 
-      const data = await Trade.getMonthlyPerformance(req.user.id, year, accountsArray);
+      const data = await Trade.getMonthlyPerformance(req.user.id, year, accountsArray, {
+        tags: tagsArray,
+        strategies: strategiesArray
+      });
 
       res.json({
         year,
@@ -3528,8 +3804,10 @@ const tradeController = {
 
   async getStrategyList(req, res, next) {
     try {
-      const strategies = await Trade.getStrategyList(req.user.id);
-      res.json({ strategies });
+      const usage = await Trade.getStrategyList(req.user.id);
+      // `strategies` keeps the legacy string-array shape (now most-used first);
+      // `usage` adds per-item trade counts for the manage/hide UI.
+      res.json({ strategies: usage.map(u => u.name), usage });
     } catch (error) {
       next(error);
     }
@@ -3537,8 +3815,8 @@ const tradeController = {
 
   async getSetupList(req, res, next) {
     try {
-      const setups = await Trade.getSetupList(req.user.id);
-      res.json({ setups });
+      const usage = await Trade.getSetupList(req.user.id);
+      res.json({ setups: usage.map(u => u.name), usage });
     } catch (error) {
       next(error);
     }
@@ -3852,7 +4130,7 @@ const tradeController = {
       if (endDate) filters.endDate = endDate;
 
       // Fetch all trades for the user
-      const trades = await Trade.findByUser(req.user.id, filters);
+      const trades = await TradeQueries.findByUser(req.user.id, filters);
 
       if (format === 'csv') {
         // Define CSV headers - include ALL fields
@@ -4282,9 +4560,9 @@ const tradeController = {
     try {
       const tradeId = req.params.id;
       
-      // Verify trade belongs to user
+      // Verify trade belongs to user (findById also returns public trades — reject those)
       const trade = await Trade.findById(tradeId, req.user.id);
-      if (!trade) {
+      if (!trade || trade.user_id !== req.user.id) {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
@@ -4368,19 +4646,12 @@ const tradeController = {
         userFromMiddleware: req.user?.id
       });
 
-      // Check if token is provided as query parameter
+      // Check if token is provided as query parameter. Require an access-purpose
+      // JWT so pre_2fa temp tokens cannot be used to pull private images.
       let user = req.user;
-      if (!user && hasDisabledQueryToken(req)) {
-        return res.status(401).json({
-          error: 'Query-string token auth is disabled',
-          code: 'QUERY_TOKEN_DISABLED'
-        });
-      }
-
-      const imageQueryToken = queryToken(req);
-      if (!user && imageQueryToken) {
+      if (!user && req.query.token) {
         try {
-          const decoded = verifyJwtToken(imageQueryToken);
+          const decoded = verifyJwtToken(req.query.token, { requiredPurpose: TOKEN_PURPOSES.ACCESS });
           user = { id: decoded.id };
         } catch (error) {
           console.log('JWT verification failed for query token:', error.message);
@@ -4498,9 +4769,9 @@ const tradeController = {
         return res.status(400).json({ error: 'Chart URL is required' });
       }
 
-      // Verify trade belongs to user
+      // Verify trade belongs to user (findById also returns public trades — reject those)
       const trade = await Trade.findById(tradeId, req.user.id);
-      if (!trade) {
+      if (!trade || trade.user_id !== req.user.id) {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
@@ -4798,7 +5069,10 @@ const tradeController = {
   async updateTradeHealthData(req, res, next) {
     try {
       const tradeId = req.params.id;
-      const { heartRate, sleepScore, sleepHours, stressLevel } = req.body;
+      const heartRate = req.body.heart_rate ?? req.body.heartRate;
+      const sleepScore = req.body.sleep_score ?? req.body.sleepScore;
+      const sleepHours = req.body.sleep_hours ?? req.body.sleepHours;
+      const stressLevel = req.body.stress_level ?? req.body.stressLevel;
 
       // Validate trade belongs to user
       const tradeCheck = await db.query(
@@ -4842,7 +5116,7 @@ const tradeController = {
 
   async bulkUpdateHealthData(req, res, next) {
     try {
-      const { trades } = req.body; // Array of {tradeId, heartRate, sleepScore, sleepHours, stressLevel}
+      const { trades } = req.body; // Array of trade updates with snake_case health fields
 
       if (!Array.isArray(trades) || trades.length === 0) {
         return res.status(400).json({ error: 'Trades array is required' });
@@ -4853,7 +5127,11 @@ const tradeController = {
 
       // Process each trade update
       for (const tradeUpdate of trades) {
-        const { tradeId, heartRate, sleepScore, sleepHours, stressLevel } = tradeUpdate;
+        const tradeId = tradeUpdate.trade_id ?? tradeUpdate.tradeId;
+        const heartRate = tradeUpdate.heart_rate ?? tradeUpdate.heartRate;
+        const sleepScore = tradeUpdate.sleep_score ?? tradeUpdate.sleepScore;
+        const sleepHours = tradeUpdate.sleep_hours ?? tradeUpdate.sleepHours;
+        const stressLevel = tradeUpdate.stress_level ?? tradeUpdate.stressLevel;
 
         try {
           // Validate trade belongs to user
@@ -5369,15 +5647,7 @@ const tradeController = {
 
         logger.info(`[REPAIR] Repaired ${updateResult.rows.length} trades for user ${req.user.id}`, 'app');
 
-        // Invalidate caches
-        const AnalyticsCache = require('../services/analyticsCache');
-        const cache = require('../utils/cache');
-
-        await AnalyticsCache.invalidateUserCache(req.user.id);
-        const cacheKeys = Object.keys(cache.data || {}).filter(key =>
-          key.startsWith(`analytics:user_${req.user.id}:`)
-        );
-        cacheKeys.forEach(key => cache.del(key));
+        await AnalyticsCache.invalidate(req.user.id);
 
         return res.json({
           success: true,

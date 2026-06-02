@@ -8,30 +8,22 @@ const { requiresTier } = require('../middleware/tierAuth');
 // SSE endpoint for real-time notifications (uses special auth for EventSource)
 router.get('/stream', sseAuthenticate, requiresTier('pro'), notificationsController.subscribeToNotifications);
 
-// Other routes use standard authentication
+// All other routes require standard authentication
 router.use(authenticate);
-router.use(requiresTier('pro'));
 
-// Connection status
-router.get('/status', notificationsController.getConnectionStatus);
+// Basic notification routes — available to all tiers so free users can still
+// see, read, and dismiss in-app notifications (achievements, comments, etc.)
+router.get('/', notificationsController.getUserNotifications);
+router.get('/unread-count', notificationsController.getUnreadCount);
+router.post('/mark-read', notificationsController.markNotificationsAsRead);
+router.post('/mark-all-read', notificationsController.markAllNotificationsAsRead);
+router.delete('/', notificationsController.deleteNotifications);
 
-// Test notification
-router.post('/test', notificationsController.sendTestNotification);
+// Pro-only routes (real-time SSE management and test sends)
+router.get('/status', requiresTier('pro'), notificationsController.getConnectionStatus);
+router.post('/test', requiresTier('pro'), notificationsController.sendTestNotification);
 
-// Get user notifications (remove pro tier requirement for basic functionality)
-router.get('/', authenticate, notificationsController.getUserNotifications);
-
-// Get unread notification count
-router.get('/unread-count', authenticate, notificationsController.getUnreadCount);
-
-// Mark notifications as read
-router.post('/mark-read', authenticate, notificationsController.markNotificationsAsRead);
-
-// Mark all notifications as read
-router.post('/mark-all-read', authenticate, notificationsController.markAllNotificationsAsRead);
-
-// Delete notifications
-router.delete('/', authenticate, notificationsController.deleteNotifications);
+router.delete('/all', notificationsController.clearAllNotifications);
 
 // Mobile push notification routes (remove pro tier requirement for basic functionality)
 const mobileRouter = express.Router();

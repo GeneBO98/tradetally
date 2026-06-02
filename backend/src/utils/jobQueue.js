@@ -9,7 +9,7 @@ class JobQueue {
 
   /**
    * Add a job to the queue
-   * @param {string} type - Job type (cusip_resolution, strategy_classification, symbol_enrichment, mae_mfe_estimation)
+   * @param {string} type - Job type (cusip_resolution, strategy_classification, news_enrichment, news_backfill, quality_backfill, verification_email, password_reset_email, support_request_email)
    * @param {object} data - Job data
    * @param {number} priority - Priority (1=highest, 5=lowest)
    * @param {string} userId - User ID for the job
@@ -200,6 +200,9 @@ class JobQueue {
         logger.logError(`Stack trace: ${error.stack}`);
       }
     }, 5000);
+    if (typeof this.processingInterval.unref === 'function') {
+      this.processingInterval.unref();
+    }
     
     logger.logImport('[SUCCESS] Job queue processing interval started (every 5 seconds)');
   }
@@ -255,12 +258,6 @@ class JobQueue {
         case 'strategy_classification':
           result = await this.processStrategyClassification(data);
           break;
-        case 'symbol_enrichment':
-          result = await this.processSymbolEnrichment(data);
-          break;
-        case 'mae_mfe_estimation':
-          result = await this.processMaeMfeEstimation(data);
-          break;
         case 'news_backfill':
           result = await this.processNewsBackfill(data);
           break;
@@ -269,6 +266,15 @@ class JobQueue {
           break;
         case 'quality_backfill':
           result = await this.processQualityBackfill(data);
+          break;
+        case 'verification_email':
+          result = await this.processVerificationEmail(data);
+          break;
+        case 'password_reset_email':
+          result = await this.processPasswordResetEmail(data);
+          break;
+        case 'support_request_email':
+          result = await this.processSupportRequestEmail(data);
           break;
         default:
           throw new Error(`Unknown job type: ${job.type}`);
@@ -391,71 +397,6 @@ class JobQueue {
     }
     
     return { processed: tradesToProcess.length };
-  }
-
-  /**
-   * Process symbol enrichment job
-   */
-  async processSymbolEnrichment(data) {
-    const symbolCategories = require('./symbolCategories');
-    const { symbols } = data;
-    
-    logger.logImport(`Enriching ${symbols.length} symbols`);
-    
-    for (const symbol of symbols) {
-      try {
-        await symbolCategories.enrichSymbol(symbol);
-      } catch (error) {
-        logger.logError(`Failed to enrich symbol ${symbol}: ${error.message}`);
-      }
-    }
-    
-    return { processed: symbols.length };
-  }
-
-  /**
-   * Process MAE/MFE estimation job
-   */
-  async processMaeMfeEstimation(data) {
-    const maeEstimator = require('./maeEstimator');
-    const enrichmentCacheService = require('../services/enrichmentCacheService');
-    const { tradeIds } = data;
-    
-    logger.logImport(`Estimating MAE/MFE for ${tradeIds.length} trades`);
-    
-    for (const tradeId of tradeIds) {
-      try {
-        const trade = await db.query('SELECT * FROM trades WHERE id = $1', [tradeId]);
-        if (trade.rows[0]) {
-          const tradeData = trade.rows[0];
-          const estimates = await maeEstimator.estimateMAEMFE(tradeData);
-          
-          if (estimates.mae !== null || estimates.mfe !== null) {
-            await db.query(`
-              UPDATE trades 
-              SET mae = $1, mfe = $2
-              WHERE id = $3
-            `, [estimates.mae, estimates.mfe, tradeId]);
-            
-            // Store MAE/MFE data in enrichment cache
-            try {
-              await enrichmentCacheService.storeTradeEnrichmentData(tradeData, 'mae_mfe_estimation', {
-                typical_mae_percent: estimates.mae,
-                typical_mfe_percent: estimates.mfe,
-                confidence: estimates.confidence || 70, // Default confidence
-                api_provider: 'internal_calculation'
-              });
-            } catch (cacheError) {
-              logger.logError(`Failed to cache MAE/MFE data for trade ${tradeId}: ${cacheError.message}`);
-            }
-          }
-        }
-      } catch (error) {
-        logger.logError(`Failed to estimate MAE/MFE for trade ${tradeId}: ${error.message}`);
-      }
-    }
-    
-    return { processed: tradeIds.length };
   }
 
   /**
@@ -759,6 +700,36 @@ class JobQueue {
       logger.logError(`News enrichment job failed: ${error.message}`);
       throw error;
     }
+  }
+
+  async processVerificationEmail(data) {
+    const EmailService = require('../services/emailService');
+    const { email, token } = data;
+
+    if (!email || !token) {
+      throw new Error('Verification email job is missing email or token');
+    }
+
+    await EmailService.sendVerificationEmail(email, token);
+    return { sent: true, email };
+  }
+
+  async processPasswordResetEmail(data) {
+    const EmailService = require('../services/emailService');
+    const { email, token } = data;
+
+    if (!email || !token) {
+      throw new Error('Password reset email job is missing email or token');
+    }
+
+    await EmailService.sendPasswordResetEmail(email, token);
+    return { sent: true, email };
+  }
+
+  async processSupportRequestEmail(data) {
+    const EmailService = require('../services/emailService');
+    await EmailService.sendSupportRequest(data);
+    return { sent: true, recipient: data.to };
   }
 }
 

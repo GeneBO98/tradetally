@@ -88,16 +88,16 @@
                         >
                             Source
                         </label>
-                        <select
+                        <BaseSelect
                             v-model="sourceFilter"
-                            @change="fetchMappings"
-                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-800 dark:text-white text-sm"
-                        >
-                            <option value="">All Sources</option>
-                            <option value="finnhub">Finnhub (Global)</option>
-                            <option value="ai">AI Resolution</option>
-                            <option value="manual">Manual Entry</option>
-                        </select>
+                            @change="fetchMappings()"
+                            placeholder="All Sources"
+                            :options="[
+                                { value: 'finnhub', label: 'Finnhub (Global)' },
+                                { value: 'ai', label: 'AI Resolution' },
+                                { value: 'manual', label: 'Manual Entry' }
+                            ]"
+                        />
                     </div>
                     <div>
                         <label
@@ -105,15 +105,15 @@
                         >
                             Status
                         </label>
-                        <select
+                        <BaseSelect
                             v-model="verifiedFilter"
-                            @change="fetchMappings"
-                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-800 dark:text-white text-sm"
-                        >
-                            <option value="">All Status</option>
-                            <option value="true">Verified</option>
-                            <option value="false">Unverified</option>
-                        </select>
+                            @change="fetchMappings()"
+                            placeholder="All Status"
+                            :options="[
+                                { value: 'true', label: 'Verified' },
+                                { value: 'false', label: 'Unverified' }
+                            ]"
+                        />
                     </div>
                     <div class="flex items-end">
                         <button
@@ -449,7 +449,7 @@ import {
 import { useAuthStore } from "@/stores/auth";
 import CusipMappingModal from "@/components/cusip/CusipMappingModal.vue";
 import UnmappedCusipsModal from "@/components/cusip/UnmappedCusipsModal.vue";
-import api from "@/services/api";
+import BaseSelect from "@/components/common/BaseSelect.vue";
 import { debounce } from "lodash-es";
 
 const router = useRouter();
@@ -487,12 +487,18 @@ const fetchMappings = async (page = 1) => {
         if (verifiedFilter.value)
             params.append("verified", verifiedFilter.value);
 
-        const response = await api.get("/cusip-mappings", {
-            params: Object.fromEntries(params),
-        });
-        const data = response.data;
-        mappings.value = data.data || [];
-        pagination.value = data.pagination;
+        const response = await fetch(`/api/cusip-mappings?${params}`);
+
+        if (response.ok) {
+            const data = await response.json();
+            mappings.value = data.data || [];
+            pagination.value = data.pagination;
+        } else {
+            console.error(
+                "Failed to fetch CUSIP mappings:",
+                response.statusText,
+            );
+        }
     } catch (error) {
         console.error("Error fetching CUSIP mappings:", error);
     } finally {
@@ -505,15 +511,18 @@ const fetchMappingsForReview = async () => {
 
     try {
         loading.value = true;
-        const response = await api.get("/cusip-mappings/review");
-        const data = response.data;
-        mappings.value = data.data || [];
-        pagination.value = null; // Review mode doesn't use pagination
+        const response = await fetch("/api/cusip-mappings/review");
 
-        // Reset filters
-        searchQuery.value = "";
-        sourceFilter.value = "";
-        verifiedFilter.value = "false";
+        if (response.ok) {
+            const data = await response.json();
+            mappings.value = data.data || [];
+            pagination.value = null; // Review mode doesn't use pagination
+
+            // Reset filters
+            searchQuery.value = "";
+            sourceFilter.value = "";
+            verifiedFilter.value = "false";
+        }
     } catch (error) {
         console.error("Error fetching mappings for review:", error);
     } finally {
@@ -525,8 +534,12 @@ const fetchUnmappedCusips = async () => {
     if (!isAuthenticated.value) return;
 
     try {
-        const response = await api.get("/cusip-mappings/unmapped");
-        unmappedCusips.value = response.data.data || [];
+        const response = await fetch("/api/cusip-mappings/unmapped");
+
+        if (response.ok) {
+            const data = await response.json();
+            unmappedCusips.value = data.data || [];
+        }
     } catch (error) {
         console.error("Error fetching unmapped CUSIPs:", error);
     }
@@ -534,8 +547,17 @@ const fetchUnmappedCusips = async () => {
 
 const verifyMapping = async (cusip, verified) => {
     try {
-        await api.patch(`/cusip-mappings/${cusip}/verify`, { verified });
-        await fetchMappings(pagination.value?.page || 1);
+        const response = await fetch(`/api/cusip-mappings/${cusip}/verify`, {
+            method: "PATCH",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ verified }),
+        });
+
+        if (response.ok) {
+            await fetchMappings(pagination.value?.page || 1);
+        }
     } catch (error) {
         console.error("Error verifying mapping:", error);
     }
@@ -547,8 +569,13 @@ const deleteMapping = (cusip) => {
         "Delete this user override? This will revert to the global mapping if one exists.",
         async () => {
             try {
-                await api.delete(`/cusip-mappings/${cusip}`);
-                await fetchMappings(pagination.value?.page || 1);
+                const response = await fetch(`/api/cusip-mappings/${cusip}`, {
+                    method: "DELETE",
+                });
+
+                if (response.ok) {
+                    await fetchMappings(pagination.value?.page || 1);
+                }
             } catch (error) {
                 console.error("Error deleting mapping:", error);
             }

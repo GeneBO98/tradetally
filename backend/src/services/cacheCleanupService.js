@@ -43,9 +43,13 @@ class CacheCleanupService {
     this.cleanupExpiredEntries();
     
     // Schedule recurring cleanup
-    setInterval(() => {
+    const cleanupInterval = setInterval(() => {
       this.cleanupExpiredEntries();
     }, CLEANUP_INTERVAL);
+
+    if (typeof cleanupInterval.unref === 'function') {
+      cleanupInterval.unref();
+    }
   }
 }
 

@@ -1,6 +1,14 @@
 const unsubscribeService = require('../services/unsubscribeService');
+const sequenzySubscriberSyncService = require('../services/sequenzySubscriberSyncService');
 const User = require('../models/User');
 const logger = require('../utils/logger');
+
+function getToken(req) {
+  return req.body?.token
+    || req.query.token
+    || req.query.unsubscribe_token
+    || req.query.unsubscribeToken;
+}
 
 /**
  * GET /api/unsubscribe?token=xxx
@@ -8,7 +16,7 @@ const logger = require('../utils/logger');
  */
 async function getUnsubscribeStatus(req, res) {
   try {
-    const { token } = req.query;
+    const token = getToken(req);
 
     if (!token) {
       return res.status(400).json({
@@ -57,7 +65,7 @@ async function getUnsubscribeStatus(req, res) {
 async function handleUnsubscribe(req, res) {
   try {
     // Token can come from body (web form) or query (RFC 8058 one-click)
-    const token = req.body.token || req.query.token;
+    const token = getToken(req);
 
     if (!token) {
       return res.status(400).json({
@@ -85,6 +93,8 @@ async function handleUnsubscribe(req, res) {
         error: 'User not found'
       });
     }
+
+    sequenzySubscriberSyncService.queueSyncUserById(userId);
 
     logger.info(`[UNSUBSCRIBE] User ${userId} unsubscribed from marketing emails`);
 

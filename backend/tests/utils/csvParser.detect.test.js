@@ -70,9 +70,50 @@ describe('detectBrokerFormat', () => {
     expect(detectBrokerFormat(buf(csv))).toBe('ibkr_trade_confirmation');
   });
 
+  test('detects IBKR multi-section Activity Statement (Trades section)', () => {
+    const csv = [
+      'Statement,Header,Field Name,Field Value',
+      'Statement,Data,Title,Activity Statement',
+      'Account Information,Header,Field Name,Field Value',
+      'Account Information,Data,Account,U1234567',
+      'Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,Proceeds,Comm/Fee,Basis,Realized P/L,MTM P/L,Code',
+      'Trades,Data,Order,Stocks,USD,AAPL,"2026-01-05, 09:30:00",100,150.00,150.00,-15000,-1.00,15001,0,0,O'
+    ].join('\n');
+    expect(detectBrokerFormat(buf(csv))).toBe('ibkr');
+  });
+
+  test('detects CapTrader Activity Statement via German Feldname/Feldwert headers', () => {
+    const csv = [
+      'Statement,Header,Feldname,Feldwert',
+      'Statement,Data,Title,Transaction History',
+      'Summary,Header,Feldname,Feldwert',
+      'Summary,Data,Basiswährung,EUR',
+      'Transaction History,Header,Date,Account,Description,Transaction Type,Symbol,Quantity,Price,Price Currency,Gross Amount ,Commission,Net Amount',
+      'Transaction History,Data,2026-05-14,U***50777 Trading,MCL JUN26,Buy,MCLM6,2.0,99.94,USD,-17128.5,-2.14,208.66'
+    ].join('\n');
+    expect(detectBrokerFormat(buf(csv))).toBe('captrader');
+  });
+
+  test('detects CapTrader Activity Statement via CapTrader GmbH master name', () => {
+    const csv = [
+      'Statement,Header,Field Name,Field Value',
+      'Statement,Data,Title,Activity Statement',
+      'Account Information,Header,Field Name,Field Value',
+      'Account Information,Data,Master Name,CapTrader GmbH',
+      'Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,Proceeds,Comm/Fee,Basis,Realized P/L,MTM P/L,Code',
+      'Trades,Data,Order,Stocks,EUR,8TRA,"2026-02-10, 10:01:14",100,36.42,36.18,-3642,-3.64,3646,0,-24,O'
+    ].join('\n');
+    expect(detectBrokerFormat(buf(csv))).toBe('captrader');
+  });
+
   test('detects E*TRADE format', () => {
     const csv = 'Transaction Date,Transaction Type,Symbol,Quantity,Price,Commission,Fees\n01/01/2025,Buy,AAPL,100,150.00,6.95,0.00';
     expect(detectBrokerFormat(buf(csv))).toBe('etrade');
+  });
+
+  test('detects Firstrade format', () => {
+    const csv = 'Symbol,Quantity,Price,Action,Description,TradeDate,SettledDate,Interest,Amount,Commission,Fee,CUSIP,RecordType\nSPY,1,600.00,BUY,SPDR S&P 500 ETF TRUST,2025-02-10,2025-02-11,0.00,-600.00,0.00,0.00,78462F103,Trade';
+    expect(detectBrokerFormat(buf(csv))).toBe('firstrade');
   });
 
   test('detects Webull standard format', () => {
@@ -92,6 +133,11 @@ describe('detectBrokerFormat', () => {
 
   test('detects Tradovate format', () => {
     const csv = 'orderId,B/S,Contract,Product,Fill Time,avgPrice,filledQty\n123,Buy,ESM4,ES,01/01/2025 09:30,5000.00,1';
+    expect(detectBrokerFormat(buf(csv))).toBe('tradovate');
+  });
+
+  test('detects Tradovate paired trades format', () => {
+    const csv = 'Position ID,Timestamp,Trade Date,Net Pos,Net Price,Bought,Avg. Buy,Sold,Avg. Sell,Account,Contract,Product,Product Description,_priceFormat,_priceFormatType,_tickSize,Pair ID,Buy Fill ID,Sell Fill ID,Paired Qty,Buy Price,Sell Price,P/L,Currency,Bought Timestamp,Sold Timestamp\n465747740010,04/09/2026 17:14:44,2026-04-09,0,,24,25065.97,24,25061.03,APEX4977960000002,MNQM6,MNQ,Micro E-mini NASDAQ-100,-2,0,0.25,465747740223,465747740203,465747740221,5,25073.25,25072.00,-12.50,USD,04/09/2026 17:14:44,04/09/2026 17:14:44';
     expect(detectBrokerFormat(buf(csv))).toBe('tradovate');
   });
 

@@ -6,9 +6,15 @@
  * - Unlimited total trades (no storage limit)
  * - Unlimited journal entries (journaling is always free)
  * - Limited batch imports (100 at once) to prevent abuse
+ * - Automatic broker sync is a Pro feature (free users use CSV import)
  *
  * The free tier removes barriers to entry while preventing resource abuse.
  * Users can journal as much as they want, but large imports require Pro.
+ *
+ * Why broker sync is Pro-only: the 100-trade batch limit on CSV import is the
+ * free-tier gate, but automatic broker sync (IBKR/Schwab/TradeStation/Alpaca)
+ * imports unlimited trades with no batch limit, which would otherwise let free
+ * users sidestep that gate entirely. Sync is therefore a Pro entitlement.
  */
 
 const TIER_LIMITS = {
@@ -58,7 +64,8 @@ const TIER_LIMITS = {
       coreMetrics: true,
       basicCharts: true,
       calendarView: true,
-      leaderboardView: true
+      leaderboardView: true,
+      brokerSync: false // Automatic broker sync is Pro-only
     }
   },
 
@@ -138,9 +145,25 @@ const TIER_LIMITS = {
       advancedFiltering: true,
       customMetrics: true,
       exportReports: true,
-      tradeBlocking: true
+      tradeBlocking: true,
+      brokerSync: true // Automatic broker sync (IBKR/Schwab/TradeStation/Alpaca)
     }
   }
+};
+
+/**
+ * Broker sync access configuration
+ *
+ * Broker sync is a Pro feature. To avoid rug-pulling free users who already
+ * connected a broker before this rolled out, existing connections keep syncing
+ * during a grace period; after `graceEndsAt` sync is blocked for free users.
+ * New connections by free users are blocked immediately (no grace on creation).
+ *
+ * Override the cutoff with BROKER_SYNC_GRACE_ENDS_AT (ISO 8601). Self-hosted
+ * instances have billing disabled, so this never applies to them.
+ */
+const BROKER_SYNC_ACCESS = {
+  graceEndsAt: process.env.BROKER_SYNC_GRACE_ENDS_AT || '2026-07-01T00:00:00.000Z'
 };
 
 /**
@@ -214,6 +237,7 @@ const PRICING = {
 module.exports = {
   TIER_LIMITS,
   PRICING,
+  BROKER_SYNC_ACCESS,
   getTierLimits,
   hasReachedLimit,
   getRemainingQuota

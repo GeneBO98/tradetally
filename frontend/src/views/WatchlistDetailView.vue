@@ -29,7 +29,11 @@
                     {{ watchlist.description }}
                 </p>
             </div>
-            <button @click="showAddSymbolModal = true" class="btn-primary">
+            <div class="flex items-center gap-3">
+              <button @click="createWebMentionRule" class="btn-secondary">
+                Web Mentions
+              </button>
+              <button @click="showAddSymbolModal = true" class="btn-primary">
                 <svg
                     class="w-4 h-4 mr-2"
                     fill="none"
@@ -44,7 +48,8 @@
                     ></path>
                 </svg>
                 Add Symbol
-            </button>
+              </button>
+            </div>
         </div>
 
         <!-- Loading State -->
@@ -109,10 +114,16 @@
                     >
                         <tr v-for="item in watchlist.items" :key="item.id">
                             <td class="px-6 py-4 whitespace-nowrap">
-                                <div
-                                    class="text-sm font-medium text-gray-900 dark:text-white"
-                                >
-                                    {{ item.symbol }}
+                                <div class="flex items-center gap-3">
+                                    <StockLogo
+                                        :symbol="item.symbol"
+                                        size-class="w-8 h-8"
+                                    />
+                                    <div
+                                        class="text-sm font-medium text-gray-900 dark:text-white"
+                                    >
+                                        {{ item.symbol }}
+                                    </div>
                                 </div>
                                 <div
                                     v-if="item.notes"
@@ -249,16 +260,16 @@
                         Recent News
                     </h2>
                     <div class="flex items-center space-x-2">
-                        <select
+                        <BaseSelect
                             v-model="newsFilter.days"
                             @change="loadWatchlistNews"
-                            class="text-sm border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white"
-                        >
-                            <option value="3">Last 3 days</option>
-                            <option value="7">Last 7 days</option>
-                            <option value="14">Last 14 days</option>
-                            <option value="30">Last 30 days</option>
-                        </select>
+                            :options="[
+                                { value: 3, label: 'Last 3 days' },
+                                { value: 7, label: 'Last 7 days' },
+                                { value: 14, label: 'Last 14 days' },
+                                { value: 30, label: 'Last 30 days' },
+                            ]"
+                        />
                         <button
                             @click="loadWatchlistNews"
                             :disabled="loadingNews"
@@ -291,7 +302,12 @@
                         class="p-6 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                     >
                         <div class="flex items-start space-x-3">
-                            <div class="flex-shrink-0">
+                            <div class="flex-shrink-0 flex items-center gap-2">
+                                <StockLogo
+                                    :symbol="article.symbol"
+                                    size-class="w-8 h-8"
+                                    rounded-class="rounded-full"
+                                />
                                 <span
                                     class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 dark:bg-primary-900 text-primary-800 dark:text-primary-200"
                                 >
@@ -381,15 +397,15 @@
                         Upcoming Earnings
                     </h2>
                     <div class="flex items-center space-x-2">
-                        <select
+                        <BaseSelect
                             v-model="earningsFilter.days"
                             @change="loadWatchlistEarnings"
-                            class="text-sm border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white"
-                        >
-                            <option value="14">Next 14 days</option>
-                            <option value="30">Next 30 days</option>
-                            <option value="60">Next 60 days</option>
-                        </select>
+                            :options="[
+                                { value: 14, label: 'Next 14 days' },
+                                { value: 30, label: 'Next 30 days' },
+                                { value: 60, label: 'Next 60 days' },
+                            ]"
+                        />
                         <button
                             @click="loadWatchlistEarnings"
                             :disabled="loadingEarnings"
@@ -420,6 +436,11 @@
                     >
                         <div class="flex items-center justify-between">
                             <div class="flex items-center space-x-3">
+                                <StockLogo
+                                    :symbol="earnings.symbol"
+                                    size-class="w-8 h-8"
+                                    rounded-class="rounded-full"
+                                />
                                 <span
                                     class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200"
                                 >
@@ -821,11 +842,15 @@ import { useNotification } from "@/composables/useNotification";
 import { useInvestmentsStore } from "@/stores/investments";
 import api from "@/services/api";
 import SymbolAutocomplete from "@/components/common/SymbolAutocomplete.vue";
+import StockLogo from "@/components/common/StockLogo.vue";
+import BaseSelect from "@/components/common/BaseSelect.vue";
 
 export default {
     name: "WatchlistDetailView",
     components: {
         SymbolAutocomplete,
+        StockLogo,
+        BaseSelect,
     },
     setup() {
         const route = useRoute();
@@ -1076,6 +1101,16 @@ export default {
             router.push({ name: "price-alerts", query: { symbol } });
         };
 
+        const createWebMentionRule = () => {
+            router.push({
+                name: "web-mentions",
+                query: {
+                    watchlist_id: route.params.id,
+                    name: watchlist.value?.name || "Watchlist",
+                },
+            });
+        };
+
         const cancelAddSymbol = () => {
             showAddSymbolModal.value = false;
             symbolForm.value = { symbol: "", notes: "" };
@@ -1206,6 +1241,7 @@ export default {
             editNotes,
             updateNotes,
             createPriceAlert,
+            createWebMentionRule,
             cancelAddSymbol,
             cancelEditNotes,
             loadWatchlistNews,

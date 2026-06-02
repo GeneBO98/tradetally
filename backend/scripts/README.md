@@ -1,5 +1,33 @@
 # Admin Scripts
 
+## Fix MAE/MFE for futures/options trades
+
+Prior to the contract-multiplier fix in `maeEstimator.js`, auto-calculated
+MAE/MFE values for futures and options were stored without the `point_value`
+(or `contract_size`) multiplier — i.e. in "price-move × quantity" units
+rather than dollars. For a MES trade the stored value is 1/5 of the correct
+dollar amount.
+
+To repair existing trades:
+
+```bash
+cd backend
+
+# Preview what would change
+node scripts/fix_mae_mfe_multipliers.js
+
+# Commit the changes
+node scripts/fix_mae_mfe_multipliers.js --apply
+
+# Scope to a single user
+node scripts/fix_mae_mfe_multipliers.js --user <userId> --apply
+```
+
+The script only touches rows where the stored value is mathematically
+impossible (MAE smaller than the realized loss in dollars, or MFE smaller
+than the realized gain) — anything passing that check is left alone, so
+manually-entered values are preserved.
+
 ## First User Auto-Admin
 
 The first user to register on a fresh TradeTally installation is automatically granted admin privileges. This ensures there's always an admin account available to manage the system.

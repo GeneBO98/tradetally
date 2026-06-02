@@ -8,11 +8,19 @@ const router = express.Router();
 const brokerSyncController = require('../controllers/brokerSync.controller');
 const { authenticate } = require('../middleware/auth');
 const { requireVerifiedEmail } = require('../middleware/sensitiveAccess');
+const { validate, schemas } = require('../middleware/validation');
+const { createRateLimiter } = require('../utils/rateLimit');
+
+const brokerSyncLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: 'Too many broker sync requests. Please try again later.'
+});
 
 // All routes require authentication (except OAuth callback)
 router.use((req, res, next) => {
   // Skip auth for OAuth callback route
-  if (req.path === '/connections/schwab/callback') {
+  if (req.path === '/connections/schwab/callback' || /^\/connections\/[^/]+\/callback$/.test(req.path)) {
     return next();
   }
   return authenticate(req, res, (err) => {
@@ -37,25 +45,31 @@ router.get('/connections/:id', brokerSyncController.getConnection);
 router.get('/connections/:id/logs', brokerSyncController.getSyncLogs);
 
 // Add IBKR connection
-router.post('/connections/ibkr', brokerSyncController.addIBKRConnection);
+router.post('/connections/ibkr', brokerSyncLimiter, validate(schemas.brokerSyncIbkrConnection), brokerSyncController.addIBKRConnection);
 
 // Initialize Schwab OAuth flow
-router.post('/connections/schwab/init', brokerSyncController.initSchwabOAuth);
+router.post('/connections/schwab/init', brokerSyncLimiter, brokerSyncController.initSchwabOAuth);
 
 // Handle Schwab OAuth callback (no auth required - user redirected from Schwab)
 router.get('/connections/schwab/callback', brokerSyncController.handleSchwabCallback);
 
+// Initialize direct broker OAuth flow
+router.post('/connections/:broker/init', brokerSyncLimiter, brokerSyncController.initBrokerOAuth);
+
+// Handle direct broker OAuth callback (no auth required - user redirected from broker)
+router.get('/connections/:broker/callback', brokerSyncController.handleBrokerOAuthCallback);
+
 // Update connection settings
-router.put('/connections/:id', brokerSyncController.updateConnection);
+router.put('/connections/:id', brokerSyncLimiter, validate(schemas.brokerSyncConnectionUpdate), brokerSyncController.updateConnection);
 
 // Delete connection
 router.delete('/connections/:id', brokerSyncController.deleteConnection);
 
 // Trigger manual sync
-router.post('/connections/:id/sync', brokerSyncController.triggerSync);
+router.post('/connections/:id/sync', brokerSyncLimiter, validate(schemas.brokerSyncManualSync), brokerSyncController.triggerSync);
 
 // Test connection
-router.post('/connections/:id/test', brokerSyncController.testConnection);
+router.post('/connections/:id/test', brokerSyncLimiter, brokerSyncController.testConnection);
 
 // Delete all trades from a broker connection
 router.delete('/connections/:id/trades', brokerSyncController.deleteBrokerTrades);

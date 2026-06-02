@@ -9,9 +9,15 @@ const YearWrappedService = require('../services/yearWrappedService');
 const refreshTokenService = require('../services/refreshToken.service');
 const SampleDataService = require('../services/sampleDataService');
 const activityTrackingService = require('../services/activityTrackingService');
+const sequenzySubscriberSyncService = require('../services/sequenzySubscriberSyncService');
 const { getClientIp } = require('../utils/clientIp');
 const { findMatchingBackupCodeIndex } = require('../utils/twoFactorBackupCodes');
+const { generateCsrfToken } = require('../middleware/csrf');
 const { issueSudoToken, verifyPasswordAndOptional2FA } = require('../middleware/sensitiveAccess');
+const { clearAuthCookies, setAuthCookies } = require('../utils/authCookies');
+const jobQueue = require('../utils/jobQueue');
+
+const PROTECTED_EMAIL = (process.env.DEMO_EMAIL || 'demo@example.com').toLowerCase();
 
 // Check if email configuration is available
 function isEmailConfigured() {
@@ -60,9 +66,19 @@ function maskEmail(email) {
 function sendVerificationEmailInBackground(email, token) {
   setImmediate(async () => {
     try {
-      await sendVerificationEmail(email, token);
+      await jobQueue.addJob('verification_email', { email, token }, 2);
     } catch (error) {
       console.warn('[WARNING] Failed to send verification email after registration:', error.message);
+    }
+  });
+}
+
+function queuePasswordResetEmail(email, token) {
+  setImmediate(async () => {
+    try {
+      await jobQueue.addJob('password_reset_email', { email, token }, 2);
+    } catch (error) {
+      console.warn('[WARNING] Failed to queue password reset email:', error.message);
     }
   });
 }
@@ -141,6 +157,7 @@ const authController = {
         marketingConsent: marketing_consent || false
       });
       await User.createSettings(user.id);
+      sequenzySubscriberSyncService.queueSyncUserById(user.id);
 
       // Record acquisition data (UTM params, referral source, IP, user agent)
       try {
@@ -177,18 +194,40 @@ const authController = {
         marketingConsent: marketing_consent
       });
 
-      // Create sample data for new users on billing-enabled instances
+      // For new users on billing-enabled instances: seed sample data and grant
+      // a 14-day Pro trial. Both are best-effort and never block registration.
+      // First user is skipped — they're an admin and get Pro tier permanently.
+      let billingEnabled = false;
       try {
-        const billingEnabled = await TierService.isBillingEnabled(req.headers.host);
-        console.log(`[REGISTER] Sample data check: billingEnabled=${billingEnabled}, isFirstUser=${isFirstUser}`);
-        if (billingEnabled && !isFirstUser) {
+        billingEnabled = await TierService.isBillingEnabled(req.headers.host);
+        console.log(`[REGISTER] Billing check: billingEnabled=${billingEnabled}, isFirstUser=${isFirstUser}`);
+      } catch (billingErr) {
+        console.log('[REGISTER] Billing status check failed (non-blocking):', billingErr.message);
+      }
+
+      if (billingEnabled && !isFirstUser) {
+        try {
           await SampleDataService.createForUser(user.id);
           console.log(`[REGISTER] Sample data created for new user ${user.username}`);
-        } else {
-          console.log(`[REGISTER] Skipping sample data: billingEnabled=${billingEnabled}, isFirstUser=${isFirstUser}`);
+        } catch (sampleErr) {
+          console.log('[REGISTER] Sample data creation failed (non-blocking):', sampleErr.message);
         }
-      } catch (sampleErr) {
-        console.log('[REGISTER] Sample data creation failed (non-blocking):', sampleErr.message);
+
+        // Auto-grant 14-day Pro trial. Reason matches the manual /billing/start-trial
+        // flow ('Free 14-day trial') so trialScheduler picks it up for reminder
+        // and expiration emails. A DB trigger sets users.trial_used = true when
+        // a tier_override with reason ILIKE '%trial%' is inserted.
+        try {
+          const expiresAt = new Date();
+          expiresAt.setDate(expiresAt.getDate() + 14);
+          await User.createTierOverride(user.id, 'pro', 'Free 14-day trial', expiresAt, null);
+          await User.setProOnboardingStep(user.id, 1);
+          console.log(`[REGISTER] 14-day Pro trial granted for new user ${user.username} (expires ${expiresAt.toISOString()})`);
+        } catch (trialErr) {
+          console.log('[REGISTER] Trial grant failed (non-blocking):', trialErr.message);
+        }
+      } else {
+        console.log(`[REGISTER] Skipping sample data + trial: billingEnabled=${billingEnabled}, isFirstUser=${isFirstUser}`);
       }
 
       // Log if this user was made an admin
@@ -212,7 +251,7 @@ const authController = {
         message = 'Registration successful. Your account is ready to use.';
       }
 
-      // Issue a session only when the account is both approved and verified.
+      // Auto-login only when approval and email-verification requirements are both satisfied.
       if (adminApproved && isVerified) {
         await User.updateLastLogin(user.id);
 
@@ -222,19 +261,14 @@ const authController = {
 
         const authToken = generateToken(user, { purpose: TOKEN_PURPOSES.ACCESS });
 
-        res.cookie('token', authToken, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: 'lax',
-          maxAge: 7 * 24 * 60 * 60 * 1000
-        });
+        setAuthCookies(req, res, authToken, generateCsrfToken());
 
         const { tier: userTier, billingEnabled: billingStatus } = await TierService.getUserTierWithBillingStatus(user.id, req.headers.host);
         const regSettings = await User.getSettings(user.id);
 
         res.status(201).json({
           message,
-          requiresVerification: false,
+          requiresVerification: emailConfigured,
           requiresApproval: false,
           registrationMode,
           isFirstUser,
@@ -259,11 +293,12 @@ const authController = {
           }
         });
       } else {
-        // Approval-pending or email-verification-pending: no auto-login
+        // No auto-login until all registration gates are satisfied.
+        const requiresApproval = registrationMode === 'approval' && !adminApproved;
         res.status(201).json({
           message,
-          requiresVerification: !isVerified,
-          requiresApproval: !adminApproved,
+          requiresVerification: emailConfigured,
+          requiresApproval,
           registrationMode,
           isFirstUser,
           emailConfigured,
@@ -365,13 +400,7 @@ const authController = {
 
       const token = generateToken(user, { purpose: TOKEN_PURPOSES.ACCESS });
 
-      // Set HTTP-only cookie for OAuth flow
-      res.cookie('token', token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-      });
+      setAuthCookies(req, res, token, generateCsrfToken());
 
       // Get user tier and billing status in one optimized call
       const TierService = require('../services/tierService');
@@ -484,12 +513,7 @@ const authController = {
       // Generate full access token
       const token = generateToken(user, { purpose: TOKEN_PURPOSES.ACCESS });
 
-      res.cookie('token', token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-      });
+      setAuthCookies(req, res, token, generateCsrfToken());
 
       // Get tier and billing status
       const TierService = require('../services/tierService');
@@ -522,12 +546,7 @@ const authController = {
 
   async logout(req, res, next) {
     try {
-      // Clear the HTTP-only cookie
-      res.clearCookie('token', {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax'
-      });
+      clearAuthCookies(req, res);
 
       res.json({ message: 'Logout successful' });
     } catch (error) {
@@ -638,6 +657,11 @@ const authController = {
     try {
       const { email } = req.body;
 
+      // Return the same generic message to avoid leaking the protection
+      if (email?.toLowerCase() === PROTECTED_EMAIL) {
+        return res.json({ message: 'If the email exists, a reset link has been sent' });
+      }
+
       const user = await User.findByEmail(email);
       if (!user) {
         return res.json({ message: 'If the email exists, a reset link has been sent' });
@@ -648,7 +672,7 @@ const authController = {
       const resetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
       await User.updateResetToken(user.id, resetToken, resetExpires);
-      await sendPasswordResetEmail(email, resetToken);
+      queuePasswordResetEmail(email, resetToken);
 
       res.json({ message: 'If the email exists, a reset link has been sent' });
     } catch (error) {
@@ -726,7 +750,7 @@ const authController = {
       const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
       await User.updateVerificationToken(user.id, verificationToken, verificationExpires);
-      await sendVerificationEmail(email, verificationToken);
+      sendVerificationEmailInBackground(email, verificationToken);
 
       res.json({ message: 'Verification email has been resent.' });
     } catch (error) {
@@ -774,16 +798,6 @@ const authController = {
     }
   }
 };
-
-// Email sending function
-async function sendVerificationEmail(email, token) {
-  await EmailService.sendVerificationEmail(email, token);
-}
-
-// Password reset email function
-async function sendPasswordResetEmail(email, token) {
-  await EmailService.sendPasswordResetEmail(email, token);
-}
 
 module.exports = authController;
 module.exports.sendVerificationEmailInBackground = sendVerificationEmailInBackground;

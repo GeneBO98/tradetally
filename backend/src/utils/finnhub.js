@@ -5,6 +5,7 @@ const historicalPriceCache = require('./historicalPriceCache');
 const ApiUsageService = require('../services/apiUsageService');
 const TierService = require('../services/tierService');
 const { validateAiProviderUrl } = require('./urlSecurity');
+const { FinnhubPriority, FinnhubRequestScheduler } = require('./finnhubScheduler');
 
 class FinnhubClient {
   constructor() {
@@ -20,67 +21,73 @@ class FinnhubClient {
       this.maxCallsPerSecond = parseInt(process.env.FINNHUB_RATE_LIMIT_PER_SECOND, 10) || 1;
       console.log(`[FINNHUB] Using custom rate limits: ${this.maxCallsPerMinute}/min, ${this.maxCallsPerSecond}/sec`);
     } else if (this.apiKey) {
-      // Default to Free plan limits (60/min, 1/sec) - most conservative for API key users
+      // Default to Free plan limits (60/min)
+      // Per-second limit set to 10 to allow fast bursts while staying under 60/min
       this.maxCallsPerMinute = 60;
-      this.maxCallsPerSecond = 1;
+      this.maxCallsPerSecond = 10;
     } else {
       // No API key - very conservative limits
       this.maxCallsPerMinute = 10;
       this.maxCallsPerSecond = 1;
     }
-    this.callTimestamps = [];
-    this.secondTimestamps = [];
+    const configuredReserve = process.env.FINNHUB_ACTIVE_RESERVE_PER_MINUTE
+      ? parseInt(process.env.FINNHUB_ACTIVE_RESERVE_PER_MINUTE, 10)
+      : undefined;
+    this.scheduler = new FinnhubRequestScheduler({
+      maxCallsPerMinute: this.maxCallsPerMinute,
+      maxCallsPerSecond: this.maxCallsPerSecond,
+      activeReservePerMinute: configuredReserve
+    });
+    this.callTimestamps = this.scheduler.callTimestamps;
+    this.secondTimestamps = this.scheduler.secondTimestamps;
+
+    // Track symbols that have never returned a successful quote and got rate-limited (429).
+    // Key: symbol, Value: timestamp when blacklisted. Expires after 1 hour.
+    this.rateLimitedSymbols = new Map();
+    // Track symbols that have ever returned a successful quote (never blacklist these).
+    this.knownGoodSymbols = new Set();
+    this.RATE_LIMIT_BLACKLIST_TTL = 60 * 60 * 1000; // 1 hour
+  }
+
+  isSymbolBlacklisted(symbol) {
+    const entry = this.rateLimitedSymbols.get(symbol);
+    if (!entry) return false;
+    if (Date.now() - entry > this.RATE_LIMIT_BLACKLIST_TTL) {
+      this.rateLimitedSymbols.delete(symbol);
+      return false;
+    }
+    return true;
   }
 
   isConfigured() {
     return !!this.apiKey;
   }
 
-  async waitForRateLimit() {
-    const now = Date.now();
-    const oneMinuteAgo = now - 60000;
-    const oneSecondAgo = now - 1000;
-    
-    // Remove old timestamps
-    this.callTimestamps = this.callTimestamps.filter(timestamp => timestamp > oneMinuteAgo);
-    this.secondTimestamps = this.secondTimestamps.filter(timestamp => timestamp > oneSecondAgo);
-    
-    // Check per-second limit first (30 calls per second)
-    if (this.secondTimestamps.length >= this.maxCallsPerSecond) {
-      const oldestSecondCall = this.secondTimestamps[0];
-      const waitTime = 1000 - (now - oldestSecondCall) + 50; // Add 50ms buffer
-      
-      if (waitTime > 0) {
-        console.log(`Rate limit (per second) reached, waiting ${waitTime}ms`);
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-      }
-    }
-    
-    // Check per-minute limit (150 calls per minute)
-    if (this.callTimestamps.length >= this.maxCallsPerMinute) {
-      const oldestCall = this.callTimestamps[0];
-      const waitTime = 60000 - (now - oldestCall) + 100; // Add 100ms buffer
-      
-      if (waitTime > 0) {
-        console.log(`Rate limit (per minute) reached, waiting ${waitTime}ms`);
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-      }
-    }
-    
-    // Record this call
-    this.callTimestamps.push(now);
-    this.secondTimestamps.push(now);
+  async waitForRateLimit(context = {}) {
+    return this.scheduler.schedule(() => true, {
+      endpoint: context.endpoint || 'legacy-rate-limit',
+      source: context.source || 'legacy',
+      priority: context.priority ?? FinnhubPriority.ACTIVE_OTHER,
+      background: context.background,
+      maxQueueWaitMs: context.maxQueueWaitMs
+    });
   }
 
-  async makeRequest(endpoint, params = {}) {
+  async makeRequest(endpoint, params = {}, context = {}) {
     if (!this.apiKey) {
       throw new Error('Finnhub API key not configured');
     }
 
-    // Apply rate limiting
-    await this.waitForRateLimit();
+    const requestContext = {
+      endpoint,
+      source: context.source || 'finnhub',
+      priority: context.priority ?? FinnhubPriority.ACTIVE_OTHER,
+      userId: context.userId,
+      background: context.background,
+      maxQueueWaitMs: context.maxQueueWaitMs
+    };
 
-    try {
+    const executeRequest = async () => {
       const response = await axios.get(`${this.baseURL}${endpoint}`, {
         params: {
           ...params,
@@ -90,7 +97,14 @@ class FinnhubClient {
       });
 
       return response.data;
+    };
+
+    try {
+      return await this.scheduler.schedule(executeRequest, requestContext);
     } catch (error) {
+      if (error.code && String(error.code).startsWith('FINNHUB_SCHEDULER_')) {
+        throw error;
+      }
       if (error.response) {
         // Handle 429 rate limit errors with exponential backoff
         if (error.response.status === 429) {
@@ -103,7 +117,7 @@ class FinnhubClient {
           console.log(`Finnhub API server error ${error.response.status}, retrying once...`);
           await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
           try {
-            return await this.makeRequest(endpoint, params);
+            return await this.makeRequest(endpoint, params, context);
           } catch (retryError) {
             // If retry also fails, throw the original error
             throw new Error(`Finnhub API error: ${error.response.status} - ${error.response.data?.error || 'Server error (retry failed)'}`);
@@ -115,7 +129,24 @@ class FinnhubClient {
     }
   }
 
-  async getQuote(symbol, userId = null) {
+  normalizeUserContext(userIdOrOptions = null, options = {}) {
+    if (userIdOrOptions && typeof userIdOrOptions === 'object') {
+      return {
+        userId: userIdOrOptions.userId || null,
+        options: userIdOrOptions
+      };
+    }
+
+    return {
+      userId: userIdOrOptions,
+      options
+    };
+  }
+
+  async getQuote(symbol, userIdOrOptions = null, options = {}) {
+    const normalizedContext = this.normalizeUserContext(userIdOrOptions, options);
+    const userId = normalizedContext.userId;
+    const requestOptions = normalizedContext.options;
     const symbolUpper = symbol.toUpperCase();
 
     // Check tier and usage limits if userId provided
@@ -132,6 +163,11 @@ class FinnhubClient {
       }
     }
 
+    // Skip symbols that got 429'd and have never returned a successful quote
+    if (this.isSymbolBlacklisted(symbolUpper)) {
+      throw new Error(`Skipping ${symbol}: rate-limited and no prior successful quote`);
+    }
+
     // Check cache first
     const cached = await cache.get('quote', symbolUpper);
     if (cached) {
@@ -139,12 +175,21 @@ class FinnhubClient {
     }
 
     try {
-      const quote = await this.makeRequest('/quote', { symbol: symbolUpper });
+      const quote = await this.makeRequest('/quote', { symbol: symbolUpper }, {
+        source: requestOptions.source || 'quote',
+        priority: requestOptions.priority ?? FinnhubPriority.ACTIVE_QUOTE,
+        userId,
+        background: requestOptions.background,
+        maxQueueWaitMs: requestOptions.maxQueueWaitMs
+      });
 
       // Validate quote data
       if (!quote || quote.c === undefined || quote.c === 0) {
         throw new Error(`No quote data available for ${symbol}`);
       }
+
+      // Mark as known good - never blacklist this symbol in the future
+      this.knownGoodSymbols.add(symbolUpper);
 
       // Cache the result
       await cache.set('quote', symbolUpper, quote);
@@ -163,6 +208,11 @@ class FinnhubClient {
 
       return quote;
     } catch (error) {
+      // Blacklist symbol on 429 if it has never returned a successful quote
+      if (error.message && error.message.includes('rate limit') && !this.knownGoodSymbols.has(symbolUpper)) {
+        this.rateLimitedSymbols.set(symbolUpper, Date.now());
+        console.warn(`[FINNHUB] Blacklisted ${symbolUpper} for ${this.RATE_LIMIT_BLACKLIST_TTL / 60000} min (429, no prior success)`);
+      }
       console.warn(`Failed to get quote for ${symbol}: ${error.message}`);
       throw error;
     }
@@ -324,8 +374,9 @@ class FinnhubClient {
     }
   }
 
-  async getBatchQuotes(symbols) {
+  async getBatchQuotes(symbols, options = {}) {
     const results = {};
+    const failures = {};
     const uniqueSymbols = [...new Set(symbols.map(s => s.toUpperCase()))];
 
     console.log(`Getting quotes for ${uniqueSymbols.length} symbols:`, uniqueSymbols);
@@ -352,29 +403,27 @@ class FinnhubClient {
       return results;
     }
 
-    // Process symbols in chunks to respect rate limits while parallelizing
-    // Chunk size matches maxCallsPerSecond (1 for free tier, more for paid)
-    const chunkSize = this.maxCallsPerSecond;
-    console.log(`Getting quotes for ${validSymbols.length} symbols (chunk size: ${chunkSize})`);
+    // Fetch quotes concurrently up to maxCallsPerSecond; makeRequest schedules provider capacity.
+    const chunkSize = Math.max(this.maxCallsPerSecond, 1);
+    console.log(`Getting quotes for ${validSymbols.length} symbols (concurrency: ${chunkSize})`);
 
     for (let i = 0; i < validSymbols.length; i += chunkSize) {
       const chunk = validSymbols.slice(i, i + chunkSize);
 
-      // Wait between chunks (not before the first one)
-      if (i > 0) {
-        await new Promise(resolve => setTimeout(resolve, 1050));
-      }
-
       const settled = await Promise.allSettled(
         chunk.map(async (symbol) => {
-          if (this.isCryptoSymbol(symbol)) {
-            console.log(`[CRYPTO] ${symbol} detected as crypto, using crypto quote`);
-            const quote = await this.getCryptoQuote(symbol);
-            return { symbol, quote };
-          } else {
-            const quote = await this.getQuote(symbol);
-            console.log(`Got quote for ${symbol}:`, quote);
-            return { symbol, quote };
+          try {
+            if (this.isCryptoSymbol(symbol)) {
+              console.log(`[CRYPTO] ${symbol} detected as crypto, using crypto quote`);
+              const quote = await this.getCryptoQuote(symbol);
+              return { symbol, quote };
+            } else {
+              const quote = await this.getQuote(symbol, options);
+              return { symbol, quote };
+            }
+          } catch (error) {
+            error.symbol = symbol;
+            throw error;
           }
         })
       );
@@ -383,10 +432,18 @@ class FinnhubClient {
         if (result.status === 'fulfilled') {
           results[result.value.symbol] = result.value.quote;
         } else {
+          if (result.reason?.symbol) {
+            failures[result.reason.symbol] = result.reason;
+          }
           console.warn(`Failed to get quote:`, result.reason?.message);
         }
       }
     }
+
+    Object.defineProperty(results, '_failures', {
+      value: failures,
+      enumerable: false
+    });
 
     console.log(`Final quote results:`, Object.keys(results));
     return results;
@@ -445,7 +502,10 @@ class FinnhubClient {
     }
   }
 
-  async getStockCandles(symbol, resolution = '1', from, to, userId = null) {
+  async getStockCandles(symbol, resolution = '1', from, to, userIdOrOptions = null, options = {}) {
+    const normalizedContext = this.normalizeUserContext(userIdOrOptions, options);
+    const userId = normalizedContext.userId;
+    const requestOptions = normalizedContext.options;
     const symbolUpper = symbol.toUpperCase();
 
     // Check tier and usage limits if userId provided
@@ -477,6 +537,12 @@ class FinnhubClient {
         resolution,
         from,
         to
+      }, {
+        source: requestOptions.source || 'stock_candles',
+        priority: requestOptions.priority ?? (userId ? FinnhubPriority.ACTIVE_CANDLE : FinnhubPriority.ACTIVE_OTHER),
+        userId,
+        background: requestOptions.background,
+        maxQueueWaitMs: requestOptions.maxQueueWaitMs
       });
 
       // Validate candles data
@@ -751,20 +817,10 @@ class FinnhubClient {
 
   async generateSystemAIResponse(prompt) {
     try {
-      const db = require('../config/database');
-      
-      // Get admin AI settings from database
-      const settingsQuery = `
-        SELECT setting_key, setting_value 
-        FROM admin_settings 
-        WHERE setting_key IN ('default_ai_provider', 'default_ai_api_key', 'default_ai_api_url', 'default_ai_model')
-      `;
-      const settingsResult = await db.query(settingsQuery);
-      
-      const settings = {};
-      settingsResult.rows.forEach(row => {
-        settings[row.setting_key] = row.setting_value;
-      });
+      // Route through the service layer so encrypted default_ai_api_key values
+      // are transparently decrypted.
+      const adminSettings = require('../services/adminSettings');
+      const settings = await adminSettings.getAllSettings();
       
       // Validate configuration based on provider type
       const provider = settings.default_ai_provider || 'gemini';
@@ -813,11 +869,11 @@ class FinnhubClient {
           max_completion_tokens: 50
         };
         
-        // Only add temperature for models that support it
-        // Some models like o1-preview, o1-mini, and custom/nano models don't support temperature
-        const noTempModels = ['o1-preview', 'o1-mini', 'o1', 'gpt-5-nano', 'nano'];
+        // Only add temperature for models that support it.
+        // Reasoning models (o-series, all gpt-5 variants) reject any non-default temperature.
         const modelName = settings.default_ai_model || 'gpt-3.5-turbo';
-        if (!noTempModels.some(m => modelName.toLowerCase().includes(m.toLowerCase()))) {
+        const isReasoningModel = /^(o\d|gpt-5)/i.test(modelName);
+        if (!isReasoningModel) {
           requestParams.temperature = 0.1;
         }
         
@@ -1162,7 +1218,10 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
     return results;
   }
 
-  async getCandles(symbol, resolution, from, to, userId = null) {
+  async getCandles(symbol, resolution, from, to, userIdOrOptions = null, options = {}) {
+    const normalizedContext = this.normalizeUserContext(userIdOrOptions, options);
+    const userId = normalizedContext.userId;
+    const requestOptions = normalizedContext.options;
     let symbolUpper = symbol.toUpperCase();
     
     // Check if this looks like a CUSIP (8-9 characters, alphanumeric)
@@ -1193,6 +1252,12 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
         resolution,
         from,
         to
+      }, {
+        source: requestOptions.source || 'candles',
+        priority: requestOptions.priority ?? (userId ? FinnhubPriority.ACTIVE_CANDLE : FinnhubPriority.ACTIVE_OTHER),
+        userId,
+        background: requestOptions.background,
+        maxQueueWaitMs: requestOptions.maxQueueWaitMs
       });
       
       // Validate candle data
@@ -1447,27 +1512,22 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
 
   // Get cache stats
   async getCacheStats() {
-    const now = Date.now();
     const cacheStats = await cache.getStats();
     
     return {
       ...cacheStats,
-      rateLimitStats: {
-        maxCallsPerMinute: this.maxCallsPerMinute,
-        recentCalls: this.callTimestamps.length,
-        lastMinuteCalls: this.callTimestamps.filter(t => t > now - 60000).length
-      }
+      rateLimitStats: this.scheduler.getStats()
     };
   }
 
-  async getStockSplits(symbol, from, to) {
+  async getStockSplits(symbol, from, to, options = {}) {
     if (!this.apiKey) {
       console.log('Finnhub API key not configured, skipping stock splits check');
       return [];
     }
 
     const cacheKey = `stock_splits_${symbol}_${from}_${to}`;
-    const cached = cache.get(cacheKey);
+    const cached = await cache.get(cacheKey);
     if (cached) {
       console.log(`Using cached stock splits for ${symbol}`);
       return cached;
@@ -1482,19 +1542,31 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
       };
       
       console.log(`Fetching stock splits for ${symbol} from ${from} to ${to}`);
-      const response = await this.makeRequest(endpoint, params);
+      const response = await this.makeRequest(endpoint, params, {
+        source: options.source || 'stock_split_service',
+        priority: options.priority ?? FinnhubPriority.BACKGROUND_MAINTENANCE,
+        background: options.background ?? true,
+        maxQueueWaitMs: options.maxQueueWaitMs ?? 0
+      });
       
       // Cache for 24 hours since splits are historical data
-      cache.set(cacheKey, response, 86400);
+      await cache.set(cacheKey, response, 86400);
       
       return response || [];
     } catch (error) {
+      if (error.code === 'FINNHUB_SCHEDULER_SKIPPED' || error.code === 'FINNHUB_SCHEDULER_TIMEOUT') {
+        console.warn(`[FINNHUB-SCHEDULER] Stock split check deferred for ${symbol}: ${error.message}`);
+        throw error;
+      }
       console.error(`Error fetching stock splits for ${symbol}:`, error.message);
       return [];
     }
   }
 
-  async getStockCandles(symbol, resolution = '1', from, to, userId = null) {
+  async getStockCandles(symbol, resolution = '1', from, to, userIdOrOptions = null, options = {}) {
+    const normalizedContext = this.normalizeUserContext(userIdOrOptions, options);
+    const userId = normalizedContext.userId;
+    const requestOptions = normalizedContext.options;
     const symbolUpper = symbol.toUpperCase();
 
     // Check tier and usage limits if userId provided
@@ -1526,6 +1598,12 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
         resolution,
         from,
         to
+      }, {
+        source: requestOptions.source || 'stock_candles',
+        priority: requestOptions.priority ?? (userId ? FinnhubPriority.ACTIVE_CANDLE : FinnhubPriority.ACTIVE_OTHER),
+        userId,
+        background: requestOptions.background,
+        maxQueueWaitMs: requestOptions.maxQueueWaitMs
       });
 
       // Validate candles data

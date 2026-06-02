@@ -8,10 +8,10 @@
       </p>
     </div>
     
-    <!-- Buttons Row -->
-    <div class="flex items-center justify-between mb-6">
-      <button 
-        @click="goBack" 
+    <!-- Back link -->
+    <div class="mb-4">
+      <button
+        @click="goBack"
         class="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
       >
         <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -19,23 +19,10 @@
         </svg>
         Back
       </button>
-      <router-link to="/trades/new" class="btn-primary">
-        Add trade
-      </router-link>
     </div>
 
-    <!-- Enrichment Status -->
-    <EnrichmentStatus />
-
-    <div class="mt-8 card">
-      <div class="card-body">
-        <TradeFilters @filter="handleFilter" />
-      </div>
-    </div>
-
-
-    <!-- Total P/L Summary for Filtered Results -->
-    <div v-if="tradesStore.trades.length > 0" class="mt-6">
+    <!-- Total P/L Summary for Filtered Results (moved to top) -->
+    <div v-if="tradesStore.trades.length > 0" class="mb-6">
       <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-4">
         <!-- Mobile Layout: Stack vertically -->
         <div class="block sm:hidden space-y-4">
@@ -46,7 +33,7 @@
               </h3>
               <div class="space-y-1">
                 <div class="text-xs text-gray-500 dark:text-gray-400">Gross</div>
-                <div class="text-lg font-semibold" :class="[
+                <div class="text-lg font-semibold tabular-nums" :class="[
                 tradesStore.totalGrossPnL >= 0
                   ? 'text-green-600 dark:text-green-400'
                   : 'text-red-600 dark:text-red-400'
@@ -54,13 +41,23 @@
                   {{ formatSignedCurrency(tradesStore.totalGrossPnL) }}
                 </div>
                 <div class="text-xs text-gray-500 dark:text-gray-400">Net</div>
-                <div class="text-sm font-medium" :class="[
+                <div class="text-sm font-medium tabular-nums" :class="[
                 tradesStore.totalNetPnL >= 0
                   ? 'text-green-600 dark:text-green-400'
                   : 'text-red-600 dark:text-red-400'
                 ]">
                   {{ formatSignedCurrency(tradesStore.totalNetPnL) }}
                 </div>
+                <template v-if="isUnrealizedColumnVisible">
+                  <div class="text-xs text-gray-500 dark:text-gray-400">Unrealized</div>
+                  <div class="text-sm font-medium tabular-nums" :class="[
+                  totalUnrealizedPnl >= 0
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : 'text-amber-600 dark:text-amber-400'
+                  ]">
+                    {{ formatSignedCurrency(totalUnrealizedPnl) }}
+                  </div>
+                </template>
               </div>
             </div>
             <!-- Fullwidth Toggle (Mobile) -->
@@ -79,20 +76,23 @@
           </div>
           <div>
             <div class="text-sm text-gray-500 dark:text-gray-400 mb-1">Win Rate</div>
-            <div class="text-lg font-medium text-gray-900 dark:text-white">{{ tradesStore.winRate }}%</div>
+            <div class="text-lg font-medium text-gray-900 dark:text-white">
+              {{ tradesStore.winRate }}%<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
+            </div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">{{ tradesStore.winRateExcludingBreakeven }}% excl. BE</div>
           </div>
         </div>
-        
+
         <!-- Desktop Layout: Side by side -->
         <div class="hidden sm:flex items-center justify-between">
-          <div class="flex items-center space-x-4">
+          <div class="flex items-center space-x-6">
             <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
               P&L Summary ({{ tradesStore.totalTrades }} {{ tradesStore.totalTrades === 1 ? 'trade' : 'trades' }})
             </h3>
-            <div class="flex items-center gap-4">
-              <div>
-                <div class="text-xs text-gray-500 dark:text-gray-400">Gross</div>
-                <div class="text-lg font-semibold" :class="[
+            <div class="flex items-baseline gap-6">
+              <div class="text-center">
+                <div class="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Gross</div>
+                <div class="text-lg font-semibold tabular-nums" :class="[
                   tradesStore.totalGrossPnL >= 0
                     ? 'text-green-600 dark:text-green-400'
                     : 'text-red-600 dark:text-red-400'
@@ -100,9 +100,9 @@
                   {{ formatSignedCurrency(tradesStore.totalGrossPnL) }}
                 </div>
               </div>
-              <div>
-                <div class="text-xs text-gray-500 dark:text-gray-400">Net</div>
-                <div class="text-lg font-semibold" :class="[
+              <div class="text-center">
+                <div class="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Net</div>
+                <div class="text-lg font-semibold tabular-nums" :class="[
                   tradesStore.totalNetPnL >= 0
                     ? 'text-green-600 dark:text-green-400'
                     : 'text-red-600 dark:text-red-400'
@@ -110,12 +110,25 @@
                   {{ formatSignedCurrency(tradesStore.totalNetPnL) }}
                 </div>
               </div>
+              <div v-if="isUnrealizedColumnVisible" class="text-center">
+                <div class="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Unrealized</div>
+                <div class="text-lg font-semibold tabular-nums" :class="[
+                  totalUnrealizedPnl >= 0
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : 'text-amber-600 dark:text-amber-400'
+                ]">
+                  {{ formatSignedCurrency(totalUnrealizedPnl) }}
+                </div>
+              </div>
             </div>
           </div>
           <div class="flex items-center gap-6">
             <div class="text-right">
               <div class="text-sm text-gray-500 dark:text-gray-400">Win Rate</div>
-              <div class="text-lg font-medium text-gray-900 dark:text-white">{{ tradesStore.winRate }}%</div>
+              <div class="text-lg font-medium text-gray-900 dark:text-white">
+                {{ tradesStore.winRate }}%<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
+              </div>
+              <div class="text-xs text-gray-500 dark:text-gray-400">{{ tradesStore.winRateExcludingBreakeven }}% excl. BE</div>
             </div>
             <!-- Fullwidth Toggle -->
             <button
@@ -135,12 +148,70 @@
       </div>
     </div>
 
-    <div class="mt-8">
-      <div v-if="tradesStore.loading" class="flex justify-center py-12">
+    <!-- Enrichment Status -->
+    <EnrichmentStatus />
+
+    <!-- Action bar: filters icon + Add trade, just above the table -->
+    <div class="mt-6 mb-4 flex items-center justify-end gap-2">
+      <button
+        @click="openFiltersModal"
+        class="relative inline-flex items-center gap-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+        :aria-label="hasActiveFilters ? 'Filters (active)' : 'Filters'"
+      >
+        <FunnelIcon class="h-4 w-4" />
+        <span>Filters</span>
+        <span
+          v-if="hasActiveFilters"
+          class="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-primary-500 ring-2 ring-white dark:ring-gray-900"
+        ></span>
+      </button>
+      <router-link to="/trades/new" class="btn-primary">
+        Add trade
+      </router-link>
+    </div>
+
+    <!-- Filters modal -->
+    <transition
+      enter-active-class="transition-opacity duration-150"
+      enter-from-class="opacity-0"
+      enter-to-class="opacity-100"
+      leave-active-class="transition-opacity duration-150"
+      leave-from-class="opacity-100"
+      leave-to-class="opacity-0"
+    >
+      <div
+        v-if="showFiltersModal"
+        class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm sm:p-6"
+        @click.self="showFiltersModal = false"
+        @keydown.esc="showFiltersModal = false"
+      >
+        <div class="my-8 w-full max-w-4xl rounded-lg bg-white shadow-2xl dark:bg-gray-800">
+          <div class="flex items-center justify-between border-b border-gray-200 px-5 py-3 dark:border-gray-700">
+            <h3 class="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white">
+              <FunnelIcon class="h-5 w-5 text-primary-500" />
+              Filters
+            </h3>
+            <button
+              @click="showFiltersModal = false"
+              class="rounded-md p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+              aria-label="Close filters"
+            >
+              <XMarkIcon class="h-5 w-5" />
+            </button>
+          </div>
+          <div class="p-5">
+            <TradeFilters @filter="handleFilter" />
+          </div>
+        </div>
+      </div>
+    </transition>
+
+    <div class="mt-2">
+      <div v-if="tradesStore.initialLoading" class="flex justify-center py-12">
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
       </div>
 
-      <div v-else-if="tradesStore.trades.length === 0" class="text-center py-12">
+      <div v-else-if="tradesStore.trades.length === 0 && !tradesStore.loading" class="text-center py-12">
         <DocumentTextIcon class="mx-auto h-12 w-12 text-gray-400" />
         <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-white">No trades</h3>
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -201,7 +272,15 @@
               @click.stop
               class="mt-1 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
             />
-            <div class="flex-1 cursor-pointer" @click="$router.push(`/trades/${trade.id}`)">
+            <div
+              class="flex-1 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 rounded"
+              role="button"
+              tabindex="0"
+              :aria-label="`View trade details for ${trade.symbol}`"
+              @click="$router.push(`/trades/${trade.id}`)"
+              @keydown.enter.prevent="$router.push(`/trades/${trade.id}`)"
+              @keydown.space.prevent="$router.push(`/trades/${trade.id}`)"
+            >
             <div class="flex justify-between items-start mb-3">
               <div class="flex items-center space-x-2">
                 <div class="text-lg font-semibold text-gray-900 dark:text-white">
@@ -395,6 +474,10 @@
                     :class="[getSymbolPadding, 'cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div class="flex items-center gap-1.5 flex-wrap max-w-xs">
+                    <StockLogo
+                      :symbol="trade.symbol"
+                      size-class="w-8 h-8"
+                    />
                     <div class="text-sm font-medium text-gray-900 dark:text-white truncate max-w-[200px]" :title="trade.symbol">
                       {{ trade.symbol }}
                     </div>
@@ -608,12 +691,18 @@
                   {{ trade.fees ? formatCurrency(trade.fees) : '-' }}
                 </td>
                 
-                <td v-else-if="column.visible && column.key === 'strategy'" 
-                    :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']" 
+                <td v-else-if="column.visible && column.key === 'strategy'"
+                    :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   {{ trade.strategy || '-' }}
                 </td>
-                
+
+                <td v-else-if="column.visible && column.key === 'setup'"
+                    :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  {{ trade.setup || '-' }}
+                </td>
+
                 <td v-else-if="column.visible && column.key === 'broker'"
                     :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
@@ -690,6 +779,20 @@
                     {{ Number(trade.rValue).toFixed(1) }}R
                   </div>
                   <div v-else class="text-sm text-gray-500">-</div>
+                </td>
+
+                <td v-else-if="column.visible && column.key === 'mae'"
+                    :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  <span v-if="trade.mae != null" class="text-sm font-mono text-red-600 dark:text-red-400">{{ formatCurrency(trade.mae) }}</span>
+                  <span v-else class="text-sm text-gray-400">—</span>
+                </td>
+
+                <td v-else-if="column.visible && column.key === 'mfe'"
+                    :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  <span v-if="trade.mfe != null" class="text-sm font-mono text-green-600 dark:text-green-400">{{ formatCurrency(trade.mfe) }}</span>
+                  <span v-else class="text-sm text-gray-400">—</span>
                 </td>
 
                 <!-- Options/Futures Fields -->
@@ -941,19 +1044,23 @@
 import { onMounted, computed, watch, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
+import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { useUserTimezone } from '@/composables/useUserTimezone'
-import { DocumentTextIcon, ChatBubbleLeftIcon } from '@heroicons/vue/24/outline'
+import { DocumentTextIcon, ChatBubbleLeftIcon, FunnelIcon, XMarkIcon } from '@heroicons/vue/24/outline'
 import TradeFilters from '@/components/trades/TradeFilters.vue'
 import TradeCommentsDialog from '@/components/trades/TradeCommentsDialog.vue'
 import EnrichmentStatus from '@/components/trades/EnrichmentStatus.vue'
 import ColumnCustomizer from '@/components/trades/ColumnCustomizer.vue'
 import TagManagement from '@/components/trades/TagManagement.vue'
 import MdiIcon from '@/components/MdiIcon.vue'
+import StockLogo from '@/components/common/StockLogo.vue'
 import { mdiNewspaper } from '@mdi/js'
 import api from '@/services/api'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { getTradeGrossPnl } from '@/utils/tradePnl'
 
 const tradesStore = useTradesStore()
+const uiPreferencesStore = useUiPreferencesStore()
 const { formatCurrency, currencySymbol, formatSignedCurrency } = useCurrencyFormatter()
 const { formatTime: formatTimeTz, userTimezone } = useUserTimezone()
 const route = useRoute()
@@ -982,6 +1089,7 @@ const loadFullWidthPreference = () => {
 const toggleFullWidth = () => {
   isFullWidth.value = !isFullWidth.value
   localStorage.setItem('tradeListFullWidth', isFullWidth.value.toString())
+  uiPreferencesStore.notifyChanged('tradeListFullWidth', isFullWidth.value)
 }
 
 // Scroll synchronization functions
@@ -1016,8 +1124,35 @@ const showDeleteConfirm = ref(false)
 const showBulkTagModal = ref(false)
 const bulkTagsToAdd = ref([])
 
+// Filters modal
+const showFiltersModal = ref(false)
+const hasActiveFilters = ref(false)
+// TradeFilters' onMounted auto-emits 'filter' when saved/store filters exist,
+// which would immediately close a freshly opened modal. Suppress the close
+// for a short window after open so the auto-apply emit doesn't dismiss it.
+const ignoreNextFilterClose = ref(false)
+
+function openFiltersModal() {
+  showFiltersModal.value = true
+  ignoreNextFilterClose.value = true
+  setTimeout(() => {
+    ignoreNextFilterClose.value = false
+  }, 250)
+}
+
 // Column management
 const tableColumns = ref([])
+
+const isUnrealizedColumnVisible = computed(() => {
+  return tableColumns.value.some(c => c.key === 'unrealizedPnl' && c.visible)
+})
+
+const totalUnrealizedPnl = computed(() => {
+  return tradesStore.trades.reduce((sum, trade) => {
+    const unrealized = parseFloat(trade.unrealizedPnl) || 0
+    return sum + unrealized
+  }, 0)
+})
 
 const handleColumnsUpdate = (columns) => {
   tableColumns.value = columns
@@ -1130,13 +1265,6 @@ function formatNumber(num) {
   }).format(num || 0)
 }
 
-function getTradeGrossPnl(trade) {
-  const pnl = parseFloat(trade?.pnl) || 0
-  const commission = parseFloat(trade?.commission) || 0
-  const fees = parseFloat(trade?.fees) || 0
-  return pnl + commission + fees
-}
-
 // Redact account identifier for privacy (show only last 4 characters)
 function redactAccountId(accountId) {
   if (!accountId) return null
@@ -1158,10 +1286,12 @@ function formatQuantity(num) {
   }).format(num)
 }
 
+// Format a UTC datetime in the user's configured timezone (not the browser's).
+// Date-only inputs (no time component) are parsed as-is.
 function dateOnlyParts(date) {
-  const match = date.toString().match(/^(\d{4})-(\d{2})-(\d{2})(?:T00:00:00(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$/)
-  if (!match) return null
-  return { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) }
+  const m = date.toString().match(/^(\d{4})-(\d{2})-(\d{2})(?:T00:00:00(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$/)
+  if (!m) return null
+  return { year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) }
 }
 
 function formatInUserTimezone(date, options) {
@@ -1169,7 +1299,6 @@ function formatInUserTimezone(date, options) {
   if (parts) {
     return new Intl.DateTimeFormat('en-US', options).format(new Date(parts.year, parts.month - 1, parts.day))
   }
-
   const dateObj = new Date(date)
   if (isNaN(dateObj.getTime())) return null
   return new Intl.DateTimeFormat('en-US', { timeZone: userTimezone.value, ...options }).format(dateObj)
@@ -1234,9 +1363,28 @@ function formatTime(datetime) {
   return formatTimeTz(datetime)
 }
 
+function isMeaningfulFilter(key, value) {
+  if (value === null || value === undefined || value === '') return false
+  if (Array.isArray(value) && value.length === 0) return false
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    return Object.values(value).some((v) => v !== null && v !== undefined && v !== '')
+  }
+  const defaultKeywords = new Set(['all', 'All'])
+  if (defaultKeywords.has(value)) return false
+  return true
+}
+
 function handleFilter(filters) {
+  hasActiveFilters.value = Object.entries(filters || {}).some(([key, value]) =>
+    isMeaningfulFilter(key, value)
+  )
   tradesStore.setFilters(filters)
   tradesStore.fetchTrades() // fetchTrades now includes analytics in parallel
+  // Close the filters modal after applying — but skip the auto-emit fired by
+  // TradeFilters' onMounted (issue #327: modal flashed open then closed).
+  if (showFiltersModal.value && !ignoreNextFilterClose.value) {
+    showFiltersModal.value = false
+  }
 }
 
 function goToPage(page) {
@@ -1351,6 +1499,39 @@ function getNewsBadgeClasses(sentiment) {
   }
 }
 
+// Map URL query params to store filter keys. The view owns this so deep links
+// (e.g. holdings "View Trades" -> /trades?status=open&symbol=X) load correctly
+// even though TradeFilters now lives in a modal that isn't mounted on page load.
+function buildFiltersFromQuery(query) {
+  const f = {}
+  if (query.symbol) f.symbol = query.symbol
+  if (query.symbolExact) f.symbolExact = query.symbolExact === 'true' || query.symbolExact === true
+  if (query.status) f.status = query.status
+  if (query.startDate) f.startDate = query.startDate
+  if (query.endDate) f.endDate = query.endDate
+  if (query.pnlType) f.pnlType = query.pnlType
+  if (query.holdTime) f.holdTime = query.holdTime
+  if (query.minHoldTime) f.minHoldTime = parseInt(query.minHoldTime)
+  if (query.maxHoldTime) f.maxHoldTime = parseInt(query.maxHoldTime)
+  if (query.sector) f.sector = query.sector
+  if (query.sectors) f.sectors = String(query.sectors).split(',').filter(Boolean)
+  if (query.strategy) { f.strategy = query.strategy; f.strategies = [query.strategy] }
+  if (query.strategies) f.strategies = String(query.strategies).split(',').filter(Boolean)
+  if (query.broker) { f.broker = query.broker; f.brokers = [query.broker] }
+  if (query.brokers) f.brokers = String(query.brokers).split(',').filter(Boolean)
+  if (query.tags) f.tags = String(query.tags).split(',').filter(Boolean)
+  if (query.minPrice) f.minPrice = parseFloat(query.minPrice)
+  if (query.maxPrice) f.maxPrice = parseFloat(query.maxPrice)
+  if (query.minQuantity) f.minQuantity = parseInt(query.minQuantity)
+  if (query.maxQuantity) f.maxQuantity = parseInt(query.maxQuantity)
+  if (query.daysOfWeek) f.daysOfWeek = String(query.daysOfWeek).split(',').map(Number)
+  if (query.instrumentTypes) f.instrumentTypes = String(query.instrumentTypes).split(',').filter(Boolean)
+  if (query.optionTypes) f.optionTypes = String(query.optionTypes).split(',').filter(Boolean)
+  if (query.qualityGrades) f.qualityGrades = String(query.qualityGrades).split(',').filter(Boolean)
+  if (query.importId) f.importId = query.importId
+  return f
+}
+
 onMounted(() => {
   // Load fullwidth preference
   loadFullWidthPreference()
@@ -1359,9 +1540,6 @@ onMounted(() => {
   window.debugSymbol = async (symbol) => {
     try {
       const response = await fetch(`/api/trades/debug-symbol?symbol=${symbol}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
       });
       const data = await response.json();
       console.log('Debug Symbol Results:', data);
@@ -1371,20 +1549,16 @@ onMounted(() => {
     }
   };
 
-  // Check if there are URL parameters that the TradeFilters component should handle
-  const hasFiltersInUrl = !!(
-    route.query.symbol || route.query.startDate || route.query.endDate ||
-    route.query.strategy || route.query.sector || route.query.status ||
-    route.query.minPrice || route.query.maxPrice || route.query.minQuantity ||
-    route.query.maxQuantity || route.query.holdTime || route.query.broker ||
-    route.query.minHoldTime || route.query.maxHoldTime || route.query.pnlType
-  )
-
-  // Only fetch trades immediately if there are no URL parameters
-  // TradeFilters component will handle URL parameters and trigger fetch automatically
-  if (!hasFiltersInUrl) {
-    tradesStore.fetchTrades() // fetchTrades now includes analytics in parallel
+  // Apply any URL filter params and load trades. We must NOT defer this to
+  // TradeFilters: it now lives inside a modal (v-if="showFiltersModal") that is
+  // closed on page load, so it never mounts to parse the URL — which left deep
+  // links (e.g. holdings "View Trades" -> /trades?status=open&symbol=X) stuck on
+  // the loading spinner forever. The view owns the initial fetch instead.
+  const urlFilters = buildFiltersFromQuery(route.query)
+  if (Object.keys(urlFilters).length > 0) {
+    tradesStore.setFilters(urlFilters)
   }
+  tradesStore.fetchTrades() // fetchTrades now includes analytics in parallel
 
   // Initialize table scroll width after component is mounted
   setTimeout(() => updateTableScrollWidth(), 200)

@@ -9,6 +9,7 @@ const router = express.Router();
 const { authenticate } = require('../middleware/auth');
 const { requiresTier } = require('../middleware/tierAuth');
 const investmentsController = require('../controllers/investments.controller');
+const { validate, schemas } = require('../middleware/validation');
 
 // All investment routes require authentication and Pro tier
 router.use(authenticate);
@@ -90,7 +91,7 @@ router.get('/holdings', investmentsController.getHoldings);
  * @desc Create a new holding
  * @access Pro
  */
-router.post('/holdings', investmentsController.createHolding);
+router.post('/holdings', validate(schemas.investmentHoldingCreate), investmentsController.createHolding);
 
 /**
  * @route GET /api/investments/holdings/:id
@@ -104,7 +105,7 @@ router.get('/holdings/:id', investmentsController.getHolding);
  * @desc Update a holding
  * @access Pro
  */
-router.put('/holdings/:id', investmentsController.updateHolding);
+router.put('/holdings/:id', validate(schemas.investmentHoldingUpdate), investmentsController.updateHolding);
 
 /**
  * @route DELETE /api/investments/holdings/:id
@@ -129,7 +130,7 @@ router.get('/holdings/:id/lots', investmentsController.getLots);
  * @desc Add a lot to a holding
  * @access Pro
  */
-router.post('/holdings/:id/lots', investmentsController.addLot);
+router.post('/holdings/:id/lots', validate(schemas.investmentLotCreate), investmentsController.addLot);
 
 /**
  * @route DELETE /api/investments/lots/:lotId
@@ -154,11 +155,74 @@ router.get('/holdings/:id/dividends', investmentsController.getDividends);
  * @desc Record a dividend
  * @access Pro
  */
-router.post('/holdings/:id/dividends', investmentsController.recordDividend);
+router.post('/holdings/:id/dividends', validate(schemas.investmentDividendCreate), investmentsController.recordDividend);
 
 // ========================================
 // PORTFOLIO
 // ========================================
+
+/**
+ * @route GET /api/investments/portfolio/overview
+ * @desc Get portfolio overview
+ * @access Pro
+ */
+router.get('/portfolio/overview', investmentsController.getPortfolioOverview);
+
+/**
+ * @route GET /api/investments/portfolio/positions
+ * @desc Get account-aware portfolio positions
+ * @access Pro
+ */
+router.get('/portfolio/positions', investmentsController.getPortfolioPositions);
+
+/**
+ * @route GET /api/investments/portfolio/performance
+ * @desc Get portfolio performance versus benchmark
+ * @access Pro
+ */
+router.get('/portfolio/performance', investmentsController.getPortfolioPerformance);
+
+/**
+ * @route GET /api/investments/portfolio/rebalance
+ * @desc Get advisory rebalance plan
+ * @access Pro
+ */
+router.get('/portfolio/rebalance', investmentsController.getPortfolioRebalance);
+
+/**
+ * @route GET /api/investments/portfolio/alerts
+ * @desc Get current portfolio alert state and recent portfolio alerts
+ * @access Pro
+ */
+router.get('/portfolio/alerts', investmentsController.getPortfolioAlerts);
+
+/**
+ * @route POST /api/investments/portfolio/snapshots/backfill
+ * @desc Backfill portfolio snapshots for current user
+ * @access Pro
+ */
+router.post('/portfolio/snapshots/backfill', investmentsController.backfillPortfolioSnapshots);
+
+/**
+ * @route GET /api/investments/portfolio/preferences
+ * @desc Get portfolio preferences
+ * @access Pro
+ */
+router.get('/portfolio/preferences', investmentsController.getPortfolioPreferences);
+
+/**
+ * @route PUT /api/investments/portfolio/preferences
+ * @desc Update portfolio preferences
+ * @access Pro
+ */
+router.put('/portfolio/preferences', investmentsController.updatePortfolioPreferences);
+
+/**
+ * @route PUT /api/investments/portfolio/targets
+ * @desc Set or clear the target allocation % for a symbol (any position)
+ * @access Pro
+ */
+router.put('/portfolio/targets', investmentsController.setPortfolioTarget);
 
 /**
  * @route GET /api/investments/portfolio/summary
@@ -190,14 +254,14 @@ router.get('/screener/history', investmentsController.getSearchHistory);
  * @desc Toggle favorite status
  * @access Pro
  */
-router.post('/screener/favorite', investmentsController.toggleFavorite);
+router.post('/screener/favorite', validate(schemas.investmentFavoriteToggle), investmentsController.toggleFavorite);
 
 /**
  * @route POST /api/investments/compare
  * @desc Compare multiple stocks (2-3)
  * @access Pro
  */
-router.post('/compare', investmentsController.compareStocks);
+router.post('/compare', validate(schemas.investmentCompare), investmentsController.compareStocks);
 
 // ========================================
 // CHART DATA
@@ -227,7 +291,7 @@ router.get('/dcf/:symbol', investmentsController.getDCFMetrics);
  * @desc Calculate DCF fair values with user estimates
  * @access Pro
  */
-router.post('/dcf/:symbol/calculate', investmentsController.calculateDCF);
+router.post('/dcf/:symbol/calculate', validate(schemas.investmentDcfCalculate), investmentsController.calculateDCF);
 
 /**
  * @route POST /api/investments/valuations

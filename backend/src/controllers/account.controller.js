@@ -5,6 +5,7 @@
  */
 
 const Account = require('../models/Account');
+const plaidFundingService = require('../services/plaid/plaidFundingService');
 
 const accountController = {
   /**
@@ -323,6 +324,9 @@ const accountController = {
         amount: parseFloat(tx.amount),
         transactionDate: tx.transaction_date,
         description: tx.description,
+        sourceType: tx.source_type,
+        sourceReferenceId: tx.source_reference_id,
+        approvedAt: tx.approved_at,
         createdAt: tx.created_at,
         updatedAt: tx.updated_at
       }));
@@ -390,6 +394,9 @@ const accountController = {
           amount: parseFloat(transaction.amount),
           transactionDate: transaction.transaction_date,
           description: transaction.description,
+          sourceType: transaction.source_type,
+          sourceReferenceId: transaction.source_reference_id,
+          approvedAt: transaction.approved_at,
           createdAt: transaction.created_at
         }
       });
@@ -438,6 +445,9 @@ const accountController = {
           amount: parseFloat(transaction.amount),
           transactionDate: transaction.transaction_date,
           description: transaction.description,
+          sourceType: transaction.source_type,
+          sourceReferenceId: transaction.source_reference_id,
+          approvedAt: transaction.approved_at,
           updatedAt: transaction.updated_at
         }
       });
@@ -466,6 +476,10 @@ const accountController = {
           success: false,
           message: 'Transaction not found'
         });
+      }
+
+      if (result.source_type === 'plaid') {
+        await plaidFundingService.resetApprovedImportForAccountTransaction(req.user.id, req.params.transactionId);
       }
 
       res.json({

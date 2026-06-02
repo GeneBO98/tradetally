@@ -1,5 +1,22 @@
 const db = require('../config/database');
 const logger = require('../utils/logger');
+const sequenzySubscriberSyncService = require('../services/sequenzySubscriberSyncService');
+
+const convertPgBoolean = (value) => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') return value === 't' || value === 'true';
+  return Boolean(value);
+};
+
+function formatPreferences(preferences) {
+  return {
+    notify_news_open_positions: convertPgBoolean(preferences.notify_news_open_positions),
+    notify_earnings_announcements: convertPgBoolean(preferences.notify_earnings_announcements),
+    notify_price_alerts: convertPgBoolean(preferences.notify_price_alerts),
+    notify_trade_reminders: convertPgBoolean(preferences.notify_trade_reminders),
+    marketing_consent: convertPgBoolean(preferences.marketing_consent)
+  };
+}
 
 class NotificationPreferencesController {
   /**
@@ -14,7 +31,8 @@ class NotificationPreferencesController {
           notify_news_open_positions,
           notify_earnings_announcements,
           notify_price_alerts,
-          notify_trade_reminders
+          notify_trade_reminders,
+          marketing_consent
         FROM users 
         WHERE id = $1
       `;
@@ -25,24 +43,7 @@ class NotificationPreferencesController {
         return res.status(404).json({ error: 'User not found' });
       }
 
-      const preferences = result.rows[0];
-      
-      // Convert database boolean values to ensure proper JSON response
-      // PostgreSQL returns 't'/'f' strings, so we need to handle them correctly
-      const convertPgBoolean = (value) => {
-        if (typeof value === 'boolean') return value;
-        if (typeof value === 'string') return value === 't' || value === 'true';
-        return Boolean(value);
-      };
-
-      const formattedPreferences = {
-        notify_news_open_positions: convertPgBoolean(preferences.notify_news_open_positions),
-        notify_earnings_announcements: convertPgBoolean(preferences.notify_earnings_announcements),
-        notify_price_alerts: convertPgBoolean(preferences.notify_price_alerts),
-        notify_trade_reminders: convertPgBoolean(preferences.notify_trade_reminders)
-      };
-
-      res.json(formattedPreferences);
+      res.json(formatPreferences(result.rows[0]));
     } catch (error) {
       logger.logError(`Error getting notification preferences: ${error.message}`);
       res.status(500).json({ error: 'Failed to get notification preferences' });
@@ -55,22 +56,18 @@ class NotificationPreferencesController {
   async updatePreferences(req, res) {
     try {
       const userId = req.user.id;
-      const {
-        notify_news_open_positions,
-        notify_earnings_announcements,
-        notify_price_alerts,
-        notify_trade_reminders
-      } = req.body;
 
       // Validate that at least one preference field is provided
       const validFields = [
         'notify_news_open_positions',
         'notify_earnings_announcements', 
         'notify_price_alerts',
-        'notify_trade_reminders'
+        'notify_trade_reminders',
+        'marketing_consent'
       ];
 
-      const providedFields = validFields.filter(field => req.body.hasOwnProperty(field));
+      const body = req.body || {};
+      const providedFields = validFields.filter(field => Object.prototype.hasOwnProperty.call(body, field));
       
       if (providedFields.length === 0) {
         return res.status(400).json({ 
@@ -89,7 +86,7 @@ class NotificationPreferencesController {
       providedFields.forEach(field => {
         if (!allowedFieldSet.has(field)) return; // Extra safety: skip non-allowlisted fields
         updateFields.push(`${field} = $${paramCount}`);
-        values.push(Boolean(req.body[field]));
+        values.push(Boolean(body[field]));
         paramCount++;
       });
 
@@ -105,7 +102,8 @@ class NotificationPreferencesController {
           notify_news_open_positions,
           notify_earnings_announcements,
           notify_price_alerts,
-          notify_trade_reminders
+          notify_trade_reminders,
+          marketing_consent
       `;
 
       const result = await db.query(query, values);
@@ -118,25 +116,13 @@ class NotificationPreferencesController {
 
       // Log the preference change for audit purposes
       logger.logImport(`User ${userId} updated notification preferences: ${providedFields.join(', ')}`);
-
-      // Convert database boolean values to ensure proper JSON response
-      // PostgreSQL returns 't'/'f' strings, so we need to handle them correctly
-      const convertPgBoolean = (value) => {
-        if (typeof value === 'boolean') return value;
-        if (typeof value === 'string') return value === 't' || value === 'true';
-        return Boolean(value);
-      };
-
-      const formattedPreferences = {
-        notify_news_open_positions: convertPgBoolean(updatedPreferences.notify_news_open_positions),
-        notify_earnings_announcements: convertPgBoolean(updatedPreferences.notify_earnings_announcements),
-        notify_price_alerts: convertPgBoolean(updatedPreferences.notify_price_alerts),
-        notify_trade_reminders: convertPgBoolean(updatedPreferences.notify_trade_reminders)
-      };
+      if (providedFields.includes('marketing_consent')) {
+        sequenzySubscriberSyncService.queueSyncUserById(userId);
+      }
 
       res.json({
         message: 'Notification preferences updated successfully',
-        preferences: formattedPreferences
+        preferences: formatPreferences(updatedPreferences)
       });
     } catch (error) {
       logger.logError(`Error updating notification preferences: ${error.message}`);

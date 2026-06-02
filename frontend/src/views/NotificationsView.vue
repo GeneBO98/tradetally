@@ -25,6 +25,14 @@
               {{ markingRead ? 'Marking...' : 'Mark all read' }}
             </button>
             <button
+              v-if="notifications.length > 0"
+              @click="clearAllNotifications"
+              :disabled="deleting"
+              class="btn-secondary text-sm"
+            >
+              {{ deleting ? 'Clearing...' : 'Clear all' }}
+            </button>
+            <button
               @click="() => fetchNotifications(currentPage)"
               :disabled="loading"
               class="btn-primary text-sm"
@@ -48,7 +56,7 @@
           No notifications yet
         </h3>
         <p class="text-gray-500 dark:text-gray-400">
-          You'll see notifications here when someone comments on your trades or your price alerts are triggered.
+          You'll see notifications here for achievements, trade comments, price alerts, and other account activity.
         </p>
       </div>
 
@@ -82,6 +90,21 @@
                   class="h-5 w-5"
                   :class="getIconColorClass(notification.type)"
                 />
+                <TrophyIcon
+                  v-else-if="notification.type === 'achievement_earned'"
+                  class="h-5 w-5"
+                  :class="getIconColorClass(notification.type)"
+                />
+                <ArrowTrendingUpIcon
+                  v-else-if="notification.type === 'level_up' || notification.type === 'portfolio_alert'"
+                  class="h-5 w-5"
+                  :class="getIconColorClass(notification.type)"
+                />
+                <BellIcon
+                  v-else-if="notification.type === 'web_mention_alert'"
+                  class="h-5 w-5"
+                  :class="getIconColorClass(notification.type)"
+                />
                 <BellIcon
                   v-else
                   class="h-5 w-5 text-gray-400"
@@ -90,7 +113,15 @@
             </div>
 
             <!-- Content -->
-            <div class="flex-1 min-w-0 cursor-pointer" @click="handleNotificationClick(notification)">
+            <div
+              class="flex-1 min-w-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 rounded"
+              role="button"
+              tabindex="0"
+              :aria-label="`Open notification: ${notification.symbol || 'Notification'}`"
+              @click="handleNotificationClick(notification)"
+              @keydown.enter.prevent="handleNotificationClick(notification)"
+              @keydown.space.prevent="handleNotificationClick(notification)"
+            >
               <div class="flex items-start justify-between">
                 <div class="flex-1">
                   <div class="flex items-center space-x-2 mb-1">
@@ -104,7 +135,7 @@
                   <p class="text-sm text-gray-700 dark:text-gray-300 mb-2">
                     {{ notification.message }}
                   </p>
-                  
+
                   <!-- Additional details based on type -->
                   <div v-if="notification.type === 'price_alert'" class="text-xs text-gray-500 dark:text-gray-400">
                     <div v-if="notification.trigger_price" class="mb-1">
@@ -114,11 +145,18 @@
                       <span class="font-medium">Target price:</span> ${{ parseFloat(notification.target_price).toFixed(2) }}
                     </div>
                   </div>
-                  
+
                   <div v-if="notification.type === 'trade_comment' && notification.comment_text" class="mt-2 p-3 bg-gray-50 dark:bg-gray-600 rounded text-sm">
                     <p class="text-gray-700 dark:text-gray-300 italic">
                       "{{ notification.comment_text }}"
                     </p>
+                  </div>
+                  <div v-if="notification.type === 'web_mention_alert' && notification.metadata?.top_links?.length" class="text-xs text-gray-500 dark:text-gray-400">
+                    <span class="font-medium">{{ notification.metadata.article_count }}</span>
+                    distinct articles matched
+                    <span v-if="notification.metadata.matched_symbols?.length">
+                      · {{ notification.metadata.matched_symbols.join(', ') }}
+                    </span>
                   </div>
                 </div>
 
@@ -166,18 +204,22 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { 
-  BellIcon, 
-  BellSlashIcon, 
-  ChatBubbleLeftRightIcon 
+import api from '@/services/api'
+import {
+  BellIcon,
+  BellSlashIcon,
+  ChatBubbleLeftRightIcon,
+  TrophyIcon,
+  ArrowTrendingUpIcon
 } from '@heroicons/vue/24/outline'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { useNotification } from '@/composables/useNotification'
-import api from '@/services/api'
+import { useNotificationCenter } from '@/composables/useNotificationCenter'
 
 const router = useRouter()
 const { formatDateTime: formatDateTimeTz } = useUserTimezone()
-const { showError } = useNotification()
+const { showDangerConfirmation } = useNotification()
+const { clearUnreadState } = useNotificationCenter()
 
 // Component state
 const notifications = ref([])
@@ -192,19 +234,19 @@ const selectedNotifications = ref([])
 const fetchNotifications = async (page = 1) => {
   try {
     loading.value = true
-    const response = await api.get('/notifications', {
-      params: {
-        page,
-        limit: 20
-      }
-    })
-    notifications.value = response.data.data || []
-    pagination.value = response.data.pagination
-    currentPage.value = page
-    selectedNotifications.value = [] // Clear selections on new fetch
+    const response = await fetch(`/api/notifications?page=${page}&limit=20`)
+
+    if (response.ok) {
+      const data = await response.json()
+      notifications.value = data.data || []
+      pagination.value = data.pagination
+      currentPage.value = page
+      selectedNotifications.value = [] // Clear selections on new fetch
+    } else {
+      console.error('Failed to fetch notifications:', response.statusText)
+    }
   } catch (error) {
     console.error('Error fetching notifications:', error)
-    showError('Load Failed', error.response?.data?.error || 'Failed to load notifications')
   } finally {
     loading.value = false
   }
@@ -219,13 +261,12 @@ const loadPage = (page) => {
 const markAllAsRead = async () => {
   try {
     markingRead.value = true
+
     await api.post('/notifications/mark-all-read')
 
-    // Update local state after server success
     notifications.value = notifications.value.map(n => ({ ...n, is_read: true }))
   } catch (error) {
     console.error('Error marking notifications as read:', error)
-    showError('Update Failed', error.response?.data?.error || 'Failed to mark notifications as read')
   } finally {
     markingRead.value = false
   }
@@ -242,7 +283,7 @@ const toggleNotificationSelection = (notificationId) => {
 
 const deleteSelected = async () => {
   if (selectedNotifications.value.length === 0) return
-  
+
   try {
     deleting.value = true
     const notificationsToDelete = notifications.value
@@ -253,18 +294,49 @@ const deleteSelected = async () => {
       data: { notifications: notificationsToDelete }
     })
 
-    // Remove deleted notifications from local state after server success
     notifications.value = notifications.value.filter(n => !selectedNotifications.value.includes(n.id))
     selectedNotifications.value = []
 
-    // Refresh the list to get updated pagination
     await fetchNotifications(currentPage.value)
   } catch (error) {
     console.error('Error deleting notifications:', error)
-    showError('Delete Failed', error.response?.data?.error || 'Failed to delete selected notifications')
   } finally {
     deleting.value = false
   }
+}
+
+const performClearAllNotifications = async () => {
+  if (!notifications.value.length) return
+
+  try {
+    deleting.value = true
+
+    await api.delete('/notifications/all')
+
+    notifications.value = []
+    pagination.value = null
+    selectedNotifications.value = []
+    clearUnreadState()
+    await fetchNotifications(1)
+  } catch (error) {
+    console.error('Error clearing all notifications:', error)
+  } finally {
+    deleting.value = false
+  }
+}
+
+const clearAllNotifications = () => {
+  if (!notifications.value.length || deleting.value) return
+
+  showDangerConfirmation(
+    'Delete all notifications?',
+    'This cannot be undone.',
+    performClearAllNotifications,
+    {
+      confirmText: 'Delete all',
+      cancelText: 'Cancel'
+    }
+  )
 }
 
 const handleNotificationClick = (notification) => {
@@ -272,6 +344,16 @@ const handleNotificationClick = (notification) => {
     router.push(`/trades/${notification.trade_id}`)
   } else if (notification.type === 'price_alert') {
     router.push('/price-alerts')
+  } else if (['achievement_earned', 'level_up', 'challenge_joined', 'challenge_completed'].includes(notification.type)) {
+    router.push({ path: '/leaderboard', query: { tab: 'achievements' } })
+  } else if (notification.type === 'leaderboard_ranking') {
+    router.push('/leaderboard')
+  } else if (notification.type === 'behavioral_alert') {
+    router.push('/metrics/behavioral')
+  } else if (notification.type === 'portfolio_alert') {
+    router.push({ path: '/analysis', query: { tab: 'holdings' } })
+  } else if (notification.type === 'web_mention_alert') {
+    router.push('/web-mentions')
   }
 }
 
@@ -294,6 +376,14 @@ const getTypeLabel = (type) => {
   switch (type) {
     case 'price_alert': return 'Price Alert'
     case 'trade_comment': return 'Comment'
+    case 'achievement_earned': return 'Achievement'
+    case 'level_up': return 'Level Up'
+    case 'challenge_joined': return 'Challenge'
+    case 'challenge_completed': return 'Challenge'
+    case 'leaderboard_ranking': return 'Leaderboard'
+    case 'behavioral_alert': return 'Behavioral'
+    case 'portfolio_alert': return 'Portfolio'
+    case 'web_mention_alert': return 'Web Mention'
     default: return 'Notification'
   }
 }
@@ -304,6 +394,15 @@ const getTypeBadgeClass = (type) => {
       return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
     case 'trade_comment':
       return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+    case 'achievement_earned':
+      return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
+    case 'level_up':
+      return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200'
+    case 'behavioral_alert':
+      return 'bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200'
+    case 'portfolio_alert':
+    case 'web_mention_alert':
+      return 'bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-200'
     default:
       return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
   }
@@ -315,6 +414,15 @@ const getIconBgClass = (type) => {
       return 'bg-yellow-50 dark:bg-yellow-900/20'
     case 'trade_comment':
       return 'bg-blue-50 dark:bg-blue-900/20'
+    case 'achievement_earned':
+      return 'bg-amber-50 dark:bg-amber-900/20'
+    case 'level_up':
+      return 'bg-emerald-50 dark:bg-emerald-900/20'
+    case 'behavioral_alert':
+      return 'bg-rose-50 dark:bg-rose-900/20'
+    case 'portfolio_alert':
+    case 'web_mention_alert':
+      return 'bg-primary-50 dark:bg-primary-900/20'
     default:
       return 'bg-gray-50 dark:bg-gray-700'
   }
@@ -326,6 +434,15 @@ const getIconColorClass = (type) => {
       return 'text-yellow-600 dark:text-yellow-400'
     case 'trade_comment':
       return 'text-blue-600 dark:text-blue-400'
+    case 'achievement_earned':
+      return 'text-amber-600 dark:text-amber-400'
+    case 'level_up':
+      return 'text-emerald-600 dark:text-emerald-400'
+    case 'behavioral_alert':
+      return 'text-rose-600 dark:text-rose-400'
+    case 'portfolio_alert':
+    case 'web_mention_alert':
+      return 'text-primary-600 dark:text-primary-300'
     default:
       return 'text-gray-400'
   }

@@ -1,5 +1,6 @@
 const Playbook = require('../models/Playbook');
 const PlaybookAdherenceService = require('../services/playbookAdherence.service');
+const AchievementService = require('../services/achievementService');
 
 function mapChecklistItems(items = []) {
   return (items || []).map(item => ({
@@ -86,6 +87,13 @@ const playbookController = {
   async createPlaybook(req, res, next) {
     try {
       const playbook = await Playbook.create(req.user.id, req.body);
+
+      try {
+        await AchievementService.checkAndAwardAchievements(req.user.id);
+      } catch (achievementError) {
+        console.warn(`Failed to check achievements for user ${req.user.id} after playbook creation:`, achievementError.message);
+      }
+
       res.status(201).json({ playbook: mapPlaybook(playbook) });
     } catch (error) {
       if (error.code === '23505') {
@@ -165,6 +173,13 @@ const playbookController = {
       });
 
       const hydratedReview = await Playbook.getTradeReviewByTradeId(review.trade_id, req.user.id);
+
+      try {
+        await AchievementService.checkAndAwardAchievements(req.user.id);
+      } catch (achievementError) {
+        console.warn(`Failed to check achievements for user ${req.user.id} after playbook review:`, achievementError.message);
+      }
+
       res.json({
         review: mapReview(hydratedReview)
       });

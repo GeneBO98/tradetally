@@ -58,6 +58,13 @@
           :aria-selected="index === highlightedIndex"
         >
           <div class="flex items-center space-x-2 min-w-0">
+            <StockLogo
+              :symbol="item.symbol"
+              :logo-url="item.logo"
+              size-class="w-7 h-7"
+              rounded-class="rounded-md"
+              fallback-text-class="text-[10px] font-semibold"
+            />
             <span class="font-medium flex-shrink-0">{{ item.symbol }}</span>
             <span
               v-if="item.company_name"
@@ -81,6 +88,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import api from '@/services/api'
+import StockLogo from '@/components/common/StockLogo.vue'
 
 const props = defineProps({
   modelValue: {

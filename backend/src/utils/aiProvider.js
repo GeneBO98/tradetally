@@ -9,41 +9,42 @@ class AIProvider {
    * Generate a response from the configured AI provider
    * @param {string} prompt - The prompt to send
    * @param {Object} settings - Provider settings { provider, apiKey, apiUrl, modelName }
+   * @param {Object} options - Generation options { maxTokens, temperature }
    * @returns {Promise<string>} Generated text response
    */
-  static async generateResponse(prompt, settings) {
+  static async generateResponse(prompt, settings, options = {}) {
     const { provider, apiKey, apiUrl, modelName } = settings;
 
     console.log(`[AI_PROVIDER] Using provider: ${provider}, model: ${modelName}`);
 
     switch (provider) {
       case 'gemini':
-        return this.generateGemini(prompt, apiKey, modelName);
+        return this.generateGemini(prompt, apiKey, modelName, options);
 
       case 'openai':
-        return this.generateOpenAI(prompt, apiKey, modelName, 'https://api.openai.com/v1');
+        return this.generateOpenAI(prompt, apiKey, modelName, 'https://api.openai.com/v1', options);
 
       case 'claude':
-        return this.generateClaude(prompt, apiKey, modelName);
+        return this.generateClaude(prompt, apiKey, modelName, options);
 
       case 'lmstudio':
       case 'ollama':
       case 'local':
-        return this.generateOpenAICompatible(prompt, apiKey, modelName, apiUrl);
+        return this.generateOpenAICompatible(prompt, apiKey, modelName, apiUrl, options);
 
       case 'perplexity':
-        return this.generateOpenAI(prompt, apiKey, modelName, 'https://api.perplexity.ai');
+        return this.generateOpenAI(prompt, apiKey, modelName, 'https://api.perplexity.ai', options);
 
       default:
         // Default to OpenAI-compatible API
-        return this.generateOpenAICompatible(prompt, apiKey, modelName, apiUrl);
+        return this.generateOpenAICompatible(prompt, apiKey, modelName, apiUrl, options);
     }
   }
 
   /**
    * Generate using Gemini API
    */
-  static async generateGemini(prompt, apiKey, modelName = 'gemini-1.5-flash') {
+  static async generateGemini(prompt, apiKey, modelName = 'gemini-1.5-flash', options = {}) {
     if (!apiKey) {
       throw new Error('Gemini API key not configured');
     }
@@ -52,7 +53,13 @@ class AIProvider {
     const model = genAI.getGenerativeModel({ model: modelName });
 
     try {
-      const result = await model.generateContent(prompt);
+      const result = await model.generateContent({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          ...(options.maxTokens && { maxOutputTokens: options.maxTokens }),
+          ...(options.temperature !== undefined && { temperature: options.temperature })
+        }
+      });
       const response = await result.response;
       return response.text();
     } catch (error) {
@@ -64,18 +71,18 @@ class AIProvider {
   /**
    * Generate using OpenAI API
    */
-  static async generateOpenAI(prompt, apiKey, modelName = 'gpt-4o-mini', baseUrl = 'https://api.openai.com/v1') {
+  static async generateOpenAI(prompt, apiKey, modelName = 'gpt-4o-mini', baseUrl = 'https://api.openai.com/v1', options = {}) {
     if (!apiKey) {
       throw new Error('OpenAI API key not configured');
     }
 
-    return this.generateOpenAICompatible(prompt, apiKey, modelName, baseUrl);
+    return this.generateOpenAICompatible(prompt, apiKey, modelName, baseUrl, options);
   }
 
   /**
    * Generate using Claude/Anthropic API
    */
-  static async generateClaude(prompt, apiKey, modelName = 'claude-3-haiku-20240307') {
+  static async generateClaude(prompt, apiKey, modelName = 'claude-3-haiku-20240307', options = {}) {
     if (!apiKey) {
       throw new Error('Anthropic API key not configured');
     }
@@ -90,7 +97,7 @@ class AIProvider {
         },
         body: JSON.stringify({
           model: modelName,
-          max_tokens: 4096,
+          max_tokens: options.maxTokens || 4096,
           messages: [{ role: 'user', content: prompt }]
         })
       });
@@ -111,7 +118,7 @@ class AIProvider {
   /**
    * Generate using OpenAI-compatible API (LM Studio, Ollama, etc.)
    */
-  static async generateOpenAICompatible(prompt, apiKey, modelName, apiUrl) {
+  static async generateOpenAICompatible(prompt, apiKey, modelName, apiUrl, options = {}) {
     const url = `${apiUrl}/chat/completions`;
 
     console.log(`[AI_PROVIDER] Calling OpenAI-compatible API at: ${url}`);
@@ -130,14 +137,15 @@ class AIProvider {
       // OpenAI API uses max_completion_tokens; local/other APIs may still use max_tokens
       const isOpenAIAPI = apiUrl && apiUrl.includes('api.openai.com');
 
-      // Reasoning models (o1, o3, gpt-5-nano, etc.) need higher token limits
-      // because reasoning tokens count toward max_completion_tokens but don't produce visible output
-      const isReasoningModel = /^(o\d|gpt-5-nano)/i.test(modelName);
-      const tokenLimit = isReasoningModel ? 16384 : 4096;
+      // Reasoning models (o-series, all gpt-5 variants) need higher token limits
+      // because reasoning tokens count toward max_completion_tokens but don't produce visible output.
+      // These models also reject custom `temperature` — only the default (1) is supported.
+      const isReasoningModel = /^(o\d|gpt-5)/i.test(modelName);
+      const tokenLimit = options.maxTokens || (isReasoningModel ? 16384 : 4096);
 
       const tokenParam = isOpenAIAPI
         ? { max_completion_tokens: tokenLimit }
-        : { max_tokens: 4096 };
+        : { max_tokens: options.maxTokens || 4096 };
 
       // Reasoning models don't support custom temperature
       const supportsTemperature = !isReasoningModel;
@@ -155,7 +163,7 @@ class AIProvider {
           }
         ],
         ...tokenParam,
-        ...(supportsTemperature && { temperature: 0.7 })
+        ...(supportsTemperature && { temperature: options.temperature ?? 0.7 })
       };
 
       const response = await fetch(url, {

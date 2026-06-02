@@ -17,32 +17,43 @@ class AIService {
     };
   }
 
+  coalesceSettingsBundle(primary = {}, fallback = {}) {
+    const primaryProvider = primary?.provider || null;
+    const fallbackProvider = fallback?.provider || null;
+
+    if (!primaryProvider) {
+      return {
+        provider: fallbackProvider || '',
+        apiKey: fallback?.apiKey || '',
+        apiUrl: fallback?.apiUrl || '',
+        model: fallback?.model || ''
+      };
+    }
+
+    const sameProviderFallback = fallbackProvider && fallbackProvider === primaryProvider;
+
+    return {
+      provider: primaryProvider,
+      apiKey: primary?.apiKey || (sameProviderFallback ? (fallback?.apiKey || '') : ''),
+      apiUrl: primary?.apiUrl || (sameProviderFallback ? (fallback?.apiUrl || '') : ''),
+      model: primary?.model || (sameProviderFallback ? (fallback?.model || '') : '')
+    };
+  }
+
   async getUserSettings(userId) {
     try {
-      const db = require('../config/database');
-      
-      // Query user_settings table directly
-      const userSettingsQuery = `
-        SELECT ai_provider, ai_api_key, ai_api_url, ai_model
-        FROM user_settings 
-        WHERE user_id = $1
-      `;
-      const userSettingsResult = await db.query(userSettingsQuery, [userId]);
-      
-      let userSettings = null;
-      if (userSettingsResult.rows.length > 0) {
-        userSettings = userSettingsResult.rows[0];
-      }
-      
+      // Route through User.getSettings so encrypted ai_api_key is decrypted.
+      const userSettings = await User.getSettings(userId);
+
       // Get admin default settings as fallback
       const adminDefaults = await adminSettingsService.getDefaultAISettings();
-      
-      return {
-        provider: userSettings?.ai_provider || adminDefaults.provider,
-        apiKey: userSettings?.ai_api_key || adminDefaults.apiKey,
-        apiUrl: userSettings?.ai_api_url || adminDefaults.apiUrl,
-        model: userSettings?.ai_model || adminDefaults.model
-      };
+
+      return this.coalesceSettingsBundle({
+        provider: userSettings?.ai_provider || '',
+        apiKey: userSettings?.ai_api_key || '',
+        apiUrl: userSettings?.ai_api_url || '',
+        model: userSettings?.ai_model || ''
+      }, adminDefaults);
     } catch (error) {
       console.error('Failed to get user AI settings:', error);
       // Fallback to admin defaults, then hardcoded defaults
@@ -52,7 +63,7 @@ class AIService {
       } catch (adminError) {
         console.error('Failed to get admin default AI settings:', adminError);
         return {
-          provider: 'gemini',
+          provider: '',
           apiKey: '',
           apiUrl: '',
           model: ''
@@ -67,21 +78,8 @@ class AIService {
    */
   async getCusipUserSettings(userId) {
     try {
-      const db = require('../config/database');
-
-      // Query user_settings table for CUSIP-specific AI settings
-      const userSettingsQuery = `
-        SELECT cusip_ai_provider, cusip_ai_api_key, cusip_ai_api_url, cusip_ai_model,
-               ai_provider, ai_api_key, ai_api_url, ai_model
-        FROM user_settings
-        WHERE user_id = $1
-      `;
-      const userSettingsResult = await db.query(userSettingsQuery, [userId]);
-
-      let userSettings = null;
-      if (userSettingsResult.rows.length > 0) {
-        userSettings = userSettingsResult.rows[0];
-      }
+      // Route through User.getSettings so encrypted AI keys are decrypted.
+      const userSettings = await User.getSettings(userId);
 
       // Get admin default CUSIP AI settings
       const adminCusipDefaults = await adminSettingsService.getDefaultCusipAISettings();
@@ -89,25 +87,27 @@ class AIService {
       const adminDefaults = await adminSettingsService.getDefaultAISettings();
 
       // Priority: User CUSIP settings > Admin CUSIP defaults > User main settings > Admin main defaults
-      const cusipProvider = userSettings?.cusip_ai_provider || adminCusipDefaults.provider;
+      const cusipSettings = this.coalesceSettingsBundle({
+        provider: userSettings?.cusip_ai_provider || '',
+        apiKey: userSettings?.cusip_ai_api_key || '',
+        apiUrl: userSettings?.cusip_ai_api_url || '',
+        model: userSettings?.cusip_ai_model || ''
+      }, adminCusipDefaults);
 
-      // If CUSIP-specific provider is set, use CUSIP settings
-      if (cusipProvider) {
-        return {
-          provider: cusipProvider,
-          apiKey: userSettings?.cusip_ai_api_key || adminCusipDefaults.apiKey,
-          apiUrl: userSettings?.cusip_ai_api_url || adminCusipDefaults.apiUrl,
-          model: userSettings?.cusip_ai_model || adminCusipDefaults.model
-        };
+      // If CUSIP-specific provider is set, use that provider bundle.
+      if (cusipSettings.provider) {
+        if (userSettings?.cusip_ai_provider || adminCusipDefaults.provider) {
+          return cusipSettings;
+        }
       }
 
       // Fall back to main AI settings
-      return {
-        provider: userSettings?.ai_provider || adminDefaults.provider,
-        apiKey: userSettings?.ai_api_key || adminDefaults.apiKey,
-        apiUrl: userSettings?.ai_api_url || adminDefaults.apiUrl,
-        model: userSettings?.ai_model || adminDefaults.model
-      };
+      return this.coalesceSettingsBundle({
+        provider: userSettings?.ai_provider || '',
+        apiKey: userSettings?.ai_api_key || '',
+        apiUrl: userSettings?.ai_api_url || '',
+        model: userSettings?.ai_model || ''
+      }, adminDefaults);
     } catch (error) {
       console.error('Failed to get CUSIP user AI settings:', error);
       // Fallback to main settings
@@ -311,10 +311,10 @@ Your response:`;
         max_completion_tokens: options.maxTokens || 1000,
       };
       
-      // Only add temperature for models that support it
-      // Some models like o1-preview, o1-mini, and custom/nano models don't support temperature
-      const noTempModels = ['o1-preview', 'o1-mini', 'o1', 'gpt-5-nano', 'nano'];
-      if (!noTempModels.some(m => model.toLowerCase().includes(m.toLowerCase()))) {
+      // Only add temperature for models that support it.
+      // Reasoning models (o-series, all gpt-5 variants) reject any non-default temperature.
+      const isReasoningModel = /^(o\d|gpt-5)/i.test(model);
+      if (!isReasoningModel) {
         requestParams.temperature = 0.1;
       }
       

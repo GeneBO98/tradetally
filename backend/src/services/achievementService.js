@@ -1,6 +1,7 @@
 const db = require('../config/database');
 const NotificationService = require('./notificationService');
 const LeaderboardService = require('./leaderboardService');
+const logger = require('../utils/logger');
 
 class AchievementService {
   
@@ -29,6 +30,13 @@ class AchievementService {
       
       // Update user stats if new achievements were earned
       if (newAchievements.length > 0) {
+        newAchievements.forEach(achievement => {
+          logger.info(
+            `[ACHIEVEMENT] Awarded "${achievement.name}" (${achievement.key}) to user ${userId} for ${achievement.points || 0} XP`,
+            'app'
+          );
+        });
+
         await this.updateUserStats(userId, newAchievements);
         // Re-fetch stats after update to compute delta
         const afterStats = await this.getUserStats(userId);
@@ -117,12 +125,36 @@ class AchievementService {
         
       case 'risk_adherence':
         return await AchievementService.checkRiskAdherence(userId, criteria.trades);
+
+      case 'closed_trades_with_stop_loss':
+        return await AchievementService.checkClosedTradesWithStopLoss(userId, criteria.count);
+
+      case 'active_playbooks':
+        return await AchievementService.checkActivePlaybooks(userId, criteria.count);
         
       case 'cooling_period_usage':
         return await AchievementService.checkCoolingPeriodUsage(userId, criteria.percentage);
+
+      case 'planned_trades':
+        return await AchievementService.checkPlannedTrades(userId, criteria.count);
+
+      case 'trade_data_hygiene':
+        return await AchievementService.checkTradeDataHygiene(userId, criteria.count, criteria.min_length);
+
+      case 'high_adherence_reviews':
+        return await AchievementService.checkHighAdherenceReviews(userId, criteria.count, criteria.threshold);
         
       case 'weekly_pnl':
         return await AchievementService.checkWeeklyPnL(userId, criteria.positive);
+
+      case 'journaled_trades':
+        return await AchievementService.checkJournaledTrades(userId, criteria.count, criteria.min_length);
+
+      case 'review_habit':
+        return await AchievementService.checkReviewHabit(userId, criteria.count, criteria.days);
+
+      case 'followed_plan_count':
+        return await AchievementService.checkFollowedPlanCount(userId, criteria.count);
         
       case 'win_rate':
         return await AchievementService.checkWinRate(userId, criteria.threshold, criteria.trades);
@@ -391,7 +423,50 @@ class AchievementService {
     
     return false;
   }
-  
+
+  static async checkClosedTradesWithStopLoss(userId, requiredTrades) {
+    const result = await db.query(`
+      SELECT COUNT(*)::int AS qualifying_trades
+      FROM trades
+      WHERE user_id = $1
+        AND exit_time IS NOT NULL
+        AND stop_loss IS NOT NULL
+    `, [userId]);
+
+    if (result.rows[0].qualifying_trades >= requiredTrades) {
+      return {
+        earned: true,
+        metadata: {
+          qualifying_trades: result.rows[0].qualifying_trades,
+          required_trades: requiredTrades
+        }
+      };
+    }
+
+    return false;
+  }
+
+  static async checkActivePlaybooks(userId, requiredCount) {
+    const result = await db.query(`
+      SELECT COUNT(*)::int AS active_playbook_count
+      FROM playbooks
+      WHERE user_id = $1
+        AND is_active = true
+    `, [userId]);
+
+    if (result.rows[0].active_playbook_count >= requiredCount) {
+      return {
+        earned: true,
+        metadata: {
+          active_playbook_count: result.rows[0].active_playbook_count,
+          required_count: requiredCount
+        }
+      };
+    }
+
+    return false;
+  }
+
   // Check cooling period usage
   static async checkCoolingPeriodUsage(userId, percentage) {
     const query = `
@@ -441,7 +516,164 @@ class AchievementService {
     
     return false;
   }
-  
+
+  static async checkJournaledTrades(userId, requiredTrades, minLength = 20) {
+    const result = await db.query(`
+      SELECT COUNT(*)::int AS qualifying_trades
+      FROM trades t
+      LEFT JOIN trade_playbook_reviews r
+        ON r.trade_id = t.id
+       AND r.user_id = t.user_id
+      WHERE t.user_id = $1
+        AND t.exit_time IS NOT NULL
+        AND (
+          LENGTH(BTRIM(COALESCE(t.notes, ''))) >= $2
+          OR LENGTH(BTRIM(COALESCE(r.review_notes, ''))) >= $2
+        )
+    `, [userId, minLength]);
+
+    if (result.rows[0].qualifying_trades >= requiredTrades) {
+      return {
+        earned: true,
+        metadata: {
+          qualifying_trades: result.rows[0].qualifying_trades,
+          required_trades: requiredTrades,
+          min_length: minLength
+        }
+      };
+    }
+
+    return false;
+  }
+
+  static async checkPlannedTrades(userId, requiredTrades) {
+    const result = await db.query(`
+      SELECT COUNT(*)::int AS qualifying_trades
+      FROM trades
+      WHERE user_id = $1
+        AND exit_time IS NOT NULL
+        AND stop_loss IS NOT NULL
+        AND take_profit IS NOT NULL
+    `, [userId]);
+
+    if (result.rows[0].qualifying_trades >= requiredTrades) {
+      return {
+        earned: true,
+        metadata: {
+          qualifying_trades: result.rows[0].qualifying_trades,
+          required_trades: requiredTrades
+        }
+      };
+    }
+
+    return false;
+  }
+
+  static async checkTradeDataHygiene(userId, requiredTrades, minLength = 20) {
+    const result = await db.query(`
+      SELECT COUNT(*)::int AS qualifying_trades
+      FROM trades t
+      LEFT JOIN trade_playbook_reviews r
+        ON r.trade_id = t.id
+       AND r.user_id = t.user_id
+      WHERE t.user_id = $1
+        AND t.exit_time IS NOT NULL
+        AND t.stop_loss IS NOT NULL
+        AND LENGTH(BTRIM(COALESCE(t.setup, ''))) > 0
+        AND (
+          LENGTH(BTRIM(COALESCE(t.notes, ''))) >= $2
+          OR LENGTH(BTRIM(COALESCE(r.review_notes, ''))) >= $2
+        )
+    `, [userId, minLength]);
+
+    if (result.rows[0].qualifying_trades >= requiredTrades) {
+      return {
+        earned: true,
+        metadata: {
+          qualifying_trades: result.rows[0].qualifying_trades,
+          required_trades: requiredTrades,
+          min_length: minLength
+        }
+      };
+    }
+
+    return false;
+  }
+
+  static async checkReviewHabit(userId, requiredReviews, days) {
+    const result = await db.query(`
+      SELECT COUNT(*)::int AS completed_reviews
+      FROM trade_playbook_reviews
+      WHERE user_id = $1
+        AND reviewed_at >= CURRENT_TIMESTAMP - ($2::int * INTERVAL '1 day')
+    `, [userId, days]);
+
+    if (result.rows[0].completed_reviews >= requiredReviews) {
+      return {
+        earned: true,
+        metadata: {
+          completed_reviews: result.rows[0].completed_reviews,
+          required_reviews: requiredReviews,
+          window_days: days
+        }
+      };
+    }
+
+    return false;
+  }
+
+  static async checkFollowedPlanCount(userId, requiredTrades) {
+    const result = await db.query(`
+      SELECT COUNT(*)::int AS followed_reviews
+      FROM trade_playbook_reviews r
+      INNER JOIN trades t
+        ON t.id = r.trade_id
+       AND t.user_id = r.user_id
+      WHERE r.user_id = $1
+        AND r.followed_plan = true
+        AND t.exit_time IS NOT NULL
+    `, [userId]);
+
+    if (result.rows[0].followed_reviews >= requiredTrades) {
+      return {
+        earned: true,
+        metadata: {
+          followed_reviews: result.rows[0].followed_reviews,
+          required_trades: requiredTrades
+        }
+      };
+    }
+
+    return false;
+  }
+
+  static async checkHighAdherenceReviews(userId, requiredReviews, threshold) {
+    const result = await db.query(`
+      SELECT COUNT(*)::int AS qualifying_reviews
+      FROM trade_playbook_reviews r
+      INNER JOIN trades t
+        ON t.id = r.trade_id
+       AND t.user_id = r.user_id
+      WHERE r.user_id = $1
+        AND t.exit_time IS NOT NULL
+        AND r.followed_plan = true
+        AND COALESCE(r.adherence_score, 0) >= $2
+    `, [userId, threshold]);
+
+    if (result.rows[0].qualifying_reviews >= requiredReviews) {
+      return {
+        earned: true,
+        metadata: {
+          qualifying_reviews: result.rows[0].qualifying_reviews,
+          required_reviews: requiredReviews,
+          threshold
+        }
+      };
+    }
+
+    return false;
+  }
+
   // Check weekly P&L
   static async checkWeeklyPnL(userId, mustBePositive) {
     const query = `
@@ -757,18 +989,37 @@ class AchievementService {
   
   // Get user achievements
   static async getUserAchievements(userId) {
+    // Includes unlock_percentage so the UI can show how rare each achievement is.
+    // Denominator = users who have earned at least one achievement (the engaged player base).
     const query = `
-      SELECT 
+      SELECT
         a.*,
         ua.earned_at,
         ua.progress,
-        ua.metadata as earn_metadata
+        ua.metadata as earn_metadata,
+        COALESCE(stats.earned_count, 0) AS earned_by_count,
+        CASE
+          WHEN totals.engaged_users > 0 THEN
+            ROUND(100.0 * COALESCE(stats.earned_count, 0) / totals.engaged_users, 1)::float
+          ELSE 0
+        END AS unlock_percentage
       FROM user_achievements ua
       JOIN achievements a ON a.id = ua.achievement_id
+      LEFT JOIN (
+        SELECT achievement_id, COUNT(*) AS earned_count
+        FROM user_achievements
+        WHERE earned_at IS NOT NULL
+        GROUP BY achievement_id
+      ) stats ON stats.achievement_id = a.id
+      CROSS JOIN (
+        SELECT COUNT(DISTINCT user_id) AS engaged_users
+        FROM user_achievements
+        WHERE earned_at IS NOT NULL
+      ) totals
       WHERE ua.user_id = $1
       ORDER BY ua.earned_at DESC
     `;
-    
+
     const result = await db.query(query, [userId]);
     return result.rows;
   }
@@ -835,21 +1086,40 @@ class AchievementService {
   
   // Get available achievements for user
   static async getAvailableAchievements(userId) {
+    // Includes unlock_percentage so the UI can show how rare each achievement is.
+    // Denominator = users who have earned at least one achievement (the engaged player base).
     const query = `
-      SELECT 
+      SELECT
         a.*,
-        CASE 
-          WHEN ua.achievement_id IS NOT NULL THEN true 
-          ELSE false 
+        CASE
+          WHEN ua.achievement_id IS NOT NULL THEN true
+          ELSE false
         END as earned,
         ua.earned_at,
-        ua.progress
+        ua.progress,
+        COALESCE(stats.earned_count, 0) AS earned_by_count,
+        CASE
+          WHEN totals.engaged_users > 0 THEN
+            ROUND(100.0 * COALESCE(stats.earned_count, 0) / totals.engaged_users, 1)::float
+          ELSE 0
+        END AS unlock_percentage
       FROM achievements a
       LEFT JOIN user_achievements ua ON ua.achievement_id = a.id AND ua.user_id = $1
+      LEFT JOIN (
+        SELECT achievement_id, COUNT(*) AS earned_count
+        FROM user_achievements
+        WHERE earned_at IS NOT NULL
+        GROUP BY achievement_id
+      ) stats ON stats.achievement_id = a.id
+      CROSS JOIN (
+        SELECT COUNT(DISTINCT user_id) AS engaged_users
+        FROM user_achievements
+        WHERE earned_at IS NOT NULL
+      ) totals
       WHERE a.is_active = true
       ORDER BY a.category, a.difficulty, a.points
     `;
-    
+
     const result = await db.query(query, [userId]);
     return result.rows;
   }

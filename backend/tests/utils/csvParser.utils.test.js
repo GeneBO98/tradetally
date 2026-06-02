@@ -343,6 +343,14 @@ describe('parseInstrumentData', () => {
     expect(result.underlyingAsset).toBe('ES');
   });
 
+  test('detects continuous futures: "CME_MINI:MES1!"', () => {
+    const result = parseInstrumentData('CME_MINI:MES1!');
+    expect(result.instrumentType).toBe('future');
+    expect(result.underlyingAsset).toBe('MES');
+    expect(result.contractMonth).toBe('CONT');
+    expect(result.contractYear).toBe(9999);
+  });
+
   test('detects compact readable options: "DIA10OCT25466PUT"', () => {
     const result = parseInstrumentData('DIA10OCT25466PUT');
     expect(result.instrumentType).toBe('option');

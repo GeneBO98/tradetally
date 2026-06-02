@@ -8,6 +8,12 @@ const { attachTierInfo, requiresTier } = require('../middleware/tierAuth');
 router.use(authenticate);
 router.use(attachTierInfo);
 
+// dashboard-summary is exempted from the Pro gate below — it returns
+// trade-derived risk signals for ALL users, and only adds the deeper
+// Pro behavioral pipeline data when the user is on Pro. Lets the dashboard
+// card show real content for everyone instead of a blank "all clear" state.
+router.get('/dashboard-summary', behavioralAnalyticsController.getDashboardSummary);
+
 // Behavioral analytics is a Pro feature - enforce tier requirement
 router.use(requiresTier('pro'));
 

@@ -22,3 +22,27 @@ describe('Trade.calculateRiskAmount', () => {
     expect(Trade.calculateRiskAmount(100, 99, 10, 'short')).toBeNull();
   });
 });
+
+describe('Trade.calculateRValue', () => {
+  it('keeps legacy gross price R behavior when quantity is not provided', () => {
+    expect(Trade.calculateRValue(100, 95, 110, 'long')).toBe(2);
+  });
+
+  it('calculates net stock R when quantity, commission, and fees are provided', () => {
+    expect(Trade.calculateRValue(100, 95, 110, 'long', {
+      quantity: 10,
+      commission: 2,
+      fees: 1
+    })).toBe(1.94);
+  });
+
+  it('calculates net option R using contract size', () => {
+    expect(Trade.calculateRValue(2.5, 2.0, 3.0, 'long', {
+      quantity: 2,
+      commission: 4,
+      fees: 1,
+      instrumentType: 'option',
+      contractSize: 100
+    })).toBe(0.95);
+  });
+});

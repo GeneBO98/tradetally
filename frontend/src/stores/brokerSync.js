@@ -9,6 +9,9 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
   const loading = ref(false)
   const syncing = ref({}) // Track syncing state per connection ID
   const error = ref(null)
+  // Pro-tier access status for broker sync (set from the connections response).
+  // { isPro, billingEnabled, canCreate, canSync, inGracePeriod, graceEndsAt }
+  const access = ref(null)
 
   // Getters
   const hasConnections = computed(() => connections.value.length > 0)
@@ -37,6 +40,7 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     try {
       const response = await api.get('/broker-sync/connections')
       connections.value = response.data.data || []
+      access.value = response.data.access || null
     } catch (err) {
       console.error('[BROKER-SYNC] Failed to fetch connections:', err)
       error.value = err.response?.data?.error || 'Failed to fetch connections'
@@ -57,7 +61,8 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
         accountLabel: credentials.accountLabel || '',
         autoSyncEnabled: credentials.autoSyncEnabled || false,
         syncFrequency: credentials.syncFrequency || 'daily',
-        syncTime: credentials.syncTime || '06:00:00'
+        syncTime: credentials.syncTime || '06:00:00',
+        syncStartDate: credentials.syncStartDate || null
       })
 
       // Refresh connections list
@@ -85,6 +90,22 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     } catch (err) {
       console.error('[BROKER-SYNC] Failed to init Schwab OAuth:', err)
       error.value = err.response?.data?.error || 'Failed to initiate Schwab connection'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function initBrokerOAuth(broker, options = {}) {
+    loading.value = true
+    error.value = null
+
+    try {
+      const response = await api.post(`/broker-sync/connections/${broker}/init`, options)
+      return response.data.authUrl
+    } catch (err) {
+      console.error(`[BROKER-SYNC] Failed to init ${broker} OAuth:`, err)
+      error.value = err.response?.data?.error || `Failed to initiate ${broker} connection`
       throw err
     } finally {
       loading.value = false
@@ -235,6 +256,7 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     loading.value = false
     syncing.value = {}
     error.value = null
+    access.value = null
   }
 
   return {
@@ -244,6 +266,7 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     loading,
     syncing,
     error,
+    access,
 
     // Getters
     hasConnections,
@@ -256,6 +279,7 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     fetchConnections,
     addIBKRConnection,
     initSchwabOAuth,
+    initBrokerOAuth,
     updateConnection,
     deleteConnection,
     deleteBrokerTrades,

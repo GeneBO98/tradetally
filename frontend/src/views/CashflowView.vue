@@ -103,6 +103,11 @@
           </div>
         </div>
 
+        <PlaidReviewQueue
+          :account-id="selectedAccountId"
+          @changed="handlePlaidReviewChanged"
+        />
+
         <!-- Cashflow Table -->
         <div class="card">
           <div class="card-body">
@@ -159,6 +164,11 @@
 
       <!-- Right Side: Account Setup Panel (1/3 width on large screens) -->
       <div class="space-y-6">
+        <PlaidFundingPanel
+          :accounts="accounts"
+          @refresh="refreshPlaidConnections"
+        />
+
         <!-- Accounts List -->
         <div class="card">
           <div class="card-body">
@@ -237,20 +247,24 @@
             <form @submit.prevent="submitTransaction" class="space-y-4">
               <div>
                 <label class="label">Account</label>
-                <select v-model="transactionForm.accountId" class="input w-full" required>
-                  <option value="" disabled>Select account</option>
-                  <option v-for="account in accounts" :key="account.id" :value="account.id">
-                    {{ account.accountName }}
-                  </option>
-                </select>
+                <BaseSelect
+                  v-model="transactionForm.accountId"
+                  :options="accounts"
+                  value-key="id"
+                  label-key="accountName"
+                  placeholder="Select account"
+                />
               </div>
 
               <div>
                 <label class="label">Type</label>
-                <select v-model="transactionForm.type" class="input w-full" required>
-                  <option value="deposit">Deposit</option>
-                  <option value="withdrawal">Withdrawal</option>
-                </select>
+                <BaseSelect
+                  v-model="transactionForm.type"
+                  :options="[
+                    { value: 'deposit', label: 'Deposit' },
+                    { value: 'withdrawal', label: 'Withdrawal' }
+                  ]"
+                />
               </div>
 
               <div>
@@ -315,6 +329,9 @@
                     {{ formatDate(tx.transactionDate) }}
                     <span v-if="tx.description" class="ml-1">- {{ tx.description }}</span>
                   </div>
+                  <div v-if="tx.sourceType === 'plaid'" class="mt-1 text-[11px] uppercase tracking-wide text-primary-600 dark:text-primary-400">
+                    Imported from Plaid
+                  </div>
                 </div>
                 <button
                   @click="removeTransaction(tx.id)"
@@ -345,13 +362,18 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useAccountsStore } from '@/stores/accounts'
+import { usePlaidFundingStore } from '@/stores/plaidFunding'
 import { useNotification } from '@/composables/useNotification'
 import AccountModal from '@/components/accounts/AccountModal.vue'
+import PlaidFundingPanel from '@/components/accounts/PlaidFundingPanel.vue'
+import PlaidReviewQueue from '@/components/accounts/PlaidReviewQueue.vue'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 
 const { formatCurrency, formatSignedCurrency, currencySymbol } = useCurrencyFormatter()
 
 const store = useAccountsStore()
+const plaidStore = usePlaidFundingStore()
 const { showSuccess, showError, showDangerConfirmation } = useNotification()
 
 // State
@@ -475,7 +497,10 @@ function resetDateFilter() {
 }
 
 async function loadCashflow() {
-  if (!selectedAccountId.value) return
+  if (!selectedAccountId.value) {
+    await plaidStore.fetchReviewQueue('')
+    return
+  }
 
   try {
     const options = {}
@@ -484,6 +509,7 @@ async function loadCashflow() {
 
     await store.fetchCashflow(selectedAccountId.value, options)
     await store.fetchTransactions(selectedAccountId.value, options)
+    await plaidStore.fetchReviewQueue(selectedAccountId.value)
     // Update transaction form to use selected account
     transactionForm.value.accountId = selectedAccountId.value
   } catch (error) {
@@ -538,6 +564,7 @@ function confirmDeleteAccount(account) {
         if (selectedAccountId.value === account.id) {
           selectedAccountId.value = ''
           store.clearCashflow()
+          await plaidStore.fetchReviewQueue('')
         }
       } catch (error) {
         showError('Error', 'Failed to delete account')
@@ -591,9 +618,27 @@ async function removeTransaction(transactionId) {
   }
 }
 
+async function refreshPlaidConnections() {
+  await Promise.all([
+    store.fetchAccounts(),
+    plaidStore.fetchConnections()
+  ])
+
+  if (selectedAccountId.value) {
+    await loadCashflow()
+  }
+}
+
+async function handlePlaidReviewChanged() {
+  await loadCashflow()
+}
+
 // Lifecycle
 onMounted(async () => {
-  await store.fetchAccounts()
+  await Promise.all([
+    store.fetchAccounts(),
+    plaidStore.fetchConnections()
+  ])
 
   // Auto-select primary account
   if (store.primaryAccount) {

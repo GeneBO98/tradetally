@@ -14,7 +14,9 @@ const securityMiddleware = () => {
           // Core CSP directives - OWASP Level 3 compliant
           defaultSrc: ["'self'"],
           scriptSrc: [
-            "'self'"
+            "'self'",
+            "'unsafe-inline'",
+            "https://cdn.plaid.com",
           ],
           scriptSrcAttr: ["'none'"],
           styleSrc: [
@@ -40,14 +42,19 @@ const securityMiddleware = () => {
             "https://api.finnhub.io", // Finnhub financial data API
             "https://www.alphavantage.co", // Alpha Vantage API
             "https://generativelanguage.googleapis.com", // Google Gemini AI API
+            "https://cdn.plaid.com",
+            "https://sandbox.plaid.com",
+            "https://development.plaid.com",
+            "https://production.plaid.com",
             ...(process.env.NODE_ENV !== 'production' ? ['ws:', 'wss:'] : []),
           ],
           // OWASP Anti-clickjacking directives (CWE-1021 & WSTG-v42-CLNT-09 mitigation)
-          frameSrc: ["'none'"], // Block all framing
+          frameSrc: ["'self'", "https://cdn.plaid.com", "https://sandbox.plaid.com", "https://development.plaid.com", "https://production.plaid.com"],
           frameAncestors: ["'none'"], // CSP Level 2 - Complete clickjacking protection
-          childSrc: ["'none'"], // CSP Level 3 - Prevent nested browsing contexts
+          childSrc: ["'self'", "https://cdn.plaid.com", "https://sandbox.plaid.com", "https://development.plaid.com", "https://production.plaid.com"],
           // OWASP Injection prevention directives (CWE-693 mitigation)  
           objectSrc: ["'none'"], // Block object/embed/applet tags
+          embedSrc: ["'none'"], // CSP3 directive for embed tags
           baseUri: ["'self'"], // Restrict base tag usage
           formAction: ["'self'"], // Restrict form submission targets
           // OWASP CSP Level 3 directives for WASC-15 compliance

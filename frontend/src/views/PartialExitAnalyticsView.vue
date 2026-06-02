@@ -22,24 +22,21 @@
           <div class="flex flex-wrap items-center gap-4">
             <div class="flex items-center gap-2">
               <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Min Partials:</label>
-              <select v-model="minPartials" @change="loadData" class="input text-sm w-20">
-                <option value="">Any</option>
-                <option v-for="n in 10" :key="n" :value="n">{{ n }}</option>
-              </select>
+              <div class="w-20">
+                <BaseSelect v-model="minPartials" :options="partialsOptions" placeholder="Any" @change="loadData" />
+              </div>
             </div>
             <div class="flex items-center gap-2">
               <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Max Partials:</label>
-              <select v-model="maxPartials" @change="loadData" class="input text-sm w-20">
-                <option value="">Any</option>
-                <option v-for="n in 10" :key="n" :value="n">{{ n }}</option>
-              </select>
+              <div class="w-20">
+                <BaseSelect v-model="maxPartials" :options="partialsOptions" placeholder="Any" @change="loadData" />
+              </div>
             </div>
             <div class="flex items-center gap-2">
               <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Min Eligible Trades:</label>
-              <select v-model="minEligibleTrades" class="input text-sm w-20">
-                <option :value="0">Any</option>
-                <option v-for="n in [2, 3, 5, 10, 15, 20, 25, 50]" :key="n" :value="n">{{ n }}</option>
-              </select>
+              <div class="w-20">
+                <BaseSelect v-model="minEligibleTrades" :options="eligibleTradesOptions" />
+              </div>
             </div>
           </div>
         </div>
@@ -222,9 +219,23 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import api from '@/services/api'
 import TradeFilters from '@/components/trades/TradeFilters.vue'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 
 const { selectedAccount } = useGlobalAccountFilter()
+
+const partialsOptions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+const eligibleTradesOptions = [
+  { value: 0, label: 'Any' },
+  { value: 2, label: '2' },
+  { value: 3, label: '3' },
+  { value: 5, label: '5' },
+  { value: 10, label: '10' },
+  { value: 15, label: '15' },
+  { value: 20, label: '20' },
+  { value: 25, label: '25' },
+  { value: 50, label: '50' }
+]
 
 const loading = ref(false)
 const initialLoading = ref(true)

@@ -28,7 +28,14 @@
             {{ formatDate(trade.trade_date) }} • {{ trade.side }}
           </p>
         </div>
-        <div class="flex space-x-3">
+        <div class="flex flex-wrap justify-end gap-3">
+          <button
+            @click="toggleAIPanel"
+            class="btn-primary inline-flex items-center gap-2"
+          >
+            <SparklesIcon class="h-4 w-4" />
+            <span>{{ showAIPanel ? 'Hide Analysis' : 'Analyze Trade' }}</span>
+          </button>
           <router-link :to="`/analysis/trade-management?tradeId=${trade.id}`" class="btn-primary">
             Manage
           </router-link>
@@ -39,6 +46,89 @@
             Delete
           </button>
         </div>
+      </div>
+
+      <!-- Stored AI Analyses -->
+      <div v-if="storedAIResponseCount > 0" class="rounded-lg border border-primary-200 bg-primary-50/60 dark:border-primary-900/50 dark:bg-primary-900/10">
+        <button
+          @click="storedAIExpanded = !storedAIExpanded"
+          class="flex w-full items-center justify-between gap-4 px-4 py-3 text-left"
+        >
+          <div class="flex items-center gap-3">
+            <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
+              <SparklesIcon class="h-4 w-4" />
+            </span>
+            <div>
+              <div class="text-sm font-semibold text-gray-900 dark:text-white">
+                {{ storedAIResponseCount }} AI response{{ storedAIResponseCount === 1 ? '' : 's' }} stored
+              </div>
+              <div class="text-xs text-gray-600 dark:text-gray-400">
+                {{ storedAIAnalyses.length }} analysis session{{ storedAIAnalyses.length === 1 ? '' : 's' }} for this trade
+              </div>
+            </div>
+          </div>
+          <svg
+            class="h-5 w-5 text-gray-500 transition-transform dark:text-gray-400"
+            :class="{ 'rotate-180': storedAIExpanded }"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        <div v-if="storedAIExpanded" class="border-t border-primary-200 px-4 py-4 dark:border-primary-900/50">
+          <div v-if="loadingStoredAIAnalyses" class="text-sm text-gray-500 dark:text-gray-400">
+            Loading stored AI responses...
+          </div>
+          <div v-else class="space-y-5">
+            <div
+              v-for="analysis in storedAIAnalyses"
+              :key="analysis.id"
+              class="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900"
+            >
+              <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div class="text-sm font-medium text-gray-900 dark:text-white">
+                  Analysis from {{ formatDateTime(analysis.created_at) }}
+                </div>
+                <div class="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                  <span v-if="formatAIModelLabel(analysis.ai_metadata)">
+                    {{ formatAIModelLabel(analysis.ai_metadata) }}
+                  </span>
+                  <span>{{ analysis.response_count }} response{{ analysis.response_count === 1 ? '' : 's' }}</span>
+                </div>
+              </div>
+              <div class="space-y-4">
+                <div
+                  v-for="response in analysis.responses"
+                  :key="response.id"
+                  class="rounded-md bg-gray-50 px-4 py-3 dark:bg-gray-800"
+                >
+                  <div class="mb-2 text-xs text-gray-500 dark:text-gray-400">
+                    {{ formatDateTime(response.created_at) }}
+                  </div>
+                  <AIReportRenderer :content="response.content" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI Single Trade Analysis -->
+      <div v-if="showAIPanel" class="card">
+        <AIConversationPanel
+          :trade-id="trade.id"
+          title="AI Trade Analysis"
+          subtitle="Analyze this trade using its executions, notes, enrichment, news, charts, and images."
+          empty-title="Analyze This Trade"
+          empty-description="Start a focused AI review of this trade to diagnose what went wrong, evaluate the technical setup, and turn the available chart, image, news, sector, and execution data into specific next steps."
+          start-label="Analyze This Trade"
+          loading-text="Analyzing this trade..."
+          auto-start
+          @session-created="loadStoredAIAnalyses"
+        />
       </div>
 
       <!-- Incomplete Calculation Banner -->
@@ -132,7 +222,12 @@
                     {{ trade.instrument_type === 'option' ? 'Exit Price (per share)' : 'Exit Price' }}
                   </dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">
-                    {{ trade.exit_time ? formatCurrency(trade.exit_price) : 'Open' }}
+                    <template v-if="trade.exit_time">{{ formatCurrency(trade.exit_price) }}</template>
+                    <template v-else-if="manualOptionPrice !== null">
+                      {{ formatCurrency(manualOptionPrice) }}
+                      <span class="text-xs text-gray-500 dark:text-gray-400 font-normal ml-1">(current)</span>
+                    </template>
+                    <template v-else>Open</template>
                   </dd>
                 </div>
                 <div v-if="trade.stopLoss || trade.stop_loss">
@@ -169,6 +264,30 @@
                     <span class="ml-2 text-xs text-gray-500 dark:text-gray-400">
                       ({{ Number(trade.rValue) >= 2 ? 'Excellent' : Number(trade.rValue) >= 0 ? 'Good' : 'Loss' }})
                     </span>
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">MAE</dt>
+                  <dd class="mt-1 text-sm font-mono" :class="trade.mae !== null && trade.mae !== undefined ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'">
+                    {{ trade.mae !== null && trade.mae !== undefined ? formatCurrency(trade.mae) : '—' }}
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">MFE</dt>
+                  <dd class="mt-1 text-sm font-mono" :class="trade.mfe !== null && trade.mfe !== undefined ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'">
+                    {{ trade.mfe !== null && trade.mfe !== undefined ? formatCurrency(trade.mfe) : '—' }}
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">After-Trade MAE</dt>
+                  <dd class="mt-1 text-sm font-mono" :class="(trade.post_exit_mae ?? trade.postExitMae) !== null && (trade.post_exit_mae ?? trade.postExitMae) !== undefined ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'">
+                    {{ (trade.post_exit_mae ?? trade.postExitMae) !== null && (trade.post_exit_mae ?? trade.postExitMae) !== undefined ? formatCurrency(trade.post_exit_mae ?? trade.postExitMae) : '—' }}
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">After-Trade MFE</dt>
+                  <dd class="mt-1 text-sm font-mono" :class="(trade.post_exit_mfe ?? trade.postExitMfe) !== null && (trade.post_exit_mfe ?? trade.postExitMfe) !== undefined ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'">
+                    {{ (trade.post_exit_mfe ?? trade.postExitMfe) !== null && (trade.post_exit_mfe ?? trade.postExitMfe) !== undefined ? formatCurrency(trade.post_exit_mfe ?? trade.postExitMfe) : '—' }}
                   </dd>
                 </div>
                 <div>
@@ -266,23 +385,23 @@
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Setup</dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white">{{ trade.setup }}</dd>
                 </div>
-                <div v-if="trade.commission">
+                <div v-if="detailCommission">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                    {{ trade.commission < 0 ? 'Commission (Rebate)' : 'Commission' }}
+                    {{ detailCommission < 0 ? 'Commission (Rebate)' : 'Commission' }}
                   </dt>
                   <dd class="mt-1 text-sm" :class="[
-                    trade.commission < 0
+                    detailCommission < 0
                       ? 'text-green-600 dark:text-green-400'
-                      : trade.commission > 0
+                      : detailCommission > 0
                       ? 'text-red-600 dark:text-red-400'
                       : 'text-gray-900 dark:text-white'
                   ]">
-                    {{ formatSignedCurrency(-trade.commission) }}
+                    {{ formatSignedCurrency(-detailCommission) }}
                   </dd>
                 </div>
-                <div v-if="trade.fees">
+                <div v-if="detailFees">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Fees</dt>
-                  <dd class="mt-1 text-sm text-gray-900 dark:text-white">{{ formatCurrency(trade.fees) }}</dd>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white">{{ formatCurrency(detailFees) }}</dd>
                 </div>
               </dl>
             </div>
@@ -583,17 +702,12 @@
               <div v-else class="space-y-5">
                 <div>
                   <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Playbook</label>
-                  <select v-model="selectedPlaybookId" @change="onPlaybookChange" class="input">
-                    <option value="">Select a playbook</option>
-                    <option
-                      v-for="playbook in playbooks"
-                      :key="playbook.id"
-                      :value="playbook.id"
-                      :disabled="playbook.isActive === false && playbook.id !== trade.playbookId"
-                    >
-                      {{ playbook.name }}{{ playbook.isActive === false ? ' (Archived)' : '' }}
-                    </option>
-                  </select>
+                  <BaseSelect
+                    v-model="selectedPlaybookId"
+                    :options="playbookOptions"
+                    placeholder="Select a playbook"
+                    @change="onPlaybookChange"
+                  />
                 </div>
 
                 <div v-if="selectedPlaybook" class="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
@@ -645,11 +759,14 @@
                   <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-4">
                     <div>
                       <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Followed plan?</label>
-                      <select v-model="reviewForm.followedPlan" class="input">
-                        <option value="">Not set</option>
-                        <option value="true">Yes</option>
-                        <option value="false">No</option>
-                      </select>
+                      <BaseSelect
+                        v-model="reviewForm.followedPlan"
+                        :options="[
+                          { value: 'true', label: 'Yes' },
+                          { value: 'false', label: 'No' }
+                        ]"
+                        placeholder="Not set"
+                      />
                     </div>
 
                     <div>
@@ -776,7 +893,10 @@
                         Exit Price
                       </th>
                       <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        P&L
+                        Gross P&L
+                      </th>
+                      <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Net P&L
                       </th>
                       <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         Commission
@@ -828,13 +948,23 @@
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono"
                           :class="[
-                            execution.pnl > 0
+                            execution.grossPnl > 0
                               ? 'text-green-600 dark:text-green-400'
-                              : execution.pnl < 0
+                              : execution.grossPnl < 0
                               ? 'text-red-600 dark:text-red-400'
                               : 'text-gray-900 dark:text-white'
                           ]">
-                        {{ execution.pnl !== undefined && execution.pnl !== null ? formatCurrency(execution.pnl) : '-' }}
+                        {{ execution.grossPnl !== undefined && execution.grossPnl !== null ? formatCurrency(execution.grossPnl) : '-' }}
+                      </td>
+                      <td class="px-3 py-4 whitespace-nowrap text-sm font-mono"
+                          :class="[
+                            execution.netPnl > 0
+                              ? 'text-green-600 dark:text-green-400'
+                              : execution.netPnl < 0
+                              ? 'text-red-600 dark:text-red-400'
+                              : 'text-gray-900 dark:text-white'
+                          ]">
+                        {{ execution.netPnl !== undefined && execution.netPnl !== null ? formatCurrency(execution.netPnl) : '-' }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono"
                           :class="[
@@ -914,17 +1044,30 @@
                         {{ formatDateTime(execution.exitTime) }}
                       </div>
                     </div>
-                    <div v-if="execution.pnl !== undefined && execution.pnl !== null">
-                      <div class="text-gray-500 dark:text-gray-400 text-xs">P&L</div>
+                    <div v-if="execution.grossPnl !== undefined && execution.grossPnl !== null">
+                      <div class="text-gray-500 dark:text-gray-400 text-xs">Gross P&L</div>
                       <div class="font-mono"
                            :class="[
-                             execution.pnl > 0
+                             execution.grossPnl > 0
                                ? 'text-green-600 dark:text-green-400'
-                               : execution.pnl < 0
+                               : execution.grossPnl < 0
                                ? 'text-red-600 dark:text-red-400'
                                : 'text-gray-900 dark:text-white'
                            ]">
-                        {{ formatCurrency(execution.pnl) }}
+                        {{ formatCurrency(execution.grossPnl) }}
+                      </div>
+                    </div>
+                    <div v-if="execution.netPnl !== undefined && execution.netPnl !== null">
+                      <div class="text-gray-500 dark:text-gray-400 text-xs">Net P&L</div>
+                      <div class="font-mono"
+                           :class="[
+                             execution.netPnl > 0
+                               ? 'text-green-600 dark:text-green-400'
+                               : execution.netPnl < 0
+                               ? 'text-red-600 dark:text-red-400'
+                               : 'text-gray-900 dark:text-white'
+                           ]">
+                        {{ formatCurrency(execution.netPnl) }}
                       </div>
                     </div>
                     <div v-if="execution.commission">
@@ -953,15 +1096,21 @@
 
               <!-- Summary Row -->
               <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
                   <div>
                     <div class="text-gray-500 dark:text-gray-400 text-xs">Total Executions</div>
-                    <div class="font-semibold text-gray-900 dark:text-white">{{ trade.executions.length }}</div>
+                    <div class="font-semibold text-gray-900 dark:text-white">{{ processedExecutions.length }}</div>
                   </div>
                   <div>
                     <div class="text-gray-500 dark:text-gray-400 text-xs">Total Volume</div>
                     <div class="font-semibold font-mono text-gray-900 dark:text-white">
                       {{ formatCurrency(executionSummary.totalVolume) }}
+                    </div>
+                  </div>
+                  <div>
+                    <div class="text-gray-500 dark:text-gray-400 text-xs">Total Commission</div>
+                    <div class="font-semibold font-mono text-gray-900 dark:text-white">
+                      {{ formatCurrency(executionSummary.totalCommission) }}
                     </div>
                   </div>
                   <div>
@@ -1205,19 +1354,25 @@
               <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance</h3>
               <dl class="space-y-4">
                 <div>
-                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">P&L</dt>
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
+                    Net P&L
+                    <span v-if="!trade.exit_time && openOptionUnrealizedPnL !== null" class="text-xs font-normal text-gray-400">(unrealized)</span>
+                  </dt>
                   <dd class="mt-1 text-2xl font-semibold" :class="[
-                    displayPnl >= 0 ? 'text-green-600' : 'text-red-600'
+                    (trade.exit_time ? displayPnl : openOptionUnrealizedPnL) >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
-                    {{ trade.exit_time ? formatCurrency(displayPnl) : 'Open' }}
+                    <template v-if="trade.exit_time">{{ formatCurrency(displayPnl) }}</template>
+                    <template v-else-if="openOptionUnrealizedPnL !== null">{{ formatCurrency(openOptionUnrealizedPnL) }}</template>
+                    <template v-else>Open</template>
                   </dd>
                 </div>
-                <div v-if="trade.pnl_percent">
+                <div v-if="trade.pnl_percent || openOptionUnrealizedPnLPercent !== null">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">P&L %</dt>
                   <dd class="mt-1 text-lg font-semibold" :class="[
-                    trade.pnl_percent >= 0 ? 'text-green-600' : 'text-red-600'
+                    (trade.exit_time ? trade.pnl_percent : openOptionUnrealizedPnLPercent) >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
-                    {{ trade.pnl_percent > 0 ? '+' : '' }}{{ formatNumber(trade.pnl_percent) }}%
+                    <template v-if="trade.exit_time">{{ trade.pnl_percent > 0 ? '+' : '' }}{{ formatNumber(trade.pnl_percent) }}%</template>
+                    <template v-else>{{ openOptionUnrealizedPnLPercent > 0 ? '+' : '' }}{{ formatNumber(openOptionUnrealizedPnLPercent) }}%</template>
                   </dd>
                 </div>
                 <div>
@@ -1355,7 +1510,7 @@ import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { format, formatDistanceToNow, formatDistance } from 'date-fns'
-import { DocumentIcon, ChatBubbleLeftIcon } from '@heroicons/vue/24/outline'
+import { DocumentIcon, ChatBubbleLeftIcon, SparklesIcon } from '@heroicons/vue/24/outline'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
@@ -1363,11 +1518,16 @@ import TradeChartVisualization from '@/components/trades/TradeChartVisualization
 import TradeImages from '@/components/trades/TradeImages.vue'
 import TradeCharts from '@/components/trades/TradeCharts.vue'
 import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
+import AIConversationPanel from '@/components/ai/AIConversationPanel.vue'
+import AIReportRenderer from '@/components/ai/AIReportRenderer.vue'
+import BaseSelect from '@/components/common/BaseSelect.vue'
+import { useAIStore } from '@/stores/ai'
 
 const route = useRoute()
 const router = useRouter()
 const tradesStore = useTradesStore()
 const authStore = useAuthStore()
+const aiStore = useAIStore()
 const { showSuccess, showError, showConfirmation } = useNotification()
 const { formatDateTime: formatDateTimeTz, formatTime: formatTimeTz, timezoneLabel } = useUserTimezone()
 const { formatCurrency, currencySymbol, formatSignedCurrency } = useCurrencyFormatter()
@@ -1379,8 +1539,19 @@ const splittingTrade = ref(false)
 const splitMode = ref(false)
 const selectedExecutions = ref(new Set())
 const playbooks = ref([])
+const playbookOptions = computed(() =>
+  playbooks.value.map(playbook => ({
+    value: playbook.id,
+    label: `${playbook.name}${playbook.isActive === false ? ' (Archived)' : ''}`,
+    disabled: playbook.isActive === false && playbook.id !== trade.value?.playbookId
+  }))
+)
 const loadingPlaybooks = ref(false)
 const savingPlaybookReview = ref(false)
+const showAIPanel = ref(false)
+const storedAIAnalyses = ref([])
+const storedAIExpanded = ref(false)
+const loadingStoredAIAnalyses = ref(false)
 const selectedPlaybookId = ref('')
 const reviewForm = reactive({
   checklistResponses: [],
@@ -1411,6 +1582,10 @@ const checklistCompletion = computed(() => {
 
   const checked = reviewForm.checklistResponses.filter(item => item.checked).length
   return { checked, total }
+})
+
+const storedAIResponseCount = computed(() => {
+  return storedAIAnalyses.value.reduce((sum, analysis) => sum + (analysis.response_count || 0), 0)
 })
 
 // Helper function to safely get numeric score value
@@ -1448,6 +1623,13 @@ function toggleChartSection() {
 function toggleCommentsSection() {
   commentsSectionCollapsed.value = !commentsSectionCollapsed.value
   localStorage.setItem('tradeDetail_commentsCollapsed', commentsSectionCollapsed.value.toString())
+}
+
+function toggleAIPanel() {
+  showAIPanel.value = !showAIPanel.value
+  if (showAIPanel.value) {
+    aiStore.reset()
+  }
 }
 
 // Computed property to check if quality calculation is incomplete
@@ -1590,276 +1772,176 @@ const tradingViewImageUrl = computed(() => {
   return null
 })
 
-// Computed properties for enhanced execution display
+// Dumb mapper: read engine-stamped realized_pnl off each execution.
+// trade.pnl is canonical (= SUM of realized_pnl); displayPnl is just trade.pnl.
 const processedExecutions = computed(() => {
-  // Check instrument type and get appropriate multiplier
-  const isOption = trade.value?.instrument_type === 'option'
-  const isFuture = trade.value?.instrument_type === 'future'
+  if (!trade.value) return []
+
+  const isOption = trade.value.instrument_type === 'option'
+  const isFuture = trade.value.instrument_type === 'future'
   const contractSize = isOption ? (trade.value.contract_size || 100) : 1
   const pointValue = isFuture ? (trade.value.point_value || 1) : 1
-
-  // Determine the value multiplier based on instrument type
   const valueMultiplier = isFuture ? pointValue : contractSize
+  const tradeSide = trade.value.side
 
-  // If no executions array, create a synthetic execution from trade entry/exit data
-  if (!trade.value?.executions || !Array.isArray(trade.value.executions) || trade.value.executions.length === 0) {
-    if (!trade.value) return []
+  if (!Array.isArray(trade.value.executions) || trade.value.executions.length === 0) {
+    const quantity = parseFloat(trade.value.quantity) || 0
+    const entryPrice = parseFloat(trade.value.entry_price) || 0
+    const rawExitPrice = trade.value.exit_price
+    const exitPrice = rawExitPrice != null && rawExitPrice !== '' ? parseFloat(rawExitPrice) : null
+    const commission = parseFloat(trade.value.commission) || 0
+    const fees = parseFloat(trade.value.fees) || 0
 
-    // Create a single execution representing the entire trade
+    let grossPnl = null
+    let netPnl = null
+    if (exitPrice != null && quantity > 0) {
+      grossPnl = tradeSide === 'short'
+        ? (entryPrice - exitPrice) * quantity * valueMultiplier
+        : (exitPrice - entryPrice) * quantity * valueMultiplier
+      netPnl = grossPnl - commission - fees
+    }
+
     return [{
-      side: trade.value.side,
-      action: trade.value.side,
-      quantity: trade.value.quantity || 0,
-      entryPrice: trade.value.entry_price || 0,
-      exitPrice: trade.value.exit_price || null,
+      side: tradeSide,
+      action: tradeSide,
+      quantity,
+      entryPrice,
+      exitPrice,
       entryTime: trade.value.entry_time,
       exitTime: trade.value.exit_time || null,
-      commission: trade.value.commission || 0,
-      fees: trade.value.fees || 0,
-      pnl: trade.value.pnl ?? 0
+      commission,
+      fees,
+      grossPnl,
+      netPnl,
+      pnl: netPnl ?? (trade.value.pnl ?? 0)
     }]
   }
 
-  const tradeSide = trade.value.side
-  let runningPosition = 0
-
-  // Check if these are grouped executions (round-trips with entryPrice/exitPrice)
-  // vs individual fills (action/price/datetime)
-  const isGroupedFormat = trade.value.executions.some(e =>
+  const executions = trade.value.executions
+  const isGroupedFormat = executions.some((e) =>
     e && (e.entryPrice !== undefined || e.entry_price !== undefined || e.entryTime !== undefined || e.entry_time !== undefined)
   )
 
-  // For grouped executions, compute P&L directly instead of using FIFO matching
-  if (isGroupedFormat) {
-    return trade.value.executions.map((execution) => {
-      if (!execution) return { action: 'N/A', quantity: 0, price: 0, value: 0, commission: 0, fees: 0, runningPosition: 0, avgCost: null, datetime: null, pnl: null }
+  let runningPosition = 0
+  return executions.map((execution) => {
+    if (!execution) {
+      return { action: 'N/A', quantity: 0, price: 0, value: 0, commission: 0, fees: 0, runningPosition: 0, avgCost: null, datetime: null, grossPnl: null, netPnl: null, pnl: null }
+    }
 
-      const quantity = parseFloat(execution.quantity) || 0
+    const quantity = parseFloat(execution.quantity) || 0
+    const commission = parseFloat(execution.commission) || 0
+    const fees = parseFloat(execution.fees) || 0
+    const realizedPnl = execution.realized_pnl != null ? parseFloat(execution.realized_pnl) : null
+
+    if (isGroupedFormat) {
       const entryPrice = parseFloat(execution.entryPrice ?? execution.entry_price) || 0
-      const exitPrice = execution.exitPrice ?? execution.exit_price
-      const parsedExitPrice = exitPrice != null ? parseFloat(exitPrice) : null
-      const side = execution.side || tradeSide
-      const commission = parseFloat(execution.commission) || 0
-      const fees = parseFloat(execution.fees) || 0
-      const totalCost = commission + fees
-
-      let executionPnl = null
-      if (parsedExitPrice != null && quantity > 0) {
-        if (side === 'long') {
-          executionPnl = (parsedExitPrice - entryPrice) * quantity * valueMultiplier - totalCost
-        } else {
-          executionPnl = (entryPrice - parsedExitPrice) * quantity * valueMultiplier - totalCost
-        }
-      }
+      const rawExit = execution.exitPrice ?? execution.exit_price
+      const exitPrice = rawExit != null ? parseFloat(rawExit) : null
+      const grossPnl = (exitPrice != null && quantity > 0)
+        ? (tradeSide === 'short' ? (entryPrice - exitPrice) * quantity * valueMultiplier : (exitPrice - entryPrice) * quantity * valueMultiplier)
+        : null
 
       return {
         ...execution,
-        action: side,
+        action: execution.side || tradeSide,
         quantity,
         price: entryPrice,
         value: quantity * entryPrice * valueMultiplier,
         commission,
-        fees: parseFloat(execution.fees) || fees,
+        fees,
         datetime: execution.entryTime ?? execution.entry_time,
         runningPosition: 0,
         avgCost: entryPrice,
         entryPrice,
-        exitPrice: parsedExitPrice,
+        exitPrice,
         entryTime: execution.entryTime ?? execution.entry_time,
         exitTime: execution.exitTime ?? execution.exit_time,
-        pnl: executionPnl
-      }
-    })
-  }
-
-  // FIFO queue of entry executions: [{quantity, price, remainingQty}]
-  // This allows proper matching of exits to entries
-  const entryQueue = []
-
-  // Calculate total quantity for proportional distribution (fallback when no execution-level data)
-  const totalQuantity = trade.value.executions.reduce((sum, exec) => sum + (parseFloat(exec?.quantity) || 0), 0)
-  const tradeCommission = parseFloat(trade.value.commission) || 0
-  const tradeFees = parseFloat(trade.value.fees) || 0
-
-  return trade.value.executions.map((execution, index) => {
-    // Handle null/undefined execution
-    if (!execution) {
-      return {
-        action: 'N/A',
-        quantity: 0,
-        price: 0,
-        value: 0,
-        commission: 0,
-        fees: 0,
-        runningPosition: 0,
-        avgCost: null,
-        datetime: null,
-        pnl: null
+        grossPnl,
+        netPnl: realizedPnl ?? (grossPnl != null ? grossPnl - commission - fees : null),
+        pnl: realizedPnl ?? (grossPnl != null ? grossPnl - commission - fees : null)
       }
     }
 
-    // Map trade record fields to execution format
-    const quantity = parseFloat(execution.quantity) || 0
+    const action = execution.action || execution.side || 'unknown'
     const price = parseFloat(execution.price) || parseFloat(execution.entryPrice) || parseFloat(execution.entry_price) || parseFloat(execution.exitPrice) || parseFloat(execution.exit_price) || 0
     const value = quantity * price * valueMultiplier
-    const action = execution.action || execution.side || 'unknown'
     const datetime = execution.datetime || execution.entry_time
-
-    // Calculate commission/fees for this execution
-    // Commission sign convention: positive = cost (debit), negative = rebate (credit)
-    // IBKR stores commission in the 'fees' field; addFill stores both 'commission' and 'fees' separately
-    const proportion = totalQuantity > 0 ? quantity / totalQuantity : 0
-
-    const hasCommission = execution.commission !== undefined && execution.commission !== null
-    const hasFees = execution.fees !== undefined && execution.fees !== null
-
-    let commission = 0
-    let fees = 0
-
-    if (hasCommission && hasFees) {
-      // Both fields present (e.g., addFill executions) - use both separately
-      commission = parseFloat(execution.commission) || 0
-      fees = parseFloat(execution.fees) || 0
-    } else if (hasCommission) {
-      // Only commission field (e.g., some broker imports)
-      commission = parseFloat(execution.commission) || 0
-    } else if (hasFees) {
-      // Only fees field (IBKR: commission bundled in fees)
-      commission = parseFloat(execution.fees) || 0
-    } else {
-      // Fall back to proportional distribution from trade-level totals
-      commission = tradeCommission * proportion
-      fees = tradeFees * proportion
-    }
-
-    // Total cost preserves sign: positive = cost subtracted from P&L,
-    // negative = rebate added to P&L (subtracting a negative adds)
-    const totalCost = commission + fees
-
-    // Determine if this execution is opening or closing the position
-    // For LONG trades: Buy = entry, Sell = exit
-    // For SHORT trades: Sell = entry, Buy = exit
     const isOpening = (tradeSide === 'long' && (action === 'buy' || action === 'long')) ||
                       (tradeSide === 'short' && (action === 'sell' || action === 'short'))
 
-    // Update running position
-    if (action === 'buy' || action === 'long') {
-      runningPosition += quantity
-    } else if (action === 'sell' || action === 'short') {
-      runningPosition -= quantity
-    }
-
-    // Track entries and calculate P&L using FIFO matching
-    let executionPnl = null
-    let matchedEntryPrice = null
-
-    if (isOpening) {
-      // Add to entry queue for FIFO matching
-      // Track commission to prorate it when calculating exit P&L
-      entryQueue.push({ quantity, price, commission: totalCost, remainingQty: quantity })
-    } else {
-      // Exit execution - match against entries using FIFO
-      let remainingExitQty = quantity
-      let totalMatchedValue = 0
-      let totalMatchedQty = 0
-      let totalMatchedEntryCommission = 0
-
-      // Consume entries from the front of the queue (FIFO)
-      while (remainingExitQty > 0 && entryQueue.length > 0) {
-        const entry = entryQueue[0]
-        const matchQty = Math.min(remainingExitQty, entry.remainingQty)
-
-        totalMatchedValue += matchQty * entry.price
-        totalMatchedQty += matchQty
-        // Prorate entry commission based on matched quantity
-        if (entry.commission && entry.quantity > 0) {
-          totalMatchedEntryCommission += (entry.commission * matchQty / entry.quantity)
-        }
-        remainingExitQty -= matchQty
-        entry.remainingQty -= matchQty
-
-        // Remove fully consumed entries
-        if (entry.remainingQty <= 0) {
-          entryQueue.shift()
-        }
-      }
-
-      // Calculate P&L based on matched entry price
-      // Deduct both exit commission (totalCost) and prorated entry commission
-      if (totalMatchedQty > 0) {
-        matchedEntryPrice = totalMatchedValue / totalMatchedQty
-
-        if (tradeSide === 'long') {
-          // Long: profit when exit price > entry price
-          executionPnl = (price - matchedEntryPrice) * totalMatchedQty * valueMultiplier - totalCost - totalMatchedEntryCommission
-        } else {
-          // Short: profit when exit price < entry price
-          executionPnl = (matchedEntryPrice - price) * totalMatchedQty * valueMultiplier - totalCost - totalMatchedEntryCommission
-        }
-      }
-    }
-
-    // Calculate current average cost basis from remaining entries
-    const totalRemainingQty = entryQueue.reduce((sum, e) => sum + e.remainingQty, 0)
-    const totalRemainingValue = entryQueue.reduce((sum, e) => sum + (e.remainingQty * e.price), 0)
-    const avgCostBasis = totalRemainingQty > 0 ? totalRemainingValue / totalRemainingQty : null
-
-    // Preserve original values if they exist in the execution data
-    const originalEntryPrice = execution.entryPrice ?? execution.entry_price
-    const originalExitPrice = execution.exitPrice ?? execution.exit_price
-    const originalEntryTime = execution.entryTime ?? execution.entry_time
-    const originalExitTime = execution.exitTime ?? execution.exit_time
-    const originalPnl = execution.pnl ?? execution.p_l ?? execution.profit_loss
-    const originalFees = execution.fees ?? execution.fee
+    if (action === 'buy' || action === 'long') runningPosition += quantity
+    else if (action === 'sell' || action === 'short') runningPosition -= quantity
 
     return {
-      // Keep original execution data
       ...execution,
-      // Add computed fields for display
       action,
       quantity,
       price,
       value,
       commission,
-      // Preserve original fees if available, otherwise use computed
-      fees: originalFees ?? fees,
+      fees,
       datetime,
       runningPosition,
-      avgCost: isOpening ? (avgCostBasis || price) : matchedEntryPrice,
-      // Set entryPrice/exitPrice: prefer original values, otherwise compute based on position
-      entryPrice: originalEntryPrice ?? (isOpening ? price : null),
-      exitPrice: originalExitPrice ?? (isOpening ? null : price),
-      // Set entryTime/exitTime: prefer original values, otherwise compute based on position
-      entryTime: originalEntryTime ?? (isOpening ? datetime : null),
-      exitTime: originalExitTime ?? (isOpening ? null : datetime),
-      // P&L: prefer computed FIFO value when available (more accurate with commission handling),
-      // fall back to original stored value for executions without FIFO match
-      pnl: executionPnl ?? originalPnl
+      avgCost: isOpening ? price : null,
+      entryPrice: execution.entryPrice ?? execution.entry_price ?? (isOpening ? price : null),
+      exitPrice: execution.exitPrice ?? execution.exit_price ?? (isOpening ? null : price),
+      entryTime: execution.entryTime ?? execution.entry_time ?? (isOpening ? datetime : null),
+      exitTime: execution.exitTime ?? execution.exit_time ?? (isOpening ? null : datetime),
+      grossPnl: null,
+      netPnl: realizedPnl,
+      pnl: realizedPnl ?? (execution.pnl ?? execution.p_l ?? execution.profit_loss ?? null)
     }
   })
 })
 
-// Compute P&L from execution totals for consistency with the executions table
-// This avoids discrepancies between Performance P&L (from DB) and Execution P&L (computed via FIFO)
-const executionDerivedPnl = computed(() => {
-  if (!processedExecutions.value || processedExecutions.value.length === 0) return null
+const displayPnl = computed(() => trade.value?.pnl ?? null)
 
-  const exitExecutions = processedExecutions.value.filter(exec => exec.pnl !== null && exec.pnl !== undefined)
-  if (exitExecutions.length === 0) return null
-
-  return exitExecutions.reduce((sum, exec) => sum + (parseFloat(exec.pnl) || 0), 0)
+// Open option positions can have a user-entered current premium stored by the
+// dashboard's Open Positions table (localStorage key matches DashboardView).
+// Read it here so the trade detail surfaces the same unrealized P&L instead of
+// just showing "Open".
+const manualOptionPrice = computed(() => {
+  if (!trade.value) return null
+  const isOption = trade.value.instrument_type === 'option'
+  const isOpen = !trade.value.exit_time
+  if (!isOption || !isOpen) return null
+  try {
+    const stored = localStorage.getItem('tradetally_manual_option_prices')
+    if (!stored) return null
+    const map = JSON.parse(stored)
+    const price = map[trade.value.symbol]
+    return typeof price === 'number' && !Number.isNaN(price) ? price : null
+  } catch (e) {
+    return null
+  }
 })
 
-// Use execution-derived P&L when available, otherwise fall back to trade.pnl
-const displayPnl = computed(() => {
-  if (executionDerivedPnl.value !== null) return executionDerivedPnl.value
-  return trade.value?.pnl ?? null
+const openOptionUnrealizedPnL = computed(() => {
+  if (manualOptionPrice.value === null) return null
+  const t = trade.value
+  if (!t) return null
+  const quantity = Number(t.quantity || 0)
+  const multiplier = Number(t.contract_size || 100)
+  const entryPrice = Number(t.entry_price || 0)
+  if (!quantity || !entryPrice) return null
+  const currentValue = manualOptionPrice.value * quantity * multiplier
+  const entryValue = entryPrice * quantity * multiplier
+  return t.side === 'short' ? entryValue - currentValue : currentValue - entryValue
+})
+
+const openOptionUnrealizedPnLPercent = computed(() => {
+  if (openOptionUnrealizedPnL.value === null) return null
+  const t = trade.value
+  const entryValue = Number(t.entry_price || 0) * Number(t.quantity || 0) * Number(t.contract_size || 100)
+  if (!entryValue) return null
+  return (openOptionUnrealizedPnL.value / entryValue) * 100
 })
 
 const executionSummary = computed(() => {
-  if (!trade.value?.executions || !Array.isArray(trade.value.executions)) return {
+  if (!processedExecutions.value || !Array.isArray(processedExecutions.value)) return {
     totalVolume: 0,
     totalShareQuantity: 0,
+    totalCommission: 0,
     totalFees: 0,
     finalPosition: 0
   }
@@ -1870,21 +1952,31 @@ const executionSummary = computed(() => {
 
   let totalVolume = 0
   let totalShareQuantity = 0
+  let totalCommission = 0
   let totalFees = 0
   let finalPosition = 0
 
-  trade.value.executions.forEach(execution => {
+  processedExecutions.value.forEach(execution => {
     if (!execution) return
 
     const quantity = parseFloat(execution.quantity) || 0
     const price = parseFloat(execution.price) || parseFloat(execution.entryPrice) || parseFloat(execution.entry_price) || parseFloat(execution.exitPrice) || parseFloat(execution.exit_price) || 0  // Use price from execution, fallback to entry_price from trade record
-    const fees = (parseFloat(execution.commission) || 0) + (parseFloat(execution.fees) || 0)
+    const commission = parseFloat(execution.commission) || 0
+    const fees = parseFloat(execution.fees) || 0
     const action = execution.action || execution.side || 'unknown'  // Use action from execution, fallback to side from trade record
 
     // For options, include contract multiplier in volume calculation
     totalVolume += isOption ? (quantity * price * contractSize) : (quantity * price)
     totalShareQuantity += Math.abs(quantity)  // Sum of all absolute quantities
+    totalCommission += commission
     totalFees += fees
+
+    // Round-trip rows (have both entry and exit) close out — no position contribution
+    const isClosedRoundTrip = (execution.entryPrice ?? execution.entry_price) != null
+      && (execution.exitPrice ?? execution.exit_price) != null
+    if (isClosedRoundTrip) {
+      return
+    }
 
     if (action === 'buy' || action === 'long') {
       finalPosition += quantity
@@ -1896,9 +1988,20 @@ const executionSummary = computed(() => {
   return {
     totalVolume,
     totalShareQuantity,
+    totalCommission,
     totalFees,
     finalPosition
   }
+})
+
+const detailCommission = computed(() => {
+  const tradeCommission = parseFloat(trade.value?.commission) || 0
+  return processedExecutions.value?.length ? executionSummary.value.totalCommission : tradeCommission
+})
+
+const detailFees = computed(() => {
+  const tradeFees = parseFloat(trade.value?.fees) || 0
+  return processedExecutions.value?.length ? executionSummary.value.totalFees : tradeFees
 })
 
 function formatNumber(num, decimals = 2) {
@@ -1967,6 +2070,14 @@ function formatFileSize(bytes) {
   const sizes = ['B', 'KB', 'MB', 'GB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
+}
+
+function formatAIModelLabel(metadata) {
+  if (!metadata) return ''
+  const provider = metadata.provider ? String(metadata.provider) : ''
+  const model = metadata.model ? String(metadata.model) : ''
+  if (provider && model) return `${provider} / ${model}`
+  return model || provider
 }
 
 function calculateRiskReward() {
@@ -2295,12 +2406,28 @@ async function loadTrade() {
     // Load comments after trade is loaded
     if (trade.value) {
       loadComments()
+      loadStoredAIAnalyses()
     }
   } catch (error) {
     showError('Error', 'Failed to load trade')
     router.push('/trades')
   } finally {
     loading.value = false
+  }
+}
+
+async function loadStoredAIAnalyses() {
+  const tradeId = trade.value?.id || route.params.id
+  if (!tradeId) return
+
+  try {
+    loadingStoredAIAnalyses.value = true
+    const response = await api.get(`/ai/trades/${tradeId}/analyses`)
+    storedAIAnalyses.value = response.data.analyses || []
+  } catch (error) {
+    console.error('Failed to load stored AI analyses:', error)
+  } finally {
+    loadingStoredAIAnalyses.value = false
   }
 }
 

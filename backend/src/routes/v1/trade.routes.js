@@ -379,7 +379,7 @@ router.delete('/:id/journal/:entryId', authenticate, tradeController.deleteJourn
  *         description: Insufficient scope
  */
 router.get('/:id', flexibleAuth, requireApiScope('trades:read'), tradeV1Controller.getTradeById);
-router.put('/:id', flexibleAuth, requireApiScope('trades:write'), validate(schemas.trade), tradeV1Controller.updateTrade);
+router.put('/:id', flexibleAuth, requireApiScope('trades:write'), validate(schemas.updateTrade), tradeV1Controller.updateTrade);
 router.delete('/:id', flexibleAuth, requireApiScope('trades:write'), tradeV1Controller.deleteTrade);
 
 module.exports = router;

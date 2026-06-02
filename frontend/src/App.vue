@@ -1,86 +1,77 @@
 <template>
   <div id="app" style="width: 100%; min-width: 100%; overflow-x: visible;">
-    <UpdateBanner v-if="!isAuthRoute" />
-    <EmailVerificationBanner v-if="!isAuthRoute" />
-    <NavBar v-if="!isAuthRoute" />
-    <main class="min-h-screen">
-      <router-view />
-    </main>
-    
-    <!-- Footer -->
-    <footer v-if="!isAuthRoute" class="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-        <div class="flex items-center justify-center">
-          <div class="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400">
-            <a
-              href="https://docs.tradetally.io"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="inline-flex items-center hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
-            >
-              <svg class="w-4 h-4 sm:mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-              </svg>
-              <span class="hidden sm:inline">Documentation</span>
-              <span class="sm:hidden">Docs</span>
-            </a>
-            <span>•</span>
-            <button
-              @click="showSupportModal = true"
-              class="inline-flex items-center hover:text-primary-600 dark:hover:text-primary-400 transition-colors cursor-pointer"
-            >
-              <svg class="w-4 h-4 sm:mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-              <span class="hidden sm:inline">Contact Support</span>
-              <span class="sm:hidden">Support</span>
+    <div v-if="runtimeError" class="min-h-screen bg-white dark:bg-gray-950">
+      <div class="content-wrapper py-16">
+        <div class="max-w-lg">
+          <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Something went wrong</h1>
+          <p class="mt-3 text-sm text-gray-600 dark:text-gray-400">
+            The app hit an unexpected error and stopped rendering this view.
+          </p>
+          <div class="mt-6 flex gap-3">
+            <button class="btn btn-primary" @click="reloadApp">
+              Reload
             </button>
-            <span>•</span>
-            <a
-              href="https://forum.tradetally.io"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="inline-flex items-center hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
-            >
-              <svg class="w-4 h-4 sm:mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" />
-              </svg>
-              <span class="hidden sm:inline">Community Forum</span>
-              <span class="sm:hidden">Forum</span>
-            </a>
-            <span>•</span>
-            <a
-              href="https://github.com/GeneBO98/tradetally"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="inline-flex items-center hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
-            >
-              <svg class="w-4 h-4 sm:mr-1" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z" clip-rule="evenodd" />
-              </svg>
-              <span class="hidden sm:inline">View on GitHub</span>
-              <span class="sm:hidden">GitHub</span>
-            </a>
-            <span>•</span>
-            <router-link
-              to="/privacy"
-              class="hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
-            >
-              <span class="hidden sm:inline">Privacy Policy</span>
-              <span class="sm:hidden">Privacy</span>
-            </router-link>
-            <span>•</span>
-            <VersionDisplay />
+            <button class="btn btn-outline" @click="clearRuntimeError">
+              Dismiss
+            </button>
           </div>
         </div>
       </div>
-    </footer>
-    
+    </div>
+    <template v-else>
+    <UpdateBanner v-if="!isAuthRoute" />
+    <EmailVerificationBanner v-if="!isAuthRoute" />
+    <IOSAppBanner v-if="!isAuthRoute" />
+
+    <!-- Authenticated layout: sidebar fixed left, content offset right -->
+    <template v-if="!isAuthRoute && authStore.isAuthenticated">
+      <Sidebar />
+      <div
+        class="flex min-h-screen min-w-0 flex-col transition-[padding] duration-300 ease-out"
+        :class="sidebarCollapsed ? 'lg:pl-16' : 'lg:pl-64'"
+      >
+        <!-- Mobile top bar -->
+        <div class="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-gray-200 bg-white/95 px-3 backdrop-blur-sm lg:hidden dark:border-gray-700 dark:bg-gray-800/95">
+          <button
+            @click="openDrawer"
+            class="rounded-md p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+            aria-label="Open menu"
+          >
+            <Bars3Icon class="h-6 w-6" />
+          </button>
+          <router-link to="/dashboard" class="flex items-center gap-2">
+            <img src="/favicon.svg" alt="TradeTally" class="h-7 w-auto" />
+            <span class="font-semibold text-gray-900 dark:text-white">TradeTally</span>
+          </router-link>
+          <NotificationBell />
+        </div>
+        <main class="flex-1">
+          <router-view />
+        </main>
+        <AppFooter @show-support="showSupportModal = true" />
+      </div>
+    </template>
+
+    <!-- Unauthenticated / public layout: top nav -->
+    <template v-else-if="!isAuthRoute">
+      <NavBar />
+      <main class="min-h-screen">
+        <router-view />
+      </main>
+      <AppFooter @show-support="showSupportModal = true" />
+    </template>
+
+    <!-- Auth routes: bare layout -->
+    <main v-else class="min-h-screen">
+      <router-view />
+    </main>
+
+
     <Notification />
     <ModalAlert />
     <CookieConsentBanner v-if="isBillingEnabled" />
     <!-- Gamification celebration overlay -->
-    <CelebrationOverlay :queue="celebrationQueue" />
+    <CelebrationOverlay v-if="!isImportRoute" :queue="celebrationQueue" />
 
     <!-- Passkey registration prompt (shown after login if user has no passkeys) -->
     <div v-if="showPasskeyPrompt" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -92,26 +83,10 @@
         <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
           Sign in faster next time using your device's biometrics, security key, or PIN. No password needed.
         </p>
-        <div class="mb-5 space-y-3 text-left">
-          <input
-            v-model="passkeySudoPassword"
-            type="password"
-            autocomplete="current-password"
-            class="input"
-            placeholder="Confirm current password"
-          />
-          <input
-            v-model="passkeySudoCode"
-            type="text"
-            autocomplete="one-time-code"
-            class="input"
-            placeholder="2FA code if enabled"
-          />
-        </div>
         <div class="flex space-x-3 justify-center">
           <button
             @click="registerPasskey"
-            :disabled="passkeyRegistering || !passkeySudoPassword"
+            :disabled="passkeyRegistering"
             class="px-6 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-md disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
           >
             <span v-if="passkeyRegistering">Setting up...</span>
@@ -181,6 +156,7 @@
         </form>
       </div>
     </div>
+    </template>
   </div>
 </template>
 
@@ -192,17 +168,22 @@ import { useVersionStore } from '@/stores/version'
 import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotifications'
 import { useNotification } from '@/composables/useNotification'
 import NavBar from '@/components/layout/NavBar.vue'
+import Sidebar from '@/components/layout/Sidebar.vue'
+import AppFooter from '@/components/layout/AppFooter.vue'
+import NotificationBell from '@/components/common/NotificationBell.vue'
+import { Bars3Icon } from '@heroicons/vue/24/outline'
+import { useSidebar } from '@/composables/useSidebar'
 import Notification from '@/components/common/Notification.vue'
 import ModalAlert from '@/components/common/ModalAlert.vue'
 import CelebrationOverlay from '@/components/gamification/CelebrationOverlay.vue'
 import UpdateBanner from '@/components/common/UpdateBanner.vue'
 import EmailVerificationBanner from '@/components/common/EmailVerificationBanner.vue'
+import IOSAppBanner from '@/components/common/IOSAppBanner.vue'
 import VersionDisplay from '@/components/common/VersionDisplay.vue'
 import CookieConsentBanner from '@/components/common/CookieConsentBanner.vue'
 import { useRegistrationMode } from '@/composables/useRegistrationMode'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import api from '@/services/api'
-import { requestSudoToken, sudoHeaders } from '@/services/sudo'
 
 // Rate limit notification handling
 const { showError, showSuccess } = useNotification()
@@ -211,8 +192,8 @@ const lastRateLimitNotification = ref(0)
 const route = useRoute()
 const authStore = useAuthStore()
 const versionStore = useVersionStore()
-const uiPreferencesStore = useUiPreferencesStore()
 const { isBillingEnabled } = useRegistrationMode()
+const { openDrawer, collapsed: sidebarCollapsed } = useSidebar()
 
 // Initialize price alert notifications globally
 const { isConnected, connect, disconnect, celebrationQueue } = usePriceAlertNotifications()
@@ -221,11 +202,26 @@ const isAuthRoute = computed(() => {
   return ['login', 'register'].includes(route.name)
 })
 
+const isImportRoute = computed(() => route.name === 'import')
+
 const showSupportModal = ref(false)
 const supportSubject = ref('')
 const supportMessage = ref('')
 const supportSending = ref(false)
 const supportSent = ref(false)
+const runtimeError = ref(null)
+
+function clearRuntimeError() {
+  runtimeError.value = null
+}
+
+function reloadApp() {
+  window.location.reload()
+}
+
+function handleRuntimeError(event) {
+  runtimeError.value = event.detail || { message: 'Unexpected application error' }
+}
 
 async function submitSupportRequest() {
   supportSending.value = true
@@ -247,8 +243,8 @@ async function submitSupportRequest() {
 
 // Watch for authentication changes and user tier changes
 let lastConnectionState = false
-watch(() => [authStore.user?.tier, authStore.token, authStore.user?.billingEnabled], ([tier, token, billingEnabled]) => {
-  const shouldConnect = token && (tier === 'pro' || billingEnabled === false)
+watch(() => [authStore.user?.tier, authStore.isAuthenticated, authStore.user?.billingEnabled], ([tier, isAuthenticated, billingEnabled]) => {
+  const shouldConnect = isAuthenticated && (tier === 'pro' || billingEnabled === false)
   
   // Only connect/disconnect if the state actually changed
   if (shouldConnect !== lastConnectionState) {
@@ -264,20 +260,22 @@ watch(() => [authStore.user?.tier, authStore.token, authStore.user?.billingEnabl
   }
 }, { immediate: true })
 
+watch(isImportRoute, (onImportRoute) => {
+  if (!onImportRoute) return
+  celebrationQueue.value.splice(0, celebrationQueue.value.length)
+}, { immediate: true })
+
 // Passkey registration prompt
 const showPasskeyPrompt = ref(false)
 const passkeyRegistering = ref(false)
-const passkeySudoPassword = ref('')
-const passkeySudoCode = ref('')
 const PASSKEY_PROMPT_DISMISSED_KEY = 'passkey_prompt_dismissed'
 
-// Watch for login: when token appears, check if user has passkeys
-let previousToken = authStore.token
-watch(() => authStore.token, async (newToken) => {
-  if (newToken && !previousToken) {
-    await uiPreferencesStore.init()
+// Watch for login: when session becomes active, check if user has passkeys
+let previousSessionState = authStore.isAuthenticated
+watch(() => authStore.isAuthenticated, async (isAuthenticated) => {
+  if (isAuthenticated && !previousSessionState) {
     if (localStorage.getItem(PASSKEY_PROMPT_DISMISSED_KEY)) {
-      previousToken = newToken
+      previousSessionState = isAuthenticated
       return
     }
     // Wait for page to settle after redirect
@@ -292,40 +290,26 @@ watch(() => authStore.token, async (newToken) => {
       }
     }, 1500)
   }
-  previousToken = newToken
+  previousSessionState = isAuthenticated
 })
 
 async function registerPasskey() {
   passkeyRegistering.value = true
   try {
     const { startRegistration } = await import('@simplewebauthn/browser')
-    const { sudoToken } = await requestSudoToken({
-      password: passkeySudoPassword.value,
-      twoFactorCode: passkeySudoCode.value
-    })
-    const sudoConfig = sudoHeaders(sudoToken)
-    const optionsRes = await api.post('/auth/passkey/register/options', {}, sudoConfig)
+    const optionsRes = await api.post('/auth/passkey/register/options')
     const regResponse = await startRegistration({ optionsJSON: optionsRes.data })
 
     await api.post('/auth/passkey/register/verify', {
       response: regResponse,
       deviceName: navigator.platform || 'My device',
-    }, sudoConfig)
+    })
 
     showPasskeyPrompt.value = false
-    passkeySudoPassword.value = ''
-    passkeySudoCode.value = ''
     showSuccess('Passkey added', 'You can now sign in with your passkey next time.')
   } catch (err) {
-    const reauthCode = err.response?.data?.code || ''
-    const reauthFailed = ['INVALID_PASSWORD', 'TWO_FACTOR_REQUIRED', 'INVALID_TWO_FACTOR'].includes(reauthCode) ||
-      String(reauthCode).startsWith('SUDO')
-    if (reauthFailed) {
-      showError('Security confirmation failed', err.response?.data?.error || 'Check your password and 2FA code.')
-    } else {
-      showPasskeyPrompt.value = false
-    }
-    if (err.name !== 'NotAllowedError' && !reauthCode) {
+    showPasskeyPrompt.value = false
+    if (err.name !== 'NotAllowedError') {
       showError('Error', err.response?.data?.error || err.message || 'Failed to register passkey.')
     }
   } finally {
@@ -336,7 +320,7 @@ async function registerPasskey() {
 function dismissPasskeyPrompt() {
   showPasskeyPrompt.value = false
   localStorage.setItem(PASSKEY_PROMPT_DISMISSED_KEY, 'true')
-  uiPreferencesStore.notifyChanged(PASSKEY_PROMPT_DISMISSED_KEY, true)
+  useUiPreferencesStore().notifyChanged(PASSKEY_PROMPT_DISMISSED_KEY, true)
 }
 
 // Version check polling interval (6 hours)
@@ -358,13 +342,6 @@ const handleRateLimitExceeded = (event) => {
   }
 }
 
-const handleEmailVerificationRequired = (event) => {
-  showError(
-    'Email verification required',
-    event.detail?.message || 'Please verify your email address before using this feature.'
-  )
-}
-
 onMounted(async () => {
   // Initialize dark mode from localStorage (needed for auth pages where NavBar isn't rendered)
   if (localStorage.getItem('darkMode') === 'true') {
@@ -372,8 +349,8 @@ onMounted(async () => {
   }
 
   // Listen for rate limit events from the API interceptor
+  window.addEventListener('app-runtime-error', handleRuntimeError)
   window.addEventListener('rate-limit-exceeded', handleRateLimitExceeded)
-  window.addEventListener('email-verification-required', handleEmailVerificationRequired)
 
   // Note: checkAuth() is awaited in main.js before mount to prevent flash of public page
 
@@ -389,8 +366,8 @@ onMounted(async () => {
 
 onUnmounted(() => {
   // Clean up rate limit event listener
+  window.removeEventListener('app-runtime-error', handleRuntimeError)
   window.removeEventListener('rate-limit-exceeded', handleRateLimitExceeded)
-  window.removeEventListener('email-verification-required', handleEmailVerificationRequired)
 
   if (versionPollInterval) {
     clearInterval(versionPollInterval)

@@ -28,6 +28,68 @@
     />
 
     <div class="space-y-8">
+      <section class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div class="flex items-center gap-3 border-b border-gray-200 px-5 py-3 dark:border-gray-700">
+          <div class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-primary-50 ring-1 ring-primary-100 dark:bg-primary-900/30 dark:ring-primary-800/60">
+            <DocumentTextIcon class="h-4 w-4 text-primary-600 dark:text-primary-400" />
+          </div>
+          <div class="min-w-0 flex-1">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-white">CSV import guide</h2>
+            <p class="text-xs text-gray-500 dark:text-gray-400">Pick your broker for export instructions, or stick with Auto-Detect.</p>
+          </div>
+        </div>
+
+        <div class="border-b border-gray-200 px-2 py-2 dark:border-gray-700">
+          <div class="-mx-2 flex gap-1 overflow-x-auto px-2 scrollbar-thin">
+            <button
+              v-for="brokerOption in popularBrokerOptions"
+              :key="brokerOption.value"
+              type="button"
+              class="whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition"
+              :class="selectedBroker === brokerOption.value
+                ? 'bg-primary-600 text-white shadow-sm'
+                : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700/60 dark:hover:text-gray-100'"
+              @click="selectQuickBroker(brokerOption.value)"
+            >
+              {{ brokerOption.label }}
+            </button>
+          </div>
+        </div>
+
+        <div class="grid gap-px bg-gray-200 dark:bg-gray-700 lg:grid-cols-[1.6fr_1fr]">
+          <div class="bg-white p-5 dark:bg-gray-800">
+            <div class="mb-4 flex items-baseline justify-between gap-3">
+              <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ activeBrokerGuide.title }}</h3>
+              <span class="text-[11px] font-semibold uppercase tracking-wider text-primary-600 dark:text-primary-400">
+                {{ activeBrokerGuide.badge }}
+              </span>
+            </div>
+            <ol class="space-y-3.5">
+              <li
+                v-for="(step, index) in activeBrokerGuide.steps"
+                :key="step"
+                class="flex gap-3 text-sm leading-relaxed text-gray-700 dark:text-gray-300"
+              >
+                <span class="mt-0.5 w-6 flex-shrink-0 font-mono text-xs font-semibold tabular-nums text-primary-500 dark:text-primary-400">
+                  {{ String(index + 1).padStart(2, '0') }}
+                </span>
+                <span>{{ step }}</span>
+              </li>
+            </ol>
+          </div>
+
+          <div class="bg-gray-50 p-5 dark:bg-gray-900/40">
+            <div class="mb-2 flex items-center gap-2">
+              <ExclamationTriangleIcon class="h-4 w-4 flex-shrink-0 text-primary-500 dark:text-primary-400" />
+              <span class="text-[11px] font-semibold uppercase tracking-wider text-gray-700 dark:text-gray-300">Heads up</span>
+            </div>
+            <p class="text-sm leading-relaxed text-gray-600 dark:text-gray-400">
+              {{ activeBrokerGuide.warning }}
+            </p>
+          </div>
+        </div>
+      </section>
+
       <!-- Import Form -->
       <div class="card">
         <div class="card-body">
@@ -90,34 +152,11 @@
 
             <div>
               <label for="broker" class="label">Broker Format</label>
-              <select id="broker" v-model="selectedBroker" required class="input">
-                <option value="auto">Auto-Detect (Recommended)</option>
-                <option disabled>--- Or select your broker ---</option>
-                <option value="generic">Generic CSV</option>
-                <option value="lightspeed">Lightspeed Trader</option>
-                <option value="schwab">Charles Schwab</option>
-                <option value="thinkorswim">ThinkorSwim</option>
-                <option value="ibkr">Interactive Brokers</option>
-                <option value="webull">Webull</option>
-                <option value="etrade">E*TRADE</option>
-                <option value="papermoney">PaperMoney</option>
-                <option value="tradervue">TraderVue</option>
-                <option value="tradingview">TradingView</option>
-                <option value="avatrade">AvaTrade</option>
-                <option value="tradovate">Tradovate</option>
-                <option value="questrade">Questrade</option>
-                <option value="tradestation">TradeStation</option>
-                <option value="tastytrade">Tastytrade</option>
-                <optgroup v-if="customMappings.length > 0" label="Custom Importers">
-                  <option
-                    v-for="mapping in customMappings"
-                    :key="mapping.id"
-                    :value="`custom:${mapping.id}`"
-                  >
-                    {{ mapping.mapping_name }}
-                  </option>
-                </optgroup>
-              </select>
+              <BaseSelect
+                v-model="selectedBroker"
+                noun="brokers"
+                :options="brokerFormatOptions"
+              />
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 We'll automatically detect your broker from the CSV file. Select a specific broker only if auto-detection doesn't work.
               </p>
@@ -126,16 +165,24 @@
             <!-- Account Selection (only shown if user has defined accounts) -->
             <div v-if="requiresAccountSelection">
               <label for="account" class="label">Trading Account</label>
-              <select id="account" v-model="selectedAccountId" class="input">
-                <option :value="null">Select account...</option>
-                <option v-for="account in accounts" :key="account.id" :value="account.id">
-                  {{ account.name }}{{ account.identifier ? ` (${redactAccountId(account.identifier)})` : '' }}{{ account.broker ? ` - ${formatBrokerName(account.broker)}` : '' }}
-                </option>
-                <option value="none">None (different broker/account)</option>
-              </select>
+              <BaseSelect id="account" v-model="selectedAccountId" :options="accountOptions" />
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 Select a trading account to associate with this import, or choose "None" if importing from a different broker.
                 <router-link to="/accounts" class="text-primary-600 hover:text-primary-500">Manage accounts</router-link>
+              </p>
+            </div>
+
+            <div>
+              <label for="import-strategy" class="label">Strategy (optional)</label>
+              <BaseSelect
+                id="import-strategy"
+                v-model="selectedImportStrategy"
+                noun="strategies"
+                placeholder="Auto-detect from trade data"
+                :options="importStrategyOptions"
+              />
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Leave unset to classify each trade automatically. Choose a strategy to apply it to every trade in this import.
               </p>
             </div>
 
@@ -547,18 +594,18 @@
               class="flex items-center space-x-2 text-sm text-primary-600 dark:text-primary-400 hover:text-primary-500"
             >
               <span>{{ showFormats ? 'Hide' : 'Show' }} Formats</span>
-              <svg 
+              <svg
                 class="w-4 h-4 transition-transform duration-200"
                 :class="{ 'rotate-180': showFormats }"
-                fill="none" 
-                stroke="currentColor" 
+                fill="none"
+                stroke="currentColor"
                 viewBox="0 0 24 24"
               >
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
               </svg>
             </button>
           </div>
-          
+
           <div v-if="showFormats" class="space-y-6">
             <div>
               <h4 class="font-medium text-gray-900 dark:text-white">Generic CSV</h4>
@@ -793,16 +840,16 @@
               <XMarkIcon class="h-6 w-6" />
             </button>
           </div>
-          
+
           <!-- Content -->
           <div class="flex-1 p-5 overflow-hidden flex">
-            
+
             <!-- Left Column: Log Files List -->
             <div class="w-1/3 pr-4 flex flex-col">
               <div v-if="logFiles.length === 0" class="text-center py-4 text-gray-500 dark:text-gray-400">
                 No log files found
               </div>
-              
+
               <div v-else class="flex flex-col h-full">
                 <!-- File count and toggle -->
                 <div class="flex items-center justify-between mb-4">
@@ -818,7 +865,7 @@
                     {{ logFilesPagination.showAll ? 'Show Today Only' : 'Show All Files' }}
                   </button>
                 </div>
-                
+
                 <!-- Log files list with scroll -->
                 <div class="flex-1 overflow-y-auto space-y-2 pr-2 border border-gray-200 dark:border-gray-600 rounded-lg p-3">
                   <button
@@ -830,7 +877,7 @@
                   >
                     {{ logFile.name }}
                   </button>
-                  
+
                   <!-- Load More Button -->
                   <div v-if="logFilesPagination.hasMore" class="text-center pt-2">
                     <button
@@ -843,13 +890,13 @@
                 </div>
               </div>
             </div>
-            
+
             <!-- Right Column: Log Content -->
             <div class="w-2/3 pl-4 flex flex-col">
               <div v-if="!selectedLogFile" class="flex-1 flex items-center justify-center text-gray-500 dark:text-gray-400">
                 Select a log file to view its contents
               </div>
-              
+
               <div v-else-if="selectedLogFile" class="flex flex-col h-full">
                 <div class="flex items-center justify-between mb-4">
                   <div>
@@ -874,7 +921,7 @@
                     </button>
                   </div>
                 </div>
-                
+
                 <!-- Search bar -->
                 <div class="mb-4">
                   <div class="relative">
@@ -898,7 +945,7 @@
                     Found {{ searchResults.matchCount }} matches in {{ searchResults.lineCount }} lines
                   </div>
                 </div>
-                
+
                 <div class="flex-1 bg-gray-100 dark:bg-gray-900 p-4 rounded-lg overflow-y-auto">
                   <div v-if="logSearchQuery && !logContent" class="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
                     <div class="text-center">
@@ -911,7 +958,7 @@
                   </div>
                   <pre v-else class="text-xs text-gray-800 dark:text-gray-200 whitespace-pre-wrap" v-html="highlightedLogContent"></pre>
                 </div>
-                
+
                 <div v-if="logPagination.hasMore" class="text-center mt-4">
                   <button
                     @click="loadMoreLogs"
@@ -1011,14 +1058,17 @@
   </div>
 
   <!-- CSV Column Mapping Modal -->
-  <CSVColumnMappingModal
-    v-if="showMappingModal"
-    :is-open="showMappingModal"
-    :csv-headers="csvHeaders"
-    :csv-file="currentMappingFile"
-    @close="showMappingModal = false"
-    @mapping-saved="handleMappingSaved"
-  />
+    <CSVColumnMappingModal
+      v-if="showMappingModal"
+      :is-open="showMappingModal"
+      :csv-headers="csvHeaders"
+      :csv-sample-rows="csvSampleRows"
+      :csv-file="currentMappingFile"
+      :selected-broker="selectedBroker"
+      @close="handleMappingModalClose"
+      @mapping-saved="handleMappingSaved"
+      @support-clicked="handleImportSupportClicked"
+    />
 
   <!-- Currency Pro Feature Modal -->
   <div v-if="showCurrencyProModal" class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
@@ -1151,6 +1201,7 @@
       :duplicates-skipped="importResultsData.duplicatesSkipped"
       :diagnostics="importResultsData.diagnostics"
       :failed-trades="importResultsData.failedTrades"
+      :achievements="importResultsData.achievements"
       :selected-broker="selectedBroker"
       :file-name="selectedFile?.name || ''"
       :user-email="authStore.user?.email || ''"
@@ -1158,6 +1209,9 @@
       :demo-data-loading="creatingDemoData"
       @close="handleImportResultsClose"
       @load-demo-data="handleLoadDemoData"
+      @support-clicked="handleImportSupportClicked"
+      @view-analytics="handleImportResultsViewAnalytics"
+      @view-trades="handleImportResultsViewTrades"
     />
   </Teleport>
 </template>
@@ -1167,14 +1221,16 @@ import { ref, defineAsyncComponent, onMounted, onBeforeUnmount, computed, nextTi
 import { useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useAuthStore } from '@/stores/auth'
+import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { useNotification } from '@/composables/useNotification'
 import { format } from 'date-fns'
 import { formatTradeDate } from '@/utils/date'
 import { useUserTimezone } from '@/composables/useUserTimezone'
-import { ArrowUpTrayIcon, XMarkIcon, ExclamationTriangleIcon, Cog6ToothIcon, MagnifyingGlassIcon } from '@heroicons/vue/24/outline'
+import { ArrowUpTrayIcon, XMarkIcon, ExclamationTriangleIcon, Cog6ToothIcon, MagnifyingGlassIcon, DocumentTextIcon } from '@heroicons/vue/24/outline'
 import { useAnalytics } from '@/composables/useAnalytics'
 import api from '@/services/api'
 import { useGrowthBook } from '@/composables/useGrowthBook'
+import { useNotificationCenter } from '@/composables/useNotificationCenter'
 
 const { formatDateTime: formatDateTimeTz } = useUserTimezone()
 // Lazy-load modal components - only parsed/executed when first shown
@@ -1184,15 +1240,20 @@ const CSVColumnMappingModal = defineAsyncComponent(() => import('@/components/im
 const BrokerMismatchModal = defineAsyncComponent(() => import('@/components/import/BrokerMismatchModal.vue'))
 const ImportResultsModal = defineAsyncComponent(() => import('@/components/import/ImportResultsModal.vue'))
 import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotifications'
+import { useStrategyOrder } from '@/composables/useStrategyOrder'
+import { parseCSVHeaders, parseCSVSampleRows } from '@/utils/csvImportParse'
 
 const tradesStore = useTradesStore()
 const authStore = useAuthStore()
+const uiPreferencesStore = useUiPreferencesStore()
 const router = useRouter()
 const { showSuccess, showError, showImportantWarning, showSuccessModal, clearModalAlert } = useNotification()
-const { celebrationQueue } = usePriceAlertNotifications()
+const { suppressCelebrations } = usePriceAlertNotifications()
 const { track, trackImport } = useAnalytics()
 const { getFeatureValue } = useGrowthBook()
+const { addUnreadNotifications } = useNotificationCenter()
 
 const loading = ref(false)
 const error = ref(null)
@@ -1217,6 +1278,9 @@ const startingTrial = ref(false)
 const accounts = ref([])
 const requiresAccountSelection = ref(false)
 const selectedAccountId = ref(null)
+const selectedImportStrategy = ref('')
+const importStrategiesList = ref([])
+const { orderNames: orderImportStrategyNames, refresh: refreshStrategyOrder } = useStrategyOrder()
 const currencyProMessage = ref('')
 const fileInput = ref(null)
 const selectAllCheckbox = ref(null)
@@ -1280,8 +1344,46 @@ const allMappingsLoading = ref(false)
 // CSV Column Mapping Modal
 const showMappingModal = ref(false)
 const csvHeaders = ref([])
+const csvSampleRows = ref({})
 const currentMappingFile = ref(null)
 const customMappings = ref([])
+
+// Grouped options for the Broker Format dropdown: auto-detect on its own,
+// then the supported brokers, then any user-defined custom importers.
+const brokerFormatOptions = computed(() => {
+  const groups = [
+    { label: null, options: [{ value: 'auto', label: 'Auto-Detect (Recommended)' }] },
+    {
+      label: 'Or select your broker',
+      options: [
+        { value: 'generic', label: 'Generic CSV' },
+        { value: 'lightspeed', label: 'Lightspeed Trader' },
+        { value: 'schwab', label: 'Charles Schwab' },
+        { value: 'thinkorswim', label: 'ThinkorSwim' },
+        { value: 'ibkr', label: 'Interactive Brokers' },
+        { value: 'captrader', label: 'CapTrader' },
+        { value: 'webull', label: 'Webull' },
+        { value: 'etrade', label: 'E*TRADE' },
+        { value: 'firstrade', label: 'Firstrade (Alpha)' },
+        { value: 'papermoney', label: 'PaperMoney' },
+        { value: 'tradervue', label: 'TraderVue' },
+        { value: 'tradingview', label: 'TradingView' },
+        { value: 'avatrade', label: 'AvaTrade' },
+        { value: 'tradovate', label: 'Tradovate' },
+        { value: 'questrade', label: 'Questrade' },
+        { value: 'tradestation', label: 'TradeStation' },
+        { value: 'tastytrade', label: 'Tastytrade' }
+      ]
+    }
+  ]
+  if (customMappings.value.length > 0) {
+    groups.push({
+      label: 'Custom Importers',
+      options: customMappings.value.map(m => ({ value: `custom:${m.id}`, label: m.mapping_name }))
+    })
+  }
+  return groups
+})
 const showCustomMappings = ref(false)
 const showCusipManagement = ref(false)
 const deletingMappingId = ref(null)
@@ -1313,11 +1415,14 @@ const brokerMismatchData = ref({
 // Import results modal
 const showImportResultsModal = ref(false)
 const importResultsData = ref({
+  importId: null,
   tradesImported: 0,
   duplicatesSkipped: 0,
   diagnostics: null,
-  failedTrades: []
+  failedTrades: [],
+  achievements: []
 })
+const activeImportStartedAt = ref(null)
 let activeFileAnalysisId = 0
 
 // Set lazily when the user lands in the zero-trades state, so the GrowthBook
@@ -1332,6 +1437,146 @@ const popularBrokerOptions = [
   { value: 'tradovate', label: 'Tradovate' },
   { value: 'tradingview', label: 'TradingView' }
 ]
+
+const brokerGuides = {
+  auto: {
+    title: 'Auto-Detect',
+    badge: 'Best first try',
+    steps: [
+      'Export a CSV from your broker history or trade activity page.',
+      'Upload the file here and let TradeTally inspect the headers.',
+      'If the format is unfamiliar, match Symbol, Quantity, and Price in the guided mapper.'
+    ],
+    warning: 'Avoid account summary, positions, or tax statement exports. Those usually do not include execution-level trade rows.'
+  },
+  generic: {
+    title: 'Generic CSV',
+    badge: 'Custom file',
+    steps: [
+      'Use this when your export is from an unsupported broker or personal spreadsheet.',
+      'Make sure the file has columns for symbol, quantity, price, and ideally date or P&L.',
+      'The mapper will save your column choices so future imports are faster.'
+    ],
+    warning: 'If quantity is always positive, include a side/action column so TradeTally can tell long and short trades apart.'
+  },
+  schwab: {
+    title: 'Charles Schwab',
+    badge: 'Supported',
+    steps: [
+      'Export transaction or realized gain/loss history as CSV from Schwab.',
+      'Use Auto-Detect unless you already know this is the Schwab format.',
+      'Upload the raw CSV without editing headers.'
+    ],
+    warning: 'Schwab account summary exports often lack enough trade fields. Use activity/history exports instead.'
+  },
+  thinkorswim: {
+    title: 'thinkorswim',
+    badge: 'Supported',
+    steps: [
+      'Export account statement trade activity as CSV.',
+      'Keep the header rows intact; TradeTally looks for date, time, type, ref, and description fields.',
+      'If Auto-Detect flags it, choose the detected thinkorswim format.'
+    ],
+    warning: 'Do not paste rows into a new spreadsheet before importing; spreadsheet tools often change dates and symbols.'
+  },
+  ibkr: {
+    title: 'Interactive Brokers',
+    badge: 'Supported',
+    steps: [
+      'Export trades or activity statements as CSV from Client Portal.',
+      'Include symbol, date/time, quantity, price, and buy/sell columns.',
+      'Upload the original CSV and let Auto-Detect route the parser.'
+    ],
+    warning: 'IBKR has multiple export layouts. If one fails, try the trade confirmation or activity statement CSV.'
+  },
+  tradovate: {
+    title: 'Tradovate',
+    badge: 'Supported',
+    steps: [
+      'Export fills/trades as CSV from Tradovate.',
+      'Make sure contract, product, fill time, side, quantity, and average price are present.',
+      'Upload the raw CSV and review the pre-import check before starting.'
+    ],
+    warning: 'Position summaries are not enough. Use fills or execution history so each trade can be reconstructed.'
+  },
+  tradingview: {
+    title: 'TradingView',
+    badge: 'Supported',
+    steps: [
+      'Export TradingView order/fill history or performance data as CSV.',
+      'Keep order IDs, side, symbol, fill price, and status columns in the file.',
+      'Use Auto-Detect first; TradeTally supports multiple TradingView layouts.'
+    ],
+    warning: 'If your file only contains equity curve metrics, export fills/orders instead.'
+  },
+  webull: {
+    title: 'Webull',
+    badge: 'Supported',
+    steps: [
+      'Export trade or order history as CSV from Webull.',
+      'Confirm symbol, action/side, quantity, price, and date columns are present.',
+      'If Auto-Detect cannot route it, use Generic CSV and save a custom importer.'
+    ],
+    warning: 'Webull exports can vary by region and asset type. The mapper is the fallback if headers differ.'
+  },
+  etrade: {
+    title: 'E*TRADE',
+    badge: 'Supported',
+    steps: [
+      'Export transaction history as CSV.',
+      'Include transaction date, type, symbol, quantity, and price fields.',
+      'Use Auto-Detect and check the recognized format before import.'
+    ],
+    warning: 'Account-balance exports will not import correctly. Use transaction history.'
+  },
+  firstrade: {
+    title: 'Firstrade',
+    badge: 'Alpha',
+    steps: [
+      'Export account history as CSV from Accounts > History.',
+      'Keep the original headers, especially symbol, action, trade date, CUSIP, and record type.',
+      'Use Auto-Detect first. TradeTally will ignore non-trade cash activity rows.'
+    ],
+    warning: 'The Firstrade parser is in Alpha — review imported trades and report any incorrect P&L or symbol mappings via GitHub Issues. History exports can include wires, interest, dividends, and other cash activity; upload the raw CSV and let the importer filter them out.'
+  },
+  tradestation: {
+    title: 'TradeStation',
+    badge: 'Supported',
+    steps: [
+      'Export trade executions or account activity as CSV.',
+      'Keep execution time, symbol, quantity, proceeds, and fees columns.',
+      'Upload the raw CSV without renaming broker headers.'
+    ],
+    warning: 'If the file contains only open positions, export execution/activity history instead.'
+  },
+  tastytrade: {
+    title: 'Tastytrade',
+    badge: 'Supported',
+    steps: [
+      'Export transaction or trade history as CSV.',
+      'Include option/futures details when applicable.',
+      'Start with Auto-Detect, then use Generic CSV if your export layout is custom.'
+    ],
+    warning: 'Options exports need enough contract details to reconstruct trades accurately.'
+  }
+}
+
+const activeBrokerGuide = computed(() => {
+  if (selectedBroker.value?.startsWith('custom:')) {
+    return {
+      title: selectedBrokerLabel.value,
+      badge: 'Saved importer',
+      steps: [
+        'Use your saved column mapping for this broker or spreadsheet.',
+        'Upload a CSV with the same column layout as the mapping.',
+        'If the broker changed its export format, create a new mapping.'
+      ],
+      warning: 'Saved importers work best when the column headers stay exactly the same.'
+    }
+  }
+
+  return brokerGuides[selectedBroker.value] || brokerGuides.auto
+})
 
 const selectedBrokerLabel = computed(() => {
   if (selectedBroker.value?.startsWith('custom:')) {
@@ -1383,6 +1628,17 @@ const accountReadinessMessage = computed(() => {
   return 'Pick an account before starting import.'
 })
 
+const accountOptions = computed(() => {
+  const opts = [{ value: null, label: 'Select account...' }]
+  for (const account of accounts.value) {
+    const identifier = account.identifier ? ` (${redactAccountId(account.identifier)})` : ''
+    const broker = account.broker ? ` - ${formatBrokerName(account.broker)}` : ''
+    opts.push({ value: account.id, label: `${account.name}${identifier}${broker}` })
+  }
+  opts.push({ value: 'none', label: 'None (different broker/account)' })
+  return opts
+})
+
 const fileReadinessMessage = computed(() => {
   if (!selectedFile.value) return 'Upload a CSV file to start.'
   if (isAnalyzingFile.value) return 'Analyzing your file before import.'
@@ -1390,6 +1646,28 @@ const fileReadinessMessage = computed(() => {
   if (!fileAnalysis.value.formatDetected) return 'This file may need Generic CSV or column mapping.'
   return `This file looks import-ready${fileAnalysis.value.detectedBroker ? ` for ${formatBrokerName(fileAnalysis.value.detectedBroker)}` : ''}.`
 })
+
+const importStrategyOptions = computed(() =>
+  orderImportStrategyNames(importStrategiesList.value).map((strategy) => ({
+    value: strategy,
+    label: strategy.replace(/_/g, ' ')
+  }))
+)
+
+function resolveImportStrategyParam() {
+  const value = selectedImportStrategy.value?.trim()
+  return value || null
+}
+
+async function fetchImportStrategies() {
+  try {
+    const response = await api.get('/trades/strategies')
+    importStrategiesList.value = response.data?.strategies || []
+  } catch (err) {
+    console.warn('[IMPORT] Failed to load strategies for import:', err?.message)
+    importStrategiesList.value = []
+  }
+}
 
 const importButtonLabel = computed(() => {
   if (fileAnalysis.value.rowCount && fileAnalysis.value.rowCount > 0) {
@@ -1418,7 +1696,7 @@ async function handleFileSelect(event) {
     size: file?.size,
     lastModified: file?.lastModified
   })
-  
+
   await setSelectedFile(file, 'picker')
 }
 
@@ -1440,9 +1718,11 @@ function formatBrokerName(broker) {
     schwab: 'Charles Schwab',
     thinkorswim: 'thinkorswim',
     ibkr: 'Interactive Brokers',
+    captrader: 'CapTrader',
     lightspeed: 'Lightspeed',
     webull: 'Webull',
     etrade: 'E*TRADE',
+    firstrade: 'Firstrade',
     tradingview: 'TradingView',
     tradingview_performance: 'TradingView',
     tradingview_paper: 'TradingView',
@@ -1478,6 +1758,16 @@ function selectQuickBroker(broker) {
   track('import_broker_quick_pick', { broker })
 }
 
+function trackImportValidationFailed(reason, metadata = {}) {
+  track('import_validation_failed', {
+    reason,
+    broker: selectedBroker.value,
+    detected_broker: fileAnalysis.value.detectedBroker || 'unknown',
+    estimated_rows: fileAnalysis.value.rowCount,
+    ...metadata
+  })
+}
+
 function handleDragOver(event) {
   event.preventDefault()
   dragOver.value = true
@@ -1491,7 +1781,7 @@ function handleDragLeave(event) {
 async function handleDrop(event) {
   event.preventDefault()
   dragOver.value = false
-  
+
   const files = event.dataTransfer.files
   if (files.length > 0) {
     const file = files[0]
@@ -1500,7 +1790,7 @@ async function handleDrop(event) {
       type: file?.type,
       size: file?.size
     })
-    
+
     await setSelectedFile(file, 'drop')
   }
 }
@@ -1542,68 +1832,6 @@ async function countCSVRows(file) {
         // Subtract 1 for header row
         const rowCount = Math.max(0, lines.length - 1)
         resolve(rowCount)
-      } catch (error) {
-        reject(error)
-      }
-    }
-    reader.onerror = () => reject(reader.error)
-    reader.readAsText(file)
-  })
-}
-
-// Parse CSV headers from file
-async function parseCSVHeaders(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      try {
-        const text = e.target.result
-        const lines = text.split('\n')
-
-        // Find the header line - prefer lines that look like actual column headers
-        // (e.g., containing "date", "time", "type") over title/section rows
-        // This handles ThinkorSwim CSVs that start with "Account Statement for..."
-        let headerLine = ''
-        let fallbackLine = ''
-        for (let i = 0; i < Math.min(15, lines.length); i++) {
-          const line = lines[i].trim()
-          if (!line || !line.includes(',')) continue
-          const lower = line.toLowerCase()
-          // Check if this looks like a real header row with column names
-          if ((lower.includes('date') && lower.includes('time') && lower.includes('type')) ||
-              (lower.includes('symbol') && (lower.includes('quantity') || lower.includes('qty') || lower.includes('price'))) ||
-              (lower.includes('action') && lower.includes('description')) ||
-              (lower.includes('trade number') || lower.includes('order id'))) {
-            headerLine = line
-            break
-          }
-          // Keep the first non-empty line as a fallback
-          if (!fallbackLine) {
-            fallbackLine = line
-          }
-        }
-        if (!headerLine) {
-          headerLine = fallbackLine
-        }
-
-        if (!headerLine) {
-          resolve([])
-          return
-        }
-
-        // Try different delimiters
-        let headers = []
-        const delimiters = [',', ';', '\t', '|']
-
-        for (const delimiter of delimiters) {
-          const cols = headerLine.split(delimiter).map(h => h.trim().replace(/^["']|["']$/g, ''))
-          if (cols.length > 1) {
-            headers = cols
-            break
-          }
-        }
-
-        resolve(headers.filter(h => h))
       } catch (error) {
         reject(error)
       }
@@ -1680,6 +1908,13 @@ function detectBrokerFromHeaders(headers) {
     return 'etrade'
   }
 
+  // Firstrade detection
+  if (headersStr.includes('tradedate') && headersStr.includes('settleddate') &&
+      headersStr.includes('recordtype') && headersStr.includes('description') &&
+      headersStr.includes('cusip')) {
+    return 'firstrade'
+  }
+
   // ProjectX detection
   if (headersStr.includes('contractname') && headersStr.includes('enteredat') &&
       headersStr.includes('exitedat') && headersStr.includes('pnl') &&
@@ -1701,6 +1936,13 @@ function detectBrokerFromHeaders(headers) {
       (headersStr.includes('avgprice') || headersStr.includes('avg fill price')) &&
       (headersStr.includes('filledqty') || headersStr.includes('filled qty'))) {
     return 'tradovate'
+  }
+
+  // NinjaTrader grid export (semicolon-delimited, European decimals in price)
+  if (headersStr.includes('instrument') && headersStr.includes('action') &&
+      headersStr.includes('quantity') && headersStr.includes('price') &&
+      (headersStr.includes('e/x') || headersStr.includes('order id'))) {
+    return 'generic'
   }
 
   // Questrade detection
@@ -1726,7 +1968,9 @@ function detectBrokerFromHeaders(headers) {
 
   // Generic CSV detection - check if it has basic required fields
   // Include common non-English equivalents for broader detection
-  const hasSymbol = lowerHeaders.some(h => h.includes('symbol') || h.includes('ticker') || h.includes('stock'))
+  const hasSymbol = lowerHeaders.some(h =>
+    h.includes('symbol') || h.includes('ticker') || h.includes('stock') || h === 'instrument'
+  )
   const hasSide = lowerHeaders.some(h => h.includes('side') || h.includes('direction') || h.includes('type') || h.includes('action') ||
     h.includes('seite') || h.includes('côté') || h.includes('lado'))
   const hasQuantity = lowerHeaders.some(h => h.includes('quantity') || h.includes('qty') || h.includes('shares') || h.includes('size') ||
@@ -1820,18 +2064,27 @@ async function setSelectedFile(file, source = 'picker') {
     selectedFile.value = null
     resetFileAnalysis()
     console.log('File rejected - not CSV')
+    trackImportValidationFailed('invalid_file_type', {
+      file_name: file?.name || '',
+      file_size: file?.size || 0
+    })
   }
 }
 
 async function handleImport() {
   if (!selectedFile.value || !selectedBroker.value) {
     error.value = 'Please select a file and broker format'
+    trackImportValidationFailed('missing_file_or_broker')
     return
   }
+
+  suppressCelebrations(15000)
+  activeImportStartedAt.value = Date.now()
 
   // Validate account selection if required (null means not selected, "none" means explicitly no account)
   if (requiresAccountSelection.value && selectedAccountId.value === null) {
     error.value = 'Please select a trading account or choose "None" for this import'
+    trackImportValidationFailed('missing_account_selection')
     return
   }
 
@@ -1869,6 +2122,10 @@ async function handleImport() {
       importStage.value = ''
       showCurrencyProModal.value = true
       currencyProMessage.value = `Free tier imports are limited to ${FREE_TIER_IMPORT_LIMIT} executions per batch. Your file contains ${tradeCount} executions. You can still import all your trades - just split the file into smaller batches of ${FREE_TIER_IMPORT_LIMIT} or fewer. Upgrade to Pro for unlimited batch sizes.`
+      trackImportValidationFailed('free_tier_batch_limit', {
+        row_count: tradeCount,
+        limit: FREE_TIER_IMPORT_LIMIT
+      })
       return
     }
 
@@ -1910,6 +2167,11 @@ async function handleImport() {
             fileName: validation.fileName
           }
           showBrokerMismatchModal.value = true
+          trackImportValidationFailed('broker_mismatch', {
+            selected_broker: validation.selectedBroker,
+            detected_broker: validation.detectedBroker,
+            row_count: validation.rowCount
+          })
           return
         }
       } catch (validationErr) {
@@ -1931,8 +2193,14 @@ async function handleImport() {
         console.log('[IMPORT] Unknown format - showing column mapping modal')
         loading.value = false
         csvHeaders.value = headers
+        csvSampleRows.value = await parseCSVSampleRows(selectedFile.value, headers)
         currentMappingFile.value = selectedFile.value
         showMappingModal.value = true
+        track('import_mapping_opened', {
+          reason: 'unknown_format_precheck',
+          broker: selectedBroker.value,
+          header_count: headers.length
+        })
         track('import_mapping_requested', {
           reason: 'unknown_format_precheck',
           broker: selectedBroker.value,
@@ -1949,13 +2217,27 @@ async function handleImport() {
     }
 
     importStage.value = `Uploading and processing${tradeCount ? ` ~${tradeCount} trades` : ''}...`
-    const result = await tradesStore.importTrades(selectedFile.value, broker, mappingId, accountIdToSend)
+    const result = await tradesStore.importTrades(
+      selectedFile.value,
+      broker,
+      mappingId,
+      accountIdToSend,
+      resolveImportStrategyParam()
+    )
     console.log('Import result:', result)
     importStage.value = 'Processing trades...'
     showSuccess('Import Started', `Import has been queued. Import ID: ${result.importId}`)
+    track('import_queued', {
+      broker,
+      mapping_id: mappingId,
+      import_id: result.importId,
+      estimated_rows: tradeCount,
+      import_strategy: resolveImportStrategyParam() || 'auto'
+    })
 
     // Save broker preference to localStorage
     localStorage.setItem('lastSelectedBroker', selectedBroker.value)
+    uiPreferencesStore.notifyChanged('lastSelectedBroker', selectedBroker.value)
 
     // Reset form (but keep broker selection)
     selectedFile.value = null
@@ -2000,8 +2282,14 @@ async function handleImport() {
         const headers = await parseCSVHeaders(selectedFile.value)
         if (headers.length > 0) {
           csvHeaders.value = headers
+          csvSampleRows.value = await parseCSVSampleRows(selectedFile.value, headers)
           currentMappingFile.value = selectedFile.value
           showMappingModal.value = true
+          track('import_mapping_opened', {
+            reason: 'import_error_fallback',
+            broker: selectedBroker.value,
+            header_count: headers.length
+          })
           track('import_mapping_requested', {
             reason: 'import_error_fallback',
             broker: selectedBroker.value,
@@ -2009,6 +2297,7 @@ async function handleImport() {
           })
         } else {
           error.value = 'Could not parse CSV headers. Please check your file format.'
+          trackImportValidationFailed('headers_unreadable', { error_message: errorMessage })
           showError('Import Failed', error.value)
         }
       } catch (parseErr) {
@@ -2019,6 +2308,7 @@ async function handleImport() {
     }
     else {
       error.value = errorMessage
+      trackImportValidationFailed('import_error', { error_message: errorMessage })
       showError('Import Failed', error.value)
     }
   } finally {
@@ -2041,6 +2331,11 @@ function handleBrokerMismatchClose() {
 
 async function handleUseBrokerDetected(detectedBroker) {
   console.log(`[IMPORT] User chose to use detected broker: ${detectedBroker}`)
+  track('import_broker_mismatch_resolved', {
+    action: 'use_detected',
+    detected_broker: detectedBroker,
+    selected_broker: brokerMismatchData.value.selectedBroker
+  })
   showBrokerMismatchModal.value = false
 
   // Update selected broker to the detected one and re-run import
@@ -2052,7 +2347,14 @@ async function handleUseBrokerDetected(detectedBroker) {
 
 async function handleKeepBrokerSelected(selectedBrokerValue) {
   console.log(`[IMPORT] User chose to keep selected broker: ${selectedBrokerValue}`)
+  track('import_broker_mismatch_resolved', {
+    action: 'keep_selected',
+    detected_broker: brokerMismatchData.value.detectedBroker,
+    selected_broker: selectedBrokerValue
+  })
   showBrokerMismatchModal.value = false
+  suppressCelebrations(15000)
+  activeImportStartedAt.value = Date.now()
 
   // Continue with original import - re-run handleImport but skip validation this time
   // by temporarily setting a flag
@@ -2076,13 +2378,27 @@ async function handleKeepBrokerSelected(selectedBrokerValue) {
       accountIdToSend = selectedAccountId.value
     }
 
-    const result = await tradesStore.importTrades(selectedFile.value, broker, mappingId, accountIdToSend)
+    const result = await tradesStore.importTrades(
+      selectedFile.value,
+      broker,
+      mappingId,
+      accountIdToSend,
+      resolveImportStrategyParam()
+    )
     console.log('Import result:', result)
     importStage.value = 'Processing trades...'
     showSuccess('Import Started', `Import has been queued. Import ID: ${result.importId}`)
+    track('import_queued', {
+      broker,
+      mapping_id: mappingId,
+      import_id: result.importId,
+      import_strategy: resolveImportStrategyParam() || 'auto',
+      path: 'broker_mismatch_keep_selected'
+    })
 
     // Save broker preference to localStorage
     localStorage.setItem('lastSelectedBroker', selectedBroker.value)
+    uiPreferencesStore.notifyChanged('lastSelectedBroker', selectedBroker.value)
 
     // Reset form (but keep broker selection)
     selectedFile.value = null
@@ -2115,11 +2431,27 @@ function handleImportResultsClose() {
     duplicates_skipped: importResultsData.value.duplicatesSkipped
   })
   importResultsData.value = {
+    importId: null,
     tradesImported: 0,
     duplicatesSkipped: 0,
     diagnostics: null,
-    failedTrades: []
+    failedTrades: [],
+    achievements: []
   }
+}
+
+async function handleImportResultsViewAnalytics() {
+  handleImportResultsClose()
+  await router.push({ name: 'metrics' })
+}
+
+async function handleImportResultsViewTrades() {
+  const importId = importResultsData.value.importId
+  handleImportResultsClose()
+  await router.push({
+    name: 'trades',
+    query: importId ? { importId } : undefined
+  })
 }
 
 async function handleLoadDemoData() {
@@ -2128,6 +2460,11 @@ async function handleLoadDemoData() {
   }
 
   creatingDemoData.value = true
+  track('import_demo_data_clicked', {
+    broker: selectedBroker.value,
+    detected_broker: importResultsData.value.diagnostics?.detectedBroker || 'unknown',
+    trades_imported: importResultsData.value.tradesImported
+  })
 
   try {
     await api.post('/trades/sample-data')
@@ -2146,6 +2483,89 @@ async function handleLoadDemoData() {
   }
 }
 
+function handleMappingModalClose() {
+  track('import_mapping_closed', {
+    broker: selectedBroker.value,
+    header_count: csvHeaders.value.length
+  })
+  showMappingModal.value = false
+}
+
+function handleImportSupportClicked(context = {}) {
+  track('import_support_clicked', {
+    broker: selectedBroker.value,
+    detected_broker: context.detectedBroker || importResultsData.value.diagnostics?.detectedBroker || fileAnalysis.value.detectedBroker || 'unknown',
+    source: context.source || 'unknown',
+    trades_imported: importResultsData.value.tradesImported || 0,
+    header_count: context.headerCount || fileAnalysis.value.headers.length || 0
+  })
+}
+
+function getImportAchievementWindowStart() {
+  return activeImportStartedAt.value ? (activeImportStartedAt.value - 10000) : (Date.now() - 60000)
+}
+
+function formatAchievementToast(notifications, achievements) {
+  const achievementNames = achievements
+    .slice(0, 2)
+    .map(achievement => achievement.name)
+    .join(', ')
+
+  if (achievements.length > 0) {
+    if (achievements.length === 1) {
+      return {
+        title: 'Achievement Unlocked',
+        message: achievementNames
+      }
+    }
+
+    return {
+      title: `${achievements.length} Achievements Unlocked`,
+      message: achievements.length > 2
+        ? `${achievementNames}, and ${achievements.length - 2} more`
+        : achievementNames
+    }
+  }
+
+  const levelUp = notifications.find(notification => notification.type === 'level_up')
+
+  return {
+    title: 'Progress Updated',
+    message: levelUp?.message || 'Your latest import updated your gamification progress.'
+  }
+}
+
+async function getImportAchievementNotifications() {
+  const createdAfter = getImportAchievementWindowStart()
+  const response = await api.get('/notifications', {
+    params: {
+      limit: 25,
+      unread_only: true
+    }
+  })
+
+  const notifications = (response.data?.data || []).filter(notification => {
+    if (!['achievement_earned', 'level_up'].includes(notification.type)) {
+      return false
+    }
+
+    const createdAt = Date.parse(notification.created_at)
+    return !Number.isNaN(createdAt) && createdAt >= createdAfter
+  })
+
+  const achievements = notifications
+    .filter(notification => notification.type === 'achievement_earned')
+    .map(notification => ({
+      id: notification.id,
+      name: notification.symbol || notification.message?.replace(/^Achievement unlocked:\s*/i, '') || 'Achievement'
+    }))
+
+  return {
+    notifications,
+    achievements
+  }
+}
+
 async function fetchImportHistory(page = 1) {
   try {
     const response = await api.get('/trades/import/history', {
@@ -2154,14 +2574,14 @@ async function fetchImportHistory(page = 1) {
         limit: pagination.value.limit
       }
     })
-    
+
     if (page === 1) {
       importHistory.value = response.data.imports || []
     } else {
       // Append to existing history for "Load More"
       importHistory.value.push(...(response.data.imports || []))
     }
-    
+
     pagination.value = response.data.pagination || {
       page: 1,
       limit: 5,
@@ -2211,7 +2631,7 @@ function syncImportHistoryPolling(imports = importHistory.value) {
 function deleteImport(importId) {
   // Find the import data to show in modal
   const importData = importHistory.value.find(imp => imp.id === importId)
-  
+
   deleteImportId.value = importId
   deleteImportData.value = importData
   showDeleteModal.value = true
@@ -2311,27 +2731,27 @@ async function fetchLogs(showAll = null, page = 1) {
       logFilesPagination.value.showAll = showAll
       page = 1
     }
-    
+
     const response = await api.get('/trades/import/logs', {
-      params: { 
+      params: {
         showAll: logFilesPagination.value.showAll.toString(),
         page,
         limit: logFilesPagination.value.limit
       }
     })
-    
+
     if (page === 1) {
       logFiles.value = response.data.logFiles || []
     } else {
       // Append for "Load More"
       logFiles.value.push(...(response.data.logFiles || []))
     }
-    
+
     logFilesPagination.value = {
       ...logFilesPagination.value,
       ...response.data.pagination
     }
-    
+
     if (page === 1) {
       showLogs.value = true
     }
@@ -2381,7 +2801,7 @@ function searchLogs() {
   if (searchTimeout) {
     clearTimeout(searchTimeout)
   }
-  
+
   // Debounce the search to avoid too many requests
   searchTimeout = setTimeout(() => {
     if (selectedLogFile.value) {
@@ -2404,7 +2824,7 @@ function clearSearch() {
 async function loadLogFile(filename, page = 1, showAll = null, search = null) {
   try {
     selectedLogFile.value = filename
-    
+
     // Only reset search if explicitly loading a new file (search is null)
     if (search === null && page === 1) {
       logSearchQuery.value = ''
@@ -2413,18 +2833,18 @@ async function loadLogFile(filename, page = 1, showAll = null, search = null) {
       // Search was explicitly provided (including empty string to clear)
       logSearchQuery.value = search
     }
-    
+
     // If showAll is explicitly passed, update the state, otherwise use current state
     if (showAll !== null) {
       logPagination.value.showAll = showAll
       page = 1 // Reset to first page when toggling view
     }
-    
+
     // On first load, default to showing only last 24 hours
     if (showAll === null && page === 1 && search === null) {
       logPagination.value.showAll = false
     }
-    
+
     const response = await api.get(`/trades/import/logs/${filename}`, {
       params: {
         page,
@@ -2433,7 +2853,7 @@ async function loadLogFile(filename, page = 1, showAll = null, search = null) {
         search: logSearchQuery.value
       }
     })
-    
+
     if (page === 1) {
       logContent.value = response.data.content || 'No content available'
       originalLogContent.value = logContent.value
@@ -2442,12 +2862,12 @@ async function loadLogFile(filename, page = 1, showAll = null, search = null) {
       logContent.value += '\n' + (response.data.content || '')
       originalLogContent.value = logContent.value
     }
-    
+
     logPagination.value = {
       ...logPagination.value,
       ...response.data.pagination
     }
-    
+
     // Update search results if searching
     if (response.data.pagination.searchQuery) {
       searchResults.value = {
@@ -2481,24 +2901,36 @@ async function addCusipMapping() {
   }
 
   cusipLoading.value = true
-  
+
   try {
-    const response = await api.post('/cusip-mappings', {
-      cusip: cusipForm.value.cusip.toUpperCase(),
-      ticker: cusipForm.value.ticker.toUpperCase(),
-      verified: true
+    const response = await fetch('/api/cusip-mappings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        cusip: cusipForm.value.cusip.toUpperCase(),
+        ticker: cusipForm.value.ticker.toUpperCase(),
+        verified: true
+      })
     })
-    const result = response.data
-    showSuccess('CUSIP Mapping Added', `${cusipForm.value.cusip} → ${cusipForm.value.ticker}${result.tradesUpdated ? ` (${result.tradesUpdated} trades updated)` : ''}`)
 
-    // Reset form
-    cusipForm.value.cusip = ''
-    cusipForm.value.ticker = ''
+    if (response.ok) {
+      const result = await response.json()
+      showSuccess('CUSIP Mapping Added', `${cusipForm.value.cusip} → ${cusipForm.value.ticker}${result.tradesUpdated ? ` (${result.tradesUpdated} trades updated)` : ''}`)
 
-    // Refresh unmapped count
-    await fetchUnmappedCusipsCount()
+      // Reset form
+      cusipForm.value.cusip = ''
+      cusipForm.value.ticker = ''
+
+      // Refresh unmapped count
+      await fetchUnmappedCusipsCount()
+    } else {
+      const error = await response.json()
+      showError('Add Failed', error.error || 'Failed to add CUSIP mapping')
+    }
   } catch (error) {
-    showError('Add Failed', error.response?.data?.error || 'Failed to add CUSIP mapping')
+    showError('Add Failed', 'Failed to add CUSIP mapping')
   } finally {
     cusipLoading.value = false
   }
@@ -2511,30 +2943,30 @@ async function lookupCusip() {
 
   cusipLoading.value = true
   lookupResult.value = null
-  
+
   try {
     // Use the database function to get mapping
-    const response = await api.get('/cusip-mappings', {
-      params: {
-        search: lookupForm.value.cusip.toUpperCase(),
-        limit: 1
-      }
-    })
-    const data = response.data
-    if (data.data && data.data.length > 0) {
-      const mapping = data.data[0]
-      lookupResult.value = {
-        found: true,
-        cusip: mapping.cusip,
-        ticker: mapping.ticker,
-        source: mapping.resolution_source,
-        verified: mapping.verified
+    const response = await fetch(`/api/cusip-mappings?search=${lookupForm.value.cusip.toUpperCase()}&limit=1`)
+
+    if (response.ok) {
+      const data = await response.json()
+      if (data.data && data.data.length > 0) {
+        const mapping = data.data[0]
+        lookupResult.value = {
+          found: true,
+          cusip: mapping.cusip,
+          ticker: mapping.ticker,
+          source: mapping.resolution_source,
+          verified: mapping.verified
+        }
+      } else {
+        lookupResult.value = {
+          found: false,
+          cusip: lookupForm.value.cusip.toUpperCase()
+        }
       }
     } else {
-      lookupResult.value = {
-        found: false,
-        cusip: lookupForm.value.cusip.toUpperCase()
-      }
+      throw new Error('Failed to lookup CUSIP')
     }
   } catch (error) {
     showError('Lookup Failed', 'Failed to lookup CUSIP')
@@ -2554,15 +2986,23 @@ async function deleteCusipMapping(cusip) {
   if (!confirm(`Are you sure you want to delete the mapping for ${cusip}?`)) {
     return
   }
-  
+
   cusipLoading.value = true
-  
+
   try {
-    await api.delete(`/cusip-mappings/${cusip}`)
-    showSuccess('CUSIP Mapping Deleted', `Mapping for ${cusip} has been deleted`)
-    await fetchUnmappedCusipsCount()
+    const response = await fetch(`/api/cusip-mappings/${cusip}`, {
+      method: 'DELETE'
+    })
+
+    if (response.ok) {
+      showSuccess('CUSIP Mapping Deleted', `Mapping for ${cusip} has been deleted`)
+      await fetchUnmappedCusipsCount()
+    } else {
+      const error = await response.json()
+      showError('Delete Failed', error.error || 'Failed to delete CUSIP mapping')
+    }
   } catch (error) {
-    showError('Delete Failed', error.response?.data?.error || 'Failed to delete CUSIP mapping')
+    showError('Delete Failed', 'Failed to delete CUSIP mapping')
   } finally {
     cusipLoading.value = false
   }
@@ -2571,22 +3011,30 @@ async function deleteCusipMapping(cusip) {
 // Fetch unmapped CUSIPs count
 async function fetchUnmappedCusipsCount() {
   try {
-    const response = await api.get('/cusip-mappings/unmapped', {
-      params: { _t: Date.now() },
-      headers: { 'Cache-Control': 'no-cache' }
+    // Add cache busting parameter
+    const url = `/api/cusip-mappings/unmapped?_t=${Date.now()}`
+    const response = await fetch(url, {
+      headers: {
+        'Cache-Control': 'no-cache'
+      }
     })
-    const data = response.data
-    const newCount = (data.data || []).length
-    const oldCount = unmappedCusipsCount.value
 
-    unmappedCusips.value = data.data || []
-    unmappedCusipsCount.value = newCount
+    if (response.ok) {
+      const data = await response.json()
+      const newCount = (data.data || []).length
+      const oldCount = unmappedCusipsCount.value
 
-    // Log updates for debugging
-    if (newCount !== oldCount) {
-      console.log(`[CUSIP POLLING] Count updated: ${oldCount} → ${newCount}`)
+      unmappedCusips.value = data.data || []
+      unmappedCusipsCount.value = newCount
+
+      // Log updates for debugging
+      if (newCount !== oldCount) {
+        console.log(`[CUSIP POLLING] Count updated: ${oldCount} → ${newCount}`)
+      } else {
+        console.log(`[CUSIP POLLING] Count unchanged: ${newCount}`)
+      }
     } else {
-      console.log(`[CUSIP POLLING] Count unchanged: ${newCount}`)
+      console.error('[CUSIP POLLING] API error:', response.status, response.statusText)
     }
   } catch (error) {
     console.error('Error fetching unmapped CUSIPs:', error)
@@ -2630,6 +3078,7 @@ function handleResolutionStarted(data) {
 function pollImportStatus(importId) {
   const poll = async () => {
     try {
+      suppressCelebrations(15000)
       const statusRes = await api.get(`/trades/import/status/${importId}`)
       const importLog = statusRes.data.importLog
       const status = importLog?.status
@@ -2654,10 +3103,12 @@ function pollImportStatus(importId) {
         // Show results modal if we have diagnostics or notable stats
         if (diagnostics || tradesImported > 0 || duplicatesSkipped > 0 || failedTrades.length > 0) {
           importResultsData.value = {
+            importId,
             tradesImported,
             duplicatesSkipped,
             diagnostics,
-            failedTrades
+            failedTrades,
+            achievements: []
           }
           showImportResultsModal.value = true
         }
@@ -2683,58 +3134,83 @@ function pollImportStatus(importId) {
             `The import completed but no trades were found.\n\nSuggestions:\n${suggestions.map((s, i) => `${i + 1}. ${s}`).join('\n')}`,
             {
               confirmText: 'OK',
-              linkUrl: 'https://docs.tradetally.io/usage/importing-trades/#supported-brokers',
+              linkUrl: 'https://tradetally.io/docs/usage/importing-trades/#supported-brokers',
               linkText: 'View Documentation'
             }
           )
         }
 
         if (status === 'completed') {
+          track('import_completed', {
+            broker: selectedBroker.value || 'unknown',
+            detected_broker: diagnostics?.detectedBroker || 'unknown',
+            import_id: importId,
+            status,
+            trades_imported: tradesImported,
+            duplicates_skipped: duplicatesSkipped,
+            failed_trades: failedTrades.length,
+            total_rows: diagnostics?.totalRows || null
+          })
           trackImport(selectedBroker.value || 'unknown', tradesImported > 0 ? 'success' : 'empty', tradesImported)
 
-          // Fallback achievement check + local celebration for non-SSE users
+          // Keep import results primary. Read achievement notifications that were
+          // persisted during import instead of relying on a second award pass.
           try {
-            const before = await api.get('/gamification/dashboard')
-            const beforeStats = before.data?.data?.stats || {}
-            const beforeXP = beforeStats.experience_points || 0
-            const beforeLevel = beforeStats.level || 1
-            const beforeMin = beforeStats.level_progress?.current_level_min_xp || 0
-            const beforeNext = beforeStats.level_progress?.next_level_min_xp || 100
+            suppressCelebrations(30000)
+            await api.post('/gamification/achievements/check')
 
-            const checkRes = await api.post('/gamification/achievements/check')
-            const newAchievements = checkRes.data?.data?.newAchievements || []
-            const count = newAchievements.length
+            const { notifications, achievements } = await getImportAchievementNotifications()
+            const count = notifications.length
             if (count > 0) {
-              newAchievements.forEach(a => {
-                celebrationQueue.value.push({ type: 'achievement', payload: { achievement: a } })
-              })
-              const after = await api.get('/gamification/dashboard')
-              const afterStats = after.data?.data?.stats || {}
-              const afterXP = afterStats.experience_points || beforeXP
-              const afterLevel = afterStats.level || beforeLevel
-              const afterMin = afterStats.level_progress?.current_level_min_xp || beforeMin
-              const afterNext = afterStats.level_progress?.next_level_min_xp || beforeNext
-              const deltaXP = Math.max(0, afterXP - beforeXP)
-              celebrationQueue.value.push({
-                type: 'xp_update',
-                payload: {
-                  oldXP: beforeXP,
-                  newXP: afterXP,
-                  deltaXP,
-                  oldLevel: beforeLevel,
-                  newLevel: afterLevel,
-                  currentLevelMinXPBefore: beforeMin,
-                  nextLevelMinXPBefore: beforeNext,
-                  currentLevelMinXPAfter: afterMin,
-                  nextLevelMinXPAfter: afterNext
-                }
-              })
-              if (afterLevel > beforeLevel) {
-                celebrationQueue.value.push({ type: 'level_up', payload: { oldLevel: beforeLevel, newLevel: afterLevel } })
+              importResultsData.value = {
+                ...importResultsData.value,
+                importId,
+                achievements
               }
-              showSuccess(`New Achievements!`, `${count} unlocked just now`)
+
+              const { title, message } = formatAchievementToast(notifications, achievements)
+              addUnreadNotifications(count, notifications.slice(0, 10))
+              window.dispatchEvent(new CustomEvent('notifications-updated', {
+                detail: {
+                  unreadDelta: count,
+                  notifications: notifications.slice(0, 10)
+                }
+              }))
+
+              showSuccess(
+                title,
+                message,
+                {
+                  duration: 10000,
+                  actions: [
+                    {
+                      label: 'View Notifications',
+                      onClick: () => router.push({ name: 'notifications' })
+                    },
+                    {
+                      label: 'Open Analytics',
+                      style: 'primary',
+                      onClick: () => router.push({ name: 'metrics' })
+                    }
+                  ]
+                }
+              )
             }
-          } catch (_) {}
+          } catch (achievementError) {
+            console.warn('Achievement check after import failed:', achievementError?.message || achievementError)
+          }
+        } else {
+          track('import_completed', {
+            broker: selectedBroker.value || 'unknown',
+            detected_broker: diagnostics?.detectedBroker || 'unknown',
+            import_id: importId,
+            status,
+            trades_imported: tradesImported,
+            duplicates_skipped: duplicatesSkipped,
+            failed_trades: failedTrades.length,
+            error: errorDetails?.error || null
+          })
+          trackImport(selectedBroker.value || 'unknown', 'failed', tradesImported)
         }
         return
       }
@@ -2843,6 +3319,11 @@ async function handleMappingSaved(mapping) {
     'Mapping Saved',
     'Your CSV column mapping has been saved. Starting import...'
   )
+  track('import_mapping_saved', {
+    mapping_id: mapping.id,
+    broker: selectedBroker.value,
+    header_count: csvHeaders.value.length
+  })
 
   // Close the modal
   showMappingModal.value = false
@@ -2863,17 +3344,31 @@ async function handleMappingSaved(mapping) {
   try {
     // Import with the mapping ID (convert "none" to null)
     const accountIdToSend = selectedAccountId.value === 'none' ? null : selectedAccountId.value
-    const result = await tradesStore.importTrades(currentMappingFile.value, 'generic', mapping.id, accountIdToSend)
+    const result = await tradesStore.importTrades(
+      currentMappingFile.value,
+      'generic',
+      mapping.id,
+      accountIdToSend,
+      resolveImportStrategyParam()
+    )
     console.log('Import result:', result)
     importStage.value = 'Processing trades...'
     showSuccess('Import Started', `Import has been queued. Import ID: ${result.importId}`)
+    track('import_queued', {
+      broker: 'generic',
+      mapping_id: mapping.id,
+      import_id: result.importId,
+      path: 'custom_mapping'
+    })
 
     // Save broker preference
     localStorage.setItem('lastSelectedBroker', 'generic')
+    uiPreferencesStore.notifyChanged('lastSelectedBroker', 'generic')
 
     // Clear the file reference
     currentMappingFile.value = null
     csvHeaders.value = []
+    csvSampleRows.value = {}
 
     // Refresh import history
     fetchImportHistory()
@@ -2885,6 +3380,7 @@ async function handleMappingSaved(mapping) {
     console.error('Import error after mapping:', err)
     const errorMessage = err.response?.data?.error || err.message || 'Import failed'
     error.value = errorMessage
+    trackImportValidationFailed('custom_mapping_import_error', { error_message: errorMessage })
     showError('Import Failed', error.value)
   } finally {
     loading.value = false
@@ -2974,6 +3470,14 @@ watch(selectedImportIds, (ids) => {
 let importHistoryInterval = null
 
 onMounted(() => {
+  track('import_page_viewed', {
+    onboarding_step: authStore.onboardingStep || null,
+    has_existing_imports: importHistory.value.length > 0
+  })
+
+  refreshStrategyOrder()
+  runWhenIdle(() => fetchImportStrategies())
+
   // Load saved broker preference
   const savedBroker = localStorage.getItem('lastSelectedBroker')
   if (savedBroker) {
@@ -2991,6 +3495,16 @@ onMounted(() => {
   runWhenIdle(() => fetchImportHistory())
   runWhenIdle(() => fetchUnmappedCusipsCount(), 2500)
   runWhenIdle(() => fetchTrialInfo(), 3500)
+})
+
+watch(selectedBroker, (broker, previousBroker) => {
+  if (broker === previousBroker) return
+  track('import_broker_selected', {
+    broker,
+    previous_broker: previousBroker || null,
+    has_file_selected: !!selectedFile.value,
+    detected_broker: fileAnalysis.value.detectedBroker || 'unknown'
+  })
 })
 
 onBeforeUnmount(() => {

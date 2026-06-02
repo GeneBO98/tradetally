@@ -9,6 +9,8 @@ const AnalyticsCache = require('../analyticsCache');
 const cache = require('../../utils/cache');
 const ibkrService = require('./ibkrService');
 const schwabService = require('./schwabService');
+const tradestationService = require('./tradestationService');
+const alpacaService = require('./alpacaService');
 
 // Helper function to invalidate in-memory analytics cache for a user
 function invalidateInMemoryCache(userId) {
@@ -25,7 +27,8 @@ class BrokerSyncService {
    * @param {object} options - Sync options
    */
   async syncConnection(connectionId, options = {}) {
-    const { syncType = 'manual', startDate, endDate, preclaimed = false } = options;
+    const { syncType = 'manual', endDate, preclaimed = false } = options;
+    let { startDate } = options;
 
     let claim = null;
     const workerId = BrokerConnection.getSyncWorkerId();
@@ -45,8 +48,28 @@ class BrokerSyncService {
         throw new Error('Connection not found');
       }
 
+      // Broker sync is a Pro feature. Scheduled syncs for gated users are
+      // skipped without marking the connection as failed.
+      const TierService = require('../tierService');
+      const syncAccess = await TierService.canSyncBrokerConnection(connection.userId);
+      if (!syncAccess.allowed) {
+        if (syncType === 'scheduled') {
+          console.log(`[BROKER-SYNC] Skipping scheduled sync for connection ${connectionId}: broker sync is Pro-only for this free user`);
+          return { success: false, skippedForTier: true, reason: 'tier_pro_required', imported: 0, duplicates: 0 };
+        }
+        const tierError = new Error(syncAccess.message);
+        tierError.code = syncAccess.code;
+        throw tierError;
+      }
+
       if (connection.connectionStatus !== 'active') {
         throw new Error(`Cannot sync: connection status is ${connection.connectionStatus}`);
+      }
+
+      if (!startDate && connection.syncStartDate) {
+        startDate = connection.syncStartDate instanceof Date
+          ? connection.syncStartDate.toISOString().slice(0, 10)
+          : String(connection.syncStartDate).slice(0, 10);
       }
 
       await BrokerConnection.heartbeatSyncClaim(connectionId, workerId);
@@ -74,6 +97,22 @@ class BrokerSyncService {
 
         case 'schwab':
           result = await schwabService.syncTrades(connection, {
+            startDate,
+            endDate,
+            syncLogId: syncLog.id
+          });
+          break;
+
+        case 'tradestation':
+          result = await tradestationService.syncTrades(connection, {
+            startDate,
+            endDate,
+            syncLogId: syncLog.id
+          });
+          break;
+
+        case 'alpaca':
+          result = await alpacaService.syncTrades(connection, {
             startDate,
             endDate,
             syncLogId: syncLog.id
@@ -122,16 +161,33 @@ class BrokerSyncService {
     } catch (error) {
       console.error(`[BROKER-SYNC] Sync failed:`, error.message);
 
+      const errorDetails = {
+        errorCode: error.errorCode || null,
+        rawMessage: error.rawMessage || null,
+        transient: Boolean(error.transient),
+        timestamp: new Date().toISOString()
+      };
+
       // Update sync log with error
       if (syncLog?.id) {
         await BrokerConnection.updateSyncLog(syncLog.id, 'failed', {
-          errorMessage: error.message
+          errorMessage: error.message,
+          errorDetails
         });
       }
 
       // Update connection failure status
       if (connection) {
         await BrokerConnection.updateAfterFailure(connectionId, error.message);
+      }
+
+      if (connection && error.transient && syncType === 'scheduled') {
+        try {
+          await BrokerConnection.scheduleTransientRetry(connectionId, 30);
+          console.log(`[BROKER-SYNC] Scheduled transient-failure retry for ${connectionId} in 30 min`);
+        } catch (retryErr) {
+          console.error(`[BROKER-SYNC] Failed to schedule retry: ${retryErr.message}`);
+        }
       }
 
       return {
@@ -199,6 +255,18 @@ class BrokerSyncService {
 
       case 'schwab':
         return schwabService.validateConfig();
+
+      case 'tradestation':
+        return {
+          valid: tradestationService.isConfigured(),
+          message: tradestationService.isConfigured() ? 'TradeStation OAuth is configured' : 'TradeStation OAuth is not configured'
+        };
+
+      case 'alpaca':
+        return {
+          valid: alpacaService.isConfigured(),
+          message: alpacaService.isConfigured() ? 'Alpaca OAuth is configured' : 'Alpaca OAuth is not configured'
+        };
 
       default:
         return { valid: false, message: `Unknown broker type: ${brokerType}` };
@@ -302,7 +370,7 @@ class BrokerSyncService {
       if (closed > 0) {
         console.log(`[BROKER-SYNC] Auto-closed ${closed} expired option(s)`);
         // Invalidate both caches so analytics reflect the closed trades
-        await AnalyticsCache.invalidateUserCache(userId);
+        await AnalyticsCache.invalidate(userId);
         invalidateInMemoryCache(userId);
       }
     } catch (error) {

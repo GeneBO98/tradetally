@@ -3,6 +3,8 @@ const challengeStore = require('../utils/webauthnChallengeStore');
 const { generateToken, TOKEN_PURPOSES } = require('../middleware/auth');
 const User = require('../models/User');
 const crypto = require('crypto');
+const { generateCsrfToken } = require('../middleware/csrf');
+const { setAuthCookies } = require('../utils/authCookies');
 
 // Lazy-loaded ESM imports (simplewebauthn v13 is ESM-only)
 let _webauthn = null;
@@ -271,12 +273,7 @@ async function loginVerify(req, res, next) {
 
     const token = generateToken(user, { purpose: TOKEN_PURPOSES.ACCESS });
 
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000
-    });
+    setAuthCookies(req, res, token, generateCsrfToken());
 
     // Get user tier
     const TierService = require('../services/tierService');

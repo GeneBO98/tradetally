@@ -70,9 +70,12 @@ node --version  # Should show v20.x.x
 npm --version
 ```
 
-### 2.3 Install PM2 (Process Manager)
+### 2.3 Install pnpm and PM2
+
+TradeTally uses pnpm for dependency installation.
 
 ```bash
+sudo npm install -g pnpm@10.13.1
 sudo npm install -g pm2
 ```
 
@@ -147,13 +150,12 @@ cp -r ~/tradetally-migration/app_logs /opt/tradetally/backend/src/
 
 ```bash
 # Backend dependencies
-cd /opt/tradetally/backend
-npm install --production
+cd /opt/tradetally
+pnpm install --filter tradetally-backend --prod --frozen-lockfile
 
 # Frontend build
-cd /opt/tradetally/frontend
-npm install
-npm run build
+pnpm install --filter tradetally-frontend --frozen-lockfile
+pnpm --dir frontend run build
 ```
 
 ### 4.3 Configure Environment
@@ -262,12 +264,12 @@ Requires=postgresql.service
 Type=simple
 User=www-data
 Group=www-data
-WorkingDirectory=/opt/tradetally/backend
+WorkingDirectory=/opt/tradetally
 Environment="NODE_ENV=production"
 Environment="PORT=3000"
 EnvironmentFile=/opt/tradetally/backend/.env
-ExecStartPre=/usr/bin/npm run migrate
-ExecStart=/usr/bin/node src/server.js
+ExecStartPre=/usr/bin/pnpm --dir backend run migrate
+ExecStart=/usr/bin/node backend/src/server.js
 Restart=always
 RestartSec=10
 StandardOutput=append:/opt/tradetally/backend/src/logs/systemd.log
@@ -401,8 +403,8 @@ If you front the app with Cloudflare, also enable `Always Use HTTPS` and use SSL
 ## Step 7: Run Database Migrations
 
 ```bash
-cd /opt/tradetally/backend
-npm run migrate
+cd /opt/tradetally
+pnpm --dir backend run migrate
 ```
 
 ## Step 8: Set Up Monitoring and Maintenance

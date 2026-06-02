@@ -76,7 +76,7 @@ function buildCorsOptions(req, {
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization', 'X-API-Key', 'X-Auth-Token', 'X-Device-ID', 'X-App-Version', 'X-Platform', 'X-Request-ID'],
+    allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization', 'X-API-Key', 'X-Auth-Token', 'X-Device-ID', 'X-App-Version', 'X-Platform', 'X-Request-ID', 'X-CSRF-Token'],
     exposedHeaders: ['X-API-Version', 'X-Rate-Limit-Remaining', 'X-Rate-Limit-Reset', 'X-Request-ID'],
     optionsSuccessStatus: 200
   };

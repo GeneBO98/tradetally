@@ -43,6 +43,23 @@ class NotificationService {
   // Send achievement notification
   static async sendAchievementNotification(userId, achievement) {
     try {
+      // Compute unlock percentage so the celebration UI can show "X% of users have this".
+      // Denominator = engaged users (anyone who has ever earned an achievement).
+      let unlockPercentage = 0
+      try {
+        const statsResult = await db.query(`
+          SELECT
+            (SELECT COUNT(*) FROM user_achievements WHERE achievement_id = $1 AND earned_at IS NOT NULL)::int AS earned_count,
+            (SELECT COUNT(DISTINCT user_id) FROM user_achievements WHERE earned_at IS NOT NULL)::int AS engaged_users
+        `, [achievement.id]);
+        const { earned_count, engaged_users } = statsResult.rows[0] || {};
+        if (engaged_users > 0) {
+          unlockPercentage = Math.round((earned_count / engaged_users) * 1000) / 10;
+        }
+      } catch (statsErr) {
+        console.error('Error computing achievement unlock %:', statsErr);
+      }
+
       const message = {
         type: 'achievement_earned',
         data: {
@@ -52,15 +69,16 @@ class NotificationService {
             description: achievement.description,
             points: achievement.points,
             difficulty: achievement.difficulty,
-            icon_name: achievement.icon_name
+            icon_name: achievement.icon_name,
+            unlock_percentage: unlockPercentage
           },
           timestamp: new Date().toISOString()
         }
       };
-      
+
       await this.sendSSENotification(userId, message);
       await this.saveNotification(userId, 'achievement_earned', message.data);
-      
+
     } catch (error) {
       console.error('Error sending achievement notification:', error);
     }

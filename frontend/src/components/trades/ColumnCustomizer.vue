@@ -78,16 +78,19 @@
 
               <!-- Column Width Selector (for visible columns) -->
               <div v-if="column.visible && !isRequiredColumn(column.key)" class="flex items-center space-x-2">
-                <select
-                  v-model="column.width"
-                  @change="updateColumns"
-                  class="text-xs pl-2 pr-6 py-1 border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:bg-gray-700 dark:text-gray-300"
-                >
-                  <option value="auto">Auto</option>
-                  <option value="sm">Small</option>
-                  <option value="md">Medium</option>
-                  <option value="lg">Large</option>
-                </select>
+                <div class="w-28">
+                  <BaseSelect
+                    v-model="column.width"
+                    @change="updateColumns"
+                    :searchable="false"
+                    :options="[
+                      { value: 'auto', label: 'Auto' },
+                      { value: 'sm', label: 'Small' },
+                      { value: 'md', label: 'Medium' },
+                      { value: 'lg', label: 'Large' }
+                    ]"
+                  />
+                </div>
               </div>
             </div>
             </div>
@@ -136,6 +139,10 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { AdjustmentsHorizontalIcon } from '@heroicons/vue/24/outline'
 import { Bars3Icon } from '@heroicons/vue/24/solid'
+import { useUiPreferencesStore } from '@/stores/uiPreferences'
+import BaseSelect from '@/components/common/BaseSelect.vue'
+
+const uiPreferencesStore = useUiPreferencesStore()
 
 const props = defineProps({
   columns: {
@@ -173,6 +180,7 @@ const defaultColumns = [
   { key: 'commission', label: 'Commission', visible: false, width: 'auto' },
   { key: 'fees', label: 'Fees', visible: false, width: 'auto' },
   { key: 'strategy', label: 'Strategy', visible: true, width: 'auto' },
+  { key: 'setup', label: 'Setup', visible: false, width: 'auto' },
   { key: 'broker', label: 'Broker', visible: false, width: 'auto' },
   { key: 'account', label: 'Account', visible: false, width: 'auto' },
   { key: 'tags', label: 'Tags', visible: false, width: 'auto' },
@@ -182,6 +190,8 @@ const defaultColumns = [
   { key: 'stopLoss', label: 'Stop Loss', visible: false, width: 'auto' },
   { key: 'takeProfit', label: 'Take Profit', visible: false, width: 'auto' },
   { key: 'rValue', label: 'R-Multiple', visible: false, width: 'auto' },
+  { key: 'mae', label: 'MAE', visible: false, width: 'auto' },
+  { key: 'mfe', label: 'MFE', visible: false, width: 'auto' },
   { key: 'instrumentType', label: 'Instrument Type', visible: false, width: 'auto' },
   { key: 'underlyingSymbol', label: 'Underlying Symbol', visible: false, width: 'auto' },
   { key: 'optionType', label: 'Option Type', visible: false, width: 'auto' },
@@ -344,6 +354,7 @@ const saveColumns = () => {
     required: col.required
   }))
   localStorage.setItem('tradeListColumns', JSON.stringify(columnsToSave))
+  uiPreferencesStore.notifyChanged('tradeListColumns', columnsToSave)
   console.log('[COLUMNS] Saved column preferences:', columnsToSave.length, 'columns')
 }
 
@@ -450,6 +461,7 @@ const deselectAll = () => {
 const resetToDefault = () => {
   localColumns.value = [...defaultColumns]
   localStorage.removeItem('tradeListColumns')
+  uiPreferencesStore.notifyChanged('tradeListColumns', null)
 }
 
 const updateColumns = () => {

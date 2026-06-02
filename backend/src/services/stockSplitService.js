@@ -6,6 +6,7 @@ const db = require('../config/database');
 class StockSplitService {
   constructor() {
     this.checkInterval = null;
+    this.initialCheckTimeout = null;
   }
 
   /**
@@ -26,6 +27,8 @@ class StockSplitService {
       console.log(`[StockSplitService] Checking ${symbolsToCheck.length} symbols for splits`);
       
       let totalSplitsFound = 0;
+      let checkedCount = 0;
+      let skippedCount = 0;
       const today = new Date();
       const oneYearAgo = new Date(today);
       oneYearAgo.setFullYear(today.getFullYear() - 1);
@@ -39,7 +42,12 @@ class StockSplitService {
           console.log(`[StockSplitService] Checking ${symbol} for splits from ${fromDate} to ${toDate}`);
           
           // Get splits from Finnhub
-          const splits = await finnhub.getStockSplits(symbol, fromDate, toDate);
+          const splits = await finnhub.getStockSplits(symbol, fromDate, toDate, {
+            source: 'stock_split_service',
+            priority: 9,
+            background: true,
+            maxQueueWaitMs: 0
+          });
           
           if (splits && splits.length > 0) {
             console.log(`[StockSplitService] Found ${splits.length} splits for ${symbol}`);
@@ -53,26 +61,37 @@ class StockSplitService {
           
           // Update check log
           await StockSplit.updateCheckLog(symbol, splits ? splits.length : 0);
+          checkedCount++;
           
           // Small delay between API calls to respect rate limits
           await new Promise(resolve => setTimeout(resolve, 100));
           
         } catch (error) {
+          if (this.isDeferredFinnhubCheck(error)) {
+            skippedCount++;
+            console.warn(`[StockSplitService] Deferred split check for ${symbol}: ${error.message}`);
+            continue;
+          }
           console.error(`[StockSplitService] Error checking ${symbol}:`, error.message);
           await StockSplit.updateCheckLog(symbol, 0, error.message);
+          checkedCount++;
         }
       }
       
       // Process any unprocessed splits
       await this.processUnprocessedSplits();
       
-      console.log(`[StockSplitService] Check complete. Found ${totalSplitsFound} total splits`);
-      return { checked: symbolsToCheck.length, splitsFound: totalSplitsFound };
+      console.log(`[StockSplitService] Check complete. Found ${totalSplitsFound} total splits, skipped ${skippedCount}`);
+      return { checked: checkedCount, splitsFound: totalSplitsFound, skipped: skippedCount };
       
     } catch (error) {
       console.error('[StockSplitService] Error in checkForStockSplits:', error);
       throw error;
     }
+  }
+
+  isDeferredFinnhubCheck(error) {
+    return error?.code === 'FINNHUB_SCHEDULER_SKIPPED' || error?.code === 'FINNHUB_SCHEDULER_TIMEOUT';
   }
 
   /**
@@ -215,7 +234,7 @@ class StockSplitService {
     console.log(`[StockSplitService] Next stock split check scheduled for ${checkTime.toISOString()}`);
     
     // Schedule the first check
-    setTimeout(() => {
+    this.initialCheckTimeout = setTimeout(() => {
       this.checkForStockSplits().catch(error => {
         console.error('[StockSplitService] Scheduled check failed:', error);
       });
@@ -226,8 +245,14 @@ class StockSplitService {
           console.error('[StockSplitService] Daily check failed:', error);
         });
       }, 24 * 60 * 60 * 1000); // 24 hours
+      if (typeof this.checkInterval.unref === 'function') {
+        this.checkInterval.unref();
+      }
       
     }, timeUntilCheck);
+    if (typeof this.initialCheckTimeout.unref === 'function') {
+      this.initialCheckTimeout.unref();
+    }
   }
 
   /**
@@ -238,6 +263,10 @@ class StockSplitService {
       clearInterval(this.checkInterval);
       this.checkInterval = null;
       console.log('[StockSplitService] Daily stock split checks stopped');
+    }
+    if (this.initialCheckTimeout) {
+      clearTimeout(this.initialCheckTimeout);
+      this.initialCheckTimeout = null;
     }
   }
 
@@ -265,7 +294,12 @@ class StockSplitService {
     console.log(`[StockSplitService] Manual check for ${symbol} from ${from} to ${to}`);
     
     try {
-      const splits = await finnhub.getStockSplits(symbol, from, to);
+      const splits = await finnhub.getStockSplits(symbol, from, to, {
+        source: 'stock_split_manual_check',
+        priority: 9,
+        background: true,
+        maxQueueWaitMs: 0
+      });
       
       if (splits && splits.length > 0) {
         console.log(`[StockSplitService] Found ${splits.length} splits for ${symbol}`);

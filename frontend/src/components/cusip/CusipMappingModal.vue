@@ -96,7 +96,7 @@
                           Trade Updates
                         </h3>
                         <p class="mt-1 text-sm text-blue-700 dark:text-blue-300">
-                          This mapping will update {{ expectedTradeUpdates }} existing trade{{ expectedTradeUpdates !== 1 ? 's' : '' }} 
+                          This mapping will update {{ expectedTradeUpdates }} existing trade{{ expectedTradeUpdates !== 1 ? 's' : '' }}
                           that currently use the CUSIP {{ form.cusip }}.
                         </p>
                       </div>
@@ -138,7 +138,7 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { InformationCircleIcon } from '@heroicons/vue/24/outline'
-import api from '@/services/api'
+import { useAuthStore } from '@/stores/auth'
 
 const props = defineProps({
   isOpen: {
@@ -152,6 +152,8 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close', 'saved'])
+
+const authStore = useAuthStore()
 
 // Component state
 const form = ref({
@@ -168,9 +170,9 @@ const expectedTradeUpdates = ref(0)
 // Computed
 const isEditing = computed(() => !!props.mapping)
 const isFormValid = computed(() => {
-  return form.value.cusip && 
-         form.value.ticker && 
-         !errors.value.cusip && 
+  return form.value.cusip &&
+         form.value.ticker &&
+         !errors.value.cusip &&
          !errors.value.ticker
 })
 
@@ -178,15 +180,15 @@ const isFormValid = computed(() => {
 const validateCusip = () => {
   const cusip = form.value.cusip.toUpperCase()
   form.value.cusip = cusip
-  
+
   errors.value.cusip = ''
-  
+
   if (!cusip) {
     errors.value.cusip = 'CUSIP is required'
   } else if (!/^[A-Z0-9]{8}[0-9]$/.test(cusip)) {
     errors.value.cusip = 'CUSIP must be 9 characters (8 alphanumeric + 1 digit)'
   }
-  
+
   // Check expected trade updates if CUSIP is valid
   if (!errors.value.cusip && cusip.length === 9) {
     checkTradeImpact(cusip)
@@ -196,9 +198,9 @@ const validateCusip = () => {
 const validateTicker = () => {
   const ticker = form.value.ticker.toUpperCase()
   form.value.ticker = ticker
-  
+
   errors.value.ticker = ''
-  
+
   if (!ticker) {
     errors.value.ticker = 'Ticker is required'
   } else if (!/^[A-Z]{1,10}(\.[A-Z]{1,3})?$/.test(ticker)) {
@@ -208,13 +210,12 @@ const validateTicker = () => {
 
 const checkTradeImpact = async (cusip) => {
   try {
-    const response = await api.get('/trades', {
-      params: {
-        symbol: cusip,
-        limit: 1
-      }
-    })
-    expectedTradeUpdates.value = response.data.pagination?.total || 0
+    const response = await fetch(`/api/trades?symbol=${cusip}&limit=1`)
+
+    if (response.ok) {
+      const data = await response.json()
+      expectedTradeUpdates.value = data.pagination?.total || 0
+    }
   } catch (error) {
     console.error('Error checking trade impact:', error)
   }
@@ -223,14 +224,28 @@ const checkTradeImpact = async (cusip) => {
 const saveMapping = async () => {
   try {
     saving.value = true
-    
-    const response = await api.post('/cusip-mappings', {
-      cusip: form.value.cusip,
-      ticker: form.value.ticker,
-      company_name: form.value.company_name || null,
-      verified: form.value.verified
+
+    const response = await fetch('/api/cusip-mappings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        cusip: form.value.cusip,
+        ticker: form.value.ticker,
+        company_name: form.value.company_name || null,
+        verified: form.value.verified
+      })
     })
-    emit('saved', response.data)
+
+    if (response.ok) {
+      const result = await response.json()
+      emit('saved', result)
+    } else {
+      const error = await response.json()
+      console.error('Failed to save mapping:', error)
+      // You could show a toast notification here
+    }
   } catch (error) {
     console.error('Error saving mapping:', error)
   } finally {
@@ -247,7 +262,7 @@ watch(() => props.mapping, (newMapping) => {
       company_name: newMapping.company_name || '',
       verified: newMapping.verified || false
     }
-    
+
     if (newMapping.cusip) {
       checkTradeImpact(newMapping.cusip)
     }
@@ -261,7 +276,7 @@ watch(() => props.mapping, (newMapping) => {
     }
     expectedTradeUpdates.value = 0
   }
-  
+
   errors.value = {}
 }, { immediate: true })
 

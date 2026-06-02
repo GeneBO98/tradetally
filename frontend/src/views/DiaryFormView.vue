@@ -145,10 +145,13 @@
               <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Entry Type
               </label>
-              <select v-model="form.entryType" class="input">
-                <option value="diary">Diary Entry</option>
-                <option value="playbook">Playbook Setup</option>
-              </select>
+              <BaseSelect
+                v-model="form.entryType"
+                :options="[
+                  { value: 'diary', label: 'Diary Entry' },
+                  { value: 'playbook', label: 'Playbook Setup' }
+                ]"
+              />
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 {{ form.entryType === 'diary' ? 'Daily thoughts and reflections' : 'Trade setups and strategies' }}
               </p>
@@ -605,6 +608,7 @@ import { useDiaryStore } from '@/stores/diary'
 import { useDiaryTemplateStore } from '@/stores/diaryTemplate'
 import { getLocalToday } from '@/utils/date'
 import SymbolAutocomplete from '@/components/common/SymbolAutocomplete.vue'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 import {
   ArrowLeftIcon,
   PlusIcon,

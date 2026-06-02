@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/user.controller');
 const { authenticate, requireAdmin } = require('../middleware/auth');
-const multer = require('multer');
+const upload = require('../middleware/upload');
 
 /**
  * @swagger
@@ -10,20 +10,6 @@ const multer = require('multer');
  *   name: Users
  *   description: User profile and account management
  */
-
-const upload = multer({
-  limits: { fileSize: 5242880 }, // 5MB
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|gif/;
-    const mimetype = allowedTypes.test(file.mimetype);
-    const extname = allowedTypes.test(file.originalname.toLowerCase());
-    
-    if (mimetype && extname) {
-      return cb(null, true);
-    }
-    cb(new Error('Invalid file type'));
-  }
-});
 
 /**
  * @swagger
@@ -99,6 +85,10 @@ router.get('/onboarding-status', authenticate, userController.getOnboardingStatu
  */
 router.post('/avatar', authenticate, upload.single('avatar'), userController.uploadAvatar);
 router.delete('/avatar', authenticate, userController.deleteAvatar);
+// Public serving endpoint — avatars are shown on public profile pages, so no
+// auth required to fetch one (anyone with the URL can view it, as with any
+// avatar system). Filename is sanitized in the controller.
+router.get('/avatar/:filename', userController.getAvatar);
 
 /**
  * @swagger

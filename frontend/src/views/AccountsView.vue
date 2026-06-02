@@ -70,19 +70,23 @@
 
               <div>
                 <label for="broker" class="label">Broker</label>
-                <select id="broker" v-model="form.broker" class="input">
-                  <option value="">Select broker...</option>
-                  <option value="schwab">Charles Schwab</option>
-                  <option value="thinkorswim">thinkorswim</option>
-                  <option value="ibkr">Interactive Brokers</option>
-                  <option value="lightspeed">Lightspeed</option>
-                  <option value="webull">Webull</option>
-                  <option value="etrade">E*TRADE</option>
-                  <option value="avatrade">AvaTrade</option>
-                  <option value="tradingview">TradingView</option>
-                  <option value="tradovate">Tradovate</option>
-                  <option value="other">Other</option>
-                </select>
+                <BaseSelect
+                  v-model="form.broker"
+                  :options="[
+                    { value: 'schwab', label: 'Charles Schwab' },
+                    { value: 'thinkorswim', label: 'thinkorswim' },
+                    { value: 'ibkr', label: 'Interactive Brokers' },
+                    { value: 'captrader', label: 'CapTrader' },
+                    { value: 'lightspeed', label: 'Lightspeed' },
+                    { value: 'webull', label: 'Webull' },
+                    { value: 'etrade', label: 'E*TRADE' },
+                    { value: 'avatrade', label: 'AvaTrade' },
+                    { value: 'tradingview', label: 'TradingView' },
+                    { value: 'tradovate', label: 'Tradovate' },
+                    { value: 'other', label: 'Other' }
+                  ]"
+                  placeholder="Select broker..."
+                />
               </div>
 
               <div>
@@ -283,9 +287,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import api from '@/services/api'
 import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 import { useAuthStore } from '@/stores/auth'
 
 const authStore = useAuthStore()
@@ -314,6 +319,7 @@ const brokerLabels = {
   schwab: 'Charles Schwab',
   thinkorswim: 'thinkorswim',
   ibkr: 'Interactive Brokers',
+  captrader: 'CapTrader',
   lightspeed: 'Lightspeed',
   webull: 'Webull',
   etrade: 'E*TRADE',
@@ -489,7 +495,18 @@ async function deleteAccount() {
   }
 }
 
+function handleEscape(e) {
+  if (e.key === 'Escape' && showDeleteModal.value) {
+    showDeleteModal.value = false
+  }
+}
+
 onMounted(() => {
   fetchAccounts()
+  window.addEventListener('keydown', handleEscape)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleEscape)
 })
 </script>

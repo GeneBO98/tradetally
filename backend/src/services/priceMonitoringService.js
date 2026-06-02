@@ -3,10 +3,13 @@ const logger = require('../utils/logger');
 const finnhub = require('../utils/finnhub');
 const priceFallbackManager = require('../utils/priceFallbackManager');
 const historicalPriceCache = require('../utils/historicalPriceCache');
-const nodemailer = require('nodemailer');
-const { v4: uuidv4 } = require('uuid');
+const { uuidv4 } = require('../utils/uuid');
 const TierService = require('./tierService');
 const NotificationPreferenceService = require('./notificationPreferenceService');
+const pushNotificationService = require('./pushNotificationService');
+const emailDeliveryService = require('./emailDeliveryService');
+const EmailService = require('./emailService');
+const { publish } = require('../events/domainEvents');
 const escapeHtml = require('../utils/escapeHtml');
 
 function maskEmail(email) {
@@ -21,12 +24,10 @@ class PriceMonitoringService {
     this.isRunning = false;
     this.monitoringInterval = null;
     this.intervalMs = 30000; // 30 seconds
-    this.emailTransporter = null;
     this.failedSymbols = new Map(); // Track failed symbols to reduce log spam
     this.skippedSymbols = new Set();
     this.symbolOffset = 0; // Round-robin offset for batching
     this.maxSymbolsPerCycle = parseInt(process.env.PRICE_MONITOR_MAX_SYMBOLS, 10) || 25;
-    this.initializeEmailTransporter();
   }
 
   getUnsupportedQuoteReason(symbol) {
@@ -42,22 +43,8 @@ class PriceMonitoringService {
     return null;
   }
 
-  initializeEmailTransporter() {
-    if (this.isEmailConfigured()) {
-      this.emailTransporter = nodemailer.createTransport({
-        host: process.env.EMAIL_HOST,
-        port: process.env.EMAIL_PORT || 587,
-        secure: process.env.EMAIL_PORT == 465,
-        auth: {
-          user: process.env.EMAIL_USER,
-          pass: process.env.EMAIL_PASS
-        }
-      });
-    }
-  }
-
   isEmailConfigured() {
-    return !!(process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS);
+    return emailDeliveryService.isConfigured();
   }
 
   async start() {
@@ -80,6 +67,9 @@ class PriceMonitoringService {
         console.error('Error in price monitoring interval:', error);
       }
     }, this.intervalMs);
+    if (typeof this.monitoringInterval.unref === 'function') {
+      this.monitoringInterval.unref();
+    }
 
     console.log(`Price monitoring service started with ${this.intervalMs}ms interval`);
   }
@@ -148,6 +138,7 @@ class PriceMonitoringService {
       // Track API failures to detect widespread outages
       let consecutiveFailures = 0;
       let successCount = 0;
+      let capacitySkipCount = 0;
 
       // Update prices for all symbols
       for (const symbol of symbols) {
@@ -160,11 +151,14 @@ class PriceMonitoringService {
           continue;
         }
 
-        const success = await this.updateSymbolPrice(symbol);
+        const updateResult = await this.updateSymbolPrice(symbol);
         
-        if (success) {
+        if (updateResult === true) {
           successCount++;
           consecutiveFailures = 0; // Reset failure counter on success
+        } else if (updateResult === 'skipped') {
+          capacitySkipCount++;
+          consecutiveFailures = 0;
         } else {
           consecutiveFailures++;
           
@@ -179,10 +173,11 @@ class PriceMonitoringService {
         await new Promise(resolve => setTimeout(resolve, 100));
       }
 
-      logger.debug(`Price monitoring cycle complete: ${successCount}/${symbols.length} symbols updated successfully`);
+      logger.debug(`Price monitoring cycle complete: ${successCount}/${symbols.length} symbols updated successfully, ${capacitySkipCount} skipped for provider capacity`);
 
-      // Only check for triggered alerts if we had some successful price updates
-      if (successCount > 0) {
+      // Check alerts when prices were updated, or when this cycle intentionally
+      // skipped saturated provider calls and cached prices may still be usable.
+      if (successCount > 0 || capacitySkipCount > 0) {
         await this.checkAlerts();
       }
 
@@ -201,13 +196,36 @@ class PriceMonitoringService {
         return false;
       }
 
-      // Use fallback manager to get quote (handles Finnhub 403 -> Schwab fallback)
-      const { data: priceData, source: dataSource, error } = await priceFallbackManager.getQuoteWithFallback(
-        symbol,
-        (sym) => finnhub.getQuote(sym)
-      );
+      // Crypto symbols are served by CoinGecko (no rate limit), not Finnhub.
+      // Equities go through the fallback manager (Finnhub 403 -> Schwab, etc.).
+      let priceData;
+      let dataSource;
+      let error;
+      if (finnhub.isCryptoSymbol(symbol)) {
+        try {
+          priceData = await finnhub.getCryptoQuote(symbol);
+          dataSource = 'coingecko';
+        } catch (cryptoError) {
+          error = cryptoError;
+        }
+      } else {
+        ({ data: priceData, source: dataSource, error } = await priceFallbackManager.getQuoteWithFallback(
+          symbol,
+          (sym) => finnhub.getQuote(sym, {
+            source: 'price_monitoring',
+            priority: 6,
+            background: true,
+            maxQueueWaitMs: 0
+          })
+        ));
+      }
 
       if (!priceData) {
+        if (this.isProviderCapacityError(error)) {
+          logger.debug(`[FINNHUB-SCHEDULER] Price monitoring skipped ${symbol}: ${error.message}`);
+          return 'skipped';
+        }
+
         // Both sources failed - track failure
         const failureData = this.failedSymbols.get(symbol) || { count: 0, firstSeen: Date.now() };
         failureData.count++;
@@ -288,6 +306,10 @@ class PriceMonitoringService {
       logger.error(`Error updating price for ${symbol}:`, error);
       return false;
     }
+  }
+
+  isProviderCapacityError(error) {
+    return error?.code === 'FINNHUB_SCHEDULER_SKIPPED' || error?.code === 'FINNHUB_SCHEDULER_TIMEOUT';
   }
 
   async checkAlerts() {
@@ -397,6 +419,7 @@ class PriceMonitoringService {
       const targetPriceNum = parseFloat(target_price);
       const changePercentNum = parseFloat(change_percent);
       const percentChangeNum = parseFloat(alert.percent_change);
+      const triggeredAt = new Date().toISOString();
       
       switch (alert_type) {
         case 'above':
@@ -420,6 +443,22 @@ class PriceMonitoringService {
         await this.createBrowserNotification(alert, message);
       }
 
+      // Send iOS push notification. sendPriceAlert re-checks the user's
+      // notify_price_alerts preference and silently no-ops if they have no
+      // active iOS devices, so this is safe to always call.
+      try {
+        await pushNotificationService.sendPriceAlert(user_id, {
+          symbol,
+          body: message,
+          currentPrice: Number.isFinite(currentPriceNum) ? currentPriceNum : undefined,
+          targetPrice: Number.isFinite(targetPriceNum) ? targetPriceNum : undefined
+        });
+        await this.logNotification(id, user_id, symbol, 'push', message, alert, 'sent');
+      } catch (pushError) {
+        logger.logError('Error sending push notification for alert:', pushError);
+        await this.logNotification(id, user_id, symbol, 'push', message, alert, 'failed', pushError.message);
+      }
+
       // If repeat is not enabled, mark as inactive; otherwise update triggered_at timestamp
       if (!alert.repeat_enabled) {
         await db.query(
@@ -435,6 +474,22 @@ class PriceMonitoringService {
         console.log(`Alert triggered for ${symbol} (repeat enabled, keeping alert)`);
       }
 
+      await publish('price_alert.triggered', {
+        alertId: id,
+        userId: user_id,
+        symbol,
+        alertType: alert_type,
+        currentPrice: currentPriceNum,
+        targetPrice: Number.isFinite(targetPriceNum) ? targetPriceNum : null,
+        changePercent: Number.isFinite(changePercentNum) ? changePercentNum : null,
+        observedPercentChange: Number.isFinite(percentChangeNum) ? percentChangeNum : null,
+        message,
+        repeatEnabled: Boolean(alert.repeat_enabled),
+        triggeredAt
+      }, {
+        source: 'priceMonitoringService.triggerAlert'
+      });
+
       console.log(`Alert triggered for ${symbol}: ${message}`);
 
     } catch (error) {
@@ -444,7 +499,7 @@ class PriceMonitoringService {
 
   async sendEmailNotification(email, symbol, message, alert) {
     try {
-      if (!this.emailTransporter) {
+      if (!this.isEmailConfigured()) {
         logger.logWarn('Email not configured, skipping email notification');
         return;
       }
@@ -469,8 +524,8 @@ class PriceMonitoringService {
         <p><em>This alert was sent from your TradeTally Pro account.</em></p>
       `;
 
-      await this.emailTransporter.sendMail({
-        from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+      await emailDeliveryService.sendMail({
+        from: EmailService.getTransactionalFromAddress(),
         to: email,
         subject: subject,
         html: html

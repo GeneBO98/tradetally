@@ -6,7 +6,6 @@ import './assets/main.css'
 import { useAuthStore } from './stores/auth'
 import { useAnalytics } from './composables/useAnalytics'
 import { growthbook, initializeGrowthBook, updateGrowthBookContext } from './services/growthbook'
-import { installGlobalErrorTelemetry } from './services/telemetry'
 
 const app = createApp(App)
 const AUTH_BOOTSTRAP_TIMEOUT_MS = 4000
@@ -15,7 +14,33 @@ const GROWTHBOOK_BOOTSTRAP_TIMEOUT_MS = 1500
 app.use(createPinia())
 app.use(router)
 app.config.globalProperties.$growthbook = growthbook
-installGlobalErrorTelemetry(app, router)
+app.config.errorHandler = (error, instance, info) => {
+  console.error('Vue runtime error:', error, info, instance)
+  window.dispatchEvent(new CustomEvent('app-runtime-error', {
+    detail: {
+      message: error?.message || 'Unexpected application error',
+      info
+    }
+  }))
+}
+
+window.addEventListener('error', (event) => {
+  console.error('Unhandled window error:', event.error || event.message)
+  window.dispatchEvent(new CustomEvent('app-runtime-error', {
+    detail: {
+      message: event.error?.message || event.message || 'Unexpected window error'
+    }
+  }))
+})
+
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('Unhandled promise rejection:', event.reason)
+  window.dispatchEvent(new CustomEvent('app-runtime-error', {
+    detail: {
+      message: event.reason?.message || 'Unhandled promise rejection'
+    }
+  }))
+})
 
 function withTimeout(promise, timeoutMs) {
   let timeoutId

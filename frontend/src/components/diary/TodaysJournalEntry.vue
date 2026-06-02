@@ -161,12 +161,17 @@
               <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Market Bias
               </label>
-              <select v-model="quickEntry.marketBias" class="input text-sm">
-                <option value="">Select bias...</option>
-                <option value="bullish">Bullish</option>
-                <option value="bearish">Bearish</option>
-                <option value="neutral">Neutral</option>
-              </select>
+              <div class="text-sm">
+                <BaseSelect
+                  v-model="quickEntry.marketBias"
+                  placeholder="Select bias..."
+                  :options="[
+                    { value: 'bullish', label: 'Bullish' },
+                    { value: 'bearish', label: 'Bearish' },
+                    { value: 'neutral', label: 'Neutral' }
+                  ]"
+                />
+              </div>
             </div>
             
             <div>
@@ -218,6 +223,7 @@ import {
   ArrowTrendingDownIcon,
   MinusIcon
 } from '@heroicons/vue/24/outline'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 
 const router = useRouter()
 const diaryStore = useDiaryStore()

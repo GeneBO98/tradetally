@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-7xl mx-auto py-8 px-4">
+  <div class="content-wrapper py-8">
     <!-- Hero Section with SEO Keywords -->
     <div class="text-center mb-12">
       <h1 class="text-4xl font-bold text-gray-900 dark:text-white mb-4">
@@ -34,8 +34,9 @@
     </div>
 
     <!-- Comparison Table -->
+    <p class="md:hidden text-sm text-gray-500 dark:text-gray-400 mb-2 text-center">Swipe horizontally to see all platforms →</p>
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-x-auto mb-12">
-      <table class="w-full">
+      <table class="w-full min-w-[600px]">
         <thead>
           <tr class="bg-gray-50 dark:bg-gray-900">
             <th class="px-4 py-4 text-left text-sm font-medium text-gray-900 dark:text-gray-200 sticky left-0 bg-gray-50 dark:bg-gray-900 z-10">
@@ -293,7 +294,7 @@
           </p>
           <ul class="list-disc list-inside space-y-2 ml-4">
             <li>Free forever plan with unlimited trade storage (vs TraderVue's 100/month limit)</li>
-            <li>Pro tier at $8/month (vs TraderVue $29-79/month, TraderSync $49-99/month)</li>
+            <li>Pro tier at {{ monthlyPricePerMonthLabel }} (vs TraderVue $29-79/month, TraderSync $49-99/month)</li>
             <li>Open source trading journal software you can audit and trust</li>
             <li>No vendor lock-in - export all your data anytime</li>
             <li>Modern, fast interface built with latest web technologies</li>
@@ -354,7 +355,7 @@
           </h3>
           <p class="text-gray-600 dark:text-gray-400">
             TradeTally is completely free forever for core features including unlimited trade storage, basic analytics,
-            trade journal, and CSV import/export. Free tier imports are limited to 100 executions per batch, but you can import as many batches as you need. Our Pro tier ($8/month) unlocks advanced features like AI insights,
+            trade journal, and CSV import/export. Free tier imports are limited to 100 executions per batch, but you can import as many batches as you need. Our Pro tier ({{ monthlyPricePerMonthLabel }}) unlocks advanced features like AI insights,
             behavioral analytics, unlimited batch imports, and advanced metrics - no time limits or hidden fees.
           </p>
         </div>
@@ -364,7 +365,7 @@
             What's the difference between TradeTally and TraderVue?
           </h3>
           <p class="text-gray-600 dark:text-gray-400">
-            TradeTally offers unlimited free trade storage (vs TraderVue's 100/month limit), lower Pro pricing ($8/mo vs $29-79/mo),
+            TradeTally offers unlimited free trade storage (vs TraderVue's 100/month limit), lower Pro pricing ({{ monthlyPricePerMoLabel }} vs $29-79/mo),
             open source code, self-hosting options, and modern features like AI insights and behavioral analytics.
             Free tier imports 100 executions per batch with unlimited total trades. TradeTally is built for the next generation of traders who want transparency and value.
           </p>
@@ -387,7 +388,7 @@
       </div>
       <div class="flex flex-wrap justify-center gap-6 text-sm">
         <a
-          href="https://docs.tradetally.io"
+          href="https://tradetally.io/docs"
           target="_blank"
           rel="noopener noreferrer"
           class="text-primary-600 hover:text-primary-500"
@@ -408,17 +409,27 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { CheckIcon, XMarkIcon } from '@heroicons/vue/24/solid'
+import { usePricingExperiment } from '@/composables/usePricingExperiment'
 
-const platforms = [
+const {
+  monthlyPriceLabel,
+  monthlyPricePerMonthLabel,
+  monthlyPricePerMoLabel,
+  monthlyPriceRangeLabel,
+  proMonthlyLabel,
+  annualDiscountLabel
+} = usePricingExperiment()
+
+const platforms = computed(() => [
   {
     id: 'tradetally',
     name: 'TradeTally',
     features: {
       freeTrades: 'Unlimited',
-      price: 'Free / $8',
-      annualDiscount: '17%',
+      price: `Free / ${monthlyPriceLabel.value}`,
+      annualDiscount: annualDiscountLabel.value,
       csvImport: true,
       brokerIntegrations: 'Auto-sync (Schwab, IBKR) + CSV',
       apiIntegration: 'Pro',
@@ -427,14 +438,14 @@ const platforms = [
       forex: true,
       crypto: true,
       basicAnalytics: true,
-      advancedMetrics: 'Pro ($8/mo)',
+      advancedMetrics: proMonthlyLabel.value,
       charting: true,
       aiInsights: 'Pro',
       behavioral: 'Pro',
       journal: true,
       images: true,
       sharing: true,
-      alerts: 'Pro ($8/mo)',
+      alerts: proMonthlyLabel.value,
       mobile: 'iOS',
       dataExport: 'CSV & JSON',
       selfHosted: true,
@@ -557,12 +568,12 @@ const platforms = [
       openSource: false
     }
   }
-]
+])
 
 const selectedPlatforms = ref(['tradetally', 'tradervue', 'tradersync'])
 
 const visiblePlatforms = computed(() => {
-  return platforms.filter(p => selectedPlatforms.value.includes(p.id))
+  return platforms.value.filter(p => selectedPlatforms.value.includes(p.id))
 })
 
 const togglePlatform = (platformId) => {
@@ -589,12 +600,10 @@ const getIconColor = (value) => {
 
 const getPriceClass = (price) => {
   if (price.includes('Free')) return 'text-green-600 dark:text-green-400 font-semibold'
-  if (price.startsWith('$8')) return 'text-blue-600 dark:text-blue-400 font-semibold'
   return 'text-gray-600 dark:text-gray-400'
 }
 
-// SEO Meta Tags and GEO structured data
-onMounted(() => {
+const updatePageMetadata = () => {
   document.title = 'Best Free Trading Journal 2026 - TradeTally vs TraderVue vs TraderSync Comparison'
 
   let metaDescription = document.querySelector('meta[name="description"]')
@@ -603,7 +612,7 @@ onMounted(() => {
     metaDescription.setAttribute('name', 'description')
     document.head.appendChild(metaDescription)
   }
-  metaDescription.setAttribute('content', 'Compare the best free trading journals for day traders in 2026. TradeTally ($0-$8/mo) vs TraderVue ($29-$79) vs TraderSync ($30-$80). Free unlimited trades, broker auto-sync, open-source self-hosting.')
+  metaDescription.setAttribute('content', `Compare the best free trading journals for day traders in 2026. TradeTally (${monthlyPriceRangeLabel.value}) vs TraderVue ($29-$79) vs TraderSync ($30-$80). Free unlimited trades, broker auto-sync, open-source self-hosting.`)
 
   let metaKeywords = document.querySelector('meta[name="keywords"]')
   if (!metaKeywords) {
@@ -620,8 +629,9 @@ onMounted(() => {
     document.head.appendChild(canonical)
   }
   canonical.setAttribute('href', 'https://tradetally.io/compare')
+}
 
-  // Add ItemList structured data for comparison (GEO optimization)
+const updateStructuredData = () => {
   const existingComparisonScript = document.getElementById('comparison-itemlist-jsonld')
   if (existingComparisonScript) {
     existingComparisonScript.remove()
@@ -698,7 +708,6 @@ onMounted(() => {
   })
   document.head.appendChild(comparisonScript)
 
-  // Add FAQ structured data for comparison questions
   const existingFaqScript = document.getElementById('comparison-faq-jsonld')
   if (existingFaqScript) {
     existingFaqScript.remove()
@@ -724,7 +733,7 @@ onMounted(() => {
         "name": "Is TradeTally better than TraderVue?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "TradeTally offers several advantages over TraderVue: unlimited trade storage (vs 100/month), lower Pro pricing ($8/mo vs $29-79/mo), auto-sync with Schwab and IBKR, AI insights, behavioral analytics, open-source code, and self-hosting. Free tier imports 100 executions per batch with no limit on total trades. TraderVue has more pre-built broker integrations, but TradeTally's custom CSV mapper works with any broker."
+          "text": `TradeTally offers several advantages over TraderVue: unlimited trade storage (vs 100/month), lower Pro pricing (${monthlyPricePerMoLabel.value} vs $29-79/mo), auto-sync with Schwab and IBKR, AI insights, behavioral analytics, open-source code, and self-hosting. Free tier imports 100 executions per batch with no limit on total trades. TraderVue has more pre-built broker integrations, but TradeTally's custom CSV mapper works with any broker.`
         }
       },
       {
@@ -732,11 +741,16 @@ onMounted(() => {
         "name": "What is the cheapest trading journal with good features?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "TradeTally offers the best value with a completely free tier that includes unlimited trade storage (import 100 per batch), and a Pro tier at only $8/month for unlimited batch imports. This compares favorably to TraderVue ($29-79/month), TraderSync ($49-99/month), and TradesViz ($29-69/month). Edgewonk offers a one-time purchase option at $39-79."
+          "text": `TradeTally offers the best value with a completely free tier that includes unlimited trade storage (import 100 per batch), and a Pro tier at only ${monthlyPricePerMonthLabel.value} for unlimited batch imports. This compares favorably to TraderVue ($29-79/month), TraderSync ($49-99/month), and TradesViz ($29-69/month). Edgewonk offers a one-time purchase option at $39-79.`
         }
       }
     ]
   })
   document.head.appendChild(faqScript)
-})
+}
+
+watch([monthlyPricePerMonthLabel, monthlyPricePerMoLabel, monthlyPriceRangeLabel], () => {
+  updatePageMetadata()
+  updateStructuredData()
+}, { immediate: true })
 </script>

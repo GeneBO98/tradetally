@@ -56,15 +56,15 @@
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             Dividend Type
           </label>
-          <select
+          <BaseSelect
             v-model="form.dividendType"
-            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
-          >
-            <option value="regular">Regular Dividend</option>
-            <option value="special">Special Dividend</option>
-            <option value="qualified">Qualified Dividend</option>
-            <option value="return_of_capital">Return of Capital</option>
-          </select>
+            :options="[
+              { value: 'regular', label: 'Regular Dividend' },
+              { value: 'special', label: 'Special Dividend' },
+              { value: 'qualified', label: 'Qualified Dividend' },
+              { value: 'return_of_capital', label: 'Return of Capital' },
+            ]"
+          />
         </div>
 
         <!-- Notes (optional) -->
@@ -111,6 +111,7 @@
 import { ref, computed } from 'vue'
 import { useInvestmentsStore } from '@/stores/investments'
 import { format } from 'date-fns'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 
 const props = defineProps({
   holdingId: {

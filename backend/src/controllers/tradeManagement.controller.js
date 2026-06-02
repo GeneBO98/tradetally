@@ -9,7 +9,7 @@ const logger = require('../utils/logger');
 const TargetHitAnalysisService = require('../services/targetHitAnalysisService');
 const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('../utils/futuresUtils');
 const ensureString = require('../utils/ensureString');
-const { v4: uuidv4 } = require('uuid');
+const { uuidv4 } = require('../utils/uuid');
 
 const UNSORTED_ACCOUNT = '__unsorted__';
 
@@ -1262,7 +1262,17 @@ const tradeManagementController = {
           parseFloat(updatedTrade.entry_price),
           parseFloat(updatedTrade.stop_loss),
           parseFloat(updatedTrade.exit_price),
-          updatedTrade.side
+          updatedTrade.side,
+          {
+            quantity: updatedTrade.quantity,
+            commission: updatedTrade.commission,
+            fees: updatedTrade.fees,
+            instrumentType: updatedTrade.instrument_type || 'stock',
+            contractSize: updatedTrade.contract_size,
+            pointValue: updatedTrade.point_value,
+            symbol: updatedTrade.symbol,
+            underlyingAsset: updatedTrade.underlying_asset
+          }
         );
 
         if (rValue !== null) {

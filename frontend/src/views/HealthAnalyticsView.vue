@@ -301,6 +301,33 @@ const healthInsights = ref([])
 const loadingInsights = ref(false)
 const loadingCorrelation = ref(false)
 
+function getTradeHealthValue(trade, field) {
+  const aliases = {
+    heart_rate: ['heart_rate', 'heartRate'],
+    sleep_score: ['sleep_score', 'sleepScore'],
+    sleep_hours: ['sleep_hours', 'sleepHours'],
+    stress_level: ['stress_level', 'stressLevel']
+  }
+
+  for (const key of aliases[field] || [field]) {
+    if (trade[key] !== null && trade[key] !== undefined) {
+      return trade[key]
+    }
+  }
+
+  return null
+}
+
+function getSleepQualityValue(metadata = {}) {
+  const value = metadata.sleep_quality ?? metadata.sleepQuality ?? metadata.quality
+  if (value === null || value === undefined) return null
+
+  const parsed = parseFloat(value)
+  if (Number.isNaN(parsed)) return null
+
+  return parsed > 1 ? parsed / 100 : parsed
+}
+
 async function loadHealthSummary() {
   try {
     // Get health data from health_data table
@@ -324,7 +351,7 @@ async function loadHealthSummary() {
       params: {
         startDate: healthStartDate.toISOString().split('T')[0],
         endDate: healthEndDate.toISOString().split('T')[0],
-        dataType: 'heartRate',
+        dataType: 'heart_rate',
         limit: 900
       }
     })
@@ -342,7 +369,7 @@ async function loadHealthSummary() {
 
     // Calculate averages from health_data
     if (healthData.length > 0) {
-      const heartRateData = healthData.filter(d => d.data_type === 'heartRate' || d.data_type === 'heart_rate')
+      const heartRateData = healthData.filter(d => d.data_type === 'heart_rate')
       const sleepData = healthData.filter(d => d.data_type === 'sleep')
 
       console.log('Filtered data - Heart rate:', heartRateData.length, 'Sleep:', sleepData.length)
@@ -354,8 +381,8 @@ async function loadHealthSummary() {
       if (sleepData.length > 0) {
         const sleepHours = sleepData.map(d => parseFloat(d.value))
         const sleepQuality = sleepData
-          .filter(d => d.metadata && (d.metadata.sleepQuality !== undefined || d.metadata.quality !== undefined))
-          .map(d => parseFloat(d.metadata.sleepQuality || d.metadata.quality))
+          .map(d => getSleepQualityValue(d.metadata))
+          .filter(value => value !== null)
 
         healthSummary.value.avgSleepHours = sleepHours.length > 0 ?
           sleepHours.reduce((a, b) => a + b, 0) / sleepHours.length : null
@@ -392,11 +419,11 @@ async function loadHealthSummary() {
 
     console.log('Trades loaded:', trades.length)
 
-    // Check if any trades have health data (check both snake_case and camelCase)
+    // Check if any trades have health data
     const tradesWithHealth = trades.filter(t =>
-      t.sleepHours || t.sleep_hours ||
-      t.heartRate || t.heart_rate ||
-      t.stressLevel || t.stress_level
+      getTradeHealthValue(t, 'sleep_hours') !== null ||
+      getTradeHealthValue(t, 'heart_rate') !== null ||
+      getTradeHealthValue(t, 'stress_level') !== null
     )
     console.log('Trades with health data:', tradesWithHealth.length)
 
@@ -408,12 +435,12 @@ async function loadHealthSummary() {
 
     // Calculate average stress level from trades
     const tradesWithStress = trades.filter(t => {
-      const stressLevel = t.stressLevel || t.stress_level
+      const stressLevel = getTradeHealthValue(t, 'stress_level')
       return stressLevel !== null && stressLevel !== undefined
     })
 
     if (tradesWithStress.length > 0) {
-      const stressLevels = tradesWithStress.map(t => parseFloat(t.stressLevel || t.stress_level))
+      const stressLevels = tradesWithStress.map(t => parseFloat(getTradeHealthValue(t, 'stress_level')))
       healthSummary.value.avgStressLevel = stressLevels.reduce((a, b) => a + b, 0) / stressLevels.length
       console.log('Avg stress level calculated:', healthSummary.value.avgStressLevel, 'from', tradesWithStress.length, 'trades')
     }
@@ -434,7 +461,7 @@ function calculateHealthConditions(trades) {
       iconColor: 'text-indigo-500',
       description: 'Sleep > 7 hours',
       filter: t => {
-        const sleepHours = t.sleepHours || t.sleep_hours
+        const sleepHours = getTradeHealthValue(t, 'sleep_hours')
         return sleepHours && parseFloat(sleepHours) >= 7
       }
     },
@@ -444,7 +471,7 @@ function calculateHealthConditions(trades) {
       iconColor: 'text-orange-500',
       description: 'Sleep < 6 hours',
       filter: t => {
-        const sleepHours = t.sleepHours || t.sleep_hours
+        const sleepHours = getTradeHealthValue(t, 'sleep_hours')
         return sleepHours && parseFloat(sleepHours) < 6
       }
     },
@@ -454,7 +481,7 @@ function calculateHealthConditions(trades) {
       iconColor: 'text-green-500',
       description: 'Stress < 30%',
       filter: t => {
-        const stressLevel = t.stressLevel || t.stress_level
+        const stressLevel = getTradeHealthValue(t, 'stress_level')
         return stressLevel !== null && stressLevel !== undefined && parseFloat(stressLevel) < 0.3
       }
     },
@@ -464,7 +491,7 @@ function calculateHealthConditions(trades) {
       iconColor: 'text-red-500',
       description: 'Stress > 60%',
       filter: t => {
-        const stressLevel = t.stressLevel || t.stress_level
+        const stressLevel = getTradeHealthValue(t, 'stress_level')
         return stressLevel !== null && stressLevel !== undefined && parseFloat(stressLevel) > 0.6
       }
     },
@@ -474,7 +501,7 @@ function calculateHealthConditions(trades) {
       iconColor: 'text-green-500',
       description: '60-80 BPM',
       filter: t => {
-        const heartRate = t.heartRate || t.heart_rate
+        const heartRate = getTradeHealthValue(t, 'heart_rate')
         return heartRate && parseFloat(heartRate) >= 60 && parseFloat(heartRate) <= 80
       }
     },
@@ -484,7 +511,7 @@ function calculateHealthConditions(trades) {
       iconColor: 'text-red-500',
       description: '> 80 BPM',
       filter: t => {
-        const heartRate = t.heartRate || t.heart_rate
+        const heartRate = getTradeHealthValue(t, 'heart_rate')
         return heartRate && parseFloat(heartRate) > 80
       }
     }

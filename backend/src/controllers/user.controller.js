@@ -3,7 +3,43 @@ const Trade = require('../models/Trade');
 const TierService = require('../services/tierService');
 const EmailService = require('../services/emailService');
 const ApiUsageService = require('../services/apiUsageService');
+const sequenzySubscriberSyncService = require('../services/sequenzySubscriberSyncService');
 const db = require('../config/database');
+const path = require('path');
+const fs = require('fs').promises;
+const imageProcessor = require('../utils/imageProcessor');
+
+const PROTECTED_EMAIL = (process.env.DEMO_EMAIL || 'demo@example.com').toLowerCase();
+
+// URL prefix exposed to clients. Files are stored on disk at uploads/avatars
+// but served through a controller GET route (see getAvatar) so vite's /api
+// proxy reaches them in dev and so we don't need a separate express.static
+// mount. The legacy '/uploads/avatars/' prefix is still accepted when
+// resolving a stored URL back to a file path on delete — in case any record
+// was written before the switch — but new uploads use the API-routed form.
+const AVATAR_URL_PREFIX = '/api/users/avatar/';
+const LEGACY_AVATAR_URL_PREFIX = '/uploads/avatars/';
+
+function getAvatarUploadsDir() {
+  return path.join(__dirname, '../../uploads/avatars');
+}
+
+function getAvatarPathFromUrl(avatarUrl) {
+  if (!avatarUrl || typeof avatarUrl !== 'string') {
+    return null;
+  }
+
+  if (!avatarUrl.startsWith(AVATAR_URL_PREFIX) && !avatarUrl.startsWith(LEGACY_AVATAR_URL_PREFIX)) {
+    return null;
+  }
+
+  const filename = path.basename(avatarUrl);
+  if (!filename || filename === '.' || filename === path.sep) {
+    return null;
+  }
+
+  return path.join(getAvatarUploadsDir(), filename);
+}
 
 const userController = {
   /**
@@ -76,9 +112,36 @@ const userController = {
       const user = await User.findById(req.user.id);
       const settings = await User.getSettings(req.user.id);
 
+      const safeUser = user ? {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        full_name: user.full_name,
+        avatar_url: user.avatar_url,
+        role: user.role,
+        is_verified: user.is_verified,
+        admin_approved: user.admin_approved,
+        is_active: user.is_active,
+        timezone: user.timezone,
+        two_factor_enabled: user.two_factor_enabled,
+        tier: user.tier,
+        marketing_consent: user.marketing_consent,
+        created_at: user.created_at,
+        updated_at: user.updated_at,
+        last_login_at: user.last_login_at
+      } : null;
+
+      const safeSettings = settings
+        ? {
+            ...settings,
+            ai_api_key: settings.ai_api_key ? '***' : '',
+            cusip_ai_api_key: settings.cusip_ai_api_key ? '***' : ''
+          }
+        : settings;
+
       res.json({
-        user,
-        settings
+        user: safeUser,
+        settings: safeSettings
       });
     } catch (error) {
       next(error);
@@ -88,6 +151,7 @@ const userController = {
   async updateProfile(req, res, next) {
     try {
       const { fullName, timezone, email } = req.body;
+      const previousEmail = req.user.email;
       
       const updates = {};
       if (fullName !== undefined) updates.full_name = fullName;
@@ -105,6 +169,9 @@ const userController = {
       }
 
       const user = await User.update(req.user.id, updates);
+      sequenzySubscriberSyncService.queueSyncUserById(req.user.id, {
+        previousEmail: email !== undefined && email !== previousEmail ? previousEmail : undefined
+      });
       
       const response = { user };
       if (email !== undefined && email !== req.user.email) {
@@ -124,8 +191,22 @@ const userController = {
         return res.status(400).json({ error: 'No file uploaded' });
       }
 
-      const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+      const existingUser = await User.findById(req.user.id);
+      await imageProcessor.validateImage(req.file.buffer);
+
+      const processedImage = await imageProcessor.processAvatar(
+        req.file.buffer,
+        req.file.originalname,
+        req.user.id
+      );
+      const savedImage = await imageProcessor.saveImage(processedImage, getAvatarUploadsDir());
+      const avatarUrl = `${AVATAR_URL_PREFIX}${savedImage.filename}`;
       const user = await User.update(req.user.id, { avatar_url: avatarUrl });
+
+      const previousAvatarPath = getAvatarPathFromUrl(existingUser?.avatar_url);
+      if (previousAvatarPath && existingUser.avatar_url !== avatarUrl) {
+        await imageProcessor.deleteImage(previousAvatarPath);
+      }
       
       res.json({ user });
     } catch (error) {
@@ -135,8 +216,49 @@ const userController = {
 
   async deleteAvatar(req, res, next) {
     try {
+      const existingUser = await User.findById(req.user.id);
       const user = await User.update(req.user.id, { avatar_url: null });
+      const avatarPath = getAvatarPathFromUrl(existingUser?.avatar_url);
+
+      if (avatarPath) {
+        await imageProcessor.deleteImage(avatarPath);
+      }
+
       res.json({ user });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // Public route — avatars are shown on public profiles, so no auth.
+  // Mirrors the trade/diary image-serving pattern: sanitize the filename via
+  // path.basename, resolve under the avatars directory, and refuse anything
+  // that escapes (defense in depth even though basename already strips '..').
+  async getAvatar(req, res, next) {
+    try {
+      const rawFilename = req.params.filename || '';
+      const sanitizedFilename = path.basename(rawFilename);
+      if (!sanitizedFilename || sanitizedFilename === '.' || sanitizedFilename === '..') {
+        return res.status(400).json({ error: 'Invalid filename' });
+      }
+
+      const uploadsDir = path.resolve(getAvatarUploadsDir());
+      const resolvedPath = path.resolve(path.join(uploadsDir, sanitizedFilename));
+
+      if (!resolvedPath.startsWith(uploadsDir + path.sep) && resolvedPath !== uploadsDir) {
+        return res.status(400).json({ error: 'Invalid file path' });
+      }
+
+      try {
+        await fs.access(resolvedPath);
+      } catch (_) {
+        return res.status(404).json({ error: 'Avatar not found' });
+      }
+
+      // Avatars are always processed to WebP by imageProcessor.processAvatar.
+      res.setHeader('Content-Type', 'image/webp');
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      res.sendFile(resolvedPath);
     } catch (error) {
       next(error);
     }
@@ -145,6 +267,10 @@ const userController = {
   async changePassword(req, res, next) {
     try {
       const { currentPassword, newPassword } = req.body;
+
+      if (req.user.email.toLowerCase() === PROTECTED_EMAIL) {
+        return res.status(403).json({ error: 'This account is protected. Contact an administrator to change the password.' });
+      }
 
       const user = await User.findByEmail(req.user.email);
       const isValid = await User.verifyPassword(user, currentPassword);
@@ -270,6 +396,8 @@ const userController = {
         return res.status(404).json({ error: 'User not found' });
       }
 
+      sequenzySubscriberSyncService.queueSyncUserById(userId);
+
       res.json({ 
         message: 'User approved successfully',
         user 
@@ -299,6 +427,7 @@ const userController = {
       }
 
       const user = await User.updateRole(userId, role);
+      sequenzySubscriberSyncService.queueSyncUserById(userId);
       res.json({ user, message: `User role updated to ${role}` });
     } catch (error) {
       next(error);
@@ -322,6 +451,7 @@ const userController = {
       }
 
       const user = await User.updateStatus(userId, isActive);
+      sequenzySubscriberSyncService.queueSyncUserById(userId);
       res.json({ user, message: `User ${isActive ? 'activated' : 'deactivated'}` });
     } catch (error) {
       next(error);
@@ -344,6 +474,7 @@ const userController = {
 
       // Fetch updated user to return
       const user = await User.findByIdForAdmin(userId);
+      sequenzySubscriberSyncService.queueSyncUserById(userId);
       res.json({
         user,
         message: `Marketing consent ${marketingConsent ? 'enabled' : 'disabled'} for user`
@@ -376,6 +507,7 @@ const userController = {
         }
       }
 
+      sequenzySubscriberSyncService.queueDeleteSubscriber(targetUser.email);
       await User.deleteUser(userId, { deletionType: 'admin', deletedByAdminId: req.user.id });
       res.json({ message: `User ${targetUser.username} has been permanently deleted` });
     } catch (error) {
@@ -391,6 +523,8 @@ const userController = {
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
       }
+
+      sequenzySubscriberSyncService.queueSyncUserById(userId);
       
       res.json({ user, message: 'User verified successfully' });
     } catch (error) {
@@ -412,6 +546,8 @@ const userController = {
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
       }
+
+      sequenzySubscriberSyncService.queueSyncUserById(userId);
 
       res.json({ user, message: `User tier updated to ${tier}` });
     } catch (error) {
@@ -725,6 +861,10 @@ const userController = {
       const { password } = req.body;
       const userId = req.user.id;
 
+      if (req.user.email.toLowerCase() === PROTECTED_EMAIL) {
+        return res.status(403).json({ error: 'This account is protected and cannot be deleted.' });
+      }
+
       if (!password) {
         return res.status(400).json({ error: 'Password is required to confirm account deletion' });
       }
@@ -750,6 +890,7 @@ const userController = {
       }
 
       // Delete the user account (self-deletion)
+      sequenzySubscriberSyncService.queueDeleteSubscriber(user.email);
       await User.deleteUser(userId, { deletionType: 'self', deletedByAdminId: null });
 
       console.log(`[INFO] User ${user.username} (ID: ${userId}) deleted their own account`);

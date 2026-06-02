@@ -1,0 +1,13 @@
+packages:
+  - frontend
+  - backend
+
+minimumReleaseAge: 20160
+
+onlyBuiltDependencies:
+  - '@scarf/scarf'
+  - bcrypt
+  - esbuild
+  - protobufjs
+  - sharp
+  - vue-demi

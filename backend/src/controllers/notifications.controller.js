@@ -1,11 +1,25 @@
 const logger = require('../utils/logger');
 const db = require('../config/database');
-const { v4: uuidv4 } = require('uuid');
+const { uuidv4 } = require('../utils/uuid');
 const {
   getSseFanoutStatus,
   publishSseNotification,
   startSseFanout
 } = require('../services/sseFanoutService');
+
+const LEGACY_NOTIFICATION_TYPES = new Set(['price_alert', 'trade_comment']);
+
+async function notificationsTableExists() {
+  const result = await db.query(`
+    SELECT EXISTS (
+      SELECT FROM information_schema.tables
+      WHERE table_schema = 'public'
+        AND table_name = 'notifications'
+    ) AS exists
+  `);
+
+  return result.rows[0]?.exists === true;
+}
 
 // Store active SSE connections with metadata
 const sseConnections = new Map();
@@ -99,7 +113,7 @@ const notificationsController = {
       const userId = req.user.id;
       const userTier = req.user.tier;
       const billingEnabled = req.user.billingEnabled;
-      
+
       // Only allow Pro users (or all users if billing is disabled)
       if (billingEnabled && userTier !== 'pro') {
         return res.status(403).json({
@@ -160,7 +174,7 @@ const notificationsController = {
       // Send recent unread notifications
       try {
         const recentNotifications = await db.query(`
-          SELECT 
+          SELECT
             an.id,
             an.symbol,
             an.notification_type,
@@ -172,8 +186,7 @@ const notificationsController = {
             pa.alert_type
           FROM alert_notifications an
           LEFT JOIN price_alerts pa ON an.price_alert_id = pa.id
-          WHERE an.user_id = $1 
-          AND an.deleted_at IS NULL
+          WHERE an.user_id = $1
           AND an.sent_at > NOW() - INTERVAL '1 hour'
           ORDER BY an.sent_at DESC
           LIMIT 5
@@ -245,7 +258,7 @@ const notificationsController = {
       const userId = req.user.id;
       const userTier = req.user.tier;
       const billingEnabled = req.user.billingEnabled;
-      
+
       // Only allow Pro users (or all users if billing is disabled)
       if (billingEnabled && userTier !== 'pro') {
         return res.status(403).json({
@@ -265,7 +278,7 @@ const notificationsController = {
       };
 
       const sent = await notificationsController.sendNotificationToUser(userId, testNotification);
-      
+
       res.json({
         success: true,
         message: 'Test notification sent',
@@ -280,15 +293,20 @@ const notificationsController = {
   async sendNotificationToUser(userId, notification) {
     try {
       const eventData = normalizeSseEvent(notification);
-      const localSent = sendLocalSseMessage(userId, eventData);
-      const fanoutSent = await publishSseNotification(userId, eventData);
+      let fanoutSent = false;
 
-      if (localSent || fanoutSent) {
-        logger.logDebug(`Sent real-time notification to user ${userId}:`, eventData.type);
-        return true;
+      try {
+        fanoutSent = await publishSseNotification(userId, eventData);
+      } catch (error) {
+        logger.logError(`Error publishing SSE notification for user ${userId}:`, error);
       }
 
-      return false;
+      const localSent = sendLocalSseMessage(userId, eventData);
+      if (localSent) {
+        logger.logDebug(`Sent real-time notification to user ${userId}:`, eventData.type);
+      }
+
+      return localSent || fanoutSent;
     } catch (error) {
       logger.logError(`Error sending notification to user ${userId}:`, error);
       // Remove broken connection
@@ -301,102 +319,151 @@ const notificationsController = {
   async getUserNotifications(req, res, next) {
     try {
       const userId = req.user.id;
-      const { page = 1, limit = 20, unread_only = false } = req.query;
+      const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+      const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
+      const unreadOnly = req.query.unread_only === 'true';
       const offset = (page - 1) * limit;
+      const hasNotificationsTable = await notificationsTableExists();
 
-      // Get price alert notifications with read status
-      const alertNotificationsQuery = `
-        SELECT 
-          an.id,
-          'price_alert' as type,
-          an.symbol,
-          an.message,
-          an.trigger_price,
-          an.target_price,
-          an.sent_at as created_at,
-          CASE WHEN nrs.id IS NOT NULL THEN true ELSE false END as is_read
-        FROM alert_notifications an
-        LEFT JOIN notification_read_status nrs ON (
-          nrs.user_id = $1 
-          AND nrs.notification_type = 'price_alert' 
-          AND nrs.notification_id = an.id
+      const generalNotificationsUnion = hasNotificationsTable ? `
+          UNION ALL
+          SELECT
+            n.id,
+            n.type,
+            CASE
+              WHEN n.type = 'achievement_earned' THEN COALESCE(n.data->'achievement'->>'name', 'Achievement')
+              WHEN n.type = 'level_up' THEN CONCAT('Level ', COALESCE(n.data->>'newLevel', ''))
+              WHEN n.type IN ('challenge_joined', 'challenge_completed') THEN COALESCE(n.data->'challenge'->>'name', 'Challenge')
+              WHEN n.type = 'leaderboard_ranking' THEN COALESCE(n.data->>'leaderboard', 'Leaderboard')
+              WHEN n.type = 'behavioral_alert' THEN 'Behavioral Alert'
+              WHEN n.type = 'portfolio_alert' THEN COALESCE(n.data->>'symbol', 'Portfolio')
+              ELSE 'Notification'
+            END AS symbol,
+            CASE
+              WHEN n.type = 'achievement_earned' THEN CONCAT('Achievement unlocked: ', COALESCE(n.data->'achievement'->>'name', 'New achievement'))
+              WHEN n.type = 'level_up' THEN CONCAT('You reached Level ', COALESCE(n.data->>'newLevel', ''))
+              WHEN n.type = 'challenge_joined' THEN CONCAT('Joined challenge: ', COALESCE(n.data->'challenge'->>'name', 'Challenge'))
+              WHEN n.type = 'challenge_completed' THEN CONCAT('Completed challenge: ', COALESCE(n.data->'challenge'->>'name', 'Challenge'))
+              WHEN n.type = 'leaderboard_ranking' THEN CONCAT('Leaderboard update: ', COALESCE(n.data->>'leaderboard', 'Leaderboard'))
+              WHEN n.type = 'behavioral_alert' THEN COALESCE(n.data->>'message', 'Behavioral alert')
+              WHEN n.type = 'portfolio_alert' THEN COALESCE(n.data->>'message', 'Portfolio alert')
+              ELSE COALESCE(n.data->>'message', 'Notification')
+            END AS message,
+            NULL::numeric AS trigger_price,
+            NULL::numeric AS target_price,
+            NULL::text AS comment_text,
+            NULL::uuid AS trade_id,
+            n.created_at,
+            COALESCE(n.read, false) AS is_read,
+            n.data AS metadata
+          FROM notifications n
+          WHERE n.user_id = $1
+            AND n.created_at > NOW() - INTERVAL '30 days'
+            ${unreadOnly ? 'AND COALESCE(n.read, false) = false' : ''}
+      ` : '';
+
+      const notificationsQuery = `
+        WITH combined_notifications AS (
+          SELECT
+            an.id,
+            'price_alert' AS type,
+            an.symbol,
+            an.message,
+            an.trigger_price,
+            an.target_price,
+            NULL::text AS comment_text,
+            NULL::uuid AS trade_id,
+            an.sent_at AS created_at,
+            CASE WHEN nrs.id IS NOT NULL THEN true ELSE false END AS is_read,
+            NULL::jsonb AS metadata
+          FROM alert_notifications an
+          LEFT JOIN notification_read_status nrs ON (
+            nrs.user_id = $1
+            AND nrs.notification_type = 'price_alert'
+            AND nrs.notification_id = an.id
+          )
+          WHERE an.user_id = $1
+            AND an.deleted_at IS NULL
+            ${unreadOnly ? 'AND nrs.id IS NULL' : ''}
+
+          UNION ALL
+
+          SELECT
+            tc.id,
+            'trade_comment' AS type,
+            t.symbol,
+            CONCAT(u.username, ' commented on your ', t.symbol, ' trade') AS message,
+            NULL::numeric AS trigger_price,
+            NULL::numeric AS target_price,
+            tc.comment AS comment_text,
+            t.id AS trade_id,
+            tc.created_at,
+            CASE WHEN nrs.id IS NOT NULL THEN true ELSE false END AS is_read,
+            NULL::jsonb AS metadata
+          FROM trade_comments tc
+          JOIN trades t ON tc.trade_id = t.id
+          JOIN users u ON tc.user_id = u.id
+          LEFT JOIN notification_read_status nrs ON (
+            nrs.user_id = $1
+            AND nrs.notification_type = 'trade_comment'
+            AND nrs.notification_id = tc.id
+          )
+          WHERE t.user_id = $1
+            AND tc.user_id != $1
+            AND t.is_public = true
+            AND tc.deleted_at IS NULL
+            ${unreadOnly ? 'AND nrs.id IS NULL' : ''}
+          ${generalNotificationsUnion}
         )
-        WHERE an.user_id = $1 
-          AND an.deleted_at IS NULL
-          ${unread_only === 'true' ? 'AND nrs.id IS NULL' : ''}
-        ORDER BY an.sent_at DESC
+        SELECT *
+        FROM combined_notifications
+        ORDER BY created_at DESC
         LIMIT $2 OFFSET $3
       `;
-      
-      // Get trade comments notifications with read status
-      const commentsQuery = `
-        SELECT 
-          tc.id,
-          'trade_comment' as type,
-          t.symbol,
-          CONCAT(u.username, ' commented on your ', t.symbol, ' trade') as message,
-          tc.comment as comment_text,
-          t.id as trade_id,
-          tc.created_at,
-          CASE WHEN nrs.id IS NOT NULL THEN true ELSE false END as is_read
-        FROM trade_comments tc
-        JOIN trades t ON tc.trade_id = t.id
-        JOIN users u ON tc.user_id = u.id
-        LEFT JOIN notification_read_status nrs ON (
-          nrs.user_id = $1 
-          AND nrs.notification_type = 'trade_comment' 
-          AND nrs.notification_id = tc.id
-        )
-        WHERE t.user_id = $1 
-          AND tc.user_id != $1
-          AND t.is_public = true
-          AND tc.deleted_at IS NULL
-          AND nrs.deleted_at IS NULL
-          ${unread_only === 'true' ? 'AND nrs.id IS NULL' : ''}
-        ORDER BY tc.created_at DESC
-        LIMIT $2 OFFSET $3
-      `;
 
-      const [alertNotifications, commentNotifications] = await Promise.all([
-        db.query(alertNotificationsQuery, [userId, limit, offset]),
-        db.query(commentsQuery, [userId, limit, offset])
-      ]);
-
-      // Combine and sort all notifications
-      const combinedNotifications = [
-        ...alertNotifications.rows,
-        ...commentNotifications.rows
-      ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-       .slice(0, limit);
-
-      // Get total count for pagination
       const countQuery = `
-        SELECT 
-          (SELECT COUNT(*) FROM alert_notifications an
+        SELECT
+          (SELECT COUNT(*)
+           FROM alert_notifications an
            LEFT JOIN notification_read_status nrs ON (
              nrs.user_id = $1 AND nrs.notification_type = 'price_alert' AND nrs.notification_id = an.id
            )
-           WHERE an.user_id = $1 AND an.deleted_at IS NULL
-           ${unread_only === 'true' ? 'AND nrs.id IS NULL' : ''}
+           WHERE an.user_id = $1
+             AND an.deleted_at IS NULL
+             ${unreadOnly ? 'AND nrs.id IS NULL' : ''}
           ) +
-          (SELECT COUNT(*) FROM trade_comments tc 
-           JOIN trades t ON tc.trade_id = t.id 
+          (SELECT COUNT(*)
+           FROM trade_comments tc
+           JOIN trades t ON tc.trade_id = t.id
            LEFT JOIN notification_read_status nrs ON (
              nrs.user_id = $1 AND nrs.notification_type = 'trade_comment' AND nrs.notification_id = tc.id
            )
-           WHERE t.user_id = $1 AND tc.user_id != $1 AND t.is_public = true AND tc.deleted_at IS NULL AND nrs.deleted_at IS NULL
-           ${unread_only === 'true' ? 'AND nrs.id IS NULL' : ''}
-          ) as total
+           WHERE t.user_id = $1
+             AND tc.user_id != $1
+             AND t.is_public = true
+             AND tc.deleted_at IS NULL
+             ${unreadOnly ? 'AND nrs.id IS NULL' : ''}
+          ) +
+          ${hasNotificationsTable ? `(SELECT COUNT(*)
+             FROM notifications n
+             WHERE n.user_id = $1
+               AND n.created_at > NOW() - INTERVAL '30 days'
+               ${unreadOnly ? 'AND COALESCE(n.read, false) = false' : ''}
+          )` : '0'} AS total
       `;
-      const countResult = await db.query(countQuery, [userId]);
+
+      const [notificationsResult, countResult] = await Promise.all([
+        db.query(notificationsQuery, [userId, limit, offset]),
+        db.query(countQuery, [userId])
+      ]);
       const total = parseInt(countResult.rows[0].total);
 
       res.json({
         success: true,
-        data: combinedNotifications,
+        data: notificationsResult.rows,
         pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
+          page,
+          limit,
           total,
           totalPages: Math.ceil(total / limit)
         }
@@ -420,18 +487,32 @@ const notificationsController = {
         });
       }
 
-      // Insert read status for each notification
-      const insertPromises = notifications.map(notification => {
-        return db.query(`
-          INSERT INTO notification_read_status (user_id, notification_type, notification_id)
-          VALUES ($1, $2, $3)
-          ON CONFLICT (user_id, notification_type, notification_id) 
-          DO UPDATE SET read_at = CURRENT_TIMESTAMP
-        `, [userId, notification.type, notification.id]);
-      });
+      const legacyNotifications = notifications.filter(notification => LEGACY_NOTIFICATION_TYPES.has(notification.type));
+      const generalNotifications = notifications.filter(notification => !LEGACY_NOTIFICATION_TYPES.has(notification.type));
+      const queries = [];
 
-      await Promise.all(insertPromises);
-      
+      if (legacyNotifications.length > 0) {
+        queries.push(Promise.all(
+          legacyNotifications.map(notification => db.query(`
+            INSERT INTO notification_read_status (user_id, notification_type, notification_id)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (user_id, notification_type, notification_id)
+            DO UPDATE SET read_at = CURRENT_TIMESTAMP
+          `, [userId, notification.type, notification.id]))
+        ));
+      }
+
+      if (generalNotifications.length > 0 && await notificationsTableExists()) {
+        queries.push(db.query(`
+          UPDATE notifications
+          SET read = true
+          WHERE user_id = $1
+            AND id = ANY($2::uuid[])
+        `, [userId, generalNotifications.map(notification => notification.id)]));
+      }
+
+      await Promise.all(queries);
+
       res.json({
         success: true,
         message: `${notifications.length} notifications marked as read`
@@ -446,46 +527,56 @@ const notificationsController = {
   async markAllNotificationsAsRead(req, res, next) {
     try {
       const userId = req.user.id;
+      const queries = [];
 
       // Mark all unread price alerts as read
-      await db.query(`
+      queries.push(db.query(`
         INSERT INTO notification_read_status (user_id, notification_type, notification_id)
         SELECT $1, 'price_alert', an.id
         FROM alert_notifications an
         LEFT JOIN notification_read_status nrs ON (
-          nrs.user_id = $1 
-          AND nrs.notification_type = 'price_alert' 
+          nrs.user_id = $1
+          AND nrs.notification_type = 'price_alert'
           AND nrs.notification_id = an.id
         )
-        WHERE an.user_id = $1 
+        WHERE an.user_id = $1
           AND an.deleted_at IS NULL
           AND nrs.id IS NULL
-          AND an.sent_at > NOW() - INTERVAL '30 days'
-        ON CONFLICT (user_id, notification_type, notification_id) 
+        ON CONFLICT (user_id, notification_type, notification_id)
         DO UPDATE SET read_at = CURRENT_TIMESTAMP
-      `, [userId]);
+      `, [userId]));
 
-      // Mark all unread trade comments as read  
-      await db.query(`
+      // Mark all unread trade comments as read
+      queries.push(db.query(`
         INSERT INTO notification_read_status (user_id, notification_type, notification_id)
         SELECT $1, 'trade_comment', tc.id
         FROM trade_comments tc
         JOIN trades t ON tc.trade_id = t.id
         LEFT JOIN notification_read_status nrs ON (
-          nrs.user_id = $1 
-          AND nrs.notification_type = 'trade_comment' 
+          nrs.user_id = $1
+          AND nrs.notification_type = 'trade_comment'
           AND nrs.notification_id = tc.id
         )
-        WHERE t.user_id = $1 
+        WHERE t.user_id = $1
           AND tc.user_id != $1
           AND t.is_public = true
           AND tc.deleted_at IS NULL
           AND nrs.id IS NULL
-          AND tc.created_at > NOW() - INTERVAL '30 days'
-        ON CONFLICT (user_id, notification_type, notification_id) 
+        ON CONFLICT (user_id, notification_type, notification_id)
         DO UPDATE SET read_at = CURRENT_TIMESTAMP
-      `, [userId]);
-      
+      `, [userId]));
+
+      if (await notificationsTableExists()) {
+        queries.push(db.query(`
+          UPDATE notifications
+          SET read = true
+          WHERE user_id = $1
+            AND COALESCE(read, false) = false
+        `, [userId]));
+      }
+
+      await Promise.all(queries);
+
       res.json({
         success: true,
         message: 'All notifications marked as read'
@@ -500,47 +591,49 @@ const notificationsController = {
   async getUnreadCount(req, res, next) {
     try {
       const userId = req.user.id;
+      const countQueries = [
+        db.query(`
+          SELECT COUNT(*) as count
+          FROM alert_notifications an
+          LEFT JOIN notification_read_status nrs ON (
+            nrs.user_id = $1
+            AND nrs.notification_type = 'price_alert'
+            AND nrs.notification_id = an.id
+          )
+          WHERE an.user_id = $1
+            AND an.deleted_at IS NULL
+            AND nrs.id IS NULL
+        `, [userId]),
+        db.query(`
+          SELECT COUNT(*) as count
+          FROM trade_comments tc
+          JOIN trades t ON tc.trade_id = t.id
+          LEFT JOIN notification_read_status nrs ON (
+            nrs.user_id = $1
+            AND nrs.notification_type = 'trade_comment'
+            AND nrs.notification_id = tc.id
+          )
+          WHERE t.user_id = $1
+            AND tc.user_id != $1
+            AND t.is_public = true
+            AND tc.deleted_at IS NULL
+            AND nrs.id IS NULL
+        `, [userId])
+      ];
 
-      // Count unread alert notifications
-      const alertCountQuery = `
-        SELECT COUNT(*) as count
-        FROM alert_notifications an
-        LEFT JOIN notification_read_status nrs ON (
-          nrs.user_id = $1 
-          AND nrs.notification_type = 'price_alert' 
-          AND nrs.notification_id = an.id
-        )
-        WHERE an.user_id = $1 
-          AND an.deleted_at IS NULL
-          AND nrs.id IS NULL
-          AND an.sent_at > NOW() - INTERVAL '30 days'
-      `;
+      if (await notificationsTableExists()) {
+        countQueries.push(db.query(`
+          SELECT COUNT(*) AS count
+          FROM notifications
+          WHERE user_id = $1
+            AND COALESCE(read, false) = false
+        `, [userId]));
+      }
 
-      // Count unread comment notifications
-      const commentCountQuery = `
-        SELECT COUNT(*) as count
-        FROM trade_comments tc
-        JOIN trades t ON tc.trade_id = t.id
-        LEFT JOIN notification_read_status nrs ON (
-          nrs.user_id = $1 
-          AND nrs.notification_type = 'trade_comment' 
-          AND nrs.notification_id = tc.id
-        )
-        WHERE t.user_id = $1 
-          AND tc.user_id != $1
-          AND t.is_public = true
-          AND tc.deleted_at IS NULL
-          AND nrs.deleted_at IS NULL
-          AND nrs.id IS NULL
-          AND tc.created_at > NOW() - INTERVAL '30 days'
-      `;
-
-      const [alertCount, commentCount] = await Promise.all([
-        db.query(alertCountQuery, [userId]),
-        db.query(commentCountQuery, [userId])
-      ]);
-
-      const totalUnread = parseInt(alertCount.rows[0].count) + parseInt(commentCount.rows[0].count);
+      const [alertCount, commentCount, generalCount] = await Promise.all(countQueries);
+      const totalUnread = parseInt(alertCount.rows[0].count)
+        + parseInt(commentCount.rows[0].count)
+        + parseInt(generalCount?.rows?.[0]?.count || 0);
 
       res.json({
         success: true,
@@ -565,15 +658,21 @@ const notificationsController = {
         });
       }
 
-      // Soft delete notifications by setting deleted_at timestamp
+      const hasGeneralNotifications = notifications.some(notification => !LEGACY_NOTIFICATION_TYPES.has(notification.type));
+      const hasNotificationsTable = hasGeneralNotifications ? await notificationsTableExists() : false;
+
+      // Soft delete legacy notifications. General notifications are user-owned rows
+      // in the notifications table, so they can be safely removed directly.
       const deletePromises = notifications.map(notification => {
         if (notification.type === 'price_alert') {
           return db.query(`
-            UPDATE alert_notifications 
-            SET deleted_at = CURRENT_TIMESTAMP 
+            UPDATE alert_notifications
+            SET deleted_at = CURRENT_TIMESTAMP
             WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
           `, [notification.id, userId]);
-        } else if (notification.type === 'trade_comment') {
+        }
+
+        if (notification.type === 'trade_comment') {
           return db.query(`
             INSERT INTO notification_read_status (
               user_id, notification_type, notification_id, read_at, deleted_at
@@ -592,11 +691,19 @@ const notificationsController = {
               deleted_at = CURRENT_TIMESTAMP
           `, [notification.id, userId]);
         }
+
+        if (hasNotificationsTable) {
+          return db.query(`
+            DELETE FROM notifications
+            WHERE id = $1 AND user_id = $2
+          `, [notification.id, userId]);
+        }
+
         return Promise.resolve();
       });
 
       await Promise.all(deletePromises);
-      
+
       res.json({
         success: true,
         message: `${notifications.length} notifications deleted`
@@ -607,18 +714,62 @@ const notificationsController = {
     }
   },
 
+  async clearAllNotifications(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const hasNotificationsTable = await notificationsTableExists();
+
+      const [priceAlertsResult, tradeCommentsResult, generalNotificationsResult] = await Promise.all([
+        db.query(`
+          UPDATE alert_notifications
+          SET deleted_at = CURRENT_TIMESTAMP
+          WHERE user_id = $1 AND deleted_at IS NULL
+        `, [userId]),
+        db.query(`
+          UPDATE trade_comments
+          SET deleted_at = CURRENT_TIMESTAMP
+          WHERE id IN (
+            SELECT tc.id
+            FROM trade_comments tc
+            JOIN trades t ON tc.trade_id = t.id
+            WHERE t.user_id = $1
+              AND tc.user_id != $1
+              AND tc.deleted_at IS NULL
+          )
+        `, [userId]),
+        hasNotificationsTable
+          ? db.query('DELETE FROM notifications WHERE user_id = $1', [userId])
+          : Promise.resolve({ rowCount: 0 })
+      ]);
+
+      const deletedCount =
+        (priceAlertsResult.rowCount || 0) +
+        (tradeCommentsResult.rowCount || 0) +
+        (generalNotificationsResult.rowCount || 0);
+
+      res.json({
+        success: true,
+        message: `${deletedCount} notifications deleted`
+      });
+    } catch (error) {
+      logger.logError('Error clearing all notifications:', error);
+      next(error);
+    }
+  },
+
   // Send enrichment status update to specific user
   async sendEnrichmentUpdateToUser(userId, enrichmentData) {
     try {
-      const eventData = {
-        type: 'enrichment_update',
-        data: enrichmentData,
-        timestamp: new Date().toISOString()
-      };
-      const localSent = sendLocalSseMessage(userId, eventData, 'enrichment_send_error');
-      const fanoutSent = await publishSseNotification(userId, eventData);
+      const connectionData = sseConnections.get(userId);
 
-      if (localSent || fanoutSent) {
+      if (connectionData && connectionData.res && !connectionData.res.destroyed && !connectionData.res.writableEnded) {
+        const eventData = {
+          type: 'enrichment_update',
+          data: enrichmentData,
+          timestamp: new Date().toISOString()
+        };
+
+        connectionData.res.write(`data: ${JSON.stringify(eventData)}\n\n`);
         logger.logDebug(`Sent enrichment update to user ${userId}`);
         return true;
       }
@@ -700,7 +851,7 @@ const notificationsController = {
   async sendTestNotification(req, res, next) {
     try {
       const userId = req.user.id;
-      
+
       const testNotification = {
         id: 'test',
         symbol: 'TEST',
@@ -710,7 +861,7 @@ const notificationsController = {
       };
 
       const sent = await notificationsController.sendNotificationToUser(userId, testNotification);
-      
+
       res.json({
         success: true,
         data: {
@@ -731,14 +882,14 @@ const notificationsController = {
     try {
       const userId = req.user.id;
       const { device_token, platform, environment } = req.body;
-      
+
       if (!device_token || !platform) {
         return res.status(400).json({
           success: false,
           error: 'Device token and platform are required'
         });
       }
-      
+
       // Validate platform
       if (!['ios', 'android'].includes(platform.toLowerCase())) {
         return res.status(400).json({
@@ -746,7 +897,7 @@ const notificationsController = {
           error: 'Platform must be ios or android'
         });
       }
-      
+
       // Validate environment for iOS
       if (platform.toLowerCase() === 'ios' && environment && !['development', 'production'].includes(environment.toLowerCase())) {
         return res.status(400).json({
@@ -754,7 +905,7 @@ const notificationsController = {
           error: 'Environment must be development or production for iOS'
         });
       }
-      
+
       const query = `
         INSERT INTO device_tokens (id, user_id, device_token, platform, environment, active)
         VALUES ($1, $2, $3, $4, $5, $6)
@@ -765,15 +916,15 @@ const notificationsController = {
           updated_at = CURRENT_TIMESTAMP
         RETURNING id, device_token, platform, environment, created_at
       `;
-      
+
       const tokenId = uuidv4();
       const result = await db.query(query, [
-        tokenId, userId, device_token, platform.toLowerCase(), 
+        tokenId, userId, device_token, platform.toLowerCase(),
         environment?.toLowerCase() || 'production', true
       ]);
-      
+
       console.log(`Device token registered for user ${userId}: ${platform} (${environment || 'production'})`);
-      
+
       res.json({
         success: true,
         message: 'Device token registered successfully',
@@ -789,9 +940,9 @@ const notificationsController = {
   async getNotificationPreferences(req, res, next) {
     try {
       const userId = req.user.id;
-      
+
       const query = `
-        SELECT 
+        SELECT
           price_alerts_enabled,
           earnings_enabled,
           news_enabled,
@@ -799,28 +950,28 @@ const notificationsController = {
           push_notifications,
           created_at,
           updated_at
-        FROM notification_preferences 
+        FROM notification_preferences
         WHERE user_id = $1
       `;
-      
+
       const result = await db.query(query, [userId]);
-      
+
       if (result.rows.length === 0) {
         // Create default preferences if none exist
         const defaultQuery = `
           INSERT INTO notification_preferences (
-            id, user_id, price_alerts_enabled, earnings_enabled, 
+            id, user_id, price_alerts_enabled, earnings_enabled,
             news_enabled, email_notifications, push_notifications
           )
           VALUES ($1, $2, $3, $4, $5, $6, $7)
           RETURNING price_alerts_enabled, earnings_enabled, news_enabled,
                    email_notifications, push_notifications, created_at, updated_at
         `;
-        
+
         const defaultResult = await db.query(defaultQuery, [
           uuidv4(), userId, true, true, false, true, true
         ]);
-        
+
         res.json({
           success: true,
           preferences: defaultResult.rows[0]
@@ -841,25 +992,25 @@ const notificationsController = {
   async updateNotificationPreferences(req, res, next) {
     try {
       const userId = req.user.id;
-      const { 
-        price_alerts_enabled, 
-        earnings_enabled, 
+      const {
+        price_alerts_enabled,
+        earnings_enabled,
         news_enabled,
         email_notifications,
         push_notifications
       } = req.body;
-      
+
       // Check if preferences exist
       const existsQuery = 'SELECT id FROM notification_preferences WHERE user_id = $1';
       const existsResult = await db.query(existsQuery, [userId]);
-      
+
       let query, values;
-      
+
       if (existsResult.rows.length === 0) {
         // Create new preferences
         query = `
           INSERT INTO notification_preferences (
-            id, user_id, price_alerts_enabled, earnings_enabled, 
+            id, user_id, price_alerts_enabled, earnings_enabled,
             news_enabled, email_notifications, push_notifications
           )
           VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -867,7 +1018,7 @@ const notificationsController = {
                    email_notifications, push_notifications, updated_at
         `;
         values = [
-          uuidv4(), userId, 
+          uuidv4(), userId,
           price_alerts_enabled ?? true,
           earnings_enabled ?? true,
           news_enabled ?? false,
@@ -879,7 +1030,7 @@ const notificationsController = {
         const updates = [];
         values = [];
         let paramIndex = 1;
-        
+
         if (price_alerts_enabled !== undefined) {
           updates.push(`price_alerts_enabled = $${paramIndex++}`);
           values.push(price_alerts_enabled);
@@ -900,27 +1051,27 @@ const notificationsController = {
           updates.push(`push_notifications = $${paramIndex++}`);
           values.push(push_notifications);
         }
-        
+
         if (updates.length === 0) {
           return res.status(400).json({
             success: false,
             error: 'No valid fields to update'
           });
         }
-        
+
         values.push(userId);
-        
+
         query = `
-          UPDATE notification_preferences 
+          UPDATE notification_preferences
           SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP
           WHERE user_id = $${paramIndex}
           RETURNING price_alerts_enabled, earnings_enabled, news_enabled,
                    email_notifications, push_notifications, updated_at
         `;
       }
-      
+
       const result = await db.query(query, values);
-      
+
       res.json({
         success: true,
         message: 'Notification preferences updated successfully',
@@ -937,11 +1088,11 @@ const notificationsController = {
     try {
       const userId = req.user.id;
       const { message } = req.body;
-      
+
       const pushService = require('../services/pushNotificationService');
-      
+
       const result = await pushService.testNotification(userId, message);
-      
+
       if (result.success) {
         res.json({
           success: true,

@@ -3,9 +3,10 @@ const router = express.Router();
 const db = require('../config/database');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const TierService = require('../services/tierService');
+const { validate, schemas } = require('../middleware/validation');
 
 // POST /api/testimonials - Submit a testimonial (auth required)
-router.post('/', authenticate, async (req, res) => {
+router.post('/', authenticate, validate(schemas.testimonialSubmit), async (req, res) => {
   try {
     const billingEnabled = await TierService.isBillingEnabled(req.headers.host);
     if (!billingEnabled) {

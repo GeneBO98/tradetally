@@ -1,6 +1,6 @@
 {
   "name": "tradetally-backend",
-  "version": "2.6.8",
+  "version": "2.7.0",
   "description": "Backend API for TradeTally trade journaling platform",
   "main": "src/server.js",
   "scripts": {
@@ -32,22 +32,22 @@
     "@anthropic-ai/sdk": "^0.71.2",
     "@google/generative-ai": "^0.24.1",
     "@opentelemetry/api": "^1.9.0",
-    "@opentelemetry/api-logs": "^0.211.0",
-    "@opentelemetry/exporter-logs-otlp-http": "^0.211.0",
+    "@opentelemetry/api-logs": "^0.215.0",
+    "@opentelemetry/exporter-logs-otlp-http": "^0.215.0",
     "@opentelemetry/exporter-metrics-otlp-http": "^0.217.0",
     "@opentelemetry/exporter-trace-otlp-http": "^0.217.0",
     "@opentelemetry/instrumentation-express": "^0.65.0",
     "@opentelemetry/instrumentation-http": "^0.217.0",
     "@opentelemetry/instrumentation-pg": "^0.69.0",
     "@opentelemetry/resources": "^2.5.0",
-    "@opentelemetry/sdk-logs": "^0.211.0",
+    "@opentelemetry/sdk-logs": "^0.215.0",
     "@opentelemetry/sdk-metrics": "^2.7.1",
     "@opentelemetry/sdk-node": "^0.217.0",
-    "@parse/node-apn": "^7.0.1",
+    "@parse/node-apn": "^8.1.0",
     "@simplewebauthn/server": "^13.2.3",
     "archiver": "^7.0.1",
     "autocannon": "^8.0.0",
-    "axios": "^1.13.5",
+    "axios": "^1.15.2",
     "bcrypt": "^6.0.0",
     "bcryptjs": "^2.4.3",
     "cheerio": "^1.1.2",
@@ -67,7 +67,7 @@
     "node-cron": "^4.2.1",
     "node-fetch": "^2.7.0",
     "node-forge": "^1.4.0",
-    "nodemailer": "^7.0.11",
+    "nodemailer": "^8.0.5",
     "openai": "^5.23.2",
     "pg": "^8.11.3",
     "qrcode": "^1.5.4",
@@ -99,6 +99,10 @@
     "brace-expansion@^5.0.1": "5.0.5",
     "swagger-jsdoc": {
       "glob": "^9.3.5"
+    },
+    "@parse/node-apn": {
+      "node-forge": "^1.4.0"
     }
-  }
+  },
+  "packageManager": "pnpm@10.13.1"
 }

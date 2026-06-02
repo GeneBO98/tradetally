@@ -9,6 +9,29 @@ function createMockRes(requestId = 'req-validation') {
 }
 
 describe('v1 validation envelope', () => {
+  test('applies Joi sanitized values to request bodies before controllers run', () => {
+    const middleware = validate(schemas.supportContact);
+    const req = {
+      originalUrl: '/api/support/contact',
+      body: {
+        subject: '  I\'m having trouble  ',
+        message: '  Apostrophes shouldn\'t be encoded.  '
+      },
+      headers: {},
+      requestId: 'req-validation'
+    };
+    const res = createMockRes('req-validation');
+    const next = jest.fn();
+
+    middleware(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(req.body).toEqual({
+      subject: 'I\'m having trouble',
+      message: 'Apostrophes shouldn\'t be encoded.'
+    });
+  });
+
   test('returns standardized VALIDATION_ERROR shape for v1 requests', () => {
     const middleware = validate(schemas.changePassword);
     const req = {

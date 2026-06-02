@@ -129,7 +129,7 @@ The export/import functionality requires specific database tables and columns. R
 ### For Development
 ```bash
 cd backend
-npm run migrate:export
+pnpm run migrate:export
 ```
 
 ### For Docker/Production

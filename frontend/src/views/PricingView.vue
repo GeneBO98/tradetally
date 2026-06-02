@@ -1,13 +1,13 @@
 <template>
   <div class="min-h-screen bg-gray-50 dark:bg-gray-900 py-12">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="content-wrapper">
       <!-- Header -->
       <div class="text-center">
         <h1 class="text-4xl font-bold text-gray-900 dark:text-white">
-          Trading Journal Pricing: Free Plan + $8/mo Pro
+          Trading Journal Pricing
         </h1>
         <p class="mt-4 text-xl text-gray-600 dark:text-gray-400">
-          Compare TradeTally pricing for a free trading journal and low-cost Pro analytics.
+          Compare TradeTally pricing for a free trading journal and Pro analytics built for serious traders.
         </p>
       </div>
 
@@ -55,6 +55,13 @@
 
       <!-- Pricing Plans -->
       <div v-else class="mt-12">
+        <div v-if="noPlansAvailable" class="mb-8 max-w-2xl mx-auto rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700 p-4">
+          <p class="text-sm font-medium text-amber-900 dark:text-amber-100">Pricing plans failed to load.</p>
+          <p class="mt-1 text-sm text-amber-800 dark:text-amber-200">
+            Stripe returned no plans. Check the backend logs for price-fetch errors and verify your <code class="font-mono">STRIPE_SECRET_KEY</code> matches the mode (test / live) of the configured price IDs.
+          </p>
+        </div>
+
         <!-- Current Plan Info -->
         <div v-if="currentSubscription" class="mb-8 text-center">
           <div class="inline-flex items-center px-4 py-2 rounded-full bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200">
@@ -62,6 +69,16 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             Currently on {{ currentSubscription.plan_name || 'Pro Plan' }}
+          </div>
+        </div>
+
+        <div class="flex justify-center mb-8">
+          <div class="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+            <button @click="billingPeriod = 'monthly'" :class="billingPeriod === 'monthly' ? 'bg-white dark:bg-gray-700 shadow text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'" class="px-5 py-2 rounded-md text-sm font-medium transition-all">Monthly</button>
+            <button @click="billingPeriod = 'yearly'" :class="billingPeriod === 'yearly' ? 'bg-white dark:bg-gray-700 shadow text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'" class="px-5 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2">
+              Annually
+              <span v-if="yearlySavingsPercent" class="text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-0.5 rounded-full font-semibold">Save {{ yearlySavingsPercent }}%</span>
+            </button>
           </div>
         </div>
 
@@ -198,8 +215,10 @@
               <div class="text-center">
                 <h3 class="text-2xl font-bold text-gray-900 dark:text-white">Pro</h3>
                 <div class="mt-4">
-                  <span class="text-4xl font-bold text-gray-900 dark:text-white">$8</span>
+                  <span class="text-4xl font-bold text-gray-900 dark:text-white">${{ billingPeriod === 'yearly' ? yearlyMonthlyEquivalent : monthlyDisplayPrice }}</span>
                   <span class="text-gray-600 dark:text-gray-400">/month</span>
+                  <div v-if="billingPeriod === 'yearly'" class="mt-1 text-sm text-gray-500 dark:text-gray-400">${{ yearlyDisplayPrice }} billed annually</div>
+                  <div v-else-if="yearlySavingsPercent" class="mt-1 text-sm text-green-600 dark:text-green-400 font-medium">Save {{ yearlySavingsPercent }}% with annual billing</div>
                 </div>
                 <p class="mt-4 text-gray-600 dark:text-gray-400">
                   Advanced analytics and behavioral insights for serious traders
@@ -246,15 +265,16 @@
               </ul>
 
               <div class="mt-8">
-                <button 
+                <button
                   v-if="!currentSubscription"
-                  @click="subscribe('pro')"
-                  :disabled="subscribing"
-                  :class="getSubscribeButtonClass('pro')"
+                  @click="subscribe()"
+                  :disabled="subscribing || !activePlan"
+                  :class="[getSubscribeButtonClass(), { 'opacity-50 cursor-not-allowed': subscribing || !activePlan }]"
+                  :title="!activePlan ? 'Pricing plans failed to load — check Stripe config' : ''"
                   class="w-full"
                 >
                   <span v-if="subscribing" class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></span>
-                  {{ getSubscribeButtonText('pro') }}
+                  {{ getSubscribeButtonText() }}
                 </button>
                 <button 
                   v-else
@@ -331,9 +351,13 @@
 </template>
 
 <script>
-import { ref, onMounted } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useAnalytics } from '@/composables/useAnalytics'
+import { useGrowthBook } from '@/composables/useGrowthBook'
+import { growthbook } from '@/services/growthbook'
+import { PRO_MONTHLY_PRICE, PRO_MONTHLY_PRICE_B, PRO_YEARLY_PRICE } from '@/config/pricing'
 import api from '@/services/api'
 
 export default {
@@ -342,6 +366,8 @@ export default {
     const router = useRouter()
     const route = useRoute()
     const authStore = useAuthStore()
+    const analytics = useAnalytics()
+    const { getFeatureValue } = useGrowthBook()
     const loading = ref(true)
     const subscribing = ref(false)
     const billingStatus = ref({
@@ -349,12 +375,142 @@ export default {
       billing_available: false
     })
     const pricingPlans = ref([])
+    const pricingExperiments = ref({})
     const currentSubscription = ref(null)
     const trialInfo = ref(null)
     const hasUsedTrial = ref(false)
     const redirectUrl = ref(route.query.redirect || null)
     const errorMessage = ref('')
     const successMessage = ref('')
+    const billingPeriod = ref('monthly')
+
+    const pricingVariant = computed(() =>
+      growthbook?.getFeatureValue('pricing_plan_variant', 'control') || 'control'
+    )
+    const selectedMonthlyPlan = computed(() => {
+      if (!pricingPlans.value.length) return null
+      const variant = pricingVariant.value
+      return (
+        pricingPlans.value.find(p => p.interval === 'month' && p.variant === variant) ||
+        pricingPlans.value.find(p => p.interval === 'month')
+      )
+    })
+    const yearlyPlan = computed(() =>
+      pricingPlans.value.find(p => p.interval === 'year') || null
+    )
+    const monthlyDisplayPrice = computed(() => {
+      if (selectedMonthlyPlan.value) return Math.round(selectedMonthlyPlan.value.price / 100)
+      return pricingVariant.value === 'b' ? PRO_MONTHLY_PRICE_B : PRO_MONTHLY_PRICE
+    })
+    const yearlyDisplayPrice = computed(() => {
+      if (yearlyPlan.value) return Math.round(yearlyPlan.value.price / 100)
+      return PRO_YEARLY_PRICE
+    })
+    const yearlyMonthlyEquivalent = computed(() =>
+      (yearlyDisplayPrice.value / 12).toFixed(2).replace(/\.00$/, '')
+    )
+    const yearlySavingsPercent = computed(() => {
+      const monthly = selectedMonthlyPlan.value?.price || monthlyDisplayPrice.value * 100
+      const yearly = yearlyPlan.value?.price || yearlyDisplayPrice.value * 100
+      const savings = Math.round((1 - yearly / (monthly * 12)) * 100)
+      return savings > 0 ? savings : null
+    })
+
+    const activePlan = computed(() => {
+      if (billingPeriod.value === 'yearly') return yearlyPlan.value
+      return selectedMonthlyPlan.value || selectedMonthlyOffer.value || null
+    })
+
+    const noPlansAvailable = computed(() => (
+      !loading.value && billingStatus.value.billing_available && pricingPlans.value.length === 0
+    ))
+
+    const moneyFormatter = new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    })
+
+    const formatPrice = (priceInCents) => {
+      if (!Number.isFinite(priceInCents)) {
+        return '$0'
+      }
+
+      return moneyFormatter.format(priceInCents / 100)
+    }
+
+    const getSelectedMonthlyVariant = () => {
+      const rawVariant = getFeatureValue('pricing_monthly_offer', 'control')
+
+      if (typeof rawVariant === 'string' && rawVariant.trim()) {
+        return rawVariant.trim()
+      }
+
+      if (typeof rawVariant?.variant === 'string' && rawVariant.variant.trim()) {
+        return rawVariant.variant.trim()
+      }
+
+      return 'control'
+    }
+
+    const controlMonthlyOffer = computed(() => (
+      pricingPlans.value.find(plan => plan.interval === 'month') || null
+    ))
+
+    const selectedMonthlyVariant = computed(() => {
+      const experimentPlans = pricingExperiments.value?.pricing_monthly_offer || {}
+      const requestedVariant = getSelectedMonthlyVariant()
+
+      if (experimentPlans[requestedVariant]) {
+        return requestedVariant
+      }
+
+      return 'control'
+    })
+
+    const selectedMonthlyOffer = computed(() => {
+      const experimentPlans = pricingExperiments.value?.pricing_monthly_offer || {}
+      return experimentPlans[selectedMonthlyVariant.value] || experimentPlans.control || controlMonthlyOffer.value
+    })
+
+    const formattedMonthlyPrice = computed(() => {
+      if (!Number.isFinite(selectedMonthlyOffer.value?.price)) {
+        return `$${pricingVariant.value === 'b' ? PRO_MONTHLY_PRICE_B : PRO_MONTHLY_PRICE}`
+      }
+
+      return formatPrice(selectedMonthlyOffer.value.price)
+    })
+
+    const updateSeoMetadata = () => {
+      const priceLabel = formattedMonthlyPrice.value
+
+      document.title = 'Choose Your Plan - Trading Journal Pricing | TradeTally'
+
+      let metaDescription = document.querySelector('meta[name="description"]')
+      if (!metaDescription) {
+        metaDescription = document.createElement('meta')
+        metaDescription.setAttribute('name', 'description')
+        document.head.appendChild(metaDescription)
+      }
+      metaDescription.setAttribute('content', `TradeTally pricing: free plan with unlimited trades or Pro at ${priceLabel}/mo. Compare to TraderVue ($29-$79/mo) and TraderSync ($30-$80/mo). Open-source and self-hosted option available.`)
+
+      let metaKeywords = document.querySelector('meta[name="keywords"]')
+      if (!metaKeywords) {
+        metaKeywords = document.createElement('meta')
+        metaKeywords.setAttribute('name', 'keywords')
+        document.head.appendChild(metaKeywords)
+      }
+      metaKeywords.setAttribute('content', 'free trading journal, trading journal pricing, TradeTally pricing, TraderVue alternative, TraderSync alternative, open source trading journal, self-hosted trading journal, day trading journal cost')
+
+      let canonical = document.querySelector('link[rel="canonical"]')
+      if (!canonical) {
+        canonical = document.createElement('link')
+        canonical.setAttribute('rel', 'canonical')
+        document.head.appendChild(canonical)
+      }
+      canonical.setAttribute('href', 'https://tradetally.io/pricing')
+    }
 
     const loadBillingStatus = async () => {
       try {
@@ -374,6 +530,7 @@ export default {
       try {
         const response = await api.get('/billing/pricing')
         pricingPlans.value = response.data.data
+        pricingExperiments.value = response.data.experiments || {}
       } catch (error) {
         console.error('Error loading pricing plans:', error)
         if (error.response?.data?.error === 'billing_unavailable') {
@@ -399,31 +556,75 @@ export default {
       }
     }
 
-    const subscribe = async (planType) => {
-      if (planType !== 'pro') {
-        return
-      }
-
+    const subscribe = async () => {
       // Check if user is authenticated
-      if (!authStore.token || !authStore.isAuthenticated) {
+      if (!authStore.isAuthenticated) {
         router.push('/login?redirect=' + encodeURIComponent('/pricing'))
         return
       }
 
       subscribing.value = true
       try {
-        // Get the price ID from pricing plans
-        let priceId = null
-        if (pricingPlans.value && pricingPlans.value.length > 0) {
-          const proPlan = pricingPlans.value.find(plan => plan.interval === 'month')
-          priceId = proPlan ? proPlan.id : null
-        }
-        
+        const isYearly = billingPeriod.value === 'yearly'
+        const chosenPlan = isYearly ? yearlyPlan.value : selectedMonthlyPlan.value
+        const priceId = chosenPlan?.id
+
         if (!priceId) {
-          throw new Error('Price ID not found. Please contact support.')
+          // Fall back to legacy experiment offer only when no monthly plan object is available
+          if (isYearly) {
+            throw new Error('Yearly plan unavailable. Please contact support.')
+          }
+          const monthlyOffer = selectedMonthlyOffer.value
+          const fallbackPriceId = monthlyOffer?.id
+          if (!fallbackPriceId) {
+            throw new Error('Price ID not found. Please contact support.')
+          }
+
+          analytics.track('pricing_checkout_started', {
+            feature_key: 'pricing_monthly_offer',
+            variant: selectedMonthlyVariant.value,
+            price_cents: monthlyOffer.price,
+            currency: monthlyOffer.currency || 'USD',
+            interval: monthlyOffer.interval || 'month'
+          })
+
+          const payload = {
+            priceId: fallbackPriceId,
+            pricingExperiment: {
+              key: 'pricing_monthly_offer',
+              variant: selectedMonthlyVariant.value,
+              displayedPriceCents: monthlyOffer.price,
+              currency: monthlyOffer.currency || 'USD'
+            }
+          }
+          if (redirectUrl.value) {
+            payload.redirectUrl = redirectUrl.value
+          }
+          if (window.promotekit_referral) {
+            payload.referral = window.promotekit_referral
+          }
+          const response = await api.post('/billing/checkout', payload)
+          window.location.href = response.data.data.checkout_url
+          return
         }
 
-        const payload = { priceId }
+        analytics.track('pricing_checkout_started', {
+          feature_key: 'pricing_plan_variant',
+          variant: isYearly ? 'yearly' : pricingVariant.value,
+          price_cents: chosenPlan?.price,
+          currency: chosenPlan?.currency || 'USD',
+          interval: isYearly ? 'year' : 'month'
+        })
+
+        const payload = {
+          priceId,
+          pricingExperiment: {
+            key: 'pricing_plan_variant',
+            variant: isYearly ? 'yearly' : pricingVariant.value,
+            displayedPriceCents: chosenPlan?.price,
+            currency: chosenPlan?.currency || 'USD'
+          }
+        }
         if (redirectUrl.value) {
           payload.redirectUrl = redirectUrl.value
         }
@@ -503,48 +704,23 @@ export default {
       return 'Start Free Trial'
     }
 
-    const getSubscribeButtonClass = (planType) => {
-      if (currentSubscription.value && planType === 'pro') {
+    const getSubscribeButtonClass = () => {
+      if (currentSubscription.value) {
         return 'btn btn-outline'
       }
-      return planType === 'pro' ? 'btn btn-primary' : 'btn btn-outline'
+      return 'btn btn-primary'
     }
 
-    const getSubscribeButtonText = (planType) => {
-      if (currentSubscription.value && planType === 'pro') {
+    const getSubscribeButtonText = () => {
+      if (currentSubscription.value) {
         return 'Current Plan'
       }
-      return planType === 'pro' ? 'Subscribe to Pro' : 'Get Started'
+      return 'Subscribe to Pro'
     }
 
+    watch(formattedMonthlyPrice, updateSeoMetadata, { immediate: true })
+
     onMounted(async () => {
-      // Set document title and meta tags for SEO
-      document.title = 'Choose Your Plan - Trading Journal Pricing | TradeTally'
-
-      let metaDescription = document.querySelector('meta[name="description"]')
-      if (!metaDescription) {
-        metaDescription = document.createElement('meta')
-        metaDescription.setAttribute('name', 'description')
-        document.head.appendChild(metaDescription)
-      }
-      metaDescription.setAttribute('content', 'TradeTally pricing: free plan with unlimited trades or Pro at $8/mo. Compare to TraderVue ($29-$79/mo) and TraderSync ($30-$80/mo). Open-source and self-hosted option available.')
-
-      let metaKeywords = document.querySelector('meta[name="keywords"]')
-      if (!metaKeywords) {
-        metaKeywords = document.createElement('meta')
-        metaKeywords.setAttribute('name', 'keywords')
-        document.head.appendChild(metaKeywords)
-      }
-      metaKeywords.setAttribute('content', 'free trading journal, trading journal pricing, TradeTally pricing, TraderVue alternative, TraderSync alternative, open source trading journal, self-hosted trading journal, day trading journal cost')
-
-      let canonical = document.querySelector('link[rel="canonical"]')
-      if (!canonical) {
-        canonical = document.createElement('link')
-        canonical.setAttribute('rel', 'canonical')
-        document.head.appendChild(canonical)
-      }
-      canonical.setAttribute('href', 'https://tradetally.io/pricing')
-
       await loadBillingStatus()
       await loadPricingPlans()
       // Only load subscription data if user is authenticated
@@ -560,6 +736,8 @@ export default {
       subscribing,
       billingStatus,
       pricingPlans,
+      selectedMonthlyOffer,
+      formattedMonthlyPrice,
       currentSubscription,
       trialInfo,
       hasUsedTrial,
@@ -570,7 +748,17 @@ export default {
       getTrialButtonClass,
       getTrialButtonText,
       errorMessage,
-      successMessage
+      successMessage,
+      billingPeriod,
+      pricingVariant,
+      selectedMonthlyPlan,
+      yearlyPlan,
+      monthlyDisplayPrice,
+      yearlyDisplayPrice,
+      yearlyMonthlyEquivalent,
+      yearlySavingsPercent,
+      activePlan,
+      noPlansAvailable
     }
   }
 }

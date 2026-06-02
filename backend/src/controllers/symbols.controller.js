@@ -1,8 +1,38 @@
 const db = require('../config/database');
 const finnhub = require('../utils/finnhub');
 const cache = require('../utils/cache');
+const symbolCategories = require('../utils/symbolCategories');
 
 const CACHE_TTL = 300000; // 5 minutes
+
+function normalizeSymbolsParam(symbolsParam) {
+  if (typeof symbolsParam !== 'string') {
+    return [];
+  }
+
+  return [...new Set(
+    symbolsParam
+      .split(',')
+      .map(symbol => symbol.trim().toUpperCase())
+      .filter(Boolean)
+  )].slice(0, 100);
+}
+
+function applyCategoryMetadata(target, category) {
+  if (!target || !category) {
+    return target;
+  }
+
+  return {
+    ...target,
+    company_name: target.company_name || category.company_name || null,
+    ...(Object.prototype.hasOwnProperty.call(target, 'companyName')
+      ? { companyName: target.companyName || category.company_name || null }
+      : {}),
+    exchange: target.exchange || category.exchange || null,
+    logo: target.logo || category.logo || null
+  };
+}
 
 async function searchSymbols(req, res) {
   try {
@@ -25,7 +55,7 @@ async function searchSymbols(req, res) {
 
     // 1. Search user's traded symbols (highest priority)
     const userTradesQuery = `
-      SELECT DISTINCT t.symbol, sc.company_name, sc.exchange
+      SELECT DISTINCT t.symbol, sc.company_name, sc.exchange, sc.logo
       FROM trades t
       LEFT JOIN symbol_categories sc ON UPPER(t.symbol) = UPPER(sc.symbol)
       WHERE t.user_id = $1
@@ -43,8 +73,27 @@ async function searchSymbols(req, res) {
           symbol: sym,
           company_name: row.company_name || null,
           exchange: row.exchange || null,
+          logo: row.logo || null,
           source: 'user_trades'
         });
+      }
+    }
+
+    const missingUserTradeSymbols = results
+      .filter(result => result.source === 'user_trades' && !result.company_name && !result.logo)
+      .map(result => result.symbol);
+
+    if (missingUserTradeSymbols.length > 0) {
+      const hydratedCategories = await symbolCategories.getSymbolCategories(missingUserTradeSymbols);
+      for (const result of results) {
+        if (result.source !== 'user_trades' || (result.company_name || result.logo)) {
+          continue;
+        }
+
+        const category = hydratedCategories.get(result.symbol);
+        if (category) {
+          Object.assign(result, applyCategoryMetadata(result, category));
+        }
       }
     }
 
@@ -52,7 +101,7 @@ async function searchSymbols(req, res) {
     if (results.length < 10) {
       const limit = 10 - results.length;
       const localQuery = `
-        SELECT symbol, company_name, exchange
+        SELECT symbol, company_name, exchange, logo
         FROM symbol_categories
         WHERE UPPER(symbol) LIKE $1
           OR UPPER(company_name) LIKE $2
@@ -71,6 +120,7 @@ async function searchSymbols(req, res) {
             symbol: sym,
             company_name: row.company_name || null,
             exchange: row.exchange || null,
+            logo: row.logo || null,
             source: 'local'
           });
         }
@@ -92,6 +142,7 @@ async function searchSymbols(req, res) {
               symbol: sym,
               company_name: item.description || null,
               exchange: null,
+              logo: null,
               source: 'finnhub'
             });
           }
@@ -112,6 +163,94 @@ async function searchSymbols(req, res) {
   }
 }
 
+async function getSymbolMetadata(req, res) {
+  try {
+    const symbols = normalizeSymbolsParam(req.query.symbols);
+
+    if (symbols.length === 0) {
+      return res.json({ metadata: {} });
+    }
+
+    const cacheKey = `symbol_metadata:${symbols.join(',')}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return res.json({ metadata: cached });
+    }
+
+    const metadata = Object.fromEntries(
+      symbols.map(symbol => [symbol, {
+        symbol,
+        companyName: null,
+        exchange: null,
+        logo: null
+      }])
+    );
+
+    const query = `
+      WITH requested_symbols AS (
+        SELECT UNNEST($1::text[]) AS symbol
+      ),
+      latest_analysis AS (
+        SELECT DISTINCT ON (UPPER(symbol))
+          UPPER(symbol) AS symbol,
+          company_name,
+          logo
+        FROM eight_pillars_analysis
+        WHERE UPPER(symbol) = ANY($1::text[])
+        ORDER BY UPPER(symbol), analysis_date DESC
+      )
+      SELECT
+        rs.symbol,
+        COALESCE(sc.company_name, la.company_name) AS company_name,
+        sc.exchange,
+        COALESCE(sc.logo, la.logo) AS logo
+      FROM requested_symbols rs
+      LEFT JOIN symbol_categories sc ON UPPER(sc.symbol) = rs.symbol
+      LEFT JOIN latest_analysis la ON la.symbol = rs.symbol
+    `;
+    const result = await db.query(query, [symbols]);
+
+    for (const row of result.rows) {
+      metadata[row.symbol] = {
+        symbol: row.symbol,
+        companyName: row.company_name || null,
+        exchange: row.exchange || null,
+        logo: row.logo || null
+      };
+    }
+
+    const symbolsMissingMetadata = symbols.filter(symbol => {
+      const entry = metadata[symbol];
+      return entry && !entry.companyName && !entry.logo;
+    });
+
+    if (symbolsMissingMetadata.length > 0) {
+      const hydratedCategories = await symbolCategories.getSymbolCategories(symbolsMissingMetadata);
+      for (const symbol of symbolsMissingMetadata) {
+        const category = hydratedCategories.get(symbol);
+        if (!category) {
+          continue;
+        }
+
+        metadata[symbol] = {
+          symbol,
+          companyName: metadata[symbol].companyName || category.company_name || null,
+          exchange: metadata[symbol].exchange || category.exchange || null,
+          logo: metadata[symbol].logo || category.logo || null
+        };
+      }
+    }
+
+    cache.set(cacheKey, metadata, CACHE_TTL);
+
+    return res.json({ metadata });
+  } catch (error) {
+    console.error('[SYMBOLS] Metadata error:', error.message);
+    return res.status(500).json({ error: 'Failed to fetch symbol metadata' });
+  }
+}
+
 module.exports = {
-  searchSymbols
+  searchSymbols,
+  getSymbolMetadata
 };

@@ -7,6 +7,7 @@ const { validate, schemas } = require('../middleware/validation');
 const multer = require('multer');
 const imageUpload = require('../middleware/upload');
 const { requiresTier } = require('../middleware/tierAuth');
+const { createRateLimiter } = require('../utils/rateLimit');
 
 /**
  * @swagger
@@ -26,6 +27,8 @@ const upload = multer({
     });
 
     const name = file.originalname.toLowerCase();
+    // Trust the .csv extension — browsers/OSes report CSVs with many mimetypes
+    // (text/csv, application/csv, application/vnd.ms-excel, text/plain, application/octet-stream).
     const isCsv = name.endsWith('.csv');
     const isImage = /\.(jpe?g|png|gif)$/.test(name) && /^image\//.test(file.mimetype);
 
@@ -37,6 +40,18 @@ const upload = multer({
     console.log('File rejected - invalid type');
     cb(new Error('Invalid file type'));
   }
+});
+
+// Each CSV import does up to 2 requests against this limiter (/import/validate
+// then /import), and delete operations share the same budget. The default of
+// 100 leaves room for ~50 bulk imports per 15-minute window. Self-hosters can
+// raise it via IMPORT_RATE_LIMIT_MAX if their users routinely bulk-import more.
+const importRateLimitMax = parseInt(process.env.IMPORT_RATE_LIMIT_MAX) || 100;
+const importRateLimitWindowMs = parseInt(process.env.IMPORT_RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000;
+const importLimiter = createRateLimiter({
+  windowMs: importRateLimitWindowMs,
+  max: importRateLimitMax,
+  message: 'Too many import requests. Please try again later.'
 });
 
 /**
@@ -530,9 +545,9 @@ router.get('/import/requirements', authenticate, tradeController.checkImportRequ
  *                 rowCount:
  *                   type: integer
  */
-router.post('/import/validate', authenticate, upload.single('file'), tradeController.validateImportFile);
+router.post('/import/validate', authenticate, importLimiter, upload.single('file'), tradeController.validateImportFile);
 
-router.post('/import', authenticate, upload.single('file'), tradeController.importTrades);
+router.post('/import', authenticate, importLimiter, upload.single('file'), tradeController.importTrades);
 
 /**
  * @swagger
@@ -586,8 +601,8 @@ router.get('/import/history', authenticate, tradeController.getImportHistory);
  *       200:
  *         description: Import deleted successfully
  */
-router.delete('/import/bulk', authenticate, tradeController.bulkDeleteImports);
-router.delete('/import/:importId', authenticate, tradeController.deleteImport);
+router.delete('/import/bulk', authenticate, importLimiter, tradeController.bulkDeleteImports);
+router.delete('/import/:importId', authenticate, importLimiter, tradeController.deleteImport);
 router.get('/import/logs', authenticate, tradeController.getImportLogs);
 router.get('/import/logs/:filename', authenticate, tradeController.getLogFile);
 router.get('/cusip/resolution-status', authenticate, tradeController.getCusipResolutionStatus);

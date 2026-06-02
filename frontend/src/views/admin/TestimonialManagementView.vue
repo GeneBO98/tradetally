@@ -1,5 +1,6 @@
 <template>
   <div class="content-wrapper py-8">
+    <AdminNav />
     <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between mb-6">
       <div>
         <h1 class="heading-page">Testimonial Management</h1>
@@ -8,11 +9,17 @@
         </p>
       </div>
       <div class="flex gap-2">
-        <select v-model="filterStatus" class="input text-sm">
-          <option value="all">All</option>
-          <option value="pending">Pending</option>
-          <option value="approved">Approved</option>
-        </select>
+        <div class="text-sm">
+          <BaseSelect
+            v-model="filterStatus"
+            :searchable="false"
+            :options="[
+              { value: 'all', label: 'All' },
+              { value: 'pending', label: 'Pending' },
+              { value: 'approved', label: 'Approved' },
+            ]"
+          />
+        </div>
       </div>
     </div>
 
@@ -122,6 +129,8 @@
 import { ref, computed, onMounted } from 'vue'
 import { StarIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
+import AdminNav from '@/components/admin/AdminNav.vue'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 
 const testimonials = ref([])
 const loading = ref(true)

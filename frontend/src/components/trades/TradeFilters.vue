@@ -98,7 +98,7 @@
               </label>
             </div>
             <div class="border-t border-gray-200 dark:border-gray-600">
-              <div v-for="strategy in strategyOptions" :key="strategy.value" class="p-1">
+              <div v-for="strategy in visibleStrategyOptions" :key="strategy.value" class="p-1">
                 <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
                   <input
                     type="checkbox"
@@ -110,10 +110,29 @@
                 </label>
               </div>
             </div>
+            <div v-if="strategyUsage.length" class="border-t border-gray-200 dark:border-gray-600 p-1">
+              <button
+                @click.stop="openStrategyManager"
+                type="button"
+                class="flex items-center w-full px-3 py-2 text-sm text-primary-600 dark:text-primary-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+              >
+                Manage strategies
+              </button>
+            </div>
           </div>
         </div>
       </div>
     </div>
+
+    <DropdownItemManager
+      v-model:show="showStrategyManager"
+      title="Manage Strategies"
+      reorderable
+      :items="orderedStrategyUsage"
+      :hidden="hiddenStrategies"
+      @toggle="toggleStrategy"
+      @move="handleStrategyMove"
+    />
 
     <!-- Second Row of Basic Filters -->
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -690,15 +709,29 @@ import { useRoute, useRouter } from 'vue-router'
 import { ChevronRightIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
 import TagManagement from './TagManagement.vue'
+import DropdownItemManager from './DropdownItemManager.vue'
+import { useHiddenDropdownItems } from '@/composables/useHiddenDropdownItems'
+import { useStrategyOrder } from '@/composables/useStrategyOrder'
 import { useTradesStore } from '@/stores/trades'
+import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { formatLocalDate } from '@/utils/date'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import SymbolAutocomplete from '@/components/common/SymbolAutocomplete.vue'
 
+const props = defineProps({
+  // When true (default), TradeFilters auto-emits a `filter` event on mount
+  // if saved/route filters are present. The trade list and analytics views
+  // rely on this to restore filters when the user lands from another page.
+  // The dashboard renders this component inside a modal that's only opened
+  // by an explicit user click, so the mount-time emit would slam the modal
+  // shut the instant it opens — those callers should pass false.
+  autoApplyOnMount: { type: Boolean, default: true }
+})
 const emit = defineEmits(['filter'])
 const route = useRoute()
 const router = useRouter()
 const tradesStore = useTradesStore()
+const uiPreferencesStore = useUiPreferencesStore()
 const { selectedAccount, isFiltered: globalAccountFilterActive } = useGlobalAccountFilter()
 
 const showAdvanced = ref(false)
@@ -765,6 +798,7 @@ function applyPeriodPreset() {
   // Save selected period to localStorage
   try {
     localStorage.setItem('tradeFiltersPeriod', selectedPeriod.value)
+    uiPreferencesStore.notifyChanged('tradeFiltersPeriod', selectedPeriod.value)
   } catch (e) {
     // localStorage save failed
   }
@@ -897,6 +931,35 @@ const defaultStrategyOptions = [
 ]
 const strategyOptions = ref([...defaultStrategyOptions])
 
+// Hide/manage strategies in the dropdown
+const { hiddenStrategies, refresh: refreshHiddenItems, toggleStrategy } = useHiddenDropdownItems()
+const {
+  orderNames: orderStrategyNames,
+  orderUsageItems: orderStrategyUsageItems,
+  moveStrategyInUsage,
+  refresh: refreshStrategyOrder
+} = useStrategyOrder()
+const strategyUsage = ref([]) // [{ name, count }] for the manage modal
+const showStrategyManager = ref(false)
+
+const orderedStrategyUsage = computed(() => orderStrategyUsageItems(strategyUsage.value))
+
+function handleStrategyMove({ name, direction }) {
+  moveStrategyInUsage(strategyUsage.value, name, direction)
+  mergeStrategyOptions(strategyUsage.value.map((u) => u.name))
+}
+
+// Drop hidden strategies from the dropdown, but always keep currently selected
+// ones visible so an active filter is never silently lost.
+const visibleStrategyOptions = computed(() => {
+  const visible = strategyOptions.value.filter(
+    opt => !hiddenStrategies.value.includes(opt.value) || (filters.value.strategies || []).includes(opt.value)
+  )
+  const orderedValues = orderStrategyNames(visible.map((opt) => opt.value))
+  const byValue = new Map(visible.map((opt) => [opt.value, opt]))
+  return orderedValues.map((value) => byValue.get(value)).filter(Boolean)
+})
+
 // Initialize filters with defaults, then load from localStorage
 const defaultFilters = {
   // Basic filters
@@ -923,6 +986,7 @@ const defaultFilters = {
   holdTime: '',
   broker: '', // Keep for backward compatibility
   brokers: [], // New multi-select array
+  importId: '',
   accounts: '',
   daysOfWeek: [], // New multi-select array for days
   instrumentTypes: [], // New multi-select array for instrument types
@@ -930,8 +994,28 @@ const defaultFilters = {
   qualityGrades: [] // New multi-select array for quality grades
 }
 
+function urlHasFilterParams() {
+  return !!(
+    route.query.symbol || route.query.startDate || route.query.endDate ||
+    route.query.strategy || route.query.strategies || route.query.sector ||
+    route.query.sectors || route.query.status || route.query.minPrice ||
+    route.query.maxPrice || route.query.minQuantity || route.query.maxQuantity ||
+    route.query.holdTime || route.query.broker || route.query.brokers ||
+    route.query.minHoldTime || route.query.maxHoldTime || route.query.pnlType ||
+    route.query.importId || route.query.tags
+  )
+}
+
 // Load saved filters from localStorage on initialization
 function loadInitialFilters() {
+  // When the URL carries explicit filter params, treat the URL as authoritative
+  // and skip the localStorage merge. Otherwise stale persisted filters (e.g. a
+  // previous "status: open" selection) layer onto a click-through like
+  // /trades?symbol=X and produce empty results.
+  if (urlHasFilterParams()) {
+    return { ...defaultFilters }
+  }
+
   try {
     const savedFilters = localStorage.getItem('tradeFilters')
     const savedPeriod = localStorage.getItem('tradeFiltersPeriod')
@@ -1170,6 +1254,7 @@ const activeFiltersCount = computed(() => {
   if (filters.value.pnlType) count++
   if (filters.value.holdTime) count++
   if (filters.value.brokers && filters.value.brokers.length > 0) count++
+  if (filters.value.importId) count++
   if (filters.value.daysOfWeek && filters.value.daysOfWeek.length > 0) count++
   if (filters.value.optionTypes && filters.value.optionTypes.length > 0) count++
   if (filters.value.qualityGrades && filters.value.qualityGrades.length > 0) count++
@@ -1239,6 +1324,7 @@ function applyFilters() {
   if (filters.value.maxPnl !== null && filters.value.maxPnl !== '') cleanFilters.maxPnl = filters.value.maxPnl
   if (filters.value.pnlType) cleanFilters.pnlType = filters.value.pnlType
   if (filters.value.holdTime) cleanFilters.holdTime = filters.value.holdTime
+  if (filters.value.importId) cleanFilters.importId = filters.value.importId
   
   // Handle multi-select brokers - convert to comma-separated
   if (filters.value.brokers.length > 0) {
@@ -1276,6 +1362,7 @@ function applyFilters() {
     const filtersToSave = {}
     Object.keys(filters.value).forEach(key => {
       if (key === 'accounts') return
+      if (key === 'importId') return
       const value = filters.value[key]
       // Only save non-empty values
       if (value !== '' && value !== null && value !== undefined) {
@@ -1294,6 +1381,7 @@ function applyFilters() {
     console.log('[TradeFilters] Full filtersToSave:', JSON.stringify(filtersToSave))
     console.log('[TradeFilters] Current filters.value.startDate:', filters.value.startDate, 'endDate:', filters.value.endDate)
     localStorage.setItem('tradeFilters', JSON.stringify(filtersToSave))
+    uiPreferencesStore.notifyChanged('tradeFilters', filtersToSave)
   } catch (e) {
     console.error('[TradeFilters] localStorage save failed:', e)
   }
@@ -1314,6 +1402,8 @@ function resetFilters() {
   try {
     localStorage.removeItem('tradeFilters')
     localStorage.removeItem('tradeFiltersPeriod')
+    uiPreferencesStore.notifyChanged('tradeFilters', null)
+    uiPreferencesStore.notifyChanged('tradeFiltersPeriod', null)
   } catch (e) {
     // localStorage clear failed
   }
@@ -1360,6 +1450,11 @@ async function fetchAvailableBrokers() {
   }
 }
 
+function openStrategyManager() {
+  showStrategyDropdown.value = false
+  showStrategyManager.value = true
+}
+
 function mergeStrategyOptions(strategies = []) {
   const merged = new Map(defaultStrategyOptions.map((option) => [option.value, option]))
 
@@ -1375,7 +1470,16 @@ function mergeStrategyOptions(strategies = []) {
       }
     })
 
-  strategyOptions.value = Array.from(merged.values())
+  const frequencyNames = [
+    ...strategyUsage.value.map((u) => u.name),
+    ...strategies,
+    ...defaultStrategyOptions.map((o) => o.value)
+  ]
+  const uniqueNames = [...new Set(frequencyNames.filter(Boolean))]
+  const orderedValues = orderStrategyNames(uniqueNames)
+  strategyOptions.value = orderedValues
+    .map((value) => merged.get(value))
+    .filter(Boolean)
 }
 
 async function fetchAvailableStrategies() {
@@ -1383,6 +1487,7 @@ async function fetchAvailableStrategies() {
     loadingStrategies.value = true
     const response = await api.get('/trades/strategies')
     mergeStrategyOptions(response.data?.strategies || [])
+    strategyUsage.value = response.data?.usage || []
   } catch (error) {
     console.warn('Failed to fetch available strategies:', error)
   } finally {
@@ -1529,6 +1634,8 @@ onMounted(() => {
   }, 100)
 
   // Fetch available dropdown options
+  refreshHiddenItems()
+  refreshStrategyOrder()
   fetchAvailableStrategies()
   fetchAvailableSectors()
   fetchAvailableBrokers()
@@ -1579,8 +1686,10 @@ onMounted(() => {
     shouldApply = true
   }
 
-  // Override with store filters if they exist
-  if (tradesStore.filters) {
+  // Override with store filters if they exist — but skip when the URL is
+  // authoritative, otherwise stale store filters (e.g. status:open carried
+  // over from a previous /trades visit) would re-merge in.
+  if (tradesStore.filters && !urlHasFilterParams()) {
     const storeFilters = { ...tradesStore.filters }
     // Convert comma-separated strings back to arrays for multi-select fields
     if (storeFilters.strategies && typeof storeFilters.strategies === 'string') {
@@ -1755,13 +1864,19 @@ onMounted(() => {
     shouldApply = true
   }
 
+  if (route.query.importId) {
+    filters.value.importId = route.query.importId
+    shouldApply = true
+  }
+
   // Auto-expand advanced filters if any advanced filter is set
   if (route.query.minPrice || route.query.maxPrice || route.query.minQuantity || route.query.maxQuantity || route.query.holdTime || route.query.broker || route.query.minHoldTime || route.query.maxHoldTime || route.query.daysOfWeek || route.query.instrumentTypes || route.query.optionTypes || route.query.qualityGrades) {
     showAdvanced.value = true
   }
   
-  // Auto-apply the filter when coming from dashboard/other pages
-  if (shouldApply) {
+  // Auto-apply the filter when coming from dashboard/other pages. Skipped
+  // when the parent opts out (e.g. dashboard modal — see prop comment).
+  if (shouldApply && props.autoApplyOnMount) {
     applyFilters()
   }
 })

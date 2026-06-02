@@ -19,14 +19,105 @@ const reconnectTimeout = ref(null)
 const reconnectDelay = ref(3000) // Start at 3s, exponential backoff up to 60s
 // Ephemeral queue for achievement celebrations and xp updates
 const celebrationQueue = ref([])
+// Pending unread achievement notifications the user has not yet stepped
+// through in the celebration modal. Populated when a notification click
+// triggers a celebration; drained by CelebrationOverlay's Continue button.
+// Each item: { notificationId, achievement }
+const pendingCelebrationNotifications = ref([])
+// State of an in-progress notification-driven celebration. The bar animation
+// across multiple modals walks a cursor from `cursorXP` (where it started
+// before viewing any achievement in the chain) up to `actualCurrentXP` (the
+// user's true server-side state). Each modal advances the cursor by its own
+// achievement's points so by the time the user finishes the last modal the
+// bar visually catches up to reality. Cleared on Dismiss all and when the
+// chain finishes naturally.
+// Shape: {
+//   actualCurrentXP, actualCurrentLevel,
+//   currentLevelMinXP, nextLevelMinXP,
+//   cursorXP                          // mutable: advanced per modal
+// }
+const celebrationLevelContext = ref(null)
+
+// Compute level + level-XP-range for an arbitrary XP value, assuming a
+// constant `xpPerLevel` interval anchored on the user's current level.
+// Linear approximation — accurate near currentLevel, may misnumber far-away
+// levels. Good enough for the short walks our notification flow does (a
+// handful of achievements totaling at most a few hundred XP).
+function computeLevelInfo(xp, ctx) {
+  const xpPerLevel = Math.max(1, ctx.nextLevelMinXP - ctx.currentLevelMinXP)
+  const delta = xp - ctx.currentLevelMinXP
+  if (delta >= 0) {
+    const levelsUp = Math.floor(delta / xpPerLevel)
+    const level = ctx.actualCurrentLevel + levelsUp
+    const levelMinXP = ctx.currentLevelMinXP + levelsUp * xpPerLevel
+    return { level, levelMinXP, levelMaxXP: levelMinXP + xpPerLevel }
+  }
+  const levelsDown = Math.ceil(-delta / xpPerLevel)
+  const level = Math.max(1, ctx.actualCurrentLevel - levelsDown)
+  const levelMinXP = Math.max(0, ctx.currentLevelMinXP - levelsDown * xpPerLevel)
+  return { level, levelMinXP, levelMaxXP: levelMinXP + xpPerLevel }
+}
+
+// Advance the celebration cursor by `points` and return the xp_update
+// payload the modal needs to animate the bar over that segment. Mutates
+// `ctx.cursorXP` so successive calls (one per modal) walk the user's XP
+// up to `actualCurrentXP`.
+export function advanceCelebrationCursor(ctx, points) {
+  if (!ctx) return null
+  const oldXP = ctx.cursorXP
+  const delta = Math.max(0, points || 0)
+  const newXP = oldXP + delta
+  const oldInfo = computeLevelInfo(oldXP, ctx)
+  const newInfo = computeLevelInfo(newXP, ctx)
+  ctx.cursorXP = newXP
+  return {
+    oldXP,
+    newXP,
+    oldLevel: oldInfo.level,
+    newLevel: newInfo.level,
+    currentLevelMinXPBefore: oldInfo.levelMinXP,
+    nextLevelMinXPBefore: oldInfo.levelMaxXP,
+    currentLevelMinXPAfter: ctx.currentLevelMinXP,
+    nextLevelMinXPAfter: ctx.nextLevelMinXP,
+  }
+}
+const DEFAULT_CELEBRATION_SUPPRESSION_MS = 30 * 1000
+const celebrationSuppressedUntil = ref(0)
 
 export function usePriceAlertNotifications() {
   const authStore = useAuthStore()
   const { showSuccess, showWarning } = useNotification()
+
+  const isSuppressingCelebrations = () => {
+    if (!celebrationSuppressedUntil.value) return false
+
+    if (Date.now() > celebrationSuppressedUntil.value) {
+      celebrationSuppressedUntil.value = 0
+      return false
+    }
+
+    return true
+  }
+
+  const suppressCelebrations = (durationMs = DEFAULT_CELEBRATION_SUPPRESSION_MS) => {
+    celebrationSuppressedUntil.value = Date.now() + durationMs
+  }
+
+  const clearCelebrationSuppression = () => {
+    celebrationSuppressedUntil.value = 0
+  }
+
+  const queueCelebrationItem = (item) => {
+    if (isSuppressingCelebrations()) {
+      return
+    }
+
+    celebrationQueue.value.push(item)
+  }
   
   const connect = () => {
     // Skip verbose logging - only log important state changes
-    if (!authStore.token || (authStore.user?.tier !== 'pro' && authStore.user?.billingEnabled !== false)) {
+    if (!authStore.isAuthenticated || (authStore.user?.tier !== 'pro' && authStore.user?.billingEnabled !== false)) {
       return
     }
 
@@ -47,11 +138,9 @@ export function usePriceAlertNotifications() {
       disconnect()
     }
 
-    // Keep auth in the secure cookie path. Query-string JWTs are rejected server-side
-    // because URLs leak into browser history, referrers, and access logs.
     const sseUrl = '/api/notifications/stream'
-    console.log('Connecting to SSE')
-    eventSource.value = new EventSource(sseUrl, { withCredentials: true })
+    console.log('Connecting to SSE:', sseUrl)
+    eventSource.value = new EventSource(sseUrl)
     
     eventSource.value.onopen = () => {
       console.log('Connected to notification stream')
@@ -92,7 +181,7 @@ export function usePriceAlertNotifications() {
         reconnectDelay.value = Math.min(reconnectDelay.value * 2, 60000) // Exponential backoff, cap at 60s
         reconnectTimeout.value = setTimeout(() => {
           reconnectTimeout.value = null
-          if (authStore.token && (authStore.user?.tier === 'pro' || authStore.user?.billingEnabled === false)) {
+          if (authStore.isAuthenticated && (authStore.user?.tier === 'pro' || authStore.user?.billingEnabled === false)) {
             console.log(`SSE manual reconnect after ${delay / 1000}s`)
             connect()
           }
@@ -133,6 +222,10 @@ export function usePriceAlertNotifications() {
       case 'price_alert':
         handlePriceAlert(data.data)
         break
+
+      case 'portfolio_alert':
+        handlePortfolioAlert(data.data)
+        break
         
       case 'recent_notifications':
         // Handle recent notifications on connection
@@ -155,15 +248,15 @@ export function usePriceAlertNotifications() {
 
       case 'achievement_earned':
         // Queue celebration items for UI overlay
-        celebrationQueue.value.push({ type: 'achievement', payload: data.data })
+        queueCelebrationItem({ type: 'achievement', payload: data.data })
         break
 
       case 'level_up':
-        celebrationQueue.value.push({ type: 'level_up', payload: data.data })
+        queueCelebrationItem({ type: 'level_up', payload: data.data })
         break
 
       case 'xp_update':
-        celebrationQueue.value.push({ type: 'xp_update', payload: data.data })
+        queueCelebrationItem({ type: 'xp_update', payload: data.data })
         break
     }
   }
@@ -187,7 +280,7 @@ export function usePriceAlertNotifications() {
     if ('Notification' in window && Notification.permission === 'granted') {
       const notification = new Notification(`TradeTally Alert: ${alert.symbol}`, {
         body: alert.message,
-        icon: '/favicon.ico',
+        icon: '/favicon-32x32.png',
         tag: alert.id,
         requireInteraction: false
       })
@@ -211,6 +304,18 @@ export function usePriceAlertNotifications() {
     } catch (error) {
       // Ignore audio errors
     }
+  }
+
+  const handlePortfolioAlert = (alert) => {
+    notifications.value.unshift({
+      ...alert,
+      type: 'portfolio_alert'
+    })
+    if (notifications.value.length > 10) {
+      notifications.value.pop()
+    }
+
+    showWarning(`Portfolio Alert: ${alert.symbol}`, alert.message)
   }
 
   const handleCusipResolution = (data) => {
@@ -260,7 +365,13 @@ export function usePriceAlertNotifications() {
     connect,
     disconnect,
     requestNotificationPermission,
-    celebrationQueue
+    celebrationQueue,
+    pendingCelebrationNotifications,
+    celebrationLevelContext,
+    suppressCelebrations,
+    clearCelebrationSuppression,
+    queueCelebrationItem,
+    isSuppressingCelebrations
   }
 }
 

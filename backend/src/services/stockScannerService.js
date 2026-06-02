@@ -489,9 +489,10 @@ class StockScannerService {
           pillar_1_score, pillar_2_score, pillar_3_score, pillar_4_score,
           pillar_5_score, pillar_6_score, pillar_7_score, pillar_8_score,
           pillars_passed, total_score,
-          current_price, market_cap, sector
+          current_price, market_cap, sector,
+          calculation_version, updated_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, NOW())
         ON CONFLICT (scan_id, symbol) DO UPDATE SET
           company_name = EXCLUDED.company_name,
           pillar_1_pass = EXCLUDED.pillar_1_pass,
@@ -515,7 +516,9 @@ class StockScannerService {
           current_price = EXCLUDED.current_price,
           market_cap = EXCLUDED.market_cap,
           sector = EXCLUDED.sector,
-          created_at = NOW()
+          calculation_version = EXCLUDED.calculation_version,
+          created_at = NOW(),
+          updated_at = NOW()
       `, [
         scanId,
         symbol,
@@ -539,8 +542,10 @@ class StockScannerService {
         analysis.pillarsPassed,
         this.calculateTotalScore(analysis),
         analysis.currentPrice,
-        analysis.marketCap,
-        analysis.industry || null
+        // market_cap is BIGINT; marketCap is a float (price * shares) so it must be rounded
+        analysis.marketCap != null ? Math.round(analysis.marketCap) : null,
+        analysis.industry || null,
+        EightPillarsService.CALCULATION_VERSION
       ]);
 
     } catch (error) {
@@ -724,6 +729,67 @@ class StockScannerService {
       marketCap: parseInt(row.market_cap) || null,
       sector: row.sector
     };
+  }
+
+  /**
+   * Write a freshly-computed analysis back into the latest completed scan's row.
+   *
+   * The scanner list reads pre-computed rows that are only refreshed when a scan
+   * runs. The detail view recalculates live and can produce a different result
+   * (newer financial data, or a bumped CALCULATION_VERSION). This propagates that
+   * fresh result into the list row for the same symbol so the two never disagree.
+   *
+   * Only updates a row that already exists in the latest completed scan — it will
+   * not add symbols outside the scanned universe (e.g. ad-hoc searches).
+   *
+   * @param {Object} analysis - Analysis object from EightPillarsService.analyzeStock
+   */
+  static async syncScanResult(analysis) {
+    if (!analysis || !analysis.symbol || !analysis.pillars) {
+      return;
+    }
+
+    const p = analysis.pillars;
+
+    try {
+      await db.query(`
+        UPDATE stock_pillar_results sr
+        SET
+          company_name = $2,
+          pillar_1_pass = $3, pillar_2_pass = $4, pillar_3_pass = $5, pillar_4_pass = $6,
+          pillar_5_pass = $7, pillar_6_pass = $8, pillar_7_pass = $9, pillar_8_pass = $10,
+          pillar_1_score = $11, pillar_2_score = $12, pillar_3_score = $13, pillar_4_score = $14,
+          pillar_5_score = $15, pillar_6_score = $16, pillar_7_score = $17, pillar_8_score = $18,
+          pillars_passed = $19, total_score = $20,
+          current_price = $21, market_cap = $22, sector = $23,
+          calculation_version = $24, updated_at = NOW()
+        FROM (
+          SELECT id FROM stock_scans WHERE status = 'completed'
+          ORDER BY created_at DESC LIMIT 1
+        ) latest
+        WHERE sr.scan_id = latest.id AND sr.symbol = $1
+      `, [
+        analysis.symbol,
+        analysis.companyName || null,
+        p.pillar1.passed, p.pillar2.passed, p.pillar3.passed, p.pillar4.passed,
+        p.pillar5.passed, p.pillar6.passed, p.pillar7.passed, p.pillar8.passed,
+        this.valueToScore(p.pillar1), this.valueToScore(p.pillar2),
+        this.valueToScore(p.pillar3), this.valueToScore(p.pillar4),
+        this.valueToScore(p.pillar5), this.valueToScore(p.pillar6),
+        this.valueToScore(p.pillar7), this.valueToScore(p.pillar8),
+        analysis.pillarsPassed,
+        this.calculateTotalScore(analysis),
+        analysis.currentPrice,
+        // market_cap is BIGINT; marketCap is a float (price * shares) so it must be rounded
+        analysis.marketCap != null ? Math.round(analysis.marketCap) : null,
+        analysis.industry || null,
+        EightPillarsService.CALCULATION_VERSION
+      ]);
+    } catch (error) {
+      // Non-fatal: the detail view still returns correct data even if the
+      // list row can't be refreshed (e.g. no completed scan exists yet).
+      console.error(`[SCANNER] Failed to sync scan row for ${analysis.symbol}:`, error.message);
+    }
   }
 
   /**

@@ -58,8 +58,9 @@ class GamificationScheduler {
       
       // Get all users who have trades
       const usersWithTrades = await db.query(`
-        SELECT DISTINCT user_id 
+        SELECT DISTINCT user_id
         FROM trades
+        WHERE user_id IS NOT NULL
       `);
       
       let updated = 0;

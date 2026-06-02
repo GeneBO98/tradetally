@@ -124,20 +124,17 @@
                         <label for="syncFrequency" class="label"
                             >Sync Frequency</label
                         >
-                        <select
-                            id="syncFrequency"
+                        <BaseSelect
                             v-model="form.syncFrequency"
-                            class="input"
-                        >
-                            <option value="hourly">Every hour</option>
-                            <option value="every_4_hours">Every 4 hours</option>
-                            <option value="every_6_hours">Every 6 hours</option>
-                            <option value="every_12_hours">
-                                Every 12 hours
-                            </option>
-                            <option value="daily">Daily</option>
-                            <option value="manual">Manual only</option>
-                        </select>
+                            :options="[
+                                { value: 'hourly', label: 'Every hour' },
+                                { value: 'every_4_hours', label: 'Every 4 hours' },
+                                { value: 'every_6_hours', label: 'Every 6 hours' },
+                                { value: 'every_12_hours', label: 'Every 12 hours' },
+                                { value: 'daily', label: 'Daily' },
+                                { value: 'manual', label: 'Manual only' },
+                            ]"
+                        />
                         <p
                             class="mt-1 text-sm text-gray-500 dark:text-gray-400"
                         >
@@ -165,6 +162,37 @@
                         >
                             Time to sync each day (in your local timezone). Only
                             applies to daily frequency.
+                        </p>
+                    </div>
+
+                    <!-- Sync Range -->
+                    <div>
+                        <label class="label">Sync Trades From</label>
+                        <div class="flex flex-wrap gap-2 mb-2">
+                            <button
+                                v-for="preset in syncRangePresets"
+                                :key="preset.id"
+                                type="button"
+                                @click="applySyncRangePreset(preset.id)"
+                                :class="[
+                                    'px-3 py-1 text-sm rounded-full border transition-colors',
+                                    activePreset === preset.id
+                                        ? 'bg-primary-600 border-primary-600 text-white'
+                                        : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600',
+                                ]"
+                            >
+                                {{ preset.label }}
+                            </button>
+                        </div>
+                        <input
+                            v-if="activePreset === 'custom'"
+                            v-model="form.syncStartDate"
+                            type="date"
+                            class="input"
+                            :max="todayIso"
+                        />
+                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                            Only sync trades on or after this date. "All Time" pulls the full history available from the broker.
                         </p>
                     </div>
 
@@ -252,6 +280,8 @@
 
 <script setup>
 import { ref, computed, watch } from "vue";
+import BaseSelect from "@/components/common/BaseSelect.vue";
+import { syncRangePresets, applyPresetToForm, resolveActivePreset, todayIso } from "@/utils/syncRangePresets";
 
 const props = defineProps({
     connection: {
@@ -266,12 +296,25 @@ const props = defineProps({
 
 const emit = defineEmits(["close", "save"]);
 
+function initialSyncStartDate(value) {
+    if (!value) return null;
+    return String(value).slice(0, 10);
+}
+
 const form = ref({
     accountLabel: props.connection.accountLabel || "",
     autoSyncEnabled: props.connection.autoSyncEnabled,
     syncFrequency: props.connection.syncFrequency,
     syncTime: props.connection.syncTime?.substring(0, 5) || "06:00",
+    syncStartDate: initialSyncStartDate(props.connection.syncStartDate),
 });
+
+const activePreset = ref(resolveActivePreset(form.value.syncStartDate));
+
+function applySyncRangePreset(presetId) {
+    activePreset.value = presetId;
+    applyPresetToForm(form.value, presetId);
+}
 
 // Update form when connection changes
 watch(
@@ -282,7 +325,9 @@ watch(
             autoSyncEnabled: newConnection.autoSyncEnabled,
             syncFrequency: newConnection.syncFrequency,
             syncTime: newConnection.syncTime?.substring(0, 5) || "06:00",
+            syncStartDate: initialSyncStartDate(newConnection.syncStartDate),
         };
+        activePreset.value = resolveActivePreset(form.value.syncStartDate);
     },
 );
 
@@ -338,6 +383,7 @@ function handleSave() {
         autoSyncEnabled: form.value.autoSyncEnabled,
         syncFrequency: form.value.syncFrequency,
         syncTime: form.value.syncTime + ":00",
+        syncStartDate: form.value.syncStartDate,
     });
 }
 </script>

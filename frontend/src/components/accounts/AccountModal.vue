@@ -35,29 +35,24 @@
           <!-- Broker -->
           <div>
             <label for="broker" class="label">Broker</label>
-            <select id="broker" v-model="form.broker" class="input w-full">
-              <option value="">Select broker (optional)</option>
-              <option v-for="broker in brokerOptions" :key="broker" :value="broker">
-                {{ broker }}
-              </option>
-            </select>
+            <BaseSelect
+              v-model="form.broker"
+              :options="brokerOptions"
+              placeholder="Select broker (optional)"
+            />
           </div>
 
           <!-- Account Identifier -->
           <div>
             <label for="accountIdentifier" class="label">Account Identifier</label>
             <div class="space-y-2">
-              <select
+              <BaseSelect
                 v-if="unlinkedIdentifiers.length > 0"
                 v-model="form.accountIdentifier"
+                :options="unlinkedIdentifierOptions"
+                placeholder="Select from existing trades or enter manually"
                 @change="onIdentifierSelected"
-                class="input w-full"
-              >
-                <option value="">Select from existing trades or enter manually</option>
-                <option v-for="id in unlinkedIdentifiers" :key="id.accountIdentifier" :value="id.accountIdentifier">
-                  {{ id.accountIdentifier }} {{ id.broker ? `(${id.broker})` : '' }}
-                </option>
-              </select>
+              />
               <input
                 v-if="unlinkedIdentifiers.length === 0 || form.accountIdentifier === '' || !unlinkedIdentifiers.find(i => i.accountIdentifier === form.accountIdentifier)"
                 v-model="form.accountIdentifier"
@@ -155,6 +150,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useAccountsStore } from '@/stores/accounts'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 
 const props = defineProps({
   account: {
@@ -198,6 +194,13 @@ const brokerOptions = [
   'Binance',
   'Other'
 ]
+
+const unlinkedIdentifierOptions = computed(() =>
+  unlinkedIdentifiers.value.map(id => ({
+    value: id.accountIdentifier,
+    label: `${id.accountIdentifier} ${id.broker ? `(${id.broker})` : ''}`.trim()
+  }))
+)
 
 function onIdentifierSelected() {
   const selected = unlinkedIdentifiers.value.find(i => i.accountIdentifier === form.value.accountIdentifier)

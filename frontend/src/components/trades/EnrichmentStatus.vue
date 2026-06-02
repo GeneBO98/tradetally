@@ -135,18 +135,9 @@ const currentEnrichmentStatus = computed(() => {
 })
 
 const showStatus = computed(() => {
-  // If dismissed and no tasks are actively pending/processing, don't show
-  if (dismissed.value && !isEnriching.value) {
-    return false
-  }
-  
-  // Always show if there are pending/processing tasks, even if previously dismissed
-  if (isEnriching.value) {
-    return true
-  }
-  
-  // Show recently completed only if not dismissed
-  return !dismissed.value && currentEnrichmentStatus.value && recentlyCompleted.value
+  // Only show while enrichment is actively in progress; the completion state is suppressed.
+  if (dismissed.value) return false
+  return isEnriching.value
 })
 
 const isEnriching = computed(() => {

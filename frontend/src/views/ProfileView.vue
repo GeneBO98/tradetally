@@ -8,9 +8,120 @@
             </p>
         </div>
 
+        <!-- Tabs -->
+        <div class="border-b border-gray-200 dark:border-gray-700 mb-8">
+            <nav class="-mb-px flex space-x-8 overflow-x-auto" aria-label="Profile sections">
+                <button
+                    v-for="tab in [
+                        { id: 'profile', label: 'Profile' },
+                        { id: 'security', label: 'Security' },
+                        { id: 'notifications', label: 'Notifications' },
+                        { id: 'trading', label: 'Trading Profile' },
+                    ]"
+                    :key="tab.id"
+                    @click="activeTab = tab.id"
+                    :class="[
+                        'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm',
+                        activeTab === tab.id
+                            ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300',
+                    ]"
+                >
+                    {{ tab.label }}
+                </button>
+            </nav>
+        </div>
+
         <div class="space-y-8">
+            <!-- Profile Picture -->
+            <div v-if="activeTab === 'profile'" class="card">
+                <div class="card-body">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                        Profile Picture
+                    </h3>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+                        Used in the navbar and on your public profile. PNG, JPG, or WebP — max 50&nbsp;MB, resized to 512×512.
+                    </p>
+
+                    <div class="flex flex-col sm:flex-row sm:items-center gap-6">
+                        <!-- Preview / current avatar -->
+                        <div class="shrink-0">
+                            <div class="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-primary-400 to-primary-600 shadow-md ring-1 ring-white/40 dark:ring-white/10">
+                                <img
+                                    v-if="avatarDisplayUrl"
+                                    :src="avatarDisplayUrl"
+                                    alt="Profile picture preview"
+                                    class="h-full w-full object-cover"
+                                />
+                                <span v-else class="text-2xl font-bold tracking-wider text-white drop-shadow-sm">
+                                    {{ avatarInitials }}
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Controls -->
+                        <div class="flex-1 min-w-0">
+                            <input
+                                ref="avatarFileInput"
+                                type="file"
+                                accept="image/png,image/jpeg,image/jpg,image/webp"
+                                class="hidden"
+                                @change="onAvatarFileSelected"
+                            />
+
+                            <div v-if="avatarPreviewFile" class="space-y-3">
+                                <p class="text-sm text-gray-700 dark:text-gray-300 break-all">
+                                    Selected: <span class="font-medium">{{ avatarPreviewFile.name }}</span>
+                                    <span class="text-gray-500 dark:text-gray-400">({{ formatBytes(avatarPreviewFile.size) }})</span>
+                                </p>
+                                <div class="flex flex-wrap gap-3">
+                                    <button
+                                        type="button"
+                                        @click="uploadAvatar"
+                                        :disabled="avatarUploading"
+                                        class="btn-primary"
+                                    >
+                                        <span v-if="avatarUploading">Uploading...</span>
+                                        <span v-else>Save photo</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        @click="cancelAvatarSelection"
+                                        :disabled="avatarUploading"
+                                        class="btn-secondary"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div v-else class="flex flex-wrap gap-3">
+                                <button
+                                    type="button"
+                                    @click="triggerAvatarFilePicker"
+                                    :disabled="avatarRemoving"
+                                    class="btn-primary"
+                                >
+                                    {{ authStore.user?.avatar_url ? 'Change photo' : 'Upload photo' }}
+                                </button>
+                                <button
+                                    v-if="authStore.user?.avatar_url"
+                                    type="button"
+                                    @click="removeAvatar"
+                                    :disabled="avatarRemoving"
+                                    class="btn-secondary"
+                                >
+                                    <span v-if="avatarRemoving">Removing...</span>
+                                    <span v-else>Remove photo</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Profile Information -->
-            <div class="card">
+            <div v-if="activeTab === 'profile'" class="card">
                 <div class="card-body">
                     <h3
                         class="text-lg font-medium text-gray-900 dark:text-white mb-6"
@@ -80,25 +191,11 @@
                                 <label for="timezone" class="label"
                                     >Timezone</label
                                 >
-                                <select
-                                    id="timezone"
+                                <BaseSelect
                                     v-model="profileForm.timezone"
-                                    class="input"
-                                >
-                                    <optgroup
-                                        v-for="group in timezoneGroups"
-                                        :key="group.name"
-                                        :label="group.name"
-                                    >
-                                        <option
-                                            v-for="tz in group.options"
-                                            :key="tz.value"
-                                            :value="tz.value"
-                                        >
-                                            {{ tz.label }}
-                                        </option>
-                                    </optgroup>
-                                </select>
+                                    noun="timezones"
+                                    :options="timezoneSelectGroups"
+                                />
                                 <p
                                     class="mt-1 text-sm text-gray-500 dark:text-gray-400"
                                 >
@@ -111,16 +208,13 @@
                                 <label for="timeDisplayFormat" class="label"
                                     >Time format</label
                                 >
-                                <select
-                                    id="timeDisplayFormat"
+                                <BaseSelect
                                     v-model="profileForm.timeDisplayFormat"
-                                    class="input"
-                                >
-                                    <option value="24h">24-hour (14:00)</option>
-                                    <option value="12h">
-                                        12-hour (2:00 PM)
-                                    </option>
-                                </select>
+                                    :options="[
+                                        { value: '24h', label: '24-hour (14:00)' },
+                                        { value: '12h', label: '12-hour (2:00 PM)' }
+                                    ]"
+                                />
                                 <p
                                     class="mt-1 text-sm text-gray-500 dark:text-gray-400"
                                 >
@@ -144,7 +238,7 @@
             </div>
 
             <!-- Two-Factor Authentication -->
-            <div class="card">
+            <div v-if="activeTab === 'security'" class="card">
                 <div class="card-body">
                     <h3
                         class="text-lg font-medium text-gray-900 dark:text-white mb-6"
@@ -155,33 +249,6 @@
                         Add an extra layer of security to your account with
                         two-factor authentication.
                     </p>
-
-                    <div
-                        class="mb-6 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800"
-                    >
-                        <h4 class="text-sm font-medium text-gray-900 dark:text-white">
-                            Security confirmation
-                        </h4>
-                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                            Required before changing 2FA or passkeys. The confirmation expires after a few minutes.
-                        </p>
-                        <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                            <input
-                                v-model="sudoForm.password"
-                                type="password"
-                                autocomplete="current-password"
-                                class="input"
-                                placeholder="Current password"
-                            />
-                            <input
-                                v-model="sudoForm.twoFactorCode"
-                                type="text"
-                                autocomplete="one-time-code"
-                                class="input"
-                                placeholder="2FA code if enabled"
-                            />
-                        </div>
-                    </div>
 
                     <div v-if="twoFactorStatus.enabled" class="space-y-4">
                         <!-- 2FA is enabled -->
@@ -284,7 +351,7 @@
             </div>
 
             <!-- Passkeys -->
-            <div class="card">
+            <div v-if="activeTab === 'security'" class="card">
                 <div class="card-body">
                     <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">
                         Passkeys
@@ -347,7 +414,7 @@
             </div>
 
             <!-- Subscription Status -->
-            <div v-if="billingStatus.billing_available" class="card">
+            <div v-if="activeTab === 'profile' && billingStatus.billing_available" class="card">
                 <div class="card-body">
                     <h3
                         class="text-lg font-medium text-gray-900 dark:text-white mb-6"
@@ -540,7 +607,7 @@
             </div>
 
             <!-- API Key Management -->
-            <div class="card">
+            <div v-if="activeTab === 'security'" class="card">
                 <div class="card-body">
                     <h3
                         class="text-lg font-medium text-gray-900 dark:text-white mb-6"
@@ -673,10 +740,15 @@
             </div>
 
             <!-- Notification Preferences -->
-            <NotificationPreferences />
+            <NotificationPreferences v-if="activeTab === 'notifications'" />
+
+            <!-- Webhook Destinations (Slack / Discord / custom) -->
+            <PriceAlertWebhookManager
+                v-if="activeTab === 'notifications' && isProUser"
+            />
 
             <!-- Trading Profile -->
-            <div class="card">
+            <div v-if="activeTab === 'trading'" class="card">
                 <div class="card-body">
                     <h3
                         class="text-lg font-medium text-gray-900 dark:text-white mb-6"
@@ -690,262 +762,226 @@
 
                     <form
                         @submit.prevent="updateTradingProfile"
-                        class="space-y-8"
+                        class="space-y-10"
                     >
                         <!-- General Trading Information -->
-                        <div>
-                            <h4
-                                class="text-md font-medium text-gray-900 dark:text-white mb-4"
-                            >
-                                General Information
-                            </h4>
-                            <div
-                                class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3"
-                            >
+                        <section>
+                            <div class="bg-gray-100 dark:bg-gray-800/60 px-4 py-2.5 rounded-md mb-4">
+                                <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-gray-100">
+                                    General Information
+                                </h4>
+                            </div>
+                            <div class="pl-4 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
                                 <!-- Risk Tolerance -->
                                 <div>
-                                    <label for="riskTolerance" class="label"
-                                        >Risk Tolerance</label
-                                    >
-                                    <select
-                                        id="riskTolerance"
-                                        v-model="
-                                            tradingProfileForm.riskTolerance
-                                        "
-                                        class="input"
-                                    >
-                                        <option value="conservative">
-                                            Conservative
-                                        </option>
-                                        <option value="moderate">
-                                            Moderate
-                                        </option>
-                                        <option value="aggressive">
-                                            Aggressive
-                                        </option>
-                                    </select>
+                                    <label for="riskTolerance" class="label">Risk Tolerance</label>
+                                    <BaseSelect
+                                        v-model="tradingProfileForm.riskTolerance"
+                                        :options="[
+                                            { value: 'conservative', label: 'Conservative' },
+                                            { value: 'moderate', label: 'Moderate' },
+                                            { value: 'aggressive', label: 'Aggressive' }
+                                        ]"
+                                    />
                                 </div>
 
                                 <!-- Experience Level -->
                                 <div>
-                                    <label for="experienceLevel" class="label"
-                                        >Experience Level</label
-                                    >
-                                    <select
-                                        id="experienceLevel"
-                                        v-model="
-                                            tradingProfileForm.experienceLevel
-                                        "
-                                        class="input"
-                                    >
-                                        <option value="beginner">
-                                            Beginner (0-1 years)
-                                        </option>
-                                        <option value="intermediate">
-                                            Intermediate (1-3 years)
-                                        </option>
-                                        <option value="advanced">
-                                            Advanced (3-5 years)
-                                        </option>
-                                        <option value="expert">
-                                            Expert (5+ years)
-                                        </option>
-                                    </select>
+                                    <label for="experienceLevel" class="label">Experience Level</label>
+                                    <BaseSelect
+                                        v-model="tradingProfileForm.experienceLevel"
+                                        :options="[
+                                            { value: 'beginner', label: 'Beginner (0-1 years)' },
+                                            { value: 'intermediate', label: 'Intermediate (1-3 years)' },
+                                            { value: 'advanced', label: 'Advanced (3-5 years)' },
+                                            { value: 'expert', label: 'Expert (5+ years)' }
+                                        ]"
+                                    />
                                 </div>
 
                                 <!-- Average Position Size -->
                                 <div>
-                                    <label
-                                        for="averagePositionSize"
-                                        class="label"
-                                        >Average Position Size</label
-                                    >
-                                    <select
-                                        id="averagePositionSize"
-                                        v-model="
-                                            tradingProfileForm.averagePositionSize
-                                        "
-                                        class="input"
-                                    >
-                                        <option value="small">
-                                            Small ($100 - $1,000)
-                                        </option>
-                                        <option value="medium">
-                                            Medium ($1,000 - $10,000)
-                                        </option>
-                                        <option value="large">
-                                            Large ($10,000+)
-                                        </option>
-                                    </select>
+                                    <label for="averagePositionSize" class="label">Average Position Size</label>
+                                    <BaseSelect
+                                        v-model="tradingProfileForm.averagePositionSize"
+                                        :options="[
+                                            { value: 'small', label: 'Small ($100 - $1,000)' },
+                                            { value: 'medium', label: 'Medium ($1,000 - $10,000)' },
+                                            { value: 'large', label: 'Large ($10,000+)' }
+                                        ]"
+                                    />
                                 </div>
                             </div>
-                        </div>
+                        </section>
+
+                        <section>
+                            <div class="bg-gray-100 dark:bg-gray-800/60 px-4 py-2.5 rounded-md mb-4">
+                                <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-gray-100">
+                                    After-Trade Excursion Tracking
+                                </h4>
+                            </div>
+                            <div class="pl-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
+                                <div>
+                                    <label for="postExitExcursionWindowMode" class="label">Tracking Window</label>
+                                    <BaseSelect
+                                        v-model="tradingProfileForm.postExitExcursionWindowMode"
+                                        :options="[
+                                            { value: 'auto', label: 'Auto from trading profile' },
+                                            { value: 'manual', label: 'Manual duration' }
+                                        ]"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label for="postExitExcursionWindowMinutes" class="label">Manual Duration (minutes)</label>
+                                    <input
+                                        id="postExitExcursionWindowMinutes"
+                                        v-model.number="tradingProfileForm.postExitExcursionWindowMinutes"
+                                        type="number"
+                                        min="1"
+                                        step="1"
+                                        class="input"
+                                        :disabled="tradingProfileForm.postExitExcursionWindowMode !== 'manual'"
+                                        placeholder="60"
+                                    />
+                                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                        Auto mode uses your personality/profile. Individual trades can still override this.
+                                    </p>
+                                </div>
+                            </div>
+                        </section>
 
                         <!-- Trading Preferences -->
-                        <div>
-                            <h4
-                                class="text-md font-medium text-gray-900 dark:text-white mb-4"
-                            >
-                                Trading Preferences
-                            </h4>
-                            <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                        <section>
+                            <div class="bg-gray-100 dark:bg-gray-800/60 px-4 py-2.5 rounded-md mb-4">
+                                <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-gray-100">
+                                    Trading Preferences
+                                </h4>
+                            </div>
+                            <div class="pl-4 space-y-6">
                                 <!-- Trading Strategies -->
                                 <div>
-                                    <label class="label"
-                                        >Trading Strategies</label
-                                    >
-                                    <div class="space-y-2 mt-2">
-                                        <div
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                        Trading Strategies
+                                    </label>
+                                    <div class="flex flex-wrap gap-2">
+                                        <button
                                             v-for="strategy in strategyOptions"
                                             :key="strategy"
-                                            class="flex items-center"
+                                            type="button"
+                                            @click="toggleChip(tradingProfileForm.tradingStrategies, strategy)"
+                                            :class="[
+                                                'inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 dark:focus:ring-offset-gray-900',
+                                                tradingProfileForm.tradingStrategies.includes(strategy)
+                                                    ? 'bg-primary-600 border-primary-600 text-white hover:bg-primary-700'
+                                                    : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500'
+                                            ]"
                                         >
-                                            <input
-                                                :id="`strategy-${strategy}`"
-                                                v-model="
-                                                    tradingProfileForm.tradingStrategies
-                                                "
-                                                :value="strategy"
-                                                type="checkbox"
-                                                class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                                            />
-                                            <label
-                                                :for="`strategy-${strategy}`"
-                                                class="ml-2 text-sm text-gray-700 dark:text-gray-300"
-                                            >
-                                                {{ strategy }}
-                                            </label>
-                                        </div>
+                                            {{ strategy }}
+                                        </button>
                                     </div>
                                 </div>
 
                                 <!-- Trading Styles -->
                                 <div>
-                                    <label class="label">Trading Styles</label>
-                                    <div class="space-y-2 mt-2">
-                                        <div
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                        Trading Styles
+                                    </label>
+                                    <div class="flex flex-wrap gap-2">
+                                        <button
                                             v-for="style in styleOptions"
                                             :key="style"
-                                            class="flex items-center"
+                                            type="button"
+                                            @click="toggleChip(tradingProfileForm.tradingStyles, style)"
+                                            :class="[
+                                                'inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 dark:focus:ring-offset-gray-900',
+                                                tradingProfileForm.tradingStyles.includes(style)
+                                                    ? 'bg-primary-600 border-primary-600 text-white hover:bg-primary-700'
+                                                    : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500'
+                                            ]"
                                         >
-                                            <input
-                                                :id="`style-${style}`"
-                                                v-model="
-                                                    tradingProfileForm.tradingStyles
-                                                "
-                                                :value="style"
-                                                type="checkbox"
-                                                class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                                            />
-                                            <label
-                                                :for="`style-${style}`"
-                                                class="ml-2 text-sm text-gray-700 dark:text-gray-300"
-                                            >
-                                                {{ style }}
-                                            </label>
-                                        </div>
+                                            {{ style }}
+                                        </button>
                                     </div>
                                 </div>
 
                                 <!-- Primary Markets -->
                                 <div>
-                                    <label class="label">Primary Markets</label>
-                                    <div class="space-y-2 mt-2">
-                                        <div
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                        Primary Markets
+                                    </label>
+                                    <div class="flex flex-wrap gap-2">
+                                        <button
                                             v-for="market in marketOptions"
                                             :key="market"
-                                            class="flex items-center"
+                                            type="button"
+                                            @click="toggleChip(tradingProfileForm.primaryMarkets, market)"
+                                            :class="[
+                                                'inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 dark:focus:ring-offset-gray-900',
+                                                tradingProfileForm.primaryMarkets.includes(market)
+                                                    ? 'bg-primary-600 border-primary-600 text-white hover:bg-primary-700'
+                                                    : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500'
+                                            ]"
                                         >
-                                            <input
-                                                :id="`market-${market}`"
-                                                v-model="
-                                                    tradingProfileForm.primaryMarkets
-                                                "
-                                                :value="market"
-                                                type="checkbox"
-                                                class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                                            />
-                                            <label
-                                                :for="`market-${market}`"
-                                                class="ml-2 text-sm text-gray-700 dark:text-gray-300"
-                                            >
-                                                {{ market }}
-                                            </label>
-                                        </div>
+                                            {{ market }}
+                                        </button>
                                     </div>
                                 </div>
 
                                 <!-- Trading Goals -->
                                 <div>
-                                    <label class="label">Trading Goals</label>
-                                    <div class="space-y-2 mt-2">
-                                        <div
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                        Trading Goals
+                                    </label>
+                                    <div class="flex flex-wrap gap-2">
+                                        <button
                                             v-for="goal in goalOptions"
                                             :key="goal"
-                                            class="flex items-center"
+                                            type="button"
+                                            @click="toggleChip(tradingProfileForm.tradingGoals, goal)"
+                                            :class="[
+                                                'inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 dark:focus:ring-offset-gray-900',
+                                                tradingProfileForm.tradingGoals.includes(goal)
+                                                    ? 'bg-primary-600 border-primary-600 text-white hover:bg-primary-700'
+                                                    : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500'
+                                            ]"
                                         >
-                                            <input
-                                                :id="`goal-${goal}`"
-                                                v-model="
-                                                    tradingProfileForm.tradingGoals
-                                                "
-                                                :value="goal"
-                                                type="checkbox"
-                                                class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                                            />
-                                            <label
-                                                :for="`goal-${goal}`"
-                                                class="ml-2 text-sm text-gray-700 dark:text-gray-300"
-                                            >
-                                                {{ goal }}
-                                            </label>
-                                        </div>
+                                            {{ goal }}
+                                        </button>
                                     </div>
                                 </div>
                             </div>
-                        </div>
+                        </section>
 
                         <!-- Sector Preferences -->
-                        <div>
-                            <h4
-                                class="text-md font-medium text-gray-900 dark:text-white mb-4"
-                            >
-                                Sector Preferences
-                            </h4>
-                            <div class="grid grid-cols-1 gap-6">
-                                <!-- Preferred Sectors -->
-                                <div>
-                                    <label class="label"
-                                        >Preferred Sectors</label
+                        <section>
+                            <div class="bg-gray-100 dark:bg-gray-800/60 px-4 py-2.5 rounded-md mb-4">
+                                <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-gray-100">
+                                    Sector Preferences
+                                </h4>
+                            </div>
+                            <div class="pl-4">
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                    Preferred Sectors
+                                </label>
+                                <div class="flex flex-wrap gap-2">
+                                    <button
+                                        v-for="sector in sectorOptions"
+                                        :key="sector"
+                                        type="button"
+                                        @click="toggleChip(tradingProfileForm.preferredSectors, sector)"
+                                        :class="[
+                                            'inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 dark:focus:ring-offset-gray-900',
+                                            tradingProfileForm.preferredSectors.includes(sector)
+                                                ? 'bg-primary-600 border-primary-600 text-white hover:bg-primary-700'
+                                                : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500'
+                                        ]"
                                     >
-                                    <div
-                                        class="grid grid-cols-2 gap-2 mt-2 sm:grid-cols-3 lg:grid-cols-4"
-                                    >
-                                        <div
-                                            v-for="sector in sectorOptions"
-                                            :key="sector"
-                                            class="flex items-center"
-                                        >
-                                            <input
-                                                :id="`sector-${sector}`"
-                                                v-model="
-                                                    tradingProfileForm.preferredSectors
-                                                "
-                                                :value="sector"
-                                                type="checkbox"
-                                                class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                                            />
-                                            <label
-                                                :for="`sector-${sector}`"
-                                                class="ml-2 text-sm text-gray-700 dark:text-gray-300"
-                                            >
-                                                {{ sector }}
-                                            </label>
-                                        </div>
-                                    </div>
+                                        {{ sector }}
+                                    </button>
                                 </div>
                             </div>
-                        </div>
+                        </section>
 
                         <div class="flex justify-end">
                             <button
@@ -964,7 +1000,7 @@
             </div>
 
             <!-- Delete Account -->
-            <div class="card border-red-200 dark:border-red-800">
+            <div v-if="activeTab === 'profile'" class="card border-red-200 dark:border-red-800">
                 <div class="card-body">
                     <h3
                         class="text-lg font-medium text-red-600 dark:text-red-400 mb-4"
@@ -1088,7 +1124,7 @@
                                 type="text"
                                 maxlength="6"
                                 placeholder="000000"
-                                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white text-center text-lg tracking-widest"
+                                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-white text-center text-lg tracking-widest"
                             />
                         </div>
 
@@ -1347,17 +1383,17 @@
                             <label for="apiKeyExpiry" class="label"
                                 >Expires in (days)</label
                             >
-                            <select
-                                id="apiKeyExpiry"
+                            <BaseSelect
                                 v-model="createApiKeyForm.expiresIn"
-                                class="input"
-                            >
-                                <option :value="null">Never</option>
-                                <option :value="30">30 days</option>
-                                <option :value="90">90 days</option>
-                                <option :value="180">180 days</option>
-                                <option :value="365">1 year</option>
-                            </select>
+                                :searchable="false"
+                                :options="[
+                                    { value: null, label: 'Never' },
+                                    { value: 30, label: '30 days' },
+                                    { value: 90, label: '90 days' },
+                                    { value: 180, label: '180 days' },
+                                    { value: 365, label: '1 year' },
+                                ]"
+                            />
                         </div>
 
                         <div class="flex justify-end space-x-3 pt-4">
@@ -1563,19 +1599,40 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from "vue";
-import { useRouter } from "vue-router";
+import { ref, onMounted, onBeforeUnmount, computed, watch } from "vue";
+import { useRouter, useRoute } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { useNotification } from "@/composables/useNotification";
 import NotificationPreferences from "@/components/profile/NotificationPreferences.vue";
+import PriceAlertWebhookManager from "@/components/price-alerts/PriceAlertWebhookManager.vue";
 import api from "@/services/api";
-import { requestSudoToken, sudoHeaders } from "@/services/sudo";
 import { TIMEZONE_OPTIONS } from "@/utils/timezone";
+import BaseSelect from "@/components/common/BaseSelect.vue";
 
 const router = useRouter();
+const route = useRoute();
+
+// Tabbed layout. The active tab is mirrored to the ?tab= query param so it can
+// be deep-linked and survives refresh.
+const PROFILE_TABS = ["profile", "security", "notifications", "trading"];
+const activeTab = ref(
+  PROFILE_TABS.includes(route.query.tab) ? route.query.tab : "profile"
+);
+watch(activeTab, (tab) => {
+  if (route.query.tab !== tab) {
+    router.replace({ query: { ...route.query, tab } });
+  }
+});
 
 const authStore = useAuthStore();
 const { showSuccess, showError, showDangerConfirmation } = useNotification();
+
+// Webhook destinations (a notification delivery channel) require Pro. On
+// self-hosted instances billing is disabled, so everyone has access.
+const isProUser = computed(() => {
+  if (authStore.user?.billingEnabled === false) return true;
+  return authStore.user?.tier === "pro";
+});
 
 // Profile form data
 const profileLoading = ref(false);
@@ -1586,6 +1643,16 @@ const profileForm = ref({
     timezone: "UTC",
     timeDisplayFormat: "24h",
 });
+
+// Avatar upload state. `avatarPreviewFile` holds the freshly-picked File until
+// the user confirms the upload; `avatarPreviewUrl` is the object URL we render
+// in the preview circle (revoked when superseded or cleared). When no file is
+// pending we fall back to the avatar already stored on the user.
+const avatarFileInput = ref(null);
+const avatarPreviewFile = ref(null);
+const avatarPreviewUrl = ref(null);
+const avatarUploading = ref(false);
+const avatarRemoving = ref(false);
 
 // 2FA data
 const twoFactorLoading = ref(false);
@@ -1603,13 +1670,6 @@ const twoFactorStatus = ref({
     enabled: false,
     backupCodesRemaining: 0,
 });
-const sudoForm = ref({
-    password: "",
-    twoFactorCode: "",
-});
-const sudoToken = ref("");
-const sudoExpiresAt = ref(0);
-const twoFactorSetupSudoToken = ref("");
 
 // Subscription data
 const subscriptionLoading = ref(false);
@@ -1655,6 +1715,8 @@ const tradingProfileForm = ref({
     averagePositionSize: "medium",
     tradingGoals: [],
     preferredSectors: [],
+    postExitExcursionWindowMode: "auto",
+    postExitExcursionWindowMinutes: null,
 });
 
 // Delete account data
@@ -1664,6 +1726,13 @@ const deleteAccountError = ref("");
 const deleteAccountForm = ref({
     password: "",
 });
+
+// Toggle a value's presence in a reactive array (used by chip toggles)
+function toggleChip(arr, value) {
+    const idx = arr.indexOf(value);
+    if (idx === -1) arr.push(value);
+    else arr.splice(idx, 1);
+}
 
 // Trading profile options
 const strategyOptions = [
@@ -1742,6 +1811,11 @@ const timezoneGroups = computed(() => {
     }));
 });
 
+// Shape timezone groups for BaseSelect (which expects `label`/`options`).
+const timezoneSelectGroups = computed(() =>
+    timezoneGroups.value.map((g) => ({ label: g.name, options: g.options })),
+);
+
 // Computed property to determine if upgrade button should be shown
 const shouldShowUpgradeButton = computed(() => {
     // Don't show if billing is not available (self-hosted without billing)
@@ -1783,30 +1857,126 @@ const canManageApiKeys = computed(() => {
     return subscription.value.tier === "pro";
 });
 
-async function getSudoToken() {
-    if (sudoToken.value && Date.now() < sudoExpiresAt.value - 30000) {
-        return sudoToken.value;
+// Avatar helpers and methods
+// Mirrors UserMenu.vue's initials fallback so the preview circle stays visually
+// consistent with the navbar avatar when no image is set.
+const avatarInitials = computed(() => {
+    const u = authStore.user;
+    if (!u) return '?';
+    const full = u.full_name?.trim();
+    if (full) {
+        const parts = full.split(/\s+/);
+        if (parts.length >= 2) {
+            return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+        }
+        return parts[0].slice(0, 2).toUpperCase();
     }
+    const uname = u.username?.trim();
+    if (uname) return uname.slice(0, 2).toUpperCase();
+    const email = u.email?.trim();
+    if (email) return email.slice(0, 2).toUpperCase();
+    return '?';
+});
 
-    if (!sudoForm.value.password) {
-        showError("Security confirmation required", "Enter your current password before changing security settings.");
-        throw new Error("Sudo password required");
-    }
+// Preview URL takes precedence so the user sees what they're about to upload.
+const avatarDisplayUrl = computed(
+    () => avatarPreviewUrl.value || authStore.user?.avatar_url || null
+);
 
-    const result = await requestSudoToken({
-        password: sudoForm.value.password,
-        twoFactorCode: sudoForm.value.twoFactorCode,
-    });
-    sudoToken.value = result.sudoToken;
-    sudoExpiresAt.value = result.expiresAt;
-    sudoForm.value = { password: "", twoFactorCode: "" };
-    return sudoToken.value;
+function formatBytes(bytes) {
+    if (!bytes && bytes !== 0) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function resetSudoToken() {
-    sudoToken.value = "";
-    sudoExpiresAt.value = 0;
-    twoFactorSetupSudoToken.value = "";
+function triggerAvatarFilePicker() {
+    avatarFileInput.value?.click();
+}
+
+function clearAvatarPreview() {
+    if (avatarPreviewUrl.value) {
+        URL.revokeObjectURL(avatarPreviewUrl.value);
+    }
+    avatarPreviewFile.value = null;
+    avatarPreviewUrl.value = null;
+    // Reset the input so picking the same file again still fires @change.
+    if (avatarFileInput.value) {
+        avatarFileInput.value.value = '';
+    }
+}
+
+function onAvatarFileSelected(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Matches the backend multer limit (50MB) and the image MIME filter.
+    const MAX_BYTES = 50 * 1024 * 1024;
+    if (!file.type.startsWith('image/')) {
+        showError('Invalid file', 'Please choose an image file (PNG, JPG, or WebP).');
+        event.target.value = '';
+        return;
+    }
+    if (file.size > MAX_BYTES) {
+        showError('File too large', 'Profile picture must be 50 MB or smaller.');
+        event.target.value = '';
+        return;
+    }
+
+    if (avatarPreviewUrl.value) {
+        URL.revokeObjectURL(avatarPreviewUrl.value);
+    }
+    avatarPreviewFile.value = file;
+    avatarPreviewUrl.value = URL.createObjectURL(file);
+}
+
+function cancelAvatarSelection() {
+    clearAvatarPreview();
+}
+
+async function uploadAvatar() {
+    if (!avatarPreviewFile.value) return;
+    avatarUploading.value = true;
+    try {
+        const formData = new FormData();
+        formData.append('avatar', avatarPreviewFile.value);
+        // Don't set Content-Type — axios sets the multipart boundary header,
+        // and api.js skips its application/json default for FormData payloads.
+        await api.post('/users/avatar', formData);
+        clearAvatarPreview();
+        await authStore.fetchUser();
+        showSuccess('Success', 'Profile picture updated.');
+    } catch (error) {
+        showError(
+            'Error',
+            error.response?.data?.error || 'Failed to upload profile picture.'
+        );
+    } finally {
+        avatarUploading.value = false;
+    }
+}
+
+async function removeAvatar() {
+    showDangerConfirmation(
+        'Remove profile picture',
+        'Are you sure you want to remove your profile picture?',
+        async () => {
+            avatarRemoving.value = true;
+            try {
+                await api.delete('/users/avatar');
+                clearAvatarPreview();
+                await authStore.fetchUser();
+                showSuccess('Success', 'Profile picture removed.');
+            } catch (error) {
+                showError(
+                    'Error',
+                    error.response?.data?.error || 'Failed to remove profile picture.'
+                );
+            } finally {
+                avatarRemoving.value = false;
+            }
+        }
+    );
 }
 
 // Profile methods
@@ -1859,15 +2029,13 @@ async function setup2FA() {
     twoFactorLoading.value = true;
 
     try {
-        const token = await getSudoToken();
-        twoFactorSetupSudoToken.value = token;
-        const response = await api.post("/2fa/setup", {}, sudoHeaders(token));
+        const response = await api.post("/2fa/setup");
         show2FASetup.value = true;
         qrCodeUrl.value = response.data.qrCode;
         setupSecret.value = response.data.secret;
         backupCodes.value = response.data.backupCodes || [];
     } catch (error) {
-        showError("Error", error.response?.data?.error || "Failed to set up 2FA");
+        showError("Error", "Failed to set up 2FA");
     } finally {
         twoFactorLoading.value = false;
     }
@@ -1882,17 +2050,15 @@ async function enable2FA() {
     twoFactorLoading.value = true;
 
     try {
-        const token = twoFactorSetupSudoToken.value || await getSudoToken();
         await api.post("/2fa/enable", {
             secret: setupSecret.value,
             token: verificationCode.value,
             backupCodes: backupCodes.value,
-        }, sudoHeaders(token));
+        });
 
         showSuccess("Success", "2FA has been enabled successfully");
         show2FASetup.value = false;
         verificationCode.value = "";
-        resetSudoToken();
         await fetch2FAStatus();
     } catch (error) {
         showError(
@@ -1917,18 +2083,13 @@ async function confirmDisable2FA() {
     twoFactorLoading.value = true;
 
     try {
-        const sudo = await requestSudoToken({
-            password: disable2FAForm.value.password,
-            twoFactorCode: disable2FAForm.value.token,
-        });
         await api.post("/2fa/disable", {
             password: disable2FAForm.value.password,
             token: disable2FAForm.value.token,
-        }, sudoHeaders(sudo.sudoToken));
+        });
 
         showSuccess("Success", "2FA has been disabled successfully");
         showDisable2FAModal.value = false;
-        resetSudoToken();
         disable2FAForm.value = { password: "", token: "" };
         await fetch2FAStatus();
     } catch (error) {
@@ -1952,7 +2113,6 @@ function cancel2FASetup() {
     qrCodeUrl.value = "";
     setupSecret.value = "";
     backupCodes.value = [];
-    twoFactorSetupSudoToken.value = "";
 }
 
 // Passkey methods
@@ -1972,14 +2132,12 @@ async function addPasskey() {
     console.log("[PASSKEY] addPasskey() called");
     addingPasskey.value = true;
     try {
-        const token = await getSudoToken();
-        const sudoConfig = sudoHeaders(token);
         console.log("[PASSKEY] Importing @simplewebauthn/browser...");
         const { startRegistration } = await import("@simplewebauthn/browser");
         console.log("[PASSKEY] Import OK, fetching options...");
 
         // Get registration options
-        const optionsRes = await api.post("/auth/passkey/register/options", {}, sudoConfig);
+        const optionsRes = await api.post("/auth/passkey/register/options");
         const options = optionsRes.data;
         console.log("[PASSKEY] Options received, rpID:", options.rp?.id, "options:", JSON.stringify(options).substring(0, 200));
 
@@ -1994,7 +2152,7 @@ async function addPasskey() {
         await api.post("/auth/passkey/register/verify", {
             response: regResponse,
             deviceName,
-        }, sudoConfig);
+        });
 
         showSuccess("Success", "Passkey registered successfully.");
         await fetchPasskeys();
@@ -2020,8 +2178,7 @@ function deletePasskeyConfirm(pk) {
 
 async function deletePasskey(id) {
     try {
-        const token = await getSudoToken();
-        await api.delete(`/auth/passkey/${id}`, sudoHeaders(token));
+        await api.delete(`/auth/passkey/${id}`);
         showSuccess("Success", "Passkey deleted.");
         await fetchPasskeys();
     } catch (error) {
@@ -2249,6 +2406,8 @@ async function fetchTradingProfile() {
             averagePositionSize: profile.averagePositionSize || "medium",
             tradingGoals: profile.tradingGoals || [],
             preferredSectors: profile.preferredSectors || [],
+            postExitExcursionWindowMode: profile.postExitExcursionWindowMode || "auto",
+            postExitExcursionWindowMinutes: profile.postExitExcursionWindowMinutes || null,
         };
     } catch (error) {
         console.error("Failed to fetch trading profile:", error);
@@ -2297,6 +2456,14 @@ function formatDate(dateString) {
         day: "numeric",
     });
 }
+
+// Release the object URL backing the pending avatar preview, if any, so we
+// don't leak it when the user navigates away mid-selection.
+onBeforeUnmount(() => {
+    if (avatarPreviewUrl.value) {
+        URL.revokeObjectURL(avatarPreviewUrl.value);
+    }
+});
 
 // Initialize data on component mount
 onMounted(async () => {

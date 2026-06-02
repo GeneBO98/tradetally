@@ -204,14 +204,27 @@
                 <div
                     class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6"
                 >
-                    <h2 class="heading-section">Your Price Alerts</h2>
-                    <button
-                        @click="showCreateAlertModal = true"
-                        class="mt-4 sm:mt-0 btn-primary"
-                    >
-                        <MdiIcon :icon="mdiBell" :size="16" classes="mr-2" />
-                        Create Alert
-                    </button>
+                    <div>
+                        <h2 class="heading-section">Your Price Alerts</h2>
+                        <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                            Manage alerts and where triggered alerts get delivered.
+                        </p>
+                    </div>
+                    <div class="mt-4 sm:mt-0 flex flex-wrap gap-3">
+                        <a
+                            href="#markets-webhook-destinations"
+                            class="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                        >
+                            Webhook Destinations
+                        </a>
+                        <button
+                            @click="showCreateAlertModal = true"
+                            class="btn-primary"
+                        >
+                            <MdiIcon :icon="mdiBell" :size="16" classes="mr-2" />
+                            Create Alert
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Market & Connection Status -->
@@ -300,6 +313,8 @@
                     </div>
                 </div>
 
+                <PriceAlertWebhookManager />
+
                 <!-- Filters -->
                 <div class="mb-6 flex flex-wrap items-center gap-4">
                     <div class="flex items-center space-x-2">
@@ -319,10 +334,13 @@
                             class="text-sm font-medium text-gray-700 dark:text-gray-300"
                             >Status:</label
                         >
-                        <select v-model="filters.activeOnly" class="input">
-                            <option value="true">Active Only</option>
-                            <option value="false">All Alerts</option>
-                        </select>
+                        <BaseSelect
+                            v-model="filters.activeOnly"
+                            :options="[
+                                { value: 'true', label: 'Active Only' },
+                                { value: 'false', label: 'All Alerts' },
+                            ]"
+                        />
                     </div>
                     <button @click="loadAlerts" class="btn-secondary">
                         Refresh
@@ -565,9 +583,12 @@
         <div
             v-if="showCreateWatchlistModal || editingWatchlist"
             class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
+            role="dialog"
+            aria-modal="true"
+            @click.self="cancelEditWatchlist"
         >
             <div
-                class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700"
+                class="relative top-20 mx-4 sm:mx-auto p-5 border w-full max-w-sm shadow-lg rounded-md bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700"
             >
                 <div class="mt-3">
                     <h3
@@ -653,9 +674,12 @@
         <div
             v-if="showCreateAlertModal || editingAlert"
             class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
+            role="dialog"
+            aria-modal="true"
+            @click.self="cancelEditAlert"
         >
             <div
-                class="relative top-20 mx-auto p-5 border w-[500px] shadow-lg rounded-md bg-white dark:bg-gray-800 dark:border-gray-700"
+                class="relative top-20 mx-4 sm:mx-auto p-5 border w-full max-w-lg shadow-lg rounded-md bg-white dark:bg-gray-800 dark:border-gray-700"
             >
                 <div class="mt-3">
                     <h3
@@ -688,18 +712,15 @@
                                     class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
                                     >Alert Type</label
                                 >
-                                <select
+                                <BaseSelect
                                     id="alertType"
                                     v-model="alertForm.alert_type"
-                                    required
-                                    class="input"
-                                >
-                                    <option value="above">Price Above</option>
-                                    <option value="below">Price Below</option>
-                                    <option value="change_percent">
-                                        % Change
-                                    </option>
-                                </select>
+                                    :options="[
+                                        { value: 'above', label: 'Price Above' },
+                                        { value: 'below', label: 'Price Below' },
+                                        { value: 'change_percent', label: '% Change' },
+                                    ]"
+                                />
                             </div>
                         </div>
 
@@ -817,22 +838,26 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
+import { useUiPreferencesStore } from "@/stores/uiPreferences";
 import OnboardingCard from "@/components/onboarding/OnboardingCard.vue";
 import { useNotification } from "@/composables/useNotification";
 import { usePriceAlertNotifications } from "@/composables/usePriceAlertNotifications";
 import api from "@/services/api";
 import ProUpgradePrompt from "@/components/ProUpgradePrompt.vue";
 import MdiIcon from "@/components/MdiIcon.vue";
+import PriceAlertWebhookManager from "@/components/price-alerts/PriceAlertWebhookManager.vue";
 import { mdiBell, mdiRepeat } from "@mdi/js";
 import { getMarketStatus } from "@/utils/marketStatus";
 import SymbolAutocomplete from "@/components/common/SymbolAutocomplete.vue";
+import BaseSelect from "@/components/common/BaseSelect.vue";
 
 const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
+const uiPreferencesStore = useUiPreferencesStore();
 const { showSuccess, showError, showCriticalError, showConfirmation } =
     useNotification();
 const { isConnected, notifications, requestNotificationPermission } =
@@ -1172,6 +1197,7 @@ watch(
     filters,
     () => {
         localStorage.setItem("marketsFilters", JSON.stringify(filters.value));
+        uiPreferencesStore.notifyChanged("marketsFilters", filters.value);
         loadAlerts();
     },
     { deep: true },
@@ -1180,6 +1206,7 @@ watch(
 // Watch for tab changes to persist to localStorage
 watch(activeTab, (newTab) => {
     localStorage.setItem("marketsTab", newTab);
+    uiPreferencesStore.notifyChanged("marketsTab", newTab);
 });
 
 // Watch for auth loading to complete
@@ -1194,10 +1221,24 @@ watch(
     { immediate: true },
 );
 
+const handleEscape = (e) => {
+    if (e.key !== "Escape") return;
+    if (showCreateAlertModal.value || editingAlert.value) {
+        cancelEditAlert();
+    } else if (editingWatchlist.value || showCreateWatchlistModal.value) {
+        cancelEditWatchlist();
+    }
+};
+
 onMounted(() => {
     if (!authLoading.value) {
         loadWatchlists();
         loadAlerts();
     }
+    window.addEventListener("keydown", handleEscape);
+});
+
+onBeforeUnmount(() => {
+    window.removeEventListener("keydown", handleEscape);
 });
 </script>

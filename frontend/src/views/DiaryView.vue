@@ -97,15 +97,17 @@
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             Type
           </label>
-          <select
-            v-model="filters.entryType"
-            @change="applyFilters"
-            class="input text-sm"
-          >
-            <option value="">All Types</option>
-            <option value="diary">Diary</option>
-            <option value="playbook">Playbook</option>
-          </select>
+          <div class="text-sm">
+            <BaseSelect
+              v-model="filters.entryType"
+              @change="applyFilters"
+              placeholder="All Types"
+              :options="[
+                { value: 'diary', label: 'Diary' },
+                { value: 'playbook', label: 'Playbook' }
+              ]"
+            />
+          </div>
         </div>
 
         <!-- Market Bias Filter -->
@@ -113,16 +115,18 @@
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             Market Bias
           </label>
-          <select
-            v-model="filters.marketBias"
-            @change="applyFilters"
-            class="input text-sm"
-          >
-            <option value="">All Bias</option>
-            <option value="bullish">Bullish</option>
-            <option value="bearish">Bearish</option>
-            <option value="neutral">Neutral</option>
-          </select>
+          <div class="text-sm">
+            <BaseSelect
+              v-model="filters.marketBias"
+              @change="applyFilters"
+              placeholder="All Bias"
+              :options="[
+                { value: 'bullish', label: 'Bullish' },
+                { value: 'bearish', label: 'Bearish' },
+                { value: 'neutral', label: 'Neutral' }
+              ]"
+            />
+          </div>
         </div>
 
         <!-- Date Range Filter -->
@@ -579,6 +583,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useDiaryStore } from '@/stores/diary'
+import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday, addMonths, subMonths, startOfWeek, endOfWeek } from 'date-fns'
 import { parseMarkdown, truncateHtml as truncateHtmlUtil } from '@/utils/markdown'
 import DiaryAnalysis from '@/components/diary/DiaryAnalysis.vue'
@@ -587,6 +592,7 @@ import TemplateManager from '@/components/diary/TemplateManager.vue'
 import LinkedTradesList from '@/components/diary/LinkedTradesList.vue'
 import WatchlistSymbol from '@/components/diary/WatchlistSymbol.vue'
 import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 import {
   PlusIcon,
   PencilIcon,
@@ -604,6 +610,7 @@ import {
 
 const authStore = useAuthStore()
 const diaryStore = useDiaryStore()
+const uiPreferencesStore = useUiPreferencesStore()
 const router = useRouter()
 
 // Component state - load saved view from localStorage
@@ -715,6 +722,7 @@ const truncateHtml = (html, maxLength) => {
 const applyFilters = async () => {
   // Save filters to localStorage
   localStorage.setItem('diaryFilters', JSON.stringify(filters.value))
+  uiPreferencesStore.notifyChanged('diaryFilters', filters.value)
   diaryStore.updateFilters(filters.value)
   await loadEntries()
 }
@@ -730,6 +738,8 @@ const clearFilters = async () => {
   // Clear from localStorage
   localStorage.removeItem('diaryFilters')
   localStorage.removeItem('diarySearchQuery')
+  uiPreferencesStore.notifyChanged('diaryFilters', null)
+  uiPreferencesStore.notifyChanged('diarySearchQuery', null)
   diaryStore.resetFilters()
   await loadEntries()
 }
@@ -745,8 +755,10 @@ const debounceSearch = () => {
   // Save search query to localStorage
   if (searchQuery.value.trim()) {
     localStorage.setItem('diarySearchQuery', searchQuery.value)
+    uiPreferencesStore.notifyChanged('diarySearchQuery', searchQuery.value)
   } else {
     localStorage.removeItem('diarySearchQuery')
+    uiPreferencesStore.notifyChanged('diarySearchQuery', null)
   }
 
   clearTimeout(searchTimeout.value)
@@ -944,6 +956,7 @@ watch(filters, () => {
 // Watch for view changes to persist to localStorage
 watch(currentView, (newView) => {
   localStorage.setItem('diaryView', newView)
+  uiPreferencesStore.notifyChanged('diaryView', newView)
 })
 </script>
 

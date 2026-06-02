@@ -9,6 +9,11 @@ const { sanitizeForLogging } = require('../utils/logSanitizer');
 
 const SYNC_CLAIM_TTL_MINUTES = 30;
 
+// pg-types parses PostgreSQL DATE columns via `new Date(y, m, d)` (server-local
+// midnight). Letting JSON serialize that Date via toISOString() shifts the
+// calendar day backward whenever the server TZ is east of UTC. Normalize to a
+// plain YYYY-MM-DD string using local getters so the wire format matches what
+// was stored regardless of server timezone.
 function toDateOnlyString(value) {
   if (value === null || value === undefined) return null;
   if (value instanceof Date) {
@@ -33,16 +38,28 @@ class BrokerConnection {
       schwabRefreshToken,
       schwabTokenExpiresAt,
       schwabAccountId,
+      oauthAccessToken,
+      oauthRefreshToken,
+      oauthTokenExpiresAt,
+      oauthRefreshTokenExpiresAt,
+      oauthScopes,
+      externalAccountId,
+      externalUserId,
+      brokerEnvironment,
+      brokerMetadata,
       accountLabel = null,
       autoSyncEnabled = false,
       syncFrequency = 'daily',
-      syncTime = '06:00:00'
+      syncTime = '06:00:00',
+      syncStartDate = null
     } = connectionData;
 
     // Encrypt sensitive credentials
     const encryptedIbkrToken = ibkrFlexToken ? encryptionService.encrypt(ibkrFlexToken) : null;
     const encryptedSchwabAccess = schwabAccessToken ? encryptionService.encrypt(schwabAccessToken) : null;
     const encryptedSchwabRefresh = schwabRefreshToken ? encryptionService.encrypt(schwabRefreshToken) : null;
+    const encryptedOAuthAccess = oauthAccessToken ? encryptionService.encrypt(oauthAccessToken) : null;
+    const encryptedOAuthRefresh = oauthRefreshToken ? encryptionService.encrypt(oauthRefreshToken) : null;
 
     let query;
     let params;
@@ -54,15 +71,16 @@ class BrokerConnection {
         INSERT INTO broker_connections (
           user_id, broker_type, connection_status,
           ibkr_flex_token, ibkr_flex_query_id, account_label,
-          auto_sync_enabled, sync_frequency, sync_time
+          auto_sync_enabled, sync_frequency, sync_time, sync_start_date
         )
-        VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8)
+        VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9)
         ON CONFLICT (user_id, ibkr_flex_query_id) WHERE broker_type = 'ibkr' AND ibkr_flex_query_id IS NOT NULL DO UPDATE SET
           ibkr_flex_token = EXCLUDED.ibkr_flex_token,
           account_label = EXCLUDED.account_label,
           auto_sync_enabled = EXCLUDED.auto_sync_enabled,
           sync_frequency = EXCLUDED.sync_frequency,
           sync_time = EXCLUDED.sync_time,
+          sync_start_date = EXCLUDED.sync_start_date,
           connection_status = 'pending',
           consecutive_failures = 0,
           updated_at = CURRENT_TIMESTAMP
@@ -70,17 +88,17 @@ class BrokerConnection {
       `;
       params = [
         userId, brokerType, encryptedIbkrToken, ibkrFlexQueryId,
-        accountLabel, autoSyncEnabled, syncFrequency, syncTime
+        accountLabel, autoSyncEnabled, syncFrequency, syncTime, syncStartDate
       ];
-    } else {
+    } else if (brokerType === 'schwab') {
       // Schwab: keep single connection per user (upsert via partial unique index)
       query = `
         INSERT INTO broker_connections (
           user_id, broker_type, connection_status,
           schwab_access_token, schwab_refresh_token, schwab_token_expires_at, schwab_account_id,
-          account_label, auto_sync_enabled, sync_frequency, sync_time
+          account_label, auto_sync_enabled, sync_frequency, sync_time, sync_start_date
         )
-        VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10)
+        VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11)
         ON CONFLICT (user_id) WHERE broker_type = 'schwab' DO UPDATE SET
           schwab_access_token = EXCLUDED.schwab_access_token,
           schwab_refresh_token = EXCLUDED.schwab_refresh_token,
@@ -90,6 +108,7 @@ class BrokerConnection {
           auto_sync_enabled = EXCLUDED.auto_sync_enabled,
           sync_frequency = EXCLUDED.sync_frequency,
           sync_time = EXCLUDED.sync_time,
+          sync_start_date = EXCLUDED.sync_start_date,
           connection_status = 'pending',
           consecutive_failures = 0,
           updated_at = CURRENT_TIMESTAMP
@@ -98,7 +117,74 @@ class BrokerConnection {
       params = [
         userId, brokerType, encryptedSchwabAccess, encryptedSchwabRefresh,
         schwabTokenExpiresAt, schwabAccountId, accountLabel,
-        autoSyncEnabled, syncFrequency, syncTime
+        autoSyncEnabled, syncFrequency, syncTime, syncStartDate
+      ];
+    } else {
+      query = `
+        INSERT INTO broker_connections (
+          user_id, broker_type, connection_status,
+          oauth_access_token, oauth_refresh_token, oauth_token_expires_at,
+          oauth_refresh_token_expires_at, oauth_scopes, external_account_id,
+          external_user_id, broker_environment, broker_metadata, account_label,
+          auto_sync_enabled, sync_frequency, sync_time
+        )
+        VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+        ON CONFLICT (user_id) WHERE broker_type = 'tradestation' DO UPDATE SET
+          oauth_access_token = EXCLUDED.oauth_access_token,
+          oauth_refresh_token = EXCLUDED.oauth_refresh_token,
+          oauth_token_expires_at = EXCLUDED.oauth_token_expires_at,
+          oauth_refresh_token_expires_at = EXCLUDED.oauth_refresh_token_expires_at,
+          oauth_scopes = EXCLUDED.oauth_scopes,
+          external_account_id = EXCLUDED.external_account_id,
+          external_user_id = EXCLUDED.external_user_id,
+          broker_environment = EXCLUDED.broker_environment,
+          broker_metadata = EXCLUDED.broker_metadata,
+          account_label = EXCLUDED.account_label,
+          auto_sync_enabled = EXCLUDED.auto_sync_enabled,
+          sync_frequency = EXCLUDED.sync_frequency,
+          sync_time = EXCLUDED.sync_time,
+          connection_status = 'pending',
+          consecutive_failures = 0,
+          updated_at = CURRENT_TIMESTAMP
+        RETURNING *
+      `;
+
+      if (brokerType === 'alpaca') {
+        query = `
+          INSERT INTO broker_connections (
+            user_id, broker_type, connection_status,
+            oauth_access_token, oauth_refresh_token, oauth_token_expires_at,
+            oauth_refresh_token_expires_at, oauth_scopes, external_account_id,
+            external_user_id, broker_environment, broker_metadata, account_label,
+            auto_sync_enabled, sync_frequency, sync_time
+          )
+          VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+          ON CONFLICT (user_id, (COALESCE(broker_environment, 'live'))) WHERE broker_type = 'alpaca' DO UPDATE SET
+            oauth_access_token = EXCLUDED.oauth_access_token,
+            oauth_refresh_token = EXCLUDED.oauth_refresh_token,
+            oauth_token_expires_at = EXCLUDED.oauth_token_expires_at,
+            oauth_refresh_token_expires_at = EXCLUDED.oauth_refresh_token_expires_at,
+            oauth_scopes = EXCLUDED.oauth_scopes,
+            external_account_id = EXCLUDED.external_account_id,
+            external_user_id = EXCLUDED.external_user_id,
+            broker_metadata = EXCLUDED.broker_metadata,
+            account_label = EXCLUDED.account_label,
+            auto_sync_enabled = EXCLUDED.auto_sync_enabled,
+            sync_frequency = EXCLUDED.sync_frequency,
+            sync_time = EXCLUDED.sync_time,
+            connection_status = 'pending',
+            consecutive_failures = 0,
+            updated_at = CURRENT_TIMESTAMP
+          RETURNING *
+        `;
+      }
+
+      params = [
+        userId, brokerType, encryptedOAuthAccess, encryptedOAuthRefresh,
+        oauthTokenExpiresAt, oauthRefreshTokenExpiresAt, oauthScopes || null,
+        externalAccountId || null, externalUserId || null, brokerEnvironment || null,
+        JSON.stringify(brokerMetadata || {}), accountLabel, autoSyncEnabled,
+        syncFrequency, syncTime
       ];
     }
 
@@ -364,6 +450,31 @@ class BrokerConnection {
   }
 
   /**
+   * Bring next_scheduled_sync forward when a sync failed with a transient
+   * error (timeout, DNS hiccup, IBKR "try again later"). The regular
+   * scheduler will pick the connection up on its next pass and retry.
+   * Only fires for scheduled syncs and only while consecutive_failures is
+   * below the cap enforced by findDueForSync. Doesn't move the sync forward
+   * if the user already had it scheduled sooner than the retry window.
+   */
+  static async scheduleTransientRetry(connectionId, delayMinutes = 30) {
+    const query = `
+      UPDATE broker_connections
+      SET next_scheduled_sync = LEAST(
+            COALESCE(next_scheduled_sync, NOW() + ($2 || ' minutes')::interval),
+            NOW() + ($2 || ' minutes')::interval
+          ),
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+        AND auto_sync_enabled = true
+        AND consecutive_failures < 3
+      RETURNING id, next_scheduled_sync
+    `;
+    const result = await db.query(query, [connectionId, String(delayMinutes)]);
+    return result.rows[0] || null;
+  }
+
+  /**
    * Update connection after failed sync
    */
   static async updateAfterFailure(connectionId, errorMessage) {
@@ -392,7 +503,7 @@ class BrokerConnection {
    * Update connection settings
    */
   static async update(connectionId, updates) {
-    const allowedFields = ['auto_sync_enabled', 'sync_frequency', 'sync_time', 'account_label'];
+    const allowedFields = ['auto_sync_enabled', 'sync_frequency', 'sync_time', 'sync_start_date', 'account_label'];
     const setClauses = [];
     const values = [];
     let paramCount = 1;
@@ -442,6 +553,31 @@ class BrokerConnection {
     `;
 
     const result = await db.query(query, [connectionId, encryptedAccess, encryptedRefresh, expiresAt]);
+    if (result.rows.length === 0) return null;
+
+    return this.formatConnection(result.rows[0], false);
+  }
+
+  /**
+   * Update generic OAuth broker tokens.
+   */
+  static async updateOAuthTokens(connectionId, accessToken, refreshToken, expiresAt, refreshTokenExpiresAt = null) {
+    const encryptedAccess = encryptionService.encrypt(accessToken);
+    const encryptedRefresh = refreshToken ? encryptionService.encrypt(refreshToken) : null;
+
+    const query = `
+      UPDATE broker_connections
+      SET oauth_access_token = $2,
+          oauth_refresh_token = COALESCE($3, oauth_refresh_token),
+          oauth_token_expires_at = $4,
+          oauth_refresh_token_expires_at = COALESCE($5, oauth_refresh_token_expires_at),
+          connection_status = 'active',
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+      RETURNING *
+    `;
+
+    const result = await db.query(query, [connectionId, encryptedAccess, encryptedRefresh, expiresAt, refreshTokenExpiresAt]);
     if (result.rows.length === 0) return null;
 
     return this.formatConnection(result.rows[0], false);
@@ -587,6 +723,22 @@ class BrokerConnection {
         }
         if (row.schwab_refresh_token) {
           connection.schwabRefreshToken = encryptionService.decrypt(row.schwab_refresh_token);
+        }
+      }
+    } else if (['tradestation', 'alpaca'].includes(row.broker_type)) {
+      connection.oauthTokenExpiresAt = row.oauth_token_expires_at;
+      connection.oauthRefreshTokenExpiresAt = row.oauth_refresh_token_expires_at;
+      connection.oauthScopes = row.oauth_scopes || [];
+      connection.externalAccountId = row.external_account_id;
+      connection.externalUserId = row.external_user_id;
+      connection.brokerEnvironment = row.broker_environment;
+      connection.brokerMetadata = row.broker_metadata || {};
+      if (includeCredentials) {
+        if (row.oauth_access_token) {
+          connection.oauthAccessToken = encryptionService.decrypt(row.oauth_access_token);
+        }
+        if (row.oauth_refresh_token) {
+          connection.oauthRefreshToken = encryptionService.decrypt(row.oauth_refresh_token);
         }
       }
     }

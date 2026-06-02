@@ -22,8 +22,8 @@ const { requiresTier } = require('../middleware/tierAuth');
  *           description: Date of the health data
  *         type:
  *           type: string
- *           enum: [sleep, heart_rate]
- *           description: Type of health data
+ *           enum: [sleep, heart_rate, heartRate]
+ *           description: Type of health data. heartRate is accepted for backwards compatibility and stored as heart_rate.
  *         value:
  *           type: number
  *           description: Numeric value (hours for sleep, BPM for heart rate)
@@ -77,7 +77,7 @@ const { requiresTier } = require('../middleware/tierAuth');
  * /api/health/data:
  *   post:
  *     summary: Submit health data from mobile app
- *     description: Uploads health data (sleep and heart rate) from HealthKit integration
+ *     description: Uploads normalized health data from mobile or wearable integrations
  *     tags: [Health]
  *     security:
  *       - bearerAuth: []
@@ -148,8 +148,8 @@ router.post('/data', authenticate, requiresTier('pro'), healthController.submitH
  *         name: dataType
  *         schema:
  *           type: string
- *           enum: [sleep, heart_rate]
- *         description: Filter by data type
+ *           enum: [sleep, heart_rate, heartRate]
+ *         description: Filter by data type. heartRate is accepted as an alias for heart_rate.
  *       - in: query
  *         name: limit
  *         schema:

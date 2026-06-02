@@ -90,7 +90,7 @@
                         {{ formatDateRange(cusip.first_trade_date, cusip.last_trade_date) }}
                       </span>
                     </div>
-                    
+
                     <div class="mt-2 flex items-center space-x-2">
                       <span
                         v-for="side in cusip.trade_sides"
@@ -128,7 +128,7 @@
                           />
                         </div>
                       </div>
-                      
+
                       <div class="flex items-center justify-between">
                         <div class="flex items-center">
                           <input
@@ -141,7 +141,7 @@
                             Mark as verified
                           </label>
                         </div>
-                        
+
                         <div class="flex items-center space-x-2">
                           <button
                             @click="cancelQuickMapping"
@@ -200,8 +200,8 @@ import {
   CheckCircleIcon,
   ExclamationTriangleIcon
 } from '@heroicons/vue/24/outline'
+import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
-import api from '@/services/api'
 
 const props = defineProps({
   isOpen: {
@@ -216,6 +216,7 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'mappingCreated', 'resolutionStarted'])
 
+const authStore = useAuthStore()
 const { showImportantWarning, showCriticalError } = useNotification()
 
 // Component state
@@ -250,14 +251,24 @@ const cancelQuickMapping = () => {
 const autoRemapAll = async () => {
   try {
     remapping.value = true
-    
-    const response = await api.post('/trades/cusip/resolve-unresolved')
-    const total = response.data.total || 0
 
-    showImportantWarning('CUSIP Resolution Started', `Processing ${total} CUSIPs in background. This may take a few minutes.`)
+    const response = await fetch('/api/trades/cusip/resolve-unresolved', {
+      method: 'POST',
+    })
 
-    emit('resolutionStarted', { total })
-    emit('mappingCreated')
+    if (response.ok) {
+      const result = await response.json()
+      const total = result.total || 0
+
+      showImportantWarning('CUSIP Resolution Started', `Processing ${total} CUSIPs in background. This may take a few minutes.`)
+
+      emit('resolutionStarted', { total })
+      emit('mappingCreated')
+    } else {
+      const error = await response.json()
+      console.error('Failed to auto remap:', error)
+      showCriticalError('Auto Remap Failed', 'Failed to auto remap CUSIPs. Please try again.')
+    }
   } catch (error) {
     console.error('Error auto remapping:', error)
     showCriticalError('Auto Remap Failed', 'Failed to auto remap CUSIPs. Please try again.')
@@ -268,19 +279,31 @@ const autoRemapAll = async () => {
 
 const saveQuickMapping = async () => {
   if (!quickMapping.value.ticker || !mappingCusip.value) return
-  
+
   try {
     savingMapping.value = true
-    
-    const response = await api.post('/cusip-mappings', {
-      cusip: mappingCusip.value,
-      ticker: quickMapping.value.ticker,
-      company_name: quickMapping.value.company_name || null,
-      verified: quickMapping.value.verified
+
+    const response = await fetch('/api/cusip-mappings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        cusip: mappingCusip.value,
+        ticker: quickMapping.value.ticker,
+        company_name: quickMapping.value.company_name || null,
+        verified: quickMapping.value.verified
+      })
     })
 
-    emit('mappingCreated', response.data)
-    cancelQuickMapping()
+    if (response.ok) {
+      const result = await response.json()
+      emit('mappingCreated', result)
+      cancelQuickMapping()
+    } else {
+      const error = await response.json()
+      console.error('Failed to save mapping:', error)
+    }
   } catch (error) {
     console.error('Error saving mapping:', error)
   } finally {
@@ -289,22 +312,22 @@ const saveQuickMapping = async () => {
 }
 
 const formatDateRange = (firstDate, lastDate) => {
-  const first = new Date(firstDate).toLocaleDateString('en-US', { 
-    month: 'short', 
+  const first = new Date(firstDate).toLocaleDateString('en-US', {
+    month: 'short',
     day: 'numeric',
     year: firstDate.includes(new Date().getFullYear().toString()) ? undefined : 'numeric'
   })
-  
+
   if (firstDate === lastDate) {
     return first
   }
-  
-  const last = new Date(lastDate).toLocaleDateString('en-US', { 
-    month: 'short', 
+
+  const last = new Date(lastDate).toLocaleDateString('en-US', {
+    month: 'short',
     day: 'numeric',
     year: lastDate.includes(new Date().getFullYear().toString()) ? undefined : 'numeric'
   })
-  
+
   return `${first} - ${last}`
 }
 

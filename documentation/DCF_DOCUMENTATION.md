@@ -64,7 +64,11 @@ The discount rate has a **massive impact** on fair value, especially on the term
 1. **Project FCF for each year (1 to N)**
    ```
    For year t from 1 to N:
-     FCF_t = FCF_{t-1} x (1 + growth_rate)
+     If FCF margin is provided:
+       Revenue_t = Revenue_{t-1} x (1 + growth_rate)
+       FCF_t = Revenue_t x FCF_margin
+     Else:
+       FCF_t = FCF_{t-1} x (1 + growth_rate)
    ```
 
 2. **Discount each year's FCF to present value**
@@ -124,7 +128,11 @@ Uses the same approach but with **Net Income** instead of FCF:
 1. **Project Earnings for each year**
    ```
    For year t from 1 to N:
-     Earnings_t = Earnings_{t-1} x (1 + growth_rate)
+     If profit margin is provided:
+       Revenue_t = Revenue_{t-1} x (1 + growth_rate)
+       Earnings_t = Revenue_t x profit_margin
+     Else:
+       Earnings_t = Earnings_{t-1} x (1 + growth_rate)
    ```
 
 2. **Discount each year's earnings**
@@ -221,3 +229,4 @@ If only one method produces valid results, that method's value is used.
 - No arbitrary limits (user can enter any discount rate)
 - No auto-correction (user's values are respected)
 - Properly applied (discounts all cash flows and terminal value)
+- Profit margin and FCF margin assumptions directly affect projected earnings and FCF when entered

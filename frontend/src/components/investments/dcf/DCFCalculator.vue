@@ -78,6 +78,14 @@
               </div>
             </td>
           </tr>
+          <!-- Gross Profit Margin (display only) -->
+          <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+            <td class="px-4 py-3 text-gray-900 dark:text-white font-medium">Gross Profit Margin</td>
+            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatPercent(metrics?.gross_profit_margin_1yr) }}</td>
+            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatPercent(metrics?.gross_profit_margin_5yr) }}</td>
+            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatPercent(metrics?.gross_profit_margin_10yr) }}</td>
+            <td class="px-4 py-3 text-center text-gray-400" colspan="3">-</td>
+          </tr>
           <!-- Free Cash Flow Margin -->
           <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
             <td class="px-4 py-3 text-gray-900 dark:text-white font-medium">Free Cash Flow Margin</td>
@@ -155,7 +163,7 @@
           </tr>
           <!-- Desired Annual Return -->
           <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-            <td class="px-4 py-3 text-gray-900 dark:text-white font-medium">Desired Annual Return</td>
+            <td class="px-4 py-3 text-gray-900 dark:text-white font-medium">Required Annual Return</td>
             <td class="px-4 py-3 text-center text-gray-400" colspan="3">-</td>
             <td class="px-4 py-3 text-center">
               <div class="flex items-center justify-center">
@@ -176,6 +184,20 @@
               </div>
             </td>
           </tr>
+          <!-- Current Price Return -->
+          <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+            <td class="px-4 py-3 text-gray-900 dark:text-white font-medium">Current Price Return</td>
+            <td class="px-4 py-3 text-center text-gray-400" colspan="3">-</td>
+            <td class="px-4 py-3 text-center font-medium text-red-600 dark:text-red-400">
+              {{ formatPercent(results?.current_price_return_low) }}
+            </td>
+            <td class="px-4 py-3 text-center font-medium text-yellow-600 dark:text-yellow-400">
+              {{ formatPercent(results?.current_price_return_medium) }}
+            </td>
+            <td class="px-4 py-3 text-center font-medium text-green-600 dark:text-green-400">
+              {{ formatPercent(results?.current_price_return_high) }}
+            </td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -187,7 +209,19 @@
         <span class="ml-4 text-2xl font-bold text-gray-900 dark:text-white">{{ formatCurrency(currentPrice) }}</span>
       </div>
       <div class="text-sm text-gray-500 dark:text-gray-400">
-        Years of Analysis: <span class="font-medium">10</span>
+        <label class="inline-flex items-center gap-2">
+          <span>Years of Analysis</span>
+          <div class="w-20">
+            <BaseSelect
+              v-model="inputs.projection_years"
+              :options="[
+                { value: 5, label: '5' },
+                { value: 10, label: '10' },
+                { value: 15, label: '15' },
+              ]"
+            />
+          </div>
+        </label>
       </div>
     </div>
 
@@ -206,6 +240,16 @@
       </button>
     </div>
 
+    <div
+      v-if="scenarioWarnings.length"
+      class="mb-6 rounded border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-900 dark:text-amber-200"
+    >
+      <p class="font-medium mb-2">Scenario assumptions need review</p>
+      <ul class="space-y-1">
+        <li v-for="warning in scenarioWarnings" :key="warning">{{ warning }}</li>
+      </ul>
+    </div>
+
     <!-- Results -->
     <div v-if="results" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
       <DCFResultCard
@@ -213,23 +257,37 @@
         :fair-value="results.fair_value_low"
         :current-price="currentPrice"
         :margin-of-safety="results.margin_of_safety_low"
+        :current-price-return="results.current_price_return_low"
       />
       <DCFResultCard
         scenario="Base"
         :fair-value="results.fair_value_medium"
         :current-price="currentPrice"
         :margin-of-safety="results.margin_of_safety_medium"
+        :current-price-return="results.current_price_return_medium"
       />
       <DCFResultCard
         scenario="Bull"
         :fair-value="results.fair_value_high"
         :current-price="currentPrice"
         :margin-of-safety="results.margin_of_safety_high"
+        :current-price-return="results.current_price_return_high"
       />
     </div>
 
-    <!-- Save Button -->
-    <div v-if="results" class="flex items-center gap-4">
+    <!-- Disclaimer (shown below results) -->
+    <div
+      v-if="results"
+      class="mb-6 rounded border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-900 dark:text-amber-200"
+    >
+      <p class="font-medium mb-1">Disclaimer — not financial advice</p>
+      <p>
+        Fair value estimates above are calculated from the assumptions you entered and historical financial data, which may be incomplete or revised over time. They are not a recommendation to buy or sell any security. Past performance does not predict future results. Always conduct your own research and consult a licensed financial advisor before making investment decisions.
+      </p>
+    </div>
+
+    <!-- Save Button (manual save mode only) -->
+    <div v-if="results && !autoSave" class="flex items-center gap-4">
       <button
         @click="save"
         :disabled="saving"
@@ -252,6 +310,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import DCFResultCard from './DCFResultCard.vue'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 
 const props = defineProps({
   metrics: {
@@ -269,6 +328,10 @@ const props = defineProps({
   results: {
     type: Object,
     default: null
+  },
+  autoSave: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -292,11 +355,13 @@ const inputs = ref({
   pfcf_high: null,
   desired_return_low: null,
   desired_return_medium: null,
-  desired_return_high: null
+  desired_return_high: null,
+  projection_years: 10
 })
 
 const notes = ref('')
 const saving = ref(false)
+const awaitingAutoSave = ref(false)
 
 // Helper functions
 function formatPercent(value) {
@@ -339,8 +404,21 @@ watch(() => props.metrics, () => {
     pfcf_high: null,
     desired_return_low: null,
     desired_return_medium: null,
-    desired_return_high: null
+    desired_return_high: null,
+    projection_years: 10
   }
+  awaitingAutoSave.value = false
+})
+
+// Auto-save when fresh results arrive from a Calculate (skipped when results
+// were injected by loading a saved valuation).
+watch(() => props.results, (newResults) => {
+  if (!props.autoSave) return
+  if (!newResults) return
+  if (!awaitingAutoSave.value) return
+
+  awaitingAutoSave.value = false
+  emitSave()
 })
 
 const canCalculate = computed(() => {
@@ -363,6 +441,18 @@ const canCalculate = computed(() => {
   return hasLowInputs || hasMedInputs || hasHighInputs
 })
 
+const scenarioWarnings = computed(() => {
+  const warnings = []
+  const backendWarnings = props.results?.inputs?.input_warnings || []
+  for (const warning of backendWarnings) {
+    if (!warnings.includes(warning)) {
+      warnings.push(warning)
+    }
+  }
+
+  return warnings
+})
+
 // Helper to convert percentage to decimal, handling null
 function toDecimal(value) {
   if (value === null || value === undefined || value === '') return null
@@ -371,6 +461,9 @@ function toDecimal(value) {
 
 function calculate() {
   if (!canCalculate.value) return
+
+  // Mark this calculation as eligible for auto-save when results arrive.
+  awaitingAutoSave.value = true
 
   // Only send user inputs - backend fetches financial data itself
   emit('calculate', {
@@ -390,10 +483,43 @@ function calculate() {
     pfcf_low: inputs.value.pfcf_low,
     pfcf_medium: inputs.value.pfcf_medium,
     pfcf_high: inputs.value.pfcf_high,
-    // Note: Low scenario uses higher return requirement, high scenario uses lower
     desired_return_low: toDecimal(inputs.value.desired_return_low),
     desired_return_medium: toDecimal(inputs.value.desired_return_medium),
-    desired_return_high: toDecimal(inputs.value.desired_return_high)
+    desired_return_high: toDecimal(inputs.value.desired_return_high),
+    projection_years: inputs.value.projection_years
+  })
+}
+
+function emitSave() {
+  if (!props.results) return
+
+  emit('save', {
+    ...props.metrics,
+    // User inputs (as decimals)
+    revenue_growth_low: toDecimal(inputs.value.revenue_growth_low),
+    revenue_growth_medium: toDecimal(inputs.value.revenue_growth_medium),
+    revenue_growth_high: toDecimal(inputs.value.revenue_growth_high),
+    profit_margin_low: toDecimal(inputs.value.profit_margin_low),
+    profit_margin_medium: toDecimal(inputs.value.profit_margin_medium),
+    profit_margin_high: toDecimal(inputs.value.profit_margin_high),
+    fcf_margin_low: toDecimal(inputs.value.fcf_margin_low),
+    fcf_margin_medium: toDecimal(inputs.value.fcf_margin_medium),
+    fcf_margin_high: toDecimal(inputs.value.fcf_margin_high),
+    pe_low: inputs.value.pe_low,
+    pe_medium: inputs.value.pe_medium,
+    pe_high: inputs.value.pe_high,
+    pfcf_low: inputs.value.pfcf_low,
+    pfcf_medium: inputs.value.pfcf_medium,
+    pfcf_high: inputs.value.pfcf_high,
+    desired_return_low: toDecimal(inputs.value.desired_return_low),
+    desired_return_medium: toDecimal(inputs.value.desired_return_medium),
+    desired_return_high: toDecimal(inputs.value.desired_return_high),
+    projection_years: inputs.value.projection_years,
+    // Results
+    fair_value_low: props.results.fair_value_low,
+    fair_value_medium: props.results.fair_value_medium,
+    fair_value_high: props.results.fair_value_high,
+    notes: notes.value || null
   })
 }
 
@@ -401,34 +527,7 @@ function save() {
   if (!props.results) return
 
   saving.value = true
-
-  emit('save', {
-    ...props.metrics,
-    // User inputs (as decimals)
-    revenue_growth_low: inputs.value.revenue_growth_low / 100,
-    revenue_growth_medium: inputs.value.revenue_growth_medium / 100,
-    revenue_growth_high: inputs.value.revenue_growth_high / 100,
-    profit_margin_low: inputs.value.profit_margin_low / 100,
-    profit_margin_medium: inputs.value.profit_margin_medium / 100,
-    profit_margin_high: inputs.value.profit_margin_high / 100,
-    fcf_margin_low: inputs.value.fcf_margin_low / 100,
-    fcf_margin_medium: inputs.value.fcf_margin_medium / 100,
-    fcf_margin_high: inputs.value.fcf_margin_high / 100,
-    pe_low: inputs.value.pe_low,
-    pe_medium: inputs.value.pe_medium,
-    pe_high: inputs.value.pe_high,
-    pfcf_low: inputs.value.pfcf_low,
-    pfcf_medium: inputs.value.pfcf_medium,
-    pfcf_high: inputs.value.pfcf_high,
-    desired_return_low: inputs.value.desired_return_low / 100,
-    desired_return_medium: inputs.value.desired_return_medium / 100,
-    desired_return_high: inputs.value.desired_return_high / 100,
-    // Results
-    fair_value_low: props.results.fair_value_low,
-    fair_value_medium: props.results.fair_value_medium,
-    fair_value_high: props.results.fair_value_high,
-    notes: notes.value || null
-  })
+  emitSave()
 
   setTimeout(() => {
     saving.value = false
@@ -436,27 +535,39 @@ function save() {
   }, 500)
 }
 
+function percentFromDecimal(value) {
+  return value === null || value === undefined ? null : Number(value) * 100
+}
+
+function numberOrNull(value) {
+  return value === null || value === undefined ? null : Number(value)
+}
+
 // Method to load a saved valuation
 function loadValuation(valuation) {
+  // Loading is a read action, not a fresh analysis — never auto-save off the
+  // results that the parent will inject afterwards.
+  awaitingAutoSave.value = false
   inputs.value = {
-    revenue_growth_low: (valuation.revenue_growth_low || 0) * 100,
-    revenue_growth_medium: (valuation.revenue_growth_medium || 0) * 100,
-    revenue_growth_high: (valuation.revenue_growth_high || 0) * 100,
-    profit_margin_low: (valuation.profit_margin_low || 0.15) * 100,
-    profit_margin_medium: (valuation.profit_margin_medium || 0.20) * 100,
-    profit_margin_high: (valuation.profit_margin_high || 0.25) * 100,
-    fcf_margin_low: (valuation.fcf_margin_low || 0) * 100,
-    fcf_margin_medium: (valuation.fcf_margin_medium || 0) * 100,
-    fcf_margin_high: (valuation.fcf_margin_high || 0) * 100,
-    pe_low: valuation.pe_low || 15,
-    pe_medium: valuation.pe_medium || 20,
-    pe_high: valuation.pe_high || 25,
-    pfcf_low: valuation.pfcf_low || 15,
-    pfcf_medium: valuation.pfcf_medium || 20,
-    pfcf_high: valuation.pfcf_high || 25,
-    desired_return_low: (valuation.desired_return_low || 0.15) * 100,
-    desired_return_medium: (valuation.desired_return_medium || 0.12) * 100,
-    desired_return_high: (valuation.desired_return_high || 0.10) * 100
+    revenue_growth_low: percentFromDecimal(valuation.revenue_growth_low),
+    revenue_growth_medium: percentFromDecimal(valuation.revenue_growth_medium),
+    revenue_growth_high: percentFromDecimal(valuation.revenue_growth_high),
+    profit_margin_low: percentFromDecimal(valuation.profit_margin_low),
+    profit_margin_medium: percentFromDecimal(valuation.profit_margin_medium),
+    profit_margin_high: percentFromDecimal(valuation.profit_margin_high),
+    fcf_margin_low: percentFromDecimal(valuation.fcf_margin_low),
+    fcf_margin_medium: percentFromDecimal(valuation.fcf_margin_medium),
+    fcf_margin_high: percentFromDecimal(valuation.fcf_margin_high),
+    pe_low: numberOrNull(valuation.pe_low),
+    pe_medium: numberOrNull(valuation.pe_medium),
+    pe_high: numberOrNull(valuation.pe_high),
+    pfcf_low: numberOrNull(valuation.pfcf_low),
+    pfcf_medium: numberOrNull(valuation.pfcf_medium),
+    pfcf_high: numberOrNull(valuation.pfcf_high),
+    desired_return_low: percentFromDecimal(valuation.desired_return_low),
+    desired_return_medium: percentFromDecimal(valuation.desired_return_medium),
+    desired_return_high: percentFromDecimal(valuation.desired_return_high),
+    projection_years: valuation.projection_years ?? 10
   }
   notes.value = valuation.notes || ''
 }
