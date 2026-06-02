@@ -259,7 +259,7 @@
           </div>
           <div class="flex items-center gap-2">
             <RouterLink
-              :to="{ name: 'pricing' }"
+              :to="{ name: 'billing' }"
               class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-600"
             >
               Upgrade before trial ends
@@ -294,7 +294,7 @@
           </div>
           <div class="flex items-center gap-2">
             <RouterLink
-              :to="{ name: 'pricing' }"
+              :to="{ name: 'billing' }"
               class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700"
             >
               View Pro plans

@@ -179,7 +179,7 @@ export const useAuthStore = defineStore('auth', () => {
       } catch (_) {
         // store may not exist yet (e.g. logout before login) — ignore.
       }
-      router.push({ name: 'home' })
+      router.push({ name: 'login' })
     }
   }
 
