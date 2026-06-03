@@ -14,7 +14,8 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      redirect: { name: 'login' }
+      name: 'home',
+      component: () => import('@/views/HomeView.vue')
     },
     {
       path: '/login',
@@ -237,6 +238,11 @@ const router = createRouter({
       component: () => import('@/views/OAuth/AuthorizeView.vue')
     },
     {
+      path: '/pricing',
+      name: 'pricing',
+      component: () => import('@/views/PricingView.vue')
+    },
+    {
       path: '/billing',
       name: 'billing',
       component: () => import('@/views/BillingView.vue'),
@@ -266,6 +272,29 @@ const router = createRouter({
     {
       path: '/gamification',
       redirect: '/leaderboard'
+    },
+    {
+      path: '/faq',
+      name: 'faq',
+      component: () => import('@/views/FAQView.vue'),
+      meta: { requiresOpen: true }
+    },
+    {
+      path: '/compare/tradervue',
+      name: 'compare-tradervue',
+      redirect: '/compare'
+    },
+    {
+      path: '/compare',
+      name: 'comparison',
+      component: () => import('@/views/ComparisonView.vue'),
+      meta: { requiresOpen: true }
+    },
+    {
+      path: '/features',
+      name: 'features',
+      component: () => import('@/views/FeaturesView.vue'),
+      meta: { requiresOpen: true }
     },
     {
       path: '/markets',
@@ -385,24 +414,63 @@ const router = createRouter({
 
 router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
-  const { registrationConfig, fetchRegistrationConfig, isBillingEnabled } = useRegistrationMode()
+  const { registrationConfig, fetchRegistrationConfig, isClosedMode, isBillingEnabled, showSEOPages } = useRegistrationMode()
 
   // Block navigation when the route depends on registration/billing mode.
-  // Tier-gated and admin routes must wait too, otherwise the guard can briefly
-  // assume billing is disabled and let the user reach a page the backend 403s.
-  const requiresRegistrationMode = to.meta.requiresTier || to.meta.requiresAdmin
+  // Tier-gated routes must wait too, otherwise the guard can briefly assume
+  // billing is disabled and let the user reach a page the backend will 403.
+  const requiresRegistrationMode = to.name === 'home' || to.meta.requiresOpen || to.meta.requiresTier || to.meta.requiresAdmin
   if (requiresRegistrationMode && !registrationConfig.value) {
     await fetchRegistrationConfig()
   } else if (!registrationConfig.value) {
     fetchRegistrationConfig().catch(() => {})
   }
 
-  // Hide cloud-only admin pages when billing is disabled (private instance)
+  // Authenticated users should never see the public root landing page,
+  // regardless of SaaS/private registration mode.
+  if (to.name === 'home' && authStore.isAuthenticated) {
+    next({ name: 'dashboard' })
+    return
+  }
+
+  // Handle billing enabled - when FALSE (default), redirect home to login and block public pages
+  // When TRUE, show public pages for SaaS offering
   if (!isBillingEnabled.value) {
+    // Billing mode is false (private instance) - hide public pages
+    if (to.name === 'home') {
+      if (authStore.isAuthenticated) {
+        next({ name: 'dashboard' })
+      } else {
+        next({ name: 'login' })
+      }
+      return
+    }
+    // Block access to public/SEO pages when billing mode is false
+    if (to.meta.requiresOpen) {
+      if (authStore.isAuthenticated) {
+        next({ name: 'dashboard' })
+      } else {
+        next({ name: 'login' })
+      }
+      return
+    }
+
     if (to.name === 'oauth-clients' || to.name === 'admin-testimonials') {
       next({ name: 'dashboard' })
       return
     }
+  }
+
+  // Handle closed mode - redirect home to login
+  if (isClosedMode.value && to.name === 'home' && !authStore.isAuthenticated) {
+    next({ name: 'login' })
+    return
+  }
+
+  // Handle SEO pages - only show when registration mode is 'open' and not in billing mode
+  if (to.meta.requiresOpen && !showSEOPages.value) {
+    next({ name: 'home' })
+    return
   }
 
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
@@ -454,9 +522,15 @@ router.beforeEach(async (to, from, next) => {
 
     // Check if user has required tier (pro is higher than free)
     if (requiredTier === 'pro' && userTier !== 'pro') {
-      // Pro feature requested without a Pro tier; on a billing-enabled instance
-      // this is handled before reaching here, so fall back to the dashboard.
-      next({ name: 'dashboard' })
+      // Redirect to pricing page with info about the feature they tried to access
+      next({
+        name: 'pricing',
+        query: {
+          upgrade: 'required',
+          feature: to.name,
+          from: to.fullPath
+        }
+      })
     } else {
       next()
     }

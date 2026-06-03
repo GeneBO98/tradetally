@@ -305,6 +305,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
+import { useRegistrationMode } from '@/composables/useRegistrationMode'
 import { SunIcon, MoonIcon, Bars3Icon, XMarkIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/vue/24/outline'
 import config from '@/config'
 import NavDropdown from '@/components/common/NavDropdown.vue'
@@ -314,6 +315,7 @@ import UserMenu from '@/components/layout/UserMenu.vue'
 
 const authStore = useAuthStore()
 const uiPreferencesStore = useUiPreferencesStore()
+const { showSEOPages, isBillingEnabled } = useRegistrationMode()
 const isDark = ref(false)
 const isMobileMenuOpen = ref(false)
 const expandedSections = ref({})
@@ -447,9 +449,24 @@ const baseNavigation = [
 ]
 
 const publicNavigation = computed(() => {
-  return [
+  const nav = [
     { name: 'Public Trades', to: '/public', route: 'public-trades' }
   ]
+
+  if (isBillingEnabled.value) {
+    nav.push({ name: 'Pricing', to: '/pricing', route: 'pricing' })
+  }
+
+  // Add SEO pages only when in open mode
+  if (showSEOPages.value) {
+    nav.push(
+      { name: 'Features', to: '/features', route: 'features' },
+      { name: 'FAQ', to: '/faq', route: 'faq' },
+      { name: 'Compare', to: '/compare', route: 'compare' }
+    )
+  }
+
+  return nav
 })
 
 const navigation = computed(() => baseNavigation)
