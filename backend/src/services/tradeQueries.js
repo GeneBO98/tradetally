@@ -359,11 +359,18 @@ class TradeQueries {
 
     const User = require('../models/User');
     const { normalizeConfig, breakevenPredicate } = require('../utils/breakeven');
+    const { POSITION_GROUP_KEY, GROUPED_BREAKEVEN } = require('../utils/positionGrouping');
     let useMedian = false;
     let breakevenConfig = { default: 0, byUnderlying: {} };
+    // Whole-trade win rate (issue #339): when the profile setting is on, the
+    // completed_trades CTE collapses multi-leg positions opened together into a
+    // single trade so the headline win rate / counts / profit factor are
+    // measured per position. Total P&L is unchanged.
+    let groupByPosition = false;
     try {
       const userSettings = await User.getSettings(userId);
       useMedian = userSettings?.statistics_calculation === 'median';
+      groupByPosition = userSettings?.analytics_position_grouping === true;
       breakevenConfig = normalizeConfig({
         default: userSettings?.breakeven_tolerance_ticks,
         byUnderlying: userSettings?.breakeven_tolerance_ticks_by_underlying
@@ -381,13 +388,18 @@ class TradeQueries {
 
     // Breakeven predicates: one over the completed_trades CTE aliases
     // (trade_pnl / trade_costs), one over the raw columns used by the daily query.
-    const beCte = breakevenPredicate({
-      gross: '(trade_pnl + trade_costs)',
-      tickSize: 'tick_size',
-      pointValue: 'point_value',
-      quantity: 'quantity',
-      underlying: 'underlying_asset'
-    }, breakevenConfig);
+    // In position-grouping mode the per-leg tick tolerance no longer applies to a
+    // combined position, so a grouped trade is breakeven only when its net P&L
+    // (trade_pnl) rounds to zero.
+    const beCte = groupByPosition
+      ? { is: '(ROUND(trade_pnl::numeric, 2) = 0)', isNot: '(ROUND(trade_pnl::numeric, 2) <> 0)' }
+      : breakevenPredicate({
+          gross: '(trade_pnl + trade_costs)',
+          tickSize: 'tick_size',
+          pointValue: 'point_value',
+          quantity: 'quantity',
+          underlying: 'underlying_asset'
+        }, breakevenConfig);
     const beDaily = breakevenPredicate({
       gross: '(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0))',
       tickSize: 'tick_size',
@@ -402,8 +414,31 @@ class TradeQueries {
       ${whereClause}
     `;
 
-    const analyticsQuery = `
-      WITH completed_trades AS (
+    // Per-leg vs per-position completed_trades. The grouped form sums legs that
+    // share account + underlying/symbol + entry_time into one synthetic trade.
+    // Only columns referenced downstream are projected; the grouped beCte above
+    // works on trade_pnl, so tick_size/point_value/quantity/underlying_asset are
+    // not needed in grouped mode.
+    const completedTradesCte = groupByPosition
+      ? `completed_trades AS (
+        SELECT
+          MIN(symbol) as symbol,
+          MIN(id::text) as trade_group,
+          SUM(pnl) as trade_pnl,
+          SUM(COALESCE(commission, 0) + COALESCE(fees, 0)) as trade_costs,
+          COUNT(*) as execution_count,
+          AVG(pnl_percent) as avg_return_pct,
+          MIN(trade_date) as first_trade_date,
+          MIN(entry_time) as first_entry,
+          MAX(COALESCE(exit_time, entry_time)) as last_exit,
+          SUM(r_value) as r_value
+        FROM trades t
+        ${whereClause}
+          AND exit_price IS NOT NULL
+          AND pnl IS NOT NULL
+        GROUP BY ${POSITION_GROUP_KEY}
+      )`
+      : `completed_trades AS (
         SELECT
           symbol,
           id as trade_group,
@@ -423,7 +458,10 @@ class TradeQueries {
         ${whereClause}
           AND exit_price IS NOT NULL
           AND pnl IS NOT NULL
-      ),
+      )`;
+
+    const analyticsQuery = `
+      WITH ${completedTradesCte},
       trade_stats AS (
         SELECT
           COUNT(*)::integer as total_trades,

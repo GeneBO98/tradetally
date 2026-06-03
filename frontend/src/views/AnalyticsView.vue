@@ -190,7 +190,7 @@
         <div class="card card-mobile-safe flex-1">
           <div class="card-body">
             <dt class="text-data-secondary truncate">
-              Win Rate
+              Win Rate<span v-if="displayOverview.position_grouping" class="ml-1 text-xs font-normal normal-case text-primary-600 dark:text-primary-400">· whole trade</span>
             </dt>
             <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
               {{ displayOverview.win_rate }}%<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
