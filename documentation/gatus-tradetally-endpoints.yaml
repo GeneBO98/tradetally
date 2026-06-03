@@ -1,0 +1,37 @@
+# TradeTally synthetic monitoring — append these to the `endpoints:` list in
+# /home/docker-admin/gatus/config/config.yaml (it is the last section, so this
+# can be appended to the end of the file). Apply:
+#
+#   sudo tee -a /home/docker-admin/gatus/config/config.yaml < documentation/gatus-tradetally-endpoints.yaml
+#   docker restart gatus-gatus-1   # or wait for gatus to auto-reload the config
+#
+# These three checks catch the incidents from June 2026 within ~2 minutes:
+#   - public page regressing to the login screen (marketing surface deleted)
+#   - API/backend down
+#   - Finnhub usage metrics silently not flowing during market hours
+
+  # ------------------------------------------------------------------
+  # TradeTally app health
+  # ------------------------------------------------------------------
+  - name: "tradetally.io public page"
+    url: "https://tradetally.io/"
+    interval: 2m
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY] == pat(*Behavioral Analytics*)"   # marketing page present, not login
+    alerts:
+      - type: discord
+        description: "TradeTally public page down or regressed to login"
+        send-on-resolved: true
+
+  - name: "tradetally.io API + metrics"
+    url: "https://tradetally.io/api/health"
+    interval: 2m
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY].status != ERROR"
+      - "[BODY].services.finnhubMetrics.stale == false"   # metrics flowing in market hours
+    alerts:
+      - type: discord
+        description: "TradeTally API unhealthy or Finnhub metrics stale"
+        send-on-resolved: true
