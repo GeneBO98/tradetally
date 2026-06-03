@@ -2245,7 +2245,14 @@ function normalizeParsedTradeInstrumentData(trade) {
   const currentContractSize = trade.contractSize ?? trade.contract_size;
   const currentPointValue = trade.pointValue ?? trade.point_value;
 
-  if ((!currentType || currentType === 'stock') && parsed.instrumentType && parsed.instrumentType !== 'stock') {
+  // Only promote a stock to futures when we have the fields the DB requires
+  // (contract_month, contract_year, underlying_asset). Promoting without them
+  // would violate the check_futures_fields constraint and fail the import.
+  const canPromoteToFuture = parsed.instrumentType === 'future' &&
+    parsed.underlyingAsset && parsed.contractMonth != null && parsed.contractYear != null;
+  const canPromote = parsed.instrumentType === 'option' || canPromoteToFuture;
+
+  if ((!currentType || currentType === 'stock') && canPromote) {
     trade.instrumentType = parsed.instrumentType;
     if (parsed.underlyingSymbol && !trade.underlyingSymbol && !trade.underlying_symbol) {
       trade.underlyingSymbol = parsed.underlyingSymbol;
@@ -2258,6 +2265,20 @@ function normalizeParsedTradeInstrumentData(trade) {
     }
     if (parsed.optionType && !trade.optionType && !trade.option_type) {
       trade.optionType = parsed.optionType;
+    }
+    if (parsed.instrumentType === 'future') {
+      if (!trade.underlyingAsset && !trade.underlying_asset) {
+        trade.underlyingAsset = parsed.underlyingAsset;
+      }
+      if (trade.contractMonth == null && trade.contract_month == null) {
+        trade.contractMonth = parsed.contractMonth;
+      }
+      if (trade.contractYear == null && trade.contract_year == null) {
+        trade.contractYear = parsed.contractYear;
+      }
+      if ((trade.pointValue == null && trade.point_value == null) && parsed.pointValue != null) {
+        trade.pointValue = parsed.pointValue;
+      }
     }
   }
 
@@ -4772,7 +4793,10 @@ function parseInstrumentData(symbol) {
   // alphanumerics after a required leading letter rather than letters only.
   const futuresPatterns = [
     /^([A-Z][A-Z0-9]{0,2})([FGHJKMNQUVXZ])(\d{1,2})$/,  // Standard: ESM4, NQU24, CLZ23, M2KM6
-    /^([A-Z_]+):([A-Z0-9]+)!?$/,                 // TradingView: NYMEX_MINI:QG1!
+    // TradingView futures: NYMEX_MINI:QG1!, CME:ESH2026. The lookahead requires the
+    // contract part to contain a digit or end with "!" so plain exchange-prefixed
+    // stock tickers (e.g. NASDAQ:HUBC, NASDAQ:LASE) are NOT misclassified as futures.
+    /^([A-Z_]+):(?=[A-Z0-9]*\d|[A-Z0-9]+!)([A-Z0-9]+)!?$/,
     /^\/([A-Z][A-Z0-9]{0,2})([FGHJKMNQUVXZ])(\d{2})$/,   // Slash notation: /ESM24
     /^F\.[A-Z]{2,}\.([A-Z][A-Z0-9]{0,2})([FGHJKMNQUVXZ])(\d{1,2})$/  // AvaTrade: F.US.MESM26
   ];
@@ -4822,6 +4846,14 @@ function parseInstrumentData(symbol) {
           // Two digit year: use standard logic (00-49 = 2000s, 50-99 = 1900s)
           year += year < 50 ? 2000 : 1900;
         }
+      }
+
+      // If the symbol matched a futures-shaped pattern but we couldn't extract a
+      // product code (e.g. an exchange-prefixed stock ticker that slipped through),
+      // do not claim it's a future. A future with a null underlying/month/year would
+      // violate the check_futures_fields DB constraint and fail the whole import.
+      if (!underlying) {
+        continue;
       }
 
       const monthCodes = { F: '01', G: '02', H: '03', J: '04', K: '05', M: '06', N: '07', Q: '08', U: '09', V: '10', X: '11', Z: '12' };
