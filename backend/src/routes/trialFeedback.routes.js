@@ -1,12 +1,8 @@
 const express = require('express');
-
 const router = express.Router();
+const trialFeedbackController = require('../controllers/trialFeedback.controller');
 
-router.post('/', (_req, res) => {
-  res.status(410).json({
-    success: false,
-    error: 'Trial feedback is no longer available'
-  });
-});
+router.get('/', trialFeedbackController.getTrialFeedbackStatus);
+router.post('/', trialFeedbackController.submitTrialFeedback);
 
 module.exports = router;
