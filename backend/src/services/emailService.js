@@ -5,6 +5,8 @@ const sequenzyMarketingService = require('./sequenzyMarketingService');
 const escapeHtml = require('../utils/escapeHtml');
 const { loadTemplate, renderTemplate } = require('../utils/emailTemplateLoader');
 const db = require('../config/database');
+const trialFeedbackTokenService = require('./trialFeedbackTokenService');
+const { TRIAL_FEEDBACK_OPTIONS } = require('../constants/trialFeedbackOptions');
 
 function maskEmail(email) {
   if (!email || !email.includes('@')) return '***';
@@ -790,6 +792,62 @@ class EmailService {
       throw error;
     }
   }
+
+  /**
+   * Build a tokenized URL to the trial-feedback page for a one-click answer.
+   */
+  static getTrialFeedbackUrl(userId, primaryReason) {
+    const token = trialFeedbackTokenService.generateToken(userId);
+    const baseUrl = process.env.FRONTEND_URL || 'https://tradetally.io';
+    return `${baseUrl}/trial-feedback?token=${encodeURIComponent(token)}&reason=${encodeURIComponent(primaryReason)}`;
+  }
+
+  /**
+   * Build the "what stopped you from subscribing?" survey for the trial
+   * conversion email. Returns { html, text, links } so it can be embedded in
+   * SMTP emails and mapped to the Sequenzy feedback_url_N template slots.
+   */
+  static getTrialFeedbackSurveyBlock(userId) {
+    if (!userId) {
+      return { html: '', text: '', links: [] };
+    }
+
+    const links = TRIAL_FEEDBACK_OPTIONS.map((option) => ({
+      label: option.label,
+      url: this.getTrialFeedbackUrl(userId, option.value)
+    }));
+
+    const html = `
+      <div style="margin: 28px 0 0 0; padding: 20px; background-color: #fafaf9; border: 1px solid #e7e5e4; border-radius: 12px;">
+        <p style="color: #18181b; font-size: 15px; font-weight: 600; line-height: 1.5; margin: 0 0 8px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+          One quick question: what stopped you from subscribing?
+        </p>
+        <p style="color: #71717a; font-size: 13px; line-height: 1.6; margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+          One click records your answer. You can add extra detail on the next page if you want.
+        </p>
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="border-collapse: collapse;">
+          ${links.map((link) => `
+            <tr>
+              <td style="padding: 0 0 10px 0;">
+                <a href="${link.url}" style="${this.getSecondaryButtonStyle()} display: block; width: 100%; box-sizing: border-box;">
+                  ${escapeHtml(link.label)}
+                </a>
+              </td>
+            </tr>
+          `).join('')}
+        </table>
+      </div>
+    `;
+
+    const text = [
+      'One quick question: what stopped you from subscribing?',
+      'One click records your answer. You can add extra detail on the next page if you want.',
+      ...links.map((link) => `- ${link.label}: ${link.url}`)
+    ].join('\n');
+
+    return { html, text, links };
+  }
+
   /**
    * Send trial conversion email to users whose Pro trial expired without subscribing.
    * @param {string} email - Recipient email
@@ -807,6 +865,21 @@ class EmailService {
     const unsubscribeUrl = userId ? this.getUnsubscribeUrl(userId) : `${process.env.FRONTEND_URL || 'https://tradetally.io'}/settings`;
     const oneClickUnsubscribeUrl = userId ? this.getOneClickUnsubscribeUrl(userId) : unsubscribeUrl;
     const safeUsername = escapeHtml(username);
+
+    // Trial-feedback survey ("what stopped you from subscribing?"). Best-effort:
+    // token generation is wrapped so a failure never blocks the conversion email.
+    let survey = { html: '', text: '', links: [] };
+    try {
+      survey = this.getTrialFeedbackSurveyBlock(userId);
+    } catch (feedbackErr) {
+      console.warn('[EMAIL] Trial feedback survey unavailable:', feedbackErr.message);
+    }
+    const feedbackVars = {};
+    for (let i = 0; i < 8; i++) {
+      const link = survey.links[i];
+      feedbackVars[`feedback_url_${i + 1}`] = link ? link.url : '';
+      feedbackVars[`feedback_label_${i + 1}`] = link ? link.label : '';
+    }
 
     // Determine engagement tier
     const tier = metrics.totalTrades >= 20 ? 'high'
@@ -865,22 +938,7 @@ class EmailService {
             body_text: bodyText,
             upgrade_url: upgradeUrl,
             cta_text: ctaText,
-            feedback_url_1: upgradeUrl,
-            feedback_label_1: 'Upgrade to Pro',
-            feedback_url_2: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/contact`,
-            feedback_label_2: 'Send feedback',
-            feedback_url_3: '',
-            feedback_label_3: '',
-            feedback_url_4: '',
-            feedback_label_4: '',
-            feedback_url_5: '',
-            feedback_label_5: '',
-            feedback_url_6: '',
-            feedback_label_6: '',
-            feedback_url_7: '',
-            feedback_label_7: '',
-            feedback_url_8: '',
-            feedback_label_8: ''
+            ...feedbackVars
           }
         });
         console.log('Trial conversion event triggered for', maskEmail(email));
@@ -951,6 +1009,13 @@ class EmailService {
       `;
     }
 
+    // Embed the trial-feedback survey above the footer (SMTP path).
+    if (survey.html) {
+      content = content.includes(footer)
+        ? content.replace(footer, `${survey.html}${footer}`)
+        : `${content}${survey.html}`;
+    }
+
     // Record email engagement and inject tracking
     const trackingId = userId ? await this.recordEmailEngagement(userId, 'trial_conversion', { tier }) : null;
     let finalHtml = this.getBaseTemplate(headline, content);
@@ -961,7 +1026,7 @@ class EmailService {
       to: email,
       subject,
       html: finalHtml,
-      text: `${greeting} ${bodyText} Upgrade: ${upgradeUrl} Unsubscribe: ${unsubscribeUrl}`,
+      text: `${greeting} ${bodyText} Upgrade: ${upgradeUrl}${survey.text ? `\n\n${survey.text}` : ''}\n\nUnsubscribe: ${unsubscribeUrl}`,
       headers: {
         'List-Unsubscribe': `<${oneClickUnsubscribeUrl}>`,
         'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
