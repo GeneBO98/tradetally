@@ -7,6 +7,9 @@
           <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
             In-trade is entry to exit. After-trade is entry through the configured post-exit window. {{ stats.trades_with_data || 0 }} trades with data
           </p>
+          <p v-if="stats.trades_with_post_exit_data" class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Continuation = positive difference between after-trade MFE and in-trade MFE. Missed after exit = positive difference between after-trade MFE and realized P&L.
+          </p>
         </div>
         <div class="flex items-center gap-2 flex-wrap justify-end">
           <span class="text-xs text-gray-500 dark:text-gray-400">Display in</span>
@@ -79,25 +82,25 @@
             <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">How far losers ran in your favor</p>
           </div>
           <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-gray-50 dark:bg-gray-800/50">
-            <p class="text-xs text-gray-500 dark:text-gray-400">Avg profit left on table</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400" title="For trades with after-trade data, this uses after-trade MFE. Otherwise it uses in-trade MFE.">Avg profit left on table</p>
             <p class="text-lg font-semibold text-orange-600 dark:text-orange-400 font-mono mt-1">
               <span v-if="loading" class="text-gray-300 dark:text-gray-600">—</span>
               <span v-else-if="displayStats.avg_profit_left != null">{{ formatValue(displayStats.avg_profit_left) }}</span>
               <span v-else class="text-gray-400">—</span>
             </p>
-            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">MFE minus exit P&L (winners)</p>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Best available MFE minus exit P&L (winners)</p>
           </div>
           <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-gray-50 dark:bg-gray-800/50">
-            <p class="text-xs text-gray-500 dark:text-gray-400">Exit efficiency</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400" title="Average realized P&L divided by best available MFE on winning trades. After-trade MFE is used when present.">Exit efficiency</p>
             <p class="text-lg font-semibold font-mono mt-1" :class="exitEfficiency >= 60 ? 'text-green-600 dark:text-green-400' : exitEfficiency >= 40 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'">
               <span v-if="loading" class="text-gray-300 dark:text-gray-600">—</span>
               <span v-else-if="exitEfficiency != null">{{ exitEfficiency.toFixed(0) }}%</span>
               <span v-else class="text-gray-400">—</span>
             </p>
-            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Avg P&L / MFE (winners)</p>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Avg P&L / best MFE (winners)</p>
           </div>
           <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-gray-50 dark:bg-gray-800/50">
-            <p class="text-xs text-gray-500 dark:text-gray-400">After-trade continuation</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400" title="Additional favorable movement after the in-trade MFE peak, measured within the configured post-exit window.">After-trade continuation</p>
             <p class="text-lg font-semibold text-primary-600 dark:text-primary-400 font-mono mt-1">
               <span v-if="loading" class="text-gray-300 dark:text-gray-600">—</span>
               <span v-else-if="displayStats.avg_post_exit_mfe_delta != null">{{ formatValue(displayStats.avg_post_exit_mfe_delta) }}</span>
@@ -106,7 +109,7 @@
             <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">After-trade MFE minus in-trade MFE</p>
           </div>
           <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-gray-50 dark:bg-gray-800/50">
-            <p class="text-xs text-gray-500 dark:text-gray-400">Missed after exit</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400" title="Potential profit between the actual exit and the best favorable move in the post-exit window.">Missed after exit</p>
             <p class="text-lg font-semibold text-primary-600 dark:text-primary-400 font-mono mt-1">
               <span v-if="loading" class="text-gray-300 dark:text-gray-600">—</span>
               <span v-else-if="displayStats.avg_missed_after_exit != null">{{ formatValue(displayStats.avg_missed_after_exit) }}</span>
@@ -233,7 +236,7 @@ const displayStats = computed(() => {
   const winnersAvgMae = average(winners.map(t => getTradeValue(t, 'mae')))
   const losersAvgMfe = average(losers.map(t => getTradeValue(t, 'mfe')))
   const avgProfitLeft = average(winners.map(t => {
-    const mfe = getTradeValue(t, 'mfe')
+    const mfe = getBestAvailableMfe(t)
     const pnl = getTradeValue(t, 'pnl')
     return mfe != null && pnl != null ? Math.max(0, mfe - pnl) : null
   }))
@@ -257,12 +260,12 @@ const displayStats = computed(() => {
 })
 
 const exitEfficiency = computed(() => {
-  const winners = trades.value.filter(t => t.is_winner && getTradeValue(t, 'mfe') > 0)
+  const winners = trades.value.filter(t => t.is_winner && getBestAvailableMfe(t) > 0)
   if (!winners.length) return null
   const ratios = winners
     .map(t => {
       const pnl = getTradeValue(t, 'pnl')
-      const mfe = getTradeValue(t, 'mfe')
+      const mfe = getBestAvailableMfe(t)
       return pnl != null && mfe > 0 ? pnl / mfe : null
     })
     .filter(value => value != null && Number.isFinite(value))
@@ -343,6 +346,12 @@ function getTradeValue(t, field) {
   }
 
   return asNumber(field === 'pnl' ? t.pnl : t[field])
+}
+
+function getBestAvailableMfe(t) {
+  const postExitMfe = getTradeValue(t, 'post_exit_mfe')
+  if (postExitMfe != null) return postExitMfe
+  return getTradeValue(t, 'mfe')
 }
 
 function renderScatter() {

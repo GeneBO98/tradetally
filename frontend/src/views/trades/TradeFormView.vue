@@ -633,7 +633,7 @@
           </div>
 
           <div>
-            <label for="postExitMae" class="label">After-Trade MAE</label>
+            <label for="postExitMae" class="label">After-Trade MAE (from entry)</label>
             <input
               id="postExitMae"
               v-model="form.postExitMae"
@@ -641,12 +641,12 @@
               step="any"
               class="input"
               placeholder="0"
-              title="Max adverse excursion observed after exit (manual entry for instruments without intraday data, e.g. futures)"
+              title="Maximum adverse excursion from entry through the configured after-trade window. Use this for manual entry when intraday data is unavailable, e.g. futures."
             />
           </div>
 
           <div>
-            <label for="postExitMfe" class="label">After-Trade MFE</label>
+            <label for="postExitMfe" class="label">After-Trade MFE (from entry)</label>
             <input
               id="postExitMfe"
               v-model="form.postExitMfe"
@@ -654,7 +654,7 @@
               step="any"
               class="input"
               placeholder="0"
-              title="Max favorable excursion observed after exit (manual entry for instruments without intraday data, e.g. futures)"
+              title="Maximum favorable excursion from entry through the configured after-trade window. Use this for manual entry when intraday data is unavailable, e.g. futures."
             />
           </div>
 
