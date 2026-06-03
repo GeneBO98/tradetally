@@ -641,6 +641,102 @@ describe('TradingView parser', () => {
     const result = await parseCSV(buf(withCancelled), 'tradingview', {});
     expectValidResult(result);
   });
+
+  test('keeps fractional order-history quantities from creating fake short open positions', async () => {
+    const fractionalOrderHistory = [
+      'Symbol,Side,Type,Quantity,Limit price,Stop price,Fill price,Status,Commission,Placing time,Closing time,Order ID,Level ID,Leverage,Margin',
+      'NASDAQ:WCT,Sell,Market,1706.16,,,1.82,Filled,1.5,2026-06-03 17:16:10,2026-06-03 17:16:10,3140964538,,1:1,"3,105.21 USD"',
+      'NASDAQ:WCT,Sell,Limit,1706.16,2.3987,,0,Cancelled,,2026-06-03 17:13:58,2026-06-03 17:16:10,3140947113,,,',
+      'NASDAQ:WCT,Buy,Stop,284.36,,1.9123,1.93,Filled,1.5,2026-06-03 17:11:37,2026-06-03 17:13:23,3140929584,,1:1,',
+      'NASDAQ:WCT,Buy,Stop,284.36,,1.9117,1.93,Filled,1.5,2026-06-03 17:11:34,2026-06-03 17:13:23,3140929214,,1:1,',
+      'NASDAQ:WCT,Buy,Stop,284.36,,1.9104,1.93,Filled,1.5,2026-06-03 17:11:32,2026-06-03 17:13:23,3140928859,,1:1,',
+      'NASDAQ:WCT,Buy,Stop,284.36,,1.904,1.93,Filled,1.5,2026-06-03 17:11:29,2026-06-03 17:13:23,3140928471,,1:1,',
+      'NASDAQ:WCT,Buy,Stop,284.36,,1.9117,1.93,Filled,1.5,2026-06-03 17:11:24,2026-06-03 17:13:23,3140927680,,1:1,',
+      'NASDAQ:WCT,Buy,Stop,284.36,,1.902,1.93,Filled,1.5,2026-06-03 17:11:20,2026-06-03 17:13:23,3140927000,,1:1,',
+      'NASDAQ:DEVS,Sell,Market,4390.38,,,0.8757,Filled,1.5,2026-06-03 16:48:29,2026-06-03 16:48:29,3140000001,,1:1,',
+      'NASDAQ:DEVS,Buy,Stop,731.73,,0.86,0.86,Filled,1.5,2026-06-03 16:45:46,2026-06-03 16:47:36,3140000002,,1:1,',
+      'NASDAQ:DEVS,Buy,Stop,731.73,,0.86,0.86,Filled,1.5,2026-06-03 16:45:46,2026-06-03 16:47:36,3140000003,,1:1,',
+      'NASDAQ:DEVS,Buy,Stop,731.73,,0.838,0.838,Filled,1.5,2026-06-03 16:45:46,2026-06-03 16:45:46,3140000004,,1:1,',
+      'NASDAQ:DEVS,Buy,Stop,731.73,,0.838,0.838,Filled,1.5,2026-06-03 16:45:46,2026-06-03 16:45:46,3140000005,,1:1,',
+      'NASDAQ:DEVS,Buy,Stop,731.73,,0.838,0.838,Filled,1.5,2026-06-03 16:45:46,2026-06-03 16:45:46,3140000006,,1:1,',
+      'NASDAQ:DEVS,Buy,Stop,731.73,,0.838,0.838,Filled,1.5,2026-06-03 16:45:46,2026-06-03 16:45:46,3140000007,,1:1,',
+      'NASDAQ:HUBC,Sell,Market,3941.75,,,0.75,Filled,1.5,2026-06-03 16:41:23,2026-06-03 16:41:23,3150000001,,1:1,',
+      'NASDAQ:HUBC,Buy,Stop,788.35,,0.788,0.788,Filled,1.5,2026-06-03 16:38:16,2026-06-03 16:38:17,3150000002,,1:1,',
+      'NASDAQ:HUBC,Buy,Stop,788.35,,0.788,0.788,Filled,1.5,2026-06-03 16:38:16,2026-06-03 16:38:17,3150000003,,1:1,',
+      'NASDAQ:HUBC,Buy,Stop,788.35,,0.788,0.788,Filled,1.5,2026-06-03 16:38:16,2026-06-03 16:38:17,3150000004,,1:1,',
+      'NASDAQ:HUBC,Buy,Stop,788.35,,0.788,0.788,Filled,1.5,2026-06-03 16:38:16,2026-06-03 16:38:17,3150000005,,1:1,',
+      'NASDAQ:HUBC,Buy,Stop,788.35,,0.788,0.788,Filled,1.5,2026-06-03 16:38:16,2026-06-03 16:38:17,3150000006,,1:1,',
+      'AMEX:PMI,Sell,Market,6898,,,0.354,Filled,1.5,2026-06-03 16:33:30,2026-06-03 16:33:30,3160000001,,1:1,',
+      'AMEX:PMI,Buy,Stop,1724.5,,0.357,0.357,Filled,1.5,2026-06-03 16:32:58,2026-06-03 16:32:58,3160000002,,1:1,',
+      'AMEX:PMI,Buy,Stop,1724.5,,0.357,0.357,Filled,1.5,2026-06-03 16:32:58,2026-06-03 16:32:58,3160000003,,1:1,',
+      'AMEX:PMI,Buy,Stop,1724.5,,0.357,0.357,Filled,1.5,2026-06-03 16:32:58,2026-06-03 16:32:58,3160000004,,1:1,',
+      'AMEX:PMI,Buy,Stop,1724.5,,0.352,0.352,Filled,1.5,2026-06-03 16:32:24,2026-06-03 16:32:24,3160000005,,1:1,',
+      'AMEX:PMI,Sell,Stop,6898,,0.34,0,Rejected,,2026-06-03 16:31:00,2026-06-03 16:31:00,3160000006,,,'
+    ].join('\n');
+
+    const result = await parseCSV(buf(fractionalOrderHistory), 'tradingview', {
+      tradeGroupingSettings: { enabled: false }
+    });
+
+    expectValidResult(result);
+    expect(result.diagnostics.skippedRows).toBe(2);
+    expect(result.diagnostics.reason_breakdown).toEqual(expect.arrayContaining([
+      expect.objectContaining({ reason: 'Cancelled order (not executed)', count: 1 }),
+      expect.objectContaining({ reason: 'Rejected order', count: 1 })
+    ]));
+
+    const affectedSymbols = ['NASDAQ:WCT', 'NASDAQ:DEVS', 'NASDAQ:HUBC', 'AMEX:PMI'];
+    const affectedTrades = result.trades.filter(trade => affectedSymbols.includes(trade.symbol));
+    expect(affectedTrades).toHaveLength(4);
+    expect(affectedTrades.every(trade => trade.exitTime && trade.exitPrice != null)).toBe(true);
+    expect(affectedTrades.some(trade => trade.side === 'short')).toBe(false);
+
+    const wct = affectedTrades.find(trade => trade.symbol === 'NASDAQ:WCT');
+    expect(wct.quantity).toBeCloseTo(1706.16, 6);
+    expect(wct.executionData.some(execution => execution.quantity === 284.36)).toBe(true);
+  });
+
+  test('routes TradingView order history when TradeStation is selected manually', async () => {
+    const tradingViewOrderHistory = [
+      'Symbol,Side,Type,Quantity,Limit price,Stop price,Fill price,Status,Commission,Placing time,Closing time,Order ID,Level ID,Leverage,Margin',
+      'NASDAQ:WCT,Buy,Market,10,,,2.00,Filled,0,2026-06-03 09:30:00,2026-06-03 09:30:00,1,,1:1,',
+      'NASDAQ:WCT,Sell,Market,10,,,2.10,Filled,0,2026-06-03 09:35:00,2026-06-03 09:35:00,2,,1:1,'
+    ].join('\n');
+
+    const result = await parseCSV(buf(tradingViewOrderHistory), 'tradestation', {});
+
+    expectValidResult(result);
+    expect(result.trades).toHaveLength(1);
+    expect(result.diagnostics.selectedBroker).toBe('tradestation');
+    expect(result.diagnostics.detectedBroker).toBe('tradingview');
+    expect(result.diagnostics.warnings).toEqual(expect.arrayContaining([
+      expect.stringContaining('CSV headers match TradingView order history')
+    ]));
+  });
+
+  test('warns but preserves true short behavior when order history starts with sell', async () => {
+    const shortFirst = [
+      'Symbol,Side,Type,Quantity,Limit price,Stop price,Fill price,Status,Commission,Placing time,Closing time,Order ID,Level ID,Leverage,Margin',
+      'NASDAQ:LASE,Sell,Market,1963.16,,,2.22,Filled,1.5,2026-06-02 21:13:18,2026-06-02 21:13:18,3170000001,,1:1,',
+      'NASDAQ:LASE,Buy,Market,1000,,,2.10,Filled,1.5,2026-06-03 10:00:00,2026-06-03 10:00:00,3170000002,,1:1,'
+    ].join('\n');
+
+    const result = await parseCSV(buf(shortFirst), 'tradingview', {
+      tradeGroupingSettings: { enabled: false }
+    });
+
+    expectValidResult(result);
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0]).toEqual(expect.objectContaining({
+      symbol: 'NASDAQ:LASE',
+      side: 'short'
+    }));
+    expect(result.trades[0].exitTime).toBeNull();
+    expect(result.trades[0].quantity).toBeCloseTo(963.16, 6);
+    expect(result.diagnostics.warnings).toEqual(expect.arrayContaining([
+      expect.stringContaining('starts with a Sell')
+    ]));
+  });
 });
 
 // ──────────────────────────────────────────────
