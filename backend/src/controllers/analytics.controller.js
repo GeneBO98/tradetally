@@ -10,6 +10,7 @@ const symbolCategories = require('../utils/symbolCategories');
 const { sendV1NotImplemented } = require('../utils/apiResponse');
 const ensureString = require('../utils/ensureString');
 const { getUserTimezone } = require('../utils/timezone');
+const { POSITION_GROUP_KEY, GROUPED_BREAKEVEN, isPositionGroupingEnabled } = require('../utils/positionGrouping');
 
 // Helper function to create a short but collision-resistant hash for cache keys
 function createFilterHash(filters) {
@@ -733,9 +734,16 @@ const analyticsController = {
       const { normalizeConfig, breakevenPredicate, toleranceCacheKey } = require('../utils/breakeven');
       let useMedian = false;
       let breakevenConfig = { default: 0, byUnderlying: {} };
+      // Whole-trade win rate (issue #339): a global profile setting. When on,
+      // the completed_trades CTE collapses each multi-leg position (e.g. an
+      // option spread) into a single synthetic trade so win rate, counts, avg,
+      // and profit factor are measured per position instead of per leg. Total
+      // P&L is unchanged (sum of legs == sum of groups).
+      let groupByPosition = false;
       try {
         const userSettings = await User.getSettings(req.user.id);
         useMedian = userSettings?.statistics_calculation === 'median';
+        groupByPosition = userSettings?.analytics_position_grouping === true;
         breakevenConfig = normalizeConfig({
           default: userSettings?.breakeven_tolerance_ticks,
           byUnderlying: userSettings?.breakeven_tolerance_ticks_by_underlying
@@ -746,19 +754,24 @@ const analyticsController = {
       }
 
       // Breakeven predicate over the completed_trades CTE (SELECT * from trades).
-      const be = breakevenPredicate({
-        gross: '(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0))',
-        tickSize: 'tick_size',
-        pointValue: 'point_value',
-        quantity: 'quantity',
-        underlying: 'underlying_asset'
-      }, breakevenConfig);
+      // In position-grouping mode the per-leg tick/point/underlying tolerance no
+      // longer applies to a combined position, so a group is breakeven only when
+      // its net P&L rounds to exactly zero.
+      const be = groupByPosition
+        ? GROUPED_BREAKEVEN
+        : breakevenPredicate({
+            gross: '(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0))',
+            tickSize: 'tick_size',
+            pointValue: 'point_value',
+            quantity: 'quantity',
+            underlying: 'underlying_asset'
+          }, breakevenConfig);
 
       // Include filter hash in cache key to handle different filter combinations.
       // Tolerance config is part of the key so changing it yields fresh results.
       const normalizedFiltersForCache = convertQueryToTradeFilters(req.query);
       const filterHashKey = createFilterHash(normalizedFiltersForCache);
-      const cacheKey = `analytics_overview_${req.user.id}_${filterHashKey}_${useMedian ? 'median' : 'avg'}_be${toleranceCacheKey(breakevenConfig)}`;
+      const cacheKey = `analytics_overview_${req.user.id}_${filterHashKey}_${useMedian ? 'median' : 'avg'}_be${toleranceCacheKey(breakevenConfig)}_grp${groupByPosition ? 'pos' : 'leg'}`;
       
       // Check cache first for faster response
       const cachedData = cache.get(cacheKey);
@@ -771,8 +784,29 @@ const analyticsController = {
       const { filterConditions, params: filterParams } = filterData;
       const params = [req.user.id, ...filterParams];
 
-      const overviewQuery = `
-        WITH completed_trades AS (
+      // In position-grouping mode each row is one position: legs sharing the
+      // same account, underlying (falling back to symbol), and exact entry_time
+      // are summed into one synthetic trade. Trades with no entry_time fall back
+      // to their own id so they are never merged. Only the columns referenced
+      // downstream are projected; the trivial breakeven predicate above means
+      // tick_size/point_value/quantity/underlying_asset are not needed here.
+      const completedTradesCte = groupByPosition
+        ? `completed_trades AS (
+            SELECT
+                SUM(pnl) as pnl,
+                SUM(COALESCE(commission, 0)) as commission,
+                SUM(COALESCE(fees, 0)) as fees,
+                SUM(r_value) as r_value,
+                MIN(stop_loss) as stop_loss,
+                MIN(trade_date) as trade_date,
+                MIN(entry_time) as entry_time
+            FROM trades
+            WHERE user_id = $1 ${filterConditions}
+                AND exit_price IS NOT NULL
+                AND pnl IS NOT NULL
+            GROUP BY ${POSITION_GROUP_KEY}
+        )`
+        : `completed_trades AS (
             -- Each trade with both entry and exit price is a complete round trip
             SELECT
                 *
@@ -780,7 +814,10 @@ const analyticsController = {
             WHERE user_id = $1 ${filterConditions}
                 AND exit_price IS NOT NULL
                 AND pnl IS NOT NULL
-        ),
+        )`;
+
+      const overviewQuery = `
+        WITH ${completedTradesCte},
         individual_trades AS (
             -- Get best/worst individual executions
             SELECT
@@ -1160,6 +1197,10 @@ const analyticsController = {
         avg_mfe: overview.avg_mfe
       });
 
+      // Surface whether these numbers are grouped per position (issue #339) so
+      // the UI can label the win rate as "whole trade".
+      overview.position_grouping = groupByPosition;
+
       // Cache until invalidated by trade mutations (24h fallback TTL)
       const cacheTTL = 24 * 60 * 60 * 1000;
       cache.set(cacheKey, { overview }, cacheTTL);
@@ -1461,8 +1502,39 @@ const analyticsController = {
       const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
       const params = [req.user.id, ...filterParams];
 
-      const be = await rawBreakevenPredicate(req.user.id);
-      const strategyQuery = `
+      const groupByPosition = await isPositionGroupingEnabled(req.user.id);
+      const be = groupByPosition ? GROUPED_BREAKEVEN : await rawBreakevenPredicate(req.user.id);
+
+      // In position-grouping mode, collapse legs into positions (within each
+      // strategy) first, then aggregate the win/loss counts per strategy.
+      const strategyQuery = groupByPosition
+        ? `
+        WITH positions AS (
+          SELECT
+            strategy,
+            SUM(pnl) as pnl,
+            SUM(r_value) as r_value,
+            MIN(stop_loss) as stop_loss
+          FROM trades
+          WHERE user_id = $1 ${filterConditions} AND strategy IS NOT NULL AND strategy != ''
+          GROUP BY strategy, ${POSITION_GROUP_KEY}
+        )
+        SELECT
+          strategy,
+          COUNT(*) as total_trades,
+          COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
+          COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
+          COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
+          COALESCE(SUM(pnl), 0) as total_pnl,
+          COALESCE(AVG(pnl), 0) as avg_pnl,
+          COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
+          COALESCE(AVG(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as avg_r_value,
+          COUNT(CASE WHEN stop_loss IS NOT NULL THEN 1 END) as trades_with_r
+        FROM positions
+        GROUP BY strategy
+        ORDER BY total_trades DESC
+      `
+        : `
         SELECT
           strategy,
           COUNT(*) as total_trades,

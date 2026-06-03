@@ -15,8 +15,27 @@
              number takes priority for available space. -->
         <div class="lg:flex-[2] min-w-0 flex flex-col">
           <div class="flex items-baseline justify-between mb-1 gap-2">
-            <span class="text-label whitespace-nowrap">Net P&amp;L</span>
-            <span class="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{{ rangeLabel }}</span>
+            <span class="text-label whitespace-nowrap">{{ rMode ? 'Net R' : 'Net P&L' }}</span>
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap truncate">{{ rangeLabel }}</span>
+              <!-- $ / R toggle: lets the ribbon be shared without dollar values -->
+              <div class="inline-flex shrink-0 rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden text-xs font-medium" role="group" aria-label="Display values in dollars or R-multiples">
+                <button
+                  type="button"
+                  class="px-2 py-0.5 transition-colors"
+                  :class="!rMode ? 'bg-primary-600 text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
+                  :aria-pressed="!rMode"
+                  @click="emit('update:rMode', false)"
+                >$</button>
+                <button
+                  type="button"
+                  class="px-2 py-0.5 transition-colors"
+                  :class="rMode ? 'bg-primary-600 text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
+                  :aria-pressed="rMode"
+                  @click="emit('update:rMode', true)"
+                >R</button>
+              </div>
+            </div>
           </div>
           <!-- Value block is bottom-anchored with mt-auto so the hero number,
                win-rate, profit-factor and streak all share a virtual row at
@@ -29,7 +48,7 @@
                 class="text-mono-num font-semibold tracking-tight leading-none whitespace-nowrap"
                 :class="[pnlValueClass, pnlSizeClass]"
               >
-                {{ formatSignedCurrency(netPnl) }}
+                {{ heroDisplay }}
               </div>
               <!-- Recent daily P&L bars: distinct from the cumulative equity
                    curve below — shows per-day rhythm and magnitude. -->
@@ -50,7 +69,7 @@
               <span v-if="totalTrades > 0">
                 {{ totalTrades }} {{ totalTrades === 1 ? 'trade' : 'trades' }}<!--
                 --><span v-if="tradingDays > 0"> · {{ tradingDays }} {{ tradingDays === 1 ? 'day' : 'days' }}</span><!--
-                --><span v-if="totalCosts > 0"> · {{ formatCurrency(totalCosts) }} costs</span>
+                --><span v-if="totalCosts > 0 && !rMode"> · {{ formatCurrency(totalCosts) }} costs</span>
               </span>
               <span v-else class="italic">Import trades to see your P&amp;L</span>
             </div>
@@ -122,7 +141,7 @@
           {{ todayTradeCount }} {{ todayTradeCount === 1 ? 'trade' : 'trades' }}
         </span>
         <span class="text-mono-num font-medium" :class="todayPnlClass">
-          {{ formatSignedCurrency(todayPnl) }}
+          {{ rMode ? formatSignedR(todayR) : formatSignedCurrency(todayPnl) }}
         </span>
         <span class="text-gray-500 dark:text-gray-400 text-mono-num" v-if="avgDailyTrades > 0">
           avg {{ avgDailyTrades.toFixed(1) }}/day
@@ -146,14 +165,36 @@ const props = defineProps({
   rangeLabel: {
     type: String,
     default: 'All Time'
+  },
+  // When true, the hero number and daily bars show R-multiples instead of
+  // dollar values so the ribbon can be shared without exposing account size.
+  rMode: {
+    type: Boolean,
+    default: false
   }
 })
 
+const emit = defineEmits(['update:rMode'])
+
 const { formatCurrency, formatSignedCurrency } = useCurrencyFormatter()
+
+// R-multiples are unitless; show a signed value with a trailing R.
+function formatSignedR(value) {
+  const v = Number(value) || 0
+  return `${v >= 0 ? '+' : ''}${v.toFixed(2)}R`
+}
 
 const summary = computed(() => props.analytics?.summary || {})
 
 const netPnl = computed(() => parseFloat(summary.value.totalNetPnL ?? summary.value.totalPnL ?? 0) || 0)
+// Total R across trades with a defined stop loss (NULL r_value trades are
+// excluded server-side, matching the analytics performance endpoint).
+const totalR = computed(() => parseFloat(summary.value.totalRValue ?? summary.value.total_r_value ?? 0) || 0)
+
+// The active hero metric: drives both the displayed string and the sign-based
+// color/size classes so $ and R modes share one code path.
+const heroSign = computed(() => props.rMode ? totalR.value : netPnl.value)
+const heroDisplay = computed(() => props.rMode ? formatSignedR(totalR.value) : formatSignedCurrency(netPnl.value))
 const totalTrades = computed(() => parseInt(summary.value.totalTrades) || 0)
 const winningTrades = computed(() => parseInt(summary.value.winningTrades) || 0)
 const losingTrades = computed(() => parseInt(summary.value.losingTrades) || 0)
@@ -188,7 +229,7 @@ const dailyPnL = computed(() => Array.isArray(props.analytics?.dailyPnL) ? props
 const streakStats = computed(() => {
   const days = dailyPnL.value
   if (days.length === 0) {
-    return { current: 0, bestWin: 0, worstLoss: 0, todayPnl: 0, todayTrades: 0, avgDailyTrades: 0 }
+    return { current: 0, bestWin: 0, worstLoss: 0, todayPnl: 0, todayR: 0, todayTrades: 0, avgDailyTrades: 0 }
   }
   let current = 0
   let bestWin = 0
@@ -229,6 +270,7 @@ const streakStats = computed(() => {
   // Today's data (last entry, if it's today)
   const lastDay = days[days.length - 1]
   const todayPnl = parseFloat(lastDay?.daily_pnl ?? lastDay?.dailyPnL ?? 0) || 0
+  const todayR = parseFloat(lastDay?.r_value ?? lastDay?.rValue ?? 0) || 0
   const todayTrades = parseInt(lastDay?.trade_count ?? lastDay?.tradeCount ?? 0) || 0
 
   // Is the last entry actually today? Compare as YYYY-MM-DD strings in LOCAL
@@ -246,6 +288,7 @@ const streakStats = computed(() => {
     bestWin,
     worstLoss,
     todayPnl: isToday ? todayPnl : 0,
+    todayR: isToday ? todayR : 0,
     todayTrades: isToday ? todayTrades : 0,
     avgDailyTrades
   }
@@ -270,8 +313,8 @@ const streakClass = computed(() => {
 })
 
 const pnlValueClass = computed(() => {
-  if (netPnl.value > 0) return 'text-green-600 dark:text-green-400 hero-glow-positive'
-  if (netPnl.value < 0) return 'text-red-600 dark:text-red-400 hero-glow-negative'
+  if (heroSign.value > 0) return 'text-green-600 dark:text-green-400 hero-glow-positive'
+  if (heroSign.value < 0) return 'text-red-600 dark:text-red-400 hero-glow-negative'
   return 'text-gray-500 dark:text-gray-400'
 })
 
@@ -280,7 +323,7 @@ const pnlValueClass = computed(() => {
 // so the lg sizes are intentionally one step below xl. The number is
 // never truncated — fitting it is always the priority.
 const pnlSizeClass = computed(() => {
-  const len = formatSignedCurrency(netPnl.value).length
+  const len = heroDisplay.value.length
   if (len >= 12) return 'text-xl sm:text-2xl lg:text-2xl xl:text-3xl'    // e.g. +$1,234,567.89
   if (len >= 10) return 'text-2xl sm:text-3xl lg:text-2xl xl:text-4xl'   // e.g. +$15,786.64
   if (len >= 8)  return 'text-3xl sm:text-4xl lg:text-3xl xl:text-4xl'   // e.g. +$1,234.56
@@ -303,9 +346,12 @@ const profitFactorClass = computed(() => {
   return 'text-red-600 dark:text-red-400'
 })
 
+const todayR = computed(() => streakStats.value.todayR)
+
 const todayPnlClass = computed(() => {
-  if (todayPnl.value > 0) return 'text-green-600 dark:text-green-400'
-  if (todayPnl.value < 0) return 'text-red-600 dark:text-red-400'
+  const v = props.rMode ? todayR.value : todayPnl.value
+  if (v > 0) return 'text-green-600 dark:text-green-400'
+  if (v < 0) return 'text-red-600 dark:text-red-400'
   return 'text-gray-700 dark:text-gray-300'
 })
 
@@ -315,14 +361,19 @@ const todayPnlClass = computed(() => {
 const recentDays = computed(() => dailyPnL.value.slice(-30))
 
 const dailyBarValues = computed(() =>
-  recentDays.value.map(d => parseFloat(d.daily_pnl ?? d.dailyPnL ?? 0) || 0)
+  recentDays.value.map(d => props.rMode
+    ? parseFloat(d.r_value ?? d.rValue ?? 0) || 0
+    : parseFloat(d.daily_pnl ?? d.dailyPnL ?? 0) || 0)
 )
 
 const dailyBarLabels = computed(() =>
   recentDays.value.map(d => {
     const date = String(d.trade_date ?? d.tradeDate ?? '').slice(0, 10)
-    const pnl = parseFloat(d.daily_pnl ?? d.dailyPnL ?? 0) || 0
-    return date ? `${date}: ${formatSignedCurrency(pnl)}` : formatSignedCurrency(pnl)
+    const value = props.rMode
+      ? parseFloat(d.r_value ?? d.rValue ?? 0) || 0
+      : parseFloat(d.daily_pnl ?? d.dailyPnL ?? 0) || 0
+    const formatted = props.rMode ? formatSignedR(value) : formatSignedCurrency(value)
+    return date ? `${date}: ${formatted}` : formatted
   })
 )
 </script>

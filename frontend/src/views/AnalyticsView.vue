@@ -177,7 +177,7 @@
         <div class="card card-mobile-safe flex-1">
           <div class="card-body">
             <dt class="text-data-secondary truncate">
-              Total P&L{{ rValueMode ? ' (R-Trades)' : '' }}
+              Total P&L
             </dt>
             <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold whitespace-nowrap" :class="[
               displayOverview.total_pnl >= 0 ? 'text-green-600' : 'text-red-600'
@@ -190,7 +190,7 @@
         <div class="card card-mobile-safe flex-1">
           <div class="card-body">
             <dt class="text-data-secondary truncate">
-              Win Rate{{ rValueMode ? ' (R-Trades)' : '' }}
+              Win Rate<span v-if="displayOverview.position_grouping" class="ml-1 text-xs font-normal normal-case text-primary-600 dark:text-primary-400">· whole trade</span>
             </dt>
             <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
               {{ displayOverview.win_rate }}%<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
@@ -207,7 +207,7 @@
         <div class="card card-mobile-safe flex-1">
           <div class="card-body">
             <dt class="text-data-secondary truncate">
-              Total Trades{{ rValueMode ? ' (R-Trades)' : '' }}
+              Total Trades
             </dt>
             <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
               {{ displayOverview.total_trades }}
@@ -218,7 +218,7 @@
         <div class="card card-mobile-safe flex-1">
           <div class="card-body">
             <dt class="text-data-secondary truncate">
-              {{ calculationMethod }} Trade{{ rValueMode ? ' (R-Trades)' : '' }}
+              {{ calculationMethod }} Trade
             </dt>
             <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold whitespace-nowrap" :class="[
               displayOverview.avg_pnl >= 0 ? 'text-green-600' : 'text-red-600'
@@ -231,7 +231,7 @@
         <div class="card card-mobile-safe flex-1">
           <div class="card-body">
             <dt class="text-data-secondary truncate">
-              Profit Factor{{ rValueMode ? ' (R-Trades)' : '' }}
+              Profit Factor
             </dt>
             <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
               {{ displayOverview.profit_factor ?? '0.00' }}
@@ -1589,43 +1589,12 @@ const filteredHourOfDayStats = computed(() => {
 })
 
 // Display overview - switches between regular and R-value filtered stats based on mode
-const displayOverview = computed(() => {
-  if (!rValueMode.value) {
-    return overview.value
-  }
-
-  // In R-value mode, use the R-specific stats from the backend
-  const rTotalTrades = overview.value.r_total_trades || 0
-  const rWinningTrades = overview.value.r_winning_trades || 0
-  const rLosingTrades = overview.value.r_losing_trades || 0
-  const rWinRate = rTotalTrades > 0 ? Math.round((rWinningTrades / rTotalTrades) * 100) : 0
-  const rDecisiveTrades = rWinningTrades + rLosingTrades
-  const rWinRateExclBe = rDecisiveTrades > 0 ? (rWinningTrades / rDecisiveTrades * 100).toFixed(2) : 0
-
-  // Calculate profit factor for R-value trades
-  const rGrossWins = overview.value.r_winning_trades > 0
-    ? Math.abs(parseFloat(overview.value.r_avg_win || 0) * overview.value.r_winning_trades)
-    : 0
-  const rGrossLosses = overview.value.r_losing_trades > 0
-    ? Math.abs(parseFloat(overview.value.r_avg_loss || 0) * overview.value.r_losing_trades)
-    : 0
-  const rProfitFactor = rGrossLosses > 0 ? (rGrossWins / rGrossLosses).toFixed(2) : rGrossWins > 0 ? 'Inf' : '0.00'
-
-  return {
-    ...overview.value,
-    total_trades: rTotalTrades,
-    winning_trades: rWinningTrades,
-    losing_trades: overview.value.r_losing_trades || 0,
-    breakeven_trades: overview.value.r_breakeven_trades || 0,
-    win_rate: rWinRate,
-    win_rate_excluding_breakeven: rWinRateExclBe,
-    total_pnl: parseFloat(overview.value.r_total_pnl || 0),
-    avg_pnl: parseFloat(overview.value.r_avg_pnl || 0),
-    avg_win: parseFloat(overview.value.r_avg_win || 0),
-    avg_loss: parseFloat(overview.value.r_avg_loss || 0),
-    profit_factor: rProfitFactor
-  }
-})
+// The summary cards always show the full filtered dataset in dollars. The
+// R-multiple toggle is charts-only and must not alter these headline metrics
+// (it previously swapped in an R-trade subset, still rendered in dollars, which
+// silently changed P&L / win rate / MAE with no R values shown). R headline
+// numbers live in the dedicated "Avg R-Multiple / Total R" flip card.
+const displayOverview = computed(() => overview.value)
 
 // Computed property for visible charts in order
 const visibleCharts = computed(() => {
@@ -2803,11 +2772,10 @@ function buildFilterParams(additionalParams = {}) {
     params.accounts = selectedAccount.value
   }
 
-  // Add hasRValue filter when R-value mode is active
-  // This ensures the entire dataset is filtered to only trades with valid R-values (stop_loss set)
-  if (rValueMode.value) {
-    params.hasRValue = 'true'
-  }
+  // NOTE: R-value mode (rValueMode) is a CHARTS-ONLY display toggle. It must
+  // NOT filter the dataset — the summary cards (P&L, win rate, trades, MAE/MFE)
+  // always reflect the full filtered dataset in dollars. Only the charts switch
+  // to R-multiples. Do not inject a hasRValue filter here.
 
   // Remove null/undefined/empty string values to keep params clean
   Object.keys(params).forEach(key => {
@@ -3803,26 +3771,12 @@ function collapseSectors() {
   console.log(`[DISPLAY] Collapsed to show ${sectorsToShow.value} sectors`)
 }
 
-// Watch for R-value mode changes and refetch all data with hasRValue filter
+// Watch for R-value mode changes and rebuild charts (charts-only toggle)
 watch(() => rValueMode.value, async () => {
-  // Refetch all data with the new hasRValue filter applied
-  loading.value = true
-
-  await Promise.all([
-    fetchOverview(),
-    fetchPerformance(),
-    fetchSymbolStats(),
-    fetchTagStats(),
-    fetchStrategyStats(),
-    fetchHourOfDayStats(),
-    fetchChartData(),
-    fetchDrawdownData()
-  ])
-
-  loading.value = false
-  initialLoading.value = false
-
-  // Recreate charts after data is loaded
+  // R-multiple mode is a charts-only display toggle — the dataset is identical
+  // whether it's on or off, so there's no need to refetch. Just rebuild the
+  // charts so they redraw in R-multiples (or back to dollars). The summary
+  // cards intentionally do not change.
   await nextTick()
   setTimeout(() => {
     initializeAllCharts()

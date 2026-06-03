@@ -1362,6 +1362,11 @@ const tradeManagementController = {
       let cumulativeActualR = 0;
       let cumulativePotentialR = 0;
       let cumulativeManagementR = 0;
+      // Actual R summed over ONLY the trades that have a target, so
+      // "R left on the table" compares like-for-like (potential vs actual on
+      // the same trade set). Subtracting all-trades actual R would skew the
+      // metric toward the negative of actual R when few trades have targets.
+      let actualRForTargetTrades = 0;
       let tradesWithTarget = 0;
       let tradesWithManagementR = 0;
 
@@ -1392,6 +1397,7 @@ const tradeManagementController = {
 
         if (tradeTargetR !== null) {
           cumulativePotentialR += tradeTargetR;
+          actualRForTargetTrades += actualR;
         }
 
         const tradeManagementR = analysis.management_r != null ? Math.round(analysis.management_r * 100) / 100 : 0;
@@ -1432,7 +1438,9 @@ const tradeManagementController = {
       const totalActualR = Math.round(cumulativeActualR * 100) / 100;
       const totalPotentialR = Math.round(cumulativePotentialR * 100) / 100;
       const totalManagementR = Math.round(cumulativeManagementR * 100) / 100;
-      const rLeftOnTable = Math.round((totalPotentialR - totalActualR) * 100) / 100;
+      // Only meaningful for trades with a defined target; compared against the
+      // actual R of those same trades (not all stop-defined trades).
+      const rLeftOnTable = Math.round((totalPotentialR - actualRForTargetTrades) * 100) / 100;
       // Calculate win rate and average R
       const winningTrades = tradeDetails.filter(t => t.actual_r > 0);
       const losingTrades = tradeDetails.filter(t => t.actual_r < 0);
