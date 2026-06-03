@@ -1637,7 +1637,7 @@ export default {
             }
 
             // Consistency score
-            if (key.includes("consistent")) {
+            if (key.includes("consistent") || key.includes("consistency")) {
                 return `${parseFloat(value).toFixed(2)}`;
             }
 
@@ -2172,9 +2172,8 @@ export default {
             try {
                 fullLeaderboardLoading.value = true;
 
-                // Use limit=0 to get all entries (no limit)
                 const response = await api.get(
-                    `/gamification/leaderboards/${leaderboardKey}?limit=0`,
+                    `/gamification/leaderboards/${leaderboardKey}?limit=all`,
                 );
 
                 if (response.data.success) {

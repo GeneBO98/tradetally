@@ -172,9 +172,12 @@ const gamificationController = {
     try {
       const { key } = req.params;
       const userId = req.user.id;
-      const limit = req.query.limit ? parseInt(req.query.limit) : 100;
+      const rawLimit = req.query.limit;
+      const limit = rawLimit === 'all' || rawLimit === '0'
+        ? 0
+        : Number.parseInt(rawLimit || '100', 10);
       
-      const leaderboard = await LeaderboardService.getLeaderboard(key, userId, limit);
+      const leaderboard = await LeaderboardService.getLeaderboard(key, userId, Number.isNaN(limit) ? 100 : limit);
       
       res.json({
         success: true,

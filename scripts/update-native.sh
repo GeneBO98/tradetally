@@ -236,7 +236,7 @@ stash_local_changes_if_needed() {
     "could not stash local changes" \
     "The TradeTally native update script found local changes on $(hostname) at $(date -u), but could not stash them before syncing the repository."
 
-  STASH_REF="$(git stash list | awk -F: -v target="$stash_name" '$0 ~ target { print $1; exit }')"
+  STASH_REF="$(git stash list | awk -F: -v target="$stash_name" 'index($0, target) { ref = $1 } END { print ref }')"
 
   if [ -n "$STASH_REF" ]; then
     STASHED=1
@@ -419,6 +419,7 @@ ensure_pnpm
 stash_local_changes_if_needed
 sync_current_branch
 sync_public_branch_if_needed
+restore_stash
 
 if [ "$UPDATED" -eq 0 ]; then
   log "No repository changes detected. Verifying running services anyway"

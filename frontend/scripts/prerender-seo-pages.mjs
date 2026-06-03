@@ -423,64 +423,6 @@ const pages = [
         url: 'https://tradetally.io/privacy'
       }
     ]
-  },
-  {
-    route: '/login',
-    title: 'Log In to TradeTally',
-    description: 'Sign in to your TradeTally account to review trades, analytics, imports, and portfolio history.',
-    keywords: 'TradeTally login, trading journal login',
-    fallbackHtml: `
-      <main>
-        <section>
-          <h1>Log In to TradeTally</h1>
-          <p class="hero-sub">Access your trading journal, analytics, public profiles, and portfolio tracking from a single account.</p>
-          <div class="hero-cta">
-            <a href="/register">Create Account</a>
-            <a href="/faq">FAQ</a>
-          </div>
-        </section>
-
-        <div class="seo-sections">
-          <section>
-            <h2>Access Journals, Imports, and Analytics</h2>
-            <p>Sign in to review trade history, import broker data, manage settings, and analyze behavioral patterns across your trading activity.</p>
-          </section>
-        </div>
-
-        <noscript>
-          <p>TradeTally requires JavaScript to run. Please enable JavaScript in your browser to use the full application.</p>
-        </noscript>
-      </main>
-    `
-  },
-  {
-    route: '/register',
-    title: 'Create Your Free TradeTally Account',
-    description: 'Create a free TradeTally account to start journaling trades, importing broker history, and reviewing analytics and public profiles.',
-    keywords: 'TradeTally register, free trading journal signup, create trading journal account',
-    fallbackHtml: `
-      <main>
-        <section>
-          <h1>Create Your Free TradeTally Account</h1>
-          <p class="hero-sub">Start journaling trades, importing broker history, reviewing analytics, and sharing public profiles with a free TradeTally account.</p>
-          <div class="hero-cta">
-            <a href="/features">Explore Features</a>
-            <a href="/pricing">See Pricing</a>
-          </div>
-        </section>
-
-        <div class="seo-sections">
-          <section>
-            <h2>Start Free and Upgrade Only If You Need More</h2>
-            <p>TradeTally is designed to let traders begin with unlimited free trade storage, then move into deeper analytics and workflow tools if their review process grows.</p>
-          </section>
-        </div>
-
-        <noscript>
-          <p>TradeTally requires JavaScript to run. Please enable JavaScript in your browser to use the full application.</p>
-        </noscript>
-      </main>
-    `
   }
 ]
 

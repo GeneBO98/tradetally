@@ -6,6 +6,38 @@ const PLAID_BASE_URLS = {
   production: 'https://production.plaid.com'
 };
 
+function compactOptionalFields(body) {
+  return Object.fromEntries(
+    Object.entries(body).filter(([, value]) => value !== null && value !== undefined)
+  );
+}
+
+function buildPlaidError(error) {
+  const plaidError = error.response?.data;
+  if (!plaidError || typeof plaidError !== 'object') {
+    return error;
+  }
+
+  const parts = [
+    plaidError.error_code,
+    plaidError.error_message || plaidError.display_message
+  ].filter(Boolean);
+
+  const message = parts.length > 0
+    ? `Plaid request failed: ${parts.join(' - ')}`
+    : error.message;
+
+  const wrapped = new Error(message);
+  wrapped.status = error.response?.status;
+  wrapped.plaid = {
+    errorType: plaidError.error_type,
+    errorCode: plaidError.error_code,
+    requestId: plaidError.request_id
+  };
+  wrapped.cause = error;
+  return wrapped;
+}
+
 class PlaidClient {
   constructor() {
     this.clientId = process.env.PLAID_CLIENT_ID;
@@ -38,22 +70,34 @@ class PlaidClient {
       throw new Error('Plaid is not configured on this server');
     }
 
-    const response = await axios.post(`${this.getBaseUrl()}${path}`, this.buildRequestBody(body), {
-      headers: {
-        'Content-Type': 'application/json',
-        'Plaid-Version': '2020-09-14'
-      },
-      timeout: 30000
-    });
+    try {
+      const response = await axios.post(
+        `${this.getBaseUrl()}${path}`,
+        this.buildRequestBody(compactOptionalFields(body)),
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Plaid-Version': '2020-09-14'
+          },
+          timeout: 30000
+        }
+      );
 
-    return response.data;
+      return response.data;
+    } catch (error) {
+      throw buildPlaidError(error);
+    }
   }
 
   async createLinkToken({ userId, email, targetType = 'bank' }) {
     const countryCodes = (process.env.PLAID_COUNTRY_CODES || 'US')
       .split(',')
-      .map(value => value.trim())
-      .filter(Boolean);
+      .map(value => value.trim().toUpperCase())
+      .filter(value => /^[A-Z]{2}$/.test(value));
+
+    if (countryCodes.length === 0) {
+      countryCodes.push('US');
+    }
 
     const products = targetType === 'investment' ? ['investments'] : ['transactions'];
     const body = {
@@ -100,11 +144,16 @@ class PlaidClient {
   }
 
   async syncTransactions(accessToken, cursor = null) {
-    return this.post('/transactions/sync', {
+    const body = {
       access_token: accessToken,
-      cursor,
       count: 100
-    });
+    };
+
+    if (cursor) {
+      body.cursor = cursor;
+    }
+
+    return this.post('/transactions/sync', body);
   }
 
   async getInvestmentTransactions(accessToken, startDate, endDate, offset = 0, count = 100) {
