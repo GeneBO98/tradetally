@@ -43,28 +43,9 @@
         @mouseleave="handleDropdownLeave"
         class="user-menu-panel absolute right-0 top-full z-50 mt-3 w-72 origin-top-right overflow-hidden rounded-xl bg-white/95 shadow-2xl ring-1 ring-gray-200/80 backdrop-blur-xl dark:bg-gray-900/95 dark:ring-gray-700/60"
       >
-        <!-- HEADER: orange stripe + asymmetric identity block -->
-        <div class="user-menu-header relative overflow-hidden px-5 pt-4 pb-4">
-          <!-- Left precision stripe -->
-          <div class="absolute left-0 top-0 h-full w-[3px] bg-gradient-to-b from-primary-400 via-primary-500 to-primary-600"></div>
-
-          <!-- Decorative candlesticks (top-right corner) -->
-          <svg class="absolute top-3 right-4 h-7 w-10 text-primary-500 opacity-[0.18] dark:opacity-25" viewBox="0 0 48 28" fill="none" aria-hidden="true">
-            <!-- candle 1 -->
-            <line x1="6" y1="4" x2="6" y2="24" stroke="currentColor" stroke-width="1" stroke-linecap="round" />
-            <rect x="3" y="11" width="6" height="10" fill="currentColor" />
-            <!-- candle 2 (tall) -->
-            <line x1="18" y1="1" x2="18" y2="26" stroke="currentColor" stroke-width="1" stroke-linecap="round" />
-            <rect x="15" y="5" width="6" height="17" fill="currentColor" />
-            <!-- candle 3 (hollow / bearish) -->
-            <line x1="30" y1="6" x2="30" y2="27" stroke="currentColor" stroke-width="1" stroke-linecap="round" />
-            <rect x="27" y="13" width="6" height="11" fill="none" stroke="currentColor" stroke-width="1.5" />
-            <!-- candle 4 -->
-            <line x1="42" y1="3" x2="42" y2="20" stroke="currentColor" stroke-width="1" stroke-linecap="round" />
-            <rect x="39" y="9" width="6" height="8" fill="currentColor" />
-          </svg>
-
-          <div class="relative flex items-start gap-3.5">
+        <!-- HEADER: identity block -->
+        <div class="px-5 pt-4 pb-4">
+          <div class="flex items-start gap-3.5">
             <!-- Large avatar -->
             <div class="shrink-0">
               <div class="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-primary-400 to-primary-600 shadow-md ring-1 ring-white/40 dark:ring-white/10">
@@ -96,17 +77,14 @@
               <p v-if="authStore.user?.email" class="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">
                 {{ authStore.user.email }}
               </p>
-              <p v-if="authStore.user?.username" class="mt-1.5 truncate font-mono text-[10px] uppercase tracking-[0.15em] text-gray-400 dark:text-gray-500">
+              <p v-if="authStore.user?.username" class="mt-1.5 truncate text-[11px] text-gray-400 dark:text-gray-500">
                 @{{ authStore.user.username }}
               </p>
             </div>
           </div>
         </div>
 
-        <!-- Divider with tick marks -->
-        <div class="relative h-px bg-gray-200/80 dark:bg-gray-700/60">
-          <span class="absolute left-5 top-1/2 h-1 w-1 -translate-y-1/2 rounded-full bg-primary-500"></span>
-        </div>
+        <div class="h-px bg-gray-200/80 dark:bg-gray-700/60"></div>
 
         <!-- Primary items -->
         <div class="py-1.5">
@@ -318,26 +296,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* Subtle data-grid pattern on the header */
-.user-menu-header {
-  background-image: radial-gradient(
-    circle at 1px 1px,
-    rgba(240, 129, 42, 0.10) 1px,
-    transparent 0
-  );
-  background-size: 14px 14px;
-  background-position: 4px 4px;
-}
-
-:deep(.dark) .user-menu-header,
-.dark .user-menu-header {
-  background-image: radial-gradient(
-    circle at 1px 1px,
-    rgba(240, 129, 42, 0.16) 1px,
-    transparent 0
-  );
-}
-
 /* Staggered entry for menu items */
 .menu-item {
   animation: itemSlideIn 280ms cubic-bezier(0.16, 1, 0.3, 1) backwards;

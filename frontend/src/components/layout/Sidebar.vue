@@ -38,7 +38,7 @@
         <img src="/favicon.svg" alt="TradeTally" class="h-8 w-auto shrink-0" />
         <div v-if="!isCollapsed" class="min-w-0 flex-1">
           <div class="truncate text-sm font-semibold text-gray-900 dark:text-white">TradeTally</div>
-          <div class="truncate font-mono text-[9px] uppercase tracking-[0.18em] text-gray-500 dark:text-gray-500">
+          <div class="truncate text-xs text-gray-500 dark:text-gray-500">
             Trading Journal
           </div>
         </div>
@@ -169,7 +169,7 @@
         <div class="relative">
           <div class="flex items-start justify-between gap-2">
             <div class="min-w-0 flex-1">
-              <div class="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-primary-600 dark:text-primary-400">
+              <div class="text-[10px] font-semibold uppercase tracking-wide text-primary-600 dark:text-primary-400">
                 Free Plan
               </div>
               <div class="mt-1 text-xs font-semibold text-gray-900 dark:text-white">
@@ -183,7 +183,7 @@
               <ArrowUpRightIcon class="h-3.5 w-3.5 text-primary-600 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 dark:text-primary-400" />
             </div>
           </div>
-          <div class="mt-3 flex w-full items-center justify-center gap-1.5 rounded-md bg-primary-600 px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.15em] text-white shadow-sm transition-colors group-hover:bg-primary-700">
+          <div class="mt-3 flex w-full items-center justify-center gap-1.5 rounded-md bg-primary-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors group-hover:bg-primary-700">
             Upgrade
           </div>
         </div>
@@ -242,24 +242,8 @@
           class="user-popover absolute bottom-full left-2 right-2 z-50 mb-2 origin-bottom-left overflow-hidden rounded-xl bg-white/95 shadow-2xl ring-1 ring-gray-200/80 backdrop-blur-xl lg:left-3 lg:right-auto lg:w-72 dark:bg-gray-900/95 dark:ring-gray-700/60"
         >
           <!-- Header -->
-          <div class="user-popover-header relative overflow-hidden px-5 pt-4 pb-4">
-            <div class="absolute left-0 top-0 h-full w-[3px] bg-gradient-to-b from-primary-400 via-primary-500 to-primary-600"></div>
-            <svg
-              class="absolute right-4 top-3 h-7 w-10 text-primary-500 opacity-[0.18] dark:opacity-25"
-              viewBox="0 0 48 28"
-              fill="none"
-              aria-hidden="true"
-            >
-              <line x1="6" y1="4" x2="6" y2="24" stroke="currentColor" stroke-width="1" stroke-linecap="round" />
-              <rect x="3" y="11" width="6" height="10" fill="currentColor" />
-              <line x1="18" y1="1" x2="18" y2="26" stroke="currentColor" stroke-width="1" stroke-linecap="round" />
-              <rect x="15" y="5" width="6" height="17" fill="currentColor" />
-              <line x1="30" y1="6" x2="30" y2="27" stroke="currentColor" stroke-width="1" stroke-linecap="round" />
-              <rect x="27" y="13" width="6" height="11" fill="none" stroke="currentColor" stroke-width="1.5" />
-              <line x1="42" y1="3" x2="42" y2="20" stroke="currentColor" stroke-width="1" stroke-linecap="round" />
-              <rect x="39" y="9" width="6" height="8" fill="currentColor" />
-            </svg>
-            <div class="relative flex items-start gap-3.5">
+          <div class="px-5 pt-4 pb-4">
+            <div class="flex items-start gap-3.5">
               <div class="shrink-0">
                 <div class="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-primary-400 to-primary-600 shadow-md ring-1 ring-white/40 dark:ring-white/10">
                   <img v-if="avatarUrl" :src="avatarUrl" :alt="displayName" class="h-full w-full object-cover" />
@@ -281,16 +265,14 @@
                 <p v-if="authStore.user?.email" class="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">
                   {{ authStore.user.email }}
                 </p>
-                <p v-if="authStore.user?.username" class="mt-1.5 truncate font-mono text-[10px] uppercase tracking-[0.15em] text-gray-400 dark:text-gray-500">
+                <p v-if="authStore.user?.username" class="mt-1.5 truncate text-[11px] text-gray-400 dark:text-gray-500">
                   @{{ authStore.user.username }}
                 </p>
               </div>
             </div>
           </div>
 
-          <div class="relative h-px bg-gray-200/80 dark:bg-gray-700/60">
-            <span class="absolute left-5 top-1/2 h-1 w-1 -translate-y-1/2 rounded-full bg-primary-500"></span>
-          </div>
+          <div class="h-px bg-gray-200/80 dark:bg-gray-700/60"></div>
 
           <div class="py-1.5">
             <router-link
@@ -854,26 +836,6 @@ onUnmounted(() => {
 .group\/item:hover .popover-chevron {
   opacity: 1;
   transform: translateX(0);
-}
-
-/* Decorative grid on popover header */
-.user-popover-header {
-  background-image: radial-gradient(
-    circle at 1px 1px,
-    rgba(240, 129, 42, 0.10) 1px,
-    transparent 0
-  );
-  background-size: 14px 14px;
-  background-position: 4px 4px;
-}
-
-:global(.dark) .user-popover-header,
-.dark .user-popover-header {
-  background-image: radial-gradient(
-    circle at 1px 1px,
-    rgba(240, 129, 42, 0.16) 1px,
-    transparent 0
-  );
 }
 
 @keyframes itemSlideIn {
