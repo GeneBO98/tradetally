@@ -363,11 +363,25 @@
             <!-- Monthly Performance Table -->
             <div class="card">
                 <div class="card-body">
-                    <h2
-                        class="text-xl font-semibold text-gray-900 dark:text-white mb-6"
-                    >
-                        Month-by-Month Breakdown
-                    </h2>
+                    <div class="flex items-center justify-between mb-6">
+                        <h2
+                            class="text-xl font-semibold text-gray-900 dark:text-white"
+                        >
+                            Month-by-Month Breakdown
+                        </h2>
+                        <button
+                            @click="toggleRValue"
+                            class="px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
+                            :class="
+                                showRValue
+                                    ? 'bg-primary-600 text-white hover:bg-primary-700'
+                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
+                            "
+                            :title="showRValue ? 'Showing R-multiples (dollar columns hidden)' : 'Show R-multiples and hide dollar columns'"
+                        >
+                            {{ showRValue ? "Showing R" : "Show R" }}
+                        </button>
+                    </div>
                     <div class="overflow-x-auto">
                         <table
                             class="min-w-full divide-y divide-gray-200 dark:divide-gray-700"
@@ -405,21 +419,25 @@
                                         Win Rate
                                     </th>
                                     <th
+                                        v-if="!showRValue"
                                         class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
                                     >
                                         Total P&L
                                     </th>
                                     <th
+                                        v-if="!showRValue"
                                         class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
                                     >
                                         Avg P&L
                                     </th>
                                     <th
+                                        v-if="!showRValue"
                                         class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
                                     >
                                         Avg Win
                                     </th>
                                     <th
+                                        v-if="!showRValue"
                                         class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
                                     >
                                         Avg Loss
@@ -543,6 +561,7 @@
                                         >
                                     </td>
                                     <td
+                                        v-if="!showRValue"
                                         class="px-6 py-4 whitespace-nowrap text-right text-sm font-semibold"
                                         :class="
                                             month.trades.total > 0
@@ -559,6 +578,7 @@
                                         }}
                                     </td>
                                     <td
+                                        v-if="!showRValue"
                                         class="px-6 py-4 whitespace-nowrap text-right text-sm"
                                         :class="
                                             month.trades.total > 0
@@ -575,6 +595,7 @@
                                         }}
                                     </td>
                                     <td
+                                        v-if="!showRValue"
                                         class="px-6 py-4 whitespace-nowrap text-right text-sm text-success"
                                     >
                                         {{
@@ -586,6 +607,7 @@
                                         }}
                                     </td>
                                     <td
+                                        v-if="!showRValue"
                                         class="px-6 py-4 whitespace-nowrap text-right text-sm text-danger"
                                     >
                                         {{

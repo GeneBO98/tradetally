@@ -15,6 +15,7 @@ export const SYNCED_KEYS = Object.freeze([
   'dashboardTimeRange',
   'dashboardCustomStartDate',
   'dashboardCustomEndDate',
+  'dashboardRMode',
   'analyticsFilters',
   'behavioralAnalyticsFilters',
   'gamificationFilters',

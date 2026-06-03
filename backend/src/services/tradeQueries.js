@@ -447,6 +447,7 @@ class TradeQueries {
           COUNT(DISTINCT first_trade_date) as trading_days,
           AVG(avg_return_pct) as avg_return_pct,
           AVG(r_value) as avg_r_value,
+          SUM(r_value) as total_r_value,
           STDDEV(trade_pnl) as pnl_stddev,
           SUM(CASE WHEN trade_pnl > 0 THEN trade_pnl ELSE 0 END) as total_gross_wins,
           SUM(CASE WHEN trade_pnl < 0 THEN trade_pnl ELSE 0 END) as total_gross_losses
@@ -575,6 +576,8 @@ class TradeQueries {
           trade_date,
           SUM(COALESCE(pnl, 0)) as daily_pnl,
           SUM(SUM(COALESCE(pnl, 0))) OVER (ORDER BY trade_date) as cumulative_pnl,
+          COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as r_value,
+          COALESCE(SUM(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL)) OVER (ORDER BY trade_date), 0) as cumulative_r_value,
           COUNT(*) as trade_count
         FROM trades t
         ${whereClause}
@@ -703,7 +706,8 @@ class TradeQueries {
         symbolsTraded: parseInt(analytics.symbols_traded) || 0,
         tradingDays: parseInt(analytics.trading_days) || 0,
         avgReturnPercent: parseFloat(analytics.avg_return_pct) || 0,
-        avgRValue: parseFloat(analytics.avg_r_value) || 0
+        avgRValue: parseFloat(analytics.avg_r_value) || 0,
+        totalRValue: parseFloat(analytics.total_r_value) || 0
       },
       performanceBySymbol: symbolResult.rows,
       dailyPnL: dailyPnLResult.rows,

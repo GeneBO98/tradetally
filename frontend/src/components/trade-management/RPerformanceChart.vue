@@ -73,12 +73,28 @@
             </div>
           </div>
 
-          <!-- R Left on Table -->
+          <!-- R Left on Table: only meaningful for trades with a take-profit
+               target. Without targets (common for derivatives) there is no
+               "potential R" to compare against, so show N/A rather than a
+               misleading negative-of-actual-R value. -->
           <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
             <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">R Left on Table</div>
-            <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate" :class="summary.r_left_on_table > 0 ? 'text-red-600 dark:text-red-400' : summary.r_left_on_table < 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'">
-              {{ formatR(summary.r_left_on_table) }}
-            </div>
+            <template v-if="summary.trades_with_target > 0">
+              <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate" :class="summary.r_left_on_table > 0 ? 'text-red-600 dark:text-red-400' : summary.r_left_on_table < 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'">
+                {{ formatR(summary.r_left_on_table) }}
+              </div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate shrink-0">
+                {{ summary.trades_with_target }} with targets
+              </div>
+            </template>
+            <template v-else>
+              <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate text-gray-400 dark:text-gray-500">
+                N/A
+              </div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate shrink-0" title="Needs a defined take-profit target; not available for most derivatives">
+                needs targets
+              </div>
+            </template>
           </div>
 
           <!-- Win Rate -->
