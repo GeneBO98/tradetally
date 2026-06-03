@@ -453,6 +453,7 @@ const publicNavigation = computed(() => {
     { name: 'Public Trades', to: '/public', route: 'public-trades' }
   ]
 
+  // Pricing only on billing-enabled (cloud) instances
   if (isBillingEnabled.value) {
     nav.push({ name: 'Pricing', to: '/pricing', route: 'pricing' })
   }
@@ -461,6 +462,7 @@ const publicNavigation = computed(() => {
   if (showSEOPages.value) {
     nav.push(
       { name: 'Features', to: '/features', route: 'features' },
+      { name: 'Tools', to: '/tools', route: 'tools-hub' },
       { name: 'FAQ', to: '/faq', route: 'faq' },
       { name: 'Compare', to: '/compare', route: 'compare' }
     )

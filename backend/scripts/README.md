@@ -73,3 +73,32 @@ The `users` table includes a `role` column:
 - JWT tokens include the user's role for frontend permission checks
 - All admin actions are logged and can be audited
 - The role field has a database constraint to only allow 'user' or 'admin' values
+
+## Release Announcements
+
+Use `announce:release` to hand a version or feature announcement to n8n, which can then turn it into brand-style X.com copy.
+
+Example:
+
+```bash
+cd backend
+npm run announce:release -- \
+  --release-file ../documentation/releases/v2.5.2.md \
+  --type version
+```
+
+For a feature announcement, pass the feature name and the main benefit:
+
+```bash
+cd backend
+npm run announce:release -- \
+  --type feature \
+  --feature-name "Sequenzy sync" \
+  --feature-benefit "subscriber data stays in sync automatically" \
+  --cta-url "https://tradetally.io"
+```
+
+Required environment values:
+- `N8N_ANNOUNCEMENT_WEBHOOK_URL`
+- `N8N_ANNOUNCEMENT_SECRET` if your workflow checks a shared secret
+- `TRADETALLY_PUBLIC_URL` for default call-to-action links

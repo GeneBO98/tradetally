@@ -1,4 +1,5 @@
 const service = require('../../src/services/unsubscribeService');
+const crypto = require('crypto');
 
 describe('unsubscribeService', () => {
   const originalSecret = process.env.JWT_SECRET;
@@ -22,9 +23,14 @@ describe('unsubscribeService', () => {
     expect(service.verifyToken(token)).toBe(userId);
   });
 
+  test('keeps generated legacy numeric ids as numbers on verify', () => {
+    const token = service.generateToken(123);
+    expect(service.verifyToken(token)).toBe(123);
+  });
+
   test('accepts legacy numeric payload tokens', () => {
     const payload = Buffer.from('456').toString('base64url');
-    const signature = require('crypto')
+    const signature = crypto
       .createHmac('sha256', process.env.JWT_SECRET)
       .update(payload)
       .digest('base64url');

@@ -45,11 +45,19 @@ const props = defineProps({
   alt: {
     type: String,
     default: ''
+  },
+  disableMetadataFetch: {
+    type: Boolean,
+    default: false
   }
 })
 
 const imageFailed = ref(false)
-const { metadataBySymbol, normalizeSymbol } = useSymbolMetadata(computed(() => props.symbol))
+// Public pages (free tools) should not fetch metadata — that endpoint
+// requires auth and a 401 there bounces visitors to /login.
+const { metadataBySymbol, normalizeSymbol } = useSymbolMetadata(
+  props.disableMetadataFetch ? null : computed(() => props.symbol)
+)
 
 const normalizedSymbol = computed(() => normalizeSymbol(props.symbol))
 const metadata = computed(() => metadataBySymbol[normalizedSymbol.value] || null)

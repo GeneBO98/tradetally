@@ -17,6 +17,7 @@
     "@mdi/js": "^7.4.47",
     "@simplewebauthn/browser": "^13.2.2",
     "@stripe/stripe-js": "^2.4.0",
+    "@vueuse/motion": "^2.2.6",
     "axios": "^1.15.2",
     "chart.js": "^4.5.1",
     "date-fns": "^2.30.0",

@@ -10,18 +10,6 @@
             </div>
         </div>
 
-        <!-- Pro onboarding: step 3 -->
-        <OnboardingCard
-            v-if="authStore.proOnboardingStep === 3"
-            :step="3"
-            :total-steps="3"
-            :next-step="4"
-            tour-type="pro"
-            title="Trade Management"
-            description="Advanced stop loss analysis, R-value tracking, and position sizing tools."
-            cta-label="Done"
-        />
-
         <!-- R-Multiple Performance Chart -->
         <RPerformanceChart
             :filters="filters"
@@ -138,7 +126,6 @@
 import { ref, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import api from "@/services/api";
-import OnboardingCard from "@/components/onboarding/OnboardingCard.vue";
 import { useAuthStore } from "@/stores/auth";
 
 const authStore = useAuthStore();

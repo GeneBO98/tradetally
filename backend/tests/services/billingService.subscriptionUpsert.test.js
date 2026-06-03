@@ -9,7 +9,8 @@ jest.mock('../../src/models/User', () => ({
   findById: jest.fn()
 }));
 jest.mock('../../src/services/emailService', () => ({
-  sendSubscriptionWelcomeEmail: jest.fn()
+  sendSubscriptionWelcomeEmail: jest.fn(),
+  sendNewSubscriberNotification: jest.fn()
 }));
 
 const db = require('../../src/config/database');

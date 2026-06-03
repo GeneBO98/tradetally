@@ -45,7 +45,7 @@ function parseDecodedUserId(decoded) {
 /**
  * Generate an unsubscribe token for a user
  * Format: base64url({"userId":"...","purpose":"unsubscribe"}).signature
- * @param {number|string} userId - The user's ID
+ * @param {string|number} userId - The user's ID
  * @returns {string} The signed token
  */
 function generateToken(userId) {

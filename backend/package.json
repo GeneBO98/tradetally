@@ -9,7 +9,8 @@
     "dev": "nodemon src/server.js",
     "test": "jest",
     "migrate": "node src/utils/migrate.js",
-    "migrate:export": "node run-export-migration.js"
+    "migrate:export": "node run-export-migration.js",
+    "announce:release": "node scripts/send_release_announcement.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",

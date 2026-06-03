@@ -27,6 +27,135 @@ class BillingService {
     return result.rowCount;
   }
 
+  /**
+   * Atomically grant a Pro trial to a user via tier_overrides.
+   *
+   * Idempotent and safe to call from anywhere (manual endpoint, email
+   * verification handler, admin grant). Returns a structured result so
+   * callers can decide how to surface skip cases:
+   *   { granted: true, expiresAt }                       - trial created
+   *   { granted: false, reason: 'user_not_found' }
+   *   { granted: false, reason: 'trial_already_used' }   - trial_used flag or live override
+   *   { granted: false, reason: 'already_subscribed' }   - active Stripe subscription
+   */
+  static async startTrialForUser(userId, { reason = 'Free 14-day trial', days = 14 } = {}) {
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+
+      const statusResult = await client.query(`
+        SELECT
+          u.id,
+          u.trial_used,
+          (SELECT COUNT(*) FROM tier_overrides to_
+             WHERE to_.user_id = u.id AND to_.reason ILIKE '%trial%') AS active_trial_count
+        FROM users u
+        WHERE u.id = $1
+        FOR UPDATE
+      `, [userId]);
+
+      if (statusResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return { granted: false, reason: 'user_not_found' };
+      }
+
+      const status = statusResult.rows[0];
+      if (status.trial_used || parseInt(status.active_trial_count, 10) > 0) {
+        await client.query('ROLLBACK');
+        return { granted: false, reason: 'trial_already_used' };
+      }
+
+      let subscription = null;
+      try {
+        subscription = await User.getSubscription(userId);
+      } catch (subError) {
+        await client.query('ROLLBACK');
+        throw new Error(`Failed to check subscription status: ${subError.message}`);
+      }
+
+      if (subscription && subscription.status === 'active') {
+        await client.query('ROLLBACK');
+        return { granted: false, reason: 'already_subscribed' };
+      }
+
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + days);
+
+      const insertResult = await client.query(`
+        INSERT INTO tier_overrides (user_id, tier, reason, expires_at, created_by)
+        VALUES ($1, 'pro', $2, $3, NULL)
+        RETURNING id
+      `, [userId, reason, expiresAt]);
+
+      // Trigger sets trial_used = true; setting it explicitly is harmless and
+      // makes intent obvious to readers.
+      await client.query(`UPDATE users SET trial_used = true WHERE id = $1`, [userId]);
+
+      // Kick off the pro onboarding tour if it hasn't been started yet.
+      await client.query(
+        `UPDATE user_settings SET pro_onboarding_step = 1
+           WHERE user_id = $1 AND COALESCE(pro_onboarding_step, 0) = 0`,
+        [userId]
+      );
+
+      await client.query('COMMIT');
+      console.log(`[BILLING] Granted ${days}-day trial to user ${userId} (override ${insertResult.rows[0].id})`);
+
+      return { granted: true, expiresAt };
+    } catch (error) {
+      try { await client.query('ROLLBACK'); } catch (_) { /* ignore */ }
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Extend an existing trial so it expires `totalDays` days after it was
+   * originally created. Used to upgrade the default 14-day signup trial to
+   * 30 days when a user verifies their email. Idempotent — repeated calls
+   * with the same totalDays leave expires_at unchanged.
+   *
+   *   { extended: true, expiresAt, alreadyAtTarget }   - update applied (or already there)
+   *   { extended: false, reason: 'no_active_trial' }   - no trial override found
+   *   { extended: false, reason: 'already_subscribed' }
+   */
+  static async extendTrialForUser(userId, { totalDays = 30, reason = 'Extended trial — email verified' } = {}) {
+    let subscription = null;
+    try {
+      subscription = await User.getSubscription(userId);
+    } catch (subError) {
+      throw new Error(`Failed to check subscription status: ${subError.message}`);
+    }
+
+    if (subscription && subscription.status === 'active') {
+      return { extended: false, reason: 'already_subscribed' };
+    }
+
+    const result = await db.query(`
+      WITH updated AS (
+        UPDATE tier_overrides
+        SET
+          expires_at = GREATEST(expires_at, created_at + ($2 || ' days')::interval),
+          reason = CASE
+            WHEN expires_at < created_at + ($2 || ' days')::interval THEN $3
+            ELSE reason
+          END
+        WHERE user_id = $1 AND reason ILIKE '%trial%'
+        RETURNING expires_at, (created_at + ($2 || ' days')::interval) AS target
+      )
+      SELECT expires_at, target, expires_at >= target AS already_at_target FROM updated
+    `, [userId, totalDays, reason]);
+
+    if (result.rows.length === 0) {
+      return { extended: false, reason: 'no_active_trial' };
+    }
+
+    const row = result.rows[0];
+    console.log(`[BILLING] Extended trial for user ${userId} to ${row.expires_at}`);
+    return { extended: true, expiresAt: row.expires_at, alreadyAtTarget: row.already_at_target };
+  }
+
   // Initialize Stripe with conditional loading
   static async initialize() {
     const billingEnabled = await TierService.isBillingEnabled();
@@ -517,6 +646,12 @@ class BillingService {
             const interval = item?.price?.recurring?.interval;
             const planName = interval === 'year' ? 'Pro Yearly' : 'Pro Monthly';
             await EmailService.sendSubscriptionWelcomeEmail(user.email, user.username, planName);
+            await EmailService.sendNewSubscriberNotification({
+              userEmail: user.email,
+              username: user.username,
+              planName,
+              billingInterval: interval || 'month'
+            });
           }
         }
       } catch (emailError) {

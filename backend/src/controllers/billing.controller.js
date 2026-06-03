@@ -60,6 +60,7 @@ const billingController = {
       const subscription = await BillingService.getSubscriptionDetails(userId);
       const userTier = await TierService.getUserTier(userId);
       const tierOverride = await User.getTierOverride(userId);
+      const user = await User.findById(userId);
       
       console.log('Subscription details:', {
         subscription: subscription ? 'exists' : 'null',
@@ -91,7 +92,7 @@ const billingController = {
           isOnTrial: trial ? trial.active : false,
           trialEndsAt: trial ? trial.expires_at : null,
           trial, // Keep for backward compatibility with web
-          has_used_trial: !!tierOverride
+          has_used_trial: !!(user?.trial_used || user?.trial_started_at || tierOverride)
         }
       });
     } catch (error) {
@@ -207,135 +208,27 @@ const billingController = {
 
   // Start 14-day trial
   async startTrial(req, res, next) {
-    let client;
     try {
       const userId = req.user.id;
-      console.log('[CHECK] Starting trial request for user:', userId);
-      
-      // Use a transaction to make this atomic and prevent race conditions
-      try {
-        client = await db.connect();
-      } catch (dbError) {
-        console.error('[ERROR] Failed to connect to database:', dbError);
-        throw new Error('Database connection failed');
-      }
-      
-      try {
-        await client.query('BEGIN');
-        
-        // Check if user has a trial_used flag or any current trial override
-        // Use a subquery to avoid GROUP BY with FOR UPDATE conflict
-        const userTrialStatusQuery = `
-          SELECT 
-            u.id,
-            u.trial_used,
-            (SELECT COUNT(*) FROM tier_overrides to_ 
-             WHERE to_.user_id = u.id AND to_.reason ILIKE '%trial%') as active_trial_count
-          FROM users u
-          WHERE u.id = $1
-          FOR UPDATE
-        `;
-        
-        console.log('[CHECK] Checking user trial status...');
-        const trialStatusResult = await client.query(userTrialStatusQuery, [userId]);
-        
-        if (trialStatusResult.rows.length === 0) {
-          console.log('[ERROR] User not found:', userId);
-          await client.query('ROLLBACK');
-          return res.status(404).json({
-            error: 'user_not_found',
-            message: 'User not found'
-          });
-        }
-        
-        const userTrialStatus = trialStatusResult.rows[0];
-        const hasUsedTrial = userTrialStatus.trial_used || parseInt(userTrialStatus.active_trial_count) > 0;
-        
-        console.log('[CHECK] User trial status:', {
-          userId,
-          trial_used: userTrialStatus.trial_used,
-          active_trial_count: userTrialStatus.active_trial_count,
-          hasUsedTrial
-        });
-        
-        if (hasUsedTrial) {
-          console.log('[ERROR] User has already used trial:', userId);
-          await client.query('ROLLBACK');
-          return res.status(400).json({
-            error: 'trial_already_used',
-            message: 'You have already used your free trial'
-          });
-        }
-        
-        console.log('[SUCCESS] No existing trial override found, creating new trial for user:', userId);
+      const result = await BillingService.startTrialForUser(userId);
 
-        // Check if user already has a subscription
-        let subscription;
-        try {
-          subscription = await User.getSubscription(userId);
-          console.log('[CHECK] User subscription check:', subscription ? 'has subscription' : 'no subscription');
-        } catch (subError) {
-          console.error('[ERROR] Error checking subscription:', subError);
-          await client.query('ROLLBACK');
-          throw new Error('Failed to check subscription status');
-        }
-        
-        if (subscription && subscription.status === 'active') {
-          console.log('[ERROR] User already has active subscription:', userId);
-          await client.query('ROLLBACK');
-          return res.status(400).json({
-            error: 'already_subscribed',
-            message: 'You already have an active subscription'
-          });
-        }
-
-        // Create 14-day trial tier override
-        const expiresAt = new Date();
-        expiresAt.setDate(expiresAt.getDate() + 14);
-
-        const insertQuery = `
-          INSERT INTO tier_overrides (user_id, tier, reason, expires_at, created_by)
-          VALUES ($1, $2, $3, $4, $5)
-          RETURNING *
-        `;
-        const insertResult = await client.query(insertQuery, [userId, 'pro', 'Free 14-day trial', expiresAt, null]);
-        
-        // Update trial_used flag (trigger will also do this, but we'll do it explicitly for clarity)
-        await client.query(`UPDATE users SET trial_used = true WHERE id = $1`, [userId]);
-        console.log('[SUCCESS] Updated trial_used flag');
-        
-        // Trigger pro onboarding tour
-        await client.query(
-          `UPDATE user_settings SET pro_onboarding_step = 1 WHERE user_id = $1 AND pro_onboarding_step = 0`,
-          [userId]
-        );
-
-        await client.query('COMMIT');
-        console.log('[SUCCESS] Trial created successfully for user:', userId, 'Trial ID:', insertResult.rows[0].id);
-
-        res.json({
+      if (result.granted) {
+        return res.json({
           success: true,
           message: 'Free trial started successfully',
-          trial_expires_at: expiresAt
+          trial_expires_at: result.expiresAt
         });
-      } catch (txError) {
-        await client.query('ROLLBACK');
-        console.error('[ERROR] Transaction error in startTrial:', txError);
-        throw txError;
-      } finally {
-        if (client) {
-          client.release();
-        }
       }
+
+      const reasonToHttp = {
+        user_not_found: { status: 404, message: 'User not found' },
+        trial_already_used: { status: 400, message: 'You have already used your free trial' },
+        already_subscribed: { status: 400, message: 'You already have an active subscription' }
+      };
+      const mapped = reasonToHttp[result.reason] || { status: 400, message: 'Unable to start trial' };
+      return res.status(mapped.status).json({ error: result.reason, message: mapped.message });
     } catch (error) {
       console.error('[ERROR] Error starting trial for user:', req.user?.id, error);
-      if (client) {
-        try {
-          client.release();
-        } catch (releaseError) {
-          console.error('[ERROR] Error releasing client:', releaseError);
-        }
-      }
       next(error);
     }
   },
@@ -602,15 +495,25 @@ const billingController = {
       console.log('DEBUG: Resetting trial status for user:', userId);
 
       // Delete any existing trial tier overrides
-      // The database trigger will automatically reset the trial_used flag
       const deleteQuery = `
         DELETE FROM tier_overrides
         WHERE user_id = $1 AND reason ILIKE '%trial%'
       `;
       const result = await db.query(deleteQuery, [userId]);
 
+      await db.query(
+        `
+        UPDATE users
+        SET trial_used = false,
+            trial_started_at = NULL,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1
+        `,
+        [userId]
+      );
+
       console.log('DEBUG: Deleted', result.rowCount, 'trial records for user:', userId);
-      console.log('DEBUG: trial_used flag automatically reset by database trigger');
+      console.log('DEBUG: trial history explicitly reset for development user:', userId);
 
       res.json({
         success: true,

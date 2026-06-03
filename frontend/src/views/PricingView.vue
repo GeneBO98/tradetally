@@ -1,10 +1,25 @@
 <template>
   <div class="min-h-screen bg-gray-50 dark:bg-gray-900 py-12">
     <div class="content-wrapper">
+      <!-- Pro tour: step 5 of 5 — Conversion CTA -->
+      <ProTourCard
+        v-if="authStore.proOnboardingStep === 5"
+        :step="5"
+        :total-steps="5"
+        :next-step="6"
+        title="Keep these tools after your trial"
+        description="You've seen what Pro catches: revenge trades, premature exits, missed profit, and pre-screened scanner setups. Pick a plan now and your trial keeps running — we won't charge until it ends."
+        cta-label="I'll pick a plan"
+        icon="rocket"
+        :stat-value="proTourTrialDays"
+        stat-label="trial days remaining"
+        stat-tone="success"
+      />
+
       <!-- Header -->
       <div class="text-center">
         <h1 class="text-4xl font-bold text-gray-900 dark:text-white">
-          Trading Journal Pricing
+          Trading Journal Pricing: Free Plan + {{ formattedMonthlyPrice }}/mo Pro
         </h1>
         <p class="mt-4 text-xl text-gray-600 dark:text-gray-400">
           Compare TradeTally pricing for a free trading journal and Pro analytics built for serious traders.
@@ -55,13 +70,6 @@
 
       <!-- Pricing Plans -->
       <div v-else class="mt-12">
-        <div v-if="noPlansAvailable" class="mb-8 max-w-2xl mx-auto rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700 p-4">
-          <p class="text-sm font-medium text-amber-900 dark:text-amber-100">Pricing plans failed to load.</p>
-          <p class="mt-1 text-sm text-amber-800 dark:text-amber-200">
-            Stripe returned no plans. Check the backend logs for price-fetch errors and verify your <code class="font-mono">STRIPE_SECRET_KEY</code> matches the mode (test / live) of the configured price IDs.
-          </p>
-        </div>
-
         <!-- Current Plan Info -->
         <div v-if="currentSubscription" class="mb-8 text-center">
           <div class="inline-flex items-center px-4 py-2 rounded-full bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200">
@@ -69,16 +77,6 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             Currently on {{ currentSubscription.plan_name || 'Pro Plan' }}
-          </div>
-        </div>
-
-        <div class="flex justify-center mb-8">
-          <div class="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
-            <button @click="billingPeriod = 'monthly'" :class="billingPeriod === 'monthly' ? 'bg-white dark:bg-gray-700 shadow text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'" class="px-5 py-2 rounded-md text-sm font-medium transition-all">Monthly</button>
-            <button @click="billingPeriod = 'yearly'" :class="billingPeriod === 'yearly' ? 'bg-white dark:bg-gray-700 shadow text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'" class="px-5 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2">
-              Annually
-              <span v-if="yearlySavingsPercent" class="text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-0.5 rounded-full font-semibold">Save {{ yearlySavingsPercent }}%</span>
-            </button>
           </div>
         </div>
 
@@ -125,32 +123,41 @@
               </ul>
 
               <div class="mt-8">
-                <button 
+                <button
                   disabled
                   class="w-full btn btn-disabled bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 cursor-not-allowed"
                 >
                   {{ !currentSubscription ? 'Current Plan' : 'Already on Pro' }}
                 </button>
+                <!-- Spacer to align primary CTAs with the Monthly card's trial slot -->
+                <div class="mt-3 min-h-[4.5rem]" aria-hidden="true"></div>
               </div>
             </div>
           </div>
 
-          <!-- Trial Plan -->
+          <!-- Pro Yearly -->
           <div class="card relative border-2 border-green-500 flex flex-col">
             <div class="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
               <span class="bg-green-500 text-white px-4 py-1 rounded-full text-sm font-medium">
-                Try Free
+                Best Value
               </span>
             </div>
-            
+
             <div class="card-body flex flex-col flex-1">
               <div class="text-center">
-                <h3 class="text-2xl font-bold text-gray-900 dark:text-white">14-Day Trial</h3>
+                <h3 class="text-2xl font-bold text-gray-900 dark:text-white">Pro Yearly</h3>
                 <div class="mt-4">
-                  <span class="text-4xl font-bold text-gray-900 dark:text-white">Free</span>
+                  <span class="text-4xl font-bold text-gray-900 dark:text-white">{{ formattedYearlyPrice }}</span>
+                  <span class="text-gray-600 dark:text-gray-400">/year</span>
                 </div>
+                <p v-if="yearlyDiscountPercent > 0" class="mt-2">
+                  <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300">
+                    Save {{ yearlyDiscountPercent }}% vs monthly
+                  </span>
+                </p>
                 <p class="mt-4 text-gray-600 dark:text-gray-400">
-                  Try Pro features risk-free with no payment method required
+                  <template v-if="yearlyMonthlyEquivalent">Just {{ yearlyMonthlyEquivalent }}/mo, billed annually</template>
+                  <template v-else>Best value for committed traders</template>
                 </p>
               </div>
 
@@ -159,13 +166,19 @@
                   <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                   </svg>
-                  <span class="text-gray-600 dark:text-gray-400">All Pro features</span>
+                  <span class="text-gray-600 dark:text-gray-400">Everything in Pro Monthly</span>
+                </li>
+                <li v-if="yearlyDiscountPercent > 0" class="flex items-center">
+                  <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span class="text-gray-600 dark:text-gray-400">{{ yearlyDiscountPercent }}% cheaper than paying monthly</span>
                 </li>
                 <li class="flex items-center">
                   <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                   </svg>
-                  <span class="text-gray-600 dark:text-gray-400">No payment method required</span>
+                  <span class="text-gray-600 dark:text-gray-400">Priority support</span>
                 </li>
                 <li class="flex items-center">
                   <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -173,52 +186,45 @@
                   </svg>
                   <span class="text-gray-600 dark:text-gray-400">Cancel anytime</span>
                 </li>
-                <li class="flex items-center">
-                  <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                  </svg>
-                  <span class="text-gray-600 dark:text-gray-400">Upgrade to Pro anytime</span>
-                </li>
               </ul>
 
               <div class="mt-8">
-                <button 
+                <button
                   v-if="!currentSubscription"
-                  @click="startTrial()"
-                  :disabled="subscribing || hasUsedTrial || (trialInfo && trialInfo.active)"
-                  :class="getTrialButtonClass()"
-                  class="w-full"
+                  @click="subscribe(yearlyOffer)"
+                  :disabled="subscribing || !yearlyOffer"
+                  class="w-full btn btn-primary"
                 >
                   <span v-if="subscribing" class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></span>
-                  {{ getTrialButtonText() }}
+                  Subscribe Yearly
                 </button>
-                <button 
+                <button
                   v-else
                   disabled
                   class="w-full btn btn-disabled bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 cursor-not-allowed"
                 >
                   Already on Pro
                 </button>
+                <!-- Spacer to align primary CTAs with the Monthly card's trial slot -->
+                <div class="mt-3 min-h-[4.5rem]" aria-hidden="true"></div>
               </div>
             </div>
           </div>
 
-          <!-- Pro Plan -->
+          <!-- Pro Monthly -->
           <div class="card relative border-2 border-primary-500 flex flex-col">
             <div class="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
               <span class="bg-primary-500 text-white px-4 py-1 rounded-full text-sm font-medium">
                 Most Popular
               </span>
             </div>
-            
+
             <div class="card-body flex flex-col flex-1">
               <div class="text-center">
-                <h3 class="text-2xl font-bold text-gray-900 dark:text-white">Pro</h3>
+                <h3 class="text-2xl font-bold text-gray-900 dark:text-white">Pro Monthly</h3>
                 <div class="mt-4">
-                  <span class="text-4xl font-bold text-gray-900 dark:text-white">${{ billingPeriod === 'yearly' ? yearlyMonthlyEquivalent : monthlyDisplayPrice }}</span>
+                  <span class="text-4xl font-bold text-gray-900 dark:text-white">{{ formattedMonthlyPrice }}</span>
                   <span class="text-gray-600 dark:text-gray-400">/month</span>
-                  <div v-if="billingPeriod === 'yearly'" class="mt-1 text-sm text-gray-500 dark:text-gray-400">${{ yearlyDisplayPrice }} billed annually</div>
-                  <div v-else-if="yearlySavingsPercent" class="mt-1 text-sm text-green-600 dark:text-green-400 font-medium">Save {{ yearlySavingsPercent }}% with annual billing</div>
                 </div>
                 <p class="mt-4 text-gray-600 dark:text-gray-400">
                   Advanced analytics and behavioral insights for serious traders
@@ -265,24 +271,45 @@
               </ul>
 
               <div class="mt-8">
-                <button
-                  v-if="!currentSubscription"
-                  @click="subscribe()"
-                  :disabled="subscribing || !activePlan"
-                  :class="[getSubscribeButtonClass(), { 'opacity-50 cursor-not-allowed': subscribing || !activePlan }]"
-                  :title="!activePlan ? 'Pricing plans failed to load — check Stripe config' : ''"
-                  class="w-full"
-                >
-                  <span v-if="subscribing" class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></span>
-                  {{ getSubscribeButtonText() }}
-                </button>
-                <button 
-                  v-else
-                  disabled
-                  class="w-full btn btn-disabled bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 cursor-not-allowed"
-                >
-                  Current Plan
-                </button>
+                <template v-if="!currentSubscription">
+                  <button
+                    @click="subscribe(monthlyOffer)"
+                    :disabled="subscribing || !monthlyOffer"
+                    :class="getSubscribeButtonClass()"
+                    class="w-full"
+                  >
+                    <span v-if="subscribing" class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></span>
+                    {{ getSubscribeButtonText() }}
+                  </button>
+
+                  <!-- Start free trial (slot height matches the spacer on the other cards) -->
+                  <div class="mt-3 min-h-[4.5rem] space-y-2">
+                    <button
+                      @click="startTrial()"
+                      :disabled="subscribing || hasUsedTrial || (trialInfo && trialInfo.active)"
+                      :class="getTrialButtonClass()"
+                      class="w-full"
+                    >
+                      <span v-if="subscribing" class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></span>
+                      {{ getTrialButtonText() }}
+                    </button>
+                    <p
+                      v-if="!hasUsedTrial && !(trialInfo && trialInfo.active)"
+                      class="text-xs text-center text-gray-500 dark:text-gray-400"
+                    >
+                      14-day free trial &middot; no card required
+                    </p>
+                  </div>
+                </template>
+                <template v-else>
+                  <button
+                    disabled
+                    class="w-full btn btn-disabled bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 cursor-not-allowed"
+                  >
+                    Current Plan
+                  </button>
+                  <div class="mt-3 min-h-[4.5rem]" aria-hidden="true"></div>
+                </template>
               </div>
             </div>
           </div>
@@ -355,19 +382,17 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useAnalytics } from '@/composables/useAnalytics'
-import { useGrowthBook } from '@/composables/useGrowthBook'
-import { growthbook } from '@/services/growthbook'
-import { PRO_MONTHLY_PRICE, PRO_MONTHLY_PRICE_B, PRO_YEARLY_PRICE } from '@/config/pricing'
 import api from '@/services/api'
+import ProTourCard from '@/components/onboarding/ProTourCard.vue'
 
 export default {
   name: 'PricingView',
+  components: { ProTourCard },
   setup() {
     const router = useRouter()
     const route = useRoute()
     const authStore = useAuthStore()
     const analytics = useAnalytics()
-    const { getFeatureValue } = useGrowthBook()
     const loading = ref(true)
     const subscribing = ref(false)
     const billingStatus = ref({
@@ -375,55 +400,16 @@ export default {
       billing_available: false
     })
     const pricingPlans = ref([])
-    const pricingExperiments = ref({})
     const currentSubscription = ref(null)
     const trialInfo = ref(null)
     const hasUsedTrial = ref(false)
+    const proTourTrialDays = computed(() => {
+      const days = trialInfo.value?.days_remaining
+      return Number.isFinite(days) ? days : 14
+    })
     const redirectUrl = ref(route.query.redirect || null)
     const errorMessage = ref('')
     const successMessage = ref('')
-    const billingPeriod = ref('monthly')
-
-    const pricingVariant = computed(() =>
-      growthbook?.getFeatureValue('pricing_plan_variant', 'control') || 'control'
-    )
-    const selectedMonthlyPlan = computed(() => {
-      if (!pricingPlans.value.length) return null
-      const variant = pricingVariant.value
-      return (
-        pricingPlans.value.find(p => p.interval === 'month' && p.variant === variant) ||
-        pricingPlans.value.find(p => p.interval === 'month')
-      )
-    })
-    const yearlyPlan = computed(() =>
-      pricingPlans.value.find(p => p.interval === 'year') || null
-    )
-    const monthlyDisplayPrice = computed(() => {
-      if (selectedMonthlyPlan.value) return Math.round(selectedMonthlyPlan.value.price / 100)
-      return pricingVariant.value === 'b' ? PRO_MONTHLY_PRICE_B : PRO_MONTHLY_PRICE
-    })
-    const yearlyDisplayPrice = computed(() => {
-      if (yearlyPlan.value) return Math.round(yearlyPlan.value.price / 100)
-      return PRO_YEARLY_PRICE
-    })
-    const yearlyMonthlyEquivalent = computed(() =>
-      (yearlyDisplayPrice.value / 12).toFixed(2).replace(/\.00$/, '')
-    )
-    const yearlySavingsPercent = computed(() => {
-      const monthly = selectedMonthlyPlan.value?.price || monthlyDisplayPrice.value * 100
-      const yearly = yearlyPlan.value?.price || yearlyDisplayPrice.value * 100
-      const savings = Math.round((1 - yearly / (monthly * 12)) * 100)
-      return savings > 0 ? savings : null
-    })
-
-    const activePlan = computed(() => {
-      if (billingPeriod.value === 'yearly') return yearlyPlan.value
-      return selectedMonthlyPlan.value || selectedMonthlyOffer.value || null
-    })
-
-    const noPlansAvailable = computed(() => (
-      !loading.value && billingStatus.value.billing_available && pricingPlans.value.length === 0
-    ))
 
     const moneyFormatter = new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -440,46 +426,33 @@ export default {
       return moneyFormatter.format(priceInCents / 100)
     }
 
-    const getSelectedMonthlyVariant = () => {
-      const rawVariant = getFeatureValue('pricing_monthly_offer', 'control')
-
-      if (typeof rawVariant === 'string' && rawVariant.trim()) {
-        return rawVariant.trim()
-      }
-
-      if (typeof rawVariant?.variant === 'string' && rawVariant.variant.trim()) {
-        return rawVariant.variant.trim()
-      }
-
-      return 'control'
-    }
-
-    const controlMonthlyOffer = computed(() => (
+    const monthlyOffer = computed(() => (
       pricingPlans.value.find(plan => plan.interval === 'month') || null
     ))
 
-    const selectedMonthlyVariant = computed(() => {
-      const experimentPlans = pricingExperiments.value?.pricing_monthly_offer || {}
-      const requestedVariant = getSelectedMonthlyVariant()
+    const yearlyOffer = computed(() => (
+      pricingPlans.value.find(plan => plan.interval === 'year') || null
+    ))
 
-      if (experimentPlans[requestedVariant]) {
-        return requestedVariant
-      }
+    const formattedMonthlyPrice = computed(() => (
+      Number.isFinite(monthlyOffer.value?.price) ? formatPrice(monthlyOffer.value.price) : '$0'
+    ))
 
-      return 'control'
-    })
+    const formattedYearlyPrice = computed(() => (
+      Number.isFinite(yearlyOffer.value?.price) ? formatPrice(yearlyOffer.value.price) : '$0'
+    ))
 
-    const selectedMonthlyOffer = computed(() => {
-      const experimentPlans = pricingExperiments.value?.pricing_monthly_offer || {}
-      return experimentPlans[selectedMonthlyVariant.value] || experimentPlans.control || controlMonthlyOffer.value
-    })
+    // Effective monthly cost when billed annually (e.g. "$7/mo billed annually")
+    const yearlyMonthlyEquivalent = computed(() => (
+      Number.isFinite(yearlyOffer.value?.price) ? formatPrice(yearlyOffer.value.price / 12) : null
+    ))
 
-    const formattedMonthlyPrice = computed(() => {
-      if (!Number.isFinite(selectedMonthlyOffer.value?.price)) {
-        return `$${pricingVariant.value === 'b' ? PRO_MONTHLY_PRICE_B : PRO_MONTHLY_PRICE}`
-      }
-
-      return formatPrice(selectedMonthlyOffer.value.price)
+    // Yearly discount vs paying month-to-month for 12 months
+    const yearlyDiscountPercent = computed(() => {
+      const m = monthlyOffer.value?.price
+      const y = yearlyOffer.value?.price
+      if (!Number.isFinite(m) || !Number.isFinite(y) || m <= 0 || y >= m * 12) return 0
+      return Math.round((1 - (y / (m * 12))) * 100)
     })
 
     const updateSeoMetadata = () => {
@@ -530,7 +503,6 @@ export default {
       try {
         const response = await api.get('/billing/pricing')
         pricingPlans.value = response.data.data
-        pricingExperiments.value = response.data.experiments || {}
       } catch (error) {
         console.error('Error loading pricing plans:', error)
         if (error.response?.data?.error === 'billing_unavailable') {
@@ -556,75 +528,29 @@ export default {
       }
     }
 
-    const subscribe = async () => {
+    const subscribe = async (offer) => {
       // Check if user is authenticated
-      if (!authStore.isAuthenticated) {
+      if (!authStore.token || !authStore.isAuthenticated) {
         router.push('/login?redirect=' + encodeURIComponent('/pricing'))
         return
       }
 
       subscribing.value = true
       try {
-        const isYearly = billingPeriod.value === 'yearly'
-        const chosenPlan = isYearly ? yearlyPlan.value : selectedMonthlyPlan.value
-        const priceId = chosenPlan?.id
+        const selectedOffer = offer || monthlyOffer.value
+        const priceId = selectedOffer?.id
 
         if (!priceId) {
-          // Fall back to legacy experiment offer only when no monthly plan object is available
-          if (isYearly) {
-            throw new Error('Yearly plan unavailable. Please contact support.')
-          }
-          const monthlyOffer = selectedMonthlyOffer.value
-          const fallbackPriceId = monthlyOffer?.id
-          if (!fallbackPriceId) {
-            throw new Error('Price ID not found. Please contact support.')
-          }
-
-          analytics.track('pricing_checkout_started', {
-            feature_key: 'pricing_monthly_offer',
-            variant: selectedMonthlyVariant.value,
-            price_cents: monthlyOffer.price,
-            currency: monthlyOffer.currency || 'USD',
-            interval: monthlyOffer.interval || 'month'
-          })
-
-          const payload = {
-            priceId: fallbackPriceId,
-            pricingExperiment: {
-              key: 'pricing_monthly_offer',
-              variant: selectedMonthlyVariant.value,
-              displayedPriceCents: monthlyOffer.price,
-              currency: monthlyOffer.currency || 'USD'
-            }
-          }
-          if (redirectUrl.value) {
-            payload.redirectUrl = redirectUrl.value
-          }
-          if (window.promotekit_referral) {
-            payload.referral = window.promotekit_referral
-          }
-          const response = await api.post('/billing/checkout', payload)
-          window.location.href = response.data.data.checkout_url
-          return
+          throw new Error('Price ID not found. Please contact support.')
         }
 
         analytics.track('pricing_checkout_started', {
-          feature_key: 'pricing_plan_variant',
-          variant: isYearly ? 'yearly' : pricingVariant.value,
-          price_cents: chosenPlan?.price,
-          currency: chosenPlan?.currency || 'USD',
-          interval: isYearly ? 'year' : 'month'
+          price_cents: selectedOffer.price,
+          currency: selectedOffer.currency || 'USD',
+          interval: selectedOffer.interval || 'month'
         })
 
-        const payload = {
-          priceId,
-          pricingExperiment: {
-            key: 'pricing_plan_variant',
-            variant: isYearly ? 'yearly' : pricingVariant.value,
-            displayedPriceCents: chosenPlan?.price,
-            currency: chosenPlan?.currency || 'USD'
-          }
-        }
+        const payload = { priceId }
         if (redirectUrl.value) {
           payload.redirectUrl = redirectUrl.value
         }
@@ -691,7 +617,7 @@ export default {
       if (hasUsedTrial.value || (trialInfo.value && trialInfo.value.active)) {
         return 'btn btn-disabled bg-gray-300 dark:bg-gray-600 text-gray-500 cursor-not-allowed'
       }
-      return 'btn btn-primary'
+      return 'btn border border-primary-500 bg-primary-500/10 text-primary-700 hover:bg-primary-500/20 dark:border-primary-400 dark:bg-primary-500/15 dark:text-primary-300'
     }
 
     const getTrialButtonText = () => {
@@ -732,15 +658,21 @@ export default {
     })
 
     return {
+      authStore,
       loading,
       subscribing,
       billingStatus,
       pricingPlans,
-      selectedMonthlyOffer,
+      monthlyOffer,
+      yearlyOffer,
       formattedMonthlyPrice,
+      formattedYearlyPrice,
+      yearlyMonthlyEquivalent,
+      yearlyDiscountPercent,
       currentSubscription,
       trialInfo,
       hasUsedTrial,
+      proTourTrialDays,
       subscribe,
       startTrial,
       getSubscribeButtonClass,
@@ -748,17 +680,7 @@ export default {
       getTrialButtonClass,
       getTrialButtonText,
       errorMessage,
-      successMessage,
-      billingPeriod,
-      pricingVariant,
-      selectedMonthlyPlan,
-      yearlyPlan,
-      monthlyDisplayPrice,
-      yearlyDisplayPrice,
-      yearlyMonthlyEquivalent,
-      yearlySavingsPercent,
-      activePlan,
-      noPlansAvailable
+      successMessage
     }
   }
 }
