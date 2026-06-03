@@ -8,6 +8,7 @@ require('dotenv').config({ path: require('path').resolve(__dirname, '../.env.loc
 const { validateEnv } = require('./config/env');
 
 const { migrate } = require('./utils/migrate');
+const { ensurePostExitSchema } = require('./utils/ensurePostExitSchema');
 const { initializePostHogTelemetry, shutdown: shutdownPostHogTelemetry } = require('./posthog-telemetry');
 const { securityMiddleware } = require('./middleware/security');
 const logger = require('./utils/logger');
@@ -796,6 +797,16 @@ async function startServer() {
       await migrate();
     } else {
       logger.info('Skipping migrations (RUN_MIGRATIONS=false)');
+    }
+
+    const schemaRepair = await ensurePostExitSchema();
+    if (schemaRepair.repairedTradeColumns.length > 0 || schemaRepair.repairedUserSettingsColumns.length > 0) {
+      logger.warn(
+        `Repaired missing post-exit schema columns. trades: ${
+          schemaRepair.repairedTradeColumns.join(', ') || 'none'
+        }; user_settings: ${schemaRepair.repairedUserSettingsColumns.join(', ') || 'none'}`,
+        'startup'
+      );
     }
 
     // Initialize billing service (conditional)
