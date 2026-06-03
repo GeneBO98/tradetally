@@ -22,9 +22,15 @@ fi
 
 echo "[DEPLOY] Starting native deployment..."
 
-# Pull latest changes
-echo "[DEPLOY] Pulling latest changes from git..."
-git pull origin main
+# Pull latest changes from the CLOUD repo — the single source of truth.
+# Fast-forward ONLY: a non-fast-forward means cloud/main has diverged from the
+# local checkout and needs a deliberate, reviewed merge. We never auto-merge
+# here — auto-merging the PUBLIC repo (origin) is exactly how a "remove
+# marketing page from self-host" commit once wiped the cloud landing page.
+# Public (origin) changes must be merged into cloud/main via a reviewed PR.
+echo "[DEPLOY] Fetching and fast-forwarding to cloud/main..."
+git fetch cloud
+git merge --ff-only cloud/main
 
 # Install backend dependencies if package.json changed
 echo "[DEPLOY] Checking backend dependencies..."
@@ -74,4 +80,14 @@ if [ "$PROC_START_EPOCH" -lt "$NEWEST_CODE_EPOCH" ]; then
 fi
 
 echo "[DEPLOY] Verified: tradetally (PID $APP_PID) is running the freshly deployed code."
+
+# Post-deploy smoke test — fail the deploy loudly if the public page or API is
+# broken, instead of "succeeding" on a regressed state.
+echo "[DEPLOY] Running post-deploy smoke test..."
+if ! bash "$SCRIPT_DIR/post-deploy-smoke.sh" "$(git rev-parse --short HEAD)"; then
+  echo "[DEPLOY] ERROR: post-deploy smoke test failed — investigate immediately." >&2
+  echo "         (App is running but the public page/API checks did not pass.)" >&2
+  exit 1
+fi
+
 echo "[DEPLOY] Deployment complete!"
