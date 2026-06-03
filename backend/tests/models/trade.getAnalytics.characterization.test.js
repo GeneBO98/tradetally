@@ -65,7 +65,8 @@ function defaultDbResponse() {
         symbols_traded: 0,
         trading_days: 0,
         avg_return_pct: 0,
-        avg_r_value: 0
+        avg_r_value: 0,
+        total_r_value: 0
       }
     ]
   };
@@ -94,6 +95,23 @@ describe('TradeQueries.getAnalytics characterization', () => {
 
     const analyticsSql = db.query.mock.calls[1][0];
     expect(analyticsSql).toContain('(COALESCE(commission, 0) + COALESCE(fees, 0)) as trade_costs');
+  });
+
+  test('summary returns total R value computed by trade_stats', async () => {
+    db.query.mockResolvedValue(defaultDbResponse());
+    db.query.mockResolvedValueOnce({ rows: [{ execution_count: 0 }] });
+    db.query.mockResolvedValueOnce({
+      rows: [{
+        ...defaultDbResponse().rows[0],
+        total_r_value: 3.42
+      }]
+    });
+
+    const analytics = await TradeQueries.getAnalytics('user-1', {});
+
+    const analyticsSql = db.query.mock.calls[1][0];
+    expect(analyticsSql).toContain('ts.total_r_value');
+    expect(analytics.summary.totalRValue).toBe(3.42);
   });
 
   describe('baseline', () => {

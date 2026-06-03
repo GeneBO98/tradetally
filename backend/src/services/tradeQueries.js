@@ -538,6 +538,7 @@ class TradeQueries {
         ts.trading_days,
         ts.avg_return_pct,
         ts.avg_r_value,
+        ts.total_r_value,
         ts.pnl_stddev,
         dp.max_daily_gain,
         dp.max_daily_loss,
