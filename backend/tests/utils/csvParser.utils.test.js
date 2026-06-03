@@ -351,6 +351,25 @@ describe('parseInstrumentData', () => {
     expect(result.contractYear).toBe(9999);
   });
 
+  // Regression: TradingView prefixes every symbol with its exchange (e.g.
+  // "NASDAQ:HUBC"). These plain stock tickers must NOT be misclassified as
+  // futures — doing so produced a future with null contract fields that
+  // violated the check_futures_fields DB constraint and failed the import.
+  test('treats exchange-prefixed stock tickers as stock, not futures', () => {
+    for (const symbol of ['NASDAQ:HUBC', 'NASDAQ:LASE', 'NASDAQ:AAPL', 'NYSE:GE', 'AMEX:SPY']) {
+      const result = parseInstrumentData(symbol);
+      expect(result.instrumentType).toBe('stock');
+    }
+  });
+
+  test('still detects exchange-prefixed dated futures: "CME:ESH2026"', () => {
+    const result = parseInstrumentData('CME:ESH2026');
+    expect(result.instrumentType).toBe('future');
+    expect(result.underlyingAsset).toBe('ES');
+    expect(result.contractMonth).toBe('03');
+    expect(result.contractYear).toBe(2026);
+  });
+
   test('detects compact readable options: "DIA10OCT25466PUT"', () => {
     const result = parseInstrumentData('DIA10OCT25466PUT');
     expect(result.instrumentType).toBe('option');

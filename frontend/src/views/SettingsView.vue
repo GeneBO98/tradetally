@@ -47,9 +47,9 @@
 
                         <form
                             @submit.prevent="updateAnalyticsSettings"
-                            class="space-y-6"
+                            class="divide-y divide-gray-100 dark:divide-gray-700"
                         >
-                            <div>
+                            <div class="pb-6">
                                 <label for="statisticsCalculation" class="label"
                                     >Statistics Calculation Method</label
                                 >
@@ -61,24 +61,77 @@
                                     ]"
                                 />
                                 <p
-                                    class="mt-1 text-sm text-gray-500 dark:text-gray-400"
+                                    class="mt-2 text-sm text-gray-500 dark:text-gray-400"
                                 >
                                     Choose whether to use averages or medians
                                     for calculations like Average P&L, Average
                                     Win, Average Loss, etc. Medians are less
                                     affected by outliers and may provide a more
                                     representative view of typical performance.
-                                    <span
-                                        class="block mt-2 text-primary-600 dark:text-primary-400 font-medium"
-                                    >
-                                        Note: Changes take effect immediately
-                                        and will update labels throughout the
-                                        application.
-                                    </span>
+                                </p>
+                                <p class="mt-1 text-sm text-primary-600 dark:text-primary-400 font-medium">
+                                    Note: Changes take effect immediately
+                                    and will update labels throughout the
+                                    application.
                                 </p>
                             </div>
 
-                            <div>
+                            <div class="py-6">
+                                <div
+                                    class="flex items-start justify-between gap-6 p-4 bg-gray-50 dark:bg-gray-800/60 rounded-lg border border-gray-200 dark:border-gray-700"
+                                >
+                                    <div class="flex-1 min-w-0">
+                                        <label
+                                            for="analyticsPositionGrouping"
+                                            class="block text-sm font-semibold text-gray-900 dark:text-white"
+                                        >
+                                            Win Rate by Whole Trade
+                                        </label>
+                                        <p
+                                            class="mt-1.5 text-sm text-gray-500 dark:text-gray-400 leading-relaxed"
+                                        >
+                                            Group multi-leg positions (e.g. option
+                                            spreads, iron condors) that were opened
+                                            together into a single trade, so win rate
+                                            and trade counts are measured per position
+                                            instead of per individual leg. Legs are
+                                            grouped when they share the same account,
+                                            underlying, and entry time. Affects all
+                                            analytics; total P&amp;L is unchanged.
+                                        </p>
+                                    </div>
+                                    <div class="flex-shrink-0 pt-0.5">
+                                        <button
+                                            type="button"
+                                            @click="
+                                                analyticsForm.analyticsPositionGrouping =
+                                                    !analyticsForm.analyticsPositionGrouping
+                                            "
+                                            :class="[
+                                                analyticsForm.analyticsPositionGrouping
+                                                    ? 'bg-primary-600'
+                                                    : 'bg-gray-200 dark:bg-gray-700',
+                                                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2',
+                                            ]"
+                                            role="switch"
+                                            :aria-checked="
+                                                analyticsForm.analyticsPositionGrouping
+                                            "
+                                        >
+                                            <span
+                                                :class="[
+                                                    analyticsForm.analyticsPositionGrouping
+                                                        ? 'translate-x-5'
+                                                        : 'translate-x-0',
+                                                    'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                                                ]"
+                                            />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="py-6">
                                 <label for="breakevenToleranceTicks" class="label"
                                     >Default Breakeven Tolerance (ticks)</label
                                 >
@@ -93,7 +146,7 @@
                                     class="input"
                                 />
                                 <p
-                                    class="mt-1 text-sm text-gray-500 dark:text-gray-400"
+                                    class="mt-2 text-sm text-gray-500 dark:text-gray-400"
                                 >
                                     Trades whose gross P&L (price only, ignoring
                                     commissions and fees) land within this many
@@ -106,15 +159,13 @@
                                 </p>
 
                                 <!-- Per-instrument overrides -->
-                                <div class="mt-4">
-                                    <span class="label"
-                                        >Per-Instrument Overrides</span
-                                    >
+                                <div class="mt-5 p-4 bg-gray-50 dark:bg-gray-800/60 rounded-lg border border-gray-200 dark:border-gray-700">
+                                    <p class="text-sm font-semibold text-gray-900 dark:text-white mb-1">Per-Instrument Overrides</p>
                                     <p
-                                        class="mt-1 mb-2 text-sm text-gray-500 dark:text-gray-400"
+                                        class="text-sm text-gray-500 dark:text-gray-400 mb-3"
                                     >
                                         Set a different tolerance for specific
-                                        instruments by their underlying symbol -
+                                        instruments by their underlying symbol —
                                         e.g. 2 ticks on ES but 5 on NQ. Instruments
                                         not listed use the default above.
                                     </p>
@@ -149,7 +200,7 @@
                                     </div>
                                     <button
                                         type="button"
-                                        class="btn-secondary mt-2"
+                                        class="btn-secondary mt-3"
                                         @click="addBreakevenToleranceRow"
                                     >
                                         Add Instrument
@@ -157,7 +208,7 @@
                                 </div>
                             </div>
 
-                            <div>
+                            <div class="py-6">
                                 <label for="displayCurrency" class="label"
                                     >Display Currency</label
                                 >
@@ -166,7 +217,7 @@
                                     :options="currencySelectOptions"
                                 />
                                 <p
-                                    class="mt-1 text-sm text-gray-500 dark:text-gray-400"
+                                    class="mt-2 text-sm text-gray-500 dark:text-gray-400"
                                 >
                                     Changes the currency symbol displayed for
                                     P&L, prices, and commissions. This is a
@@ -177,56 +228,58 @@
                                 </p>
                             </div>
 
-                            <div
-                                class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg"
-                            >
-                                <div class="flex-1">
-                                    <label
-                                        for="autoCloseExpiredOptions"
-                                        class="block text-sm font-medium text-gray-900 dark:text-white"
-                                    >
-                                        Auto-Close Expired Options
-                                    </label>
-                                    <p
-                                        class="mt-1 text-sm text-gray-600 dark:text-gray-400"
-                                    >
-                                        Automatically close expired options
-                                        positions with appropriate P&L (Long:
-                                        -100%, Short: +100%). The system checks
-                                        hourly for expired options.
-                                    </p>
-                                </div>
-                                <div class="ml-4 flex-shrink-0">
-                                    <button
-                                        type="button"
-                                        @click="
-                                            analyticsForm.autoCloseExpiredOptions =
-                                                !analyticsForm.autoCloseExpiredOptions
-                                        "
-                                        :class="[
-                                            analyticsForm.autoCloseExpiredOptions
-                                                ? 'bg-primary-600'
-                                                : 'bg-gray-200 dark:bg-gray-700',
-                                            'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2',
-                                        ]"
-                                        role="switch"
-                                        :aria-checked="
-                                            analyticsForm.autoCloseExpiredOptions
-                                        "
-                                    >
-                                        <span
+                            <div class="py-6">
+                                <div
+                                    class="flex items-start justify-between gap-6 p-4 bg-gray-50 dark:bg-gray-800/60 rounded-lg border border-gray-200 dark:border-gray-700"
+                                >
+                                    <div class="flex-1 min-w-0">
+                                        <label
+                                            for="autoCloseExpiredOptions"
+                                            class="block text-sm font-semibold text-gray-900 dark:text-white"
+                                        >
+                                            Auto-Close Expired Options
+                                        </label>
+                                        <p
+                                            class="mt-1.5 text-sm text-gray-500 dark:text-gray-400 leading-relaxed"
+                                        >
+                                            Automatically close expired options
+                                            positions with appropriate P&L (Long:
+                                            -100%, Short: +100%). The system checks
+                                            hourly for expired options.
+                                        </p>
+                                    </div>
+                                    <div class="flex-shrink-0 pt-0.5">
+                                        <button
+                                            type="button"
+                                            @click="
+                                                analyticsForm.autoCloseExpiredOptions =
+                                                    !analyticsForm.autoCloseExpiredOptions
+                                            "
                                             :class="[
                                                 analyticsForm.autoCloseExpiredOptions
-                                                    ? 'translate-x-5'
-                                                    : 'translate-x-0',
-                                                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                                                    ? 'bg-primary-600'
+                                                    : 'bg-gray-200 dark:bg-gray-700',
+                                                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2',
                                             ]"
-                                        />
-                                    </button>
+                                            role="switch"
+                                            :aria-checked="
+                                                analyticsForm.autoCloseExpiredOptions
+                                            "
+                                        >
+                                            <span
+                                                :class="[
+                                                    analyticsForm.autoCloseExpiredOptions
+                                                        ? 'translate-x-5'
+                                                        : 'translate-x-0',
+                                                    'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                                                ]"
+                                            />
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
 
-                            <div>
+                            <div class="py-6">
                                 <label for="defaultStopLossType" class="label"
                                     >Default Stop Loss Type</label
                                 >
@@ -238,22 +291,11 @@
                                         { value: 'lod', label: 'Low of Day (LoD)' }
                                     ]"
                                 />
-                                <p
-                                    class="mt-1 text-sm text-gray-500 dark:text-gray-400"
-                                >
-                                    <strong>Percentage:</strong> Use a fixed
-                                    percentage below/above entry price.
-                                    <br />
-                                    <strong>Dollar amount:</strong> Use a fixed
-                                    risk per trade in dollars (e.g., $100 or
-                                    $150 per trade).
-                                    <br />
-                                    <strong>Low of Day (LoD):</strong> Use the
-                                    low price of the entry day
-                                    (Qullamaggie-style swing trades). Uses Low
-                                    of Day for long positions and High of Day
-                                    for short positions.
-                                </p>
+                                <div class="mt-2 text-sm text-gray-500 dark:text-gray-400 space-y-1">
+                                    <p><strong class="text-gray-700 dark:text-gray-300">Percentage:</strong> Use a fixed percentage below/above entry price.</p>
+                                    <p><strong class="text-gray-700 dark:text-gray-300">Dollar amount:</strong> Use a fixed risk per trade in dollars (e.g., $100 or $150 per trade).</p>
+                                    <p><strong class="text-gray-700 dark:text-gray-300">Low of Day (LoD):</strong> Use the low price of the entry day (Qullamaggie-style swing trades). Uses Low of Day for long positions and High of Day for short positions.</p>
+                                </div>
                             </div>
 
                             <div
@@ -261,6 +303,7 @@
                                     analyticsForm.defaultStopLossType ===
                                     'percent'
                                 "
+                                class="py-6"
                             >
                                 <label for="defaultStopLoss" class="label"
                                     >Default Stop Loss Percentage</label
@@ -288,7 +331,7 @@
                                     </div>
                                 </div>
                                 <p
-                                    class="mt-1 text-sm text-gray-500 dark:text-gray-400"
+                                    class="mt-2 text-sm text-gray-500 dark:text-gray-400"
                                 >
                                     Automatically apply this stop loss
                                     percentage to all new and imported trades.
@@ -296,12 +339,10 @@
                                     positions, the stop loss will be below entry
                                     price. For short positions, it will be above
                                     entry price.
-                                    <span
-                                        class="block mt-2 text-primary-600 dark:text-primary-400 font-medium"
-                                    >
-                                        Example: 2% stop loss on a $100 long
-                                        entry = $98 stop loss price
-                                    </span>
+                                </p>
+                                <p class="mt-1 text-sm text-primary-600 dark:text-primary-400 font-medium">
+                                    Example: 2% stop loss on a $100 long
+                                    entry = $98 stop loss price
                                 </p>
                             </div>
 
@@ -310,6 +351,7 @@
                                     analyticsForm.defaultStopLossType ===
                                     'dollar'
                                 "
+                                class="py-6"
                             >
                                 <label
                                     for="defaultStopLossDollars"
@@ -339,7 +381,7 @@
                                     </div>
                                 </div>
                                 <p
-                                    class="mt-1 text-sm text-gray-500 dark:text-gray-400"
+                                    class="mt-2 text-sm text-gray-500 dark:text-gray-400"
                                 >
                                     Automatically apply this dollar risk per
                                     trade to all new and imported trades. Leave
@@ -348,17 +390,15 @@
                                     for a long, stop = entry - (dollars /
                                     quantity); for a short, stop = entry +
                                     (dollars / quantity).
-                                    <span
-                                        class="block mt-2 text-primary-600 dark:text-primary-400 font-medium"
-                                    >
-                                        Example: $100 stop loss on 50 shares =
-                                        $2 per share risk, so a $100 long entry
-                                        becomes $98 stop loss
-                                    </span>
+                                </p>
+                                <p class="mt-1 text-sm text-primary-600 dark:text-primary-400 font-medium">
+                                    Example: $100 stop loss on 50 shares =
+                                    $2 per share risk, so a $100 long entry
+                                    becomes $98 stop loss
                                 </p>
                             </div>
 
-                            <div>
+                            <div class="py-6">
                                 <label for="defaultTakeProfit" class="label"
                                     >Default Take Profit Percentage</label
                                 >
@@ -385,7 +425,7 @@
                                     </div>
                                 </div>
                                 <p
-                                    class="mt-1 text-sm text-gray-500 dark:text-gray-400"
+                                    class="mt-2 text-sm text-gray-500 dark:text-gray-400"
                                 >
                                     Automatically apply this take profit
                                     percentage to all new and imported trades.
@@ -393,16 +433,14 @@
                                     positions, the take profit will be above
                                     entry price. For short positions, it will be
                                     below entry price.
-                                    <span
-                                        class="block mt-2 text-primary-600 dark:text-primary-400 font-medium"
-                                    >
-                                        Example: 6% take profit on a $100 long
-                                        entry = $106 take profit price
-                                    </span>
+                                </p>
+                                <p class="mt-1 text-sm text-primary-600 dark:text-primary-400 font-medium">
+                                    Example: 6% take profit on a $100 long
+                                    entry = $106 take profit price
                                 </p>
                             </div>
 
-                            <div class="flex justify-end">
+                            <div class="pt-6 flex justify-end">
                                 <button
                                     type="submit"
                                     :disabled="analyticsLoading"
@@ -2784,6 +2822,7 @@ const cusipAiLoading = ref(false);
 // Analytics Settings
 const analyticsForm = ref({
     statisticsCalculation: "average",
+    analyticsPositionGrouping: false,
     breakevenToleranceTicks: 0,
     autoCloseExpiredOptions: true,
     defaultStopLossType: "percent",
@@ -3127,6 +3166,8 @@ async function loadAnalyticsSettings() {
         analyticsForm.value = {
             statisticsCalculation:
                 response.data.settings.statisticsCalculation || "average",
+            analyticsPositionGrouping:
+                response.data.settings.analyticsPositionGrouping === true,
             breakevenToleranceTicks:
                 Number(response.data.settings.breakevenToleranceTicks) || 0,
             autoCloseExpiredOptions:
@@ -3151,6 +3192,7 @@ async function loadAnalyticsSettings() {
         console.error("Failed to load analytics settings:", error);
         // Default values if loading fails
         analyticsForm.value.statisticsCalculation = "average";
+        analyticsForm.value.analyticsPositionGrouping = false;
         analyticsForm.value.breakevenToleranceTicks = 0;
         analyticsForm.value.autoCloseExpiredOptions = true;
         analyticsForm.value.defaultStopLossType = "percent";
@@ -3166,6 +3208,8 @@ async function updateAnalyticsSettings() {
     try {
         await api.put("/settings", {
             statisticsCalculation: analyticsForm.value.statisticsCalculation,
+            analyticsPositionGrouping:
+                analyticsForm.value.analyticsPositionGrouping === true,
             breakevenToleranceTicks:
                 Number(analyticsForm.value.breakevenToleranceTicks) || 0,
             breakevenToleranceTicksByUnderlying: breakevenMapFromRows(),

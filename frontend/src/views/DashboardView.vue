@@ -454,7 +454,7 @@
             <template v-else>
             <!-- Hero Metrics Ribbon -->
             <template v-if="element.id === 'hero-metrics'">
-              <HeroMetricsRibbon :analytics="analytics" :range-label="heroRangeLabel" />
+              <HeroMetricsRibbon :analytics="analytics" :range-label="heroRangeLabel" :r-mode="dashboardRMode" @update:r-mode="setDashboardRMode" />
             </template>
 
             <!-- AI Insight of the Day -->
@@ -1706,6 +1706,20 @@ const filters = ref({
   startDate: '',
   endDate: ''
 })
+
+// Hero ribbon display mode: false = dollars, true = R-multiples. Persisted +
+// synced so the choice (e.g. hide dollar values when sharing) follows the user.
+const dashboardRMode = ref(false)
+
+function setDashboardRMode(value) {
+  dashboardRMode.value = value
+  try {
+    localStorage.setItem('dashboardRMode', JSON.stringify(value))
+    uiPreferencesStore.notifyChanged('dashboardRMode', value)
+  } catch (e) {
+    console.error('Failed to save dashboard R mode:', e)
+  }
+}
 
 // Advanced filter spec from the shared TradeFilters component (tags, strategies,
 // brokers, instrument types, etc.). Date/account come from the dashboard's own
@@ -3460,6 +3474,13 @@ onMounted(async () => {
         filters.value.endDate = localStorage.getItem('dashboardCustomEndDate') || ''
       }
     }
+  } catch (e) {
+    // localStorage load failed
+  }
+
+  // Restore hero ribbon $/R display mode
+  try {
+    dashboardRMode.value = localStorage.getItem('dashboardRMode') === 'true'
   } catch (e) {
     // localStorage load failed
   }
