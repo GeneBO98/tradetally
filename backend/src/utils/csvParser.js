@@ -1731,7 +1731,7 @@ const brokerParsers = {
     const execTime = row['Exec Time'] || '';
     const entryTime = parseDateTime(`${row['T/D']} ${execTime}`);
     const side = parseSide(row.Side);
-    const quantity = Math.abs(parseInteger(row.Qty));
+    let quantity = Math.abs(parseNumeric(row.Qty));
     const price = parseNumeric(row.Price);
 
     // TradeStation exports commission separately from regulatory/venue fees.
@@ -1749,10 +1749,12 @@ const brokerParsers = {
     const type = cleanString(row.Type); // E, O for equity/option
     const note = cleanString(row.Note);
 
-    // Check if this is an option based on Type field
+    // Check if this is an option based on Type field or parseable OCC symbol metadata.
+    const parsedInstrumentData = parseInstrumentData(symbol);
     let instrumentData = {};
-    if (type === 'O' || type === 'Option') {
-      instrumentData = parseInstrumentData(symbol);
+    if (type === 'O' || type === 'Option' || parsedInstrumentData.instrumentType === 'option') {
+      instrumentData = parsedInstrumentData;
+      quantity = Math.round(quantity);
     }
 
     return {
@@ -2550,7 +2552,7 @@ function rebuildTradeFromExecutions(trade) {
       current.totalFees += execFees;
       current.totalQuantity += Math.abs(signedQty);
       current.entryValue += Math.abs(signedQty) * execPrice * valueMultiplier;
-      currentPosition += signedQty;
+      currentPosition = normalizePositionQuantity(currentPosition + signedQty);
       current.currentPosition = currentPosition;
       continue;
     }
@@ -2569,7 +2571,7 @@ function rebuildTradeFromExecutions(trade) {
     });
     current.totalFees += closeFee;
     current.exitValue += closeQty * execPrice * valueMultiplier;
-    currentPosition += signedQty > 0 ? closeQty : -closeQty;
+    currentPosition = normalizePositionQuantity(currentPosition + (signedQty > 0 ? closeQty : -closeQty));
     current.currentPosition = currentPosition;
 
     if (currentPosition === 0) {
@@ -2610,7 +2612,7 @@ function repairTradeReversals(trades, diagnostics) {
       const signedQty = getExecutionSignedQuantity(execution);
       if (!signedQty) continue;
       const previous = position;
-      position += signedQty;
+      position = normalizePositionQuantity(position + signedQty);
       if (previous !== 0 && position !== 0 && Math.sign(previous) !== Math.sign(position)) {
         sawFlip = true;
         break;
@@ -2628,7 +2630,7 @@ function repairTradeReversals(trades, diagnostics) {
     const quantityMismatch =
       position !== 0 &&
       storedQuantity > 0 &&
-      Math.abs(netQuantity - storedQuantity) > 1e-9;
+      Math.abs(netQuantity - storedQuantity) > POSITION_CLOSE_TOLERANCE;
     const statusMismatch =
       (position === 0 && isStoredOpen) ||
       (position !== 0 && !isStoredOpen);
@@ -2770,11 +2772,21 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     // Normalize those rows before broker detection and parsing.
     csvString = normalizeWholeLineQuotedCsvRows(csvString);
 
+    const firstHeaderLine = csvString.split('\n').find(line => line.trim().length > 0) || '';
+    const firstHeaders = firstHeaderLine.split(',').map(header => header.replace(/^"|"$/g, '').trim());
+    if (broker === 'tradestation' && hasTradingViewOrderHistoryHeaders(firstHeaders)) {
+      const warning = 'Selected broker was TradeStation, but the CSV headers match TradingView order history. TradeTally used the TradingView parser for this import.';
+      console.log(`[BROKER MISMATCH] ${warning}`);
+      diagnostics.warnings.push(warning);
+      diagnostics.detectedBroker = 'tradingview';
+      diagnostics.headerAnalysis.recognizedAs = 'tradingview';
+      broker = 'tradingview';
+    }
+
     // TradingView sub-format detection: inspect CSV headers to route to the correct parser
     // All TradingView formats come in as broker='tradingview', we determine the sub-format here
     if (broker === 'tradingview') {
-      const headerLine = csvString.split('\n').find(line => line.trim().length > 0) || '';
-      const tvHeaders = headerLine.toLowerCase();
+      const tvHeaders = firstHeaderLine.toLowerCase();
       if (tvHeaders.includes('buyfillid') && tvHeaders.includes('sellfillid') && tvHeaders.includes('pnl')) {
         broker = 'tradingview_performance';
         console.log('[TRADINGVIEW] Sub-format detected: Performance export');
@@ -3623,6 +3635,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       // Process transactions with position tracking
       const completedTrades = [];
       const transactionsBySymbol = {};
+      const nearZeroResidualWarnings = new Set();
 
       for (const transaction of transactions) {
         if (!transactionsBySymbol[transaction.symbol]) {
@@ -3631,17 +3644,34 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
         transactionsBySymbol[transaction.symbol].push(transaction);
       }
 
+      Object.values(transactionsBySymbol).forEach(symbolTransactions => {
+        symbolTransactions.sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
+      });
+
       // Process each symbol's transactions
       for (const [symbol, symbolTransactions] of Object.entries(transactionsBySymbol)) {
         const position = existingPositions[symbol] || { quantity: 0, trades: [] };
-        let currentPosition = position.quantity;
+        if (!existingPositions[symbol] && symbolTransactions[0]?.action === 'sell') {
+          diagnostics.warnings.push(
+            `TradeStation history for ${symbol} starts with a Sell while no prior open position was found. This may be a true short trade, or the CSV may be missing earlier opening buys.`
+          );
+        }
+
+        let currentPosition = normalizePositionQuantity(
+          position.side === 'short' ? -position.quantity : position.quantity
+        );
 
         for (const transaction of symbolTransactions) {
           const isBuy = transaction.action === 'buy';
           const prevPosition = currentPosition;
-          currentPosition = isBuy
+          const rawPosition = isBuy
             ? currentPosition + transaction.quantity
             : currentPosition - transaction.quantity;
+          currentPosition = normalizePositionQuantity(rawPosition);
+          if (rawPosition !== 0 && currentPosition === 0 && !nearZeroResidualWarnings.has(symbol)) {
+            diagnostics.warnings.push(`Ignored near-zero residual position for ${symbol} after decimal quantity matching.`);
+            nearZeroResidualWarnings.add(symbol);
+          }
 
           // Determine if this completes a trade
           if (prevPosition === 0) {
@@ -4569,6 +4599,24 @@ function parseSide(sideStr) {
     normalized.includes('sell')
   ) return 'short';
   return 'long';
+}
+
+const POSITION_CLOSE_TOLERANCE = 1e-8;
+
+function normalizePositionQuantity(quantity) {
+  const numericQuantity = Number(quantity || 0);
+  return Math.abs(numericQuantity) <= POSITION_CLOSE_TOLERANCE ? 0 : numericQuantity;
+}
+
+function hasTradingViewOrderHistoryHeaders(headers = []) {
+  const normalizedHeaders = headers.map(header => String(header || '').toLowerCase().trim());
+  return normalizedHeaders.includes('symbol') &&
+    normalizedHeaders.includes('side') &&
+    normalizedHeaders.includes('status') &&
+    normalizedHeaders.includes('order id') &&
+    normalizedHeaders.includes('quantity') &&
+    normalizedHeaders.includes('closing time') &&
+    (normalizedHeaders.includes('fill price') || normalizedHeaders.includes('avg fill price'));
 }
 
 function parseTradervueSide(sideStr) {
@@ -7459,6 +7507,7 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
   const transactions = [];
   const completedTrades = [];
   const lastTradeEndTime = {};
+  const nearZeroResidualWarnings = new Set();
 
   // Debug: Log first few records to see structure
   console.log('Sample TradingView records:');
@@ -7492,7 +7541,7 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
       const side = getField(record, 'Side') ? getField(record, 'Side').toLowerCase() : '';
       const statusRaw = getField(record, 'Status') || '';
       const status = statusRaw.toLowerCase();
-      const quantity = Math.abs(parseInteger(
+      const quantity = Math.abs(parseNumeric(
         getField(record, 'Filled Qty') ||
         getField(record, 'Qty') ||
         getField(record, 'Quantity')
@@ -7654,8 +7703,14 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
     // Track position and round-trip trades
     // Start with existing position if we have one for this symbol
     const existingPosition = existingPositions[symbol];
-    let currentPosition = existingPosition ?
-      (existingPosition.side === 'long' ? existingPosition.quantity : -existingPosition.quantity) : 0;
+    if (!existingPosition && symbolTransactions[0]?.action === 'sell' && diagnostics) {
+      diagnostics.warnings.push(
+        `TradingView order history for ${symbol} starts with a Sell while no prior open position was found. This may be a true short trade, or the CSV may be missing earlier opening buys.`
+      );
+    }
+
+    let currentPosition = normalizePositionQuantity(existingPosition ?
+      (existingPosition.side === 'long' ? existingPosition.quantity : -existingPosition.quantity) : 0);
     let currentTrade = existingPosition ? {
       symbol: tradeSymbol,
       entryTime: existingPosition.entryTime,
@@ -7747,7 +7802,12 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
 
       // Update position and values (only for non-duplicate transactions)
       if (transaction.action === 'buy') {
-        currentPosition += qty;
+        const rawPosition = currentPosition + qty;
+        currentPosition = normalizePositionQuantity(rawPosition);
+        if (rawPosition !== 0 && currentPosition === 0 && diagnostics && !nearZeroResidualWarnings.has(symbol)) {
+          diagnostics.warnings.push(`Ignored near-zero residual position for ${symbol} after decimal quantity matching.`);
+          nearZeroResidualWarnings.add(symbol);
+        }
 
         if (currentTrade && currentTrade.side === 'long') {
           currentTrade.entryValue += qty * transaction.price * valueMultiplier;
@@ -7756,7 +7816,12 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
           currentTrade.exitValue += qty * transaction.price * valueMultiplier;
         }
       } else if (transaction.action === 'sell') {
-        currentPosition -= qty;
+        const rawPosition = currentPosition - qty;
+        currentPosition = normalizePositionQuantity(rawPosition);
+        if (rawPosition !== 0 && currentPosition === 0 && diagnostics && !nearZeroResidualWarnings.has(symbol)) {
+          diagnostics.warnings.push(`Ignored near-zero residual position for ${symbol} after decimal quantity matching.`);
+          nearZeroResidualWarnings.add(symbol);
+        }
 
         if (currentTrade && currentTrade.side === 'short') {
           currentTrade.entryValue += qty * transaction.price * valueMultiplier;
