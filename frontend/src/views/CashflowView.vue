@@ -50,55 +50,42 @@
         </div>
 
         <!-- Cashflow Summary Cards -->
-        <div v-if="cashflow" class="grid grid-cols-2 sm:grid-cols-5 gap-4">
-          <div class="card">
-            <div class="card-body">
-              <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                YTD Deposits
-              </dt>
-              <dd class="mt-1 text-lg font-semibold text-green-600 dark:text-green-400">
+        <div v-if="cashflow" class="grid gap-4 grid-cols-1 sm:grid-cols-3">
+          <!-- YTD Deposits / Withdrawals -->
+          <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-5 flex flex-col gap-4">
+            <div>
+              <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">YTD Deposits</div>
+              <div class="mt-1 text-lg font-bold tabular-nums tracking-tight whitespace-nowrap text-green-600 dark:text-green-400">
                 {{ formatSignedCurrency(cashflow.summary.ytdDeposits) }}
-              </dd>
+              </div>
             </div>
-          </div>
-          <div class="card">
-            <div class="card-body">
-              <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                YTD Withdrawals
-              </dt>
-              <dd class="mt-1 text-lg font-semibold text-red-600 dark:text-red-400">
+            <div>
+              <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">YTD Withdrawals</div>
+              <div class="mt-1 text-lg font-bold tabular-nums tracking-tight whitespace-nowrap text-red-600 dark:text-red-400">
                 {{ formatSignedCurrency(-cashflow.summary.ytdWithdrawals) }}
-              </dd>
+              </div>
             </div>
           </div>
-          <div class="card">
-            <div class="card-body">
-              <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                Current Balance
-              </dt>
-              <dd class="mt-1 text-lg font-semibold" :class="balanceClass">
-                {{ formatCurrency(cashflow.summary.currentBalance) }}
-              </dd>
-            </div>
-          </div>
-          <div class="card">
-            <div class="card-body">
-              <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                Total Inflow
-              </dt>
-              <dd class="mt-1 text-lg font-semibold text-green-600 dark:text-green-400">
+          <!-- Total Inflow / Outflow -->
+          <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-5 flex flex-col gap-4">
+            <div>
+              <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Total Inflow</div>
+              <div class="mt-1 text-lg font-bold tabular-nums tracking-tight whitespace-nowrap text-green-600 dark:text-green-400">
                 {{ formatSignedCurrency(cashflow.summary.totalInflow) }}
-              </dd>
+              </div>
+            </div>
+            <div>
+              <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Total Outflow</div>
+              <div class="mt-1 text-lg font-bold tabular-nums tracking-tight whitespace-nowrap text-red-600 dark:text-red-400">
+                {{ formatSignedCurrency(-cashflow.summary.totalOutflow) }}
+              </div>
             </div>
           </div>
-          <div class="card">
-            <div class="card-body">
-              <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                Total Outflow
-              </dt>
-              <dd class="mt-1 text-lg font-semibold text-red-600 dark:text-red-400">
-                {{ formatSignedCurrency(-cashflow.summary.totalOutflow) }}
-              </dd>
+          <!-- Current Balance -->
+          <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-5 flex flex-col justify-center">
+            <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Current Balance</div>
+            <div class="mt-1 text-2xl font-bold tabular-nums tracking-tight whitespace-nowrap" :class="balanceClass">
+              {{ formatCurrency(cashflow.summary.currentBalance) }}
             </div>
           </div>
         </div>
