@@ -861,7 +861,7 @@ class EmailService {
       return;
     }
 
-    const upgradeUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/settings`;
+    const upgradeUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/pricing`;
     const unsubscribeUrl = userId ? this.getUnsubscribeUrl(userId) : `${process.env.FRONTEND_URL || 'https://tradetally.io'}/settings`;
     const oneClickUnsubscribeUrl = userId ? this.getOneClickUnsubscribeUrl(userId) : unsubscribeUrl;
     const safeUsername = escapeHtml(username);
