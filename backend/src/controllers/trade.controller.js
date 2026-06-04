@@ -367,7 +367,7 @@ const tradeController = {
     try {
       const {
         symbol, symbolExact, startDate, endDate, exitStartDate, exitEndDate, tags, strategy, sector,
-        strategies, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
+        strategies, setups, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, brokers, importId, accounts,
         limit = 50, offset, page
@@ -392,6 +392,7 @@ const tradeController = {
         sector,
         // Multi-select filters
         strategies: strategies ? ensureString(strategies).split(',') : undefined,
+        setups: setups ? ensureString(setups).split(',') : undefined,
         sectors: sectors ? ensureString(sectors).split(',') : undefined,
         hasNews,
         daysOfWeek: daysOfWeek ? ensureString(daysOfWeek).split(',').map(d => parseInt(d)) : undefined,
@@ -507,7 +508,7 @@ const tradeController = {
     try {
       const {
         symbol, startDate, endDate, tags, strategy, sector,
-        strategies, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
+        strategies, setups, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, brokers, importId
       } = req.query;
@@ -520,6 +521,7 @@ const tradeController = {
         strategy,
         sector,
         strategies: strategies ? ensureString(strategies).split(',') : undefined,
+        setups: setups ? ensureString(setups).split(',') : undefined,
         sectors: sectors ? ensureString(sectors).split(',') : undefined,
         hasNews,
         daysOfWeek: daysOfWeek ? ensureString(daysOfWeek).split(',').map(d => parseInt(d)) : undefined,
@@ -556,7 +558,7 @@ const tradeController = {
     try {
       const {
         symbol, startDate, endDate, tags, strategy, sector,
-        strategies, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
+        strategies, setups, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, brokers
       } = req.query;
@@ -569,6 +571,7 @@ const tradeController = {
         strategy,
         sector,
         strategies: strategies ? ensureString(strategies).split(',') : undefined,
+        setups: setups ? ensureString(setups).split(',') : undefined,
         sectors: sectors ? ensureString(sectors).split(',') : undefined,
         hasNews,
         daysOfWeek: daysOfWeek ? ensureString(daysOfWeek).split(',').map(d => parseInt(d)) : undefined,
@@ -3646,7 +3649,7 @@ const tradeController = {
 
       const {
         startDate, endDate, symbol, symbolExact, sector, strategy, tags,
-        strategies, sectors, // Add multi-select parameters
+        strategies, setups, sectors, // Add multi-select parameters
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, brokers, importId, accounts, hasNews,
         holdTime, minHoldTime, maxHoldTime, daysOfWeek, instrumentTypes, optionTypes, qualityGrades
@@ -3662,6 +3665,7 @@ const tradeController = {
         // Multi-select filters
         tags: tags ? ensureString(tags).split(',').map(t => t.trim()).filter(Boolean) : undefined,
         strategies: strategies ? ensureString(strategies).split(',') : undefined,
+        setups: setups ? ensureString(setups).split(',') : undefined,
         sectors: sectors ? ensureString(sectors).split(',') : undefined,
         side,
         minPrice,
@@ -3725,7 +3729,7 @@ const tradeController = {
 
       const {
         startDate, endDate, symbol, symbolExact, sector, strategy, tags,
-        strategies, sectors, side, broker, brokers, accounts,
+        strategies, setups, sectors, side, broker, brokers, accounts,
         instrumentTypes, qualityGrades, minPartials, maxPartials
       } = req.query;
 
@@ -3738,6 +3742,7 @@ const tradeController = {
         strategy,
         tags: tags ? ensureString(tags).split(',').map(t => t.trim()).filter(Boolean) : undefined,
         strategies: strategies ? ensureString(strategies).split(',') : undefined,
+        setups: setups ? ensureString(setups).split(',') : undefined,
         sectors: sectors ? ensureString(sectors).split(',') : undefined,
         side,
         broker: broker || undefined,

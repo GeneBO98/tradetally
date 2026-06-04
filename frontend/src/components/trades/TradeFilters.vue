@@ -122,6 +122,58 @@
           </div>
         </div>
       </div>
+
+      <div>
+        <label class="label">Setup</label>
+        <div class="relative" data-dropdown="setup">
+          <button
+            @click.stop="showSetupDropdown = !showSetupDropdown"
+            class="input w-full text-left flex items-center justify-between"
+            type="button"
+          >
+            <span class="truncate">{{ getSelectedSetupText() }}</span>
+            <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+            </svg>
+          </button>
+
+          <div v-if="showSetupDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+            <div class="p-1">
+              <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                <input
+                  type="checkbox"
+                  :checked="!filters.setups || filters.setups.length === 0"
+                  @change="toggleAllSetups"
+                  class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                />
+                <span class="ml-3 text-sm text-gray-900 dark:text-white">All Setups</span>
+              </label>
+            </div>
+            <div class="border-t border-gray-200 dark:border-gray-600">
+              <div v-for="setup in visibleSetupOptions" :key="setup" class="p-1">
+                <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                  <input
+                    type="checkbox"
+                    :value="setup"
+                    v-model="filters.setups"
+                    class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                  />
+                  <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ setup }}</span>
+                </label>
+              </div>
+            </div>
+            <div v-if="setupUsage.length" class="border-t border-gray-200 dark:border-gray-600 p-1">
+              <button
+                @click.stop="openSetupManager"
+                type="button"
+                class="flex items-center w-full px-3 py-2 text-sm text-primary-600 dark:text-primary-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+              >
+                Manage setups
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <DropdownItemManager
@@ -132,6 +184,15 @@
       :hidden="hiddenStrategies"
       @toggle="toggleStrategy"
       @move="handleStrategyMove"
+    />
+    <DropdownItemManager
+      v-model:show="showSetupManager"
+      title="Manage Setups"
+      reorderable
+      :items="orderedSetupUsage"
+      :hidden="hiddenSetups"
+      @toggle="toggleSetup"
+      @move="handleSetupMove"
     />
 
     <!-- Second Row of Basic Filters -->
@@ -712,6 +773,7 @@ import TagManagement from './TagManagement.vue'
 import DropdownItemManager from './DropdownItemManager.vue'
 import { useHiddenDropdownItems } from '@/composables/useHiddenDropdownItems'
 import { useStrategyOrder } from '@/composables/useStrategyOrder'
+import { useSetupOrder } from '@/composables/useSetupOrder'
 import { useTradesStore } from '@/stores/trades'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { formatLocalDate } from '@/utils/date'
@@ -812,6 +874,7 @@ const loadingStrategies = ref(false)
 
 // Dropdown visibility
 const showStrategyDropdown = ref(false)
+const showSetupDropdown = ref(false)
 const showSectorDropdown = ref(false)
 const showDayOfWeekDropdown = ref(false)
 const showBrokerDropdown = ref(false)
@@ -931,22 +994,41 @@ const defaultStrategyOptions = [
 ]
 const strategyOptions = ref([...defaultStrategyOptions])
 
-// Hide/manage strategies in the dropdown
-const { hiddenStrategies, refresh: refreshHiddenItems, toggleStrategy } = useHiddenDropdownItems()
+// Hide/manage strategies and setups in the dropdowns
+const {
+  hiddenStrategies,
+  hiddenSetups,
+  refresh: refreshHiddenItems,
+  toggleStrategy,
+  toggleSetup
+} = useHiddenDropdownItems()
 const {
   orderNames: orderStrategyNames,
   orderUsageItems: orderStrategyUsageItems,
   moveStrategyInUsage,
   refresh: refreshStrategyOrder
 } = useStrategyOrder()
+const {
+  orderNames: orderSetupNames,
+  orderUsageItems: orderSetupUsageItems,
+  moveSetupInUsage,
+  refresh: refreshSetupOrder
+} = useSetupOrder()
 const strategyUsage = ref([]) // [{ name, count }] for the manage modal
+const setupUsage = ref([])
 const showStrategyManager = ref(false)
+const showSetupManager = ref(false)
 
 const orderedStrategyUsage = computed(() => orderStrategyUsageItems(strategyUsage.value))
+const orderedSetupUsage = computed(() => orderSetupUsageItems(setupUsage.value))
 
 function handleStrategyMove({ name, direction }) {
   moveStrategyInUsage(strategyUsage.value, name, direction)
   mergeStrategyOptions(strategyUsage.value.map((u) => u.name))
+}
+
+function handleSetupMove({ name, direction }) {
+  moveSetupInUsage(setupUsage.value, name, direction)
 }
 
 // Drop hidden strategies from the dropdown, but always keep currently selected
@@ -960,6 +1042,16 @@ const visibleStrategyOptions = computed(() => {
   return orderedValues.map((value) => byValue.get(value)).filter(Boolean)
 })
 
+// Setups are free-form names from /trades/setups (no predefined defaults).
+// Drop hidden ones, but keep currently selected setups visible.
+const visibleSetupOptions = computed(() => {
+  const names = setupUsage.value.map((u) => u.name)
+  const visible = names.filter(
+    name => !hiddenSetups.value.includes(name) || (filters.value.setups || []).includes(name)
+  )
+  return orderSetupNames(visible)
+})
+
 // Initialize filters with defaults, then load from localStorage
 const defaultFilters = {
   // Basic filters
@@ -969,6 +1061,7 @@ const defaultFilters = {
   endDate: '',
   strategy: '', // Keep for backward compatibility
   strategies: [], // New multi-select array
+  setups: [], // New multi-select array for setups
   sector: '', // Keep for backward compatibility
   sectors: [], // New multi-select array
   tags: [], // New multi-select array for tags
@@ -997,7 +1090,7 @@ const defaultFilters = {
 function urlHasFilterParams() {
   return !!(
     route.query.symbol || route.query.startDate || route.query.endDate ||
-    route.query.strategy || route.query.strategies || route.query.sector ||
+    route.query.strategy || route.query.strategies || route.query.setups || route.query.sector ||
     route.query.sectors || route.query.status || route.query.minPrice ||
     route.query.maxPrice || route.query.minQuantity || route.query.maxQuantity ||
     route.query.holdTime || route.query.broker || route.query.brokers ||
@@ -1029,6 +1122,9 @@ function loadInitialFilters() {
       // Convert comma-separated strings back to arrays
       if (parsed.strategies && typeof parsed.strategies === 'string') {
         parsed.strategies = parsed.strategies.split(',').filter(Boolean)
+      }
+      if (parsed.setups && typeof parsed.setups === 'string') {
+        parsed.setups = parsed.setups.split(',').filter(Boolean)
       }
       if (parsed.sectors && typeof parsed.sectors === 'string') {
         parsed.sectors = parsed.sectors.split(',').filter(Boolean)
@@ -1087,6 +1183,32 @@ function getSelectedSectorText() {
 function toggleAllStrategies(event) {
   if (event.target.checked) {
     filters.value.strategies = []
+  }
+}
+
+function getSelectedSetupText() {
+  if (!filters.value.setups || filters.value.setups.length === 0) return 'All Setups'
+  if (filters.value.setups.length === 1) return filters.value.setups[0]
+  return `${filters.value.setups.length} setups selected`
+}
+
+function toggleAllSetups(event) {
+  if (event.target.checked) {
+    filters.value.setups = []
+  }
+}
+
+function openSetupManager() {
+  showSetupDropdown.value = false
+  showSetupManager.value = true
+}
+
+async function fetchAvailableSetups() {
+  try {
+    const response = await api.get('/trades/setups')
+    setupUsage.value = response.data?.usage || []
+  } catch (error) {
+    console.warn('Failed to fetch available setups:', error)
   }
 }
 
@@ -1239,6 +1361,7 @@ const activeFiltersCount = computed(() => {
     if (filters.value.endDate) count++
   }
   if (filters.value.strategies && filters.value.strategies.length > 0) count++
+  if (filters.value.setups && filters.value.setups.length > 0) count++
   if (filters.value.side) count++
   if (filters.value.status) count++
   if (filters.value.instrumentTypes && filters.value.instrumentTypes.length > 0) count++
@@ -1300,7 +1423,12 @@ function applyFilters() {
   if (filters.value.strategies.length > 0) {
     cleanFilters.strategies = filters.value.strategies.join(',')
   }
-  
+
+  // Handle multi-select setups - convert to comma-separated
+  if (filters.value.setups && filters.value.setups.length > 0) {
+    cleanFilters.setups = filters.value.setups.join(',')
+  }
+
   // Handle multi-select sectors - convert to comma-separated or use first one for backward compatibility
   if (filters.value.sectors.length > 0) {
     cleanFilters.sectors = filters.value.sectors.join(',')
@@ -1528,7 +1656,15 @@ function handleClickOutside(event) {
       showStrategyDropdown.value = false
     }
   }
-  
+
+  // Check if click is outside setup dropdown
+  if (showSetupDropdown.value) {
+    const setupDropdown = target.closest('[data-dropdown="setup"]')
+    if (!setupDropdown) {
+      showSetupDropdown.value = false
+    }
+  }
+
   // Check if click is outside sector dropdown  
   if (showSectorDropdown.value) {
     const sectorDropdown = target.closest('[data-dropdown="sector"]')
@@ -1636,7 +1772,9 @@ onMounted(() => {
   // Fetch available dropdown options
   refreshHiddenItems()
   refreshStrategyOrder()
+  refreshSetupOrder()
   fetchAvailableStrategies()
+  fetchAvailableSetups()
   fetchAvailableSectors()
   fetchAvailableBrokers()
 
@@ -1694,6 +1832,9 @@ onMounted(() => {
     // Convert comma-separated strings back to arrays for multi-select fields
     if (storeFilters.strategies && typeof storeFilters.strategies === 'string') {
       storeFilters.strategies = storeFilters.strategies.split(',').filter(Boolean)
+    }
+    if (storeFilters.setups && typeof storeFilters.setups === 'string') {
+      storeFilters.setups = storeFilters.setups.split(',').filter(Boolean)
     }
     if (storeFilters.sectors && typeof storeFilters.sectors === 'string') {
       storeFilters.sectors = storeFilters.sectors.split(',').filter(Boolean)
@@ -1816,6 +1957,12 @@ onMounted(() => {
   // Handle multi-select strategies from query parameters
   if (route.query.strategies) {
     filters.value.strategies = route.query.strategies.split(',')
+    shouldApply = true
+  }
+
+  // Handle multi-select setups from query parameters
+  if (route.query.setups) {
+    filters.value.setups = route.query.setups.split(',')
     shouldApply = true
   }
 

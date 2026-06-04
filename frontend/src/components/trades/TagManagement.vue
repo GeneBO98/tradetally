@@ -175,9 +175,12 @@
                 </div>
 
                 <!-- Existing tags list -->
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                    Use the arrows to change the order tags appear in dropdowns.
+                </p>
                 <div class="space-y-2 max-h-64 overflow-y-auto">
                     <div
-                        v-for="tag in availableTags"
+                        v-for="(tag, index) in orderedTags"
                         :key="tag.id"
                         class="flex items-center justify-between p-2 rounded border border-gray-200 dark:border-gray-600"
                     >
@@ -207,6 +210,30 @@
                                 class="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0"
                                 >{{ tag.count }} {{ tag.count === 1 ? 'trade' : 'trades' }}</span
                             >
+                        </div>
+                        <div class="flex flex-col flex-shrink-0 ml-1">
+                            <button
+                                type="button"
+                                class="p-0.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-30"
+                                :disabled="index === 0"
+                                title="Move up"
+                                @click="moveTag(tag.name, 'up')"
+                            >
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+                                </svg>
+                            </button>
+                            <button
+                                type="button"
+                                class="p-0.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-30"
+                                :disabled="index === orderedTags.length - 1"
+                                title="Move down"
+                                @click="moveTag(tag.name, 'down')"
+                            >
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </button>
                         </div>
                         <button
                             @click="toggleTagHidden(tag)"
@@ -259,6 +286,7 @@
 import { ref, computed, onMounted, watch } from "vue";
 import api from "@/services/api";
 import { useNotification } from "@/composables/useNotification";
+import { useTagOrder } from "@/composables/useTagOrder";
 
 const props = defineProps({
     modelValue: {
@@ -267,13 +295,27 @@ const props = defineProps({
     },
 });
 
+// User-defined tag order, shared with the trade form and synced across devices.
+const {
+    orderUsageItems: orderTagItems,
+    moveTagInUsage,
+    refresh: refreshTagOrder,
+} = useTagOrder();
+
+// All tags in the user's chosen order (custom order first, then most-used).
+const orderedTags = computed(() => orderTagItems(availableTags.value));
+
 // Tags to show in the selection dropdown: drop hidden ones, but keep any that
 // are currently selected so an active filter is never silently lost.
 const visibleTags = computed(() =>
-    availableTags.value.filter(
+    orderedTags.value.filter(
         (tag) => !tag.hidden || (props.modelValue || []).includes(tag.name),
     ),
 );
+
+function moveTag(name, direction) {
+    moveTagInUsage(availableTags.value, name, direction);
+}
 
 const emit = defineEmits(["update:modelValue"]);
 const { showDangerConfirmation } = useNotification();
@@ -295,6 +337,7 @@ const handleClickOutside = (event) => {
 
 onMounted(() => {
     document.addEventListener("click", handleClickOutside);
+    refreshTagOrder();
     fetchTags();
 });
 

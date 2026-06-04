@@ -121,6 +121,13 @@ class TradeQueries {
       paramCount += filters.strategies.length;
     }
 
+    if (filters.setups && filters.setups.length > 0) {
+      const placeholders = filters.setups.map((_, i) => `$${paramCount + i}`).join(',');
+      whereClause += ` AND t.setup IN (${placeholders})`;
+      filters.setups.forEach(s => values.push(s));
+      paramCount += filters.setups.length;
+    }
+
     if (filters.sectors && filters.sectors.length > 0) {
       needsSectorOuterJoin = true;
       const placeholders = filters.sectors.map((_, i) => `$${paramCount + i}`).join(',');

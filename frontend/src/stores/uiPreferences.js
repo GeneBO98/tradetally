@@ -31,7 +31,9 @@ export const SYNCED_KEYS = Object.freeze([
   'passkey_prompt_dismissed',
   'hiddenStrategies',
   'hiddenSetups',
-  'strategyOrder'
+  'strategyOrder',
+  'setupOrder',
+  'tagOrder'
 ])
 
 const SYNCED_KEY_SET = new Set(SYNCED_KEYS)

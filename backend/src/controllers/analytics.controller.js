@@ -186,6 +186,7 @@ function convertQueryToTradeFilters(query) {
     endDate: toSafeString(query.endDate) || undefined,
     symbol: query.symbol ? toSafeString(query.symbol).toUpperCase().trim() : undefined,
     strategies: toArray(query.strategies),
+    setups: toArray(query.setups),
     sectors: toArray(query.sectors),
     tags: toArray(query.tags),
     hasNews: query.hasNews,
@@ -292,6 +293,13 @@ function buildFilterConditions(query) {
     const placeholders = filters.strategies.map(() => `$${paramIndex++}`).join(',');
     filterConditions += ` AND strategy IN (${placeholders})`;
     params.push(...filters.strategies);
+  }
+
+  // Multi-select setups
+  if (filters.setups && filters.setups.length > 0) {
+    const placeholders = filters.setups.map(() => `$${paramIndex++}`).join(',');
+    filterConditions += ` AND setup IN (${placeholders})`;
+    params.push(...filters.setups);
   }
 
   // Multi-select sectors via subquery to symbol_categories (aligns with Trade model join)

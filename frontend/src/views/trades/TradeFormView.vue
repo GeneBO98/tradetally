@@ -1103,9 +1103,11 @@
         <DropdownItemManager
           v-model:show="showSetupManager"
           title="Manage Setups"
-          :items="setupUsage"
+          reorderable
+          :items="orderedSetupUsage"
           :hidden="hiddenSetups"
           @toggle="toggleSetup"
+          @move="handleSetupMove"
         />
 
         <!-- Tags Field (Collapsible) -->
@@ -1127,41 +1129,7 @@
             </svg>
           </button>
           <div v-show="showTags" class="p-4">
-            <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Comma separated</p>
-            <div class="relative">
-              <input
-                id="tags"
-                v-model="tagsInput"
-                type="text"
-                class="input"
-                placeholder="momentum, earnings, breakout"
-                @focus="handleTagsFocus"
-                @blur="handleTagsBlur"
-                @keydown.down.prevent="moveTagSuggestion(1)"
-                @keydown.up.prevent="moveTagSuggestion(-1)"
-                @keydown.enter="applyActiveTagSuggestion"
-              />
-              <div
-                v-if="showTagSuggestions"
-                class="absolute z-10 mt-1 w-full rounded-md bg-white dark:bg-gray-800 shadow-lg border border-gray-200 dark:border-gray-700 max-h-48 overflow-auto"
-              >
-                <ul class="py-1 text-sm text-gray-700 dark:text-gray-200">
-                  <li
-                    v-for="(tag, index) in tagSuggestions"
-                    :key="tag"
-                    @mousedown.prevent="selectTagSuggestion(tag)"
-                    :class="[
-                      'px-3 py-1 cursor-pointer flex items-center justify-between',
-                      index === activeTagSuggestionIndex
-                        ? 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-100'
-                        : 'hover:bg-gray-100 dark:hover:bg-gray-700'
-                    ]"
-                  >
-                    <span>{{ tag }}</span>
-                  </li>
-                </ul>
-              </div>
-            </div>
+            <TagManagement v-model="selectedTags" />
           </div>
         </div>
 
@@ -1543,9 +1511,11 @@ import TradeCharts from '@/components/trades/TradeCharts.vue'
 import api from '@/services/api'
 import SymbolAutocomplete from '@/components/common/SymbolAutocomplete.vue'
 import DropdownItemManager from '@/components/trades/DropdownItemManager.vue'
+import TagManagement from '@/components/trades/TagManagement.vue'
 import BaseSelect from '@/components/common/BaseSelect.vue'
 import { useHiddenDropdownItems } from '@/composables/useHiddenDropdownItems'
 import { useStrategyOrder } from '@/composables/useStrategyOrder'
+import { useSetupOrder } from '@/composables/useSetupOrder'
 
 // Load section preferences from localStorage
 const defaultSectionPrefs = {
@@ -1886,10 +1856,7 @@ const form = ref({
   executions: []
 })
 
-const tagsInput = ref('')
-const allTags = ref([]) // All saved tags for the user
-const tagsInputFocused = ref(false)
-const activeTagSuggestionIndex = ref(0)
+const selectedTags = ref([]) // Tag names assigned to this trade
 const currentImages = ref([])
 const trade = ref(null) // Store full trade data including charts
 const chartUploadRef = ref(null)
@@ -1934,16 +1901,28 @@ const {
   moveStrategyInUsage,
   refresh: refreshStrategyOrder
 } = useStrategyOrder()
+const {
+  orderNames: orderSetupNames,
+  orderUsageItems: orderSetupUsageItems,
+  moveSetupInUsage,
+  refresh: refreshSetupOrder
+} = useSetupOrder()
 const strategyUsage = ref([]) // [{ name, count }] most-used first
 const setupUsage = ref([])
 const showStrategyManager = ref(false)
 const showSetupManager = ref(false)
 
 const orderedStrategyUsage = computed(() => orderStrategyUsageItems(strategyUsage.value))
+const orderedSetupUsage = computed(() => orderSetupUsageItems(setupUsage.value))
 
 function handleStrategyMove({ name, direction }) {
   moveStrategyInUsage(strategyUsage.value, name, direction)
   strategiesList.value = orderStrategyNames(strategiesList.value)
+}
+
+function handleSetupMove({ name, direction }) {
+  moveSetupInUsage(setupUsage.value, name, direction)
+  setupsList.value = orderSetupNames(setupsList.value)
 }
 
 // Strategies shown in the dropdown: drop hidden ones, but always keep the
@@ -1954,7 +1933,9 @@ const visibleStrategies = computed(() =>
   )
 )
 const visibleSetups = computed(() =>
-  setupsList.value.filter(s => !isSetupHidden(s) || s === form.value.setup)
+  orderSetupNames(
+    setupsList.value.filter(s => !isSetupHidden(s) || s === form.value.setup)
+  )
 )
 
 function formatDateTimeLocal(date) {
@@ -2319,7 +2300,7 @@ async function loadTrade() {
       })()
     }
 
-    tagsInput.value = tradeData.tags ? tradeData.tags.join(', ') : ''
+    selectedTags.value = Array.isArray(tradeData.tags) ? [...tradeData.tags] : []
     currentImages.value = tradeData.attachments || []
   } catch (err) {
     showError('Error', 'Failed to load trade')
@@ -2619,7 +2600,7 @@ async function handleSubmit(opts = {}) {
       setup: form.value.setup || '',
       notes: form.value.notes || '',
       isPublic: form.value.isPublic || false,
-      tags: tagsInput.value ? tagsInput.value.split(',').map(tag => tag.trim()).filter(Boolean) : [],
+      tags: Array.isArray(selectedTags.value) ? [...selectedTags.value] : [],
       // Risk management fields
       stopLoss: form.value.stopLoss && form.value.stopLoss !== '' ? parseFloat(form.value.stopLoss) : null,
       takeProfit: form.value.takeProfit && form.value.takeProfit !== '' ? parseFloat(form.value.takeProfit) : null,
@@ -2991,7 +2972,7 @@ async function fetchLists() {
 
     // Fetch setups list
     const setupsResponse = await api.get('/trades/setups')
-    setupsList.value = setupsResponse.data.setups || []
+    setupsList.value = orderSetupNames(setupsResponse.data.setups || [])
     setupUsage.value = setupsResponse.data.usage || []
 
     // Fetch brokers list
@@ -3017,127 +2998,6 @@ async function fetchUserSettings() {
     }
   } catch (error) {
     console.error('Error fetching user settings:', error)
-  }
-}
-
-// Fetch all user tags for autocomplete suggestions
-async function fetchTags() {
-  try {
-    const response = await api.get('/tags')
-    const tags = response.data?.tags || []
-    // Store only unique, non-hidden tag names, sorted alphabetically
-    const names = Array.from(
-      new Set(
-        tags
-          .filter(tag => !tag.hidden)
-          .map(tag => tag.name)
-          .filter(name => typeof name === 'string' && name.trim().length > 0)
-      )
-    ).sort((a, b) => a.localeCompare(b))
-    allTags.value = names
-  } catch (error) {
-    console.error('Error fetching tags for autocomplete:', error)
-  }
-}
-
-// Computed: current list of tags already entered in input
-const currentTags = computed(() => {
-  if (!tagsInput.value) return []
-  return tagsInput.value
-    .split(',')
-    .map(tag => tag.trim())
-    .filter(Boolean)
-})
-
-// Computed: the partial tag the user is currently typing
-const currentTagQuery = computed(() => {
-  if (!tagsInput.value) return ''
-  const parts = tagsInput.value.split(',')
-  return parts[parts.length - 1].trim()
-})
-
-// Computed: suggestions based on current query and existing tags
-const tagSuggestions = computed(() => {
-  const query = currentTagQuery.value.toLowerCase()
-  if (!query) return []
-
-  const alreadySelected = new Set(currentTags.value.map(t => t.toLowerCase()))
-
-  // Only suggest tags that start with the current query and aren't already selected
-  const matches = allTags.value.filter(name => {
-    const lower = name.toLowerCase()
-    return lower.startsWith(query) && !alreadySelected.has(lower)
-  })
-
-  // Reset active index when the suggestion list changes
-  if (activeTagSuggestionIndex.value >= matches.length) {
-    activeTagSuggestionIndex.value = 0
-  }
-
-  return matches.slice(0, 10)
-})
-
-const showTagSuggestions = computed(() => {
-  return tagsInputFocused.value && tagSuggestions.value.length > 0
-})
-
-function handleTagsFocus() {
-  tagsInputFocused.value = true
-}
-
-function handleTagsBlur() {
-  // Delay hiding so a click on a suggestion can register
-  setTimeout(() => {
-    tagsInputFocused.value = false
-  }, 150)
-}
-
-function selectTagSuggestion(tag) {
-  const parts = tagsInput.value.split(',')
-  // Replace the current partial with the selected tag
-  if (parts.length > 0) {
-    parts[parts.length - 1] = ` ${tag}` // keep preceding comma/space style
-  } else {
-    parts[0] = tag
-  }
-
-  // Normalize spacing: join with comma+space
-  const normalized = parts
-    .map((part, index) => {
-      const trimmed = part.trim()
-      return index === 0 ? trimmed : trimmed
-    })
-    .filter(Boolean)
-    .join(', ')
-
-  tagsInput.value = normalized + ', '
-  // Keep focus on the input so user can continue typing
-  nextTick(() => {
-    const el = document.getElementById('tags')
-    if (el) {
-      el.focus()
-    }
-  })
-}
-
-function moveTagSuggestion(direction) {
-  if (!showTagSuggestions.value) return
-  const total = tagSuggestions.value.length
-  if (total === 0) return
-
-  const nextIndex = (activeTagSuggestionIndex.value + direction + total) % total
-  activeTagSuggestionIndex.value = nextIndex
-}
-
-function applyActiveTagSuggestion(event) {
-  if (!showTagSuggestions.value) {
-    // No suggestions visible, let the form handle Enter normally
-    return
-  }
-  event.preventDefault()
-  const tag = tagSuggestions.value[activeTagSuggestionIndex.value]
-  if (tag) {
-    selectTagSuggestion(tag)
   }
 }
 
@@ -3481,10 +3341,10 @@ async function deleteTemplate(id, type) {
 onMounted(async () => {
   refreshHiddenItems()
   refreshStrategyOrder()
+  refreshSetupOrder()
   await checkProAccess()
   await fetchLists()
   await fetchUserSettings()
-  await fetchTags()
   await fetchInstrumentTemplates()
 
   if (isEdit.value) {
