@@ -1,7 +1,7 @@
 import { onBeforeUnmount, watchEffect } from 'vue'
 
 const SITE_NAME = 'TradeTally'
-const DEFAULT_OG_IMAGE = 'https://tradetally.io/social-preview.png'
+const DEFAULT_OG_IMAGE = 'https://tradetally.io/social-preview-v2.png'
 
 function ensureMeta(selector, attrName, attrValue) {
   let el = document.head.querySelector(selector)

@@ -6,7 +6,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const distDir = path.resolve(__dirname, '../dist')
 const distIndexPath = path.join(distDir, 'index.html')
 
-const defaultSocialImage = 'https://tradetally.io/social-preview.png'
+const defaultSocialImage = 'https://tradetally.io/social-preview-v2.png'
 const defaultTwitterSite = '@TradeTallyIO'
 
 const pages = [
