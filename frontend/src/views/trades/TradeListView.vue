@@ -1075,8 +1075,29 @@ function formatExcursionValue(trade, value) {
   const pointValue = Number(trade.point_value ?? trade.pointValue) || 0
   if (quantity <= 0 || pointValue <= 0) return formatCurrency(numeric)
 
-  const points = numeric / (quantity * pointValue)
-  return `${points.toFixed(2)} pts (${formatCurrency(numeric)})`
+  const scale = quantity * pointValue
+  const captured = getCapturedMoveDollars(trade, scale)
+  const legacyPointUnits = hasLegacyFuturesExcursionUnits(trade, captured, scale)
+  const points = legacyPointUnits ? numeric : numeric / scale
+  const dollars = legacyPointUnits ? numeric * scale : numeric
+  return `${points.toFixed(2)} pts (${formatCurrency(dollars)})`
+}
+
+function getCapturedMoveDollars(trade, scale) {
+  const entry = Number(trade.entry_price ?? trade.entryPrice)
+  const exit = Number(trade.exit_price ?? trade.exitPrice)
+  if (!Number.isFinite(entry) || !Number.isFinite(exit)) return null
+  const move = trade.side === 'short' ? entry - exit : exit - entry
+  return Math.max(0, move * scale)
+}
+
+function hasLegacyFuturesExcursionUnits(trade, captured, scale) {
+  if (!captured || captured <= 0 || scale <= 1) return false
+  const candidates = [
+    trade.mfe,
+    trade.post_exit_mfe ?? trade.postExitMfe
+  ].map(Number).filter(value => Number.isFinite(value) && value > 0)
+  return candidates.some(value => value < captured - 0.005 && value * scale >= captured - 0.005)
 }
 
 // MDI icons

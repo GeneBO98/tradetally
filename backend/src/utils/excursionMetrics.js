@@ -67,6 +67,40 @@ function toR(value, riskAmount) {
   return dollars / risk;
 }
 
+function isLegacyFuturesPointExcursion(trade, capturedMove = capturedMoveDollars(trade)) {
+  const instrumentType = trade.instrument_type || trade.instrumentType || 'stock';
+  if (instrumentType !== 'future') return false;
+
+  const quantity = Math.abs(parseNumeric(trade.quantity) || 0);
+  const pointValue = resolvePointValue(trade);
+  const scale = quantity * (pointValue || 0);
+  if (quantity <= 0 || !pointValue || pointValue <= 0 || scale <= 1 || !capturedMove || capturedMove <= 0) {
+    return false;
+  }
+
+  const candidates = [
+    parseNumeric(trade.mfe),
+    parseNumeric(trade.post_exit_mfe ?? trade.postExitMfe)
+  ].filter(value => value != null && value > 0);
+
+  return candidates.some(value =>
+    value < capturedMove - 0.005 &&
+    value * scale >= capturedMove - 0.005
+  );
+}
+
+function normalizeExcursionValue(value, trade, legacyPointUnits = isLegacyFuturesPointExcursion(trade)) {
+  const numeric = parseNumeric(value);
+  if (numeric == null) return null;
+  if (!legacyPointUnits) return numeric;
+
+  const quantity = Math.abs(parseNumeric(trade.quantity) || 0);
+  const pointValue = resolvePointValue(trade);
+  if (quantity <= 0 || !pointValue || pointValue <= 0) return numeric;
+
+  return numeric * quantity * pointValue;
+}
+
 function breakevenToleranceDollars(trade, breakevenConfig) {
   const config = normalizeConfig(breakevenConfig);
   const underlying = String(trade.underlying_asset || trade.underlyingAsset || '').toUpperCase();
@@ -109,11 +143,12 @@ function classifyOutcome(trade, breakevenConfig = { default: 0, byUnderlying: {}
 }
 
 function buildExcursionMetrics(trade, riskAmount, breakevenConfig = { default: 0, byUnderlying: {} }) {
-  const mae = parseNumeric(trade.mae);
-  const mfe = parseNumeric(trade.mfe);
-  const postExitMae = parseNumeric(trade.post_exit_mae ?? trade.postExitMae);
-  const postExitMfe = parseNumeric(trade.post_exit_mfe ?? trade.postExitMfe);
   const capturedMove = capturedMoveDollars(trade);
+  const legacyPointUnits = isLegacyFuturesPointExcursion(trade, capturedMove);
+  const mae = normalizeExcursionValue(trade.mae, trade, legacyPointUnits);
+  const mfe = normalizeExcursionValue(trade.mfe, trade, legacyPointUnits);
+  const postExitMae = normalizeExcursionValue(trade.post_exit_mae ?? trade.postExitMae, trade, legacyPointUnits);
+  const postExitMfe = normalizeExcursionValue(trade.post_exit_mfe ?? trade.postExitMfe, trade, legacyPointUnits);
   const bestMfe = Math.max(
     mfe || 0,
     postExitMfe || 0,
@@ -139,6 +174,7 @@ function buildExcursionMetrics(trade, riskAmount, breakevenConfig = { default: 0
     missed_after_exit: missedAfterExit,
     exit_efficiency: exitEfficiency,
     gross_pnl: grossPnl(trade),
+    legacy_point_units: legacyPointUnits,
     outcome,
     is_winner: outcome === 'winner' || outcome === 'partial_winner',
     mae_points: toFuturesPoints(mae, trade),
@@ -165,6 +201,8 @@ module.exports = {
   capturedMoveDollars,
   classifyOutcome,
   grossPnl,
+  isLegacyFuturesPointExcursion,
+  normalizeExcursionValue,
   parseNumeric,
   resolveMultiplier,
   resolvePointValue,

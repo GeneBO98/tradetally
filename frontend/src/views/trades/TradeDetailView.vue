@@ -1542,8 +1542,29 @@ function formatExcursionValue(value) {
   const pointValue = Number(currentTrade.point_value ?? currentTrade.pointValue) || 0
   if (quantity <= 0 || pointValue <= 0) return formatCurrency(numeric)
 
-  const points = numeric / (quantity * pointValue)
-  return `${points.toFixed(2)} pts (${formatCurrency(numeric)})`
+  const scale = quantity * pointValue
+  const captured = getCapturedMoveDollars(currentTrade, scale)
+  const legacyPointUnits = hasLegacyFuturesExcursionUnits(currentTrade, captured, scale)
+  const points = legacyPointUnits ? numeric : numeric / scale
+  const dollars = legacyPointUnits ? numeric * scale : numeric
+  return `${points.toFixed(2)} pts (${formatCurrency(dollars)})`
+}
+
+function getCapturedMoveDollars(currentTrade, scale) {
+  const entry = Number(currentTrade.entry_price ?? currentTrade.entryPrice)
+  const exit = Number(currentTrade.exit_price ?? currentTrade.exitPrice)
+  if (!Number.isFinite(entry) || !Number.isFinite(exit)) return null
+  const move = currentTrade.side === 'short' ? entry - exit : exit - entry
+  return Math.max(0, move * scale)
+}
+
+function hasLegacyFuturesExcursionUnits(currentTrade, captured, scale) {
+  if (!captured || captured <= 0 || scale <= 1) return false
+  const candidates = [
+    currentTrade.mfe,
+    currentTrade.post_exit_mfe ?? currentTrade.postExitMfe
+  ].map(Number).filter(value => Number.isFinite(value) && value > 0)
+  return candidates.some(value => value < captured - 0.005 && value * scale >= captured - 0.005)
 }
 
 const loading = ref(true)

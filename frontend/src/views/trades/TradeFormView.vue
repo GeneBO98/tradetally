@@ -1688,10 +1688,37 @@ function getExcursionStorageMultiplier(source = form.value) {
   return quantity > 0 && pointValue > 0 ? quantity * pointValue : 1
 }
 
+function capturedMoveDollars(source) {
+  const entry = Number(source.entryPrice ?? source.entry_price)
+  const exit = Number(source.exitPrice ?? source.exit_price)
+  const quantity = Math.abs(Number(source.quantity) || 0)
+  if (!Number.isFinite(entry) || !Number.isFinite(exit) || quantity <= 0) return null
+
+  const side = source.side
+  const move = side === 'short' ? entry - exit : exit - entry
+  return Math.max(0, move * quantity * getExcursionStorageMultiplier(source))
+}
+
+function hasLegacyFuturesExcursionUnits(source) {
+  if ((source.instrumentType || source.instrument_type) !== 'future') return false
+  const scale = getExcursionStorageMultiplier(source)
+  if (scale <= 1) return false
+
+  const captured = capturedMoveDollars(source)
+  if (!captured || captured <= 0) return false
+
+  const candidates = [source.mfe, source.postExitMfe ?? source.post_exit_mfe]
+    .map(Number)
+    .filter(value => Number.isFinite(value) && value > 0)
+
+  return candidates.some(value => value < captured - 0.005 && value * scale >= captured - 0.005)
+}
+
 function dollarsToExcursionInput(value, source = form.value) {
   if (value === null || value === undefined || value === '') return null
   const numeric = Number(value)
   if (!Number.isFinite(numeric)) return null
+  if (hasLegacyFuturesExcursionUnits(source)) return numeric
   return (source.instrumentType || source.instrument_type) === 'future'
     ? numeric / getExcursionStorageMultiplier(source)
     : numeric
@@ -2013,8 +2040,13 @@ async function loadTrade() {
 
     const excursionSource = {
       instrument_type: tradeData.instrument_type || 'stock',
+      side: tradeData.side,
+      entry_price: tradeData.entry_price,
+      exit_price: tradeData.exit_price,
       quantity: tradeData.quantity,
-      point_value: tradeData.point_value ?? tradeData.pointValue
+      point_value: tradeData.point_value ?? tradeData.pointValue,
+      mfe: tradeData.mfe,
+      post_exit_mfe: tradeData.post_exit_mfe ?? tradeData.postExitMfe
     }
 
     form.value = {
