@@ -237,8 +237,8 @@ const displayStats = computed(() => {
   const losersAvgMfe = average(losers.map(t => getTradeValue(t, 'mfe')))
   const avgProfitLeft = average(winners.map(t => {
     const mfe = getBestAvailableMfe(t)
-    const pnl = getTradeValue(t, 'pnl')
-    return mfe != null && pnl != null ? Math.max(0, mfe - pnl) : null
+    const captured = getTradeValue(t, 'captured_move')
+    return mfe != null && captured != null ? Math.max(0, mfe - captured) : null
   }))
   const avgMfeVsPnlGap = average(trades.value.map(t => {
     const mfe = getTradeValue(t, 'mfe')
@@ -264,7 +264,7 @@ const exitEfficiency = computed(() => {
   if (!winners.length) return null
   const ratios = winners
     .map(t => {
-      const pnl = getTradeValue(t, 'pnl')
+      const pnl = getTradeValue(t, 'captured_move')
       const mfe = getBestAvailableMfe(t)
       return pnl != null && mfe > 0 ? pnl / mfe : null
     })
@@ -322,11 +322,14 @@ function renderCharts() {
 }
 
 function getPointsValue(t, field) {
+  const derived = asNumber(t[`${field}_points`])
+  if (derived != null) return derived
+
   const quantity = Math.abs(asNumber(t.quantity) || 0)
   const pointValue = asNumber(t.point_value)
   if (quantity <= 0 || pointValue == null || pointValue <= 0) return null
 
-  const value = asNumber(field === 'pnl' ? t.pnl : t[field])
+  const value = asNumber(field === 'pnl' ? (t.gross_pnl ?? t.pnl) : t[field])
   if (value == null) return null
 
   return value / (quantity * pointValue)
@@ -335,6 +338,9 @@ function getPointsValue(t, field) {
 function getTradeValue(t, field) {
   if (displayMode.value === 'r') {
     if (field === 'pnl') return asNumber(t.r_value)
+
+    const derived = asNumber(t[`${field}_r`])
+    if (derived != null) return derived
 
     const riskAmount = asNumber(t.risk_amount)
     const value = asNumber(t[field])
@@ -345,10 +351,12 @@ function getTradeValue(t, field) {
     return getPointsValue(t, field)
   }
 
-  return asNumber(field === 'pnl' ? t.pnl : t[field])
+  return asNumber(field === 'pnl' ? (t.gross_pnl ?? t.pnl) : t[field])
 }
 
 function getBestAvailableMfe(t) {
+  const bestMfe = getTradeValue(t, 'best_mfe')
+  if (bestMfe != null) return bestMfe
   const postExitMfe = getTradeValue(t, 'post_exit_mfe')
   if (postExitMfe != null) return postExitMfe
   return getTradeValue(t, 'mfe')

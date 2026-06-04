@@ -11,6 +11,8 @@ const { sendV1NotImplemented } = require('../utils/apiResponse');
 const ensureString = require('../utils/ensureString');
 const { getUserTimezone } = require('../utils/timezone');
 const { POSITION_GROUP_KEY, GROUPED_BREAKEVEN, isPositionGroupingEnabled } = require('../utils/positionGrouping');
+const { buildExcursionMetrics } = require('../utils/excursionMetrics');
+const { normalizeConfig } = require('../utils/breakeven');
 
 // Helper function to create a short but collision-resistant hash for cache keys
 function createFilterHash(filters) {
@@ -1247,6 +1249,11 @@ const analyticsController = {
     try {
       const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
       const params = [req.user.id, ...filterParams];
+      const userSettings = await User.getSettings(req.user.id).catch(() => null);
+      const breakevenConfig = normalizeConfig({
+        default: userSettings?.breakeven_tolerance_ticks,
+        byUnderlying: userSettings?.breakeven_tolerance_ticks_by_underlying
+      });
 
       const query = `
         SELECT
@@ -1270,8 +1277,8 @@ const analyticsController = {
           instrument_type,
           contract_size,
           point_value,
-          underlying_asset,
-          CASE WHEN pnl > 0 THEN true ELSE false END AS is_winner
+          tick_size,
+          underlying_asset
         FROM trades
         WHERE user_id = $1 ${filterConditions}
           AND exit_time IS NOT NULL
@@ -1300,13 +1307,11 @@ const analyticsController = {
           : (typeof t.executions === 'string' ? (() => {
               try { return JSON.parse(t.executions); } catch { return []; }
             })() : []);
-        const exitAction = t.side === 'short' ? 'buy' : 'sell';
-        const exitFills = executions.filter(exec => String(exec.action || exec.side || '').toLowerCase() === exitAction);
         const pnl = parseFloat(t.pnl) || 0;
-        const isScratch = Math.abs(pnl) < 0.01;
-        const outcome = isScratch
-          ? 'scratch'
-          : (pnl > 0 && exitFills.length > 1 ? 'partial_winner' : (pnl > 0 ? 'winner' : 'loser'));
+        const metrics = buildExcursionMetrics({
+          ...t,
+          executions
+        }, riskAmount, breakevenConfig);
 
         return {
           id: t.id,
@@ -1314,12 +1319,32 @@ const analyticsController = {
           side: t.side,
           pnl,
           r_value: t.r_value != null ? parseFloat(t.r_value) : null,
-          mae: parseFloat(t.mae),
-          mfe: parseFloat(t.mfe),
-          post_exit_mae: t.post_exit_mae != null ? parseFloat(t.post_exit_mae) : null,
-          post_exit_mfe: t.post_exit_mfe != null ? parseFloat(t.post_exit_mfe) : null,
-          post_exit_mfe_delta: t.post_exit_mfe != null ? Math.max(0, parseFloat(t.post_exit_mfe) - parseFloat(t.mfe)) : null,
-          missed_after_exit: t.post_exit_mfe != null ? Math.max(0, parseFloat(t.post_exit_mfe) - (parseFloat(t.pnl) || 0)) : null,
+          mae: metrics.mae,
+          mfe: metrics.mfe,
+          post_exit_mae: metrics.post_exit_mae,
+          post_exit_mfe: metrics.post_exit_mfe,
+          captured_move: metrics.captured_move,
+          best_mfe: metrics.best_mfe,
+          post_exit_mfe_delta: metrics.post_exit_mfe_delta,
+          missed_after_exit: metrics.missed_after_exit,
+          exit_efficiency: metrics.exit_efficiency,
+          gross_pnl: metrics.gross_pnl,
+          mae_points: metrics.mae_points,
+          mfe_points: metrics.mfe_points,
+          post_exit_mae_points: metrics.post_exit_mae_points,
+          post_exit_mfe_points: metrics.post_exit_mfe_points,
+          captured_move_points: metrics.captured_move_points,
+          best_mfe_points: metrics.best_mfe_points,
+          post_exit_mfe_delta_points: metrics.post_exit_mfe_delta_points,
+          missed_after_exit_points: metrics.missed_after_exit_points,
+          mae_r: metrics.mae_r,
+          mfe_r: metrics.mfe_r,
+          post_exit_mae_r: metrics.post_exit_mae_r,
+          post_exit_mfe_r: metrics.post_exit_mfe_r,
+          captured_move_r: metrics.captured_move_r,
+          best_mfe_r: metrics.best_mfe_r,
+          post_exit_mfe_delta_r: metrics.post_exit_mfe_delta_r,
+          missed_after_exit_r: metrics.missed_after_exit_r,
           post_exit_window_minutes: t.post_exit_window_minutes,
           post_exit_window_source: t.post_exit_window_source,
           post_exit_window_end: t.post_exit_window_end,
@@ -1327,8 +1352,9 @@ const analyticsController = {
           quantity: t.quantity != null ? parseFloat(t.quantity) : null,
           instrument_type: t.instrument_type || 'stock',
           point_value: t.point_value != null ? parseFloat(t.point_value) : null,
-          is_winner: t.is_winner,
-          outcome
+          tick_size: t.tick_size != null ? parseFloat(t.tick_size) : null,
+          is_winner: metrics.is_winner,
+          outcome: metrics.outcome
         };
       });
 
@@ -1342,15 +1368,18 @@ const analyticsController = {
       const winnersAvgMae = avg(winners, 'mae');
       const losersAvgMfe = avg(losers, 'mfe');
       const avgProfitLeft = winners.length > 0
-        ? winners.reduce((s, t) => s + Math.max(0, t.mfe - t.pnl), 0) / winners.length
+        ? winners.reduce((s, t) => s + (t.best_mfe != null && t.captured_move != null ? Math.max(0, t.best_mfe - t.captured_move) : 0), 0) / winners.length
         : null;
       const avgMfeVsPnlGap = trades.length > 0
-        ? trades.reduce((s, t) => s + (t.mfe - t.pnl), 0) / trades.length
+        ? trades.reduce((s, t) => s + (t.best_mfe != null && t.captured_move != null ? t.best_mfe - t.captured_move : 0), 0) / trades.length
         : null;
       const postExitTrades = trades.filter(t => t.post_exit_mfe != null);
       const avgPostExitMfe = avg(postExitTrades, 'post_exit_mfe');
       const avgPostExitMfeDelta = avg(postExitTrades, 'post_exit_mfe_delta');
       const avgMissedAfterExit = avg(postExitTrades, 'missed_after_exit');
+      const avgExitEfficiency = winners.length > 0
+        ? avg(winners.filter(t => t.exit_efficiency != null), 'exit_efficiency')
+        : null;
 
       res.json({
         success: true,
@@ -1364,7 +1393,8 @@ const analyticsController = {
           trades_with_post_exit_data: postExitTrades.length,
           avg_post_exit_mfe: avgPostExitMfe != null ? parseFloat(avgPostExitMfe.toFixed(2)) : null,
           avg_post_exit_mfe_delta: avgPostExitMfeDelta != null ? parseFloat(avgPostExitMfeDelta.toFixed(2)) : null,
-          avg_missed_after_exit: avgMissedAfterExit != null ? parseFloat(avgMissedAfterExit.toFixed(2)) : null
+          avg_missed_after_exit: avgMissedAfterExit != null ? parseFloat(avgMissedAfterExit.toFixed(2)) : null,
+          avg_exit_efficiency: avgExitEfficiency != null ? parseFloat(avgExitEfficiency.toFixed(2)) : null
         }
       });
     } catch (error) {

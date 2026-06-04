@@ -1,5 +1,6 @@
 const finnhub = require('./finnhub');
 const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('./futuresUtils');
+const databento = require('./databento');
 
 class MAEEstimator {
   /**
@@ -108,14 +109,10 @@ class MAEEstimator {
       throw new Error(`Invalid calculated quantity: ${quantity}`);
     }
 
-    const resolution = this.getResolutionForTrade(entry_time, exit_time);
-    const from = Math.floor(new Date(entry_time).getTime() / 1000);
-    const to = Math.floor(new Date(exit_time).getTime() / 1000);
-
-    const candles = await finnhub.getCandles(symbol, resolution, from, to);
+    const candles = await this.getCandlesForExcursion(trade, entry_time, exit_time);
 
     if (!candles || candles.c.length === 0) {
-      throw new Error('No candle data returned from Finnhub');
+      throw new Error('No candle data returned for MAE/MFE calculation');
     }
 
     let worstPrice = parseFloat(entry_price);
@@ -163,13 +160,14 @@ class MAEEstimator {
   static calculateExcursionsFromCandles(trade, candles) {
     const { entry_price, side } = trade;
     const { quantity, multiplier } = this.resolveQuantity(trade);
+    const normalizedCandles = this.normalizeCandles(candles);
 
     let worstPrice = parseFloat(entry_price);
     let bestPrice = parseFloat(entry_price);
 
-    for (let i = 0; i < candles.c.length; i++) {
-      const high = candles.h[i];
-      const low = candles.l[i];
+    for (let i = 0; i < normalizedCandles.c.length; i++) {
+      const high = normalizedCandles.h[i];
+      const low = normalizedCandles.l[i];
 
       if (side === 'long') {
         worstPrice = Math.min(worstPrice, low);
@@ -191,18 +189,14 @@ class MAEEstimator {
       throw new Error('Invalid post-exit window end');
     }
 
-    const resolution = this.getResolutionForTrade(trade.entry_time, windowEnd);
-    const from = Math.floor(new Date(trade.entry_time).getTime() / 1000);
-    const to = Math.floor(new Date(windowEnd).getTime() / 1000);
-
-    if (to <= from) {
+    if (new Date(windowEnd).getTime() <= new Date(trade.entry_time).getTime()) {
       throw new Error('Post-exit window must end after entry time');
     }
 
-    const candles = await finnhub.getCandles(trade.symbol, resolution, from, to);
+    const candles = await this.getCandlesForExcursion(trade, trade.entry_time, windowEnd);
 
     if (!candles || candles.c.length === 0) {
-      throw new Error('No candle data returned from Finnhub');
+      throw new Error('No candle data returned for post-exit MAE/MFE calculation');
     }
 
     const { mae, mfe } = this.calculateExcursionsFromCandles(trade, candles);
@@ -282,6 +276,55 @@ class MAEEstimator {
     if (durationMinutes < 1440) return '15'; // 15-minute candles for intraday trades
     if (durationMinutes < 10080) return '60'; // 1-hour candles for trades up to a week
     return 'D'; // Daily candles for longer trades
+  }
+
+  static getDatabentoInterval(entryTime, exitTime) {
+    const durationMinutes = (new Date(exitTime) - new Date(entryTime)) / 60000;
+    if (durationMinutes < 1440) return 'minute';
+    if (durationMinutes < 10080) return 'hour';
+    return 'day';
+  }
+
+  static normalizeCandles(candles) {
+    if (!candles) return { h: [], l: [], c: [] };
+    if (Array.isArray(candles)) {
+      return {
+        h: candles.map(candle => Number(candle.high)),
+        l: candles.map(candle => Number(candle.low)),
+        c: candles.map(candle => Number(candle.close))
+      };
+    }
+    return candles;
+  }
+
+  static async getCandlesForExcursion(trade, startTime, endTime) {
+    const instrumentType = trade.instrument_type || trade.instrumentType || 'stock';
+
+    if (instrumentType === 'future') {
+      if (!databento.isConfigured()) {
+        throw new Error('Databento API key not configured for futures MAE/MFE calculation');
+      }
+
+      const underlying = trade.underlying_asset || trade.underlyingAsset || extractUnderlyingFromFuturesSymbol(trade.symbol);
+      if (!underlying) {
+        throw new Error(`Cannot resolve futures underlying for ${trade.symbol}`);
+      }
+
+      const fromDate = new Date(startTime);
+      const toDate = new Date(endTime);
+      const fromSeconds = Math.floor(fromDate.getTime() / 1000);
+      const toSeconds = Math.floor(toDate.getTime() / 1000);
+      const candles = await databento.getFuturesCandles(underlying, fromDate, toDate, this.getDatabentoInterval(startTime, endTime));
+      const filteredCandles = candles.filter(candle => candle.time >= fromSeconds && candle.time <= toSeconds);
+      const finalCandles = filteredCandles.length > 0 ? filteredCandles : candles;
+
+      return this.normalizeCandles(finalCandles);
+    }
+
+    const resolution = this.getResolutionForTrade(startTime, endTime);
+    const from = Math.floor(new Date(startTime).getTime() / 1000);
+    const to = Math.floor(new Date(endTime).getTime() / 1000);
+    return finnhub.getCandles(trade.symbol, resolution, from, to);
   }
 
   /**

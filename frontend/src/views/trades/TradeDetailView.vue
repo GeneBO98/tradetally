@@ -269,25 +269,25 @@
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">MAE</dt>
                   <dd class="mt-1 text-sm font-mono" :class="trade.mae !== null && trade.mae !== undefined ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'">
-                    {{ trade.mae !== null && trade.mae !== undefined ? formatCurrency(trade.mae) : '—' }}
+                    {{ trade.mae !== null && trade.mae !== undefined ? formatExcursionValue(trade.mae) : '—' }}
                   </dd>
                 </div>
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">MFE</dt>
                   <dd class="mt-1 text-sm font-mono" :class="trade.mfe !== null && trade.mfe !== undefined ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'">
-                    {{ trade.mfe !== null && trade.mfe !== undefined ? formatCurrency(trade.mfe) : '—' }}
+                    {{ trade.mfe !== null && trade.mfe !== undefined ? formatExcursionValue(trade.mfe) : '—' }}
                   </dd>
                 </div>
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">After-Trade MAE</dt>
                   <dd class="mt-1 text-sm font-mono" :class="(trade.post_exit_mae ?? trade.postExitMae) !== null && (trade.post_exit_mae ?? trade.postExitMae) !== undefined ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'">
-                    {{ (trade.post_exit_mae ?? trade.postExitMae) !== null && (trade.post_exit_mae ?? trade.postExitMae) !== undefined ? formatCurrency(trade.post_exit_mae ?? trade.postExitMae) : '—' }}
+                    {{ (trade.post_exit_mae ?? trade.postExitMae) !== null && (trade.post_exit_mae ?? trade.postExitMae) !== undefined ? formatExcursionValue(trade.post_exit_mae ?? trade.postExitMae) : '—' }}
                   </dd>
                 </div>
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">After-Trade MFE</dt>
                   <dd class="mt-1 text-sm font-mono" :class="(trade.post_exit_mfe ?? trade.postExitMfe) !== null && (trade.post_exit_mfe ?? trade.postExitMfe) !== undefined ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'">
-                    {{ (trade.post_exit_mfe ?? trade.postExitMfe) !== null && (trade.post_exit_mfe ?? trade.postExitMfe) !== undefined ? formatCurrency(trade.post_exit_mfe ?? trade.postExitMfe) : '—' }}
+                    {{ (trade.post_exit_mfe ?? trade.postExitMfe) !== null && (trade.post_exit_mfe ?? trade.postExitMfe) !== undefined ? formatExcursionValue(trade.post_exit_mfe ?? trade.postExitMfe) : '—' }}
                   </dd>
                 </div>
                 <div>
@@ -1531,6 +1531,20 @@ const aiStore = useAIStore()
 const { showSuccess, showError, showConfirmation } = useNotification()
 const { formatDateTime: formatDateTimeTz, formatTime: formatTimeTz, timezoneLabel } = useUserTimezone()
 const { formatCurrency, currencySymbol, formatSignedCurrency } = useCurrencyFormatter()
+
+function formatExcursionValue(value) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return '—'
+  const currentTrade = trade.value || {}
+  if ((currentTrade.instrument_type ?? currentTrade.instrumentType) !== 'future') return formatCurrency(numeric)
+
+  const quantity = Math.abs(Number(currentTrade.quantity) || 0)
+  const pointValue = Number(currentTrade.point_value ?? currentTrade.pointValue) || 0
+  if (quantity <= 0 || pointValue <= 0) return formatCurrency(numeric)
+
+  const points = numeric / (quantity * pointValue)
+  return `${points.toFixed(2)} pts (${formatCurrency(numeric)})`
+}
 
 const loading = ref(true)
 const trade = ref(null)

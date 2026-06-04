@@ -607,7 +607,7 @@
           <div v-show="showAdditionalFields" class="grid grid-cols-1 gap-6 sm:grid-cols-2">
 
           <div>
-            <label for="mae" class="label">MAE (Max Adverse Excursion)</label>
+            <label for="mae" class="label">MAE (Max Adverse Excursion) {{ excursionUnitSuffix }}</label>
             <input
               id="mae"
               v-model="form.mae"
@@ -615,12 +615,12 @@
               step="any"
               class="input"
               placeholder="0"
-              title="Maximum loss from entry to exit"
+              :title="excursionInputTitle('Maximum adverse excursion from entry to exit')"
             />
           </div>
 
           <div>
-            <label for="mfe" class="label">MFE (Max Favorable Excursion)</label>
+            <label for="mfe" class="label">MFE (Max Favorable Excursion) {{ excursionUnitSuffix }}</label>
             <input
               id="mfe"
               v-model="form.mfe"
@@ -628,12 +628,12 @@
               step="any"
               class="input"
               placeholder="0"
-              title="Maximum profit from entry to exit"
+              :title="excursionInputTitle('Maximum favorable excursion from entry to exit')"
             />
           </div>
 
           <div>
-            <label for="postExitMae" class="label">After-Trade MAE (from entry)</label>
+            <label for="postExitMae" class="label">After-Trade MAE (from entry) {{ excursionUnitSuffix }}</label>
             <input
               id="postExitMae"
               v-model="form.postExitMae"
@@ -641,12 +641,12 @@
               step="any"
               class="input"
               placeholder="0"
-              title="Maximum adverse excursion from entry through the configured after-trade window. Use this for manual entry when intraday data is unavailable, e.g. futures."
+              :title="excursionInputTitle('Maximum adverse excursion from entry through the configured after-trade window')"
             />
           </div>
 
           <div>
-            <label for="postExitMfe" class="label">After-Trade MFE (from entry)</label>
+            <label for="postExitMfe" class="label">After-Trade MFE (from entry) {{ excursionUnitSuffix }}</label>
             <input
               id="postExitMfe"
               v-model="form.postExitMfe"
@@ -654,9 +654,13 @@
               step="any"
               class="input"
               placeholder="0"
-              title="Maximum favorable excursion from entry through the configured after-trade window. Use this for manual entry when intraday data is unavailable, e.g. futures."
+              :title="excursionInputTitle('Maximum favorable excursion from entry through the configured after-trade window')"
             />
           </div>
+
+          <p v-if="form.instrumentType === 'future'" class="sm:col-span-2 text-xs text-gray-500 dark:text-gray-400">
+            Futures excursion values are entered in points and saved as dollars using quantity × point value.
+          </p>
 
           <div>
             <label for="postExitWindowOverrideMinutes" class="label">After-Trade Window Override (minutes)</label>
@@ -1674,6 +1678,37 @@ const previousIsPublicValue = ref(false)
 
 const isEdit = computed(() => !!route.params.id)
 
+const isFutureForm = computed(() => form.value.instrumentType === 'future')
+const excursionUnitSuffix = computed(() => isFutureForm.value ? '(points)' : '($)')
+
+function getExcursionStorageMultiplier(source = form.value) {
+  if ((source.instrumentType || source.instrument_type) !== 'future') return 1
+  const quantity = Math.abs(Number(source.quantity) || 0)
+  const pointValue = Number(source.pointValue ?? source.point_value) || 0
+  return quantity > 0 && pointValue > 0 ? quantity * pointValue : 1
+}
+
+function dollarsToExcursionInput(value, source = form.value) {
+  if (value === null || value === undefined || value === '') return null
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return null
+  return (source.instrumentType || source.instrument_type) === 'future'
+    ? numeric / getExcursionStorageMultiplier(source)
+    : numeric
+}
+
+function excursionInputToDollars(value) {
+  if (value === null || value === undefined || value === '') return null
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return null
+  return isFutureForm.value ? numeric * getExcursionStorageMultiplier() : numeric
+}
+
+function excursionInputTitle(baseText) {
+  if (!isFutureForm.value) return `${baseText}. Enter dollars.`
+  return `${baseText}. Enter futures points; TradeTally saves the dollar value using quantity × point value.`
+}
+
 // Check if we have grouped executions (complete trades with entry/exit)
 const hasGroupedExecutions = computed(() => {
   return form.value.executions &&
@@ -1976,6 +2011,12 @@ async function loadTrade() {
     // Create local reference for easier access
     const tradeData = trade.value
 
+    const excursionSource = {
+      instrument_type: tradeData.instrument_type || 'stock',
+      quantity: tradeData.quantity,
+      point_value: tradeData.point_value ?? tradeData.pointValue
+    }
+
     form.value = {
       symbol: tradeData.symbol,
       entryTime: formatDateTimeLocal(tradeData.entry_time),
@@ -1988,10 +2029,10 @@ async function loadTrade() {
       entryCommission: tradeData.entry_commission != null ? Number(tradeData.entry_commission) : (tradeData.commission != null ? Number(tradeData.commission) : 0),
       exitCommission: tradeData.exit_commission != null ? Number(tradeData.exit_commission) : 0,
       fees: tradeData.fees != null ? Number(tradeData.fees) : 0,
-      mae: tradeData.mae != null ? Number(tradeData.mae) : null,
-      mfe: tradeData.mfe != null ? Number(tradeData.mfe) : null,
-      postExitMae: (tradeData.post_exit_mae ?? tradeData.postExitMae) != null ? Number(tradeData.post_exit_mae ?? tradeData.postExitMae) : null,
-      postExitMfe: (tradeData.post_exit_mfe ?? tradeData.postExitMfe) != null ? Number(tradeData.post_exit_mfe ?? tradeData.postExitMfe) : null,
+      mae: dollarsToExcursionInput(tradeData.mae, excursionSource),
+      mfe: dollarsToExcursionInput(tradeData.mfe, excursionSource),
+      postExitMae: dollarsToExcursionInput(tradeData.post_exit_mae ?? tradeData.postExitMae, excursionSource),
+      postExitMfe: dollarsToExcursionInput(tradeData.post_exit_mfe ?? tradeData.postExitMfe, excursionSource),
       postExitWindowOverrideMinutes: tradeData.post_exit_window_override_minutes ?? tradeData.postExitWindowOverrideMinutes ?? null,
       stopLoss: (tradeData.stop_loss || tradeData.stopLoss) != null ? Number(tradeData.stop_loss || tradeData.stopLoss) : null,
       // Take profit values: use take_profit_targets array as source of truth
@@ -2534,10 +2575,10 @@ async function handleSubmit(opts = {}) {
       quantity: calculatedQuantity,
       commission: calculatedCommission,
       fees: calculatedFees,
-      mae: form.value.mae !== null && form.value.mae !== '' ? parseFloat(form.value.mae) : null,
-      mfe: form.value.mfe !== null && form.value.mfe !== '' ? parseFloat(form.value.mfe) : null,
-      postExitMae: form.value.postExitMae !== null && form.value.postExitMae !== '' ? parseFloat(form.value.postExitMae) : null,
-      postExitMfe: form.value.postExitMfe !== null && form.value.postExitMfe !== '' ? parseFloat(form.value.postExitMfe) : null,
+      mae: excursionInputToDollars(form.value.mae),
+      mfe: excursionInputToDollars(form.value.mfe),
+      postExitMae: excursionInputToDollars(form.value.postExitMae),
+      postExitMfe: excursionInputToDollars(form.value.postExitMfe),
       postExitWindowOverrideMinutes: form.value.postExitWindowOverrideMinutes ? parseInt(form.value.postExitWindowOverrideMinutes, 10) : null,
       confidence: parseInt(form.value.confidence) || 5,
       broker: form.value.broker || '',

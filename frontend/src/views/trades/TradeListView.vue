@@ -784,14 +784,14 @@
                 <td v-else-if="column.visible && column.key === 'mae'"
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  <span v-if="trade.mae != null" class="text-sm font-mono text-red-600 dark:text-red-400">{{ formatCurrency(trade.mae) }}</span>
+                  <span v-if="trade.mae != null" class="text-sm font-mono text-red-600 dark:text-red-400">{{ formatExcursionValue(trade, trade.mae) }}</span>
                   <span v-else class="text-sm text-gray-400">—</span>
                 </td>
 
                 <td v-else-if="column.visible && column.key === 'mfe'"
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  <span v-if="trade.mfe != null" class="text-sm font-mono text-green-600 dark:text-green-400">{{ formatCurrency(trade.mfe) }}</span>
+                  <span v-if="trade.mfe != null" class="text-sm font-mono text-green-600 dark:text-green-400">{{ formatExcursionValue(trade, trade.mfe) }}</span>
                   <span v-else class="text-sm text-gray-400">—</span>
                 </td>
 
@@ -1065,6 +1065,19 @@ const { formatCurrency, currencySymbol, formatSignedCurrency } = useCurrencyForm
 const { formatTime: formatTimeTz, userTimezone } = useUserTimezone()
 const route = useRoute()
 const router = useRouter()
+
+function formatExcursionValue(trade, value) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return '—'
+  if ((trade.instrument_type ?? trade.instrumentType) !== 'future') return formatCurrency(numeric)
+
+  const quantity = Math.abs(Number(trade.quantity) || 0)
+  const pointValue = Number(trade.point_value ?? trade.pointValue) || 0
+  if (quantity <= 0 || pointValue <= 0) return formatCurrency(numeric)
+
+  const points = numeric / (quantity * pointValue)
+  return `${points.toFixed(2)} pts (${formatCurrency(numeric)})`
+}
 
 // MDI icons
 const newspaperIcon = mdiNewspaper
