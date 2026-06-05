@@ -734,6 +734,7 @@ class PlaidConnection {
       authorizedDate: row.authorized_date,
       description: row.description,
       merchantName: row.merchant_name,
+      reviewStatus: row.review_status,
       directionGuess: row.direction_guess,
       confidence: row.confidence,
       reviewReason: row.review_reason,

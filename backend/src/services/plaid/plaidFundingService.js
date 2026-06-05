@@ -416,7 +416,8 @@ class PlaidFundingService {
 
     const summary = {
       total: synced.length,
-      pending: synced.filter(item => item.reviewStatus === 'pending').length,
+      pending: pending.length,
+      bankPending: synced.filter(item => item.reviewStatus === 'pending' && item.pending).length,
       approved: synced.filter(item => item.reviewStatus === 'approved').length,
       rejected: synced.filter(item => item.reviewStatus === 'rejected').length
     };

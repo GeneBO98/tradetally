@@ -1,5 +1,5 @@
 <template>
-  <div class="card overflow-hidden">
+  <div class="card overflow-visible">
     <div class="border-b border-gray-200 px-4 py-3 dark:border-gray-700 sm:px-5">
       <h3 class="heading-card">Plaid Connections</h3>
       <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
@@ -50,7 +50,7 @@
         <div
           v-for="connection in connections"
           :key="connection.id"
-          class="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700"
+          class="overflow-visible rounded-lg border border-gray-200 dark:border-gray-700"
         >
           <!-- Connection header -->
           <button
