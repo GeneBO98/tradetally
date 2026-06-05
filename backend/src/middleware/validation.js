@@ -431,7 +431,7 @@ const schemas = {
     enableTradeGrouping: Joi.boolean(),
     tradeGroupingTimeGapMinutes: Joi.number().integer().min(1).max(1440),
     autoCloseExpiredOptions: Joi.boolean(),
-    defaultStopLossType: Joi.string().valid('percent', 'lod', 'dollar').default('percent'),
+    defaultStopLossType: Joi.string().valid('percent', 'lod', 'dollar'),
     defaultStopLossPercent: Joi.number().min(0).max(100).allow(null),
     defaultStopLossDollars: Joi.number().min(0).allow(null),
     defaultTakeProfitPercent: Joi.number().min(0).max(1000).allow(null),
