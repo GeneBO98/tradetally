@@ -2326,8 +2326,13 @@ const tradeController = {
               });
 
               trades = trades.map(trade => {
-                // Only apply fees if the trade doesn't already have commission/fees set
-                if ((!trade.commission || trade.commission === 0) && (!trade.fees || trade.fees === 0)) {
+                const hasCommission = trade.commission !== undefined && trade.commission !== null && Number(trade.commission) !== 0;
+                const hasFees = trade.fees !== undefined && trade.fees !== null && Number(trade.fees) !== 0;
+
+                // Apply only the missing side of broker costs. Some importers provide
+                // regulatory fees but no commission, and custom settings should still
+                // fill in the missing commission without overwriting broker-provided fees.
+                if (!hasCommission || !hasFees) {
                   const symbol = (trade.symbol || '').toUpperCase();
                   const quantity = trade.quantity || trade.totalQuantity || 1;
                   const effectiveBroker = getEffectiveBroker(trade);
@@ -2397,14 +2402,22 @@ const tradeController = {
                     const entryFees = feesPerContract * quantity;
                     const exitFees = isRoundTrip ? feesPerContract * quantity : 0;
 
-                    trade.entryCommission = entryCommission;
-                    trade.exitCommission = exitCommission;
-                    trade.commission = totalCommission;
-                    trade.fees = totalFees;
+                    const appliedCommission = hasCommission ? 0 : totalCommission;
+                    const appliedFees = hasFees ? 0 : totalFees;
+
+                    if (!hasCommission) {
+                      trade.entryCommission = entryCommission;
+                      trade.exitCommission = exitCommission;
+                      trade.commission = totalCommission;
+                    }
+
+                    if (!hasFees) {
+                      trade.fees = totalFees;
+                    }
 
                     // Recalculate P&L with commission and fees if it's a closed trade
-                    if (isRoundTrip && trade.pnl !== undefined && trade.pnl !== null) {
-                      trade.pnl = trade.pnl - totalCommission - totalFees;
+                    if (isRoundTrip && trade.pnl !== undefined && trade.pnl !== null && (appliedCommission || appliedFees)) {
+                      trade.pnl = trade.pnl - appliedCommission - appliedFees;
                     }
 
                     // Determine match type for logging
@@ -2418,8 +2431,8 @@ const tradeController = {
                         matchType = `base-symbol (${futuresMatch[1]})`;
                       }
                     }
-                    const totalCost = totalCommission + totalFees;
-                    logger.logImport(`[BROKER FEES] Applied to ${symbol} (${quantity} contracts): commission=$${totalCommission.toFixed(2)}, fees=$${totalFees.toFixed(2)}, total=$${totalCost.toFixed(2)} [${matchType}]`);
+                    const totalCost = appliedCommission + appliedFees;
+                    logger.logImport(`[BROKER FEES] Applied to ${symbol} (${quantity} contracts): commission=$${appliedCommission.toFixed(2)}, fees=$${appliedFees.toFixed(2)}, total=$${totalCost.toFixed(2)} [${matchType}]`);
                   }
                 }
                 return trade;
