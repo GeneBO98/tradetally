@@ -201,7 +201,13 @@ class Trade {
     if (!finalTradeDate) {
       // Extract date from timestamp (YYYY-MM-DD format)
       const timestampToUse = cleanExitTime || finalEntryTime;
-      finalTradeDate = timestampToUse.split('T')[0];
+      if (timestampToUse instanceof Date) {
+        finalTradeDate = timestampToUse.toISOString().split('T')[0];
+      } else if (typeof timestampToUse === 'string') {
+        finalTradeDate = timestampToUse.split('T')[0];
+      } else {
+        finalTradeDate = new Date(timestampToUse).toISOString().split('T')[0];
+      }
     }
 
     // Auto-assign strategy if not provided by user
