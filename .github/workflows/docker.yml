@@ -1,6 +1,10 @@
 name: Build Docker Images
 
 on:
+  pull_request:
+    branches:
+      - main
+      - develop
   push:
     branches:
       - main
@@ -72,6 +76,7 @@ jobs:
 
   build:
     needs: test
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: write

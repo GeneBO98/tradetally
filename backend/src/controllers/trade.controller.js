@@ -25,6 +25,10 @@ const MAEEstimator = require('../utils/maeEstimator');
 const TierService = require('../services/tierService');
 const { verifyJwtToken, TOKEN_PURPOSES } = require('../middleware/auth');
 const { escapeCsv } = require('../utils/csvEscape');
+const {
+  applyBrokerFeeSettingsToTrades,
+  getBrokerLookupNames
+} = require('../services/brokerFeeApplicationService');
 
 /**
  * Auto-calculate MAE/MFE for a closed trade using Finnhub candle data.
@@ -2240,41 +2244,7 @@ const tradeController = {
           // Supports per-instrument fees with fallback to broker-wide default
           // When broker is 'auto', we need to look up fees per-trade based on each trade's detected broker
           try {
-            // Normalize broker names to handle common misspellings and variations
-            // This ensures backwards compatibility with data saved under old names
-            const normalizeBrokerName = (name) => {
-              const normalized = (name || '').toLowerCase().trim();
-              // Map common variations to canonical names
-              const brokerAliases = {
-                'tradeovate': 'tradovate',  // Common misspelling
-                'trade ovate': 'tradovate',
-                'thinkorswim': 'thinkorswim',
-                'tos': 'thinkorswim',
-                'interactive brokers': 'ibkr',
-                'interactivebrokers': 'ibkr',
-              };
-              return brokerAliases[normalized] || normalized;
-            };
-
-            // Get the effective broker - use trade's broker if 'auto' was selected
-            const getEffectiveBroker = (trade) => {
-              if (broker.toLowerCase() === 'auto' && trade.broker) {
-                return normalizeBrokerName(trade.broker);
-              }
-              return normalizeBrokerName(broker);
-            };
-
-            // Get unique brokers from trades when using 'auto'
-            const brokersToLookup = broker.toLowerCase() === 'auto'
-              ? [...new Set(trades.map(t => normalizeBrokerName(t.broker)).filter(Boolean))]
-              : [normalizeBrokerName(broker)];
-
-            // Also include common aliases in lookup to find settings saved under old names
-            const expandedBrokersToLookup = [...new Set([
-              ...brokersToLookup,
-              // Add aliases for tradovate
-              ...(brokersToLookup.includes('tradovate') ? ['tradeovate'] : []),
-            ])];
+            const { brokersToLookup, expandedBrokersToLookup } = getBrokerLookupNames(broker, trades);
 
             logger.logImport(`[BROKER FEES] Looking up fees for brokers: ${expandedBrokersToLookup.join(', ')}`);
 
@@ -2290,152 +2260,11 @@ const tradeController = {
             const brokerFeeResult = await db.query(brokerFeeQuery, [fileUserId, expandedBrokersToLookup]);
 
             if (brokerFeeResult.rows.length > 0) {
-              // Build a nested map: broker -> instrument -> fee settings
-              // Empty string instrument = broker-wide default
-              // Normalize broker names so settings saved under old names (e.g., 'tradeovate') map to canonical names (e.g., 'tradovate')
-              const brokerFeeMap = new Map();
-
-              brokerFeeResult.rows.forEach(row => {
-                const brokerName = normalizeBrokerName(row.broker);
-                const instrument = (row.instrument || '').toUpperCase();
-                // Separate broker commission from regulatory/exchange fees
-                const settings = {
-                  // Commission = broker's commission charges
-                  commissionPerContract: parseFloat(row.commission_per_contract) || 0,
-                  commissionPerSide: parseFloat(row.commission_per_side) || 0,
-                  // Fees = regulatory and exchange fees (NFA, exchange, clearing, platform)
-                  feesPerContract:
-                    (parseFloat(row.exchange_fee_per_contract) || 0) +
-                    (parseFloat(row.nfa_fee_per_contract) || 0) +
-                    (parseFloat(row.clearing_fee_per_contract) || 0) +
-                    (parseFloat(row.platform_fee_per_contract) || 0)
-                };
-
-                if (!brokerFeeMap.has(brokerName)) {
-                  brokerFeeMap.set(brokerName, { instruments: new Map(), default: null });
-                }
-
-                const brokerSettings = brokerFeeMap.get(brokerName);
-                if (instrument === '') {
-                  brokerSettings.default = settings;
-                  logger.logImport(`[BROKER FEES] Default for ${brokerName}: commission=$${settings.commissionPerContract.toFixed(4)}/contract + $${settings.commissionPerSide.toFixed(2)}/side, fees=$${settings.feesPerContract.toFixed(4)}/contract`);
-                } else {
-                  brokerSettings.instruments.set(instrument, settings);
-                  logger.logImport(`[BROKER FEES] ${instrument} for ${brokerName}: commission=$${settings.commissionPerContract.toFixed(4)}/contract + $${settings.commissionPerSide.toFixed(2)}/side, fees=$${settings.feesPerContract.toFixed(4)}/contract`);
-                }
-              });
-
-              trades = trades.map(trade => {
-                const hasCommission = trade.commission !== undefined && trade.commission !== null && Number(trade.commission) !== 0;
-                const hasFees = trade.fees !== undefined && trade.fees !== null && Number(trade.fees) !== 0;
-
-                // Apply only the missing side of broker costs. Some importers provide
-                // regulatory fees but no commission, and custom settings should still
-                // fill in the missing commission without overwriting broker-provided fees.
-                if (!hasCommission || !hasFees) {
-                  const symbol = (trade.symbol || '').toUpperCase();
-                  const quantity = trade.quantity || trade.totalQuantity || 1;
-                  const effectiveBroker = getEffectiveBroker(trade);
-
-                  // Get broker-specific fee settings
-                  const brokerSettings = brokerFeeMap.get(effectiveBroker);
-                  if (!brokerSettings) {
-                    logger.logImport(`[BROKER FEES] No fee settings found for broker '${effectiveBroker}' (symbol: ${symbol}). Available brokers: ${[...brokerFeeMap.keys()].join(', ')}`);
-                    return trade; // No fee settings for this broker
-                  }
-
-                  const feeSettingsMap = brokerSettings.instruments;
-                  const defaultFeeSettings = brokerSettings.default;
-
-                  // Look up fee settings with fallback chain:
-                  // 1. Exact symbol match (e.g., MESZ5)
-                  // 2. Base futures symbol without contract suffix (e.g., MES from MESZ5 or ESH25)
-                  // 3. Broker-wide default
-                  let feeSettings = feeSettingsMap.get(symbol);
-
-                  if (!feeSettings) {
-                    // Try to extract base futures symbol
-                    // Futures format: BASE + MONTH_CODE + YEAR (e.g., MESZ5, ESH25, NQM24)
-                    // Month codes: F,G,H,J,K,M,N,Q,U,V,X,Z
-                    // Base symbol may contain digits (e.g. M2K = Micro Russell 2000),
-                    // so allow alphanumerics after a required leading letter.
-                    const futuresMatch = symbol.match(/^([A-Z][A-Z0-9]{1,3})([FGHJKMNQUVXZ])(\d{1,2})$/);
-                    if (futuresMatch) {
-                      const baseSymbol = futuresMatch[1];
-                      feeSettings = feeSettingsMap.get(baseSymbol);
-                      if (feeSettings) {
-                        logger.logImport(`[BROKER FEES] Matched ${symbol} to base symbol ${baseSymbol}`);
-                      }
-                    }
-                  }
-
-                  // Fall back to broker default if no instrument match
-                  if (!feeSettings) {
-                    feeSettings = defaultFeeSettings;
-                    if (feeSettings) {
-                      logger.logImport(`[BROKER FEES] Using broker default for ${symbol}`);
-                    }
-                  }
-
-                  if (!feeSettings) {
-                    logger.logImport(`[BROKER FEES] No fee settings found for ${symbol} (broker: ${effectiveBroker}). No instrument match and no broker default configured.`);
-                    return trade;
-                  }
-
-                  if (feeSettings) {
-                    const { commissionPerContract, commissionPerSide, feesPerContract } = feeSettings;
-
-                    // Calculate commission and fees separately for a round-trip trade
-                    // Commission = broker commission (per contract + per side)
-                    // Fees = regulatory/exchange fees (NFA, exchange, clearing, platform)
-                    const isRoundTrip = !!trade.exitPrice;
-                    const sides = isRoundTrip ? 2 : 1;
-
-                    // Commission: (perContract * quantity * sides) + (perSide * sides)
-                    const totalCommission = (commissionPerContract * quantity * sides) + (commissionPerSide * sides);
-                    // Fees: perContract * quantity * sides
-                    const totalFees = feesPerContract * quantity * sides;
-
-                    // Split between entry and exit
-                    const entryCommission = (commissionPerContract * quantity) + commissionPerSide;
-                    const exitCommission = isRoundTrip ? (commissionPerContract * quantity) + commissionPerSide : 0;
-                    const entryFees = feesPerContract * quantity;
-                    const exitFees = isRoundTrip ? feesPerContract * quantity : 0;
-
-                    const appliedCommission = hasCommission ? 0 : totalCommission;
-                    const appliedFees = hasFees ? 0 : totalFees;
-
-                    if (!hasCommission) {
-                      trade.entryCommission = entryCommission;
-                      trade.exitCommission = exitCommission;
-                      trade.commission = totalCommission;
-                    }
-
-                    if (!hasFees) {
-                      trade.fees = totalFees;
-                    }
-
-                    // Recalculate P&L with commission and fees if it's a closed trade
-                    if (isRoundTrip && trade.pnl !== undefined && trade.pnl !== null && (appliedCommission || appliedFees)) {
-                      trade.pnl = trade.pnl - appliedCommission - appliedFees;
-                    }
-
-                    // Determine match type for logging
-                    let matchType = 'broker-default';
-                    if (feeSettingsMap.has(symbol)) {
-                      matchType = 'exact-symbol';
-                    } else {
-                      // Check if we matched on base futures symbol
-                      const futuresMatch = symbol.match(/^([A-Z][A-Z0-9]{1,3})([FGHJKMNQUVXZ])(\d{1,2})$/);
-                      if (futuresMatch && feeSettingsMap.has(futuresMatch[1])) {
-                        matchType = `base-symbol (${futuresMatch[1]})`;
-                      }
-                    }
-                    const totalCost = appliedCommission + appliedFees;
-                    logger.logImport(`[BROKER FEES] Applied to ${symbol} (${quantity} contracts): commission=$${appliedCommission.toFixed(2)}, fees=$${appliedFees.toFixed(2)}, total=$${totalCost.toFixed(2)} [${matchType}]`);
-                  }
-                }
-                return trade;
+              trades = applyBrokerFeeSettingsToTrades({
+                trades,
+                broker,
+                feeRows: brokerFeeResult.rows,
+                logger
               });
 
               logger.logImport(`[BROKER FEES] Completed fee application for ${trades.length} trades`);

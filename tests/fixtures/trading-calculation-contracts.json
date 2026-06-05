@@ -1,0 +1,266 @@
+{
+  "pnl_engine_cases": [
+    {
+      "id": "stock_long_round_trip",
+      "description": "Long stock trade deducts entry and exit costs from gross price P&L.",
+      "input": {
+        "side": "long",
+        "instrumentType": "stock",
+        "timezone": "UTC",
+        "executions": [
+          { "action": "buy", "quantity": 100, "price": 10, "commission": 1, "fees": 0, "datetime": "2026-01-05T10:00:00Z" },
+          { "action": "sell", "quantity": 100, "price": 12, "commission": 1, "fees": 0.25, "datetime": "2026-01-05T14:00:00Z" }
+        ]
+      },
+      "expected": {
+        "aggregate": {
+          "entry_price": 10,
+          "exit_price": 12,
+          "quantity": 100,
+          "commission": 2,
+          "fees": 0.25,
+          "pnl": 197.75,
+          "pnl_percent": 20,
+          "is_fully_closed": true
+        },
+        "realized_pnl": [null, 197.75]
+      }
+    },
+    {
+      "id": "stock_short_round_trip",
+      "description": "Short stock trade uses entry minus exit for gross price P&L.",
+      "input": {
+        "side": "short",
+        "instrumentType": "stock",
+        "timezone": "UTC",
+        "executions": [
+          { "action": "sell", "quantity": 50, "price": 20, "commission": 0.5, "fees": 0, "datetime": "2026-01-06T10:00:00Z" },
+          { "action": "buy", "quantity": 50, "price": 18, "commission": 0.5, "fees": 0.1, "datetime": "2026-01-06T14:00:00Z" }
+        ]
+      },
+      "expected": {
+        "aggregate": {
+          "entry_price": 20,
+          "exit_price": 18,
+          "quantity": 50,
+          "commission": 1,
+          "fees": 0.1,
+          "pnl": 98.9,
+          "pnl_percent": 10,
+          "is_fully_closed": true
+        },
+        "realized_pnl": [null, 98.9]
+      }
+    },
+    {
+      "id": "option_contract_multiplier",
+      "description": "Option trades multiply price movement by contract size.",
+      "input": {
+        "side": "long",
+        "instrumentType": "option",
+        "contractSize": 100,
+        "timezone": "UTC",
+        "executions": [
+          { "action": "buy", "quantity": 2, "price": 1.5, "commission": 1, "fees": 0, "datetime": "2026-01-07T10:00:00Z" },
+          { "action": "sell", "quantity": 2, "price": 2.25, "commission": 1, "fees": 0.2, "datetime": "2026-01-07T14:00:00Z" }
+        ]
+      },
+      "expected": {
+        "aggregate": {
+          "entry_price": 1.5,
+          "exit_price": 2.25,
+          "quantity": 2,
+          "commission": 2,
+          "fees": 0.2,
+          "pnl": 147.8,
+          "pnl_percent": 50,
+          "is_fully_closed": true
+        },
+        "realized_pnl": [null, 147.8]
+      }
+    },
+    {
+      "id": "future_point_value",
+      "description": "Futures trades multiply price movement by point value.",
+      "input": {
+        "side": "long",
+        "instrumentType": "future",
+        "pointValue": 5,
+        "timezone": "UTC",
+        "executions": [
+          { "action": "buy", "quantity": 3, "price": 4500, "commission": 3, "fees": 0, "datetime": "2026-01-08T10:00:00Z" },
+          { "action": "sell", "quantity": 3, "price": 4504, "commission": 3, "fees": 1.2, "datetime": "2026-01-08T14:00:00Z" }
+        ]
+      },
+      "expected": {
+        "aggregate": {
+          "entry_price": 4500,
+          "exit_price": 4504,
+          "quantity": 3,
+          "commission": 6,
+          "fees": 1.2,
+          "pnl": 52.8,
+          "pnl_percent": 0.0782222222,
+          "is_fully_closed": true
+        },
+        "realized_pnl": [null, 52.8]
+      }
+    },
+    {
+      "id": "fifo_partial_exits",
+      "description": "FIFO partial exits prorate entry costs into each realized exit.",
+      "input": {
+        "side": "long",
+        "instrumentType": "stock",
+        "timezone": "UTC",
+        "executions": [
+          { "action": "buy", "quantity": 100, "price": 10, "commission": 1, "fees": 0.1, "datetime": "2026-01-09T10:00:00Z" },
+          { "action": "sell", "quantity": 40, "price": 11, "commission": 0.4, "fees": 0.04, "datetime": "2026-01-09T11:00:00Z" },
+          { "action": "sell", "quantity": 60, "price": 12, "commission": 0.6, "fees": 0.06, "datetime": "2026-01-09T14:00:00Z" }
+        ]
+      },
+      "expected": {
+        "aggregate": {
+          "entry_price": 10,
+          "exit_price": 11.6,
+          "quantity": 100,
+          "commission": 2,
+          "fees": 0.2,
+          "pnl": 157.8,
+          "pnl_percent": 16,
+          "is_fully_closed": true
+        },
+        "realized_pnl": [null, 39.12, 118.68]
+      }
+    },
+    {
+      "id": "grouped_executions",
+      "description": "Grouped execution records calculate weighted entry and exit averages.",
+      "input": {
+        "side": "long",
+        "instrumentType": "stock",
+        "timezone": "UTC",
+        "executions": [
+          { "entryPrice": 100, "exitPrice": 110, "quantity": 10, "commission": 1, "fees": 0.2, "entryTime": "2026-01-10T10:00:00Z", "exitTime": "2026-01-10T13:00:00Z" },
+          { "entryPrice": 102, "exitPrice": 108, "quantity": 5, "commission": 0.5, "fees": 0.1, "entryTime": "2026-01-10T10:05:00Z", "exitTime": "2026-01-10T13:05:00Z" }
+        ]
+      },
+      "expected": {
+        "aggregate": {
+          "entry_price": 100.6666666667,
+          "exit_price": 109.3333333333,
+          "quantity": 15,
+          "commission": 1.5,
+          "fees": 0.3,
+          "pnl": 128.2,
+          "pnl_percent": 8.6092715232,
+          "is_fully_closed": true
+        },
+        "realized_pnl": [98.8, 29.4]
+      }
+    },
+    {
+      "id": "ibkr_double_recorded_cost",
+      "description": "IBKR-style trade fallback commission matching execution fees is not double-counted.",
+      "input": {
+        "side": "short",
+        "instrumentType": "option",
+        "contractSize": 100,
+        "fallbackCommission": -1.53244,
+        "fallbackFees": 0,
+        "timezone": "UTC",
+        "executions": [
+          { "action": "sell", "quantity": 4, "price": 0.47, "fees": -1.53244, "datetime": "2025-12-30T18:11:00Z" },
+          { "action": "buy", "quantity": 4, "price": 0, "fees": 0, "datetime": "2026-01-02T21:20:00Z" }
+        ]
+      },
+      "expected": {
+        "aggregate": {
+          "entry_price": 0.47,
+          "exit_price": 0,
+          "quantity": 4,
+          "commission": 0,
+          "fees": -1.53244,
+          "pnl": 189.53244,
+          "pnl_percent": 100,
+          "is_fully_closed": true
+        },
+        "realized_pnl": [null, 189.53244]
+      }
+    }
+  ],
+  "broker_fee_application": {
+    "broker": "tradovate",
+    "fee_rows": [
+      {
+        "broker": "tradovate",
+        "instrument": "ES",
+        "commission_per_contract": 1.25,
+        "commission_per_side": 0.5,
+        "exchange_fee_per_contract": 0.1,
+        "nfa_fee_per_contract": 0.05,
+        "clearing_fee_per_contract": 0.03,
+        "platform_fee_per_contract": 0.02
+      }
+    ],
+    "cases": [
+      {
+        "id": "missing_commission_preserves_existing_fees",
+        "trade": { "symbol": "ESZ6", "quantity": 2, "exitPrice": 4510, "pnl": 100, "commission": 0, "fees": 1 },
+        "expected": { "commission": 6, "fees": 1, "pnl": 94 }
+      },
+      {
+        "id": "missing_fees_preserves_existing_commission",
+        "trade": { "symbol": "ESZ6", "quantity": 2, "exitPrice": 4510, "pnl": 100, "commission": 6, "fees": 0 },
+        "expected": { "commission": 6, "fees": 0.8, "pnl": 99.2 }
+      },
+      {
+        "id": "missing_both_applies_both_costs",
+        "trade": { "symbol": "ESZ6", "quantity": 2, "exitPrice": 4510, "pnl": 100, "commission": 0, "fees": 0 },
+        "expected": { "commission": 6, "fees": 0.8, "pnl": 93.2 }
+      },
+      {
+        "id": "existing_both_preserves_imported_costs",
+        "trade": { "symbol": "ESZ6", "quantity": 2, "exitPrice": 4510, "pnl": 100, "commission": 6, "fees": 1 },
+        "expected": { "commission": 6, "fees": 1, "pnl": 100 }
+      }
+    ]
+  },
+  "analytics_summary": {
+    "trades": [
+      { "id": "win-1", "pnl": 197.75, "commission": 2, "fees": 0.25, "exit_price": 12 },
+      { "id": "win-2", "pnl": 98.9, "commission": 1, "fees": 0.1, "exit_price": 18 },
+      { "id": "breakeven-1", "pnl": -2, "commission": 2, "fees": 0, "exit_price": 10 }
+    ],
+    "expected": {
+      "total_trades": 3,
+      "winning_trades": 2,
+      "losing_trades": 0,
+      "breakeven_trades": 1,
+      "total_pnl": 294.65,
+      "total_commissions": 5,
+      "total_fees": 0.35,
+      "total_costs": 5.35,
+      "total_gross_pnl": 300,
+      "win_rate": 66.6666666667,
+      "win_rate_excluding_breakeven": 100
+    }
+  },
+  "r_value": {
+    "documented_weighted_target_example": {
+      "trade": {
+        "entry_price": 6902.75,
+        "stop_loss": 6909,
+        "take_profit": 6885.5,
+        "take_profit_targets": [
+          { "price": 6885.5, "shares": 7 },
+          { "price": 6822.25, "shares": 1 }
+        ],
+        "quantity": 8,
+        "side": "short"
+      },
+      "risk": 6.25,
+      "expected_weighted_target_r": 4.025
+    }
+  }
+}
