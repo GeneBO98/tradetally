@@ -36,6 +36,21 @@ function normalizeRuleDescription(description) {
     .replace(/\s+/g, ' ');
 }
 
+function emptyReviewData() {
+  return {
+    pending: [],
+    history: [],
+    synced: [],
+    summary: {
+      total: 0,
+      pending: 0,
+      bankPending: 0,
+      approved: 0,
+      rejected: 0
+    }
+  };
+}
+
 class PlaidFundingService {
   ensureConfigured() {
     if (!plaidClient.isConfigured()) {
@@ -43,8 +58,16 @@ class PlaidFundingService {
     }
   }
 
+  async ensureSchemaReady() {
+    const schemaReady = await PlaidConnection.hasSchema();
+    if (!schemaReady) {
+      throw new Error('Plaid funding tables are not available. Run database migrations to enable Plaid funding sync.');
+    }
+  }
+
   async createLinkToken(user, targetType = 'bank') {
     this.ensureConfigured();
+    await this.ensureSchemaReady();
     const response = await plaidClient.createLinkToken({
       userId: user.id,
       email: user.email,
@@ -59,6 +82,7 @@ class PlaidFundingService {
 
   async exchangePublicToken(userId, payload) {
     this.ensureConfigured();
+    await this.ensureSchemaReady();
 
     const {
       publicToken,
@@ -86,10 +110,16 @@ class PlaidFundingService {
   }
 
   async listConnections(userId) {
+    const schemaReady = await PlaidConnection.hasSchema();
+    if (!schemaReady) {
+      return [];
+    }
+
     return PlaidConnection.findByUserId(userId);
   }
 
   async updateConnection(userId, connectionId, updates) {
+    await this.ensureSchemaReady();
     const connection = await PlaidConnection.findById(connectionId, userId, false);
     if (!connection) {
       throw new Error('Plaid connection not found');
@@ -111,6 +141,7 @@ class PlaidFundingService {
   }
 
   async deleteConnection(userId, connectionId) {
+    await this.ensureSchemaReady();
     const deleted = await PlaidConnection.delete(connectionId, userId);
     if (!deleted) {
       throw new Error('Plaid connection not found');
@@ -119,6 +150,8 @@ class PlaidFundingService {
   }
 
   async linkPlaidAccount(userId, plaidAccountId, payload) {
+    await this.ensureSchemaReady();
+
     const {
       linkedAccountId,
       trackingMode,
@@ -159,6 +192,7 @@ class PlaidFundingService {
   }
 
   async unlinkPlaidAccount(userId, plaidAccountId) {
+    await this.ensureSchemaReady();
     const plaidAccount = await PlaidConnection.setAccountLink(
       plaidAccountId,
       userId,
@@ -175,6 +209,7 @@ class PlaidFundingService {
 
   async syncConnection(connectionId, { userId = null } = {}) {
     this.ensureConfigured();
+    await this.ensureSchemaReady();
 
     const connection = await PlaidConnection.findById(connectionId, userId, true);
     if (!connection) {
@@ -408,6 +443,11 @@ class PlaidFundingService {
   }
 
   async getReviewData(userId, accountId) {
+    const schemaReady = await PlaidConnection.hasSchema();
+    if (!schemaReady) {
+      return emptyReviewData();
+    }
+
     const [pending, history, synced] = await Promise.all([
       PlaidConnection.listReviewQueue(userId, accountId, 50),
       PlaidConnection.listReviewedActivity(userId, accountId, 20),

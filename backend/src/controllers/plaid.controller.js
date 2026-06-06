@@ -1,5 +1,11 @@
 const plaidFundingService = require('../services/plaid/plaidFundingService');
 
+function getPlaidErrorStatus(error, fallbackStatus = 500) {
+  return /not configured|not available|funding tables/i.test(error.message)
+    ? 503
+    : fallbackStatus;
+}
+
 const plaidController = {
   async createLinkToken(req, res) {
     try {
@@ -7,7 +13,7 @@ const plaidController = {
       const data = await plaidFundingService.createLinkToken(req.user, targetType);
       res.json({ success: true, data });
     } catch (error) {
-      const status = /not configured/i.test(error.message) ? 503 : 500;
+      const status = getPlaidErrorStatus(error);
       res.status(status).json({
         success: false,
         message: error.message || 'Failed to create Plaid Link token'
@@ -39,7 +45,7 @@ const plaidController = {
         data: connection
       });
     } catch (error) {
-      const status = /not configured/i.test(error.message) ? 503 : 500;
+      const status = getPlaidErrorStatus(error);
       return res.status(status).json({
         success: false,
         message: error.message || 'Failed to exchange Plaid public token'
@@ -52,7 +58,7 @@ const plaidController = {
       const connections = await plaidFundingService.listConnections(req.user.id);
       res.json({ success: true, data: connections });
     } catch (error) {
-      res.status(500).json({
+      res.status(getPlaidErrorStatus(error)).json({
         success: false,
         message: 'Failed to fetch Plaid connections'
       });
@@ -69,7 +75,7 @@ const plaidController = {
 
       res.json({ success: true, data: updated });
     } catch (error) {
-      const status = /not found/i.test(error.message) ? 404 : 400;
+      const status = /not found/i.test(error.message) ? 404 : getPlaidErrorStatus(error, 400);
       res.status(status).json({
         success: false,
         message: error.message || 'Failed to update Plaid connection'
@@ -85,7 +91,7 @@ const plaidController = {
         message: 'Plaid connection deleted successfully'
       });
     } catch (error) {
-      const status = /not found/i.test(error.message) ? 404 : 400;
+      const status = /not found/i.test(error.message) ? 404 : getPlaidErrorStatus(error, 400);
       res.status(status).json({
         success: false,
         message: error.message || 'Failed to delete Plaid connection'
@@ -100,7 +106,7 @@ const plaidController = {
       });
       res.json({ success: true, data: result });
     } catch (error) {
-      const status = /not found/i.test(error.message) ? 404 : 500;
+      const status = /not found/i.test(error.message) ? 404 : getPlaidErrorStatus(error);
       res.status(status).json({
         success: false,
         message: error.message || 'Failed to sync Plaid connection'
@@ -126,7 +132,7 @@ const plaidController = {
 
       res.json({ success: true, data: linked });
     } catch (error) {
-      const status = /not found/i.test(error.message) ? 404 : 400;
+      const status = /not found/i.test(error.message) ? 404 : getPlaidErrorStatus(error, 400);
       res.status(status).json({
         success: false,
         message: error.message || 'Failed to link Plaid account'
@@ -142,7 +148,7 @@ const plaidController = {
       );
       res.json({ success: true, data: plaidAccount });
     } catch (error) {
-      const status = /not found/i.test(error.message) ? 404 : 500;
+      const status = /not found/i.test(error.message) ? 404 : getPlaidErrorStatus(error);
       res.status(status).json({
         success: false,
         message: error.message || 'Failed to unlink Plaid account'
@@ -155,7 +161,7 @@ const plaidController = {
       const data = await plaidFundingService.getReviewData(req.user.id, req.params.accountId);
       res.json({ success: true, data });
     } catch (error) {
-      res.status(500).json({
+      res.status(getPlaidErrorStatus(error)).json({
         success: false,
         message: 'Failed to fetch Plaid review queue'
       });
