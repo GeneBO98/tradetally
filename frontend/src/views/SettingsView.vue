@@ -858,6 +858,8 @@
                                             { value: 'gemini', label: 'Google Gemini' },
                                             { value: 'claude', label: 'Anthropic Claude' },
                                             { value: 'openai', label: 'OpenAI' },
+                                            { value: 'deepseek', label: 'DeepSeek' },
+                                            { value: 'kimi', label: 'Kimi' },
                                             { value: 'ollama', label: 'Ollama' },
                                             { value: 'lmstudio', label: 'LM Studio' },
                                             { value: 'perplexity', label: 'Perplexity AI' },
@@ -1033,6 +1035,8 @@
                                                 { value: 'gemini', label: 'Google Gemini' },
                                                 { value: 'claude', label: 'Anthropic Claude' },
                                                 { value: 'openai', label: 'OpenAI' },
+                                            { value: 'deepseek', label: 'DeepSeek' },
+                                            { value: 'kimi', label: 'Kimi' },
                                                 { value: 'ollama', label: 'Ollama' },
                                                 { value: 'lmstudio', label: 'LM Studio' },
                                                 { value: 'perplexity', label: 'Perplexity AI' },
@@ -1166,6 +1170,8 @@
                                             { value: 'gemini', label: 'Google Gemini' },
                                             { value: 'claude', label: 'Anthropic Claude' },
                                             { value: 'openai', label: 'OpenAI' },
+                                            { value: 'deepseek', label: 'DeepSeek' },
+                                            { value: 'kimi', label: 'Kimi' },
                                             { value: 'ollama', label: 'Ollama' },
                                             { value: 'lmstudio', label: 'LM Studio' },
                                             { value: 'perplexity', label: 'Perplexity AI' },
@@ -1331,6 +1337,8 @@
                                                     { value: 'gemini', label: 'Google Gemini' },
                                                     { value: 'claude', label: 'Anthropic Claude' },
                                                     { value: 'openai', label: 'OpenAI' },
+                                            { value: 'deepseek', label: 'DeepSeek' },
+                                            { value: 'kimi', label: 'Kimi' },
                                                     { value: 'ollama', label: 'Ollama' },
                                                     { value: 'lmstudio', label: 'LM Studio' },
                                                     { value: 'perplexity', label: 'Perplexity AI' },
@@ -1497,6 +1505,8 @@
                                                 { value: 'gemini', label: 'Google Gemini' },
                                                 { value: 'claude', label: 'Anthropic Claude' },
                                                 { value: 'openai', label: 'OpenAI' },
+                                            { value: 'deepseek', label: 'DeepSeek' },
+                                            { value: 'kimi', label: 'Kimi' },
                                                 { value: 'ollama', label: 'Ollama' },
                                                 { value: 'lmstudio', label: 'LM Studio' },
                                                 { value: 'perplexity', label: 'Perplexity AI' },
@@ -2971,6 +2981,10 @@ function getModelPlaceholder() {
             return "e.g., claude-3-5-sonnet";
         case "openai":
             return "e.g., gpt-4o";
+        case "deepseek":
+            return "e.g., deepseek-chat";
+        case "kimi":
+            return "e.g., moonshot-v1-8k";
         case "ollama":
             return "e.g., llama3.1";
         case "lmstudio":
@@ -2991,6 +3005,10 @@ function getApiKeyPlaceholder() {
         case "claude":
             return "sk-ant-...";
         case "openai":
+            return "sk-...";
+        case "deepseek":
+            return "sk-...";
+        case "kimi":
             return "sk-...";
         case "ollama":
             return "Optional API key";
@@ -3013,6 +3031,10 @@ function getApiKeyHelp() {
             return "Get your API key from Anthropic Console";
         case "openai":
             return "Get your API key from OpenAI Dashboard";
+        case "deepseek":
+            return "Get your API key from DeepSeek Platform";
+        case "kimi":
+            return "Get your API key from Moonshot AI Platform";
         case "ollama":
             return "API key is optional for Ollama";
         case "perplexity":
@@ -3078,6 +3100,10 @@ function getCusipModelPlaceholder() {
             return "e.g., claude-3-5-sonnet-20241022";
         case "openai":
             return "e.g., gpt-4o";
+        case "deepseek":
+            return "e.g., deepseek-chat";
+        case "kimi":
+            return "e.g., moonshot-v1-8k";
         case "ollama":
             return "e.g., llama3.2";
         case "perplexity":
@@ -3097,6 +3123,10 @@ function getCusipApiKeyPlaceholder() {
             return "Your Anthropic API key";
         case "openai":
             return "Your OpenAI API key";
+        case "deepseek":
+            return "Your DeepSeek API key";
+        case "kimi":
+            return "Your Moonshot AI API key";
         case "perplexity":
             return "Your Perplexity API key";
         default:
@@ -3564,6 +3594,10 @@ function getAdminClassifierModelPlaceholder() {
             return "claude-3-haiku-20240307";
         case "openai":
             return "gpt-4o-mini";
+        case "deepseek":
+            return "deepseek-chat";
+        case "kimi":
+            return "moonshot-v1-8k";
         case "ollama":
             return "llama3.1";
         case "lmstudio":
@@ -3598,6 +3632,10 @@ function getAdminClassifierApiKeyPlaceholder() {
             return "Enter Anthropic Claude API key";
         case "openai":
             return "Enter OpenAI API key";
+        case "deepseek":
+            return "Enter DeepSeek API key";
+        case "kimi":
+            return "Enter Moonshot AI API key";
         case "perplexity":
             return "Enter Perplexity API key";
         case "ollama":
@@ -3616,6 +3654,10 @@ function getAdminModelPlaceholder() {
             return "claude-3-5-sonnet-20241022";
         case "openai":
             return "gpt-4o";
+        case "deepseek":
+            return "deepseek-chat";
+        case "kimi":
+            return "moonshot-v1-8k";
         case "ollama":
             return "llama3.1";
         case "lmstudio":
@@ -3637,6 +3679,10 @@ function getAdminApiKeyPlaceholder() {
             return "Enter Anthropic Claude API key";
         case "openai":
             return "Enter OpenAI API key";
+        case "deepseek":
+            return "Enter DeepSeek API key";
+        case "kimi":
+            return "Enter Moonshot AI API key";
         case "ollama":
             return "Optional: Enter Ollama API key";
         default:
@@ -3652,6 +3698,10 @@ function getAdminApiKeyHelp() {
             return "Get your API key at: https://console.anthropic.com/";
         case "openai":
             return "Get your API key at: https://platform.openai.com/api-keys";
+        case "deepseek":
+            return "Get your API key at: https://platform.deepseek.com/api_keys";
+        case "kimi":
+            return "Get your API key at: https://platform.moonshot.ai/console/api-keys";
         case "ollama":
             return "API key is optional for Ollama. Leave blank if not needed.";
         default:
@@ -3724,6 +3774,10 @@ function getAdminCusipModelPlaceholder() {
             return "claude-3-5-sonnet-20241022";
         case "openai":
             return "gpt-4o";
+        case "deepseek":
+            return "deepseek-chat";
+        case "kimi":
+            return "moonshot-v1-8k";
         case "ollama":
             return "llama3.1";
         case "lmstudio":
@@ -3745,6 +3799,10 @@ function getAdminCusipApiKeyPlaceholder() {
             return "Enter Anthropic Claude API key";
         case "openai":
             return "Enter OpenAI API key";
+        case "deepseek":
+            return "Enter DeepSeek API key";
+        case "kimi":
+            return "Enter Moonshot AI API key";
         case "ollama":
             return "Optional: Enter Ollama API key";
         default:

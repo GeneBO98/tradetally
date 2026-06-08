@@ -24,4 +24,16 @@ describe('settings validation', () => {
     expect(error).toBeUndefined();
     expect(value.defaultStopLossType).toBe('dollar');
   });
+
+  test.each(['deepseek', 'kimi'])('accepts %s as an admin AI provider', (provider) => {
+    const { error, value } = schemas.adminAiSettings.validate({
+      aiProvider: provider,
+      aiApiKey: 'test-key',
+      aiApiUrl: '',
+      aiModel: ''
+    });
+
+    expect(error).toBeUndefined();
+    expect(value.aiProvider).toBe(provider);
+  });
 });

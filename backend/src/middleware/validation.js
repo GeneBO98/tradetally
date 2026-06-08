@@ -89,7 +89,7 @@ const nullableDate = Joi.alternatives().try(
   Joi.valid(null, '')
 );
 const nullableNumber = Joi.alternatives().try(Joi.number(), Joi.valid(null, ''));
-const aiProviderSchema = Joi.string().valid('gemini', 'claude', 'openai', 'ollama', 'lmstudio', 'perplexity', 'local');
+const aiProviderSchema = Joi.string().valid('gemini', 'claude', 'openai', 'deepseek', 'kimi', 'ollama', 'lmstudio', 'perplexity', 'local');
 
 const schemas = {
   register: Joi.object({

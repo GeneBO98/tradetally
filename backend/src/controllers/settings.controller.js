@@ -7,6 +7,9 @@ const { computeTradePnl } = require('../services/pnlEngine');
 const { getUserTimezone } = require('../utils/timezone');
 const AnalyticsCache = require('../services/analyticsCache');
 
+const VALID_AI_PROVIDERS = ['gemini', 'claude', 'openai', 'deepseek', 'kimi', 'ollama', 'lmstudio', 'perplexity', 'local'];
+const LOCAL_AI_PROVIDERS = ['local', 'ollama', 'lmstudio'];
+
 function recomputeImportedTradePnl(trade, timezone) {
   const executions = trade.executions || trade.executionData || trade.execution_data;
   if (!Array.isArray(executions) || executions.length === 0) return trade;
@@ -319,7 +322,7 @@ const settingsController = {
       const normalizedProvider = aiProvider ? String(aiProvider).trim() : '';
 
       // Validate AI provider
-      const validProviders = ['gemini', 'claude', 'openai', 'ollama', 'lmstudio', 'perplexity', 'local'];
+      const validProviders = VALID_AI_PROVIDERS;
       if (normalizedProvider && !validProviders.includes(normalizedProvider)) {
         return res.status(400).json({ 
           error: 'Invalid AI provider. Must be one of: ' + validProviders.join(', ')
@@ -344,13 +347,13 @@ const settingsController = {
       }
 
       // Validate required fields
-      if (!['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !aiApiKey) {
+      if (!LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !aiApiKey) {
         return res.status(400).json({ 
           error: 'API key is required for ' + normalizedProvider 
         });
       }
 
-      if (['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !aiApiUrl) {
+      if (LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !aiApiUrl) {
         return res.status(400).json({ 
           error: 'API URL is required for ' + normalizedProvider 
         });
@@ -440,7 +443,7 @@ const settingsController = {
       }
 
       // Validate AI provider
-      const validProviders = ['gemini', 'claude', 'openai', 'ollama', 'lmstudio', 'perplexity', 'local'];
+      const validProviders = VALID_AI_PROVIDERS;
       if (normalizedProvider && !validProviders.includes(normalizedProvider)) {
         return res.status(400).json({
           error: 'Invalid AI provider. Must be one of: ' + validProviders.join(', ')
@@ -448,13 +451,13 @@ const settingsController = {
       }
 
       // Validate required fields based on provider type
-      if (!['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !cusipAiApiKey) {
+      if (!LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !cusipAiApiKey) {
         return res.status(400).json({
           error: 'API key is required for ' + normalizedProvider
         });
       }
 
-      if (['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !cusipAiApiUrl) {
+      if (LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !cusipAiApiUrl) {
         return res.status(400).json({
           error: 'API URL is required for ' + normalizedProvider
         });
@@ -1847,7 +1850,7 @@ const settingsController = {
       const classifierApiKeyUpdate = aiClassifierApiKey === '***' ? undefined : aiClassifierApiKey;
 
       // Validate AI provider
-      const validProviders = ['gemini', 'claude', 'openai', 'ollama', 'lmstudio', 'perplexity', 'local'];
+      const validProviders = VALID_AI_PROVIDERS;
       if (normalizedProvider && !validProviders.includes(normalizedProvider)) {
         return res.status(400).json({ 
           error: 'Invalid AI provider. Must be one of: ' + validProviders.join(', ')
@@ -1892,13 +1895,13 @@ const settingsController = {
       }
 
       // Validate required fields
-      if (!['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !aiApiKey) {
+      if (!LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !aiApiKey) {
         return res.status(400).json({ 
           error: 'API key is required for ' + normalizedProvider 
         });
       }
 
-      if (['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !aiApiUrl) {
+      if (LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !aiApiUrl) {
         return res.status(400).json({ 
           error: 'API URL is required for ' + normalizedProvider 
         });
@@ -1919,7 +1922,7 @@ const settingsController = {
         const classifierUsesMainProvider = effectiveClassifierProvider === normalizedProvider;
         if (
           !classifierUsesMainProvider &&
-          !['local', 'ollama', 'lmstudio'].includes(effectiveClassifierProvider) &&
+          !LOCAL_AI_PROVIDERS.includes(effectiveClassifierProvider) &&
           !aiClassifierApiKey
         ) {
           return res.status(400).json({
@@ -1929,7 +1932,7 @@ const settingsController = {
 
         if (
           !classifierUsesMainProvider &&
-          ['local', 'ollama', 'lmstudio'].includes(effectiveClassifierProvider) &&
+          LOCAL_AI_PROVIDERS.includes(effectiveClassifierProvider) &&
           !aiClassifierApiUrl
         ) {
           return res.status(400).json({
@@ -2031,7 +2034,7 @@ const settingsController = {
       }
 
       // Validate AI provider
-      const validProviders = ['gemini', 'claude', 'openai', 'ollama', 'lmstudio', 'perplexity', 'local'];
+      const validProviders = VALID_AI_PROVIDERS;
       if (normalizedProvider && !validProviders.includes(normalizedProvider)) {
         return res.status(400).json({
           error: 'Invalid AI provider. Must be one of: ' + validProviders.join(', ')
@@ -2039,13 +2042,13 @@ const settingsController = {
       }
 
       // Validate required fields based on provider type
-      if (!['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !cusipAiApiKey) {
+      if (!LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !cusipAiApiKey) {
         return res.status(400).json({
           error: 'API key is required for ' + normalizedProvider
         });
       }
 
-      if (['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !cusipAiApiUrl) {
+      if (LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !cusipAiApiUrl) {
         return res.status(400).json({
           error: 'API URL is required for ' + normalizedProvider
         });

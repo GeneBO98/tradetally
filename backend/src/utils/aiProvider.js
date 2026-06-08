@@ -1,6 +1,6 @@
 /**
  * Multi-provider AI utility
- * Supports Gemini, OpenAI, Claude, LM Studio, Ollama, and other OpenAI-compatible APIs
+ * Supports Gemini, OpenAI, Claude, DeepSeek, Kimi, LM Studio, Ollama, and other OpenAI-compatible APIs
  */
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
@@ -23,6 +23,12 @@ class AIProvider {
 
       case 'openai':
         return this.generateOpenAI(prompt, apiKey, modelName, 'https://api.openai.com/v1', options);
+
+      case 'deepseek':
+        return this.generateOpenAI(prompt, apiKey, modelName || 'deepseek-chat', 'https://api.deepseek.com/v1', options);
+
+      case 'kimi':
+        return this.generateOpenAI(prompt, apiKey, modelName || 'moonshot-v1-8k', 'https://api.moonshot.ai/v1', options);
 
       case 'claude':
         return this.generateClaude(prompt, apiKey, modelName, options);
