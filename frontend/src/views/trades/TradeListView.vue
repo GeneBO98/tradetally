@@ -1057,6 +1057,7 @@ import StockLogo from '@/components/common/StockLogo.vue'
 import { mdiNewspaper } from '@mdi/js'
 import api from '@/services/api'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { getTradeDateOnlyParts } from '@/utils/date'
 import { getTradeGrossPnl } from '@/utils/tradePnl'
 
 const tradesStore = useTradesStore()
@@ -1323,9 +1324,7 @@ function formatQuantity(num) {
 // Format a UTC datetime in the user's configured timezone (not the browser's).
 // Date-only inputs (no time component) are parsed as-is.
 function dateOnlyParts(date) {
-  const m = date.toString().match(/^(\d{4})-(\d{2})-(\d{2})(?:T00:00:00(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$/)
-  if (!m) return null
-  return { year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) }
+  return getTradeDateOnlyParts(date)
 }
 
 function formatInUserTimezone(date, options) {

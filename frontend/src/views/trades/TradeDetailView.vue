@@ -1522,6 +1522,7 @@ import AIConversationPanel from '@/components/ai/AIConversationPanel.vue'
 import AIReportRenderer from '@/components/ai/AIReportRenderer.vue'
 import BaseSelect from '@/components/common/BaseSelect.vue'
 import { useAIStore } from '@/stores/ai'
+import { getTradeDateOnlyParts } from '@/utils/date'
 
 const route = useRoute()
 const router = useRouter()
@@ -2070,14 +2071,9 @@ function formatQuantity(num) {
 function formatDate(date) {
   if (!date) return 'N/A'
   try {
-    // Parse date string manually to avoid timezone issues
-    // If it's a date-only string (YYYY-MM-DD), parse components directly
-    const dateStr = date.toString()
-
-    // Match date-only format (YYYY-MM-DD) or date with midnight time (YYYY-MM-DDT00:00:00...)
-    const dateOnlyMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})(?:T00:00:00(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$/)
-    if (dateOnlyMatch) {
-      const [, year, month, day] = dateOnlyMatch.map(Number)
+    const dateOnlyParts = getTradeDateOnlyParts(date)
+    if (dateOnlyParts) {
+      const { year, month, day } = dateOnlyParts
       // Create date in local timezone (month is 0-indexed)
       const dateObj = new Date(year, month - 1, day)
       return format(dateObj, 'MMM dd, yyyy')

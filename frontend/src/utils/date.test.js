@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatLocalDate, formatTradeDate, parseTradeDate } from './date'
+import { formatLocalDate, formatTradeDate, getTradeDateOnlyParts, parseTradeDate } from './date'
 
 describe('date utilities', () => {
   it('formats dates as local YYYY-MM-DD values', () => {
@@ -11,9 +11,16 @@ describe('date utilities', () => {
   it('parses date-only and midnight UTC trade dates as local calendar dates', () => {
     const dateOnly = parseTradeDate('2026-04-09')
     const midnightUtc = parseTradeDate('2026-04-09T00:00:00.000Z')
+    const postgresMidnight = parseTradeDate('2026-06-12 00:00:00')
 
     expect(formatLocalDate(dateOnly)).toBe('2026-04-09')
     expect(formatLocalDate(midnightUtc)).toBe('2026-04-09')
+    expect(formatLocalDate(postgresMidnight)).toBe('2026-06-12')
+    expect(getTradeDateOnlyParts('2026-06-12 00:00:00')).toEqual({
+      year: 2026,
+      month: 6,
+      day: 12
+    })
   })
 
   it('formats trade dates and reports invalid values', () => {
