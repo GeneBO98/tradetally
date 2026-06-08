@@ -15,6 +15,7 @@ const axios = require('axios');
 const Trade = require('../../models/Trade');
 const BrokerConnection = require('../../models/BrokerConnection');
 const AnalyticsCache = require('../analyticsCache');
+const OptionStrategyGroupingService = require('../optionStrategyGroupingService');
 const db = require('../../config/database');
 
 const SCHWAB_API_BASE = 'https://api.schwabapi.com/trader/v1';
@@ -1176,7 +1177,8 @@ class SchwabService {
         // Create trade
         await Trade.create(userId, tradeData, {
           skipAchievements: true,
-          skipApiCalls: true
+          skipApiCalls: true,
+          skipOptionGrouping: true
         });
 
         imported++;
@@ -1214,6 +1216,7 @@ class SchwabService {
     }
 
     if (imported > 0) {
+      await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'Schwab broker sync');
       console.log(`[SCHWAB] Invalidating analytics cache for user ${userId}`);
       await AnalyticsCache.invalidate(userId);
     }

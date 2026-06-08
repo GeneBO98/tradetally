@@ -4,6 +4,7 @@ const { getUserLocalDate, getUserTimezone } = require('../utils/timezone');
 const { getFuturesPointValue, getFuturesTickSize, extractUnderlyingFromFuturesSymbol } = require('../utils/futuresUtils');
 const { computeTradePnl } = require('../services/pnlEngine');
 const logger = require('../utils/logger');
+const OptionStrategyGroupingService = require('../services/optionStrategyGroupingService');
 /**
  * Round a numeric value to fit database precision
  * DECIMAL(20, 8) allows up to 12 integer digits and 8 decimal places
@@ -664,6 +665,10 @@ class Trade {
         console.warn(`Failed to update trading streak for user ${userId} after trade creation:`, error.message);
       });
     }
+
+    if (!options.skipOptionGrouping && createdTrade.instrument_type === 'option') {
+      await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'trade creation');
+    }
     
     return createdTrade;
   }
@@ -899,6 +904,10 @@ class Trade {
     const updatedTrade = result.rows[0];
 
     console.log(`[TRADE] Fill added to ${tradeId}: ${action} ${quantity} @ ${price} (${new Date(datetime).toISOString()})`);
+
+    if (updatedTrade?.instrument_type === 'option') {
+      await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'trade fill');
+    }
 
     return updatedTrade;
   }
@@ -1733,6 +1742,23 @@ class Trade {
     }
 
     const result = await db.query(query, values);
+    const updatedTrade = result.rows[0];
+
+    const optionGroupingFields = [
+      'entryTime', 'exitTime', 'tradeDate', 'instrumentType', 'underlyingSymbol',
+      'expirationDate', 'optionType', 'strikePrice', 'side', 'quantity', 'pnl',
+      'commission', 'fees', 'accountIdentifier', 'account_identifier', 'entryPrice',
+      'exitPrice', 'entry_time', 'exit_time', 'trade_date', 'instrument_type',
+      'underlying_symbol', 'expiration_date', 'option_type', 'strike_price',
+      'entry_price', 'exit_price'
+    ];
+    const shouldRebuildOptionGroups = !options.skipOptionGrouping
+      && (currentTrade.instrument_type === 'option' || updates.instrumentType === 'option' || updates.instrument_type === 'option')
+      && (executionsToSet !== null || optionGroupingFields.some(key => updates[key] !== undefined));
+
+    if (shouldRebuildOptionGroups) {
+      await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'trade update');
+    }
     
     // Check for new achievements after trade update (async, don't wait for completion)
     if (!options.skipAchievements) {
@@ -1746,10 +1772,10 @@ class Trade {
       });
     }
     
-    return result.rows[0];
+    return updatedTrade;
   }
 
-  static async delete(id, userId) {
+  static async delete(id, userId, options = {}) {
     try {
       // Start transaction to ensure both trade and jobs are deleted together
       await db.query('BEGIN');
@@ -1784,6 +1810,9 @@ class Trade {
       
       await db.query('COMMIT');
       console.log(`Successfully deleted trade ${id} and its associated jobs`);
+      if (!options.skipOptionGrouping) {
+        await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'trade deletion');
+      }
       
       return result.rows[0];
       
@@ -3111,11 +3140,20 @@ class Trade {
     // Return each strategy with how many trades use it, most-used first, so
     // dropdowns can surface the strategies the user actually relies on.
     const query = `
-      SELECT strategy AS name, COUNT(*)::int AS count
-      FROM trades
-      WHERE user_id = $1 AND strategy IS NOT NULL AND strategy != ''
-      GROUP BY strategy
-      ORDER BY count DESC, strategy ASC
+      SELECT name, SUM(count)::int AS count
+      FROM (
+        SELECT strategy AS name, COUNT(*)::int AS count
+        FROM trades
+        WHERE user_id = $1 AND strategy IS NOT NULL AND strategy != ''
+        GROUP BY strategy
+        UNION ALL
+        SELECT detected_strategy AS name, COUNT(*)::int AS count
+        FROM trade_position_groups
+        WHERE user_id = $1 AND detected_strategy IS NOT NULL AND detected_strategy != ''
+        GROUP BY detected_strategy
+      ) strategies
+      GROUP BY name
+      ORDER BY count DESC, name ASC
     `;
     const result = await db.query(query, [userId]);
     return result.rows;

@@ -1471,11 +1471,37 @@ const analyticsController = {
       
       params.push(sanitizedLimit);
 
-      const be = await rawBreakevenPredicate(req.user.id);
+      const groupByPosition = await isPositionGroupingEnabled(req.user.id);
+      const be = groupByPosition ? GROUPED_BREAKEVEN : await rawBreakevenPredicate(req.user.id);
       // Return losing + breakeven counts so the dashboard symbol list can show
       // an "excl. BE" win-rate line beneath the inclusive rate, matching the
       // overview and per-tag/strategy/hour tables.
-      const symbolQuery = `
+      const symbolQuery = groupByPosition
+        ? `
+        WITH positions AS (
+          SELECT
+            COALESCE(NULLIF(underlying_symbol, ''), symbol) as symbol,
+            SUM(pnl) as pnl,
+            COALESCE(AVG(pnl_percent), 0) as pnl_percent
+          FROM trades
+          WHERE user_id = $1 ${filterConditions}
+          GROUP BY COALESCE(NULLIF(underlying_symbol, ''), symbol), ${POSITION_GROUP_KEY}
+        )
+        SELECT
+          symbol,
+          COUNT(*) as total_trades,
+          COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
+          COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
+          COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
+          COALESCE(SUM(pnl), 0) as total_pnl,
+          COALESCE(AVG(pnl), 0) as avg_pnl,
+          COALESCE(AVG(pnl_percent), 0) as avg_pnl_percent
+        FROM positions
+        GROUP BY symbol
+        ORDER BY total_pnl DESC
+        LIMIT $${params.length}
+      `
+        : `
         SELECT
           symbol,
           COUNT(*) as total_trades,
@@ -1505,11 +1531,53 @@ const analyticsController = {
       const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
       const params = [req.user.id, ...filterParams];
 
-      const be = await rawBreakevenPredicate(req.user.id);
+      const groupByPosition = await isPositionGroupingEnabled(req.user.id);
+      const be = groupByPosition ? GROUPED_BREAKEVEN : await rawBreakevenPredicate(req.user.id);
       // Mirror the overview/monthly pattern: classify trades as wins/losses/BE
       // using the breakeven predicate, then expose both inclusive and exclusive
       // win rates so the frontend can show "X% incl. BE" with "Y% excl. BE".
-      const tagQuery = `
+      const tagQuery = groupByPosition
+        ? `
+        WITH leg_tags AS (
+          SELECT
+            UNNEST(tags) as tag,
+            account_identifier,
+            underlying_symbol,
+            symbol,
+            position_group_id,
+            entry_time,
+            id,
+            pnl,
+            r_value,
+            stop_loss
+          FROM trades
+          WHERE user_id = $1 ${filterConditions} AND tags IS NOT NULL
+        ),
+        positions AS (
+          SELECT
+            tag,
+            SUM(pnl) as pnl,
+            SUM(r_value) as r_value,
+            MIN(stop_loss) as stop_loss
+          FROM leg_tags
+          GROUP BY tag, ${POSITION_GROUP_KEY}
+        )
+        SELECT
+          tag,
+          COUNT(*) as total_trades,
+          COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
+          COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
+          COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
+          COALESCE(SUM(pnl), 0) as total_pnl,
+          COALESCE(AVG(pnl), 0) as avg_pnl,
+          COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
+          COALESCE(AVG(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as avg_r_value,
+          COUNT(CASE WHEN stop_loss IS NOT NULL THEN 1 END) as trades_with_r
+        FROM positions
+        GROUP BY tag
+        ORDER BY total_trades DESC
+      `
+        : `
         SELECT
           UNNEST(tags) as tag,
           COUNT(*) as total_trades,
@@ -1547,15 +1615,28 @@ const analyticsController = {
       // strategy) first, then aggregate the win/loss counts per strategy.
       const strategyQuery = groupByPosition
         ? `
-        WITH positions AS (
+        WITH grouped_legs AS (
           SELECT
-            strategy,
+            position_group_id,
+            MIN(NULLIF(strategy, '')) as leg_strategy,
             SUM(pnl) as pnl,
             SUM(r_value) as r_value,
             MIN(stop_loss) as stop_loss
           FROM trades
-          WHERE user_id = $1 ${filterConditions} AND strategy IS NOT NULL AND strategy != ''
-          GROUP BY strategy, ${POSITION_GROUP_KEY}
+          WHERE user_id = $1 ${filterConditions}
+            AND (strategy IS NOT NULL OR position_group_id IS NOT NULL)
+          GROUP BY position_group_id, ${POSITION_GROUP_KEY}
+        ),
+        positions AS (
+          SELECT
+            COALESCE(tpg.detected_strategy, grouped_legs.leg_strategy) as strategy,
+            grouped_legs.pnl,
+            grouped_legs.r_value,
+            grouped_legs.stop_loss
+          FROM grouped_legs
+          LEFT JOIN trade_position_groups tpg ON tpg.id = grouped_legs.position_group_id
+          WHERE COALESCE(tpg.detected_strategy, grouped_legs.leg_strategy) IS NOT NULL
+            AND COALESCE(tpg.detected_strategy, grouped_legs.leg_strategy) != ''
         )
         SELECT
           strategy,
@@ -1614,8 +1695,37 @@ const analyticsController = {
 
       // Convert entry_time from UTC to user's timezone for hour extraction
       // For timestamptz columns, "AT TIME ZONE 'tz'" converts the UTC time to that timezone
-      const be = await rawBreakevenPredicate(req.user.id);
-      const hourQuery = `
+      const groupByPosition = await isPositionGroupingEnabled(req.user.id);
+      const be = groupByPosition ? GROUPED_BREAKEVEN : await rawBreakevenPredicate(req.user.id);
+      const hourQuery = groupByPosition
+        ? `
+        WITH positions AS (
+          SELECT
+            EXTRACT(HOUR FROM (MIN(entry_time) AT TIME ZONE $${tzParam})) as hour,
+            SUM(pnl) as pnl,
+            SUM(r_value) as r_value,
+            MIN(stop_loss) as stop_loss
+          FROM trades
+          WHERE user_id = $1 ${filterConditions}
+            AND entry_time IS NOT NULL
+          GROUP BY ${POSITION_GROUP_KEY}
+        )
+        SELECT
+          hour,
+          COUNT(*) as total_trades,
+          COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
+          COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
+          COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
+          COALESCE(SUM(pnl), 0) as total_pnl,
+          COALESCE(AVG(pnl), 0) as avg_pnl,
+          COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
+          COALESCE(AVG(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as avg_r_value,
+          COUNT(CASE WHEN stop_loss IS NOT NULL THEN 1 END) as trades_with_r
+        FROM positions
+        GROUP BY hour
+        ORDER BY hour
+      `
+        : `
         SELECT
           EXTRACT(HOUR FROM (entry_time AT TIME ZONE $${tzParam})) as hour,
           COUNT(*) as total_trades,
@@ -2580,11 +2690,35 @@ const analyticsController = {
 
       const { startDate, endDate } = req.query;
 
-      const be = await rawBreakevenPredicate(req.user.id);
+      const groupByPosition = await isPositionGroupingEnabled(req.user.id);
+      const be = groupByPosition ? GROUPED_BREAKEVEN : await rawBreakevenPredicate(req.user.id);
 
       // Get overview metrics
       console.log('[DATA] Fetching trade metrics...');
-      const overviewQuery = `
+      const overviewQuery = groupByPosition
+        ? `
+        WITH positions AS (
+          SELECT
+            SUM(pnl) as pnl,
+            COALESCE(AVG(pnl_percent), 0) as pnl_percent,
+            SUM(COALESCE(commission, 0)) as commission,
+            SUM(COALESCE(fees, 0)) as fees
+          FROM trades
+          WHERE user_id = $1 ${filterConditions}
+          GROUP BY ${POSITION_GROUP_KEY}
+        )
+        SELECT
+          COUNT(*) as total_trades,
+          COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
+          COALESCE(SUM(pnl), 0) as total_pnl,
+          COALESCE(AVG(pnl), 0) as avg_pnl,
+          COALESCE(AVG(CASE WHEN ${be.isNot} AND pnl > 0 THEN pnl END), 0) as avg_win,
+          COALESCE(AVG(CASE WHEN ${be.isNot} AND pnl < 0 THEN pnl END), 0) as avg_loss,
+          COALESCE(MAX(pnl), 0) as best_trade,
+          COALESCE(MIN(pnl), 0) as worst_trade
+        FROM positions
+      `
+        : `
         SELECT
           COUNT(*) as total_trades,
           COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
@@ -2660,7 +2794,28 @@ const analyticsController = {
       let sectorData = null;
       try {
         // Get symbols and their P&L
-        const symbolQuery = `
+        const symbolQuery = groupByPosition
+          ? `
+          WITH positions AS (
+            SELECT
+              COALESCE(NULLIF(underlying_symbol, ''), symbol) as symbol,
+              SUM(pnl) as pnl
+            FROM trades
+            WHERE user_id = $1 ${filterConditions}
+            GROUP BY COALESCE(NULLIF(underlying_symbol, ''), symbol), ${POSITION_GROUP_KEY}
+          )
+          SELECT
+            symbol,
+            COUNT(*) as total_trades,
+            COALESCE(SUM(pnl), 0) as total_pnl,
+            COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades
+          FROM positions
+          GROUP BY symbol
+          HAVING COUNT(*) > 0
+          ORDER BY total_pnl DESC
+          LIMIT 15
+        `
+          : `
           SELECT
             symbol,
             COUNT(*) as total_trades,
@@ -2778,8 +2933,30 @@ const analyticsController = {
 
       // Get all symbols and their P&L from trades
       console.log('[QUERY] Fetching symbols and P&L from trades...');
-      const be = await rawBreakevenPredicate(req.user.id);
-      const symbolQuery = `
+      const groupByPosition = await isPositionGroupingEnabled(req.user.id);
+      const be = groupByPosition ? GROUPED_BREAKEVEN : await rawBreakevenPredicate(req.user.id);
+      const symbolQuery = groupByPosition
+        ? `
+        WITH positions AS (
+            SELECT
+            COALESCE(NULLIF(underlying_symbol, ''), symbol) as symbol,
+            SUM(pnl) as pnl
+          FROM trades
+          WHERE user_id = $1 ${filterConditions}
+          GROUP BY COALESCE(NULLIF(underlying_symbol, ''), symbol), ${POSITION_GROUP_KEY}
+        )
+        SELECT
+          symbol,
+          COUNT(*) as total_trades,
+          COALESCE(SUM(pnl), 0) as total_pnl,
+          COALESCE(AVG(pnl), 0) as avg_pnl,
+          COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades
+        FROM positions
+        GROUP BY symbol
+        HAVING COUNT(*) > 0
+        ORDER BY total_pnl DESC
+      `
+        : `
         SELECT
           symbol,
           COUNT(*) as total_trades,
@@ -3001,8 +3178,30 @@ const analyticsController = {
       const { startDate, endDate } = req.query;
 
       // Get all symbols and their P&L from trades
-      const be = await rawBreakevenPredicate(req.user.id);
-      const symbolQuery = `
+      const groupByPosition = await isPositionGroupingEnabled(req.user.id);
+      const be = groupByPosition ? GROUPED_BREAKEVEN : await rawBreakevenPredicate(req.user.id);
+      const symbolQuery = groupByPosition
+        ? `
+        WITH positions AS (
+            SELECT
+            COALESCE(NULLIF(underlying_symbol, ''), symbol) as symbol,
+            SUM(pnl) as pnl
+          FROM trades
+          WHERE user_id = $1 ${filterConditions}
+          GROUP BY COALESCE(NULLIF(underlying_symbol, ''), symbol), ${POSITION_GROUP_KEY}
+        )
+        SELECT
+          symbol,
+          COUNT(*) as total_trades,
+          COALESCE(SUM(pnl), 0) as total_pnl,
+          COALESCE(AVG(pnl), 0) as avg_pnl,
+          COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades
+        FROM positions
+        GROUP BY symbol
+        HAVING COUNT(*) > 0
+        ORDER BY total_pnl DESC
+      `
+        : `
         SELECT
           symbol,
           COUNT(*) as total_trades,
@@ -3125,22 +3324,33 @@ const analyticsController = {
       const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
       const params = [req.user.id, ...filterParams];
       const filterHashKey = createFilterHash(convertQueryToTradeFilters(req.query));
-      const summaryCacheKey = `ai_insight_summary_${req.user.id}_${filterHashKey}`;
+      const groupByPosition = await isPositionGroupingEnabled(req.user.id);
+      const summaryCacheKey = `ai_insight_summary_${req.user.id}_${filterHashKey}_grp${groupByPosition ? 'pos' : 'leg'}`;
 
       const cached = cache.get(summaryCacheKey);
       if (cached) {
         return res.json(cached);
       }
 
-      const be = await rawBreakevenPredicate(req.user.id);
+      const be = groupByPosition ? GROUPED_BREAKEVEN : await rawBreakevenPredicate(req.user.id);
 
       // Pull the analytics we need to derive an insight.
+      const completedCte = groupByPosition
+        ? `completed AS (
+            SELECT SUM(pnl) as pnl
+            FROM trades
+            WHERE user_id = $1 ${filterConditions}
+              AND exit_price IS NOT NULL AND pnl IS NOT NULL
+            GROUP BY ${POSITION_GROUP_KEY}
+          )`
+        : `completed AS (
+            SELECT * FROM trades
+            WHERE user_id = $1 ${filterConditions}
+              AND exit_price IS NOT NULL AND pnl IS NOT NULL
+          )`;
+
       const dataQuery = `
-        WITH completed AS (
-          SELECT * FROM trades
-          WHERE user_id = $1 ${filterConditions}
-            AND exit_price IS NOT NULL AND pnl IS NOT NULL
-        )
+        WITH ${completedCte}
         SELECT
           (SELECT COUNT(*) FROM completed)::integer AS total_trades,
           (SELECT COUNT(*) FROM completed WHERE ${be.isNot} AND pnl > 0)::integer AS winning_trades,

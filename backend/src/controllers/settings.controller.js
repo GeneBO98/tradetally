@@ -6,6 +6,7 @@ const encryptionService = require('../services/brokerSync/encryptionService');
 const { computeTradePnl } = require('../services/pnlEngine');
 const { getUserTimezone } = require('../utils/timezone');
 const AnalyticsCache = require('../services/analyticsCache');
+const OptionStrategyGroupingService = require('../services/optionStrategyGroupingService');
 
 const VALID_AI_PROVIDERS = ['gemini', 'claude', 'openai', 'deepseek', 'kimi', 'ollama', 'lmstudio', 'perplexity', 'local'];
 const LOCAL_AI_PROVIDERS = ['local', 'ollama', 'lmstudio'];
@@ -1757,6 +1758,7 @@ const settingsController = {
 
         if (tradesAdded > 0) {
           try {
+            await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'TradeTally backup import');
             await AnalyticsCache.invalidate(userId);
           } catch (cacheErr) {
             console.warn(`[IMPORT] AnalyticsCache invalidation failed: ${cacheErr.message}`);

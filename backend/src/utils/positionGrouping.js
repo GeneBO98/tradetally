@@ -5,18 +5,14 @@
 // that were opened together into a single synthetic trade, so win rate and
 // trade counts are measured per position instead of per individual leg.
 //
-// Two legs belong to the same position when they share the same account, the
-// same underlying (falling back to the symbol for non-options), and the exact
-// same entry time (one order ticket). Trades with no entry_time fall back to
-// their own id so they are never merged. This is intentionally conservative —
-// it never wrongly merges unrelated positions; at worst it leaves legs
-// ungrouped (degrading to per-leg behaviour).
+// Persisted option strategy groups take precedence. Ungrouped legacy rows fall
+// back to the conservative account + underlying + exact entry_time key.
 //
 // IMPORTANT: queries that use this key must reference the raw `trades` table
 // (no alias) or pass a matching alias, and apply the grouping in a subquery/CTE
 // BEFORE counting wins/losses.
 const POSITION_GROUP_KEY =
-  "account_identifier, COALESCE(NULLIF(underlying_symbol, ''), symbol), COALESCE(entry_time::text, id::text)";
+  "COALESCE(position_group_id::text, CONCAT_WS('|', COALESCE(account_identifier, ''), COALESCE(NULLIF(underlying_symbol, ''), symbol), COALESCE(entry_time::text, id::text)))";
 
 // Breakeven predicate for grouped positions. The per-leg tick/point tolerance
 // used for individual trades does not apply to a combined multi-leg position,

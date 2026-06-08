@@ -29,6 +29,7 @@ const {
   applyBrokerFeeSettingsToTrades,
   getBrokerLookupNames
 } = require('../services/brokerFeeApplicationService');
+const OptionStrategyGroupingService = require('../services/optionStrategyGroupingService');
 
 /**
  * Auto-calculate MAE/MFE for a closed trade using Finnhub candle data.
@@ -1237,7 +1238,7 @@ const tradeController = {
           executions: splitExecutions,
         };
 
-        const newTrade = await Trade.create(req.user.id, tradeData, { skipAchievements: true, skipApiCalls: true });
+        const newTrade = await Trade.create(req.user.id, tradeData, { skipAchievements: true, skipApiCalls: true, skipOptionGrouping: true });
         newTradeIds.push(newTrade.id);
       }
 
@@ -1280,8 +1281,10 @@ const tradeController = {
         );
       } else {
         // Delete the original grouped trade (all entries were split)
-        await Trade.delete(req.params.id, req.user.id);
+        await Trade.delete(req.params.id, req.user.id, { skipOptionGrouping: true });
       }
+
+      await OptionStrategyGroupingService.rebuildUserGroupsSafe(req.user.id, 'trade split');
 
       // Invalidate caches
       await AnalyticsCache.invalidate(req.user.id);
@@ -1333,7 +1336,7 @@ const tradeController = {
           }
 
           // Delete the trade
-          const result = await Trade.delete(tradeId, req.user.id);
+          const result = await Trade.delete(tradeId, req.user.id, { skipOptionGrouping: true });
           
           if (result) {
             deletedCount++;
@@ -1343,6 +1346,10 @@ const tradeController = {
         } catch (error) {
           errors.push({ tradeId, error: error.message });
         }
+      }
+
+      if (deletedCount > 0) {
+        await OptionStrategyGroupingService.rebuildUserGroupsSafe(req.user.id, 'bulk trade deletion');
       }
 
       // Invalidate sector performance cache
@@ -2498,14 +2505,14 @@ const tradeController = {
                   cleanTradeData.executions = executionData;
                 }
 
-                await Trade.update(tradeData.existingTradeId, req.user.id, cleanTradeData, { skipAchievements: true, skipApiCalls: true });
+                await Trade.update(tradeData.existingTradeId, req.user.id, cleanTradeData, { skipAchievements: true, skipApiCalls: true, skipOptionGrouping: true });
               } else {
                 // Add import ID to track which import this trade came from
                 tradeData.importId = importId;
                 if (defaultImportStrategy) {
                   tradeData.strategy = defaultImportStrategy;
                 }
-                await Trade.create(req.user.id, tradeData, { skipAchievements: true, skipApiCalls: true });
+                await Trade.create(req.user.id, tradeData, { skipAchievements: true, skipApiCalls: true, skipOptionGrouping: true });
               }
               imported++;
             } catch (error) {
@@ -2595,6 +2602,10 @@ const tradeController = {
             SET status = 'completed', trades_imported = $1, trades_failed = $2, completed_at = CURRENT_TIMESTAMP, error_details = $4
             WHERE id = $3
           `, [imported, failed, importId, errorDetails]);
+
+          if (imported > 0) {
+            await OptionStrategyGroupingService.rebuildUserGroupsSafe(fileUserId, 'CSV import');
+          }
 
           // Invalidate analytics cache after successful import so counts/P&L update immediately
           try {
@@ -3340,6 +3351,10 @@ const tradeController = {
       // Delete the import log (CASCADE will delete any remaining trades if any)
       await db.query(`DELETE FROM import_logs WHERE id = $1`, [importId]);
 
+      if (deletedTrades.rows.length > 0) {
+        await OptionStrategyGroupingService.rebuildUserGroupsSafe(req.user.id, 'import deletion');
+      }
+
       // Invalidate analytics cache for this user so totals recalculate
       await AnalyticsCache.invalidate(req.user.id);
 
@@ -3410,6 +3425,10 @@ const tradeController = {
       // Delete the import logs
       const importPlaceholders = validIds.map((_, i) => `$${i + 1}`).join(',');
       await db.query(`DELETE FROM import_logs WHERE id IN (${importPlaceholders})`, validIds);
+
+      if (deletedTrades.rows.length > 0) {
+        await OptionStrategyGroupingService.rebuildUserGroupsSafe(req.user.id, 'bulk import deletion');
+      }
 
       // Invalidate caches
       await AnalyticsCache.invalidate(req.user.id);

@@ -2,6 +2,7 @@ const axios = require('axios');
 const Trade = require('../../models/Trade');
 const BrokerConnection = require('../../models/BrokerConnection');
 const AnalyticsCache = require('../analyticsCache');
+const OptionStrategyGroupingService = require('../optionStrategyGroupingService');
 const cache = require('../../utils/cache');
 const db = require('../../config/database');
 
@@ -296,7 +297,8 @@ class OAuthBrokerBase {
         tradeData.brokerConnectionId = connectionId;
         await Trade.create(userId, tradeData, {
           skipAchievements: true,
-          skipApiCalls: true
+          skipApiCalls: true,
+          skipOptionGrouping: true
         });
 
         imported++;
@@ -321,6 +323,7 @@ class OAuthBrokerBase {
     }
 
     if (imported > 0) {
+      await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, `${this.config.logPrefix} broker sync`);
       await AnalyticsCache.invalidateUserCache(userId);
       invalidateInMemoryCache(userId);
     }

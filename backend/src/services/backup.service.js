@@ -1014,11 +1014,13 @@ class BackupService {
 
       if (this._restoredUserIds && this._restoredUserIds.size > 0) {
         const AnalyticsCache = require('./analyticsCache');
+        const OptionStrategyGroupingService = require('./optionStrategyGroupingService');
         for (const uid of this._restoredUserIds) {
           try {
+            await OptionStrategyGroupingService.rebuildUserGroupsSafe(uid, 'backup restore');
             await AnalyticsCache.invalidate(uid);
           } catch (cacheErr) {
-            console.warn(`[RESTORE] AnalyticsCache invalidation failed for ${uid}: ${cacheErr.message}`);
+            console.warn(`[RESTORE] Post-restore analytics refresh failed for ${uid}: ${cacheErr.message}`);
           }
         }
         this._restoredUserIds.clear();
