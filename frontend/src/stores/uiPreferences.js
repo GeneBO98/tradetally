@@ -64,6 +64,7 @@ export const useUiPreferencesStore = defineStore('uiPreferences', () => {
   const pending = ref({})
   let flushTimer = null
   let flushInFlight = null
+  let initInFlight = null
 
   function scheduleFlush() {
     if (flushTimer) clearTimeout(flushTimer)
@@ -111,31 +112,40 @@ export const useUiPreferencesStore = defineStore('uiPreferences', () => {
   }
 
   async function init() {
-    try {
-      const response = await api.get('/settings')
-      const remote = response.data?.settings?.uiPreferences || {}
+    if (initialized.value) return
+    if (initInFlight) return initInFlight
 
-      // Server wins: hydrate localStorage from server values.
-      for (const key of SYNCED_KEYS) {
-        if (Object.prototype.hasOwnProperty.call(remote, key)) {
-          const value = remote[key]
-          if (value === null || value === undefined) {
-            localStorage.removeItem(key)
-          } else {
-            writeLocal(key, value)
+    initInFlight = (async () => {
+      try {
+        const response = await api.get('/settings')
+        const remote = response.data?.settings?.uiPreferences || {}
+
+        // Server wins: hydrate localStorage from server values.
+        for (const key of SYNCED_KEYS) {
+          if (Object.prototype.hasOwnProperty.call(remote, key)) {
+            const value = remote[key]
+            if (value === null || value === undefined) {
+              localStorage.removeItem(key)
+            } else {
+              writeLocal(key, value)
+            }
           }
         }
+
+        // Apply dark mode immediately so the DOM matches before NavBar mounts.
+        applyDarkModeFromStorage()
+
+        initialized.value = true
+      } catch (err) {
+        console.warn('[UI PREFS] Failed to load remote preferences, continuing with local values:', err?.response?.status || err?.message)
+        // Still mark as initialized so subsequent writes attempt to sync.
+        initialized.value = true
       }
+    })().finally(() => {
+      initInFlight = null
+    })
 
-      // Apply dark mode immediately so the DOM matches before NavBar mounts.
-      applyDarkModeFromStorage()
-
-      initialized.value = true
-    } catch (err) {
-      console.warn('[UI PREFS] Failed to load remote preferences, continuing with local values:', err?.response?.status || err?.message)
-      // Still mark as initialized so subsequent writes attempt to sync.
-      initialized.value = true
-    }
+    await initInFlight
   }
 
   function applyDarkModeFromStorage() {
@@ -158,6 +168,7 @@ export const useUiPreferencesStore = defineStore('uiPreferences', () => {
     }
     pending.value = {}
     initialized.value = false
+    initInFlight = null
     for (const key of SYNCED_KEYS) {
       localStorage.removeItem(key)
     }
