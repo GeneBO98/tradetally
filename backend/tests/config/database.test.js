@@ -6,7 +6,8 @@ jest.mock('pg', () => ({
     query: mockPoolQuery,
     connect: mockPoolConnect,
     on: jest.fn()
-  }))
+  })),
+  types: { setTypeParser: jest.fn() }
 }));
 
 const mockEnsurePostExitSchema = jest.fn();
