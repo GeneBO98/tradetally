@@ -1,5 +1,12 @@
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
 require('dotenv').config();
+
+// Return DATE columns (OID 1082) as plain YYYY-MM-DD strings instead of
+// JavaScript Date objects. The default pg behavior creates a Date anchored to
+// midnight in the server's local timezone, which produces non-midnight UTC
+// timestamps for non-UTC servers. These don't match the frontend's
+// date-only regex and cause timezone-shifted display (e.g. Jun 12 → Jun 11).
+types.setTypeParser(1082, val => val);
 
 // Increased pool size to handle concurrent requests and background services
 // Default to 50, allow override via env var
