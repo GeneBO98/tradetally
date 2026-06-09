@@ -7,6 +7,7 @@ const { computeTradePnl } = require('../services/pnlEngine');
 const { getUserTimezone } = require('../utils/timezone');
 const AnalyticsCache = require('../services/analyticsCache');
 const OptionStrategyGroupingService = require('../services/optionStrategyGroupingService');
+const Trade = require('../models/Trade');
 
 const VALID_AI_PROVIDERS = ['gemini', 'claude', 'openai', 'deepseek', 'kimi', 'ollama', 'lmstudio', 'perplexity', 'local'];
 const LOCAL_AI_PROVIDERS = ['local', 'ollama', 'lmstudio'];
@@ -96,6 +97,30 @@ function keysToSnakeCase(obj) {
   return result;
 }
 
+function hasAnyOwnProperty(obj, keys) {
+  return keys.some(key => Object.prototype.hasOwnProperty.call(obj, key));
+}
+
+function shouldSyncDefaultStopLosses(body, currentSettings) {
+  const explicitStopLossUpdate = hasAnyOwnProperty(body, [
+    'defaultStopLossType',
+    'default_stop_loss_type',
+    'defaultStopLossPercent',
+    'default_stop_loss_percent',
+    'defaultStopLossDollars',
+    'default_stop_loss_dollars'
+  ]);
+
+  if (explicitStopLossUpdate) return true;
+
+  // Issue #345 regression repair: dashboard preference updates can be the next
+  // settings write after a user already selected dollar risk. In that state,
+  // repair any trades that still have the saved percent-default stop.
+  return currentSettings?.default_stop_loss_type === 'dollar'
+    && parseFloat(currentSettings.default_stop_loss_dollars) > 0
+    && parseFloat(currentSettings.default_stop_loss_percent) > 0;
+}
+
 // Cache for table columns (populated per import session)
 const _tableColumnsCache = {};
 async function getTableColumns(dbClient, tableName) {
@@ -153,6 +178,8 @@ const settingsController = {
 
   async updateSettings(req, res, next) {
     try {
+      const previousSettings = await User.getSettings(req.user.id);
+
       // Strip masked placeholders so clients that echo back "***" don't overwrite the real key
       const body = { ...req.body };
       if (body.aiApiKey === '***') delete body.aiApiKey;
@@ -161,6 +188,10 @@ const settingsController = {
       if (body.cusip_ai_api_key === '***') delete body.cusip_ai_api_key;
 
       const settings = await User.updateSettings(req.user.id, body);
+
+      if (shouldSyncDefaultStopLosses(body, settings)) {
+        await Trade.syncDefaultStopLossToExistingTrades(req.user.id, previousSettings, settings);
+      }
 
       // Settings like breakeven tolerance and statistics calculation change
       // analytics outputs, so drop this user's cached analytics on any update.

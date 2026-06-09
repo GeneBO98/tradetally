@@ -2209,6 +2209,170 @@ class Trade {
     return Math.round(rMultiple * 100) / 100;
   }
 
+  static getSettingValue(settings, snakeKey, camelKey) {
+    if (!settings) return undefined;
+    return settings[snakeKey] ?? settings[camelKey];
+  }
+
+  static calculateDefaultStopLossFromSettings(trade, settings) {
+    const stopLossType = this.getSettingValue(settings, 'default_stop_loss_type', 'defaultStopLossType') || 'percent';
+    const entryPrice = parseFloat(trade.entry_price);
+    const quantity = parseFloat(trade.quantity);
+    const side = trade.side;
+
+    if (!isFinite(entryPrice) || entryPrice <= 0 || !side) {
+      return null;
+    }
+
+    let stopLoss = null;
+
+    if (stopLossType === 'percent') {
+      const stopLossPercent = parseFloat(this.getSettingValue(settings, 'default_stop_loss_percent', 'defaultStopLossPercent'));
+      if (!isFinite(stopLossPercent) || stopLossPercent <= 0) return null;
+
+      if (side === 'long' || side === 'buy') {
+        stopLoss = entryPrice * (1 - stopLossPercent / 100);
+      } else if (side === 'short' || side === 'sell') {
+        stopLoss = entryPrice * (1 + stopLossPercent / 100);
+      }
+    } else if (stopLossType === 'dollar') {
+      const stopLossDollars = parseFloat(this.getSettingValue(settings, 'default_stop_loss_dollars', 'defaultStopLossDollars'));
+      if (!isFinite(stopLossDollars) || stopLossDollars <= 0 || !isFinite(quantity) || quantity <= 0) return null;
+
+      const instrumentType = trade.instrument_type || 'stock';
+      const priceMove = this.getDollarStopLossPriceMove(
+        stopLossDollars,
+        quantity,
+        instrumentType,
+        trade.contract_size,
+        trade.point_value
+      );
+      if (priceMove == null) return null;
+
+      if (side === 'long' || side === 'buy') {
+        stopLoss = entryPrice - priceMove;
+      } else if (side === 'short' || side === 'sell') {
+        stopLoss = entryPrice + priceMove;
+      }
+    }
+
+    return stopLoss != null && isFinite(stopLoss)
+      ? Math.round(stopLoss * 10000) / 10000
+      : null;
+  }
+
+  static stopLossMatches(actualStopLoss, expectedStopLoss) {
+    if (actualStopLoss == null || expectedStopLoss == null) return false;
+    const actual = parseFloat(actualStopLoss);
+    const expected = parseFloat(expectedStopLoss);
+    if (!isFinite(actual) || !isFinite(expected)) return false;
+    return Math.abs(actual - expected) <= 0.0001;
+  }
+
+  /**
+   * Keep default-generated stop losses aligned with the user's active default.
+   *
+   * This updates trades that either have no stop loss yet or still match a
+   * previous default formula. It deliberately skips trades with SL history so
+   * managed trades are not rewritten by a preference sync.
+   */
+  static async syncDefaultStopLossToExistingTrades(userId, previousSettings = {}, currentSettings = {}) {
+    const currentType = this.getSettingValue(currentSettings, 'default_stop_loss_type', 'defaultStopLossType') || 'percent';
+    if (currentType !== 'percent' && currentType !== 'dollar') {
+      return 0;
+    }
+
+    const currentStopLossDollars = parseFloat(this.getSettingValue(currentSettings, 'default_stop_loss_dollars', 'defaultStopLossDollars'));
+    const currentStopLossPercent = parseFloat(this.getSettingValue(currentSettings, 'default_stop_loss_percent', 'defaultStopLossPercent'));
+    const hasUsableCurrentDefault = currentType === 'dollar'
+      ? isFinite(currentStopLossDollars) && currentStopLossDollars > 0
+      : isFinite(currentStopLossPercent) && currentStopLossPercent > 0;
+
+    if (!hasUsableCurrentDefault) {
+      return 0;
+    }
+
+    const previousType = this.getSettingValue(previousSettings, 'default_stop_loss_type', 'defaultStopLossType') || 'percent';
+    const previousStopLossPercent = parseFloat(this.getSettingValue(previousSettings, 'default_stop_loss_percent', 'defaultStopLossPercent'));
+    const previousStopLossDollars = parseFloat(this.getSettingValue(previousSettings, 'default_stop_loss_dollars', 'defaultStopLossDollars'));
+
+    const matcherSettings = [];
+    if (previousType === 'percent' && isFinite(previousStopLossPercent) && previousStopLossPercent > 0) {
+      matcherSettings.push({ default_stop_loss_type: 'percent', default_stop_loss_percent: previousStopLossPercent });
+    }
+    if (previousType === 'dollar' && isFinite(previousStopLossDollars) && previousStopLossDollars > 0) {
+      matcherSettings.push({ default_stop_loss_type: 'dollar', default_stop_loss_dollars: previousStopLossDollars });
+    }
+
+    // Repair rows affected by the older percent default bug: the setting can be
+    // dollar already, while the trade still stores a percent-derived stop.
+    if (currentType === 'dollar' && isFinite(currentStopLossPercent) && currentStopLossPercent > 0) {
+      matcherSettings.push({ default_stop_loss_type: 'percent', default_stop_loss_percent: currentStopLossPercent });
+    }
+
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const tradesResult = await client.query(`
+        SELECT id, symbol, entry_price, exit_price, side, quantity, commission,
+               fees, instrument_type, contract_size, point_value, underlying_asset,
+               stop_loss
+        FROM trades
+        WHERE user_id = $1
+          AND entry_price IS NOT NULL
+          AND side IS NOT NULL
+          AND (risk_level_history IS NULL OR risk_level_history = '[]'::jsonb)
+      `, [userId]);
+
+      let updatedCount = 0;
+      for (const trade of tradesResult.rows) {
+        const newStopLoss = this.calculateDefaultStopLossFromSettings(trade, currentSettings);
+        if (newStopLoss == null) continue;
+
+        const matchesPreviousDefault = matcherSettings.some(settings => {
+          const expectedStopLoss = this.calculateDefaultStopLossFromSettings(trade, settings);
+          return this.stopLossMatches(trade.stop_loss, expectedStopLoss);
+        });
+
+        if (trade.stop_loss != null && !matchesPreviousDefault) {
+          continue;
+        }
+
+        const rValue = trade.exit_price
+          ? this.calculateRValue(trade.entry_price, newStopLoss, trade.exit_price, trade.side, {
+            quantity: trade.quantity,
+            commission: trade.commission,
+            fees: trade.fees,
+            instrumentType: trade.instrument_type || 'stock',
+            contractSize: trade.contract_size,
+            pointValue: trade.point_value,
+            symbol: trade.symbol,
+            underlyingAsset: trade.underlying_asset
+          })
+          : null;
+
+        await client.query(
+          `UPDATE trades SET stop_loss = $1, r_value = $2 WHERE id = $3 AND user_id = $4`,
+          [newStopLoss, rValue, trade.id, userId]
+        );
+        updatedCount++;
+      }
+
+      await client.query('COMMIT');
+      if (updatedCount > 0) {
+        console.log(`[STOP LOSS] Synced ${updatedCount} default-derived stop losses for user ${userId}`);
+      }
+      return updatedCount;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('[STOP LOSS] Error syncing default stop losses:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   /**
    * Apply default stop loss to all trades without a stop loss
    * This is called when a user updates their default stop loss percentage setting
