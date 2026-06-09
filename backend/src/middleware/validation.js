@@ -350,12 +350,15 @@ const schemas = {
       Joi.number().positive(),
       Joi.valid(null, '')
     ),
-    // Additional take profit targets (TP2, TP3, etc.)
+    // Additional take profit targets (TP2, TP3, etc.). No .default([])
+    // here: updateTrade handles partial payloads, and an injected empty
+    // array would silently wipe saved targets on any update that omits
+    // the field (same bug class as issue #345).
     takeProfitTargets: Joi.array().items(Joi.object({
       price: Joi.number().positive().required(),
       shares: Joi.number().integer().positive().allow(null).optional(),
       percentage: Joi.number().min(1).max(100).allow(null).optional()
-    })).default([]),
+    })),
     // Chart URL for TradingView links
     chartUrl: Joi.string().uri().max(1000).allow(null, ''),
     // Manual target hit override (SL/TP hit first)

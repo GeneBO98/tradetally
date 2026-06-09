@@ -289,6 +289,9 @@ watch(() => authStore.isAuthenticated, async (isAuthenticated) => {
           return
         }
         const res = await api.get('/auth/passkey')
+        if (!authStore.isAuthenticated) {
+          return
+        }
         if (!res.data.passkeys || res.data.passkeys.length === 0) {
           showPasskeyPrompt.value = true
         }
@@ -296,6 +299,12 @@ watch(() => authStore.isAuthenticated, async (isAuthenticated) => {
         // Not critical
       }
     }, 1500)
+  }
+  if (!isAuthenticated) {
+    // Logout with the prompt open: close it so it doesn't sit over the login
+    // page, and so dismissing it there can't write the previous user's
+    // dismissal into the next user's preferences.
+    showPasskeyPrompt.value = false
   }
   previousSessionState = isAuthenticated
 })

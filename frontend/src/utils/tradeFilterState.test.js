@@ -69,4 +69,32 @@ describe('tradeFilterState', () => {
       endDate: '2026-06-09'
     })
   })
+
+  // Issue #350: the trades filter panel persists symbolExact: false on every
+  // apply. Preserving it across Clear all kept a phantom "1 filter active"
+  // badge alive on the dashboard that could never be reset.
+  it('drops symbolExact: false on clear so no phantom filter survives', () => {
+    const storage = createStorage({
+      tradeFilters: JSON.stringify({
+        tags: ['swing'],
+        symbolExact: false
+      })
+    })
+
+    expect(clearDashboardTradeFiltersInStorage(storage)).toEqual({})
+    expect(storage.getItem('tradeFilters')).toBeNull()
+  })
+
+  it('preserves symbolExact: true on clear', () => {
+    const storage = createStorage({
+      tradeFilters: JSON.stringify({
+        tags: ['swing'],
+        symbolExact: true
+      })
+    })
+
+    expect(clearDashboardTradeFiltersInStorage(storage)).toEqual({
+      symbolExact: true
+    })
+  })
 })

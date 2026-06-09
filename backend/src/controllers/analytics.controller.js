@@ -2691,7 +2691,7 @@ const analyticsController = {
       }
       
       // Check if API key is required for this provider
-      const providersRequiringApiKey = ['gemini', 'claude', 'openai', 'deepseek', 'kimi'];
+      const providersRequiringApiKey = ['gemini', 'claude', 'openai', 'deepseek', 'kimi', 'perplexity'];
       if (providersRequiringApiKey.includes(userSettings.provider) && !userSettings.apiKey) {
         console.log(`[ERROR] API key required for ${userSettings.provider} provider`);
         return res.status(400).json({ 

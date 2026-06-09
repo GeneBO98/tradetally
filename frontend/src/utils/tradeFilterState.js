@@ -78,7 +78,9 @@ export function clearDashboardTradeFiltersInStorage(storage = localStorage) {
 
   DASHBOARD_PRESERVED_FILTER_KEYS.forEach((key) => {
     const value = currentFilters[key]
-    if (value === null || value === undefined || value === '') {
+    // Boolean false is a no-op toggle (symbolExact) — preserving it kept a
+    // phantom filter alive across Clear all (issue #350).
+    if (value === null || value === undefined || value === '' || value === false) {
       return
     }
     preservedFilters[key] = value

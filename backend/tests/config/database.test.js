@@ -89,4 +89,18 @@ describe('database query wrapper', () => {
     expect(mockEnsurePostExitSchema).not.toHaveBeenCalled();
     expect(mockPoolQuery).toHaveBeenCalledTimes(1);
   });
+
+  // Issue #349: DATE columns must reach the app as plain 'YYYY-MM-DD' strings.
+  // pg's default parser returns Date objects at midnight in the SERVER's local
+  // timezone, which shifts displayed dates by a day for users west of the
+  // server. Removing this parser silently reintroduces the bug everywhere a
+  // DATE column (trade_date, expiration_date, ...) is read.
+  test('registers a DATE (oid 1082) type parser that returns the raw string', () => {
+    const { types } = require('pg');
+    const dateParserCall = types.setTypeParser.mock.calls.find(([oid]) => oid === 1082);
+
+    expect(dateParserCall).toBeDefined();
+    const parser = dateParserCall[1];
+    expect(parser('2026-06-12')).toBe('2026-06-12');
+  });
 });

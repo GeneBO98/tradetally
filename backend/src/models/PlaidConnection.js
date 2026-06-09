@@ -4,6 +4,14 @@ const encryptionService = require('../services/brokerSync/encryptionService');
 
 class PlaidConnection {
   static async hasSchema() {
+    // Schema availability only changes once (when migrations create the
+    // tables), so cache the positive result instead of running a catalog
+    // query on every connections/review request. Negative results are not
+    // cached so a later migration is picked up without a restart.
+    if (PlaidConnection._schemaReady) {
+      return true;
+    }
+
     const result = await db.query(`
       SELECT
         to_regclass('public.plaid_connections') IS NOT NULL
@@ -12,7 +20,11 @@ class PlaidConnection {
         AND to_regclass('public.plaid_transaction_rules') IS NOT NULL AS ready
     `);
 
-    return Boolean(result.rows[0]?.ready);
+    const ready = Boolean(result.rows[0]?.ready);
+    if (ready) {
+      PlaidConnection._schemaReady = true;
+    }
+    return ready;
   }
 
   static calculateNextSync(syncFrequency, syncTime) {

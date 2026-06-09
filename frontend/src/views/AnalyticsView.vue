@@ -1313,6 +1313,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import api from '@/services/api'
+import { parseTradeDate } from '@/utils/date'
 import PerformanceChart from '@/components/charts/PerformanceChart.vue'
 import MdiIcon from '@/components/MdiIcon.vue'
 import NewsCorrelationAnalytics from '@/components/analytics/NewsCorrelationAnalytics.vue'
@@ -2428,7 +2429,7 @@ function createDailyVolumeChart() {
 
   const ctx = dailyVolumeChart.value.getContext('2d')
   const labels = dailyVolumeData.value.map(d => {
-    const date = new Date(d.trade_date)
+    const date = parseTradeDate(d.trade_date)
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   })
   const volumes = dailyVolumeData.value.map(d => d.total_volume)
@@ -2519,7 +2520,7 @@ function createDrawdownChart() {
 
   const ctx = drawdownChart.value.getContext('2d')
   const labels = drawdownData.value.map(d => {
-    const date = new Date(d.trade_date)
+    const date = parseTradeDate(d.trade_date)
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   })
 

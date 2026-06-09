@@ -25,10 +25,16 @@ class AIProvider {
         return this.generateOpenAI(prompt, apiKey, modelName, 'https://api.openai.com/v1', options);
 
       case 'deepseek':
-        return this.generateOpenAI(prompt, apiKey, modelName || 'deepseek-chat', 'https://api.deepseek.com/v1', options);
+        if (!apiKey) {
+          throw new Error('DeepSeek API key not configured');
+        }
+        return this.generateOpenAICompatible(prompt, apiKey, modelName || 'deepseek-chat', apiUrl || 'https://api.deepseek.com/v1', options);
 
       case 'kimi':
-        return this.generateOpenAI(prompt, apiKey, modelName || 'moonshot-v1-8k', 'https://api.moonshot.ai/v1', options);
+        if (!apiKey) {
+          throw new Error('Kimi API key not configured');
+        }
+        return this.generateOpenAICompatible(prompt, apiKey, modelName || 'moonshot-v1-8k', apiUrl || 'https://api.moonshot.ai/v1', options);
 
       case 'claude':
         return this.generateClaude(prompt, apiKey, modelName, options);
@@ -143,10 +149,12 @@ class AIProvider {
       // OpenAI API uses max_completion_tokens; local/other APIs may still use max_tokens
       const isOpenAIAPI = apiUrl && apiUrl.includes('api.openai.com');
 
-      // Reasoning models (o-series, all gpt-5 variants) need higher token limits
-      // because reasoning tokens count toward max_completion_tokens but don't produce visible output.
-      // These models also reject custom `temperature` — only the default (1) is supported.
-      const isReasoningModel = /^(o\d|gpt-5)/i.test(modelName);
+      // Reasoning models (o-series, all gpt-5 variants, deepseek-reasoner) need
+      // higher token limits because reasoning tokens count toward the limit but
+      // don't produce visible output. These models also reject custom
+      // `temperature` — only the default is supported. Keep this regex in sync
+      // with aiService.js.
+      const isReasoningModel = /^(o\d|gpt-5|deepseek-reasoner)/i.test(modelName);
       const tokenLimit = options.maxTokens || (isReasoningModel ? 16384 : 4096);
 
       const tokenParam = isOpenAIAPI

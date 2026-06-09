@@ -79,7 +79,15 @@ async function query(text, params) {
     }
 
     console.warn('[DB] Missing post-exit schema detected during query. Attempting automatic repair.');
-    await repairPostExitSchema();
+    try {
+      await repairPostExitSchema();
+    } catch (repairError) {
+      // Surface the original missing-column error to the caller — a failed
+      // repair (e.g. ALTER TABLE blocked behind a lock) replacing it would
+      // misattribute the failure.
+      console.warn('[DB] Post-exit schema repair failed:', repairError.message);
+      throw error;
+    }
     return pool.query(text, params);
   }
 }

@@ -1741,12 +1741,20 @@ const ADVANCED_FILTER_IGNORE_KEYS = new Set([
   'startDate', 'endDate', 'accounts'
 ])
 
+// Boolean false means "toggle off" (e.g. symbolExact persisted by the trades
+// filter panel) — not an active filter. Counting it produced a phantom
+// "1 filter active" badge that Clear all couldn't remove (issue #350).
+function isActiveAdvancedFilterValue(v) {
+  if (v === null || v === undefined || v === '' || v === false) return false
+  if (Array.isArray(v) && v.length === 0) return false
+  return true
+}
+
 const activeAdvancedFilterCount = computed(() => {
   let count = 0
   for (const [k, v] of Object.entries(appliedFilters.value || {})) {
     if (ADVANCED_FILTER_IGNORE_KEYS.has(k)) continue
-    if (v === null || v === undefined || v === '') continue
-    if (Array.isArray(v) && v.length === 0) continue
+    if (!isActiveAdvancedFilterValue(v)) continue
     count++
   }
   return count
@@ -1755,8 +1763,7 @@ const activeAdvancedFilterCount = computed(() => {
 function appendAdvancedFilterParams(params) {
   for (const [k, v] of Object.entries(appliedFilters.value || {})) {
     if (ADVANCED_FILTER_IGNORE_KEYS.has(k)) continue
-    if (v === null || v === undefined || v === '') continue
-    if (Array.isArray(v) && v.length === 0) continue
+    if (!isActiveAdvancedFilterValue(v)) continue
     params.append(k, Array.isArray(v) ? v.join(',') : String(v))
   }
 }
@@ -1774,6 +1781,9 @@ function handleAdvancedFilter(newFilters) {
 }
 
 function clearAdvancedFilters() {
+  // Close the modal so the still-mounted TradeFilters child can't re-apply
+  // the selections it is still displaying after the store was cleared.
+  showFiltersModal.value = false
   const clearedFilters = clearDashboardTradeFiltersInStorage()
   appliedFilters.value = clearedFilters
   tradesStore.setFilters(clearedFilters)
@@ -2676,7 +2686,7 @@ function createPnLChart() {
     pnlChartInstance = new Chart(ctx, {
       type: 'line',
       data: {
-        labels: dailyData.map(d => format(new Date(d.trade_date), 'MMM dd')),
+        labels: dailyData.map(d => formatTradeDate(d.trade_date, 'MMM dd')),
         datasets: [{
           label: 'Cumulative P&L',
           data: pnlValues,
@@ -2760,7 +2770,7 @@ function createEquityCurveChart() {
     equityCurveChartInstance = new Chart(ctx, {
       type: 'line',
       data: {
-        labels: dailyData.map(d => format(new Date(d.trade_date), 'MMM dd')),
+        labels: dailyData.map(d => formatTradeDate(d.trade_date, 'MMM dd')),
         datasets: [{
           label: 'Cumulative P&L',
           data: pnlValues,
@@ -2935,7 +2945,7 @@ function createWinRateChart() {
   winRateChartInstance = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: winRateData.map(d => format(new Date(d.trade_date), 'MMM dd')),
+      labels: winRateData.map(d => formatTradeDate(d.trade_date, 'MMM dd')),
       datasets: [
         {
           label: 'Win Rate (%)',

@@ -2240,12 +2240,26 @@ class Trade {
       if (!isFinite(stopLossDollars) || stopLossDollars <= 0 || !isFinite(quantity) || quantity <= 0) return null;
 
       const instrumentType = trade.instrument_type || 'stock';
+
+      // Resolve the futures point value the same way calculateRiskAmount does;
+      // getDollarStopLossPriceMove would otherwise fall back to 1 while the
+      // R calculation falls back to the symbol's real multiplier, placing the
+      // stop up to 50x too far from entry on rows with NULL point_value.
+      let pointValue = trade.point_value;
+      if (instrumentType === 'future') {
+        const parsedPointValue = parseFloat(pointValue);
+        if (!isFinite(parsedPointValue) || parsedPointValue <= 0) {
+          const underlying = trade.underlying_asset || extractUnderlyingFromFuturesSymbol(trade.symbol);
+          pointValue = getFuturesPointValue(underlying);
+        }
+      }
+
       const priceMove = this.getDollarStopLossPriceMove(
         stopLossDollars,
         quantity,
         instrumentType,
         trade.contract_size,
-        trade.point_value
+        pointValue
       );
       if (priceMove == null) return null;
 
@@ -2317,7 +2331,7 @@ class Trade {
       const tradesResult = await client.query(`
         SELECT id, symbol, entry_price, exit_price, side, quantity, commission,
                fees, instrument_type, contract_size, point_value, underlying_asset,
-               stop_loss
+               stop_loss, r_value
         FROM trades
         WHERE user_id = $1
           AND entry_price IS NOT NULL
@@ -2352,6 +2366,17 @@ class Trade {
           })
           : null;
 
+        // This sync runs on every settings write for users in the dollar
+        // regression-repair state; skip the UPDATE when nothing would change
+        // so repeated writes (e.g. debounced UI preference flushes) don't
+        // rewrite every trade with identical values.
+        const existingRValue = trade.r_value == null ? null : parseFloat(trade.r_value);
+        const rValueUnchanged = (rValue == null && existingRValue == null)
+          || (rValue != null && existingRValue != null && Math.abs(existingRValue - rValue) < 0.005);
+        if (this.stopLossMatches(trade.stop_loss, newStopLoss) && rValueUnchanged) {
+          continue;
+        }
+
         await client.query(
           `UPDATE trades SET stop_loss = $1, r_value = $2 WHERE id = $3 AND user_id = $4`,
           [newStopLoss, rValue, trade.id, userId]
@@ -2367,233 +2392,6 @@ class Trade {
     } catch (error) {
       await client.query('ROLLBACK');
       console.error('[STOP LOSS] Error syncing default stop losses:', error);
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
-
-  /**
-   * Apply default stop loss to all trades without a stop loss
-   * This is called when a user updates their default stop loss percentage setting
-   * @param {number} userId - The user ID
-   * @param {number} defaultStopLossPercent - The default stop loss percentage
-   * @returns {Promise<number>} The number of trades updated
-   */
-  static async applyDefaultStopLossToExistingTrades(userId, defaultStopLossPercent) {
-    if (!defaultStopLossPercent || defaultStopLossPercent <= 0) {
-      console.log('[STOP LOSS] Invalid default stop loss percentage, skipping update');
-      return 0;
-    }
-
-    console.log(`[STOP LOSS] Applying ${defaultStopLossPercent}% default stop loss to existing trades without stop loss for user ${userId}`);
-
-    // Use a transaction to update all trades at once
-    const client = await db.pool.connect();
-    try {
-      await client.query('BEGIN');
-
-      // Find all trades without a stop loss that have the necessary data
-      const tradesQuery = `
-        SELECT id, symbol, entry_price, exit_price, side, quantity, commission,
-               fees, instrument_type, contract_size, point_value, underlying_asset
-        FROM trades
-        WHERE user_id = $1
-          AND stop_loss IS NULL
-          AND entry_price IS NOT NULL
-          AND side IS NOT NULL
-      `;
-
-      const tradesResult = await client.query(tradesQuery, [userId]);
-      const trades = tradesResult.rows;
-
-      console.log(`[STOP LOSS] Found ${trades.length} trades without stop loss`);
-
-      if (trades.length === 0) {
-        await client.query('COMMIT');
-        return 0;
-      }
-
-      let updatedCount = 0;
-
-      // Update each trade with the calculated stop loss
-      for (const trade of trades) {
-        const {
-          id,
-          symbol,
-          entry_price,
-          exit_price,
-          side,
-          quantity,
-          commission,
-          fees,
-          instrument_type,
-          contract_size,
-          point_value,
-          underlying_asset
-        } = trade;
-
-        // Calculate stop loss based on entry price and side
-        let stopLoss;
-        if (side === 'long' || side === 'buy') {
-          stopLoss = entry_price * (1 - defaultStopLossPercent / 100);
-        } else if (side === 'short' || side === 'sell') {
-          stopLoss = entry_price * (1 + defaultStopLossPercent / 100);
-        } else {
-          console.warn(`[STOP LOSS] Unknown side "${side}" for trade ${id}, skipping`);
-          continue;
-        }
-
-        // Round to 4 decimal places
-        stopLoss = Math.round(stopLoss * 10000) / 10000;
-
-        // Calculate R value if exit price exists
-        let rValue = null;
-        if (exit_price) {
-          rValue = this.calculateRValue(entry_price, stopLoss, exit_price, side, {
-            quantity,
-            commission,
-            fees,
-            instrumentType: instrument_type || 'stock',
-            contractSize: contract_size,
-            pointValue: point_value,
-            symbol,
-            underlyingAsset: underlying_asset
-          });
-        }
-
-        // Update the trade
-        const updateQuery = `
-          UPDATE trades
-          SET stop_loss = $1, r_value = $2
-          WHERE id = $3 AND user_id = $4
-        `;
-
-        await client.query(updateQuery, [stopLoss, rValue, id, userId]);
-        updatedCount++;
-      }
-
-      await client.query('COMMIT');
-      console.log(`[STOP LOSS] Successfully updated ${updatedCount} trades with default stop loss`);
-      return updatedCount;
-
-    } catch (error) {
-      await client.query('ROLLBACK');
-      console.error('[STOP LOSS] Error applying default stop loss to existing trades:', error);
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
-
-  /**
-   * Apply default dollar stop loss to all trades without a stop loss
-   * @param {number} userId - The user ID
-   * @param {number} defaultStopLossDollars - The default stop loss in dollars per trade
-   * @returns {Promise<number>} The number of trades updated
-   */
-  static async applyDefaultStopLossToExistingTradesByDollars(userId, defaultStopLossDollars) {
-    if (!defaultStopLossDollars || defaultStopLossDollars <= 0) {
-      console.log('[STOP LOSS] Invalid default stop loss dollars, skipping update');
-      return 0;
-    }
-
-    console.log(`[STOP LOSS] Applying $${defaultStopLossDollars} default stop loss to existing trades without stop loss for user ${userId}`);
-
-    const client = await db.pool.connect();
-    try {
-      await client.query('BEGIN');
-
-      const tradesQuery = `
-        SELECT id, symbol, entry_price, exit_price, side, quantity, commission,
-               fees, instrument_type, contract_size, point_value, underlying_asset
-        FROM trades
-        WHERE user_id = $1
-          AND stop_loss IS NULL
-          AND entry_price IS NOT NULL
-          AND side IS NOT NULL
-          AND quantity IS NOT NULL
-          AND quantity > 0
-      `;
-
-      const tradesResult = await client.query(tradesQuery, [userId]);
-      const trades = tradesResult.rows;
-
-      console.log(`[STOP LOSS] Found ${trades.length} trades without stop loss (with quantity for dollar SL)`);
-
-      if (trades.length === 0) {
-        await client.query('COMMIT');
-        return 0;
-      }
-
-      let updatedCount = 0;
-
-      for (const trade of trades) {
-        const {
-          id,
-          symbol,
-          entry_price,
-          exit_price,
-          side,
-          quantity,
-          commission,
-          fees,
-          instrument_type,
-          contract_size,
-          point_value,
-          underlying_asset
-        } = trade;
-
-        const instrumentType = instrument_type || 'stock';
-        const priceMove = this.getDollarStopLossPriceMove(defaultStopLossDollars, quantity, instrumentType, contract_size, point_value);
-        if (priceMove == null) {
-          console.warn(`[STOP LOSS] Could not compute dollar stop for trade ${id}, skipping`);
-          continue;
-        }
-
-        let stopLoss;
-        if (side === 'long' || side === 'buy') {
-          stopLoss = entry_price - priceMove;
-        } else if (side === 'short' || side === 'sell') {
-          stopLoss = entry_price + priceMove;
-        } else {
-          console.warn(`[STOP LOSS] Unknown side "${side}" for trade ${id}, skipping`);
-          continue;
-        }
-
-        stopLoss = Math.round(stopLoss * 10000) / 10000;
-
-        let rValue = null;
-        if (exit_price) {
-          rValue = this.calculateRValue(entry_price, stopLoss, exit_price, side, {
-            quantity,
-            commission,
-            fees,
-            instrumentType,
-            contractSize: contract_size,
-            pointValue: point_value,
-            symbol,
-            underlyingAsset: underlying_asset
-          });
-        }
-
-        const updateQuery = `
-          UPDATE trades
-          SET stop_loss = $1, r_value = $2
-          WHERE id = $3 AND user_id = $4
-        `;
-
-        await client.query(updateQuery, [stopLoss, rValue, id, userId]);
-        updatedCount++;
-      }
-
-      await client.query('COMMIT');
-      console.log(`[STOP LOSS] Successfully updated ${updatedCount} trades with default dollar stop loss`);
-      return updatedCount;
-
-    } catch (error) {
-      await client.query('ROLLBACK');
-      console.error('[STOP LOSS] Error applying default dollar stop loss to existing trades:', error);
       throw error;
     } finally {
       client.release();

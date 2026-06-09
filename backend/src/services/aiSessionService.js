@@ -31,6 +31,8 @@ class AISessionService {
       openai: 'gpt-4o-mini',
       claude: 'claude-3-haiku-20240307',
       perplexity: 'sonar',
+      deepseek: 'deepseek-chat',
+      kimi: 'moonshot-v1-8k',
       lmstudio: 'local-model',
       ollama: 'local-model',
       local: 'local-model'
