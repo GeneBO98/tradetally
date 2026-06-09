@@ -288,17 +288,17 @@ class OptionStrategyGroupingService {
   static buildTimeClusters(legs, timeWindowMinutes) {
     const clusters = [];
     let current = [];
-    let currentStart = null;
+    let lastTime = null;
 
     for (const leg of legs) {
       const entryTime = toTime(leg.entry_time);
-      if (!currentStart || minutesBetween(currentStart, entryTime) <= timeWindowMinutes) {
+      if (!lastTime || minutesBetween(lastTime, entryTime) <= timeWindowMinutes) {
         current.push(leg);
-        currentStart = currentStart || entryTime;
+        lastTime = entryTime;
       } else {
         if (current.length > 1) clusters.push(current);
         current = [leg];
-        currentStart = entryTime;
+        lastTime = entryTime;
       }
     }
 

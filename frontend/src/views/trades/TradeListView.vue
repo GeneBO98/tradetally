@@ -492,6 +492,12 @@
                       :title="`Futures contract`">
                       FUT
                     </span>
+                    <!-- Position group strategy badge -->
+                    <span v-if="trade.group_detected_strategy"
+                      class="px-1.5 py-0.5 text-xs font-semibold rounded-full bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400 whitespace-nowrap flex-shrink-0"
+                      :title="`Auto-detected strategy: ${formatGroupStrategy(trade.group_detected_strategy)} (${trade.group_leg_count}-leg position)`">
+                      {{ formatGroupStrategy(trade.group_detected_strategy) }}
+                    </span>
                     <!-- News badge -->
                     <span v-if="trade.has_news"
                       :class="getNewsBadgeClasses(trade.news_sentiment)"
@@ -692,9 +698,15 @@
                 </td>
                 
                 <td v-else-if="column.visible && column.key === 'strategy'"
-                    :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
+                    :class="[getCellPadding, 'whitespace-nowrap text-sm cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  {{ trade.strategy || '-' }}
+                  <span v-if="trade.strategy" class="text-gray-900 dark:text-white">{{ trade.strategy }}</span>
+                  <span v-else-if="trade.group_detected_strategy"
+                    class="text-primary-600 dark:text-primary-400"
+                    :title="`Auto-detected from ${trade.group_leg_count}-leg position group`">
+                    {{ formatGroupStrategy(trade.group_detected_strategy) }}
+                  </span>
+                  <span v-else class="text-gray-500 dark:text-gray-400">-</span>
                 </td>
 
                 <td v-else-if="column.visible && column.key === 'setup'"
@@ -1292,6 +1304,11 @@ watch(
 watch(visibleColumnCount, () => {
   setTimeout(updateTableScrollWidth, 100)
 })
+
+function formatGroupStrategy(strategy) {
+  if (!strategy) return ''
+  return strategy.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
 
 function formatNumber(num) {
   return new Intl.NumberFormat('en-US', {

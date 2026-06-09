@@ -476,13 +476,11 @@ class IBKRService {
       }
     }
 
-    if (imported > 0 || updated > 0) {
-      try {
-        await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'IBKR broker sync');
-        await AnalyticsCache.invalidate(userId);
-      } catch (cacheErr) {
-        console.warn(`[IBKR] AnalyticsCache invalidation failed: ${cacheErr.message}`);
-      }
+    try {
+      await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'IBKR broker sync');
+      await AnalyticsCache.invalidate(userId);
+    } catch (cacheErr) {
+      console.warn(`[IBKR] AnalyticsCache invalidation failed: ${cacheErr.message}`);
     }
 
     return { imported, updated, skipped, failed, duplicates };

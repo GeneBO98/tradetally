@@ -122,6 +122,21 @@ describe('OptionStrategyGroupingService.detectGroups', () => {
     expect(groups).toHaveLength(0);
   });
 
+  test('groups staggered fills using rolling window (each leg within 5 min of the previous)', () => {
+    // Iron condor with 4 legs filling ~4 minutes apart: total span is 12 min but each
+    // consecutive gap is ≤ 5 min. A fixed-start window (old behaviour) would split
+    // the cluster; the rolling window should group all 4 into one iron condor.
+    const groups = OptionStrategyGroupingService.detectGroups([
+      leg({ id: '00000000-0000-4000-8000-000000000120', option_type: 'put',  side: 'long',  strike_price: 390, entry_time: '2026-01-02T15:00:00.000Z' }),
+      leg({ id: '00000000-0000-4000-8000-000000000121', option_type: 'put',  side: 'short', strike_price: 395, entry_time: '2026-01-02T15:04:00.000Z' }),
+      leg({ id: '00000000-0000-4000-8000-000000000122', option_type: 'call', side: 'short', strike_price: 405, entry_time: '2026-01-02T15:08:00.000Z' }),
+      leg({ id: '00000000-0000-4000-8000-000000000123', option_type: 'call', side: 'long',  strike_price: 410, entry_time: '2026-01-02T15:12:00.000Z' })
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].detected_strategy).toBe('iron_condor');
+    expect(groups[0].leg_count).toBe(4);
+  });
+
   test.each([
     ['different account', { account_identifier: 'ACC2' }],
     ['different underlying', { underlying_symbol: 'QQQ', symbol: 'QQQ' }],

@@ -339,14 +339,17 @@ class TradeQueries {
         (SELECT array_agg(tch.chart_url ORDER BY tch.uploaded_at ASC) FROM trade_charts tch WHERE tch.trade_id = t.id) as chart_urls,
         count(DISTINCT tc.id)::integer as comment_count,
         sc.finnhub_industry as sector,
-        sc.company_name as company_name
+        sc.company_name as company_name,
+        tpg.detected_strategy as group_detected_strategy,
+        tpg.leg_count as group_leg_count
       FROM (${subquery}) AS trade_ids
       INNER JOIN trades t ON t.id = trade_ids.id
       LEFT JOIN price_monitoring pm ON pm.symbol = t.symbol
       LEFT JOIN trade_attachments ta ON t.id = ta.trade_id
       LEFT JOIN trade_comments tc ON t.id = tc.trade_id
       LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
-      GROUP BY t.id, pm.current_price, sc.finnhub_industry, sc.company_name
+      LEFT JOIN trade_position_groups tpg ON t.position_group_id = tpg.id
+      GROUP BY t.id, pm.current_price, sc.finnhub_industry, sc.company_name, tpg.detected_strategy, tpg.leg_count
       ORDER BY t.trade_date DESC, t.entry_time DESC
     `;
 

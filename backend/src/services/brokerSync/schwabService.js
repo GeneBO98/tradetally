@@ -1215,11 +1215,9 @@ class SchwabService {
       }
     }
 
-    if (imported > 0) {
-      await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'Schwab broker sync');
-      console.log(`[SCHWAB] Invalidating analytics cache for user ${userId}`);
-      await AnalyticsCache.invalidate(userId);
-    }
+    await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'Schwab broker sync');
+    console.log(`[SCHWAB] Invalidating analytics cache for user ${userId}`);
+    await AnalyticsCache.invalidate(userId);
 
     return { imported, skipped, failed, duplicates };
   }

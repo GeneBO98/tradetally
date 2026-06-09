@@ -90,14 +90,16 @@
                                         <p
                                             class="mt-1.5 text-sm text-gray-500 dark:text-gray-400 leading-relaxed"
                                         >
-                                            Group multi-leg positions (e.g. option
-                                            spreads, iron condors) that were opened
-                                            together into a single trade, so win rate
-                                            and trade counts are measured per position
-                                            instead of per individual leg. Legs are
-                                            grouped when they share the same account,
-                                            underlying, and entry time. Affects all
-                                            analytics; total P&amp;L is unchanged.
+                                            Group multi-leg option positions (spreads,
+                                            iron condors, straddles, etc.) into a
+                                            single trade for win rate and trade counts.
+                                            Legs are grouped when they share the same
+                                            account, underlying, expiration, and trade
+                                            date, with fills within 5 minutes of each
+                                            other. Common strategies are auto-detected
+                                            and shown as a badge in the trade list.
+                                            Affects all analytics; total P&amp;L is
+                                            unchanged.
                                         </p>
                                     </div>
                                     <div class="flex-shrink-0 pt-0.5">
