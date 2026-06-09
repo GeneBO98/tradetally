@@ -12,7 +12,10 @@ const AUTH_BOOTSTRAP_TIMEOUT_MS = 4000
 const GROWTHBOOK_BOOTSTRAP_TIMEOUT_MS = 1500
 
 app.use(createPinia())
-app.use(router)
+// router is installed inside bootstrap() after checkAuth() so the initial
+// navigation fires with the correct auth state. Installing it here would let
+// the router guard fire before the /auth/me response arrives, causing users
+// with a valid token cookie but a missing csrf_token to be sent to /login.
 app.config.globalProperties.$growthbook = growthbook
 app.config.errorHandler = (error, instance, info) => {
   console.error('Vue runtime error:', error, info, instance)
@@ -74,6 +77,12 @@ async function bootstrap() {
   } catch (error) {
     console.error('Auth bootstrap failed:', error)
   }
+
+  // Install the router only after auth state is known. This ensures the initial
+  // navigation's beforeEach guard sees the correct isAuthenticated value and does
+  // not redirect an authenticated user to /login just because the csrf_token cookie
+  // was absent when the page loaded (while the HttpOnly token cookie was still valid).
+  app.use(router)
 
   // Wait for initial navigation/redirects so public routes don't paint briefly on refresh.
   await router.isReady()
