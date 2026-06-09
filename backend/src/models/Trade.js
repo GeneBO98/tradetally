@@ -3097,8 +3097,13 @@ class Trade {
     console.log(`[MONTHLY] Getting monthly performance for user ${userId}, year ${year}, accounts:`, accounts, 'filters:', filters);
 
     const { getBreakevenToleranceConfig, breakevenPredicate } = require('../utils/breakeven');
+    const { POSITION_GROUP_KEY, GROUPED_BREAKEVEN, isPositionGroupingEnabled } = require('../utils/positionGrouping');
     const breakevenConfig = await getBreakevenToleranceConfig(userId);
-    const be = breakevenPredicate({
+    // Whole-trade win rate (issue #339): when enabled, collapse multi-leg
+    // positions before the monthly aggregation so counts and win rate match
+    // the headline analytics. P&L sums are unchanged either way.
+    const groupByPosition = await isPositionGroupingEnabled(userId);
+    const be = groupByPosition ? GROUPED_BREAKEVEN : breakevenPredicate({
       gross: '(pnl + COALESCE(commission, 0) + COALESCE(fees, 0))',
       tickSize: 'tick_size',
       pointValue: 'point_value',
@@ -3130,8 +3135,38 @@ class Trade {
       params.push(...filters.strategies);
     }
 
+    const whereBody = `
+        WHERE user_id = $1
+          AND EXTRACT(YEAR FROM trade_date) = $2
+          AND exit_price IS NOT NULL
+          AND pnl IS NOT NULL${extraFilter}`;
+
+    // Grouped mode aggregates legs to positions first; r-value stats then read
+    // the position-level sum, gated on any leg having a stop (has_stop).
+    const sourceCte = groupByPosition ? `position_trades AS (
+        SELECT
+          MIN(trade_date) as trade_date,
+          MIN(COALESCE(NULLIF(underlying_symbol, ''), symbol)) as symbol,
+          SUM(pnl) as pnl,
+          SUM(r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL) as r_value,
+          BOOL_OR(stop_loss IS NOT NULL) as has_stop
+        FROM trades
+        ${whereBody}
+        GROUP BY ${POSITION_GROUP_KEY}
+      ),
+      ` : '';
+
+    const monthlySource = groupByPosition
+      ? 'FROM position_trades'
+      : `FROM trades
+        ${whereBody}`;
+
+    const rValueFilter = groupByPosition
+      ? 'r_value IS NOT NULL AND has_stop'
+      : 'r_value IS NOT NULL AND stop_loss IS NOT NULL';
+
     const monthlyQuery = `
-      WITH monthly_trades AS (
+      WITH ${sourceCte}monthly_trades AS (
         SELECT
           EXTRACT(MONTH FROM trade_date) as month,
           COUNT(*)::integer as total_trades,
@@ -3145,15 +3180,11 @@ class Trade {
           COALESCE(AVG(pnl) FILTER (WHERE ${be.isNot} AND pnl < 0), 0)::numeric as avg_loss,
           COALESCE(MAX(pnl), 0)::numeric as best_trade,
           COALESCE(MIN(pnl), 0)::numeric as worst_trade,
-          COALESCE(AVG(r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL), 0)::numeric as avg_r_value,
-          COALESCE(SUM(r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL), 0)::numeric as total_r_value,
+          COALESCE(AVG(r_value) FILTER (WHERE ${rValueFilter}), 0)::numeric as avg_r_value,
+          COALESCE(SUM(r_value) FILTER (WHERE ${rValueFilter}), 0)::numeric as total_r_value,
           COUNT(DISTINCT symbol)::integer as symbols_traded,
           COUNT(DISTINCT trade_date)::integer as trading_days
-        FROM trades
-        WHERE user_id = $1
-          AND EXTRACT(YEAR FROM trade_date) = $2
-          AND exit_price IS NOT NULL
-          AND pnl IS NOT NULL${extraFilter}
+        ${monthlySource}
         GROUP BY EXTRACT(MONTH FROM trade_date)
       ),
       all_months AS (

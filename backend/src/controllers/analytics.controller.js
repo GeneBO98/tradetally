@@ -1433,7 +1433,33 @@ const analyticsController = {
       const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
       const params = [req.user.id, ...filterParams];
 
-      const performanceQuery = `
+      // Whole-trade win rate (issue #339): P&L and r-value sums are identical
+      // either way; only the trade/position counts change when grouping is on.
+      const groupByPosition = await isPositionGroupingEnabled(req.user.id);
+
+      const performanceQuery = groupByPosition ? `
+        WITH positions AS (
+          SELECT
+            MIN(trade_date) as trade_date,
+            SUM(pnl) as pnl,
+            SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL) as r_value,
+            BOOL_OR(stop_loss IS NOT NULL) as has_stop
+          FROM trades
+          WHERE user_id = $1 ${filterConditions}
+          GROUP BY ${POSITION_GROUP_KEY}
+        )
+        SELECT
+          ${groupBy} as period,
+          COUNT(*) as trades,
+          COALESCE(SUM(pnl), 0) as pnl,
+          COALESCE(SUM(SUM(pnl)) OVER (ORDER BY ${groupBy}), 0) as cumulative_pnl,
+          COALESCE(SUM(r_value) FILTER (WHERE has_stop), 0) as r_value,
+          COALESCE(SUM(SUM(r_value) FILTER (WHERE has_stop)) OVER (ORDER BY ${groupBy}), 0) as cumulative_r_value,
+          COUNT(CASE WHEN has_stop THEN 1 END) as trades_with_r
+        FROM positions
+        GROUP BY ${groupBy}
+        ORDER BY period
+      ` : `
         SELECT
           ${groupBy} as period,
           COUNT(*) as trades,

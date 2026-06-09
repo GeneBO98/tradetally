@@ -40,21 +40,6 @@ function maxDate(values) {
   return new Date(Math.max(...dates.map(date => date.getTime()))).toISOString();
 }
 
-function combinations(items, size) {
-  const result = [];
-  const walk = (start, combo) => {
-    if (combo.length === size) {
-      result.push(combo);
-      return;
-    }
-    for (let index = start; index <= items.length - (size - combo.length); index++) {
-      walk(index + 1, combo.concat(items[index]));
-    }
-  };
-  walk(0, []);
-  return result;
-}
-
 function allSame(values) {
   const normalized = values.filter(value => value !== null && value !== undefined);
   return normalized.length > 0 && normalized.every(value => String(value) === String(normalized[0]));
@@ -99,14 +84,15 @@ class OptionStrategyGroupingService {
       quantity: Math.abs(quantity),
       pnl: parseNumber(raw.pnl) || 0,
       commission: parseNumber(raw.commission) || 0,
-      fees: parseNumber(raw.fees) || 0,
-      manual_override: raw.manual_override === true
+      fees: parseNumber(raw.fees) || 0
     };
   }
 
   static classifyOptionStrategy(rawLegs, options = {}) {
+    // Legs that fail normalization are dropped rather than passed through raw;
+    // a raw leg without option_type/strike would crash the sort below.
     const legs = rawLegs
-      .map(leg => this.normalizeLeg(leg) || leg)
+      .map(leg => this.normalizeLeg(leg))
       .filter(Boolean)
       .sort((a, b) => {
         if (a.option_type !== b.option_type) return a.option_type.localeCompare(b.option_type);
@@ -114,6 +100,15 @@ class OptionStrategyGroupingService {
       });
 
     const metadata = this.buildMetadata(legs, options);
+
+    if (legs.length < 2) {
+      return {
+        strategy: 'multi_leg_option',
+        confidence: FALLBACK_STRATEGY_CONFIDENCE,
+        method: 'option_strategy_rules',
+        metadata
+      };
+    }
 
     if (legs.length === 2) {
       const classification = this.classifyTwoLegStrategy(legs);
@@ -275,7 +270,10 @@ class OptionStrategyGroupingService {
 
     const groups = [];
     for (const bucketLegs of buckets.values()) {
-      bucketLegs.sort((a, b) => toTime(a.entry_time).getTime() - toTime(b.entry_time).getTime());
+      bucketLegs.sort((a, b) =>
+        (toTime(a.entry_time).getTime() - toTime(b.entry_time).getTime()) ||
+        (a.strike_price - b.strike_price) ||
+        String(a.id).localeCompare(String(b.id)));
       const clusters = this.buildTimeClusters(bucketLegs, timeWindowMinutes);
       for (const cluster of clusters) {
         groups.push(...this.detectGroupsInCluster(cluster, timeWindowMinutes));
@@ -306,31 +304,73 @@ class OptionStrategyGroupingService {
     return clusters;
   }
 
+  // Strategy matching is built directly from valid sub-structures instead of
+  // brute-forcing every 4-leg combination: rolling time clusters can chain a
+  // whole session of fills into one cluster, and C(n,4) classification blows
+  // up fast (C(60,4) ~ 487k). Directed construction keeps this O(n^2) per
+  // cluster. The greedy earliest-first vertical pairing can in adversarial
+  // strike layouts pick a different pairing than exhaustive search would, but
+  // unmatched legs degrade gracefully to 2-leg detection or the
+  // multi_leg_option fallback below.
+  //
+  // Note: calendar/diagonal classification stays unreachable from here on
+  // purpose — the bucket key in detectGroups includes expiration_date, so a
+  // cluster never mixes expirations. Those branches only apply to direct
+  // classifyOptionStrategy calls.
   static detectGroupsInCluster(cluster, timeWindowMinutes) {
     const unused = new Map(cluster.map(leg => [leg.id, leg]));
+    // Cluster order (entry_time, strike, id) is the canonical ordering; track
+    // it separately so leg objects embedded in persisted metadata stay clean.
+    const clusterIndex = new Map(cluster.map((leg, index) => [leg.id, index]));
     const groups = [];
 
-    const takeKnownGroups = (size) => {
-      let found = true;
-      while (found) {
-        found = false;
-        const available = Array.from(unused.values());
-        for (const combo of combinations(available, size)) {
-          const classification = this.classifyOptionStrategy(combo, { timeWindowMinutes });
-          if (classification.strategy !== 'multi_leg_option') {
-            groups.push(this.buildDetectedGroup(combo, classification));
-            combo.forEach(leg => unused.delete(leg.id));
-            found = true;
-            break;
-          }
-        }
-      }
+    const takeGroup = (legs, classification) => {
+      const ordered = [...legs].sort((a, b) => clusterIndex.get(a.id) - clusterIndex.get(b.id));
+      groups.push(this.buildDetectedGroup(ordered, classification));
+      legs.forEach(leg => unused.delete(leg.id));
     };
 
-    takeKnownGroups(4);
-    takeKnownGroups(2);
+    // Phase 1: 4-leg known structures. An iron condor/butterfly is exactly a
+    // put vertical plus a call vertical, so pair candidate verticals per side
+    // and validate the combined legs through the classifier.
+    const putVerticals = this.buildCandidateVerticals(
+      cluster.filter(leg => leg.option_type === 'put'));
+    const callVerticals = this.buildCandidateVerticals(
+      cluster.filter(leg => leg.option_type === 'call'));
 
-    const remaining = Array.from(unused.values());
+    for (const putVertical of putVerticals) {
+      if (putVertical.some(leg => !unused.has(leg.id))) continue;
+      for (const callVertical of callVerticals) {
+        if (callVertical.some(leg => !unused.has(leg.id))) continue;
+        const fourLegs = [...putVertical, ...callVertical];
+        const classification = this.classifyOptionStrategy(fourLegs, { timeWindowMinutes });
+        if (classification.strategy !== 'multi_leg_option') {
+          takeGroup(fourLegs, classification);
+          break;
+        }
+      }
+    }
+
+    // Phase 2: 2-leg known strategies via first-fit over ordered pairs —
+    // equivalent to the old exhaustive scan because a pair's classification
+    // depends only on its own legs.
+    const pairCandidates = cluster.filter(leg => unused.has(leg.id));
+    for (let i = 0; i < pairCandidates.length; i++) {
+      if (!unused.has(pairCandidates[i].id)) continue;
+      for (let j = i + 1; j < pairCandidates.length; j++) {
+        if (!unused.has(pairCandidates[j].id)) continue;
+        const pair = [pairCandidates[i], pairCandidates[j]];
+        const classification = this.classifyOptionStrategy(pair, { timeWindowMinutes });
+        if (classification.strategy !== 'multi_leg_option') {
+          takeGroup(pair, classification);
+          break;
+        }
+      }
+    }
+
+    // Phase 3: leftovers of 2-4 legs per expiration fall back to a generic
+    // multi_leg_option group.
+    const remaining = cluster.filter(leg => unused.has(leg.id));
     const byExpiration = new Map();
     for (const leg of remaining) {
       if (!byExpiration.has(leg.expiration_date)) byExpiration.set(leg.expiration_date, []);
@@ -344,6 +384,30 @@ class OptionStrategyGroupingService {
     }
 
     return groups;
+  }
+
+  // Candidate verticals for one option type within a cluster. Any short+long
+  // pair of the same type and expiration at different strikes is a valid
+  // vertical (both strike orderings classify as a bull/bear spread), so the
+  // only pairing constraint is distinct strikes. Greedy earliest-first
+  // matching: legs arrive in cluster order, each leg joins at most one
+  // candidate. Returned in entry order of each vertical's earliest leg.
+  static buildCandidateVerticals(legs) {
+    const shorts = legs.filter(leg => leg.side === 'short');
+    const longs = legs.filter(leg => leg.side === 'long');
+    const matchedLongs = new Set();
+    const verticals = [];
+
+    for (const shortLeg of shorts) {
+      const longLeg = longs.find(candidate =>
+        !matchedLongs.has(candidate.id) && candidate.strike_price !== shortLeg.strike_price);
+      if (longLeg) {
+        matchedLongs.add(longLeg.id);
+        verticals.push([shortLeg, longLeg]);
+      }
+    }
+
+    return verticals;
   }
 
   static buildDetectedGroup(legs, classification) {
@@ -376,7 +440,7 @@ class OptionStrategyGroupingService {
       SELECT
         id, symbol, account_identifier, underlying_symbol, instrument_type,
         expiration_date, option_type, strike_price, side, quantity,
-        entry_time, exit_time, trade_date, pnl, commission, fees, manual_override
+        entry_time, exit_time, trade_date, pnl, commission, fees
       FROM trades
       WHERE user_id = $1
         AND instrument_type = 'option'
@@ -391,9 +455,13 @@ class OptionStrategyGroupingService {
 
     const groups = this.detectGroups(result.rows, { timeWindowMinutes });
 
-    await db.query('BEGIN');
+    // The whole write phase must run on one connection: BEGIN/COMMIT via
+    // pool.query land on arbitrary pooled connections, which both breaks
+    // atomicity and can return a connection mid-transaction to the pool.
+    const client = await db.connect();
     try {
-      const existingResult = await db.query(`
+      await client.query('BEGIN');
+      const existingResult = await client.query(`
         SELECT
           tpg.id,
           COALESCE(ARRAY_AGG(t.id ORDER BY t.id) FILTER (WHERE t.id IS NOT NULL), ARRAY[]::uuid[]) as trade_ids
@@ -409,7 +477,7 @@ class OptionStrategyGroupingService {
         if (key) existingByTradeIds.set(key, row.id);
       }
 
-      await db.query('UPDATE trades SET position_group_id = NULL WHERE user_id = $1 AND position_group_id IS NOT NULL', [userId]);
+      await client.query('UPDATE trades SET position_group_id = NULL WHERE user_id = $1 AND position_group_id IS NOT NULL', [userId]);
 
       const retainedGroupIds = [];
       for (const group of groups) {
@@ -434,7 +502,7 @@ class OptionStrategyGroupingService {
 
         let groupId = existingByTradeIds.get(tradeIdsKey(group.tradeIds));
         if (groupId) {
-          const updateResult = await db.query(`
+          const updateResult = await client.query(`
             UPDATE trade_position_groups
             SET
               account_identifier = $2,
@@ -460,7 +528,7 @@ class OptionStrategyGroupingService {
         }
 
         if (!groupId) {
-          const insertResult = await db.query(`
+          const insertResult = await client.query(`
             INSERT INTO trade_position_groups (
               user_id, account_identifier, underlying_symbol, instrument_type,
               expiration_date, entry_time, exit_time, trade_date,
@@ -475,23 +543,25 @@ class OptionStrategyGroupingService {
 
         retainedGroupIds.push(groupId);
 
-        await db.query(
+        await client.query(
           'UPDATE trades SET position_group_id = $1 WHERE user_id = $2 AND id = ANY($3::uuid[])',
           [groupId, userId, group.tradeIds]
         );
       }
 
       if (retainedGroupIds.length > 0) {
-        await db.query('DELETE FROM trade_position_groups WHERE user_id = $1 AND NOT (id = ANY($2::uuid[]))', [userId, retainedGroupIds]);
+        await client.query('DELETE FROM trade_position_groups WHERE user_id = $1 AND NOT (id = ANY($2::uuid[]))', [userId, retainedGroupIds]);
       } else {
-        await db.query('DELETE FROM trade_position_groups WHERE user_id = $1', [userId]);
+        await client.query('DELETE FROM trade_position_groups WHERE user_id = $1', [userId]);
       }
 
-      await db.query('COMMIT');
+      await client.query('COMMIT');
       return { groupsCreated: groups.length, legsGrouped: groups.reduce((sum, group) => sum + group.leg_count, 0) };
     } catch (error) {
-      await db.query('ROLLBACK');
+      await client.query('ROLLBACK');
       throw error;
+    } finally {
+      client.release();
     }
   }
 

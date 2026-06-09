@@ -48,3 +48,45 @@ describe('analyticsController.getStrategyStats', () => {
     expect(query).toContain('GROUP BY position_group_id');
   });
 });
+
+describe('analyticsController.getPerformance', () => {
+  beforeEach(() => {
+    db.query.mockReset();
+    positionGrouping.isPositionGroupingEnabled.mockReset();
+  });
+
+  test('counts legs when grouping is disabled', async () => {
+    positionGrouping.isPositionGroupingEnabled.mockResolvedValue(false);
+    db.query.mockResolvedValue({ rows: [] });
+
+    const req = { user: { id: 'user-1' }, query: { period: 'monthly' } };
+    const res = { json: jest.fn() };
+    const next = jest.fn();
+
+    await analyticsController.getPerformance(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    const [query] = db.query.mock.calls[0];
+    expect(query).toContain('FROM trades');
+    expect(query).not.toContain('WITH positions');
+    expect(query).toContain("DATE_TRUNC('month', trade_date)");
+  });
+
+  test('counts positions when grouping is enabled', async () => {
+    positionGrouping.isPositionGroupingEnabled.mockResolvedValue(true);
+    db.query.mockResolvedValue({ rows: [] });
+
+    const req = { user: { id: 'user-1' }, query: { period: 'weekly' } };
+    const res = { json: jest.fn() };
+    const next = jest.fn();
+
+    await analyticsController.getPerformance(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    const [query] = db.query.mock.calls[0];
+    expect(query).toContain('WITH positions');
+    expect(query).toContain('GROUP BY COALESCE(position_group_id::text');
+    expect(query).toContain('FROM positions');
+    expect(query).toContain("DATE_TRUNC('week', trade_date)");
+  });
+});

@@ -599,7 +599,34 @@ class TradeQueries {
     ] = await Promise.all([
       timedDbQuery('analytics.executionCountQuery', executionCountQuery, values),
       timedDbQuery('analytics.analyticsQuery', analyticsQuery, values),
-      timedDbQuery('analytics.symbolBreakdownQuery', `
+      timedDbQuery('analytics.symbolBreakdownQuery', groupByPosition ? `
+        -- Whole-trade mode: one row per position (multi-leg groups collapsed),
+        -- keyed by underlying so option legs roll up under their underlying.
+        -- Matches the grouped completed_trades semantics above so this
+        -- widget's "Trades" column agrees with the Win Rate card's total.
+        WITH positions AS (
+          SELECT
+            COALESCE(NULLIF(underlying_symbol, ''), symbol) as symbol,
+            SUM(pnl) as pnl,
+            SUM(quantity) as volume
+          FROM trades t
+          ${whereClause}
+            AND exit_price IS NOT NULL
+            AND pnl IS NOT NULL
+          GROUP BY COALESCE(NULLIF(underlying_symbol, ''), symbol), ${POSITION_GROUP_KEY}
+        )
+        SELECT
+          symbol,
+          COUNT(*) as trades,
+          SUM(pnl) as total_pnl,
+          AVG(pnl) as avg_pnl,
+          COUNT(*) FILTER (WHERE pnl > 0) as wins,
+          SUM(volume) as total_volume
+        FROM positions
+        GROUP BY symbol
+        ORDER BY total_pnl DESC
+        LIMIT 10
+      ` : `
         -- One row per completed round-trip trade — matches analyticsQuery's
         -- completed_trades semantics so this widget's "Trades" column agrees
         -- with the Win Rate card's total. The old version pre-aggregated by
@@ -627,14 +654,46 @@ class TradeQueries {
           SUM(SUM(COALESCE(pnl, 0))) OVER (ORDER BY trade_date) as cumulative_pnl,
           COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as r_value,
           COALESCE(SUM(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL)) OVER (ORDER BY trade_date), 0) as cumulative_r_value,
-          COUNT(*) as trade_count
+          ${groupByPosition ? `COUNT(DISTINCT ${POSITION_GROUP_KEY})` : 'COUNT(*)'} as trade_count
         FROM trades t
         ${whereClause}
         GROUP BY trade_date
         HAVING COUNT(*) > 0
         ORDER BY trade_date
       `, values),
-      timedDbQuery('analytics.dailyWinRateQuery', `
+      timedDbQuery('analytics.dailyWinRateQuery', groupByPosition ? `
+        -- Whole-trade mode: wins/losses counted per position, not per leg, so
+        -- the Daily Win Rate & P/R Ratio widget matches the headline win rate.
+        -- Grouped positions use the net-P&L breakeven (rounds to zero) since
+        -- the per-leg tick tolerance doesn't apply to a combined position.
+        WITH positions AS (
+          SELECT
+            MIN(trade_date) as trade_date,
+            SUM(COALESCE(pnl, 0)) as pnl
+          FROM trades t
+          ${whereClause}
+          GROUP BY ${POSITION_GROUP_KEY}
+        )
+        SELECT
+          trade_date,
+          COUNT(*) FILTER (WHERE ${GROUPED_BREAKEVEN.isNot} AND pnl > 0) as wins,
+          COUNT(*) FILTER (WHERE ${GROUPED_BREAKEVEN.isNot} AND pnl < 0) as losses,
+          COUNT(*) FILTER (WHERE ${GROUPED_BREAKEVEN.is}) as breakeven,
+          COUNT(*) as total_trades,
+          CASE
+            WHEN COUNT(*) > 0 THEN ROUND((COUNT(*) FILTER (WHERE ${GROUPED_BREAKEVEN.isNot} AND pnl > 0)::decimal / COUNT(*)::decimal) * 100, 2)
+            ELSE 0
+          END as win_rate,
+          CASE
+            WHEN AVG(pnl) FILTER (WHERE ${GROUPED_BREAKEVEN.isNot} AND pnl < 0) IS NULL THEN
+              CASE WHEN AVG(pnl) FILTER (WHERE ${GROUPED_BREAKEVEN.isNot} AND pnl > 0) IS NOT NULL THEN 999.99 ELSE 0 END
+            ELSE ROUND(ABS(AVG(pnl) FILTER (WHERE ${GROUPED_BREAKEVEN.isNot} AND pnl > 0) / AVG(pnl) FILTER (WHERE ${GROUPED_BREAKEVEN.isNot} AND pnl < 0))::numeric, 2)
+          END as pl_ratio
+        FROM positions
+        GROUP BY trade_date
+        HAVING COUNT(*) > 0
+        ORDER BY trade_date
+      ` : `
         SELECT
           trade_date,
           COUNT(*) FILTER (WHERE ${beDaily.isNot} AND COALESCE(pnl, 0) > 0) as wins,
