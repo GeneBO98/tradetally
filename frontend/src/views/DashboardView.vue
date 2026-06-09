@@ -1610,9 +1610,15 @@ import StockLogo from '@/components/common/StockLogo.vue'
 import TradeFilters from '@/components/trades/TradeFilters.vue'
 import { useYearWrappedStore } from '@/stores/yearWrapped'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
+import { useTradesStore } from '@/stores/trades'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import {
+  normalizeTradeFiltersForSharedState,
+  loadTradeFiltersFromStorage,
+  clearDashboardTradeFiltersInStorage
+} from '@/utils/tradeFilterState'
 import draggable from 'vuedraggable'
 
 const authStore = useAuthStore()
@@ -1621,6 +1627,7 @@ const { formatCurrency, currencySymbol, formatSignedCurrency } = useCurrencyForm
 const { selectedAccount, selectedAccountLabel } = useGlobalAccountFilter()
 const yearWrappedStore = useYearWrappedStore()
 const uiPreferencesStore = useUiPreferencesStore()
+const tradesStore = useTradesStore()
 const router = useRouter()
 
 const loading = computed(() => analyticsLoading.value || quotesLoading.value)
@@ -1755,7 +1762,9 @@ function appendAdvancedFilterParams(params) {
 }
 
 function handleAdvancedFilter(newFilters) {
-  appliedFilters.value = newFilters || {}
+  const normalizedFilters = normalizeTradeFiltersForSharedState(newFilters || {})
+  appliedFilters.value = normalizedFilters
+  tradesStore.setFilters(normalizedFilters)
   showFiltersModal.value = false
   // Same refresh set as the time-range / global-account watchers.
   fetchAnalytics()
@@ -1765,14 +1774,23 @@ function handleAdvancedFilter(newFilters) {
 }
 
 function clearAdvancedFilters() {
-  // Only resets the dashboard's view of the filter spec — the shared
-  // TradeFilters component reads from localStorage on mount (used by the
-  // trade list / analytics views), so we don't touch that here.
-  appliedFilters.value = {}
+  const clearedFilters = clearDashboardTradeFiltersInStorage()
+  appliedFilters.value = clearedFilters
+  tradesStore.setFilters(clearedFilters)
+  uiPreferencesStore.notifyChanged(
+    'tradeFilters',
+    Object.keys(clearedFilters).length > 0 ? clearedFilters : null
+  )
   fetchAnalytics()
   fetchAiInsight()
   fetchRecentTrades()
   fetchBehavioralSummary()
+}
+
+function hydrateSharedTradeFilters() {
+  const savedFilters = loadTradeFiltersFromStorage()
+  appliedFilters.value = savedFilters
+  tradesStore.setFilters(savedFilters)
 }
 
 const showTimeRangeDropdown = ref(false)
@@ -3484,6 +3502,10 @@ onMounted(async () => {
   } catch (e) {
     // localStorage load failed
   }
+
+  // Keep the dashboard and shared TradeFilters modal aligned with the
+  // persisted trade filter state before any cached dashboard data is restored.
+  hydrateSharedTradeFilters()
 
   // Try to restore cached data from sessionStorage for instant rendering
   const hasCachedAnalytics = loadCachedAnalytics()
