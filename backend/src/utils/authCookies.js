@@ -10,8 +10,18 @@ function parseUrl(value) {
   }
 }
 
+function getForwardedProto(req) {
+  const value = req.headers?.['x-forwarded-proto'];
+  const firstValue = Array.isArray(value) ? value[0] : value;
+
+  return typeof firstValue === 'string'
+    ? firstValue.split(',')[0].trim().toLowerCase()
+    : null;
+}
+
 function getRequestOrigin(req) {
-  const protocol = req.secure ? 'https' : req.protocol || 'http';
+  const forwardedProto = getForwardedProto(req);
+  const protocol = req.secure ? 'https' : forwardedProto || req.protocol || 'http';
   const host = req.get?.('host') || req.headers.host;
   return host ? parseUrl(`${protocol}://${host}`) : null;
 }
@@ -31,9 +41,8 @@ function isSecureRequest(req) {
   const requestOrigin = getRequestOrigin(req);
   const hostname = requestOrigin?.hostname;
   const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
-  return process.env.NODE_ENV === 'production'
-    || req.secure
-    || req.headers['x-forwarded-proto'] === 'https'
+  return req.secure
+    || getForwardedProto(req) === 'https'
     || Boolean(requestOrigin && requestOrigin.protocol === 'https:')
     || isLocalhost;
 }

@@ -86,4 +86,60 @@ describe('auth cookie options', () => {
       })
     );
   });
+
+  test('non-localhost http production requests stay non-Secure so self-hosted browser sessions persist', () => {
+    process.env.NODE_ENV = 'production';
+
+    const req = {
+      protocol: 'http',
+      secure: false,
+      headers: {
+        origin: 'http://192.168.1.10:3030',
+        host: '192.168.1.10:3030'
+      },
+      get(name) {
+        return this.headers[name.toLowerCase()];
+      }
+    };
+
+    expect(buildAuthCookieOptions(req)).toEqual(
+      expect.objectContaining({
+        sameSite: 'lax',
+        secure: false,
+        httpOnly: true
+      })
+    );
+    expect(buildCsrfCookieOptions(req)).toEqual(
+      expect.objectContaining({
+        sameSite: 'lax',
+        secure: false,
+        httpOnly: false
+      })
+    );
+  });
+
+  test('https production requests still use Secure cookies', () => {
+    process.env.NODE_ENV = 'production';
+
+    const req = {
+      protocol: 'http',
+      secure: false,
+      headers: {
+        origin: 'https://tradetally.example.com',
+        host: 'tradetally.example.com',
+        'x-forwarded-proto': 'https,http'
+      },
+      get(name) {
+        return this.headers[name.toLowerCase()];
+      }
+    };
+
+    expect(buildAuthCookieOptions(req)).toEqual(
+      expect.objectContaining({
+        sameSite: 'lax',
+        secure: true,
+        httpOnly: true
+      })
+    );
+  });
 });
