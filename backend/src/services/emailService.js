@@ -419,6 +419,60 @@ class EmailService {
     }
   }
 
+  static async sendAccountLockoutEmail(email, token) {
+    if (!this.isConfigured()) {
+      console.log('Email not configured, skipping account lockout email');
+      return;
+    }
+
+    const unlockUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/unlock-account/${token}`;
+    const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/forgot-password`;
+
+    const content = `
+      <h1 style="color: #18181b; font-size: 22px; margin: 0 0 8px 0; font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        Your account has been locked
+      </h1>
+      <p style="color: #71717a; font-size: 15px; line-height: 1.6; margin: 0 0 28px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        We locked your TradeTally account after several failed sign-in attempts. If this was you, click below to unlock it and try again. If it wasn't, we recommend resetting your password.
+      </p>
+
+      <div style="text-align: center; margin: 0 0 28px 0;">
+        <a href="${unlockUrl}" style="${this.getButtonStyle()}">
+          Unlock My Account
+        </a>
+      </div>
+
+      <p style="color: #a1a1aa; font-size: 13px; line-height: 1.5; margin: 0 0 4px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        This link expires in 24 hours. If it has expired, you can <a href="${resetUrl}" style="color: #F0812A; text-decoration: none;">reset your password</a> to regain access.
+      </p>
+    `;
+
+    let mailOptions = {
+      from: {
+        name: 'TradeTally',
+        address: process.env.EMAIL_FROM || 'noreply@tradetally.io'
+      },
+      to: email,
+      subject: 'Your account has been locked - TradeTally',
+      html: this.getBaseTemplate('Your TradeTally Account Has Been Locked', content),
+      text: `Your TradeTally account was locked after several failed sign-in attempts. Unlock it by visiting: ${unlockUrl} (link expires in 24 hours). If it has expired, reset your password at ${resetUrl}.`,
+      headers: {
+        'X-Entity-Ref-ID': `unlock-${Date.now()}`,
+        'Message-ID': `<unlock-${Date.now()}@tradetally.io>`
+      }
+    };
+
+    try {
+      const transporter = this.createTransporter();
+      await transporter.sendMail(mailOptions);
+      console.log('Account lockout email sent to:', maskEmail(email));
+      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'account_lockout', htmlBody: mailOptions.html || null, textBody: mailOptions.text, status: 'sent' });
+    } catch (error) {
+      console.error('Failed to send account lockout email:', error);
+      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'account_lockout', htmlBody: mailOptions.html || null, textBody: mailOptions.text, status: 'failed', errorMessage: error.message });
+    }
+  }
+
   static async sendEmailChangeVerification(email, token) {
     if (!this.isConfigured()) {
       console.log('Email not configured, skipping email change verification');

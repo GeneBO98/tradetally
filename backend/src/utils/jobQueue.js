@@ -9,7 +9,7 @@ class JobQueue {
 
   /**
    * Add a job to the queue
-   * @param {string} type - Job type (cusip_resolution, strategy_classification, news_enrichment, news_backfill, quality_backfill, verification_email, password_reset_email, support_request_email)
+   * @param {string} type - Job type (cusip_resolution, strategy_classification, news_enrichment, news_backfill, quality_backfill, verification_email, password_reset_email, account_lockout_email, support_request_email)
    * @param {object} data - Job data
    * @param {number} priority - Priority (1=highest, 5=lowest)
    * @param {string} userId - User ID for the job
@@ -272,6 +272,9 @@ class JobQueue {
           break;
         case 'password_reset_email':
           result = await this.processPasswordResetEmail(data);
+          break;
+        case 'account_lockout_email':
+          result = await this.processAccountLockoutEmail(data);
           break;
         case 'support_request_email':
           result = await this.processSupportRequestEmail(data);
@@ -723,6 +726,18 @@ class JobQueue {
     }
 
     await EmailService.sendPasswordResetEmail(email, token);
+    return { sent: true, email };
+  }
+
+  async processAccountLockoutEmail(data) {
+    const EmailService = require('../services/emailService');
+    const { email, token } = data;
+
+    if (!email || !token) {
+      throw new Error('Account lockout email job is missing email or token');
+    }
+
+    await EmailService.sendAccountLockoutEmail(email, token);
     return { sent: true, email };
   }
 

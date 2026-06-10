@@ -275,12 +275,27 @@ export const useAuthStore = defineStore('auth', () => {
   async function resetPassword(token, password) {
     loading.value = true
     error.value = null
-    
+
     try {
       const response = await api.post('/auth/reset-password', { token, password })
       return response.data
     } catch (err) {
       error.value = err.response?.data?.error || 'Failed to reset password'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function unlockAccount(token) {
+    loading.value = true
+    error.value = null
+
+    try {
+      const response = await api.post('/auth/unlock-account', { token })
+      return response.data
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to unlock account'
       throw err
     } finally {
       loading.value = false
@@ -481,6 +496,7 @@ export const useAuthStore = defineStore('auth', () => {
     resendVerification,
     forgotPassword,
     resetPassword,
+    unlockAccount,
     verify2FA,
     loginWithPasskey,
     navigateAfterLogin,

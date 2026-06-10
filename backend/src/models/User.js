@@ -92,7 +92,8 @@ class User {
   static async findByEmail(email) {
     const query = `
       SELECT id, email, username, password_hash, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone,
-             two_factor_enabled, two_factor_secret, tier, created_at, last_login_at
+             two_factor_enabled, two_factor_secret, tier, created_at, last_login_at,
+             failed_login_attempts, account_locked_at
       FROM users
       WHERE email = $1
     `;
@@ -408,14 +409,73 @@ class User {
   }
 
   static async updatePassword(userId, hashedPassword) {
+    // Resetting the password proves email ownership, so it also clears any
+    // active lockout and the failed-attempt counter.
     const query = `
-      UPDATE users 
-      SET password_hash = $1, reset_token = NULL, reset_expires = NULL
+      UPDATE users
+      SET password_hash = $1, reset_token = NULL, reset_expires = NULL,
+          failed_login_attempts = 0, account_locked_at = NULL,
+          unlock_token = NULL, unlock_expires = NULL
       WHERE id = $2
       RETURNING *
     `;
-    
+
     const result = await db.query(query, [hashedPassword, userId]);
+    return result.rows[0];
+  }
+
+  // --- Account lockout (failed login throttling) -----------------------------
+
+  static async incrementFailedLoginAttempts(userId) {
+    const query = `
+      UPDATE users
+      SET failed_login_attempts = failed_login_attempts + 1
+      WHERE id = $1
+      RETURNING failed_login_attempts
+    `;
+    const result = await db.query(query, [userId]);
+    return result.rows[0]?.failed_login_attempts ?? 0;
+  }
+
+  static async resetFailedLoginAttempts(userId) {
+    const query = `
+      UPDATE users
+      SET failed_login_attempts = 0, account_locked_at = NULL,
+          unlock_token = NULL, unlock_expires = NULL
+      WHERE id = $1
+    `;
+    await db.query(query, [userId]);
+  }
+
+  static async lockAccount(userId, unlockToken, unlockExpires) {
+    const query = `
+      UPDATE users
+      SET account_locked_at = NOW(), unlock_token = $1, unlock_expires = $2
+      WHERE id = $3
+      RETURNING *
+    `;
+    const result = await db.query(query, [hashLookupToken(unlockToken), unlockExpires, userId]);
+    return result.rows[0];
+  }
+
+  static async findByUnlockToken(token) {
+    const query = `
+      SELECT id, email, username FROM users
+      WHERE unlock_token = $1 AND unlock_expires > NOW()
+    `;
+    const result = await db.query(query, [hashLookupToken(token)]);
+    return result.rows[0];
+  }
+
+  static async unlockAccount(userId) {
+    const query = `
+      UPDATE users
+      SET failed_login_attempts = 0, account_locked_at = NULL,
+          unlock_token = NULL, unlock_expires = NULL
+      WHERE id = $1
+      RETURNING id, email, username
+    `;
+    const result = await db.query(query, [userId]);
     return result.rows[0];
   }
 
