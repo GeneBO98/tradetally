@@ -132,6 +132,42 @@ class PlaidConnection {
     }));
   }
 
+  static async findByItemId(itemId) {
+    // No user scope: inbound webhooks identify the connection by item_id
+    // only. Plaid item_ids are globally unique per Item.
+    const result = await db.query(`
+      SELECT * FROM plaid_connections
+      WHERE item_id = $1
+      LIMIT 1
+    `, [itemId]);
+
+    if (result.rows.length === 0) return null;
+    return this.formatConnection(result.rows[0], false);
+  }
+
+  static async setConnectionStatus(connectionId, status, message = null) {
+    const result = await db.query(`
+      UPDATE plaid_connections
+      SET connection_status = $2,
+          last_error_message = COALESCE($3, last_error_message),
+          last_error_at = CASE WHEN $3::text IS NOT NULL THEN CURRENT_TIMESTAMP ELSE last_error_at END,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+      RETURNING *
+    `, [connectionId, status, message]);
+
+    if (result.rows.length === 0) return null;
+    return this.formatConnection(result.rows[0], false);
+  }
+
+  static async markWebhookReceived(connectionId) {
+    await db.query(`
+      UPDATE plaid_connections
+      SET last_webhook_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+    `, [connectionId]);
+  }
+
   static async findDueForSync() {
     const result = await db.query(`
       SELECT * FROM plaid_connections

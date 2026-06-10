@@ -83,9 +83,13 @@ const validate = (schema) => {
 };
 
 const nullableString = (max = 255) => Joi.string().max(max).allow('', null);
+// Date-only fields (DATE columns) must stay strings through validation.
+// Joi.date() converts to a UTC-midnight Date object, which pg serializes in
+// the server's LOCAL timezone - on servers west of UTC the stored DATE lands
+// one day early (issue #349). .raw() validates but returns the original value.
+const isoDateOnly = Joi.date().iso().raw();
 const nullableDate = Joi.alternatives().try(
-  Joi.date().iso(),
-  Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/),
+  isoDateOnly,
   Joi.valid(null, '')
 );
 const nullableNumber = Joi.alternatives().try(Joi.number(), Joi.valid(null, ''));
@@ -209,7 +213,7 @@ const schemas = {
     underlyingSymbol: Joi.string().max(10).allow(null, ''),
     optionType: Joi.string().valid('call', 'put').allow(null, ''),
     strikePrice: Joi.number().positive().allow(null, ''),
-    expirationDate: Joi.date().iso().allow(null, ''),
+    expirationDate: isoDateOnly.allow(null, ''),
     contractSize: Joi.number().integer().positive().allow(null, ''),
     // Futures-specific fields
     underlyingAsset: Joi.string().max(50).allow(null, ''),
@@ -289,7 +293,7 @@ const schemas = {
     underlyingSymbol: Joi.string().max(10).allow(null, ''),
     optionType: Joi.string().valid('call', 'put').allow(null, ''),
     strikePrice: Joi.number().positive().allow(null, ''),
-    expirationDate: Joi.date().iso().allow(null, ''),
+    expirationDate: isoDateOnly.allow(null, ''),
     contractSize: Joi.number().integer().positive().allow(null, ''),
     // Futures-specific fields
     underlyingAsset: Joi.string().max(50).allow(null, ''),
@@ -367,7 +371,7 @@ const schemas = {
     underlyingSymbol: Joi.string().max(10).allow(null, ''),
     optionType: Joi.string().valid('call', 'put').allow(null, ''),
     strikePrice: Joi.number().positive().allow(null, ''),
-    expirationDate: Joi.date().iso().allow(null, ''),
+    expirationDate: isoDateOnly.allow(null, ''),
     contractSize: Joi.number().integer().positive().allow(null, ''),
     // Futures-specific fields
     underlyingAsset: Joi.string().max(50).allow(null, ''),
@@ -586,7 +590,7 @@ const schemas = {
 
   // Diary validation schemas
   createDiaryEntry: Joi.object({
-    entryDate: Joi.date().iso().required(),
+    entryDate: isoDateOnly.required(),
     entryType: Joi.string().valid('diary', 'playbook').default('diary'),
     title: Joi.string().max(255).allow(null, ''),
     marketBias: Joi.string().valid('bullish', 'bearish', 'neutral').allow(null, ''),
@@ -600,7 +604,7 @@ const schemas = {
   }),
 
   updateDiaryEntry: Joi.object({
-    entryDate: Joi.date().iso(), // Add entryDate for update operations
+    entryDate: isoDateOnly, // Add entryDate for update operations
     entryType: Joi.string().valid('diary', 'playbook'),
     title: Joi.string().max(255).allow(null, ''),
     marketBias: Joi.string().valid('bullish', 'bearish', 'neutral').allow(null, ''),

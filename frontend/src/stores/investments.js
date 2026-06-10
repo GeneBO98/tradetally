@@ -336,6 +336,16 @@ export const useInvestmentsStore = defineStore('investments', () => {
     }
   }
 
+  async function fetchIncome(params = {}) {
+    try {
+      const response = await api.get('/investments/income', { params })
+      return response.data.data
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to fetch income analytics'
+      throw err
+    }
+  }
+
   // `silent` is used by the price-polling loop: it skips the loading toggle so
   // the UI doesn't flash spinners / disable controls on every background poll.
   async function fetchPortfolioOverview(params = {}, { silent = false } = {}) {
@@ -705,6 +715,7 @@ export const useInvestmentsStore = defineStore('investments', () => {
 
     // Portfolio
     fetchPortfolioSummary,
+    fetchIncome,
     fetchPortfolioOverview,
     fetchPortfolioPositions,
     fetchPortfolioPerformance,

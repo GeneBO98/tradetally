@@ -52,6 +52,10 @@ function requireCsrf(req, res, next) {
     return next();
   }
 
+  if (req.originalUrl.split('?')[0] === '/api/plaid/webhook') {
+    return next();
+  }
+
   if (CSRF_EXEMPT_PATHS.has(req.originalUrl.split('?')[0])) {
     return next();
   }

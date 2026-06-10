@@ -20,7 +20,7 @@
         </label>
       </div>
 
-      <div>
+      <div v-if="!hideTimePeriod">
         <label class="label">Time Period</label>
         <div class="relative" data-dropdown="timePeriod">
           <button
@@ -47,7 +47,7 @@
         </div>
       </div>
 
-      <div v-if="selectedPeriod === 'custom'">
+      <div v-if="!hideTimePeriod && selectedPeriod === 'custom'">
         <label for="startDate" class="label">Start Date</label>
         <input
           id="startDate"
@@ -58,7 +58,7 @@
         />
       </div>
 
-      <div v-if="selectedPeriod === 'custom'">
+      <div v-if="!hideTimePeriod && selectedPeriod === 'custom'">
         <label for="endDate" class="label">End Date</label>
         <input
           id="endDate"
@@ -787,7 +787,12 @@ const props = defineProps({
   // The dashboard renders this component inside a modal that's only opened
   // by an explicit user click, so the mount-time emit would slam the modal
   // shut the instant it opens — those callers should pass false.
-  autoApplyOnMount: { type: Boolean, default: true }
+  autoApplyOnMount: { type: Boolean, default: true },
+  // When true, hides the Time Period / custom date controls. The dashboard
+  // passes this because its header already has a dedicated quick-range
+  // selector and intentionally ignores date filters from this panel, so the
+  // duplicate (non-functional) date picker only caused confusion (issue #350).
+  hideTimePeriod: { type: Boolean, default: false }
 })
 const emit = defineEmits(['filter'])
 const route = useRoute()

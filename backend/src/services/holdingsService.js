@@ -19,6 +19,8 @@ class HoldingsService {
       SELECT h.*,
         (SELECT COUNT(*) FROM investment_lots l WHERE l.holding_id = h.id) as lot_count,
         (SELECT SUM(total_amount) FROM investment_dividends d WHERE d.holding_id = h.id) as total_dividends,
+        EXISTS(SELECT 1 FROM investment_lots l WHERE l.holding_id = h.id AND l.source = 'plaid') as has_plaid_lots,
+        EXISTS(SELECT 1 FROM investment_lots l WHERE l.holding_id = h.id AND l.source = 'manual') as has_manual_lots,
         'investment' as source
       FROM investment_holdings h
       WHERE h.user_id = $1
@@ -196,7 +198,9 @@ class HoldingsService {
     const query = `
       SELECT h.*,
         (SELECT COUNT(*) FROM investment_lots l WHERE l.holding_id = h.id) as lot_count,
-        (SELECT SUM(total_amount) FROM investment_dividends d WHERE d.holding_id = h.id) as total_dividends
+        (SELECT SUM(total_amount) FROM investment_dividends d WHERE d.holding_id = h.id) as total_dividends,
+        EXISTS(SELECT 1 FROM investment_lots l WHERE l.holding_id = h.id AND l.source = 'plaid') as has_plaid_lots,
+        EXISTS(SELECT 1 FROM investment_lots l WHERE l.holding_id = h.id AND l.source = 'manual') as has_manual_lots
       FROM investment_holdings h
       WHERE h.id = $1 AND h.user_id = $2
     `;
@@ -417,11 +421,16 @@ class HoldingsService {
    */
   static async deleteLot(userId, lotId) {
     // Get holding ID before deleting
-    const lotQuery = `SELECT holding_id FROM investment_lots WHERE id = $1 AND user_id = $2`;
+    const lotQuery = `SELECT holding_id, source FROM investment_lots WHERE id = $1 AND user_id = $2`;
     const lotResult = await db.query(lotQuery, [lotId, userId]);
 
     if (lotResult.rows.length === 0) {
       return false;
+    }
+
+    if (lotResult.rows[0].source === 'plaid') {
+      // A deleted Plaid lot would be recreated on the next holdings sync
+      throw new Error('Plaid-synced lots are managed automatically and cannot be deleted. Remove the Plaid connection to delete them.');
     }
 
     const holdingId = lotResult.rows[0].holding_id;
@@ -711,8 +720,11 @@ class HoldingsService {
    * Recalculate holding totals from lots
    * @param {string} userId - User ID
    * @param {string} holdingId - Holding ID
+   * @param {Object} [options]
+   * @param {boolean} [options.refreshPrice=true] - Skip the Finnhub price
+   *   refresh (used by batch syncs; prices refresh lazily via getHoldings)
    */
-  static async recalculateHolding(userId, holdingId) {
+  static async recalculateHolding(userId, holdingId, { refreshPrice = true } = {}) {
     const query = `
       UPDATE investment_holdings h
       SET
@@ -741,7 +753,9 @@ class HoldingsService {
     await db.query(query, [holdingId, userId]);
 
     // Also refresh price
-    await this.refreshHoldingPrice(userId, holdingId);
+    if (refreshPrice) {
+      await this.refreshHoldingPrice(userId, holdingId);
+    }
   }
 
   /**
@@ -800,6 +814,8 @@ class HoldingsService {
       notes: row.notes,
       sector: row.sector,
       lotCount: parseInt(row.lot_count) || 0,
+      hasPlaidLots: Boolean(row.has_plaid_lots),
+      hasManualLots: Boolean(row.has_manual_lots),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       source: row.source || 'investment' // 'investment' or 'trades'
@@ -820,6 +836,8 @@ class HoldingsService {
       broker: row.broker,
       accountIdentifier: row.account_identifier,
       notes: row.notes,
+      source: row.source || 'manual',
+      externalId: row.external_id || null,
       createdAt: row.created_at
     };
   }

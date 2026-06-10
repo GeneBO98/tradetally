@@ -1,3 +1,4 @@
+const PlaidBalanceSnapshot = require('../models/PlaidBalanceSnapshot');
 const plaidFundingService = require('../services/plaid/plaidFundingService');
 
 function getPlaidErrorStatus(error, fallbackStatus = 500) {
@@ -49,6 +50,41 @@ const plaidController = {
       return res.status(status).json({
         success: false,
         message: error.message || 'Failed to exchange Plaid public token'
+      });
+    }
+  },
+
+  async createReconnectToken(req, res) {
+    try {
+      const data = await plaidFundingService.createReconnectLinkToken(req.user, req.params.connectionId);
+      res.json({ success: true, data });
+    } catch (error) {
+      const status = /not found/i.test(error.message) ? 404 : getPlaidErrorStatus(error);
+      res.status(status).json({
+        success: false,
+        message: error.message || 'Failed to create Plaid reconnect token'
+      });
+    }
+  },
+
+  async getBalanceHistory(req, res) {
+    try {
+      const schemaReady = await PlaidBalanceSnapshot.hasSchema();
+      if (!schemaReady) {
+        return res.json({ success: true, data: { series: [], accounts: [] } });
+      }
+
+      const days = Math.min(Math.max(parseInt(req.query.days, 10) || 90, 1), 730);
+      const data = await PlaidBalanceSnapshot.getHistory(req.user.id, {
+        days,
+        plaidAccountRowId: req.query.plaidAccountRowId || null
+      });
+
+      res.json({ success: true, data });
+    } catch (error) {
+      res.status(getPlaidErrorStatus(error)).json({
+        success: false,
+        message: 'Failed to fetch Plaid balance history'
       });
     }
   },

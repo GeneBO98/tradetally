@@ -200,6 +200,14 @@
                 <!-- Lots Tab -->
                 <div v-if="activeTab === 'lots'">
                     <div
+                        v-if="holding.hasPlaidLots && holding.hasManualLots"
+                        class="mb-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-4 py-3 text-sm text-gray-600 dark:text-gray-400"
+                    >
+                        This holding has both manually entered lots and lots
+                        synced from Plaid. Shares may be double-counted if your
+                        manual lots cover the same position.
+                    </div>
+                    <div
                         class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden"
                     >
                         <table
@@ -252,6 +260,12 @@
                                         class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white"
                                     >
                                         {{ formatDate(lot.purchaseDate) }}
+                                        <span
+                                            v-if="lot.source === 'plaid'"
+                                            class="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+                                            title="Synced automatically from your linked brokerage"
+                                            >Plaid</span
+                                        >
                                     </td>
                                     <td
                                         class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900 dark:text-white"
@@ -292,6 +306,7 @@
                                         class="px-6 py-4 whitespace-nowrap text-sm text-right"
                                     >
                                         <button
+                                            v-if="lot.source !== 'plaid'"
                                             @click="deleteLot(lot.id)"
                                             class="text-red-600 hover:text-red-800"
                                             title="Delete lot"
