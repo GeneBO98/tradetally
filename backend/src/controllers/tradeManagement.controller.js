@@ -11,6 +11,7 @@ const TargetHitAnalysisService = require('../services/targetHitAnalysisService')
 const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('../utils/futuresUtils');
 const ensureString = require('../utils/ensureString');
 const { uuidv4 } = require('../utils/uuid');
+const { getBreakevenToleranceConfig, breakevenPredicate } = require('../utils/breakeven');
 
 /**
  * Parse a Trade Management request's query params into a filter spec for
@@ -1283,13 +1284,29 @@ const tradeManagementController = {
       // Fetch executions so Management R and execution-based logic match getRMultipleAnalysis
       // Include commission, fees, and instrument fields for commission-adjusted R calculations
       const { whereClause, values, paramCount } = await TradeQueries._buildWhereClause(userId, filterSpec);
+
+      // Classify break-even with the SAME tolerance-aware predicate the dashboard
+      // analytics use (gross P&L within the user's configured tick tolerance),
+      // not the naive actual_r == 0. Otherwise a small win inside the tolerance
+      // band counts as a win here but as break-even on the dashboard, so the W/L/BE
+      // splits disagree for the same filtered trades (issue #351).
+      const breakevenConfig = await getBreakevenToleranceConfig(userId);
+      const be = breakevenPredicate({
+        gross: '(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0))',
+        tickSize: 'tick_size',
+        pointValue: 'point_value',
+        quantity: 'quantity',
+        underlying: 'underlying_asset'
+      }, breakevenConfig);
+
       const query = `
         SELECT
           id, symbol, trade_date, entry_price, exit_price,
           quantity, side, pnl, stop_loss, take_profit,
           take_profit_targets, management_r, risk_level_history,
           manual_target_hit_first, executions,
-          commission, fees, instrument_type, contract_size, point_value
+          commission, fees, instrument_type, contract_size, point_value,
+          (${be.is}) AS is_breakeven
         FROM trades t
         ${whereClause}
           AND t.exit_price IS NOT NULL
@@ -1398,6 +1415,7 @@ const tradeManagementController = {
           trade_date: trade.trade_date,
           side: trade.side,
           pnl: trade.pnl,
+          is_breakeven: trade.is_breakeven === true,
           actual_r: actualR,
           target_r: tradeTargetR,
           management_r: tradeManagementR !== 0 ? tradeManagementR : null
@@ -1412,12 +1430,14 @@ const tradeManagementController = {
       // Only meaningful for trades with a defined target; compared against the
       // actual R of those same trades (not all stop-defined trades).
       const rLeftOnTable = Math.round((totalPotentialR - actualRForTargetTrades) * 100) / 100;
-      // Calculate win rate and average R. Break-even trades (actual_r exactly 0)
-      // are neither wins (> 0) nor losses (< 0); count them explicitly so the
-      // W/L/BE breakdown reconciles with total_trades (issue #351 reported 27
-      // trades but only 17W/9L = 26 shown, the missing 1 being a break-even).
-      const winningTrades = tradeDetails.filter(t => t.actual_r > 0);
-      const losingTrades = tradeDetails.filter(t => t.actual_r < 0);
+      // Calculate win rate and average R. Wins/losses are decided by NET P&L
+      // among the non-break-even trades, and break-even uses the dashboard's
+      // tolerance-aware predicate (is_breakeven), so the W/L/BE split matches the
+      // dashboard for the same filtered trades and still reconciles with
+      // total_trades (issue #351). A small win inside the user's break-even
+      // tolerance is classified BE here too, not as a +R win.
+      const winningTrades = tradeDetails.filter(t => !t.is_breakeven && Number(t.pnl) > 0);
+      const losingTrades = tradeDetails.filter(t => !t.is_breakeven && Number(t.pnl) < 0);
       const breakEvenTrades = totalTrades - winningTrades.length - losingTrades.length;
       const winRate = totalTrades > 0 ? Math.round((winningTrades.length / totalTrades) * 100) : 0;
       const avgWinR = winningTrades.length > 0
