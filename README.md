@@ -6,7 +6,7 @@
 
 **Dominate With Data**
 
-<img width="2801" height="2022" alt="SCR-20260313-knpu" src="https://github.com/user-attachments/assets/e66044ad-6405-4990-b0d7-2ac3f20609f8" />
+<img width="1920" height="1080" alt="SCR-20260602-jxam" src="https://github.com/user-attachments/assets/4c261e64-6308-4122-b229-3ccc211228be" />
 
 A comprehensive trading journal and analytics platform built with Vue.js frontend and Node.js backend. Track your trades, analyze performance, and gain insights into your trading patterns across multiple brokers.
 
