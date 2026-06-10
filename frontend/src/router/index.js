@@ -100,6 +100,12 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/metrics/edge-report',
+      name: 'edge-report',
+      component: () => import('@/views/EdgeReportView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/year-wrapped/:year?',
       name: 'year-wrapped',
       component: () => import('@/views/YearWrappedView.vue'),

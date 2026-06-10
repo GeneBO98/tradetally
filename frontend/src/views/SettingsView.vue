@@ -134,6 +134,59 @@
                             </div>
 
                             <div class="py-6">
+                                <div
+                                    class="flex items-start justify-between gap-6 p-4 bg-gray-50 dark:bg-gray-800/60 rounded-lg border border-gray-200 dark:border-gray-700"
+                                >
+                                    <div class="flex-1 min-w-0">
+                                        <label
+                                            for="edgeReportEnabled"
+                                            class="block text-sm font-semibold text-gray-900 dark:text-white"
+                                        >
+                                            Weekly Edge Report
+                                        </label>
+                                        <p
+                                            class="mt-1.5 text-sm text-gray-500 dark:text-gray-400 leading-relaxed"
+                                        >
+                                            Get a weekly coaching digest every Monday:
+                                            your numbers vs last week, your best edge,
+                                            your biggest leak, and one concrete action
+                                            item. The narrative is written by your
+                                            configured AI provider when available and
+                                            delivered by email.
+                                        </p>
+                                    </div>
+                                    <div class="flex-shrink-0 pt-0.5">
+                                        <button
+                                            type="button"
+                                            @click="
+                                                analyticsForm.edgeReportEnabled =
+                                                    !analyticsForm.edgeReportEnabled
+                                            "
+                                            :class="[
+                                                analyticsForm.edgeReportEnabled
+                                                    ? 'bg-primary-600'
+                                                    : 'bg-gray-200 dark:bg-gray-700',
+                                                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2',
+                                            ]"
+                                            role="switch"
+                                            :aria-checked="
+                                                analyticsForm.edgeReportEnabled
+                                            "
+                                        >
+                                            <span
+                                                :class="[
+                                                    analyticsForm.edgeReportEnabled
+                                                        ? 'translate-x-5'
+                                                        : 'translate-x-0',
+                                                    'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                                                ]"
+                                            />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="py-6">
                                 <label for="breakevenToleranceTicks" class="label"
                                     >Default Breakeven Tolerance (ticks)</label
                                 >
@@ -2835,6 +2888,7 @@ const cusipAiLoading = ref(false);
 const analyticsForm = ref({
     statisticsCalculation: "average",
     analyticsPositionGrouping: false,
+    edgeReportEnabled: false,
     breakevenToleranceTicks: 0,
     autoCloseExpiredOptions: true,
     defaultStopLossType: "percent",
@@ -3200,6 +3254,8 @@ async function loadAnalyticsSettings() {
                 response.data.settings.statisticsCalculation || "average",
             analyticsPositionGrouping:
                 response.data.settings.analyticsPositionGrouping === true,
+            edgeReportEnabled:
+                response.data.settings.edgeReportEnabled === true,
             breakevenToleranceTicks:
                 Number(response.data.settings.breakevenToleranceTicks) || 0,
             autoCloseExpiredOptions:
@@ -3242,6 +3298,8 @@ async function updateAnalyticsSettings() {
             statisticsCalculation: analyticsForm.value.statisticsCalculation,
             analyticsPositionGrouping:
                 analyticsForm.value.analyticsPositionGrouping === true,
+            edgeReportEnabled:
+                analyticsForm.value.edgeReportEnabled === true,
             breakevenToleranceTicks:
                 Number(analyticsForm.value.breakevenToleranceTicks) || 0,
             breakevenToleranceTicksByUnderlying: breakevenMapFromRows(),
