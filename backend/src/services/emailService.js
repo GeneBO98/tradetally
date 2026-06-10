@@ -696,6 +696,121 @@ class EmailService {
   }
 
   /**
+   * Send the weekly AI edge report email (opt-in via edge_report_enabled)
+   * @param {object} user - User row (id, email, username, full_name)
+   * @param {object} report - Structured edge report (snake_case, see edgeReportService)
+   * @param {string} narrative - Plain-text coaching narrative
+   */
+  static async sendEdgeReportEmail(user, report, narrative) {
+    if (!this.isConfigured()) {
+      console.log('Email not configured, skipping edge report email');
+      return;
+    }
+
+    const email = user.email;
+    const userId = user.id;
+    const username = user.username || user.full_name || 'there';
+    const safeUsername = escapeHtml(username);
+    const frontendUrl = process.env.FRONTEND_URL || 'https://tradetally.io';
+    const dashboardUrl = `${frontendUrl}/dashboard`;
+    const unsubscribeUrl = userId ? this.getUnsubscribeUrl(userId) : `${frontendUrl}/settings`;
+    const oneClickUnsubscribeUrl = userId ? this.getOneClickUnsubscribeUrl(userId) : unsubscribeUrl;
+
+    const week = report.week || {};
+    const totalPnL = Number(week.total_pnl) || 0;
+    const pnlFormatted = `${totalPnL < 0 ? '-' : ''}$${Math.abs(totalPnL).toFixed(2)}`;
+    const pnlColor = totalPnL >= 0 ? '#16a34a' : '#dc2626';
+    const winRateFormatted = `${(Number(week.win_rate) || 0).toFixed(1)}%`;
+
+    const formatPnl = (value) => {
+      const num = Number(value) || 0;
+      return `${num < 0 ? '-' : ''}$${Math.abs(num).toFixed(2)}`;
+    };
+
+    const edgeLabel = report.edge
+      ? `${report.edge.name} (${report.edge.trades} trade${report.edge.trades === 1 ? '' : 's'}, ${formatPnl(report.edge.total_pnl)})`
+      : 'No clear edge this week';
+    const leakLabel = report.leak
+      ? `${report.leak.name} (${formatPnl(report.leak.total_pnl)})`
+      : 'No major leak detected';
+
+    const rowStyle = `color: #52525b; font-size: 14px; line-height: 1.6; padding: 10px 0; border-bottom: 1px solid #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;`;
+    const labelStyle = `color: #a1a1aa; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;`;
+
+    const content = `
+      <h1 style="color: #18181b; font-size: 22px; margin: 0 0 8px 0; font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        Your weekly edge report
+      </h1>
+      <p style="color: #71717a; font-size: 15px; line-height: 1.6; margin: 0 0 28px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        Hi ${safeUsername}, here is what worked and what leaked for ${escapeHtml(report.period_start || '')} to ${escapeHtml(report.period_end || '')}.
+      </p>
+
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin: 0 0 24px 0;">
+        <tr>
+          <td style="padding: 16px 20px; background-color: #fafafa; border-radius: 8px 0 0 8px; border-right: 1px solid #f4f4f5; width: 50%; text-align: center;">
+            <p style="${labelStyle}">Week P&amp;L</p>
+            <p style="color: ${pnlColor}; font-size: 26px; font-weight: 700; margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">${pnlFormatted}</p>
+          </td>
+          <td style="padding: 16px 20px; background-color: #fafafa; border-radius: 0 8px 8px 0; width: 50%; text-align: center;">
+            <p style="${labelStyle}">Win Rate</p>
+            <p style="color: #18181b; font-size: 26px; font-weight: 700; margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">${winRateFormatted}</p>
+          </td>
+        </tr>
+      </table>
+
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin: 0 0 24px 0;">
+        <tr>
+          <td style="${rowStyle}"><strong style="color: #18181b;">Your edge:</strong> ${escapeHtml(edgeLabel)}</td>
+        </tr>
+        <tr>
+          <td style="${rowStyle}"><strong style="color: #18181b;">Your leak:</strong> ${escapeHtml(leakLabel)}</td>
+        </tr>
+        <tr>
+          <td style="${rowStyle} border-bottom: none;"><strong style="color: #18181b;">Action item:</strong> ${escapeHtml(report.action_item || '')}</td>
+        </tr>
+      </table>
+
+      ${narrative ? `
+      <p style="color: #71717a; font-size: 14px; line-height: 1.7; margin: 0 0 28px 0; padding: 16px 20px; background-color: #fafafa; border-radius: 8px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        ${escapeHtml(narrative)}
+      </p>` : ''}
+
+      <div style="text-align: center; margin: 0 0 8px 0;">
+        <a href="${dashboardUrl}" style="${this.getButtonStyle()}">View Dashboard</a>
+      </div>
+      ${this.getMarketingFooter(unsubscribeUrl)}
+    `;
+
+    const html = this.getBaseTemplate('Your Weekly Edge Report', content);
+    const textSummary = `Your weekly edge report (${report.period_start} to ${report.period_end}). P&L: ${pnlFormatted}. Win rate: ${winRateFormatted}. Edge: ${edgeLabel}. Leak: ${leakLabel}. Action item: ${report.action_item || 'n/a'}.${narrative ? ` ${narrative}` : ''} View dashboard: ${dashboardUrl}. Unsubscribe: ${unsubscribeUrl}`;
+
+    const mailOptions = {
+      from: { name: 'TradeTally', address: process.env.EMAIL_FROM || 'noreply@tradetally.io' },
+      to: email,
+      subject: 'Your weekly edge report',
+      html,
+      text: textSummary,
+      headers: {
+        'List-Unsubscribe': `<${oneClickUnsubscribeUrl}>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        'X-Entity-Ref-ID': `edge-report-${Date.now()}`,
+        'Message-ID': `<edge-report-${Date.now()}@tradetally.io>`
+      }
+    };
+
+    try {
+      const transporter = this.createTransporter();
+      await transporter.sendMail(mailOptions);
+      console.log('Edge report email sent to', maskEmail(email));
+      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'edge_report', htmlBody: html, textBody: textSummary, status: 'sent', userId, metadata: { period_start: report.period_start, period_end: report.period_end, total_pnl: totalPnL } });
+    } catch (error) {
+      console.error('Error sending edge report email to', maskEmail(email), error);
+      await this.logEmail({ recipient: email, subject: mailOptions.subject, emailType: 'edge_report', htmlBody: html, textBody: textSummary, status: 'failed', errorMessage: error.message, userId, metadata: { period_start: report.period_start, period_end: report.period_end } });
+      throw error;
+    }
+  }
+
+  /**
    * Send re-engagement email to inactive users (no login in N days)
    * @param {string} email - Recipient email
    * @param {string} username - Username for greeting

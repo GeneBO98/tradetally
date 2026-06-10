@@ -223,6 +223,7 @@ class User {
       postExitExcursionWindowMinutes: 'post_exit_excursion_window_minutes',
       statisticsCalculation: 'statistics_calculation',
       analyticsPositionGrouping: 'analytics_position_grouping',
+      edgeReportEnabled: 'edge_report_enabled',
       breakevenToleranceTicks: 'breakeven_tolerance_ticks',
       breakevenToleranceTicksByUnderlying: 'breakeven_tolerance_ticks_by_underlying',
       defaultBroker: 'default_broker',

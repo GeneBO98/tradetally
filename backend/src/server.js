@@ -59,6 +59,7 @@ const passkeyRoutes = require('./routes/passkey.routes');
 const testimonialsRoutes = require('./routes/testimonials.routes');
 const supportRoutes = require('./routes/support.routes');
 const internalRoutes = require('./routes/internal.routes');
+const edgeReportRoutes = require('./routes/edgeReport.routes');
 const BillingService = require('./services/billingService');
 const priceMonitoringService = require('./services/priceMonitoringService');
 const backupScheduler = require('./services/backupScheduler.service');
@@ -78,6 +79,7 @@ const portfolioSnapshotScheduler = require('./services/portfolioSnapshotSchedule
 const webMentionScheduler = require('./services/webMentionScheduler');
 const webhookEventBridge = require('./services/webhookEventBridge');
 const crmSyncScheduler = require('./services/crmSyncScheduler');
+const edgeReportScheduler = require('./services/edgeReportScheduler');
 const activityTrackingService = require('./services/activityTrackingService');
 const engagementScheduler = require('./services/engagementScheduler');
 const activityTrackingMiddleware = require('./middleware/activityTracking');
@@ -288,6 +290,7 @@ app.use('/api/unsubscribe', unsubscribeRoutes);
 app.use('/api/trial-feedback', trialFeedbackRoutes);
 app.use('/api/auth/passkey', passkeyRoutes);
 app.use('/api/testimonials', testimonialsRoutes);
+app.use('/api/edge-reports', edgeReportRoutes);
 
 // OAuth2 Provider endpoints
 app.use('/oauth', oauth2Routes);
@@ -659,6 +662,18 @@ function scheduleBackgroundServices(backgroundJobsDisabled) {
   }
 
   if (backgroundJobsDisabled) {
+    console.log('Edge report scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
+  } else if (process.env.ENABLE_EDGE_REPORTS !== 'false') {
+    defer('edge-report-scheduler', () => {
+      console.log('Starting edge report scheduler...');
+      edgeReportScheduler.start();
+      console.log('[SUCCESS] Edge report scheduler started');
+    });
+  } else {
+    console.log('Edge report scheduler disabled (ENABLE_EDGE_REPORTS=false)');
+  }
+
+  if (backgroundJobsDisabled) {
     console.log('CRM sync disabled (DISABLE_BACKGROUND_JOBS=true)');
   } else if (process.env.ENABLE_CRM_SYNC === 'true') {
     defer('crm-sync-scheduler', () => {
@@ -837,6 +852,7 @@ process.on('SIGTERM', async () => {
   symbolCategoryScheduler.stop();
   portfolioSnapshotScheduler.stop();
   webMentionScheduler.stop();
+  edgeReportScheduler.stop();
   if (typeof GamificationScheduler.stopScheduler === 'function') GamificationScheduler.stopScheduler();
   if (typeof TrialScheduler.stopScheduler === 'function') TrialScheduler.stopScheduler();
   if (RetentionEmailScheduler.stopScheduler) RetentionEmailScheduler.stopScheduler();
@@ -862,6 +878,7 @@ process.on('SIGINT', async () => {
   symbolCategoryScheduler.stop();
   portfolioSnapshotScheduler.stop();
   webMentionScheduler.stop();
+  edgeReportScheduler.stop();
   if (typeof GamificationScheduler.stopScheduler === 'function') GamificationScheduler.stopScheduler();
   if (typeof TrialScheduler.stopScheduler === 'function') TrialScheduler.stopScheduler();
   if (RetentionEmailScheduler.stopScheduler) RetentionEmailScheduler.stopScheduler();

@@ -427,6 +427,7 @@ const schemas = {
     timeDisplayFormat: Joi.string().valid('12h', '24h'),
     statisticsCalculation: Joi.string().valid('average', 'median'),
     analyticsPositionGrouping: Joi.boolean(),
+    edgeReportEnabled: Joi.boolean(),
     breakevenToleranceTicks: Joi.number().integer().min(0).max(1000).allow(null),
     breakevenToleranceTicksByUnderlying: Joi.object()
       .pattern(/^[A-Za-z0-9]+$/, Joi.number().integer().min(0).max(1000))
