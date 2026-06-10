@@ -57,7 +57,7 @@
       </div>
 
       <!-- Shareable trade card generator -->
-      <TradeShareCard v-if="trade" v-model="showShareCard" :trade="trade" />
+      <TradeShareCard v-if="trade" v-model="showShareCard" :trade="trade" @made-public="trade.is_public = true" />
 
       <!-- Stored AI Analyses -->
       <div v-if="storedAIResponseCount > 0" class="rounded-lg border border-primary-200 bg-primary-50/60 dark:border-primary-900/50 dark:bg-primary-900/10">

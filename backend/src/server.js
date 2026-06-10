@@ -61,6 +61,7 @@ const supportRoutes = require('./routes/support.routes');
 const internalRoutes = require('./routes/internal.routes');
 const edgeReportRoutes = require('./routes/edgeReport.routes');
 const tradeVerificationRoutes = require('./routes/tradeVerification.routes'); // cloud-only: verified trades
+const propFirmRoutes = require('./routes/propFirm.routes');
 const BillingService = require('./services/billingService');
 const priceMonitoringService = require('./services/priceMonitoringService');
 const backupScheduler = require('./services/backupScheduler.service');
@@ -293,6 +294,7 @@ app.use('/api/auth/passkey', passkeyRoutes);
 app.use('/api/testimonials', testimonialsRoutes);
 app.use('/api/edge-reports', edgeReportRoutes);
 app.use('/api', tradeVerificationRoutes); // cloud-only: /api/verify/:code + /api/trades/:id/verification
+app.use('/api/prop-firm', propFirmRoutes);
 
 // OAuth2 Provider endpoints
 app.use('/oauth', oauth2Routes);

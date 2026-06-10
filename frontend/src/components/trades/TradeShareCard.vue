@@ -29,6 +29,34 @@
         </button>
       </div>
 
+      <!-- Link sharing: public trades are viewable by anyone at /trades/:id -->
+      <div class="rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-3">
+        <template v-if="isPublic">
+          <div class="flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <p class="text-sm font-medium text-gray-700 dark:text-gray-300">Share link</p>
+              <p class="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">{{ tradeUrl }}</p>
+            </div>
+            <button type="button" class="btn-secondary text-sm flex-shrink-0" @click="copyLink">
+              {{ linkCopied ? 'Copied' : 'Copy link' }}
+            </button>
+          </div>
+        </template>
+        <template v-else>
+          <div class="flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <p class="text-sm font-medium text-gray-700 dark:text-gray-300">Share link</p>
+              <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                This trade is private. Make it public to get a link anyone can open.
+              </p>
+            </div>
+            <button type="button" class="btn-secondary text-sm flex-shrink-0" :disabled="makingPublic" @click="makePublic">
+              {{ makingPublic ? 'Updating...' : 'Make public' }}
+            </button>
+          </div>
+        </template>
+      </div>
+
       <p v-if="copyState" class="text-xs" :class="copyState === 'copied' ? 'text-success' : 'text-danger'">
         {{ copyState === 'copied' ? 'Image copied to clipboard.' : 'Copy failed - your browser may not support image clipboard. Use Download instead.' }}
       </p>
@@ -49,7 +77,7 @@
 </template>
 
 <script setup>
-import { ref, watch, nextTick } from 'vue'
+import { ref, watch, nextTick, computed } from 'vue'
 import BaseModal from '@/components/common/BaseModal.vue'
 import { formatTradeDate } from '@/utils/date'
 import api from '@/services/api'
@@ -64,11 +92,39 @@ const props = defineProps({
   trade: { type: Object, required: true }
 })
 
-defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue', 'made-public'])
 
 const canvasRef = ref(null)
 const showDollarAmounts = ref(false)
 const copyState = ref('')
+const linkCopied = ref(false)
+const makingPublic = ref(false)
+// Track visibility locally so the link appears immediately after toggling.
+const isPublic = ref(false)
+const tradeUrl = computed(() => `${window.location.origin}/trades/${props.trade.id}`)
+
+async function copyLink() {
+  try {
+    await navigator.clipboard.writeText(tradeUrl.value)
+    linkCopied.value = true
+    setTimeout(() => { linkCopied.value = false }, 2000)
+  } catch (error) {
+    console.error('[SHARE-CARD] Link copy failed:', error)
+  }
+}
+
+async function makePublic() {
+  makingPublic.value = true
+  try {
+    await api.put(`/trades/${props.trade.id}`, { isPublic: true })
+    isPublic.value = true
+    emit('made-public')
+  } catch (error) {
+    console.error('[SHARE-CARD] Failed to make trade public:', error)
+  } finally {
+    makingPublic.value = false
+  }
+}
 const canNativeShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function'
 
 // Cloud-only: broker verification for the badge. The endpoints exist only on
@@ -412,6 +468,8 @@ watch(
   async ([open]) => {
     if (open) {
       copyState.value = ''
+      linkCopied.value = false
+      isPublic.value = props.trade.is_public === true
       const logo = await loadLogo()
       await ensureVerification()
       await nextTick()
