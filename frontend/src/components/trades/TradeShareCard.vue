@@ -104,6 +104,7 @@
 import { ref, watch, nextTick, computed } from 'vue'
 import BaseModal from '@/components/common/BaseModal.vue'
 import { formatTradeDate } from '@/utils/date'
+import api from '@/services/api'
 import { ChevronUpIcon } from '@heroicons/vue/24/outline'
 import { useNotification } from '@/composables/useNotification'
 
