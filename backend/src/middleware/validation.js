@@ -868,7 +868,34 @@ const schemas = {
     rating: Joi.number().integer().min(1).max(5).required(),
     body: Joi.string().trim().max(2000).required(),
     display_name: nullableString(100)
-  })
+  }),
+
+  // Prop-firm rule profiles use snake_case end to end (project standard for new fields)
+  propFirmProfileCreate: Joi.object({
+    account_identifier: Joi.string().trim().min(1).max(50).required(),
+    label: nullableString(100),
+    account_size: Joi.number().positive().required(),
+    max_daily_loss: Joi.number().positive().allow(null),
+    max_drawdown: Joi.number().positive().allow(null),
+    drawdown_mode: Joi.string().valid('static', 'trailing').default('static'),
+    profit_target: Joi.number().positive().allow(null),
+    min_trading_days: Joi.number().integer().positive().allow(null),
+    start_date: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).required(),
+    is_active: Joi.boolean().default(true)
+  }),
+
+  propFirmProfileUpdate: Joi.object({
+    account_identifier: Joi.string().trim().min(1).max(50),
+    label: nullableString(100),
+    account_size: Joi.number().positive(),
+    max_daily_loss: Joi.number().positive().allow(null),
+    max_drawdown: Joi.number().positive().allow(null),
+    drawdown_mode: Joi.string().valid('static', 'trailing'),
+    profit_target: Joi.number().positive().allow(null),
+    min_trading_days: Joi.number().integer().positive().allow(null),
+    start_date: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/),
+    is_active: Joi.boolean()
+  }).min(1)
 };
 
 schemas.trade = schemas.createTrade;

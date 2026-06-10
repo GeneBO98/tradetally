@@ -106,6 +106,12 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/analysis/prop-firm',
+      name: 'prop-firm',
+      component: () => import('@/views/PropFirmView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/year-wrapped/:year?',
       name: 'year-wrapped',
       component: () => import('@/views/YearWrappedView.vue'),
