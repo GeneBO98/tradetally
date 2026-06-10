@@ -13,6 +13,7 @@ const db = require('../../config/database');
 const { computeTradePnl } = require('../pnlEngine');
 const { getUserTimezone } = require('../../utils/timezone');
 const AnalyticsCache = require('../analyticsCache');
+const OptionStrategyGroupingService = require('../optionStrategyGroupingService');
 const { version: APP_VERSION } = require('../../../package.json');
 
 const FLEX_BASE_URL = 'https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService';
@@ -442,7 +443,8 @@ class IBKRService {
           // Create new trade
           await Trade.create(userId, preparedTrade, {
             skipAchievements: true,
-            skipApiCalls: true
+            skipApiCalls: true,
+            skipOptionGrouping: true
           });
 
           imported++;
@@ -474,12 +476,11 @@ class IBKRService {
       }
     }
 
-    if (imported > 0 || updated > 0) {
-      try {
-        await AnalyticsCache.invalidate(userId);
-      } catch (cacheErr) {
-        console.warn(`[IBKR] AnalyticsCache invalidation failed: ${cacheErr.message}`);
-      }
+    try {
+      await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'IBKR broker sync');
+      await AnalyticsCache.invalidate(userId);
+    } catch (cacheErr) {
+      console.warn(`[IBKR] AnalyticsCache invalidation failed: ${cacheErr.message}`);
     }
 
     return { imported, updated, skipped, failed, duplicates };

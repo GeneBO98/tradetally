@@ -48,6 +48,7 @@ const yearWrappedRoutes = require('./routes/yearWrapped.routes');
 const investmentsRoutes = require('./routes/investments.routes');
 const stockScannerRoutes = require('./routes/stockScanner.routes');
 const accountRoutes = require('./routes/account.routes');
+const plaidWebhookRoutes = require('./routes/plaidWebhook.routes');
 const instrumentTemplatesRoutes = require('./routes/instrumentTemplates.routes');
 const tradeManagementRoutes = require('./routes/tradeManagement.routes');
 const playbookRoutes = require('./routes/playbook.routes');
@@ -61,6 +62,9 @@ const supportRoutes = require('./routes/support.routes');
 const internalRoutes = require('./routes/internal.routes');
 const toolsRoutes = require('./routes/tools.routes');
 const experimentsRoutes = require('./routes/experiments.routes');
+const edgeReportRoutes = require('./routes/edgeReport.routes');
+const tradeVerificationRoutes = require('./routes/tradeVerification.routes'); // cloud-only: verified trades
+const propFirmRoutes = require('./routes/propFirm.routes');
 const BillingService = require('./services/billingService');
 const priceMonitoringService = require('./services/priceMonitoringService');
 const backupScheduler = require('./services/backupScheduler.service');
@@ -80,6 +84,7 @@ const portfolioSnapshotScheduler = require('./services/portfolioSnapshotSchedule
 const webMentionScheduler = require('./services/webMentionScheduler');
 const webhookEventBridge = require('./services/webhookEventBridge');
 const crmSyncScheduler = require('./services/crmSyncScheduler');
+const edgeReportScheduler = require('./services/edgeReportScheduler');
 const activityTrackingService = require('./services/activityTrackingService');
 const engagementScheduler = require('./services/engagementScheduler');
 const demoTradeActivityScheduler = require('./services/demoTradeActivityScheduler');
@@ -227,7 +232,7 @@ app.use(ensureCsrfCookie);
 
 // Body parsing middleware (skip for webhook routes that need raw body)
 app.use((req, res, next) => {
-  if (req.originalUrl === '/api/billing/webhooks/stripe') {
+  if (req.originalUrl === '/api/billing/webhooks/stripe' || req.originalUrl.split('?')[0] === '/api/plaid/webhook') {
     next();
   } else {
     express.json()(req, res, next);
@@ -282,6 +287,7 @@ app.use('/api/year-wrapped', yearWrappedRoutes);
 app.use('/api/investments', investmentsRoutes);
 app.use('/api/scanner', stockScannerRoutes);
 app.use('/api/accounts', accountRoutes);
+app.use('/api/plaid/webhook', plaidWebhookRoutes);
 app.use('/api/instrument-templates', instrumentTemplatesRoutes);
 app.use('/api/trade-management', tradeManagementRoutes);
 app.use('/api/playbooks', playbookRoutes);
@@ -293,6 +299,9 @@ app.use('/api/auth/passkey', passkeyRoutes);
 app.use('/api/testimonials', testimonialsRoutes);
 app.use('/api/tools', toolsRoutes);
 app.use('/api/experiments', experimentsRoutes);
+app.use('/api/edge-reports', edgeReportRoutes);
+app.use('/api', tradeVerificationRoutes); // cloud-only: /api/verify/:code + /api/trades/:id/verification
+app.use('/api/prop-firm', propFirmRoutes);
 
 // OAuth2 Provider endpoints
 app.use('/oauth', oauth2Routes);
@@ -661,6 +670,18 @@ function scheduleBackgroundServices(backgroundJobsDisabled) {
 
   if (process.env.ENABLE_V1_WEBHOOKS === 'true') {
     defer('v1-webhook-bridge', () => webhookEventBridge.start());
+  }
+
+  if (backgroundJobsDisabled) {
+    console.log('Edge report scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
+  } else if (process.env.ENABLE_EDGE_REPORTS !== 'false') {
+    defer('edge-report-scheduler', () => {
+      console.log('Starting edge report scheduler...');
+      edgeReportScheduler.start();
+      console.log('[SUCCESS] Edge report scheduler started');
+    });
+  } else {
+    console.log('Edge report scheduler disabled (ENABLE_EDGE_REPORTS=false)');
   }
 
   if (backgroundJobsDisabled) {
@@ -1053,6 +1074,9 @@ process.on('SIGTERM', async () => {
   earningsScheduler.stop();
   symbolCategoryScheduler.stop();
   demoTradeActivityScheduler.stop();
+  portfolioSnapshotScheduler.stop();
+  webMentionScheduler.stop();
+  edgeReportScheduler.stop();
   if (typeof GamificationScheduler.stopScheduler === 'function') GamificationScheduler.stopScheduler();
   if (typeof TrialScheduler.stopScheduler === 'function') TrialScheduler.stopScheduler();
   if (RetentionEmailScheduler.stopScheduler) RetentionEmailScheduler.stopScheduler();
@@ -1077,6 +1101,9 @@ process.on('SIGINT', async () => {
   earningsScheduler.stop();
   symbolCategoryScheduler.stop();
   demoTradeActivityScheduler.stop();
+  portfolioSnapshotScheduler.stop();
+  webMentionScheduler.stop();
+  edgeReportScheduler.stop();
   if (typeof GamificationScheduler.stopScheduler === 'function') GamificationScheduler.stopScheduler();
   if (typeof TrialScheduler.stopScheduler === 'function') TrialScheduler.stopScheduler();
   if (RetentionEmailScheduler.stopScheduler) RetentionEmailScheduler.stopScheduler();

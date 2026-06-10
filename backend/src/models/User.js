@@ -224,6 +224,7 @@ class User {
       postExitExcursionWindowMinutes: 'post_exit_excursion_window_minutes',
       statisticsCalculation: 'statistics_calculation',
       analyticsPositionGrouping: 'analytics_position_grouping',
+      edgeReportEnabled: 'edge_report_enabled',
       breakevenToleranceTicks: 'breakeven_tolerance_ticks',
       breakevenToleranceTicksByUnderlying: 'breakeven_tolerance_ticks_by_underlying',
       defaultBroker: 'default_broker',
@@ -283,27 +284,11 @@ class User {
         console.log('[SETTINGS] Dashboard layout saved successfully');
       }
 
-      // If default stop loss was updated, apply it to existing trades without a stop loss
-      const stopLossType = settings.defaultStopLossType || 'percent';
-      if (stopLossType === 'dollar' && settings.defaultStopLossDollars !== undefined && settings.defaultStopLossDollars > 0) {
-        const Trade = require('./Trade');
-        Trade.applyDefaultStopLossToExistingTradesByDollars(userId, settings.defaultStopLossDollars)
-          .then(count => {
-            console.log(`[SETTINGS] Applied default dollar stop loss to ${count} existing trades`);
-          })
-          .catch(error => {
-            console.error('[SETTINGS] Failed to apply default dollar stop loss to existing trades:', error);
-          });
-      } else if (settings.defaultStopLossPercent !== undefined && settings.defaultStopLossPercent > 0) {
-        const Trade = require('./Trade');
-        Trade.applyDefaultStopLossToExistingTrades(userId, settings.defaultStopLossPercent)
-          .then(count => {
-            console.log(`[SETTINGS] Applied default stop loss to ${count} existing trades`);
-          })
-          .catch(error => {
-            console.error('[SETTINGS] Failed to apply default stop loss to existing trades:', error);
-          });
-      }
+      // Default stop loss propagation is handled by the settings controller via
+      // Trade.syncDefaultStopLossToExistingTrades (awaited, type-aware). The
+      // fire-and-forget applies that used to live here defaulted the type to
+      // 'percent' on partial payloads — overwriting dollar-based stops (issue
+      // #345) — and raced the controller's sync and cache invalidation.
 
       // If default take profit percentage was updated, apply it to existing trades without a take profit
       if (settings.defaultTakeProfitPercent !== undefined && settings.defaultTakeProfitPercent > 0) {
@@ -343,27 +328,8 @@ class User {
           filteredValues.push(userId);
           const result = await db.query(fallbackQuery, filteredValues);
 
-          // If default stop loss was updated, apply it to existing trades without a stop loss
-          const stopLossTypeFallback = settings.defaultStopLossType || 'percent';
-          if (stopLossTypeFallback === 'dollar' && settings.defaultStopLossDollars !== undefined && settings.defaultStopLossDollars > 0) {
-            const Trade = require('./Trade');
-            Trade.applyDefaultStopLossToExistingTradesByDollars(userId, settings.defaultStopLossDollars)
-              .then(count => {
-                console.log(`[SETTINGS] Applied default dollar stop loss to ${count} existing trades`);
-              })
-              .catch(error => {
-                console.error('[SETTINGS] Failed to apply default dollar stop loss to existing trades:', error);
-              });
-          } else if (settings.defaultStopLossPercent !== undefined && settings.defaultStopLossPercent > 0) {
-            const Trade = require('./Trade');
-            Trade.applyDefaultStopLossToExistingTrades(userId, settings.defaultStopLossPercent)
-              .then(count => {
-                console.log(`[SETTINGS] Applied default stop loss to ${count} existing trades`);
-              })
-              .catch(error => {
-                console.error('[SETTINGS] Failed to apply default stop loss to existing trades:', error);
-              });
-          }
+          // Stop loss propagation handled by the settings controller sync
+          // (see comment on the primary path above).
 
           // If default take profit percentage was updated, apply it to existing trades without a take profit
           if (settings.defaultTakeProfitPercent !== undefined && settings.defaultTakeProfitPercent > 0) {

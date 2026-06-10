@@ -1,4 +1,6 @@
 const db = require('../config/database');
+const AnalyticsCache = require('./analyticsCache');
+const OptionStrategyGroupingService = require('./optionStrategyGroupingService');
 
 class OptionsScheduler {
   constructor() {
@@ -89,9 +91,11 @@ class OptionsScheduler {
 
       // Log summary
       console.log(`${logPrefix} [SUCCESS] Closed ${closedCount} expired options`);
-      Object.keys(userSummary).forEach(userId => {
+      for (const userId of Object.keys(userSummary)) {
         console.log(`${logPrefix} User ${userId}: ${userSummary[userId]} options closed`);
-      });
+        await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'expired option scheduler');
+        await AnalyticsCache.invalidate(userId);
+      }
 
     } catch (error) {
       console.error(`${logPrefix} [ERROR] Error in automatic expired options closure:`, error);

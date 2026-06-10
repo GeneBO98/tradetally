@@ -29,6 +29,11 @@ export const usePlaidFundingStore = defineStore('plaidFunding', () => {
     return response.data.data
   }
 
+  async function createReconnectToken(connectionId) {
+    const response = await api.post(`/accounts/plaid/connections/${connectionId}/reconnect-token`)
+    return response.data.data
+  }
+
   async function fetchConnections() {
     loading.value = true
     error.value = null
@@ -88,6 +93,18 @@ export const usePlaidFundingStore = defineStore('plaidFunding', () => {
     const response = await api.delete(`/accounts/plaid/accounts/${plaidAccountId}/link`)
     await fetchConnections()
     return response.data.data
+  }
+
+  async function fetchBalanceHistory(params = {}) {
+    try {
+      const response = await api.get('/accounts/plaid/balances/history', { params })
+      return response.data.data || { series: [], accounts: [] }
+    } catch (err) {
+      if (isPlaidUnavailableError(err)) {
+        return { series: [], accounts: [] }
+      }
+      throw err
+    }
   }
 
   async function fetchReviewQueue(accountId) {
@@ -184,12 +201,14 @@ export const usePlaidFundingStore = defineStore('plaidFunding', () => {
     error,
     createLinkToken,
     exchangePublicToken,
+    createReconnectToken,
     fetchConnections,
     updateConnection,
     deleteConnection,
     syncConnection,
     linkPlaidAccount,
     unlinkPlaidAccount,
+    fetchBalanceHistory,
     fetchReviewQueue,
     approveTransaction,
     rejectTransaction,

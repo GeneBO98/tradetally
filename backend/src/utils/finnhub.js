@@ -894,7 +894,37 @@ class FinnhubClient {
           const response = await openai.chat.completions.create(requestParams);
           return response.choices[0]?.message?.content?.trim() || '';
         }
-        
+
+      } else if (settings.default_ai_provider === 'deepseek' || settings.default_ai_provider === 'kimi') {
+        // OpenAI-compatible providers (issue #348). Same client as the openai
+        // branch with the provider's base URL and max_tokens instead of
+        // max_completion_tokens.
+        const { OpenAI } = await import('openai');
+        const isDeepseek = settings.default_ai_provider === 'deepseek';
+        const defaultBaseUrl = isDeepseek ? 'https://api.deepseek.com/v1' : 'https://api.moonshot.ai/v1';
+        const defaultModel = isDeepseek ? 'deepseek-chat' : 'moonshot-v1-8k';
+        const validatedBaseUrl = settings.default_ai_api_url
+          ? (await validateAiProviderUrl(settings.default_ai_provider, settings.default_ai_api_url)).toString()
+          : defaultBaseUrl;
+
+        const client = new OpenAI({
+          apiKey: settings.default_ai_api_key,
+          baseURL: validatedBaseUrl
+        });
+
+        const modelName = settings.default_ai_model || defaultModel;
+        const requestParams = {
+          model: modelName,
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 50
+        };
+        if (!/^deepseek-reasoner/i.test(modelName)) {
+          requestParams.temperature = 0.1;
+        }
+
+        const response = await client.chat.completions.create(requestParams);
+        return response.choices[0]?.message?.content?.trim() || '';
+
       } else if (settings.default_ai_provider === 'ollama') {
         const { default: fetch } = await import('node-fetch');
         const validatedApiUrl = await validateAiProviderUrl('ollama', settings.default_ai_api_url);

@@ -6,6 +6,7 @@
 const BrokerConnection = require('../../models/BrokerConnection');
 const db = require('../../config/database');
 const AnalyticsCache = require('../analyticsCache');
+const OptionStrategyGroupingService = require('../optionStrategyGroupingService');
 const ibkrService = require('./ibkrService');
 const schwabService = require('./schwabService');
 const tradestationService = require('./tradestationService');
@@ -357,6 +358,7 @@ class BrokerSyncService {
 
       if (closed > 0) {
         console.log(`[BROKER-SYNC] Auto-closed ${closed} expired option(s)`);
+        await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'expired option auto-close');
         await AnalyticsCache.invalidate(userId);
       }
     } catch (error) {

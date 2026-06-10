@@ -252,6 +252,7 @@ const lastRateLimitNotification = ref(0)
 const route = useRoute()
 const authStore = useAuthStore()
 const versionStore = useVersionStore()
+const uiPreferencesStore = useUiPreferencesStore()
 const { isBillingEnabled, showSEOPages } = useRegistrationMode()
 const { openDrawer, collapsed: sidebarCollapsed } = useSidebar()
 
@@ -341,7 +342,16 @@ watch(() => authStore.isAuthenticated, async (isAuthenticated) => {
     // Wait for page to settle after redirect
     setTimeout(async () => {
       try {
+        if (!uiPreferencesStore.initialized) {
+          await uiPreferencesStore.init()
+        }
+        if (localStorage.getItem(PASSKEY_PROMPT_DISMISSED_KEY)) {
+          return
+        }
         const res = await api.get('/auth/passkey')
+        if (!authStore.isAuthenticated) {
+          return
+        }
         if (!res.data.passkeys || res.data.passkeys.length === 0) {
           showPasskeyPrompt.value = true
         }
@@ -349,6 +359,12 @@ watch(() => authStore.isAuthenticated, async (isAuthenticated) => {
         // Not critical
       }
     }, 1500)
+  }
+  if (!isAuthenticated) {
+    // Logout with the prompt open: close it so it doesn't sit over the login
+    // page, and so dismissing it there can't write the previous user's
+    // dismissal into the next user's preferences.
+    showPasskeyPrompt.value = false
   }
   previousSessionState = isAuthenticated
 })
@@ -377,10 +393,11 @@ async function registerPasskey() {
   }
 }
 
-function dismissPasskeyPrompt() {
+async function dismissPasskeyPrompt() {
   showPasskeyPrompt.value = false
   localStorage.setItem(PASSKEY_PROMPT_DISMISSED_KEY, 'true')
-  useUiPreferencesStore().notifyChanged(PASSKEY_PROMPT_DISMISSED_KEY, true)
+  uiPreferencesStore.notifyChanged(PASSKEY_PROMPT_DISMISSED_KEY, true)
+  await uiPreferencesStore.flush()
 }
 
 // Version check polling interval (6 hours)

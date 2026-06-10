@@ -377,4 +377,38 @@ describe('parseInstrumentData', () => {
     expect(result.strikePrice).toBe(466);
     expect(result.optionType).toBe('put');
   });
+
+  // Regression: NinjaTrader 8 exports the instrument as a display name like
+  // "ES JUN26" (named month) or "ES 06-26" (numeric month). These were
+  // previously misclassified as stocks, so a 1-point ES move was valued at $1
+  // instead of $50. See parseInstrumentData NinjaTrader handling.
+  test('detects NinjaTrader named-month futures: "ES JUN26"', () => {
+    const result = parseInstrumentData('ES JUN26');
+    expect(result.instrumentType).toBe('future');
+    expect(result.underlyingAsset).toBe('ES');
+    expect(result.contractMonth).toBe('06');
+    expect(result.contractYear).toBe(2026);
+    expect(result.pointValue).toBe(50);
+  });
+
+  test('detects NinjaTrader micro named-month futures: "MES SEP26"', () => {
+    const result = parseInstrumentData('MES SEP26');
+    expect(result.instrumentType).toBe('future');
+    expect(result.underlyingAsset).toBe('MES');
+    expect(result.contractMonth).toBe('09');
+    expect(result.pointValue).toBe(5);
+  });
+
+  test('detects NinjaTrader numeric-month futures: "ES 06-26"', () => {
+    const result = parseInstrumentData('ES 06-26');
+    expect(result.instrumentType).toBe('future');
+    expect(result.underlyingAsset).toBe('ES');
+    expect(result.contractMonth).toBe('06');
+    expect(result.contractYear).toBe(2026);
+    expect(result.pointValue).toBe(50);
+  });
+
+  test('does not misclassify a non-month 3-letter suffix as futures: "GOOG ABC26"', () => {
+    expect(parseInstrumentData('GOOG ABC26').instrumentType).toBe('stock');
+  });
 });

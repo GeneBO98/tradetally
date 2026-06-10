@@ -306,7 +306,7 @@ const createTradeChart = () => {
       wickDownColor: '#ef4444',
     })
 
-    console.log('[DEBUG] ✓ Series created successfully!')
+    console.log('[DEBUG] Series created successfully')
     console.log('[DEBUG] setMarkers available:', typeof candleSeries.setMarkers)
 
     // Process and validate our backend data
@@ -592,9 +592,9 @@ const createTradeChart = () => {
         try {
           // Use standard setMarkers method on the series
           candleSeries.setMarkers(allMarkers)
-          console.log(`[OPTIONS] ✓ Successfully set ${allMarkers.length} execution markers`)
+          console.log(`[OPTIONS] Successfully set ${allMarkers.length} execution markers`)
         } catch (error) {
-          console.error('[OPTIONS] ✗ Error setting markers:', error)
+          console.error('[OPTIONS] Error setting markers:', error)
         }
       } else {
         // For stock trades, use the original single marker logic
@@ -722,9 +722,9 @@ const createTradeChart = () => {
         console.log('[STOCK] Setting', allMarkers.length, 'markers')
         try {
           candleSeries.setMarkers(allMarkers)
-          console.log('[STOCK] ✓ Successfully set', allMarkers.length, 'markers')
+          console.log('[STOCK] Successfully set', allMarkers.length, 'markers')
         } catch (markerError) {
-          console.error('[STOCK] ✗ Error setting markers:', markerError)
+          console.error('[STOCK] Error setting markers:', markerError)
         }
 
         // Just use the arrow marker - no stupid giant lines

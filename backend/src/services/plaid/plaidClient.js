@@ -89,7 +89,7 @@ class PlaidClient {
     }
   }
 
-  async createLinkToken({ userId, email, targetType = 'bank' }) {
+  async createLinkToken({ userId, email, targetType = 'bank', accessToken = null }) {
     const countryCodes = (process.env.PLAID_COUNTRY_CODES || 'US')
       .split(',')
       .map(value => value.trim().toUpperCase())
@@ -99,16 +99,28 @@ class PlaidClient {
       countryCodes.push('US');
     }
 
-    const products = targetType === 'investment' ? ['investments'] : ['transactions'];
     const body = {
       user: {
         client_user_id: String(userId)
       },
       client_name: 'TradeTally',
       language: 'en',
-      country_codes: countryCodes,
-      products
+      country_codes: countryCodes
     };
+
+    if (accessToken) {
+      // Update mode (re-authentication of an existing Item). Plaid rejects
+      // requests that combine access_token with products.
+      body.access_token = accessToken;
+    } else {
+      body.products = targetType === 'investment' ? ['investments'] : ['transactions'];
+
+      if (targetType === 'bank') {
+        body.transactions = {
+          days_requested: 730
+        };
+      }
+    }
 
     if (email) {
       body.user.email_address = email;
@@ -118,14 +130,8 @@ class PlaidClient {
       body.redirect_uri = process.env.PLAID_REDIRECT_URI;
     }
 
-    if (process.env.PLAID_WEBHOOK_URL && targetType === 'bank') {
+    if (process.env.PLAID_WEBHOOK_URL) {
       body.webhook = process.env.PLAID_WEBHOOK_URL;
-    }
-
-    if (targetType === 'bank') {
-      body.transactions = {
-        days_requested: 730
-      };
     }
 
     return this.post('/link/token/create', body);
@@ -154,6 +160,18 @@ class PlaidClient {
     }
 
     return this.post('/transactions/sync', body);
+  }
+
+  async getWebhookVerificationKey(keyId) {
+    return this.post('/webhook_verification_key/get', {
+      key_id: keyId
+    });
+  }
+
+  async getInvestmentHoldings(accessToken) {
+    return this.post('/investments/holdings/get', {
+      access_token: accessToken
+    });
   }
 
   async getInvestmentTransactions(accessToken, startDate, endDate, offset = 0, count = 100) {

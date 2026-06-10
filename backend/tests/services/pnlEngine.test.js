@@ -263,6 +263,26 @@ describe('pnlEngine.computeTradePnl', () => {
       nearly(aggregate.pnl, 90);
     });
 
+    test('explicit zero per-exec commission → fallbackCommission applied (Tradovate-style)', () => {
+      // Tradovate stores commission: 0 and fees: 0 on every execution even though the
+      // broker charges are tracked at the trade level via custom fee settings.
+      // Explicit zeros must be treated the same as absent — fallback must apply.
+      const { annotatedExecutions, aggregate } = computeTradePnl({
+        side: 'long',
+        instrumentType: 'stock',
+        fallbackCommission: 3.5,
+        executions: [
+          { action: 'buy', quantity: 100, price: 10, commission: 0, fees: 0, datetime: '2026-01-05T10:00:00Z' },
+          { action: 'sell', quantity: 100, price: 10.25, commission: 0, fees: 0, datetime: '2026-01-05T14:00:00Z' }
+        ],
+        timezone: 'UTC'
+      });
+      nearly(annotatedExecutions[0].commission, 1.75);
+      nearly(annotatedExecutions[1].commission, 1.75);
+      nearly(aggregate.commission, 3.5);
+      nearly(aggregate.pnl, 21.5);
+    });
+
     test('mixed — per-exec wins, fallback not applied', () => {
       const { annotatedExecutions, aggregate } = computeTradePnl({
         side: 'long',

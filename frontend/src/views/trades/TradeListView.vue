@@ -8,8 +8,9 @@
       </p>
     </div>
     
-    <!-- Back link -->
-    <div class="mb-4">
+    <!-- Back link: only for drill-downs (e.g. dashboard cards linking here
+         with query filters). Trades is a primary nav destination otherwise. -->
+    <div v-if="Object.keys($route.query).length > 0" class="mb-4">
       <button
         @click="goBack"
         class="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
@@ -211,15 +212,35 @@
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
       </div>
 
+      <!-- A failed fetch must not masquerade as an empty journal -->
+      <div v-else-if="tradesStore.error && tradesStore.trades.length === 0" class="text-center py-12">
+        <ExclamationTriangleIcon class="mx-auto h-12 w-12 text-warning" />
+        <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-white">Couldn't load your trades</h3>
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          {{ tradesStore.error }}
+        </p>
+        <div class="mt-6">
+          <button class="btn-primary" @click="tradesStore.fetchTrades()">
+            Try again
+          </button>
+        </div>
+      </div>
+
       <div v-else-if="tradesStore.trades.length === 0 && !tradesStore.loading" class="text-center py-12">
         <DocumentTextIcon class="mx-auto h-12 w-12 text-gray-400" />
         <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-white">No trades</h3>
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Get started by creating a new trade.
+          Import from your broker or add a trade manually to get started.
         </p>
-        <div class="mt-6">
-          <router-link to="/trades/new" class="btn-primary">
-            Add trade
+        <div class="mt-6 flex items-center justify-center gap-3">
+          <router-link to="/import" class="btn-primary">
+            Import trades
+          </router-link>
+          <router-link to="/broker-sync" class="btn-secondary">
+            Connect broker
+          </router-link>
+          <router-link to="/trades/new" class="btn-secondary">
+            Add manually
           </router-link>
         </div>
       </div>
@@ -492,6 +513,12 @@
                       :title="`Futures contract`">
                       FUT
                     </span>
+                    <!-- Position group strategy badge -->
+                    <span v-if="trade.group_detected_strategy"
+                      class="px-1.5 py-0.5 text-xs font-semibold rounded-full bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400 whitespace-nowrap flex-shrink-0"
+                      :title="`Auto-detected strategy: ${formatGroupStrategy(trade.group_detected_strategy)} (${trade.group_leg_count}-leg position)`">
+                      {{ formatGroupStrategy(trade.group_detected_strategy) }}
+                    </span>
                     <!-- News badge -->
                     <span v-if="trade.has_news"
                       :class="getNewsBadgeClasses(trade.news_sentiment)"
@@ -692,9 +719,15 @@
                 </td>
                 
                 <td v-else-if="column.visible && column.key === 'strategy'"
-                    :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
+                    :class="[getCellPadding, 'whitespace-nowrap text-sm cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  {{ trade.strategy || '-' }}
+                  <span v-if="trade.strategy" class="text-gray-900 dark:text-white">{{ trade.strategy }}</span>
+                  <span v-else-if="trade.group_detected_strategy"
+                    class="text-primary-600 dark:text-primary-400"
+                    :title="`Auto-detected from ${trade.group_leg_count}-leg position group`">
+                    {{ formatGroupStrategy(trade.group_detected_strategy) }}
+                  </span>
+                  <span v-else class="text-gray-500 dark:text-gray-400">-</span>
                 </td>
 
                 <td v-else-if="column.visible && column.key === 'setup'"
@@ -784,14 +817,14 @@
                 <td v-else-if="column.visible && column.key === 'mae'"
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  <span v-if="trade.mae != null" class="text-sm font-mono text-red-600 dark:text-red-400">{{ formatCurrency(trade.mae) }}</span>
+                  <span v-if="trade.mae != null" class="text-sm font-mono text-red-600 dark:text-red-400">{{ formatExcursionValue(trade, trade.mae) }}</span>
                   <span v-else class="text-sm text-gray-400">—</span>
                 </td>
 
                 <td v-else-if="column.visible && column.key === 'mfe'"
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  <span v-if="trade.mfe != null" class="text-sm font-mono text-green-600 dark:text-green-400">{{ formatCurrency(trade.mfe) }}</span>
+                  <span v-if="trade.mfe != null" class="text-sm font-mono text-green-600 dark:text-green-400">{{ formatExcursionValue(trade, trade.mfe) }}</span>
                   <span v-else class="text-sm text-gray-400">—</span>
                 </td>
 
@@ -1046,7 +1079,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { useUserTimezone } from '@/composables/useUserTimezone'
-import { DocumentTextIcon, ChatBubbleLeftIcon, FunnelIcon, XMarkIcon } from '@heroicons/vue/24/outline'
+import { DocumentTextIcon, ChatBubbleLeftIcon, FunnelIcon, XMarkIcon, ExclamationTriangleIcon } from '@heroicons/vue/24/outline'
 import TradeFilters from '@/components/trades/TradeFilters.vue'
 import TradeCommentsDialog from '@/components/trades/TradeCommentsDialog.vue'
 import EnrichmentStatus from '@/components/trades/EnrichmentStatus.vue'
@@ -1057,6 +1090,7 @@ import StockLogo from '@/components/common/StockLogo.vue'
 import { mdiNewspaper } from '@mdi/js'
 import api from '@/services/api'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { getTradeDateOnlyParts } from '@/utils/date'
 import { getTradeGrossPnl } from '@/utils/tradePnl'
 
 const tradesStore = useTradesStore()
@@ -1065,6 +1099,40 @@ const { formatCurrency, currencySymbol, formatSignedCurrency } = useCurrencyForm
 const { formatTime: formatTimeTz, userTimezone } = useUserTimezone()
 const route = useRoute()
 const router = useRouter()
+
+function formatExcursionValue(trade, value) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return '—'
+  if ((trade.instrument_type ?? trade.instrumentType) !== 'future') return formatCurrency(numeric)
+
+  const quantity = Math.abs(Number(trade.quantity) || 0)
+  const pointValue = Number(trade.point_value ?? trade.pointValue) || 0
+  if (quantity <= 0 || pointValue <= 0) return formatCurrency(numeric)
+
+  const scale = quantity * pointValue
+  const captured = getCapturedMoveDollars(trade, scale)
+  const legacyPointUnits = hasLegacyFuturesExcursionUnits(trade, captured, scale)
+  const points = legacyPointUnits ? numeric : numeric / scale
+  const dollars = legacyPointUnits ? numeric * scale : numeric
+  return `${points.toFixed(2)} pts (${formatCurrency(dollars)})`
+}
+
+function getCapturedMoveDollars(trade, scale) {
+  const entry = Number(trade.entry_price ?? trade.entryPrice)
+  const exit = Number(trade.exit_price ?? trade.exitPrice)
+  if (!Number.isFinite(entry) || !Number.isFinite(exit)) return null
+  const move = trade.side === 'short' ? entry - exit : exit - entry
+  return Math.max(0, move * scale)
+}
+
+function hasLegacyFuturesExcursionUnits(trade, captured, scale) {
+  if (!captured || captured <= 0 || scale <= 1) return false
+  const candidates = [
+    trade.mfe,
+    trade.post_exit_mfe ?? trade.postExitMfe
+  ].map(Number).filter(value => Number.isFinite(value) && value > 0)
+  return candidates.some(value => value < captured - 0.005 && value * scale >= captured - 0.005)
+}
 
 // MDI icons
 const newspaperIcon = mdiNewspaper
@@ -1258,6 +1326,11 @@ watch(visibleColumnCount, () => {
   setTimeout(updateTableScrollWidth, 100)
 })
 
+function formatGroupStrategy(strategy) {
+  if (!strategy) return ''
+  return strategy.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+
 function formatNumber(num) {
   return new Intl.NumberFormat('en-US', {
     minimumFractionDigits: 2,
@@ -1289,9 +1362,7 @@ function formatQuantity(num) {
 // Format a UTC datetime in the user's configured timezone (not the browser's).
 // Date-only inputs (no time component) are parsed as-is.
 function dateOnlyParts(date) {
-  const m = date.toString().match(/^(\d{4})-(\d{2})-(\d{2})(?:T00:00:00(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$/)
-  if (!m) return null
-  return { year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) }
+  return getTradeDateOnlyParts(date)
 }
 
 function formatInUserTimezone(date, options) {

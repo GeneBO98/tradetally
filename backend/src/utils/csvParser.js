@@ -4917,6 +4917,39 @@ function parseInstrumentData(symbol) {
     }
   }
 
+  // NinjaTrader-style futures display names: underlying + space + month + year.
+  // NinjaTrader 8 exports the instrument as e.g. "ES JUN26" (3-letter month
+  // abbreviation) or "ES 06-26" (numeric month, dash, year), neither of which
+  // matches the compact "ESM26" patterns above. Without this, "ES JUN26" falls
+  // through to 'stock' and a 1-point move is valued at $1 instead of $50.
+  // The underlying may contain digits (e.g. "M2K"), so allow a leading letter
+  // then alphanumerics. These run after the option patterns above, which also
+  // begin with "<letters> <space>" but always carry a strike + PUT/CALL.
+  const ninjaMonthAbbr = {
+    JAN: '01', FEB: '02', MAR: '03', APR: '04', MAY: '05', JUN: '06',
+    JUL: '07', AUG: '08', SEP: '09', OCT: '10', NOV: '11', DEC: '12'
+  };
+  const ninjaNamedMonth = normalizedSymbol.match(/^([A-Z][A-Z0-9]{0,3})\s+([A-Z]{3})\s?(\d{2})$/);
+  const ninjaNumericMonth = normalizedSymbol.match(/^([A-Z][A-Z0-9]{0,3})\s+(0[1-9]|1[0-2])-(\d{2})$/);
+  if (ninjaNamedMonth || ninjaNumericMonth) {
+    const underlying = (ninjaNamedMonth || ninjaNumericMonth)[1];
+    const month = ninjaNamedMonth
+      ? ninjaMonthAbbr[ninjaNamedMonth[2]]
+      : ninjaNumericMonth[2];
+    const yearStr = (ninjaNamedMonth || ninjaNumericMonth)[3];
+    // Only treat as a future if the month resolved to a valid code (guards
+    // against random 3-letter words that aren't month abbreviations).
+    if (month) {
+      return {
+        instrumentType: 'future',
+        underlyingAsset: underlying,
+        contractMonth: month,
+        contractYear: 2000 + parseInt(yearStr, 10),
+        pointValue: getFuturesPointValue(underlying)
+      };
+    }
+  }
+
   return { instrumentType: 'stock' };
 }
 
@@ -9662,6 +9695,26 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
   for (const [symbol, symbolTransactions] of Object.entries(symbolGroups)) {
     console.log(`\nProcessing ${symbol}: ${symbolTransactions.length} transactions`);
 
+    // Determine the contract multiplier for this symbol so futures P&L is valued
+    // per point (e.g. ES = $50/pt) instead of dollar-for-dollar. Without this a
+    // 1-point ES move would be recorded as $1 rather than $50. parseInstrumentData
+    // recognizes broker display formats like "ES JUN26" (NinjaTrader) and "ESM26".
+    const symbolInstrumentData = parseInstrumentData(symbol);
+    const contractMultiplier = symbolInstrumentData.instrumentType === 'future'
+      ? (symbolInstrumentData.pointValue || 1)
+      : 1;
+    // Fields to stamp onto completed futures trades so the Trade model, charts,
+    // and analytics treat them as futures (not stocks).
+    const futuresTradeFields = symbolInstrumentData.instrumentType === 'future'
+      ? {
+          instrumentType: 'future',
+          underlyingAsset: symbolInstrumentData.underlyingAsset,
+          contractMonth: symbolInstrumentData.contractMonth,
+          contractYear: symbolInstrumentData.contractYear,
+          pointValue: symbolInstrumentData.pointValue
+        }
+      : null;
+
     // Initialize position tracking
     const existingPosition = existingPositions[symbol];
     let currentPosition = existingPosition ?
@@ -9775,7 +9828,7 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
             if (currentPosition < 0 && currentTrade.totalQuantity > 0) {
               // Calculate P&L for this partial close using weighted average entry price
               const avgEntryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
-              const partialPnl = (avgEntryPrice - transaction.price) * qty;
+              const partialPnl = (avgEntryPrice - transaction.price) * qty * contractMultiplier;
               // Prorate commission for partial close
               const partialCommission = ((currentTrade.totalCommission + currentTrade.totalFees) / currentTrade.totalQuantity) * qty;
               const netPartialPnl = partialPnl - partialCommission;
@@ -9809,7 +9862,7 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
             if (currentPosition > 0 && currentTrade.totalQuantity > 0) {
               // Calculate P&L for this partial close using weighted average entry price
               const avgEntryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
-              const partialPnl = (transaction.price - avgEntryPrice) * qty;
+              const partialPnl = (transaction.price - avgEntryPrice) * qty * contractMultiplier;
               // Prorate commission for partial close
               const partialCommission = ((currentTrade.totalCommission + currentTrade.totalFees) / currentTrade.totalQuantity) * qty;
               const netPartialPnl = partialPnl - partialCommission;
@@ -9837,15 +9890,18 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
         currentTrade.entryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
         currentTrade.exitPrice = currentTrade.exitValue / currentTrade.totalQuantity;
 
-        // Calculate P&L
+        // Calculate P&L. entryValue/exitValue are raw price*qty (so entryPrice/
+        // exitPrice stay per-contract); the contract multiplier is applied to the
+        // gross gain/loss so futures are valued per point (e.g. ES = $50/pt).
         const totalCosts = currentTrade.totalCommission + currentTrade.totalFees;
         if (currentTrade.side === 'long') {
-          currentTrade.pnl = currentTrade.exitValue - currentTrade.entryValue - totalCosts;
+          currentTrade.pnl = (currentTrade.exitValue - currentTrade.entryValue) * contractMultiplier - totalCosts;
         } else {
-          currentTrade.pnl = currentTrade.entryValue - currentTrade.exitValue - totalCosts;
+          currentTrade.pnl = (currentTrade.entryValue - currentTrade.exitValue) * contractMultiplier - totalCosts;
         }
 
-        currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
+        const grossEntryValue = currentTrade.entryValue * contractMultiplier;
+        currentTrade.pnlPercent = grossEntryValue > 0 ? (currentTrade.pnl / grossEntryValue) * 100 : 0;
         currentTrade.quantity = currentTrade.totalQuantity;
         currentTrade.commission = currentTrade.totalCommission;
         currentTrade.fees = currentTrade.totalFees;
@@ -9865,6 +9921,10 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
         } else {
           currentTrade.notes = `Round trip trade: ${currentTrade.executions.length} executions`;
           console.log(`  [CHECK] Completed ${currentTrade.side} trade: P/L: $${currentTrade.pnl.toFixed(2)}`);
+        }
+
+        if (futuresTradeFields) {
+          Object.assign(currentTrade, futuresTradeFields);
         }
 
         currentTrade.executionData = currentTrade.executions;
@@ -9903,6 +9963,10 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
       } else {
         currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
         console.log(`  [CHECK] Created open ${currentTrade.side} position: ${netQuantity} shares`);
+      }
+
+      if (futuresTradeFields) {
+        Object.assign(currentTrade, futuresTradeFields);
       }
 
       currentTrade.executionData = currentTrade.executions;

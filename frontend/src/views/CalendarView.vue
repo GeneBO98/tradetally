@@ -766,11 +766,43 @@ async function fetchCalendarData() {
       }
     }
     calendarData.value = dataMap
+
+    // First visit with no explicit year choice: an empty current year greets
+    // the user with twelve blank months. Anchor to the most recent year that
+    // actually has trades instead.
+    await anchorToLatestTradeYear()
   } catch (error) {
     console.error('Failed to fetch calendar data:', error)
   } finally {
     loading.value = false
     initialLoading.value = false
+  }
+}
+
+let attemptedDataAnchor = false
+async function anchorToLatestTradeYear() {
+  if (attemptedDataAnchor) return
+  attemptedDataAnchor = true
+
+  const userChoseYear = Boolean(route.query.year || localStorage.getItem('calendar_year'))
+  if (userChoseYear || calendarData.value.size > 0) return
+
+  try {
+    const params = { limit: 1 }
+    if (selectedAccount.value) {
+      params.accounts = selectedAccount.value
+    }
+    const response = await api.get('/trades', { params })
+    const trades = response.data.trades || response.data
+    const lastTradeDate = trades?.[0]?.trade_date
+    const lastTradeYear = lastTradeDate ? parseInt(String(lastTradeDate).slice(0, 4)) : null
+
+    if (lastTradeYear && lastTradeYear !== currentYear.value) {
+      currentYear.value = lastTradeYear
+      await fetchCalendarData()
+    }
+  } catch (error) {
+    console.error('Failed to anchor calendar to latest trade year:', error)
   }
 }
 

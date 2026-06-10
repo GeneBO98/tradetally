@@ -929,6 +929,7 @@
                       v-model="logSearchQuery"
                       type="text"
                       placeholder="Search logs... (e.g. CURR, SLRX, duplicate, error)"
+                      aria-label="Search import logs"
                       class="input pl-10 pr-10"
                       @input="searchLogs"
                     />

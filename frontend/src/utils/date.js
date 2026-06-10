@@ -23,6 +23,28 @@ export function getLocalToday() {
 }
 
 /**
+ * Extract the calendar date from date-only values and midnight timestamps.
+ * Trade date fields can arrive as YYYY-MM-DD, ISO midnight, or PostgreSQL-style
+ * YYYY-MM-DD 00:00:00 values. Treat those as calendar dates, not instants.
+ */
+export function getTradeDateOnlyParts(date) {
+  if (!date) return null
+
+  const dateStr = date.toString()
+  const dateOnlyMatch = dateStr.match(
+    /^(\d{4})-(\d{2})-(\d{2})(?:(?:T| )00:00:00(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$/
+  )
+
+  if (!dateOnlyMatch) return null
+
+  return {
+    year: Number(dateOnlyMatch[1]),
+    month: Number(dateOnlyMatch[2]),
+    day: Number(dateOnlyMatch[3])
+  }
+}
+
+/**
  * Parse a trade-related date or datetime string into a Date object,
  * handling date-only and "midnight UTC" values without causing
  * off-by-one issues in the user's local timezone.
@@ -30,20 +52,14 @@ export function getLocalToday() {
 export function parseTradeDate(date) {
   if (!date) return null
 
-  const dateStr = date.toString()
-
-  // Match date-only (YYYY-MM-DD) or midnight timestamps
-  // like YYYY-MM-DDT00:00:00(.sss)?(Z|±HH:MM)
-  const dateOnlyMatch = dateStr.match(
-    /^(\d{4})-(\d{2})-(\d{2})(?:T00:00:00(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$/
-  )
-
-  if (dateOnlyMatch) {
-    const [, year, month, day] = dateOnlyMatch.map(Number)
+  const dateOnlyParts = getTradeDateOnlyParts(date)
+  if (dateOnlyParts) {
+    const { year, month, day } = dateOnlyParts
     // Construct in local timezone to avoid UTC shifting
     return new Date(year, month - 1, day)
   }
 
+  const dateStr = date.toString()
   const d = new Date(dateStr)
   if (isNaN(d.getTime())) return null
   return d
@@ -59,5 +75,4 @@ export function formatTradeDate(date, pattern = 'MMM dd, yyyy') {
   if (!d) return 'Invalid Date'
   return formatDateFns(d, pattern)
 }
-
 

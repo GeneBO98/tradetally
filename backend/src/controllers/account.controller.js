@@ -6,6 +6,8 @@
 
 const Account = require('../models/Account');
 const plaidFundingService = require('../services/plaid/plaidFundingService');
+const OptionStrategyGroupingService = require('../services/optionStrategyGroupingService');
+const AnalyticsCache = require('../services/analyticsCache');
 
 const accountController = {
   /**
@@ -574,6 +576,10 @@ const accountController = {
       `, [fullIdentifier, userId, last4]);
 
       const updatedCount = result.rowCount;
+      if (updatedCount > 0) {
+        await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'account identifier repair');
+        await AnalyticsCache.invalidate(userId);
+      }
 
       console.log(`[ACCOUNTS] Fixed ${updatedCount} trades with redacted identifiers for account ${accountId}`);
 
@@ -652,6 +658,11 @@ const accountController = {
           success: false,
           message: 'Must provide sourceIdentifier or set linkAll to true'
         });
+      }
+
+      if (result.rowCount > 0) {
+        await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'account trade linking');
+        await AnalyticsCache.invalidate(userId);
       }
 
       res.json({

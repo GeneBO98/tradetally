@@ -7,7 +7,7 @@
 <script setup>
 import { onMounted, ref, watch } from 'vue'
 import { Chart, registerables } from 'chart.js'
-import { format } from 'date-fns'
+import { formatTradeDate } from '@/utils/date'
 
 Chart.register(...registerables)
 
@@ -36,7 +36,7 @@ function createChart() {
   const textColor = isDark ? '#E5E7EB' : '#1F2937'
   const gridColor = isDark ? 'rgba(75, 85, 99, 0.35)' : 'rgba(209, 213, 219, 0.7)'
 
-  const labels = props.data.map(point => format(new Date(point.date), 'MMM d'))
+  const labels = props.data.map(point => formatTradeDate(point.date, 'MMM d'))
   const portfolioData = props.data.map(point => point.portfolioIndex)
   const benchmarkData = props.data.map(point => point.benchmarkIndex)
 

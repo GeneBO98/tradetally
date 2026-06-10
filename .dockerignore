@@ -6,6 +6,7 @@
 # Build artifacts
 **/build
 **/dist
+release-assets/
 
 # Docker compose files
 **/docker-compose.*.yaml

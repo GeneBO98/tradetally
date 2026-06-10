@@ -65,7 +65,8 @@ function defaultDbResponse() {
         symbols_traded: 0,
         trading_days: 0,
         avg_return_pct: 0,
-        avg_r_value: 0
+        avg_r_value: 0,
+        total_r_value: 0
       }
     ]
   };
@@ -94,6 +95,23 @@ describe('TradeQueries.getAnalytics characterization', () => {
 
     const analyticsSql = db.query.mock.calls[1][0];
     expect(analyticsSql).toContain('(COALESCE(commission, 0) + COALESCE(fees, 0)) as trade_costs');
+  });
+
+  test('summary returns total R value computed by trade_stats', async () => {
+    db.query.mockResolvedValue(defaultDbResponse());
+    db.query.mockResolvedValueOnce({ rows: [{ execution_count: 0 }] });
+    db.query.mockResolvedValueOnce({
+      rows: [{
+        ...defaultDbResponse().rows[0],
+        total_r_value: 3.42
+      }]
+    });
+
+    const analytics = await TradeQueries.getAnalytics('user-1', {});
+
+    const analyticsSql = db.query.mock.calls[1][0];
+    expect(analyticsSql).toContain('ts.total_r_value');
+    expect(analytics.summary.totalRValue).toBe(3.42);
   });
 
   describe('baseline', () => {
@@ -375,6 +393,64 @@ describe('TradeQueries.getAnalytics characterization', () => {
       expect(values).toEqual(['user-1', 'AAPL', 'import-123']);
       expect(sql).toContain('t.import_id = $3');
       expect(sql).toContain("t.symbol ILIKE $2 || '%'");
+    });
+  });
+
+  describe('position grouping (whole-trade win rate, issue #339)', () => {
+    const User = require('../../src/models/User');
+    // Fan-out order: 0 executionCount, 1 analytics, 2 symbolBreakdown,
+    // 3 dailyPnL, 4 dailyWinRate, 5 topTrades, 6 bestWorst, 7 recentTradePnls.
+    const GROUP_KEY_PREFIX = 'COALESCE(position_group_id::text';
+
+    function sqlAt(index) {
+      return db.query.mock.calls[index][0];
+    }
+
+    test('grouping off: per-leg daily win rate, symbol breakdown, and daily counts', async () => {
+      await TradeQueries.getAnalytics('user-1', {});
+      expect(sqlAt(2)).not.toContain(GROUP_KEY_PREFIX);
+      expect(sqlAt(3)).toContain('COUNT(*) as trade_count');
+      expect(sqlAt(4)).not.toContain(GROUP_KEY_PREFIX);
+      expect(sqlAt(4)).toContain('FROM trades t');
+    });
+
+    test('grouping on: daily win rate counts positions, not legs', async () => {
+      User.getSettings.mockResolvedValueOnce({
+        statistics_calculation: 'average',
+        analytics_position_grouping: true
+      });
+      await TradeQueries.getAnalytics('user-1', {});
+
+      const dailyWinRateSql = sqlAt(4);
+      expect(dailyWinRateSql).toContain(`GROUP BY ${GROUP_KEY_PREFIX}`);
+      expect(dailyWinRateSql).toContain('FROM positions');
+      // Grouped positions use the net-P&L breakeven, not the per-leg tick tolerance.
+      expect(dailyWinRateSql).toContain('ROUND(pnl::numeric, 2)');
+    });
+
+    test('grouping on: symbol breakdown rolls legs up under the underlying', async () => {
+      User.getSettings.mockResolvedValueOnce({
+        statistics_calculation: 'average',
+        analytics_position_grouping: true
+      });
+      await TradeQueries.getAnalytics('user-1', {});
+
+      const symbolSql = sqlAt(2);
+      expect(symbolSql).toContain(GROUP_KEY_PREFIX);
+      expect(symbolSql).toContain("COALESCE(NULLIF(underlying_symbol, ''), symbol)");
+      expect(symbolSql).toContain('FROM positions');
+    });
+
+    test('grouping on: daily P&L counts distinct positions, sums unchanged', async () => {
+      User.getSettings.mockResolvedValueOnce({
+        statistics_calculation: 'average',
+        analytics_position_grouping: true
+      });
+      await TradeQueries.getAnalytics('user-1', {});
+
+      const dailyPnLSql = sqlAt(3);
+      expect(dailyPnLSql).toContain(`COUNT(DISTINCT ${GROUP_KEY_PREFIX}`);
+      expect(dailyPnLSql).toContain('SUM(COALESCE(pnl, 0)) as daily_pnl');
     });
   });
 

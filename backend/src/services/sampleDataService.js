@@ -328,6 +328,7 @@ class SampleDataService {
   static async removeForUser(userId) {
     const db = require('../config/database');
     const AnalyticsCache = require('./analyticsCache');
+    const OptionStrategyGroupingService = require('./optionStrategyGroupingService');
 
     console.log(`[SAMPLE-DATA] Removing sample data for user ${userId}`);
 
@@ -337,6 +338,9 @@ class SampleDataService {
       [userId]
     );
     console.log(`[SAMPLE-DATA] Deleted ${tradeResult.rowCount} sample trades`);
+    if (tradeResult.rowCount > 0) {
+      await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'sample data removal');
+    }
 
     // Delete sample journal entries (tagged with 'sample')
     const diaryResult = await db.query(

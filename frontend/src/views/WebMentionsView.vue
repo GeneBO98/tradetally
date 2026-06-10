@@ -271,7 +271,7 @@
                               class="btn-secondary text-sm"
                               :disabled="savingPreset || !presetName.trim()"
                             >
-                              {{ savingPreset ? 'Saving...' : '✓' }}
+                              {{ savingPreset ? 'Saving...' : 'Save' }}
                             </button>
                           </div>
                         </div>

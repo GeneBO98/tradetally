@@ -7,7 +7,7 @@
         class="relative w-full max-w-md mx-4 overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-gray-900"
       >
         <div
-          class="px-6 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-white"
+          class="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-white"
           :class="layoutMode === 'hero' ? `header-${heroRarity}` : 'bg-gradient-to-r from-primary-600 to-primary-500'"
         >
           {{ layoutMode === 'hero'

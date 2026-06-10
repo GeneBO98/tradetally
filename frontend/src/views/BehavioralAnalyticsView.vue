@@ -1705,7 +1705,7 @@
                     <div v-else-if="personalityData && personalityData.profile">
                         <!-- Personality Overview -->
                         <div
-                            class="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-lg p-6 mb-6"
+                            class="bg-primary-50 dark:bg-primary-900/20 rounded-lg p-6 mb-6"
                         >
                             <div class="flex items-center justify-between mb-4">
                                 <div>
@@ -5122,10 +5122,9 @@
                                                     :key="idx"
                                                     class="flex items-start"
                                                 >
-                                                    <span
-                                                        class="text-green-600 mr-1.5"
-                                                        >✓</span
-                                                    >
+                                                    <CheckIcon
+                                                        class="h-4 w-4 text-green-600 mr-1.5 mt-0.5 shrink-0"
+                                                    />
                                                     <span
                                                         class="text-green-800 dark:text-green-300"
                                                         >{{ factor }}</span
@@ -5693,6 +5692,7 @@
 
 <script setup>
 import { ref, onMounted, computed, nextTick } from "vue";
+import { CheckIcon } from "@heroicons/vue/24/outline";
 import { useRouter, useRoute } from "vue-router";
 import api from "@/services/api";
 import { useNotification } from "@/composables/useNotification";

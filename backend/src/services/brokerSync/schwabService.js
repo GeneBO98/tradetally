@@ -15,6 +15,7 @@ const axios = require('axios');
 const Trade = require('../../models/Trade');
 const BrokerConnection = require('../../models/BrokerConnection');
 const AnalyticsCache = require('../analyticsCache');
+const OptionStrategyGroupingService = require('../optionStrategyGroupingService');
 const db = require('../../config/database');
 
 const SCHWAB_API_BASE = 'https://api.schwabapi.com/trader/v1';
@@ -630,6 +631,13 @@ class SchwabService {
           const openPos = openPositions[positionKey][0];
           const matchQty = Math.min(remainingCloseQty, openPos.qty);
 
+          // Prorate the entry-side costs for this slice and consume them from
+          // the lot. Prorating against the remaining qty without decrementing
+          // the costs over-counted entry commission on partial exits (a 50/50
+          // split of a 100-share lot attributed 0.5 + 1.0 = 1.5x the actual).
+          const entryCommission = openPos.qty > 0 ? (openPos.commission || 0) * matchQty / openPos.qty : 0;
+          const entryFees = openPos.qty > 0 ? (openPos.fees || 0) * matchQty / openPos.qty : 0;
+
           // Create matched trade
           const pnl = this.calculatePnL(openPos.price, tx.price, matchQty, openPos.side, openPos.instrumentType);
 
@@ -642,8 +650,8 @@ class SchwabService {
             entryTime: openPos.time,
             exitTime: tx.time,
             tradeDate: tx.time.split('T')[0], // Use exit date as trade date
-            commission: (openPos.commission * matchQty / openPos.qty) + (tx.commission * matchQty / tx.quantity || 0),
-            fees: (openPos.fees * matchQty / openPos.qty) + (tx.fees * matchQty / tx.quantity || 0),
+            commission: entryCommission + (tx.commission * matchQty / tx.quantity || 0),
+            fees: entryFees + (tx.fees * matchQty / tx.quantity || 0),
             pnl,
             broker: 'schwab',
             instrumentType: openPos.instrumentType,
@@ -677,6 +685,8 @@ class SchwabService {
 
           remainingCloseQty -= matchQty;
           openPos.qty -= matchQty;
+          openPos.commission = Math.max(0, (openPos.commission || 0) - entryCommission);
+          openPos.fees = Math.max(0, (openPos.fees || 0) - entryFees);
 
           if (openPos.qty <= 0) {
             openPositions[positionKey].shift();
@@ -1176,7 +1186,8 @@ class SchwabService {
         // Create trade
         await Trade.create(userId, tradeData, {
           skipAchievements: true,
-          skipApiCalls: true
+          skipApiCalls: true,
+          skipOptionGrouping: true
         });
 
         imported++;
@@ -1213,10 +1224,9 @@ class SchwabService {
       }
     }
 
-    if (imported > 0) {
-      console.log(`[SCHWAB] Invalidating analytics cache for user ${userId}`);
-      await AnalyticsCache.invalidate(userId);
-    }
+    await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'Schwab broker sync');
+    console.log(`[SCHWAB] Invalidating analytics cache for user ${userId}`);
+    await AnalyticsCache.invalidate(userId);
 
     return { imported, skipped, failed, duplicates };
   }

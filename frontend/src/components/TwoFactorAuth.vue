@@ -4,10 +4,10 @@
     >
         <div class="text-center mb-6">
             <div
-                class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-blue-100 dark:bg-blue-900"
+                class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-primary-100 dark:bg-primary-900"
             >
                 <svg
-                    class="h-6 w-6 text-blue-600 dark:text-blue-400"
+                    class="h-6 w-6 text-primary-600 dark:text-primary-400"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"

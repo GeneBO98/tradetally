@@ -202,6 +202,9 @@ importers:
         specifier: ^4.1.0
         version: 4.1.0(vue@3.5.33)
     devDependencies:
+      '@tailwindcss/container-queries':
+        specifier: ^0.1.1
+        version: 0.1.1(tailwindcss@3.4.19(yaml@2.8.3))
       '@vitejs/plugin-vue':
         specifier: ^5.2.4
         version: 5.2.4(vite@6.4.2(@types/node@25.6.0)(jiti@1.21.7)(yaml@2.8.3))(vue@3.5.33)
@@ -1335,6 +1338,11 @@ packages:
 
   '@stripe/stripe-js@2.4.0':
     resolution: {integrity: sha512-WFkQx1mbs2b5+7looI9IV1BLa3bIApuN3ehp9FP58xGg7KL9hCHDECgW3BwO9l9L+xBPVAD7Yjn1EhGe6EDTeA==}
+
+  '@tailwindcss/container-queries@0.1.1':
+    resolution: {integrity: sha512-p18dswChx6WnTSaJCSGx6lTmrGzNNvm2FtXmiO6AuA1V4U5REyoqwmT6kgAsIMdjo07QdAfYXHJ4hnMtfHzWgA==}
+    peerDependencies:
+      tailwindcss: '>=3.2.0'
 
   '@types/babel__core@7.20.5':
     resolution: {integrity: sha512-qoQprZvz5wQFJwMDqeseRXWv3rqMvhgpbXFfVyWhbx9X47POIA6i/+dXefEmZKoAgOaTdaIgNSMqMIU61yRyzA==}
@@ -5202,6 +5210,10 @@ snapshots:
   '@standard-schema/spec@1.1.0': {}
 
   '@stripe/stripe-js@2.4.0': {}
+
+  '@tailwindcss/container-queries@0.1.1(tailwindcss@3.4.19(yaml@2.8.3))':
+    dependencies:
+      tailwindcss: 3.4.19(yaml@2.8.3)
 
   '@types/babel__core@7.20.5':
     dependencies:

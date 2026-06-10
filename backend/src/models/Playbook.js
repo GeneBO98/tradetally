@@ -303,7 +303,12 @@ class Playbook {
     return result.rows;
   }
 
-  static async getAnalytics(userId) {
+  static async getAnalytics(userId, accounts = null) {
+    // Global account filter: when set, adherence and P&L stats only count
+    // reviews whose trade belongs to the selected account(s). Playbooks stay
+    // listed either way (LEFT JOIN), just with zeroed stats.
+    const accountsParam = Array.isArray(accounts) && accounts.length > 0 ? accounts : null;
+
     const summaryResult = await db.query(
       `
         WITH reviewed AS (
@@ -320,6 +325,10 @@ class Playbook {
           FROM playbooks p
           LEFT JOIN trade_playbook_reviews r
             ON r.playbook_id = p.id AND r.user_id = $1
+            AND ($2::text[] IS NULL OR EXISTS (
+              SELECT 1 FROM trades tt
+              WHERE tt.id = r.trade_id AND tt.account_identifier = ANY($2::text[])
+            ))
           LEFT JOIN trades t
             ON t.id = r.trade_id AND t.user_id = $1
           WHERE p.user_id = $1
@@ -358,7 +367,7 @@ class Playbook {
         GROUP BY id, name, side, timeframe, is_active
         ORDER BY LOWER(name)
       `,
-      [userId]
+      [userId, accountsParam]
     );
 
     const recentTradesResult = await db.query(
@@ -375,10 +384,11 @@ class Playbook {
         FROM trade_playbook_reviews r
         INNER JOIN trades t ON t.id = r.trade_id
         WHERE r.user_id = $1
+          AND ($2::text[] IS NULL OR t.account_identifier = ANY($2::text[]))
         ORDER BY r.reviewed_at DESC
         LIMIT 20
       `,
-      [userId]
+      [userId, accountsParam]
     );
 
     const overviewResult = await db.query(
@@ -399,10 +409,14 @@ class Playbook {
           COUNT(*) FILTER (WHERE followed_plan = true)::integer AS followed_trade_count,
           COUNT(*) FILTER (WHERE followed_plan = false)::integer AS broken_trade_count,
           ROUND(COALESCE(AVG(adherence_score), 0)::numeric, 2) AS adherence_average
-        FROM trade_playbook_reviews
-        WHERE user_id = $1
+        FROM trade_playbook_reviews r
+        WHERE r.user_id = $1
+          AND ($2::text[] IS NULL OR EXISTS (
+            SELECT 1 FROM trades tt
+            WHERE tt.id = r.trade_id AND tt.account_identifier = ANY($2::text[])
+          ))
       `,
-      [userId]
+      [userId, accountsParam]
     );
 
     return {

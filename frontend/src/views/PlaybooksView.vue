@@ -381,8 +381,9 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import api from '@/services/api'
+import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { useNotification } from '@/composables/useNotification'
 import BaseSelect from '@/components/common/BaseSelect.vue'
 
@@ -598,12 +599,18 @@ function removeChecklistItem(index) {
   form.checklistItems.splice(index, 1)
 }
 
+const { selectedAccount } = useGlobalAccountFilter()
+
 async function loadData() {
   try {
     loading.value = true
+    const analyticsParams = {}
+    if (selectedAccount.value) {
+      analyticsParams.accounts = selectedAccount.value
+    }
     const [playbookResponse, analyticsResponse, strategiesResponse, setupsResponse, tagsResponse] = await Promise.all([
       api.get('/playbooks', { params: { includeArchived: true } }),
-      api.get('/playbooks/analytics'),
+      api.get('/playbooks/analytics', { params: analyticsParams }),
       api.get('/trades/strategies').catch(() => ({ data: { strategies: [] } })),
       api.get('/trades/setups').catch(() => ({ data: { setups: [] } })),
       api.get('/tags').catch(() => ({ data: { tags: [] } }))
@@ -726,4 +733,9 @@ function formatDate(value) {
 }
 
 onMounted(loadData)
+
+watch(selectedAccount, () => {
+  console.log('[PLAYBOOKS] Global account filter changed to:', selectedAccount.value || 'All Accounts')
+  loadData()
+})
 </script>

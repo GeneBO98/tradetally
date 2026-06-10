@@ -1,0 +1,582 @@
+<template>
+  <BaseModal :model-value="modelValue" title="Share trade" size="2xl" @update:model-value="$emit('update:modelValue', $event)">
+    <div class="space-y-4">
+      <!-- Card preview -->
+      <div class="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
+        <canvas ref="canvasRef" class="block w-full" :style="{ aspectRatio: `${CARD_WIDTH} / ${CARD_HEIGHT}` }"></canvas>
+      </div>
+
+      <!-- Options -->
+      <div class="flex items-center justify-between">
+        <div>
+          <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Show dollar amounts</label>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+            Off shares percentages and R-multiples only - position size stays private.
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          :aria-checked="showDollarAmounts"
+          class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+          :class="showDollarAmounts ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-600'"
+          @click="showDollarAmounts = !showDollarAmounts"
+        >
+          <span
+            class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition"
+            :class="showDollarAmounts ? 'translate-x-5' : 'translate-x-0'"
+          />
+        </button>
+      </div>
+
+      <!-- Verification status: tell the owner what the badge means (or why
+           there is no badge) instead of leaving it implicit. -->
+      <div
+        v-if="verification?.status === 'broker_verified'"
+        class="rounded-lg border border-success/30 bg-success/5 px-4 py-3"
+      >
+        <p class="text-sm font-medium text-success">Broker-verified</p>
+        <p class="mt-0.5 text-xs leading-relaxed text-gray-600 dark:text-gray-400">
+          This card carries a public attestation link. Anyone who opens it can
+          confirm the trade was imported from your connected {{ brokerLabel }}
+          account and hasn't been edited since. Changing the trade's prices,
+          size, or timestamps revokes the verification automatically.
+        </p>
+        <a
+          :href="`/v/${verification.public_code}`"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="mt-1.5 inline-block text-xs font-medium text-success hover:underline"
+        >View the public verification page</a>
+      </div>
+      <div
+        v-else-if="verification?.status === 'revoked'"
+        class="rounded-lg border border-warning/30 bg-warning/5 px-4 py-3"
+      >
+        <p class="text-sm font-medium text-warning">Verification revoked</p>
+        <p class="mt-0.5 text-xs leading-relaxed text-gray-600 dark:text-gray-400">
+          This trade was edited after it was verified, so the card no longer
+          carries a badge and its verification page shows a warning.
+        </p>
+      </div>
+      <div
+        v-else-if="!trade.broker_connection_id"
+        class="rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-3"
+      >
+        <p class="text-sm font-medium text-gray-700 dark:text-gray-300">Not verifiable</p>
+        <p class="mt-0.5 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+          Verified badges are only available for trades imported through broker
+          sync, because TradeTally can attest those came straight from your
+          brokerage. CSV imports and manual entries can't be verified.
+        </p>
+      </div>
+
+      <!-- Link sharing: public trades are viewable by anyone at /trades/:id -->
+      <div class="rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-3">
+        <template v-if="isPublic">
+          <div class="min-w-0">
+            <p class="text-sm font-medium text-gray-700 dark:text-gray-300">Share link <span class="font-normal text-success">- this trade is public</span></p>
+            <p class="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">{{ tradeUrl }}</p>
+          </div>
+        </template>
+        <template v-else>
+          <div class="flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <p class="text-sm font-medium text-gray-700 dark:text-gray-300">Share link</p>
+              <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                This trade is private. Make it public to get a link anyone can open.
+              </p>
+            </div>
+            <button type="button" class="btn-secondary text-sm flex-shrink-0" :disabled="makingPublic" @click="makePublic">
+              {{ makingPublic ? 'Updating...' : 'Make public' }}
+            </button>
+          </div>
+        </template>
+      </div>
+
+      <p v-if="copyState" class="text-xs" :class="copyState === 'failed' ? 'text-danger' : 'text-success'">
+        {{ copyFeedback }}
+      </p>
+    </div>
+
+    <template #footer>
+      <div class="relative">
+        <button type="button" class="btn-secondary inline-flex items-center gap-1.5" @click="showCopyMenu = !showCopyMenu">
+          Copy
+          <ChevronUpIcon class="h-3.5 w-3.5" />
+        </button>
+        <div v-if="showCopyMenu" class="fixed inset-0 z-10" @click="showCopyMenu = false"></div>
+        <div
+          v-if="showCopyMenu"
+          class="absolute bottom-full left-0 z-20 mb-2 w-48 overflow-hidden rounded-md border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800"
+        >
+          <button
+            type="button"
+            class="block w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700"
+            @click="copyImageFromMenu"
+          >
+            Copy image
+          </button>
+          <button
+            type="button"
+            class="block w-full px-4 py-2.5 text-left text-sm"
+            :class="isPublic
+              ? 'text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700'
+              : 'cursor-not-allowed text-gray-400 dark:text-gray-600'"
+            :disabled="!isPublic"
+            :title="isPublic ? '' : 'Make the trade public first'"
+            @click="copyLinkFromMenu"
+          >
+            Copy link
+            <span v-if="!isPublic" class="block text-xs">Make the trade public first</span>
+          </button>
+        </div>
+      </div>
+      <button v-if="canNativeShare" type="button" class="btn-secondary" @click="nativeShare">
+        Share
+      </button>
+      <button type="button" class="btn-primary" @click="downloadImage">
+        Download PNG
+      </button>
+    </template>
+  </BaseModal>
+</template>
+
+<script setup>
+import { ref, watch, nextTick, computed } from 'vue'
+import BaseModal from '@/components/common/BaseModal.vue'
+import { formatTradeDate } from '@/utils/date'
+import api from '@/services/api'
+import { ChevronUpIcon } from '@heroicons/vue/24/outline'
+import { useNotification } from '@/composables/useNotification'
+
+// Social-card dimensions (Open Graph ratio). Rendered at 2x for sharpness.
+const CARD_WIDTH = 1200
+const CARD_HEIGHT = 630
+const SCALE = 2
+
+const props = defineProps({
+  modelValue: { type: Boolean, required: true },
+  trade: { type: Object, required: true }
+})
+
+const emit = defineEmits(['update:modelValue', 'made-public'])
+
+const { showSuccess, showError } = useNotification()
+
+const canvasRef = ref(null)
+const showDollarAmounts = ref(false)
+const copyState = ref('')
+const linkCopied = ref(false)
+const makingPublic = ref(false)
+const showCopyMenu = ref(false)
+
+const copyFeedback = computed(() => ({
+  copied: 'Image copied to clipboard.',
+  'link-copied': 'Link copied to clipboard.',
+  failed: 'Copy failed - your browser may not support image clipboard. Use Download instead.'
+}[copyState.value] || ''))
+
+async function copyImageFromMenu() {
+  showCopyMenu.value = false
+  await copyToClipboard()
+}
+
+async function copyLinkFromMenu() {
+  showCopyMenu.value = false
+  await copyLink()
+  if (linkCopied.value) {
+    copyState.value = 'link-copied'
+  }
+}
+// Track visibility locally so the link appears immediately after toggling.
+const isPublic = ref(false)
+const tradeUrl = computed(() => `${window.location.origin}/trades/${props.trade.id}`)
+
+async function copyLink() {
+  try {
+    await navigator.clipboard.writeText(tradeUrl.value)
+    linkCopied.value = true
+    setTimeout(() => { linkCopied.value = false }, 2000)
+  } catch (error) {
+    console.error('[SHARE-CARD] Link copy failed:', error)
+  }
+}
+
+async function makePublic() {
+  makingPublic.value = true
+  try {
+    await api.put(`/trades/${props.trade.id}`, { isPublic: true })
+    isPublic.value = true
+    emit('made-public')
+    showSuccess('Trade is public', 'Anyone with the link can now view it.')
+  } catch (error) {
+    console.error('[SHARE-CARD] Failed to make trade public:', error)
+    showError('Error', error.response?.data?.error || 'Failed to make the trade public.')
+  } finally {
+    makingPublic.value = false
+  }
+}
+const canNativeShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function'
+
+// Cloud-only: broker verification for the badge. The endpoints exist only on
+// tradetally.io; failures of any kind simply mean no badge.
+const verification = ref(null)
+
+const BROKER_LABELS = {
+  schwab: 'Charles Schwab',
+  ibkr: 'Interactive Brokers',
+  tradestation: 'TradeStation',
+  alpaca: 'Alpaca'
+}
+const brokerLabel = computed(() => BROKER_LABELS[props.trade.broker] || props.trade.broker || 'broker')
+
+
+async function ensureVerification() {
+  if (!props.trade?.broker_connection_id) {
+    verification.value = null
+    return
+  }
+  try {
+    const response = await api.post(`/trades/${props.trade.id}/verification`, {
+      show_amounts: showDollarAmounts.value === true
+    })
+    verification.value = response.data.verification
+  } catch (error) {
+    // Issue failed (ineligible, offline, etc.) - an already-issued
+    // verification should still badge the card.
+    try {
+      const existing = await api.get(`/trades/${props.trade.id}/verification`)
+      verification.value = existing.data.verification
+    } catch (_) {
+      verification.value = null
+    }
+  }
+}
+
+const COLORS = {
+  background: '#101418',
+  surface: '#181e25',
+  textPrimary: '#f4f4f5',
+  textSecondary: '#9ca3af',
+  textMuted: '#6b7280',
+  win: '#10b981',
+  loss: '#ef4444',
+  divider: '#262d36'
+}
+
+function themePrimary() {
+  // Single source of truth: the CSS token derived from tailwind.config.js.
+  const value = getComputedStyle(document.documentElement).getPropertyValue('--color-primary-500').trim()
+  return value || '#F0812A'
+}
+
+function num(value) {
+  const parsed = parseFloat(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function formatMoney(value) {
+  const abs = Math.abs(value)
+  const formatted = abs.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return `${value < 0 ? '-' : '+'}$${formatted}`
+}
+
+function formatPrice(value) {
+  const parsed = num(value)
+  if (parsed === null) return '-'
+  const decimals = Math.abs(parsed) < 10 ? 4 : 2
+  return `$${parsed.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: decimals })}`
+}
+
+function formatHoldTime() {
+  const entry = props.trade.entry_time ? new Date(props.trade.entry_time) : null
+  const exit = props.trade.exit_time ? new Date(props.trade.exit_time) : null
+  if (!entry || !exit || Number.isNaN(entry.getTime()) || Number.isNaN(exit.getTime())) return null
+  const minutes = Math.max(0, Math.round((exit - entry) / 60000))
+  if (minutes < 60) return `${minutes}m`
+  if (minutes < 60 * 24) {
+    const hours = Math.floor(minutes / 60)
+    const rem = minutes % 60
+    return rem > 0 ? `${hours}h ${rem}m` : `${hours}h`
+  }
+  const days = Math.floor(minutes / (60 * 24))
+  return `${days}d`
+}
+
+function roundedRect(ctx, x, y, w, h, r) {
+  ctx.beginPath()
+  ctx.moveTo(x + r, y)
+  ctx.arcTo(x + w, y, x + w, y + h, r)
+  ctx.arcTo(x + w, y + h, x, y + h, r)
+  ctx.arcTo(x, y + h, x, y, r)
+  ctx.arcTo(x, y, x + w, y, r)
+  ctx.closePath()
+}
+
+const FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+
+// The real TradeTally logo mark, loaded once. Same-origin asset, so the
+// canvas stays untainted and exportable.
+let logoPromise = null
+function loadLogo() {
+  if (!logoPromise) {
+    logoPromise = new Promise(resolve => {
+      const image = new Image()
+      image.onload = () => resolve(image)
+      image.onerror = () => resolve(null)
+      image.src = '/favicon.svg'
+    })
+  }
+  return logoPromise
+}
+
+function draw(logo) {
+  const canvas = canvasRef.value
+  if (!canvas) return
+
+  const trade = props.trade
+  const pnl = num(trade.pnl) ?? 0
+  const pnlPercent = num(trade.pnl_percent ?? trade.pnlPercent)
+  const rValue = num(trade.r_value ?? trade.rValue)
+  const isWin = pnl >= 0
+  const resultColor = isWin ? COLORS.win : COLORS.loss
+  const primary = themePrimary()
+
+  canvas.width = CARD_WIDTH * SCALE
+  canvas.height = CARD_HEIGHT * SCALE
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+  ctx.scale(SCALE, SCALE)
+
+  // Background
+  ctx.fillStyle = COLORS.background
+  roundedRect(ctx, 0, 0, CARD_WIDTH, CARD_HEIGHT, 0)
+  ctx.fill()
+
+  const PAD = 72
+
+  // Brand: the real logo mark + wordmark. Falls back to simple tally bars
+  // if the asset fails to load.
+  const baseY = 96
+  const logoSize = 44
+  if (logo) {
+    ctx.drawImage(logo, PAD, baseY - logoSize + 6, logoSize, logoSize)
+  } else {
+    const barWidth = 9
+    const barGap = 7
+    ctx.fillStyle = primary
+    const barHeights = [16, 26, 36]
+    barHeights.forEach((h, i) => {
+      roundedRect(ctx, PAD + i * (barWidth + barGap), baseY - h, barWidth, h, 3)
+      ctx.fill()
+    })
+  }
+  ctx.fillStyle = COLORS.textPrimary
+  ctx.font = `600 30px ${FONT}`
+  ctx.textBaseline = 'alphabetic'
+  ctx.fillText('TradeTally', PAD + logoSize + 14, baseY - 2)
+
+  // Date, top right
+  ctx.fillStyle = COLORS.textSecondary
+  ctx.font = `400 24px ${FONT}`
+  ctx.textAlign = 'right'
+  ctx.fillText(formatTradeDate(trade.trade_date, 'MMM dd, yyyy'), CARD_WIDTH - PAD, baseY - 4)
+  ctx.textAlign = 'left'
+
+  // Symbol + side pill
+  const symbolY = 218
+  ctx.fillStyle = COLORS.textPrimary
+  ctx.font = `700 76px ${FONT}`
+  const symbol = String(trade.underlying_symbol || trade.symbol || '').toUpperCase()
+  ctx.fillText(symbol, PAD, symbolY)
+  const symbolWidth = ctx.measureText(symbol).width
+
+  const side = String(trade.side || '').toUpperCase()
+  if (side) {
+    ctx.font = `700 24px ${FONT}`
+    const pillPadX = 18
+    const pillText = side
+    const pillWidth = ctx.measureText(pillText).width + pillPadX * 2
+    const pillHeight = 44
+    const pillX = PAD + symbolWidth + 28
+    const pillY = symbolY - 54
+    const sideColor = side === 'SHORT' ? COLORS.loss : COLORS.win
+    ctx.fillStyle = `${sideColor}26`
+    roundedRect(ctx, pillX, pillY, pillWidth, pillHeight, pillHeight / 2)
+    ctx.fill()
+    ctx.fillStyle = sideColor
+    ctx.fillText(pillText, pillX + pillPadX, pillY + 31)
+  }
+
+  // Hero number: % return by default, dollars when enabled
+  const heroY = 380
+  ctx.fillStyle = resultColor
+  ctx.font = `700 128px ${FONT}`
+  let hero
+  if (showDollarAmounts.value) {
+    hero = formatMoney(pnl)
+  } else if (pnlPercent !== null) {
+    hero = `${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(2)}%`
+  } else if (rValue !== null) {
+    hero = `${rValue >= 0 ? '+' : ''}${rValue.toFixed(1)}R`
+  } else {
+    hero = isWin ? 'WIN' : 'LOSS'
+  }
+  ctx.fillText(hero, PAD, heroY)
+  const heroWidth = ctx.measureText(hero).width
+
+  // Secondary result next to the hero
+  ctx.fillStyle = COLORS.textSecondary
+  ctx.font = `600 44px ${FONT}`
+  const secondaryParts = []
+  if (showDollarAmounts.value && pnlPercent !== null) {
+    secondaryParts.push(`${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(2)}%`)
+  }
+  if (rValue !== null) {
+    secondaryParts.push(`${rValue >= 0 ? '+' : ''}${rValue.toFixed(1)}R`)
+  }
+  if (secondaryParts.length > 0) {
+    ctx.fillText(secondaryParts.join('  ·  '), PAD + heroWidth + 36, heroY - 8)
+  }
+
+  // Stats row
+  const stats = [
+    { label: 'ENTRY', value: formatPrice(trade.entry_price) },
+    { label: 'EXIT', value: formatPrice(trade.exit_price) }
+  ]
+  const hold = formatHoldTime()
+  if (hold) stats.push({ label: 'HOLD', value: hold })
+  if (showDollarAmounts.value && num(trade.quantity) !== null) {
+    stats.push({
+      label: trade.instrument_type === 'option' ? 'CONTRACTS' : 'SHARES',
+      value: num(trade.quantity).toLocaleString('en-US')
+    })
+  }
+
+  const statsY = 478
+  let statX = PAD
+  for (const stat of stats) {
+    ctx.fillStyle = COLORS.textMuted
+    ctx.font = `600 20px ${FONT}`
+    ctx.fillText(stat.label, statX, statsY)
+    ctx.fillStyle = COLORS.textPrimary
+    ctx.font = `600 34px ${FONT}`
+    ctx.fillText(stat.value, statX, statsY + 44)
+    const width = Math.max(ctx.measureText(stat.value).width, ctx.measureText(stat.label).width)
+    statX += width + 72
+  }
+
+  // Footer
+  ctx.strokeStyle = COLORS.divider
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  ctx.moveTo(PAD, CARD_HEIGHT - 86)
+  ctx.lineTo(CARD_WIDTH - PAD, CARD_HEIGHT - 86)
+  ctx.stroke()
+
+  const isVerified = verification.value?.status === 'broker_verified'
+  if (isVerified) {
+    // Badge: filled check circle + label. The image itself proves nothing -
+    // the verify URL on the right is the actual attestation.
+    const badgeCenterY = CARD_HEIGHT - 49
+    ctx.fillStyle = COLORS.win
+    ctx.beginPath()
+    ctx.arc(PAD + 14, badgeCenterY, 14, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.strokeStyle = COLORS.background
+    ctx.lineWidth = 3.5
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    ctx.beginPath()
+    ctx.moveTo(PAD + 7.5, badgeCenterY + 0.5)
+    ctx.lineTo(PAD + 12, badgeCenterY + 5.5)
+    ctx.lineTo(PAD + 20.5, badgeCenterY - 5)
+    ctx.stroke()
+
+    ctx.fillStyle = COLORS.textPrimary
+    ctx.font = `600 24px ${FONT}`
+    ctx.fillText('Broker-verified', PAD + 40, CARD_HEIGHT - 40)
+
+    ctx.textAlign = 'right'
+    ctx.fillStyle = COLORS.textSecondary
+    ctx.font = `500 24px ${FONT}`
+    ctx.fillText(`Verify: ${window.location.host}/v/${verification.value.public_code}`, CARD_WIDTH - PAD, CARD_HEIGHT - 40)
+    ctx.textAlign = 'left'
+  } else {
+    ctx.fillStyle = COLORS.textMuted
+    ctx.font = `500 24px ${FONT}`
+    ctx.fillText('Journaled with TradeTally', PAD, CARD_HEIGHT - 40)
+    ctx.textAlign = 'right'
+    ctx.fillStyle = COLORS.textSecondary
+    ctx.fillText('tradetally.io', CARD_WIDTH - PAD, CARD_HEIGHT - 40)
+    ctx.textAlign = 'left'
+  }
+}
+
+function exportBlob() {
+  return new Promise((resolve, reject) => {
+    canvasRef.value.toBlob(blob => {
+      if (blob) resolve(blob)
+      else reject(new Error('Failed to render image'))
+    }, 'image/png')
+  })
+}
+
+function shareFileName() {
+  const symbol = String(props.trade.underlying_symbol || props.trade.symbol || 'trade').toUpperCase()
+  const date = String(props.trade.trade_date || '').slice(0, 10)
+  return `tradetally-${symbol}${date ? `-${date}` : ''}.png`
+}
+
+async function downloadImage() {
+  const blob = await exportBlob()
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = shareFileName()
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+async function copyToClipboard() {
+  copyState.value = ''
+  try {
+    const blob = await exportBlob()
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+    copyState.value = 'copied'
+  } catch (error) {
+    console.error('[SHARE-CARD] Clipboard copy failed:', error)
+    copyState.value = 'failed'
+  }
+}
+
+async function nativeShare() {
+  try {
+    const blob = await exportBlob()
+    const file = new File([blob], shareFileName(), { type: 'image/png' })
+    await navigator.share({ files: [file] })
+  } catch (error) {
+    // User-cancelled shares also land here; nothing to surface.
+    if (error?.name !== 'AbortError') {
+      console.error('[SHARE-CARD] Native share failed:', error)
+    }
+  }
+}
+
+watch(
+  () => [props.modelValue, showDollarAmounts.value, props.trade],
+  async ([open]) => {
+    if (open) {
+      copyState.value = ''
+      linkCopied.value = false
+      isPublic.value = props.trade.is_public === true
+      const logo = await loadLogo()
+      await ensureVerification()
+      await nextTick()
+      draw(logo)
+    }
+  },
+  { deep: false }
+)
+</script>

@@ -1,5 +1,5 @@
 <template>
-  <div class="card overflow-hidden">
+  <div class="card overflow-visible">
     <div class="border-b border-gray-200 px-4 py-3 dark:border-gray-700 sm:px-5">
       <h3 class="heading-card">Plaid Connections</h3>
       <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
@@ -50,7 +50,7 @@
         <div
           v-for="connection in connections"
           :key="connection.id"
-          class="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700"
+          class="overflow-visible rounded-lg border border-gray-200 dark:border-gray-700"
         >
           <!-- Connection header -->
           <button
@@ -80,6 +80,12 @@
                 >
                   <span class="h-1 w-1 rounded-full bg-green-500"></span> Auto
                 </span>
+                <span
+                  v-if="needsReconnect(connection)"
+                  class="inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                >
+                  Reconnect needed
+                </span>
               </div>
               <div class="truncate text-[11px] text-gray-500 dark:text-gray-400">
                 {{ connection.lastSyncAt ? `Last sync ${formatRelative(connection.lastSyncAt)}` : 'Never synced' }}
@@ -97,6 +103,23 @@
 
           <!-- Expanded body -->
           <div v-if="openConnections[connection.id]" class="border-t border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/40">
+            <!-- Reauth notice -->
+            <div
+              v-if="needsReconnect(connection)"
+              class="flex flex-wrap items-center justify-between gap-2 border-b border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-800 dark:bg-amber-900/20"
+            >
+              <span class="text-[11px] text-amber-800 dark:text-amber-300">
+                Bank login needs attention. Reconnect to resume syncing.
+              </span>
+              <button
+                class="inline-flex items-center gap-1 rounded-md bg-amber-600 px-2 py-1 text-[11px] font-medium text-white shadow-sm hover:bg-amber-700 disabled:opacity-60"
+                :disabled="reconnectingId === connection.id"
+                @click="reconnectConnection(connection)"
+              >
+                {{ reconnectingId === connection.id ? 'Opening…' : 'Reconnect' }}
+              </button>
+            </div>
+
             <!-- Action bar -->
             <div class="flex flex-wrap items-center gap-1.5 border-b border-gray-200 px-3 py-2 dark:border-gray-700">
               <button
@@ -267,6 +290,7 @@ const { formatCurrency } = useCurrencyFormatter()
 
 const busyTarget = ref('')
 const linkingAccountId = ref('')
+const reconnectingId = ref('')
 const selectedAccountIds = reactive({})
 const trackingModes = reactive({})
 const openConnections = reactive({})
@@ -281,7 +305,7 @@ watch(
     value.forEach(connection => {
       if (!(connection.id in openConnections)) {
         const hasUnlinked = (connection.accounts || []).some(a => !a.linkedAccountId)
-        openConnections[connection.id] = hasUnlinked
+        openConnections[connection.id] = hasUnlinked || needsReconnect(connection)
       }
       ;(connection.accounts || []).forEach(account => {
         if (!(account.id in trackingModes)) {
@@ -389,6 +413,43 @@ async function openPlaidLink(targetType) {
     showError('Plaid unavailable', error.response?.data?.message || error.message || 'Unable to initialize Plaid Link')
   } finally {
     busyTarget.value = ''
+  }
+}
+
+function needsReconnect(connection) {
+  return connection.connectionStatus === 'reauth_required' || connection.connectionStatus === 'error'
+}
+
+async function reconnectConnection(connection) {
+  reconnectingId.value = connection.id
+  store.clearError()
+
+  try {
+    const [{ linkToken }, Plaid] = await Promise.all([
+      store.createReconnectToken(connection.id),
+      loadPlaidScript()
+    ])
+
+    const handler = Plaid.create({
+      token: linkToken,
+      // Update mode returns no new public token; a successful sync restores
+      // the connection to active.
+      onSuccess: async () => {
+        try {
+          await store.syncConnection(connection.id)
+          showSuccess('Plaid reconnected', 'The connection was re-authenticated and synced.')
+          emit('refresh')
+        } catch (error) {
+          showError('Sync failed', error.response?.data?.message || error.message || 'Reconnected, but the follow-up sync failed. Try Sync now.')
+        }
+      }
+    })
+
+    handler.open()
+  } catch (error) {
+    showError('Reconnect failed', error.response?.data?.message || error.message || 'Unable to start Plaid reconnect')
+  } finally {
+    reconnectingId.value = ''
   }
 }
 

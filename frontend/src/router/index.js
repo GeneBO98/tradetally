@@ -101,6 +101,18 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/metrics/edge-report',
+      name: 'edge-report',
+      component: () => import('@/views/EdgeReportView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/analysis/prop-firm',
+      name: 'prop-firm',
+      component: () => import('@/views/PropFirmView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/year-wrapped/:year?',
       name: 'year-wrapped',
       component: () => import('@/views/YearWrappedView.vue'),
@@ -252,6 +264,13 @@ const router = createRouter({
       path: '/public',
       name: 'public-trades',
       component: () => import('@/views/PublicTradesView.vue')
+    },
+    // Cloud-only: public trade verification page (verified share cards)
+    {
+      path: '/v/:code',
+      name: 'verify-trade',
+      component: () => import('@/views/VerifyTradeView.vue'),
+      meta: { public: true }
     },
     {
       path: '/u/:username',
@@ -450,6 +469,12 @@ const router = createRouter({
     {
       path: '/playbooks',
       redirect: '/analysis/playbooks'
+    },
+    // Catch-all: unmatched URLs used to render a blank layout shell.
+    {
+      path: '/:pathMatch(.*)*',
+      name: 'not-found',
+      component: () => import('@/views/NotFoundView.vue')
     }
   ]
 })

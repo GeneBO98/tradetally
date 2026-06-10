@@ -1,5 +1,26 @@
 const { schemas } = require('../../src/middleware/validation');
 
+describe('updateTrade partial payloads', () => {
+  // Joi defaults on update schemas inject fields into partial payloads, and
+  // Trade.update writes every present key — an injected takeProfitTargets: []
+  // silently wiped saved targets on any update that omitted the field.
+  test('does not inject takeProfitTargets into payloads that omit it', () => {
+    const { error, value } = schemas.updateTrade.validate({ notes: 'updated note' });
+
+    expect(error).toBeUndefined();
+    expect('takeProfitTargets' in value).toBe(false);
+  });
+
+  test('still accepts explicit takeProfitTargets', () => {
+    const { error, value } = schemas.updateTrade.validate({
+      takeProfitTargets: [{ price: 105.5 }]
+    });
+
+    expect(error).toBeUndefined();
+    expect(value.takeProfitTargets).toEqual([{ price: 105.5 }]);
+  });
+});
+
 describe('trade execution validation', () => {
   test('allows preserved broker metadata on individual fill executions during update', () => {
     const payload = {

@@ -402,13 +402,13 @@
               <span
                 v-for="(symbol, index) in form.watchlist"
                 :key="symbol"
-                class="inline-flex items-center px-3 py-1 rounded-full bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-200 text-sm"
+                class="inline-flex items-center px-3 py-1 rounded-full bg-primary-100 dark:bg-primary-800 text-primary-800 dark:text-primary-200 text-sm"
               >
                 {{ symbol }}
                 <button
                   type="button"
                   @click="removeWatchlistSymbol(index)"
-                  class="ml-2 text-blue-600 hover:text-blue-900 dark:text-blue-300 dark:hover:text-blue-100"
+                  class="ml-2 text-primary-600 hover:text-primary-900 dark:text-primary-300 dark:hover:text-primary-100"
                 >
                   <XMarkIcon class="w-3 h-3" />
                 </button>

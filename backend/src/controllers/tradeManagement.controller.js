@@ -5,11 +5,61 @@
 
 const db = require('../config/database');
 const Trade = require('../models/Trade');
+const TradeQueries = require('../services/tradeQueries');
 const logger = require('../utils/logger');
 const TargetHitAnalysisService = require('../services/targetHitAnalysisService');
 const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('../utils/futuresUtils');
 const ensureString = require('../utils/ensureString');
 const { uuidv4 } = require('../utils/uuid');
+const { getBreakevenToleranceConfig, breakevenPredicate } = require('../utils/breakeven');
+
+/**
+ * Parse a Trade Management request's query params into a filter spec for
+ * TradeQueries._buildWhereClause. Mirrors trade.controller.getAnalytics so the
+ * Trade Management page accepts the same filter set as the Performance page.
+ * (limit/offset are handled separately by each endpoint.)
+ */
+function parseTradeManagementFilters(query = {}) {
+  const {
+    startDate, endDate, symbol, symbolExact, sector, strategy, tags,
+    strategies, setups, sectors,
+    side, minPrice, maxPrice, minQuantity, maxQuantity,
+    status, minPnl, maxPnl, pnlType, broker, brokers, importId, accounts, hasNews,
+    holdTime, daysOfWeek, instrumentTypes, optionTypes, qualityGrades
+  } = query;
+
+  return {
+    startDate: startDate || undefined,
+    endDate: endDate || undefined,
+    symbol: ensureString(symbol) || undefined,
+    symbolExact: symbolExact === 'true',
+    sector: sector || undefined,
+    strategy: strategy || undefined,
+    tags: tags ? ensureString(tags).split(',').map(t => t.trim()).filter(Boolean) : undefined,
+    strategies: strategies ? ensureString(strategies).split(',') : undefined,
+    setups: setups ? ensureString(setups).split(',') : undefined,
+    sectors: sectors ? ensureString(sectors).split(',') : undefined,
+    side: side || undefined,
+    minPrice,
+    maxPrice,
+    minQuantity,
+    maxQuantity,
+    status: status || undefined,
+    minPnl,
+    maxPnl,
+    pnlType: pnlType || undefined,
+    broker: broker || undefined,
+    brokers: brokers || undefined,
+    importId: importId || undefined,
+    accounts: accounts ? ensureString(accounts).split(',') : undefined,
+    hasNews,
+    holdTime: holdTime || undefined,
+    daysOfWeek: daysOfWeek ? ensureString(daysOfWeek).split(',').map(d => parseInt(d)) : undefined,
+    instrumentTypes: instrumentTypes ? ensureString(instrumentTypes).split(',') : undefined,
+    optionTypes: optionTypes ? ensureString(optionTypes).split(',') : undefined,
+    qualityGrades: qualityGrades ? ensureString(qualityGrades).split(',') : undefined
+  };
+}
 
 /**
  * Calculate R-Multiple values for a trade
@@ -704,23 +754,30 @@ const tradeManagementController = {
   async getTradesForSelection(req, res) {
     try {
       const userId = req.user.id;
-      const { startDate, endDate, limit = 100, offset = 0 } = req.query;
-      const symbol = ensureString(req.query.symbol);
-      const accounts = ensureString(req.query.accounts);
+      const limit = parseInt(req.query.limit) || 100;
+      const offset = parseInt(req.query.offset) || 0;
+      // Same Performance-page filter set as the R-Performance chart (issue #351).
+      const filterSpec = parseTradeManagementFilters(req.query);
 
-      logger.info('[TRADE-MGMT] getTradesForSelection called', { userId, symbol, startDate, endDate, limit, offset, accounts });
+      logger.info('[TRADE-MGMT] getTradesForSelection called', { userId, filters: filterSpec, limit, offset });
 
-      // Use a CTE to calculate trade_number for trades with stop_loss
-      // This matches the R-Performance chart numbering (chronological order for trades with SL)
-      let query = `
+      // Shared WHERE clause so the selector list, its trade numbering, and the
+      // R-Performance chart all reflect the same filtered set.
+      const { whereClause, values, paramCount } = await TradeQueries._buildWhereClause(userId, filterSpec);
+
+      // numbered_trades numbers the SAME filtered set the R-Performance chart
+      // uses (closed trades with a stop loss, chronological) so trade_number
+      // matches the chart. The outer query shows all closed trades so users can
+      // still add stop losses to trades that lack them.
+      const query = `
         WITH numbered_trades AS (
           SELECT
             id,
             ROW_NUMBER() OVER (ORDER BY trade_date ASC, id ASC) as trade_number
-          FROM trades
-          WHERE user_id = $1
-            AND exit_price IS NOT NULL
-            AND stop_loss IS NOT NULL
+          FROM trades t
+          ${whereClause}
+            AND t.exit_price IS NOT NULL
+            AND t.stop_loss IS NOT NULL
         )
         SELECT
           t.id, t.symbol, t.trade_date, t.entry_time, t.entry_price, t.exit_price,
@@ -731,44 +788,14 @@ const tradeManagementController = {
           nt.trade_number
         FROM trades t
         LEFT JOIN numbered_trades nt ON t.id = nt.id
-        WHERE t.user_id = $1
+        ${whereClause}
           AND t.exit_price IS NOT NULL
+        ORDER BY t.trade_date DESC, t.entry_time DESC
+        LIMIT $${paramCount} OFFSET $${paramCount + 1}
       `;
-      const values = [userId];
-      let paramCount = 2;
+      const queryValues = [...values, limit, offset];
 
-      if (startDate) {
-        query += ` AND t.trade_date >= $${paramCount}`;
-        values.push(startDate);
-        paramCount++;
-      }
-
-      if (endDate) {
-        query += ` AND t.trade_date <= $${paramCount}`;
-        values.push(endDate);
-        paramCount++;
-      }
-
-      if (symbol && symbol.trim()) {
-        const searchSymbol = symbol.trim();
-        query += ` AND UPPER(t.symbol) LIKE UPPER($${paramCount})`;
-        values.push(`%${searchSymbol}%`);
-        paramCount++;
-        logger.info('[TRADE-MGMT] Searching for symbol:', searchSymbol);
-      }
-
-      if (accounts) {
-        const accountsArray = accounts.split(',');
-        const placeholders = accountsArray.map((_, index) => `$${paramCount + index}`).join(',');
-        query += ` AND t.account_identifier IN (${placeholders})`;
-        accountsArray.forEach(account => values.push(account));
-        paramCount += accountsArray.length;
-      }
-
-      query += ` ORDER BY t.trade_date DESC, t.entry_time DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
-      values.push(parseInt(limit), parseInt(offset));
-
-      const result = await db.query(query, values);
+      const result = await db.query(query, queryValues);
       logger.info('[TRADE-MGMT] Query returned', result.rows.length, 'trades');
 
       // Add flags for missing data
@@ -780,52 +807,23 @@ const tradeManagementController = {
         has_target_hit_data: !!trade.manual_target_hit_first || !!trade.target_hit_analysis
       }));
 
-      // Get total count for pagination
-      let countQuery = `
+      // Get total count for pagination (reuses the same WHERE clause + values)
+      const countQuery = `
         SELECT COUNT(*) as total
-        FROM trades
-        WHERE user_id = $1
-          AND exit_price IS NOT NULL
+        FROM trades t
+        ${whereClause}
+          AND t.exit_price IS NOT NULL
       `;
-      const countValues = [userId];
-      let countParamCount = 2;
-
-      if (startDate) {
-        countQuery += ` AND trade_date >= $${countParamCount}`;
-        countValues.push(startDate);
-        countParamCount++;
-      }
-
-      if (endDate) {
-        countQuery += ` AND trade_date <= $${countParamCount}`;
-        countValues.push(endDate);
-        countParamCount++;
-      }
-
-      if (symbol && symbol.trim()) {
-        const searchSymbol = symbol.trim();
-        countQuery += ` AND UPPER(symbol) LIKE UPPER($${countParamCount})`;
-        countValues.push(`%${searchSymbol}%`);
-        countParamCount++;
-      }
-
-      if (accounts) {
-        const accountsArray = accounts.split(',');
-        const placeholders = accountsArray.map((_, index) => `$${countParamCount + index}`).join(',');
-        countQuery += ` AND account_identifier IN (${placeholders})`;
-        accountsArray.forEach(account => countValues.push(account));
-      }
-
-      const countResult = await db.query(countQuery, countValues);
+      const countResult = await db.query(countQuery, values);
       const total = parseInt(countResult.rows[0].total);
 
       res.json({
         trades,
         pagination: {
           total,
-          limit: parseInt(limit),
-          offset: parseInt(offset),
-          has_more: parseInt(offset) + trades.length < total
+          limit,
+          offset,
+          has_more: offset + trades.length < total
         }
       });
     } catch (error) {
@@ -1275,58 +1273,48 @@ const tradeManagementController = {
   async getRPerformance(req, res) {
     try {
       const userId = req.user.id;
-      const { startDate, endDate, limit = 2000 } = req.query;
-      const symbol = ensureString(req.query.symbol);
-      const accounts = ensureString(req.query.accounts);
+      const limit = parseInt(req.query.limit) || 2000;
+      // Full Performance-page filter set, applied via the shared WHERE builder so
+      // statistics stay consistent with the rest of the app (issue #351).
+      const filterSpec = parseTradeManagementFilters(req.query);
 
-      logger.info('[TRADE-MGMT] getRPerformance called', { userId, symbol, startDate, endDate, limit, accounts });
+      logger.info('[TRADE-MGMT] getRPerformance called', { userId, filters: filterSpec, limit });
 
       // Get trades with stop_loss set (required for R calculation)
       // Fetch executions so Management R and execution-based logic match getRMultipleAnalysis
       // Include commission, fees, and instrument fields for commission-adjusted R calculations
-      let query = `
+      const { whereClause, values, paramCount } = await TradeQueries._buildWhereClause(userId, filterSpec);
+
+      // Classify break-even with the SAME tolerance-aware predicate the dashboard
+      // analytics use (gross P&L within the user's configured tick tolerance),
+      // not the naive actual_r == 0. Otherwise a small win inside the tolerance
+      // band counts as a win here but as break-even on the dashboard, so the W/L/BE
+      // splits disagree for the same filtered trades (issue #351).
+      const breakevenConfig = await getBreakevenToleranceConfig(userId);
+      const be = breakevenPredicate({
+        gross: '(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0))',
+        tickSize: 'tick_size',
+        pointValue: 'point_value',
+        quantity: 'quantity',
+        underlying: 'underlying_asset'
+      }, breakevenConfig);
+
+      const query = `
         SELECT
           id, symbol, trade_date, entry_price, exit_price,
           quantity, side, pnl, stop_loss, take_profit,
           take_profit_targets, management_r, risk_level_history,
           manual_target_hit_first, executions,
-          commission, fees, instrument_type, contract_size, point_value
-        FROM trades
-        WHERE user_id = $1
-          AND exit_price IS NOT NULL
-          AND stop_loss IS NOT NULL
+          commission, fees, instrument_type, contract_size, point_value,
+          (${be.is}) AS is_breakeven
+        FROM trades t
+        ${whereClause}
+          AND t.exit_price IS NOT NULL
+          AND t.stop_loss IS NOT NULL
+        ORDER BY t.trade_date ASC, t.id ASC
+        LIMIT $${paramCount}
       `;
-      const values = [userId];
-      let paramCount = 2;
-
-      if (startDate) {
-        query += ` AND trade_date >= $${paramCount}`;
-        values.push(startDate);
-        paramCount++;
-      }
-
-      if (endDate) {
-        query += ` AND trade_date <= $${paramCount}`;
-        values.push(endDate);
-        paramCount++;
-      }
-
-      if (symbol && symbol.trim()) {
-        query += ` AND UPPER(symbol) LIKE UPPER($${paramCount})`;
-        values.push(`%${symbol.trim()}%`);
-        paramCount++;
-      }
-
-      if (accounts) {
-        const accountsArray = accounts.split(',');
-        const placeholders = accountsArray.map((_, index) => `$${paramCount + index}`).join(',');
-        query += ` AND account_identifier IN (${placeholders})`;
-        accountsArray.forEach(account => values.push(account));
-        paramCount += accountsArray.length;
-      }
-
-      query += ` ORDER BY trade_date ASC, id ASC LIMIT $${paramCount}`;
-      values.push(parseInt(limit));
+      values.push(limit);
 
       const result = await db.query(query, values);
       logger.info('[TRADE-MGMT] Found', result.rows.length, 'trades with stop_loss for R analysis');
@@ -1427,6 +1415,7 @@ const tradeManagementController = {
           trade_date: trade.trade_date,
           side: trade.side,
           pnl: trade.pnl,
+          is_breakeven: trade.is_breakeven === true,
           actual_r: actualR,
           target_r: tradeTargetR,
           management_r: tradeManagementR !== 0 ? tradeManagementR : null
@@ -1441,10 +1430,22 @@ const tradeManagementController = {
       // Only meaningful for trades with a defined target; compared against the
       // actual R of those same trades (not all stop-defined trades).
       const rLeftOnTable = Math.round((totalPotentialR - actualRForTargetTrades) * 100) / 100;
-      // Calculate win rate and average R
-      const winningTrades = tradeDetails.filter(t => t.actual_r > 0);
-      const losingTrades = tradeDetails.filter(t => t.actual_r < 0);
+      // Calculate win rate and average R. Wins/losses are decided by NET P&L
+      // among the non-break-even trades, and break-even uses the dashboard's
+      // tolerance-aware predicate (is_breakeven), so the W/L/BE split matches the
+      // dashboard for the same filtered trades and still reconciles with
+      // total_trades (issue #351). A small win inside the user's break-even
+      // tolerance is classified BE here too, not as a +R win.
+      const winningTrades = tradeDetails.filter(t => !t.is_breakeven && Number(t.pnl) > 0);
+      const losingTrades = tradeDetails.filter(t => !t.is_breakeven && Number(t.pnl) < 0);
+      const breakEvenTrades = totalTrades - winningTrades.length - losingTrades.length;
       const winRate = totalTrades > 0 ? Math.round((winningTrades.length / totalTrades) * 100) : 0;
+      // Win rate among decisive (non-break-even) trades only, matching the
+      // dashboard's "excl. BE" stat (issue #351 follow-up).
+      const decisiveTrades = winningTrades.length + losingTrades.length;
+      const winRateExcludingBreakeven = decisiveTrades > 0
+        ? Math.round((winningTrades.length / decisiveTrades) * 100)
+        : 0;
       const avgWinR = winningTrades.length > 0
         ? Math.round((winningTrades.reduce((sum, t) => sum + t.actual_r, 0) / winningTrades.length) * 100) / 100
         : 0;
@@ -1468,8 +1469,10 @@ const tradeManagementController = {
           total_management_r: totalManagementR,
           r_left_on_table: rLeftOnTable,
           win_rate: winRate,
+          win_rate_excluding_breakeven: winRateExcludingBreakeven,
           winning_trades: winningTrades.length,
           losing_trades: losingTrades.length,
+          break_even_trades: breakEvenTrades,
           avg_win_r: avgWinR,
           avg_loss_r: avgLossR,
           avg_management_r: avgManagementR

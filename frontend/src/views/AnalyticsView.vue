@@ -10,10 +10,33 @@
     <!-- Onboarding card removed - Analytics is no longer in the tour flow -->
 
     <div class="space-y-8">
-      <!-- Filters -->
+      <!-- Filters: collapsed by default so the charts (the point of this
+           page) aren't pushed below the fold by a permanently open panel. -->
       <div class="card">
         <div class="card-body">
-          <TradeFilters @filter="handleFilter" />
+          <button
+            type="button"
+            class="flex w-full items-center justify-between text-left"
+            :aria-expanded="filtersExpanded"
+            @click="filtersExpanded = !filtersExpanded"
+          >
+            <span class="inline-flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+              <FunnelIcon class="h-4 w-4 text-gray-500 dark:text-gray-400" />
+              Filters
+              <span
+                v-if="activeFilterCount > 0"
+                class="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-primary-600 px-1.5 text-xs font-semibold text-white"
+              >{{ activeFilterCount }}</span>
+            </span>
+            <ChevronDownIcon
+              class="h-4 w-4 text-gray-500 transition-transform dark:text-gray-400"
+              :class="{ 'rotate-180': filtersExpanded }"
+            />
+          </button>
+
+          <div v-show="filtersExpanded" class="mt-4">
+            <TradeFilters @filter="handleFilter" />
+          </div>
 
           <!-- R-Value Mode Toggle -->
           <div class="mt-6 border-t border-gray-200 dark:border-gray-700 pt-4">
@@ -97,15 +120,15 @@
       </div>
 
       <!-- Customization Mode Message -->
-      <div v-if="isCustomizing" class="card bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+      <div v-if="isCustomizing" class="card bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800">
         <div class="card-body">
           <div class="flex items-center gap-3">
-            <svg class="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-5 h-5 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <div>
-              <p class="text-sm font-medium text-blue-900 dark:text-blue-100">Customization Mode Active</p>
-              <p class="text-xs text-blue-700 dark:text-blue-300 mt-1">Drag and drop chart sections to reorder them. Charts will auto-resize based on their width setting.</p>
+              <p class="text-sm font-medium text-primary-900 dark:text-primary-100">Customization Mode Active</p>
+              <p class="text-xs text-primary-700 dark:text-primary-300 mt-1">Drag and drop chart sections to reorder them. Charts will auto-resize based on their width setting.</p>
             </div>
           </div>
         </div>
@@ -292,7 +315,7 @@
         <div class="card-body">
           <div class="flex items-start space-x-3">
             <div class="flex-shrink-0">
-              <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
@@ -1313,6 +1336,8 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import api from '@/services/api'
+import { parseTradeDate } from '@/utils/date'
+import { FunnelIcon, ChevronDownIcon } from '@heroicons/vue/24/outline'
 import PerformanceChart from '@/components/charts/PerformanceChart.vue'
 import MdiIcon from '@/components/MdiIcon.vue'
 import NewsCorrelationAnalytics from '@/components/analytics/NewsCorrelationAnalytics.vue'
@@ -1345,6 +1370,11 @@ import {
 const loading = ref(true)
 const initialLoading = ref(true) // Track initial load separately to preserve scroll on refresh
 const rValueMode = ref(false)
+
+// Filter panel collapse state + badge count (matches the Trades/Dashboard
+// labeled-button pattern).
+const filtersExpanded = ref(false)
+const activeFilterCount = ref(0)
 const rMultipleFlipped = ref(false)
 const performancePeriod = ref('daily')
 const userSettings = ref(null)
@@ -1406,6 +1436,7 @@ const localFilters = ref({
   startDate: '',
   endDate: '',
   strategies: [],
+  setups: [],
   sectors: [],
   tags: [],
   hasNews: '',
@@ -1433,6 +1464,7 @@ const filters = ref({
   startDate: '',
   endDate: '',
   strategies: '',
+  setups: '',
   sectors: '',
   tags: '',
   hasNews: '',
@@ -2426,7 +2458,7 @@ function createDailyVolumeChart() {
 
   const ctx = dailyVolumeChart.value.getContext('2d')
   const labels = dailyVolumeData.value.map(d => {
-    const date = new Date(d.trade_date)
+    const date = parseTradeDate(d.trade_date)
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   })
   const volumes = dailyVolumeData.value.map(d => d.total_volume)
@@ -2517,7 +2549,7 @@ function createDrawdownChart() {
 
   const ctx = drawdownChart.value.getContext('2d')
   const labels = drawdownData.value.map(d => {
-    const date = new Date(d.trade_date)
+    const date = parseTradeDate(d.trade_date)
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   })
 
@@ -2870,6 +2902,11 @@ async function fetchDrawdownData() {
 // TradeFilters only sends non-empty values, so we need to treat newFilters as the complete active filter set
 async function handleFilter(newFilters) {
   console.log('[AnalyticsView] handleFilter received:', newFilters)
+
+  // TradeFilters only emits non-empty values, so their count is the badge.
+  activeFilterCount.value = Object.values(newFilters || {}).filter(
+    v => v !== '' && v !== null && v !== undefined && v !== false && !(Array.isArray(v) && v.length === 0)
+  ).length
   
   // CRITICAL: TradeFilters only sends non-empty filters, so we must reset all filters first,
   // then apply only what's in newFilters. This ensures cleared filters are actually cleared.
@@ -2879,6 +2916,7 @@ async function handleFilter(newFilters) {
     startDate: '',
     endDate: '',
     strategies: '',
+    setups: '',
     sectors: '',
     tags: '',
     hasNews: '',
@@ -2912,6 +2950,7 @@ async function handleFilter(newFilters) {
     startDate: '',
     endDate: '',
     strategies: [],
+    setups: [],
     sectors: [],
     tags: [],
     hasNews: '',
@@ -3050,6 +3089,7 @@ async function resetFilters() {
     startDate: '',
     endDate: '',
     strategies: [],
+    setups: [],
     sectors: [],
     hasNews: '',
     side: '',
@@ -3080,6 +3120,7 @@ async function clearFilters() {
     startDate: '',
     endDate: '',
     strategies: [],
+    setups: [],
     sectors: [],
     hasNews: '',
     side: '',
@@ -3106,6 +3147,7 @@ async function clearFilters() {
     startDate: '',
     endDate: '',
     strategies: '',
+    setups: '',
     sectors: '',
     hasNews: '',
     // Advanced filters

@@ -8,9 +8,12 @@
           <div v-if="accountId && reviewSummary" class="hidden items-center gap-3 text-xs font-medium sm:flex">
             <span class="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
               <span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span>
-              <span class="tabular-nums">{{ reviewSummary.pending }}</span> pending
+              <span class="tabular-nums">{{ actionablePendingCount }}</span> pending review
             </span>
             <span class="h-3 w-px bg-gray-200 dark:bg-gray-700"></span>
+            <span v-if="reviewSummary.bankPending" class="tabular-nums text-gray-500 dark:text-gray-400">
+              {{ reviewSummary.bankPending }} bank pending
+            </span>
             <span class="tabular-nums text-gray-500 dark:text-gray-400">
               {{ reviewSummary.approved }} approved
             </span>
@@ -39,7 +42,7 @@
       <div v-if="accountId && reviewSummary" class="mt-2 flex items-center gap-3 text-xs font-medium sm:hidden">
         <span class="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
           <span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span>
-          <span class="tabular-nums">{{ reviewSummary.pending }}</span> pending
+          <span class="tabular-nums">{{ actionablePendingCount }}</span> pending review
         </span>
         <span class="tabular-nums text-gray-500 dark:text-gray-400">
           {{ reviewSummary.approved }} approved / {{ reviewSummary.total }} total
@@ -47,25 +50,50 @@
       </div>
 
       <!-- Tab filter -->
-      <div v-if="accountId" class="mt-3 -mb-1 flex items-center gap-1 overflow-x-auto">
-        <button
-          v-for="tab in tabs"
-          :key="tab.id"
-          type="button"
-          class="inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors"
-          :class="activeTab === tab.id
-            ? 'bg-primary-600 text-white shadow-sm'
-            : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700/50'"
-          @click="activeTab = tab.id"
-        >
-          {{ tab.label }}
-          <span
-            class="tabular-nums"
-            :class="activeTab === tab.id ? 'text-white/80' : 'text-gray-400 dark:text-gray-500'"
+      <div v-if="accountId" class="mt-3 -mb-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div class="flex items-center gap-1 overflow-x-auto">
+          <button
+            v-for="tab in tabs"
+            :key="tab.id"
+            type="button"
+            class="inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors"
+            :class="activeTab === tab.id
+              ? 'bg-primary-600 text-white shadow-sm'
+              : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700/50'"
+            @click="activeTab = tab.id"
           >
-            {{ tab.count }}
-          </span>
-        </button>
+            {{ tab.label }}
+            <span
+              class="tabular-nums"
+              :class="activeTab === tab.id ? 'text-white/80' : 'text-gray-400 dark:text-gray-500'"
+            >
+              {{ tab.count }}
+            </span>
+          </button>
+        </div>
+        <div class="relative w-full sm:w-72">
+          <input
+            v-model="searchQuery"
+            type="search"
+            class="w-full rounded-md border border-gray-200 bg-white py-1.5 pl-8 pr-8 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+            placeholder="Search transactions"
+            aria-label="Search transactions"
+          />
+          <svg class="pointer-events-none absolute left-2.5 top-2 h-3.5 w-3.5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 110-15 7.5 7.5 0 010 15z"/>
+          </svg>
+          <button
+            v-if="searchQuery"
+            type="button"
+            class="absolute right-1.5 top-1.5 inline-flex h-5 w-5 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+            title="Clear search"
+            @click="searchQuery = ''"
+          >
+            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -95,13 +123,64 @@
     <!-- Activity list -->
     <div v-else class="divide-y divide-gray-100 dark:divide-gray-700/60">
       <div
-        v-for="item in visibleItems"
+        v-if="selectedActionableCount"
+        class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 border-b border-primary-100 bg-primary-50 px-4 py-2 dark:border-primary-900/40 dark:bg-primary-900/20 sm:px-5"
+      >
+        <div class="text-xs font-medium text-primary-700 dark:text-primary-300">
+          <span class="tabular-nums">{{ selectedActionableCount }}</span> selected
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button
+            type="button"
+            class="inline-flex items-center gap-1 rounded-md bg-green-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
+            :disabled="bulkBusy"
+            @click="requestSelectedAction('approve')"
+          >
+            Approve
+          </button>
+          <button
+            type="button"
+            class="inline-flex items-center gap-1 rounded-md bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+            :disabled="bulkBusy"
+            @click="requestSelectedAction('reject')"
+          >
+            Reject
+          </button>
+          <button
+            type="button"
+            class="inline-flex items-center rounded-md px-2.5 py-1 text-xs font-medium text-primary-700 hover:bg-primary-100 dark:text-primary-300 dark:hover:bg-primary-900/40"
+            :disabled="bulkBusy"
+            @click="clearSelection"
+          >
+            Clear
+          </button>
+        </div>
+      </div>
+
+      <div
+        v-for="(item, index) in visibleItems"
         :key="item.id"
         class="group transition-colors"
-        :class="expanded[item.id] ? 'bg-gray-50 dark:bg-gray-800/40' : ''"
+        :class="[
+          expanded[item.id] ? 'bg-gray-50 dark:bg-gray-800/40' : '',
+          selectedIds.has(item.id) ? 'bg-primary-50/70 dark:bg-primary-900/20' : ''
+        ]"
       >
         <!-- Primary row -->
-        <div class="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800/40 sm:px-5">
+        <div
+          class="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800/40 sm:px-5"
+          :class="canAct(item) ? 'cursor-pointer' : ''"
+          @click="toggleRowSelection(item, index, $event)"
+        >
+          <input
+            v-if="canAct(item)"
+            type="checkbox"
+            class="h-4 w-4 shrink-0 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            :checked="selectedIds.has(item.id)"
+            :aria-label="`Select ${item.description}`"
+            @click.stop="toggleRowSelection(item, index, $event)"
+          />
+
           <!-- Direction color rail -->
           <span
             class="h-8 w-0.5 shrink-0 rounded-full"
@@ -148,7 +227,7 @@
               class="inline-flex h-7 w-7 items-center justify-center rounded-md text-green-600 transition-colors hover:bg-green-100 disabled:opacity-40 dark:text-green-400 dark:hover:bg-green-900/30"
               :disabled="actingId === item.id"
               :title="`Approve as ${transactionTypes[item.id] || 'deposit'}`"
-              @click="requestAction(item, 'approve')"
+              @click.stop="requestAction(item, 'approve')"
             >
               <svg v-if="actingId !== item.id" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
@@ -163,7 +242,7 @@
               class="inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-red-100 hover:text-red-600 disabled:opacity-40 dark:hover:bg-red-900/30 dark:hover:text-red-400"
               :disabled="actingId === item.id"
               title="Reject"
-              @click="requestAction(item, 'reject')"
+              @click.stop="requestAction(item, 'reject')"
             >
               <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
@@ -174,7 +253,7 @@
               class="inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-200"
               :class="expanded[item.id] ? 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200' : ''"
               title="Customize"
-              @click="toggleExpand(item.id)"
+              @click.stop="toggleExpand(item.id)"
             >
               <svg
                 class="h-4 w-4 transition-transform"
@@ -193,7 +272,7 @@
             class="inline-flex shrink-0 items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-600 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-700 disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-red-700 dark:hover:bg-red-900/20 dark:hover:text-red-300"
             :disabled="actingId === item.id"
             title="Revert decision and return to pending"
-            @click="requestAction(item, 'revert')"
+            @click.stop="requestAction(item, 'revert')"
           >
             <svg v-if="actingId !== item.id" class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a5 5 0 015 5v2M3 10l4-4M3 10l4 4"/>
@@ -210,6 +289,7 @@
         <div
           v-if="canAct(item) && expanded[item.id]"
           class="border-t border-gray-100 px-4 py-3 dark:border-gray-700/60 sm:px-5"
+          @click.stop
         >
           <div class="flex flex-col gap-2.5 sm:flex-row sm:items-center">
             <!-- Segmented direction toggle -->
@@ -279,10 +359,10 @@
           </h3>
           <div class="mt-1 flex items-baseline gap-2">
             <span class="truncate text-sm text-gray-700 dark:text-gray-300">
-              {{ confirmState.item?.description }}
+              {{ confirmDescription }}
             </span>
             <span class="tabular-nums text-xs text-gray-500 dark:text-gray-400">
-              {{ formatCurrency(Math.abs(confirmState.item?.amount || 0)) }}
+              {{ confirmAmountLabel }}
             </span>
           </div>
         </div>
@@ -302,16 +382,16 @@
             />
             <div class="flex-1">
               <div class="text-sm font-medium text-gray-900 dark:text-white">
-                Just this transaction
+                {{ singleScopeLabel }}
               </div>
               <div class="text-xs text-gray-500 dark:text-gray-400">
-                Apply to this transaction only.
+                {{ singleScopeDescription }}
               </div>
             </div>
           </label>
 
           <label
-            v-if="confirmState.matchingIds.length > 1"
+            v-if="hasMatchingExpansion"
             class="flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors"
             :class="confirmState.scope === 'matching'
               ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-900/20'
@@ -327,10 +407,10 @@
               <div class="text-sm font-medium text-gray-900 dark:text-white">
                 {{ actionVerb }}
                 <span class="tabular-nums">{{ confirmState.matchingIds.length }}</span>
-                matching "<span class="italic">{{ truncate(confirmState.item?.description, 28) }}</span>"
+                {{ matchingScopeLabel }}
               </div>
               <div class="text-xs text-gray-500 dark:text-gray-400">
-                Pending transactions with the same description.
+                Pending transactions with matching descriptions.
               </div>
             </div>
           </label>
@@ -386,16 +466,20 @@ const { formatCurrency } = useCurrencyFormatter()
 
 const actingId = ref('')
 const activeTab = ref('pending')
+const searchQuery = ref('')
 const transactionTypes = reactive({})
 const descriptions = reactive({})
 const expanded = reactive({})
 const bulkBusy = ref(false)
+const selectedIds = reactive(new Set())
+const lastSelectedIndex = ref(null)
 const confirmState = reactive({
   open: false,
   action: 'approve',
   scope: 'single',
   item: null,
   matchingIds: [],
+  selectedIds: [],
   resolvedType: 'deposit'
 })
 
@@ -403,6 +487,9 @@ const reviewQueue = computed(() => store.reviewQueue)
 const reviewHistory = computed(() => store.reviewHistory)
 const syncedActivity = computed(() => store.syncedActivity)
 const reviewSummary = computed(() => store.reviewSummary)
+const actionablePendingCount = computed(() => reviewQueue.value.length)
+const selectedActionableCount = computed(() => selectedVisibleItems.value.length)
+const selectedVisibleItems = computed(() => visibleItems.value.filter(item => selectedIds.has(item.id) && canAct(item)))
 
 const tabs = computed(() => [
   { id: 'pending', label: 'Pending', count: reviewQueue.value.length },
@@ -411,12 +498,20 @@ const tabs = computed(() => [
 ])
 
 const visibleItems = computed(() => {
-  if (activeTab.value === 'pending') return reviewQueue.value
-  if (activeTab.value === 'decisions') return reviewHistory.value
-  return syncedActivity.value
+  const items = activeTab.value === 'pending'
+    ? reviewQueue.value
+    : activeTab.value === 'decisions'
+      ? reviewHistory.value
+      : syncedActivity.value
+
+  const query = normalize(searchQuery.value)
+  if (!query) return items
+
+  return items.filter(item => searchableText(item).includes(query))
 })
 
 const emptyMessage = computed(() => {
+  if (searchQuery.value) return 'No Plaid transactions match your search.'
   if (activeTab.value === 'pending') return 'No pending Plaid transfers for this account.'
   if (activeTab.value === 'decisions') return 'No approved or rejected Plaid activity yet.'
   return 'No Plaid transactions have been synced for this account yet.'
@@ -437,6 +532,40 @@ const actionVerb = computed(() => {
 const actionButtonClass = computed(() => {
   if (confirmState.action === 'approve') return 'bg-green-600 hover:bg-green-700'
   return 'bg-red-600 hover:bg-red-700'
+})
+
+const confirmDescription = computed(() => {
+  if (confirmState.selectedIds.length > 1) return `${confirmState.selectedIds.length} selected transactions`
+  return confirmState.item?.description || ''
+})
+
+const confirmAmountLabel = computed(() => {
+  if (confirmState.selectedIds.length > 1) return 'Bulk action'
+  return formatCurrency(Math.abs(confirmState.item?.amount || 0))
+})
+
+const singleScopeLabel = computed(() => {
+  if (confirmState.selectedIds.length > 1) {
+    return `${actionVerb.value} selected transactions`
+  }
+  return 'Just this transaction'
+})
+
+const singleScopeDescription = computed(() => {
+  if (confirmState.selectedIds.length > 1) {
+    return `Apply to ${confirmState.selectedIds.length} selected transactions only.`
+  }
+  return 'Apply to this transaction only.'
+})
+
+const hasMatchingExpansion = computed(() => {
+  const selectedCount = Math.max(confirmState.selectedIds.length, 1)
+  return confirmState.matchingIds.length > selectedCount
+})
+
+const matchingScopeLabel = computed(() => {
+  if (confirmState.selectedIds.length > 1) return 'matching selected descriptions'
+  return `matching "${truncate(confirmState.item?.description, 28)}"`
 })
 
 watch(
@@ -464,13 +593,18 @@ watch(
 watch(
   () => props.accountId,
   () => {
+    clearSelection()
     refresh()
   },
   { immediate: true }
 )
 
+watch(activeTab, () => {
+  clearSelection()
+})
+
 function canAct(item) {
-  return item.reviewStatus === 'pending' && !item.pending
+  return (item.reviewStatus === 'pending' || !item.reviewStatus) && !item.pending
 }
 
 function canRevert(item) {
@@ -479,6 +613,30 @@ function canRevert(item) {
 
 function toggleExpand(id) {
   expanded[id] = !expanded[id]
+}
+
+function clearSelection() {
+  selectedIds.clear()
+  lastSelectedIndex.value = null
+}
+
+function toggleRowSelection(item, index, event) {
+  if (!canAct(item)) return
+
+  if (event?.shiftKey && lastSelectedIndex.value !== null) {
+    const [start, end] = [lastSelectedIndex.value, index].sort((a, b) => a - b)
+    visibleItems.value.slice(start, end + 1).forEach(candidate => {
+      if (canAct(candidate)) selectedIds.add(candidate.id)
+    })
+    return
+  }
+
+  if (selectedIds.has(item.id)) {
+    selectedIds.delete(item.id)
+  } else {
+    selectedIds.add(item.id)
+  }
+  lastSelectedIndex.value = index
 }
 
 function railColor(item) {
@@ -545,6 +703,22 @@ function normalize(value) {
   return (value || '').toString().trim().toLowerCase().replace(/\s+/g, ' ')
 }
 
+function searchableText(item) {
+  return normalize([
+    item.description,
+    item.merchantName,
+    item.institutionName,
+    item.plaidAccountName,
+    item.transactionDate,
+    item.authorizedDate,
+    item.amount,
+    item.directionGuess,
+    item.importedTransactionType,
+    item.reviewStatus,
+    item.reviewReason
+  ].filter(value => value !== null && value !== undefined).join(' '))
+}
+
 function resolveType(item) {
   return transactionTypes[item.id] || item.directionGuess || 'deposit'
 }
@@ -562,9 +736,7 @@ function requestAction(item, action) {
     return
   }
 
-  const pool = action === 'revert'
-    ? syncedActivity.value.filter(candidate => canRevert(candidate))
-    : reviewQueue.value
+  const pool = getActionPool(action)
 
   const targetDescription = normalize(item.description)
   const matchingIds = pool
@@ -582,7 +754,34 @@ function requestAction(item, action) {
   confirmState.scope = 'single'
   confirmState.item = item
   confirmState.matchingIds = [item.id, ...matchingIds]
+  confirmState.selectedIds = [item.id]
   confirmState.resolvedType = resolveType(item)
+}
+
+function requestSelectedAction(action) {
+  const selectedItems = selectedVisibleItems.value
+  if (selectedItems.length === 0) return
+
+  const ambiguous = selectedItems.find(item => action === 'approve' && !['deposit', 'withdrawal'].includes(resolveType(item)))
+  if (ambiguous) {
+    showError('Choose a type', 'One selected transaction is ambiguous — open its customize panel and pick deposit or withdrawal first.')
+    expanded[ambiguous.id] = true
+    return
+  }
+
+  const selectedIdSet = new Set(selectedItems.map(item => item.id))
+  const matchingIds = getActionPool(action)
+    .filter(candidate => !selectedIdSet.has(candidate.id))
+    .filter(candidate => selectedItems.some(item => normalize(item.description) === normalize(candidate.description)))
+    .map(candidate => candidate.id)
+
+  confirmState.open = true
+  confirmState.action = action
+  confirmState.scope = 'single'
+  confirmState.item = selectedItems[0]
+  confirmState.matchingIds = [...selectedIdSet, ...matchingIds]
+  confirmState.selectedIds = [...selectedIdSet]
+  confirmState.resolvedType = resolveType(selectedItems[0])
 }
 
 function closeConfirm() {
@@ -590,13 +789,16 @@ function closeConfirm() {
   confirmState.open = false
   confirmState.item = null
   confirmState.matchingIds = []
+  confirmState.selectedIds = []
 }
 
 async function executeConfirm() {
   if (!confirmState.item) return
   const ids = confirmState.scope === 'matching'
     ? confirmState.matchingIds
-    : [confirmState.item.id]
+    : confirmState.selectedIds.length > 0
+      ? confirmState.selectedIds
+      : [confirmState.item.id]
 
   bulkBusy.value = true
   try {
@@ -604,9 +806,17 @@ async function executeConfirm() {
     confirmState.open = false
     confirmState.item = null
     confirmState.matchingIds = []
+    confirmState.selectedIds = []
   } finally {
     bulkBusy.value = false
   }
+}
+
+function getActionPool(action) {
+  if (action === 'revert') {
+    return syncedActivity.value.filter(candidate => canRevert(candidate))
+  }
+  return syncedActivity.value.filter(candidate => canAct(candidate))
 }
 
 async function runAction(action, ids, sharedType) {
@@ -615,7 +825,27 @@ async function runAction(action, ids, sharedType) {
 
   try {
     if (action === 'approve') {
-      if (isBulk) {
+      const shouldUsePerItemTypes = isBulk && confirmState.scope === 'single' && confirmState.selectedIds.length > 1
+      if (shouldUsePerItemTypes) {
+        const results = { approved: 0, errors: [] }
+        for (const id of ids) {
+          try {
+            await store.approveTransaction(props.accountId, id, {
+              transactionType: transactionTypes[id],
+              description: descriptions[id]
+            })
+            results.approved += 1
+          } catch (error) {
+            results.errors.push({ transactionId: id, message: error.response?.data?.message || error.message })
+          }
+        }
+        const msg = `${results.approved} approved${results.errors.length ? `, ${results.errors.length} failed` : ''}.`
+        if (results.errors.length && results.approved === 0) {
+          showError('Bulk approval failed', msg)
+        } else {
+          showSuccess('Plaid approvals complete', msg)
+        }
+      } else if (isBulk) {
         const result = await store.bulkApproveTransactions(
           props.accountId,
           ids,
@@ -661,6 +891,7 @@ async function runAction(action, ids, sharedType) {
         showSuccess('Plaid transaction untracked', 'The decision was reverted, the activity is back in the pending queue, and the matching auto-import rule was removed.')
       }
     }
+    clearSelection()
     emit('changed')
   } catch (error) {
     const label = action === 'approve' ? 'Approval' : action === 'reject' ? 'Rejection' : 'Untrack'

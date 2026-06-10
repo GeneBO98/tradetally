@@ -21,7 +21,7 @@
       </p>
     </div>
 
-    <div v-if="loading" class="flex justify-center py-12">
+    <div v-if="initialLoading" class="flex justify-center py-12">
       <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
     </div>
 
@@ -238,6 +238,8 @@ const { formatCurrency } = useCurrencyFormatter()
 
 const { formatDateTime: formatDateTimeTz } = useUserTimezone()
 const loading = ref(true)
+// Full-page spinner only on first load (CLAUDE.md pattern)
+const initialLoading = ref(true)
 const trades = ref([])
 const hasMore = ref(true)
 const currentPage = ref(0)
@@ -290,6 +292,7 @@ async function fetchTrades(offset = 0) {
     console.error('Failed to fetch public trades:', error)
   } finally {
     loading.value = false
+    initialLoading.value = false
   }
 }
 

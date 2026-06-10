@@ -4,6 +4,14 @@ const encryptionService = require('../services/brokerSync/encryptionService');
 
 class PlaidConnection {
   static async hasSchema() {
+    // Schema availability only changes once (when migrations create the
+    // tables), so cache the positive result instead of running a catalog
+    // query on every connections/review request. Negative results are not
+    // cached so a later migration is picked up without a restart.
+    if (PlaidConnection._schemaReady) {
+      return true;
+    }
+
     const result = await db.query(`
       SELECT
         to_regclass('public.plaid_connections') IS NOT NULL
@@ -12,7 +20,11 @@ class PlaidConnection {
         AND to_regclass('public.plaid_transaction_rules') IS NOT NULL AS ready
     `);
 
-    return Boolean(result.rows[0]?.ready);
+    const ready = Boolean(result.rows[0]?.ready);
+    if (ready) {
+      PlaidConnection._schemaReady = true;
+    }
+    return ready;
   }
 
   static calculateNextSync(syncFrequency, syncTime) {
@@ -118,6 +130,42 @@ class PlaidConnection {
       ...this.formatConnection(row, false),
       accounts: accountsByConnection.get(row.id) || []
     }));
+  }
+
+  static async findByItemId(itemId) {
+    // No user scope: inbound webhooks identify the connection by item_id
+    // only. Plaid item_ids are globally unique per Item.
+    const result = await db.query(`
+      SELECT * FROM plaid_connections
+      WHERE item_id = $1
+      LIMIT 1
+    `, [itemId]);
+
+    if (result.rows.length === 0) return null;
+    return this.formatConnection(result.rows[0], false);
+  }
+
+  static async setConnectionStatus(connectionId, status, message = null) {
+    const result = await db.query(`
+      UPDATE plaid_connections
+      SET connection_status = $2,
+          last_error_message = COALESCE($3, last_error_message),
+          last_error_at = CASE WHEN $3::text IS NOT NULL THEN CURRENT_TIMESTAMP ELSE last_error_at END,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+      RETURNING *
+    `, [connectionId, status, message]);
+
+    if (result.rows.length === 0) return null;
+    return this.formatConnection(result.rows[0], false);
+  }
+
+  static async markWebhookReceived(connectionId) {
+    await db.query(`
+      UPDATE plaid_connections
+      SET last_webhook_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+    `, [connectionId]);
   }
 
   static async findDueForSync() {
@@ -734,6 +782,7 @@ class PlaidConnection {
       authorizedDate: row.authorized_date,
       description: row.description,
       merchantName: row.merchant_name,
+      reviewStatus: row.review_status,
       directionGuess: row.direction_guess,
       confidence: row.confidence,
       reviewReason: row.review_reason,

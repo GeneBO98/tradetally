@@ -9,7 +9,7 @@
 
         <!-- Tabs Navigation -->
         <div class="border-b border-gray-200 dark:border-gray-700 mb-8">
-            <nav class="-mb-px flex space-x-8" aria-label="Tabs">
+            <nav class="-mb-px flex space-x-8 overflow-x-auto" aria-label="Tabs">
                 <button
                     v-for="tab in tabs"
                     :key="tab.id"
@@ -90,14 +90,16 @@
                                         <p
                                             class="mt-1.5 text-sm text-gray-500 dark:text-gray-400 leading-relaxed"
                                         >
-                                            Group multi-leg positions (e.g. option
-                                            spreads, iron condors) that were opened
-                                            together into a single trade, so win rate
-                                            and trade counts are measured per position
-                                            instead of per individual leg. Legs are
-                                            grouped when they share the same account,
-                                            underlying, and entry time. Affects all
-                                            analytics; total P&amp;L is unchanged.
+                                            Group multi-leg option positions (spreads,
+                                            iron condors, straddles, etc.) into a
+                                            single trade for win rate and trade counts.
+                                            Legs are grouped when they share the same
+                                            account, underlying, expiration, and trade
+                                            date, with fills within 5 minutes of each
+                                            other. Common strategies are auto-detected
+                                            and shown as a badge in the trade list.
+                                            Affects all analytics; total P&amp;L is
+                                            unchanged.
                                         </p>
                                     </div>
                                     <div class="flex-shrink-0 pt-0.5">
@@ -121,6 +123,59 @@
                                             <span
                                                 :class="[
                                                     analyticsForm.analyticsPositionGrouping
+                                                        ? 'translate-x-5'
+                                                        : 'translate-x-0',
+                                                    'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                                                ]"
+                                            />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="py-6">
+                                <div
+                                    class="flex items-start justify-between gap-6 p-4 bg-gray-50 dark:bg-gray-800/60 rounded-lg border border-gray-200 dark:border-gray-700"
+                                >
+                                    <div class="flex-1 min-w-0">
+                                        <label
+                                            for="edgeReportEnabled"
+                                            class="block text-sm font-semibold text-gray-900 dark:text-white"
+                                        >
+                                            Weekly Edge Report
+                                        </label>
+                                        <p
+                                            class="mt-1.5 text-sm text-gray-500 dark:text-gray-400 leading-relaxed"
+                                        >
+                                            Get a weekly coaching digest every Monday:
+                                            your numbers vs last week, your best edge,
+                                            your biggest leak, and one concrete action
+                                            item. The narrative is written by your
+                                            configured AI provider when available and
+                                            delivered by email.
+                                        </p>
+                                    </div>
+                                    <div class="flex-shrink-0 pt-0.5">
+                                        <button
+                                            type="button"
+                                            @click="
+                                                analyticsForm.edgeReportEnabled =
+                                                    !analyticsForm.edgeReportEnabled
+                                            "
+                                            :class="[
+                                                analyticsForm.edgeReportEnabled
+                                                    ? 'bg-primary-600'
+                                                    : 'bg-gray-200 dark:bg-gray-700',
+                                                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2',
+                                            ]"
+                                            role="switch"
+                                            :aria-checked="
+                                                analyticsForm.edgeReportEnabled
+                                            "
+                                        >
+                                            <span
+                                                :class="[
+                                                    analyticsForm.edgeReportEnabled
                                                         ? 'translate-x-5'
                                                         : 'translate-x-0',
                                                     'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
@@ -858,6 +913,8 @@
                                             { value: 'gemini', label: 'Google Gemini' },
                                             { value: 'claude', label: 'Anthropic Claude' },
                                             { value: 'openai', label: 'OpenAI' },
+                                            { value: 'deepseek', label: 'DeepSeek' },
+                                            { value: 'kimi', label: 'Kimi' },
                                             { value: 'ollama', label: 'Ollama' },
                                             { value: 'lmstudio', label: 'LM Studio' },
                                             { value: 'perplexity', label: 'Perplexity AI' },
@@ -1033,6 +1090,8 @@
                                                 { value: 'gemini', label: 'Google Gemini' },
                                                 { value: 'claude', label: 'Anthropic Claude' },
                                                 { value: 'openai', label: 'OpenAI' },
+                                            { value: 'deepseek', label: 'DeepSeek' },
+                                            { value: 'kimi', label: 'Kimi' },
                                                 { value: 'ollama', label: 'Ollama' },
                                                 { value: 'lmstudio', label: 'LM Studio' },
                                                 { value: 'perplexity', label: 'Perplexity AI' },
@@ -1166,6 +1225,8 @@
                                             { value: 'gemini', label: 'Google Gemini' },
                                             { value: 'claude', label: 'Anthropic Claude' },
                                             { value: 'openai', label: 'OpenAI' },
+                                            { value: 'deepseek', label: 'DeepSeek' },
+                                            { value: 'kimi', label: 'Kimi' },
                                             { value: 'ollama', label: 'Ollama' },
                                             { value: 'lmstudio', label: 'LM Studio' },
                                             { value: 'perplexity', label: 'Perplexity AI' },
@@ -1331,6 +1392,8 @@
                                                     { value: 'gemini', label: 'Google Gemini' },
                                                     { value: 'claude', label: 'Anthropic Claude' },
                                                     { value: 'openai', label: 'OpenAI' },
+                                            { value: 'deepseek', label: 'DeepSeek' },
+                                            { value: 'kimi', label: 'Kimi' },
                                                     { value: 'ollama', label: 'Ollama' },
                                                     { value: 'lmstudio', label: 'LM Studio' },
                                                     { value: 'perplexity', label: 'Perplexity AI' },
@@ -1497,6 +1560,8 @@
                                                 { value: 'gemini', label: 'Google Gemini' },
                                                 { value: 'claude', label: 'Anthropic Claude' },
                                                 { value: 'openai', label: 'OpenAI' },
+                                            { value: 'deepseek', label: 'DeepSeek' },
+                                            { value: 'kimi', label: 'Kimi' },
                                                 { value: 'ollama', label: 'Ollama' },
                                                 { value: 'lmstudio', label: 'LM Studio' },
                                                 { value: 'perplexity', label: 'Perplexity AI' },
@@ -2823,6 +2888,7 @@ const cusipAiLoading = ref(false);
 const analyticsForm = ref({
     statisticsCalculation: "average",
     analyticsPositionGrouping: false,
+    edgeReportEnabled: false,
     breakevenToleranceTicks: 0,
     autoCloseExpiredOptions: true,
     defaultStopLossType: "percent",
@@ -2971,6 +3037,10 @@ function getModelPlaceholder() {
             return "e.g., claude-3-5-sonnet";
         case "openai":
             return "e.g., gpt-4o";
+        case "deepseek":
+            return "e.g., deepseek-chat";
+        case "kimi":
+            return "e.g., moonshot-v1-8k";
         case "ollama":
             return "e.g., llama3.1";
         case "lmstudio":
@@ -2991,6 +3061,10 @@ function getApiKeyPlaceholder() {
         case "claude":
             return "sk-ant-...";
         case "openai":
+            return "sk-...";
+        case "deepseek":
+            return "sk-...";
+        case "kimi":
             return "sk-...";
         case "ollama":
             return "Optional API key";
@@ -3013,6 +3087,10 @@ function getApiKeyHelp() {
             return "Get your API key from Anthropic Console";
         case "openai":
             return "Get your API key from OpenAI Dashboard";
+        case "deepseek":
+            return "Get your API key from DeepSeek Platform";
+        case "kimi":
+            return "Get your API key from Moonshot AI Platform";
         case "ollama":
             return "API key is optional for Ollama";
         case "perplexity":
@@ -3078,6 +3156,10 @@ function getCusipModelPlaceholder() {
             return "e.g., claude-3-5-sonnet-20241022";
         case "openai":
             return "e.g., gpt-4o";
+        case "deepseek":
+            return "e.g., deepseek-chat";
+        case "kimi":
+            return "e.g., moonshot-v1-8k";
         case "ollama":
             return "e.g., llama3.2";
         case "perplexity":
@@ -3097,6 +3179,10 @@ function getCusipApiKeyPlaceholder() {
             return "Your Anthropic API key";
         case "openai":
             return "Your OpenAI API key";
+        case "deepseek":
+            return "Your DeepSeek API key";
+        case "kimi":
+            return "Your Moonshot AI API key";
         case "perplexity":
             return "Your Perplexity API key";
         default:
@@ -3168,6 +3254,8 @@ async function loadAnalyticsSettings() {
                 response.data.settings.statisticsCalculation || "average",
             analyticsPositionGrouping:
                 response.data.settings.analyticsPositionGrouping === true,
+            edgeReportEnabled:
+                response.data.settings.edgeReportEnabled === true,
             breakevenToleranceTicks:
                 Number(response.data.settings.breakevenToleranceTicks) || 0,
             autoCloseExpiredOptions:
@@ -3210,6 +3298,8 @@ async function updateAnalyticsSettings() {
             statisticsCalculation: analyticsForm.value.statisticsCalculation,
             analyticsPositionGrouping:
                 analyticsForm.value.analyticsPositionGrouping === true,
+            edgeReportEnabled:
+                analyticsForm.value.edgeReportEnabled === true,
             breakevenToleranceTicks:
                 Number(analyticsForm.value.breakevenToleranceTicks) || 0,
             breakevenToleranceTicksByUnderlying: breakevenMapFromRows(),
@@ -3564,6 +3654,10 @@ function getAdminClassifierModelPlaceholder() {
             return "claude-3-haiku-20240307";
         case "openai":
             return "gpt-4o-mini";
+        case "deepseek":
+            return "deepseek-chat";
+        case "kimi":
+            return "moonshot-v1-8k";
         case "ollama":
             return "llama3.1";
         case "lmstudio":
@@ -3598,6 +3692,10 @@ function getAdminClassifierApiKeyPlaceholder() {
             return "Enter Anthropic Claude API key";
         case "openai":
             return "Enter OpenAI API key";
+        case "deepseek":
+            return "Enter DeepSeek API key";
+        case "kimi":
+            return "Enter Moonshot AI API key";
         case "perplexity":
             return "Enter Perplexity API key";
         case "ollama":
@@ -3616,6 +3714,10 @@ function getAdminModelPlaceholder() {
             return "claude-3-5-sonnet-20241022";
         case "openai":
             return "gpt-4o";
+        case "deepseek":
+            return "deepseek-chat";
+        case "kimi":
+            return "moonshot-v1-8k";
         case "ollama":
             return "llama3.1";
         case "lmstudio":
@@ -3637,6 +3739,10 @@ function getAdminApiKeyPlaceholder() {
             return "Enter Anthropic Claude API key";
         case "openai":
             return "Enter OpenAI API key";
+        case "deepseek":
+            return "Enter DeepSeek API key";
+        case "kimi":
+            return "Enter Moonshot AI API key";
         case "ollama":
             return "Optional: Enter Ollama API key";
         default:
@@ -3652,6 +3758,10 @@ function getAdminApiKeyHelp() {
             return "Get your API key at: https://console.anthropic.com/";
         case "openai":
             return "Get your API key at: https://platform.openai.com/api-keys";
+        case "deepseek":
+            return "Get your API key at: https://platform.deepseek.com/api_keys";
+        case "kimi":
+            return "Get your API key at: https://platform.moonshot.ai/console/api-keys";
         case "ollama":
             return "API key is optional for Ollama. Leave blank if not needed.";
         default:
@@ -3724,6 +3834,10 @@ function getAdminCusipModelPlaceholder() {
             return "claude-3-5-sonnet-20241022";
         case "openai":
             return "gpt-4o";
+        case "deepseek":
+            return "deepseek-chat";
+        case "kimi":
+            return "moonshot-v1-8k";
         case "ollama":
             return "llama3.1";
         case "lmstudio":
@@ -3745,6 +3859,10 @@ function getAdminCusipApiKeyPlaceholder() {
             return "Enter Anthropic Claude API key";
         case "openai":
             return "Enter OpenAI API key";
+        case "deepseek":
+            return "Enter DeepSeek API key";
+        case "kimi":
+            return "Enter Moonshot AI API key";
         case "ollama":
             return "Optional: Enter Ollama API key";
         default:

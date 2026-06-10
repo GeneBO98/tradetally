@@ -25,6 +25,11 @@ const MAEEstimator = require('../utils/maeEstimator');
 const TierService = require('../services/tierService');
 const { verifyJwtToken, TOKEN_PURPOSES } = require('../middleware/auth');
 const { escapeCsv } = require('../utils/csvEscape');
+const {
+  applyBrokerFeeSettingsToTrades,
+  getBrokerLookupNames
+} = require('../services/brokerFeeApplicationService');
+const OptionStrategyGroupingService = require('../services/optionStrategyGroupingService');
 
 /**
  * Auto-calculate MAE/MFE for a closed trade using Finnhub candle data.
@@ -367,7 +372,7 @@ const tradeController = {
     try {
       const {
         symbol, symbolExact, startDate, endDate, exitStartDate, exitEndDate, tags, strategy, sector,
-        strategies, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
+        strategies, setups, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, brokers, importId, accounts,
         limit = 50, offset, page
@@ -392,6 +397,7 @@ const tradeController = {
         sector,
         // Multi-select filters
         strategies: strategies ? ensureString(strategies).split(',') : undefined,
+        setups: setups ? ensureString(setups).split(',') : undefined,
         sectors: sectors ? ensureString(sectors).split(',') : undefined,
         hasNews,
         daysOfWeek: daysOfWeek ? ensureString(daysOfWeek).split(',').map(d => parseInt(d)) : undefined,
@@ -507,7 +513,7 @@ const tradeController = {
     try {
       const {
         symbol, startDate, endDate, tags, strategy, sector,
-        strategies, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
+        strategies, setups, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, brokers, importId
       } = req.query;
@@ -520,6 +526,7 @@ const tradeController = {
         strategy,
         sector,
         strategies: strategies ? ensureString(strategies).split(',') : undefined,
+        setups: setups ? ensureString(setups).split(',') : undefined,
         sectors: sectors ? ensureString(sectors).split(',') : undefined,
         hasNews,
         daysOfWeek: daysOfWeek ? ensureString(daysOfWeek).split(',').map(d => parseInt(d)) : undefined,
@@ -556,7 +563,7 @@ const tradeController = {
     try {
       const {
         symbol, startDate, endDate, tags, strategy, sector,
-        strategies, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
+        strategies, setups, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, brokers
       } = req.query;
@@ -569,6 +576,7 @@ const tradeController = {
         strategy,
         sector,
         strategies: strategies ? ensureString(strategies).split(',') : undefined,
+        setups: setups ? ensureString(setups).split(',') : undefined,
         sectors: sectors ? ensureString(sectors).split(',') : undefined,
         hasNews,
         daysOfWeek: daysOfWeek ? ensureString(daysOfWeek).split(',').map(d => parseInt(d)) : undefined,
@@ -1230,7 +1238,7 @@ const tradeController = {
           executions: splitExecutions,
         };
 
-        const newTrade = await Trade.create(req.user.id, tradeData, { skipAchievements: true, skipApiCalls: true });
+        const newTrade = await Trade.create(req.user.id, tradeData, { skipAchievements: true, skipApiCalls: true, skipOptionGrouping: true });
         newTradeIds.push(newTrade.id);
       }
 
@@ -1273,8 +1281,10 @@ const tradeController = {
         );
       } else {
         // Delete the original grouped trade (all entries were split)
-        await Trade.delete(req.params.id, req.user.id);
+        await Trade.delete(req.params.id, req.user.id, { skipOptionGrouping: true });
       }
+
+      await OptionStrategyGroupingService.rebuildUserGroupsSafe(req.user.id, 'trade split');
 
       // Invalidate caches
       await AnalyticsCache.invalidate(req.user.id);
@@ -1326,7 +1336,7 @@ const tradeController = {
           }
 
           // Delete the trade
-          const result = await Trade.delete(tradeId, req.user.id);
+          const result = await Trade.delete(tradeId, req.user.id, { skipOptionGrouping: true });
           
           if (result) {
             deletedCount++;
@@ -1336,6 +1346,10 @@ const tradeController = {
         } catch (error) {
           errors.push({ tradeId, error: error.message });
         }
+      }
+
+      if (deletedCount > 0) {
+        await OptionStrategyGroupingService.rebuildUserGroupsSafe(req.user.id, 'bulk trade deletion');
       }
 
       // Invalidate sector performance cache
@@ -2237,41 +2251,7 @@ const tradeController = {
           // Supports per-instrument fees with fallback to broker-wide default
           // When broker is 'auto', we need to look up fees per-trade based on each trade's detected broker
           try {
-            // Normalize broker names to handle common misspellings and variations
-            // This ensures backwards compatibility with data saved under old names
-            const normalizeBrokerName = (name) => {
-              const normalized = (name || '').toLowerCase().trim();
-              // Map common variations to canonical names
-              const brokerAliases = {
-                'tradeovate': 'tradovate',  // Common misspelling
-                'trade ovate': 'tradovate',
-                'thinkorswim': 'thinkorswim',
-                'tos': 'thinkorswim',
-                'interactive brokers': 'ibkr',
-                'interactivebrokers': 'ibkr',
-              };
-              return brokerAliases[normalized] || normalized;
-            };
-
-            // Get the effective broker - use trade's broker if 'auto' was selected
-            const getEffectiveBroker = (trade) => {
-              if (broker.toLowerCase() === 'auto' && trade.broker) {
-                return normalizeBrokerName(trade.broker);
-              }
-              return normalizeBrokerName(broker);
-            };
-
-            // Get unique brokers from trades when using 'auto'
-            const brokersToLookup = broker.toLowerCase() === 'auto'
-              ? [...new Set(trades.map(t => normalizeBrokerName(t.broker)).filter(Boolean))]
-              : [normalizeBrokerName(broker)];
-
-            // Also include common aliases in lookup to find settings saved under old names
-            const expandedBrokersToLookup = [...new Set([
-              ...brokersToLookup,
-              // Add aliases for tradovate
-              ...(brokersToLookup.includes('tradovate') ? ['tradeovate'] : []),
-            ])];
+            const { brokersToLookup, expandedBrokersToLookup } = getBrokerLookupNames(broker, trades);
 
             logger.logImport(`[BROKER FEES] Looking up fees for brokers: ${expandedBrokersToLookup.join(', ')}`);
 
@@ -2287,139 +2267,11 @@ const tradeController = {
             const brokerFeeResult = await db.query(brokerFeeQuery, [fileUserId, expandedBrokersToLookup]);
 
             if (brokerFeeResult.rows.length > 0) {
-              // Build a nested map: broker -> instrument -> fee settings
-              // Empty string instrument = broker-wide default
-              // Normalize broker names so settings saved under old names (e.g., 'tradeovate') map to canonical names (e.g., 'tradovate')
-              const brokerFeeMap = new Map();
-
-              brokerFeeResult.rows.forEach(row => {
-                const brokerName = normalizeBrokerName(row.broker);
-                const instrument = (row.instrument || '').toUpperCase();
-                // Separate broker commission from regulatory/exchange fees
-                const settings = {
-                  // Commission = broker's commission charges
-                  commissionPerContract: parseFloat(row.commission_per_contract) || 0,
-                  commissionPerSide: parseFloat(row.commission_per_side) || 0,
-                  // Fees = regulatory and exchange fees (NFA, exchange, clearing, platform)
-                  feesPerContract:
-                    (parseFloat(row.exchange_fee_per_contract) || 0) +
-                    (parseFloat(row.nfa_fee_per_contract) || 0) +
-                    (parseFloat(row.clearing_fee_per_contract) || 0) +
-                    (parseFloat(row.platform_fee_per_contract) || 0)
-                };
-
-                if (!brokerFeeMap.has(brokerName)) {
-                  brokerFeeMap.set(brokerName, { instruments: new Map(), default: null });
-                }
-
-                const brokerSettings = brokerFeeMap.get(brokerName);
-                if (instrument === '') {
-                  brokerSettings.default = settings;
-                  logger.logImport(`[BROKER FEES] Default for ${brokerName}: commission=$${settings.commissionPerContract.toFixed(4)}/contract + $${settings.commissionPerSide.toFixed(2)}/side, fees=$${settings.feesPerContract.toFixed(4)}/contract`);
-                } else {
-                  brokerSettings.instruments.set(instrument, settings);
-                  logger.logImport(`[BROKER FEES] ${instrument} for ${brokerName}: commission=$${settings.commissionPerContract.toFixed(4)}/contract + $${settings.commissionPerSide.toFixed(2)}/side, fees=$${settings.feesPerContract.toFixed(4)}/contract`);
-                }
-              });
-
-              trades = trades.map(trade => {
-                // Only apply fees if the trade doesn't already have commission/fees set
-                if ((!trade.commission || trade.commission === 0) && (!trade.fees || trade.fees === 0)) {
-                  const symbol = (trade.symbol || '').toUpperCase();
-                  const quantity = trade.quantity || trade.totalQuantity || 1;
-                  const effectiveBroker = getEffectiveBroker(trade);
-
-                  // Get broker-specific fee settings
-                  const brokerSettings = brokerFeeMap.get(effectiveBroker);
-                  if (!brokerSettings) {
-                    logger.logImport(`[BROKER FEES] No fee settings found for broker '${effectiveBroker}' (symbol: ${symbol}). Available brokers: ${[...brokerFeeMap.keys()].join(', ')}`);
-                    return trade; // No fee settings for this broker
-                  }
-
-                  const feeSettingsMap = brokerSettings.instruments;
-                  const defaultFeeSettings = brokerSettings.default;
-
-                  // Look up fee settings with fallback chain:
-                  // 1. Exact symbol match (e.g., MESZ5)
-                  // 2. Base futures symbol without contract suffix (e.g., MES from MESZ5 or ESH25)
-                  // 3. Broker-wide default
-                  let feeSettings = feeSettingsMap.get(symbol);
-
-                  if (!feeSettings) {
-                    // Try to extract base futures symbol
-                    // Futures format: BASE + MONTH_CODE + YEAR (e.g., MESZ5, ESH25, NQM24)
-                    // Month codes: F,G,H,J,K,M,N,Q,U,V,X,Z
-                    // Base symbol may contain digits (e.g. M2K = Micro Russell 2000),
-                    // so allow alphanumerics after a required leading letter.
-                    const futuresMatch = symbol.match(/^([A-Z][A-Z0-9]{1,3})([FGHJKMNQUVXZ])(\d{1,2})$/);
-                    if (futuresMatch) {
-                      const baseSymbol = futuresMatch[1];
-                      feeSettings = feeSettingsMap.get(baseSymbol);
-                      if (feeSettings) {
-                        logger.logImport(`[BROKER FEES] Matched ${symbol} to base symbol ${baseSymbol}`);
-                      }
-                    }
-                  }
-
-                  // Fall back to broker default if no instrument match
-                  if (!feeSettings) {
-                    feeSettings = defaultFeeSettings;
-                    if (feeSettings) {
-                      logger.logImport(`[BROKER FEES] Using broker default for ${symbol}`);
-                    }
-                  }
-
-                  if (!feeSettings) {
-                    logger.logImport(`[BROKER FEES] No fee settings found for ${symbol} (broker: ${effectiveBroker}). No instrument match and no broker default configured.`);
-                    return trade;
-                  }
-
-                  if (feeSettings) {
-                    const { commissionPerContract, commissionPerSide, feesPerContract } = feeSettings;
-
-                    // Calculate commission and fees separately for a round-trip trade
-                    // Commission = broker commission (per contract + per side)
-                    // Fees = regulatory/exchange fees (NFA, exchange, clearing, platform)
-                    const isRoundTrip = !!trade.exitPrice;
-                    const sides = isRoundTrip ? 2 : 1;
-
-                    // Commission: (perContract * quantity * sides) + (perSide * sides)
-                    const totalCommission = (commissionPerContract * quantity * sides) + (commissionPerSide * sides);
-                    // Fees: perContract * quantity * sides
-                    const totalFees = feesPerContract * quantity * sides;
-
-                    // Split between entry and exit
-                    const entryCommission = (commissionPerContract * quantity) + commissionPerSide;
-                    const exitCommission = isRoundTrip ? (commissionPerContract * quantity) + commissionPerSide : 0;
-                    const entryFees = feesPerContract * quantity;
-                    const exitFees = isRoundTrip ? feesPerContract * quantity : 0;
-
-                    trade.entryCommission = entryCommission;
-                    trade.exitCommission = exitCommission;
-                    trade.commission = totalCommission;
-                    trade.fees = totalFees;
-
-                    // Recalculate P&L with commission and fees if it's a closed trade
-                    if (isRoundTrip && trade.pnl !== undefined && trade.pnl !== null) {
-                      trade.pnl = trade.pnl - totalCommission - totalFees;
-                    }
-
-                    // Determine match type for logging
-                    let matchType = 'broker-default';
-                    if (feeSettingsMap.has(symbol)) {
-                      matchType = 'exact-symbol';
-                    } else {
-                      // Check if we matched on base futures symbol
-                      const futuresMatch = symbol.match(/^([A-Z][A-Z0-9]{1,3})([FGHJKMNQUVXZ])(\d{1,2})$/);
-                      if (futuresMatch && feeSettingsMap.has(futuresMatch[1])) {
-                        matchType = `base-symbol (${futuresMatch[1]})`;
-                      }
-                    }
-                    const totalCost = totalCommission + totalFees;
-                    logger.logImport(`[BROKER FEES] Applied to ${symbol} (${quantity} contracts): commission=$${totalCommission.toFixed(2)}, fees=$${totalFees.toFixed(2)}, total=$${totalCost.toFixed(2)} [${matchType}]`);
-                  }
-                }
-                return trade;
+              trades = applyBrokerFeeSettingsToTrades({
+                trades,
+                broker,
+                feeRows: brokerFeeResult.rows,
+                logger
               });
 
               logger.logImport(`[BROKER FEES] Completed fee application for ${trades.length} trades`);
@@ -2653,14 +2505,14 @@ const tradeController = {
                   cleanTradeData.executions = executionData;
                 }
 
-                await Trade.update(tradeData.existingTradeId, req.user.id, cleanTradeData, { skipAchievements: true, skipApiCalls: true });
+                await Trade.update(tradeData.existingTradeId, req.user.id, cleanTradeData, { skipAchievements: true, skipApiCalls: true, skipOptionGrouping: true });
               } else {
                 // Add import ID to track which import this trade came from
                 tradeData.importId = importId;
                 if (defaultImportStrategy) {
                   tradeData.strategy = defaultImportStrategy;
                 }
-                await Trade.create(req.user.id, tradeData, { skipAchievements: true, skipApiCalls: true });
+                await Trade.create(req.user.id, tradeData, { skipAchievements: true, skipApiCalls: true, skipOptionGrouping: true });
               }
               imported++;
             } catch (error) {
@@ -2750,6 +2602,10 @@ const tradeController = {
             SET status = 'completed', trades_imported = $1, trades_failed = $2, completed_at = CURRENT_TIMESTAMP, error_details = $4
             WHERE id = $3
           `, [imported, failed, importId, errorDetails]);
+
+          if (imported > 0) {
+            await OptionStrategyGroupingService.rebuildUserGroupsSafe(fileUserId, 'CSV import');
+          }
 
           // Invalidate analytics cache after successful import so counts/P&L update immediately
           try {
@@ -3495,6 +3351,10 @@ const tradeController = {
       // Delete the import log (CASCADE will delete any remaining trades if any)
       await db.query(`DELETE FROM import_logs WHERE id = $1`, [importId]);
 
+      if (deletedTrades.rows.length > 0) {
+        await OptionStrategyGroupingService.rebuildUserGroupsSafe(req.user.id, 'import deletion');
+      }
+
       // Invalidate analytics cache for this user so totals recalculate
       await AnalyticsCache.invalidate(req.user.id);
 
@@ -3565,6 +3425,10 @@ const tradeController = {
       // Delete the import logs
       const importPlaceholders = validIds.map((_, i) => `$${i + 1}`).join(',');
       await db.query(`DELETE FROM import_logs WHERE id IN (${importPlaceholders})`, validIds);
+
+      if (deletedTrades.rows.length > 0) {
+        await OptionStrategyGroupingService.rebuildUserGroupsSafe(req.user.id, 'bulk import deletion');
+      }
 
       // Invalidate caches
       await AnalyticsCache.invalidate(req.user.id);
@@ -3646,7 +3510,7 @@ const tradeController = {
 
       const {
         startDate, endDate, symbol, symbolExact, sector, strategy, tags,
-        strategies, sectors, // Add multi-select parameters
+        strategies, setups, sectors, // Add multi-select parameters
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, brokers, importId, accounts, hasNews,
         holdTime, minHoldTime, maxHoldTime, daysOfWeek, instrumentTypes, optionTypes, qualityGrades
@@ -3662,6 +3526,7 @@ const tradeController = {
         // Multi-select filters
         tags: tags ? ensureString(tags).split(',').map(t => t.trim()).filter(Boolean) : undefined,
         strategies: strategies ? ensureString(strategies).split(',') : undefined,
+        setups: setups ? ensureString(setups).split(',') : undefined,
         sectors: sectors ? ensureString(sectors).split(',') : undefined,
         side,
         minPrice,
@@ -3725,7 +3590,7 @@ const tradeController = {
 
       const {
         startDate, endDate, symbol, symbolExact, sector, strategy, tags,
-        strategies, sectors, side, broker, brokers, accounts,
+        strategies, setups, sectors, side, broker, brokers, accounts,
         instrumentTypes, qualityGrades, minPartials, maxPartials
       } = req.query;
 
@@ -3738,6 +3603,7 @@ const tradeController = {
         strategy,
         tags: tags ? ensureString(tags).split(',').map(t => t.trim()).filter(Boolean) : undefined,
         strategies: strategies ? ensureString(strategies).split(',') : undefined,
+        setups: setups ? ensureString(setups).split(',') : undefined,
         sectors: sectors ? ensureString(sectors).split(',') : undefined,
         side,
         broker: broker || undefined,

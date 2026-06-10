@@ -90,6 +90,8 @@
           </div>
         </div>
 
+        <BalanceEquityCurve ref="balanceEquityCurve" />
+
         <PlaidReviewQueue
           :account-id="selectedAccountId"
           @changed="handlePlaidReviewChanged"
@@ -352,6 +354,7 @@ import { useAccountsStore } from '@/stores/accounts'
 import { usePlaidFundingStore } from '@/stores/plaidFunding'
 import { useNotification } from '@/composables/useNotification'
 import AccountModal from '@/components/accounts/AccountModal.vue'
+import BalanceEquityCurve from '@/components/cashflow/BalanceEquityCurve.vue'
 import PlaidFundingPanel from '@/components/accounts/PlaidFundingPanel.vue'
 import PlaidReviewQueue from '@/components/accounts/PlaidReviewQueue.vue'
 import BaseSelect from '@/components/common/BaseSelect.vue'
@@ -365,6 +368,7 @@ const { showSuccess, showError, showDangerConfirmation } = useNotification()
 
 // State
 const selectedAccountId = ref('')
+const balanceEquityCurve = ref(null)
 const showAccountModal = ref(false)
 const editingAccount = ref(null)
 const submitting = ref(false)
@@ -610,6 +614,8 @@ async function refreshPlaidConnections() {
     store.fetchAccounts(),
     plaidStore.fetchConnections()
   ])
+
+  balanceEquityCurve.value?.refresh()
 
   if (selectedAccountId.value) {
     await loadCashflow()
