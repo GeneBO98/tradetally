@@ -103,6 +103,9 @@
             <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate text-gray-900 dark:text-white">
               {{ summary.win_rate }}%
             </div>
+            <div v-if="summary.break_even_trades > 0" class="text-xs text-gray-500 dark:text-gray-400 truncate shrink-0">
+              {{ summary.win_rate_excluding_breakeven }}% excl. BE
+            </div>
             <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate shrink-0">
               {{ summary.winning_trades }}W / {{ summary.losing_trades }}L<template v-if="summary.break_even_trades > 0"> / {{ summary.break_even_trades }}BE</template>
             </div>

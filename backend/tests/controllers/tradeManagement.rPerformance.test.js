@@ -87,6 +87,8 @@ describe('tradeManagementController.getRPerformance break-even classification (i
       .toBe(summary.total_trades);
     // Win rate is wins / total (matches the dashboard headline definition).
     expect(summary.win_rate).toBe(25);
+    // Win rate excluding break-even is wins / (wins + losses) = 1 / 2 = 50%.
+    expect(summary.win_rate_excluding_breakeven).toBe(50);
     // avg_win_r excludes the break-even small win (only trade 1's +2R counts).
     expect(summary.avg_win_r).toBe(2);
   });

@@ -1440,6 +1440,12 @@ const tradeManagementController = {
       const losingTrades = tradeDetails.filter(t => !t.is_breakeven && Number(t.pnl) < 0);
       const breakEvenTrades = totalTrades - winningTrades.length - losingTrades.length;
       const winRate = totalTrades > 0 ? Math.round((winningTrades.length / totalTrades) * 100) : 0;
+      // Win rate among decisive (non-break-even) trades only, matching the
+      // dashboard's "excl. BE" stat (issue #351 follow-up).
+      const decisiveTrades = winningTrades.length + losingTrades.length;
+      const winRateExcludingBreakeven = decisiveTrades > 0
+        ? Math.round((winningTrades.length / decisiveTrades) * 100)
+        : 0;
       const avgWinR = winningTrades.length > 0
         ? Math.round((winningTrades.reduce((sum, t) => sum + t.actual_r, 0) / winningTrades.length) * 100) / 100
         : 0;
@@ -1463,6 +1469,7 @@ const tradeManagementController = {
           total_management_r: totalManagementR,
           r_left_on_table: rLeftOnTable,
           win_rate: winRate,
+          win_rate_excluding_breakeven: winRateExcludingBreakeven,
           winning_trades: winningTrades.length,
           losing_trades: losingTrades.length,
           break_even_trades: breakEvenTrades,
