@@ -161,7 +161,9 @@ describe('DashboardView advanced filter wiring (issue #350)', () => {
   }
 
   function getBadge(w) {
-    return w.get(FILTER_BUTTON_SELECTOR).find('span')
+    // The button also contains a visible "Filters" label span; the count
+    // badge is the rounded pill.
+    return w.get(FILTER_BUTTON_SELECTOR).find('span.rounded-full')
   }
 
   async function openFiltersModal(w) {

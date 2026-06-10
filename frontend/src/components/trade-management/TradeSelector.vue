@@ -10,6 +10,7 @@
           <SymbolAutocomplete
             v-model="localFilters.symbol"
             placeholder="Search by symbol..."
+            aria-label="Search trades by symbol"
             @select="debouncedFilterChange"
           />
         </div>

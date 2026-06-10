@@ -10,10 +10,33 @@
     <!-- Onboarding card removed - Analytics is no longer in the tour flow -->
 
     <div class="space-y-8">
-      <!-- Filters -->
+      <!-- Filters: collapsed by default so the charts (the point of this
+           page) aren't pushed below the fold by a permanently open panel. -->
       <div class="card">
         <div class="card-body">
-          <TradeFilters @filter="handleFilter" />
+          <button
+            type="button"
+            class="flex w-full items-center justify-between text-left"
+            :aria-expanded="filtersExpanded"
+            @click="filtersExpanded = !filtersExpanded"
+          >
+            <span class="inline-flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+              <FunnelIcon class="h-4 w-4 text-gray-500 dark:text-gray-400" />
+              Filters
+              <span
+                v-if="activeFilterCount > 0"
+                class="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-primary-600 px-1.5 text-xs font-semibold text-white"
+              >{{ activeFilterCount }}</span>
+            </span>
+            <ChevronDownIcon
+              class="h-4 w-4 text-gray-500 transition-transform dark:text-gray-400"
+              :class="{ 'rotate-180': filtersExpanded }"
+            />
+          </button>
+
+          <div v-show="filtersExpanded" class="mt-4">
+            <TradeFilters @filter="handleFilter" />
+          </div>
 
           <!-- R-Value Mode Toggle -->
           <div class="mt-6 border-t border-gray-200 dark:border-gray-700 pt-4">
@@ -1314,6 +1337,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import api from '@/services/api'
 import { parseTradeDate } from '@/utils/date'
+import { FunnelIcon, ChevronDownIcon } from '@heroicons/vue/24/outline'
 import PerformanceChart from '@/components/charts/PerformanceChart.vue'
 import MdiIcon from '@/components/MdiIcon.vue'
 import NewsCorrelationAnalytics from '@/components/analytics/NewsCorrelationAnalytics.vue'
@@ -1346,6 +1370,11 @@ import {
 const loading = ref(true)
 const initialLoading = ref(true) // Track initial load separately to preserve scroll on refresh
 const rValueMode = ref(false)
+
+// Filter panel collapse state + badge count (matches the Trades/Dashboard
+// labeled-button pattern).
+const filtersExpanded = ref(false)
+const activeFilterCount = ref(0)
 const rMultipleFlipped = ref(false)
 const performancePeriod = ref('daily')
 const userSettings = ref(null)
@@ -2873,6 +2902,11 @@ async function fetchDrawdownData() {
 // TradeFilters only sends non-empty values, so we need to treat newFilters as the complete active filter set
 async function handleFilter(newFilters) {
   console.log('[AnalyticsView] handleFilter received:', newFilters)
+
+  // TradeFilters only emits non-empty values, so their count is the badge.
+  activeFilterCount.value = Object.values(newFilters || {}).filter(
+    v => v !== '' && v !== null && v !== undefined && v !== false && !(Array.isArray(v) && v.length === 0)
+  ).length
   
   // CRITICAL: TradeFilters only sends non-empty filters, so we must reset all filters first,
   // then apply only what's in newFilters. This ensures cleared filters are actually cleared.

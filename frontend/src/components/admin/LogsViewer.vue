@@ -52,6 +52,7 @@
         @input="debouncedSearch"
         type="text"
         placeholder="Search logs..."
+        aria-label="Search logs"
         class="input pr-10"
       />
       <div class="absolute inset-y-0 right-0 flex items-center pr-3">

@@ -97,7 +97,7 @@
                anything beyond the time range is set. -->
           <button
             @click="showFiltersModal = true"
-            class="relative w-10 h-10 inline-flex items-center justify-center rounded-md border bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            class="relative h-10 px-3 inline-flex items-center justify-center gap-1.5 rounded-md border bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm font-medium"
             type="button"
             :title="activeAdvancedFilterCount > 0 ? `${activeAdvancedFilterCount} filter${activeAdvancedFilterCount === 1 ? '' : 's'} active` : 'More filters'"
             aria-label="More filters"
@@ -105,6 +105,7 @@
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
             </svg>
+            <span class="hidden sm:inline">Filters</span>
             <span
               v-if="activeAdvancedFilterCount > 0"
               class="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center rounded-full bg-primary-600 text-white text-[10px] font-semibold ring-2 ring-white dark:ring-gray-900"
@@ -446,12 +447,18 @@
               </button>
             </div>
 
-            <div v-if="!element.visible && isCustomizing" class="card-dense">
-              <div class="card-dense-body text-center text-sm text-gray-500 dark:text-gray-400">
-                This section is hidden. Click the eye icon to show it.
-              </div>
+            <!-- Hidden sections collapse to just their header row in customize
+                 mode: the "Hidden" eye state already says everything, and nine
+                 stacked placeholder cards (mostly legacy duplicates of visible
+                 widgets) made the picker a wall of noise. Legacy entries get a
+                 hint about which current section replaced them. -->
+            <div
+              v-if="!element.visible && isCustomizing && legacyReplacementHint(element.id)"
+              class="px-3 pb-1.5 -mt-1 text-xs text-gray-400 dark:text-gray-500"
+            >
+              Replaced by {{ legacyReplacementHint(element.id) }} — enable only if you want both.
             </div>
-            <template v-else>
+            <template v-if="element.visible">
             <!-- Hero Metrics Ribbon -->
             <template v-if="element.id === 'hero-metrics'">
               <HeroMetricsRibbon :analytics="analytics" :range-label="heroRangeLabel" :r-mode="dashboardRMode" @update:r-mode="setDashboardRMode" />
@@ -2123,6 +2130,17 @@ async function saveDashboardLayout() {
 const SECTION_REPLACES = {
   'hero-metrics': ['key-metrics'],
   'recent-trades-and-distribution': ['charts', 'recent-trades', 'additional-metrics']
+}
+
+// Inverse lookup for the customize picker: which current section supersedes
+// this legacy one (null for non-legacy sections).
+function legacyReplacementHint(sectionId) {
+  for (const [replacementId, legacyIds] of Object.entries(SECTION_REPLACES)) {
+    if (legacyIds.includes(sectionId)) {
+      return getSectionDefinition(replacementId)?.title || replacementId
+    }
+  }
+  return null
 }
 
 // Legacy sections that have moved OUT of the draggable dashboard entirely.
