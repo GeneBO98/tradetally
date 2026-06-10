@@ -1,52 +1,9 @@
 <template>
   <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg">
-    <!-- Filters -->
+    <!-- Header -->
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-      <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Select a Trade to Analyze</h2>
-      <div class="flex flex-wrap gap-4">
-        <!-- Symbol Search -->
-        <div class="flex-1 min-w-[200px]">
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Symbol</label>
-          <SymbolAutocomplete
-            v-model="localFilters.symbol"
-            placeholder="Search by symbol..."
-            aria-label="Search trades by symbol"
-            @select="debouncedFilterChange"
-          />
-        </div>
-
-        <!-- Start Date -->
-        <div class="min-w-[150px]">
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Start Date</label>
-          <input
-            v-model="localFilters.startDate"
-            type="date"
-            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
-            @change="emitFiltersChanged"
-          />
-        </div>
-
-        <!-- End Date -->
-        <div class="min-w-[150px]">
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">End Date</label>
-          <input
-            v-model="localFilters.endDate"
-            type="date"
-            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
-            @change="emitFiltersChanged"
-          />
-        </div>
-
-        <!-- Clear Filters -->
-        <div class="flex items-end">
-          <button
-            @click="clearFilters"
-            class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-          >
-            Clear
-          </button>
-        </div>
-      </div>
+      <h2 class="text-lg font-medium text-gray-900 dark:text-white">Select a Trade to Analyze</h2>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Use the Filters panel above to narrow this list.</p>
     </div>
 
     <!-- Loading State -->
@@ -203,16 +160,14 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from 'vue'
 import { format } from 'date-fns'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
-import SymbolAutocomplete from '@/components/common/SymbolAutocomplete.vue'
 
 const { formatDateTime: formatDateTimeTz } = useUserTimezone()
 const { formatCurrency } = useCurrencyFormatter()
 
-const props = defineProps({
+defineProps({
   trades: {
     type: Array,
     default: () => []
@@ -228,61 +183,10 @@ const props = defineProps({
   selectedTradeId: {
     type: String,
     default: null
-  },
-  initialFilters: {
-    type: Object,
-    default: () => ({ symbol: '', startDate: '', endDate: '' })
   }
 })
 
-const emit = defineEmits(['trade-selected', 'filters-changed', 'load-more'])
-
-const localFilters = ref({
-  symbol: '',
-  startDate: '',
-  endDate: ''
-})
-
-// Initialize filters from props on mount
-onMounted(() => {
-  if (props.initialFilters) {
-    localFilters.value = { ...props.initialFilters }
-  }
-})
-
-// Watch for external filter changes (e.g., from URL restore)
-watch(() => props.initialFilters, (newFilters) => {
-  if (newFilters) {
-    localFilters.value = { ...newFilters }
-  }
-}, { deep: true })
-
-// Watch symbol changes from autocomplete v-model to trigger filtering on typing
-watch(() => localFilters.value.symbol, () => {
-  debouncedFilterChange()
-})
-
-let debounceTimer = null
-
-function debouncedFilterChange() {
-  clearTimeout(debounceTimer)
-  debounceTimer = setTimeout(() => {
-    emitFiltersChanged()
-  }, 300)
-}
-
-function emitFiltersChanged() {
-  emit('filters-changed', { ...localFilters.value })
-}
-
-function clearFilters() {
-  localFilters.value = {
-    symbol: '',
-    startDate: '',
-    endDate: ''
-  }
-  emitFiltersChanged()
-}
+const emit = defineEmits(['trade-selected', 'load-more'])
 
 function selectTrade(trade) {
   emit('trade-selected', trade)

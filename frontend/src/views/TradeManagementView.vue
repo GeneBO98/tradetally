@@ -22,6 +22,36 @@
             cta-label="Done"
         />
 
+        <!-- Filters: collapsed by default, mirrors the Performance page. Drives
+             both the R-Multiple Performance chart and the trade list below. -->
+        <div class="card mb-8">
+            <div class="card-body">
+                <button
+                    type="button"
+                    class="flex w-full items-center justify-between text-left"
+                    :aria-expanded="filtersExpanded"
+                    @click="filtersExpanded = !filtersExpanded"
+                >
+                    <span class="inline-flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+                        <FunnelIcon class="h-4 w-4 text-gray-500 dark:text-gray-400" />
+                        Filters
+                        <span
+                            v-if="activeFilterCount > 0"
+                            class="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-primary-600 px-1.5 text-xs font-semibold text-white"
+                        >{{ activeFilterCount }}</span>
+                    </span>
+                    <ChevronDownIcon
+                        class="h-4 w-4 text-gray-500 transition-transform dark:text-gray-400"
+                        :class="{ 'rotate-180': filtersExpanded }"
+                    />
+                </button>
+
+                <div v-show="filtersExpanded" class="mt-4">
+                    <TradeFilters @filter="handleFilter" />
+                </div>
+            </div>
+        </div>
+
         <!-- R-Multiple Performance Chart -->
         <RPerformanceChart
             :filters="filters"
@@ -51,9 +81,7 @@
             :loading="loading"
             :pagination="pagination"
             :selected-trade-id="selectedTradeId"
-            :initial-filters="filters"
             @trade-selected="onTradeSelected"
-            @filters-changed="onFiltersChanged"
             @load-more="loadMoreTrades"
         />
 
@@ -137,12 +165,14 @@
 <script setup>
 import { ref, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { FunnelIcon, ChevronDownIcon } from "@heroicons/vue/24/outline";
 import api from "@/services/api";
 import OnboardingCard from "@/components/onboarding/OnboardingCard.vue";
 import { useAuthStore } from "@/stores/auth";
 
 const authStore = useAuthStore();
 import { useGlobalAccountFilter } from "@/composables/useGlobalAccountFilter";
+import TradeFilters from "@/components/trades/TradeFilters.vue";
 import TradeSelector from "@/components/trade-management/TradeSelector.vue";
 import StopLossTakeProfitForm from "@/components/trade-management/StopLossTakeProfitForm.vue";
 import TradeManagementChart from "@/components/trade-management/TradeManagementChart.vue";
@@ -164,12 +194,18 @@ const pagination = ref({
     offset: 0,
     has_more: false,
 });
-const filters = ref({
-    startDate: "",
-    endDate: "",
-    symbol: "",
-    accounts: "",
-});
+// Rich filter object emitted by TradeFilters (the same shape the Performance
+// page uses). Seeded synchronously with the global account filter so the
+// R-Performance chart's initial fetch already respects it.
+const filters = ref({ accounts: selectedAccount.value || "" });
+const filtersExpanded = ref(false);
+const activeFilterCount = ref(0);
+
+// Selected trade is restorable from the URL independently of the filter set.
+const initialTradeId = route.query.tradeId || null;
+// True once TradeFilters has emitted its (possibly localStorage-restored)
+// filters on mount and driven the first fetch, so onMounted doesn't double-fetch.
+let initialFetchDone = false;
 
 const selectedTradeId = ref(null);
 const selectedTrade = ref(null);
@@ -198,38 +234,33 @@ const isChartSupportedInstrument = computed(() => {
     return true;
 });
 
-// URL State Management
+// URL State Management — only the selected trade is tracked in the URL so it
+// can be deep-linked/shared. TradeFilters owns filter persistence (localStorage).
 function updateUrlParams() {
     const query = {};
-
-    if (filters.value.symbol) query.symbol = filters.value.symbol;
-    if (filters.value.startDate) query.startDate = filters.value.startDate;
-    if (filters.value.endDate) query.endDate = filters.value.endDate;
     if (selectedTradeId.value) query.tradeId = selectedTradeId.value;
 
-    // Only update if query params have changed
-    const currentQuery = route.query;
-    const hasChanged =
-        query.symbol !== currentQuery.symbol ||
-        query.startDate !== currentQuery.startDate ||
-        query.endDate !== currentQuery.endDate ||
-        query.tradeId !== currentQuery.tradeId;
-
-    if (hasChanged) {
+    if (query.tradeId !== route.query.tradeId) {
         router.replace({ query });
     }
 }
 
-function restoreFromUrl() {
-    const query = route.query;
-
-    // Restore filters
-    if (query.symbol) filters.value.symbol = query.symbol;
-    if (query.startDate) filters.value.startDate = query.startDate;
-    if (query.endDate) filters.value.endDate = query.endDate;
-
-    // Return trade ID to restore after trades are loaded
-    return query.tradeId || null;
+// Build query params from the active filter set (matches the Performance page).
+// Arrays are sent comma-separated; empty values are dropped. The global account
+// filter always wins for the `accounts` param.
+function buildTradeParams(extra = {}) {
+    const params = { ...extra };
+    const f = filters.value || {};
+    for (const [key, value] of Object.entries(f)) {
+        if (value === null || value === undefined || value === "" || value === false) continue;
+        if (Array.isArray(value)) {
+            if (value.length > 0) params[key] = value.join(",");
+        } else {
+            params[key] = typeof value === "string" ? value.trim() : value;
+        }
+    }
+    if (selectedAccount.value) params.accounts = selectedAccount.value;
+    return params;
 }
 
 // Methods
@@ -238,25 +269,10 @@ async function fetchTrades() {
     error.value = null;
 
     try {
-        // Build params, excluding empty values
-        const params = {
+        const params = buildTradeParams({
             limit: pagination.value.limit,
             offset: pagination.value.offset,
-        };
-
-        // Only add filters that have values
-        if (filters.value.symbol && filters.value.symbol.trim()) {
-            params.symbol = filters.value.symbol.trim();
-        }
-        if (filters.value.startDate) {
-            params.startDate = filters.value.startDate;
-        }
-        if (filters.value.endDate) {
-            params.endDate = filters.value.endDate;
-        }
-        if (selectedAccount.value) {
-            params.accounts = selectedAccount.value;
-        }
+        });
 
         console.log("[TRADE-MGMT] Fetching trades with params:", params);
         const response = await api.get("/trade-management/trades", { params });
@@ -278,24 +294,10 @@ async function loadMoreTrades() {
     error.value = null;
 
     try {
-        // Build params, excluding empty values
-        const params = {
+        const params = buildTradeParams({
             limit: pagination.value.limit,
             offset: pagination.value.offset + pagination.value.limit,
-        };
-
-        if (filters.value.symbol && filters.value.symbol.trim()) {
-            params.symbol = filters.value.symbol.trim();
-        }
-        if (filters.value.startDate) {
-            params.startDate = filters.value.startDate;
-        }
-        if (filters.value.endDate) {
-            params.endDate = filters.value.endDate;
-        }
-        if (selectedAccount.value) {
-            params.accounts = selectedAccount.value;
-        }
+        });
 
         const response = await api.get("/trade-management/trades", { params });
         trades.value = [...trades.value, ...response.data.trades];
@@ -307,13 +309,25 @@ async function loadMoreTrades() {
     }
 }
 
-function onFiltersChanged(newFilters) {
-    filters.value = { ...filters.value, ...newFilters };
+function handleFilter(newFilters) {
+    // TradeFilters only emits non-empty values, so their count is the badge.
+    activeFilterCount.value = Object.values(newFilters || {}).filter(
+        (v) =>
+            v !== "" &&
+            v !== null &&
+            v !== undefined &&
+            v !== false &&
+            !(Array.isArray(v) && v.length === 0),
+    ).length;
+
+    // Replace wholesale so cleared filters actually clear. Keep the global
+    // account filter (managed separately from TradeFilters) in sync so the
+    // R-Performance chart, which reads `filters` directly, stays scoped.
+    filters.value = { ...(newFilters || {}), accounts: selectedAccount.value || "" };
     pagination.value.offset = 0;
-    // Clear selection when filters change
     clearSelection();
+    initialFetchDone = true;
     fetchTrades();
-    updateUrlParams();
 }
 
 async function onTradeSelected(trade) {
@@ -478,21 +492,17 @@ watch(selectedAccount, () => {
 });
 
 onMounted(async () => {
-    // Restore filters from URL
-    const savedTradeId = restoreFromUrl();
-
-    // Initialize account filter from global state
-    if (selectedAccount.value) {
-        filters.value.accounts = selectedAccount.value;
+    // TradeFilters emits its saved filters on mount (before this runs) when any
+    // exist, which drives the first fetch via handleFilter. Only fetch here when
+    // it didn't, so we don't double-load.
+    if (!initialFetchDone) {
+        await fetchTrades();
     }
 
-    // Fetch trades with restored filters
-    await fetchTrades();
-
     // If there was a selected trade ID in the URL, try to restore it
-    if (savedTradeId) {
+    if (initialTradeId) {
         // First check if the trade is in the current list
-        const trade = trades.value.find((t) => t.id === savedTradeId);
+        const trade = trades.value.find((t) => t.id === initialTradeId);
         if (trade) {
             // Trade is in the list, select it
             await onTradeSelected(trade);
@@ -500,11 +510,12 @@ onMounted(async () => {
             // Trade not in current list - fetch it directly and load analysis
             try {
                 const response = await api.get(
-                    `/trade-management/analysis/${savedTradeId}`,
+                    `/trade-management/analysis/${initialTradeId}`,
                 );
-                selectedTradeId.value = savedTradeId;
+                selectedTradeId.value = initialTradeId;
                 selectedTrade.value = response.data.trade;
                 analysis.value = response.data.analysis;
+                updateUrlParams();
             } catch (err) {
                 console.error(
                     "[TRADE-MGMT] Could not restore selected trade:",

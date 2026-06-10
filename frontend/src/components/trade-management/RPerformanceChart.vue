@@ -104,7 +104,7 @@
               {{ summary.win_rate }}%
             </div>
             <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate shrink-0">
-              {{ summary.winning_trades }}W / {{ summary.losing_trades }}L
+              {{ summary.winning_trades }}W / {{ summary.losing_trades }}L<template v-if="summary.break_even_trades > 0"> / {{ summary.break_even_trades }}BE</template>
             </div>
           </div>
 
@@ -180,19 +180,17 @@ async function fetchRPerformance() {
   loading.value = true
 
   try {
+    // Pass through the full filter set (matches the Performance page). Arrays
+    // are sent comma-separated; empty values are dropped.
     const params = { limit: 2000 }
-
-    if (props.filters.startDate) {
-      params.startDate = props.filters.startDate
-    }
-    if (props.filters.endDate) {
-      params.endDate = props.filters.endDate
-    }
-    if (props.filters.symbol && props.filters.symbol.trim()) {
-      params.symbol = props.filters.symbol.trim()
-    }
-    if (props.filters.accounts) {
-      params.accounts = props.filters.accounts
+    const f = props.filters || {}
+    for (const [key, value] of Object.entries(f)) {
+      if (value === null || value === undefined || value === '' || value === false) continue
+      if (Array.isArray(value)) {
+        if (value.length > 0) params[key] = value.join(',')
+      } else {
+        params[key] = typeof value === 'string' ? value.trim() : value
+      }
     }
 
     console.log('[R-PERF] Fetching R performance with params:', params)
