@@ -52,6 +52,7 @@
 import { ref, watch, nextTick } from 'vue'
 import BaseModal from '@/components/common/BaseModal.vue'
 import { formatTradeDate } from '@/utils/date'
+import api from '@/services/api'
 
 // Social-card dimensions (Open Graph ratio). Rendered at 2x for sharpness.
 const CARD_WIDTH = 1200
@@ -69,6 +70,32 @@ const canvasRef = ref(null)
 const showDollarAmounts = ref(false)
 const copyState = ref('')
 const canNativeShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function'
+
+// Cloud-only: broker verification for the badge. The endpoints exist only on
+// tradetally.io; failures of any kind simply mean no badge.
+const verification = ref(null)
+
+async function ensureVerification() {
+  if (!props.trade?.broker_connection_id) {
+    verification.value = null
+    return
+  }
+  try {
+    const response = await api.post(`/trades/${props.trade.id}/verification`, {
+      show_amounts: showDollarAmounts.value === true
+    })
+    verification.value = response.data.verification
+  } catch (error) {
+    // Issue failed (ineligible, offline, etc.) - an already-issued
+    // verification should still badge the card.
+    try {
+      const existing = await api.get(`/trades/${props.trade.id}/verification`)
+      verification.value = existing.data.verification
+    } catch (_) {
+      verification.value = null
+    }
+  }
+}
 
 const COLORS = {
   background: '#101418',
@@ -291,13 +318,43 @@ function draw(logo) {
   ctx.lineTo(CARD_WIDTH - PAD, CARD_HEIGHT - 86)
   ctx.stroke()
 
-  ctx.fillStyle = COLORS.textMuted
-  ctx.font = `500 24px ${FONT}`
-  ctx.fillText('Journaled with TradeTally', PAD, CARD_HEIGHT - 40)
-  ctx.textAlign = 'right'
-  ctx.fillStyle = COLORS.textSecondary
-  ctx.fillText('tradetally.io', CARD_WIDTH - PAD, CARD_HEIGHT - 40)
-  ctx.textAlign = 'left'
+  const isVerified = verification.value?.status === 'broker_verified'
+  if (isVerified) {
+    // Badge: filled check circle + label. The image itself proves nothing -
+    // the verify URL on the right is the actual attestation.
+    const badgeCenterY = CARD_HEIGHT - 49
+    ctx.fillStyle = COLORS.win
+    ctx.beginPath()
+    ctx.arc(PAD + 14, badgeCenterY, 14, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.strokeStyle = COLORS.background
+    ctx.lineWidth = 3.5
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    ctx.beginPath()
+    ctx.moveTo(PAD + 7.5, badgeCenterY + 0.5)
+    ctx.lineTo(PAD + 12, badgeCenterY + 5.5)
+    ctx.lineTo(PAD + 20.5, badgeCenterY - 5)
+    ctx.stroke()
+
+    ctx.fillStyle = COLORS.textPrimary
+    ctx.font = `600 24px ${FONT}`
+    ctx.fillText('Broker-verified', PAD + 40, CARD_HEIGHT - 40)
+
+    ctx.textAlign = 'right'
+    ctx.fillStyle = COLORS.textSecondary
+    ctx.font = `500 24px ${FONT}`
+    ctx.fillText(`Verify: ${window.location.host}/v/${verification.value.public_code}`, CARD_WIDTH - PAD, CARD_HEIGHT - 40)
+    ctx.textAlign = 'left'
+  } else {
+    ctx.fillStyle = COLORS.textMuted
+    ctx.font = `500 24px ${FONT}`
+    ctx.fillText('Journaled with TradeTally', PAD, CARD_HEIGHT - 40)
+    ctx.textAlign = 'right'
+    ctx.fillStyle = COLORS.textSecondary
+    ctx.fillText('tradetally.io', CARD_WIDTH - PAD, CARD_HEIGHT - 40)
+    ctx.textAlign = 'left'
+  }
 }
 
 function exportBlob() {
@@ -356,6 +413,7 @@ watch(
     if (open) {
       copyState.value = ''
       const logo = await loadLogo()
+      await ensureVerification()
       await nextTick()
       draw(logo)
     }

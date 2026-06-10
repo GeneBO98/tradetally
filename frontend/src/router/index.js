@@ -253,6 +253,13 @@ const router = createRouter({
       name: 'public-trades',
       component: () => import('@/views/PublicTradesView.vue')
     },
+    // Cloud-only: public trade verification page (verified share cards)
+    {
+      path: '/v/:code',
+      name: 'verify-trade',
+      component: () => import('@/views/VerifyTradeView.vue'),
+      meta: { public: true }
+    },
     {
       path: '/u/:username',
       name: 'user-profile',
