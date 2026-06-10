@@ -99,6 +99,12 @@ class Trade {
 
     // Validate expiration date has 4-digit year (safety net for parser bugs)
     let cleanExpirationDate = expirationDate || null;
+    if (cleanExpirationDate instanceof Date) {
+      // pg serializes Date params in server-local time, which shifts DATE
+      // columns back a day on servers west of UTC (issue #349). Joi-converted
+      // dates are anchored to UTC midnight, so the UTC date is the intended one.
+      cleanExpirationDate = cleanExpirationDate.toISOString().slice(0, 10);
+    }
     if (cleanExpirationDate && typeof cleanExpirationDate === 'string') {
       const expMatch = cleanExpirationDate.match(/^(\d{2})-(\d{2})-(\d{2})$/);
       if (expMatch) {
@@ -693,6 +699,12 @@ class Trade {
 
     const finalAccountIdentifier = account_identifier || accountIdentifier;
 
+    // pg serializes Date params in server-local time, which shifts DATE
+    // columns back a day on servers west of UTC (issue #349)
+    const cleanExpirationDate = expirationDate instanceof Date
+      ? expirationDate.toISOString().slice(0, 10)
+      : (expirationDate || null);
+
     // Ensure tags exist in tags table
     if (tags && tags.length > 0) {
       await this.ensureTagsExist(userId, tags);
@@ -742,7 +754,7 @@ class Trade {
       userId, symbol.toUpperCase(), side,
       notes || null, broker || null, strategy || null, setup || null, tags || [],
       confidence || 5, instrumentType || 'stock',
-      roundToDbPrecision(strikePrice), expirationDate || null, optionType || null,
+      roundToDbPrecision(strikePrice), cleanExpirationDate, optionType || null,
       contractSize || (instrumentType === 'option' ? 100 : null), underlyingSymbol || null,
       contractMonth || null, contractYear || null, roundToDbPrecision(finalTickSize),
       roundToDbPrecision(finalPointValue), finalUnderlyingAsset || null,
@@ -1188,6 +1200,13 @@ class Trade {
     if (updates.exitPrice === '') updates.exitPrice = null;
     if (updates.stopLoss === '') updates.stopLoss = null;
     if (updates.takeProfit === '') updates.takeProfit = null;
+
+    // pg serializes Date params in server-local time, which shifts DATE
+    // columns back a day on servers west of UTC (issue #349). Joi-converted
+    // dates are anchored to UTC midnight, so the UTC date is the intended one.
+    if (updates.expirationDate instanceof Date) {
+      updates.expirationDate = updates.expirationDate.toISOString().slice(0, 10);
+    }
 
     // Validate expiration date has 4-digit year (safety net for parser bugs)
     if (updates.expirationDate && typeof updates.expirationDate === 'string') {
