@@ -1558,12 +1558,6 @@
             <h3 id="dashboard-filters-modal-title" class="heading-card">Filter dashboard</h3>
             <div class="flex items-center gap-2">
               <button
-                v-if="activeAdvancedFilterCount > 0"
-                type="button"
-                @click="clearAdvancedFilters"
-                class="text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
-              >Clear all</button>
-              <button
                 type="button"
                 @click="showFiltersModal = false"
                 class="rounded-md p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
@@ -1580,7 +1574,7 @@
                  from immediately closing the modal we just opened.
                  No max-h/overflow here — would clip TradeFilters' absolutely
                  positioned dropdowns. Outer modal (`overflow-y-auto`) scrolls. -->
-            <TradeFilters :auto-apply-on-mount="false" @filter="handleAdvancedFilter" />
+            <TradeFilters :auto-apply-on-mount="false" :hide-time-period="true" @filter="handleAdvancedFilter" />
           </div>
         </div>
       </div>
@@ -1623,8 +1617,7 @@ import { useUserTimezone } from '@/composables/useUserTimezone'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import {
   normalizeTradeFiltersForSharedState,
-  loadTradeFiltersFromStorage,
-  clearDashboardTradeFiltersInStorage
+  loadTradeFiltersFromStorage
 } from '@/utils/tradeFilterState'
 import draggable from 'vuedraggable'
 
@@ -1750,7 +1743,7 @@ const ADVANCED_FILTER_IGNORE_KEYS = new Set([
 
 // Boolean false means "toggle off" (e.g. symbolExact persisted by the trades
 // filter panel) — not an active filter. Counting it produced a phantom
-// "1 filter active" badge that Clear all couldn't remove (issue #350).
+// "1 filter active" badge that wouldn't clear (issue #350).
 function isActiveAdvancedFilterValue(v) {
   if (v === null || v === undefined || v === '' || v === false) return false
   if (Array.isArray(v) && v.length === 0) return false
@@ -1781,23 +1774,6 @@ function handleAdvancedFilter(newFilters) {
   tradesStore.setFilters(normalizedFilters)
   showFiltersModal.value = false
   // Same refresh set as the time-range / global-account watchers.
-  fetchAnalytics()
-  fetchAiInsight()
-  fetchRecentTrades()
-  fetchBehavioralSummary()
-}
-
-function clearAdvancedFilters() {
-  // Close the modal so the still-mounted TradeFilters child can't re-apply
-  // the selections it is still displaying after the store was cleared.
-  showFiltersModal.value = false
-  const clearedFilters = clearDashboardTradeFiltersInStorage()
-  appliedFilters.value = clearedFilters
-  tradesStore.setFilters(clearedFilters)
-  uiPreferencesStore.notifyChanged(
-    'tradeFilters',
-    Object.keys(clearedFilters).length > 0 ? clearedFilters : null
-  )
   fetchAnalytics()
   fetchAiInsight()
   fetchRecentTrades()

@@ -4,8 +4,9 @@ import { createPinia, setActivePinia } from 'pinia'
 
 // Regression tests for the Dashboard advanced-filter wiring (GitHub issue #350).
 // These bugs lived in the view's handler/computed wiring (badge counting,
-// Clear all persistence, store write-through), which util-level tests on
-// tradeFilterState.js cannot see, so we mount the real DashboardView.
+// clear/reset store write-through, hiding the duplicate date control), which
+// util-level tests on tradeFilterState.js cannot see, so we mount the real
+// DashboardView.
 
 const { apiMock, stub } = vi.hoisted(() => {
   const stub = (name) => ({
@@ -117,7 +118,10 @@ vi.mock('@/components/common/StockLogo.vue', () => stub('StockLogo'))
 vi.mock('@/components/trades/TradeFilters.vue', () => ({
   default: {
     name: 'TradeFilters',
-    props: { autoApplyOnMount: { type: Boolean, default: true } },
+    props: {
+      autoApplyOnMount: { type: Boolean, default: true },
+      hideTimePeriod: { type: Boolean, default: false }
+    },
     emits: ['filter'],
     template: '<div data-stub="TradeFilters"></div>'
   }
@@ -125,7 +129,6 @@ vi.mock('@/components/trades/TradeFilters.vue', () => ({
 
 import DashboardView from '@/views/DashboardView.vue'
 import { useTradesStore } from '@/stores/trades'
-import { useUiPreferencesStore } from '@/stores/uiPreferences'
 
 const FILTER_BUTTON_SELECTOR = 'button[aria-label="More filters"]'
 
@@ -171,10 +174,6 @@ describe('DashboardView advanced filter wiring (issue #350)', () => {
     expect(w.find('[role="dialog"]').exists()).toBe(true)
   }
 
-  function findClearAllButton(w) {
-    return w.findAll('button').find((b) => b.text() === 'Clear all')
-  }
-
   it('hydrates persisted filters on mount without counting symbolExact:false toward the badge', async () => {
     localStorage.setItem('tradeFilters', JSON.stringify({ tags: ['swing'], symbolExact: false }))
 
@@ -200,35 +199,42 @@ describe('DashboardView advanced filter wiring (issue #350)', () => {
     expect(getBadge(wrapper).exists()).toBe(false)
   })
 
-  it('Clear all removes persisted filters from localStorage, resets the store, and clears the badge', async () => {
+  it('hides the duplicate Time Period date control in the dashboard modal', async () => {
+    // The dashboard header owns the date range (quick-range selector) and
+    // ignores date filters from this panel, so the panel's own date picker is
+    // hidden to avoid the confusing non-functional duplicate (issue #350).
+    wrapper = await mountDashboard()
+    await openFiltersModal(wrapper)
+
+    const tradeFilters = wrapper.findComponent({ name: 'TradeFilters' })
+    expect(tradeFilters.exists()).toBe(true)
+    expect(tradeFilters.props('hideTimePeriod')).toBe(true)
+  })
+
+  it('an empty filter emit (Reset) clears the store, closes the modal, and clears the badge', async () => {
     localStorage.setItem('tradeFilters', JSON.stringify({ tags: ['swing'], symbolExact: false }))
 
     wrapper = await mountDashboard()
 
-    const uiPreferencesStore = useUiPreferencesStore()
-    const notifySpy = vi.spyOn(uiPreferencesStore, 'notifyChanged')
+    // Sanity: the hydrated tags filter shows on the badge.
+    expect(getBadge(wrapper).text()).toBe('1')
 
     await openFiltersModal(wrapper)
-    const clearAll = findClearAllButton(wrapper)
-    expect(clearAll).toBeTruthy()
-    await clearAll.trigger('click')
-    await flushPromises()
 
-    // Persisted dashboard filters are gone (symbolExact:false must not keep
-    // the storage entry alive — that kept the phantom filter resurrecting).
-    expect(localStorage.getItem('tradeFilters')).toBeNull()
+    // Reset inside TradeFilters emits an empty spec; the dashboard treats that
+    // as "no advanced filters" (this is the path that replaced "Clear all").
+    const tradeFilters = wrapper.findComponent({ name: 'TradeFilters' })
+    expect(tradeFilters.exists()).toBe(true)
+    tradeFilters.vm.$emit('filter', {})
+    await flushPromises()
 
     // Store filters are reset.
     const tradesStore = useTradesStore()
     expect(tradesStore.filters.tags).toEqual([])
-    expect(tradesStore.filters.symbolExact).toBe(false)
 
     // Modal closed, badge gone.
     expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
     expect(getBadge(wrapper).exists()).toBe(false)
-
-    // Cross-device prefs sync is told the filters were cleared.
-    expect(notifySpy).toHaveBeenCalledWith('tradeFilters', null)
   })
 
   it('applying filters from the modal writes normalized arrays to the trades store and counts the badge', async () => {
