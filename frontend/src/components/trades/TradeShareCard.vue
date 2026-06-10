@@ -29,6 +29,48 @@
         </button>
       </div>
 
+      <!-- Verification status: tell the owner what the badge means (or why
+           there is no badge) instead of leaving it implicit. -->
+      <div
+        v-if="verification?.status === 'broker_verified'"
+        class="rounded-lg border border-success/30 bg-success/5 px-4 py-3"
+      >
+        <p class="text-sm font-medium text-success">Broker-verified</p>
+        <p class="mt-0.5 text-xs leading-relaxed text-gray-600 dark:text-gray-400">
+          This card carries a public attestation link. Anyone who opens it can
+          confirm the trade was imported from your connected {{ brokerLabel }}
+          account and hasn't been edited since. Changing the trade's prices,
+          size, or timestamps revokes the verification automatically.
+        </p>
+        <a
+          :href="`/v/${verification.public_code}`"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="mt-1.5 inline-block text-xs font-medium text-success hover:underline"
+        >View the public verification page</a>
+      </div>
+      <div
+        v-else-if="verification?.status === 'revoked'"
+        class="rounded-lg border border-warning/30 bg-warning/5 px-4 py-3"
+      >
+        <p class="text-sm font-medium text-warning">Verification revoked</p>
+        <p class="mt-0.5 text-xs leading-relaxed text-gray-600 dark:text-gray-400">
+          This trade was edited after it was verified, so the card no longer
+          carries a badge and its verification page shows a warning.
+        </p>
+      </div>
+      <div
+        v-else-if="!trade.broker_connection_id"
+        class="rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-3"
+      >
+        <p class="text-sm font-medium text-gray-700 dark:text-gray-300">Not verifiable</p>
+        <p class="mt-0.5 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+          Verified badges are only available for trades imported through broker
+          sync, because TradeTally can attest those came straight from your
+          brokerage. CSV imports and manual entries can't be verified.
+        </p>
+      </div>
+
       <!-- Link sharing: public trades are viewable by anyone at /trades/:id -->
       <div class="rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-3">
         <template v-if="isPublic">
@@ -130,6 +172,15 @@ const canNativeShare = typeof navigator !== 'undefined' && typeof navigator.shar
 // Cloud-only: broker verification for the badge. The endpoints exist only on
 // tradetally.io; failures of any kind simply mean no badge.
 const verification = ref(null)
+
+const BROKER_LABELS = {
+  schwab: 'Charles Schwab',
+  ibkr: 'Interactive Brokers',
+  tradestation: 'TradeStation',
+  alpaca: 'Alpaca'
+}
+const brokerLabel = computed(() => BROKER_LABELS[props.trade.broker] || props.trade.broker || 'broker')
+
 
 async function ensureVerification() {
   if (!props.trade?.broker_connection_id) {
