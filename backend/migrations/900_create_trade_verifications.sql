@@ -2,6 +2,9 @@
 -- A verification attests that a shared trade arrived via authenticated broker
 -- sync and that its economic fields are unchanged since sync. The share card
 -- links to a public verification page via public_code.
+--
+-- Numbered in the 900+ range: cloud-only migrations must not race the public
+-- repo's sequential numbering (206 was taken by plaid_securities upstream).
 
 CREATE TABLE IF NOT EXISTS trade_verifications (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
