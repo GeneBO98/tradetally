@@ -132,7 +132,22 @@ function roundedRect(ctx, x, y, w, h, r) {
 
 const FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
 
-function draw() {
+// The real TradeTally logo mark, loaded once. Same-origin asset, so the
+// canvas stays untainted and exportable.
+let logoPromise = null
+function loadLogo() {
+  if (!logoPromise) {
+    logoPromise = new Promise(resolve => {
+      const image = new Image()
+      image.onload = () => resolve(image)
+      image.onerror = () => resolve(null)
+      image.src = '/favicon.svg'
+    })
+  }
+  return logoPromise
+}
+
+function draw(logo) {
   const canvas = canvasRef.value
   if (!canvas) return
 
@@ -157,20 +172,26 @@ function draw() {
 
   const PAD = 72
 
-  // Brand mark: three rising tally bars in the theme color + wordmark
-  const barWidth = 9
-  const barGap = 7
+  // Brand: the real logo mark + wordmark. Falls back to simple tally bars
+  // if the asset fails to load.
   const baseY = 96
-  ctx.fillStyle = primary
-  const barHeights = [16, 26, 36]
-  barHeights.forEach((h, i) => {
-    roundedRect(ctx, PAD + i * (barWidth + barGap), baseY - h, barWidth, h, 3)
-    ctx.fill()
-  })
+  const logoSize = 44
+  if (logo) {
+    ctx.drawImage(logo, PAD, baseY - logoSize + 6, logoSize, logoSize)
+  } else {
+    const barWidth = 9
+    const barGap = 7
+    ctx.fillStyle = primary
+    const barHeights = [16, 26, 36]
+    barHeights.forEach((h, i) => {
+      roundedRect(ctx, PAD + i * (barWidth + barGap), baseY - h, barWidth, h, 3)
+      ctx.fill()
+    })
+  }
   ctx.fillStyle = COLORS.textPrimary
   ctx.font = `600 30px ${FONT}`
   ctx.textBaseline = 'alphabetic'
-  ctx.fillText('TradeTally', PAD + 62, baseY - 2)
+  ctx.fillText('TradeTally', PAD + logoSize + 14, baseY - 2)
 
   // Date, top right
   ctx.fillStyle = COLORS.textSecondary
@@ -334,8 +355,9 @@ watch(
   async ([open]) => {
     if (open) {
       copyState.value = ''
+      const logo = await loadLogo()
       await nextTick()
-      draw()
+      draw(logo)
     }
   },
   { deep: false }
