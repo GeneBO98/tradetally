@@ -636,7 +636,8 @@ const deleteLot = async (req, res) => {
     res.json({ success: true, message: 'Lot deleted' });
   } catch (error) {
     console.error('[INVESTMENTS] Delete lot error:', error);
-    res.status(500).json({ error: error.message || 'Failed to delete lot' });
+    const status = /plaid-synced/i.test(error.message || '') ? 400 : 500;
+    res.status(status).json({ error: error.message || 'Failed to delete lot' });
   }
 };
 

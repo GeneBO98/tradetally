@@ -107,6 +107,12 @@ class PlaidClient {
     });
   }
 
+  async getInvestmentHoldings(accessToken) {
+    return this.post('/investments/holdings/get', {
+      access_token: accessToken
+    });
+  }
+
   async getInvestmentTransactions(accessToken, startDate, endDate, offset = 0, count = 100) {
     return this.post('/investments/transactions/get', {
       access_token: accessToken,

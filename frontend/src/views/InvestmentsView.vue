@@ -730,7 +730,7 @@
                                             Analyze
                                         </button>
                                         <button
-                                            v-if="position.holdingId && !position.includesOpenTrades"
+                                            v-if="position.holdingId && !position.includesOpenTrades && !position.hasPlaidLots"
                                             @click="confirmDeleteHolding(position)"
                                             class="text-red-600 hover:text-red-800"
                                         >
@@ -2289,6 +2289,7 @@ async function onHoldingCreated() {
 function positionSourceLabel(position) {
     if (position.source === "mixed") return "Holding + Open Trade";
     if (position.source === "trades") return "Open Trade";
+    if (position.hasPlaidLots) return "Plaid Synced";
     return "Holding";
 }
 

@@ -1038,7 +1038,8 @@ class PortfolioService {
         END AS average_cost_basis,
         ARRAY_REMOVE(ARRAY_AGG(DISTINCT l.account_identifier), NULL) AS account_identifiers,
         COUNT(l.id) AS lot_count,
-        MIN(l.purchase_date) AS opened_at
+        MIN(l.purchase_date) AS opened_at,
+        BOOL_OR(l.source = 'plaid') AS has_plaid_lots
       FROM investment_holdings h
       JOIN investment_lots l
         ON l.holding_id = h.id
@@ -1073,7 +1074,8 @@ class PortfolioService {
       lastDividendDate: row.last_dividend_date || null,
       accountIdentifiers: row.account_identifiers || [],
       lotCount: parseInt(row.lot_count, 10) || 0,
-      openedAt: row.opened_at
+      openedAt: row.opened_at,
+      hasPlaidLots: Boolean(row.has_plaid_lots)
     }));
   }
 
@@ -1201,6 +1203,7 @@ class PortfolioService {
       existing.source = existing.source === position.source ? existing.source : 'mixed';
       existing.brokers = [existing.brokers, position.brokers].filter(Boolean).join(', ') || null;
       existing.includesOpenTrades = existing.includesOpenTrades || position.source === 'trades';
+      existing.hasPlaidLots = existing.hasPlaidLots || Boolean(position.hasPlaidLots);
 
       if (!existing.holdingId && position.holdingId) {
         existing.holdingId = position.holdingId;
