@@ -32,14 +32,9 @@
       <!-- Link sharing: public trades are viewable by anyone at /trades/:id -->
       <div class="rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-3">
         <template v-if="isPublic">
-          <div class="flex items-center justify-between gap-3">
-            <div class="min-w-0">
-              <p class="text-sm font-medium text-gray-700 dark:text-gray-300">Share link</p>
-              <p class="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">{{ tradeUrl }}</p>
-            </div>
-            <button type="button" class="btn-secondary text-sm flex-shrink-0" @click="copyLink">
-              {{ linkCopied ? 'Copied' : 'Copy link' }}
-            </button>
+          <div class="min-w-0">
+            <p class="text-sm font-medium text-gray-700 dark:text-gray-300">Share link <span class="font-normal text-success">- this trade is public</span></p>
+            <p class="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">{{ tradeUrl }}</p>
           </div>
         </template>
         <template v-else>
@@ -57,15 +52,44 @@
         </template>
       </div>
 
-      <p v-if="copyState" class="text-xs" :class="copyState === 'copied' ? 'text-success' : 'text-danger'">
-        {{ copyState === 'copied' ? 'Image copied to clipboard.' : 'Copy failed - your browser may not support image clipboard. Use Download instead.' }}
+      <p v-if="copyState" class="text-xs" :class="copyState === 'failed' ? 'text-danger' : 'text-success'">
+        {{ copyFeedback }}
       </p>
     </div>
 
     <template #footer>
-      <button type="button" class="btn-secondary" @click="copyToClipboard">
-        Copy image
-      </button>
+      <div class="relative">
+        <button type="button" class="btn-secondary inline-flex items-center gap-1.5" @click="showCopyMenu = !showCopyMenu">
+          Copy
+          <ChevronUpIcon class="h-3.5 w-3.5" />
+        </button>
+        <div v-if="showCopyMenu" class="fixed inset-0 z-10" @click="showCopyMenu = false"></div>
+        <div
+          v-if="showCopyMenu"
+          class="absolute bottom-full left-0 z-20 mb-2 w-48 overflow-hidden rounded-md border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800"
+        >
+          <button
+            type="button"
+            class="block w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700"
+            @click="copyImageFromMenu"
+          >
+            Copy image
+          </button>
+          <button
+            type="button"
+            class="block w-full px-4 py-2.5 text-left text-sm"
+            :class="isPublic
+              ? 'text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700'
+              : 'cursor-not-allowed text-gray-400 dark:text-gray-600'"
+            :disabled="!isPublic"
+            :title="isPublic ? '' : 'Make the trade public first'"
+            @click="copyLinkFromMenu"
+          >
+            Copy link
+            <span v-if="!isPublic" class="block text-xs">Make the trade public first</span>
+          </button>
+        </div>
+      </div>
       <button v-if="canNativeShare" type="button" class="btn-secondary" @click="nativeShare">
         Share
       </button>
@@ -80,6 +104,8 @@
 import { ref, watch, nextTick, computed } from 'vue'
 import BaseModal from '@/components/common/BaseModal.vue'
 import { formatTradeDate } from '@/utils/date'
+import { ChevronUpIcon } from '@heroicons/vue/24/outline'
+import { useNotification } from '@/composables/useNotification'
 
 // Social-card dimensions (Open Graph ratio). Rendered at 2x for sharpness.
 const CARD_WIDTH = 1200
@@ -93,11 +119,33 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'made-public'])
 
+const { showSuccess, showError } = useNotification()
+
 const canvasRef = ref(null)
 const showDollarAmounts = ref(false)
 const copyState = ref('')
 const linkCopied = ref(false)
 const makingPublic = ref(false)
+const showCopyMenu = ref(false)
+
+const copyFeedback = computed(() => ({
+  copied: 'Image copied to clipboard.',
+  'link-copied': 'Link copied to clipboard.',
+  failed: 'Copy failed - your browser may not support image clipboard. Use Download instead.'
+}[copyState.value] || ''))
+
+async function copyImageFromMenu() {
+  showCopyMenu.value = false
+  await copyToClipboard()
+}
+
+async function copyLinkFromMenu() {
+  showCopyMenu.value = false
+  await copyLink()
+  if (linkCopied.value) {
+    copyState.value = 'link-copied'
+  }
+}
 // Track visibility locally so the link appears immediately after toggling.
 const isPublic = ref(false)
 const tradeUrl = computed(() => `${window.location.origin}/trades/${props.trade.id}`)
@@ -118,8 +166,10 @@ async function makePublic() {
     await api.put(`/trades/${props.trade.id}`, { isPublic: true })
     isPublic.value = true
     emit('made-public')
+    showSuccess('Trade is public', 'Anyone with the link can now view it.')
   } catch (error) {
     console.error('[SHARE-CARD] Failed to make trade public:', error)
+    showError('Error', error.response?.data?.error || 'Failed to make the trade public.')
   } finally {
     makingPublic.value = false
   }
