@@ -1019,8 +1019,10 @@ const settingsController = {
       console.log('[IMPORT] Database connection established');
       clearTableColumnsCache();
 
-      // Determine if this is a v3.0+ dynamic import or legacy
-      const isV3 = importData.exportVersion >= '3.0';
+      // Determine if this is a v3.0+ dynamic import or legacy. Numeric
+      // comparison — a lexicographic string compare would route a future
+      // '10.0' export ('1' < '3') to the legacy path.
+      const isV3 = parseFloat(importData.exportVersion) >= 3;
 
       // Counters for import results
       let tradesAdded = 0;
@@ -1285,6 +1287,16 @@ const settingsController = {
             // v3.0 dynamic settings import
             const tableColumns = await getTableColumns(client, 'user_settings');
             const mergedSettings = { ...keysToSnakeCase(s), ...keysToSnakeCase(tp) };
+
+            // Encrypt AI provider keys like the legacy path does. Idempotent
+            // for already-encrypted exports; protects plaintext keys from
+            // hand-edited or cross-instance v3 files.
+            if (mergedSettings.ai_api_key) {
+              mergedSettings.ai_api_key = encryptKeyIfPresent(mergedSettings.ai_api_key);
+            }
+            if (mergedSettings.cusip_ai_api_key) {
+              mergedSettings.cusip_ai_api_key = encryptKeyIfPresent(mergedSettings.cusip_ai_api_key);
+            }
 
             // Filter to valid columns only
             const validSettings = {};

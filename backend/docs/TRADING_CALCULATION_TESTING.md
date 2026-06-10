@@ -18,3 +18,23 @@ pnpm --dir frontend test:run
 
 These commands also run in GitHub Actions on pull requests and on `develop` /
 `main` pushes before Docker images are built.
+
+## Real-Postgres integration suite
+
+The unit suites mock the database, so SQL semantics are only verified by the
+opt-in integration suite in `backend/tests/integration/`. It runs the real
+Express app and real migrations against a scratch database and covers the CSV
+import pipeline end to end plus `TradeQueries.getAnalytics` (including the
+whole-trade position grouping mode).
+
+```bash
+docker run -d --name tradetally-test-pg -p 5440:5432 \
+  -e POSTGRES_USER=tradetally -e POSTGRES_PASSWORD=testpass \
+  -e POSTGRES_DB=tradetally_test postgres:16-alpine
+
+TEST_DATABASE_URL=postgres://tradetally:testpass@localhost:5440/tradetally_test \
+  pnpm --dir backend test:integration
+```
+
+CI runs this automatically with a Postgres service container. Never point
+`TEST_DATABASE_URL` at a real database.
