@@ -23,6 +23,7 @@ router.get('/debug/trade-identifiers', accountController.getTradeIdentifiersSumm
 router.post('/plaid/link-token', plaidController.createLinkToken);
 router.post('/plaid/exchange', plaidController.exchangePublicToken);
 router.get('/plaid/connections', plaidController.getConnections);
+router.get('/plaid/balances/history', plaidController.getBalanceHistory);
 router.put('/plaid/connections/:connectionId', plaidController.updateConnection);
 router.delete('/plaid/connections/:connectionId', plaidController.deleteConnection);
 router.post('/plaid/connections/:connectionId/sync', plaidController.syncConnection);

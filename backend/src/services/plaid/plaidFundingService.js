@@ -1,5 +1,6 @@
 const db = require('../../config/database');
 const Account = require('../../models/Account');
+const PlaidBalanceSnapshot = require('../../models/PlaidBalanceSnapshot');
 const PlaidConnection = require('../../models/PlaidConnection');
 const PlaidSecurity = require('../../models/PlaidSecurity');
 const plaidClient = require('./plaidClient');
@@ -230,6 +231,16 @@ class PlaidFundingService {
       const plaidAccountMap = new Map(
         syncedAccounts.map(account => [account.plaidAccountId, normalizePlaidAccount(account)])
       );
+
+      // Record today's balances for the equity curve. Snapshot failures must
+      // not fail the sync.
+      try {
+        if (await PlaidBalanceSnapshot.hasSchema()) {
+          await PlaidBalanceSnapshot.upsertForAccounts(connection.userId, syncedAccounts);
+        }
+      } catch (error) {
+        console.warn('[PLAID] Balance snapshot failed:', error.message);
+      }
 
       let processedCount = 0;
       let nextCursor = connection.lastSyncCursor;

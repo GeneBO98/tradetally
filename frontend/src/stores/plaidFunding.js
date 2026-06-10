@@ -90,6 +90,18 @@ export const usePlaidFundingStore = defineStore('plaidFunding', () => {
     return response.data.data
   }
 
+  async function fetchBalanceHistory(params = {}) {
+    try {
+      const response = await api.get('/accounts/plaid/balances/history', { params })
+      return response.data.data || { series: [], accounts: [] }
+    } catch (err) {
+      if (isPlaidUnavailableError(err)) {
+        return { series: [], accounts: [] }
+      }
+      throw err
+    }
+  }
+
   async function fetchReviewQueue(accountId) {
     if (!accountId) {
       reviewQueue.value = []
@@ -190,6 +202,7 @@ export const usePlaidFundingStore = defineStore('plaidFunding', () => {
     syncConnection,
     linkPlaidAccount,
     unlinkPlaidAccount,
+    fetchBalanceHistory,
     fetchReviewQueue,
     approveTransaction,
     rejectTransaction,
