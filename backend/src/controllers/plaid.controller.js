@@ -54,6 +54,19 @@ const plaidController = {
     }
   },
 
+  async createReconnectToken(req, res) {
+    try {
+      const data = await plaidFundingService.createReconnectLinkToken(req.user, req.params.connectionId);
+      res.json({ success: true, data });
+    } catch (error) {
+      const status = /not found/i.test(error.message) ? 404 : getPlaidErrorStatus(error);
+      res.status(status).json({
+        success: false,
+        message: error.message || 'Failed to create Plaid reconnect token'
+      });
+    }
+  },
+
   async getBalanceHistory(req, res) {
     try {
       const schemaReady = await PlaidBalanceSnapshot.hasSchema();

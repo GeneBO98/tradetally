@@ -27,6 +27,7 @@ router.get('/plaid/balances/history', plaidController.getBalanceHistory);
 router.put('/plaid/connections/:connectionId', plaidController.updateConnection);
 router.delete('/plaid/connections/:connectionId', plaidController.deleteConnection);
 router.post('/plaid/connections/:connectionId/sync', plaidController.syncConnection);
+router.post('/plaid/connections/:connectionId/reconnect-token', plaidController.createReconnectToken);
 router.put('/plaid/accounts/:plaidAccountId/link', plaidController.linkPlaidAccount);
 router.delete('/plaid/accounts/:plaidAccountId/link', plaidController.unlinkPlaidAccount);
 router.get('/:accountId/plaid/review', plaidController.getReviewQueue);

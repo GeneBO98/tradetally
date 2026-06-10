@@ -48,6 +48,7 @@ const yearWrappedRoutes = require('./routes/yearWrapped.routes');
 const investmentsRoutes = require('./routes/investments.routes');
 const stockScannerRoutes = require('./routes/stockScanner.routes');
 const accountRoutes = require('./routes/account.routes');
+const plaidWebhookRoutes = require('./routes/plaidWebhook.routes');
 const instrumentTemplatesRoutes = require('./routes/instrumentTemplates.routes');
 const tradeManagementRoutes = require('./routes/tradeManagement.routes');
 const playbookRoutes = require('./routes/playbook.routes');
@@ -227,7 +228,7 @@ app.use(ensureCsrfCookie);
 
 // Body parsing middleware (skip for webhook routes that need raw body)
 app.use((req, res, next) => {
-  if (req.originalUrl === '/api/billing/webhooks/stripe') {
+  if (req.originalUrl === '/api/billing/webhooks/stripe' || req.originalUrl.split('?')[0] === '/api/plaid/webhook') {
     next();
   } else {
     express.json()(req, res, next);
@@ -282,6 +283,7 @@ app.use('/api/year-wrapped', yearWrappedRoutes);
 app.use('/api/investments', investmentsRoutes);
 app.use('/api/scanner', stockScannerRoutes);
 app.use('/api/accounts', accountRoutes);
+app.use('/api/plaid/webhook', plaidWebhookRoutes);
 app.use('/api/instrument-templates', instrumentTemplatesRoutes);
 app.use('/api/trade-management', tradeManagementRoutes);
 app.use('/api/playbooks', playbookRoutes);

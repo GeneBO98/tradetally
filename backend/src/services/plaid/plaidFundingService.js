@@ -84,6 +84,34 @@ class PlaidFundingService {
     };
   }
 
+  /**
+   * Create a Link token in update mode so the user can re-authenticate an
+   * existing connection (e.g. after ITEM_LOGIN_REQUIRED). Update mode yields
+   * no new public token; the frontend triggers a sync on Link success, and
+   * updateAfterSync restores connection_status to 'active'.
+   */
+  async createReconnectLinkToken(user, connectionId) {
+    this.ensureConfigured();
+    await this.ensureSchemaReady();
+
+    const connection = await PlaidConnection.findById(connectionId, user.id, true);
+    if (!connection) {
+      throw new Error('Plaid connection not found');
+    }
+
+    const response = await plaidClient.createLinkToken({
+      userId: user.id,
+      email: user.email,
+      targetType: connection.targetType,
+      accessToken: connection.accessToken
+    });
+
+    return {
+      linkToken: response.link_token,
+      expiration: response.expiration
+    };
+  }
+
   async exchangePublicToken(userId, payload) {
     this.ensureConfigured();
     await this.ensureSchemaReady();

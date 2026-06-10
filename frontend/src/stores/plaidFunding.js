@@ -29,6 +29,11 @@ export const usePlaidFundingStore = defineStore('plaidFunding', () => {
     return response.data.data
   }
 
+  async function createReconnectToken(connectionId) {
+    const response = await api.post(`/accounts/plaid/connections/${connectionId}/reconnect-token`)
+    return response.data.data
+  }
+
   async function fetchConnections() {
     loading.value = true
     error.value = null
@@ -196,6 +201,7 @@ export const usePlaidFundingStore = defineStore('plaidFunding', () => {
     error,
     createLinkToken,
     exchangePublicToken,
+    createReconnectToken,
     fetchConnections,
     updateConnection,
     deleteConnection,
