@@ -158,6 +158,18 @@ router.get('/holdings/:id/dividends', investmentsController.getDividends);
 router.post('/holdings/:id/dividends', validate(schemas.investmentDividendCreate), investmentsController.recordDividend);
 
 // ========================================
+// INCOME ANALYTICS
+// ========================================
+
+/**
+ * @route GET /api/investments/income
+ * @desc Get dividend/interest/fee income aggregated from Plaid investment activity
+ * @query startDate, endDate - Optional ISO date range
+ * @access Pro
+ */
+router.get('/income', investmentsController.getInvestmentIncome);
+
+// ========================================
 // PORTFOLIO
 // ========================================
 
