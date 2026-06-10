@@ -36,6 +36,14 @@
             <SparklesIcon class="h-4 w-4" />
             <span>{{ showAIPanel ? 'Hide Analysis' : 'Analyze Trade' }}</span>
           </button>
+          <button
+            v-if="trade.exit_price !== null && trade.exit_price !== undefined"
+            @click="showShareCard = true"
+            class="btn-secondary inline-flex items-center gap-2"
+          >
+            <ShareIcon class="h-4 w-4" />
+            <span>Share</span>
+          </button>
           <router-link :to="`/analysis/trade-management?tradeId=${trade.id}`" class="btn-secondary">
             Manage
           </router-link>
@@ -47,6 +55,9 @@
           </button>
         </div>
       </div>
+
+      <!-- Shareable trade card generator -->
+      <TradeShareCard v-if="trade" v-model="showShareCard" :trade="trade" />
 
       <!-- Stored AI Analyses -->
       <div v-if="storedAIResponseCount > 0" class="rounded-lg border border-primary-200 bg-primary-50/60 dark:border-primary-900/50 dark:bg-primary-900/10">
@@ -1510,7 +1521,8 @@ import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { format, formatDistanceToNow, formatDistance } from 'date-fns'
-import { DocumentIcon, ChatBubbleLeftIcon, SparklesIcon } from '@heroicons/vue/24/outline'
+import { DocumentIcon, ChatBubbleLeftIcon, SparklesIcon, ShareIcon } from '@heroicons/vue/24/outline'
+import TradeShareCard from '@/components/trades/TradeShareCard.vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
@@ -1585,6 +1597,7 @@ const playbookOptions = computed(() =>
 const loadingPlaybooks = ref(false)
 const savingPlaybookReview = ref(false)
 const showAIPanel = ref(false)
+const showShareCard = ref(false)
 const storedAIAnalyses = ref([])
 const storedAIExpanded = ref(false)
 const loadingStoredAIAnalyses = ref(false)
