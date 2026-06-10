@@ -4,6 +4,11 @@ jest.mock('../../src/models/Account', () => ({
 }));
 
 jest.mock('../../src/models/PlaidConnection', () => ({
+  hasSchema: jest.fn(() => Promise.resolve(true)),
+  findByUserId: jest.fn(),
+  listReviewQueue: jest.fn(),
+  listReviewedActivity: jest.fn(),
+  listSyncedActivity: jest.fn(),
   findTransactionById: jest.fn(),
   markTransactionApproved: jest.fn(),
   markTransactionRejected: jest.fn(),
@@ -61,6 +66,7 @@ describe('plaidFundingService createLinkToken', () => {
 describe('plaidFundingService approveTransaction', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    PlaidConnection.hasSchema.mockResolvedValue(true);
   });
 
   test('creates a plaid-backed account transaction using absolute amount', async () => {
@@ -155,6 +161,37 @@ describe('plaidFundingService approveTransaction', () => {
       transactionType: 'deposit',
       descriptionOverride: 'Recurring ACH deposit'
     }));
+  });
+});
+
+describe('plaidFundingService optional Plaid schema reads', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test('returns no connections when Plaid funding tables are missing', async () => {
+    PlaidConnection.hasSchema.mockResolvedValue(false);
+
+    await expect(plaidFundingService.listConnections('user-1')).resolves.toEqual([]);
+    expect(PlaidConnection.findByUserId).not.toHaveBeenCalled();
+  });
+
+  test('returns empty review data when Plaid funding tables are missing', async () => {
+    PlaidConnection.hasSchema.mockResolvedValue(false);
+
+    await expect(plaidFundingService.getReviewData('user-1', 'acct-1')).resolves.toEqual({
+      pending: [],
+      history: [],
+      synced: [],
+      summary: {
+        total: 0,
+        pending: 0,
+        bankPending: 0,
+        approved: 0,
+        rejected: 0
+      }
+    });
+    expect(PlaidConnection.listReviewQueue).not.toHaveBeenCalled();
   });
 });
 
