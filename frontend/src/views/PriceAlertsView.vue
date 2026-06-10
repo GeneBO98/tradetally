@@ -295,12 +295,13 @@
                                 class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400"
                             >
                                 <div class="flex space-x-1">
-                                    <span
+                                    <MdiIcon
                                         v-if="alert.email_enabled"
                                         title="Email enabled"
+                                        :icon="mdiEmailOutline"
+                                        :size="16"
                                         class="text-primary-500"
-                                        >✉</span
-                                    >
+                                        />
                                     <MdiIcon
                                         v-if="alert.browser_enabled"
                                         :icon="mdiBell"
@@ -560,7 +561,7 @@ import api from "@/services/api";
 import ProUpgradePrompt from "@/components/ProUpgradePrompt.vue";
 import MdiIcon from "@/components/MdiIcon.vue";
 import PriceAlertWebhookManager from "@/components/price-alerts/PriceAlertWebhookManager.vue";
-import { mdiBell, mdiRepeat } from "@mdi/js";
+import { mdiBell, mdiRepeat, mdiEmailOutline } from "@mdi/js";
 import { getMarketStatus } from "@/utils/marketStatus";
 import SymbolAutocomplete from "@/components/common/SymbolAutocomplete.vue";
 import BaseSelect from "@/components/common/BaseSelect.vue";

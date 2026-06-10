@@ -52,8 +52,8 @@
             </div>
         </div>
 
-        <!-- Loading State -->
-        <div v-if="loading" class="flex justify-center items-center py-12">
+        <!-- Loading State (initial load only) -->
+        <div v-if="initialLoading" class="flex justify-center items-center py-12">
             <div
                 class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"
             ></div>
@@ -861,6 +861,8 @@ export default {
 
         const watchlist = ref(null);
         const loading = ref(true);
+// Full-page spinner only on first load (CLAUDE.md pattern)
+const initialLoading = ref(true);
         const adding = ref(false);
         const updating = ref(false);
         const showAddSymbolModal = ref(false);
@@ -918,6 +920,7 @@ export default {
                 router.push("/markets");
             } finally {
                 loading.value = false;
+                initialLoading.value = false;
             }
         };
 

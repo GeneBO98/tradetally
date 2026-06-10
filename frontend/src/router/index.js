@@ -379,6 +379,12 @@ const router = createRouter({
     {
       path: '/playbooks',
       redirect: '/analysis/playbooks'
+    },
+    // Catch-all: unmatched URLs used to render a blank layout shell.
+    {
+      path: '/:pathMatch(.*)*',
+      name: 'not-found',
+      component: () => import('@/views/NotFoundView.vue')
     }
   ]
 })

@@ -8,8 +8,9 @@
       </p>
     </div>
     
-    <!-- Back link -->
-    <div class="mb-4">
+    <!-- Back link: only for drill-downs (e.g. dashboard cards linking here
+         with query filters). Trades is a primary nav destination otherwise. -->
+    <div v-if="Object.keys($route.query).length > 0" class="mb-4">
       <button
         @click="goBack"
         class="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
@@ -211,15 +212,35 @@
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
       </div>
 
+      <!-- A failed fetch must not masquerade as an empty journal -->
+      <div v-else-if="tradesStore.error && tradesStore.trades.length === 0" class="text-center py-12">
+        <ExclamationTriangleIcon class="mx-auto h-12 w-12 text-warning" />
+        <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-white">Couldn't load your trades</h3>
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          {{ tradesStore.error }}
+        </p>
+        <div class="mt-6">
+          <button class="btn-primary" @click="tradesStore.fetchTrades()">
+            Try again
+          </button>
+        </div>
+      </div>
+
       <div v-else-if="tradesStore.trades.length === 0 && !tradesStore.loading" class="text-center py-12">
         <DocumentTextIcon class="mx-auto h-12 w-12 text-gray-400" />
         <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-white">No trades</h3>
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Get started by creating a new trade.
+          Import from your broker or add a trade manually to get started.
         </p>
-        <div class="mt-6">
-          <router-link to="/trades/new" class="btn-primary">
-            Add trade
+        <div class="mt-6 flex items-center justify-center gap-3">
+          <router-link to="/import" class="btn-primary">
+            Import trades
+          </router-link>
+          <router-link to="/broker-sync" class="btn-secondary">
+            Connect broker
+          </router-link>
+          <router-link to="/trades/new" class="btn-secondary">
+            Add manually
           </router-link>
         </div>
       </div>
@@ -1058,7 +1079,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { useUserTimezone } from '@/composables/useUserTimezone'
-import { DocumentTextIcon, ChatBubbleLeftIcon, FunnelIcon, XMarkIcon } from '@heroicons/vue/24/outline'
+import { DocumentTextIcon, ChatBubbleLeftIcon, FunnelIcon, XMarkIcon, ExclamationTriangleIcon } from '@heroicons/vue/24/outline'
 import TradeFilters from '@/components/trades/TradeFilters.vue'
 import TradeCommentsDialog from '@/components/trades/TradeCommentsDialog.vue'
 import EnrichmentStatus from '@/components/trades/EnrichmentStatus.vue'

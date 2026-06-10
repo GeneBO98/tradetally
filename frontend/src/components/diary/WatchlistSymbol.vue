@@ -1,5 +1,5 @@
 <template>
-  <div class="inline-flex items-center gap-1 px-2 py-1 rounded bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-200 text-xs group relative">
+  <div class="inline-flex items-center gap-1 px-2 py-1 rounded bg-primary-100 dark:bg-primary-800 text-primary-800 dark:text-primary-200 text-xs group relative">
     <span>{{ symbol }}</span>
 
     <!-- Action Buttons (show on hover) -->
@@ -8,7 +8,7 @@
       <button
         @click="handleAddToWatchlist"
         :disabled="addingToWatchlist"
-        class="p-0.5 rounded hover:bg-blue-200 dark:hover:bg-blue-700 transition-colors disabled:opacity-50"
+        class="p-0.5 rounded hover:bg-primary-200 dark:hover:bg-primary-700 transition-colors disabled:opacity-50"
         title="Add to main watchlist"
       >
         <PlusCircleIcon class="w-3.5 h-3.5" />
@@ -17,7 +17,7 @@
       <!-- Create Price Alert Button -->
       <button
         @click="handleCreateAlert"
-        class="p-0.5 rounded hover:bg-blue-200 dark:hover:bg-blue-700 transition-colors"
+        class="p-0.5 rounded hover:bg-primary-200 dark:hover:bg-primary-700 transition-colors"
         title="Create price alert"
       >
         <BellAlertIcon class="w-3.5 h-3.5" />

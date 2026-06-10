@@ -69,7 +69,7 @@
                 </p>
                 <span
                   v-if="roleBadge"
-                  class="shrink-0 rounded-[3px] bg-primary-500/15 px-1.5 py-0 text-[9px] font-bold uppercase leading-[14px] tracking-[0.1em] text-primary-700 dark:bg-primary-400/15 dark:text-primary-300"
+                  class="shrink-0 rounded-[3px] bg-primary-500/15 px-1.5 py-0 text-[9px] font-bold uppercase leading-[14px] tracking-wider text-primary-700 dark:bg-primary-400/15 dark:text-primary-300"
                 >
                   {{ roleBadge }}
                 </span>
@@ -312,8 +312,4 @@ onUnmounted(() => {
   }
 }
 
-/* Slow the ping animation for the connected status dot in footer */
-.user-menu-panel :deep(.animate-ping) {
-  animation-duration: 2.4s;
-}
 </style>

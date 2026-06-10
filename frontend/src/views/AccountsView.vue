@@ -19,8 +19,8 @@
       cta-route="calendar"
     />
 
-    <!-- Loading State -->
-    <div v-if="loading" class="flex justify-center py-12">
+    <!-- Loading State (initial load only; refreshes keep content mounted) -->
+    <div v-if="initialLoading" class="flex justify-center py-12">
       <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
     </div>
 
@@ -296,6 +296,8 @@ import { useAuthStore } from '@/stores/auth'
 const authStore = useAuthStore()
 
 const loading = ref(true)
+// Full-page spinner only on first load (CLAUDE.md pattern)
+const initialLoading = ref(true)
 const saving = ref(false)
 const deleting = ref(false)
 const error = ref(null)
@@ -387,6 +389,7 @@ async function fetchAccounts() {
     error.value = err.response?.data?.error || err.response?.data?.message || 'Failed to load accounts'
   } finally {
     loading.value = false
+    initialLoading.value = false
   }
 }
 

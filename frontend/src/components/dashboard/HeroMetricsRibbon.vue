@@ -115,14 +115,19 @@
             <div class="text-label mb-1">Streak</div>
             <div class="mt-auto pt-1">
               <div class="flex items-baseline gap-1 min-w-0">
-                <div class="text-mono-num text-xl sm:text-2xl xl:text-3xl font-semibold tracking-tight" :class="streakClass">
+                <div
+                  class="text-mono-num text-xl sm:text-2xl xl:text-3xl font-semibold tracking-tight"
+                  :class="streakClass"
+                  :title="streakTooltip"
+                >
                   {{ streakDisplay }}
                 </div>
+                <!-- "2L days" read as a cryptic unit; spell out win/loss -->
                 <span v-if="currentStreak !== 0" class="text-xs text-gray-500 dark:text-gray-400 lowercase whitespace-nowrap">
-                  {{ Math.abs(currentStreak) === 1 ? 'day' : 'days' }}
+                  {{ currentStreak > 0 ? 'win' : 'loss' }} {{ Math.abs(currentStreak) === 1 ? 'day' : 'days' }}
                 </span>
               </div>
-              <div class="text-xs text-gray-500 dark:text-gray-400 text-mono-num mt-0.5 truncate" v-if="bestWinStreak > 0">
+              <div class="text-xs text-gray-500 dark:text-gray-400 text-mono-num mt-0.5 truncate" v-if="bestWinStreak > 0" title="Longest run of consecutive winning days">
                 best {{ bestWinStreak }}W
               </div>
               <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5" v-else>—</div>
@@ -304,6 +309,13 @@ const streakDisplay = computed(() => {
   if (currentStreak.value === 0) return '—'
   const abs = Math.abs(currentStreak.value)
   return `${abs}${currentStreak.value > 0 ? 'W' : 'L'}`
+})
+
+const streakTooltip = computed(() => {
+  if (currentStreak.value === 0) return 'No active streak'
+  const abs = Math.abs(currentStreak.value)
+  const kind = currentStreak.value > 0 ? 'winning' : 'losing'
+  return `${abs} consecutive ${kind} ${abs === 1 ? 'day' : 'days'}`
 })
 
 const streakClass = computed(() => {

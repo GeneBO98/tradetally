@@ -157,9 +157,27 @@ const todayStr = computed(() => {
   return `${y}-${m}-${day}`
 })
 
+// Anchor the visible window to the most recent month that has trades when the
+// current month is empty — otherwise the widget greets the user with a blank
+// grid (e.g. data ending last October viewed in June).
+const anchorDate = computed(() => {
+  const now = new Date()
+  let latest = null
+  for (const key of dayIndex.value.keys()) {
+    if (!latest || key > latest) latest = key
+  }
+  if (!latest) return now
+
+  const currentMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  if (latest.slice(0, 7) >= currentMonthPrefix) return now
+
+  const [year, month] = latest.split('-').map(Number)
+  return new Date(year, month - 1, 1)
+})
+
 const months = computed(() => {
   const result = []
-  const now = new Date()
+  const now = anchorDate.value
   const baseYear = now.getFullYear()
   const baseMonth = now.getMonth() // 0-indexed
 

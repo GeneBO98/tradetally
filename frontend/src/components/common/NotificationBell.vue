@@ -88,7 +88,7 @@
                   />
                   <ChatBubbleLeftRightIcon
                     v-else-if="notification.type === 'trade_comment'"
-                    class="h-5 w-5 text-blue-500"
+                    class="h-5 w-5 text-primary-500"
                   />
                   <TrophyIcon
                     v-else-if="notification.type === 'achievement_earned'"

@@ -19,7 +19,7 @@
 
     <div v-else-if="trade" class="space-y-8">
       <!-- Header -->
-      <div class="flex items-center justify-between">
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 class="heading-page">
             {{ trade.symbol }} Trade
@@ -28,7 +28,7 @@
             {{ formatDate(trade.trade_date) }} • {{ trade.side }}
           </p>
         </div>
-        <div class="flex flex-wrap justify-end gap-3">
+        <div class="flex flex-wrap gap-3 sm:justify-end">
           <button
             @click="toggleAIPanel"
             class="btn-primary inline-flex items-center gap-2"
@@ -36,7 +36,7 @@
             <SparklesIcon class="h-4 w-4" />
             <span>{{ showAIPanel ? 'Hide Analysis' : 'Analyze Trade' }}</span>
           </button>
-          <router-link :to="`/analysis/trade-management?tradeId=${trade.id}`" class="btn-primary">
+          <router-link :to="`/analysis/trade-management?tradeId=${trade.id}`" class="btn-secondary">
             Manage
           </router-link>
           <router-link :to="{ path: `/trades/${trade.id}/edit`, query: { from: 'trade-detail' } }" class="btn-secondary">
@@ -266,25 +266,25 @@
                     </span>
                   </dd>
                 </div>
-                <div>
+                <div v-if="trade.mae !== null && trade.mae !== undefined">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">MAE</dt>
                   <dd class="mt-1 text-sm font-mono" :class="trade.mae !== null && trade.mae !== undefined ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'">
                     {{ trade.mae !== null && trade.mae !== undefined ? formatExcursionValue(trade.mae) : '—' }}
                   </dd>
                 </div>
-                <div>
+                <div v-if="trade.mfe !== null && trade.mfe !== undefined">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">MFE</dt>
                   <dd class="mt-1 text-sm font-mono" :class="trade.mfe !== null && trade.mfe !== undefined ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'">
                     {{ trade.mfe !== null && trade.mfe !== undefined ? formatExcursionValue(trade.mfe) : '—' }}
                   </dd>
                 </div>
-                <div>
+                <div v-if="(trade.post_exit_mae ?? trade.postExitMae) !== null && (trade.post_exit_mae ?? trade.postExitMae) !== undefined">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">After-Trade MAE</dt>
                   <dd class="mt-1 text-sm font-mono" :class="(trade.post_exit_mae ?? trade.postExitMae) !== null && (trade.post_exit_mae ?? trade.postExitMae) !== undefined ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'">
                     {{ (trade.post_exit_mae ?? trade.postExitMae) !== null && (trade.post_exit_mae ?? trade.postExitMae) !== undefined ? formatExcursionValue(trade.post_exit_mae ?? trade.postExitMae) : '—' }}
                   </dd>
                 </div>
-                <div>
+                <div v-if="(trade.post_exit_mfe ?? trade.postExitMfe) !== null && (trade.post_exit_mfe ?? trade.postExitMfe) !== undefined">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">After-Trade MFE</dt>
                   <dd class="mt-1 text-sm font-mono" :class="(trade.post_exit_mfe ?? trade.postExitMfe) !== null && (trade.post_exit_mfe ?? trade.postExitMfe) !== undefined ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'">
                     {{ (trade.post_exit_mfe ?? trade.postExitMfe) !== null && (trade.post_exit_mfe ?? trade.postExitMfe) !== undefined ? formatExcursionValue(trade.post_exit_mfe ?? trade.postExitMfe) : '—' }}

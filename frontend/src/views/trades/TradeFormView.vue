@@ -759,7 +759,7 @@
                     max="10"
                     step="1"
                     class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 slider"
-                    :style="{ background: `linear-gradient(to right, #F0812A 0%, #F0812A ${(form.confidence - 1) * 11.11}%, #e5e7eb ${(form.confidence - 1) * 11.11}%, #e5e7eb 100%)` }"
+                    :style="{ background: `linear-gradient(to right, var(--color-primary-500) 0%, var(--color-primary-500) ${(form.confidence - 1) * 11.11}%, #e5e7eb ${(form.confidence - 1) * 11.11}%, #e5e7eb 100%)` }"
                   />
                   <div class="flex justify-between text-xs text-gray-400 mt-1">
                     <span v-for="i in 10" :key="i" class="w-4 text-center">{{ i }}</span>

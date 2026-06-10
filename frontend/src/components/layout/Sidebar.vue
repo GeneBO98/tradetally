@@ -145,7 +145,7 @@
                     <span class="flex-1 truncate">{{ sub.name }}</span>
                     <span
                       v-if="sub.badge === 'pro'"
-                      class="shrink-0 rounded-[3px] bg-primary-500/15 px-1.5 py-0 text-[9px] font-bold uppercase leading-[14px] tracking-[0.1em] text-primary-700 dark:bg-primary-400/15 dark:text-primary-300"
+                      class="shrink-0 rounded-[3px] bg-primary-500/15 px-1.5 py-0 text-[9px] font-bold uppercase leading-[14px] tracking-wider text-primary-700 dark:bg-primary-400/15 dark:text-primary-300"
                     >
                       Pro
                     </span>
@@ -165,7 +165,6 @@
         @click="closeDrawer"
         class="upgrade-card group relative block overflow-hidden rounded-xl bg-gradient-to-br from-primary-50 to-orange-100 p-3 ring-1 ring-primary-200/80 transition-all hover:ring-primary-300 dark:from-primary-950/40 dark:to-primary-900/20 dark:ring-primary-900/40 dark:hover:ring-primary-800/60"
       >
-        <div class="absolute -right-3 -top-3 h-16 w-16 rounded-full bg-primary-500/10 blur-xl"></div>
         <div class="relative">
           <div class="flex items-start justify-between gap-2">
             <div class="min-w-0 flex-1">
@@ -215,7 +214,7 @@
               <p class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ displayName }}</p>
               <span
                 v-if="roleBadge"
-                class="shrink-0 rounded-[3px] bg-primary-500/15 px-1 py-0 text-[8px] font-bold uppercase leading-[13px] tracking-[0.1em] text-primary-700 dark:bg-primary-400/15 dark:text-primary-300"
+                class="shrink-0 rounded-[3px] bg-primary-500/15 px-1 py-0 text-[8px] font-bold uppercase leading-[13px] tracking-wider text-primary-700 dark:bg-primary-400/15 dark:text-primary-300"
               >
                 {{ roleBadge }}
               </span>
@@ -257,7 +256,7 @@
                   <p class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ displayName }}</p>
                   <span
                     v-if="roleBadge"
-                    class="shrink-0 rounded-[3px] bg-primary-500/15 px-1.5 py-0 text-[9px] font-bold uppercase leading-[14px] tracking-[0.1em] text-primary-700 dark:bg-primary-400/15 dark:text-primary-300"
+                    class="shrink-0 rounded-[3px] bg-primary-500/15 px-1.5 py-0 text-[9px] font-bold uppercase leading-[14px] tracking-wider text-primary-700 dark:bg-primary-400/15 dark:text-primary-300"
                   >
                     {{ roleBadge }}
                   </span>
@@ -522,7 +521,14 @@ const navItems = computed(() => {
       ]
     },
     { name: 'Calendar', icon: CalendarIcon, to: '/calendar', route: 'calendar' },
-    { name: 'Import', icon: ArrowUpTrayIcon, to: '/import', route: 'import' }
+    {
+      name: 'Import',
+      icon: ArrowUpTrayIcon,
+      items: [
+        { name: 'CSV Import', to: '/import', route: 'import' },
+        { name: 'Broker Sync', to: '/broker-sync', route: 'broker-sync' }
+      ]
+    }
   ]
 
   return items
@@ -688,13 +694,13 @@ onUnmounted(() => {
 }
 
 .nav-item--active {
-  background-color: rgba(240 129 42 / 0.08);
+  background-color: theme('colors.primary.500 / 8%');
   color: rgb(194 65 12);
 }
 
 :global(.dark) .nav-item--active,
 .dark .nav-item--active {
-  background-color: rgba(240 129 42 / 0.12);
+  background-color: theme('colors.primary.500 / 12%');
   color: rgb(253 186 116);
 }
 
@@ -737,14 +743,14 @@ onUnmounted(() => {
 }
 
 .nav-sub-item--active {
-  background-color: rgba(240 129 42 / 0.08);
+  background-color: theme('colors.primary.500 / 8%');
   color: rgb(194 65 12);
   font-weight: 600;
 }
 
 :global(.dark) .nav-sub-item--active,
 .dark .nav-sub-item--active {
-  background-color: rgba(240 129 42 / 0.12);
+  background-color: theme('colors.primary.500 / 12%');
   color: rgb(253 186 116);
 }
 
@@ -810,7 +816,7 @@ onUnmounted(() => {
   width: 2px;
   border-top-right-radius: 0.125rem;
   border-bottom-right-radius: 0.125rem;
-  background-color: rgb(240 129 42);
+  background-color: theme('colors.primary.500');
   transform-origin: center;
   transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
 }

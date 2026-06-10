@@ -34,8 +34,8 @@
       </div>
 
       <!-- Verification message from registration -->
-      <div v-if="verificationMessage" class="rounded-md bg-blue-50 dark:bg-blue-900/20 p-4">
-        <p class="text-sm text-blue-800 dark:text-blue-400">{{ verificationMessage }}</p>
+      <div v-if="verificationMessage" class="rounded-md bg-primary-50 dark:bg-primary-900/20 p-4">
+        <p class="text-sm text-primary-800 dark:text-primary-400">{{ verificationMessage }}</p>
       </div>
 
       <!-- 2FA verification form -->
