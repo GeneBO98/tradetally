@@ -57,9 +57,18 @@ echo "[DEPLOY] Restarting backend..."
 pm2 restart all --update-env
 pm2 save >/dev/null 2>&1 || true
 
-# Reload nginx
+# Install repo-managed nginx snippets, then reload nginx
+echo "[DEPLOY] Installing nginx snippets..."
+if [ -f scripts/nginx/tradetally-og.conf ]; then
+  sudo mkdir -p /etc/nginx/snippets
+  sudo cp scripts/nginx/tradetally-og.conf /etc/nginx/snippets/tradetally-og.conf
+  if ! sudo grep -Rqs "tradetally-og.conf" /etc/nginx/sites-enabled /etc/nginx/conf.d 2>/dev/null; then
+    echo "[DEPLOY] NOTICE: add 'include /etc/nginx/snippets/tradetally-og.conf;' inside the tradetally server { } block (one-time step)"
+  fi
+fi
+
 echo "[DEPLOY] Reloading nginx..."
-sudo nginx -s reload
+sudo nginx -t && sudo nginx -s reload
 
 # Verify the live process is actually running the freshly deployed code.
 # Catches the "stale process" bug: the process start time must be newer than
