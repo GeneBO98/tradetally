@@ -233,7 +233,10 @@ const brokerLabel = computed(() => BROKER_LABELS[props.trade.broker] || props.tr
 
 
 async function ensureVerification() {
-  if (!props.trade?.broker_connection_id) {
+  // Only closed broker-synced trades can be verified; skip the round-trip for
+  // open positions and non-broker trades.
+  const isOpen = !props.trade?.exit_time && !props.trade?.exit_price
+  if (!props.trade?.broker_connection_id || isOpen) {
     verification.value = null
     return
   }
