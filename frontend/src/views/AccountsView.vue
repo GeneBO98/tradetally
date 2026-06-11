@@ -211,7 +211,7 @@
         <div class="card-body">
           <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Unmanaged Account Identifiers</h3>
           <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">
-            These account identifiers exist on your trades but don't have a managed account. Add them to track cashflow and balances.
+            These account identifiers exist on your trades or investments but don't have a managed account. Add them to set a display name and track cashflow and balances.
           </p>
 
           <div class="space-y-3">

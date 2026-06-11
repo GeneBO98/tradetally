@@ -274,6 +274,7 @@ import { usePlaidFundingStore } from '@/stores/plaidFunding'
 import BaseSelect from '@/components/common/BaseSelect.vue'
 import { useNotification } from '@/composables/useNotification'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 
 const props = defineProps({
   accounts: {
@@ -287,6 +288,7 @@ const emit = defineEmits(['refresh'])
 const store = usePlaidFundingStore()
 const { showSuccess, showError, showDangerConfirmation } = useNotification()
 const { formatCurrency } = useCurrencyFormatter()
+const { fetchAccounts: refreshGlobalAccountFilter } = useGlobalAccountFilter()
 
 const busyTarget = ref('')
 const linkingAccountId = ref('')
@@ -500,7 +502,8 @@ async function linkExistingAccount(plaidAccount) {
       linkedAccountId: selectedAccountIds[plaidAccount.id],
       trackingMode: trackingModes[plaidAccount.id]
     })
-    showSuccess('Account linked', 'Plaid account linked. Matching transfers will now appear in the review queue.')
+    showSuccess('Account linked', 'Plaid account linked. Holdings roll up to this account and matching transfers appear in the review queue.')
+    await refreshGlobalAccountFilter()
     emit('refresh')
   } catch (error) {
     showError('Link failed', error.response?.data?.message || error.message || 'Unable to link Plaid account')
@@ -519,6 +522,7 @@ function confirmUnlink(plaidAccount) {
         await store.unlinkPlaidAccount(plaidAccount.id)
         selectedAccountIds[plaidAccount.id] = ''
         showSuccess('Plaid account unlinked', 'This account no longer feeds into a TradeTally account.')
+        await refreshGlobalAccountFilter()
         emit('refresh')
       } catch (error) {
         showError('Unlink failed', error.response?.data?.message || error.message || 'Unable to unlink Plaid account')
@@ -545,7 +549,8 @@ async function createAndLinkAccount(plaidAccount) {
         notes: `Created from Plaid ${plaidAccount.accountType || 'account'} connection`
       }
     })
-    showSuccess('Account created', 'TradeTally account created and linked to Plaid.')
+    showSuccess('Account created', 'Account created and linked. Trades, holdings, and Plaid transfers now roll up here — rename it anytime from your accounts list.')
+    await refreshGlobalAccountFilter()
     emit('refresh')
   } catch (error) {
     showError('Create failed', error.response?.data?.message || error.message || 'Unable to create and link account')

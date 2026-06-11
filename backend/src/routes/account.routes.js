@@ -56,6 +56,7 @@ router.post('/:accountId/transactions', validate(schemas.accountTransaction), ac
 
 // Cashflow
 router.get('/:accountId/cashflow', accountController.getCashflow);
+router.get('/:accountId/cashflow/day', accountController.getDayActivity);
 router.get('/:accountId/debug-cashflow', accountController.debugCashflow);
 
 // Fix trades with redacted account identifiers

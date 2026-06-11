@@ -1,4 +1,5 @@
 jest.mock('../../src/models/Account', () => ({
+  create: jest.fn(),
   addTransaction: jest.fn(),
   deleteTransaction: jest.fn()
 }));
@@ -6,6 +7,10 @@ jest.mock('../../src/models/Account', () => ({
 jest.mock('../../src/models/PlaidConnection', () => ({
   hasSchema: jest.fn(() => Promise.resolve(true)),
   findByUserId: jest.fn(),
+  findById: jest.fn(),
+  findAccountById: jest.fn(),
+  setAccountLink: jest.fn(),
+  listTransactionsByPlaidAccount: jest.fn(),
   listReviewQueue: jest.fn(),
   listReviewedActivity: jest.fn(),
   listSyncedActivity: jest.fn(),
@@ -27,9 +32,20 @@ jest.mock('../../src/services/plaid/plaidClient', () => ({
   syncTransactions: jest.fn()
 }));
 
+jest.mock('../../src/config/database', () => ({
+  query: jest.fn(),
+  connect: jest.fn()
+}));
+
+jest.mock('../../src/services/analyticsCache', () => ({
+  invalidate: jest.fn()
+}));
+
 const Account = require('../../src/models/Account');
 const PlaidConnection = require('../../src/models/PlaidConnection');
 const plaidClient = require('../../src/services/plaid/plaidClient');
+const db = require('../../src/config/database');
+const AnalyticsCache = require('../../src/services/analyticsCache');
 const plaidFundingService = require('../../src/services/plaid/plaidFundingService');
 
 describe('plaidFundingService approveTransaction', () => {
@@ -251,6 +267,72 @@ describe('plaidFundingService sync auto-approval', () => {
       'deposit'
     );
     expect(PlaidConnection.markTransactionRuleApplied).toHaveBeenCalledWith('rule-1');
+  });
+});
+
+describe('plaidFundingService linkPlaidAccount unification', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    PlaidConnection.hasSchema.mockResolvedValue(true);
+    PlaidConnection.listTransactionsByPlaidAccount.mockResolvedValue([]);
+  });
+
+  test('adopts the synthetic Plaid identifier when creating a managed account', async () => {
+    PlaidConnection.findAccountById.mockResolvedValue({
+      id: 'plaid-account-row-1',
+      connectionId: 'connection-1',
+      mask: '1234'
+    });
+    PlaidConnection.findById.mockResolvedValue({
+      id: 'connection-1',
+      institutionName: 'Fidelity'
+    });
+    Account.create.mockResolvedValue({ id: 'acct-new' });
+    PlaidConnection.setAccountLink.mockResolvedValue({ id: 'plaid-account-row-1', linkedAccountId: 'acct-new' });
+    // unifyHoldingsForLinkedAccount SELECT: new account already carries the
+    // synthetic identifier, so no re-tag UPDATE should run.
+    db.query.mockResolvedValue({ rows: [{ account_identifier: 'Fidelity 1234' }], rowCount: 0 });
+
+    await plaidFundingService.linkPlaidAccount('user-1', 'plaid-account-row-1', {
+      trackingMode: 'tracked_account',
+      newAccount: { accountName: 'Roth IRA' }
+    });
+
+    expect(Account.create).toHaveBeenCalledWith('user-1', expect.objectContaining({
+      accountName: 'Roth IRA',
+      accountIdentifier: 'Fidelity 1234'
+    }));
+    // Only the SELECT ran; the early-return skipped the UPDATE.
+    expect(db.query).toHaveBeenCalledTimes(1);
+    expect(AnalyticsCache.invalidate).not.toHaveBeenCalled();
+  });
+
+  test('re-tags existing Plaid holdings when linking to an account with a different identifier', async () => {
+    PlaidConnection.findAccountById.mockResolvedValue({
+      id: 'plaid-account-row-1',
+      connectionId: 'connection-1',
+      mask: '1234'
+    });
+    PlaidConnection.findById.mockResolvedValue({
+      id: 'connection-1',
+      institutionName: 'Fidelity'
+    });
+    PlaidConnection.setAccountLink.mockResolvedValue({ id: 'plaid-account-row-1', linkedAccountId: 'acct-existing' });
+    db.query
+      .mockResolvedValueOnce({ rows: [{ account_identifier: '****5560' }] }) // SELECT target identifier
+      .mockResolvedValueOnce({ rowCount: 3 }); // UPDATE re-tag
+
+    await plaidFundingService.linkPlaidAccount('user-1', 'plaid-account-row-1', {
+      linkedAccountId: 'acct-existing',
+      trackingMode: 'tracked_account'
+    });
+
+    expect(Account.create).not.toHaveBeenCalled();
+    expect(db.query).toHaveBeenLastCalledWith(
+      expect.stringContaining('UPDATE investment_lots'),
+      ['****5560', 'user-1', 'Fidelity 1234']
+    );
+    expect(AnalyticsCache.invalidate).toHaveBeenCalledWith('user-1');
   });
 });
 

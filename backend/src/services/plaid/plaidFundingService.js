@@ -1,11 +1,13 @@
 const db = require('../../config/database');
 const Account = require('../../models/Account');
+const AnalyticsCache = require('../analyticsCache');
 const PlaidBalanceSnapshot = require('../../models/PlaidBalanceSnapshot');
 const PlaidConnection = require('../../models/PlaidConnection');
 const PlaidSecurity = require('../../models/PlaidSecurity');
 const plaidClient = require('./plaidClient');
 const plaidClassificationService = require('./plaidClassificationService');
 const plaidHoldingsSyncService = require('./plaidHoldingsSyncService');
+const { derivePlaidAccountIdentifier } = require('./plaidAccountIdentifier');
 
 function formatDate(value) {
   if (!value) return null;
@@ -190,11 +192,27 @@ class PlaidFundingService {
       newAccount
     } = payload;
 
+    // Resolve the synthetic identifier this Plaid account's holdings are
+    // already stamped with, so a newly created managed account can adopt the
+    // same identifier (positions roll up immediately) and an existing account
+    // can have its lots re-tagged below.
+    const existingPlaidAccount = await PlaidConnection.findAccountById(plaidAccountId, userId);
+    if (!existingPlaidAccount) {
+      throw new Error('Plaid account not found');
+    }
+    const connection = await PlaidConnection.findById(existingPlaidAccount.connectionId, userId, false);
+    const syntheticIdentifier = derivePlaidAccountIdentifier(
+      connection?.institutionName,
+      existingPlaidAccount.mask
+    );
+
     let targetAccountId = linkedAccountId || null;
     if (!targetAccountId && newAccount?.accountName) {
       const createdAccount = await Account.create(userId, {
         accountName: newAccount.accountName,
-        accountIdentifier: newAccount.accountIdentifier || null,
+        // Default to the same identifier the holdings sync uses so trades,
+        // holdings, and cash for this Plaid account all roll up here.
+        accountIdentifier: newAccount.accountIdentifier || syntheticIdentifier,
         broker: newAccount.broker || 'other',
         initialBalance: parseFloat(newAccount.initialBalance) || 0,
         initialBalanceDate: newAccount.initialBalanceDate || formatDate(new Date()),
@@ -219,8 +237,42 @@ class PlaidFundingService {
       throw new Error('Plaid account not found');
     }
 
+    await this.unifyHoldingsForLinkedAccount(userId, targetAccountId, syntheticIdentifier);
     await this.reclassifyTransactionsForPlaidAccount(userId, plaidAccount);
     return plaidAccount;
+  }
+
+  /**
+   * Re-tag already-synced Plaid holdings so they match the managed account this
+   * Plaid account was just linked to. Lots are stamped with the synthetic
+   * identifier at sync time; when the linked account uses a different
+   * identifier (e.g. linking to an existing "****1234" account), the lots would
+   * otherwise stay orphaned until the next holdings sync. No-op when the
+   * managed account has no identifier or already matches the synthetic value.
+   */
+  async unifyHoldingsForLinkedAccount(userId, managedAccountId, syntheticIdentifier) {
+    if (!syntheticIdentifier) return;
+
+    const accountResult = await db.query(
+      `SELECT account_identifier FROM user_accounts WHERE id = $1 AND user_id = $2`,
+      [managedAccountId, userId]
+    );
+    const targetIdentifier = accountResult.rows[0]?.account_identifier;
+    if (!targetIdentifier || targetIdentifier === syntheticIdentifier) {
+      return;
+    }
+
+    const updated = await db.query(
+      `UPDATE investment_lots
+       SET account_identifier = $1
+       WHERE user_id = $2 AND source = 'plaid' AND account_identifier = $3`,
+      [targetIdentifier, userId, syntheticIdentifier]
+    );
+
+    if (updated.rowCount > 0) {
+      console.log(`[PLAID] Re-tagged ${updated.rowCount} holding lot(s) from "${syntheticIdentifier}" to "${targetIdentifier}"`);
+      await AnalyticsCache.invalidate(userId);
+    }
   }
 
   async unlinkPlaidAccount(userId, plaidAccountId) {

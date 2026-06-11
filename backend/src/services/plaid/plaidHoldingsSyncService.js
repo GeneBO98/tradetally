@@ -2,6 +2,7 @@ const db = require('../../config/database');
 const PlaidSecurity = require('../../models/PlaidSecurity');
 const HoldingsService = require('../holdingsService');
 const plaidClient = require('./plaidClient');
+const { derivePlaidAccountIdentifier } = require('./plaidAccountIdentifier');
 
 function round(value, decimals) {
   const factor = 10 ** decimals;
@@ -147,8 +148,7 @@ class PlaidHoldingsSyncService {
     }
 
     if (!identifier) {
-      const institution = connection.institutionName || 'Plaid';
-      identifier = plaidAccount.mask ? `${institution} ${plaidAccount.mask}` : institution;
+      identifier = derivePlaidAccountIdentifier(connection.institutionName, plaidAccount.mask);
     }
 
     cache.set(cacheKey, identifier);

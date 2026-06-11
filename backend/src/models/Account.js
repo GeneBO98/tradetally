@@ -103,24 +103,39 @@ class Account {
   }
 
   /**
-   * Get distinct account identifiers from trades that aren't linked to any account
+   * Get distinct account identifiers from trades and investment holdings that
+   * aren't linked to any managed account. Investment lots (e.g. Plaid-synced
+   * brokerage accounts) only ever store their identifier on investment_lots,
+   * never on trades, so they must be unioned in here or they would have no way
+   * to be adopted into an editable managed account.
    */
   static async getUnlinkedAccountIdentifiers(userId) {
     const query = `
-      SELECT DISTINCT t.account_identifier, t.broker,
-        MIN(COALESCE(t.entry_time::date, t.trade_date)) as earliest_trade_date
-      FROM trades t
-      WHERE t.user_id = $1
-        AND t.account_identifier IS NOT NULL
-        AND t.account_identifier != ''
-        AND t.account_identifier NOT IN (
-          SELECT COALESCE(account_identifier, '')
-          FROM user_accounts
-          WHERE user_id = $1
-            AND account_identifier IS NOT NULL
-        )
-      GROUP BY t.account_identifier, t.broker
-      ORDER BY t.account_identifier
+      SELECT account_identifier,
+        (ARRAY_REMOVE(ARRAY_AGG(DISTINCT broker), NULL))[1] as broker,
+        MIN(earliest_date) as earliest_trade_date
+      FROM (
+        SELECT t.account_identifier, t.broker,
+          COALESCE(t.entry_time::date, t.trade_date) as earliest_date
+        FROM trades t
+        WHERE t.user_id = $1
+          AND t.account_identifier IS NOT NULL
+          AND t.account_identifier != ''
+        UNION ALL
+        SELECT l.account_identifier, l.broker, l.purchase_date as earliest_date
+        FROM investment_lots l
+        WHERE l.user_id = $1
+          AND l.account_identifier IS NOT NULL
+          AND l.account_identifier != ''
+      ) combined
+      WHERE combined.account_identifier NOT IN (
+        SELECT COALESCE(account_identifier, '')
+        FROM user_accounts
+        WHERE user_id = $1
+          AND account_identifier IS NOT NULL
+      )
+      GROUP BY account_identifier
+      ORDER BY account_identifier
     `;
 
     const result = await db.query(query, [userId]);
@@ -704,6 +719,108 @@ class Account {
       },
       cashflow: cashflowData,
       summary
+    };
+  }
+
+  /**
+   * Itemized breakdown of what drove a single day's inflow/outflow: the trade
+   * entries/exits that moved cash on that date plus any deposits/withdrawals.
+   *
+   * Mirrors getCashflow's attribution exactly so the items line up with the
+   * daily row: ENTRY cash is dated by entry_time (LONG buy = outflow, SHORT
+   * sell = inflow) and EXIT cash by exit_time (LONG sell = inflow, SHORT cover
+   * = outflow). Amounts are gross trade value (price x qty x multiplier);
+   * commission is returned alongside for context but not netted in here — the
+   * authoritative net/fees for the day come from getCashflow.
+   */
+  static async getDayActivity(userId, accountId, date) {
+    const account = await this.findById(accountId, userId);
+    if (!account) return null;
+
+    const multiplierExpr = `(
+      CASE
+        WHEN instrument_type = 'option' THEN COALESCE(contract_size, 100)
+        WHEN instrument_type = 'future' THEN COALESCE(point_value, 1)
+        ELSE 1
+      END
+    )`;
+
+    const accountMatch = `(
+      ($2::varchar IS NOT NULL AND account_identifier = $2)
+      OR ($2::varchar IS NULL AND (account_identifier IS NULL OR account_identifier = ''))
+    )`;
+
+    const tradesQuery = `
+      SELECT * FROM (
+        SELECT
+          id, symbol, side, instrument_type, quantity, pnl,
+          'entry' AS event_type,
+          COALESCE(entry_time, trade_date::timestamp) AS event_time,
+          entry_price AS price,
+          (entry_price * quantity * ${multiplierExpr}) AS gross_amount,
+          CASE WHEN side IN ('short', 'sell') THEN 'inflow' ELSE 'outflow' END AS direction,
+          COALESCE(entry_commission, 0) AS commission
+        FROM trades
+        WHERE user_id = $1
+          AND ${accountMatch}
+          AND entry_price IS NOT NULL
+          AND DATE(COALESCE(entry_time, trade_date)) = $3
+        UNION ALL
+        SELECT
+          id, symbol, side, instrument_type, quantity, pnl,
+          'exit' AS event_type,
+          exit_time AS event_time,
+          exit_price AS price,
+          (exit_price * quantity * ${multiplierExpr}) AS gross_amount,
+          CASE WHEN side IN ('long', 'buy') THEN 'inflow' ELSE 'outflow' END AS direction,
+          COALESCE(exit_commission, 0) AS commission
+        FROM trades
+        WHERE user_id = $1
+          AND ${accountMatch}
+          AND exit_time IS NOT NULL
+          AND exit_price IS NOT NULL
+          AND DATE(exit_time) = $3
+      ) events
+      ORDER BY event_time ASC, symbol ASC
+    `;
+
+    const transactionsQuery = `
+      SELECT id, transaction_type, amount, description, source_type
+      FROM account_transactions
+      WHERE user_id = $1
+        AND account_id = $2
+        AND transaction_date = $3
+      ORDER BY created_at ASC
+    `;
+
+    const [tradesResult, transactionsResult] = await Promise.all([
+      db.query(tradesQuery, [userId, account.account_identifier, date]),
+      db.query(transactionsQuery, [userId, accountId, date])
+    ]);
+
+    return {
+      date,
+      trades: tradesResult.rows.map(row => ({
+        id: row.id,
+        symbol: row.symbol,
+        side: row.side,
+        instrumentType: row.instrument_type,
+        quantity: parseFloat(row.quantity),
+        eventType: row.event_type,
+        eventTime: row.event_time,
+        price: row.price !== null ? parseFloat(row.price) : null,
+        grossAmount: parseFloat(row.gross_amount) || 0,
+        direction: row.direction,
+        commission: parseFloat(row.commission) || 0,
+        pnl: row.pnl !== null && row.pnl !== undefined ? parseFloat(row.pnl) : null
+      })),
+      transactions: transactionsResult.rows.map(tx => ({
+        id: tx.id,
+        transactionType: tx.transaction_type,
+        amount: parseFloat(tx.amount) || 0,
+        description: tx.description,
+        sourceType: tx.source_type
+      }))
     };
   }
 }

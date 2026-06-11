@@ -3204,6 +3204,10 @@ class Trade {
         SELECT account_identifier
         FROM user_accounts
         WHERE user_id = $1 AND account_identifier IS NOT NULL AND account_identifier != ''
+        UNION
+        SELECT account_identifier
+        FROM investment_lots
+        WHERE user_id = $1 AND account_identifier IS NOT NULL AND account_identifier != ''
       ) combined
       ORDER BY account_identifier
     `;
