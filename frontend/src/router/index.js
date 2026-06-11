@@ -84,8 +84,10 @@ const router = createRouter({
     {
       path: '/trades/:id',
       name: 'trade-detail',
+      // Public trades are viewable without login (shared links). The view loads
+      // the trade and, if it's private/not found for a guest, redirects to login.
       component: () => import('@/views/trades/TradeDetailView.vue'),
-      meta: { requiresAuth: true }
+      meta: { publicViewable: true }
     },
     {
       path: '/trades/:id/edit',
