@@ -1,5 +1,7 @@
 const activityTrackingService = require('../services/activityTrackingService');
 const { getClientIp } = require('../utils/clientIp');
+const db = require('../config/database');
+const jwt = require('jsonwebtoken');
 
 // Map routes to meaningful event types
 const ROUTE_EVENT_MAP = {
@@ -86,6 +88,8 @@ function activityTrackingMiddleware(req, res, next) {
       if (path.startsWith(prefix)) return next();
     }
   }
+
+  trackActiveRequest(req, res);
 
   const startTime = Date.now();
 
@@ -178,6 +182,57 @@ function activityTrackingMiddleware(req, res, next) {
   };
 
   next();
+}
+
+function getRequestUserId(req) {
+  const token = req.header('Authorization')?.replace('Bearer ', '') || req.cookies?.token;
+  if (!token || !process.env.JWT_SECRET) return null;
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    return decoded?.id || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function trackActiveRequest(req, res) {
+  const userId = getRequestUserId(req);
+  if (!userId) return;
+
+  const requestPromise = db.query(
+    `
+    INSERT INTO active_user_requests (user_id, method, path, process_id, user_agent)
+    VALUES ($1, $2, $3, $4, $5)
+    RETURNING id
+    `,
+    [userId, req.method, req.originalUrl || req.path, process.pid, req.headers['user-agent'] || null]
+  );
+
+  requestPromise.catch((err) => {
+    console.error('[ACTIVITY_TRACKING] Active request start error:', err.message);
+  });
+
+  res.on('finish', () => {
+    requestPromise
+      .then((result) => {
+        const requestId = result.rows[0]?.id;
+        if (!requestId) return null;
+
+        return db.query(
+          `
+          UPDATE active_user_requests
+          SET completed_at = CURRENT_TIMESTAMP,
+              status_code = $2
+          WHERE id = $1
+          `,
+          [requestId, res.statusCode]
+        );
+      })
+      .catch((err) => {
+        console.error('[ACTIVITY_TRACKING] Active request finish error:', err.message);
+      });
+  });
 }
 
 module.exports = activityTrackingMiddleware;

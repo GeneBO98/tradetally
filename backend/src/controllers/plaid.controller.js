@@ -1,10 +1,19 @@
 const PlaidBalanceSnapshot = require('../models/PlaidBalanceSnapshot');
 const plaidFundingService = require('../services/plaid/plaidFundingService');
 
-function getPlaidErrorStatus(error, fallbackStatus = 500) {
-  return /not configured|not available|funding tables/i.test(error.message)
-    ? 503
-    : fallbackStatus;
+function getPlaidErrorStatus(error, fallback = 500) {
+  if (Number.isInteger(error.status) && error.status >= 400 && error.status < 600) {
+    return error.status;
+  }
+  return fallback;
+}
+
+function buildPlaidErrorResponse(error, fallbackMessage) {
+  return {
+    success: false,
+    message: error.message || fallbackMessage,
+    plaid: error.plaid || undefined
+  };
 }
 
 const plaidController = {
@@ -14,11 +23,10 @@ const plaidController = {
       const data = await plaidFundingService.createLinkToken(req.user, targetType);
       res.json({ success: true, data });
     } catch (error) {
-      const status = getPlaidErrorStatus(error);
-      res.status(status).json({
-        success: false,
-        message: error.message || 'Failed to create Plaid Link token'
-      });
+      const status = /not configured/i.test(error.message)
+        ? 503
+        : getPlaidErrorStatus(error, 500);
+      res.status(status).json(buildPlaidErrorResponse(error, 'Failed to create Plaid Link token'));
     }
   },
 
@@ -46,11 +54,10 @@ const plaidController = {
         data: connection
       });
     } catch (error) {
-      const status = getPlaidErrorStatus(error);
-      return res.status(status).json({
-        success: false,
-        message: error.message || 'Failed to exchange Plaid public token'
-      });
+      const status = /not configured/i.test(error.message)
+        ? 503
+        : getPlaidErrorStatus(error, 500);
+      return res.status(status).json(buildPlaidErrorResponse(error, 'Failed to exchange Plaid public token'));
     }
   },
 
@@ -142,11 +149,10 @@ const plaidController = {
       });
       res.json({ success: true, data: result });
     } catch (error) {
-      const status = /not found/i.test(error.message) ? 404 : getPlaidErrorStatus(error);
-      res.status(status).json({
-        success: false,
-        message: error.message || 'Failed to sync Plaid connection'
-      });
+      const status = /not found/i.test(error.message)
+        ? 404
+        : getPlaidErrorStatus(error, 500);
+      res.status(status).json(buildPlaidErrorResponse(error, 'Failed to sync Plaid connection'));
     }
   },
 

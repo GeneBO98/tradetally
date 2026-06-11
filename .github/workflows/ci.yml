@@ -1,0 +1,36 @@
+name: CI
+
+# Gate every change to main behind a build + test. This would have caught both
+# failures from the cloud-main merge before they reached prod: the missing
+# @vueuse/motion dependency (build) and the stale billing test (test).
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable corepack (pnpm from packageManager field)
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend
+        run: pnpm --dir frontend run build
+
+      - name: Test backend
+        run: pnpm --dir backend test

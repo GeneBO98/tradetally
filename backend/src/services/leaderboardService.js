@@ -4,12 +4,9 @@ const TierService = require('./tierService');
 
 class LeaderboardService {
   static async getParticipantFilter(alias = 'u') {
-    const billingEnabled = await TierService.isBillingEnabled();
-    if (!billingEnabled) {
-      return '1=1';
-    }
-
-    return `(${alias}.role IN ('admin', 'owner') OR ${alias}.tier = 'pro')`;
+    // Leaderboard visibility is tier-gated per viewer in getLeaderboardLimitForUser().
+    // Rankings themselves should include every trader who has not opted out.
+    return '1=1';
   }
 
   static async getLeaderboardLimitForUser(userId, requestedLimit = 100) {
@@ -110,7 +107,6 @@ class LeaderboardService {
       GROUP BY t.user_id
       HAVING COUNT(*) >= 1
       ORDER BY score DESC
-      LIMIT 100
     `;
     
     const result = await db.query(query);
@@ -147,7 +143,6 @@ class LeaderboardService {
         AND t.pnl > 0
       GROUP BY t.user_id
       ORDER BY score DESC
-      LIMIT 100
     `;
     
     const result = await db.query(query);
@@ -184,7 +179,6 @@ class LeaderboardService {
         AND t.pnl < 0
       GROUP BY t.user_id
       ORDER BY score ASC
-      LIMIT 100
     `;
     
     const result = await db.query(query);
@@ -223,7 +217,6 @@ class LeaderboardService {
       FROM user_streaks
       WHERE revenge_free_days > 0
       ORDER BY revenge_free_days DESC
-      LIMIT 100
     `;
     
     const result = await db.query(query);
@@ -281,7 +274,6 @@ class LeaderboardService {
         ) as metadata
       FROM user_consistency
       ORDER BY score DESC
-      LIMIT 100
     `;
     
     const result = await db.query(query);
@@ -346,7 +338,6 @@ class LeaderboardService {
         ) as metadata
       FROM user_risk
       ORDER BY score DESC
-      LIMIT 100
     `;
     
     const result = await db.query(query);
@@ -375,7 +366,6 @@ class LeaderboardService {
         AND ${participantFilter}
         AND gs.total_points > 0
       ORDER BY gs.total_points DESC
-      LIMIT 100
     `;
     
     const result = await db.query(query);
@@ -996,17 +986,21 @@ class LeaderboardService {
     return result.rows[0];
   }
   
-  // Calculate trading consistency based on volume and average P&L
+  // Calculate trading consistency from repeatable, positive closed-trade outcomes.
   static async calculateTradingConsistency(leaderboard) {
+    const dateFilter = this.getDateFilter(leaderboard);
     const participantFilter = await this.getParticipantFilter('u');
     const query = `
       WITH user_stats AS (
         SELECT 
           t.user_id,
           COUNT(*) as total_trades,
-          AVG(ABS(t.quantity * t.entry_price)) as avg_volume,
+          SUM(t.pnl) as total_pnl,
           AVG(t.pnl) as avg_pnl,
-          STDDEV(t.pnl) as pnl_stddev,
+          AVG(ABS(t.pnl)) as avg_abs_pnl,
+          STDDEV_SAMP(t.pnl) as pnl_stddev,
+          SUM(CASE WHEN t.pnl > 0 THEN t.pnl ELSE 0 END) as gross_profit,
+          ABS(SUM(CASE WHEN t.pnl < 0 THEN t.pnl ELSE 0 END)) as gross_loss,
           COUNT(CASE WHEN t.pnl > 0 THEN 1 END)::float / NULLIF(COUNT(*), 0) * 100 as win_rate
         FROM trades t
         JOIN users u ON u.id = t.user_id
@@ -1015,45 +1009,75 @@ class LeaderboardService {
           AND ${participantFilter}
           AND t.exit_time IS NOT NULL
           AND t.pnl IS NOT NULL
-          AND t.quantity IS NOT NULL
-          AND t.entry_price IS NOT NULL
+          ${dateFilter}
         GROUP BY t.user_id
         HAVING COUNT(*) >= 10  -- Need at least 10 trades for meaningful consistency
       ),
-      consistency_scores AS (
+      score_components AS (
         SELECT 
           user_id,
           total_trades,
-          avg_volume,
+          total_pnl,
+          avg_pnl,
+          avg_abs_pnl,
+          pnl_stddev,
+          CASE
+            WHEN gross_loss = 0 AND gross_profit > 0 THEN 999
+            WHEN gross_loss = 0 THEN 0
+            ELSE gross_profit / gross_loss
+          END as profit_factor,
+          win_rate,
+          CASE
+            WHEN avg_pnl <= 0 OR avg_abs_pnl = 0 THEN 0
+            ELSE LEAST(1, avg_pnl / NULLIF(avg_abs_pnl, 0))
+          END as expectancy_score,
+          CASE
+            WHEN avg_pnl <= 0 THEN 0
+            WHEN pnl_stddev IS NULL OR pnl_stddev = 0 THEN 1
+            ELSE 1 / (1 + (pnl_stddev / NULLIF(avg_abs_pnl, 0)))
+          END as stability_score,
+          LEAST(1, LN(total_trades::numeric) / LN(50::numeric)) as sample_confidence
+        FROM user_stats
+      ),
+      consistency_scores AS (
+        SELECT
+          user_id,
+          total_trades,
+          total_pnl,
           avg_pnl,
           pnl_stddev,
+          profit_factor,
           win_rate,
-          -- Consistency score: Higher avg_pnl and lower volatility = better
-          -- Also factor in volume (bigger positions = more impressive)
-          CASE 
-            WHEN pnl_stddev = 0 OR pnl_stddev IS NULL THEN 100
-            ELSE GREATEST(0, 
-              (avg_pnl / NULLIF(pnl_stddev, 0)) * 
-              (win_rate / 100) * 
-              (1 + LOG(GREATEST(1, avg_volume / 1000))) -- Volume bonus
-            )
+          expectancy_score,
+          stability_score,
+          sample_confidence,
+          CASE
+            WHEN avg_pnl <= 0 THEN 0
+            ELSE 100 * (
+              (0.45 * expectancy_score) +
+              (0.35 * stability_score) +
+              (0.20 * (win_rate / 100))
+            ) * sample_confidence
           END as consistency_score
-        FROM user_stats
+        FROM score_components
       )
       SELECT 
         user_id,
         ROUND(consistency_score::numeric, 2) as score,
         json_build_object(
           'total_trades', total_trades,
-          'avg_volume', ROUND(avg_volume::numeric, 0),
+          'total_pnl', ROUND(total_pnl::numeric, 2),
           'avg_pnl', ROUND(avg_pnl::numeric, 2),
           'win_rate', ROUND(win_rate::numeric, 2),
           'volatility', ROUND(pnl_stddev::numeric, 2),
+          'profit_factor', ROUND(LEAST(999, profit_factor)::numeric, 2),
+          'expectancy_score', ROUND((expectancy_score * 100)::numeric, 2),
+          'stability_score', ROUND((stability_score * 100)::numeric, 2),
+          'sample_confidence', ROUND((sample_confidence * 100)::numeric, 2),
           'consistency_score', ROUND(consistency_score::numeric, 2)
         ) as metadata
       FROM consistency_scores
       ORDER BY score DESC
-      LIMIT 100
     `;
     
     const result = await db.query(query);

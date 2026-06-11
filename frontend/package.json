@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node ./scripts/prerender-seo-pages.mjs",
     "preview": "vite preview",
     "test": "vitest",
     "test:run": "vitest run"
@@ -17,6 +17,7 @@
     "@mdi/js": "^7.4.47",
     "@simplewebauthn/browser": "^13.2.2",
     "@stripe/stripe-js": "^2.4.0",
+    "@vueuse/motion": "^2.2.6",
     "axios": "^1.17.0",
     "chart.js": "^4.5.1",
     "date-fns": "^2.30.0",

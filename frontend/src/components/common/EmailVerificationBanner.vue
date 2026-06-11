@@ -16,7 +16,12 @@
           <div class="flex items-center space-x-2">
             <ExclamationTriangleIcon class="h-5 w-5 flex-shrink-0" />
             <span class="text-sm font-medium">
-              Please verify your email address. Check your inbox or
+              <template v-if="trialPitchVisible">
+                <span class="font-semibold">Verify your email to extend your trial to a full month</span> — your 14 days are already running. Check your inbox or
+              </template>
+              <template v-else>
+                Please verify your email address. Check your inbox or
+              </template>
               <button
                 @click="handleResend"
                 :disabled="resendLoading || resendCooldown > 0"
@@ -45,12 +50,16 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { useRegistrationMode } from '@/composables/useRegistrationMode'
 import { useNotification } from '@/composables/useNotification'
 import { ExclamationTriangleIcon, XMarkIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
 
 const authStore = useAuthStore()
+const { isBillingEnabled, fetchRegistrationConfig } = useRegistrationMode()
 const { showSuccess, showError } = useNotification()
+
+const trialPitchVisible = computed(() => isBillingEnabled.value)
 
 const dismissed = ref(false)
 const resendLoading = ref(false)
@@ -112,6 +121,10 @@ async function handleResend() {
 }
 
 onMounted(() => {
+  // Make sure the registration config is loaded so trialPitchVisible reflects
+  // billing state on the very first banner render after auth.
+  fetchRegistrationConfig()
+
   const dismissedAt = localStorage.getItem(DISMISS_KEY)
   if (dismissedAt) {
     const dismissedTime = parseInt(dismissedAt, 10)

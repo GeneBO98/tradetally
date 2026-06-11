@@ -29,6 +29,48 @@
         </button>
       </div>
 
+      <!-- Verification status: tell the owner what the badge means (or why
+           there is no badge) instead of leaving it implicit. -->
+      <div
+        v-if="verification?.status === 'broker_verified'"
+        class="rounded-lg border border-success/30 bg-success/5 px-4 py-3"
+      >
+        <p class="text-sm font-medium text-success">Broker-verified</p>
+        <p class="mt-0.5 text-xs leading-relaxed text-gray-600 dark:text-gray-400">
+          This card carries a public attestation link. Anyone who opens it can
+          confirm the trade was imported from your connected {{ brokerLabel }}
+          account and hasn't been edited since. Changing the trade's prices,
+          size, or timestamps revokes the verification automatically.
+        </p>
+        <a
+          :href="`/v/${verification.public_code}`"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="mt-1.5 inline-block text-xs font-medium text-success hover:underline"
+        >View the public verification page</a>
+      </div>
+      <div
+        v-else-if="verification?.status === 'revoked'"
+        class="rounded-lg border border-warning/30 bg-warning/5 px-4 py-3"
+      >
+        <p class="text-sm font-medium text-warning">Verification revoked</p>
+        <p class="mt-0.5 text-xs leading-relaxed text-gray-600 dark:text-gray-400">
+          This trade was edited after it was verified, so the card no longer
+          carries a badge and its verification page shows a warning.
+        </p>
+      </div>
+      <div
+        v-else-if="!trade.broker_connection_id"
+        class="rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-3"
+      >
+        <p class="text-sm font-medium text-gray-700 dark:text-gray-300">Not verifiable</p>
+        <p class="mt-0.5 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+          Verified badges are only available for trades imported through broker
+          sync, because TradeTally can attest those came straight from your
+          brokerage. CSV imports and manual entries can't be verified.
+        </p>
+      </div>
+
       <!-- Link sharing: public trades are viewable by anyone at /trades/:id -->
       <div class="rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-3">
         <template v-if="isPublic">
@@ -176,6 +218,44 @@ async function makePublic() {
   }
 }
 const canNativeShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function'
+
+// Cloud-only: broker verification for the badge. The endpoints exist only on
+// tradetally.io; failures of any kind simply mean no badge.
+const verification = ref(null)
+
+const BROKER_LABELS = {
+  schwab: 'Charles Schwab',
+  ibkr: 'Interactive Brokers',
+  tradestation: 'TradeStation',
+  alpaca: 'Alpaca'
+}
+const brokerLabel = computed(() => BROKER_LABELS[props.trade.broker] || props.trade.broker || 'broker')
+
+
+async function ensureVerification() {
+  // Only closed broker-synced trades can be verified; skip the round-trip for
+  // open positions and non-broker trades.
+  const isOpen = !props.trade?.exit_time && !props.trade?.exit_price
+  if (!props.trade?.broker_connection_id || isOpen) {
+    verification.value = null
+    return
+  }
+  try {
+    const response = await api.post(`/trades/${props.trade.id}/verification`, {
+      show_amounts: showDollarAmounts.value === true
+    })
+    verification.value = response.data.verification
+  } catch (error) {
+    // Issue failed (ineligible, offline, etc.) - an already-issued
+    // verification should still badge the card.
+    try {
+      const existing = await api.get(`/trades/${props.trade.id}/verification`)
+      verification.value = existing.data.verification
+    } catch (_) {
+      verification.value = null
+    }
+  }
+}
 
 const COLORS = {
   background: '#101418',
@@ -430,13 +510,43 @@ function draw(logo) {
   ctx.lineTo(CARD_WIDTH - PAD, CARD_HEIGHT - 86)
   ctx.stroke()
 
-  ctx.fillStyle = COLORS.textMuted
-  ctx.font = `500 24px ${FONT}`
-  ctx.fillText('Journaled with TradeTally', PAD, CARD_HEIGHT - 40)
-  ctx.textAlign = 'right'
-  ctx.fillStyle = COLORS.textSecondary
-  ctx.fillText('tradetally.io', CARD_WIDTH - PAD, CARD_HEIGHT - 40)
-  ctx.textAlign = 'left'
+  const isVerified = verification.value?.status === 'broker_verified'
+  if (isVerified) {
+    // Badge: filled check circle + label. The image itself proves nothing -
+    // the verify URL on the right is the actual attestation.
+    const badgeCenterY = CARD_HEIGHT - 49
+    ctx.fillStyle = COLORS.win
+    ctx.beginPath()
+    ctx.arc(PAD + 14, badgeCenterY, 14, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.strokeStyle = COLORS.background
+    ctx.lineWidth = 3.5
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    ctx.beginPath()
+    ctx.moveTo(PAD + 7.5, badgeCenterY + 0.5)
+    ctx.lineTo(PAD + 12, badgeCenterY + 5.5)
+    ctx.lineTo(PAD + 20.5, badgeCenterY - 5)
+    ctx.stroke()
+
+    ctx.fillStyle = COLORS.textPrimary
+    ctx.font = `600 24px ${FONT}`
+    ctx.fillText('Broker-verified', PAD + 40, CARD_HEIGHT - 40)
+
+    ctx.textAlign = 'right'
+    ctx.fillStyle = COLORS.textSecondary
+    ctx.font = `500 24px ${FONT}`
+    ctx.fillText(`Verify: ${window.location.host}/v/${verification.value.public_code}`, CARD_WIDTH - PAD, CARD_HEIGHT - 40)
+    ctx.textAlign = 'left'
+  } else {
+    ctx.fillStyle = COLORS.textMuted
+    ctx.font = `500 24px ${FONT}`
+    ctx.fillText('Journaled with TradeTally', PAD, CARD_HEIGHT - 40)
+    ctx.textAlign = 'right'
+    ctx.fillStyle = COLORS.textSecondary
+    ctx.fillText('tradetally.io', CARD_WIDTH - PAD, CARD_HEIGHT - 40)
+    ctx.textAlign = 'left'
+  }
 }
 
 function exportBlob() {
@@ -497,6 +607,7 @@ watch(
       linkCopied.value = false
       isPublic.value = props.trade.is_public === true
       const logo = await loadLogo()
+      await ensureVerification()
       await nextTick()
       draw(logo)
     }

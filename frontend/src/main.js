@@ -1,5 +1,6 @@
 import { createApp, watch } from 'vue'
 import { createPinia } from 'pinia'
+import { MotionPlugin } from '@vueuse/motion'
 import App from './App.vue'
 import router from './router'
 import './assets/main.css'
@@ -12,6 +13,7 @@ const AUTH_BOOTSTRAP_TIMEOUT_MS = 4000
 const GROWTHBOOK_BOOTSTRAP_TIMEOUT_MS = 1500
 
 app.use(createPinia())
+app.use(MotionPlugin)
 // router is installed inside bootstrap() after checkAuth() so the initial
 // navigation fires with the correct auth state. Installing it here would let
 // the router guard fire before the /auth/me response arrives, causing users

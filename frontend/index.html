@@ -19,8 +19,8 @@
     <meta property="og:description" content="Free open-source trading journal and investment tracker. Auto-sync Schwab and IBKR, stock analyzer, real-time holdings P&L, AI insights.">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://tradetally.io">
-    <meta property="og:image" content="https://tradetally.io/social-preview.png">
-    <meta property="og:image:secure_url" content="https://tradetally.io/social-preview.png">
+    <meta property="og:image" content="https://tradetally.io/social-preview-v2.png">
+    <meta property="og:image:secure_url" content="https://tradetally.io/social-preview-v2.png">
     <meta property="og:image:type" content="image/png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
@@ -34,7 +34,7 @@
     <meta name="twitter:creator" content="@TradeTallyIO">
     <meta name="twitter:title" content="TradeTally - Free Trading Journal and Investment Tracker">
     <meta name="twitter:description" content="Free open-source trading journal and investment tracker. Auto-sync Schwab and IBKR, stock analyzer, real-time holdings P&L, AI insights.">
-    <meta name="twitter:image" content="https://tradetally.io/social-preview.png">
+    <meta name="twitter:image" content="https://tradetally.io/social-preview-v2.png">
     <meta name="twitter:image:alt" content="TradeTally Trading Journal Platform">
     <link rel="me" href="https://x.com/TradeTallyIO">
 
@@ -101,25 +101,62 @@
     <div id="app">
       <!-- Loading spinner for JS clients until Vue replaces this container -->
       <div id="app-loading"><div class="spinner"></div></div>
-      <!-- Static fallback content for non-JS clients. Vue replaces this on mount. -->
+      <!-- Static fallback content for non-JS clients/crawlers. Vue replaces this on mount. -->
       <div id="app-fallback">
       <main>
         <section>
-          <h1>TradeTally</h1>
-          <p class="hero-sub">TradeTally is an open-source trading journal and investment tracker. The application requires JavaScript &mdash; please enable it in your browser, or use the links below.</p>
+          <h1>TradeTally Free Trading Journal and Investment Tracker for Day Traders</h1>
+          <p class="hero-sub">TradeTally is a free open-source trading journal and investment tracker built for active traders. Track every trade, import broker history, review analytics, and improve execution with practical workflows for stocks, options, and long-term portfolio management.</p>
           <div class="hero-cta">
-            <a href="/login">Log In</a>
-            <a href="/register">Create Account</a>
+            <a href="/register">Get Started Free</a>
+            <a href="/public">View Public Trades</a>
           </div>
         </section>
 
         <div class="seo-sections">
         <section>
+          <h2>Trading Journal Software with Broker Import</h2>
+          <p>TradeTally gives you a complete trading journal workflow: log entries and exits, save notes and charts, tag setups, and review outcomes over time. You can auto-sync with Charles Schwab and Interactive Brokers or use CSV imports from Lightspeed, Webull, TradingView, TradeStation, Tradovate, Questrade, and other brokers.</p>
+        </section>
+
+        <section>
+          <h2>Investment Tracker and Performance Analytics</h2>
+          <p>As an investment tracker, TradeTally helps you monitor holdings, review unrealized and realized P&amp;L, and analyze performance by symbol, strategy, and time period. Advanced metrics and AI-assisted insights make it easier to identify what is working and what is hurting your trading results.</p>
+        </section>
+
+        <section>
+          <h2>Open Source and Self-Hosted Trading Journal</h2>
+          <p>TradeTally is open source and can be self-hosted with Docker if you prefer full infrastructure control. Cloud users can get started immediately, while self-hosted users can run the same product with their own data policies, deployment process, and security controls.</p>
+        </section>
+
+        <section>
+          <h2>Compare TradeTally to Other Trading Journals</h2>
+          <p>If you are evaluating alternatives to TraderVue or TraderSync, review our comparison pages and FAQ to see feature coverage, pricing differences, and broker support details. TradeTally offers unlimited trade storage on the free tier and a low-cost Pro tier for deeper analytics and automation.</p>
           <nav>
-            <a href="/public">Public Trades</a>
+            <a href="/features">Features</a>
+            <a href="/compare">Compare Platforms</a>
+            <a href="/pricing">Pricing</a>
+            <a href="/tools">Free Trader Tools</a>
+            <a href="/faq">FAQ</a>
             <a href="/privacy">Privacy Policy</a>
-            <a href="https://docs.tradetally.io" target="_blank" rel="noopener noreferrer">Documentation</a>
-            <a href="https://github.com/GeneBO98/tradetally" target="_blank" rel="noopener noreferrer">GitHub</a>
+            <a href="/public">Public Trades</a>
+            <a href="https://x.com/TradeTallyIO" target="_blank" rel="me noopener noreferrer">TradeTally on X</a>
+            <a href="/login">Login</a>
+            <a href="/register">Create Account</a>
+          </nav>
+        </section>
+
+        <section>
+          <h2>Free Trader Tools and Calculators</h2>
+          <p>Use our free <a href="/tools/position-size-calculator">position size calculator</a>, <a href="/tools/risk-reward-calculator">risk/reward calculator</a>, <a href="/tools/trade-expectancy-calculator">trade expectancy calculator</a>, <a href="/tools/required-win-rate-calculator">required win rate calculator</a>, <a href="/tools/average-down-calculator">average down calculator</a>, and <a href="/tools/what-if-i-invested">what if I invested calculator</a> &mdash; no signup required. <a href="/tools">View all free tools</a>.</p>
+        </section>
+
+        <section>
+          <h2>Helpful External Resources</h2>
+          <p>For technical details, documentation, and source code, you can visit our official docs and GitHub repository. These resources include deployment guides, API references, and implementation details for self-hosted setups.</p>
+          <nav>
+            <a href="https://docs.tradetally.io" target="_blank" rel="noopener noreferrer">TradeTally Documentation</a>
+            <a href="https://github.com/GeneBO98/tradetally" target="_blank" rel="noopener noreferrer">TradeTally on GitHub</a>
             <a href="mailto:support@tradetally.io">Contact Support</a>
           </nav>
         </section>

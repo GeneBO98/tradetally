@@ -13,6 +13,10 @@ jest.mock('../../src/utils/logger', () => ({
   error: jest.fn()
 }));
 
+jest.mock('../../src/services/sequenzySubscriberSyncService', () => ({
+  queueSyncUserById: jest.fn()
+}));
+
 const User = require('../../src/models/User');
 const sequenzySubscriberSyncService = require('../../src/services/sequenzySubscriberSyncService');
 const unsubscribeController = require('../../src/controllers/unsubscribe.controller');

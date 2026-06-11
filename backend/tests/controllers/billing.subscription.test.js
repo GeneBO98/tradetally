@@ -5,7 +5,8 @@ jest.mock('../../src/services/tierService', () => ({
   getUserTier: jest.fn()
 }));
 jest.mock('../../src/models/User', () => ({
-  getTierOverride: jest.fn()
+  getTierOverride: jest.fn(),
+  findById: jest.fn()
 }));
 jest.mock('../../src/config/database', () => ({
   query: jest.fn()

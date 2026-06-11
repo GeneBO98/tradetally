@@ -4,6 +4,7 @@ const aiService = require('./aiService');
 const historicalPriceCache = require('./historicalPriceCache');
 const ApiUsageService = require('../services/apiUsageService');
 const TierService = require('../services/tierService');
+const FinnhubUsageMetricsService = require('../services/finnhubUsageMetricsService');
 const { validateAiProviderUrl } = require('./urlSecurity');
 const { FinnhubPriority, FinnhubRequestScheduler } = require('./finnhubScheduler');
 
@@ -36,7 +37,8 @@ class FinnhubClient {
     this.scheduler = new FinnhubRequestScheduler({
       maxCallsPerMinute: this.maxCallsPerMinute,
       maxCallsPerSecond: this.maxCallsPerSecond,
-      activeReservePerMinute: configuredReserve
+      activeReservePerMinute: configuredReserve,
+      metricsRecorder: (event) => FinnhubUsageMetricsService.recordMinuteMetric(event)
     });
     this.callTimestamps = this.scheduler.callTimestamps;
     this.secondTimestamps = this.scheduler.secondTimestamps;

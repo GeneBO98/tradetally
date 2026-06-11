@@ -174,10 +174,24 @@ function buildTradeCardSvg(trade) {
     statX += Math.max(estimateWidth(stat.value, 34, 600), estimateWidth(stat.label, 20, 600)) + 80;
   }
 
-  // Footer
+  // Footer. A broker-verified trade (cloud-only) swaps the left label for a green
+  // check + "Broker-verified" and the right label for the public verify URL.
   parts.push(`<line x1="${PAD}" y1="${CARD_HEIGHT - 86}" x2="${CARD_WIDTH - PAD}" y2="${CARD_HEIGHT - 86}" stroke="${COLORS.divider}" stroke-width="2"/>`);
-  parts.push(text('Journaled with TradeTally', PAD, CARD_HEIGHT - 40, { size: 24, weight: 500, color: COLORS.textMuted }));
-  parts.push(text('tradetally.io', CARD_WIDTH - PAD, CARD_HEIGHT - 40, { size: 24, weight: 500, color: COLORS.textSecondary, anchor: 'end' }));
+  const footerY = CARD_HEIGHT - 40;
+  const verified = trade.verification?.status === 'broker_verified';
+  if (verified) {
+    const checkR = 13;
+    const checkCx = PAD + checkR;
+    const checkCy = footerY - 8;
+    parts.push(`<circle cx="${checkCx}" cy="${checkCy}" r="${checkR}" fill="${COLORS.win}"/>`);
+    parts.push(`<path d="M ${checkCx - 6} ${checkCy} l 4 4 l 7 -8" fill="none" stroke="#0b1f17" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`);
+    parts.push(text('Broker-verified', checkCx + checkR + 12, footerY, { size: 24, weight: 600, color: COLORS.win }));
+    const verifyLabel = trade.verification?.verifyLabel || 'tradetally.io';
+    parts.push(text(verifyLabel, CARD_WIDTH - PAD, footerY, { size: 22, weight: 500, color: COLORS.textSecondary, anchor: 'end' }));
+  } else {
+    parts.push(text('Journaled with TradeTally', PAD, footerY, { size: 24, weight: 500, color: COLORS.textMuted }));
+    parts.push(text('tradetally.io', CARD_WIDTH - PAD, footerY, { size: 24, weight: 500, color: COLORS.textSecondary, anchor: 'end' }));
+  }
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${CARD_WIDTH}" height="${CARD_HEIGHT}" viewBox="0 0 ${CARD_WIDTH} ${CARD_HEIGHT}">${parts.join('')}</svg>`;
 }

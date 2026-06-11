@@ -73,17 +73,25 @@ class PlaidFundingService {
 
   async createLinkToken(user, targetType = 'bank') {
     this.ensureConfigured();
-    await this.ensureSchemaReady();
-    const response = await plaidClient.createLinkToken({
-      userId: user.id,
-      email: user.email,
-      targetType
-    });
 
-    return {
-      linkToken: response.link_token,
-      expiration: response.expiration
-    };
+    try {
+      const response = await plaidClient.createLinkToken({
+        userId: user.id,
+        email: user.email,
+        targetType
+      });
+
+      return {
+        linkToken: response.link_token,
+        expiration: response.expiration
+      };
+    } catch (error) {
+      if (error.plaid?.errorCode === 'INVALID_PRODUCT') {
+        const product = targetType === 'investment' ? 'investments' : 'transactions';
+        error.message = 'Plaid rejected the ' + product + ' product. Enable ' + product + ' for your ' + plaidClient.env + ' environment in the Plaid dashboard, or use a Plaid client_id/secret that has access to it.';
+      }
+      throw error;
+    }
   }
 
   /**

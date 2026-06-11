@@ -243,7 +243,7 @@ echo -e "\n${YELLOW}Step 12: Setting up PM2${NC}"
 cat > "$APP_DIR/ecosystem.config.js" <<'EOF'
 module.exports = {
   apps: [{
-    name: 'tradetally-backend',
+    name: 'tradetally',
     script: './src/server.js',
     cwd: '/opt/tradetally/backend',
     instances: 2,
@@ -359,10 +359,10 @@ echo ""
 echo "Access your application at: http://localhost"
 echo ""
 echo "Useful commands:"
-echo "  View logs:        pm2 logs tradetally-backend"
+echo "  View logs:        pm2 logs tradetally"
 echo "  Monitor:          pm2 monit"
-echo "  Restart backend:  pm2 restart tradetally-backend"
-echo "  Stop backend:     pm2 stop tradetally-backend"
+echo "  Restart backend:  pm2 restart tradetally"
+echo "  Stop backend:     pm2 stop tradetally"
 echo ""
 echo "Backup location: $MIGRATION_DIR"
 echo ""

@@ -52,3 +52,8 @@ Suggested slugs and variables:
 `subscription-welcome.html`
 - Slug: `subscription-welcome`
 - Vars: `username`, `plan_name`, `support_email`, `dashboard_url`
+
+`release-v2-7-0.html`
+- Slug: `release-v2-7-0`
+- Merge tags: `{{FIRST_NAME}}`, `{{UNSUBSCRIBE_URL}}` (Sequenzy broadcast built-ins). Dashboard URL is hardcoded.
+- One-shot broadcast for the v2.7.0 release. Audience: status=active subscribers (= marketing-consent + verified + admin-approved per `sequenzySubscriberSyncService.buildStatus`).

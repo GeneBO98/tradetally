@@ -167,7 +167,6 @@ import { ref, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { FunnelIcon, ChevronDownIcon } from "@heroicons/vue/24/outline";
 import api from "@/services/api";
-import OnboardingCard from "@/components/onboarding/OnboardingCard.vue";
 import { useAuthStore } from "@/stores/auth";
 
 const authStore = useAuthStore();

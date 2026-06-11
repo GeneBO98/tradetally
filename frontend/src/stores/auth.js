@@ -179,7 +179,7 @@ export const useAuthStore = defineStore('auth', () => {
       } catch (_) {
         // store may not exist yet (e.g. logout before login) — ignore.
       }
-      router.push({ name: 'login' })
+      router.push({ name: 'home' })
     }
   }
 
@@ -443,7 +443,8 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function skipOnboarding(type = 'free') {
     if (type === 'pro') {
-      await advanceOnboardingStep(4, 'pro')
+      // Pro tour has 5 active steps (1-5); 6 marks the tour as done.
+      await advanceOnboardingStep(6, 'pro')
     } else {
       await advanceOnboardingStep(6, 'free')
       await completeOnboarding()

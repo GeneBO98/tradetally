@@ -161,3 +161,85 @@ describe('FinnhubRequestScheduler', () => {
     expect(scheduler.getStats().backgroundSkips).toBe(1);
   });
 });
+
+describe('FinnhubRequestScheduler metrics recording', () => {
+  test('records successful provider requests', async () => {
+    const metricsRecorder = jest.fn(async () => true);
+    const scheduler = new FinnhubRequestScheduler({
+      maxCallsPerMinute: 10,
+      maxCallsPerSecond: 10,
+      metricsRecorder
+    });
+
+    await expect(scheduler.schedule(async () => 'ok', {
+      endpoint: '/quote',
+      source: 'open_positions',
+      priority: FinnhubPriority.ACTIVE_QUOTE
+    })).resolves.toBe('ok');
+
+    await new Promise(resolve => setImmediate(resolve));
+    expect(metricsRecorder).toHaveBeenCalledWith(expect.objectContaining({
+      endpoint: '/quote',
+      source: 'open_positions',
+      requestCount: 1,
+      configuredLimitPerMinute: 10
+    }));
+  });
+
+  test('records upstream 429 responses', async () => {
+    const metricsRecorder = jest.fn(async () => true);
+    const scheduler = new FinnhubRequestScheduler({
+      maxCallsPerMinute: 10,
+      maxCallsPerSecond: 10,
+      metricsRecorder
+    });
+    const error = new Error('rate limited');
+    error.response = { status: 429 };
+
+    await expect(scheduler.schedule(async () => { throw error; }, {
+      endpoint: '/quote',
+      source: 'open_positions',
+      priority: FinnhubPriority.ACTIVE_QUOTE
+    })).rejects.toBe(error);
+
+    await new Promise(resolve => setImmediate(resolve));
+    expect(metricsRecorder).toHaveBeenCalledWith(expect.objectContaining({
+      endpoint: '/quote',
+      requestCount: 1,
+      rateLimitedCount: 1
+    }));
+  });
+
+  test('records local scheduler skips as throttles', async () => {
+    jest.useFakeTimers();
+    const metricsRecorder = jest.fn(async () => true);
+    const scheduler = new FinnhubRequestScheduler({
+      maxCallsPerMinute: 1,
+      maxCallsPerSecond: 1,
+      activeReservePerMinute: 0,
+      metricsRecorder
+    });
+    scheduler.callTimestamps.push(Date.now());
+    scheduler.secondTimestamps.push(Date.now());
+
+    const queued = scheduler.schedule(async () => 'split', {
+      endpoint: '/stock/split',
+      source: 'stock_split_service',
+      priority: FinnhubPriority.BACKGROUND_MAINTENANCE,
+      background: true,
+      maxQueueWaitMs: 0
+    });
+
+    jest.advanceTimersByTime(1);
+    await expect(queued).rejects.toMatchObject({
+      code: 'FINNHUB_SCHEDULER_SKIPPED'
+    });
+    await Promise.resolve();
+
+    expect(metricsRecorder).toHaveBeenCalledWith(expect.objectContaining({
+      endpoint: '/stock/split',
+      requestCount: 0,
+      throttledCount: 1
+    }));
+  });
+});

@@ -26,12 +26,18 @@ Disallow: /billing
 Disallow: /profile
 Disallow: /admin/
 
-# Allow crawling of public pages
+# Allow crawling of public and SEO pages
 Allow: /$
 Allow: /login
 Allow: /register
 Allow: /public
+Allow: /features
+Allow: /faq
+Allow: /compare
+Allow: /pricing
 Allow: /privacy
+Allow: /tools
+Allow: /tools/
 
 # Crawl delay (in seconds)
 Crawl-delay: 1
