@@ -216,13 +216,14 @@ class PriceMonitoringService {
             priority: 6,
             background: true,
             maxQueueWaitMs: 0
-          })
+          }),
+          finnhub.providerName || 'finnhub'
         ));
       }
 
       if (!priceData) {
         if (this.isProviderCapacityError(error)) {
-          logger.debug(`[FINNHUB-SCHEDULER] Price monitoring skipped ${symbol}: ${error.message}`);
+          logger.debug(`[MARKET-DATA-SCHEDULER] Price monitoring skipped ${symbol}: ${error.message}`);
           return 'skipped';
         }
 

@@ -1497,7 +1497,7 @@ class PortfolioService {
           return date >= startDate && date <= endDate;
         });
       } catch (error) {
-        // Fall through to Finnhub.
+        // Fall through to configured market data provider.
       }
     }
 
@@ -1505,7 +1505,7 @@ class PortfolioService {
       const from = Math.floor(new Date(`${startDate}T00:00:00.000Z`).getTime() / 1000);
       const to = Math.floor(new Date(`${endDate}T23:59:59.999Z`).getTime() / 1000);
       const candles = await finnhub.getStockCandles(symbol, 'D', from, to, userId);
-      await historicalPriceCache.insertCandles(symbol, candles, 'finnhub');
+      await historicalPriceCache.insertCandles(symbol, candles, finnhub.providerName || 'finnhub');
       return candles;
     } catch (error) {
       return [];

@@ -127,7 +127,7 @@ async function searchSymbols(req, res) {
       }
     }
 
-    // 3. Finnhub fallback - only if few local results and query >= 2 chars
+    // 3. Market data provider fallback - only if few local results and query >= 2 chars
     if (results.length < 5 && query.length >= 2 && finnhub.isConfigured()) {
       try {
         const finnhubResults = await finnhub.symbolSearch(query);
@@ -143,13 +143,13 @@ async function searchSymbols(req, res) {
               company_name: item.description || null,
               exchange: null,
               logo: null,
-              source: 'finnhub'
+              source: finnhub.providerName || 'finnhub'
             });
           }
         }
       } catch (err) {
         // Graceful degradation - return local results only
-        console.warn(`[SYMBOLS] Finnhub search failed for "${query}": ${err.message}`);
+        console.warn(`[SYMBOLS] ${finnhub.displayName || 'Market data'} search failed for "${query}": ${err.message}`);
       }
     }
 

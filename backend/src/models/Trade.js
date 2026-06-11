@@ -4311,7 +4311,8 @@ class Trade {
           to,
           async (sym, resolution, fromTs, toTs) => {
             return await finnhub.getStockCandles(sym, resolution, fromTs, toTs, userId);
-          }
+          },
+          finnhub.providerName || 'finnhub'
         );
 
         if (data && data.length > 0) {
@@ -4443,7 +4444,8 @@ class Trade {
           to,
           async (sym, resolution, fromTs, toTs) => {
             return await finnhub.getStockCandles(sym, resolution, fromTs, toTs, userId);
-          }
+          },
+          finnhub.providerName || 'finnhub'
         );
 
         if (data && data.length > 0) {

@@ -31,6 +31,14 @@ const {
 } = require('../services/brokerFeeApplicationService');
 const OptionStrategyGroupingService = require('../services/optionStrategyGroupingService');
 
+function marketDataApiKeyName() {
+  return finnhub.providerName === 'fmp' ? 'FMP_API_KEY' : 'FINNHUB_API_KEY';
+}
+
+function marketDataConfigDetails(feature) {
+  return `${finnhub.displayName || 'Market data'} API key is required for ${feature}. Add ${marketDataApiKeyName()} to your environment variables.`;
+}
+
 /**
  * Auto-calculate MAE/MFE for a closed trade using Finnhub candle data.
  * Runs async (fire-and-forget) so it doesn't block the API response.
@@ -3761,11 +3769,11 @@ const tradeController = {
         return res.status(400).json({ error: 'Valid CUSIP must be 9 characters' });
       }
 
-      // Check if Finnhub is configured before attempting lookup
+      // Check if market data provider is configured before attempting lookup
       if (!finnhub.isConfigured()) {
         return res.status(503).json({ 
           error: 'CUSIP lookup service not configured', 
-          details: 'Finnhub API key is required for CUSIP resolution. Add FINNHUB_API_KEY to your environment variables.',
+          details: marketDataConfigDetails('CUSIP resolution'),
           cusip,
           found: false
         });
@@ -3780,10 +3788,10 @@ const tradeController = {
       }
     } catch (error) {
       // Provide more descriptive error messages for CUSIP lookup failures
-      if (error.message.includes('Finnhub API key not configured')) {
+      if (error.message.includes('API key not configured')) {
         return res.status(503).json({ 
           error: 'CUSIP lookup service not configured', 
-          details: 'Add FINNHUB_API_KEY to your environment variables.',
+          details: `Add ${marketDataApiKeyName()} to your environment variables.`,
           cusip: req.params.cusip,
           found: false
         });
@@ -3864,28 +3872,22 @@ const tradeController = {
 
       const cleanCusip = cusip.replace(/\s/g, '').toUpperCase();
       
-      // Check if mapping exists in Finnhub cache
-      const cacheKey = `cusip_${cleanCusip}`;
-      const cachedMapping = finnhub.cache.get(cacheKey);
+      // Check if mapping exists in shared CUSIP cache
+      const cachedMapping = cache.get('cusip_resolution', cleanCusip);
       
       if (!cachedMapping) {
         return res.status(404).json({ error: 'CUSIP mapping not found' });
       }
 
-      const deletedTicker = cachedMapping.data;
+      const deletedTicker = cachedMapping;
       
       // Remove the mapping from cache
-      const removed = finnhub.cache.delete(cacheKey);
-      
-      if (removed) {
-        res.json({ 
-          message: 'CUSIP mapping deleted successfully',
-          cusip: cleanCusip,
-          ticker: deletedTicker
-        });
-      } else {
-        res.status(404).json({ error: 'CUSIP mapping not found' });
-      }
+      cache.del('cusip_resolution', cleanCusip);
+      res.json({ 
+        message: 'CUSIP mapping deleted successfully',
+        cusip: cleanCusip,
+        ticker: deletedTicker
+      });
     } catch (error) {
       next(error);
     }
@@ -4211,7 +4213,7 @@ const tradeController = {
       if (!finnhub.isConfigured()) {
         return res.status(503).json({
           error: 'News service not configured',
-          details: 'Finnhub API key is required for news data. Add FINNHUB_API_KEY to your environment variables.'
+          details: marketDataConfigDetails('news data')
         });
       }
 
@@ -4264,7 +4266,7 @@ const tradeController = {
       if (!finnhub.isConfigured()) {
         return res.status(503).json({
           error: 'Earnings service not configured',
-          details: 'Finnhub API key is required for earnings data. Add FINNHUB_API_KEY to your environment variables.'
+          details: marketDataConfigDetails('earnings data')
         });
       }
 

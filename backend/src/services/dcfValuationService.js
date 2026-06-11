@@ -118,7 +118,8 @@ class DCFValuationService {
     };
 
     const latest = sorted[0] || {};
-    const computedMarketCap = currentPrice && profileShares ? currentPrice * profileShares : null;
+    const sharesOutstanding = this.resolveSharesOutstanding(profileShares, latest);
+    const computedMarketCap = currentPrice && sharesOutstanding ? currentPrice * sharesOutstanding : null;
     const marketCap = numericFromFinnhub('marketCapitalization')
       ? numericFromFinnhub('marketCapitalization') * 1_000_000
       : computedMarketCap;
@@ -147,7 +148,7 @@ class DCFValuationService {
     const metrics = {
       symbol: symbolUpper,
       current_price: currentPrice,
-      shares_outstanding: profileShares,
+      shares_outstanding: sharesOutstanding,
       market_cap: marketCap,
 
       // Historical metrics
@@ -181,7 +182,7 @@ class DCFValuationService {
       pe_1yr: this.calculateAvgPE(sorted, yearEndPrices, 1),
       pe_5yr: this.calculateAvgPE(sorted, yearEndPrices, 5),
       pe_10yr: this.calculateAvgPE(sorted, yearEndPrices, 10),
-      price_to_fcf: this.calculatePriceToFCF(currentPrice, profileShares, latest.freeCashFlow),
+      price_to_fcf: this.calculatePriceToFCF(currentPrice, sharesOutstanding, latest.freeCashFlow),
       pfcf_1yr: this.calculateAvgPFCF(sorted, yearEndPrices, 1),
       pfcf_5yr: this.calculateAvgPFCF(sorted, yearEndPrices, 5),
       pfcf_10yr: this.calculateAvgPFCF(sorted, yearEndPrices, 10),
@@ -384,6 +385,24 @@ class DCFValuationService {
 
     const marketCap = currentPrice * sharesOutstanding;
     return marketCap / fcf;
+  }
+
+  static resolveSharesOutstanding(profileShares, latestFinancial = {}) {
+    const candidates = [
+      profileShares,
+      latestFinancial.sharesOutstanding,
+      latestFinancial.sharesBasic,
+      latestFinancial.sharesDiluted
+    ];
+
+    for (const candidate of candidates) {
+      const shares = Number(candidate);
+      if (Number.isFinite(shares) && shares > 0) {
+        return shares;
+      }
+    }
+
+    return null;
   }
 
   /**
