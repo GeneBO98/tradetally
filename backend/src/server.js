@@ -23,6 +23,7 @@ const apiKeyRoutes = require('./routes/apiKey.routes');
 const apiRoutes = require('./routes/api.routes');
 const v1Routes = require('./routes/v1');
 const wellKnownRoutes = require('./routes/well-known.routes');
+const ogRoutes = require('./routes/og.routes');
 const adminRoutes = require('./routes/admin.routes');
 const featuresRoutes = require('./routes/features.routes');
 const behavioralAnalyticsRoutes = require('./routes/behavioralAnalytics.routes');
@@ -302,6 +303,9 @@ app.use('/api/oauth', oauth2Routes);
 
 // Well-known endpoints for mobile discovery
 app.use('/.well-known', wellKnownRoutes);
+
+// Open Graph endpoints for crawler link previews (nginx routes bot UAs here).
+app.use('/og', ogRoutes);
 
 // Swagger API Documentation
 if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_SWAGGER === 'true') {
