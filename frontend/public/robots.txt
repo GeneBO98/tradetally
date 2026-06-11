@@ -10,6 +10,9 @@ Sitemap: https://tradetally.io/sitemap.xml
 # Block access to API endpoints
 Disallow: /api/
 
+# Crawler-only Open Graph redirect pages (link-preview bots have their own groups)
+Disallow: /og/
+
 # Block access to authenticated pages
 Disallow: /dashboard
 Disallow: /trades/
@@ -38,3 +41,35 @@ Allow: /tools/
 
 # Crawl delay (in seconds)
 Crawl-delay: 1
+
+# Social link-preview crawlers may fetch public trade and verification pages so
+# shared links unfurl into cards. A bot uses only its own most-specific group, so
+# each one must be listed explicitly. These pages only render a per-trade card for
+# trades the owner has made public; private trades fall back to the generic card.
+User-agent: Twitterbot
+Disallow: /api/
+Allow: /
+
+User-agent: facebookexternalhit
+Disallow: /api/
+Allow: /
+
+User-agent: LinkedInBot
+Disallow: /api/
+Allow: /
+
+User-agent: Slackbot-LinkExpanding
+Disallow: /api/
+Allow: /
+
+User-agent: Discordbot
+Disallow: /api/
+Allow: /
+
+User-agent: TelegramBot
+Disallow: /api/
+Allow: /
+
+User-agent: WhatsApp
+Disallow: /api/
+Allow: /

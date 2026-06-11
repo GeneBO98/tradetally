@@ -67,7 +67,9 @@ RUN apk update && apk upgrade --no-cache && \
     nginx \
     netcat-openbsd \
     libc6-compat \
-    su-exec && \
+    su-exec \
+    fontconfig \
+    font-dejavu && \
     mkdir -p /run/nginx /var/lib/nginx /var/lib/nginx/tmp /var/log/nginx && \
     chown -R nginx:nginx /run/nginx /var/lib/nginx /var/log/nginx
 WORKDIR /app
