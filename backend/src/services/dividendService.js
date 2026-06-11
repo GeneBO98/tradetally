@@ -3,7 +3,7 @@
  * Handles automatic dividend tracking for trade-based holdings
  *
  * Features:
- * - Fetch dividend history from Finnhub (primary) or Alpha Vantage (fallback)
+   * - Fetch dividend history from configured market data provider or Alpha Vantage (fallback)
  * - Calculate shares held at ex-dividend date from trade executions
  * - Record dividends to trade_dividends table
  * - Prevent duplicates via UNIQUE constraint
@@ -16,26 +16,26 @@ const alphaVantage = require('../utils/alphaVantage');
 class DividendService {
   /**
    * Fetch dividend history for a symbol
-   * Uses Finnhub if configured, falls back to Alpha Vantage
+   * Uses configured market data provider if configured, falls back to Alpha Vantage
    * @param {string} symbol - Stock symbol
    * @returns {Promise<Array>} Array of dividend objects
    */
   static async fetchDividendHistory(symbol) {
     const logPrefix = '[DIVIDEND-SERVICE]';
 
-    // Try Finnhub first if configured
+    // Try configured market data provider first if configured
     if (finnhub.isConfigured()) {
       try {
         const dividends = await finnhub.getDividends(symbol);
         if (dividends && dividends.length > 0) {
-          console.log(`${logPrefix} Got ${dividends.length} dividends from Finnhub for ${symbol}`);
+          console.log(`${logPrefix} Got ${dividends.length} dividends from ${finnhub.displayName} for ${symbol}`);
           return dividends.map(d => ({
             ...d,
-            provider: 'finnhub'
+            provider: finnhub.providerName || 'finnhub'
           }));
         }
       } catch (error) {
-        console.warn(`${logPrefix} Finnhub dividend fetch failed for ${symbol}: ${error.message}`);
+        console.warn(`${logPrefix} ${finnhub.displayName} dividend fetch failed for ${symbol}: ${error.message}`);
       }
     }
 

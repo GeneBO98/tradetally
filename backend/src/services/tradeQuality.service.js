@@ -1,5 +1,5 @@
-const axios = require('axios');
 const db = require('../config/database');
+const marketData = require('../utils/finnhub');
 
 /**
  * Trade Quality Grading Service
@@ -18,8 +18,7 @@ const db = require('../config/database');
 
 class TradeQualityService {
   constructor() {
-    this.finnhubApiKey = process.env.FINNHUB_API_KEY;
-    this.baseUrl = 'https://finnhub.io/api/v1';
+    this.marketData = marketData;
   }
 
   /**
@@ -164,8 +163,8 @@ class TradeQualityService {
    * @returns {Promise<Object>} Quality grade and metrics
    */
   async calculateQuality(symbol, entryTime, entryPrice, side = 'long', userId = null, newsSentiment = null) {
-    if (!this.finnhubApiKey) {
-      console.log('[QUALITY] Finnhub API key not configured, skipping quality calculation');
+    if (!this.marketData.isConfigured()) {
+      console.log(`[QUALITY] ${this.marketData.displayName} API key not configured, skipping quality calculation`);
       return null;
     }
 
@@ -309,23 +308,12 @@ class TradeQualityService {
   }
 
   /**
-   * Get stock profile from Finnhub
+   * Get stock profile from the configured market data provider
    * Uses company-profile endpoint for more comprehensive data including float
    */
   async getStockProfile(symbol) {
     try {
-      // Try company-profile endpoint first (has more detailed data) with retry logic
-      const profileResponse = await this.retryWithBackoff(() =>
-        axios.get(`${this.baseUrl}/stock/profile`, {
-          params: {
-            symbol,
-            token: this.finnhubApiKey
-          },
-          timeout: 5000
-        })
-      );
-
-      const profileData = profileResponse.data;
+      const profileData = await this.marketData.getCompanyProfile(symbol);
 
       // Log what we received
       console.log(`[QUALITY] Profile data for ${symbol}:`, {
@@ -338,30 +326,7 @@ class TradeQualityService {
       return profileData;
     } catch (error) {
       console.error(`[QUALITY] Error fetching profile for ${symbol}:`, error.message);
-
-      // Fallback to profile2 endpoint if profile fails
-      try {
-        console.log(`[QUALITY] Trying fallback profile2 endpoint for ${symbol}`);
-        const profile2Response = await this.retryWithBackoff(() =>
-          axios.get(`${this.baseUrl}/stock/profile2`, {
-            params: {
-              symbol,
-              token: this.finnhubApiKey
-            },
-            timeout: 5000
-          })
-        );
-
-        console.log(`[QUALITY] Profile2 data for ${symbol}:`, {
-          shareOutstanding: profile2Response.data?.shareOutstanding,
-          marketCapitalization: profile2Response.data?.marketCapitalization
-        });
-
-        return profile2Response.data;
-      } catch (fallbackError) {
-        console.error(`[QUALITY] Both profile endpoints failed for ${symbol}:`, fallbackError.message);
-        return null;
-      }
+      return null;
     }
   }
 
@@ -370,18 +335,8 @@ class TradeQualityService {
    */
   async getBasicFinancials(symbol) {
     try {
-      const response = await this.retryWithBackoff(() =>
-        axios.get(`${this.baseUrl}/stock/metric`, {
-          params: {
-            symbol,
-            metric: 'all',
-            token: this.finnhubApiKey
-          },
-          timeout: 5000
-        })
-      );
-
-      const metrics = response.data?.metric || {};
+      const response = await this.marketData.getBasicFinancials(symbol);
+      const metrics = response?.metric || {};
       const avgVolume10Day = metrics['10DayAverageTradingVolume'];
       const sharesOutstanding = metrics['sharesOutstanding'];
 
@@ -420,38 +375,25 @@ class TradeQualityService {
       const from = Math.floor(startDate.getTime() / 1000);
       const to = Math.floor(endDate.getTime() / 1000);
 
-      // Get daily candle data for the trade date and previous days with retry logic
-      const response = await this.retryWithBackoff(() =>
-        axios.get(`${this.baseUrl}/stock/candle`, {
-          params: {
-            symbol,
-            resolution: 'D', // Daily candle
-            from,
-            to,
-            token: this.finnhubApiKey
-          },
-          timeout: 5000
-        })
-      );
-
-      const data = response.data;
+      const candles = await this.marketData.getStockCandles(symbol, 'D', from, to);
 
       // Check if we have valid data
-      if (!data || data.s !== 'ok' || !data.o || data.o.length === 0) {
+      if (!Array.isArray(candles) || candles.length === 0) {
         console.log(`[QUALITY] No historical data available for ${symbol} on ${entryDate.toISOString()}`);
         return null;
       }
 
       // Get the most recent day's data (last element)
-      const lastIndex = data.o.length - 1;
-      const open = data.o[lastIndex];
-      const high = data.h[lastIndex];
-      const low = data.l[lastIndex];
-      const close = data.c[lastIndex];
-      const volume = data.v[lastIndex];
+      const lastIndex = candles.length - 1;
+      const latest = candles[lastIndex];
+      const open = latest.open;
+      const high = latest.high;
+      const low = latest.low;
+      const close = latest.close;
+      const volume = latest.volume;
 
       // Get previous day's close if available
-      const previousClose = lastIndex > 0 ? data.c[lastIndex - 1] : null;
+      const previousClose = lastIndex > 0 ? candles[lastIndex - 1].close : null;
 
       console.log(`[QUALITY] Historical data for ${symbol}: open=${open}, close=${close}, previousClose=${previousClose}`);
 
@@ -471,50 +413,14 @@ class TradeQualityService {
   }
 
   /**
-   * Get news sentiment from Finnhub
-   * First tries the news-sentiment API endpoint, falls back to keyword-based analysis
+   * Get news sentiment from the configured market data provider using keyword analysis.
    */
   async getNewsSentiment(symbol, entryTime) {
     try {
-      // First, try to get sentiment from Finnhub's news-sentiment endpoint with retry logic
-      const sentimentResponse = await this.retryWithBackoff(() =>
-        axios.get(`${this.baseUrl}/news-sentiment`, {
-          params: {
-            symbol,
-            token: this.finnhubApiKey
-          },
-          timeout: 5000
-        })
-      );
-
-      // Check if we have valid sentiment data
-      if (sentimentResponse.data && sentimentResponse.data.sentiment) {
-        const bullishPercent = sentimentResponse.data.sentiment.bullishPercent || 0;
-        const bearishPercent = sentimentResponse.data.sentiment.bearishPercent || 0;
-
-        // Convert bullish/bearish percentages to a sentiment score (-1 to 1)
-        // If we have valid percentages, use them
-        if (bullishPercent > 0 || bearishPercent > 0) {
-          const sentimentScore = bullishPercent - bearishPercent;
-          console.log(`[QUALITY] News sentiment API for ${symbol}: bullish=${bullishPercent}, bearish=${bearishPercent}, score=${sentimentScore}`);
-          return { sentiment: sentimentScore };
-        }
-      }
-
-      // Fallback: Use company news endpoint with keyword analysis
-      console.log(`[QUALITY] No sentiment data from API for ${symbol}, falling back to keyword analysis`);
       return await this.getNewsSentimentFromKeywords(symbol, entryTime);
-
     } catch (error) {
       console.error(`[QUALITY] Error fetching sentiment for ${symbol}:`, error.message);
-
-      // Try fallback to keyword-based analysis
-      try {
-        return await this.getNewsSentimentFromKeywords(symbol, entryTime);
-      } catch (fallbackError) {
-        console.error(`[QUALITY] Fallback sentiment analysis also failed:`, fallbackError.message);
-        return null;
-      }
+      return null;
     }
   }
 
@@ -529,19 +435,7 @@ class TradeQualityService {
       const fromDate = new Date(tradeDate.getTime() - 24 * 60 * 60 * 1000)
         .toISOString().split('T')[0];
 
-      const newsResponse = await this.retryWithBackoff(() =>
-        axios.get(`${this.baseUrl}/company-news`, {
-          params: {
-            symbol,
-            from: fromDate,
-            to: toDate,
-            token: this.finnhubApiKey
-          },
-          timeout: 5000
-        })
-      );
-
-      const articles = newsResponse.data || [];
+      const articles = await this.marketData.getCompanyNews(symbol, fromDate, toDate) || [];
 
       if (articles.length === 0) {
         console.log(`[QUALITY] No news articles found for ${symbol} between ${fromDate} and ${toDate}`);

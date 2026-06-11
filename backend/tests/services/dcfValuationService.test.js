@@ -97,6 +97,23 @@ describe('DCFValuationService calculation rules', () => {
     expect(roic).toBeCloseTo(80 / 137.5, 5);
   });
 
+  test('resolves shares outstanding from latest financials when profile shares are missing', () => {
+    expect(DCFValuationService.resolveSharesOutstanding(null, {
+      sharesOutstanding: 210_000_000,
+      sharesBasic: 205_000_000,
+      sharesDiluted: 215_000_000
+    })).toBe(210_000_000);
+
+    expect(DCFValuationService.resolveSharesOutstanding(null, {
+      sharesBasic: 205_000_000,
+      sharesDiluted: 215_000_000
+    })).toBe(205_000_000);
+
+    expect(DCFValuationService.resolveSharesOutstanding(220_000_000, {
+      sharesOutstanding: 210_000_000
+    })).toBe(220_000_000);
+  });
+
   test('profit margin assumptions affect earnings-based fair value', () => {
     const lowMargin = DCFValuationService.calculateDCFTraditional({
       revenue: 1_000,

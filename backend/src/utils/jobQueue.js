@@ -1,5 +1,6 @@
 const db = require('../config/database');
 const logger = require('./logger');
+const marketData = require('./finnhub');
 
 class JobQueue {
   constructor() {
@@ -387,7 +388,7 @@ class JobQueue {
                 confidence: classification.confidence,
                 method: classification.method,
                 signals: classification.signals,
-                api_provider: 'finnhub'
+                api_provider: marketData.providerName || 'finnhub'
               });
             } catch (cacheError) {
               logger.logError(`Failed to cache strategy classification for trade ${trade.id}: ${cacheError.message}`);

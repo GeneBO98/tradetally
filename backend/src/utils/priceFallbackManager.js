@@ -1,7 +1,7 @@
 /**
  * Price Fallback Manager
  *
- * Tracks which Finnhub API endpoints are blocked (403) and routes to fallback
+ * Tracks which market data API endpoints are blocked (403) and routes to fallback
  * providers (Schwab) automatically. Periodically retries blocked endpoints
  * to detect if access has been restored.
  */
@@ -33,7 +33,7 @@ class PriceFallbackManager {
     });
 
     if (!this.loggedFallbacks.has(endpoint)) {
-      logger.info(`[FALLBACK] Finnhub '${endpoint}' endpoint blocked (403). Will use Schwab fallback.`);
+      logger.info(`[FALLBACK] Market data '${endpoint}' endpoint blocked (403). Will use Schwab fallback.`);
       this.loggedFallbacks.add(endpoint);
     }
   }
@@ -44,7 +44,7 @@ class PriceFallbackManager {
    */
   markUnblocked(endpoint) {
     if (this.blockedEndpoints.has(endpoint)) {
-      logger.info(`[FALLBACK] Finnhub '${endpoint}' endpoint is now accessible.`);
+      logger.info(`[FALLBACK] Market data '${endpoint}' endpoint is now accessible.`);
       this.blockedEndpoints.delete(endpoint);
       this.loggedFallbacks.delete(endpoint);
     }
@@ -75,7 +75,7 @@ class PriceFallbackManager {
       // Update last retry time
       blockInfo.lastRetry = now;
       this.blockedEndpoints.set(endpoint, blockInfo);
-      logger.debug(`[FALLBACK] Retrying Finnhub '${endpoint}' endpoint after ${Math.round(timeSinceLastRetry / 60000)} minutes`);
+      logger.debug(`[FALLBACK] Retrying market data '${endpoint}' endpoint after ${Math.round(timeSinceLastRetry / 60000)} minutes`);
       return true;
     }
 
@@ -102,10 +102,11 @@ class PriceFallbackManager {
   /**
    * Get a quote with automatic fallback
    * @param {string} symbol - Stock symbol
-   * @param {Function} finnhubFn - Finnhub quote function
+   * @param {Function} providerFn - Primary provider quote function
+   * @param {string} providerName - Primary provider name
    * @returns {Promise<{data: object|null, source: string}>}
    */
-  async getQuoteWithFallback(symbol, finnhubFn) {
+  async getQuoteWithFallback(symbol, providerFn, providerName = 'finnhub') {
     const endpoint = 'quote';
 
     // If endpoint is blocked and we shouldn't retry yet, go straight to Schwab
@@ -117,18 +118,18 @@ class PriceFallbackManager {
       return { data: null, source: 'none' };
     }
 
-    // Try Finnhub
+    // Try primary provider
     try {
-      const data = await finnhubFn(symbol);
+      const data = await providerFn(symbol);
       if (data && data.c) {
         // Success - mark as unblocked if it was blocked
         this.markUnblocked(endpoint);
-        return { data, source: 'finnhub' };
+        return { data, source: providerName };
       }
-      throw new Error('Invalid price data from Finnhub');
-    } catch (finnhubError) {
+      throw new Error(`Invalid price data from ${providerName}`);
+    } catch (providerError) {
       // Check if it's a 403 error
-      if (this.is403Error(finnhubError)) {
+      if (this.is403Error(providerError)) {
         this.markBlocked(endpoint);
 
         // Try Schwab fallback
@@ -139,7 +140,7 @@ class PriceFallbackManager {
       }
 
       // Return the error for the caller to handle
-      return { data: null, source: 'none', error: finnhubError };
+      return { data: null, source: 'none', error: providerError };
     }
   }
 
@@ -168,10 +169,11 @@ class PriceFallbackManager {
    * @param {string} resolution - Resolution ('1', '5', '15', '30', 'D')
    * @param {number} from - Start timestamp (Unix seconds)
    * @param {number} to - End timestamp (Unix seconds)
-   * @param {Function} finnhubFn - Finnhub candles function
+   * @param {Function} providerFn - Primary provider candles function
+   * @param {string} providerName - Primary provider name
    * @returns {Promise<{data: object[]|null, source: string}>}
    */
-  async getCandlesWithFallback(symbol, resolution, from, to, finnhubFn) {
+  async getCandlesWithFallback(symbol, resolution, from, to, providerFn, providerName = 'finnhub') {
     const endpoint = 'candles';
 
     // If endpoint is blocked and we shouldn't retry yet, go straight to Schwab
@@ -183,18 +185,18 @@ class PriceFallbackManager {
       return { data: null, source: 'none' };
     }
 
-    // Try Finnhub
+    // Try primary provider
     try {
-      const data = await finnhubFn(symbol, resolution, from, to);
+      const data = await providerFn(symbol, resolution, from, to);
       if (data && data.length > 0) {
         // Success - mark as unblocked if it was blocked
         this.markUnblocked(endpoint);
-        return { data, source: 'finnhub' };
+        return { data, source: providerName };
       }
-      throw new Error('No candle data from Finnhub');
-    } catch (finnhubError) {
+      throw new Error(`No candle data from ${providerName}`);
+    } catch (providerError) {
       // Check if it's a 403 error
-      if (this.is403Error(finnhubError)) {
+      if (this.is403Error(providerError)) {
         this.markBlocked(endpoint);
 
         // Try Schwab fallback
@@ -205,7 +207,7 @@ class PriceFallbackManager {
       }
 
       // Return the error for the caller to handle
-      return { data: null, source: 'none', error: finnhubError };
+      return { data: null, source: 'none', error: providerError };
     }
   }
 

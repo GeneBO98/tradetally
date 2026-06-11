@@ -72,9 +72,11 @@ function formatHoldTime(trade) {
   return `${Math.floor(minutes / (60 * 24))}d`;
 }
 
-// Rough advance width for right-positioning the side pill / secondary text.
+// Rough advance width used for stats-row column spacing only (display elements
+// that must not overlap use tspan flow instead). Sized generously for DejaVu,
+// the widest font likely to render this card.
 function estimateWidth(text, fontSize, weight = 700) {
-  const factor = weight >= 700 ? 0.62 : 0.55;
+  const factor = weight >= 700 ? 0.72 : 0.66;
   return String(text).length * fontSize * factor;
 }
 
@@ -133,28 +135,34 @@ function buildTradeCardSvg(trade) {
     parts.push(text(formatDate(trade.trade_date), CARD_WIDTH - PAD, baseY - 4, { size: 24, color: COLORS.textSecondary, anchor: 'end' }));
   }
 
-  // Symbol + side pill
+  // Symbol + side label. Rendered as tspans in ONE text element so the renderer
+  // spaces them with real glyph widths - estimating font metrics server-side
+  // overlapped on DejaVu (prod font), which runs wider than the estimate.
   const symbolY = 218;
-  parts.push(text(symbol, PAD, symbolY, { size: 76, weight: 700 }));
-  if (side) {
+  {
     const sideColor = side === 'SHORT' ? COLORS.loss : COLORS.win;
-    const pillX = PAD + estimateWidth(symbol, 76) + 28;
-    const pillY = symbolY - 54;
-    const pillW = estimateWidth(side, 24) + 36;
-    parts.push(`<rect x="${pillX}" y="${pillY}" width="${pillW}" height="44" rx="22" fill="${sideColor}" fill-opacity="0.15"/>`);
-    parts.push(text(side, pillX + 18, pillY + 31, { size: 24, weight: 700, color: sideColor }));
+    let line = `<text x="${PAD}" y="${symbolY}" font-family="${FONT}">`;
+    line += `<tspan font-size="76" font-weight="700" fill="${COLORS.textPrimary}">${escapeXml(symbol)}</tspan>`;
+    if (side) {
+      line += `<tspan dx="28" dy="-14" font-size="30" font-weight="700" fill="${sideColor}">${escapeXml(side)}</tspan>`;
+    }
+    line += '</text>';
+    parts.push(line);
   }
 
-  // Hero
+  // Hero + secondary ("unrealized", R-multiple) flow the same way.
   const heroY = 380;
-  parts.push(text(hero, PAD, heroY, { size: 128, weight: 700, color: resultColor }));
-
-  // Secondary next to hero
   const secondaryParts = [];
   if (isOpen && hasPnl) secondaryParts.push('unrealized');
   if (rValue !== null) secondaryParts.push(`${rValue >= 0 ? '+' : ''}${rValue.toFixed(1)}R`);
-  if (secondaryParts.length > 0) {
-    parts.push(text(secondaryParts.join('  ·  '), PAD + estimateWidth(hero, 128) + 36, heroY - 8, { size: 40, weight: 600, color: COLORS.textSecondary }));
+  {
+    let line = `<text x="${PAD}" y="${heroY}" font-family="${FONT}">`;
+    line += `<tspan font-size="128" font-weight="700" fill="${resultColor}">${escapeXml(hero)}</tspan>`;
+    if (secondaryParts.length > 0) {
+      line += `<tspan dx="36" dy="-8" font-size="40" font-weight="600" fill="${COLORS.textSecondary}">${escapeXml(secondaryParts.join('  ·  '))}</tspan>`;
+    }
+    line += '</text>';
+    parts.push(line);
   }
 
   // Stats row (fixed columns)

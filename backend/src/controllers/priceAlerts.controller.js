@@ -154,7 +154,7 @@ const priceAlertsController = {
           // Update price monitoring data
           await db.query(`
             INSERT INTO price_monitoring (symbol, current_price, previous_price, price_change, percent_change, volume, data_source)
-            VALUES ($1, $2, $3, $4, $5, $6, 'finnhub')
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             ON CONFLICT (symbol) DO UPDATE SET
               previous_price = price_monitoring.current_price,
               current_price = $2,
@@ -166,8 +166,8 @@ const priceAlertsController = {
               END,
               volume = $6,
               last_updated = CURRENT_TIMESTAMP,
-              data_source = 'finnhub'
-          `, [symbolUpper, currentPrice, null, 0, 0, priceData.pc || 0]);
+              data_source = $7
+          `, [symbolUpper, currentPrice, null, 0, 0, priceData.pc || 0, finnhub.providerName || 'finnhub']);
         }
       } catch (priceError) {
         logger.logWarn(`Could not fetch current price for ${symbolUpper}:`, priceError.message);
