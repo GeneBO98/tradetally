@@ -390,6 +390,32 @@ restart_backend() {
   fi
 }
 
+# Install repo-managed nginx snippets (currently the Open Graph link-preview
+# routing) into /etc/nginx/snippets so prod picks up routing changes on update.
+# The site config must include the snippet once (one-time manual step); until it
+# does, this logs a NOTICE instead of failing.
+install_nginx_snippets() {
+  local src="$REPO_ROOT/scripts/nginx/tradetally-og.conf"
+  local dest="/etc/nginx/snippets/tradetally-og.conf"
+
+  if [ ! -f "$src" ]; then
+    return
+  fi
+
+  if ! sudo test -f "$dest" || ! sudo cmp -s "$src" "$dest"; then
+    sudo mkdir -p /etc/nginx/snippets
+    sudo cp "$src" "$dest"
+    log "Installed nginx snippet $dest"
+  fi
+
+  if ! sudo grep -Rqs "tradetally-og.conf" /etc/nginx/sites-enabled /etc/nginx/conf.d 2>/dev/null; then
+    log "NOTICE: $dest is installed but not referenced by any nginx site config."
+    log "NOTICE: One-time step - add this line inside the tradetally server { } block:"
+    log "NOTICE:   include $dest;"
+    log "NOTICE: Shared trade links will not unfurl into cards until it is included."
+  fi
+}
+
 reload_nginx_if_available() {
   if ! command_exists nginx; then
     log "nginx is not installed; skipping reload"
@@ -400,6 +426,8 @@ reload_nginx_if_available() {
     log "sudo is unavailable; skipping nginx reload"
     return
   fi
+
+  install_nginx_snippets
 
   if ! sudo nginx -t; then
     fail \

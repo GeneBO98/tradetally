@@ -31,8 +31,17 @@ pnpm --dir backend run migrate
 echo "[DEPLOY] Restarting backend..."
 pm2 restart all
 
-# Reload nginx
+# Install repo-managed nginx snippets, then reload nginx
+echo "[DEPLOY] Installing nginx snippets..."
+if [ -f scripts/nginx/tradetally-og.conf ]; then
+  sudo mkdir -p /etc/nginx/snippets
+  sudo cp scripts/nginx/tradetally-og.conf /etc/nginx/snippets/tradetally-og.conf
+  if ! sudo grep -Rqs "tradetally-og.conf" /etc/nginx/sites-enabled /etc/nginx/conf.d 2>/dev/null; then
+    echo "[DEPLOY] NOTICE: add 'include /etc/nginx/snippets/tradetally-og.conf;' inside the tradetally server { } block (one-time step)"
+  fi
+fi
+
 echo "[DEPLOY] Reloading nginx..."
-sudo nginx -s reload
+sudo nginx -t && sudo nginx -s reload
 
 echo "[DEPLOY] Deployment complete!"
