@@ -304,6 +304,16 @@ function formatHoldTime() {
   return `${days}d`
 }
 
+// Snapshot time for open positions, e.g. "2:14 PM". The card is a static image,
+// so it shows when the unrealized number was captured.
+function formatNow() {
+  try {
+    return new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  } catch (e) {
+    return ''
+  }
+}
+
 function roundedRect(ctx, x, y, w, h, r) {
   ctx.beginPath()
   ctx.moveTo(x + r, y)
@@ -336,11 +346,19 @@ function draw(logo) {
   if (!canvas) return
 
   const trade = props.trade
-  const pnl = num(trade.pnl) ?? 0
-  const pnlPercent = num(trade.pnl_percent ?? trade.pnlPercent)
+  const isOpen = !trade.exit_time && !trade.exit_price
+  const currentPrice = num(trade.currentPrice ?? trade.current_price)
+  // Open positions show live unrealized P&L (from the backend quote); closed
+  // positions show realized P&L. hasPnl is false for an open trade with no quote
+  // yet, so the card says "OPEN" instead of a misleading $0 / 0%.
+  const hasPnl = isOpen ? (num(trade.unrealizedPnl) !== null) : true
+  const pnl = isOpen ? (num(trade.unrealizedPnl) ?? 0) : (num(trade.pnl) ?? 0)
+  const pnlPercent = isOpen
+    ? num(trade.unrealizedPnlPercent)
+    : num(trade.pnl_percent ?? trade.pnlPercent)
   const rValue = num(trade.r_value ?? trade.rValue)
   const isWin = pnl >= 0
-  const resultColor = isWin ? COLORS.win : COLORS.loss
+  const resultColor = !hasPnl ? COLORS.textSecondary : (isWin ? COLORS.win : COLORS.loss)
   const primary = themePrimary()
 
   canvas.width = CARD_WIDTH * SCALE
@@ -377,11 +395,16 @@ function draw(logo) {
   ctx.textBaseline = 'alphabetic'
   ctx.fillText('TradeTally', PAD + logoSize + 14, baseY - 2)
 
-  // Date, top right
-  ctx.fillStyle = COLORS.textSecondary
+  // Date / status, top right. Open positions are a point-in-time snapshot.
   ctx.font = `400 24px ${FONT}`
   ctx.textAlign = 'right'
-  ctx.fillText(formatTradeDate(trade.trade_date, 'MMM dd, yyyy'), CARD_WIDTH - PAD, baseY - 4)
+  if (isOpen) {
+    ctx.fillStyle = primary
+    ctx.fillText(`OPEN  ·  as of ${formatNow()}`, CARD_WIDTH - PAD, baseY - 4)
+  } else {
+    ctx.fillStyle = COLORS.textSecondary
+    ctx.fillText(formatTradeDate(trade.trade_date, 'MMM dd, yyyy'), CARD_WIDTH - PAD, baseY - 4)
+  }
   ctx.textAlign = 'left'
 
   // Symbol + side pill
@@ -414,7 +437,9 @@ function draw(logo) {
   ctx.fillStyle = resultColor
   ctx.font = `700 128px ${FONT}`
   let hero
-  if (showDollarAmounts.value) {
+  if (!hasPnl) {
+    hero = 'OPEN'
+  } else if (showDollarAmounts.value) {
     hero = formatMoney(pnl)
   } else if (pnlPercent !== null) {
     hero = `${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(2)}%`
@@ -430,6 +455,9 @@ function draw(logo) {
   ctx.fillStyle = COLORS.textSecondary
   ctx.font = `600 44px ${FONT}`
   const secondaryParts = []
+  if (isOpen && hasPnl) {
+    secondaryParts.push('unrealized')
+  }
   if (showDollarAmounts.value && pnlPercent !== null) {
     secondaryParts.push(`${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(2)}%`)
   }
@@ -441,12 +469,16 @@ function draw(logo) {
   }
 
   // Stats row
-  const stats = [
-    { label: 'ENTRY', value: formatPrice(trade.entry_price) },
-    { label: 'EXIT', value: formatPrice(trade.exit_price) }
-  ]
-  const hold = formatHoldTime()
-  if (hold) stats.push({ label: 'HOLD', value: hold })
+  const stats = [{ label: 'ENTRY', value: formatPrice(trade.entry_price) }]
+  if (isOpen) {
+    stats.push({ label: 'CURRENT', value: currentPrice !== null ? formatPrice(currentPrice) : '-' })
+    const stop = num(trade.stop_loss ?? trade.stopLoss)
+    if (stop !== null) stats.push({ label: 'STOP', value: formatPrice(stop) })
+  } else {
+    stats.push({ label: 'EXIT', value: formatPrice(trade.exit_price) })
+    const hold = formatHoldTime()
+    if (hold) stats.push({ label: 'HOLD', value: hold })
+  }
   if (showDollarAmounts.value && num(trade.quantity) !== null) {
     stats.push({
       label: trade.instrument_type === 'option' ? 'CONTRACTS' : 'SHARES',

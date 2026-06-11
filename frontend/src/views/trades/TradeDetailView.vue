@@ -37,7 +37,7 @@
             <span>{{ showAIPanel ? 'Hide Analysis' : 'Analyze Trade' }}</span>
           </button>
           <button
-            v-if="trade.exit_price !== null && trade.exit_price !== undefined"
+            v-if="trade.entry_price !== null && trade.entry_price !== undefined"
             @click="showShareCard = true"
             class="btn-secondary inline-flex items-center gap-2"
           >
