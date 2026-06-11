@@ -764,13 +764,13 @@ const proFeatures = [
 const brokers = [
   { name: 'Schwab', logo: '/images/brokers/schwab.svg' },
   { name: 'Interactive Brokers', logo: '/images/brokers/ibkr.svg' },
-  { name: 'ThinkorSwim', logo: '/images/brokers/thinkorswim.png' },
+  { name: 'ThinkorSwim', logo: '/images/brokers/thinkorswim.webp' },
   { name: 'Lightspeed', logo: '/images/brokers/lightspeed.svg' },
   { name: 'Webull', logo: '/images/brokers/webull.svg' },
   { name: 'TradingView', logo: '/images/brokers/tradingview.svg' },
   { name: 'TradeStation', logo: '/images/brokers/tradestation.svg' },
   { name: 'Tastytrade', logo: '/images/brokers/tastytrade.svg' },
-  { name: 'Tradovate', logo: '/images/brokers/tradovate.png' },
+  { name: 'Tradovate', logo: '/images/brokers/tradovate.webp' },
   { name: 'Questrade', logo: '/images/brokers/questrade.svg' }
 ]
 
@@ -791,6 +791,9 @@ const whyTradeTally = [
 ]
 
 onMounted(() => {
+  // Force light mode on the public page — dark mode doesn't render it well
+  document.documentElement.classList.remove('dark')
+
   fetchRegistrationConfig().catch((error) => {
     console.error('Failed to fetch registration config:', error)
   })
@@ -882,6 +885,10 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (carouselTimer) clearInterval(carouselTimer)
+  // Restore dark mode when leaving the public page
+  if (localStorage.getItem('darkMode') === 'true') {
+    document.documentElement.classList.add('dark')
+  }
 })
 </script>
 
