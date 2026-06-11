@@ -340,7 +340,12 @@ function calculateRemainingOpenQuantity(trade) {
 function enrichOpenTradePnL(trade) {
   const isOpen = !trade.exit_price && !trade.exit_time;
   trade.currentPrice = trade.current_price != null ? Number(trade.current_price) : null;
-  trade.remainingQuantity = isOpen ? calculateRemainingOpenQuantity(trade) : 0;
+  // Prefer the net open quantity derived from executions; fall back to the
+  // trade's quantity when executions aren't present (e.g. some broker syncs).
+  const remainingFromExecutions = isOpen ? calculateRemainingOpenQuantity(trade) : 0;
+  trade.remainingQuantity = isOpen
+    ? (remainingFromExecutions > 0 ? remainingFromExecutions : (Number(trade.quantity) || 0))
+    : 0;
   trade.unrealizedPnl = null;
   trade.unrealizedPnlPercent = null;
 
@@ -363,6 +368,38 @@ function enrichOpenTradePnL(trade) {
   trade.unrealizedPnlPercent = costBasis > 0
     ? (unrealizedPnl / costBasis) * 100
     : null;
+}
+
+const TRADE_DETAIL_QUOTE_TIMEOUT_MS = OPEN_POSITIONS_FINNHUB_TIMEOUT_MS;
+
+// Best-effort current price for a single open stock/futures position, using the
+// same sources as the dashboard Open Positions table: the price_monitoring cache
+// (kept warm by the price monitor) first, then a single Finnhub quote. Never
+// throws - an open trade just keeps showing "Open" if no price is available.
+async function fetchCurrentPriceForSymbol(symbol, userId) {
+  if (!symbol) return null;
+  try {
+    const cached = await db.query(
+      `SELECT current_price FROM price_monitoring
+       WHERE symbol = $1 AND last_updated > NOW() - INTERVAL '2 minutes'
+       LIMIT 1`,
+      [symbol]
+    );
+    const cachedPrice = cached.rows[0] ? parseFloat(cached.rows[0].current_price) : null;
+    if (Number.isFinite(cachedPrice) && cachedPrice > 0) return cachedPrice;
+
+    if (!finnhub.isConfigured()) return null;
+    const quote = await withTimeout(
+      finnhub.getQuote(symbol, { source: 'trade_detail', priority: 0, userId }),
+      TRADE_DETAIL_QUOTE_TIMEOUT_MS,
+      'Trade detail Finnhub quote'
+    );
+    const price = quote && Number.isFinite(Number(quote.c)) ? Number(quote.c) : null;
+    return Number.isFinite(price) && price > 0 ? price : null;
+  } catch (error) {
+    console.warn('[TRADE-DETAIL] current price lookup failed for', symbol, '-', error.message);
+    return null;
+  }
 }
 
 const tradeController = {
@@ -971,6 +1008,16 @@ const tradeController = {
       }
 
       trade.setupQuality = buildSetupQuality(trade);
+
+      // Surface live unrealized P&L for open positions the same way the dashboard's
+      // Open Positions table does. Non-options only (open option premiums are entered
+      // manually); best-effort, so any quote failure just leaves the trade as "Open".
+      const isOpenPosition = !trade.exit_price && !trade.exit_time;
+      if (isOpenPosition && trade.instrument_type !== 'option') {
+        const price = await fetchCurrentPriceForSymbol(trade.underlying_symbol || trade.symbol, req.user?.id);
+        if (price != null) trade.current_price = price;
+      }
+      enrichOpenTradePnL(trade);
 
       res.json({ trade });
     } catch (error) {

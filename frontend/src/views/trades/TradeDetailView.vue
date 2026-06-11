@@ -1367,23 +1367,23 @@
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
                     Net P&L
-                    <span v-if="!trade.exit_time && openOptionUnrealizedPnL !== null" class="text-xs font-normal text-gray-400">(unrealized)</span>
+                    <span v-if="!trade.exit_time && openUnrealizedPnL !== null" class="text-xs font-normal text-gray-400">(unrealized)</span>
                   </dt>
                   <dd class="mt-1 text-2xl font-semibold" :class="[
-                    (trade.exit_time ? displayPnl : openOptionUnrealizedPnL) >= 0 ? 'text-green-600' : 'text-red-600'
+                    (trade.exit_time ? displayPnl : openUnrealizedPnL) >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
                     <template v-if="trade.exit_time">{{ formatCurrency(displayPnl) }}</template>
-                    <template v-else-if="openOptionUnrealizedPnL !== null">{{ formatCurrency(openOptionUnrealizedPnL) }}</template>
+                    <template v-else-if="openUnrealizedPnL !== null">{{ formatCurrency(openUnrealizedPnL) }}</template>
                     <template v-else>Open</template>
                   </dd>
                 </div>
-                <div v-if="trade.pnl_percent || openOptionUnrealizedPnLPercent !== null">
+                <div v-if="trade.pnl_percent || openUnrealizedPnLPercent !== null">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">P&L %</dt>
                   <dd class="mt-1 text-lg font-semibold" :class="[
-                    (trade.exit_time ? trade.pnl_percent : openOptionUnrealizedPnLPercent) >= 0 ? 'text-green-600' : 'text-red-600'
+                    (trade.exit_time ? trade.pnl_percent : openUnrealizedPnLPercent) >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
                     <template v-if="trade.exit_time">{{ trade.pnl_percent > 0 ? '+' : '' }}{{ formatNumber(trade.pnl_percent) }}%</template>
-                    <template v-else>{{ openOptionUnrealizedPnLPercent > 0 ? '+' : '' }}{{ formatNumber(openOptionUnrealizedPnLPercent) }}%</template>
+                    <template v-else>{{ openUnrealizedPnLPercent > 0 ? '+' : '' }}{{ formatNumber(openUnrealizedPnLPercent) }}%</template>
                   </dd>
                 </div>
                 <div>
@@ -1986,6 +1986,33 @@ const openOptionUnrealizedPnLPercent = computed(() => {
   return (openOptionUnrealizedPnL.value / entryValue) * 100
 })
 
+// Unrealized P&L for ANY open position. Stocks/futures use the live quote the
+// backend now attaches (trade.unrealizedPnl / currentPrice); options use the
+// manually-entered premium from the dashboard's Open Positions table.
+const openCurrentPrice = computed(() => {
+  const t = trade.value
+  if (!t || t.exit_time) return null
+  if (t.instrument_type === 'option') return manualOptionPrice.value
+  const p = Number(t.currentPrice ?? t.current_price)
+  return Number.isFinite(p) && p > 0 ? p : null
+})
+
+const openUnrealizedPnL = computed(() => {
+  const t = trade.value
+  if (!t || t.exit_time) return null
+  if (t.instrument_type === 'option') return openOptionUnrealizedPnL.value
+  const v = Number(t.unrealizedPnl)
+  return Number.isFinite(v) ? v : null
+})
+
+const openUnrealizedPnLPercent = computed(() => {
+  const t = trade.value
+  if (!t || t.exit_time) return null
+  if (t.instrument_type === 'option') return openOptionUnrealizedPnLPercent.value
+  const v = Number(t.unrealizedPnlPercent)
+  return Number.isFinite(v) ? v : null
+})
+
 const executionSummary = computed(() => {
   if (!processedExecutions.value || !Array.isArray(processedExecutions.value)) return {
     totalVolume: 0,
@@ -2125,7 +2152,20 @@ function formatAIModelLabel(metadata) {
 }
 
 function calculateRiskReward() {
-  if (!trade.value.exit_time) return 'Open'
+  const isLongSide = trade.value.side === 'long'
+
+  // Open position: show the move from entry to the live current price.
+  if (!trade.value.exit_time) {
+    const entry = Number(trade.value.entry_price)
+    const current = openCurrentPrice.value
+    if (!Number.isFinite(entry) || entry === 0 || current === null) return 'Open'
+    const move = isLongSide
+      ? ((current - entry) / entry) * 100
+      : ((entry - current) / entry) * 100
+    if (move > 0) return `+${move.toFixed(2)}%`
+    if (move < 0) return `${move.toFixed(2)}%`
+    return 'Breakeven'
+  }
 
   // For closed trades, we can't calculate a true risk/reward ratio without stop-loss/target levels
   // Instead, we'll show the actual outcome as a ratio
