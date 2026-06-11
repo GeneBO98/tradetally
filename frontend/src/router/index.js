@@ -48,6 +48,12 @@ const router = createRouter({
       meta: { guest: true }
     },
     {
+      path: '/unlock-account/:token',
+      name: 'unlock-account',
+      component: () => import('@/views/auth/UnlockAccountView.vue'),
+      meta: { guest: true }
+    },
+    {
       path: '/unsubscribe',
       name: 'unsubscribe',
       component: () => import('@/views/auth/UnsubscribeView.vue'),

@@ -105,7 +105,7 @@ const authenticateFlexible = async (req, res, next) => {
     // Try JWT authentication first
     const jwt = require('jsonwebtoken');
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
       const user = await User.findById(decoded.id);
 
       if (user && user.is_active) {

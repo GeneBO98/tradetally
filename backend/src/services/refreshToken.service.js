@@ -21,7 +21,7 @@ class RefreshTokenService {
         role: user.role
       },
       process.env.JWT_SECRET,
-      { expiresIn: this.ACCESS_TOKEN_EXPIRE }
+      { expiresIn: this.ACCESS_TOKEN_EXPIRE, algorithm: 'HS256' }
     );
   }
 

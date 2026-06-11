@@ -218,6 +218,30 @@ router.post('/forgot-password', authLimiter, validate(schemas.forgotPassword), a
  *         description: Password reset successful
  */
 router.post('/reset-password', authLimiter, validate(schemas.resetPassword), authController.resetPassword);
+
+/**
+ * @swagger
+ * /api/auth/unlock-account:
+ *   post:
+ *     summary: Unlock an account locked by failed logins
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [token]
+ *             properties:
+ *               token:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Account unlocked
+ *       400:
+ *         description: Invalid or expired unlock token
+ */
+router.post('/unlock-account', authLimiter, authController.unlockAccount);
 router.get('/verify-email/:token', authController.verifyEmail);
 router.post('/resend-verification', authLimiter, authController.resendVerification);
 router.post('/test-email', optionalAuth, authController.sendTestEmail);

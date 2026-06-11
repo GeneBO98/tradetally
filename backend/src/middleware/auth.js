@@ -78,7 +78,7 @@ class UnauthenticatedError extends Error {
 }
 
 function verifyJwtToken(token, { requiredPurpose = TOKEN_PURPOSES.ACCESS } = {}) {
-  const decoded = jwt.verify(token, process.env.JWT_SECRET);
+  const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
 
   if (requiredPurpose && decoded.purpose !== requiredPurpose) {
     throw new InvalidTokenPurposeError(requiredPurpose, decoded.purpose);
@@ -240,8 +240,9 @@ const generateToken = (user, options = {}) => {
       purpose
     },
     process.env.JWT_SECRET,
-    { 
-      expiresIn
+    {
+      expiresIn,
+      algorithm: 'HS256'
     }
   );
 };
