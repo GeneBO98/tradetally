@@ -1,6 +1,7 @@
 const Trade = require('../models/Trade');
 const { fetchCurrentPriceForSymbol, computeUnrealized } = require('../services/openPositionPricing');
 const { renderTradeCardPng } = require('../services/shareCardImageService');
+const TradeVerificationService = require('../services/tradeVerificationService'); // cloud-only: verified trades
 
 const FALLBACK_IMAGE = '/social-preview-v2.png';
 const SITE_TITLE = 'TradeTally - Trading Journal with Behavioral Analytics';
@@ -24,6 +25,23 @@ function escapeHtml(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+// Attach the broker-verification status (cloud-only) so the card can show the
+// badge. The trade is already confirmed public by the caller, so reading its
+// status via the owner id is fine. Best-effort - never blocks the card.
+async function attachVerification(trade, req) {
+  try {
+    const verification = await TradeVerificationService.getForTrade(trade.id, trade.user_id);
+    if (verification?.status === 'broker_verified' && verification.public_code) {
+      const host = req.headers['x-forwarded-host'] || req.headers.host || 'tradetally.io';
+      verification.verifyLabel = `${host}/v/${verification.public_code}`;
+    }
+    trade.verification = verification;
+  } catch (error) {
+    console.warn('[OG] verification lookup failed:', error.message);
+    trade.verification = null;
+  }
 }
 
 // Attach a live current price + unrealized P&L to an open non-option position,
@@ -51,11 +69,13 @@ function buildCardText(trade) {
   else if (rValue !== null) result = `${rValue >= 0 ? '+' : ''}${rValue.toFixed(1)}R`;
   else result = isOpen ? 'open' : (num(trade.pnl) >= 0 ? 'win' : 'loss');
 
+  const verified = trade.verification?.status === 'broker_verified';
   const headline = [symbol, side, result].filter(Boolean).join(' ');
-  const title = `${headline}${isOpen ? ' (open)' : ''} · TradeTally`;
-  const description = isOpen
+  const title = `${verified ? '✓ ' : ''}${headline}${isOpen ? ' (open)' : ''} · TradeTally`;
+  const verifiedNote = verified ? ' Broker-verified.' : '';
+  const description = (isOpen
     ? `Open ${side.toLowerCase()} position on ${symbol}, shared from TradeTally.`
-    : `${side ? side.charAt(0) + side.slice(1).toLowerCase() + ' ' : ''}trade on ${symbol} (${result}), shared from TradeTally.`;
+    : `${side ? side.charAt(0) + side.slice(1).toLowerCase() + ' ' : ''}trade on ${symbol} (${result}), shared from TradeTally.`) + verifiedNote;
   return { title, description };
 }
 
@@ -110,6 +130,7 @@ const ogController = {
         }));
       }
       await enrichOpenPosition(trade);
+      await attachVerification(trade, req);
       const { title, description } = buildCardText(trade);
       res.set('Cache-Control', 'public, max-age=120');
       return res.type('html').send(renderOgHtml({
@@ -138,6 +159,7 @@ const ogController = {
         return res.redirect(302, FALLBACK_IMAGE);
       }
       await enrichOpenPosition(trade);
+      await attachVerification(trade, req);
       const png = await renderTradeCardPng(trade);
       res.set('Content-Type', 'image/png');
       res.set('Cache-Control', 'public, max-age=120');
