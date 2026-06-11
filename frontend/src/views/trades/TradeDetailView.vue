@@ -28,7 +28,7 @@
             {{ formatDate(trade.trade_date) }} • {{ trade.side }}
           </p>
         </div>
-        <div class="flex flex-wrap gap-3 sm:justify-end">
+        <div v-if="isOwner" class="flex flex-wrap gap-3 sm:justify-end">
           <button
             @click="toggleAIPanel"
             class="btn-primary inline-flex items-center gap-2"
@@ -1324,7 +1324,7 @@
                 </div>
 
                 <!-- Add Comment Form -->
-                <form @submit.prevent="submitComment" class="mt-6">
+                <form v-if="authStore.isAuthenticated" @submit.prevent="submitComment" class="mt-6">
                   <div>
                     <label for="comment" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
                       Add a comment
@@ -1582,6 +1582,9 @@ function hasLegacyFuturesExcursionUnits(currentTrade, captured, scale) {
 
 const loading = ref(true)
 const trade = ref(null)
+// True only for the trade's owner. Guests/other users viewing a public trade get
+// a read-only view: owner actions and owner-only data fetches are skipped.
+const isOwner = computed(() => !!authStore.user && !!trade.value && trade.value.user_id === authStore.user.id)
 const calculatingQuality = ref(false)
 const splittingTrade = ref(false)
 const splitMode = ref(false)
@@ -2485,16 +2488,22 @@ async function loadTrade() {
         metrics: trade.value.qualityMetrics || null
       }
     }
-    await loadPlaybooks()
-    
-    // Load comments after trade is loaded
-    if (trade.value) {
+    // Owner-only data (playbooks, comments, AI analyses) require auth - skip it for
+    // guests viewing a public trade so their requests don't 401 and bounce them to login.
+    if (trade.value && authStore.isAuthenticated) {
+      await loadPlaybooks()
       loadComments()
       loadStoredAIAnalyses()
     }
   } catch (error) {
-    showError('Error', 'Failed to load trade')
-    router.push('/trades')
+    // A guest hitting a private/non-existent trade gets a 404; send them to login
+    // (the owner can sign in and come back). Authenticated users go to their list.
+    if (!authStore.isAuthenticated) {
+      router.push({ name: 'login', query: { redirect: route.fullPath } })
+    } else {
+      showError('Error', 'Failed to load trade')
+      router.push('/trades')
+    }
   } finally {
     loading.value = false
   }
