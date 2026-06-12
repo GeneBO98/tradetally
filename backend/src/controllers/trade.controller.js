@@ -3072,9 +3072,23 @@ const tradeController = {
           const fbSymbol = fbPosition.symbol;
 
           // Find composite-keyed positions with same symbol and instrument type
-          const compositeMatch = Object.entries(positionMap).find(([key, pos]) => {
+          let compositeMatch = Object.entries(positionMap).find(([key, pos]) => {
             return key !== fbKey && pos.symbol === fbSymbol && pos.instrumentType === 'option' && !fallbackKeys.has(key);
           });
+
+          // CUSIP resolution used to rewrite option trade symbols to the underlying
+          // equity ticker, so the fallback symbol may match the composite position's
+          // underlying_symbol instead. Only merge when exactly one contract matches -
+          // with multiple contracts on the same underlying we cannot tell which one
+          // the metadata-less trade belongs to.
+          if (!compositeMatch) {
+            const underlyingMatches = Object.entries(positionMap).filter(([key, pos]) => {
+              return key !== fbKey && pos.underlying_symbol === fbSymbol && pos.instrumentType === 'option' && !fallbackKeys.has(key);
+            });
+            if (underlyingMatches.length === 1) {
+              compositeMatch = underlyingMatches[0];
+            }
+          }
 
           if (compositeMatch) {
             const [compositeKey, compositePosition] = compositeMatch;
