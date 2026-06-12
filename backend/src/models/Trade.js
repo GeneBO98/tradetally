@@ -20,6 +20,15 @@ function roundToDbPrecision(value, decimals = 8) {
   return Math.round(num * multiplier) / multiplier;
 }
 
+// Open-position grouping keys options by underlying symbol; case or
+// whitespace variance from broker APIs splits the same contract into
+// duplicate positions (issue #339), so normalize at every write.
+function normalizeUnderlyingSymbol(value) {
+  if (value === null || value === undefined) return null;
+  const normalized = String(value).trim().toUpperCase();
+  return normalized || null;
+}
+
 async function timedDbQuery(label, query, values = []) {
   const startedAt = Date.now();
 
@@ -567,7 +576,7 @@ class Trade {
       strategyConfidence, classificationMethod, JSON.stringify(classificationMetadata), manualOverride,
       JSON.stringify(newsData.newsEvents || []), newsData.hasNews || false, newsData.sentiment, newsData.checkedAt,
       instrumentType || 'stock', roundToDbPrecision(strikePrice), cleanExpirationDate, optionType || null,
-      contractSize || (instrumentType === 'option' ? 100 : null), underlyingSymbol || null,
+      contractSize || (instrumentType === 'option' ? 100 : null), normalizeUnderlyingSymbol(underlyingSymbol),
       contractMonth || null, contractYear || null, roundToDbPrecision(finalTickSize), roundToDbPrecision(finalPointValue), finalUnderlyingAsset || null,
       importId || null,
       originalCurrency || 'USD', roundToDbPrecision(exchangeRate) || 1.0,
@@ -755,7 +764,7 @@ class Trade {
       notes || null, broker || null, strategy || null, setup || null, tags || [],
       confidence || 5, instrumentType || 'stock',
       roundToDbPrecision(strikePrice), cleanExpirationDate, optionType || null,
-      contractSize || (instrumentType === 'option' ? 100 : null), underlyingSymbol || null,
+      contractSize || (instrumentType === 'option' ? 100 : null), normalizeUnderlyingSymbol(underlyingSymbol),
       contractMonth || null, contractYear || null, roundToDbPrecision(finalTickSize),
       roundToDbPrecision(finalPointValue), finalUnderlyingAsset || null,
       roundToDbPrecision(stopLoss), roundToDbPrecision(takeProfit),
@@ -1200,6 +1209,9 @@ class Trade {
     if (updates.exitPrice === '') updates.exitPrice = null;
     if (updates.stopLoss === '') updates.stopLoss = null;
     if (updates.takeProfit === '') updates.takeProfit = null;
+    if (updates.underlyingSymbol !== undefined) {
+      updates.underlyingSymbol = normalizeUnderlyingSymbol(updates.underlyingSymbol);
+    }
 
     // pg serializes Date params in server-local time, which shifts DATE
     // columns back a day on servers west of UTC (issue #349). Joi-converted

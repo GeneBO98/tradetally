@@ -1017,7 +1017,10 @@ class SchwabService {
       optionType = instrument.putCall?.toLowerCase() || parsedOption?.optionType || null;
       strikePrice = instrument.strikePrice ?? parsedOption?.strikePrice ?? null;
       expirationDate = instrument.expirationDate || parsedOption?.expirationDate || null;
-      underlyingSymbol = instrument.underlyingSymbol || parsedOption?.underlyingSymbol || null;
+      // Normalize: the open-position grouping key is built from the
+      // underlying symbol, and the Schwab API's casing is not guaranteed.
+      const rawUnderlying = instrument.underlyingSymbol || parsedOption?.underlyingSymbol || null;
+      underlyingSymbol = rawUnderlying ? String(rawUnderlying).trim().toUpperCase() : null;
       symbol = underlyingSymbol || matchingSymbol;
     } else if (assetType === 'FUTURE') {
       instrumentType = 'future';

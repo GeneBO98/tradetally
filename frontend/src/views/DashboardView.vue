@@ -596,7 +596,7 @@
                   </div>
                   <!-- Mobile Card View -->
                   <div class="block lg:hidden space-y-3">
-            <div v-for="position in displayedOpenTrades" :key="position.symbol" class="table-card-item">
+            <div v-for="position in displayedOpenTrades" :key="getOpenPositionKey(position)" class="table-card-item">
               <!-- Position Header -->
               <div class="flex justify-between items-start mb-3 pb-3 border-b border-gray-200 dark:border-gray-700">
                 <div class="flex items-center gap-3">
@@ -607,6 +607,9 @@
                   <div>
                     <div class="text-lg font-bold text-gray-900 dark:text-white">
                       {{ position.symbol }}
+                    </div>
+                    <div v-if="formatOptionContract(position)" class="text-xs text-gray-500 dark:text-gray-400">
+                      {{ formatOptionContract(position) }}
                     </div>
                     <span class="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full mt-1"
                       :class="[
@@ -682,8 +685,8 @@
                           step="0.01"
                           min="0"
                           placeholder="Enter"
-                          :value="manualOptionPrices[position.symbol] ?? ''"
-                          @input="setManualOptionPrice(position.symbol, $event.target.value)"
+                          :value="getManualOptionPrice(position) ?? ''"
+                          @input="setManualOptionPrice(position, $event.target.value)"
                           class="w-20 text-right text-sm font-bold bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-1.5 py-0.5 text-gray-900 dark:text-white focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
                         />
                       </div>
@@ -797,7 +800,7 @@
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                <template v-for="position in displayedOpenTrades" :key="position.symbol">
+                <template v-for="position in displayedOpenTrades" :key="getOpenPositionKey(position)">
                   <!-- Position Summary Row -->
                   <tr class="bg-gray-50 dark:bg-gray-800/50 font-medium">
                     <td class="px-3 py-2 text-sm font-bold text-gray-900 dark:text-white">
@@ -806,7 +809,12 @@
                           :symbol="position.symbol"
                           size-class="w-8 h-8"
                         />
-                        <span>{{ position.symbol }}</span>
+                        <div>
+                          <span>{{ position.symbol }}</span>
+                          <div v-if="formatOptionContract(position)" class="text-xs font-normal text-gray-500 dark:text-gray-400">
+                            {{ formatOptionContract(position) }}
+                          </div>
+                        </div>
                       </div>
                     </td>
                     <td class="px-3 py-2 text-sm">
@@ -843,8 +851,8 @@
                             step="0.01"
                             min="0"
                             placeholder="Premium"
-                            :value="manualOptionPrices[position.symbol] ?? ''"
-                            @input="setManualOptionPrice(position.symbol, $event.target.value)"
+                            :value="getManualOptionPrice(position) ?? ''"
+                            @input="setManualOptionPrice(position, $event.target.value)"
                             class="w-20 text-right text-sm font-bold bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-1.5 py-0.5 text-gray-900 dark:text-white focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
                           />
                         </div>
@@ -1705,18 +1713,29 @@ function saveManualOptionPrices() {
   localStorage.setItem('tradetally_manual_option_prices', JSON.stringify(manualOptionPrices.value))
 }
 
-function setManualOptionPrice(symbol, value) {
+// Manual prices are keyed by position key so two contracts on the same
+// underlying never share one input. Legacy entries were keyed by bare symbol;
+// reads fall back to them and the first write retires them.
+function setManualOptionPrice(position, value) {
+  const key = getOpenPositionKey(position)
   const num = parseFloat(value)
   if (isNaN(num) || num < 0) {
-    delete manualOptionPrices.value[symbol]
+    delete manualOptionPrices.value[key]
   } else {
-    manualOptionPrices.value[symbol] = num
+    manualOptionPrices.value[key] = num
+  }
+  if (key !== position.symbol) {
+    delete manualOptionPrices.value[position.symbol]
   }
   saveManualOptionPrices()
 }
 
+function getManualOptionPrice(position) {
+  return manualOptionPrices.value[getOpenPositionKey(position)] ?? manualOptionPrices.value[position.symbol]
+}
+
 function getOptionPnL(position) {
-  const price = manualOptionPrices.value[position.symbol]
+  const price = getManualOptionPrice(position)
   if (price === undefined || price === null) return { currentValue: null, unrealizedPnL: null, unrealizedPnLPercent: null }
   const multiplier = position.contractSize || 100
   const currentValue = price * position.totalQuantity * multiplier
@@ -2561,6 +2580,9 @@ function cacheOpenPositions(positions) {
 }
 
 function getOpenPositionKey(position) {
+  // The backend stamps a stable position_key on every position; the composite
+  // fallback only covers positions cached in sessionStorage before upgrade.
+  if (position.position_key) return position.position_key
   if (position.instrumentType === 'option' && position.underlying_symbol && position.strike_price && position.expiration_date && position.option_type) {
     return [
       position.underlying_symbol,
@@ -2570,6 +2592,12 @@ function getOpenPositionKey(position) {
     ].join('_')
   }
   return position.symbol
+}
+
+function formatOptionContract(position) {
+  if (position.instrumentType !== 'option' || !position.strike_price || !position.option_type || !position.expiration_date) return ''
+  const type = position.option_type === 'call' ? 'Call' : 'Put'
+  return `${formatCurrency(position.strike_price)} ${type} exp ${formatTradeDate(position.expiration_date, 'MM/dd/yy')}`
 }
 
 function preserveExistingQuoteData(positions) {
@@ -2629,11 +2657,16 @@ async function fetchOpenPositionsRequest({ skipQuotes = false } = {}) {
 }
 
 function cleanupManualOptionPrices() {
-  const openSymbols = new Set(openTrades.value.filter(p => p.requires_manual_price).map(p => p.symbol))
+  // Entries may be keyed by position key (current) or bare symbol (legacy).
+  const validKeys = new Set()
+  openTrades.value.filter(p => p.requires_manual_price).forEach(p => {
+    validKeys.add(getOpenPositionKey(p))
+    validKeys.add(p.symbol)
+  })
   let cleaned = false
-  Object.keys(manualOptionPrices.value).forEach(sym => {
-    if (!openSymbols.has(sym)) {
-      delete manualOptionPrices.value[sym]
+  Object.keys(manualOptionPrices.value).forEach(key => {
+    if (!validKeys.has(key)) {
+      delete manualOptionPrices.value[key]
       cleaned = true
     }
   })
