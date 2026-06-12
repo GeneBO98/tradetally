@@ -681,6 +681,20 @@ Keep recommendations specific and data-driven. Use bullet points for clarity.`;
     };
   }
 
+  // Trimmed position group shape returned to the client so the UI can show
+  // that an analysis covered the combined strategy, not just one leg.
+  static summarizePositionGroupForClient(positionGroup) {
+    if (!positionGroup) return null;
+    return {
+      strategy_label: positionGroup.strategy_label,
+      detected_strategy: positionGroup.detected_strategy,
+      leg_count: positionGroup.leg_count,
+      underlying_symbol: positionGroup.underlying_symbol,
+      combined_pnl: positionGroup.combined_pnl,
+      is_completed: positionGroup.is_completed
+    };
+  }
+
   static buildSingleTradePrompt(tradeSummary, tradingProfile = null) {
     const trade = tradeSummary.trade;
     const enrichment = tradeSummary.enrichment;
@@ -716,7 +730,14 @@ TRADER PROFILE:
       ? visualContext.images.map((image, index) => `- Image ${index + 1}: ${image.file_name || 'unnamed'} (${image.file_type || 'unknown type'}) at ${image.file_url}`).join('\n')
       : 'No attached trade images available.';
 
+    // Strategy-first framing (issue #339): when the trade belongs to a detected
+    // group, the combined strategy is the primary subject of the analysis. The
+    // snapshot leads the prompt and the leg record is demoted to a component,
+    // otherwise the model anchors on the leg's own P&L and analyzes it in
+    // isolation. The ungrouped prompt is unchanged.
     let positionGroupSection = '';
+    let snapshotHeading = 'TRADE SNAPSHOT:';
+    let executionsHeading = 'EXECUTIONS:';
     if (positionGroup) {
       const strategyLabel = positionGroup.strategy_label || 'multi-leg option strategy';
       const legLines = positionGroup.legs?.length
@@ -729,20 +750,27 @@ TRADER PROFILE:
           }).join('\n')
         : 'Leg details unavailable.';
 
-      positionGroupSection = `
-MULTI-LEG STRATEGY CONTEXT:
-This trade is one leg of a detected ${strategyLabel} (${positionGroup.leg_count} legs) on ${positionGroup.underlying_symbol}${positionGroup.expiration_date ? `, expiring ${positionGroup.expiration_date}` : ''}. Analyze the COMBINED strategy as a single position — net credit/debit, strike structure, defined risk vs reward, and whether the structure fit the market view — rather than judging this leg in isolation. A losing leg inside a profitable structure is usually the planned hedge, not a mistake.
+      positionGroupSection = `STRATEGY SNAPSHOT (PRIMARY SUBJECT):
+This is a detected ${strategyLabel} (${positionGroup.leg_count} legs) on ${positionGroup.underlying_symbol}${positionGroup.expiration_date ? `, expiring ${positionGroup.expiration_date}` : ''}. Analyze the COMBINED strategy as a single position — net credit/debit, strike structure, defined risk vs reward, and whether the structure fit the market view — rather than judging any leg in isolation. A losing leg inside a profitable structure is usually the planned hedge, not a mistake.
 - Combined net P&L (all legs): ${this.formatCurrencyValue(positionGroup.combined_pnl)}
 - Combined commissions/fees: ${this.formatCurrencyValue(positionGroup.combined_costs)}
 - Structure status: ${positionGroup.is_completed ? 'closed' : 'open'}
 Legs:
 ${legLines}
+
 `;
+      snapshotHeading = 'ANALYZED LEG DETAIL (one component of the strategy above — do not judge it in isolation):';
+      executionsHeading = 'EXECUTIONS (for the analyzed leg):';
     }
 
-    return `You are a professional trading coach and technical analyst. Analyze one specific trade to determine what went wrong, what worked, and what the trader should change next time. Base the analysis only on the available trade data, executions, enrichment, news, sector/company context, notes, chart links, and image attachment references below. If chart or image URLs are not directly viewable by your model, explicitly say you are using them as attachment references rather than visually inspecting them.${positionGroup ? ' This trade is part of a multi-leg option strategy; evaluate the whole structure described in the MULTI-LEG STRATEGY CONTEXT section as one combined trade.' : ''}
+    const sharedCaveat = 'Base the analysis only on the available trade data, executions, enrichment, news, sector/company context, notes, chart links, and image attachment references below. If chart or image URLs are not directly viewable by your model, explicitly say you are using them as attachment references rather than visually inspecting them.';
+    const intro = positionGroup
+      ? `You are a professional trading coach and technical analyst. Analyze one multi-leg option strategy as a single combined trade to determine what went wrong, what worked, and what the trader should change next time. ${sharedCaveat} The trade record below is one leg of the strategy; evaluate the whole structure described in the STRATEGY SNAPSHOT section as one combined trade.`
+      : `You are a professional trading coach and technical analyst. Analyze one specific trade to determine what went wrong, what worked, and what the trader should change next time. ${sharedCaveat}`;
 
-${profileSection}TRADE SNAPSHOT:
+    return `${intro}
+
+${profileSection}${positionGroupSection}${snapshotHeading}
 - Symbol: ${trade.symbol}${trade.company_name ? ` (${trade.company_name})` : ''}
 - Sector: ${trade.sector || 'N/A'}
 - Side: ${trade.side || 'N/A'}
@@ -763,9 +791,9 @@ ${profileSection}TRADE SNAPSHOT:
 - Tags: ${Array.isArray(trade.tags) ? trade.tags.join(', ') : (trade.tags || 'N/A')}
 - Notes: ${trade.notes || 'No notes'}
 
-EXECUTIONS:
+${executionsHeading}
 ${executions}
-${positionGroupSection}
+
 ENRICHMENT:
 - News sentiment: ${enrichment.news_sentiment || 'N/A'}
 - News checked at: ${enrichment.news_checked_at || 'N/A'}
@@ -784,12 +812,18 @@ ${images}
 QUALITY METRICS:
 ${JSON.stringify(trade.quality_metrics || {}, null, 2)}
 
-Please structure the response with:
+${positionGroup ? `Please structure the response with:
+1. **Verdict**: A concise diagnosis of why this strategy succeeded or underperformed — structure, strikes, timing — or the biggest risk if it is still open.
+2. **Structure Analysis**: Strike selection, spread width, net credit/debit versus maximum risk, defined risk-reward of the combined position, and expiration choice.
+3. **Technical & Timing**: Underlying trend/context at entry, exit timing, and how the combined position was managed.
+4. **News & Sector Context**: How the linked news sentiment/events and sector/company data may have affected the setup.
+5. **Process Mistakes**: Sizing, plan adherence, psychology, or timing issues — judged at the strategy level, not per leg.
+6. **What To Do Next Time**: 3-5 concrete improvements tied to this exact strategy.` : `Please structure the response with:
 1. **Verdict**: A concise diagnosis of the most likely reason this trade underperformed or the biggest risk if it is still open.
 2. **Technical Analysis**: Entry location, trend/context, stop/target placement, risk-reward, timing, MAE/MFE, and execution quality.
 3. **News & Sector Context**: How the linked news sentiment/events and sector/company data may have affected the setup.
 4. **Process Mistakes**: Specific rule, psychology, sizing, timing, or plan-adherence issues visible in the data.
-5. **What To Do Next Time**: 3-5 concrete improvements tied to this exact trade.
+5. **What To Do Next Time**: 3-5 concrete improvements tied to this exact trade.`}
 
 Be direct, data-driven, and specific. Do not give generic trading advice.`;
   }
@@ -908,6 +942,7 @@ Be direct, data-driven, and specific. Do not give generic trading advice.`;
         trade_id: tradeSummary.trade_id,
         symbol: tradeSummary.trade?.symbol,
         pnl: tradeSummary.trade?.pnl,
+        position_group: this.summarizePositionGroupForClient(tradeSummary.position_group),
         ai_metadata: tradeSummary.ai_metadata
       } : tradeSummary.metrics,
       ai_metadata: tradeSummary.ai_metadata,
@@ -1110,6 +1145,7 @@ Please provide a helpful, specific response to the user's question. Reference th
             trade_id: storedSummary.trade_id,
             symbol: storedSummary.trade?.symbol,
             pnl: storedSummary.trade?.pnl,
+            position_group: this.summarizePositionGroupForClient(storedSummary.position_group),
             ai_metadata: storedSummary.ai_metadata || null
           }
         : storedSummary.metrics || {},
@@ -1199,6 +1235,7 @@ Please provide a helpful, specific response to the user's question. Reference th
       status: row.status,
       trade_id: row.trade_summary?.trade_id || tradeId,
       symbol: row.trade_summary?.trade?.symbol || trade.symbol,
+      position_group: this.summarizePositionGroupForClient(row.trade_summary?.position_group),
       ai_metadata: row.trade_summary?.ai_metadata || null,
       response_count: Array.isArray(row.responses) ? row.responses.length : 0,
       followup_count: row.followup_count,

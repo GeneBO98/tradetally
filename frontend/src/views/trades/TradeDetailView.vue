@@ -104,6 +104,11 @@
                   Analysis from {{ formatDateTime(analysis.created_at) }}
                 </div>
                 <div class="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                  <span v-if="analysis.position_group"
+                    class="px-1.5 py-0.5 font-semibold rounded-full bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400 whitespace-nowrap"
+                    :title="`Analyzed as a combined ${analysis.position_group.leg_count}-leg strategy`">
+                    {{ formatPositionGroupLabel(analysis.position_group) }}
+                  </span>
                   <span v-if="formatAIModelLabel(analysis.ai_metadata)">
                     {{ formatAIModelLabel(analysis.ai_metadata) }}
                   </span>
@@ -2152,6 +2157,12 @@ function formatAIModelLabel(metadata) {
   const model = metadata.model ? String(metadata.model) : ''
   if (provider && model) return `${provider} / ${model}`
   return model || provider
+}
+
+function formatPositionGroupLabel(group) {
+  if (!group) return ''
+  const label = (group.strategy_label || 'multi-leg strategy').replace(/\b\w/g, c => c.toUpperCase())
+  return group.leg_count ? `${label} (${group.leg_count} legs)` : label
 }
 
 function calculateRiskReward() {

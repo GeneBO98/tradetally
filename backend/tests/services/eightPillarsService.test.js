@@ -1,3 +1,8 @@
+// Pin the provider: the service tags extracted metrics with the active
+// market data provider's name, and the assertions below expect 'finnhub'
+// regardless of what MARKET_DATA_PROVIDER the local .env selects.
+process.env.MARKET_DATA_PROVIDER = 'finnhub';
+
 const EightPillarsService = require('../../src/services/eightPillarsService');
 
 describe('EightPillarsService calculation rules', () => {

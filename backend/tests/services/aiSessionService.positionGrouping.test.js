@@ -273,7 +273,7 @@ describe('AISessionService.buildSingleTradePrompt with a position group', () => 
     };
   }
 
-  test('renders the multi-leg strategy context section', () => {
+  test('leads with the strategy snapshot and demotes the leg to a component', () => {
     const prompt = AISessionService.buildSingleTradePrompt(singleTradeSummaryFixture({
       group_id: 'grp-1',
       detected_strategy: 'bull_put_spread',
@@ -290,16 +290,61 @@ describe('AISessionService.buildSingleTradePrompt with a position group', () => 
       ]
     }));
 
-    expect(prompt).toContain('MULTI-LEG STRATEGY CONTEXT');
+    expect(prompt).toContain('STRATEGY SNAPSHOT (PRIMARY SUBJECT)');
     expect(prompt).toContain('bull put spread (2 legs) on SNOW');
     expect(prompt).toContain('Combined net P&L (all legs): $70.00');
     expect(prompt).toContain('[THIS LEG]');
     expect(prompt).toContain('evaluate the whole structure');
+
+    // The combined strategy is the primary subject: its snapshot must come
+    // before the analyzed leg's record, and the leg record must be demoted.
+    expect(prompt).toContain('ANALYZED LEG DETAIL');
+    expect(prompt.indexOf('STRATEGY SNAPSHOT')).toBeLessThan(prompt.indexOf('ANALYZED LEG DETAIL'));
+    expect(prompt).not.toContain('TRADE SNAPSHOT:');
+
+    // The response template asks for strategy-level analysis.
+    expect(prompt).toContain('Structure Analysis');
+    expect(prompt).toContain('judged at the strategy level, not per leg');
   });
 
-  test('omits the section for ungrouped trades', () => {
+  test('keeps the original per-trade prompt for ungrouped trades', () => {
     const prompt = AISessionService.buildSingleTradePrompt(singleTradeSummaryFixture(null));
 
-    expect(prompt).not.toContain('MULTI-LEG STRATEGY CONTEXT');
+    expect(prompt).not.toContain('STRATEGY SNAPSHOT');
+    expect(prompt).not.toContain('ANALYZED LEG DETAIL');
+    expect(prompt).toContain('TRADE SNAPSHOT:');
+    expect(prompt).toContain('Analyze one specific trade');
+    expect(prompt).toContain('**Technical Analysis**');
+  });
+});
+
+describe('AISessionService.summarizePositionGroupForClient', () => {
+  test('trims the group to the fields the UI needs', () => {
+    const summary = AISessionService.summarizePositionGroupForClient({
+      group_id: 'grp-1',
+      detected_strategy: 'bull_put_spread',
+      strategy_label: 'bull put spread',
+      strategy_confidence: 90,
+      leg_count: 2,
+      underlying_symbol: 'SNOW',
+      expiration_date: '2026-06-20',
+      is_completed: true,
+      combined_pnl: 70,
+      combined_costs: 3,
+      legs: [{ symbol: 'SNOW250620P00100000' }]
+    });
+
+    expect(summary).toEqual({
+      strategy_label: 'bull put spread',
+      detected_strategy: 'bull_put_spread',
+      leg_count: 2,
+      underlying_symbol: 'SNOW',
+      combined_pnl: 70,
+      is_completed: true
+    });
+  });
+
+  test('returns null when there is no group', () => {
+    expect(AISessionService.summarizePositionGroupForClient(null)).toBeNull();
   });
 });

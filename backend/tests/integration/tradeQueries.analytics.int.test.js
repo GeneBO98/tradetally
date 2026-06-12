@@ -40,6 +40,7 @@ async function insertOptionLeg(userId, overrides = {}) {
     commission: 0,
     fees: 0,
     account_identifier: 'ACC1',
+    position_group_id: null,
     ...overrides
   };
 
@@ -47,13 +48,14 @@ async function insertOptionLeg(userId, overrides = {}) {
     `INSERT INTO trades (
        user_id, symbol, underlying_symbol, instrument_type, option_type,
        strike_price, expiration_date, side, quantity, entry_price, exit_price,
-       entry_time, exit_time, trade_date, pnl, commission, fees, account_identifier
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+       entry_time, exit_time, trade_date, pnl, commission, fees, account_identifier,
+       position_group_id
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
     [
       userId, leg.symbol, leg.underlying_symbol, leg.instrument_type, leg.option_type,
       leg.strike_price, leg.expiration_date, leg.side, leg.quantity, leg.entry_price,
       leg.exit_price, leg.entry_time, leg.exit_time, leg.trade_date, leg.pnl,
-      leg.commission, leg.fees, leg.account_identifier
+      leg.commission, leg.fees, leg.account_identifier, leg.position_group_id
     ]
   );
 }
@@ -100,6 +102,15 @@ describe('TradeQueries.getAnalytics (real database)', () => {
     expect(analytics.dailyWinRate).toHaveLength(1);
     expect(parseInt(analytics.dailyWinRate[0].total_trades)).toBe(2);
     expect(parseInt(analytics.dailyWinRate[0].wins)).toBe(1);
+
+    // Top Trades ranks legs individually: the spread's winning leg is a best
+    // trade while its hedge leg shows up as a worst trade.
+    expect(analytics.topTrades.best).toHaveLength(1);
+    expect(parseFloat(analytics.topTrades.best[0].pnl)).toBeCloseTo(684.37, 2);
+    expect(analytics.topTrades.worst).toHaveLength(1);
+    expect(parseFloat(analytics.topTrades.worst[0].pnl)).toBeCloseTo(-477.62, 2);
+    expect(parseFloat(analytics.bestTradeDetails.pnl)).toBeCloseTo(684.37, 2);
+    expect(parseFloat(analytics.worstTradeDetails.pnl)).toBeCloseTo(-477.62, 2);
   });
 
   test('whole-trade mode collapses the spread into one winning position', async () => {
@@ -127,6 +138,77 @@ describe('TradeQueries.getAnalytics (real database)', () => {
     expect(snowRow).toBeDefined();
     expect(parseInt(snowRow.trades)).toBe(1);
     expect(parseInt(snowRow.wins)).toBe(1);
+
+    // Top Trades collapses the spread into one net-winning position keyed by
+    // the underlying. No persisted group exists (fallback key), so leg_count
+    // falls back to the actual leg count and no strategy label is attached.
+    expect(analytics.topTrades.best).toHaveLength(1);
+    expect(analytics.topTrades.best[0].symbol).toBe('SNOW');
+    expect(parseFloat(analytics.topTrades.best[0].pnl)).toBeCloseTo(206.75, 2);
+    expect(analytics.topTrades.best[0].group_detected_strategy).toBeNull();
+    expect(parseInt(analytics.topTrades.best[0].group_leg_count)).toBe(2);
+    expect(analytics.topTrades.worst).toHaveLength(0);
+    expect(parseFloat(analytics.bestTradeDetails.pnl)).toBeCloseTo(206.75, 2);
+    expect(analytics.worstTradeDetails).toBeNull();
+
+    await db.query(
+      'UPDATE user_settings SET analytics_position_grouping = false WHERE user_id = $1',
+      [user.id]
+    );
+  });
+
+  test('whole-trade mode labels positions from their persisted strategy group', async () => {
+    await db.query(
+      'UPDATE user_settings SET analytics_position_grouping = true WHERE user_id = $1',
+      [user.id]
+    );
+
+    // A persisted bull put spread on a different underlying, as the option
+    // strategy grouping service would store it after detection.
+    const groupResult = await db.query(
+      `INSERT INTO trade_position_groups (
+         user_id, account_identifier, underlying_symbol, expiration_date,
+         trade_date, detected_strategy, leg_count, is_completed
+       ) VALUES ($1, 'ACC1', 'MRVL', '2026-02-20', '2026-01-08', 'bull_put_spread', 2, true)
+       RETURNING id`,
+      [user.id]
+    );
+    const groupId = groupResult.rows[0].id;
+
+    await insertOptionLeg(user.id, {
+      symbol: 'MRVL260220P00070000',
+      underlying_symbol: 'MRVL',
+      side: 'short',
+      strike_price: 70,
+      expiration_date: '2026-02-20',
+      entry_time: '2026-01-08T15:00:00Z',
+      exit_time: '2026-01-12T15:00:00Z',
+      trade_date: '2026-01-08',
+      pnl: 250,
+      position_group_id: groupId
+    });
+    await insertOptionLeg(user.id, {
+      symbol: 'MRVL260220P00065000',
+      underlying_symbol: 'MRVL',
+      side: 'long',
+      strike_price: 65,
+      expiration_date: '2026-02-20',
+      entry_time: '2026-01-08T15:00:00Z',
+      exit_time: '2026-01-12T15:00:00Z',
+      trade_date: '2026-01-08',
+      pnl: -100,
+      position_group_id: groupId
+    });
+
+    const analytics = await TradeQueries.getAnalytics(user.id, {});
+
+    const mrvlRow = analytics.topTrades.best.find(row => row.symbol === 'MRVL');
+    expect(mrvlRow).toBeDefined();
+    expect(parseFloat(mrvlRow.pnl)).toBeCloseTo(150, 2);
+    expect(mrvlRow.group_detected_strategy).toBe('bull_put_spread');
+    expect(parseInt(mrvlRow.group_leg_count)).toBe(2);
+    // The MRVL hedge leg must not surface as a worst trade on its own.
+    expect(analytics.topTrades.worst).toHaveLength(0);
 
     await db.query(
       'UPDATE user_settings SET analytics_position_grouping = false WHERE user_id = $1',

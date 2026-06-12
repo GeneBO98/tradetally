@@ -715,7 +715,57 @@ class TradeQueries {
         HAVING COUNT(*) > 0
         ORDER BY trade_date
       `, values),
-      timedDbQuery('analytics.topTradesQuery', `
+      timedDbQuery('analytics.topTradesQuery', groupByPosition ? `
+        -- Whole-trade mode (issue #339): rank combined positions, not legs, so a
+        -- spread's hedge leg can't show up as a "worst trade" while its winning
+        -- leg is a "best trade". Keyed by underlying for display so clicking a
+        -- row navigates to all of its legs (the trade list symbol filter is a
+        -- prefix match over OCC symbols). The group join stays outside the CTE:
+        -- both tables have underlying_symbol, and POSITION_GROUP_KEY references
+        -- unqualified trade columns.
+        WITH positions AS (
+          SELECT
+            MIN(id::text) as id,
+            MIN(COALESCE(NULLIF(underlying_symbol, ''), symbol)) as symbol,
+            MIN(entry_price) as entry_price,
+            MAX(exit_price) as exit_price,
+            SUM(quantity) as quantity,
+            SUM(pnl) as pnl,
+            MIN(trade_date) as trade_date,
+            MIN(position_group_id::text) as position_group_id,
+            COUNT(*) as actual_leg_count
+          FROM trades t
+          ${whereClause}
+            AND exit_price IS NOT NULL
+            AND pnl IS NOT NULL
+          GROUP BY ${POSITION_GROUP_KEY}
+        )
+        (
+          SELECT 'best' as type, p.id, p.symbol, p.entry_price, p.exit_price,
+                 p.quantity, p.pnl, p.trade_date,
+                 g.detected_strategy as group_detected_strategy,
+                 CASE WHEN p.actual_leg_count > 1
+                      THEN COALESCE(g.leg_count, p.actual_leg_count::integer) END as group_leg_count
+          FROM positions p
+          LEFT JOIN trade_position_groups g ON g.id = p.position_group_id::uuid
+          WHERE p.pnl > 0
+          ORDER BY p.pnl DESC
+          LIMIT 5
+        )
+        UNION ALL
+        (
+          SELECT 'worst' as type, p.id, p.symbol, p.entry_price, p.exit_price,
+                 p.quantity, p.pnl, p.trade_date,
+                 g.detected_strategy as group_detected_strategy,
+                 CASE WHEN p.actual_leg_count > 1
+                      THEN COALESCE(g.leg_count, p.actual_leg_count::integer) END as group_leg_count
+          FROM positions p
+          LEFT JOIN trade_position_groups g ON g.id = p.position_group_id::uuid
+          WHERE p.pnl < 0
+          ORDER BY p.pnl ASC
+          LIMIT 5
+        )
+      ` : `
         (
           SELECT 'best' as type, id, symbol, entry_price, exit_price,
                  quantity, pnl, trade_date
@@ -734,7 +784,36 @@ class TradeQueries {
           LIMIT 5
         )
       `, values),
-      timedDbQuery('analytics.bestWorstCardsQuery', `
+      timedDbQuery('analytics.bestWorstCardsQuery', groupByPosition ? `
+        -- Whole-trade mode: same position collapsing as topTradesQuery above.
+        WITH positions AS (
+          SELECT
+            MIN(id::text) as id,
+            MIN(COALESCE(NULLIF(underlying_symbol, ''), symbol)) as symbol,
+            SUM(pnl) as pnl,
+            MIN(trade_date) as trade_date
+          FROM trades t
+          ${whereClause}
+            AND exit_price IS NOT NULL
+            AND pnl IS NOT NULL
+          GROUP BY ${POSITION_GROUP_KEY}
+        )
+        (
+          SELECT 'best' as type, id, symbol, pnl, trade_date
+          FROM positions
+          WHERE pnl > 0
+          ORDER BY pnl DESC
+          LIMIT 1
+        )
+        UNION ALL
+        (
+          SELECT 'worst' as type, id, symbol, pnl, trade_date
+          FROM positions
+          WHERE pnl < 0
+          ORDER BY pnl ASC
+          LIMIT 1
+        )
+      ` : `
         (
           SELECT 'best' as type, id, symbol, pnl, trade_date
           FROM trades t

@@ -14,6 +14,11 @@
           <p v-else-if="currentModelLabel" class="text-xs text-gray-500 dark:text-gray-400">
             Model: {{ currentModelLabel }}
           </p>
+          <p v-if="aiStore.hasActiveSession && groupContextLabel" class="text-xs mt-0.5">
+            <span class="px-1.5 py-0.5 font-semibold rounded-full bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400 whitespace-nowrap">
+              {{ groupContextLabel }}
+            </span>
+          </p>
         </div>
       </div>
 
@@ -227,6 +232,17 @@ const autoStartAttempted = ref(false)
 const currentModelLabel = computed(() => {
   const metadata = aiStore.currentSession?.ai_metadata || aiStore.currentSession?.trade_summary?.ai_metadata
   return formatModelLabel(metadata)
+})
+
+// Shows that a single-trade analysis covered the whole detected strategy
+// group (issue #339), e.g. "Analyzing: Bull Put Spread (2 legs) on MRVL".
+const groupContextLabel = computed(() => {
+  const group = aiStore.currentSession?.trade_summary?.position_group
+  if (!group) return ''
+  const label = (group.strategy_label || 'multi-leg strategy').replace(/\b\w/g, c => c.toUpperCase())
+  const legs = group.leg_count ? ` (${group.leg_count} legs)` : ''
+  const underlying = group.underlying_symbol ? ` on ${group.underlying_symbol}` : ''
+  return `Analyzing: ${label}${legs}${underlying}`
 })
 
 function formatModelLabel(metadata) {

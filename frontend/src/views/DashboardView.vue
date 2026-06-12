@@ -1371,11 +1371,16 @@
                       <div>
                         <h4 class="text-sm font-medium text-green-600 mb-2">Best Trades</h4>
                         <div class="space-y-1">
-                          <div v-for="trade in analytics.topTrades.best" :key="`best-${trade.symbol}-${trade.trade_date}`"
+                          <div v-for="trade in analytics.topTrades.best" :key="`best-${trade.id}-${trade.symbol}-${trade.trade_date}`"
                                @click="navigateToTradesBySymbolAndDate(trade.symbol, trade.trade_date)"
                                class="flex justify-between items-center text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded p-2 transition-colors">
-                            <span class="text-gray-900 dark:text-white">
-                              {{ trade.symbol }} {{ formatDate(trade.trade_date) }}
+                            <span class="text-gray-900 dark:text-white flex items-center min-w-0">
+                              <span class="truncate">{{ trade.symbol }} {{ formatDate(trade.trade_date) }}</span>
+                              <span v-if="trade.group_detected_strategy"
+                                class="ml-2 px-1.5 py-0.5 text-xs font-semibold rounded-full bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400 whitespace-nowrap flex-shrink-0"
+                                :title="`Auto-detected strategy: ${formatGroupStrategy(trade.group_detected_strategy)} (${trade.group_leg_count}-leg position)`">
+                                {{ formatGroupStrategy(trade.group_detected_strategy) }}
+                              </span>
                             </span>
                             <span class="text-green-600 font-medium">
                               {{ formatCurrency(trade.pnl) }}
@@ -1388,11 +1393,16 @@
                         <h4 class="text-sm font-medium text-red-600 mb-2">Worst Trades</h4>
                         <div class="space-y-1">
                           <div v-if="analytics.topTrades.worst && analytics.topTrades.worst.length > 0"
-                               v-for="trade in analytics.topTrades.worst" :key="`worst-${trade.symbol}-${trade.trade_date}`"
+                               v-for="trade in analytics.topTrades.worst" :key="`worst-${trade.id}-${trade.symbol}-${trade.trade_date}`"
                                @click="navigateToTradesBySymbolAndDate(trade.symbol, trade.trade_date)"
                                class="flex justify-between items-center text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded p-2 transition-colors">
-                            <span class="text-gray-900 dark:text-white">
-                              {{ trade.symbol }} {{ formatDate(trade.trade_date) }}
+                            <span class="text-gray-900 dark:text-white flex items-center min-w-0">
+                              <span class="truncate">{{ trade.symbol }} {{ formatDate(trade.trade_date) }}</span>
+                              <span v-if="trade.group_detected_strategy"
+                                class="ml-2 px-1.5 py-0.5 text-xs font-semibold rounded-full bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400 whitespace-nowrap flex-shrink-0"
+                                :title="`Auto-detected strategy: ${formatGroupStrategy(trade.group_detected_strategy)} (${trade.group_leg_count}-leg position)`">
+                                {{ formatGroupStrategy(trade.group_detected_strategy) }}
+                              </span>
                             </span>
                             <span :class="[
                               trade.pnl >= 0 ? 'text-green-600' : 'text-red-600',
@@ -2310,6 +2320,11 @@ function formatPercent(num) {
 
 function formatDate(dateStr) {
   return formatTradeDate(dateStr, 'MMM dd')
+}
+
+function formatGroupStrategy(strategy) {
+  if (!strategy) return ''
+  return strategy.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 
 function formatLastRefresh(timestamp) {
