@@ -158,7 +158,7 @@
       </div>
 
       <div
-        v-for="(item, index) in visibleItems"
+        v-for="(item, pageIndex) in paginatedItems"
         :key="item.id"
         class="group transition-colors"
         :class="[
@@ -170,7 +170,7 @@
         <div
           class="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800/40 sm:px-5"
           :class="canAct(item) ? 'cursor-pointer' : ''"
-          @click="toggleRowSelection(item, index, $event)"
+          @click="toggleRowSelection(item, (currentPage - 1) * PAGE_SIZE + pageIndex, $event)"
         >
           <input
             v-if="canAct(item)"
@@ -178,7 +178,7 @@
             class="h-4 w-4 shrink-0 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
             :checked="selectedIds.has(item.id)"
             :aria-label="`Select ${item.description}`"
-            @click.stop="toggleRowSelection(item, index, $event)"
+            @click.stop="toggleRowSelection(item, (currentPage - 1) * PAGE_SIZE + pageIndex, $event)"
           />
 
           <!-- Direction color rail -->
@@ -341,6 +341,37 @@
             Direction ambiguous — please choose deposit or withdrawal.
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- Pagination -->
+    <div
+      v-if="totalPages > 1"
+      class="flex items-center justify-between border-t border-gray-200 px-4 py-3 dark:border-gray-700 sm:px-5"
+    >
+      <div class="text-xs text-gray-500 dark:text-gray-400">
+        {{ pageRangeStart }}–{{ pageRangeEnd }} of {{ visibleItems.length }}
+      </div>
+      <div class="flex items-center gap-1.5">
+        <button
+          type="button"
+          class="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+          :disabled="currentPage <= 1"
+          @click="goToPage(currentPage - 1)"
+        >
+          Previous
+        </button>
+        <span class="text-xs text-gray-500 dark:text-gray-400 tabular-nums">
+          {{ currentPage }} / {{ totalPages }}
+        </span>
+        <button
+          type="button"
+          class="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+          :disabled="currentPage >= totalPages"
+          @click="goToPage(currentPage + 1)"
+        >
+          Next
+        </button>
       </div>
     </div>
   </div>
@@ -510,6 +541,31 @@ const visibleItems = computed(() => {
   return items.filter(item => searchableText(item).includes(query))
 })
 
+const PAGE_SIZE = 25
+const currentPage = ref(1)
+
+const totalPages = computed(() =>
+  Math.max(1, Math.ceil(visibleItems.value.length / PAGE_SIZE))
+)
+
+const paginatedItems = computed(() => {
+  const start = (currentPage.value - 1) * PAGE_SIZE
+  return visibleItems.value.slice(start, start + PAGE_SIZE)
+})
+
+const pageRangeStart = computed(() =>
+  visibleItems.value.length === 0 ? 0 : (currentPage.value - 1) * PAGE_SIZE + 1
+)
+const pageRangeEnd = computed(() =>
+  Math.min(currentPage.value * PAGE_SIZE, visibleItems.value.length)
+)
+
+function goToPage(page) {
+  if (page >= 1 && page <= totalPages.value) {
+    currentPage.value = page
+  }
+}
+
 const emptyMessage = computed(() => {
   if (searchQuery.value) return 'No Plaid transactions match your search.'
   if (activeTab.value === 'pending') return 'No pending Plaid transfers for this account.'
@@ -601,6 +657,11 @@ watch(
 
 watch(activeTab, () => {
   clearSelection()
+  currentPage.value = 1
+})
+
+watch([searchQuery, () => props.accountId], () => {
+  currentPage.value = 1
 })
 
 function canAct(item) {
