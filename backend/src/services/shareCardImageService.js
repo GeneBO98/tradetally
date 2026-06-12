@@ -1,4 +1,5 @@
 const sharp = require('sharp');
+const path = require('path');
 
 // Server-rendered version of the in-app TradeShareCard (frontend canvas). Built
 // as an SVG and rasterized with sharp so shared trade links unfurl into a card.
@@ -6,6 +7,29 @@ const sharp = require('sharp');
 const CARD_WIDTH = 1200;
 const CARD_HEIGHT = 630;
 const PAD = 72;
+
+// The logo mark is composited on as a raster, not drawn in the SVG: the favicon
+// is an Inkscape SVG with filters resvg can't render inline. Pre-rendered PNG
+// lives in the backend so it's available in both native and Docker deploys.
+const LOGO_PATH = path.join(__dirname, '../assets/tradetally-mark.png');
+const LOGO_SIZE = 52;
+const LOGO_TOP = 44;
+const WORDMARK_X = PAD + LOGO_SIZE + 16;
+
+let logoBufferPromise = null;
+function getLogoBuffer() {
+  if (!logoBufferPromise) {
+    logoBufferPromise = sharp(LOGO_PATH)
+      .resize(LOGO_SIZE, LOGO_SIZE, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .png()
+      .toBuffer()
+      .catch((error) => {
+        console.warn('[SHARE-CARD] logo mark unavailable:', error.message);
+        return null;
+      });
+  }
+  return logoBufferPromise;
+}
 
 const COLORS = {
   background: '#101418',
@@ -120,13 +144,9 @@ function buildTradeCardSvg(trade) {
   // Background
   parts.push(`<rect width="${CARD_WIDTH}" height="${CARD_HEIGHT}" fill="${COLORS.background}"/>`);
 
-  // Brand: tally bars + wordmark
+  // Brand wordmark. The logo mark is composited on in renderTradeCardPng().
   const baseY = 96;
-  const barW = 9, barGap = 7;
-  [16, 26, 36].forEach((h, i) => {
-    parts.push(`<rect x="${PAD + i * (barW + barGap)}" y="${baseY - h}" width="${barW}" height="${h}" rx="3" fill="${COLORS.brand}"/>`);
-  });
-  parts.push(text('TradeTally', PAD + 58, baseY - 4, { size: 30, weight: 600 }));
+  parts.push(text('TradeTally', WORDMARK_X, baseY - 4, { size: 30, weight: 600 }));
 
   // Status / date, top right
   if (isOpen) {
@@ -184,7 +204,12 @@ function buildTradeCardSvg(trade) {
 
 async function renderTradeCardPng(trade) {
   const svg = buildTradeCardSvg(trade);
-  return sharp(Buffer.from(svg)).png().toBuffer();
+  const logo = await getLogoBuffer();
+  const base = sharp(Buffer.from(svg));
+  if (logo) {
+    base.composite([{ input: logo, top: LOGO_TOP, left: PAD }]);
+  }
+  return base.png().toBuffer();
 }
 
 module.exports = { buildTradeCardSvg, renderTradeCardPng, CARD_WIDTH, CARD_HEIGHT };
