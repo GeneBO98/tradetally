@@ -3325,10 +3325,13 @@ class Trade {
   }
 
   static async updateSymbolForCusip(userId, cusip, ticker) {
+    // Option trades are excluded: a CUSIP resolves to the underlying equity ticker,
+    // and renaming an option trade to it corrupts the contract's identity.
     const query = `
-      UPDATE trades 
+      UPDATE trades
       SET symbol = $3
       WHERE user_id = $1 AND symbol = $2
+        AND instrument_type IS DISTINCT FROM 'option'
     `;
     const result = await db.query(query, [userId, cusip, ticker]);
     console.log(`Updated ${result.rowCount} trades: changed symbol from ${cusip} to ${ticker}`);
