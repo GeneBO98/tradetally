@@ -9,6 +9,7 @@ const finnhub = require('../utils/finnhub');
 const cache = require('../utils/cache');
 const AnalyticsCache = require('../services/analyticsCache');
 const { computeTradePnl } = require('../services/pnlEngine');
+const { groupTradesIntoPositions } = require('../utils/openPositionGrouping');
 const symbolCategories = require('../utils/symbolCategories');
 const imageProcessor = require('../utils/imageProcessor');
 const ensureString = require('../utils/ensureString');
@@ -2921,228 +2922,11 @@ const tradeController = {
         }
       });
 
-      // Helper function to calculate net position from executions
-      const calculateNetPosition = (trade) => {
-        // If trade has executions, calculate net position from them
-        if (trade.executions && Array.isArray(trade.executions) && trade.executions.length > 0) {
-          let netPosition = 0;
-          trade.executions.forEach(execution => {
-            const qty = parseFloat(execution.quantity) || 0;
-
-            // Determine if this is a grouped execution (has entryPrice/exitPrice/entryTime) or individual fill
-            const isGroupedExecution = execution.entryPrice !== undefined ||
-                                        execution.exitPrice !== undefined ||
-                                        execution.entryTime !== undefined;
-
-            const isMixedFormat = isGroupedExecution && execution.action && execution.price !== undefined && execution.datetime;
-            if (isGroupedExecution && !isMixedFormat) {
-              // Grouped execution: represents a round-trip trade or open position
-              // If no exitPrice, it's an open position - add/subtract based on trade side
-              // If has exitPrice, it's a closed round-trip - net 0 (but shouldn't be in open trades)
-              if (!execution.exitPrice) {
-                // Open position: use trade side to determine direction
-                if (trade.side === 'long') {
-                  netPosition += qty;
-                } else {
-                  netPosition -= qty;
-                }
-              }
-              // Closed round-trips (exitPrice exists) don't affect net position
-            } else {
-              // Individual fill: use action field to determine buy/sell
-              // Normalize action: 'buy'/'long' = entry, 'sell'/'short' = exit
-              const action = (execution.action || execution.side || '').toLowerCase();
-
-              if (action === 'buy' || action === 'long') {
-                netPosition += qty;
-              } else if (action === 'sell' || action === 'short') {
-                netPosition -= qty;
-              } else if (action === '' || action === 'unknown') {
-                // Fallback: if action is missing, we cannot reliably determine buy/sell
-                // Log a warning but don't count this execution to avoid incorrect calculations
-                console.warn(`[POSITION] Execution missing action for trade ${trade.id}, skipping from net position calculation`);
-              }
-            }
-          });
-          return netPosition;
-        }
-
-        // Fallback to trade.quantity if no executions
-        return trade.side === 'long' ? trade.quantity : -trade.quantity;
-      };
-
-      // Helper function to calculate total shares traded from executions (all quantities count as positive)
-      const calculateTotalSharesTraded = (trade) => {
-        if (trade.executions && Array.isArray(trade.executions) && trade.executions.length > 0) {
-          let totalTraded = 0;
-          trade.executions.forEach(execution => {
-            const qty = parseFloat(execution.quantity) || 0;
-            totalTraded += Math.abs(qty);  // All shares count as traded
-          });
-          return totalTraded;
-        }
-        // Fallback to trade.quantity if no executions
-        return trade.quantity || 0;
-      };
-
-      // Build a unique position key for each trade
-      // Options: use underlying_strike_expiration_type to keep different contracts separate
-      // Stocks/futures: use symbol
-      const normalizeExpDate = (d) => {
-        if (!d) return '';
-        if (d instanceof Date) return d.toISOString().slice(0, 10);
-        return String(d).slice(0, 10);
-      };
-      const getPositionKey = (trade) => {
-        if (trade.instrument_type === 'option' && trade.underlying_symbol && trade.strike_price && trade.expiration_date && trade.option_type) {
-          return `${trade.underlying_symbol}_${trade.strike_price}_${normalizeExpDate(trade.expiration_date)}_${trade.option_type}`;
-        }
-        return trade.symbol;
-      };
-
-      // Group trades by position key and calculate net position
-      const positionMap = Object.create(null);
-      openTrades.forEach(trade => {
-        const posKey = getPositionKey(trade);
-
-        if (!Object.hasOwn(positionMap, posKey)) {
-          positionMap[posKey] = {
-            symbol: trade.symbol,
-            side: null, // Will be determined by net position
-            trades: [],
-            totalQuantity: 0,        // Net position (shares still held)
-            totalSharesTraded: 0,    // Total shares traded (all executions count positive)
-            totalCost: 0,
-            avgPrice: 0,
-            instrumentType: trade.instrument_type || 'stock',
-            contractSize: trade.contract_size || (trade.instrument_type === 'option' ? 100 : 1),
-            pointValue: trade.point_value || null,
-            // Option metadata for Alpaca pricing
-            underlying_symbol: trade.underlying_symbol || null,
-            expiration_date: trade.expiration_date || null,
-            option_type: trade.option_type || null,
-            strike_price: trade.strike_price || null
-          };
-        }
-
-        positionMap[posKey].trades.push(trade);
-
-        // Calculate net position considering executions or trade direction
-        const netPosition = calculateNetPosition(trade);
-        positionMap[posKey].totalQuantity += netPosition;
-
-        // Calculate total shares traded (all executions count as positive)
-        const sharesTraded = calculateTotalSharesTraded(trade);
-        positionMap[posKey].totalSharesTraded += sharesTraded;
-
-        // For cost calculation, account for multipliers (options use contract_size, futures use point_value)
-        let costMultiplier;
-        if (trade.instrument_type === 'future') {
-          // For futures, use point value (e.g., $5 per point for ES, $2 for MNQ)
-          costMultiplier = trade.point_value || 1;
-        } else if (trade.instrument_type === 'option') {
-          // For options, use contract size (typically 100 shares per contract)
-          costMultiplier = trade.contract_size || 100;
-        } else {
-          // For stocks, no multiplier needed
-          costMultiplier = 1;
-        }
-        positionMap[posKey].totalCost += Math.abs(netPosition) * trade.entry_price * costMultiplier;
-      });
-
-      // Merge positions that were split due to incomplete option metadata
-      // When an option trade is missing underlying_symbol/strike/expiration/option_type,
-      // getPositionKey falls back to trade.symbol, creating a separate position from
-      // the same contract that has full metadata (composite key). Merge them here.
-      // Only merge when one position used a fallback key (just the symbol) - never merge
-      // two positions that both have full composite keys (they're genuinely different contracts).
-      const fallbackKeys = new Set();
-      Object.entries(positionMap).forEach(([key, position]) => {
-        // A fallback key is one that equals the trade symbol (no composite option metadata)
-        if (position.instrumentType === 'option' && key === position.symbol) {
-          fallbackKeys.add(key);
-        }
-      });
-
-      if (fallbackKeys.size > 0) {
-        // For each fallback-keyed option position, find a composite-keyed position with same symbol to merge into
-        for (const fbKey of fallbackKeys) {
-          if (!positionMap[fbKey]) continue; // Already merged
-          const fbPosition = positionMap[fbKey];
-          const fbSymbol = fbPosition.symbol;
-
-          // Find composite-keyed positions with same symbol and instrument type
-          let compositeMatch = Object.entries(positionMap).find(([key, pos]) => {
-            return key !== fbKey && pos.symbol === fbSymbol && pos.instrumentType === 'option' && !fallbackKeys.has(key);
-          });
-
-          // CUSIP resolution used to rewrite option trade symbols to the underlying
-          // equity ticker, so the fallback symbol may match the composite position's
-          // underlying_symbol instead. Only merge when exactly one contract matches -
-          // with multiple contracts on the same underlying we cannot tell which one
-          // the metadata-less trade belongs to.
-          if (!compositeMatch) {
-            const underlyingMatches = Object.entries(positionMap).filter(([key, pos]) => {
-              return key !== fbKey && pos.underlying_symbol === fbSymbol && pos.instrumentType === 'option' && !fallbackKeys.has(key);
-            });
-            if (underlyingMatches.length === 1) {
-              compositeMatch = underlyingMatches[0];
-            }
-          }
-
-          if (compositeMatch) {
-            const [compositeKey, compositePosition] = compositeMatch;
-            console.log(`[POSITION] Merging fallback position "${fbKey}" into composite position "${compositeKey}" (symbol: ${fbSymbol})`);
-
-            compositePosition.trades.push(...fbPosition.trades);
-            compositePosition.totalQuantity += fbPosition.totalQuantity;
-            compositePosition.totalSharesTraded += fbPosition.totalSharesTraded;
-            compositePosition.totalCost += fbPosition.totalCost;
-
-            // Fill in missing option metadata from fallback position
-            if (!compositePosition.underlying_symbol && fbPosition.underlying_symbol) compositePosition.underlying_symbol = fbPosition.underlying_symbol;
-            if (!compositePosition.strike_price && fbPosition.strike_price) compositePosition.strike_price = fbPosition.strike_price;
-            if (!compositePosition.expiration_date && fbPosition.expiration_date) compositePosition.expiration_date = fbPosition.expiration_date;
-            if (!compositePosition.option_type && fbPosition.option_type) compositePosition.option_type = fbPosition.option_type;
-
-            delete positionMap[fbKey];
-          }
-        }
-      }
-
-      // Calculate average prices and determine position side
-      const keysToDelete = [];
-      Object.entries(positionMap).forEach(([key, position]) => {
-        if (position.totalQuantity === 0) {
-          // No net position, mark for deletion
-          keysToDelete.push(key);
-          return;
-        }
-
-        // Determine side based on net position
-        position.side = position.totalQuantity > 0 ? 'long' : 'short';
-
-        // Use absolute quantity for calculations
-        const absQuantity = Math.abs(position.totalQuantity);
-        position.totalQuantity = absQuantity;
-
-        // Get multiplier from the first trade in the position (for calculating avg price)
-        const firstTrade = position.trades[0];
-        let avgPriceMultiplier;
-        if (firstTrade.instrument_type === 'future') {
-          avgPriceMultiplier = firstTrade.point_value || 1;
-        } else if (firstTrade.instrument_type === 'option') {
-          avgPriceMultiplier = firstTrade.contract_size || 100;
-        } else {
-          avgPriceMultiplier = 1;
-        }
-
-        // avgPrice should be per-share/per-contract price, so divide totalCost by (quantity * multiplier)
-        position.avgPrice = position.totalCost / (absQuantity * avgPriceMultiplier);
-      });
-
-      // Remove positions with zero net quantity
-      keysToDelete.forEach(key => delete positionMap[key]);
+      // Grouping, key normalization, metadata enrichment, and the heal-merge
+      // for legacy split positions live in utils/openPositionGrouping.js
+      // (issue #339) so the logic is unit-testable. Every surviving position
+      // carries a stable position_key.
+      const positionMap = groupTradesIntoPositions(openTrades);
 
       // If skipQuotes is requested, return positions immediately without Finnhub calls
       if (skipQuotes === 'true') {
@@ -3174,14 +2958,9 @@ const tradeController = {
       if (optionPositions.length > 0 && alpacaMarketData.isConfigured()) {
         const positionsWithKeys = optionPositions.map(p => ({
           ...p,
-          _positionKey: getPositionKey({
-            instrument_type: p.instrumentType,
-            underlying_symbol: p.underlying_symbol,
-            strike_price: p.strike_price,
-            expiration_date: p.expiration_date,
-            option_type: p.option_type,
-            symbol: p.symbol
-          })
+          // position_key is the positionMap key, so alpacaQuotes lookups by
+          // posKey stay consistent without recomputing.
+          _positionKey: p.position_key
         }));
 
         try {

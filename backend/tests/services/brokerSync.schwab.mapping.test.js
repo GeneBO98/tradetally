@@ -241,6 +241,24 @@ describe('Schwab parseTransactionDetails (single transaction mapping)', () => {
     });
   });
 
+  test('normalizes lowercase/padded underlying symbols from the instrument', () => {
+    const parsed = schwabService.parseTransactionDetails(schwabOptionTx({
+      orderId: 'opt-open-case',
+      time: '2026-06-01T14:35:00Z',
+      symbol: 'MRVL  260220P00065000',
+      putCall: 'PUT',
+      strikePrice: 65,
+      expirationDate: '2026-02-20',
+      underlyingSymbol: ' mrvl ',
+      price: 1.5,
+      amount: 1,
+      positionEffect: 'OPENING'
+    }));
+
+    expect(parsed.underlyingSymbol).toBe('MRVL');
+    expect(parsed.symbol).toBe('MRVL');
+  });
+
   test('falls back to OCC symbol parsing when instrument lacks option metadata', () => {
     const parsed = schwabService.parseTransactionDetails(schwabOptionTx({
       orderId: 'opt-open-2',
