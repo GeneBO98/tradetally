@@ -2,7 +2,7 @@ const Trade = require('../models/Trade');
 const { fetchCurrentPriceForSymbol, computeUnrealized } = require('../services/openPositionPricing');
 const { renderTradeCardPng } = require('../services/shareCardImageService');
 
-const FALLBACK_IMAGE = '/social-preview-v2.png';
+const FALLBACK_IMAGE = '/social-preview-v3.png';
 const SITE_TITLE = 'TradeTally - Trading Journal with Behavioral Analytics';
 const SITE_DESCRIPTION = 'Free trading journal that detects revenge trading, overconfidence, and behavioral patterns. Auto-sync Schwab and IBKR. Open source and self-hostable.';
 
