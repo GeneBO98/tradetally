@@ -419,5 +419,43 @@ describe('calculateQuality structured failures', () => {
     expect(result.metrics.profile).toBe('option');
     expect(result.metrics.gap).toBeCloseTo(5, 5);          // (105-100)/100
     expect(result.metrics.moneynessScore).toBeGreaterThan(0);
+    expect(result.metrics.spotSource).toBe('live');
+  });
+
+  it('uses the live-quote fallback when the candle request times out (throws)', async () => {
+    finnhub.getStockCandles.mockRejectedValue(new Error('Finnhub request timed out after 10001ms in scheduler'));
+    finnhub.getQuote.mockResolvedValue({ c: 105, o: 105, h: 106, l: 104, pc: 100 });
+
+    const entryTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const expiration = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+    const result = await tradeQualityService.calculateQuality(
+      'ADBE  260101C00500000', entryTime, 2.50, 'long', null, null,
+      { instrumentType: 'option', underlyingSymbol: 'ADBE', strikePrice: 100, optionType: 'call', expirationDate: expiration }
+    );
+
+    // Candle threw, but the live quote still lets dte + moneyness (+ gap) score
+    expect(finnhub.getQuote).toHaveBeenCalledWith('ADBE');
+    expect(result.grade).toBeTruthy();
+    expect(result.metrics.spotSource).toBe('live');
+  });
+
+  it('grades an older open option on dte + moneyness and omits the stale gap', async () => {
+    finnhub.getStockCandles.mockResolvedValue([]); // no candle for the entry day
+    finnhub.getQuote.mockResolvedValue({ c: 105, o: 105, h: 106, l: 104, pc: 100 });
+
+    const entryTime = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString();  // 20 days ago
+    const expiration = new Date(Date.now() + 25 * 24 * 60 * 60 * 1000).toISOString();
+
+    const result = await tradeQualityService.calculateQuality(
+      'ADBE  260101C00500000', entryTime, 2.50, 'long', null, null,
+      { instrumentType: 'option', underlyingSymbol: 'ADBE', strikePrice: 100, optionType: 'call', expirationDate: expiration }
+    );
+
+    // dte (25%) + moneyness (20%) = 45% coverage -> grades; gap omitted as stale
+    expect(result.grade).toBeTruthy();
+    expect(result.metrics.gap).toBeNull();
+    expect(result.metrics.moneynessScore).toBeGreaterThan(0);
+    expect(result.metrics.dteScore).toBeGreaterThan(0);
   });
 });

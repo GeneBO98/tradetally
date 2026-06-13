@@ -415,7 +415,10 @@ class TradeQualityService {
       const storedMetrics = {
         profile: profileType,
         dataSymbol: isOption ? dataSymbol : undefined,
-        coverage: Math.round(coverage * 100) / 100
+        coverage: Math.round(coverage * 100) / 100,
+        // Flag when the underlying price came from a real-time quote rather than
+        // the entry-day candle, so strike distance can be shown as approximate
+        spotSource: quote?.isLiveFallback ? 'live' : 'historical'
       };
       for (const key of profileMetricKeys) {
         const [valueField, scoreField] = STORED_METRIC_FIELDS[key];
@@ -517,45 +520,40 @@ class TradeQualityService {
       const from = Math.floor(startDate.getTime() / 1000);
       const to = Math.floor(endDate.getTime() / 1000);
 
-      const candles = await this.marketData.getStockCandles(symbol, 'D', from, to);
-
-      // Check if we have valid data
-      if (!Array.isArray(candles) || candles.length === 0) {
-        // Recently-entered (often still-open) trades may have no published daily
-        // candle yet for the entry day. Fall back to a real-time quote so gap
-        // and (for options) moneyness can still be scored.
-        const ageDays = (Date.now() - entryDate.getTime()) / 86400000;
-        if (ageDays >= 0 && ageDays <= 5) {
-          const live = await this.fetchLiveQuoteFallback(symbol);
-          if (live) return live;
-        }
-        console.log(`[QUALITY] No historical data available for ${symbol} on ${entryDate.toISOString()}`);
-        return null;
+      // The daily candle endpoint can be empty (entry day not published yet) OR
+      // throw (timeout / not available on the provider's free tier). Treat both
+      // the same way and fall back to a real-time quote below.
+      let candles = null;
+      try {
+        candles = await this.marketData.getStockCandles(symbol, 'D', from, to);
+      } catch (candleError) {
+        console.log(`[QUALITY] Candle fetch failed for ${symbol}: ${candleError.message}`);
       }
 
-      // Get the most recent day's data (last element)
-      const lastIndex = candles.length - 1;
-      const latest = candles[lastIndex];
-      const open = latest.open;
-      const high = latest.high;
-      const low = latest.low;
-      const close = latest.close;
-      const volume = latest.volume;
+      if (Array.isArray(candles) && candles.length > 0) {
+        // Get the most recent day's data (last element)
+        const lastIndex = candles.length - 1;
+        const latest = candles[lastIndex];
+        const previousClose = lastIndex > 0 ? candles[lastIndex - 1].close : null;
 
-      // Get previous day's close if available
-      const previousClose = lastIndex > 0 ? candles[lastIndex - 1].close : null;
+        console.log(`[QUALITY] Historical data for ${symbol}: open=${latest.open}, close=${latest.close}, previousClose=${previousClose}`);
 
-      console.log(`[QUALITY] Historical data for ${symbol}: open=${open}, close=${close}, previousClose=${previousClose}`);
+        return {
+          o: latest.open,
+          h: latest.high,
+          l: latest.low,
+          c: latest.close,
+          v: latest.volume,
+          previousClose,
+          relativeVolume: null // Will need additional API call for average volume
+        };
+      }
 
-      return {
-        o: open,
-        h: high,
-        l: low,
-        c: close,
-        v: volume,
-        previousClose,
-        relativeVolume: null // Will need additional API call for average volume
-      };
+      // No usable candle. Fall back to a real-time quote so strike distance
+      // (and gap for very recent entries) can still be scored. The quote
+      // endpoint works on tiers where the candle endpoint does not.
+      console.log(`[QUALITY] No candle data for ${symbol} on ${entryDate.toISOString()}, trying live quote`);
+      return await this.fetchLiveQuoteFallback(symbol, entryDate);
     } catch (error) {
       console.error(`[QUALITY] Error fetching historical quote for ${symbol}:`, error.message);
       return null;
@@ -563,27 +561,39 @@ class TradeQualityService {
   }
 
   /**
-   * Real-time quote fallback for recently-entered trades whose entry-day daily
-   * candle is not published yet. Provides spot (for moneyness) and previous
-   * close (for gap). Daily volume is unavailable from a quote, so relative
-   * volume stays excluded.
+   * Real-time quote fallback for when the daily candle is unavailable (entry
+   * day not published yet, or the provider tier doesn't serve candles).
+   * Always provides spot for option strike-distance scoring. The quote's
+   * previous close is only a valid gap reference when the trade was entered
+   * essentially today, so gap is left out for older entries. Daily volume is
+   * not in a quote, so relative volume stays excluded.
    * @param {string} symbol - Symbol to quote (underlying for options)
+   * @param {Date} entryDate - Trade entry date (to decide if gap is meaningful)
    * @returns {Promise<Object|null>} Quote-shaped object, or null on failure
    */
-  async fetchLiveQuoteFallback(symbol) {
+  async fetchLiveQuoteFallback(symbol, entryDate) {
     try {
       const q = await this.marketData.getQuote(symbol);
       if (!q || (q.c == null && q.o == null)) return null;
-      const open = q.o ?? q.c;
-      console.log(`[QUALITY] Using live quote fallback for ${symbol}: price=${open}, previousClose=${q.pc}`);
+      const spot = q.c ?? q.o;
+
+      // The live quote's previous close belongs to the current session, so it
+      // is only a correct gap reference for a trade entered in the last day or
+      // two. For older (still-open) trades, current spot is a usable proxy for
+      // strike distance but the gap would be wrong, so omit it.
+      const ageDays = (Date.now() - entryDate.getTime()) / 86400000;
+      const gapValid = ageDays >= 0 && ageDays <= 2;
+
+      console.log(`[QUALITY] Using live quote fallback for ${symbol}: spot=${spot}, previousClose=${gapValid ? q.pc : 'omitted (stale)'}`);
       return {
-        o: open,
+        o: spot,
         h: q.h ?? null,
         l: q.l ?? null,
-        c: q.c ?? open,
+        c: spot,
         v: null,              // live quote carries no daily volume -> relative volume stays N/A
-        previousClose: q.pc ?? null,
-        relativeVolume: null
+        previousClose: gapValid ? (q.pc ?? null) : null,
+        relativeVolume: null,
+        isLiveFallback: true
       };
     } catch (error) {
       console.log(`[QUALITY] Live quote fallback failed for ${symbol}: ${error.message}`);

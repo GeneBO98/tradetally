@@ -430,8 +430,11 @@
           <div v-if="trade.qualityGrade && trade.qualityMetrics" class="card">
             <div class="card-body">
               <h3 class="text-lg font-medium text-gray-900 dark:text-white" :class="trade.qualityMetrics.dataSymbol ? 'mb-1' : 'mb-4'">Setup Quality Breakdown</h3>
-              <p v-if="trade.qualityMetrics.dataSymbol" class="text-xs text-gray-500 dark:text-gray-400 mb-4">
+              <p v-if="trade.qualityMetrics.dataSymbol" class="text-xs text-gray-500 dark:text-gray-400" :class="trade.qualityMetrics.spotSource === 'live' ? 'mb-1' : 'mb-4'">
                 Option trade - graded using market data for the underlying {{ trade.qualityMetrics.dataSymbol }}
+              </p>
+              <p v-if="trade.qualityMetrics.spotSource === 'live'" class="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                The entry-day candle was unavailable, so strike distance uses the latest underlying price as an approximation.
               </p>
 
               <div class="space-y-4">
