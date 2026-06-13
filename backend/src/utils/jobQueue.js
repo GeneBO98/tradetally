@@ -613,7 +613,7 @@ class JobQueue {
             }
           );
 
-          if (quality) {
+          if (quality && quality.grade) {
             // Update trade with quality data
             await db.query(
               `UPDATE trades

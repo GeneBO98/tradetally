@@ -59,6 +59,7 @@ class FmpClient {
     this.maxCallsPerMinute = parseInt(process.env.FMP_RATE_LIMIT_PER_MINUTE, 10) || 60;
     this.maxCallsPerSecond = parseInt(process.env.FMP_RATE_LIMIT_PER_SECOND, 10) || 5;
     this.scheduler = new FinnhubRequestScheduler({
+      label: 'FMP',
       maxCallsPerMinute: this.maxCallsPerMinute,
       maxCallsPerSecond: this.maxCallsPerSecond,
       activeReservePerMinute: parseInt(process.env.FMP_ACTIVE_RESERVE_PER_MINUTE, 10) || undefined

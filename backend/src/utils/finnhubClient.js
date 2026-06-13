@@ -34,6 +34,7 @@ class FinnhubClient {
       ? parseInt(process.env.FINNHUB_ACTIVE_RESERVE_PER_MINUTE, 10)
       : undefined;
     this.scheduler = new FinnhubRequestScheduler({
+      label: 'FINNHUB',
       maxCallsPerMinute: this.maxCallsPerMinute,
       maxCallsPerSecond: this.maxCallsPerSecond,
       activeReservePerMinute: configuredReserve

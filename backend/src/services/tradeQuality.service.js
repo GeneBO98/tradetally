@@ -56,6 +56,17 @@ const METRIC_TO_WEIGHT_KEY = {
   moneyness: 'moneyness'
 };
 
+// Human-readable metric names for failure messages
+const METRIC_LABELS = {
+  newsSentiment: 'news sentiment',
+  gap: 'gap',
+  relativeVolume: 'relative volume',
+  float: 'float',
+  priceRange: 'price range',
+  dte: 'days to expiration',
+  moneyness: 'strike distance'
+};
+
 // Where each metric's raw value and score live in the stored quality_metrics JSONB
 const STORED_METRIC_FIELDS = {
   newsSentiment: ['newsSentiment', 'newsSentimentScore'],
@@ -243,7 +254,11 @@ class TradeQualityService {
   async calculateQuality(symbol, entryTime, entryPrice, side = 'long', userId = null, newsSentiment = null, instrument = {}) {
     if (!this.marketData.isConfigured()) {
       console.log(`[QUALITY] ${this.marketData.displayName} API key not configured, skipping quality calculation`);
-      return null;
+      return {
+        grade: null,
+        reason: 'not_configured',
+        message: `${this.marketData.displayName} market data is not configured.`
+      };
     }
 
     // Futures are not gradeable - the configured market data providers have no
@@ -251,7 +266,11 @@ class TradeQualityService {
     const profileType = this.getProfileType(instrument?.instrumentType);
     if (!profileType) {
       console.log(`[QUALITY] ${symbol}: ${instrument?.instrumentType} instruments are not gradeable, skipping`);
-      return null;
+      return {
+        grade: null,
+        reason: 'not_gradeable',
+        message: `${instrument?.instrumentType || 'This instrument'} trades are not graded.`
+      };
     }
 
     try {
@@ -371,8 +390,19 @@ class TradeQualityService {
       const { score: weightedScore, coverage } = this.calculateWeightedScore(scopedScores, weights);
 
       if (weightedScore === null) {
-        console.log(`[QUALITY] ${symbol}: only ${(coverage * 100).toFixed(0)}% of weight has data (minimum ${MIN_COVERAGE * 100}%), not grading`);
-        return null;
+        const coveragePct = Math.round(coverage * 100);
+        const missingMetrics = profileMetricKeys
+          .filter(key => scopedScores[key] === null || scopedScores[key] === undefined)
+          .map(key => METRIC_LABELS[key]);
+        console.log(`[QUALITY] ${symbol}: only ${coveragePct}% of weight has data (minimum ${MIN_COVERAGE * 100}%), not grading`);
+        return {
+          grade: null,
+          reason: 'insufficient_data',
+          coverage,
+          missingMetrics,
+          message: `Not enough market data for ${symbol}: only ${coveragePct}% of the metric weight had data (needs ${MIN_COVERAGE * 100}%).` +
+            (missingMetrics.length ? ` No data for ${missingMetrics.join(', ')}.` : '')
+        };
       }
 
       // Determine grade
@@ -404,7 +434,14 @@ class TradeQualityService {
 
       // No fabricated fallback grade - an ungraded trade can be recalculated
       // later, a fake neutral C cannot be told apart from a real one
-      return null;
+      const timedOut = /timed out|timeout/i.test(error.message || '');
+      return {
+        grade: null,
+        reason: timedOut ? 'api_timeout' : 'api_error',
+        message: timedOut
+          ? `Market data request for ${symbol} timed out. The provider may be rate-limiting or slow; try again.`
+          : `Market data request for ${symbol} failed: ${error.message}`
+      };
     }
   }
 
@@ -464,6 +501,10 @@ class TradeQualityService {
     try {
       // Convert entryTime to Unix timestamp (seconds)
       const entryDate = new Date(entryTime);
+      if (isNaN(entryDate.getTime())) {
+        console.log(`[QUALITY] Invalid entry time for ${symbol}, cannot fetch quote`);
+        return null;
+      }
 
       // Get data for 2 days (current day and previous day) to calculate gap
       const startDate = new Date(entryDate);
@@ -480,6 +521,14 @@ class TradeQualityService {
 
       // Check if we have valid data
       if (!Array.isArray(candles) || candles.length === 0) {
+        // Recently-entered (often still-open) trades may have no published daily
+        // candle yet for the entry day. Fall back to a real-time quote so gap
+        // and (for options) moneyness can still be scored.
+        const ageDays = (Date.now() - entryDate.getTime()) / 86400000;
+        if (ageDays >= 0 && ageDays <= 5) {
+          const live = await this.fetchLiveQuoteFallback(symbol);
+          if (live) return live;
+        }
         console.log(`[QUALITY] No historical data available for ${symbol} on ${entryDate.toISOString()}`);
         return null;
       }
@@ -509,6 +558,35 @@ class TradeQualityService {
       };
     } catch (error) {
       console.error(`[QUALITY] Error fetching historical quote for ${symbol}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Real-time quote fallback for recently-entered trades whose entry-day daily
+   * candle is not published yet. Provides spot (for moneyness) and previous
+   * close (for gap). Daily volume is unavailable from a quote, so relative
+   * volume stays excluded.
+   * @param {string} symbol - Symbol to quote (underlying for options)
+   * @returns {Promise<Object|null>} Quote-shaped object, or null on failure
+   */
+  async fetchLiveQuoteFallback(symbol) {
+    try {
+      const q = await this.marketData.getQuote(symbol);
+      if (!q || (q.c == null && q.o == null)) return null;
+      const open = q.o ?? q.c;
+      console.log(`[QUALITY] Using live quote fallback for ${symbol}: price=${open}, previousClose=${q.pc}`);
+      return {
+        o: open,
+        h: q.h ?? null,
+        l: q.l ?? null,
+        c: q.c ?? open,
+        v: null,              // live quote carries no daily volume -> relative volume stays N/A
+        previousClose: q.pc ?? null,
+        relativeVolume: null
+      };
+    } catch (error) {
+      console.log(`[QUALITY] Live quote fallback failed for ${symbol}: ${error.message}`);
       return null;
     }
   }

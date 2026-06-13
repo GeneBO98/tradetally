@@ -19,6 +19,9 @@ class FinnhubSchedulerError extends Error {
 
 class FinnhubRequestScheduler {
   constructor(options = {}) {
+    // Provider label for logs - the scheduler is shared by Finnhub and FMP, so
+    // hardcoding "Finnhub" in log output is misleading when running on FMP
+    this.label = options.label || 'MARKET-DATA';
     this.maxCallsPerMinute = Math.max(1, parseInt(options.maxCallsPerMinute, 10) || 60);
     this.maxCallsPerSecond = Math.max(1, parseInt(options.maxCallsPerSecond, 10) || 1);
     this.activeReservePerMinute = Math.max(
@@ -93,7 +96,7 @@ class FinnhubRequestScheduler {
           }
           this.log('skipped', job, waitedMs, code);
           reject(new FinnhubSchedulerError(
-            `Finnhub request ${background ? 'skipped' : 'timed out'} after ${waitedMs}ms in scheduler`,
+            `${this.label} request ${background ? 'skipped' : 'timed out'} after ${waitedMs}ms in scheduler`,
             code,
             { endpoint: job.endpoint, source: job.source, priority: job.priority, waitedMs }
           ));
@@ -221,7 +224,7 @@ class FinnhubRequestScheduler {
 
   log(status, job, waitMs, code = null) {
     console.log(
-      `[FINNHUB-SCHEDULER] status=${status} priority=${job.priority} endpoint=${job.endpoint} source=${job.source} waitMs=${waitMs}` +
+      `[${this.label}-SCHEDULER] status=${status} priority=${job.priority} endpoint=${job.endpoint} source=${job.source} waitMs=${waitMs}` +
         (job.background ? ' background=true' : ' background=false') +
         (code ? ` code=${code}` : '')
     );

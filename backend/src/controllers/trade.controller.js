@@ -5076,9 +5076,11 @@ const tradeController = {
         }
       );
 
-      if (!quality) {
+      if (!quality || !quality.grade) {
         return res.status(400).json({
-          error: 'Unable to calculate quality. Not enough market data is available for this symbol, or the market data API is unavailable.'
+          error: quality?.message || 'Unable to calculate quality. Not enough market data is available for this symbol, or the market data API is unavailable.',
+          reason: quality?.reason,
+          missingMetrics: quality?.missingMetrics
         });
       }
 
@@ -5146,7 +5148,7 @@ const tradeController = {
       // Update trades with quality data
       const updates = [];
       for (const result of results) {
-        if (result.quality) {
+        if (result.quality && result.quality.grade) {
           const updateQuery = `
             UPDATE trades
             SET quality_grade = $1,
@@ -5220,7 +5222,7 @@ const tradeController = {
 
           const updates = [];
           for (const result of results) {
-            if (result.quality) {
+            if (result.quality && result.quality.grade) {
               const updateQuery = `
                 UPDATE trades
                 SET quality_grade = $1,

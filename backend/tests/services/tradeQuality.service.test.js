@@ -7,7 +7,8 @@ jest.mock('../../src/utils/finnhub', () => ({
   getCompanyProfile: jest.fn(),
   getStockCandles: jest.fn(),
   getBasicFinancials: jest.fn(),
-  getCompanyNews: jest.fn()
+  getCompanyNews: jest.fn(),
+  getQuote: jest.fn()
 }));
 
 const db = require('../../src/config/database');
@@ -359,5 +360,64 @@ describe('getProfileType', () => {
     expect(tradeQualityService.getProfileType('option')).toBe('option');
     expect(tradeQualityService.getProfileType(undefined)).toBe('stock');
     expect(tradeQualityService.getProfileType('future')).toBeNull();
+  });
+});
+
+describe('calculateQuality structured failures', () => {
+  const finnhub = require('../../src/utils/finnhub');
+
+  beforeEach(() => {
+    finnhub.isConfigured.mockReturnValue(true);
+    finnhub.getCompanyProfile.mockResolvedValue(null);
+    finnhub.getStockCandles.mockResolvedValue([]);
+    finnhub.getBasicFinancials.mockResolvedValue(null);
+    finnhub.getQuote.mockReset();
+  });
+
+  it('reports when the market data provider is not configured', async () => {
+    finnhub.isConfigured.mockReturnValue(false);
+    const result = await tradeQualityService.calculateQuality('AAPL', '2026-01-01', 10, 'long', null);
+    expect(result.grade).toBeNull();
+    expect(result.reason).toBe('not_configured');
+  });
+
+  it('reports that futures are not gradeable', async () => {
+    const result = await tradeQualityService.calculateQuality('ES', '2026-01-01', 5000, 'long', null, null, {
+      instrumentType: 'future'
+    });
+    expect(result.grade).toBeNull();
+    expect(result.reason).toBe('not_gradeable');
+  });
+
+  it('reports insufficient data with the missing metric names', async () => {
+    // Old entry date so the recent-quote fallback does not kick in; all market
+    // data unavailable -> coverage 0
+    const result = await tradeQualityService.calculateQuality('AAPL', '2020-01-02', 10, 'long', null);
+    expect(result.grade).toBeNull();
+    expect(result.reason).toBe('insufficient_data');
+    // Price range is always available from the entry price; the rest are missing
+    expect(result.missingMetrics).toEqual(
+      expect.arrayContaining(['news sentiment', 'gap', 'relative volume', 'float'])
+    );
+    expect(result.missingMetrics).not.toContain('price range');
+  });
+
+  it('falls back to a live quote for a recently-entered open option trade', async () => {
+    finnhub.getQuote.mockResolvedValue({ c: 105, o: 105, h: 106, l: 104, pc: 100 });
+
+    const entryTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();   // yesterday
+    const expiration = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(); // ~30 DTE
+
+    const result = await tradeQualityService.calculateQuality(
+      'AAPL  260101C00100000', entryTime, 2.50, 'long', null, null,
+      { instrumentType: 'option', underlyingSymbol: 'AAPL', strikePrice: 100, optionType: 'call', expirationDate: expiration }
+    );
+
+    // gap (15%) + dte (25%) + moneyness (20%) = 60% coverage -> grades
+    expect(finnhub.getQuote).toHaveBeenCalledWith('AAPL');
+    expect(result.grade).toBeTruthy();
+    expect(result.metrics.profile).toBe('option');
+    expect(result.metrics.gap).toBeCloseTo(5, 5);          // (105-100)/100
+    expect(result.metrics.moneynessScore).toBeGreaterThan(0);
   });
 });
