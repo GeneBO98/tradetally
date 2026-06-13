@@ -823,8 +823,19 @@ const userController = {
 
       const weights = result.rows[0];
 
+      // Reapply the new weights to already-graded trades using their stored
+      // metric scores (no API calls), so the change takes effect immediately
+      let regradedCount = 0;
+      try {
+        const tradeQualityService = require('../services/tradeQuality.service');
+        regradedCount = await tradeQualityService.reapplyUserWeights(req.user.id);
+      } catch (regradeError) {
+        console.error('[ERROR] Failed to reapply quality weights to existing trades:', regradeError.message);
+      }
+
       res.json({
         message: 'Quality weights updated successfully',
+        regradedCount,
         qualityWeights: {
           news: weights.quality_weight_news,
           gap: weights.quality_weight_gap,

@@ -5059,12 +5059,16 @@ const tradeController = {
         trade.entry_price,
         trade.side,
         req.user.id,
-        trade.news_sentiment
+        trade.news_sentiment,
+        {
+          instrumentType: trade.instrument_type,
+          underlyingSymbol: trade.underlying_symbol
+        }
       );
 
       if (!quality) {
         return res.status(400).json({
-          error: 'Unable to calculate quality. Finnhub API may be unavailable or data not found for this symbol.'
+          error: 'Unable to calculate quality. Not enough market data is available for this symbol, or the market data API is unavailable.'
         });
       }
 
@@ -5114,7 +5118,7 @@ const tradeController = {
 
       // Fetch trades
       const tradesQuery = `
-        SELECT id, symbol, entry_time, entry_price
+        SELECT id, user_id, symbol, entry_time, entry_price, side, news_sentiment, instrument_type, underlying_symbol
         FROM trades
         WHERE id = ANY($1) AND user_id = $2
       `;
@@ -5179,7 +5183,7 @@ const tradeController = {
 
       // Get all trades for user
       const tradesQuery = `
-        SELECT id, symbol, entry_time, entry_price
+        SELECT id, user_id, symbol, entry_time, entry_price, side, news_sentiment, instrument_type, underlying_symbol
         FROM trades
         WHERE user_id = $1
         ORDER BY entry_time DESC

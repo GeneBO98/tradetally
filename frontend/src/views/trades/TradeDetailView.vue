@@ -426,210 +426,52 @@
           <!-- Setup Quality Breakdown -->
           <div v-if="trade.qualityGrade && trade.qualityMetrics" class="card">
             <div class="card-body">
-              <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Setup Quality Breakdown</h3>
+              <h3 class="text-lg font-medium text-gray-900 dark:text-white" :class="trade.qualityMetrics.dataSymbol ? 'mb-1' : 'mb-4'">Setup Quality Breakdown</h3>
+              <p v-if="trade.qualityMetrics.dataSymbol" class="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                Option trade - graded using market data for the underlying {{ trade.qualityMetrics.dataSymbol }}
+              </p>
 
               <div class="space-y-4">
-                <!-- News Sentiment (35% weight) -->
-                <div class="border-l-4 pl-4 py-2"
+                <div v-for="metric in qualityBreakdown" :key="metric.key" class="border-l-4 pl-4 py-2"
                   :class="[
-                    getScore(trade.qualityMetrics.newsSentimentScore) >= 0.8 ? 'border-green-400' :
-                    getScore(trade.qualityMetrics.newsSentimentScore) >= 0.6 ? 'border-blue-400' :
-                    getScore(trade.qualityMetrics.newsSentimentScore) >= 0.4 ? 'border-yellow-400' :
+                    metric.excluded ? 'border-gray-300 dark:border-gray-600' :
+                    metric.score >= 0.8 ? 'border-green-400' :
+                    metric.score >= 0.6 ? 'border-blue-400' :
+                    metric.score >= 0.4 ? 'border-yellow-400' :
                     'border-red-400'
                   ]">
                   <div class="flex items-center justify-between mb-2">
                     <div>
-                      <h4 class="text-sm font-semibold text-gray-900 dark:text-white">News Sentiment</h4>
-                      <p class="text-xs text-gray-500 dark:text-gray-400">Weight: 30% (Highest)</p>
+                      <h4 class="text-sm font-semibold text-gray-900 dark:text-white">{{ metric.label }}</h4>
+                      <p class="text-xs text-gray-500 dark:text-gray-400">Weight: {{ metric.weight }}%</p>
                     </div>
                     <div class="text-right">
-                      <div class="text-sm font-semibold"
+                      <div v-if="metric.excluded" class="text-sm font-semibold text-gray-500 dark:text-gray-400">
+                        No data
+                      </div>
+                      <div v-else class="text-sm font-semibold"
                         :class="[
-                          getScore(trade.qualityMetrics.newsSentimentScore) >= 0.8 ? 'text-green-600 dark:text-green-400' :
-                          getScore(trade.qualityMetrics.newsSentimentScore) >= 0.6 ? 'text-blue-600 dark:text-blue-400' :
-                          getScore(trade.qualityMetrics.newsSentimentScore) >= 0.4 ? 'text-yellow-600 dark:text-yellow-400' :
+                          metric.score >= 0.8 ? 'text-green-600 dark:text-green-400' :
+                          metric.score >= 0.6 ? 'text-blue-600 dark:text-blue-400' :
+                          metric.score >= 0.4 ? 'text-yellow-600 dark:text-yellow-400' :
                           'text-red-600 dark:text-red-400'
                         ]">
-                        {{ (getScore(trade.qualityMetrics.newsSentimentScore) * 100).toFixed(0) }}%
+                        {{ (metric.score * 100).toFixed(0) }}%
                       </div>
                       <div class="text-xs text-gray-500 dark:text-gray-400">
-                        {{ trade.qualityMetrics.newsSentiment !== null && trade.qualityMetrics.newsSentiment !== undefined ? Number(trade.qualityMetrics.newsSentiment).toFixed(2) : 'N/A' }}
+                        {{ metric.excluded ? 'Excluded from score' : metric.display }}
                       </div>
                     </div>
                   </div>
                   <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                    <div class="h-2 rounded-full transition-all"
+                    <div v-if="!metric.excluded" class="h-2 rounded-full transition-all"
                       :class="[
-                        getScore(trade.qualityMetrics.newsSentimentScore) >= 0.8 ? 'bg-green-500' :
-                        getScore(trade.qualityMetrics.newsSentimentScore) >= 0.6 ? 'bg-blue-500' :
-                        getScore(trade.qualityMetrics.newsSentimentScore) >= 0.4 ? 'bg-yellow-500' :
+                        metric.score >= 0.8 ? 'bg-green-500' :
+                        metric.score >= 0.6 ? 'bg-blue-500' :
+                        metric.score >= 0.4 ? 'bg-yellow-500' :
                         'bg-red-500'
                       ]"
-                      :style="{ width: (getScore(trade.qualityMetrics.newsSentimentScore) * 100) + '%' }">
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Gap from Previous Close (20% weight) -->
-                <div class="border-l-4 pl-4 py-2"
-                  :class="[
-                    getScore(trade.qualityMetrics?.gapScore) >= 0.8 ? 'border-green-400' :
-                    getScore(trade.qualityMetrics?.gapScore) >= 0.6 ? 'border-blue-400' :
-                    getScore(trade.qualityMetrics?.gapScore) >= 0.4 ? 'border-yellow-400' :
-                    'border-red-400'
-                  ]">
-                  <div class="flex items-center justify-between mb-2">
-                    <div>
-                      <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Gap from Previous Close</h4>
-                      <p class="text-xs text-gray-500 dark:text-gray-400">Weight: 20% (Previous close to entry price)</p>
-                    </div>
-                    <div class="text-right">
-                      <div class="text-sm font-semibold"
-                        :class="[
-                          getScore(trade.qualityMetrics?.gapScore) >= 0.8 ? 'text-green-600 dark:text-green-400' :
-                          getScore(trade.qualityMetrics?.gapScore) >= 0.6 ? 'text-blue-600 dark:text-blue-400' :
-                          getScore(trade.qualityMetrics?.gapScore) >= 0.4 ? 'text-yellow-600 dark:text-yellow-400' :
-                          'text-red-600 dark:text-red-400'
-                        ]">
-                        {{ (getScore(trade.qualityMetrics?.gapScore) * 100).toFixed(0) }}%
-                      </div>
-                      <div class="text-xs text-gray-500 dark:text-gray-400">
-                        {{ trade.qualityMetrics?.gap !== null && trade.qualityMetrics?.gap !== undefined ? (Number(trade.qualityMetrics.gap) > 0 ? '+' : '') + Number(trade.qualityMetrics.gap).toFixed(2) + '%' : 'N/A' }}
-                      </div>
-                    </div>
-                  </div>
-                  <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                    <div class="h-2 rounded-full transition-all"
-                      :class="[
-                        getScore(trade.qualityMetrics?.gapScore) >= 0.8 ? 'bg-green-500' :
-                        getScore(trade.qualityMetrics?.gapScore) >= 0.6 ? 'bg-blue-500' :
-                        getScore(trade.qualityMetrics?.gapScore) >= 0.4 ? 'bg-yellow-500' :
-                        'bg-red-500'
-                      ]"
-                      :style="{ width: (getScore(trade.qualityMetrics?.gapScore) * 100) + '%' }">
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Relative Volume (20% weight) -->
-                <div class="border-l-4 pl-4 py-2"
-                  :class="[
-                    getScore(trade.qualityMetrics.relativeVolumeScore) >= 0.8 ? 'border-green-400' :
-                    getScore(trade.qualityMetrics.relativeVolumeScore) >= 0.6 ? 'border-blue-400' :
-                    getScore(trade.qualityMetrics.relativeVolumeScore) >= 0.4 ? 'border-yellow-400' :
-                    'border-red-400'
-                  ]">
-                  <div class="flex items-center justify-between mb-2">
-                    <div>
-                      <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Relative Volume</h4>
-                      <p class="text-xs text-gray-500 dark:text-gray-400">Weight: 20%</p>
-                    </div>
-                    <div class="text-right">
-                      <div class="text-sm font-semibold"
-                        :class="[
-                          getScore(trade.qualityMetrics.relativeVolumeScore) >= 0.8 ? 'text-green-600 dark:text-green-400' :
-                          getScore(trade.qualityMetrics.relativeVolumeScore) >= 0.6 ? 'text-blue-600 dark:text-blue-400' :
-                          getScore(trade.qualityMetrics.relativeVolumeScore) >= 0.4 ? 'text-yellow-600 dark:text-yellow-400' :
-                          'text-red-600 dark:text-red-400'
-                        ]">
-                        {{ (getScore(trade.qualityMetrics.relativeVolumeScore) * 100).toFixed(0) }}%
-                      </div>
-                      <div class="text-xs text-gray-500 dark:text-gray-400">
-                        {{ trade.qualityMetrics.relativeVolume !== null && trade.qualityMetrics.relativeVolume !== undefined ? Number(trade.qualityMetrics.relativeVolume).toFixed(1) + 'x' : 'N/A' }}
-                      </div>
-                    </div>
-                  </div>
-                  <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                    <div class="h-2 rounded-full transition-all"
-                      :class="[
-                        getScore(trade.qualityMetrics.relativeVolumeScore) >= 0.8 ? 'bg-green-500' :
-                        getScore(trade.qualityMetrics.relativeVolumeScore) >= 0.6 ? 'bg-blue-500' :
-                        getScore(trade.qualityMetrics.relativeVolumeScore) >= 0.4 ? 'bg-yellow-500' :
-                        'bg-red-500'
-                      ]"
-                      :style="{ width: (getScore(trade.qualityMetrics.relativeVolumeScore) * 100) + '%' }">
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Float (15% weight) -->
-                <div class="border-l-4 pl-4 py-2"
-                  :class="[
-                    getScore(trade.qualityMetrics?.floatScore) >= 0.8 ? 'border-green-400' :
-                    getScore(trade.qualityMetrics?.floatScore) >= 0.6 ? 'border-blue-400' :
-                    getScore(trade.qualityMetrics?.floatScore) >= 0.4 ? 'border-yellow-400' :
-                    'border-red-400'
-                  ]">
-                  <div class="flex items-center justify-between mb-2">
-                    <div>
-                      <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Float (Shares Outstanding)</h4>
-                      <p class="text-xs text-gray-500 dark:text-gray-400">Weight: 15%</p>
-                    </div>
-                    <div class="text-right">
-                      <div class="text-sm font-semibold"
-                        :class="[
-                          getScore(trade.qualityMetrics?.floatScore) >= 0.8 ? 'text-green-600 dark:text-green-400' :
-                          getScore(trade.qualityMetrics?.floatScore) >= 0.6 ? 'text-blue-600 dark:text-blue-400' :
-                          getScore(trade.qualityMetrics?.floatScore) >= 0.4 ? 'text-yellow-600 dark:text-yellow-400' :
-                          'text-red-600 dark:text-red-400'
-                        ]">
-                        {{ (getScore(trade.qualityMetrics?.floatScore) * 100).toFixed(0) }}%
-                      </div>
-                      <div class="text-xs text-gray-500 dark:text-gray-400">
-                        {{ formatFloat(trade.qualityMetrics?.float) }}
-                      </div>
-                    </div>
-                  </div>
-                  <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                    <div class="h-2 rounded-full transition-all"
-                      :class="[
-                        getScore(trade.qualityMetrics?.floatScore) >= 0.8 ? 'bg-green-500' :
-                        getScore(trade.qualityMetrics?.floatScore) >= 0.6 ? 'bg-blue-500' :
-                        getScore(trade.qualityMetrics?.floatScore) >= 0.4 ? 'bg-yellow-500' :
-                        'bg-red-500'
-                      ]"
-                      :style="{ width: (getScore(trade.qualityMetrics?.floatScore) * 100) + '%' }">
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Price Range (15% weight) -->
-                <div class="border-l-4 pl-4 py-2"
-                  :class="[
-                    getScore(trade.qualityMetrics.priceScore) >= 0.8 ? 'border-green-400' :
-                    getScore(trade.qualityMetrics.priceScore) >= 0.6 ? 'border-blue-400' :
-                    getScore(trade.qualityMetrics.priceScore) >= 0.4 ? 'border-yellow-400' :
-                    'border-red-400'
-                  ]">
-                  <div class="flex items-center justify-between mb-2">
-                    <div>
-                      <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Price Range</h4>
-                      <p class="text-xs text-gray-500 dark:text-gray-400">Weight: 15%</p>
-                    </div>
-                    <div class="text-right">
-                      <div class="text-sm font-semibold"
-                        :class="[
-                          getScore(trade.qualityMetrics.priceScore) >= 0.8 ? 'text-green-600 dark:text-green-400' :
-                          getScore(trade.qualityMetrics.priceScore) >= 0.6 ? 'text-blue-600 dark:text-blue-400' :
-                          getScore(trade.qualityMetrics.priceScore) >= 0.4 ? 'text-yellow-600 dark:text-yellow-400' :
-                          'text-red-600 dark:text-red-400'
-                        ]">
-                        {{ (getScore(trade.qualityMetrics.priceScore) * 100).toFixed(0) }}%
-                      </div>
-                      <div class="text-xs text-gray-500 dark:text-gray-400">
-                        {{ trade.qualityMetrics.price !== null && trade.qualityMetrics.price !== undefined ? formatCurrency(trade.qualityMetrics.price) : 'N/A' }}
-                      </div>
-                    </div>
-                  </div>
-                  <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                    <div class="h-2 rounded-full transition-all"
-                      :class="[
-                        getScore(trade.qualityMetrics.priceScore) >= 0.8 ? 'bg-green-500' :
-                        getScore(trade.qualityMetrics.priceScore) >= 0.6 ? 'bg-blue-500' :
-                        getScore(trade.qualityMetrics.priceScore) >= 0.4 ? 'bg-yellow-500' :
-                        'bg-red-500'
-                      ]"
-                      :style="{ width: (getScore(trade.qualityMetrics.priceScore) * 100) + '%' }">
+                      :style="{ width: (metric.score * 100) + '%' }">
                     </div>
                   </div>
                 </div>
@@ -640,7 +482,11 @@
                 <div class="flex items-center justify-between">
                   <div>
                     <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Overall Setup Quality</h4>
-                    <p class="text-xs text-gray-500 dark:text-gray-400">Weighted average of all metrics</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">
+                      {{ hasExcludedQualityMetrics
+                        ? 'Weighted average of metrics with data - metrics without data are excluded and the remaining weights are rescaled'
+                        : 'Weighted average of all metrics' }}
+                    </p>
                   </div>
                   <div class="text-right">
                     <div class="text-2xl font-bold"
@@ -1659,6 +1505,75 @@ const formatFloat = (value) => {
   return num.toFixed(2) + 'M'
 }
 
+// User's quality grading weights, for the breakdown display (defaults until fetched)
+const qualityWeights = ref(null)
+
+async function fetchQualityWeights() {
+  try {
+    const response = await api.get('/users/quality-weights')
+    qualityWeights.value = response.data.qualityWeights
+  } catch (error) {
+    console.error('Error fetching quality weights:', error)
+  }
+}
+
+const qualityBreakdown = computed(() => {
+  const m = trade.value?.qualityMetrics
+  if (!m) return []
+  const w = qualityWeights.value
+  const rows = [
+    {
+      key: 'newsSentiment',
+      label: 'News Sentiment',
+      weight: w?.news ?? 30,
+      rawScore: m.newsSentimentScore,
+      raw: m.newsSentiment,
+      display: m.newsSentiment != null ? Number(m.newsSentiment).toFixed(2) : 'N/A'
+    },
+    {
+      key: 'gap',
+      label: 'Gap from Previous Close',
+      weight: w?.gap ?? 20,
+      rawScore: m.gapScore,
+      raw: m.gap,
+      display: m.gap != null ? (Number(m.gap) > 0 ? '+' : '') + Number(m.gap).toFixed(2) + '%' : 'N/A'
+    },
+    {
+      key: 'relativeVolume',
+      label: 'Relative Volume',
+      weight: w?.relativeVolume ?? 20,
+      rawScore: m.relativeVolumeScore,
+      raw: m.relativeVolume,
+      display: m.relativeVolume != null ? Number(m.relativeVolume).toFixed(1) + 'x' : 'N/A'
+    },
+    {
+      key: 'float',
+      label: 'Float (Shares Outstanding)',
+      weight: w?.float ?? 15,
+      rawScore: m.floatScore,
+      raw: m.float,
+      display: formatFloat(m.float)
+    },
+    {
+      key: 'priceRange',
+      label: 'Price Range',
+      weight: w?.priceRange ?? 15,
+      rawScore: m.priceScore,
+      raw: m.price,
+      display: m.price != null ? formatCurrency(m.price) : 'N/A'
+    }
+  ]
+  // A metric is excluded from the weighted score when its raw value was never
+  // recorded - legacy rows stored a neutral 50% default alongside null data
+  return rows.map(row => ({
+    ...row,
+    excluded: row.raw == null || row.rawScore == null,
+    score: getScore(row.rawScore)
+  }))
+})
+
+const hasExcludedQualityMetrics = computed(() => qualityBreakdown.value.some(metric => metric.excluded))
+
 // Comments state
 const comments = ref([])
 const loadingComments = ref(false)
@@ -2505,6 +2420,7 @@ async function loadTrade() {
       await loadPlaybooks()
       loadComments()
       loadStoredAIAnalyses()
+      fetchQualityWeights()
     }
   } catch (error) {
     // A guest hitting a private/non-existent trade gets a 404; send them to login

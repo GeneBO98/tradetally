@@ -1728,7 +1728,11 @@
                             trade quality score. Weights must sum to 100%.
                             Quality scores are calculated based on news
                             sentiment, gap from previous close, relative volume,
-                            float, and price range.
+                            float, and price range. Saving immediately re-grades
+                            all trades that already have a quality score.
+                            Metrics with no available data are excluded from a
+                            trade's score and the remaining weights are
+                            rescaled.
                         </p>
 
                         <form
@@ -3537,14 +3541,20 @@ async function fetchQualityWeights() {
 async function updateQualityWeights() {
     qualityWeightsLoading.value = true;
     try {
-        await api.put("/users/quality-weights", {
+        const response = await api.put("/users/quality-weights", {
             news: qualityWeightsForm.value.news,
             gap: qualityWeightsForm.value.gap,
             relativeVolume: qualityWeightsForm.value.relativeVolume,
             float: qualityWeightsForm.value.float,
             priceRange: qualityWeightsForm.value.priceRange,
         });
-        showSuccess("Success", "Quality grading weights updated successfully");
+        const regraded = response.data?.regradedCount;
+        showSuccess(
+            "Success",
+            regraded > 0
+                ? `Quality grading weights updated. ${regraded} trade${regraded === 1 ? "" : "s"} re-graded with the new weights.`
+                : "Quality grading weights updated successfully",
+        );
     } catch (error) {
         console.error("Failed to update quality weights:", error);
         showError(

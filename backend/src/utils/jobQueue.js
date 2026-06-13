@@ -573,7 +573,7 @@ class JobQueue {
 
     // Get trades that need quality grading
     const tradesQuery = `
-      SELECT id, symbol, entry_time, entry_price, side, news_sentiment
+      SELECT id, symbol, entry_time, entry_price, side, news_sentiment, instrument_type, underlying_symbol
       FROM trades
       WHERE user_id = $1
         AND quality_grade IS NULL
@@ -601,7 +601,11 @@ class JobQueue {
             trade.entry_price,
             trade.side,
             userId,
-            trade.news_sentiment
+            trade.news_sentiment,
+            {
+              instrumentType: trade.instrument_type,
+              underlyingSymbol: trade.underlying_symbol
+            }
           );
 
           if (quality) {
