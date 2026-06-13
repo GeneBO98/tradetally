@@ -43,6 +43,7 @@ function row(id, exitPrice, pnl, isBreakeven) {
     instrument_type: 'stock',
     contract_size: null,
     point_value: null,
+    underlying_asset: null,
     is_breakeven: isBreakeven
   };
 }
@@ -105,5 +106,27 @@ describe('tradeManagementController.getRPerformance break-even classification (i
     expect(query).toContain('AS is_breakeven');
     // Uses gross P&L (net + commissions + fees), matching the dashboard.
     expect(query).toContain('COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0)');
+  });
+
+  test('actual R uses net P&L divided by risk, not price-only entry/exit movement', async () => {
+    db.query.mockResolvedValue({
+      rows: [
+        {
+          ...row(1, 99, 60, false),
+          stop_loss: 90,
+          quantity: 1
+        }
+      ]
+    });
+
+    const req = { user: { id: 'user-1' }, query: {} };
+    const res = { json: jest.fn() };
+
+    await controller.getRPerformance(req, res);
+
+    const { chart_data, summary } = res.json.mock.calls[0][0];
+    expect(chart_data[0].actual_r).toBe(6);
+    expect(summary.total_actual_r).toBe(6);
+    expect(summary.winning_trades).toBe(1);
   });
 });

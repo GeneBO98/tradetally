@@ -23,6 +23,7 @@ const db = require('../../src/config/database');
 const { computeTradePnl } = require('../../src/services/pnlEngine');
 const { applyBrokerFeeSettingsToTrades } = require('../../src/services/brokerFeeApplicationService');
 const TradeQueries = require('../../src/services/tradeQueries');
+const Trade = require('../../src/models/Trade');
 const TargetHitAnalysisService = require('../../src/services/targetHitAnalysisService');
 
 function expectClose(actual, expected, precision = 8) {
@@ -133,5 +134,35 @@ describe('trading calculation contract fixtures', () => {
     );
 
     expectClose(weightedTargetR, fixture.expected_weighted_target_r);
+  });
+
+  test('legacy stock-typed futures still use futures risk multipliers', () => {
+    const fixture = contracts.r_value.legacy_stock_typed_future_example;
+    const trade = fixture.trade;
+
+    const riskAmount = Trade.calculateRiskAmount(
+      trade.entry_price,
+      trade.stop_loss,
+      trade.quantity,
+      trade.side,
+      trade.instrument_type,
+      null,
+      null,
+      trade.symbol
+    );
+    const rValue = Trade.calculateRValue(
+      trade.entry_price,
+      trade.stop_loss,
+      trade.exit_price,
+      trade.side,
+      {
+        quantity: trade.quantity,
+        instrumentType: trade.instrument_type,
+        symbol: trade.symbol
+      }
+    );
+
+    expectClose(riskAmount, fixture.expected_risk_amount);
+    expectClose(rValue, fixture.expected_r_value);
   });
 });

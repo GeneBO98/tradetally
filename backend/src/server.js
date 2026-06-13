@@ -471,6 +471,16 @@ async function runPnlBackfillIfNeeded() {
   }
 }
 
+async function runDollarStopLossRepairIfNeeded() {
+  if (process.env.SKIP_DOLLAR_STOP_REPAIR === 'true') {
+    console.log('[STOP LOSS] Skipping dollar stop-loss repair (SKIP_DOLLAR_STOP_REPAIR=true).');
+    return;
+  }
+
+  const Trade = require('./models/Trade');
+  await Trade.syncDollarDefaultStopLossesForAffectedUsers();
+}
+
 async function startTradeEnrichmentWorker() {
   console.log('Starting background worker for trade enrichment...');
   let attempts = 0;
@@ -511,6 +521,7 @@ function scheduleBackgroundServices(backgroundJobsDisabled) {
   };
 
   defer('pnl-backfill', runPnlBackfillIfNeeded);
+  defer('dollar-stop-loss-repair', runDollarStopLossRepairIfNeeded);
 
   if (backgroundJobsDisabled) {
     console.log('CUSIP queue processing disabled (DISABLE_BACKGROUND_JOBS=true)');

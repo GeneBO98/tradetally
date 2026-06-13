@@ -61,6 +61,18 @@ function parseTradeManagementFilters(query = {}) {
   };
 }
 
+function inferInstrumentType(trade) {
+  const rawType = String(trade?.instrument_type || trade?.instrumentType || 'stock').trim().toLowerCase();
+  if (rawType === 'future' || rawType === 'futures') return 'future';
+  if (rawType !== 'option' && extractUnderlyingFromFuturesSymbol(trade?.symbol)) return 'future';
+  if (rawType === 'option' || rawType === 'crypto' || rawType === 'stock') return rawType;
+  return rawType || 'stock';
+}
+
+function roundR(value) {
+  return Math.round(value * 100) / 100;
+}
+
 /**
  * Calculate R-Multiple values for a trade
  * @param {Object} trade - Trade object with entry_price, exit_price, stop_loss, take_profit, take_profit_targets, side
@@ -331,7 +343,20 @@ function calculateRMultiples(trade) {
   // For futures: use point_value (e.g., $50 per point for ES, $20 per point for NQ)
   // For stocks: no multiplier (1 share = 1 share)
   let multiplier = 1;
-  const instrumentType = instrument_type || 'stock';
+  const instrumentType = inferInstrumentType(trade);
+  const tradeQuantityForRisk = parseFloat(quantity || 1);
+  const calculatedRiskAmount = Trade.calculateRiskAmount(
+    entryPrice,
+    stopLoss,
+    Number.isFinite(tradeQuantityForRisk) && tradeQuantityForRisk > 0 ? tradeQuantityForRisk : 1,
+    side,
+    instrumentType,
+    contract_size,
+    point_value,
+    trade.symbol,
+    trade.underlying_asset || trade.underlyingAsset
+  );
+
   if (instrumentType === 'future') {
     // For futures, point_value converts price points to dollars
     // Example: ES has point_value = 50, so 1 point = $50
@@ -384,8 +409,13 @@ function calculateRMultiples(trade) {
     logger.warn('[R-CALC] Invalid quantity, defaulting to 1:', quantity);
     tradeQuantity = 1;
   }
-  
-  const riskAmount = risk * tradeQuantity * multiplier;
+
+  const riskAmount = calculatedRiskAmount && calculatedRiskAmount > 0
+    ? calculatedRiskAmount
+    : risk * tradeQuantity * multiplier;
+  if (calculatedRiskAmount && risk > 0 && tradeQuantity > 0) {
+    multiplier = calculatedRiskAmount / (risk * tradeQuantity);
+  }
   const actualPLAmount = actualPL * tradeQuantity * multiplier;
   
   // Calculate target_pl_amount:
@@ -439,6 +469,23 @@ function calculateRMultiples(trade) {
     contract_size: contract_size || 'not set'
   });
 
+  // Actual R is canonical net P&L divided by dollar risk. This keeps Trade
+  // Management aligned with stored r_value and dashboard analytics for partial
+  // exits, futures/options multipliers, and broker-imported net P&L.
+  const netPnl = parseFloat(pnl);
+  let actualRAlreadyNet = false;
+  if (Number.isFinite(netPnl) && riskAmount > 0) {
+    const priceBasedActualR = actualR;
+    actualR = netPnl / riskAmount;
+    actualRAlreadyNet = true;
+    logger.debug('[R-CALC] Actual R from net P&L:', {
+      netPnl,
+      riskAmount: riskAmount.toFixed(2),
+      priceBasedActualR: priceBasedActualR.toFixed(4),
+      netActualR: actualR.toFixed(4)
+    });
+  }
+
   // Adjust actual R AND target R for commission and fees (net R)
   // Commission reduces your actual profit, so it reduces actual R
   // Target R also needs commission adjustment for apples-to-apples comparison
@@ -464,7 +511,9 @@ function calculateRMultiples(trade) {
 
     const commissionR = totalCommission / effectiveRiskAmount;
     const grossActualR = actualR;
-    actualR = actualR - commissionR;
+    if (!actualRAlreadyNet) {
+      actualR = actualR - commissionR;
+    }
 
     // Also adjust target R for commission (hitting targets also incurs commissions)
     if (targetR !== undefined) {
@@ -491,6 +540,10 @@ function calculateRMultiples(trade) {
       grossActualR: grossActualR.toFixed(4),
       netActualR: actualR.toFixed(4)
     });
+  }
+
+  if (targetR !== undefined) {
+    rLost = targetR - actualR;
   }
 
   // Use weighted average target R if available (for multiple targets)
@@ -529,13 +582,13 @@ function calculateRMultiples(trade) {
 
   logger.debug('[R-CALC] ========== Final Results ==========');
   logger.debug('[R-CALC] Final values:', {
-    actual_r: Math.round(actualR * 100) / 100,
-    target_r: targetR !== undefined ? Math.round(targetR * 100) / 100 : null,
-    r_lost: rLost !== undefined ? Math.round(rLost * 100) / 100 : null,
-    weighted_target_r: weightedTargetR !== null ? Math.round(weightedTargetR * 100) / 100 : null,
-    effective_r_lost: effectiveRLost !== undefined ? Math.round(effectiveRLost * 100) / 100 : null,
-    management_r: managementR !== null ? Math.round(managementR * 100) / 100 : null,
-    planned_r: plannedR !== null ? Math.round(plannedR * 100) / 100 : null,
+    actual_r: roundR(actualR),
+    target_r: targetR !== undefined ? roundR(targetR) : null,
+    r_lost: rLost !== undefined ? roundR(rLost) : null,
+    weighted_target_r: weightedTargetR !== null ? roundR(weightedTargetR) : null,
+    effective_r_lost: effectiveRLost !== undefined ? roundR(effectiveRLost) : null,
+    management_r: managementR !== null ? roundR(managementR) : null,
+    planned_r: plannedR !== null ? roundR(plannedR) : null,
     planned_pl_amount: plannedPLAmount !== null ? Math.round(plannedPLAmount * 100) / 100 : null,
     risk_amount: Math.round(riskAmount * 100) / 100,
     multiplier: multiplier,
@@ -561,7 +614,7 @@ function calculateRMultiples(trade) {
     risk_per_share: Math.round(risk * 100) / 100,
     risk_amount: Math.round(riskAmount * 100) / 100,
     actual_pl_per_share: Math.round(actualPL * 100) / 100,
-    actual_pl_amount: pnl ? parseFloat(pnl) : Math.round(actualPLAmount * 100) / 100,
+    actual_pl_amount: pnl !== null && pnl !== undefined ? parseFloat(pnl) : Math.round(actualPLAmount * 100) / 100,
     target_pl_per_share: targetPL !== undefined ? Math.round(targetPL * 100) / 100 : null,
     target_pl_amount: targetPLAmount !== null ? Math.round(targetPLAmount * 100) / 100 : null,
 
@@ -1302,10 +1355,11 @@ const tradeManagementController = {
       const query = `
         SELECT
           id, symbol, trade_date, entry_price, exit_price,
-          quantity, side, pnl, stop_loss, take_profit,
+          quantity, side, pnl, stop_loss, take_profit, r_value,
           take_profit_targets, management_r, risk_level_history,
           manual_target_hit_first, executions,
           commission, fees, instrument_type, contract_size, point_value,
+          underlying_asset,
           (${be.is}) AS is_breakeven
         FROM trades t
         ${whereClause}
