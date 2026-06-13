@@ -3,8 +3,13 @@ jest.mock('../../src/config/database', () => ({
   pool: { connect: jest.fn() }
 }));
 
+jest.mock('../../src/services/analyticsCache', () => ({
+  invalidate: jest.fn()
+}));
+
 const db = require('../../src/config/database');
 const Trade = require('../../src/models/Trade');
+const AnalyticsCache = require('../../src/services/analyticsCache');
 
 describe('Trade.syncDefaultStopLossToExistingTrades', () => {
   let client;
@@ -183,5 +188,51 @@ describe('Trade.syncDefaultStopLossToExistingTrades', () => {
     expect(updateCalls).toHaveLength(1);
     // $100 risk / (1 contract * $50/pt) = 2 points below entry
     expect(updateCalls[0][1][0]).toBe(5998);
+  });
+
+  test('repairs affected dollar-risk users without requiring another settings save', async () => {
+    db.query.mockResolvedValue({
+      rows: [
+        {
+          user_id: 'user-1',
+          default_stop_loss_type: 'dollar',
+          default_stop_loss_dollars: 100,
+          default_stop_loss_percent: 5
+        }
+      ]
+    });
+    client.query.mockImplementation(async (sql) => {
+      if (String(sql).includes('SELECT id, symbol')) {
+        return {
+          rows: [
+            {
+              id: 'trade-percent-default',
+              symbol: 'AAPL',
+              entry_price: 100,
+              exit_price: 110,
+              side: 'long',
+              quantity: 10,
+              commission: 0,
+              fees: 0,
+              instrument_type: 'stock',
+              contract_size: null,
+              point_value: null,
+              underlying_asset: null,
+              stop_loss: 95,
+              r_value: 2
+            }
+          ]
+        };
+      }
+      return { rows: [] };
+    });
+
+    const result = await Trade.syncDollarDefaultStopLossesForAffectedUsers();
+
+    const updateCalls = client.query.mock.calls.filter(([sql]) => String(sql).includes('UPDATE trades SET stop_loss'));
+    expect(result).toEqual({ usersProcessed: 1, tradesUpdated: 1 });
+    expect(updateCalls).toHaveLength(1);
+    expect(updateCalls[0][1]).toEqual([90, 1, 'trade-percent-default', 'user-1']);
+    expect(AnalyticsCache.invalidate).toHaveBeenCalledWith('user-1');
   });
 });

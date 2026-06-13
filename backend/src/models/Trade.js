@@ -29,6 +29,14 @@ function normalizeUnderlyingSymbol(value) {
   return normalized || null;
 }
 
+function normalizeInstrumentType(instrumentType, symbol = null) {
+  const normalized = String(instrumentType || '').trim().toLowerCase();
+  if (normalized === 'future' || normalized === 'futures') return 'future';
+  if (normalized !== 'option' && extractUnderlyingFromFuturesSymbol(symbol)) return 'future';
+  if (normalized === 'option' || normalized === 'crypto' || normalized === 'stock') return normalized;
+  return normalized || 'stock';
+}
+
 async function timedDbQuery(label, query, values = []) {
   const startedAt = Date.now();
 
@@ -2068,8 +2076,10 @@ class Trade {
       return null;
     }
 
+    const normalizedInstrumentType = normalizeInstrumentType(instrumentType, symbol);
+
     let multiplier = 1;
-    if (instrumentType === 'future') {
+    if (normalizedInstrumentType === 'future') {
       let finalPointValue = pointValue ? parseFloat(pointValue) : null;
 
       if (!finalPointValue || !isFinite(finalPointValue) || finalPointValue <= 0) {
@@ -2078,7 +2088,7 @@ class Trade {
       }
 
       multiplier = finalPointValue;
-    } else if (instrumentType === 'option') {
+    } else if (normalizedInstrumentType === 'option') {
       const parsedContractSize = contractSize ? parseFloat(contractSize) : null;
       multiplier = parsedContractSize && isFinite(parsedContractSize) && parsedContractSize > 0
         ? parsedContractSize
@@ -2203,6 +2213,7 @@ class Trade {
 
     let rMultiple;
     const parsedQty = parseFloat(quantity);
+    const normalizedInstrumentType = normalizeInstrumentType(instrumentType, symbol);
 
     if (isFinite(parsedQty) && parsedQty > 0) {
       const totalRiskAmount = this.calculateRiskAmount(
@@ -2210,7 +2221,7 @@ class Trade {
         stopLoss,
         parsedQty,
         side,
-        instrumentType,
+        normalizedInstrumentType,
         contractSize,
         pointValue,
         symbol,
@@ -2270,7 +2281,7 @@ class Trade {
       const stopLossDollars = parseFloat(this.getSettingValue(settings, 'default_stop_loss_dollars', 'defaultStopLossDollars'));
       if (!isFinite(stopLossDollars) || stopLossDollars <= 0 || !isFinite(quantity) || quantity <= 0) return null;
 
-      const instrumentType = trade.instrument_type || 'stock';
+      const instrumentType = normalizeInstrumentType(trade.instrument_type || trade.instrumentType || 'stock', trade.symbol);
 
       // Resolve the futures point value the same way calculateRiskAmount does;
       // getDollarStopLossPriceMove would otherwise fall back to 1 while the
@@ -2427,6 +2438,55 @@ class Trade {
     } finally {
       client.release();
     }
+  }
+
+  static async syncDollarDefaultStopLossesForAffectedUsers() {
+    let settingsResult;
+    try {
+      settingsResult = await db.query(`
+        SELECT user_id, default_stop_loss_type, default_stop_loss_percent, default_stop_loss_dollars
+        FROM user_settings
+        WHERE default_stop_loss_type = 'dollar'
+          AND default_stop_loss_dollars IS NOT NULL
+          AND default_stop_loss_dollars > 0
+          AND default_stop_loss_percent IS NOT NULL
+          AND default_stop_loss_percent > 0
+      `);
+    } catch (error) {
+      if (error.code === '42P01' || error.code === '42703') {
+        console.log('[STOP LOSS] Dollar stop-loss repair skipped; settings table/columns are not migrated yet.');
+        return { usersProcessed: 0, tradesUpdated: 0 };
+      }
+      throw error;
+    }
+
+    let usersProcessed = 0;
+    let tradesUpdated = 0;
+    const AnalyticsCache = require('../services/analyticsCache');
+
+    for (const settings of settingsResult.rows) {
+      usersProcessed++;
+      const updated = await this.syncDefaultStopLossToExistingTrades(
+        settings.user_id,
+        settings,
+        settings
+      );
+      tradesUpdated += updated;
+
+      if (updated > 0) {
+        try {
+          await AnalyticsCache.invalidate(settings.user_id);
+        } catch (error) {
+          console.warn(`[STOP LOSS] Failed to invalidate analytics cache for user ${settings.user_id}: ${error.message}`);
+        }
+      }
+    }
+
+    if (usersProcessed > 0) {
+      console.log(`[STOP LOSS] Dollar default repair checked ${usersProcessed} users and updated ${tradesUpdated} trades.`);
+    }
+
+    return { usersProcessed, tradesUpdated };
   }
 
   /**
