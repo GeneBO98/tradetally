@@ -369,6 +369,9 @@
                         ({{ Number(trade.qualityScore).toFixed(1) }}/5.0)
                       </span>
                     </div>
+                    <div v-else-if="trade.instrument_type === 'future'">
+                      <span class="text-sm text-gray-500 dark:text-gray-400">Not available for futures</span>
+                    </div>
                     <div v-else class="flex items-center space-x-2">
                       <span class="text-sm text-gray-500 dark:text-gray-400">Not calculated</span>
                       <button
@@ -1506,70 +1509,61 @@ const formatFloat = (value) => {
 }
 
 // User's quality grading weights, for the breakdown display (defaults until fetched)
-const qualityWeights = ref(null)
+// Quality weight profiles, for showing each metric's configured weight
+const qualityProfiles = ref(null)
 
 async function fetchQualityWeights() {
   try {
     const response = await api.get('/users/quality-weights')
-    qualityWeights.value = response.data.qualityWeights
+    qualityProfiles.value = response.data.profiles || { stock: response.data.qualityWeights }
   } catch (error) {
     console.error('Error fetching quality weights:', error)
+  }
+}
+
+// Helper: build a breakdown row from stored metric fields
+function buildQualityRow(m, { key, label, weight, valueField, scoreField, format }) {
+  const raw = m[valueField]
+  const rawScore = m[scoreField]
+  return {
+    key,
+    label,
+    weight,
+    raw,
+    rawScore,
+    display: raw != null ? format(raw) : 'N/A',
+    excluded: raw == null || rawScore == null,
+    score: getScore(rawScore)
   }
 }
 
 const qualityBreakdown = computed(() => {
   const m = trade.value?.qualityMetrics
   if (!m) return []
-  const w = qualityWeights.value
-  const rows = [
-    {
-      key: 'newsSentiment',
-      label: 'News Sentiment',
-      weight: w?.news ?? 30,
-      rawScore: m.newsSentimentScore,
-      raw: m.newsSentiment,
-      display: m.newsSentiment != null ? Number(m.newsSentiment).toFixed(2) : 'N/A'
-    },
-    {
-      key: 'gap',
-      label: 'Gap from Previous Close',
-      weight: w?.gap ?? 20,
-      rawScore: m.gapScore,
-      raw: m.gap,
-      display: m.gap != null ? (Number(m.gap) > 0 ? '+' : '') + Number(m.gap).toFixed(2) + '%' : 'N/A'
-    },
-    {
-      key: 'relativeVolume',
-      label: 'Relative Volume',
-      weight: w?.relativeVolume ?? 20,
-      rawScore: m.relativeVolumeScore,
-      raw: m.relativeVolume,
-      display: m.relativeVolume != null ? Number(m.relativeVolume).toFixed(1) + 'x' : 'N/A'
-    },
-    {
-      key: 'float',
-      label: 'Float (Shares Outstanding)',
-      weight: w?.float ?? 15,
-      rawScore: m.floatScore,
-      raw: m.float,
-      display: formatFloat(m.float)
-    },
-    {
-      key: 'priceRange',
-      label: 'Price Range',
-      weight: w?.priceRange ?? 15,
-      rawScore: m.priceScore,
-      raw: m.price,
-      display: m.price != null ? formatCurrency(m.price) : 'N/A'
-    }
-  ]
-  // A metric is excluded from the weighted score when its raw value was never
-  // recorded - legacy rows stored a neutral 50% default alongside null data
-  return rows.map(row => ({
-    ...row,
-    excluded: row.raw == null || row.rawScore == null,
-    score: getScore(row.rawScore)
-  }))
+
+  // Resolve the grading profile (stored on the metrics; legacy rows are stock)
+  const profileType = m.profile === 'option' ? 'option' : 'stock'
+  const w = qualityProfiles.value?.[profileType] || {}
+
+  const signedPct = (v) => (Number(v) > 0 ? '+' : '') + Number(v).toFixed(2) + '%'
+
+  if (profileType === 'option') {
+    return [
+      { key: 'newsSentiment', label: 'News Sentiment', weight: w.news ?? 25, valueField: 'newsSentiment', scoreField: 'newsSentimentScore', format: v => Number(v).toFixed(2) },
+      { key: 'gap', label: 'Underlying Gap', weight: w.gap ?? 15, valueField: 'gap', scoreField: 'gapScore', format: signedPct },
+      { key: 'relativeVolume', label: 'Underlying Relative Volume', weight: w.relativeVolume ?? 15, valueField: 'relativeVolume', scoreField: 'relativeVolumeScore', format: v => Number(v).toFixed(1) + 'x' },
+      { key: 'dte', label: 'Days to Expiration', weight: w.dte ?? 25, valueField: 'dte', scoreField: 'dteScore', format: v => `${Number(v)} day${Number(v) === 1 ? '' : 's'}` },
+      { key: 'moneyness', label: 'Strike Distance (Moneyness)', weight: w.moneyness ?? 20, valueField: 'moneyness', scoreField: 'moneynessScore', format: v => `${signedPct(v)} ITM` }
+    ].map(def => buildQualityRow(m, def))
+  }
+
+  return [
+    { key: 'newsSentiment', label: 'News Sentiment', weight: w.news ?? 30, valueField: 'newsSentiment', scoreField: 'newsSentimentScore', format: v => Number(v).toFixed(2) },
+    { key: 'gap', label: 'Gap from Previous Close', weight: w.gap ?? 20, valueField: 'gap', scoreField: 'gapScore', format: signedPct },
+    { key: 'relativeVolume', label: 'Relative Volume', weight: w.relativeVolume ?? 20, valueField: 'relativeVolume', scoreField: 'relativeVolumeScore', format: v => Number(v).toFixed(1) + 'x' },
+    { key: 'float', label: 'Float (Shares Outstanding)', weight: w.float ?? 15, valueField: 'float', scoreField: 'floatScore', format: v => formatFloat(v) },
+    { key: 'priceRange', label: 'Price Range', weight: w.priceRange ?? 15, valueField: 'price', scoreField: 'priceScore', format: v => formatCurrency(v) }
+  ].map(def => buildQualityRow(m, def))
 })
 
 const hasExcludedQualityMetrics = computed(() => qualityBreakdown.value.some(metric => metric.excluded))

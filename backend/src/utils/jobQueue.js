@@ -573,10 +573,12 @@ class JobQueue {
 
     // Get trades that need quality grading
     const tradesQuery = `
-      SELECT id, symbol, entry_time, entry_price, side, news_sentiment, instrument_type, underlying_symbol
+      SELECT id, symbol, entry_time, entry_price, side, news_sentiment,
+             instrument_type, underlying_symbol, strike_price, expiration_date, option_type
       FROM trades
       WHERE user_id = $1
         AND quality_grade IS NULL
+        AND (instrument_type IS NULL OR instrument_type != 'future')
       ORDER BY trade_date DESC
       ${maxTrades ? `LIMIT ${maxTrades}` : ''}
     `;
@@ -604,7 +606,10 @@ class JobQueue {
             trade.news_sentiment,
             {
               instrumentType: trade.instrument_type,
-              underlyingSymbol: trade.underlying_symbol
+              underlyingSymbol: trade.underlying_symbol,
+              strikePrice: trade.strike_price,
+              expirationDate: trade.expiration_date,
+              optionType: trade.option_type
             }
           );
 

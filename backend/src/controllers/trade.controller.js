@@ -5052,6 +5052,13 @@ const tradeController = {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
+      // Futures are not gradeable - no futures market data from our providers
+      if (trade.instrument_type === 'future') {
+        return res.status(400).json({
+          error: 'Setup quality grading is not available for futures trades.'
+        });
+      }
+
       // Calculate quality with user's custom weights and existing news sentiment
       const quality = await tradeQualityService.calculateQuality(
         trade.symbol,
@@ -5062,7 +5069,10 @@ const tradeController = {
         trade.news_sentiment,
         {
           instrumentType: trade.instrument_type,
-          underlyingSymbol: trade.underlying_symbol
+          underlyingSymbol: trade.underlying_symbol,
+          strikePrice: trade.strike_price,
+          expirationDate: trade.expiration_date,
+          optionType: trade.option_type
         }
       );
 
@@ -5116,11 +5126,13 @@ const tradeController = {
         return res.status(400).json({ error: 'tradeIds must be a non-empty array' });
       }
 
-      // Fetch trades
+      // Fetch trades (futures excluded - not gradeable)
       const tradesQuery = `
-        SELECT id, user_id, symbol, entry_time, entry_price, side, news_sentiment, instrument_type, underlying_symbol
+        SELECT id, user_id, symbol, entry_time, entry_price, side, news_sentiment,
+               instrument_type, underlying_symbol, strike_price, expiration_date, option_type
         FROM trades
         WHERE id = ANY($1) AND user_id = $2
+          AND (instrument_type IS NULL OR instrument_type != 'future')
       `;
       const tradesResult = await db.query(tradesQuery, [tradeIds, req.user.id]);
 
@@ -5181,11 +5193,13 @@ const tradeController = {
     try {
       const tradeQualityService = require('../services/tradeQuality.service');
 
-      // Get all trades for user
+      // Get all gradeable trades for user (futures excluded - not gradeable)
       const tradesQuery = `
-        SELECT id, user_id, symbol, entry_time, entry_price, side, news_sentiment, instrument_type, underlying_symbol
+        SELECT id, user_id, symbol, entry_time, entry_price, side, news_sentiment,
+               instrument_type, underlying_symbol, strike_price, expiration_date, option_type
         FROM trades
         WHERE user_id = $1
+          AND (instrument_type IS NULL OR instrument_type != 'future')
         ORDER BY entry_time DESC
       `;
       const tradesResult = await db.query(tradesQuery, [req.user.id]);

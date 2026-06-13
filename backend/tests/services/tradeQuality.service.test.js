@@ -178,18 +178,22 @@ describe('reapplyUserWeights', () => {
   });
 
   it('re-grades trades with stored metrics using the new weights', async () => {
+    // Custom stock weights via the legacy flat columns (no stored JSONB profile)
+    const customStockRow = {
+      quality_weight_profiles: null,
+      quality_weight_news: 50,
+      quality_weight_gap: 10,
+      quality_weight_relative_volume: 10,
+      quality_weight_float: 10,
+      quality_weight_price_range: 20
+    };
+
     db.query
-      // getUserQualityWeights
-      .mockResolvedValueOnce({
-        rows: [{
-          quality_weight_news: 50,
-          quality_weight_gap: 10,
-          quality_weight_relative_volume: 10,
-          quality_weight_float: 10,
-          quality_weight_price_range: 20
-        }]
-      })
-      // trade select
+      // getUserQualityWeights('user-1', 'stock')
+      .mockResolvedValueOnce({ rows: [customStockRow] })
+      // getUserQualityWeights('user-1', 'option') -> option defaults
+      .mockResolvedValueOnce({ rows: [{ quality_weight_profiles: null }] })
+      // trade select (legacy row, no profile -> stock)
       .mockResolvedValueOnce({
         rows: [
           {
@@ -210,22 +214,64 @@ describe('reapplyUserWeights', () => {
     const count = await tradeQualityService.reapplyUserWeights('user-1');
 
     expect(count).toBe(1);
-    const updateCall = db.query.mock.calls[2];
+    const updateCall = db.query.mock.calls[3];
     expect(updateCall[1][0]).toEqual(['trade-1']);
     // (1.0*0.50 + 0.6*0.10 + 0.6*0.10 + 0.4*0.10 + 1.0*0.20) * 5 = 4.3 -> grade B
     expect(updateCall[1][2]).toEqual([4.3]);
     expect(updateCall[1][1]).toEqual(['B']);
   });
 
+  it('grades an option trade with the option profile weights', async () => {
+    // Stored option weight profile in JSONB
+    const optionProfileRow = {
+      quality_weight_profiles: {
+        option: { news: 20, gap: 10, relativeVolume: 10, dte: 40, moneyness: 20 }
+      }
+    };
+
+    db.query
+      // stock weights (unused by the option trade) -> defaults
+      .mockResolvedValueOnce({ rows: [{ quality_weight_profiles: null }] })
+      // option weights
+      .mockResolvedValueOnce({ rows: [optionProfileRow] })
+      // trade select - one option trade
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'opt-1',
+            quality_metrics: {
+              profile: 'option',
+              newsSentiment: 0.7, newsSentimentScore: 1.0,
+              gap: 2.0, gapScore: 0.6,
+              relativeVolume: 1.5, relativeVolumeScore: 0.4,
+              dte: 30, dteScore: 1.0,
+              moneyness: 0, moneynessScore: 1.0
+            }
+          }
+        ]
+      })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const count = await tradeQualityService.reapplyUserWeights('user-1');
+
+    expect(count).toBe(1);
+    const updateCall = db.query.mock.calls[3];
+    expect(updateCall[1][0]).toEqual(['opt-1']);
+    // (1.0*0.20 + 0.6*0.10 + 0.4*0.10 + 1.0*0.40 + 1.0*0.20) * 5 = 4.5 -> grade A
+    expect(updateCall[1][2]).toEqual([4.5]);
+    expect(updateCall[1][1]).toEqual(['A']);
+  });
+
   it('skips the update when no trades have stored metrics', async () => {
     db.query
-      .mockResolvedValueOnce({ rows: [] }) // weights -> defaults
+      .mockResolvedValueOnce({ rows: [] }) // stock weights -> defaults
+      .mockResolvedValueOnce({ rows: [] }) // option weights -> defaults
       .mockResolvedValueOnce({ rows: [] }); // no trades
 
     const count = await tradeQualityService.reapplyUserWeights('user-1');
 
     expect(count).toBe(0);
-    expect(db.query).toHaveBeenCalledTimes(2);
+    expect(db.query).toHaveBeenCalledTimes(3);
   });
 });
 
@@ -243,5 +289,75 @@ describe('metric scoring with missing data', () => {
     expect(tradeQualityService.scoreGap(12)).toBe(1.0);
     expect(tradeQualityService.scorePriceRange(10)).toBe(1.0);
     expect(tradeQualityService.scoreNewsSentiment({ sentiment: 0 })).toBe(0.5);
+  });
+
+  it('returns null for the option metrics when data is unavailable', () => {
+    expect(tradeQualityService.scoreDte(null)).toBeNull();
+    expect(tradeQualityService.scoreMoneyness(null)).toBeNull();
+  });
+});
+
+describe('option metrics', () => {
+  it('computes whole days to expiration ignoring intraday time', () => {
+    const dte = tradeQualityService.computeDaysToExpiration('2026-06-01T15:30:00Z', '2026-06-19');
+    expect(dte).toBe(18);
+  });
+
+  it('reads same-day expiry as 0 DTE', () => {
+    expect(tradeQualityService.computeDaysToExpiration('2026-06-19T13:00:00Z', '2026-06-19')).toBe(0);
+  });
+
+  it('returns null for an expiry before entry or missing data', () => {
+    expect(tradeQualityService.computeDaysToExpiration('2026-06-20', '2026-06-19')).toBeNull();
+    expect(tradeQualityService.computeDaysToExpiration(null, '2026-06-19')).toBeNull();
+    expect(tradeQualityService.computeDaysToExpiration('2026-06-01', null)).toBeNull();
+  });
+
+  it('scores DTE on a swing-friendly curve', () => {
+    expect(tradeQualityService.scoreDte(0)).toBe(0.2);    // 0DTE
+    expect(tradeQualityService.scoreDte(30)).toBe(1.0);   // swing sweet spot
+    expect(tradeQualityService.scoreDte(365)).toBe(0.3);  // LEAPS
+  });
+
+  it('computes signed moneyness for calls and puts', () => {
+    // Call: spot 105, strike 100 -> 4.76% ITM
+    expect(tradeQualityService.computeMoneyness(105, 100, 'call')).toBeCloseTo(4.7619, 3);
+    // Put: spot 95, strike 100 -> ITM (positive)
+    expect(tradeQualityService.computeMoneyness(95, 100, 'put')).toBeCloseTo(5.2631, 3);
+    // Call OTM is negative
+    expect(tradeQualityService.computeMoneyness(95, 100, 'call')).toBeCloseTo(-5.2631, 3);
+    // Unknown type -> null
+    expect(tradeQualityService.computeMoneyness(100, 100, undefined)).toBeNull();
+  });
+
+  it('scores near-the-money strikes highest', () => {
+    expect(tradeQualityService.scoreMoneyness(0)).toBe(1.0);    // ATM
+    expect(tradeQualityService.scoreMoneyness(15)).toBe(0.5);   // deep ITM
+    expect(tradeQualityService.scoreMoneyness(-30)).toBe(0.2);  // far OTM lotto
+  });
+});
+
+describe('getQualityProfilesMeta', () => {
+  it('exposes weight keys and integer-percentage defaults that sum to 100', () => {
+    const meta = tradeQualityService.getQualityProfilesMeta();
+
+    expect(meta.stock.weightKeys).toEqual(['news', 'gap', 'relativeVolume', 'float', 'priceRange']);
+    expect(meta.option.weightKeys).toEqual(['news', 'gap', 'relativeVolume', 'dte', 'moneyness']);
+
+    for (const profileType of Object.keys(meta)) {
+      const total = meta[profileType].weightKeys.reduce(
+        (sum, key) => sum + meta[profileType].defaults[key], 0
+      );
+      expect(total).toBe(100);
+    }
+  });
+});
+
+describe('getProfileType', () => {
+  it('maps instrument types to grading profiles', () => {
+    expect(tradeQualityService.getProfileType('stock')).toBe('stock');
+    expect(tradeQualityService.getProfileType('option')).toBe('option');
+    expect(tradeQualityService.getProfileType(undefined)).toBe('stock');
+    expect(tradeQualityService.getProfileType('future')).toBeNull();
   });
 });

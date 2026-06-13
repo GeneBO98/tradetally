@@ -1722,112 +1722,67 @@
                             Quality Grading Weights
                         </h3>
                         <p
-                            class="text-sm text-gray-600 dark:text-gray-400 mb-6"
+                            class="text-sm text-gray-600 dark:text-gray-400 mb-4"
                         >
                             Customize how much each metric contributes to your
-                            trade quality score. Weights must sum to 100%.
-                            Quality scores are calculated based on news
-                            sentiment, gap from previous close, relative volume,
-                            float, and price range. Saving immediately re-grades
-                            all trades that already have a quality score.
-                            Metrics with no available data are excluded from a
-                            trade's score and the remaining weights are
-                            rescaled.
+                            trade quality score. Stocks and options are graded
+                            on separate metric sets, so each has its own
+                            profile. Weights must sum to 100%. Saving
+                            immediately re-grades all trades that already have a
+                            quality score. Metrics with no available data are
+                            excluded from a trade's score and the remaining
+                            weights are rescaled. Futures are not graded.
                         </p>
+
+                        <!-- Profile tabs -->
+                        <div
+                            class="flex space-x-2 border-b border-gray-200 dark:border-gray-700 mb-6"
+                        >
+                            <button
+                                v-for="p in qualityProfileTabs"
+                                :key="p.key"
+                                type="button"
+                                @click="qualityProfile = p.key"
+                                class="px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors"
+                                :class="
+                                    qualityProfile === p.key
+                                        ? 'border-primary-600 text-primary-600 dark:text-primary-400'
+                                        : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                                "
+                            >
+                                {{ p.label }}
+                            </button>
+                        </div>
 
                         <form
                             @submit.prevent="updateQualityWeights"
                             class="space-y-6"
                         >
-                            <!-- Weight Sliders -->
+                            <!-- Weight Sliders (driven by the active profile) -->
                             <div class="space-y-6">
-                                <!-- News Sentiment Weight -->
-                                <div>
+                                <div
+                                    v-for="metric in activeQualityMetrics"
+                                    :key="metric.key"
+                                >
                                     <div
                                         class="flex justify-between items-center mb-2"
                                     >
                                         <label
-                                            for="newsWeight"
+                                            :for="`qw-${metric.key}`"
                                             class="label text-sm"
-                                            >News Sentiment</label
+                                            >{{ metric.label }}</label
                                         >
                                         <span
                                             class="text-sm font-medium text-gray-900 dark:text-white"
                                             >{{
-                                                qualityWeightsForm.news
+                                                activeQualityWeights[metric.key]
                                             }}%</span
                                         >
                                     </div>
                                     <input
-                                        id="newsWeight"
-                                        v-model.number="qualityWeightsForm.news"
-                                        type="range"
-                                        min="0"
-                                        max="100"
-                                        step="5"
-                                        class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-                                    />
-                                    <p
-                                        class="mt-1 text-xs text-gray-500 dark:text-gray-400"
-                                    >
-                                        Weight for news sentiment analysis
-                                        (bullish/bearish market sentiment)
-                                    </p>
-                                </div>
-
-                                <!-- Gap Weight -->
-                                <div>
-                                    <div
-                                        class="flex justify-between items-center mb-2"
-                                    >
-                                        <label
-                                            for="gapWeight"
-                                            class="label text-sm"
-                                            >Gap from Previous Close</label
-                                        >
-                                        <span
-                                            class="text-sm font-medium text-gray-900 dark:text-white"
-                                            >{{ qualityWeightsForm.gap }}%</span
-                                        >
-                                    </div>
-                                    <input
-                                        id="gapWeight"
-                                        v-model.number="qualityWeightsForm.gap"
-                                        type="range"
-                                        min="0"
-                                        max="100"
-                                        step="5"
-                                        class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-                                    />
-                                    <p
-                                        class="mt-1 text-xs text-gray-500 dark:text-gray-400"
-                                    >
-                                        Weight for gap percentage from previous
-                                        day's close
-                                    </p>
-                                </div>
-
-                                <!-- Relative Volume Weight -->
-                                <div>
-                                    <div
-                                        class="flex justify-between items-center mb-2"
-                                    >
-                                        <label
-                                            for="relativeVolumeWeight"
-                                            class="label text-sm"
-                                            >Relative Volume</label
-                                        >
-                                        <span
-                                            class="text-sm font-medium text-gray-900 dark:text-white"
-                                            >{{
-                                                qualityWeightsForm.relativeVolume
-                                            }}%</span
-                                        >
-                                    </div>
-                                    <input
-                                        id="relativeVolumeWeight"
+                                        :id="`qw-${metric.key}`"
                                         v-model.number="
-                                            qualityWeightsForm.relativeVolume
+                                            activeQualityWeights[metric.key]
                                         "
                                         type="range"
                                         min="0"
@@ -1838,80 +1793,7 @@
                                     <p
                                         class="mt-1 text-xs text-gray-500 dark:text-gray-400"
                                     >
-                                        Weight for volume compared to 10-day
-                                        average
-                                    </p>
-                                </div>
-
-                                <!-- Float Weight -->
-                                <div>
-                                    <div
-                                        class="flex justify-between items-center mb-2"
-                                    >
-                                        <label
-                                            for="floatWeight"
-                                            class="label text-sm"
-                                            >Float (Shares Outstanding)</label
-                                        >
-                                        <span
-                                            class="text-sm font-medium text-gray-900 dark:text-white"
-                                            >{{
-                                                qualityWeightsForm.float
-                                            }}%</span
-                                        >
-                                    </div>
-                                    <input
-                                        id="floatWeight"
-                                        v-model.number="
-                                            qualityWeightsForm.float
-                                        "
-                                        type="range"
-                                        min="0"
-                                        max="100"
-                                        step="5"
-                                        class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-                                    />
-                                    <p
-                                        class="mt-1 text-xs text-gray-500 dark:text-gray-400"
-                                    >
-                                        Weight for number of shares outstanding
-                                        (lower float is better)
-                                    </p>
-                                </div>
-
-                                <!-- Price Range Weight -->
-                                <div>
-                                    <div
-                                        class="flex justify-between items-center mb-2"
-                                    >
-                                        <label
-                                            for="priceRangeWeight"
-                                            class="label text-sm"
-                                            >Price Range</label
-                                        >
-                                        <span
-                                            class="text-sm font-medium text-gray-900 dark:text-white"
-                                            >{{
-                                                qualityWeightsForm.priceRange
-                                            }}%</span
-                                        >
-                                    </div>
-                                    <input
-                                        id="priceRangeWeight"
-                                        v-model.number="
-                                            qualityWeightsForm.priceRange
-                                        "
-                                        type="range"
-                                        min="0"
-                                        max="100"
-                                        step="5"
-                                        class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-                                    />
-                                    <p
-                                        class="mt-1 text-xs text-gray-500 dark:text-gray-400"
-                                    >
-                                        Weight for stock price range ($2-20 is
-                                        ideal)
+                                        {{ metric.description }}
                                     </p>
                                 </div>
                             </div>
@@ -1980,7 +1862,7 @@
                                         ></div>
                                         Saving...
                                     </span>
-                                    <span v-else>Update Quality Weights</span>
+                                    <span v-else>Update {{ qualityProfile === 'option' ? 'Option' : 'Stock' }} Weights</span>
                                 </button>
                             </div>
                         </form>
@@ -2965,24 +2847,95 @@ const brokerFeeForm = ref({
 const brokerFeeLoading = ref(false);
 const editingBrokerFee = ref(null);
 
-// Quality Weights Settings
-const qualityWeightsForm = ref({
-    news: 30,
-    gap: 20,
-    relativeVolume: 20,
-    float: 15,
-    priceRange: 15,
-});
+// Quality Weights Settings - per instrument profile (stock, option)
 const qualityWeightsLoading = ref(false);
+const qualityProfile = ref("stock");
 
-// Computed property for total weights
+// Metric labels and help text, keyed by API weight key
+const qualityMetricInfo = {
+    news: {
+        label: "News Sentiment",
+        description:
+            "Weight for news sentiment (bullish/bearish). Options use the underlying's news.",
+    },
+    gap: {
+        label: "Gap from Previous Close",
+        description:
+            "Weight for gap percentage from the previous day's close. Options use the underlying.",
+    },
+    relativeVolume: {
+        label: "Relative Volume",
+        description:
+            "Weight for volume compared to the 10-day average. Options use the underlying.",
+    },
+    float: {
+        label: "Float (Shares Outstanding)",
+        description:
+            "Weight for shares outstanding (lower float scores higher).",
+    },
+    priceRange: {
+        label: "Price Range",
+        description: "Weight for stock price range ($2-20 is ideal).",
+    },
+    dte: {
+        label: "Days to Expiration",
+        description:
+            "Weight for time to expiration at entry (3-6 weeks scores highest).",
+    },
+    moneyness: {
+        label: "Strike Distance (Moneyness)",
+        description:
+            "Weight for how far in or out of the money the strike was at entry (near the money scores highest).",
+    },
+};
+
+// Per-profile metric keys + defaults, populated from the API (with fallbacks)
+const qualityProfilesMeta = ref({
+    stock: {
+        weightKeys: ["news", "gap", "relativeVolume", "float", "priceRange"],
+        defaults: { news: 30, gap: 20, relativeVolume: 20, float: 15, priceRange: 15 },
+    },
+    option: {
+        weightKeys: ["news", "gap", "relativeVolume", "dte", "moneyness"],
+        defaults: { news: 25, gap: 15, relativeVolume: 15, dte: 25, moneyness: 20 },
+    },
+});
+
+// Current weight values per profile
+const qualityProfilesForm = ref({
+    stock: { news: 30, gap: 20, relativeVolume: 20, float: 15, priceRange: 15 },
+    option: { news: 25, gap: 15, relativeVolume: 15, dte: 25, moneyness: 20 },
+});
+
+const qualityProfileTabs = [
+    { key: "stock", label: "Stocks" },
+    { key: "option", label: "Options" },
+];
+
+// The metric rows (label + description) for the active profile
+const activeQualityMetrics = computed(() => {
+    const meta = qualityProfilesMeta.value[qualityProfile.value];
+    if (!meta) return [];
+    return meta.weightKeys.map((key) => ({
+        key,
+        label: qualityMetricInfo[key]?.label || key,
+        description: qualityMetricInfo[key]?.description || "",
+    }));
+});
+
+// The weight values object the sliders bind to for the active profile
+const activeQualityWeights = computed(
+    () => qualityProfilesForm.value[qualityProfile.value],
+);
+
+// Computed property for total weights of the active profile
 const weightsTotal = computed(() => {
-    return (
-        qualityWeightsForm.value.news +
-        qualityWeightsForm.value.gap +
-        qualityWeightsForm.value.relativeVolume +
-        qualityWeightsForm.value.float +
-        qualityWeightsForm.value.priceRange
+    const meta = qualityProfilesMeta.value[qualityProfile.value];
+    const weights = qualityProfilesForm.value[qualityProfile.value];
+    if (!meta || !weights) return 0;
+    return meta.weightKeys.reduce(
+        (sum, key) => sum + (Number(weights[key]) || 0),
+        0,
     );
 });
 
@@ -3523,14 +3476,27 @@ function deleteBrokerFee(id) {
 async function fetchQualityWeights() {
     try {
         const response = await api.get("/users/quality-weights");
-        if (response.data && response.data.qualityWeights) {
-            qualityWeightsForm.value = {
-                news: response.data.qualityWeights.news,
-                gap: response.data.qualityWeights.gap,
-                relativeVolume: response.data.qualityWeights.relativeVolume,
-                float: response.data.qualityWeights.float,
-                priceRange: response.data.qualityWeights.priceRange,
-            };
+        const data = response.data || {};
+        if (data.profilesMeta) {
+            qualityProfilesMeta.value = data.profilesMeta;
+        }
+        if (data.profiles) {
+            // Seed each profile's form from the API, keeping only its keys
+            const next = {};
+            for (const [profileType, meta] of Object.entries(
+                qualityProfilesMeta.value,
+            )) {
+                const stored = data.profiles[profileType] || {};
+                const weights = {};
+                for (const key of meta.weightKeys) {
+                    weights[key] =
+                        stored[key] != null
+                            ? stored[key]
+                            : meta.defaults[key];
+                }
+                next[profileType] = weights;
+            }
+            qualityProfilesForm.value = next;
         }
     } catch (error) {
         console.error("Failed to fetch quality weights:", error);
@@ -3541,12 +3507,10 @@ async function fetchQualityWeights() {
 async function updateQualityWeights() {
     qualityWeightsLoading.value = true;
     try {
+        const profileType = qualityProfile.value;
         const response = await api.put("/users/quality-weights", {
-            news: qualityWeightsForm.value.news,
-            gap: qualityWeightsForm.value.gap,
-            relativeVolume: qualityWeightsForm.value.relativeVolume,
-            float: qualityWeightsForm.value.float,
-            priceRange: qualityWeightsForm.value.priceRange,
+            profile: profileType,
+            weights: { ...qualityProfilesForm.value[profileType] },
         });
         const regraded = response.data?.regradedCount;
         showSuccess(
@@ -3567,13 +3531,10 @@ async function updateQualityWeights() {
 }
 
 function resetQualityWeights() {
-    qualityWeightsForm.value = {
-        news: 30,
-        gap: 20,
-        relativeVolume: 20,
-        float: 15,
-        priceRange: 15,
-    };
+    const profileType = qualityProfile.value;
+    const meta = qualityProfilesMeta.value[profileType];
+    if (!meta) return;
+    qualityProfilesForm.value[profileType] = { ...meta.defaults };
 }
 
 // Admin AI Settings Functions
