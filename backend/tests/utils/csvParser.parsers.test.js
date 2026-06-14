@@ -1241,6 +1241,45 @@ describe('Generic parser', () => {
     expect(result.trades[0].exitPrice).toBeCloseTo(154.39);
   });
 
+  test('parses generic fill exports with Close time, Filled quantity, and Avg fill price', async () => {
+    const fillCSV = [
+      'Symbol,Side,Type,Filled quantity,Quantity left,Avg fill price,Close time,Routing,Duration,Commission fee,Route fee,Currency,Conversion rate,Country,Order ID',
+      'TWST,Sell,Stop,183,0,75.7503,2026-06-12 10:24:39,Intelligent,GTC - 9/9/2026,0,0,USD,1,,1274618679',
+      'TWST,Buy,Limit,183,0,77.61,2026-06-12 09:36:32,Intelligent,DAY,0,0,USD,1,,1274555912',
+      'CECO,Sell,Stop,150,0,95.172,2026-06-11 10:05:51,Intelligent,GTC - 9/8/2026,0,0,USD,1,,1274068358',
+      'CECO,Buy,Limit,150,0,96.56,2026-06-11 09:37:59,Intelligent,DAY,0,0,USD,1,,1274013882'
+    ].join('\n');
+
+    const result = await parseCSV(buf(fillCSV), 'generic', {
+      tradeGroupingSettings: { enabled: false }
+    });
+
+    expectValidResult(result);
+    expect(result.trades).toHaveLength(2);
+    expect(result.diagnostics.invalidRows).toBe(0);
+    expect(result.diagnostics.user_summary).toBeNull();
+    expect(result.trades[0]).toEqual(expect.objectContaining({
+      symbol: 'CECO',
+      tradeDate: '2026-06-11',
+      entryTime: '2026-06-11T09:37:59',
+      exitTime: '2026-06-11T10:05:51',
+      entryPrice: 96.56,
+      exitPrice: 95.172,
+      quantity: 150,
+      side: 'long'
+    }));
+    expect(result.trades[1]).toEqual(expect.objectContaining({
+      symbol: 'TWST',
+      tradeDate: '2026-06-12',
+      entryTime: '2026-06-12T09:36:32',
+      exitTime: '2026-06-12T10:24:39',
+      entryPrice: 77.61,
+      exitPrice: 75.7503,
+      quantity: 183,
+      side: 'long'
+    }));
+  });
+
   test('does not treat account labels containing CurrencyCode as currency columns', async () => {
     const questradeConfirmationCSV = [
       'CurrencyCode_Group_Account,Trade Date,Settlement date,Trade #,Action,Quantity,Symbol,Description,TB,EX,Price,Gross amount,Comm,SEC fees,Interest amount,Net amount,Net amount (account currency)',

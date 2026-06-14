@@ -1217,6 +1217,7 @@ const brokerParsers = {
       row.trade_date || row['trade_date'] || row['Entry Date'] ||
       row['Transaction Date'] || row['Activity Date'] || row['Exec Date'] || row['Execution Date'] ||
       row['Date and time'] || row.Time || row.time ||
+      row['Close time'] || row['Close Time'] || row['close time'] ||
       row['Entry Time'] || row['Entry time'] || row['entry time'] ||
       row['Exit Time'] || row['Exit time'] || row['exit time'] ||
       row['Opening time (UTC-4)'] || row['Opening Time'] || row['Open Time'] ||
@@ -1228,6 +1229,7 @@ const brokerParsers = {
       row['Fill Time'] || row['Trade Time'] || row.Timestamp ||
       row.order_execution_time || row['order_execution_time'] ||
       row['Date and time'] || row.Time || row.time ||
+      row['Close time'] || row['Close Time'] || row['close time'] ||
       row['Opening time (UTC-4)'] || row['Opening Time'] || row['Open Time'] ||
       row['Opened Time'] ||
       row.opening_time_utc || row['opening_time_utc'] ||
@@ -1259,6 +1261,7 @@ const brokerParsers = {
       row['Entry Price'] || row['Buy Price'] || row.Price || row.price ||
       row['Price / share'] || row.TradePrice || row['TradePrice'] ||
       row['Fill Price'] || row['Avg Price'] || row['Average Price'] ||
+      row['Avg fill price'] || row['Avg Fill Price'] || row['Average fill price'] ||
       row['Open Price'] || row['Opening Price'] || row['Purchase Price'] ||
       row['Entry price'] ||
       row.opening_price || row['opening_price']
@@ -1278,7 +1281,8 @@ const brokerParsers = {
       row.Quantity || row.quantity || row.Qty || row.qty ||
       row.Shares || row.shares || row['No. of shares'] || row.Size || row.size ||
       row.Volume || row.volume || row.Amount || row.amount ||
-      row['Fill Qty'] || row['Filled Qty'] || row['Closing Quantity'] ||
+      row['Fill Qty'] || row['Filled Qty'] || row['Filled quantity'] || row['Filled Quantity'] ||
+      row['Quantity filled'] || row['Quantity Filled'] || row['Closing Quantity'] ||
       row.original_position_size || row['original_position_size'] ||
       row.lots || row.Lots
     ));
@@ -1300,12 +1304,14 @@ const brokerParsers = {
     const commission = parseNumeric(
       row.Commission || row.commission || row.Comm || row.comm ||
       row.Commissions || row.commissions || row['Commission Amount'] ||
+      row['Commission fee'] || row['Commission Fee'] ||
       row['Comm']
     ) || 0;
 
     const fees = parseNumeric(
       row.Fees || row.fees || row.Fee || row.fee ||
       row['Total Fees'] || row['Fee Amount'] ||
+      row['Route fee'] || row['Route Fee'] ||
       row.SEC || row.TAF || row.NSCC
     ) || 0;
 
