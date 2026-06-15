@@ -114,6 +114,19 @@ describe('TradeQueries.getAnalytics characterization', () => {
     expect(analytics.summary.totalRValue).toBe(3.42);
   });
 
+  test('summary and daily R derive from net P&L over risk instead of stored r_value', async () => {
+    await TradeQueries.getAnalytics('user-1', {});
+
+    const analyticsSql = db.query.mock.calls[1][0];
+    const dailySql = db.query.mock.calls[3][0];
+    expect(analyticsSql).toContain('THEN t.pnl /');
+    expect(analyticsSql).toContain("LOWER(COALESCE(t.instrument_type, 'stock')) = 'option'");
+    expect(analyticsSql).toContain("WHEN 'MNQ' THEN 2");
+    expect(analyticsSql).not.toContain('t.r_value as r_value');
+    expect(dailySql).toContain('THEN t.pnl /');
+    expect(dailySql).not.toContain('SUM(r_value)');
+  });
+
   describe('baseline', () => {
     test('no filters: only user_id binding', async () => {
       await TradeQueries.getAnalytics('user-1', {});

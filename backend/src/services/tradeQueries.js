@@ -25,6 +25,85 @@ async function timedDbQuery(label, query, values = []) {
   }
 }
 
+function futuresRootSql(alias) {
+  return `COALESCE(
+    NULLIF(UPPER(${alias}.underlying_asset), ''),
+    SUBSTRING(UPPER(REGEXP_REPLACE(${alias}.symbol, '^/', '')) FROM '^([A-Z][A-Z0-9]{0,3})(?:[FGHJKMNQUVXZ]\\d{1,2})$')
+  )`;
+}
+
+function futuresPointValueSql(alias) {
+  const root = futuresRootSql(alias);
+  return `CASE ${root}
+    WHEN 'ES' THEN 50
+    WHEN 'NQ' THEN 20
+    WHEN 'YM' THEN 5
+    WHEN 'RTY' THEN 50
+    WHEN 'MES' THEN 5
+    WHEN 'MNQ' THEN 2
+    WHEN 'MYM' THEN 0.5
+    WHEN 'M2K' THEN 5
+    WHEN 'CL' THEN 1000
+    WHEN 'MCL' THEN 100
+    WHEN 'NG' THEN 10000
+    WHEN 'MNG' THEN 1000
+    WHEN 'QG' THEN 2500
+    WHEN 'GC' THEN 100
+    WHEN 'MGC' THEN 10
+    WHEN 'SI' THEN 5000
+    WHEN 'SIL' THEN 1000
+    WHEN 'HG' THEN 12500
+    WHEN 'ZB' THEN 1000
+    WHEN 'ZN' THEN 1000
+    WHEN 'ZF' THEN 1000
+    WHEN 'ZT' THEN 2000
+    ELSE 50
+  END`;
+}
+
+function tradeMultiplierSql(alias) {
+  const root = futuresRootSql(alias);
+  return `CASE
+    WHEN LOWER(COALESCE(${alias}.instrument_type, 'stock')) = 'option'
+      THEN COALESCE(NULLIF(${alias}.contract_size, 0), 100)
+    WHEN LOWER(COALESCE(${alias}.instrument_type, 'stock')) IN ('future', 'futures') OR ${root} IS NOT NULL
+      THEN COALESCE(NULLIF(${alias}.point_value, 0), ${futuresPointValueSql(alias)})
+    ELSE 1
+  END`;
+}
+
+function riskPerUnitSql(alias) {
+  return `CASE
+    WHEN LOWER(${alias}.side) IN ('long', 'buy')
+      AND ${alias}.entry_price IS NOT NULL
+      AND ${alias}.stop_loss IS NOT NULL
+      AND ${alias}.stop_loss < ${alias}.entry_price
+      THEN ${alias}.entry_price - ${alias}.stop_loss
+    WHEN LOWER(${alias}.side) IN ('short', 'sell')
+      AND ${alias}.entry_price IS NOT NULL
+      AND ${alias}.stop_loss IS NOT NULL
+      AND ${alias}.stop_loss > ${alias}.entry_price
+      THEN ${alias}.stop_loss - ${alias}.entry_price
+    ELSE NULL
+  END`;
+}
+
+function riskAmountSql(alias) {
+  return `((${riskPerUnitSql(alias)}) * ${alias}.quantity * (${tradeMultiplierSql(alias)}))`;
+}
+
+function derivedRValueSql(alias = 't') {
+  const riskAmount = riskAmountSql(alias);
+  return `CASE
+    WHEN ${alias}.pnl IS NOT NULL
+      AND ${alias}.quantity IS NOT NULL
+      AND ${alias}.quantity > 0
+      AND ${riskAmount} > 0
+      THEN ${alias}.pnl / ${riskAmount}
+    ELSE NULL
+  END`;
+}
+
 class TradeQueries {
   // Internal: builds the WHERE clause and parameter array for a filter spec.
   // Returns { whereClause, values, paramCount, needsSectorOuterJoin }.
@@ -424,6 +503,8 @@ class TradeQueries {
       ${whereClause}
     `;
 
+    const derivedRValue = derivedRValueSql('t');
+
     // Per-leg vs per-position completed_trades. The grouped form sums legs that
     // share account + underlying/symbol + entry_time into one synthetic trade.
     // Only columns referenced downstream are projected; the grouped beCte above
@@ -441,7 +522,7 @@ class TradeQueries {
           MIN(trade_date) as first_trade_date,
           MIN(entry_time) as first_entry,
           MAX(COALESCE(exit_time, entry_time)) as last_exit,
-          SUM(r_value) as r_value
+          SUM(${derivedRValue}) as r_value
         FROM trades t
         ${whereClause}
           AND exit_price IS NOT NULL
@@ -463,7 +544,7 @@ class TradeQueries {
           trade_date as first_trade_date,
           entry_time as first_entry,
           COALESCE(exit_time, entry_time) as last_exit,
-          r_value
+          ${derivedRValue} as r_value
         FROM trades t
         ${whereClause}
           AND exit_price IS NOT NULL
@@ -652,8 +733,8 @@ class TradeQueries {
           trade_date,
           SUM(COALESCE(pnl, 0)) as daily_pnl,
           SUM(SUM(COALESCE(pnl, 0))) OVER (ORDER BY trade_date) as cumulative_pnl,
-          COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as r_value,
-          COALESCE(SUM(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL)) OVER (ORDER BY trade_date), 0) as cumulative_r_value,
+          COALESCE(SUM(${derivedRValue}), 0) as r_value,
+          COALESCE(SUM(SUM(${derivedRValue})) OVER (ORDER BY trade_date), 0) as cumulative_r_value,
           ${groupByPosition ? `COUNT(DISTINCT ${POSITION_GROUP_KEY})` : 'COUNT(*)'} as trade_count
         FROM trades t
         ${whereClause}
