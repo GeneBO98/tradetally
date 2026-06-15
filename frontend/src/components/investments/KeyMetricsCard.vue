@@ -22,7 +22,7 @@
           :key="item.label"
           class="flex items-center justify-between px-6 py-3"
         >
-          <dt class="text-sm text-gray-600 dark:text-gray-400">{{ item.label }}</dt>
+          <dt class="text-sm text-gray-600 dark:text-gray-400" :title="item.hint || null">{{ item.label }}</dt>
           <dd class="text-sm font-medium text-gray-900 dark:text-white tabular-nums">
             {{ item.value }}
           </dd>
@@ -88,9 +88,10 @@ const groups = computed(() => {
     { label: 'Net Income (TTM)', value: formatLargeCurrency(m.current_net_income) },
     { label: '5Yr Avg Net Income', value: formatLargeCurrency(m.avg_net_income_5yr) },
     { label: 'P/E (TTM)', value: formatRatio(m.pe_ratio) },
+    { label: 'Forward P/E', value: formatRatio(m.forward_pe) },
     { label: '5Yr P/E', value: formatRatio(m.pe_5yr) },
     { label: 'PS Ratio', value: formatRatio(m.ps_ratio) },
-    { label: 'PEG Ratio', value: formatRatio(m.peg_ratio) },
+    { label: 'PEG Ratio', value: formatRatio(m.peg_ratio), hint: 'Trailing P/E divided by the expected long-term EPS growth rate (3-year forward analyst EPS CAGR)' },
     { label: 'Profit Margin (TTM)', value: formatPercent(m.profit_margin_1yr) },
     { label: '5Yr Profit Margin', value: formatPercent(m.profit_margin_5yr) },
     { label: '10Yr Profit Margin', value: formatPercent(m.profit_margin_10yr) },

@@ -288,4 +288,45 @@ describe('DCFValuationService calculation rules', () => {
     expect(valuation.desired_return_low).toBe(0);
     expect(valuation.fair_value_low).toBe(0);
   });
+
+  test('forward EPS uses the first estimated year after the latest reported actuals', () => {
+    const estimates = [
+      { date: '2024-12-31', epsAvg: 6.00 }, // already reported (== latest fiscal year)
+      { date: '2025-12-31', epsAvg: 7.20 }, // first forward year
+      { date: '2026-12-31', epsAvg: 8.50 }
+    ];
+
+    expect(DCFValuationService.resolveForwardEps(estimates, 2024)).toBe(7.20);
+  });
+
+  test('forward EPS ignores past/zero estimates and returns null when none are forward', () => {
+    const estimates = [
+      { date: '2023-12-31', epsAvg: 5.00 },
+      { date: '2024-12-31', epsAvg: 0 } // non-positive estimate is skipped
+    ];
+
+    expect(DCFValuationService.resolveForwardEps(estimates, 2024)).toBeNull();
+    expect(DCFValuationService.resolveForwardEps(null, 2024)).toBeNull();
+    expect(DCFValuationService.resolveForwardEps([], 2024)).toBeNull();
+  });
+
+  test('forward EPS growth is the CAGR from latest actual EPS to the 3-year-out estimate', () => {
+    const latestFinancial = { netIncome: 1000, sharesOutstanding: 100 }; // base EPS = 10
+    const estimates = [
+      { date: '2024-12-31', epsAvg: 10.0 }, // reported year, ignored
+      { date: '2025-12-31', epsAvg: 11.5 },
+      { date: '2026-12-31', epsAvg: 12.7 },
+      { date: '2027-12-31', epsAvg: 14.0 } // 3 years out: CAGR = (14/10)^(1/3)-1
+    ];
+
+    const growth = DCFValuationService.resolveForwardEpsGrowth(estimates, 2024, latestFinancial);
+    expect(growth).toBeCloseTo(Math.pow(14 / 10, 1 / 3) - 1, 6);
+  });
+
+  test('forward EPS growth returns null without estimates or a positive base EPS', () => {
+    const estimates = [{ date: '2027-12-31', epsAvg: 14.0 }];
+    expect(DCFValuationService.resolveForwardEpsGrowth(estimates, 2024, { netIncome: -50, sharesOutstanding: 100 })).toBeNull();
+    expect(DCFValuationService.resolveForwardEpsGrowth(null, 2024, { netIncome: 1000, sharesOutstanding: 100 })).toBeNull();
+    expect(DCFValuationService.resolveForwardEpsGrowth(estimates, 2024, null)).toBeNull();
+  });
 });

@@ -483,6 +483,40 @@ class FmpClient {
     return earnings;
   }
 
+  /**
+   * Get analyst consensus estimates (revenue/EPS) per fiscal period.
+   * Used to derive forward P/E from the next fiscal year's consensus EPS.
+   * Rows are returned most-recent-first, each tagged with its fiscal-period
+   * end date so callers can pick the appropriate forward year.
+   */
+  async getAnalystEstimates(symbol, period = 'annual') {
+    if (!this.apiKey) return null;
+    const symbolUpper = symbol.toUpperCase();
+    const cacheKey = `fmp_estimates_${symbolUpper}_${period}`;
+    const cached = await cache.get('analyst_estimates', cacheKey);
+    if (cached) return cached;
+
+    // FMP caps `limit` at 10 on lower subscription tiers — a higher value
+    // returns HTTP 402 and fails the whole request. 10 annual rows still
+    // covers several forward years, which is all we need for forward P/E.
+    const data = await this.makeRequest('/analyst-estimates', {
+      symbol: symbolUpper,
+      period,
+      limit: 10
+    });
+    const rows = (Array.isArray(data) ? data : []).map(row => ({
+      date: row.date,
+      epsAvg: asNumber(row.epsAvg),
+      epsHigh: asNumber(row.epsHigh),
+      epsLow: asNumber(row.epsLow),
+      revenueAvg: asNumber(row.revenueAvg),
+      numAnalystsEps: asNumber(row.numAnalystsEps)
+    }));
+    // Estimates change slowly; cache for 24 hours (4-arg form sets a real TTL).
+    await cache.set('analyst_estimates', cacheKey, rows, 24 * 60 * 60 * 1000);
+    return rows;
+  }
+
   async getStockSplits(symbol, from, to, options = {}) {
     if (!this.apiKey) return [];
     const symbolUpper = symbol.toUpperCase();
@@ -604,7 +638,7 @@ class FmpClient {
       operatingCashFlow: asNumber(row.operatingCashFlow ?? row.netCashProvidedByOperatingActivities),
       capitalExpenditures: Math.abs(asNumber(row.capitalExpenditure ?? row.capitalExpenditures) || 0) || null,
       freeCashFlow: asNumber(row.freeCashFlow),
-      dividendsPaid: asNumber(row.dividendsPaid)
+      dividendsPaid: asNumber(row.dividendsPaid ?? row.netDividendsPaid ?? row.commonDividendsPaid)
     }));
 
     const financials = [...byDate.values()]
@@ -621,24 +655,59 @@ class FmpClient {
     const cached = await cache.get('basic_financials', cacheKey);
     if (cached) return cached;
 
-    const [metricsRows, ratiosRows] = await Promise.all([
+    // FMP spreads these metrics across several endpoints: valuation ratios on
+    // /ratios(-ttm), beta + indicated dividend on /profile, and the 52-week
+    // range on /quote. Pull them all so the Finnhub-shaped `metric` object the
+    // DCF service consumes is fully populated.
+    const [metricsRows, ratiosRows, ratiosTtmRows, quoteRows, profileRows] = await Promise.all([
       this.makeRequest('/key-metrics', { symbol: symbolUpper, period: 'annual', limit: 5 }).catch(() => []),
-      this.makeRequest('/ratios', { symbol: symbolUpper, period: 'annual', limit: 5 }).catch(() => [])
+      this.makeRequest('/ratios', { symbol: symbolUpper, period: 'annual', limit: 5 }).catch(() => []),
+      this.makeRequest('/ratios-ttm', { symbol: symbolUpper }).catch(() => []),
+      this.makeRequest('/quote', { symbol: symbolUpper }).catch(() => []),
+      this.makeRequest('/profile', { symbol: symbolUpper }).catch(() => [])
     ]);
-    const metrics = Array.isArray(metricsRows) ? metricsRows[0] || {} : {};
-    const ratios = Array.isArray(ratiosRows) ? ratiosRows[0] || {} : {};
+    const first = (rows) => (Array.isArray(rows) ? rows[0] || {} : rows || {});
+    const metrics = first(metricsRows);
+    const ratios = first(ratiosRows);
+    const ratiosTtm = first(ratiosTtmRows);
+    const quote = first(quoteRows);
+    const profile = first(profileRows);
+
+    const price = asNumber(quote.price ?? profile.price);
+
+    // FMP reports dividend yield as a fraction (0.0035); the DCF service
+    // divides Finnhub-style yields by 100, so hand it a percentage (0.35).
+    const dividendYieldTtmFraction = asNumber(ratiosTtm.dividendYieldTTM);
+    const dividendYieldTtmPct = dividendYieldTtmFraction !== null ? dividendYieldTtmFraction * 100 : null;
+
+    // Indicated forward yield from the latest annualized dividend per share.
+    const indicatedAnnualDividend = asNumber(profile.lastDividend ?? ratiosTtm.dividendPerShareTTM);
+    const forwardDividendYieldPct = indicatedAnnualDividend !== null && price
+      ? (indicatedAnnualDividend / price) * 100
+      : dividendYieldTtmPct;
+
     const data = {
       symbol: symbolUpper,
       metric: {
         ...metrics,
         ...ratios,
+        ...ratiosTtm,
         '10DayAverageTradingVolume': asNumber(metrics.averageVolume10Day ?? metrics['10DayAverageTradingVolume']),
         sharesOutstanding: asNumber(metrics.sharesOutstanding ?? metrics.weightedAverageShsOut),
-        '52WeekHigh': asNumber(metrics['52WeekHigh'] ?? metrics.yearHigh),
-        '52WeekLow': asNumber(metrics['52WeekLow'] ?? metrics.yearLow)
+        // 52-week range lives on the quote, not key-metrics.
+        '52WeekHigh': asNumber(quote.yearHigh ?? metrics['52WeekHigh'] ?? metrics.yearHigh),
+        '52WeekLow': asNumber(quote.yearLow ?? metrics['52WeekLow'] ?? metrics.yearLow),
+        // Beta lives on the company profile.
+        beta: asNumber(profile.beta),
+        // Map FMP field names onto the Finnhub-style keys the DCF service reads.
+        pegRatio: asNumber(ratiosTtm.priceToEarningsGrowthRatioTTM ?? ratios.priceToEarningsGrowthRatio ?? ratios.priceEarningsToGrowthRatio),
+        psTTM: asNumber(ratiosTtm.priceToSalesRatioTTM ?? ratios.priceToSalesRatio),
+        currentDividendYieldTTM: dividendYieldTtmPct,
+        dividendYieldIndicatedAnnual: forwardDividendYieldPct
       }
     };
-    await cache.set('basic_financials', cacheKey, data);
+    // Metrics change slowly; cache 24h (4-arg form sets a real TTL).
+    await cache.set('basic_financials', cacheKey, data, 24 * 60 * 60 * 1000);
     return data;
   }
 

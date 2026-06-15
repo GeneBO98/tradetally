@@ -503,6 +503,21 @@ class FundamentalDataService {
   }
 
   /**
+   * Get analyst consensus estimates (forward revenue/EPS) for a symbol.
+   * Not every provider exposes estimates (e.g. Finnhub's free tier), so
+   * this returns null when the active provider has no estimates endpoint.
+   * @param {string} symbol - Stock symbol
+   * @returns {Promise<Array|null>} Estimate rows, or null when unavailable
+   */
+  static async getAnalystEstimates(symbol) {
+    const symbolUpper = symbol.toUpperCase();
+    if (typeof finnhub.getAnalystEstimates !== 'function') {
+      return null;
+    }
+    return await finnhub.getAnalystEstimates(symbolUpper);
+  }
+
+  /**
    * Get company profile (market cap, shares outstanding, etc.)
    * @param {string} symbol - Stock symbol
    * @returns {Promise<Object>} Company profile
