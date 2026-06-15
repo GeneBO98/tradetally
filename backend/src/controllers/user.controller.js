@@ -3,6 +3,7 @@ const Trade = require('../models/Trade');
 const TierService = require('../services/tierService');
 const EmailService = require('../services/emailService');
 const ApiUsageService = require('../services/apiUsageService');
+const tradeQualityService = require('../services/tradeQuality.service');
 const db = require('../config/database');
 const path = require('path');
 const fs = require('fs').promises;
@@ -626,13 +627,14 @@ const userController = {
       const userId = req.user.id;
       const db = require('../config/database');
       const jobQueue = require('../utils/jobQueue');
+      const staleQualityCondition = tradeQualityService.getStaleQualityCondition();
 
       // Count trades that need news enrichment
       const newsCountQuery = `
         SELECT COUNT(*) as count
         FROM trades
         WHERE user_id = $1
-          AND (has_news IS NULL OR news_checked_at IS NULL)
+          AND (has_news = FALSE OR has_news IS NULL OR news_checked_at IS NULL)
       `;
 
       // Count trades that need quality grading
@@ -640,7 +642,8 @@ const userController = {
         SELECT COUNT(*) as count
         FROM trades
         WHERE user_id = $1
-          AND quality_grade IS NULL
+          AND ${staleQualityCondition}
+          AND (instrument_type IS NULL OR instrument_type != 'future')
       `;
 
       const [newsCountResult, qualityCountResult] = await Promise.all([

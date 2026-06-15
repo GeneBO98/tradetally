@@ -5241,7 +5241,7 @@ const tradeController = {
 
           const updates = [];
           for (const result of results) {
-            if (result.quality && result.quality.grade) {
+            if (result.quality && (result.quality.grade || result.quality.metrics)) {
               const updateQuery = `
                 UPDATE trades
                 SET quality_grade = $1,

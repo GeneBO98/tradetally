@@ -568,6 +568,7 @@ class JobQueue {
   async processQualityBackfill(data) {
     const tradeQualityService = require('../services/tradeQuality.service');
     const { userId, batchSize = 10, maxTrades = null } = data;
+    const staleQualityCondition = tradeQualityService.getStaleQualityCondition();
 
     logger.logImport(`Starting quality backfill for user ${userId}`);
 
@@ -577,7 +578,7 @@ class JobQueue {
              instrument_type, underlying_symbol, strike_price, expiration_date, option_type
       FROM trades
       WHERE user_id = $1
-        AND quality_grade IS NULL
+        AND ${staleQualityCondition}
         AND (instrument_type IS NULL OR instrument_type != 'future')
       ORDER BY trade_date DESC
       ${maxTrades ? `LIMIT ${maxTrades}` : ''}
@@ -657,11 +658,11 @@ class JobQueue {
     // Get trades from the import that need news enrichment. Open trades need
     // sentiment too because setup quality consumes stored news_sentiment.
     const tradesQuery = `
-      SELECT id, symbol, trade_date, entry_time
+      SELECT id, symbol, underlying_symbol, instrument_type, trade_date, entry_time
       FROM trades
       WHERE user_id = $1
         AND import_id = $2
-        AND (has_news IS NULL OR news_checked_at IS NULL)
+        AND (has_news = FALSE OR has_news IS NULL OR news_checked_at IS NULL)
       ORDER BY trade_date DESC
     `;
 
@@ -677,7 +678,7 @@ class JobQueue {
       for (const trade of trades) {
         try {
           const newsData = await newsEnrichmentService.getNewsForSymbolAndDate(
-            trade.symbol,
+            newsEnrichmentService.resolveNewsLookupSymbol(trade),
             new Date(trade.trade_date),
             userId
           );

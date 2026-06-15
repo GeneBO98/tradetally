@@ -33,6 +33,9 @@ const marketData = require('../utils/finnhub');
 // Default share of total weight that must be backed by real data to grade a trade
 const DEFAULT_MIN_COVERAGE = 0.4;
 
+// Increment when stored quality_metrics must be recalculated after scoring changes.
+const QUALITY_CALCULATION_VERSION = 2;
+
 // Per-instrument grading profiles. Weights are decimals summing to 1.0.
 const QUALITY_PROFILES = {
   stock: {
@@ -81,6 +84,35 @@ const STORED_METRIC_FIELDS = {
 class TradeQualityService {
   constructor() {
     this.marketData = marketData;
+  }
+
+  getCalculationVersion() {
+    return QUALITY_CALCULATION_VERSION;
+  }
+
+  needsQualityBackfill(qualityGrade, qualityMetrics) {
+    if (!qualityGrade || !qualityMetrics || typeof qualityMetrics !== 'object') {
+      return true;
+    }
+
+    const version = Number(qualityMetrics.calculationVersion);
+    return !Number.isInteger(version) || version < QUALITY_CALCULATION_VERSION;
+  }
+
+  getStaleQualityCondition(tableAlias = '') {
+    const prefix = tableAlias ? `${tableAlias}.` : '';
+    const metrics = `${prefix}quality_metrics`;
+    const grade = `${prefix}quality_grade`;
+
+    return `(
+      ${grade} IS NULL
+      OR ${metrics} IS NULL
+      OR CASE
+        WHEN ${metrics}->>'calculationVersion' ~ '^[0-9]+$'
+          THEN (${metrics}->>'calculationVersion')::integer
+        ELSE 0
+      END < ${QUALITY_CALCULATION_VERSION}
+    )`;
   }
 
   /**
@@ -430,6 +462,7 @@ class TradeQualityService {
       // Store this even when coverage is insufficient so a later threshold
       // change can re-grade without another provider request.
       const storedMetrics = {
+        calculationVersion: QUALITY_CALCULATION_VERSION,
         profile: profileType,
         dataSymbol: isOption ? dataSymbol : undefined,
         provider: this.marketData.displayName || this.marketData.providerName || null,

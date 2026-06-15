@@ -3,11 +3,38 @@ const finnhub = require('../utils/finnhub');
 const TierService = require('./tierService');
 const logger = require('../utils/logger');
 const globalEnrichmentCache = require('./globalEnrichmentCacheService');
+const { parseInstrumentData } = require('../utils/csvParser');
 
 class NewsEnrichmentService {
   constructor() {
     this.isProcessing = false;
     this.apiCallDelay = 2000; // 2 seconds between API calls to respect rate limits
+  }
+
+  formatDateOnly(value) {
+    if (!value) return null;
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      return value.toISOString().split('T')[0];
+    }
+    return String(value).slice(0, 10);
+  }
+
+  resolveNewsLookupSymbol(trade = {}) {
+    const rawSymbol = trade.symbol ? String(trade.symbol).trim().toUpperCase() : '';
+    const underlying = trade.underlying_symbol || trade.underlyingSymbol;
+    const normalizedUnderlying = underlying ? String(underlying).trim().toUpperCase() : '';
+    const instrumentType = String(trade.instrument_type || trade.instrumentType || '').trim().toLowerCase();
+
+    if (instrumentType === 'option' && normalizedUnderlying) {
+      return normalizedUnderlying;
+    }
+
+    const parsed = parseInstrumentData(rawSymbol);
+    if (parsed?.instrumentType === 'option' && parsed.underlyingSymbol) {
+      return String(parsed.underlyingSymbol).trim().toUpperCase();
+    }
+
+    return rawSymbol;
   }
 
   /**
@@ -58,7 +85,15 @@ class NewsEnrichmentService {
         };
       }
 
-      const symbolUpper = symbol.toUpperCase();
+      const symbolUpper = String(symbol || '').trim().toUpperCase();
+      if (!symbolUpper) {
+        return {
+          hasNews: false,
+          newsEvents: [],
+          sentiment: null,
+          fromCache: false
+        };
+      }
       const newsDate = new Date(date).toISOString().split('T')[0];
 
       // Use global enrichment cache with API fallback
@@ -411,7 +446,7 @@ class NewsEnrichmentService {
     try {
       // Get trade details
       const tradeQuery = `
-        SELECT symbol, trade_date, has_news
+        SELECT symbol, underlying_symbol, instrument_type, trade_date, has_news
         FROM trades 
         WHERE id = $1
       `;
@@ -429,7 +464,8 @@ class NewsEnrichmentService {
       }
 
       // Get news data
-      const newsData = await this.getNewsForSymbolAndDate(trade.symbol, trade.trade_date, userId);
+      const lookupSymbol = this.resolveNewsLookupSymbol(trade);
+      const newsData = await this.getNewsForSymbolAndDate(lookupSymbol, trade.trade_date, userId);
 
       // Update trade with news data
       const updateQuery = `
@@ -449,7 +485,7 @@ class NewsEnrichmentService {
         tradeId
       ]);
 
-      logger.logImport(`Enriched trade ${tradeId} with news data (${newsData.newsEvents.length} articles, sentiment: ${newsData.sentiment || 'none'})`);
+      logger.logImport(`Enriched trade ${tradeId} with news data for ${lookupSymbol} (${newsData.newsEvents.length} articles, sentiment: ${newsData.sentiment || 'none'})`);
       return true;
 
     } catch (error) {
@@ -505,17 +541,35 @@ class NewsEnrichmentService {
         paramCount++;
       }
 
-      // Get distinct symbol/date combinations to minimize API calls
-      const symbolDateQuery = `
-        SELECT DISTINCT symbol, trade_date, user_id
+      const tradesQuery = `
+        SELECT id, symbol, underlying_symbol, instrument_type, trade_date, user_id
         FROM trades 
         ${whereClause}
         ORDER BY trade_date DESC, symbol
         ${maxTrades ? `LIMIT ${maxTrades}` : ''}
       `;
 
-      const symbolDateResult = await db.query(symbolDateQuery, params);
-      const uniqueSymbolDates = symbolDateResult.rows;
+      const tradesResult = await db.query(tradesQuery, params);
+      const groupedByLookup = new Map();
+
+      for (const trade of tradesResult.rows) {
+        const lookupSymbol = this.resolveNewsLookupSymbol(trade);
+        const tradeDate = this.formatDateOnly(trade.trade_date);
+        if (!lookupSymbol || !tradeDate) continue;
+
+        const key = `${trade.user_id}|${lookupSymbol}|${tradeDate}`;
+        if (!groupedByLookup.has(key)) {
+          groupedByLookup.set(key, {
+            user_id: trade.user_id,
+            lookupSymbol,
+            trade_date: tradeDate,
+            tradeIds: []
+          });
+        }
+        groupedByLookup.get(key).tradeIds.push(trade.id);
+      }
+
+      const uniqueSymbolDates = Array.from(groupedByLookup.values());
 
       logger.logImport(`Found ${uniqueSymbolDates.length} unique symbol/date combinations to process`);
 
@@ -541,9 +595,10 @@ class NewsEnrichmentService {
             }
 
             // Get news data (will use cache if available)
-            const newsData = await this.getNewsForSymbolAndDate(item.symbol, item.trade_date, item.user_id);
+            const newsData = await this.getNewsForSymbolAndDate(item.lookupSymbol, item.trade_date, item.user_id);
 
-            // Update all trades for this symbol/date combination
+            // Update all trades for this underlying/date combination, plus
+            // parsed contract-symbol rows that were part of the lookup group.
             const updateQuery = `
               UPDATE trades 
               SET 
@@ -551,8 +606,12 @@ class NewsEnrichmentService {
                 news_events = $2,
                 news_sentiment = $3,
                 news_checked_at = CURRENT_TIMESTAMP
-              WHERE symbol = $4 
+              WHERE user_id = $6
                 AND trade_date = $5
+                AND (
+                  UPPER(COALESCE(NULLIF(underlying_symbol, ''), symbol)) = $4
+                  OR id = ANY($7::uuid[])
+                )
                 AND (has_news = FALSE OR has_news IS NULL OR news_checked_at IS NULL)
             `;
 
@@ -560,14 +619,16 @@ class NewsEnrichmentService {
               newsData.hasNews,
               JSON.stringify(newsData.newsEvents),
               newsData.sentiment,
-              item.symbol,
-              item.trade_date
+              item.lookupSymbol,
+              item.trade_date,
+              item.user_id,
+              item.tradeIds
             ]);
 
             const tradesUpdated = updateResult.rowCount;
             if (tradesUpdated > 0) {
               enriched += tradesUpdated;
-              logger.logImport(`Updated ${tradesUpdated} trades for ${item.symbol} on ${item.trade_date} (${newsData.fromCache ? 'cached' : 'API'}, ${newsData.newsEvents.length} articles)`);
+              logger.logImport(`Updated ${tradesUpdated} trades for ${item.lookupSymbol} on ${item.trade_date} (${newsData.fromCache ? 'cached' : 'API'}, ${newsData.newsEvents.length} articles)`);
             }
 
             processed++;

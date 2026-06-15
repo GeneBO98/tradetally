@@ -422,6 +422,25 @@ describe('getQualityProfilesMeta', () => {
   });
 });
 
+describe('quality calculation versioning', () => {
+  it('detects stale or incomplete stored quality metrics', () => {
+    expect(tradeQualityService.needsQualityBackfill(null, { calculationVersion: 2 })).toBe(true);
+    expect(tradeQualityService.needsQualityBackfill('A', null)).toBe(true);
+    expect(tradeQualityService.needsQualityBackfill('A', { profile: 'option' })).toBe(true);
+    expect(tradeQualityService.needsQualityBackfill('A', { calculationVersion: 1 })).toBe(true);
+    expect(tradeQualityService.needsQualityBackfill('A', { calculationVersion: 2 })).toBe(false);
+  });
+
+  it('exposes the current calculation version and stale SQL condition', () => {
+    expect(tradeQualityService.getCalculationVersion()).toBe(2);
+
+    const condition = tradeQualityService.getStaleQualityCondition('t');
+    expect(condition).toContain('t.quality_grade IS NULL');
+    expect(condition).toContain("t.quality_metrics->>'calculationVersion'");
+    expect(condition).toContain('< 2');
+  });
+});
+
 describe('getProfileType', () => {
   it('maps instrument types to grading profiles', () => {
     expect(tradeQualityService.getProfileType('stock')).toBe('stock');
@@ -533,6 +552,7 @@ describe('calculateQuality structured failures', () => {
     expect(finnhub.getQuote).toHaveBeenCalledWith('AAPL');
     expect(result.grade).toBeTruthy();
     expect(result.metrics.profile).toBe('option');
+    expect(result.metrics.calculationVersion).toBe(tradeQualityService.getCalculationVersion());
     expect(result.metrics.gap).toBeCloseTo(5, 5);          // (105-100)/100
     expect(result.metrics.moneynessScore).toBeGreaterThan(0);
     expect(result.metrics.spotSource).toBe('live');

@@ -2516,6 +2516,55 @@
                         >
                             <p class="text-sm">{{ enrichmentMessage }}</p>
                         </div>
+
+                        <div
+                            class="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700 flex items-start justify-between"
+                        >
+                            <div class="flex-1">
+                                <p
+                                    class="text-sm font-medium text-gray-900 dark:text-white"
+                                >
+                                    Recalculate Setup Quality
+                                </p>
+                                <p
+                                    class="text-xs text-gray-500 dark:text-gray-400 mt-1"
+                                >
+                                    Re-runs setup quality for existing trades
+                                    using the current calculation model and
+                                    stores any partial metric breakdowns.
+                                </p>
+                            </div>
+                            <button
+                                @click="recalculateSetupQuality"
+                                :disabled="qualityRecalculationLoading"
+                                class="btn-secondary ml-4 flex-shrink-0"
+                            >
+                                <span
+                                    v-if="qualityRecalculationLoading"
+                                    class="flex items-center"
+                                >
+                                    <div
+                                        class="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600 mr-2"
+                                    ></div>
+                                    Recalculating...
+                                </span>
+                                <span v-else>Recalculate Setup Quality</span>
+                            </button>
+                        </div>
+
+                        <div
+                            v-if="qualityRecalculationMessage"
+                            class="mt-4 p-3 rounded-md"
+                            :class="
+                                qualityRecalculationSuccess
+                                    ? 'bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200'
+                                    : 'bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-200'
+                            "
+                        >
+                            <p class="text-sm">
+                                {{ qualityRecalculationMessage }}
+                            </p>
+                        </div>
                     </div>
                 </div>
             </template>
@@ -3026,6 +3075,9 @@ const selectedFile = ref(null);
 const enrichmentLoading = ref(false);
 const enrichmentMessage = ref("");
 const enrichmentSuccess = ref(false);
+const qualityRecalculationLoading = ref(false);
+const qualityRecalculationMessage = ref("");
+const qualityRecalculationSuccess = ref(false);
 
 // Get API docs URL
 function getApiDocsUrl() {
@@ -4055,7 +4107,7 @@ async function enrichTrades() {
         } else {
             showSuccess(
                 "All Set",
-                "All your trades are already enriched with news data!",
+                "All your trades are already enriched with news and current setup quality data.",
             );
         }
     } catch (error) {
@@ -4066,6 +4118,31 @@ async function enrichTrades() {
         showError("Enrichment Failed", enrichmentMessage.value);
     } finally {
         enrichmentLoading.value = false;
+    }
+}
+
+async function recalculateSetupQuality() {
+    qualityRecalculationLoading.value = true;
+    qualityRecalculationMessage.value = "";
+    qualityRecalculationSuccess.value = false;
+
+    try {
+        const response = await api.post("/trades/quality/all");
+
+        qualityRecalculationSuccess.value = true;
+        qualityRecalculationMessage.value = response.data.message;
+        showSuccess(
+            "Recalculation Started",
+            response.data.message || "Setup quality recalculation started in the background.",
+        );
+    } catch (error) {
+        console.error("Setup quality recalculation failed:", error);
+        qualityRecalculationSuccess.value = false;
+        qualityRecalculationMessage.value =
+            error.response?.data?.error || "Failed to start setup quality recalculation";
+        showError("Recalculation Failed", qualityRecalculationMessage.value);
+    } finally {
+        qualityRecalculationLoading.value = false;
     }
 }
 
