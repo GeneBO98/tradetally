@@ -371,7 +371,7 @@ class TradeQualityService {
 
       // Shared metrics (both profiles): news sentiment, gap, relative volume
       const metricScores = {
-        newsSentiment: this.scoreNewsSentiment(sentiment, side),
+        newsSentiment: this.scoreNewsSentiment(sentiment, side, { directional: !isOption }),
         gap: this.scoreGap(gap),
         relativeVolume: this.scoreRelativeVolume(quote, financials?.avgVolume10Day)
       };
@@ -909,18 +909,23 @@ class TradeQualityService {
 
   /**
    * Score news sentiment
-   * Positive sentiment is heavily weighted for longs, negative for shorts
+   * Positive sentiment is heavily weighted for longs, negative for shorts.
+   * Option setup quality uses underlying news as shared market context, so
+   * multi-leg strategies do not invert the same sentiment per long/short leg.
    * @param {Object} sentiment - Sentiment object with numeric sentiment score
    * @param {string} side - Trade side ('long' or 'short')
+   * @param {Object} options - Scoring options
+   * @param {boolean} options.directional - Whether to invert the score for shorts
    * @returns {number} Score from 0 to 1
    */
-  scoreNewsSentiment(sentiment, side = 'long') {
+  scoreNewsSentiment(sentiment, side = 'long', options = {}) {
     if (!sentiment || sentiment.sentiment === undefined || sentiment.sentiment === null) {
       return null; // No data - excluded from weighting
     }
 
     const score = sentiment.sentiment || 0;
-    const isShort = side?.toLowerCase() === 'short';
+    const directional = options.directional !== false;
+    const isShort = directional && side?.toLowerCase() === 'short';
 
     // For LONG positions: positive news = good, negative news = bad
     // For SHORT positions: negative news = good, positive news = bad

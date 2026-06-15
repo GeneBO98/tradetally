@@ -350,6 +350,15 @@ describe('metric scoring with missing data', () => {
     expect(tradeQualityService.scoreNewsSentiment({ sentiment: 0 })).toBe(0.5);
   });
 
+  it('keeps stock news sentiment directional but allows non-directional option context scoring', () => {
+    expect(tradeQualityService.scoreNewsSentiment({ sentiment: 0.7 }, 'long')).toBe(1.0);
+    expect(tradeQualityService.scoreNewsSentiment({ sentiment: 0.7 }, 'short')).toBe(0.1);
+
+    expect(
+      tradeQualityService.scoreNewsSentiment({ sentiment: 0.7 }, 'short', { directional: false })
+    ).toBe(1.0);
+  });
+
   it('returns null for the option metrics when data is unavailable', () => {
     expect(tradeQualityService.scoreDte(null)).toBeNull();
     expect(tradeQualityService.scoreMoneyness(null)).toBeNull();
@@ -564,5 +573,31 @@ describe('calculateQuality structured failures', () => {
     expect(result.metrics.gap).toBeNull();
     expect(result.metrics.moneynessScore).toBeGreaterThan(0);
     expect(result.metrics.dteScore).toBeGreaterThan(0);
+  });
+
+  it('scores the same underlying news sentiment consistently across option legs', async () => {
+    finnhub.getQuote.mockResolvedValue({ c: 105, o: 105, h: 106, l: 104, pc: 100 });
+
+    const entryTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const expiration = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    const commonInstrument = {
+      instrumentType: 'option',
+      underlyingSymbol: 'ADBE',
+      strikePrice: 100,
+      optionType: 'put',
+      expirationDate: expiration
+    };
+
+    const longLeg = await tradeQualityService.calculateQuality(
+      'ADBE  260101P00100000', entryTime, 2.50, 'long', null, 'positive', commonInstrument
+    );
+    const shortLeg = await tradeQualityService.calculateQuality(
+      'ADBE  260101P00100000', entryTime, 2.50, 'short', null, 'positive', commonInstrument
+    );
+
+    expect(longLeg.metrics.newsSentiment).toBe(0.7);
+    expect(shortLeg.metrics.newsSentiment).toBe(0.7);
+    expect(longLeg.metrics.newsSentimentScore).toBe(1.0);
+    expect(shortLeg.metrics.newsSentimentScore).toBe(1.0);
   });
 });
