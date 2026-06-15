@@ -1,6 +1,5 @@
 const db = require('../config/database');
 const logger = require('../utils/logger');
-const sequenzySubscriberSyncService = require('../services/sequenzySubscriberSyncService');
 
 const convertPgBoolean = (value) => {
   if (typeof value === 'boolean') return value;
@@ -116,9 +115,6 @@ class NotificationPreferencesController {
 
       // Log the preference change for audit purposes
       logger.logImport(`User ${userId} updated notification preferences: ${providedFields.join(', ')}`);
-      if (providedFields.includes('marketing_consent')) {
-        sequenzySubscriberSyncService.queueSyncUserById(userId);
-      }
 
       res.json({
         message: 'Notification preferences updated successfully',

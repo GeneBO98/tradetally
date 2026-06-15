@@ -1,7 +1,6 @@
 const User = require('../../models/User');
 const refreshTokenService = require('../../services/refreshToken.service');
 const deviceService = require('../../services/device.service');
-const sequenzySubscriberSyncService = require('../../services/sequenzySubscriberSyncService');
 const accountLockout = require('../../services/accountLockoutService');
 const crypto = require('crypto');
 
@@ -79,7 +78,6 @@ const authV1Controller = {
       });
       
       await User.createSettings(user.id);
-      sequenzySubscriberSyncService.queueSyncUserById(user.id);
 
       // Register device if provided
       let device = null;
