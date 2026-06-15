@@ -1,6 +1,5 @@
 jest.mock('nodemailer', () => ({ createTransport: jest.fn(() => ({ sendMail: jest.fn() })) }));
 jest.mock('../../src/services/unsubscribeService', () => ({}));
-jest.mock('../../src/services/sequenzyMarketingService', () => ({ EVENTS: {}, triggerEvent: jest.fn() }));
 jest.mock('../../src/config/database', () => ({ query: jest.fn() }));
 jest.mock('../../src/services/trialFeedbackTokenService', () => ({ generateToken: jest.fn(() => 'TKN') }));
 

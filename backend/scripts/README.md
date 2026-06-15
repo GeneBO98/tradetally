@@ -93,8 +93,8 @@ For a feature announcement, pass the feature name and the main benefit:
 cd backend
 npm run announce:release -- \
   --type feature \
-  --feature-name "Sequenzy sync" \
-  --feature-benefit "subscriber data stays in sync automatically" \
+  --feature-name "Broker sync" \
+  --feature-benefit "your broker trades stay in sync automatically" \
   --cta-url "https://tradetally.io"
 ```
 

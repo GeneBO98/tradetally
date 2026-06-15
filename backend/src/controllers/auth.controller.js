@@ -9,7 +9,6 @@ const YearWrappedService = require('../services/yearWrappedService');
 const refreshTokenService = require('../services/refreshToken.service');
 const SampleDataService = require('../services/sampleDataService');
 const activityTrackingService = require('../services/activityTrackingService');
-const sequenzySubscriberSyncService = require('../services/sequenzySubscriberSyncService');
 const accountLockout = require('../services/accountLockoutService');
 const { getClientIp } = require('../utils/clientIp');
 const { generateCsrfToken } = require('../middleware/csrf');
@@ -157,7 +156,6 @@ const authController = {
         marketingConsent: marketing_consent || false
       });
       await User.createSettings(user.id);
-      sequenzySubscriberSyncService.queueSyncUserById(user.id);
 
       // Record acquisition data (UTM params, referral source, IP, user agent)
       try {

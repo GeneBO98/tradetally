@@ -3,7 +3,6 @@ const TierService = require('./tierService');
 const User = require('../models/User');
 const EmailService = require('./emailService');
 const invoiceNinjaSyncService = require('./invoiceNinjaSyncService');
-const sequenzySubscriberSyncService = require('./sequenzySubscriberSyncService');
 
 // Conditionally load Stripe only if billing is enabled
 let stripe = null;
@@ -762,7 +761,6 @@ class BillingService {
     try {
       await TierService.handleSubscriptionUpdate(subscription.id, subscription.status);
       console.log('User tier updated');
-      sequenzySubscriberSyncService.queueSyncUserById(userId);
     } catch (tierError) {
       // If we don't have a local subscription record yet, don't fail the webhook
       if (tierError && tierError.message === 'Subscription not found') {
@@ -798,9 +796,6 @@ class BillingService {
       `SELECT user_id FROM subscriptions WHERE stripe_subscription_id = $1 LIMIT 1`,
       [subscription.id]
     );
-    if (userResult.rows[0]?.user_id) {
-      sequenzySubscriberSyncService.queueSyncUserById(userResult.rows[0].user_id);
-    }
   }
 
   // Handle successful payment
