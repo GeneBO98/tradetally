@@ -646,8 +646,6 @@ const userController = {
         SELECT COUNT(*) as count
         FROM trades
         WHERE user_id = $1
-          AND exit_time IS NOT NULL
-          AND exit_price IS NOT NULL
           AND (has_news IS NULL OR news_checked_at IS NULL)
       `;
 
@@ -727,8 +725,12 @@ const userController = {
 
       // Resolve each profile's effective weights (custom or default)
       const profiles = {};
+      const minimumCoverage = {};
       for (const profileType of Object.keys(profilesMeta)) {
         const decimalWeights = await tradeQualityService.getUserQualityWeights(req.user.id, profileType);
+        minimumCoverage[profileType] = Math.round(
+          (await tradeQualityService.getUserMinimumCoverage(req.user.id, profileType)) * 100
+        );
         const meta = profilesMeta[profileType];
         const out = {};
         // Map internal metric keys back to API keys as integer percentages
@@ -743,6 +745,7 @@ const userController = {
       res.json({
         qualityWeights: profiles.stock, // legacy/back-compat: stock profile
         profiles,
+        minimumCoverage,
         profilesMeta
       });
     } catch (error) {
@@ -775,6 +778,18 @@ const userController = {
       const meta = profilesMeta[profileType];
       if (!meta) {
         return res.status(400).json({ error: `Unknown quality profile: ${profileType}` });
+      }
+
+      const requestedCoverage = req.body.minimumCoverage ?? req.body.minimum_coverage;
+      let minimumCoverage = null;
+      if (requestedCoverage !== undefined && requestedCoverage !== null) {
+        minimumCoverage = Number(requestedCoverage);
+        if (!Number.isFinite(minimumCoverage)) {
+          return res.status(400).json({ error: 'Minimum data coverage must be a number' });
+        }
+        if (minimumCoverage < 0 || minimumCoverage > 100) {
+          return res.status(400).json({ error: 'Minimum data coverage must be between 0 and 100' });
+        }
       }
 
       // Validate every expected weight key is present, numeric, and in range
@@ -812,18 +827,26 @@ const userController = {
                quality_weight_float = $4,
                quality_weight_price_range = $5,
                quality_weight_profiles = COALESCE(quality_weight_profiles, '{}'::jsonb) || jsonb_build_object('stock', $6::jsonb),
+               quality_minimum_coverage_profiles = CASE
+                 WHEN $7::integer IS NULL THEN quality_minimum_coverage_profiles
+                 ELSE COALESCE(quality_minimum_coverage_profiles, '{}'::jsonb) || jsonb_build_object('stock', $7::integer)
+               END,
                updated_at = CURRENT_TIMESTAMP
-           WHERE id = $7`,
+           WHERE id = $8`,
           [profileWeights.news, profileWeights.gap, profileWeights.relativeVolume,
-           profileWeights.float, profileWeights.priceRange, JSON.stringify(profileWeights), req.user.id]
+           profileWeights.float, profileWeights.priceRange, JSON.stringify(profileWeights), minimumCoverage, req.user.id]
         );
       } else {
         await db.query(
           `UPDATE users
            SET quality_weight_profiles = COALESCE(quality_weight_profiles, '{}'::jsonb) || jsonb_build_object($1::text, $2::jsonb),
+               quality_minimum_coverage_profiles = CASE
+                 WHEN $3::integer IS NULL THEN quality_minimum_coverage_profiles
+                 ELSE COALESCE(quality_minimum_coverage_profiles, '{}'::jsonb) || jsonb_build_object($1::text, $3::integer)
+               END,
                updated_at = CURRENT_TIMESTAMP
-           WHERE id = $3`,
-          [profileType, JSON.stringify(profileWeights), req.user.id]
+           WHERE id = $4`,
+          [profileType, JSON.stringify(profileWeights), minimumCoverage, req.user.id]
         );
       }
 
@@ -840,7 +863,8 @@ const userController = {
         message: 'Quality weights updated successfully',
         profile: profileType,
         regradedCount,
-        qualityWeights: profileWeights
+        qualityWeights: profileWeights,
+        minimumCoverage
       });
     } catch (error) {
       console.error('[ERROR] Failed to update quality weights:', error.message);

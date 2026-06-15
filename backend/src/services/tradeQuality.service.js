@@ -15,7 +15,7 @@ const marketData = require('../utils/finnhub');
  *
  * Metrics with no data are EXCLUDED from the weighted score (the remaining
  * weights are renormalized) rather than scored at a neutral default. A trade
- * is only graded when at least MIN_COVERAGE of the configured weight is
+ * is only graded when enough of the configured weight is
  * backed by real data.
  *
  * Grading uses a per-instrument profile (issue #352):
@@ -30,8 +30,8 @@ const marketData = require('../utils/finnhub');
  * Scoring: 5/5 = A, 4/5 = B, 3/5 = C, 2/5 = D, 0-1/5 = F
  */
 
-// Minimum share of total weight that must be backed by real data to grade a trade
-const MIN_COVERAGE = 0.4;
+// Default share of total weight that must be backed by real data to grade a trade
+const DEFAULT_MIN_COVERAGE = 0.4;
 
 // Per-instrument grading profiles. Weights are decimals summing to 1.0.
 const QUALITY_PROFILES = {
@@ -108,7 +108,11 @@ class TradeQualityService {
       for (const metricKey of profile.metrics) {
         defaults[METRIC_TO_WEIGHT_KEY[metricKey]] = Math.round(profile.defaults[metricKey] * 100);
       }
-      meta[profileType] = { weightKeys, defaults };
+      meta[profileType] = {
+        weightKeys,
+        defaults,
+        defaultMinimumCoverage: Math.round(DEFAULT_MIN_COVERAGE * 100)
+      };
     }
     return meta;
   }
@@ -181,6 +185,32 @@ class TradeQualityService {
       console.error('[QUALITY] Error fetching user quality weights:', error.message);
       // Return defaults on error
       return defaultWeights;
+    }
+  }
+
+  /**
+   * Get user's minimum metric coverage threshold for a grading profile.
+   * @param {string} userId - User ID
+   * @param {string} profileType - 'stock' or 'option'
+   * @returns {Promise<number>} Minimum coverage as a decimal between 0 and 1
+   */
+  async getUserMinimumCoverage(userId, profileType = 'stock') {
+    try {
+      if (!userId) return DEFAULT_MIN_COVERAGE;
+
+      const result = await db.query(
+        `SELECT quality_minimum_coverage_profiles FROM users WHERE id = $1`,
+        [userId]
+      );
+
+      const stored = result.rows?.[0]?.quality_minimum_coverage_profiles?.[profileType];
+      const value = Number(stored);
+      if (!Number.isFinite(value)) return DEFAULT_MIN_COVERAGE;
+
+      return Math.max(0, Math.min(100, value)) / 100;
+    } catch (error) {
+      console.error('[QUALITY] Error fetching user minimum coverage:', error.message);
+      return DEFAULT_MIN_COVERAGE;
     }
   }
 
@@ -290,6 +320,7 @@ class TradeQualityService {
       // Note: Removed getNewsSentiment call - using provided sentiment instead
       const results = await Promise.allSettled([
         this.getUserQualityWeights(userId, profileType),
+        this.getUserMinimumCoverage(userId, profileType),
         this.getStockProfile(dataSymbol),
         this.getQuote(dataSymbol, entryTime),
         this.getBasicFinancials(dataSymbol)
@@ -299,9 +330,12 @@ class TradeQualityService {
       const weights = results[0].status === 'fulfilled'
         ? results[0].value
         : { ...QUALITY_PROFILES[profileType].defaults };
-      const profile = results[1].status === 'fulfilled' ? results[1].value : null;
-      const quote = results[2].status === 'fulfilled' ? results[2].value : null;
-      const financials = results[3].status === 'fulfilled' ? results[3].value : null;
+      const minimumCoverage = results[1].status === 'fulfilled'
+        ? results[1].value
+        : DEFAULT_MIN_COVERAGE;
+      const profile = results[2].status === 'fulfilled' ? results[2].value : null;
+      const quote = results[3].status === 'fulfilled' ? results[3].value : null;
+      const financials = results[4].status === 'fulfilled' ? results[4].value : null;
 
       // Create sentiment object from converted score
       const sentiment = sentimentScore !== null ? { sentiment: sentimentScore } : null;
@@ -309,7 +343,7 @@ class TradeQualityService {
       // Log any failures
       results.forEach((result, index) => {
         if (result.status === 'rejected') {
-          const apiName = ['weights', 'profile', 'quote', 'financials'][index];
+          const apiName = ['weights', 'minimum coverage', 'profile', 'quote', 'financials'][index];
           console.log(`[QUALITY] Failed to fetch ${apiName} for ${symbol}: ${result.reason?.message || result.reason}`);
         }
       });
@@ -387,35 +421,21 @@ class TradeQualityService {
       const scopedScores = {};
       for (const key of profileMetricKeys) scopedScores[key] = metricScores[key];
 
-      const { score: weightedScore, coverage } = this.calculateWeightedScore(scopedScores, weights);
+      const { score: weightedScore, coverage } = this.calculateWeightedScore(scopedScores, weights, minimumCoverage);
+      const missingMetrics = profileMetricKeys
+        .filter(key => scopedScores[key] === null || scopedScores[key] === undefined)
+        .map(key => METRIC_LABELS[key]);
 
-      if (weightedScore === null) {
-        const coveragePct = Math.round(coverage * 100);
-        const missingMetrics = profileMetricKeys
-          .filter(key => scopedScores[key] === null || scopedScores[key] === undefined)
-          .map(key => METRIC_LABELS[key]);
-        console.log(`[QUALITY] ${symbol}: only ${coveragePct}% of weight has data (minimum ${MIN_COVERAGE * 100}%), not grading`);
-        return {
-          grade: null,
-          reason: 'insufficient_data',
-          coverage,
-          missingMetrics,
-          message: `Not enough market data for ${symbol}: only ${coveragePct}% of the metric weight had data (needs ${MIN_COVERAGE * 100}%).` +
-            (missingMetrics.length ? ` No data for ${missingMetrics.join(', ')}.` : '')
-        };
-      }
-
-      // Determine grade
-      const grade = this.scoreToGrade(weightedScore);
-
-      console.log(`[QUALITY] ${symbol} quality: ${grade} (${weightedScore.toFixed(2)}/5.0)`);
-      console.log(`[QUALITY] Volume data: actual=${actualVolume}, 10-day avg=${avgVolume}, relative=${relativeVolumeRatio?.toFixed(2)}x`);
-
-      // Build the stored metrics breakdown - raw value + score per metric
+      // Build the stored metrics breakdown - raw value + score per metric.
+      // Store this even when coverage is insufficient so a later threshold
+      // change can re-grade without another provider request.
       const storedMetrics = {
         profile: profileType,
         dataSymbol: isOption ? dataSymbol : undefined,
+        provider: this.marketData.displayName || this.marketData.providerName || null,
         coverage: Math.round(coverage * 100) / 100,
+        minimumCoverage: Math.round(minimumCoverage * 100) / 100,
+        missingMetrics,
         // Flag when the underlying price came from a real-time quote rather than
         // the entry-day candle, so strike distance can be shown as approximate
         spotSource: quote?.isLiveFallback ? 'live' : 'historical'
@@ -425,6 +445,29 @@ class TradeQualityService {
         storedMetrics[valueField] = metricValues[key] ?? null;
         storedMetrics[scoreField] = metricScores[key];
       }
+
+      if (weightedScore === null) {
+        const coveragePct = Math.round(coverage * 100);
+        const minimumCoveragePct = Math.round(minimumCoverage * 100);
+        console.log(`[QUALITY] ${symbol}: only ${coveragePct}% of weight has data (minimum ${minimumCoveragePct}%), not grading`);
+        return {
+          grade: null,
+          reason: 'insufficient_data',
+          coverage,
+          minimumCoverage,
+          missingMetrics,
+          metrics: storedMetrics,
+          provider: storedMetrics.provider,
+          message: `Not enough market data for ${symbol}: only ${coveragePct}% of the metric weight had data, but ${minimumCoveragePct}% is required.` +
+            (missingMetrics.length ? ` No data for ${missingMetrics.join(', ')}.` : '')
+        };
+      }
+
+      // Determine grade
+      const grade = this.scoreToGrade(weightedScore);
+
+      console.log(`[QUALITY] ${symbol} quality: ${grade} (${weightedScore.toFixed(2)}/5.0)`);
+      console.log(`[QUALITY] Volume data: actual=${actualVolume}, 10-day avg=${avgVolume}, relative=${relativeVolumeRatio?.toFixed(2)}x`);
 
       return {
         grade,
@@ -914,10 +957,11 @@ class TradeQualityService {
    * weights are renormalized so they still sum to 1.0
    * @param {Object} metrics - Individual metric scores (0-1 scale, null = no data)
    * @param {Object} weights - Custom weight percentages (as decimals, should sum to 1.0)
-   * @returns {Object} { score, coverage } - score on 0-5 scale (null if coverage below MIN_COVERAGE),
+   * @param {number} minimumCoverage - Minimum coverage required to return a score
+   * @returns {Object} { score, coverage } - score on 0-5 scale (null if coverage below minimumCoverage),
    *                   coverage = share of total weight backed by real data (0-1)
    */
-  calculateWeightedScore(metrics, weights = null) {
+  calculateWeightedScore(metrics, weights = null, minimumCoverage = DEFAULT_MIN_COVERAGE) {
     // Use provided weights or fall back to defaults
     const finalWeights = weights || {
       newsSentiment: 0.30,    // Default 30%
@@ -940,7 +984,11 @@ class TradeQualityService {
       coverage += finalWeights[key];
     }
 
-    if (coverage < MIN_COVERAGE) {
+    const threshold = Number.isFinite(Number(minimumCoverage))
+      ? Math.max(0, Math.min(1, Number(minimumCoverage)))
+      : DEFAULT_MIN_COVERAGE;
+
+    if (coverage < threshold) {
       return { score: null, coverage };
     }
 
@@ -959,9 +1007,10 @@ class TradeQualityService {
    * (defaults to stock for legacy rows that predate profiles).
    * @param {Object} storedMetrics - quality_metrics JSONB from the trade
    * @param {Object} weights - Weights as decimals for the matching profile
+   * @param {number} minimumCoverage - Minimum coverage required for the matching profile
    * @returns {Object|null} { grade, score, coverage } or null if metrics unusable
    */
-  recalculateFromStoredMetrics(storedMetrics, weights) {
+  recalculateFromStoredMetrics(storedMetrics, weights, minimumCoverage = DEFAULT_MIN_COVERAGE) {
     if (!storedMetrics || typeof storedMetrics !== 'object') return null;
 
     const available = (rawValue, score) =>
@@ -978,7 +1027,7 @@ class TradeQualityService {
       metrics[key] = available(storedMetrics[valueField], storedMetrics[scoreField]);
     }
 
-    const { score, coverage } = this.calculateWeightedScore(metrics, weights);
+    const { score, coverage } = this.calculateWeightedScore(metrics, weights, minimumCoverage);
 
     if (score === null) {
       return { grade: null, score: null, coverage, profileType };
@@ -1003,8 +1052,10 @@ class TradeQualityService {
   async reapplyUserWeights(userId) {
     // Load each profile's weights once
     const weightsByProfile = {};
+    const minimumCoverageByProfile = {};
     for (const profileType of Object.keys(QUALITY_PROFILES)) {
       weightsByProfile[profileType] = await this.getUserQualityWeights(userId, profileType);
+      minimumCoverageByProfile[profileType] = await this.getUserMinimumCoverage(userId, profileType);
     }
 
     const result = await db.query(
@@ -1018,7 +1069,11 @@ class TradeQualityService {
 
     for (const row of result.rows) {
       const profileType = QUALITY_PROFILES[row.quality_metrics?.profile] ? row.quality_metrics.profile : 'stock';
-      const recalculated = this.recalculateFromStoredMetrics(row.quality_metrics, weightsByProfile[profileType]);
+      const recalculated = this.recalculateFromStoredMetrics(
+        row.quality_metrics,
+        weightsByProfile[profileType],
+        minimumCoverageByProfile[profileType]
+      );
       if (!recalculated) continue;
       ids.push(row.id);
       grades.push(recalculated.grade);

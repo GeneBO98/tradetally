@@ -613,8 +613,9 @@ class JobQueue {
             }
           );
 
-          if (quality && quality.grade) {
-            // Update trade with quality data
+          if (quality && (quality.grade || quality.metrics)) {
+            // Update trade with quality data, including partial metrics when
+            // coverage is insufficient so a later threshold change can re-grade.
             await db.query(
               `UPDATE trades
                SET quality_grade = $1,
@@ -623,7 +624,8 @@ class JobQueue {
                WHERE id = $4`,
               [quality.grade, quality.score, JSON.stringify(quality.metrics), trade.id]
             );
-            graded++;
+            if (quality.grade) graded++;
+            else skipped++;
           } else {
             skipped++;
           }
@@ -652,14 +654,13 @@ class JobQueue {
 
     logger.logImport(`Starting news enrichment for ${tradeCount} trades from import ${importId}`);
 
-    // Get trades from the import that need news enrichment (completed trades only)
+    // Get trades from the import that need news enrichment. Open trades need
+    // sentiment too because setup quality consumes stored news_sentiment.
     const tradesQuery = `
       SELECT id, symbol, trade_date, entry_time
       FROM trades
       WHERE user_id = $1
         AND import_id = $2
-        AND exit_time IS NOT NULL
-        AND exit_price IS NOT NULL
         AND (has_news IS NULL OR news_checked_at IS NULL)
       ORDER BY trade_date DESC
     `;
@@ -668,7 +669,7 @@ class JobQueue {
       const result = await db.query(tradesQuery, [userId, importId]);
       const trades = result.rows;
 
-      logger.logImport(`Found ${trades.length} completed trades to enrich with news`);
+      logger.logImport(`Found ${trades.length} trades to enrich with news`);
 
       let enriched = 0;
       let skipped = 0;

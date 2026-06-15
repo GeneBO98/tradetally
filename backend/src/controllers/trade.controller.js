@@ -5077,10 +5077,25 @@ const tradeController = {
       );
 
       if (!quality || !quality.grade) {
+        if (quality?.metrics) {
+          await db.query(
+            `UPDATE trades
+             SET quality_grade = NULL,
+                 quality_score = NULL,
+                 quality_metrics = $1
+             WHERE id = $2 AND user_id = $3`,
+            [JSON.stringify(quality.metrics), id, req.user.id]
+          );
+        }
+
         return res.status(400).json({
           error: quality?.message || 'Unable to calculate quality. Not enough market data is available for this symbol, or the market data API is unavailable.',
           reason: quality?.reason,
-          missingMetrics: quality?.missingMetrics
+          coverage: quality?.coverage,
+          minimumCoverage: quality?.minimumCoverage,
+          missingMetrics: quality?.missingMetrics,
+          provider: quality?.provider,
+          quality: quality?.metrics ? quality : undefined
         });
       }
 
@@ -5148,7 +5163,7 @@ const tradeController = {
       // Update trades with quality data
       const updates = [];
       for (const result of results) {
-        if (result.quality && result.quality.grade) {
+        if (result.quality && (result.quality.grade || result.quality.metrics)) {
           const updateQuery = `
             UPDATE trades
             SET quality_grade = $1,
@@ -5174,11 +5189,15 @@ const tradeController = {
 
       res.json({
         success: true,
-        message: `Quality calculated for ${updates.length} trade(s)`,
+        message: `Quality calculated or updated for ${updates.length} trade(s)`,
         results: results.map(r => ({
           tradeId: r.tradeId,
           grade: r.quality?.grade,
-          score: r.quality?.score
+          score: r.quality?.score,
+          reason: r.quality?.reason,
+          coverage: r.quality?.coverage,
+          minimumCoverage: r.quality?.minimumCoverage,
+          missingMetrics: r.quality?.missingMetrics
         }))
       });
 

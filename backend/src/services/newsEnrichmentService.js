@@ -411,7 +411,7 @@ class NewsEnrichmentService {
     try {
       // Get trade details
       const tradeQuery = `
-        SELECT symbol, trade_date, exit_time, exit_price, has_news
+        SELECT symbol, trade_date, has_news
         FROM trades 
         WHERE id = $1
       `;
@@ -423,8 +423,8 @@ class NewsEnrichmentService {
 
       const trade = tradeResult.rows[0];
 
-      // Skip if trade already has news or is not completed
-      if (trade.has_news || !trade.exit_time || !trade.exit_price) {
+      // Skip if trade already has news
+      if (trade.has_news) {
         return false;
       }
 
@@ -459,7 +459,7 @@ class NewsEnrichmentService {
   }
 
   /**
-   * Backfill news data for existing completed trades
+   * Backfill news data for existing trades
    */
   async backfillTradeNews(options = {}) {
     const {
@@ -479,11 +479,10 @@ class NewsEnrichmentService {
     logger.logImport('[START] Starting news backfill for existing trades');
 
     try {
-      // Build query to find completed trades without news
+      // Build query to find trades without news. Open trades need sentiment too
+      // because setup quality consumes stored news_sentiment.
       let whereClause = `
-        WHERE exit_time IS NOT NULL 
-        AND exit_price IS NOT NULL 
-        AND (has_news = FALSE OR has_news IS NULL)
+        WHERE (has_news = FALSE OR has_news IS NULL OR news_checked_at IS NULL)
       `;
       const params = [];
       let paramCount = 1;
@@ -554,9 +553,7 @@ class NewsEnrichmentService {
                 news_checked_at = CURRENT_TIMESTAMP
               WHERE symbol = $4 
                 AND trade_date = $5
-                AND exit_time IS NOT NULL
-                AND exit_price IS NOT NULL
-                AND (has_news = FALSE OR has_news IS NULL)
+                AND (has_news = FALSE OR has_news IS NULL OR news_checked_at IS NULL)
             `;
 
             const updateResult = await db.query(updateQuery, [

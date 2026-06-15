@@ -1727,9 +1727,11 @@
                             Customize how much each metric contributes to your
                             trade quality score. Stocks and options are graded
                             on separate metric sets, so each has its own
-                            profile. Weights must sum to 100%. Saving
-                            immediately re-grades all trades that already have a
-                            quality score. Metrics with no available data are
+                            profile. Weights must sum to 100%. The minimum data
+                            coverage setting controls how much weighted metric
+                            data must be available before a score is assigned.
+                            Saving immediately re-grades all trades that already
+                            have a quality metric breakdown. Metrics with no available data are
                             excluded from a trade's score and the remaining
                             weights are rescaled. Futures are not graded.
                         </p>
@@ -1798,6 +1800,50 @@
                                 </div>
                             </div>
 
+                            <div
+                                class="rounded-md border border-gray-200 dark:border-gray-700 p-4"
+                            >
+                                <div
+                                    class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+                                >
+                                    <div>
+                                        <label
+                                            for="quality-minimum-coverage"
+                                            class="label text-sm"
+                                        >
+                                            Minimum Data Coverage
+                                        </label>
+                                        <p
+                                            class="mt-1 text-xs text-gray-500 dark:text-gray-400"
+                                        >
+                                            Lower values allow scores from less
+                                            available market data. Missing
+                                            metrics are still excluded and shown
+                                            in the breakdown.
+                                        </p>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <input
+                                            id="quality-minimum-coverage"
+                                            v-model.number="
+                                                qualityMinimumCoverageForm[
+                                                    qualityProfile
+                                                ]
+                                            "
+                                            type="number"
+                                            min="0"
+                                            max="100"
+                                            step="5"
+                                            class="input w-24 text-right"
+                                        />
+                                        <span
+                                            class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                                            >%</span
+                                        >
+                                    </div>
+                                </div>
+                            </div>
+
                             <!-- Total Display -->
                             <div
                                 class="p-4 rounded-md"
@@ -1862,7 +1908,7 @@
                                         ></div>
                                         Saving...
                                     </span>
-                                    <span v-else>Update {{ qualityProfile === 'option' ? 'Option' : 'Stock' }} Weights</span>
+                                    <span v-else>Update {{ qualityProfile === 'option' ? 'Option' : 'Stock' }} Settings</span>
                                 </button>
                             </div>
                         </form>
@@ -2894,10 +2940,12 @@ const qualityProfilesMeta = ref({
     stock: {
         weightKeys: ["news", "gap", "relativeVolume", "float", "priceRange"],
         defaults: { news: 30, gap: 20, relativeVolume: 20, float: 15, priceRange: 15 },
+        defaultMinimumCoverage: 40,
     },
     option: {
         weightKeys: ["news", "gap", "relativeVolume", "dte", "moneyness"],
         defaults: { news: 25, gap: 15, relativeVolume: 15, dte: 25, moneyness: 20 },
+        defaultMinimumCoverage: 40,
     },
 });
 
@@ -2905,6 +2953,11 @@ const qualityProfilesMeta = ref({
 const qualityProfilesForm = ref({
     stock: { news: 30, gap: 20, relativeVolume: 20, float: 15, priceRange: 15 },
     option: { news: 25, gap: 15, relativeVolume: 15, dte: 25, moneyness: 20 },
+});
+
+const qualityMinimumCoverageForm = ref({
+    stock: 40,
+    option: 40,
 });
 
 const qualityProfileTabs = [
@@ -3498,6 +3551,18 @@ async function fetchQualityWeights() {
             }
             qualityProfilesForm.value = next;
         }
+        if (data.minimumCoverage) {
+            const nextCoverage = { ...qualityMinimumCoverageForm.value };
+            for (const [profileType, meta] of Object.entries(
+                qualityProfilesMeta.value,
+            )) {
+                const value = Number(data.minimumCoverage[profileType]);
+                nextCoverage[profileType] = Number.isFinite(value)
+                    ? value
+                    : meta.defaultMinimumCoverage || 40;
+            }
+            qualityMinimumCoverageForm.value = nextCoverage;
+        }
     } catch (error) {
         console.error("Failed to fetch quality weights:", error);
         // Don't show error to user, just use defaults
@@ -3511,13 +3576,14 @@ async function updateQualityWeights() {
         const response = await api.put("/users/quality-weights", {
             profile: profileType,
             weights: { ...qualityProfilesForm.value[profileType] },
+            minimumCoverage: qualityMinimumCoverageForm.value[profileType],
         });
         const regraded = response.data?.regradedCount;
         showSuccess(
             "Success",
             regraded > 0
-                ? `Quality grading weights updated. ${regraded} trade${regraded === 1 ? "" : "s"} re-graded with the new weights.`
-                : "Quality grading weights updated successfully",
+                ? `Quality grading settings updated. ${regraded} trade${regraded === 1 ? "" : "s"} re-graded with the new settings.`
+                : "Quality grading settings updated successfully",
         );
     } catch (error) {
         console.error("Failed to update quality weights:", error);
@@ -3535,6 +3601,8 @@ function resetQualityWeights() {
     const meta = qualityProfilesMeta.value[profileType];
     if (!meta) return;
     qualityProfilesForm.value[profileType] = { ...meta.defaults };
+    qualityMinimumCoverageForm.value[profileType] =
+        meta.defaultMinimumCoverage || 40;
 }
 
 // Admin AI Settings Functions

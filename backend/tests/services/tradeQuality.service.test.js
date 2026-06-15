@@ -22,6 +22,14 @@ const DEFAULT_WEIGHTS = {
   priceRange: 0.15
 };
 
+const OPTION_WEIGHTS = {
+  newsSentiment: 0.25,
+  gap: 0.15,
+  relativeVolume: 0.15,
+  dte: 0.25,
+  moneyness: 0.20
+};
+
 describe('calculateWeightedScore', () => {
   it('weights all metrics when every metric has data', () => {
     const metrics = {
@@ -69,6 +77,46 @@ describe('calculateWeightedScore', () => {
 
     expect(coverage).toBeCloseTo(0.15, 5);
     expect(score).toBeNull();
+  });
+
+  it('keeps the default 40% coverage floor for option metrics', () => {
+    const metrics = {
+      newsSentiment: null,
+      gap: null,
+      relativeVolume: null,
+      dte: 1.0,
+      moneyness: 1.0
+    };
+
+    const { score, coverage } = tradeQualityService.calculateWeightedScore(metrics, OPTION_WEIGHTS);
+
+    expect(coverage).toBeCloseTo(0.45, 5);
+    expect(score).toBeCloseTo(5, 5);
+  });
+
+  it('blocks 35% coverage at the default threshold but grades when lowered to 30%', () => {
+    const customOptionWeights = {
+      newsSentiment: 0.35,
+      gap: 0.10,
+      relativeVolume: 0.30,
+      dte: 0.25,
+      moneyness: 0.10
+    };
+    const metrics = {
+      newsSentiment: null,
+      gap: null,
+      relativeVolume: null,
+      dte: 0.8,
+      moneyness: 1.0
+    };
+
+    const defaultThreshold = tradeQualityService.calculateWeightedScore(metrics, customOptionWeights);
+    const loweredThreshold = tradeQualityService.calculateWeightedScore(metrics, customOptionWeights, 0.30);
+
+    expect(defaultThreshold.coverage).toBeCloseTo(0.35, 5);
+    expect(defaultThreshold.score).toBeNull();
+    expect(loweredThreshold.coverage).toBeCloseTo(0.35, 5);
+    expect(loweredThreshold.score).toBeCloseTo(((0.8 * 0.25) + (1.0 * 0.10)) / 0.35 * 5, 5);
   });
 
   it('respects custom weights when excluding missing metrics', () => {
@@ -192,8 +240,12 @@ describe('reapplyUserWeights', () => {
     db.query
       // getUserQualityWeights('user-1', 'stock')
       .mockResolvedValueOnce({ rows: [customStockRow] })
+      // getUserMinimumCoverage('user-1', 'stock')
+      .mockResolvedValueOnce({ rows: [{ quality_minimum_coverage_profiles: null }] })
       // getUserQualityWeights('user-1', 'option') -> option defaults
       .mockResolvedValueOnce({ rows: [{ quality_weight_profiles: null }] })
+      // getUserMinimumCoverage('user-1', 'option')
+      .mockResolvedValueOnce({ rows: [{ quality_minimum_coverage_profiles: null }] })
       // trade select (legacy row, no profile -> stock)
       .mockResolvedValueOnce({
         rows: [
@@ -215,7 +267,7 @@ describe('reapplyUserWeights', () => {
     const count = await tradeQualityService.reapplyUserWeights('user-1');
 
     expect(count).toBe(1);
-    const updateCall = db.query.mock.calls[3];
+    const updateCall = db.query.mock.calls[5];
     expect(updateCall[1][0]).toEqual(['trade-1']);
     // (1.0*0.50 + 0.6*0.10 + 0.6*0.10 + 0.4*0.10 + 1.0*0.20) * 5 = 4.3 -> grade B
     expect(updateCall[1][2]).toEqual([4.3]);
@@ -233,8 +285,12 @@ describe('reapplyUserWeights', () => {
     db.query
       // stock weights (unused by the option trade) -> defaults
       .mockResolvedValueOnce({ rows: [{ quality_weight_profiles: null }] })
+      // stock minimum coverage -> default
+      .mockResolvedValueOnce({ rows: [{ quality_minimum_coverage_profiles: null }] })
       // option weights
       .mockResolvedValueOnce({ rows: [optionProfileRow] })
+      // option minimum coverage -> default
+      .mockResolvedValueOnce({ rows: [{ quality_minimum_coverage_profiles: null }] })
       // trade select - one option trade
       .mockResolvedValueOnce({
         rows: [
@@ -256,7 +312,7 @@ describe('reapplyUserWeights', () => {
     const count = await tradeQualityService.reapplyUserWeights('user-1');
 
     expect(count).toBe(1);
-    const updateCall = db.query.mock.calls[3];
+    const updateCall = db.query.mock.calls[5];
     expect(updateCall[1][0]).toEqual(['opt-1']);
     // (1.0*0.20 + 0.6*0.10 + 0.4*0.10 + 1.0*0.40 + 1.0*0.20) * 5 = 4.5 -> grade A
     expect(updateCall[1][2]).toEqual([4.5]);
@@ -266,13 +322,15 @@ describe('reapplyUserWeights', () => {
   it('skips the update when no trades have stored metrics', async () => {
     db.query
       .mockResolvedValueOnce({ rows: [] }) // stock weights -> defaults
+      .mockResolvedValueOnce({ rows: [] }) // stock minimum coverage -> default
       .mockResolvedValueOnce({ rows: [] }) // option weights -> defaults
+      .mockResolvedValueOnce({ rows: [] }) // option minimum coverage -> default
       .mockResolvedValueOnce({ rows: [] }); // no trades
 
     const count = await tradeQualityService.reapplyUserWeights('user-1');
 
     expect(count).toBe(0);
-    expect(db.query).toHaveBeenCalledTimes(3);
+    expect(db.query).toHaveBeenCalledTimes(5);
   });
 });
 
@@ -350,6 +408,7 @@ describe('getQualityProfilesMeta', () => {
         (sum, key) => sum + meta[profileType].defaults[key], 0
       );
       expect(total).toBe(100);
+      expect(meta[profileType].defaultMinimumCoverage).toBe(40);
     }
   });
 });
@@ -367,6 +426,7 @@ describe('calculateQuality structured failures', () => {
   const finnhub = require('../../src/utils/finnhub');
 
   beforeEach(() => {
+    db.query.mockReset();
     finnhub.isConfigured.mockReturnValue(true);
     finnhub.getCompanyProfile.mockResolvedValue(null);
     finnhub.getStockCandles.mockResolvedValue([]);
@@ -400,6 +460,53 @@ describe('calculateQuality structured failures', () => {
       expect.arrayContaining(['news sentiment', 'gap', 'relative volume', 'float'])
     );
     expect(result.missingMetrics).not.toContain('price range');
+  });
+
+  it('leaves an open option ungraded when only DTE is available at the default threshold', async () => {
+    const entryTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const expiration = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+    const result = await tradeQualityService.calculateQuality(
+      'LITE  260101C00100000', entryTime, 2.50, 'long', null, null,
+      { instrumentType: 'option', underlyingSymbol: 'LITE', strikePrice: 100, optionType: 'call', expirationDate: expiration }
+    );
+
+    expect(result.grade).toBeNull();
+    expect(result.reason).toBe('insufficient_data');
+    expect(result.coverage).toBeCloseTo(0.25, 5);
+    expect(result.metrics.profile).toBe('option');
+    expect(result.metrics.dte).toBeGreaterThan(0);
+    expect(result.metrics.moneyness).toBeNull();
+  });
+
+  it('grades an open option at 35% coverage when the user lowers the option threshold to 30%', async () => {
+    db.query
+      .mockResolvedValueOnce({
+        rows: [{
+          quality_weight_profiles: {
+            option: { news: 35, gap: 0, relativeVolume: 30, dte: 25, moneyness: 10 }
+          }
+        }]
+      })
+      .mockResolvedValueOnce({
+        rows: [{
+          quality_minimum_coverage_profiles: { option: 30 }
+        }]
+      });
+    finnhub.getQuote.mockResolvedValue({ c: 105, o: 105, h: 106, l: 104, pc: 100 });
+
+    const entryTime = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString();
+    const expiration = new Date(Date.now() + 25 * 24 * 60 * 60 * 1000).toISOString();
+
+    const result = await tradeQualityService.calculateQuality(
+      'LITE  260101C00100000', entryTime, 2.50, 'long', 'user-1', null,
+      { instrumentType: 'option', underlyingSymbol: 'LITE', strikePrice: 100, optionType: 'call', expirationDate: expiration }
+    );
+
+    expect(result.grade).toBeTruthy();
+    expect(result.metrics.coverage).toBeCloseTo(0.35, 5);
+    expect(result.metrics.minimumCoverage).toBeCloseTo(0.30, 5);
+    expect(result.metrics.moneynessScore).toBeGreaterThan(0);
   });
 
   it('falls back to a live quote for a recently-entered open option trade', async () => {

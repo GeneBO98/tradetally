@@ -427,9 +427,12 @@
           </div>
 
           <!-- Setup Quality Breakdown -->
-          <div v-if="trade.qualityGrade && trade.qualityMetrics" class="card">
+          <div v-if="trade.qualityMetrics" class="card">
             <div class="card-body">
               <h3 class="text-lg font-medium text-gray-900 dark:text-white" :class="trade.qualityMetrics.dataSymbol ? 'mb-1' : 'mb-4'">Setup Quality Breakdown</h3>
+              <p v-if="!trade.qualityGrade && trade.qualityMetrics.coverage !== undefined" class="text-xs text-yellow-700 dark:text-yellow-300 mb-3">
+                Setup quality was not graded because only {{ formatPercentValue(trade.qualityMetrics.coverage) }} of the configured metric weight had data. Minimum required coverage is {{ formatPercentValue(trade.qualityMetrics.minimumCoverage ?? 0.4) }}.
+              </p>
               <p v-if="trade.qualityMetrics.dataSymbol" class="text-xs text-gray-500 dark:text-gray-400" :class="trade.qualityMetrics.spotSource === 'live' ? 'mb-1' : 'mb-4'">
                 Option trade - graded using market data for the underlying {{ trade.qualityMetrics.dataSymbol }}
               </p>
@@ -495,7 +498,7 @@
                     </p>
                   </div>
                   <div class="text-right">
-                    <div class="text-2xl font-bold"
+                    <div v-if="trade.qualityGrade" class="text-2xl font-bold"
                       :class="{
                         'text-green-600 dark:text-green-400': trade.qualityGrade === 'A',
                         'text-blue-600 dark:text-blue-400': trade.qualityGrade === 'B',
@@ -505,8 +508,14 @@
                       }">
                       {{ Number(trade.qualityScore).toFixed(1) }}/5.0
                     </div>
-                    <div class="text-sm font-semibold text-gray-600 dark:text-gray-400">
+                    <div v-else class="text-2xl font-bold text-gray-500 dark:text-gray-400">
+                      Not graded
+                    </div>
+                    <div v-if="trade.qualityGrade" class="text-sm font-semibold text-gray-600 dark:text-gray-400">
                       Grade {{ trade.qualityGrade }}
+                    </div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400">
+                      Data coverage {{ formatPercentValue(trade.qualityMetrics.coverage ?? 0) }}
                     </div>
                   </div>
                 </div>
@@ -1603,7 +1612,7 @@ function toggleAIPanel() {
 
 // Computed property to check if quality calculation is incomplete
 const hasIncompleteQuality = computed(() => {
-  if (!trade.value || !trade.value.qualityGrade || !trade.value.qualityMetrics) {
+  if (!trade.value || !trade.value.qualityMetrics) {
     return false
   }
 
@@ -2007,6 +2016,12 @@ function formatNumber(num, decimals = 2) {
   }).format(num || 0)
 }
 
+function formatPercentValue(value) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return '0%'
+  return `${Math.round(numeric * 100)}%`
+}
+
 // Redact account identifier for privacy (show only last 4 characters)
 function redactAccountId(accountId) {
   if (!accountId) return null
@@ -2393,6 +2408,17 @@ async function calculateQuality() {
     }
   } catch (error) {
     console.error('Error calculating quality:', error)
+    const partialQuality = error.response?.data?.quality
+    if (partialQuality?.metrics) {
+      trade.value.qualityGrade = null
+      trade.value.qualityScore = null
+      trade.value.qualityMetrics = partialQuality.metrics
+      trade.value.setupQuality = {
+        grade: null,
+        score: null,
+        metrics: partialQuality.metrics
+      }
+    }
     showError('Error', error.response?.data?.error || 'Failed to calculate setup quality')
   } finally {
     calculatingQuality.value = false
