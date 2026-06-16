@@ -308,7 +308,7 @@ function isExecutionDuplicate(execution, symbol, context) {
 
   const symbolExecutions = context.existingExecutions[symbol];
 
-  return symbolExecutions.some(existingExec => {
+  const matched = symbolExecutions.some(existingExec => {
     // Skip if existingExec is invalid
     if (!existingExec) {
       return false;
@@ -369,6 +369,16 @@ function isExecutionDuplicate(execution, symbol, context) {
            existingExec.quantity === execution.quantity &&
            Math.abs((existingPrice || 0) - (execution.price || 0)) < 0.01;
   });
+
+  // Count executions skipped because they already exist in the DB. This is the
+  // signal that distinguishes a re-imported (already-imported) file from a file
+  // that genuinely contained no trades, so the import summary can tell the user
+  // their trades were already imported rather than reporting an empty result.
+  if (matched && context.diagnostics) {
+    context.diagnostics.duplicateExecutions = (context.diagnostics.duplicateExecutions || 0) + 1;
+  }
+
+  return matched;
 }
 
 /**
@@ -653,6 +663,63 @@ function extractIBKRActivityStatementSection(csvString) {
 
   const csv = [renderRow(headerFields), ...collectedRows.map(renderRow)].join('\n');
   return { section, csv, dataRows: collectedRows.length };
+}
+
+/**
+ * Detect a positions / holdings statement (a point-in-time snapshot of what is
+ * currently held) rather than a transaction / trade history.
+ *
+ * Brokers like Schwab and thinkorswim let users export a "Positions" /
+ * "Individual-Positions" CSV whose columns describe current holdings — Symbol,
+ * Qty, Price, Mkt Val, Cost Basis, Day Chng, Gain/Loss, Reinvest? — but which
+ * contain NO dated buy/sell transactions. These files can never produce trades,
+ * so importing them silently "succeeds" with 0 trades and leaves the user with no
+ * idea why. We detect them up-front so the import can fail with a clear,
+ * actionable message instead.
+ *
+ * Returns true only when the header has holdings-snapshot markers AND lacks the
+ * date / action columns that every real transaction export carries, so it will
+ * not misfire on Schwab's completed-trades or transaction-history exports.
+ */
+function detectHoldingsStatement(fileBuffer) {
+  try {
+    let csvString = fileBuffer.toString('utf-8');
+    csvString = csvString.replace(/^﻿/, '');
+    const lines = csvString.split('\n');
+    const headerInfo = findLikelyDelimitedHeaderLine(lines);
+    const headerLine = headerInfo?.line || '';
+    if (!headerLine) return false;
+    const headers = headerLine.toLowerCase();
+
+    // Every transaction/trade export carries a date and/or an action/side column.
+    // A holdings snapshot has neither — it is just a list of current positions.
+    const hasTransactionMarkers =
+      headers.includes('date') ||
+      headers.includes('time') ||
+      headers.includes('action') ||
+      headers.includes('b/s') ||
+      headers.includes('side') ||
+      headers.includes('opened') ||
+      headers.includes('closed') ||
+      headers.includes('proceeds');
+    if (hasTransactionMarkers) return false;
+
+    // Positive holdings markers (Schwab / thinkorswim positions export).
+    const hasSymbol = headers.includes('symbol');
+    const hasQuantity = headers.includes('qty') || headers.includes('quantity');
+    const hasMarketValue = headers.includes('mkt val') || headers.includes('market value');
+    const hasCostBasis = headers.includes('cost basis');
+    // Day-change / reinvest columns only appear on a live holdings view, never on
+    // a transaction export.
+    const hasSnapshotMarker =
+      headers.includes('day chng') || headers.includes('day change') ||
+      headers.includes('price chng') || headers.includes('price change') ||
+      headers.includes('reinvest');
+
+    return hasSymbol && hasQuantity && hasMarketValue && hasCostBasis && hasSnapshotMarker;
+  } catch (e) {
+    return false;
+  }
 }
 
 function detectBrokerFormat(fileBuffer) {
@@ -2448,6 +2515,21 @@ function buildDiagnosticSummary(diagnostics, context = {}) {
     return null;
   }
 
+  // Re-imported file: no new trades were produced because the executions already
+  // exist in the database. This is not an error — the trades were imported
+  // previously — so say so plainly instead of implying the file was empty.
+  const duplicateExecutions = diagnostics.duplicateExecutions || 0;
+  if (diagnostics.parsedRows === 0 && duplicateExecutions > 0) {
+    return {
+      title: 'These trades were already imported.',
+      body: `Every order in this file matches activity already in your account (${duplicateExecutions} duplicate execution${duplicateExecutions === 1 ? '' : 's'} skipped), so there was nothing new to add.`,
+      steps: [
+        'No action is needed if you already imported this file.',
+        'To add new activity, export a file that includes trades not yet in TradeTally.'
+      ]
+    };
+  }
+
   const headers = diagnostics.headerAnalysis?.foundHeaders || [];
   const reasonBreakdown = buildReasonBreakdown(diagnostics.skippedReasons);
   const topReason = reasonBreakdown[0]?.reason || '';
@@ -2706,6 +2788,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     parsedRows: 0,          // Rows successfully parsed
     skippedRows: 0,         // Rows intentionally skipped (wrong type, etc.)
     invalidRows: 0,         // Rows with validation errors
+    duplicateExecutions: 0, // Executions skipped because they already exist in the DB (re-imported file)
     skippedReasons: [],     // Array of { row: number, reason: string }
     warnings: [],           // Non-fatal issues
     detectedBroker: null,   // What auto-detect found (or selected broker)
@@ -2715,6 +2798,19 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       recognizedAs: null    // Which broker pattern matched
     }
   };
+
+  // Reject positions/holdings statements up-front. These are a snapshot of current
+  // holdings (no dated buy/sell transactions) and can never produce trades, so a
+  // silent "0 trades imported" result is confusing. Fail with a clear, actionable
+  // message instead. Runs regardless of selected broker since users have uploaded
+  // these under both 'schwab' and 'thinkorswim'.
+  if (detectHoldingsStatement(fileBuffer)) {
+    throw new Error(
+      'This file looks like a positions/holdings statement — a snapshot of what you currently hold (Qty, Market Value, Cost Basis, Gain/Loss), not a record of trades. ' +
+      'It has no dated buy/sell transactions, so no trades can be imported. ' +
+      'Please export your account\'s transaction/trade history (the report that lists individual buy and sell orders with dates) and import that instead.'
+    );
+  }
 
   try {
     console.log(`[CURRENCY DEBUG] parseCSV called with broker: ${broker}, userId: ${context.userId}`);

@@ -2583,7 +2583,8 @@ const tradeController = {
             }
           }
 
-          logger.logImport(`Import completed: ${imported} imported, ${failed} failed, ${duplicates} duplicates skipped`);
+          const duplicateExecutions = parseDiagnostics?.duplicateExecutions || 0;
+          logger.logImport(`Import completed: ${imported} imported, ${failed} failed, ${duplicates} duplicates skipped${duplicateExecutions > 0 ? `, ${duplicateExecutions} duplicate executions skipped (already imported)` : ''}`);
 
           // Schedule background CUSIP resolution if there are unresolved CUSIPs
           if (unresolvedCusips.length > 0) {
@@ -2603,6 +2604,7 @@ const tradeController = {
               parsedRows: parseDiagnostics.parsedRows,
               skippedRows: parseDiagnostics.skippedRows,
               invalidRows: parseDiagnostics.invalidRows,
+              duplicateExecutions: parseDiagnostics.duplicateExecutions || 0,
               skippedReasons: parseDiagnostics.skippedReasons?.slice(0, 50) || [], // Limit to first 50 skip reasons
               warnings: parseDiagnostics.warnings || [],
               detectedBroker: parseDiagnostics.detectedBroker,
