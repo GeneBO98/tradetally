@@ -180,11 +180,52 @@ jobs:
           push: true
           tags: ${{ steps.tags.outputs.tags }}
 
-      - name: Upload Android APK release asset
+  android-apk:
+    # Attach the prebuilt Android APK to the release. Kept as its own job so a
+    # Docker build/push failure can't block the asset upload, and so it can be
+    # run manually (workflow_dispatch) to attach the APK when a release event
+    # didn't fire or the asset is missing.
+    needs: test
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out manually selected release tag
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.release_tag }}
+
+      - name: Check out release tag
         if: github.event_name == 'release'
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Resolve release tag
+        id: rel
+        run: |
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify APK is present
+        run: |
+          apk="release-assets/android/tradetally-android.apk"
+          if [[ ! -f "$apk" ]]; then
+            echo "::error::Android APK not found at $apk for ${{ steps.rel.outputs.tag }}. Build and commit the APK before releasing."
+            exit 1
+          fi
+          ls -lh "$apk"
+
+      - name: Upload Android APK release asset
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload "${{ github.event.release.tag_name }}" \
-            release-assets/android/tradetally-android.apk#TradeTally-Android-${{ github.event.release.tag_name }}.apk \
+          gh release upload "${{ steps.rel.outputs.tag }}" \
+            release-assets/android/tradetally-android.apk#TradeTally-Android-${{ steps.rel.outputs.tag }}.apk \
             --clobber
