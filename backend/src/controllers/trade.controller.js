@@ -22,6 +22,7 @@ const axios = require('axios');
 const { sendV1NotImplemented } = require('../utils/apiResponse');
 const { getUserTimezone } = require('../utils/timezone');
 const Playbook = require('../models/Playbook');
+const PlaybookAdherenceService = require('../services/playbookAdherence.service');
 const MAEEstimator = require('../utils/maeEstimator');
 const TierService = require('../services/tierService');
 const { verifyJwtToken, TOKEN_PURPOSES } = require('../middleware/auth');
@@ -127,8 +128,22 @@ function mapTradeReviewSummary(review) {
     adherenceScore: review.adherence_score !== null && review.adherence_score !== undefined
       ? Number(review.adherence_score)
       : null,
+    grade: review.playbook_review_mode === 'score'
+      ? PlaybookAdherenceService.scoreToGrade(review.adherence_score)
+      : null,
+    reviewMode: review.playbook_review_mode === 'score' ? 'score' : 'checklist',
     followedPlan: review.followed_plan,
     reviewedAt: review.reviewed_at
+  };
+}
+
+function mapSuggestedPlaybook(playbook) {
+  if (!playbook) return null;
+
+  return {
+    id: playbook.id,
+    name: playbook.name,
+    reviewMode: playbook.review_mode === 'score' ? 'score' : 'checklist'
   };
 }
 
@@ -1003,6 +1018,10 @@ const tradeController = {
           checklistScore: review.checklist_score !== null && review.checklist_score !== undefined
             ? Number(review.checklist_score)
             : null,
+          grade: review.playbook_review_mode === 'score'
+            ? PlaybookAdherenceService.scoreToGrade(review.adherence_score)
+            : null,
+          reviewMode: review.playbook_review_mode === 'score' ? 'score' : 'checklist',
           followedPlan: review.followed_plan,
           reviewNotes: review.review_notes,
           checklistResponses: review.checklist_responses || [],
@@ -1011,9 +1030,20 @@ const tradeController = {
           reviewedAt: review.reviewed_at,
           updatedAt: review.updated_at
         } : null;
+        if (!review) {
+          const suggestionCandidates = await Playbook.listAutoAssignableByUser(req.user.id);
+          const suggestedPlaybook = PlaybookAdherenceService.selectSuggestedPlaybook(suggestionCandidates, trade);
+          trade.suggestedPlaybook = mapSuggestedPlaybook(suggestedPlaybook);
+          trade.suggestedPlaybookId = suggestedPlaybook?.id || null;
+        } else {
+          trade.suggestedPlaybook = null;
+          trade.suggestedPlaybookId = null;
+        }
       } else {
         trade.playbookId = null;
         trade.playbookReview = null;
+        trade.suggestedPlaybook = null;
+        trade.suggestedPlaybookId = null;
       }
 
       trade.setupQuality = buildSetupQuality(trade);

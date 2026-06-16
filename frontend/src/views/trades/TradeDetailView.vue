@@ -527,13 +527,13 @@
             <div class="card-body">
               <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-5">
                 <div>
-                  <h3 class="text-lg font-medium text-gray-900 dark:text-white">Playbook Adherence</h3>
+                  <h3 class="text-lg font-medium text-gray-900 dark:text-white">Playbook & Manual Grading</h3>
                   <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    Review this trade against a structured setup and measure whether you followed plan.
+                    Review this trade against a structured setup or self-grade it against custom criteria.
                   </p>
                 </div>
                 <router-link to="/analysis/playbooks" class="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400">
-                  Manage playbooks
+                  Manage profiles
                 </router-link>
               </div>
 
@@ -565,24 +565,32 @@
               <ProUpgradePrompt
                 v-if="authStore.user && !isPlaybookFeatureAvailable"
                 variant="banner"
-                description="Structured playbooks and adherence reviews are available on Pro."
+                description="Structured playbooks and manual grading profiles are available on Pro."
               />
 
               <div v-else-if="loadingPlaybooks" class="text-sm text-gray-500 dark:text-gray-400">
-                Loading playbooks...
+                Loading profiles...
               </div>
 
               <div v-else-if="playbooks.length === 0" class="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-5 text-sm text-gray-500 dark:text-gray-400">
-                Create a structured playbook first, then return here to score this trade against it.
+                Create a structured profile first, then return here to score this trade against it.
               </div>
 
               <div v-else class="space-y-5">
                 <div>
-                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Playbook</label>
+                  <div class="mb-1 flex items-center justify-between gap-3">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Profile</label>
+                    <span
+                      v-if="trade.suggestedPlaybookId && selectedPlaybookId === trade.suggestedPlaybookId && !trade.playbookReview"
+                      class="text-xs font-medium text-primary-700 dark:text-primary-300"
+                    >
+                      Suggested from trade rules
+                    </span>
+                  </div>
                   <BaseSelect
                     v-model="selectedPlaybookId"
                     :options="playbookOptions"
-                    placeholder="Select a playbook"
+                    placeholder="Select a profile"
                     @change="onPlaybookChange"
                   />
                 </div>
@@ -591,9 +599,9 @@
                   <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
                     <div class="flex items-center justify-between mb-3">
                       <div>
-                        <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Checklist</h4>
+                        <h4 class="text-sm font-semibold text-gray-900 dark:text-white">{{ selectedPlaybook.reviewMode === 'score' ? 'Grading Criteria' : 'Checklist' }}</h4>
                         <p class="text-xs text-gray-500 dark:text-gray-400">
-                          {{ checklistCompletion.checked }}/{{ checklistCompletion.total }} items checked
+                          {{ reviewCompletion.label }}
                         </p>
                       </div>
                       <span
@@ -605,11 +613,49 @@
                           ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400'
                           : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'"
                       >
-                        {{ Number(selectedReview.adherenceScore || 0).toFixed(2) }} adherence
+                        {{ selectedReview.grade ? `Grade ${selectedReview.grade}` : `${Number(selectedReview.adherenceScore || 0).toFixed(2)} adherence` }}
                       </span>
                     </div>
 
-                    <div class="space-y-3">
+                    <div v-if="selectedPlaybook.reviewMode === 'score'" class="space-y-3">
+                      <div
+                        v-for="item in reviewForm.checklistResponses"
+                        :key="item.checklistItemId"
+                        class="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-3"
+                      >
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div class="min-w-0">
+                            <div class="text-sm font-medium text-gray-900 dark:text-white">
+                              {{ item.label }}
+                            </div>
+                            <div class="mt-1 flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400">
+                              <span>Weight {{ Number(item.weight || 1).toFixed(2) }}</span>
+                              <span v-if="item.isRequired" class="text-orange-600 dark:text-orange-400">Required</span>
+                            </div>
+                          </div>
+                          <div class="flex items-center gap-3 sm:w-56">
+                            <input
+                              v-model.number="item.score"
+                              type="range"
+                              min="0"
+                              max="5"
+                              step="0.5"
+                              class="w-full accent-primary-600"
+                            />
+                            <input
+                              v-model.number="item.score"
+                              type="number"
+                              min="0"
+                              max="5"
+                              step="0.5"
+                              class="input w-20"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div v-else class="space-y-3">
                       <label
                         v-for="item in reviewForm.checklistResponses"
                         :key="item.checklistItemId"
@@ -664,7 +710,7 @@
                       {{ savingPlaybookReview ? 'Saving...' : 'Save Review' }}
                     </button>
                     <p v-if="selectedPlaybook?.isActive === false" class="text-xs text-amber-600 dark:text-amber-400">
-                      Archived playbooks remain visible on old reviews but cannot be used for new submissions.
+                      Archived profiles remain visible on old reviews but cannot be used for new submissions.
                     </p>
                   </div>
                 </div>
@@ -1459,7 +1505,7 @@ const playbooks = ref([])
 const playbookOptions = computed(() =>
   playbooks.value.map(playbook => ({
     value: playbook.id,
-    label: `${playbook.name}${playbook.isActive === false ? ' (Archived)' : ''}`,
+    label: `${playbook.name}${playbook.reviewMode === 'score' ? ' (0-5)' : ''}${playbook.isActive === false ? ' (Archived)' : ''}`,
     disabled: playbook.isActive === false && playbook.id !== trade.value?.playbookId
   }))
 )
@@ -1500,6 +1546,19 @@ const checklistCompletion = computed(() => {
 
   const checked = reviewForm.checklistResponses.filter(item => item.checked).length
   return { checked, total }
+})
+
+const reviewCompletion = computed(() => {
+  const total = reviewForm.checklistResponses.length
+  if (selectedPlaybook.value?.reviewMode === 'score') {
+    const scored = reviewForm.checklistResponses.filter(item => Number(item.score) > 0).length
+    return { scored, total, label: `${scored}/${total} criteria scored` }
+  }
+
+  return {
+    ...checklistCompletion.value,
+    label: `${checklistCompletion.value.checked}/${checklistCompletion.value.total} items checked`
+  }
 })
 
 const storedAIResponseCount = computed(() => {
@@ -1638,6 +1697,7 @@ function buildChecklistResponses(playbook, existingReview = null) {
     checklistItemId: item.id,
     label: item.label,
     checked: storedResponses.get(item.id)?.checked === true,
+    score: Number(storedResponses.get(item.id)?.score ?? 0),
     isRequired: item.isRequired === true,
     weight: item.weight ?? 1
   }))
@@ -1674,6 +1734,8 @@ async function loadPlaybooks() {
 
     if (trade.value?.playbookReview?.playbookId) {
       selectedPlaybookId.value = trade.value.playbookReview.playbookId
+    } else if (trade.value?.suggestedPlaybookId && playbooks.value.some(playbook => playbook.id === trade.value.suggestedPlaybookId)) {
+      selectedPlaybookId.value = trade.value.suggestedPlaybookId
     } else if (selectedPlaybookId.value && playbooks.value.some(playbook => playbook.id === selectedPlaybookId.value)) {
       selectedPlaybookId.value = selectedPlaybookId.value
     } else {
@@ -1682,8 +1744,8 @@ async function loadPlaybooks() {
 
     syncReviewForm()
   } catch (error) {
-    console.error('Failed to load playbooks:', error)
-    showError('Error', 'Failed to load playbooks')
+    console.error('Failed to load profiles:', error)
+    showError('Error', 'Failed to load profiles')
   } finally {
     loadingPlaybooks.value = false
   }
@@ -1699,13 +1761,27 @@ async function savePlaybookReview() {
     return
   }
 
+  const isScoreMode = selectedPlaybook.value?.reviewMode === 'score'
+  if (isScoreMode) {
+    const invalidScore = reviewForm.checklistResponses.some(item => {
+      const score = Number(item.score)
+      return !Number.isFinite(score) || score < 0 || score > 5
+    })
+    if (invalidScore) {
+      showError('Validation', 'Criterion scores must be between 0 and 5')
+      return
+    }
+  }
+
   try {
     savingPlaybookReview.value = true
     const response = await api.put(`/playbooks/trades/${trade.value.id}/review`, {
       playbookId: selectedPlaybookId.value,
       checklistResponses: reviewForm.checklistResponses.map(item => ({
         checklistItemId: item.checklistItemId,
-        checked: item.checked === true
+        ...(isScoreMode
+          ? { score: Number(item.score) || 0 }
+          : { checked: item.checked === true })
       })),
       followedPlan: reviewForm.followedPlan === ''
         ? null
@@ -1715,6 +1791,8 @@ async function savePlaybookReview() {
 
     trade.value.playbookId = response.data.review.playbookId
     trade.value.playbookReview = response.data.review
+    trade.value.suggestedPlaybook = null
+    trade.value.suggestedPlaybookId = null
     syncReviewForm()
     showSuccess('Success', 'Playbook review saved')
   } catch (error) {

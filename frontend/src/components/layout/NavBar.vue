@@ -434,10 +434,10 @@ const baseNavigation = [
         badge: { type: 'pro', text: 'Pro' }
       },
       {
-        name: 'Playbooks',
+        name: 'Playbooks & Grading',
         to: '/analysis/playbooks',
         route: 'playbooks',
-        description: 'Create structured setups and review trade adherence',
+        description: 'Create structured setups and manual grading profiles',
         badge: { type: 'pro', text: 'Pro' }
       }
     ]

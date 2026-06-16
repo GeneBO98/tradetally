@@ -72,9 +72,10 @@ class Playbook {
           INSERT INTO playbooks (
             user_id, name, description, market, timeframe, side,
             required_strategy, required_setup, required_tags,
-            require_stop_loss, minimum_target_r, is_active
+            require_stop_loss, minimum_target_r, review_mode,
+            auto_assign_enabled, is_active
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, true)
           RETURNING *
         `,
         [
@@ -88,7 +89,9 @@ class Playbook {
           playbook.requiredSetup || null,
           playbook.requiredTags || [],
           playbook.requireStopLoss === true,
-          playbook.minimumTargetR ?? null
+          playbook.minimumTargetR ?? null,
+          playbook.reviewMode === 'score' ? 'score' : 'checklist',
+          playbook.autoAssignEnabled === true
         ]
       );
 
@@ -122,7 +125,9 @@ class Playbook {
             required_setup = $9,
             required_tags = $10,
             require_stop_loss = $11,
-            minimum_target_r = $12
+            minimum_target_r = $12,
+            review_mode = $13,
+            auto_assign_enabled = $14
           WHERE id = $1 AND user_id = $2
           RETURNING *
         `,
@@ -138,7 +143,9 @@ class Playbook {
           playbook.requiredSetup || null,
           playbook.requiredTags || [],
           playbook.requireStopLoss === true,
-          playbook.minimumTargetR ?? null
+          playbook.minimumTargetR ?? null,
+          playbook.reviewMode === 'score' ? 'score' : 'checklist',
+          playbook.autoAssignEnabled === true
         ]
       );
 
@@ -223,6 +230,37 @@ class Playbook {
     return result.rows[0] || null;
   }
 
+  static async listAutoAssignableByUser(userId) {
+    const result = await db.query(
+      `
+        SELECT
+          p.*,
+          COALESCE(
+            json_agg(
+              json_build_object(
+                'id', pci.id,
+                'label', pci.label,
+                'item_order', pci.item_order,
+                'weight', pci.weight,
+                'is_required', pci.is_required
+              )
+              ORDER BY pci.item_order ASC, pci.created_at ASC
+            ) FILTER (WHERE pci.id IS NOT NULL),
+            '[]'::json
+          ) AS checklist_items
+        FROM playbooks p
+        LEFT JOIN playbook_checklist_items pci ON pci.playbook_id = p.id
+        WHERE p.user_id = $1
+          AND p.is_active = true
+          AND p.auto_assign_enabled = true
+        GROUP BY p.id
+      `,
+      [userId]
+    );
+
+    return result.rows;
+  }
+
   static async upsertTradeReview(userId, tradeId, payload) {
     const result = await db.query(
       `
@@ -267,7 +305,8 @@ class Playbook {
       `
         SELECT
           r.*,
-          p.name AS playbook_name
+          p.name AS playbook_name,
+          p.review_mode AS playbook_review_mode
         FROM trade_playbook_reviews r
         INNER JOIN playbooks p ON p.id = r.playbook_id
         WHERE r.trade_id = $1 AND r.user_id = $2
@@ -289,6 +328,7 @@ class Playbook {
           r.trade_id,
           r.playbook_id,
           p.name AS playbook_name,
+          p.review_mode AS playbook_review_mode,
           r.adherence_score,
           r.followed_plan,
           r.reviewed_at

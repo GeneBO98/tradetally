@@ -12,6 +12,10 @@ function mapChecklistItems(items = []) {
   }));
 }
 
+function scoreToGrade(score) {
+  return PlaybookAdherenceService.scoreToGrade(score);
+}
+
 function mapPlaybook(playbook) {
   if (!playbook) return null;
 
@@ -29,6 +33,8 @@ function mapPlaybook(playbook) {
     minimumTargetR: playbook.minimum_target_r !== null && playbook.minimum_target_r !== undefined
       ? Number(playbook.minimum_target_r)
       : null,
+    reviewMode: playbook.review_mode === 'score' ? 'score' : 'checklist',
+    autoAssignEnabled: playbook.auto_assign_enabled === true,
     isActive: playbook.is_active !== false,
     checklistItems: mapChecklistItems(playbook.checklist_items || []),
     createdAt: playbook.created_at,
@@ -50,6 +56,10 @@ function mapReview(review) {
     checklistScore: review.checklist_score !== null && review.checklist_score !== undefined
       ? Number(review.checklist_score)
       : null,
+    grade: review.playbook_review_mode === 'score'
+      ? scoreToGrade(review.adherence_score)
+      : null,
+    reviewMode: review.playbook_review_mode === 'score' ? 'score' : 'checklist',
     followedPlan: review.followed_plan,
     reviewNotes: review.review_notes,
     checklistResponses: review.checklist_responses || [],
@@ -208,6 +218,10 @@ const playbookController = {
         adherenceScore: row.adherence_score !== null && row.adherence_score !== undefined
           ? Number(row.adherence_score)
           : null,
+        grade: row.playbook_review_mode === 'score'
+          ? scoreToGrade(row.adherence_score)
+          : null,
+        reviewMode: row.playbook_review_mode === 'score' ? 'score' : 'checklist',
         followedPlan: row.followed_plan,
         reviewedAt: row.reviewed_at
       });
