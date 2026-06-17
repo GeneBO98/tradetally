@@ -630,12 +630,12 @@
                                                 size-class="w-8 h-8"
                                             />
                                             <div>
-                                                <div class="flex items-center gap-2">
+                                                <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
                                                     <span class="text-sm font-medium text-gray-900 dark:text-white">
                                                         {{ position.symbol }}
                                                     </span>
                                                     <span
-                                                        class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+                                                        class="inline-flex shrink-0 items-center whitespace-nowrap px-2 py-0.5 rounded-full text-xs font-medium bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
                                                     >
                                                         {{ positionSourceLabel(position) }}
                                                     </span>
