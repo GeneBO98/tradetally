@@ -10,6 +10,8 @@ on:
       - main
       - develop
       - fix/pnl-canonical-engine
+    tags:
+      - 'v*.*.*'
   release:
     types:
       - published
@@ -133,34 +135,35 @@ jobs:
       - name: Determine tags
         id: tags
         run: |
-          if [[ "${{ github.event_name }}" == "release" ]]; then
-            release_tag="${{ github.event.release.tag_name }}"
-            tags="potentialmidas/tradetally:${release_tag}"
+          build_release_tags() {
+            local release_tag="$1"
+            local is_prerelease="$2"
 
-            if [[ "${{ github.event.release.prerelease }}" == "true" ]]; then
-              tags="${tags},potentialmidas/tradetally:nightly"
-            else
-              tags="${tags},potentialmidas/tradetally:latest"
-            fi
-
-            echo "tags=${tags}" >> "$GITHUB_OUTPUT"
-          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            release_tag="${{ inputs.release_tag }}"
-
-            if [[ ! "$release_tag" =~ ^v.+$ ]]; then
-              echo "Release tag must start with 'v', got: $release_tag"
+            if [[ ! "$release_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Release tag must match vX.Y.Z, got: $release_tag"
               exit 1
             fi
 
-            tags="potentialmidas/tradetally:${release_tag}"
+            local version="${release_tag#v}"
+            local major_minor="${version%.*}"
+            local major="${version%%.*}"
+            local tags="potentialmidas/tradetally:${version},potentialmidas/tradetally:${major_minor},potentialmidas/tradetally:${major}"
 
-            if [[ "${{ inputs.prerelease }}" == "true" ]]; then
+            if [[ "$is_prerelease" == "true" ]]; then
               tags="${tags},potentialmidas/tradetally:nightly"
             else
               tags="${tags},potentialmidas/tradetally:latest"
             fi
 
             echo "tags=${tags}" >> "$GITHUB_OUTPUT"
+          }
+
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            build_release_tags "${{ github.event.release.tag_name }}" "${{ github.event.release.prerelease }}"
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            build_release_tags "${{ inputs.release_tag }}" "${{ inputs.prerelease }}"
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            build_release_tags "${{ github.ref_name }}" "false"
           elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
             echo "tags=potentialmidas/tradetally:latest" >> "$GITHUB_OUTPUT"
           elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
