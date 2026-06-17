@@ -7,6 +7,8 @@ const AIProvider = require('../utils/aiProvider');
 const TierService = require('./tierService');
 const { validateAiProviderUrl } = require('../utils/urlSecurity');
 const adminSettingsService = require('./adminSettings');
+const Playbook = require('../models/Playbook');
+const PlaybookAdherenceService = require('./playbookAdherence.service');
 
 /**
  * AI Session Service
@@ -504,6 +506,94 @@ Keep recommendations specific and data-driven. Use bullet points for clarity.`;
     }, {});
   }
 
+  static mapReviewForAI(review) {
+    if (!review) return null;
+
+    const score = review.adherence_score !== null && review.adherence_score !== undefined
+      ? Number(review.adherence_score)
+      : null;
+
+    return this.compactObject({
+      profile_name: review.playbook_name,
+      score,
+      grade: review.playbook_review_mode === 'score'
+        && score !== null
+        ? PlaybookAdherenceService.scoreToGrade(score)
+        : null,
+      review_mode: review.playbook_review_mode === 'score' ? 'score' : 'checklist',
+      followed_plan: review.followed_plan,
+      checklist_score: review.checklist_score !== null && review.checklist_score !== undefined
+        ? Number(review.checklist_score)
+        : null,
+      review_notes: review.review_notes,
+      criterion_responses: review.checklist_responses || [],
+      rule_results: review.rule_results || [],
+      violation_summary: review.violation_summary || [],
+      reviewed_at: review.reviewed_at
+    });
+  }
+
+  static buildQualityContext(trade, reviews = []) {
+    const automatedSetupQuality = this.compactObject({
+      grade: trade.quality_grade,
+      score: trade.quality_score,
+      metrics: trade.quality_metrics
+    });
+    const playbookAssessment = this.mapReviewForAI(
+      reviews.find(review => review.review_type === 'adherence')
+    );
+    const manualGradingProfile = this.mapReviewForAI(
+      reviews.find(review => review.review_type === 'manual_grading')
+    );
+
+    const context = this.compactObject({
+      automated_setup_quality: Object.keys(automatedSetupQuality).length ? automatedSetupQuality : null,
+      playbook_assessment: playbookAssessment,
+      manual_grading_profile: manualGradingProfile
+    });
+
+    return Object.keys(context).length ? context : null;
+  }
+
+  static getQualityContextSources(qualityContext) {
+    const sources = [];
+    if (qualityContext?.automated_setup_quality) sources.push('automated_setup_quality');
+    if (qualityContext?.playbook_assessment) sources.push('playbook_assessment');
+    if (qualityContext?.manual_grading_profile) sources.push('manual_grading_profile');
+    return sources;
+  }
+
+  static formatQualityContextForPrompt(qualityContext) {
+    if (!qualityContext || Object.keys(qualityContext).length === 0) {
+      return 'No automated setup quality, playbook assessment, or manual grading profile was available for this trade.';
+    }
+
+    const lines = [];
+    if (qualityContext.automated_setup_quality) {
+      const setup = qualityContext.automated_setup_quality;
+      lines.push(`- Automated Setup Quality: ${setup.grade || 'N/A'}${setup.score !== undefined ? ` (${setup.score}/5)` : ''}`);
+      if (setup.metrics) {
+        lines.push(`  Metrics: ${JSON.stringify(setup.metrics)}`);
+      }
+    }
+    if (qualityContext.playbook_assessment) {
+      const review = qualityContext.playbook_assessment;
+      lines.push(`- Playbook Assessment: ${review.profile_name || 'Unnamed playbook'}${review.score !== undefined ? ` (${review.score}%)` : ''}${review.followed_plan !== undefined ? `, followed plan: ${review.followed_plan ? 'yes' : 'no'}` : ''}`);
+      if (review.review_notes) lines.push(`  Notes: ${review.review_notes}`);
+      if (review.criterion_responses?.length) lines.push(`  Responses: ${JSON.stringify(review.criterion_responses)}`);
+      if (review.rule_results?.length) lines.push(`  Rule results: ${JSON.stringify(review.rule_results)}`);
+    }
+    if (qualityContext.manual_grading_profile) {
+      const review = qualityContext.manual_grading_profile;
+      lines.push(`- Manual Grading Profile: ${review.profile_name || 'Unnamed grading profile'}${review.grade ? ` grade ${review.grade}` : ''}${review.score !== undefined ? ` (${review.score}%)` : ''}`);
+      if (review.review_notes) lines.push(`  Notes: ${review.review_notes}`);
+      if (review.criterion_responses?.length) lines.push(`  Criterion scores: ${JSON.stringify(review.criterion_responses)}`);
+      if (review.rule_results?.length) lines.push(`  Rule results: ${JSON.stringify(review.rule_results)}`);
+    }
+
+    return lines.join('\n');
+  }
+
   static async buildSingleTradeSummary(userId, tradeId) {
     if (!tradeId || typeof tradeId !== 'string') {
       throw new Error('Trade ID is required for single trade analysis');
@@ -530,6 +620,13 @@ Keep recommendations specific and data-driven. Use bullet points for clarity.`;
       }));
 
     const newsEvents = Array.isArray(trade.news_events) ? trade.news_events : [];
+    let tradeReviews = [];
+    try {
+      tradeReviews = await Playbook.getTradeReviewsByTradeId(tradeId, userId);
+    } catch (error) {
+      console.warn('[AI_SESSION] Could not load trade reviews for AI context:', error.message);
+    }
+    const qualityContext = this.buildQualityContext(trade, tradeReviews);
 
     // Multi-leg combo context (issue #339): when the trade belongs to a
     // detected option strategy group, give the AI every leg so it analyzes the
@@ -640,6 +737,7 @@ Keep recommendations specific and data-driven. Use bullet points for clarity.`;
         quality_metrics: trade.quality_metrics,
         playbook_id: trade.playbook_id
       }),
+      quality_context: qualityContext,
       executions: executions.map(execution => this.compactObject({
         action: execution.action || execution.side,
         quantity: execution.quantity,
@@ -700,6 +798,7 @@ Keep recommendations specific and data-driven. Use bullet points for clarity.`;
     const enrichment = tradeSummary.enrichment;
     const visualContext = tradeSummary.visual_context;
     const positionGroup = tradeSummary.position_group;
+    const qualityContext = tradeSummary.quality_context;
 
     let profileSection = '';
     if (tradingProfile) {
@@ -812,6 +911,10 @@ ${images}
 QUALITY METRICS:
 ${JSON.stringify(trade.quality_metrics || {}, null, 2)}
 
+QUALITY CONTEXT INCLUDED:
+The following labeled quality inputs were included in this AI request. Treat automated Setup Quality as market-data/enrichment driven, Playbook Assessment as checklist adherence, and Manual Grading Profile as user-scored criteria. If more than one exists, reference them separately rather than merging them into one score.
+${this.formatQualityContextForPrompt(qualityContext)}
+
 ${positionGroup ? `Please structure the response with:
 1. **Verdict**: A concise diagnosis of why this strategy succeeded or underperformed — structure, strikes, timing — or the biggest risk if it is still open.
 2. **Structure Analysis**: Strike selection, spread width, net credit/debit versus maximum risk, defined risk-reward of the combined position, and expiration choice.
@@ -887,7 +990,10 @@ Be direct, data-driven, and specific. Do not give generic trading advice.`;
     const aiSettings = await this.getAISettings(userId, options);
     tradeSummary.ai_metadata = {
       provider: aiSettings.provider || null,
-      model: aiSettings.modelName || null
+      model: aiSettings.modelName || null,
+      context_sources: isSingleTradeAnalysis
+        ? this.getQualityContextSources(tradeSummary.quality_context)
+        : []
     };
 
     // Build the analysis prompt
@@ -1035,6 +1141,9 @@ ${tradeSummary.position_group ? `- Multi-leg strategy: this trade is one leg of 
 ` : ''}- News sentiment: ${tradeSummary.enrichment?.news_sentiment || 'N/A'}
 - Charts attached: ${tradeSummary.visual_context?.charts?.length || 0}
 - Images attached: ${tradeSummary.visual_context?.images?.length || 0}
+
+QUALITY CONTEXT INCLUDED:
+${this.formatQualityContextForPrompt(tradeSummary.quality_context)}
 
 CONVERSATION HISTORY:
 ${conversationHistory}
@@ -1244,6 +1353,48 @@ Please provide a helpful, specific response to the user's question. Reference th
       updated_at: row.updated_at,
       responses: row.responses || []
     }));
+  }
+
+  static async deleteTradeAnalysis(userId, tradeId, analysisId) {
+    if (!tradeId || typeof tradeId !== 'string') {
+      throw new Error('Trade ID is required');
+    }
+    if (!analysisId || typeof analysisId !== 'string') {
+      throw new Error('Analysis ID is required');
+    }
+
+    const result = await db.query(
+      `DELETE FROM ai_sessions
+       WHERE id = $1
+         AND user_id = $2
+         AND filters_applied->>'analysisType' = 'single_trade'
+         AND filters_applied->>'tradeId' = $3
+       RETURNING id`,
+      [analysisId, userId, tradeId]
+    );
+
+    if (result.rows.length === 0) {
+      throw new Error('Analysis not found or access denied');
+    }
+
+    return result.rows.length;
+  }
+
+  static async deleteTradeAnalyses(userId, tradeId) {
+    if (!tradeId || typeof tradeId !== 'string') {
+      throw new Error('Trade ID is required');
+    }
+
+    const result = await db.query(
+      `DELETE FROM ai_sessions
+       WHERE user_id = $1
+         AND filters_applied->>'analysisType' = 'single_trade'
+         AND filters_applied->>'tradeId' = $2
+       RETURNING id`,
+      [userId, tradeId]
+    );
+
+    return result.rows.length;
   }
 
   /**

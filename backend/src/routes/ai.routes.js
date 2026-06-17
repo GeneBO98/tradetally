@@ -85,6 +85,8 @@ router.get('/sessions', authenticate, aiController.getUserSessions);
  * Get stored AI analyses for a specific trade.
  */
 router.get('/trades/:tradeId/analyses', authenticate, aiController.getTradeAnalyses);
+router.delete('/trades/:tradeId/analyses/:analysisId', authenticate, aiController.deleteTradeAnalysis);
+router.delete('/trades/:tradeId/analyses', authenticate, aiController.deleteTradeAnalyses);
 
 /**
  * @swagger

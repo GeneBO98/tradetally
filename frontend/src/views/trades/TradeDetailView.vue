@@ -61,33 +61,43 @@
 
       <!-- Stored AI Analyses -->
       <div v-if="storedAIResponseCount > 0" class="rounded-lg border border-primary-200 bg-primary-50/60 dark:border-primary-900/50 dark:bg-primary-900/10">
-        <button
-          @click="storedAIExpanded = !storedAIExpanded"
-          class="flex w-full items-center justify-between gap-4 px-4 py-3 text-left"
-        >
-          <div class="flex items-center gap-3">
-            <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
-              <SparklesIcon class="h-4 w-4" />
-            </span>
-            <div>
-              <div class="text-sm font-semibold text-gray-900 dark:text-white">
-                {{ storedAIResponseCount }} AI response{{ storedAIResponseCount === 1 ? '' : 's' }} stored
-              </div>
-              <div class="text-xs text-gray-600 dark:text-gray-400">
-                {{ storedAIAnalyses.length }} analysis session{{ storedAIAnalyses.length === 1 ? '' : 's' }} for this trade
+        <div class="flex items-center justify-between gap-3 px-4 py-3">
+          <button
+            @click="storedAIExpanded = !storedAIExpanded"
+            class="flex min-w-0 flex-1 items-center justify-between gap-4 text-left"
+          >
+            <div class="flex min-w-0 items-center gap-3">
+              <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
+                <SparklesIcon class="h-4 w-4" />
+              </span>
+              <div class="min-w-0">
+                <div class="text-sm font-semibold text-gray-900 dark:text-white">
+                  {{ storedAIResponseCount }} AI response{{ storedAIResponseCount === 1 ? '' : 's' }} stored
+                </div>
+                <div class="text-xs text-gray-600 dark:text-gray-400">
+                  {{ storedAIAnalyses.length }} analysis session{{ storedAIAnalyses.length === 1 ? '' : 's' }} for this trade
+                </div>
               </div>
             </div>
-          </div>
-          <svg
-            class="h-5 w-5 text-gray-500 transition-transform dark:text-gray-400"
-            :class="{ 'rotate-180': storedAIExpanded }"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+            <svg
+              class="h-5 w-5 shrink-0 text-gray-500 transition-transform dark:text-gray-400"
+              :class="{ 'rotate-180': storedAIExpanded }"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          <button
+            @click="clearStoredAIAnalyses"
+            class="btn-secondary inline-flex shrink-0 items-center gap-2 text-xs"
+            :disabled="clearingStoredAIAnalyses"
           >
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
+            <TrashIcon class="h-4 w-4" />
+            <span>{{ clearingStoredAIAnalyses ? 'Clearing...' : 'Clear' }}</span>
+          </button>
+        </div>
 
         <div v-if="storedAIExpanded" class="border-t border-primary-200 px-4 py-4 dark:border-primary-900/50">
           <div v-if="loadingStoredAIAnalyses" class="text-sm text-gray-500 dark:text-gray-400">
@@ -112,7 +122,20 @@
                   <span v-if="formatAIModelLabel(analysis.ai_metadata)">
                     {{ formatAIModelLabel(analysis.ai_metadata) }}
                   </span>
+                  <span v-if="formatAIContextSources(analysis.ai_metadata)"
+                    class="px-1.5 py-0.5 font-semibold rounded-full bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                    {{ formatAIContextSources(analysis.ai_metadata) }}
+                  </span>
                   <span>{{ analysis.response_count }} response{{ analysis.response_count === 1 ? '' : 's' }}</span>
+                  <button
+                    @click="deleteStoredAIAnalysis(analysis)"
+                    class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-red-700 hover:bg-red-50 disabled:opacity-60 dark:text-red-400 dark:hover:bg-red-900/20"
+                    :disabled="deletingStoredAIAnalysisId === analysis.id"
+                    title="Delete stored AI analysis"
+                  >
+                    <TrashIcon class="h-3.5 w-3.5" />
+                    <span>{{ deletingStoredAIAnalysisId === analysis.id ? 'Deleting...' : 'Delete' }}</span>
+                  </button>
                 </div>
               </div>
               <div class="space-y-4">
@@ -1571,7 +1594,7 @@ import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { format, formatDistanceToNow, formatDistance } from 'date-fns'
-import { DocumentIcon, ChatBubbleLeftIcon, SparklesIcon, ShareIcon } from '@heroicons/vue/24/outline'
+import { DocumentIcon, ChatBubbleLeftIcon, SparklesIcon, ShareIcon, TrashIcon } from '@heroicons/vue/24/outline'
 import TradeShareCard from '@/components/trades/TradeShareCard.vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import api from '@/services/api'
@@ -1591,7 +1614,7 @@ const router = useRouter()
 const tradesStore = useTradesStore()
 const authStore = useAuthStore()
 const aiStore = useAIStore()
-const { showSuccess, showError, showConfirmation } = useNotification()
+const { showSuccess, showError, showConfirmation, showDangerConfirmation } = useNotification()
 const { formatDateTime: formatDateTimeTz, formatTime: formatTimeTz, timezoneLabel } = useUserTimezone()
 const { formatCurrency, currencySymbol, formatSignedCurrency } = useCurrencyFormatter()
 
@@ -1664,6 +1687,8 @@ const showShareCard = ref(false)
 const storedAIAnalyses = ref([])
 const storedAIExpanded = ref(false)
 const loadingStoredAIAnalyses = ref(false)
+const clearingStoredAIAnalyses = ref(false)
+const deletingStoredAIAnalysisId = ref(null)
 const selectedAdherencePlaybookId = ref('')
 const selectedManualGradingProfileId = ref('')
 const adherenceReviewForm = reactive({
@@ -2373,6 +2398,19 @@ function formatAIModelLabel(metadata) {
   return model || provider
 }
 
+function formatAIContextSources(metadata) {
+  const sources = Array.isArray(metadata?.context_sources) ? metadata.context_sources : []
+  const labels = sources
+    .map(source => ({
+      automated_setup_quality: 'Setup Quality',
+      playbook_assessment: 'Playbook',
+      manual_grading_profile: 'Manual Grade'
+    }[source]))
+    .filter(Boolean)
+
+  return labels.length ? `Context: ${labels.join(', ')}` : ''
+}
+
 function formatPositionGroupLabel(group) {
   if (!group) return ''
   const label = (group.strategy_label || 'multi-leg strategy').replace(/\b\w/g, c => c.toUpperCase())
@@ -2759,6 +2797,52 @@ async function loadStoredAIAnalyses() {
   } finally {
     loadingStoredAIAnalyses.value = false
   }
+}
+
+function clearStoredAIAnalyses() {
+  const tradeId = trade.value?.id || route.params.id
+  if (!tradeId || clearingStoredAIAnalyses.value) return
+
+  showDangerConfirmation(
+    'Clear stored AI responses',
+    'This permanently deletes all stored AI analysis responses for this trade. It does not delete the trade or refund AI credits.',
+    async () => {
+      try {
+        clearingStoredAIAnalyses.value = true
+        const response = await api.delete(`/ai/trades/${tradeId}/analyses`)
+        storedAIAnalyses.value = []
+        storedAIExpanded.value = false
+        showSuccess('Success', `${response.data.deleted_count || 0} stored AI analysis session${response.data.deleted_count === 1 ? '' : 's'} deleted`)
+      } catch (error) {
+        showError('Error', error.response?.data?.message || 'Failed to clear stored AI responses')
+      } finally {
+        clearingStoredAIAnalyses.value = false
+      }
+    },
+    { confirmText: 'Clear responses' }
+  )
+}
+
+function deleteStoredAIAnalysis(analysis) {
+  const tradeId = trade.value?.id || route.params.id
+  if (!tradeId || !analysis?.id || deletingStoredAIAnalysisId.value) return
+
+  showDangerConfirmation(
+    'Delete stored AI analysis',
+    'This permanently deletes this stored AI analysis session and its responses.',
+    async () => {
+      try {
+        deletingStoredAIAnalysisId.value = analysis.id
+        await api.delete(`/ai/trades/${tradeId}/analyses/${analysis.id}`)
+        await loadStoredAIAnalyses()
+        showSuccess('Success', 'Stored AI analysis deleted')
+      } catch (error) {
+        showError('Error', error.response?.data?.message || 'Failed to delete stored AI analysis')
+      } finally {
+        deletingStoredAIAnalysisId.value = null
+      }
+    }
+  )
 }
 
 function handleImageDeleted(imageId) {

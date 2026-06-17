@@ -11,6 +11,8 @@ jest.mock('../../src/controllers/ai.controller', () => ({
   }),
   getUserSessions: jest.fn(),
   getTradeAnalyses: jest.fn(),
+  deleteTradeAnalysis: jest.fn(),
+  deleteTradeAnalyses: jest.fn(),
   getSession: jest.fn(),
   sendFollowup: jest.fn(),
   closeSession: jest.fn(),

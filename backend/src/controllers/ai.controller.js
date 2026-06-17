@@ -253,6 +253,62 @@ const aiController = {
     }
   },
 
+  async deleteTradeAnalysis(req, res, next) {
+    try {
+      const { tradeId, analysisId } = req.params;
+      const deletedCount = await AISessionService.deleteTradeAnalysis(req.user.id, tradeId, analysisId);
+
+      res.json({
+        success: true,
+        deleted_count: deletedCount
+      });
+    } catch (error) {
+      console.error('[AI_CONTROLLER] Error deleting trade analysis:', error.message);
+
+      if (error.message.includes('Trade ID is required') || error.message.includes('Analysis ID is required')) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid request',
+          message: error.message
+        });
+      }
+
+      if (error.message.includes('not found') || error.message.includes('access denied')) {
+        return res.status(404).json({
+          success: false,
+          error: 'Analysis not found',
+          message: error.message
+        });
+      }
+
+      next(error);
+    }
+  },
+
+  async deleteTradeAnalyses(req, res, next) {
+    try {
+      const { tradeId } = req.params;
+      const deletedCount = await AISessionService.deleteTradeAnalyses(req.user.id, tradeId);
+
+      res.json({
+        success: true,
+        deleted_count: deletedCount
+      });
+    } catch (error) {
+      console.error('[AI_CONTROLLER] Error clearing trade analyses:', error.message);
+
+      if (error.message.includes('Trade ID is required')) {
+        return res.status(400).json({
+          success: false,
+          error: 'Trade ID required',
+          message: error.message
+        });
+      }
+
+      next(error);
+    }
+  },
+
   /**
    * Close a session
    * POST /api/ai/sessions/:id/close
