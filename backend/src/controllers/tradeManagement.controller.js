@@ -5,6 +5,7 @@
 
 const db = require('../config/database');
 const Trade = require('../models/Trade');
+const User = require('../models/User');
 const TradeQueries = require('../services/tradeQueries');
 const logger = require('../utils/logger');
 const TargetHitAnalysisService = require('../services/targetHitAnalysisService');
@@ -73,13 +74,67 @@ function roundR(value) {
   return Math.round(value * 100) / 100;
 }
 
+// Per-unit dollar multiplier for a trade (1 share for stocks, contract_size for
+// options, point_value for futures). Mirrors the inline resolution below; used
+// to express a fixed dollar risk as a per-share value (#345).
+function instrumentMultiplier(trade) {
+  const instrumentType = inferInstrumentType(trade);
+  if (instrumentType === 'future') {
+    let pv = trade.point_value ? parseFloat(trade.point_value) : null;
+    if (!pv || isNaN(pv) || pv <= 0) {
+      const underlying = trade.underlying_asset || trade.underlyingAsset
+        || extractUnderlyingFromFuturesSymbol(trade.symbol);
+      pv = underlying ? getFuturesPointValue(underlying) : 50;
+    }
+    return pv;
+  }
+  if (instrumentType === 'option') {
+    const cs = trade.contract_size ? parseFloat(trade.contract_size) : 100;
+    return !isNaN(cs) && cs > 0 ? cs : 100;
+  }
+  return 1;
+}
+
+// Returns the user's fixed dollar risk per trade when they use dollar-based
+// default stops, else null. Used to switch R's risk unit to dollars (#345).
+async function getUserDollarRisk(userId) {
+  try {
+    const settings = await User.getSettings(userId);
+    const dollars = parseFloat(settings?.default_stop_loss_dollars);
+    if (settings?.default_stop_loss_type === 'dollar' && Number.isFinite(dollars) && dollars > 0) {
+      return dollars;
+    }
+  } catch (error) {
+    logger.warn('[TRADE-MGMT] Could not load dollar risk setting:', error.message);
+  }
+  return null;
+}
+
+// For fixed-dollar-risk users, R's risk unit is a constant dollar amount, so the
+// per-share risk is that amount spread across the position. Returns null unless
+// the user is in dollar mode with a positive risk (#345).
+function dollarRiskPerShare(trade, dollarRisk) {
+  if (!dollarRisk || dollarRisk <= 0) return null;
+  const qty = parseFloat(trade.quantity);
+  const safeQty = Number.isFinite(qty) && qty > 0 ? qty : 1;
+  const mult = instrumentMultiplier(trade);
+  if (!Number.isFinite(mult) || mult <= 0) return null;
+  return dollarRisk / (safeQty * mult);
+}
+
 /**
  * Calculate R-Multiple values for a trade
  * @param {Object} trade - Trade object with entry_price, exit_price, stop_loss, take_profit, take_profit_targets, side
  * @returns {Object} R-Multiple analysis results
  */
-function calculateRMultiples(trade) {
+function calculateRMultiples(trade, options = {}) {
   const { entry_price, exit_price, stop_loss, take_profit, take_profit_targets, side, pnl, quantity, manual_target_hit_first, instrument_type, contract_size, point_value, risk_level_history } = trade;
+
+  // Fixed-dollar-risk users (#345): R's risk unit is a constant dollar amount,
+  // not the stored stop distance. dollarRiskUnit is the equivalent per-share
+  // risk; when set it replaces (entry - stop) everywhere below so actual, target,
+  // weighted, and management R all reconcile to net P&L / dollar risk.
+  const dollarRisk = options.dollarRisk && options.dollarRisk > 0 ? options.dollarRisk : null;
 
   // Cap potential R at 10R to prevent unrealistic values from distorting charts
   const MAX_POTENTIAL_R = 10;
@@ -143,6 +198,12 @@ function calculateRMultiples(trade) {
   
   logger.debug('[R-CALC] Parsed prices:', { entryPrice, exitPrice, stopLoss, instrument_type: instrument_type || 'stock' });
 
+  // Per-share risk for dollar-mode users; null otherwise (price-based risk used).
+  const dollarRiskUnit = dollarRisk ? dollarRiskPerShare(trade, dollarRisk) : null;
+  if (dollarRiskUnit) {
+    logger.debug('[R-CALC] Using fixed dollar risk unit:', { dollarRisk, dollarRiskUnit });
+  }
+
   // Determine the take profit price to use for single-target analysis
   // Priority: take_profit_targets (first/primary target) > take_profit
   let takeProfit = null;
@@ -178,7 +239,7 @@ function calculateRMultiples(trade) {
   if (normalizedTargets.length > 1) {
     logger.debug('[R-CALC] Calculating weighted average R for normalized targets');
     const isLong = side === 'long';
-    const riskCalc = isLong ? entryPrice - stopLoss : stopLoss - entryPrice;
+    const riskCalc = dollarRiskUnit ?? (isLong ? entryPrice - stopLoss : stopLoss - entryPrice);
     logger.debug('[R-CALC] Risk calculation:', { isLong, risk: riskCalc });
 
     if (riskCalc > 0) {
@@ -244,8 +305,8 @@ function calculateRMultiples(trade) {
 
   logger.debug('[R-CALC] ========== R-Value Calculation ==========');
   if (side === 'long') {
-    // For long positions: risk is entry - stop loss
-    risk = entryPrice - stopLoss;
+    // For long positions: risk is entry - stop loss (or the fixed dollar risk unit)
+    risk = dollarRiskUnit ?? (entryPrice - stopLoss);
     logger.debug('[R-CALC] LONG trade - risk per share:', risk);
 
     if (risk <= 0) {
@@ -284,8 +345,8 @@ function calculateRMultiples(trade) {
       }
     }
   } else {
-    // For short positions: risk is stop loss - entry
-    risk = stopLoss - entryPrice;
+    // For short positions: risk is stop loss - entry (or the fixed dollar risk unit)
+    risk = dollarRiskUnit ?? (stopLoss - entryPrice);
     logger.debug('[R-CALC] SHORT trade - risk per share:', risk);
 
     if (risk <= 0) {
@@ -410,10 +471,15 @@ function calculateRMultiples(trade) {
     tradeQuantity = 1;
   }
 
-  const riskAmount = calculatedRiskAmount && calculatedRiskAmount > 0
-    ? calculatedRiskAmount
-    : risk * tradeQuantity * multiplier;
-  if (calculatedRiskAmount && risk > 0 && tradeQuantity > 0) {
+  // Dollar-mode: the risk amount IS the fixed dollar risk, so actual R becomes
+  // net P&L / dollar risk. Keep the instrument multiplier from the block above so
+  // dollar amounts (actual/target P&L) stay in real dollars.
+  const riskAmount = dollarRisk
+    ? dollarRisk
+    : (calculatedRiskAmount && calculatedRiskAmount > 0
+        ? calculatedRiskAmount
+        : risk * tradeQuantity * multiplier);
+  if (!dollarRisk && calculatedRiskAmount && risk > 0 && tradeQuantity > 0) {
     multiplier = calculatedRiskAmount / (risk * tradeQuantity);
   }
   const actualPLAmount = actualPL * tradeQuantity * multiplier;
@@ -497,8 +563,9 @@ function calculateRMultiples(trade) {
       (symbol && /^(MES|ES|MNQ|NQ|MYM|YM|M2K|RTY|MGC|GC|MCL|CL|SI|HG)/i.test(symbol));
 
     // For futures detected by symbol but with wrong instrument_type, recalculate riskAmount
+    // (skipped in dollar mode, where the risk amount is the fixed dollar risk).
     let effectiveRiskAmount = riskAmount;
-    if (isFutures && instrumentType !== 'future') {
+    if (!dollarRisk && isFutures && instrumentType !== 'future') {
       // Recalculate with correct futures multiplier
       let futuresMultiplier = 5; // Default to micro
       if (symbol && /^(MES|MNQ|MYM|M2K)/i.test(symbol)) {
@@ -570,7 +637,7 @@ function calculateRMultiples(trade) {
 
   if (manual_target_hit_first) {
     // Use TargetHitAnalysisService for proper partial exit handling
-    managementR = TargetHitAnalysisService.calculateManagementR(trade);
+    managementR = TargetHitAnalysisService.calculateManagementR(trade, { dollarRisk });
     logger.debug('[R-CALC] Management R from TargetHitAnalysisService:', managementR);
     if (managementR !== null) {
       plannedR = actualR - managementR;
@@ -942,7 +1009,8 @@ const tradeManagementController = {
 
       logger.debug('[R-ANALYSIS] Calling calculateRMultiples...');
       // Calculate R-Multiples
-      const analysis = calculateRMultiples(trade);
+      const dollarRisk = await getUserDollarRisk(userId);
+      const analysis = calculateRMultiples(trade, { dollarRisk });
       logger.debug('[R-ANALYSIS] Analysis result:', JSON.stringify(analysis));
 
       if (analysis.error) {
@@ -1297,7 +1365,8 @@ const tradeManagementController = {
       }
 
       // Calculate and store management R
-      const managementR = TargetHitAnalysisService.calculateManagementR(updatedTrade);
+      const dollarRisk = await getUserDollarRisk(userId);
+      const managementR = TargetHitAnalysisService.calculateManagementR(updatedTrade, { dollarRisk });
       if (managementR !== null) {
         await db.query(
           `UPDATE trades SET management_r = $1 WHERE id = $2`,
@@ -1415,9 +1484,13 @@ const tradeManagementController = {
       const chartData = [];
       const tradeDetails = [];
 
+      // Fixed-dollar-risk users measure R against a constant dollar amount, so the
+      // chart's cumulative Actual R reconciles with the dashboard's Net R (#345).
+      const dollarRisk = await getUserDollarRisk(userId);
+
       result.rows.forEach((row, index) => {
         const trade = parseTradeRow(row);
-        const analysis = calculateRMultiples(trade);
+        const analysis = calculateRMultiples(trade, { dollarRisk });
 
         if (analysis.error) {
           logger.debug('[TRADE-MGMT] Skipping trade for R performance (calculation error):', trade.id, analysis.error);
@@ -1675,7 +1748,8 @@ const tradeManagementController = {
           manual_target_hit_first: manual_target_hit_first,
           take_profit_targets: updatedTargets
         };
-        rValues = calculateRMultiples(tradeForCalc);
+        const dollarRisk = await getUserDollarRisk(userId);
+        rValues = calculateRMultiples(tradeForCalc, { dollarRisk });
         if (rValues && !rValues.error) {
           newManagementR = rValues.management_r;
           logger.debug('[MANUAL-TARGET] Recalculated management_r:', newManagementR);
