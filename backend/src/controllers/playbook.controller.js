@@ -60,6 +60,7 @@ function mapReview(review) {
       ? scoreToGrade(review.adherence_score)
       : null,
     reviewMode: review.playbook_review_mode === 'score' ? 'score' : 'checklist',
+    reviewType: review.review_type || 'adherence',
     followedPlan: review.followed_plan,
     reviewNotes: review.review_notes,
     checklistResponses: review.checklist_responses || [],
@@ -149,8 +150,18 @@ const playbookController = {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
-      const review = await Playbook.getTradeReviewByTradeId(req.params.tradeId, req.user.id);
-      res.json({ review: mapReview(review) });
+      const reviewType = req.query.reviewType || null;
+      if (reviewType) {
+        const review = await Playbook.getTradeReviewByTradeId(req.params.tradeId, req.user.id, reviewType);
+        return res.json({ review: mapReview(review) });
+      }
+
+      const reviews = await Playbook.getTradeReviewsByTradeId(req.params.tradeId, req.user.id);
+      const mappedReviews = reviews.map(mapReview);
+      res.json({
+        review: mappedReviews.find(review => review?.reviewType === 'adherence') || null,
+        reviews: mappedReviews
+      });
     } catch (error) {
       next(error);
     }
@@ -168,6 +179,8 @@ const playbookController = {
         return res.status(404).json({ error: 'Playbook not found' });
       }
 
+      const reviewType = Playbook.getReviewTypeForPlaybook(playbook);
+
       const reviewMetrics = PlaybookAdherenceService.buildReview(
         playbook,
         trade,
@@ -177,12 +190,13 @@ const playbookController = {
 
       const review = await Playbook.upsertTradeReview(req.user.id, req.params.tradeId, {
         playbookId: playbook.id,
-        followedPlan: req.body.followedPlan,
+        reviewType,
+        followedPlan: reviewType === 'adherence' ? req.body.followedPlan : null,
         reviewNotes: req.body.reviewNotes,
         ...reviewMetrics
       });
 
-      const hydratedReview = await Playbook.getTradeReviewByTradeId(review.trade_id, req.user.id);
+      const hydratedReview = await Playbook.getTradeReviewByTradeId(review.trade_id, req.user.id, reviewType);
 
       try {
         await AchievementService.checkAndAwardAchievements(req.user.id);
@@ -210,7 +224,7 @@ const playbookController = {
   },
 
   async getTradeReviewSummaries(userId, tradeIds) {
-    const rows = await Playbook.getTradeReviewSummaries(userId, tradeIds);
+    const rows = await Playbook.getTradeReviewSummaries(userId, tradeIds, 'adherence');
     return rows.reduce((map, row) => {
       map.set(row.trade_id, {
         playbookId: row.playbook_id,

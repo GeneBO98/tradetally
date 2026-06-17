@@ -93,7 +93,7 @@
           <div v-if="loadingStoredAIAnalyses" class="text-sm text-gray-500 dark:text-gray-400">
             Loading stored AI responses...
           </div>
-          <div v-else class="space-y-5">
+          <div v-else class="max-h-[75vh] space-y-5 overflow-y-auto pr-2">
             <div
               v-for="analysis in storedAIAnalyses"
               :key="analysis.id"
@@ -124,7 +124,9 @@
                   <div class="mb-2 text-xs text-gray-500 dark:text-gray-400">
                     {{ formatDateTime(response.created_at) }}
                   </div>
-                  <AIReportRenderer :content="response.content" />
+                  <div class="max-h-[65vh] overflow-y-auto pr-2">
+                    <AIReportRenderer :content="response.content" />
+                  </div>
                 </div>
               </div>
             </div>
@@ -576,184 +578,320 @@
                 Create a structured profile first, then return here to score this trade against it.
               </div>
 
-              <div v-else class="space-y-5">
-                <div>
-                  <div class="mb-1 flex items-center justify-between gap-3">
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Profile</label>
-                    <span
-                      v-if="trade.suggestedPlaybookId && selectedPlaybookId === trade.suggestedPlaybookId && !trade.playbookReview"
-                      class="text-xs font-medium text-primary-700 dark:text-primary-300"
-                    >
-                      Suggested from trade rules
-                    </span>
-                  </div>
-                  <BaseSelect
-                    v-model="selectedPlaybookId"
-                    :options="playbookOptions"
-                    placeholder="Select a profile"
-                    @change="onPlaybookChange"
-                  />
-                </div>
-
-                <div v-if="selectedPlaybook" class="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-                  <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                    <div class="flex items-center justify-between mb-3">
-                      <div>
-                        <h4 class="text-sm font-semibold text-gray-900 dark:text-white">{{ selectedPlaybook.reviewMode === 'score' ? 'Grading Criteria' : 'Checklist' }}</h4>
-                        <p class="text-xs text-gray-500 dark:text-gray-400">
-                          {{ reviewCompletion.label }}
-                        </p>
-                      </div>
-                      <span
-                        v-if="selectedReview"
-                        class="inline-flex rounded-full px-3 py-1 text-sm font-semibold"
-                        :class="selectedReview.adherenceScore >= 80
-                          ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
-                          : selectedReview.adherenceScore >= 60
-                          ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400'
-                          : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'"
-                      >
-                        {{ selectedReview.grade ? `Grade ${selectedReview.grade}` : `${Number(selectedReview.adherenceScore || 0).toFixed(2)} adherence` }}
-                      </span>
-                    </div>
-
-                    <div v-if="selectedPlaybook.reviewMode === 'score'" class="space-y-3">
-                      <div
-                        v-for="item in reviewForm.checklistResponses"
-                        :key="item.checklistItemId"
-                        class="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-3"
-                      >
-                        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                          <div class="min-w-0">
-                            <div class="text-sm font-medium text-gray-900 dark:text-white">
-                              {{ item.label }}
-                            </div>
-                            <div class="mt-1 flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400">
-                              <span>Weight {{ Number(item.weight || 1).toFixed(2) }}</span>
-                              <span v-if="item.isRequired" class="text-orange-600 dark:text-orange-400">Required</span>
-                            </div>
-                          </div>
-                          <div class="flex items-center gap-3 sm:w-56">
-                            <input
-                              v-model.number="item.score"
-                              type="range"
-                              min="0"
-                              max="5"
-                              step="0.5"
-                              class="w-full accent-primary-600"
-                            />
-                            <input
-                              v-model.number="item.score"
-                              type="number"
-                              min="0"
-                              max="5"
-                              step="0.5"
-                              class="input w-20"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div v-else class="space-y-3">
-                      <label
-                        v-for="item in reviewForm.checklistResponses"
-                        :key="item.checklistItemId"
-                        class="flex items-start gap-3 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-3"
-                      >
-                        <input
-                          v-model="item.checked"
-                          type="checkbox"
-                          class="mt-1 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                        />
-                        <div class="flex-1">
-                          <div class="text-sm font-medium text-gray-900 dark:text-white">
-                            {{ item.label }}
-                          </div>
-                          <div class="mt-1 flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400">
-                            <span>Weight {{ Number(item.weight || 1).toFixed(2) }}</span>
-                            <span v-if="item.isRequired" class="text-orange-600 dark:text-orange-400">Required</span>
-                          </div>
-                        </div>
-                      </label>
-                    </div>
+              <div v-else class="space-y-6">
+                <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-5">
+                  <div>
+                    <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Playbook Assessment</h4>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Keep process adherence separate from setup quality. Use this to review whether the trade followed your rules.
+                    </p>
                   </div>
 
-                  <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-4">
+                  <div v-if="adherencePlaybooks.length === 0" class="rounded-lg border border-dashed border-gray-300 dark:border-gray-700 p-4 text-sm text-gray-500 dark:text-gray-400">
+                    Create a checklist profile to track playbook adherence.
+                  </div>
+
+                  <template v-else>
                     <div>
-                      <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Followed plan?</label>
+                      <div class="mb-1 flex items-center justify-between gap-3">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Playbook</label>
+                        <span
+                          v-if="trade.suggestedPlaybookId && selectedAdherencePlaybookId === trade.suggestedPlaybookId && !trade.playbookAdherenceReview"
+                          class="text-xs font-medium text-primary-700 dark:text-primary-300"
+                        >
+                          Suggested from trade rules
+                        </span>
+                      </div>
                       <BaseSelect
-                        v-model="reviewForm.followedPlan"
-                        :options="[
-                          { value: 'true', label: 'Yes' },
-                          { value: 'false', label: 'No' }
-                        ]"
-                        placeholder="Not set"
+                        v-model="selectedAdherencePlaybookId"
+                        :options="adherencePlaybookOptions"
+                        placeholder="Select a playbook"
+                        @change="onAdherencePlaybookChange"
                       />
                     </div>
 
-                    <div>
-                      <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Review notes</label>
-                      <textarea
-                        v-model="reviewForm.reviewNotes"
-                        rows="5"
-                        class="input"
-                        placeholder="What matched the playbook? What broke down?"
-                      ></textarea>
+                    <div v-if="selectedAdherencePlaybook" class="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+                      <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                        <div class="flex items-center justify-between mb-3">
+                          <div>
+                            <h5 class="text-sm font-semibold text-gray-900 dark:text-white">Checklist</h5>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">
+                              {{ getReviewCompletion(selectedAdherencePlaybook, adherenceReviewForm).label }}
+                            </p>
+                          </div>
+                          <span
+                            v-if="selectedAdherenceReview"
+                            class="inline-flex rounded-full px-3 py-1 text-sm font-semibold"
+                            :class="selectedAdherenceReview.adherenceScore >= 80
+                              ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                              : selectedAdherenceReview.adherenceScore >= 60
+                              ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400'
+                              : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'"
+                          >
+                            {{ Number(selectedAdherenceReview.adherenceScore || 0).toFixed(2) }} adherence
+                          </span>
+                        </div>
+
+                        <div class="space-y-3">
+                          <label
+                            v-for="item in adherenceReviewForm.checklistResponses"
+                            :key="item.checklistItemId"
+                            class="flex items-start gap-3 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-3"
+                          >
+                            <input
+                              v-model="item.checked"
+                              type="checkbox"
+                              class="mt-1 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                            />
+                            <div class="flex-1">
+                              <div class="text-sm font-medium text-gray-900 dark:text-white">
+                                {{ item.label }}
+                              </div>
+                              <div class="mt-1 flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400">
+                                <span>Weight {{ Number(item.weight || 1).toFixed(2) }}</span>
+                                <span v-if="item.isRequired" class="text-orange-600 dark:text-orange-400">Required</span>
+                              </div>
+                            </div>
+                          </label>
+                        </div>
+                      </div>
+
+                      <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-4">
+                        <div>
+                          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Followed plan?</label>
+                          <BaseSelect
+                            v-model="adherenceReviewForm.followedPlan"
+                            :options="[
+                              { value: 'true', label: 'Yes' },
+                              { value: 'false', label: 'No' }
+                            ]"
+                            placeholder="Not set"
+                          />
+                        </div>
+
+                        <div>
+                          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Review notes</label>
+                          <textarea
+                            v-model="adherenceReviewForm.reviewNotes"
+                            rows="5"
+                            class="input"
+                            placeholder="What matched the playbook? What broke down?"
+                          ></textarea>
+                        </div>
+
+                        <button
+                          @click="saveTradeReview('adherence')"
+                          :disabled="savingAdherenceReview || selectedAdherencePlaybook?.isActive === false"
+                          class="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {{ savingAdherenceReview ? 'Saving...' : 'Save Playbook Review' }}
+                        </button>
+                        <p v-if="selectedAdherencePlaybook?.isActive === false" class="text-xs text-amber-600 dark:text-amber-400">
+                          Archived playbooks remain visible on old reviews but cannot be used for new submissions.
+                        </p>
+                      </div>
                     </div>
 
-                    <button
-                      @click="savePlaybookReview"
-                      :disabled="savingPlaybookReview || selectedPlaybook?.isActive === false"
-                      class="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {{ savingPlaybookReview ? 'Saving...' : 'Save Review' }}
-                    </button>
-                    <p v-if="selectedPlaybook?.isActive === false" class="text-xs text-amber-600 dark:text-amber-400">
-                      Archived profiles remain visible on old reviews but cannot be used for new submissions.
-                    </p>
-                  </div>
-                </div>
+                    <div v-if="selectedAdherencePlaybook" class="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                      <div class="flex items-center justify-between mb-3">
+                        <div>
+                          <h5 class="text-sm font-semibold text-gray-900 dark:text-white">Hard Rule Results</h5>
+                          <p class="text-xs text-gray-500 dark:text-gray-400">
+                            Fixed checks run when a playbook review is saved.
+                          </p>
+                        </div>
+                        <div v-if="selectedAdherenceReview?.reviewedAt" class="text-xs text-gray-500 dark:text-gray-400">
+                          Reviewed {{ formatDateTime(selectedAdherenceReview.reviewedAt) }}
+                        </div>
+                      </div>
 
-                <div v-if="selectedPlaybook" class="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                  <div class="flex items-center justify-between mb-3">
-                    <div>
-                      <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Hard Rule Results</h4>
-                      <p class="text-xs text-gray-500 dark:text-gray-400">
-                        Fixed checks run when a review is saved.
+                      <div v-if="selectedAdherenceReview?.ruleResults?.length" class="space-y-3">
+                        <div
+                          v-for="rule in selectedAdherenceReview.ruleResults"
+                          :key="rule.key"
+                          class="rounded-lg border px-3 py-3"
+                          :class="rule.passed
+                            ? 'border-green-200 bg-green-50 dark:border-green-900/40 dark:bg-green-900/10'
+                            : 'border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-900/10'"
+                        >
+                          <div class="flex items-center justify-between gap-4">
+                            <div class="text-sm font-medium text-gray-900 dark:text-white">{{ rule.label }}</div>
+                            <span :class="rule.passed ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'" class="text-xs font-semibold uppercase tracking-wide">
+                              {{ rule.passed ? 'Passed' : 'Failed' }}
+                            </span>
+                          </div>
+                          <div class="mt-2 text-xs text-gray-600 dark:text-gray-400">
+                            <div><span class="font-medium">Expected:</span> {{ Array.isArray(rule.expected) ? rule.expected.join(', ') : (rule.expected || 'N/A') }}</div>
+                            <div><span class="font-medium">Actual:</span> {{ Array.isArray(rule.actual) ? rule.actual.join(', ') : (rule.actual || 'N/A') }}</div>
+                            <div v-if="rule.violationMessage" class="mt-1 text-red-700 dark:text-red-300">{{ rule.violationMessage }}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <p v-else class="text-sm text-gray-500 dark:text-gray-400">
+                        Save a playbook review to evaluate stop loss, target R, side, timeframe, and configured strategy/setup/tag rules.
                       </p>
                     </div>
-                    <div v-if="selectedReview?.reviewedAt" class="text-xs text-gray-500 dark:text-gray-400">
-                      Reviewed {{ formatDateTime(selectedReview.reviewedAt) }}
-                    </div>
+                  </template>
+                </div>
+
+                <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-5">
+                  <div>
+                    <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Manual Grading Profile</h4>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Use structured 0-5 criteria when you want a setup score that is independent from automated market-data coverage.
+                    </p>
                   </div>
 
-                  <div v-if="selectedReview?.ruleResults?.length" class="space-y-3">
-                    <div
-                      v-for="rule in selectedReview.ruleResults"
-                      :key="rule.key"
-                      class="rounded-lg border px-3 py-3"
-                      :class="rule.passed
-                        ? 'border-green-200 bg-green-50 dark:border-green-900/40 dark:bg-green-900/10'
-                        : 'border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-900/10'"
-                    >
-                      <div class="flex items-center justify-between gap-4">
-                        <div class="text-sm font-medium text-gray-900 dark:text-white">{{ rule.label }}</div>
-                        <span :class="rule.passed ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'" class="text-xs font-semibold uppercase tracking-wide">
-                          {{ rule.passed ? 'Passed' : 'Failed' }}
+                  <div v-if="manualGradingProfiles.length === 0" class="rounded-lg border border-dashed border-gray-300 dark:border-gray-700 p-4 text-sm text-gray-500 dark:text-gray-400">
+                    Create a 0-5 grading profile to score setup quality manually.
+                  </div>
+
+                  <template v-else>
+                    <div>
+                      <div class="mb-1 flex items-center justify-between gap-3">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Grading Profile</label>
+                        <span
+                          v-if="trade.suggestedManualGradingProfileId && selectedManualGradingProfileId === trade.suggestedManualGradingProfileId && !trade.manualGradingReview"
+                          class="text-xs font-medium text-primary-700 dark:text-primary-300"
+                        >
+                          Suggested from trade rules
                         </span>
                       </div>
-                      <div class="mt-2 text-xs text-gray-600 dark:text-gray-400">
-                        <div><span class="font-medium">Expected:</span> {{ Array.isArray(rule.expected) ? rule.expected.join(', ') : (rule.expected || 'N/A') }}</div>
-                        <div><span class="font-medium">Actual:</span> {{ Array.isArray(rule.actual) ? rule.actual.join(', ') : (rule.actual || 'N/A') }}</div>
-                        <div v-if="rule.violationMessage" class="mt-1 text-red-700 dark:text-red-300">{{ rule.violationMessage }}</div>
+                      <BaseSelect
+                        v-model="selectedManualGradingProfileId"
+                        :options="manualGradingProfileOptions"
+                        placeholder="Select a grading profile"
+                        @change="onManualGradingProfileChange"
+                      />
+                    </div>
+
+                    <div v-if="selectedManualGradingProfile" class="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+                      <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                        <div class="flex items-center justify-between mb-3">
+                          <div>
+                            <h5 class="text-sm font-semibold text-gray-900 dark:text-white">Grading Criteria</h5>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">
+                              {{ getReviewCompletion(selectedManualGradingProfile, manualGradingReviewForm).label }}
+                            </p>
+                          </div>
+                          <span
+                            v-if="selectedManualGradingReview"
+                            class="inline-flex rounded-full px-3 py-1 text-sm font-semibold"
+                            :class="selectedManualGradingReview.adherenceScore >= 80
+                              ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                              : selectedManualGradingReview.adherenceScore >= 60
+                              ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400'
+                              : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'"
+                          >
+                            {{ selectedManualGradingReview.grade ? `Grade ${selectedManualGradingReview.grade}` : `${Number(selectedManualGradingReview.adherenceScore || 0).toFixed(2)} score` }}
+                          </span>
+                        </div>
+
+                        <div class="space-y-3">
+                          <div
+                            v-for="item in manualGradingReviewForm.checklistResponses"
+                            :key="item.checklistItemId"
+                            class="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-3"
+                          >
+                            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                              <div class="min-w-0">
+                                <div class="text-sm font-medium text-gray-900 dark:text-white">
+                                  {{ item.label }}
+                                </div>
+                                <div class="mt-1 flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400">
+                                  <span>Weight {{ Number(item.weight || 1).toFixed(2) }}</span>
+                                  <span v-if="item.isRequired" class="text-orange-600 dark:text-orange-400">Required</span>
+                                </div>
+                              </div>
+                              <div class="flex items-center gap-3 sm:w-56">
+                                <input
+                                  v-model.number="item.score"
+                                  type="range"
+                                  min="0"
+                                  max="5"
+                                  step="0.5"
+                                  class="w-full accent-primary-600"
+                                />
+                                <input
+                                  v-model.number="item.score"
+                                  type="number"
+                                  min="0"
+                                  max="5"
+                                  step="0.5"
+                                  class="input w-20"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-4">
+                        <div>
+                          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Grading notes</label>
+                          <textarea
+                            v-model="manualGradingReviewForm.reviewNotes"
+                            rows="6"
+                            class="input"
+                            placeholder="Why did this setup deserve this grade?"
+                          ></textarea>
+                        </div>
+
+                        <button
+                          @click="saveTradeReview('manual_grading')"
+                          :disabled="savingManualGradingReview || selectedManualGradingProfile?.isActive === false"
+                          class="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {{ savingManualGradingReview ? 'Saving...' : 'Save Manual Grade' }}
+                        </button>
+                        <p v-if="selectedManualGradingProfile?.isActive === false" class="text-xs text-amber-600 dark:text-amber-400">
+                          Archived grading profiles remain visible on old reviews but cannot be used for new submissions.
+                        </p>
                       </div>
                     </div>
-                  </div>
 
-                  <p v-else class="text-sm text-gray-500 dark:text-gray-400">
-                    Save a review to evaluate stop loss, target R, side, timeframe, and any configured strategy/setup/tag rules.
-                  </p>
+                    <div v-if="selectedManualGradingProfile" class="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                      <div class="flex items-center justify-between mb-3">
+                        <div>
+                          <h5 class="text-sm font-semibold text-gray-900 dark:text-white">Profile Rule Results</h5>
+                          <p class="text-xs text-gray-500 dark:text-gray-400">
+                            Fixed checks still apply after the manual criterion score is calculated.
+                          </p>
+                        </div>
+                        <div v-if="selectedManualGradingReview?.reviewedAt" class="text-xs text-gray-500 dark:text-gray-400">
+                          Reviewed {{ formatDateTime(selectedManualGradingReview.reviewedAt) }}
+                        </div>
+                      </div>
+
+                      <div v-if="selectedManualGradingReview?.ruleResults?.length" class="space-y-3">
+                        <div
+                          v-for="rule in selectedManualGradingReview.ruleResults"
+                          :key="rule.key"
+                          class="rounded-lg border px-3 py-3"
+                          :class="rule.passed
+                            ? 'border-green-200 bg-green-50 dark:border-green-900/40 dark:bg-green-900/10'
+                            : 'border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-900/10'"
+                        >
+                          <div class="flex items-center justify-between gap-4">
+                            <div class="text-sm font-medium text-gray-900 dark:text-white">{{ rule.label }}</div>
+                            <span :class="rule.passed ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'" class="text-xs font-semibold uppercase tracking-wide">
+                              {{ rule.passed ? 'Passed' : 'Failed' }}
+                            </span>
+                          </div>
+                          <div class="mt-2 text-xs text-gray-600 dark:text-gray-400">
+                            <div><span class="font-medium">Expected:</span> {{ Array.isArray(rule.expected) ? rule.expected.join(', ') : (rule.expected || 'N/A') }}</div>
+                            <div><span class="font-medium">Actual:</span> {{ Array.isArray(rule.actual) ? rule.actual.join(', ') : (rule.actual || 'N/A') }}</div>
+                            <div v-if="rule.violationMessage" class="mt-1 text-red-700 dark:text-red-300">{{ rule.violationMessage }}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <p v-else class="text-sm text-gray-500 dark:text-gray-400">
+                        Save a manual grading review to evaluate any configured side, timeframe, stop loss, target R, strategy, setup, or tag rules.
+                      </p>
+                    </div>
+                  </template>
                 </div>
               </div>
             </div>
@@ -1502,24 +1640,39 @@ const splittingTrade = ref(false)
 const splitMode = ref(false)
 const selectedExecutions = ref(new Set())
 const playbooks = ref([])
-const playbookOptions = computed(() =>
-  playbooks.value.map(playbook => ({
+const adherencePlaybooks = computed(() => playbooks.value.filter(playbook => playbook.reviewMode !== 'score'))
+const manualGradingProfiles = computed(() => playbooks.value.filter(playbook => playbook.reviewMode === 'score'))
+const adherencePlaybookOptions = computed(() =>
+  adherencePlaybooks.value.map(playbook => ({
     value: playbook.id,
-    label: `${playbook.name}${playbook.reviewMode === 'score' ? ' (0-5)' : ''}${playbook.isActive === false ? ' (Archived)' : ''}`,
+    label: `${playbook.name}${playbook.isActive === false ? ' (Archived)' : ''}`,
     disabled: playbook.isActive === false && playbook.id !== trade.value?.playbookId
   }))
 )
+const manualGradingProfileOptions = computed(() =>
+  manualGradingProfiles.value.map(playbook => ({
+    value: playbook.id,
+    label: `${playbook.name}${playbook.isActive === false ? ' (Archived)' : ''}`,
+    disabled: playbook.isActive === false && playbook.id !== trade.value?.manualGradingProfileId
+  }))
+)
 const loadingPlaybooks = ref(false)
-const savingPlaybookReview = ref(false)
+const savingAdherenceReview = ref(false)
+const savingManualGradingReview = ref(false)
 const showAIPanel = ref(false)
 const showShareCard = ref(false)
 const storedAIAnalyses = ref([])
 const storedAIExpanded = ref(false)
 const loadingStoredAIAnalyses = ref(false)
-const selectedPlaybookId = ref('')
-const reviewForm = reactive({
+const selectedAdherencePlaybookId = ref('')
+const selectedManualGradingProfileId = ref('')
+const adherenceReviewForm = reactive({
   checklistResponses: [],
   followedPlan: '',
+  reviewNotes: ''
+})
+const manualGradingReviewForm = reactive({
+  checklistResponses: [],
   reviewNotes: ''
 })
 
@@ -1528,38 +1681,44 @@ const isPlaybookFeatureAvailable = computed(() => {
   return authStore.user.billingEnabled === false || authStore.user.tier === 'pro' || authStore.user.role === 'admin'
 })
 
-const selectedPlaybook = computed(() => {
-  return playbooks.value.find(playbook => playbook.id === selectedPlaybookId.value) || null
+const selectedAdherencePlaybook = computed(() => {
+  return adherencePlaybooks.value.find(playbook => playbook.id === selectedAdherencePlaybookId.value) || null
 })
 
-const selectedReview = computed(() => {
-  const review = trade.value?.playbookReview
-  if (!review || review.playbookId !== selectedPlaybookId.value) {
+const selectedManualGradingProfile = computed(() => {
+  return manualGradingProfiles.value.find(playbook => playbook.id === selectedManualGradingProfileId.value) || null
+})
+
+const selectedAdherenceReview = computed(() => {
+  const review = trade.value?.playbookAdherenceReview
+  if (!review || review.playbookId !== selectedAdherencePlaybookId.value) {
     return null
   }
   return review
 })
 
-const checklistCompletion = computed(() => {
+const selectedManualGradingReview = computed(() => {
+  const review = trade.value?.manualGradingReview
+  if (!review || review.playbookId !== selectedManualGradingProfileId.value) {
+    return null
+  }
+  return review
+})
+
+function getReviewCompletion(playbook, reviewForm) {
   const total = reviewForm.checklistResponses.length
-  if (total === 0) return { checked: 0, total: 0 }
+  if (!playbook) {
+    return { label: 'No profile selected' }
+  }
+
+  if (playbook.reviewMode === 'score') {
+    const scored = reviewForm.checklistResponses.filter(item => Number(item.score) > 0).length
+    return { label: `${scored}/${total} criteria scored` }
+  }
 
   const checked = reviewForm.checklistResponses.filter(item => item.checked).length
-  return { checked, total }
-})
-
-const reviewCompletion = computed(() => {
-  const total = reviewForm.checklistResponses.length
-  if (selectedPlaybook.value?.reviewMode === 'score') {
-    const scored = reviewForm.checklistResponses.filter(item => Number(item.score) > 0).length
-    return { scored, total, label: `${scored}/${total} criteria scored` }
-  }
-
-  return {
-    ...checklistCompletion.value,
-    label: `${checklistCompletion.value.checked}/${checklistCompletion.value.total} items checked`
-  }
-})
+  return { label: `${checked}/${total} items checked` }
+}
 
 const storedAIResponseCount = computed(() => {
   return storedAIAnalyses.value.reduce((sum, analysis) => sum + (analysis.response_count || 0), 0)
@@ -1703,27 +1862,38 @@ function buildChecklistResponses(playbook, existingReview = null) {
   }))
 }
 
-function syncReviewForm() {
-  const playbook = selectedPlaybook.value
-  const review = selectedReview.value
-
+function syncReviewForm(playbook, review, form, includeFollowedPlan = false) {
   if (!playbook) {
-    reviewForm.checklistResponses = []
-    reviewForm.followedPlan = ''
-    reviewForm.reviewNotes = ''
+    form.checklistResponses = []
+    if (includeFollowedPlan && 'followedPlan' in form) {
+      form.followedPlan = ''
+    }
+    form.reviewNotes = ''
     return
   }
 
-  reviewForm.checklistResponses = buildChecklistResponses(playbook, review)
-  reviewForm.followedPlan = review?.followedPlan === true ? 'true' : review?.followedPlan === false ? 'false' : ''
-  reviewForm.reviewNotes = review?.reviewNotes || ''
+  form.checklistResponses = buildChecklistResponses(playbook, review)
+  if (includeFollowedPlan && 'followedPlan' in form) {
+    form.followedPlan = review?.followedPlan === true ? 'true' : review?.followedPlan === false ? 'false' : ''
+  }
+  form.reviewNotes = review?.reviewNotes || ''
+}
+
+function syncAdherenceReviewForm() {
+  syncReviewForm(selectedAdherencePlaybook.value, selectedAdherenceReview.value, adherenceReviewForm, true)
+}
+
+function syncManualGradingReviewForm() {
+  syncReviewForm(selectedManualGradingProfile.value, selectedManualGradingReview.value, manualGradingReviewForm, false)
 }
 
 async function loadPlaybooks() {
   if (!isPlaybookFeatureAvailable.value) {
     playbooks.value = []
-    selectedPlaybookId.value = ''
-    syncReviewForm()
+    selectedAdherencePlaybookId.value = ''
+    selectedManualGradingProfileId.value = ''
+    syncAdherenceReviewForm()
+    syncManualGradingReviewForm()
     return
   }
 
@@ -1732,17 +1902,34 @@ async function loadPlaybooks() {
     const response = await api.get('/playbooks', { params: { includeArchived: true } })
     playbooks.value = response.data.playbooks || []
 
-    if (trade.value?.playbookReview?.playbookId) {
-      selectedPlaybookId.value = trade.value.playbookReview.playbookId
-    } else if (trade.value?.suggestedPlaybookId && playbooks.value.some(playbook => playbook.id === trade.value.suggestedPlaybookId)) {
-      selectedPlaybookId.value = trade.value.suggestedPlaybookId
-    } else if (selectedPlaybookId.value && playbooks.value.some(playbook => playbook.id === selectedPlaybookId.value)) {
-      selectedPlaybookId.value = selectedPlaybookId.value
+    if (trade.value?.playbookAdherenceReview?.playbookId) {
+      selectedAdherencePlaybookId.value = trade.value.playbookAdherenceReview.playbookId
+    } else if (trade.value?.suggestedPlaybookId && adherencePlaybooks.value.some(playbook => playbook.id === trade.value.suggestedPlaybookId)) {
+      selectedAdherencePlaybookId.value = trade.value.suggestedPlaybookId
+    } else if (selectedAdherencePlaybookId.value && adherencePlaybooks.value.some(playbook => playbook.id === selectedAdherencePlaybookId.value)) {
+      selectedAdherencePlaybookId.value = selectedAdherencePlaybookId.value
     } else {
-      selectedPlaybookId.value = ''
+      selectedAdherencePlaybookId.value = ''
     }
 
-    syncReviewForm()
+    if (trade.value?.manualGradingReview?.playbookId) {
+      selectedManualGradingProfileId.value = trade.value.manualGradingReview.playbookId
+    } else if (
+      trade.value?.suggestedManualGradingProfileId
+      && manualGradingProfiles.value.some(playbook => playbook.id === trade.value.suggestedManualGradingProfileId)
+    ) {
+      selectedManualGradingProfileId.value = trade.value.suggestedManualGradingProfileId
+    } else if (
+      selectedManualGradingProfileId.value
+      && manualGradingProfiles.value.some(playbook => playbook.id === selectedManualGradingProfileId.value)
+    ) {
+      selectedManualGradingProfileId.value = selectedManualGradingProfileId.value
+    } else {
+      selectedManualGradingProfileId.value = ''
+    }
+
+    syncAdherenceReviewForm()
+    syncManualGradingReviewForm()
   } catch (error) {
     console.error('Failed to load profiles:', error)
     showError('Error', 'Failed to load profiles')
@@ -1751,17 +1938,27 @@ async function loadPlaybooks() {
   }
 }
 
-function onPlaybookChange() {
-  syncReviewForm()
+function onAdherencePlaybookChange() {
+  syncAdherenceReviewForm()
 }
 
-async function savePlaybookReview() {
-  if (!trade.value?.id || !selectedPlaybookId.value) {
-    showError('Validation', 'Select a playbook before saving a review')
+function onManualGradingProfileChange() {
+  syncManualGradingReviewForm()
+}
+
+async function saveTradeReview(reviewType) {
+  const isManualGrading = reviewType === 'manual_grading'
+  const selectedPlaybookId = isManualGrading ? selectedManualGradingProfileId.value : selectedAdherencePlaybookId.value
+  const selectedPlaybook = isManualGrading ? selectedManualGradingProfile.value : selectedAdherencePlaybook.value
+  const reviewForm = isManualGrading ? manualGradingReviewForm : adherenceReviewForm
+  const savingRef = isManualGrading ? savingManualGradingReview : savingAdherenceReview
+
+  if (!trade.value?.id || !selectedPlaybookId) {
+    showError('Validation', `Select a ${isManualGrading ? 'manual grading profile' : 'playbook'} before saving`)
     return
   }
 
-  const isScoreMode = selectedPlaybook.value?.reviewMode === 'score'
+  const isScoreMode = selectedPlaybook?.reviewMode === 'score'
   if (isScoreMode) {
     const invalidScore = reviewForm.checklistResponses.some(item => {
       const score = Number(item.score)
@@ -1774,32 +1971,44 @@ async function savePlaybookReview() {
   }
 
   try {
-    savingPlaybookReview.value = true
+    savingRef.value = true
     const response = await api.put(`/playbooks/trades/${trade.value.id}/review`, {
-      playbookId: selectedPlaybookId.value,
+      playbookId: selectedPlaybookId,
       checklistResponses: reviewForm.checklistResponses.map(item => ({
         checklistItemId: item.checklistItemId,
         ...(isScoreMode
           ? { score: Number(item.score) || 0 }
           : { checked: item.checked === true })
       })),
-      followedPlan: reviewForm.followedPlan === ''
+      followedPlan: isManualGrading
         ? null
-        : reviewForm.followedPlan === 'true',
+        : reviewForm.followedPlan === ''
+          ? null
+          : reviewForm.followedPlan === 'true',
       reviewNotes: reviewForm.reviewNotes?.trim() || null
     })
 
-    trade.value.playbookId = response.data.review.playbookId
-    trade.value.playbookReview = response.data.review
-    trade.value.suggestedPlaybook = null
-    trade.value.suggestedPlaybookId = null
-    syncReviewForm()
-    showSuccess('Success', 'Playbook review saved')
+    if (isManualGrading) {
+      trade.value.manualGradingReview = response.data.review
+      trade.value.manualGradingProfileId = response.data.review.playbookId
+      trade.value.suggestedManualGradingProfile = null
+      trade.value.suggestedManualGradingProfileId = null
+      syncManualGradingReviewForm()
+      showSuccess('Success', 'Manual grading saved')
+    } else {
+      trade.value.playbookId = response.data.review.playbookId
+      trade.value.playbookReview = response.data.review
+      trade.value.playbookAdherenceReview = response.data.review
+      trade.value.suggestedPlaybook = null
+      trade.value.suggestedPlaybookId = null
+      syncAdherenceReviewForm()
+      showSuccess('Success', 'Playbook review saved')
+    }
   } catch (error) {
-    console.error('Failed to save playbook review:', error)
-    showError('Error', error.response?.data?.error || 'Failed to save playbook review')
+    console.error(`Failed to save ${reviewType} review:`, error)
+    showError('Error', error.response?.data?.error || `Failed to save ${isManualGrading ? 'manual grading' : 'playbook review'}`)
   } finally {
-    savingPlaybookReview.value = false
+    savingRef.value = false
   }
 }
 

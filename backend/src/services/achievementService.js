@@ -521,14 +521,17 @@ class AchievementService {
     const result = await db.query(`
       SELECT COUNT(*)::int AS qualifying_trades
       FROM trades t
-      LEFT JOIN trade_playbook_reviews r
-        ON r.trade_id = t.id
-       AND r.user_id = t.user_id
       WHERE t.user_id = $1
         AND t.exit_time IS NOT NULL
         AND (
           LENGTH(BTRIM(COALESCE(t.notes, ''))) >= $2
-          OR LENGTH(BTRIM(COALESCE(r.review_notes, ''))) >= $2
+          OR EXISTS (
+            SELECT 1
+            FROM trade_playbook_reviews r
+            WHERE r.trade_id = t.id
+              AND r.user_id = t.user_id
+              AND LENGTH(BTRIM(COALESCE(r.review_notes, ''))) >= $2
+          )
         )
     `, [userId, minLength]);
 
@@ -573,16 +576,19 @@ class AchievementService {
     const result = await db.query(`
       SELECT COUNT(*)::int AS qualifying_trades
       FROM trades t
-      LEFT JOIN trade_playbook_reviews r
-        ON r.trade_id = t.id
-       AND r.user_id = t.user_id
       WHERE t.user_id = $1
         AND t.exit_time IS NOT NULL
         AND t.stop_loss IS NOT NULL
         AND LENGTH(BTRIM(COALESCE(t.setup, ''))) > 0
         AND (
           LENGTH(BTRIM(COALESCE(t.notes, ''))) >= $2
-          OR LENGTH(BTRIM(COALESCE(r.review_notes, ''))) >= $2
+          OR EXISTS (
+            SELECT 1
+            FROM trade_playbook_reviews r
+            WHERE r.trade_id = t.id
+              AND r.user_id = t.user_id
+              AND LENGTH(BTRIM(COALESCE(r.review_notes, ''))) >= $2
+          )
         )
     `, [userId, minLength]);
 
@@ -605,6 +611,7 @@ class AchievementService {
       SELECT COUNT(*)::int AS completed_reviews
       FROM trade_playbook_reviews
       WHERE user_id = $1
+        AND review_type = 'adherence'
         AND reviewed_at >= CURRENT_TIMESTAMP - ($2::int * INTERVAL '1 day')
     `, [userId, days]);
 
@@ -630,6 +637,7 @@ class AchievementService {
         ON t.id = r.trade_id
        AND t.user_id = r.user_id
       WHERE r.user_id = $1
+        AND r.review_type = 'adherence'
         AND r.followed_plan = true
         AND t.exit_time IS NOT NULL
     `, [userId]);
@@ -655,6 +663,7 @@ class AchievementService {
         ON t.id = r.trade_id
        AND t.user_id = r.user_id
       WHERE r.user_id = $1
+        AND r.review_type = 'adherence'
         AND t.exit_time IS NOT NULL
         AND r.followed_plan = true
         AND COALESCE(r.adherence_score, 0) >= $2

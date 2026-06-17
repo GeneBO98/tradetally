@@ -147,6 +147,35 @@ function mapSuggestedPlaybook(playbook) {
   };
 }
 
+function mapTradeReview(review) {
+  if (!review) return null;
+
+  return {
+    id: review.id,
+    tradeId: review.trade_id,
+    playbookId: review.playbook_id,
+    playbookName: review.playbook_name,
+    adherenceScore: review.adherence_score !== null && review.adherence_score !== undefined
+      ? Number(review.adherence_score)
+      : null,
+    checklistScore: review.checklist_score !== null && review.checklist_score !== undefined
+      ? Number(review.checklist_score)
+      : null,
+    grade: review.playbook_review_mode === 'score'
+      ? PlaybookAdherenceService.scoreToGrade(review.adherence_score)
+      : null,
+    reviewMode: review.playbook_review_mode === 'score' ? 'score' : 'checklist',
+    reviewType: review.review_type || 'adherence',
+    followedPlan: review.followed_plan,
+    reviewNotes: review.review_notes,
+    checklistResponses: review.checklist_responses || [],
+    ruleResults: review.rule_results || [],
+    violationSummary: review.violation_summary || [],
+    reviewedAt: review.reviewed_at,
+    updatedAt: review.updated_at
+  };
+}
+
 function isUuid(value) {
   return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
@@ -1005,45 +1034,40 @@ const tradeController = {
       if (trade.quality_metrics !== undefined) trade.qualityMetrics = trade.quality_metrics;
 
       if (req.user?.id) {
-        const review = await Playbook.getTradeReviewByTradeId(tradeId, req.user.id);
-        trade.playbookId = review?.playbook_id || null;
-        trade.playbookReview = review ? {
-          id: review.id,
-          tradeId: review.trade_id,
-          playbookId: review.playbook_id,
-          playbookName: review.playbook_name,
-          adherenceScore: review.adherence_score !== null && review.adherence_score !== undefined
-            ? Number(review.adherence_score)
-            : null,
-          checklistScore: review.checklist_score !== null && review.checklist_score !== undefined
-            ? Number(review.checklist_score)
-            : null,
-          grade: review.playbook_review_mode === 'score'
-            ? PlaybookAdherenceService.scoreToGrade(review.adherence_score)
-            : null,
-          reviewMode: review.playbook_review_mode === 'score' ? 'score' : 'checklist',
-          followedPlan: review.followed_plan,
-          reviewNotes: review.review_notes,
-          checklistResponses: review.checklist_responses || [],
-          ruleResults: review.rule_results || [],
-          violationSummary: review.violation_summary || [],
-          reviewedAt: review.reviewed_at,
-          updatedAt: review.updated_at
-        } : null;
-        if (!review) {
-          const suggestionCandidates = await Playbook.listAutoAssignableByUser(req.user.id);
-          const suggestedPlaybook = PlaybookAdherenceService.selectSuggestedPlaybook(suggestionCandidates, trade);
-          trade.suggestedPlaybook = mapSuggestedPlaybook(suggestedPlaybook);
-          trade.suggestedPlaybookId = suggestedPlaybook?.id || null;
-        } else {
-          trade.suggestedPlaybook = null;
-          trade.suggestedPlaybookId = null;
-        }
+        const reviews = await Playbook.getTradeReviewsByTradeId(tradeId, req.user.id);
+        const adherenceReview = reviews.find(review => review.review_type === 'adherence') || null;
+        const manualGradingReview = reviews.find(review => review.review_type === 'manual_grading') || null;
+
+        trade.playbookId = adherenceReview?.playbook_id || null;
+        trade.playbookReview = mapTradeReview(adherenceReview);
+        trade.playbookAdherenceReview = mapTradeReview(adherenceReview);
+        trade.manualGradingReview = mapTradeReview(manualGradingReview);
+        trade.manualGradingProfileId = manualGradingReview?.playbook_id || null;
+
+        const suggestionCandidates = await Playbook.listAutoAssignableByUser(req.user.id);
+        const suggestedAdherencePlaybook = PlaybookAdherenceService.selectSuggestedPlaybook(
+          suggestionCandidates.filter(candidate => Playbook.getReviewTypeForPlaybook(candidate) === 'adherence'),
+          trade
+        );
+        const suggestedManualGradingProfile = PlaybookAdherenceService.selectSuggestedPlaybook(
+          suggestionCandidates.filter(candidate => Playbook.getReviewTypeForPlaybook(candidate) === 'manual_grading'),
+          trade
+        );
+
+        trade.suggestedPlaybook = adherenceReview ? null : mapSuggestedPlaybook(suggestedAdherencePlaybook);
+        trade.suggestedPlaybookId = adherenceReview ? null : (suggestedAdherencePlaybook?.id || null);
+        trade.suggestedManualGradingProfile = manualGradingReview ? null : mapSuggestedPlaybook(suggestedManualGradingProfile);
+        trade.suggestedManualGradingProfileId = manualGradingReview ? null : (suggestedManualGradingProfile?.id || null);
       } else {
         trade.playbookId = null;
         trade.playbookReview = null;
+        trade.playbookAdherenceReview = null;
+        trade.manualGradingReview = null;
+        trade.manualGradingProfileId = null;
         trade.suggestedPlaybook = null;
         trade.suggestedPlaybookId = null;
+        trade.suggestedManualGradingProfile = null;
+        trade.suggestedManualGradingProfileId = null;
       }
 
       trade.setupQuality = buildSetupQuality(trade);

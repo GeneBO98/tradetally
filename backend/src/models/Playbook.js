@@ -1,6 +1,12 @@
 const db = require('../config/database');
 
 class Playbook {
+  static getReviewTypeForPlaybook(playbook) {
+    return playbook?.review_mode === 'score' || playbook?.reviewMode === 'score'
+      ? 'manual_grading'
+      : 'adherence';
+  }
+
   static async listByUser(userId, { includeArchived = false } = {}) {
     const result = await db.query(
       `
@@ -266,11 +272,11 @@ class Playbook {
       `
         INSERT INTO trade_playbook_reviews (
           user_id, trade_id, playbook_id, adherence_score, checklist_score,
-          followed_plan, review_notes, checklist_responses, rule_results,
+          review_type, followed_plan, review_notes, checklist_responses, rule_results,
           violation_summary, reviewed_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10::jsonb, CURRENT_TIMESTAMP)
-        ON CONFLICT (trade_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11::jsonb, CURRENT_TIMESTAMP)
+        ON CONFLICT (trade_id, review_type)
         DO UPDATE SET
           playbook_id = EXCLUDED.playbook_id,
           adherence_score = EXCLUDED.adherence_score,
@@ -289,6 +295,7 @@ class Playbook {
         payload.playbookId,
         payload.adherenceScore,
         payload.checklistScore,
+        payload.reviewType || 'adherence',
         payload.followedPlan,
         payload.reviewNotes || null,
         JSON.stringify(payload.checklistResponses || []),
@@ -300,7 +307,7 @@ class Playbook {
     return result.rows[0];
   }
 
-  static async getTradeReviewByTradeId(tradeId, userId) {
+  static async getTradeReviewByTradeId(tradeId, userId, reviewType = null) {
     const result = await db.query(
       `
         SELECT
@@ -309,15 +316,35 @@ class Playbook {
           p.review_mode AS playbook_review_mode
         FROM trade_playbook_reviews r
         INNER JOIN playbooks p ON p.id = r.playbook_id
-        WHERE r.trade_id = $1 AND r.user_id = $2
+        WHERE r.trade_id = $1
+          AND r.user_id = $2
+          AND ($3::text IS NULL OR r.review_type = $3)
       `,
-      [tradeId, userId]
+      [tradeId, userId, reviewType]
     );
 
     return result.rows[0] || null;
   }
 
-  static async getTradeReviewSummaries(userId, tradeIds) {
+  static async getTradeReviewsByTradeId(tradeId, userId) {
+    const result = await db.query(
+      `
+        SELECT
+          r.*,
+          p.name AS playbook_name,
+          p.review_mode AS playbook_review_mode
+        FROM trade_playbook_reviews r
+        INNER JOIN playbooks p ON p.id = r.playbook_id
+        WHERE r.trade_id = $1
+          AND r.user_id = $2
+      `,
+      [tradeId, userId]
+    );
+
+    return result.rows;
+  }
+
+  static async getTradeReviewSummaries(userId, tradeIds, reviewType = 'adherence') {
     if (!Array.isArray(tradeIds) || tradeIds.length === 0) {
       return [];
     }
@@ -336,8 +363,9 @@ class Playbook {
         INNER JOIN playbooks p ON p.id = r.playbook_id
         WHERE r.user_id = $1
           AND r.trade_id = ANY($2::uuid[])
+          AND r.review_type = $3
       `,
-      [userId, tradeIds]
+      [userId, tradeIds, reviewType]
     );
 
     return result.rows;
@@ -365,6 +393,7 @@ class Playbook {
           FROM playbooks p
           LEFT JOIN trade_playbook_reviews r
             ON r.playbook_id = p.id AND r.user_id = $1
+            AND r.review_type = 'adherence'
             AND ($2::text[] IS NULL OR EXISTS (
               SELECT 1 FROM trades tt
               WHERE tt.id = r.trade_id AND tt.account_identifier = ANY($2::text[])
@@ -424,6 +453,7 @@ class Playbook {
         FROM trade_playbook_reviews r
         INNER JOIN trades t ON t.id = r.trade_id
         WHERE r.user_id = $1
+          AND r.review_type = 'adherence'
           AND ($2::text[] IS NULL OR t.account_identifier = ANY($2::text[]))
         ORDER BY r.reviewed_at DESC
         LIMIT 20
@@ -451,6 +481,7 @@ class Playbook {
           ROUND(COALESCE(AVG(adherence_score), 0)::numeric, 2) AS adherence_average
         FROM trade_playbook_reviews r
         WHERE r.user_id = $1
+          AND r.review_type = 'adherence'
           AND ($2::text[] IS NULL OR EXISTS (
             SELECT 1 FROM trades tt
             WHERE tt.id = r.trade_id AND tt.account_identifier = ANY($2::text[])
