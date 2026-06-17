@@ -34,6 +34,9 @@ For Management R calculations, both the actual outcome and the ghost scenario (w
 ### Stop Loss for R Calculations
 R values use the **current** stop loss, not the original. The `risk_level_history` field tracks historical stop loss moves for display purposes (showing "Saved R" from SL moves), but R calculations always use the current stop loss value.
 
+### Fixed-Dollar-Risk Users (Dashboard Aggregate)
+When a user's `default_stop_loss_type` is `dollar`, their risk per trade is a **constant dollar amount** (`default_stop_loss_dollars`), so each trade's R is simply `net P&L / dollar risk`. The dashboard/analytics aggregate (`TradeQueries.getAnalytics`) derives R this way for dollar-risk users instead of reverse-engineering risk from each stored stop loss. Because `pnl` is already stored in dollars (futures/option multiplier applied), this needs no per-instrument multiplier and reconciles exactly: `SUM(R) = SUM(pnl) / risk`. Deriving risk from the stored stop instead skewed the aggregate negative — winners trailed to/above breakeven yielded a NULL price-based risk and dropped out, while losers with a tight stored stop blew up the denominator (issue #345). Percent-stop users keep the per-trade `(entry − stop) × qty × multiplier` derivation.
+
 ---
 
 ## Weighted Target R (Potential R)

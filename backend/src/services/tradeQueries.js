@@ -104,6 +104,23 @@ function derivedRValueSql(alias = 't') {
   END`;
 }
 
+// Fixed-dollar-risk traders define R as a constant dollar amount per trade, so
+// every trade's R-multiple is simply net P&L / dollar risk (issue #345). pnl is
+// already stored in dollars with the futures/option multiplier applied, so this
+// needs no per-instrument multiplier and reconciles exactly: SUM(R) = SUM(pnl) /
+// risk. Deriving risk from each stored stop loss instead skewed the aggregate
+// negative — winners trailed to/above breakeven produced a NULL price-based risk
+// and dropped out, while losers with a tight stored stop blew up the denominator.
+// `dollarRisk` is a server-side validated number (never user query input), so
+// interpolating it into the SQL literal is safe.
+function derivedRValueDollarSql(alias, dollarRisk) {
+  return `CASE
+    WHEN ${alias}.pnl IS NOT NULL
+      THEN ${alias}.pnl / ${dollarRisk}
+    ELSE NULL
+  END`;
+}
+
 class TradeQueries {
   // Internal: builds the WHERE clause and parameter array for a filter spec.
   // Returns { whereClause, values, paramCount, needsSectorOuterJoin }.
@@ -456,6 +473,9 @@ class TradeQueries {
     // single trade so the headline win rate / counts / profit factor are
     // measured per position. Total P&L is unchanged.
     let groupByPosition = false;
+    // For fixed-dollar-risk users, R is net P&L / dollar risk rather than a
+    // value derived from each stored stop loss (issue #345).
+    let dollarRisk = null;
     try {
       const userSettings = await User.getSettings(userId);
       useMedian = userSettings?.statistics_calculation === 'median';
@@ -464,6 +484,10 @@ class TradeQueries {
         default: userSettings?.breakeven_tolerance_ticks,
         byUnderlying: userSettings?.breakeven_tolerance_ticks_by_underlying
       });
+      const stopLossDollars = parseFloat(userSettings?.default_stop_loss_dollars);
+      if (userSettings?.default_stop_loss_type === 'dollar' && isFinite(stopLossDollars) && stopLossDollars > 0) {
+        dollarRisk = stopLossDollars;
+      }
     } catch (error) {
       console.warn('Could not fetch user settings for analytics, using default (average):', error.message);
     }
@@ -503,7 +527,9 @@ class TradeQueries {
       ${whereClause}
     `;
 
-    const derivedRValue = derivedRValueSql('t');
+    const derivedRValue = dollarRisk
+      ? derivedRValueDollarSql('t', dollarRisk)
+      : derivedRValueSql('t');
 
     // Per-leg vs per-position completed_trades. The grouped form sums legs that
     // share account + underlying/symbol + entry_time into one synthetic trade.

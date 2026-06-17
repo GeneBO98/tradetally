@@ -127,6 +127,25 @@ describe('TradeQueries.getAnalytics characterization', () => {
     expect(dailySql).not.toContain('SUM(r_value)');
   });
 
+  test('dollar-risk users derive R as net P&L over the fixed dollar risk (#345)', async () => {
+    const User = require('../../src/models/User');
+    User.getSettings.mockResolvedValueOnce({
+      statistics_calculation: 'average',
+      default_stop_loss_type: 'dollar',
+      default_stop_loss_dollars: 500
+    });
+
+    await TradeQueries.getAnalytics('user-1', {});
+
+    const analyticsSql = db.query.mock.calls[1][0];
+    const dailySql = db.query.mock.calls[3][0];
+    // Fixed-dollar risk: divide P&L by the constant dollar amount, with no
+    // stored-stop-loss or per-instrument multiplier in the denominator.
+    expect(analyticsSql).toContain('THEN t.pnl / 500');
+    expect(analyticsSql).not.toContain("WHEN 'MNQ' THEN 2");
+    expect(dailySql).toContain('THEN t.pnl / 500');
+  });
+
   describe('baseline', () => {
     test('no filters: only user_id binding', async () => {
       await TradeQueries.getAnalytics('user-1', {});
