@@ -477,12 +477,14 @@ class PortfolioService {
     const benchmarkIndex = this._buildSeriesIndex(benchmarkCandles);
 
     const series = [];
-    let firstPortfolioValue = null;
+    let portfolioIndexLevel = 100;
     let firstBenchmarkClose = null;
-    let previousPortfolioIndex = null;
     let previousBenchmarkIndex = null;
+    let previousValues = null;
+    let portfolioStarted = false;
 
     for (const date of canonicalDates) {
+      const currentValues = new Map();
       let portfolioValue = 0;
 
       for (const component of components) {
@@ -495,27 +497,52 @@ class PortfolioService {
           continue;
         }
 
-        portfolioValue += component.shares * candleValue * component.valueMultiplier;
+        const value = component.shares * candleValue * component.valueMultiplier;
+        currentValues.set(component, value);
+        portfolioValue += value;
       }
 
       const benchmarkClose = this._getIndexedClose(benchmarkIndex, date);
-
-      if (portfolioValue > 0 && firstPortfolioValue === null) {
-        firstPortfolioValue = portfolioValue;
-      }
 
       if (benchmarkClose !== null && firstBenchmarkClose === null) {
         firstBenchmarkClose = benchmarkClose;
       }
 
-      if (firstPortfolioValue === null || firstBenchmarkClose === null) {
-        continue;
+      // Start the series once we have at least one priced position and a benchmark anchor.
+      if (!portfolioStarted) {
+        if (currentValues.size === 0 || firstBenchmarkClose === null) {
+          continue;
+        }
+        portfolioStarted = true;
       }
 
-      const portfolioIndex = (portfolioValue / firstPortfolioValue) * 100;
-      const benchmarkIndexed = (benchmarkClose / firstBenchmarkClose) * 100;
-      const portfolioReturnPercent = ((portfolioIndex / 100) - 1) * 100;
-      const benchmarkReturnPercent = ((benchmarkIndexed / 100) - 1) * 100;
+      // Time-weighted daily return: only positions held (and priced) on BOTH the
+      // previous and current observation contribute to the day's return. Newly
+      // added positions and newly available price feeds are folded into the base
+      // without being booked as a gain, so contributions/late price history are
+      // not mistaken for investment performance.
+      let portfolioDailyReturn = null;
+      if (previousValues !== null) {
+        let baseValue = 0;
+        let endValue = 0;
+        for (const [component, value] of currentValues.entries()) {
+          if (previousValues.has(component)) {
+            baseValue += previousValues.get(component);
+            endValue += value;
+          }
+        }
+        if (baseValue > 0) {
+          portfolioDailyReturn = (endValue - baseValue) / baseValue;
+          portfolioIndexLevel *= 1 + portfolioDailyReturn;
+        }
+      }
+
+      const portfolioIndex = portfolioIndexLevel;
+      const benchmarkIndexed = benchmarkClose !== null && firstBenchmarkClose !== null
+        ? (benchmarkClose / firstBenchmarkClose) * 100
+        : null;
+      const portfolioReturnPercent = portfolioIndex - 100;
+      const benchmarkReturnPercent = benchmarkIndexed !== null ? benchmarkIndexed - 100 : null;
 
       const entry = {
         date,
@@ -525,19 +552,21 @@ class PortfolioService {
         benchmarkIndex: roundNullable(benchmarkIndexed),
         portfolioReturnPercent: round(portfolioReturnPercent),
         benchmarkReturnPercent: roundNullable(benchmarkReturnPercent),
-        relativeReturnPercent: roundNullable(portfolioReturnPercent - benchmarkReturnPercent)
+        relativeReturnPercent: benchmarkReturnPercent !== null
+          ? roundNullable(portfolioReturnPercent - benchmarkReturnPercent)
+          : null
       };
 
-      if (previousPortfolioIndex !== null && previousPortfolioIndex > 0) {
-        entry.portfolioDailyReturn = (portfolioIndex - previousPortfolioIndex) / previousPortfolioIndex;
+      if (portfolioDailyReturn !== null && Number.isFinite(portfolioDailyReturn)) {
+        entry.portfolioDailyReturn = portfolioDailyReturn;
       }
 
-      if (previousBenchmarkIndex !== null && previousBenchmarkIndex > 0) {
+      if (previousBenchmarkIndex !== null && previousBenchmarkIndex > 0 && benchmarkIndexed !== null) {
         entry.benchmarkDailyReturn = (benchmarkIndexed - previousBenchmarkIndex) / previousBenchmarkIndex;
       }
 
-      previousPortfolioIndex = portfolioIndex;
       previousBenchmarkIndex = benchmarkIndexed;
+      previousValues = currentValues;
       series.push(entry);
     }
 
