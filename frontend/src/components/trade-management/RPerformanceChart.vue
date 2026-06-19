@@ -73,12 +73,28 @@
             </div>
           </div>
 
-          <!-- R Left on Table -->
+          <!-- R Left on Table: only meaningful for trades with a take-profit
+               target. Without targets (common for derivatives) there is no
+               "potential R" to compare against, so show N/A rather than a
+               misleading negative-of-actual-R value. -->
           <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
             <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">R Left on Table</div>
-            <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate" :class="summary.r_left_on_table > 0 ? 'text-red-600 dark:text-red-400' : summary.r_left_on_table < 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'">
-              {{ formatR(summary.r_left_on_table) }}
-            </div>
+            <template v-if="summary.trades_with_target > 0">
+              <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate" :class="summary.r_left_on_table > 0 ? 'text-red-600 dark:text-red-400' : summary.r_left_on_table < 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'">
+                {{ formatR(summary.r_left_on_table) }}
+              </div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate shrink-0">
+                {{ summary.trades_with_target }} with targets
+              </div>
+            </template>
+            <template v-else>
+              <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate text-gray-400 dark:text-gray-500">
+                N/A
+              </div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate shrink-0" title="Needs a defined take-profit target; not available for most derivatives">
+                needs targets
+              </div>
+            </template>
           </div>
 
           <!-- Win Rate -->
@@ -87,8 +103,11 @@
             <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate text-gray-900 dark:text-white">
               {{ summary.win_rate }}%
             </div>
+            <div v-if="summary.break_even_trades > 0" class="text-xs text-gray-500 dark:text-gray-400 truncate shrink-0">
+              {{ summary.win_rate_excluding_breakeven }}% excl. BE
+            </div>
             <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate shrink-0">
-              {{ summary.winning_trades }}W / {{ summary.losing_trades }}L
+              {{ summary.winning_trades }}W / {{ summary.losing_trades }}L<template v-if="summary.break_even_trades > 0"> / {{ summary.break_even_trades }}BE</template>
             </div>
           </div>
 
@@ -165,19 +184,17 @@ async function fetchRPerformance() {
   loading.value = true
 
   try {
+    // Pass through the full filter set (matches the Performance page). Arrays
+    // are sent comma-separated; empty values are dropped.
     const params = { limit: 2000 }
-
-    if (props.filters.startDate) {
-      params.startDate = props.filters.startDate
-    }
-    if (props.filters.endDate) {
-      params.endDate = props.filters.endDate
-    }
-    if (props.filters.symbol && props.filters.symbol.trim()) {
-      params.symbol = props.filters.symbol.trim()
-    }
-    if (props.filters.accounts) {
-      params.accounts = props.filters.accounts
+    const f = props.filters || {}
+    for (const [key, value] of Object.entries(f)) {
+      if (value === null || value === undefined || value === '' || value === false) continue
+      if (Array.isArray(value)) {
+        if (value.length > 0) params[key] = value.join(',')
+      } else {
+        params[key] = typeof value === 'string' ? value.trim() : value
+      }
     }
 
     console.log('[R-PERF] Fetching R performance with params:', params)

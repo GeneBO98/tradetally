@@ -7,7 +7,6 @@ const { uuidv4 } = require('../utils/uuid');
 const TierService = require('./tierService');
 const NotificationPreferenceService = require('./notificationPreferenceService');
 const pushNotificationService = require('./pushNotificationService');
-const emailDeliveryService = require('./emailDeliveryService');
 const EmailService = require('./emailService');
 const { publish } = require('../events/domainEvents');
 const escapeHtml = require('../utils/escapeHtml');
@@ -44,7 +43,7 @@ class PriceMonitoringService {
   }
 
   isEmailConfigured() {
-    return emailDeliveryService.isConfigured();
+    return EmailService.isConfigured();
   }
 
   async start() {
@@ -216,13 +215,14 @@ class PriceMonitoringService {
             priority: 6,
             background: true,
             maxQueueWaitMs: 0
-          })
+          }),
+          finnhub.providerName || 'finnhub'
         ));
       }
 
       if (!priceData) {
         if (this.isProviderCapacityError(error)) {
-          logger.debug(`[FINNHUB-SCHEDULER] Price monitoring skipped ${symbol}: ${error.message}`);
+          logger.debug(`[MARKET-DATA-SCHEDULER] Price monitoring skipped ${symbol}: ${error.message}`);
           return 'skipped';
         }
 
@@ -524,7 +524,7 @@ class PriceMonitoringService {
         <p><em>This alert was sent from your TradeTally Pro account.</em></p>
       `;
 
-      await emailDeliveryService.sendMail({
+      await EmailService.createTransporter().sendMail({
         from: EmailService.getTransactionalFromAddress(),
         to: email,
         subject: subject,

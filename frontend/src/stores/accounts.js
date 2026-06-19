@@ -171,6 +171,13 @@ export const useAccountsStore = defineStore('accounts', () => {
     currentAccount.value = null
   }
 
+  async function fetchDayActivity(accountId, date) {
+    const response = await api.get(`/accounts/${accountId}/cashflow/day`, {
+      params: { date }
+    })
+    return response.data.data
+  }
+
   // ========================================
   // TRANSACTIONS
   // ========================================
@@ -262,6 +269,7 @@ export const useAccountsStore = defineStore('accounts', () => {
 
     // Actions - Cashflow
     fetchCashflow,
+    fetchDayActivity,
     clearCashflow,
 
     // Actions - Transactions

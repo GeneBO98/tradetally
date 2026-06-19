@@ -97,7 +97,7 @@
                anything beyond the time range is set. -->
           <button
             @click="showFiltersModal = true"
-            class="relative w-10 h-10 inline-flex items-center justify-center rounded-md border bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            class="relative h-10 px-3 inline-flex items-center justify-center gap-1.5 rounded-md border bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm font-medium"
             type="button"
             :title="activeAdvancedFilterCount > 0 ? `${activeAdvancedFilterCount} filter${activeAdvancedFilterCount === 1 ? '' : 's'} active` : 'More filters'"
             aria-label="More filters"
@@ -105,6 +105,7 @@
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
             </svg>
+            <span class="hidden sm:inline">Filters</span>
             <span
               v-if="activeAdvancedFilterCount > 0"
               class="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center rounded-full bg-primary-600 text-white text-[10px] font-semibold ring-2 ring-white dark:ring-gray-900"
@@ -143,9 +144,27 @@
     <!-- Year Wrapped Banner -->
     <YearWrappedBanner />
 
-    <!-- Guided onboarding: step 1 of tour -->
+    <!-- Pro tour: step 1 of 5 (everyone who just signed up) -->
+    <ProTourCard
+      v-if="authStore.proOnboardingStep === 1"
+      :step="1"
+      :total-steps="5"
+      :next-step="2"
+      :title="trialDaysRemaining >= 25 ? 'Welcome to your 30-day Pro trial' : 'Welcome to your Pro trial'"
+      :description="trialDaysRemaining >= 25
+        ? 'Your account is loaded with sample trades that surface the patterns Pro analytics catch — revenge trades, premature exits, and more. Let\'s walk through what unlocks the most value.'
+        : 'Your 14-day Pro trial is active. Verify your email at any time to extend it to a full month. Let\'s walk through the features that drive most of the value.'"
+      cta-label="Show me Behavioral Analytics"
+      cta-route="behavioral-analytics"
+      icon="sparkles"
+      :stat-value="trialDaysRemaining"
+      stat-label="days of Pro access remaining"
+      stat-tone="primary"
+    />
+
+    <!-- Free tour: only for users who haven't started the pro tour -->
     <OnboardingCard
-      v-if="authStore.onboardingStep === 0 || authStore.onboardingStep === 1"
+      v-if="(authStore.onboardingStep === 0 || authStore.onboardingStep === 1) && authStore.proOnboardingStep === 0"
       :step="1"
       :total-steps="5"
       :next-step="2"
@@ -446,15 +465,21 @@
               </button>
             </div>
 
-            <div v-if="!element.visible && isCustomizing" class="card-dense">
-              <div class="card-dense-body text-center text-sm text-gray-500 dark:text-gray-400">
-                This section is hidden. Click the eye icon to show it.
-              </div>
+            <!-- Hidden sections collapse to just their header row in customize
+                 mode: the "Hidden" eye state already says everything, and nine
+                 stacked placeholder cards (mostly legacy duplicates of visible
+                 widgets) made the picker a wall of noise. Legacy entries get a
+                 hint about which current section replaced them. -->
+            <div
+              v-if="!element.visible && isCustomizing && legacyReplacementHint(element.id)"
+              class="px-3 pb-1.5 -mt-1 text-xs text-gray-400 dark:text-gray-500"
+            >
+              Replaced by {{ legacyReplacementHint(element.id) }} — enable only if you want both.
             </div>
-            <template v-else>
+            <template v-if="element.visible">
             <!-- Hero Metrics Ribbon -->
             <template v-if="element.id === 'hero-metrics'">
-              <HeroMetricsRibbon :analytics="analytics" :range-label="heroRangeLabel" />
+              <HeroMetricsRibbon :analytics="analytics" :range-label="heroRangeLabel" :r-mode="dashboardRMode" @update:r-mode="setDashboardRMode" />
             </template>
 
             <!-- AI Insight of the Day -->
@@ -571,7 +596,7 @@
                   </div>
                   <!-- Mobile Card View -->
                   <div class="block lg:hidden space-y-3">
-            <div v-for="position in displayedOpenTrades" :key="position.symbol" class="table-card-item">
+            <div v-for="position in displayedOpenTrades" :key="getOpenPositionKey(position)" class="table-card-item">
               <!-- Position Header -->
               <div class="flex justify-between items-start mb-3 pb-3 border-b border-gray-200 dark:border-gray-700">
                 <div class="flex items-center gap-3">
@@ -582,6 +607,9 @@
                   <div>
                     <div class="text-lg font-bold text-gray-900 dark:text-white">
                       {{ position.symbol }}
+                    </div>
+                    <div v-if="formatOptionContract(position)" class="text-xs text-gray-500 dark:text-gray-400">
+                      {{ formatOptionContract(position) }}
                     </div>
                     <span class="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full mt-1"
                       :class="[
@@ -657,8 +685,8 @@
                           step="0.01"
                           min="0"
                           placeholder="Enter"
-                          :value="manualOptionPrices[position.symbol] ?? ''"
-                          @input="setManualOptionPrice(position.symbol, $event.target.value)"
+                          :value="getManualOptionPrice(position) ?? ''"
+                          @input="setManualOptionPrice(position, $event.target.value)"
                           class="w-20 text-right text-sm font-bold bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-1.5 py-0.5 text-gray-900 dark:text-white focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
                         />
                       </div>
@@ -772,7 +800,7 @@
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                <template v-for="position in displayedOpenTrades" :key="position.symbol">
+                <template v-for="position in displayedOpenTrades" :key="getOpenPositionKey(position)">
                   <!-- Position Summary Row -->
                   <tr class="bg-gray-50 dark:bg-gray-800/50 font-medium">
                     <td class="px-3 py-2 text-sm font-bold text-gray-900 dark:text-white">
@@ -781,7 +809,12 @@
                           :symbol="position.symbol"
                           size-class="w-8 h-8"
                         />
-                        <span>{{ position.symbol }}</span>
+                        <div>
+                          <span>{{ position.symbol }}</span>
+                          <div v-if="formatOptionContract(position)" class="text-xs font-normal text-gray-500 dark:text-gray-400">
+                            {{ formatOptionContract(position) }}
+                          </div>
+                        </div>
                       </div>
                     </td>
                     <td class="px-3 py-2 text-sm">
@@ -818,8 +851,8 @@
                             step="0.01"
                             min="0"
                             placeholder="Premium"
-                            :value="manualOptionPrices[position.symbol] ?? ''"
-                            @input="setManualOptionPrice(position.symbol, $event.target.value)"
+                            :value="getManualOptionPrice(position) ?? ''"
+                            @input="setManualOptionPrice(position, $event.target.value)"
                             class="w-20 text-right text-sm font-bold bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-1.5 py-0.5 text-gray-900 dark:text-white focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
                           />
                         </div>
@@ -1551,12 +1584,6 @@
             <h3 id="dashboard-filters-modal-title" class="heading-card">Filter dashboard</h3>
             <div class="flex items-center gap-2">
               <button
-                v-if="activeAdvancedFilterCount > 0"
-                type="button"
-                @click="clearAdvancedFilters"
-                class="text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
-              >Clear all</button>
-              <button
                 type="button"
                 @click="showFiltersModal = false"
                 class="rounded-md p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
@@ -1573,7 +1600,7 @@
                  from immediately closing the modal we just opened.
                  No max-h/overflow here — would clip TradeFilters' absolutely
                  positioned dropdowns. Outer modal (`overflow-y-auto`) scrolls. -->
-            <TradeFilters :auto-apply-on-mount="false" @filter="handleAdvancedFilter" />
+            <TradeFilters :auto-apply-on-mount="false" :hide-time-period="true" @filter="handleAdvancedFilter" />
           </div>
         </div>
       </div>
@@ -1606,13 +1633,19 @@ import { getRefreshInterval, shouldRefreshPrices, getMarketStatus } from '@/util
 import YearWrappedBanner from '@/components/yearWrapped/YearWrappedBanner.vue'
 import YearWrappedModal from '@/components/yearWrapped/YearWrappedModal.vue'
 import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
+import ProTourCard from '@/components/onboarding/ProTourCard.vue'
 import StockLogo from '@/components/common/StockLogo.vue'
 import TradeFilters from '@/components/trades/TradeFilters.vue'
 import { useYearWrappedStore } from '@/stores/yearWrapped'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
+import { useTradesStore } from '@/stores/trades'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import {
+  normalizeTradeFiltersForSharedState,
+  loadTradeFiltersFromStorage
+} from '@/utils/tradeFilterState'
 import draggable from 'vuedraggable'
 
 const authStore = useAuthStore()
@@ -1621,6 +1654,7 @@ const { formatCurrency, currencySymbol, formatSignedCurrency } = useCurrencyForm
 const { selectedAccount, selectedAccountLabel } = useGlobalAccountFilter()
 const yearWrappedStore = useYearWrappedStore()
 const uiPreferencesStore = useUiPreferencesStore()
+const tradesStore = useTradesStore()
 const router = useRouter()
 
 const loading = computed(() => analyticsLoading.value || quotesLoading.value)
@@ -1679,18 +1713,29 @@ function saveManualOptionPrices() {
   localStorage.setItem('tradetally_manual_option_prices', JSON.stringify(manualOptionPrices.value))
 }
 
-function setManualOptionPrice(symbol, value) {
+// Manual prices are keyed by position key so two contracts on the same
+// underlying never share one input. Legacy entries were keyed by bare symbol;
+// reads fall back to them and the first write retires them.
+function setManualOptionPrice(position, value) {
+  const key = getOpenPositionKey(position)
   const num = parseFloat(value)
   if (isNaN(num) || num < 0) {
-    delete manualOptionPrices.value[symbol]
+    delete manualOptionPrices.value[key]
   } else {
-    manualOptionPrices.value[symbol] = num
+    manualOptionPrices.value[key] = num
+  }
+  if (key !== position.symbol) {
+    delete manualOptionPrices.value[position.symbol]
   }
   saveManualOptionPrices()
 }
 
+function getManualOptionPrice(position) {
+  return manualOptionPrices.value[getOpenPositionKey(position)] ?? manualOptionPrices.value[position.symbol]
+}
+
 function getOptionPnL(position) {
-  const price = manualOptionPrices.value[position.symbol]
+  const price = getManualOptionPrice(position)
   if (price === undefined || price === null) return { currentValue: null, unrealizedPnL: null, unrealizedPnLPercent: null }
   const multiplier = position.contractSize || 100
   const currentValue = price * position.totalQuantity * multiplier
@@ -1707,6 +1752,20 @@ const filters = ref({
   endDate: ''
 })
 
+// Hero ribbon display mode: false = dollars, true = R-multiples. Persisted +
+// synced so the choice (e.g. hide dollar values when sharing) follows the user.
+const dashboardRMode = ref(false)
+
+function setDashboardRMode(value) {
+  dashboardRMode.value = value
+  try {
+    localStorage.setItem('dashboardRMode', JSON.stringify(value))
+    uiPreferencesStore.notifyChanged('dashboardRMode', value)
+  } catch (e) {
+    console.error('Failed to save dashboard R mode:', e)
+  }
+}
+
 // Advanced filter spec from the shared TradeFilters component (tags, strategies,
 // brokers, instrument types, etc.). Date/account come from the dashboard's own
 // controls, so we strip those before applying so they don't double up.
@@ -1720,12 +1779,20 @@ const ADVANCED_FILTER_IGNORE_KEYS = new Set([
   'startDate', 'endDate', 'accounts'
 ])
 
+// Boolean false means "toggle off" (e.g. symbolExact persisted by the trades
+// filter panel) — not an active filter. Counting it produced a phantom
+// "1 filter active" badge that wouldn't clear (issue #350).
+function isActiveAdvancedFilterValue(v) {
+  if (v === null || v === undefined || v === '' || v === false) return false
+  if (Array.isArray(v) && v.length === 0) return false
+  return true
+}
+
 const activeAdvancedFilterCount = computed(() => {
   let count = 0
   for (const [k, v] of Object.entries(appliedFilters.value || {})) {
     if (ADVANCED_FILTER_IGNORE_KEYS.has(k)) continue
-    if (v === null || v === undefined || v === '') continue
-    if (Array.isArray(v) && v.length === 0) continue
+    if (!isActiveAdvancedFilterValue(v)) continue
     count++
   }
   return count
@@ -1734,14 +1801,15 @@ const activeAdvancedFilterCount = computed(() => {
 function appendAdvancedFilterParams(params) {
   for (const [k, v] of Object.entries(appliedFilters.value || {})) {
     if (ADVANCED_FILTER_IGNORE_KEYS.has(k)) continue
-    if (v === null || v === undefined || v === '') continue
-    if (Array.isArray(v) && v.length === 0) continue
+    if (!isActiveAdvancedFilterValue(v)) continue
     params.append(k, Array.isArray(v) ? v.join(',') : String(v))
   }
 }
 
 function handleAdvancedFilter(newFilters) {
-  appliedFilters.value = newFilters || {}
+  const normalizedFilters = normalizeTradeFiltersForSharedState(newFilters || {})
+  appliedFilters.value = normalizedFilters
+  tradesStore.setFilters(normalizedFilters)
   showFiltersModal.value = false
   // Same refresh set as the time-range / global-account watchers.
   fetchAnalytics()
@@ -1750,15 +1818,10 @@ function handleAdvancedFilter(newFilters) {
   fetchBehavioralSummary()
 }
 
-function clearAdvancedFilters() {
-  // Only resets the dashboard's view of the filter spec — the shared
-  // TradeFilters component reads from localStorage on mount (used by the
-  // trade list / analytics views), so we don't touch that here.
-  appliedFilters.value = {}
-  fetchAnalytics()
-  fetchAiInsight()
-  fetchRecentTrades()
-  fetchBehavioralSummary()
+function hydrateSharedTradeFilters() {
+  const savedFilters = loadTradeFiltersFromStorage()
+  appliedFilters.value = savedFilters
+  tradesStore.setFilters(savedFilters)
 }
 
 const showTimeRangeDropdown = ref(false)
@@ -1965,6 +2028,11 @@ const showPostTrialBanner = computed(() => {
     !subscription.value.subscription
 })
 
+const trialDaysRemaining = computed(() => {
+  const days = subscription.value?.trial?.days_remaining
+  return Number.isFinite(days) ? days : 14
+})
+
 // Get section definition by ID
 function getSectionDefinition(id) {
   return sectionDefinitions.find(section => section.id === id)
@@ -2081,6 +2149,17 @@ async function saveDashboardLayout() {
 const SECTION_REPLACES = {
   'hero-metrics': ['key-metrics'],
   'recent-trades-and-distribution': ['charts', 'recent-trades', 'additional-metrics']
+}
+
+// Inverse lookup for the customize picker: which current section supersedes
+// this legacy one (null for non-legacy sections).
+function legacyReplacementHint(sectionId) {
+  for (const [replacementId, legacyIds] of Object.entries(SECTION_REPLACES)) {
+    if (legacyIds.includes(sectionId)) {
+      return getSectionDefinition(replacementId)?.title || replacementId
+    }
+  }
+  return null
 }
 
 // Legacy sections that have moved OUT of the draggable dashboard entirely.
@@ -2501,6 +2580,9 @@ function cacheOpenPositions(positions) {
 }
 
 function getOpenPositionKey(position) {
+  // The backend stamps a stable position_key on every position; the composite
+  // fallback only covers positions cached in sessionStorage before upgrade.
+  if (position.position_key) return position.position_key
   if (position.instrumentType === 'option' && position.underlying_symbol && position.strike_price && position.expiration_date && position.option_type) {
     return [
       position.underlying_symbol,
@@ -2510,6 +2592,12 @@ function getOpenPositionKey(position) {
     ].join('_')
   }
   return position.symbol
+}
+
+function formatOptionContract(position) {
+  if (position.instrumentType !== 'option' || !position.strike_price || !position.option_type || !position.expiration_date) return ''
+  const type = position.option_type === 'call' ? 'Call' : 'Put'
+  return `${formatCurrency(position.strike_price)} ${type} exp ${formatTradeDate(position.expiration_date, 'MM/dd/yy')}`
 }
 
 function preserveExistingQuoteData(positions) {
@@ -2569,11 +2657,16 @@ async function fetchOpenPositionsRequest({ skipQuotes = false } = {}) {
 }
 
 function cleanupManualOptionPrices() {
-  const openSymbols = new Set(openTrades.value.filter(p => p.requires_manual_price).map(p => p.symbol))
+  // Entries may be keyed by position key (current) or bare symbol (legacy).
+  const validKeys = new Set()
+  openTrades.value.filter(p => p.requires_manual_price).forEach(p => {
+    validKeys.add(getOpenPositionKey(p))
+    validKeys.add(p.symbol)
+  })
   let cleaned = false
-  Object.keys(manualOptionPrices.value).forEach(sym => {
-    if (!openSymbols.has(sym)) {
-      delete manualOptionPrices.value[sym]
+  Object.keys(manualOptionPrices.value).forEach(key => {
+    if (!validKeys.has(key)) {
+      delete manualOptionPrices.value[key]
       cleaned = true
     }
   })
@@ -2644,7 +2737,7 @@ function createPnLChart() {
     pnlChartInstance = new Chart(ctx, {
       type: 'line',
       data: {
-        labels: dailyData.map(d => format(new Date(d.trade_date), 'MMM dd')),
+        labels: dailyData.map(d => formatTradeDate(d.trade_date, 'MMM dd')),
         datasets: [{
           label: 'Cumulative P&L',
           data: pnlValues,
@@ -2728,7 +2821,7 @@ function createEquityCurveChart() {
     equityCurveChartInstance = new Chart(ctx, {
       type: 'line',
       data: {
-        labels: dailyData.map(d => format(new Date(d.trade_date), 'MMM dd')),
+        labels: dailyData.map(d => formatTradeDate(d.trade_date, 'MMM dd')),
         datasets: [{
           label: 'Cumulative P&L',
           data: pnlValues,
@@ -2903,7 +2996,7 @@ function createWinRateChart() {
   winRateChartInstance = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: winRateData.map(d => format(new Date(d.trade_date), 'MMM dd')),
+      labels: winRateData.map(d => formatTradeDate(d.trade_date, 'MMM dd')),
       datasets: [
         {
           label: 'Win Rate (%)',
@@ -3463,6 +3556,17 @@ onMounted(async () => {
   } catch (e) {
     // localStorage load failed
   }
+
+  // Restore hero ribbon $/R display mode
+  try {
+    dashboardRMode.value = localStorage.getItem('dashboardRMode') === 'true'
+  } catch (e) {
+    // localStorage load failed
+  }
+
+  // Keep the dashboard and shared TradeFilters modal aligned with the
+  // persisted trade filter state before any cached dashboard data is restored.
+  hydrateSharedTradeFilters()
 
   // Try to restore cached data from sessionStorage for instant rendering
   const hasCachedAnalytics = loadCachedAnalytics()

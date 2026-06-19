@@ -29,6 +29,7 @@ class FinnhubRequestScheduler {
       )
     );
     this.autoProcess = options.autoProcess !== false;
+    this.metricsRecorder = typeof options.metricsRecorder === 'function' ? options.metricsRecorder : null;
 
     this.callTimestamps = [];
     this.secondTimestamps = [];
@@ -92,6 +93,12 @@ class FinnhubRequestScheduler {
             this.stats.activeTimeouts++;
           }
           this.log('skipped', job, waitedMs, code);
+          this.recordMetric(job, {
+            requestCount: 0,
+            throttledCount: 1,
+            totalThrottleWaitMs: waitedMs,
+            maxThrottleWaitMs: waitedMs
+          });
           reject(new FinnhubSchedulerError(
             `Finnhub request ${background ? 'skipped' : 'timed out'} after ${waitedMs}ms in scheduler`,
             code,
@@ -165,12 +172,46 @@ class FinnhubRequestScheduler {
 
     Promise.resolve()
       .then(job.requestFn)
-      .then(job.resolve)
-      .catch(job.reject)
+      .then((result) => {
+        this.recordMetric(job, {
+          requestCount: 1,
+          totalThrottleWaitMs: waitMs,
+          maxThrottleWaitMs: waitMs
+        });
+        job.resolve(result);
+      })
+      .catch((error) => {
+        this.recordMetric(job, {
+          requestCount: 1,
+          rateLimitedCount: error?.response?.status === 429 ? 1 : 0,
+          totalThrottleWaitMs: waitMs,
+          maxThrottleWaitMs: waitMs
+        });
+        job.reject(error);
+      })
       .finally(() => {
         if (this.queue.length > 0 && this.autoProcess) {
           this.processQueue();
         }
+      });
+  }
+
+  recordMetric(job, metrics) {
+    if (!this.metricsRecorder) return;
+
+    const payload = {
+      endpoint: job.endpoint,
+      source: job.source,
+      priority: job.priority,
+      background: job.background,
+      configuredLimitPerMinute: this.maxCallsPerMinute,
+      ...metrics
+    };
+
+    Promise.resolve()
+      .then(() => this.metricsRecorder(payload))
+      .catch((error) => {
+        console.warn('[FINNHUB-METRICS] Failed to record usage metric:', error.message);
       });
   }
 

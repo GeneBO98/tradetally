@@ -8,6 +8,7 @@ jest.mock('../../src/controllers/auth.controller', () => ({
   refreshToken: jest.fn(),
   forgotPassword: jest.fn(),
   resetPassword: jest.fn(),
+  unlockAccount: jest.fn(),
   verifyEmail: jest.fn(),
   resendVerification: jest.fn(),
   sendTestEmail: jest.fn(),

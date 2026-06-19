@@ -50,58 +50,47 @@
         </div>
 
         <!-- Cashflow Summary Cards -->
-        <div v-if="cashflow" class="grid grid-cols-2 sm:grid-cols-5 gap-4">
-          <div class="card">
-            <div class="card-body">
-              <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                YTD Deposits
-              </dt>
-              <dd class="mt-1 text-lg font-semibold text-green-600 dark:text-green-400">
+        <div v-if="cashflow" class="grid gap-4 grid-cols-1 sm:grid-cols-3">
+          <!-- YTD Deposits / Withdrawals -->
+          <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-5 flex flex-col gap-4">
+            <div>
+              <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">YTD Deposits</div>
+              <div class="mt-1 text-lg font-bold tabular-nums tracking-tight whitespace-nowrap text-green-600 dark:text-green-400">
                 {{ formatSignedCurrency(cashflow.summary.ytdDeposits) }}
-              </dd>
+              </div>
             </div>
-          </div>
-          <div class="card">
-            <div class="card-body">
-              <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                YTD Withdrawals
-              </dt>
-              <dd class="mt-1 text-lg font-semibold text-red-600 dark:text-red-400">
+            <div>
+              <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">YTD Withdrawals</div>
+              <div class="mt-1 text-lg font-bold tabular-nums tracking-tight whitespace-nowrap text-red-600 dark:text-red-400">
                 {{ formatSignedCurrency(-cashflow.summary.ytdWithdrawals) }}
-              </dd>
+              </div>
             </div>
           </div>
-          <div class="card">
-            <div class="card-body">
-              <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                Current Balance
-              </dt>
-              <dd class="mt-1 text-lg font-semibold" :class="balanceClass">
-                {{ formatCurrency(cashflow.summary.currentBalance) }}
-              </dd>
-            </div>
-          </div>
-          <div class="card">
-            <div class="card-body">
-              <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                Total Inflow
-              </dt>
-              <dd class="mt-1 text-lg font-semibold text-green-600 dark:text-green-400">
+          <!-- Total Inflow / Outflow -->
+          <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-5 flex flex-col gap-4">
+            <div>
+              <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Total Inflow</div>
+              <div class="mt-1 text-lg font-bold tabular-nums tracking-tight whitespace-nowrap text-green-600 dark:text-green-400">
                 {{ formatSignedCurrency(cashflow.summary.totalInflow) }}
-              </dd>
+              </div>
+            </div>
+            <div>
+              <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Total Outflow</div>
+              <div class="mt-1 text-lg font-bold tabular-nums tracking-tight whitespace-nowrap text-red-600 dark:text-red-400">
+                {{ formatSignedCurrency(-cashflow.summary.totalOutflow) }}
+              </div>
             </div>
           </div>
-          <div class="card">
-            <div class="card-body">
-              <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                Total Outflow
-              </dt>
-              <dd class="mt-1 text-lg font-semibold text-red-600 dark:text-red-400">
-                {{ formatSignedCurrency(-cashflow.summary.totalOutflow) }}
-              </dd>
+          <!-- Current Balance -->
+          <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-5 flex flex-col justify-center">
+            <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Current Balance</div>
+            <div class="mt-1 text-2xl font-bold tabular-nums tracking-tight whitespace-nowrap" :class="balanceClass">
+              {{ formatCurrency(cashflow.summary.currentBalance) }}
             </div>
           </div>
         </div>
+
+        <BalanceEquityCurve ref="balanceEquityCurve" />
 
         <PlaidReviewQueue
           :account-id="selectedAccountId"
@@ -136,27 +125,152 @@
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                  <tr v-for="row in reversedCashflow" :key="row.date" class="hover:bg-gray-50 dark:hover:bg-gray-800">
-                    <td class="px-4 py-3 text-sm text-gray-900 dark:text-white whitespace-nowrap">
-                      {{ formatDate(row.date) }}
-                    </td>
-                    <td class="px-4 py-3 text-sm text-right text-green-600 dark:text-green-400 whitespace-nowrap">
-                      <span v-if="row.inflow > 0">{{ formatSignedCurrency(row.inflow) }}</span>
-                      <span v-else class="text-gray-400">-</span>
-                    </td>
-                    <td class="px-4 py-3 text-sm text-right text-red-600 dark:text-red-400 whitespace-nowrap">
-                      <span v-if="row.outflow > 0">{{ formatSignedCurrency(-row.outflow) }}</span>
-                      <span v-else class="text-gray-400">-</span>
-                    </td>
-                    <td class="px-4 py-3 text-sm text-right font-medium whitespace-nowrap" :class="row.net >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
-                      {{ formatSignedCurrency(row.net) }}
-                    </td>
-                    <td class="px-4 py-3 text-sm text-right font-semibold text-gray-900 dark:text-white whitespace-nowrap">
-                      {{ formatCurrency(row.balance) }}
-                    </td>
-                  </tr>
+                  <template v-for="row in paginatedCashflow" :key="row.date">
+                    <tr
+                      class="hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
+                      :class="expandedDate === row.date ? 'bg-gray-50 dark:bg-gray-800' : ''"
+                      @click="toggleDayDetail(row.date)"
+                    >
+                      <td class="px-4 py-3 text-sm text-gray-900 dark:text-white whitespace-nowrap">
+                        <div class="flex items-center gap-2">
+                          <svg
+                            class="h-4 w-4 text-gray-400 transition-transform"
+                            :class="{ 'rotate-90': expandedDate === row.date }"
+                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                          >
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+                          </svg>
+                          {{ formatDate(row.date) }}
+                        </div>
+                      </td>
+                      <td class="px-4 py-3 text-sm text-right text-green-600 dark:text-green-400 whitespace-nowrap">
+                        <span v-if="row.inflow > 0">{{ formatSignedCurrency(row.inflow) }}</span>
+                        <span v-else class="text-gray-400">-</span>
+                      </td>
+                      <td class="px-4 py-3 text-sm text-right text-red-600 dark:text-red-400 whitespace-nowrap">
+                        <span v-if="row.outflow > 0">{{ formatSignedCurrency(-row.outflow) }}</span>
+                        <span v-else class="text-gray-400">-</span>
+                      </td>
+                      <td class="px-4 py-3 text-sm text-right font-medium whitespace-nowrap" :class="row.net >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                        {{ formatSignedCurrency(row.net) }}
+                      </td>
+                      <td class="px-4 py-3 text-sm text-right font-semibold text-gray-900 dark:text-white whitespace-nowrap">
+                        {{ formatCurrency(row.balance) }}
+                      </td>
+                    </tr>
+
+                    <!-- Expanded day detail -->
+                    <tr v-if="expandedDate === row.date" class="bg-gray-50 dark:bg-gray-800/40">
+                      <td colspan="5" class="px-4 pb-4 pt-1">
+                        <div v-if="dayActivityLoading && !expandedActivity" class="py-2 text-sm text-gray-500 dark:text-gray-400">
+                          Loading details…
+                        </div>
+                        <div v-else-if="expandedActivity">
+                          <div
+                            v-if="expandedActivity.trades.length === 0 && expandedActivity.transactions.length === 0"
+                            class="py-2 text-sm text-gray-500 dark:text-gray-400"
+                          >
+                            No itemized trades or transfers recorded for this day.
+                          </div>
+                          <div v-else class="space-y-4">
+                            <!-- Trades -->
+                            <div v-if="expandedActivity.trades.length">
+                              <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+                                Trades
+                              </div>
+                              <ul class="space-y-1.5">
+                                <li
+                                  v-for="(t, i) in expandedActivity.trades"
+                                  :key="`t-${t.id}-${t.eventType}-${i}`"
+                                  class="flex items-center justify-between gap-3 text-sm"
+                                >
+                                  <div class="flex items-center gap-2 min-w-0">
+                                    <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="t.direction === 'inflow' ? 'bg-green-500' : 'bg-red-500'"></span>
+                                    <span class="font-medium text-gray-900 dark:text-white">{{ t.symbol }}</span>
+                                    <span class="text-gray-500 dark:text-gray-400 truncate">
+                                      {{ tradeActionLabel(t) }} {{ t.quantity }} @ {{ formatCurrency(t.price) }}
+                                    </span>
+                                    <span v-if="t.commission" class="shrink-0 text-xs text-gray-400 dark:text-gray-500">
+                                      fee {{ formatCurrency(t.commission) }}
+                                    </span>
+                                  </div>
+                                  <div class="shrink-0 whitespace-nowrap text-right">
+                                    <span :class="t.direction === 'inflow' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                                      {{ formatSignedCurrency(t.direction === 'inflow' ? t.grossAmount : -t.grossAmount) }}
+                                    </span>
+                                    <span
+                                      v-if="t.eventType === 'exit' && t.pnl !== null"
+                                      class="ml-2 text-xs"
+                                      :class="t.pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
+                                    >
+                                      ({{ formatSignedCurrency(t.pnl) }} P&L)
+                                    </span>
+                                  </div>
+                                </li>
+                              </ul>
+                            </div>
+
+                            <!-- Deposits & Withdrawals -->
+                            <div v-if="expandedActivity.transactions.length">
+                              <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+                                Deposits &amp; Withdrawals
+                              </div>
+                              <ul class="space-y-1.5">
+                                <li
+                                  v-for="tx in expandedActivity.transactions"
+                                  :key="tx.id"
+                                  class="flex items-center justify-between gap-3 text-sm"
+                                >
+                                  <div class="flex items-center gap-2 min-w-0">
+                                    <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="tx.transactionType === 'deposit' ? 'bg-green-500' : 'bg-red-500'"></span>
+                                    <span class="font-medium capitalize text-gray-900 dark:text-white">{{ tx.transactionType }}</span>
+                                    <span v-if="tx.description" class="truncate text-gray-500 dark:text-gray-400">{{ tx.description }}</span>
+                                    <span
+                                      v-if="tx.sourceType === 'plaid'"
+                                      class="shrink-0 rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+                                    >
+                                      Plaid
+                                    </span>
+                                  </div>
+                                  <span class="shrink-0 whitespace-nowrap" :class="tx.transactionType === 'deposit' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                                    {{ formatSignedCurrency(tx.transactionType === 'deposit' ? tx.amount : -tx.amount) }}
+                                  </span>
+                                </li>
+                              </ul>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  </template>
                 </tbody>
               </table>
+            </div>
+
+            <!-- Pagination -->
+            <div v-if="cashflowTotalPages > 1" class="mt-4 flex items-center justify-between border-t border-gray-200 dark:border-gray-700 pt-4">
+              <div class="text-sm text-gray-700 dark:text-gray-300">
+                Showing {{ cashflowRangeStart }} to {{ cashflowRangeEnd }} of {{ reversedCashflow.length }} days
+              </div>
+              <div class="flex items-center space-x-2">
+                <button
+                  @click="goToCashflowPage(cashflowPage - 1)"
+                  :disabled="cashflowPage <= 1"
+                  class="btn-secondary text-sm"
+                >
+                  Previous
+                </button>
+                <span class="text-sm text-gray-500 dark:text-gray-400">
+                  Page {{ cashflowPage }} of {{ cashflowTotalPages }}
+                </span>
+                <button
+                  @click="goToCashflowPage(cashflowPage + 1)"
+                  :disabled="cashflowPage >= cashflowTotalPages"
+                  class="btn-secondary text-sm"
+                >
+                  Next
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -360,11 +474,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useAccountsStore } from '@/stores/accounts'
 import { usePlaidFundingStore } from '@/stores/plaidFunding'
 import { useNotification } from '@/composables/useNotification'
 import AccountModal from '@/components/accounts/AccountModal.vue'
+import BalanceEquityCurve from '@/components/cashflow/BalanceEquityCurve.vue'
 import PlaidFundingPanel from '@/components/accounts/PlaidFundingPanel.vue'
 import PlaidReviewQueue from '@/components/accounts/PlaidReviewQueue.vue'
 import BaseSelect from '@/components/common/BaseSelect.vue'
@@ -378,6 +493,7 @@ const { showSuccess, showError, showDangerConfirmation } = useNotification()
 
 // State
 const selectedAccountId = ref('')
+const balanceEquityCurve = ref(null)
 const showAccountModal = ref(false)
 const editingAccount = ref(null)
 const submitting = ref(false)
@@ -404,6 +520,81 @@ const transactions = computed(() => store.transactions)
 const reversedCashflow = computed(() =>
   cashflow.value?.cashflow ? [...cashflow.value.cashflow].reverse() : []
 )
+
+// Client-side pagination for the daily cashflow table. The running balance is
+// computed server-side across every row, so we paginate the full ordered list
+// rather than re-fetching per page.
+const CASHFLOW_PAGE_SIZE = 25
+const cashflowPage = ref(1)
+
+const cashflowTotalPages = computed(() =>
+  Math.max(1, Math.ceil(reversedCashflow.value.length / CASHFLOW_PAGE_SIZE))
+)
+
+const paginatedCashflow = computed(() => {
+  const start = (cashflowPage.value - 1) * CASHFLOW_PAGE_SIZE
+  return reversedCashflow.value.slice(start, start + CASHFLOW_PAGE_SIZE)
+})
+
+const cashflowRangeStart = computed(() =>
+  reversedCashflow.value.length === 0 ? 0 : (cashflowPage.value - 1) * CASHFLOW_PAGE_SIZE + 1
+)
+const cashflowRangeEnd = computed(() =>
+  Math.min(cashflowPage.value * CASHFLOW_PAGE_SIZE, reversedCashflow.value.length)
+)
+
+function goToCashflowPage(page) {
+  if (page >= 1 && page <= cashflowTotalPages.value) {
+    cashflowPage.value = page
+  }
+}
+
+// Day drill-down: lazy-load the trades/transactions behind a single day's
+// inflow/outflow when a row is expanded, cached by date string.
+const expandedDate = ref(null)
+const dayActivityCache = ref({})
+const dayActivityLoading = ref(false)
+
+const expandedActivity = computed(() =>
+  expandedDate.value ? dayActivityCache.value[expandedDate.value] || null : null
+)
+
+async function toggleDayDetail(date) {
+  if (expandedDate.value === date) {
+    expandedDate.value = null
+    return
+  }
+
+  expandedDate.value = date
+  if (dayActivityCache.value[date] || !selectedAccountId.value) return
+
+  dayActivityLoading.value = true
+  try {
+    const data = await store.fetchDayActivity(selectedAccountId.value, date)
+    dayActivityCache.value = { ...dayActivityCache.value, [date]: data }
+  } catch (err) {
+    showError('Error', 'Failed to load day details')
+    expandedDate.value = null
+  } finally {
+    dayActivityLoading.value = false
+  }
+}
+
+// "Buy" / "Sell short" / "Sell" / "Buy to cover" depending on side + event.
+function tradeActionLabel(t) {
+  const isLong = t.side === 'long' || t.side === 'buy'
+  if (t.eventType === 'entry') return isLong ? 'Buy' : 'Sell short'
+  return isLong ? 'Sell' : 'Buy to cover'
+}
+
+// Reset to the first page whenever the dataset changes (account switch, date
+// range change, refresh) so the view never lands on an out-of-range page, and
+// drop any cached day detail since it belongs to the previous dataset.
+watch(reversedCashflow, () => {
+  cashflowPage.value = 1
+  expandedDate.value = null
+  dayActivityCache.value = {}
+})
 
 const balanceClass = computed(() => {
   if (!cashflow.value) return 'text-gray-900 dark:text-white'
@@ -623,6 +814,8 @@ async function refreshPlaidConnections() {
     store.fetchAccounts(),
     plaidStore.fetchConnections()
   ])
+
+  balanceEquityCurve.value?.refresh()
 
   if (selectedAccountId.value) {
     await loadCashflow()

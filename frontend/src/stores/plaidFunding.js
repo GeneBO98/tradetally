@@ -13,6 +13,12 @@ export const usePlaidFundingStore = defineStore('plaidFunding', () => {
   const syncing = ref({})
   const error = ref(null)
 
+  function isPlaidUnavailableError(err) {
+    const status = err.response?.status
+    const message = err.response?.data?.message || err.response?.data?.error || err.message || ''
+    return status === 503 || /plaid.*not configured|plaid.*not available|plaid funding tables/i.test(message)
+  }
+
   async function createLinkToken(targetType = 'bank') {
     const response = await api.post('/accounts/plaid/link-token', { targetType })
     return response.data.data
@@ -20,6 +26,11 @@ export const usePlaidFundingStore = defineStore('plaidFunding', () => {
 
   async function exchangePublicToken(payload) {
     const response = await api.post('/accounts/plaid/exchange', payload)
+    return response.data.data
+  }
+
+  async function createReconnectToken(connectionId) {
+    const response = await api.post(`/accounts/plaid/connections/${connectionId}/reconnect-token`)
     return response.data.data
   }
 
@@ -32,6 +43,12 @@ export const usePlaidFundingStore = defineStore('plaidFunding', () => {
       connections.value = response.data.data || []
       return connections.value
     } catch (err) {
+      if (isPlaidUnavailableError(err)) {
+        connections.value = []
+        error.value = null
+        return connections.value
+      }
+
       error.value = err.response?.data?.message || 'Failed to fetch Plaid connections'
       throw err
     } finally {
@@ -78,6 +95,18 @@ export const usePlaidFundingStore = defineStore('plaidFunding', () => {
     return response.data.data
   }
 
+  async function fetchBalanceHistory(params = {}) {
+    try {
+      const response = await api.get('/accounts/plaid/balances/history', { params })
+      return response.data.data || { series: [], accounts: [] }
+    } catch (err) {
+      if (isPlaidUnavailableError(err)) {
+        return { series: [], accounts: [] }
+      }
+      throw err
+    }
+  }
+
   async function fetchReviewQueue(accountId) {
     if (!accountId) {
       reviewQueue.value = []
@@ -98,6 +127,15 @@ export const usePlaidFundingStore = defineStore('plaidFunding', () => {
       reviewSummary.value = response.data.data?.summary || null
       return response.data.data
     } catch (err) {
+      if (isPlaidUnavailableError(err)) {
+        reviewQueue.value = []
+        reviewHistory.value = []
+        syncedActivity.value = []
+        reviewSummary.value = null
+        error.value = null
+        return { pending: [], history: [], synced: [] }
+      }
+
       error.value = err.response?.data?.message || 'Failed to fetch Plaid review queue'
       throw err
     } finally {
@@ -163,12 +201,14 @@ export const usePlaidFundingStore = defineStore('plaidFunding', () => {
     error,
     createLinkToken,
     exchangePublicToken,
+    createReconnectToken,
     fetchConnections,
     updateConnection,
     deleteConnection,
     syncConnection,
     linkPlaidAccount,
     unlinkPlaidAccount,
+    fetchBalanceHistory,
     fetchReviewQueue,
     approveTransaction,
     rejectTransaction,

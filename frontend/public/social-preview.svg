@@ -1,21 +1,21 @@
 <svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="1200" height="630" fill="#111827"/>
-  <path d="M0 0H1200V630H0V0Z" fill="url(#bg)"/>
-  <circle cx="1006" cy="118" r="220" fill="#f0812a" fill-opacity="0.16"/>
-  <circle cx="144" cy="522" r="260" fill="#2563eb" fill-opacity="0.16"/>
-  <path d="M112 466C240 391 333 426 456 340C584 250 674 198 816 231C912 253 980 224 1088 146" stroke="#f0812a" stroke-width="18" stroke-linecap="round" stroke-opacity="0.22"/>
-  <path d="M112 474C239 398 332 434 459 346C591 255 676 208 813 239C915 262 982 232 1088 154" stroke="#f0812a" stroke-width="5" stroke-linecap="round"/>
-  <rect x="96" y="94" width="444" height="180" rx="36" fill="#fff"/>
-  <image href="tradetally-logo.svg" x="124" y="115" width="388" height="139" preserveAspectRatio="xMidYMid meet"/>
-  <text x="96" y="366" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-size="92" font-weight="800" letter-spacing="-2">TradeTally</text>
-  <text x="100" y="418" fill="#f9fafb" fill-opacity="0.92" font-family="Arial, Helvetica, sans-serif" font-size="38" font-weight="700">Free Trading Journal and Investment Tracker</text>
-  <text x="100" y="482" fill="#d1d5db" font-family="Arial, Helvetica, sans-serif" font-size="28">Track trades, broker imports, analytics, holdings P&amp;L, and AI insights.</text>
-  <text x="100" y="544" fill="#f0812a" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="700">tradetally.io</text>
+  <rect width="1200" height="630" fill="#0B1120"/>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <circle cx="1080" cy="112" r="220" fill="#F0812A" fill-opacity="0.14"/>
+  <circle cx="84" cy="548" r="230" fill="#1D4ED8" fill-opacity="0.14"/>
+  <path d="M98 454C230 388 340 412 458 332C598 238 696 192 820 224C920 250 992 228 1094 156" stroke="#F0812A" stroke-width="18" stroke-linecap="round" stroke-opacity="0.18"/>
+  <path d="M98 462C228 396 338 420 460 340C602 246 700 202 818 232C922 258 996 236 1098 164" stroke="#F0812A" stroke-width="5" stroke-linecap="round"/>
+  <rect x="98" y="94" width="244" height="74" rx="37" fill="#FFF7ED"/>
+  <text x="145" y="141" fill="#F0812A" font-family="Arial, Helvetica, sans-serif" font-size="38" font-weight="800" letter-spacing="-1">TradeTally</text>
+  <text x="98" y="300" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="96" font-weight="800" letter-spacing="-2">TradeTally</text>
+  <text x="98" y="356" fill="#F9FAFB" fill-opacity="0.92" font-family="Arial, Helvetica, sans-serif" font-size="40" font-weight="700">Free Trading Journal and Investment Tracker</text>
+  <text x="98" y="430" fill="#D1D5DB" font-family="Arial, Helvetica, sans-serif" font-size="28">Track trades, broker imports, analytics, holdings P&amp;L, and AI insights.</text>
+  <text x="98" y="500" fill="#F0812A" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="700">tradetally.io</text>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="630" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#0f172a"/>
-      <stop offset="0.52" stop-color="#111827"/>
-      <stop offset="1" stop-color="#1f2937"/>
+      <stop stop-color="#0F172A"/>
+      <stop offset="0.48" stop-color="#111827"/>
+      <stop offset="1" stop-color="#1E293B"/>
     </linearGradient>
   </defs>
 </svg>

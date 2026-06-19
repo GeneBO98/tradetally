@@ -1,5 +1,6 @@
 const db = require('../config/database');
 const logger = require('./logger');
+const marketData = require('./finnhub');
 
 class JobQueue {
   constructor() {
@@ -9,7 +10,7 @@ class JobQueue {
 
   /**
    * Add a job to the queue
-   * @param {string} type - Job type (cusip_resolution, strategy_classification, news_enrichment, news_backfill, quality_backfill, verification_email, password_reset_email, support_request_email)
+   * @param {string} type - Job type (cusip_resolution, strategy_classification, news_enrichment, news_backfill, quality_backfill, verification_email, password_reset_email, account_lockout_email, support_request_email)
    * @param {object} data - Job data
    * @param {number} priority - Priority (1=highest, 5=lowest)
    * @param {string} userId - User ID for the job
@@ -273,6 +274,9 @@ class JobQueue {
         case 'password_reset_email':
           result = await this.processPasswordResetEmail(data);
           break;
+        case 'account_lockout_email':
+          result = await this.processAccountLockoutEmail(data);
+          break;
         case 'support_request_email':
           result = await this.processSupportRequestEmail(data);
           break;
@@ -384,7 +388,7 @@ class JobQueue {
                 confidence: classification.confidence,
                 method: classification.method,
                 signals: classification.signals,
-                api_provider: 'finnhub'
+                api_provider: marketData.providerName || 'finnhub'
               });
             } catch (cacheError) {
               logger.logError(`Failed to cache strategy classification for trade ${trade.id}: ${cacheError.message}`);
@@ -723,6 +727,18 @@ class JobQueue {
     }
 
     await EmailService.sendPasswordResetEmail(email, token);
+    return { sent: true, email };
+  }
+
+  async processAccountLockoutEmail(data) {
+    const EmailService = require('../services/emailService');
+    const { email, token } = data;
+
+    if (!email || !token) {
+      throw new Error('Account lockout email job is missing email or token');
+    }
+
+    await EmailService.sendAccountLockoutEmail(email, token);
     return { sent: true, email };
   }
 

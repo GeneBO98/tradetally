@@ -16,7 +16,7 @@ if (process.env.VITE_POSTHOG_HOST) {
 module.exports = {
   apps: [
     {
-      name: 'tradetally-backend-native',
+      name: 'tradetally',
       cwd: '/home/docker-admin/tradetally/backend',
       script: 'src/server.js',
       instances: 1,

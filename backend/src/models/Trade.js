@@ -4,6 +4,7 @@ const { getUserLocalDate, getUserTimezone } = require('../utils/timezone');
 const { getFuturesPointValue, getFuturesTickSize, extractUnderlyingFromFuturesSymbol } = require('../utils/futuresUtils');
 const { computeTradePnl } = require('../services/pnlEngine');
 const logger = require('../utils/logger');
+const OptionStrategyGroupingService = require('../services/optionStrategyGroupingService');
 /**
  * Round a numeric value to fit database precision
  * DECIMAL(20, 8) allows up to 12 integer digits and 8 decimal places
@@ -17,6 +18,23 @@ function roundToDbPrecision(value, decimals = 8) {
   if (isNaN(num)) return null;
   const multiplier = Math.pow(10, decimals);
   return Math.round(num * multiplier) / multiplier;
+}
+
+// Open-position grouping keys options by underlying symbol; case or
+// whitespace variance from broker APIs splits the same contract into
+// duplicate positions (issue #339), so normalize at every write.
+function normalizeUnderlyingSymbol(value) {
+  if (value === null || value === undefined) return null;
+  const normalized = String(value).trim().toUpperCase();
+  return normalized || null;
+}
+
+function normalizeInstrumentType(instrumentType, symbol = null) {
+  const normalized = String(instrumentType || '').trim().toLowerCase();
+  if (normalized === 'future' || normalized === 'futures') return 'future';
+  if (normalized !== 'option' && extractUnderlyingFromFuturesSymbol(symbol)) return 'future';
+  if (normalized === 'option' || normalized === 'crypto' || normalized === 'stock') return normalized;
+  return normalized || 'stock';
 }
 
 async function timedDbQuery(label, query, values = []) {
@@ -98,6 +116,12 @@ class Trade {
 
     // Validate expiration date has 4-digit year (safety net for parser bugs)
     let cleanExpirationDate = expirationDate || null;
+    if (cleanExpirationDate instanceof Date) {
+      // pg serializes Date params in server-local time, which shifts DATE
+      // columns back a day on servers west of UTC (issue #349). Joi-converted
+      // dates are anchored to UTC midnight, so the UTC date is the intended one.
+      cleanExpirationDate = cleanExpirationDate.toISOString().slice(0, 10);
+    }
     if (cleanExpirationDate && typeof cleanExpirationDate === 'string') {
       const expMatch = cleanExpirationDate.match(/^(\d{2})-(\d{2})-(\d{2})$/);
       if (expMatch) {
@@ -201,7 +225,13 @@ class Trade {
     if (!finalTradeDate) {
       // Extract date from timestamp (YYYY-MM-DD format)
       const timestampToUse = cleanExitTime || finalEntryTime;
-      finalTradeDate = timestampToUse.split('T')[0];
+      if (timestampToUse instanceof Date) {
+        finalTradeDate = timestampToUse.toISOString().split('T')[0];
+      } else if (typeof timestampToUse === 'string') {
+        finalTradeDate = timestampToUse.split('T')[0];
+      } else {
+        finalTradeDate = new Date(timestampToUse).toISOString().split('T')[0];
+      }
     }
 
     // Auto-assign strategy if not provided by user
@@ -554,7 +584,7 @@ class Trade {
       strategyConfidence, classificationMethod, JSON.stringify(classificationMetadata), manualOverride,
       JSON.stringify(newsData.newsEvents || []), newsData.hasNews || false, newsData.sentiment, newsData.checkedAt,
       instrumentType || 'stock', roundToDbPrecision(strikePrice), cleanExpirationDate, optionType || null,
-      contractSize || (instrumentType === 'option' ? 100 : null), underlyingSymbol || null,
+      contractSize || (instrumentType === 'option' ? 100 : null), normalizeUnderlyingSymbol(underlyingSymbol),
       contractMonth || null, contractYear || null, roundToDbPrecision(finalTickSize), roundToDbPrecision(finalPointValue), finalUnderlyingAsset || null,
       importId || null,
       originalCurrency || 'USD', roundToDbPrecision(exchangeRate) || 1.0,
@@ -659,6 +689,10 @@ class Trade {
       });
     }
 
+    if (!options.skipOptionGrouping && createdTrade.instrument_type === 'option') {
+      await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'trade creation');
+    }
+
     return createdTrade;
   }
 
@@ -681,6 +715,12 @@ class Trade {
     } = data;
 
     const finalAccountIdentifier = account_identifier || accountIdentifier;
+
+    // pg serializes Date params in server-local time, which shifts DATE
+    // columns back a day on servers west of UTC (issue #349)
+    const cleanExpirationDate = expirationDate instanceof Date
+      ? expirationDate.toISOString().slice(0, 10)
+      : (expirationDate || null);
 
     // Ensure tags exist in tags table
     if (tags && tags.length > 0) {
@@ -731,8 +771,8 @@ class Trade {
       userId, symbol.toUpperCase(), side,
       notes || null, broker || null, strategy || null, setup || null, tags || [],
       confidence || 5, instrumentType || 'stock',
-      roundToDbPrecision(strikePrice), expirationDate || null, optionType || null,
-      contractSize || (instrumentType === 'option' ? 100 : null), underlyingSymbol || null,
+      roundToDbPrecision(strikePrice), cleanExpirationDate, optionType || null,
+      contractSize || (instrumentType === 'option' ? 100 : null), normalizeUnderlyingSymbol(underlyingSymbol),
       contractMonth || null, contractYear || null, roundToDbPrecision(finalTickSize),
       roundToDbPrecision(finalPointValue), finalUnderlyingAsset || null,
       roundToDbPrecision(stopLoss), roundToDbPrecision(takeProfit),
@@ -893,6 +933,10 @@ class Trade {
     const updatedTrade = result.rows[0];
 
     console.log(`[TRADE] Fill added to ${tradeId}: ${action} ${quantity} @ ${price} (${new Date(datetime).toISOString()})`);
+
+    if (updatedTrade?.instrument_type === 'option') {
+      await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'trade fill');
+    }
 
     return updatedTrade;
   }
@@ -1173,6 +1217,16 @@ class Trade {
     if (updates.exitPrice === '') updates.exitPrice = null;
     if (updates.stopLoss === '') updates.stopLoss = null;
     if (updates.takeProfit === '') updates.takeProfit = null;
+    if (updates.underlyingSymbol !== undefined) {
+      updates.underlyingSymbol = normalizeUnderlyingSymbol(updates.underlyingSymbol);
+    }
+
+    // pg serializes Date params in server-local time, which shifts DATE
+    // columns back a day on servers west of UTC (issue #349). Joi-converted
+    // dates are anchored to UTC midnight, so the UTC date is the intended one.
+    if (updates.expirationDate instanceof Date) {
+      updates.expirationDate = updates.expirationDate.toISOString().slice(0, 10);
+    }
 
     // Validate expiration date has 4-digit year (safety net for parser bugs)
     if (updates.expirationDate && typeof updates.expirationDate === 'string') {
@@ -1727,6 +1781,23 @@ class Trade {
     }
 
     const result = await db.query(query, values);
+    const updatedTrade = result.rows[0];
+
+    const optionGroupingFields = [
+      'entryTime', 'exitTime', 'tradeDate', 'instrumentType', 'underlyingSymbol',
+      'expirationDate', 'optionType', 'strikePrice', 'side', 'quantity', 'pnl',
+      'commission', 'fees', 'accountIdentifier', 'account_identifier', 'entryPrice',
+      'exitPrice', 'entry_time', 'exit_time', 'trade_date', 'instrument_type',
+      'underlying_symbol', 'expiration_date', 'option_type', 'strike_price',
+      'entry_price', 'exit_price'
+    ];
+    const shouldRebuildOptionGroups = !options.skipOptionGrouping
+      && (currentTrade.instrument_type === 'option' || updates.instrumentType === 'option' || updates.instrument_type === 'option')
+      && (executionsToSet !== null || optionGroupingFields.some(key => updates[key] !== undefined));
+
+    if (shouldRebuildOptionGroups) {
+      await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'trade update');
+    }
 
     // Check for new achievements after trade update (async, don't wait for completion)
     if (!options.skipAchievements) {
@@ -1740,10 +1811,10 @@ class Trade {
       });
     }
 
-    return result.rows[0];
+    return updatedTrade;
   }
 
-  static async delete(id, userId) {
+  static async delete(id, userId, options = {}) {
     try {
       // Start transaction to ensure both trade and jobs are deleted together
       await db.query('BEGIN');
@@ -1778,6 +1849,9 @@ class Trade {
 
       await db.query('COMMIT');
       console.log(`Successfully deleted trade ${id} and its associated jobs`);
+      if (!options.skipOptionGrouping) {
+        await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'trade deletion');
+      }
 
       return result.rows[0];
 
@@ -2002,8 +2076,10 @@ class Trade {
       return null;
     }
 
+    const normalizedInstrumentType = normalizeInstrumentType(instrumentType, symbol);
+
     let multiplier = 1;
-    if (instrumentType === 'future') {
+    if (normalizedInstrumentType === 'future') {
       let finalPointValue = pointValue ? parseFloat(pointValue) : null;
 
       if (!finalPointValue || !isFinite(finalPointValue) || finalPointValue <= 0) {
@@ -2012,7 +2088,7 @@ class Trade {
       }
 
       multiplier = finalPointValue;
-    } else if (instrumentType === 'option') {
+    } else if (normalizedInstrumentType === 'option') {
       const parsedContractSize = contractSize ? parseFloat(contractSize) : null;
       multiplier = parsedContractSize && isFinite(parsedContractSize) && parsedContractSize > 0
         ? parsedContractSize
@@ -2137,6 +2213,7 @@ class Trade {
 
     let rMultiple;
     const parsedQty = parseFloat(quantity);
+    const normalizedInstrumentType = normalizeInstrumentType(instrumentType, symbol);
 
     if (isFinite(parsedQty) && parsedQty > 0) {
       const totalRiskAmount = this.calculateRiskAmount(
@@ -2144,7 +2221,7 @@ class Trade {
         stopLoss,
         parsedQty,
         side,
-        instrumentType,
+        normalizedInstrumentType,
         contractSize,
         pointValue,
         symbol,
@@ -2174,231 +2251,242 @@ class Trade {
     return Math.round(rMultiple * 100) / 100;
   }
 
+  static getSettingValue(settings, snakeKey, camelKey) {
+    if (!settings) return undefined;
+    return settings[snakeKey] ?? settings[camelKey];
+  }
+
+  static calculateDefaultStopLossFromSettings(trade, settings) {
+    const stopLossType = this.getSettingValue(settings, 'default_stop_loss_type', 'defaultStopLossType') || 'percent';
+    const entryPrice = parseFloat(trade.entry_price);
+    const quantity = parseFloat(trade.quantity);
+    const side = trade.side;
+
+    if (!isFinite(entryPrice) || entryPrice <= 0 || !side) {
+      return null;
+    }
+
+    let stopLoss = null;
+
+    if (stopLossType === 'percent') {
+      const stopLossPercent = parseFloat(this.getSettingValue(settings, 'default_stop_loss_percent', 'defaultStopLossPercent'));
+      if (!isFinite(stopLossPercent) || stopLossPercent <= 0) return null;
+
+      if (side === 'long' || side === 'buy') {
+        stopLoss = entryPrice * (1 - stopLossPercent / 100);
+      } else if (side === 'short' || side === 'sell') {
+        stopLoss = entryPrice * (1 + stopLossPercent / 100);
+      }
+    } else if (stopLossType === 'dollar') {
+      const stopLossDollars = parseFloat(this.getSettingValue(settings, 'default_stop_loss_dollars', 'defaultStopLossDollars'));
+      if (!isFinite(stopLossDollars) || stopLossDollars <= 0 || !isFinite(quantity) || quantity <= 0) return null;
+
+      const instrumentType = normalizeInstrumentType(trade.instrument_type || trade.instrumentType || 'stock', trade.symbol);
+
+      // Resolve the futures point value the same way calculateRiskAmount does;
+      // getDollarStopLossPriceMove would otherwise fall back to 1 while the
+      // R calculation falls back to the symbol's real multiplier, placing the
+      // stop up to 50x too far from entry on rows with NULL point_value.
+      let pointValue = trade.point_value;
+      if (instrumentType === 'future') {
+        const parsedPointValue = parseFloat(pointValue);
+        if (!isFinite(parsedPointValue) || parsedPointValue <= 0) {
+          const underlying = trade.underlying_asset || extractUnderlyingFromFuturesSymbol(trade.symbol);
+          pointValue = getFuturesPointValue(underlying);
+        }
+      }
+
+      const priceMove = this.getDollarStopLossPriceMove(
+        stopLossDollars,
+        quantity,
+        instrumentType,
+        trade.contract_size,
+        pointValue
+      );
+      if (priceMove == null) return null;
+
+      if (side === 'long' || side === 'buy') {
+        stopLoss = entryPrice - priceMove;
+      } else if (side === 'short' || side === 'sell') {
+        stopLoss = entryPrice + priceMove;
+      }
+    }
+
+    return stopLoss != null && isFinite(stopLoss)
+      ? Math.round(stopLoss * 10000) / 10000
+      : null;
+  }
+
+  static stopLossMatches(actualStopLoss, expectedStopLoss) {
+    if (actualStopLoss == null || expectedStopLoss == null) return false;
+    const actual = parseFloat(actualStopLoss);
+    const expected = parseFloat(expectedStopLoss);
+    if (!isFinite(actual) || !isFinite(expected)) return false;
+    return Math.abs(actual - expected) <= 0.0001;
+  }
+
   /**
-   * Apply default stop loss to all trades without a stop loss
-   * This is called when a user updates their default stop loss percentage setting
-   * @param {number} userId - The user ID
-   * @param {number} defaultStopLossPercent - The default stop loss percentage
-   * @returns {Promise<number>} The number of trades updated
+   * Keep default-generated stop losses aligned with the user's active default.
+   *
+   * This updates trades that either have no stop loss yet or still match a
+   * previous default formula. It deliberately skips trades with SL history so
+   * managed trades are not rewritten by a preference sync.
    */
-  static async applyDefaultStopLossToExistingTrades(userId, defaultStopLossPercent) {
-    if (!defaultStopLossPercent || defaultStopLossPercent <= 0) {
-      console.log('[STOP LOSS] Invalid default stop loss percentage, skipping update');
+  static async syncDefaultStopLossToExistingTrades(userId, previousSettings = {}, currentSettings = {}) {
+    const currentType = this.getSettingValue(currentSettings, 'default_stop_loss_type', 'defaultStopLossType') || 'percent';
+    if (currentType !== 'percent' && currentType !== 'dollar') {
       return 0;
     }
 
-    console.log(`[STOP LOSS] Applying ${defaultStopLossPercent}% default stop loss to existing trades without stop loss for user ${userId}`);
+    const currentStopLossDollars = parseFloat(this.getSettingValue(currentSettings, 'default_stop_loss_dollars', 'defaultStopLossDollars'));
+    const currentStopLossPercent = parseFloat(this.getSettingValue(currentSettings, 'default_stop_loss_percent', 'defaultStopLossPercent'));
+    const hasUsableCurrentDefault = currentType === 'dollar'
+      ? isFinite(currentStopLossDollars) && currentStopLossDollars > 0
+      : isFinite(currentStopLossPercent) && currentStopLossPercent > 0;
 
-    // Use a transaction to update all trades at once
+    if (!hasUsableCurrentDefault) {
+      return 0;
+    }
+
+    const previousType = this.getSettingValue(previousSettings, 'default_stop_loss_type', 'defaultStopLossType') || 'percent';
+    const previousStopLossPercent = parseFloat(this.getSettingValue(previousSettings, 'default_stop_loss_percent', 'defaultStopLossPercent'));
+    const previousStopLossDollars = parseFloat(this.getSettingValue(previousSettings, 'default_stop_loss_dollars', 'defaultStopLossDollars'));
+
+    const matcherSettings = [];
+    if (previousType === 'percent' && isFinite(previousStopLossPercent) && previousStopLossPercent > 0) {
+      matcherSettings.push({ default_stop_loss_type: 'percent', default_stop_loss_percent: previousStopLossPercent });
+    }
+    if (previousType === 'dollar' && isFinite(previousStopLossDollars) && previousStopLossDollars > 0) {
+      matcherSettings.push({ default_stop_loss_type: 'dollar', default_stop_loss_dollars: previousStopLossDollars });
+    }
+
+    // Repair rows affected by the older percent default bug: the setting can be
+    // dollar already, while the trade still stores a percent-derived stop.
+    if (currentType === 'dollar' && isFinite(currentStopLossPercent) && currentStopLossPercent > 0) {
+      matcherSettings.push({ default_stop_loss_type: 'percent', default_stop_loss_percent: currentStopLossPercent });
+    }
+
     const client = await db.pool.connect();
     try {
       await client.query('BEGIN');
 
-      // Find all trades without a stop loss that have the necessary data
-      const tradesQuery = `
+      const tradesResult = await client.query(`
         SELECT id, symbol, entry_price, exit_price, side, quantity, commission,
-               fees, instrument_type, contract_size, point_value, underlying_asset
+               fees, instrument_type, contract_size, point_value, underlying_asset,
+               stop_loss, r_value
         FROM trades
         WHERE user_id = $1
-          AND stop_loss IS NULL
           AND entry_price IS NOT NULL
           AND side IS NOT NULL
-      `;
-
-      const tradesResult = await client.query(tradesQuery, [userId]);
-      const trades = tradesResult.rows;
-
-      console.log(`[STOP LOSS] Found ${trades.length} trades without stop loss`);
-
-      if (trades.length === 0) {
-        await client.query('COMMIT');
-        return 0;
-      }
+          AND (risk_level_history IS NULL OR risk_level_history = '[]'::jsonb)
+      `, [userId]);
 
       let updatedCount = 0;
+      for (const trade of tradesResult.rows) {
+        const newStopLoss = this.calculateDefaultStopLossFromSettings(trade, currentSettings);
+        if (newStopLoss == null) continue;
 
-      // Update each trade with the calculated stop loss
-      for (const trade of trades) {
-        const {
-          id,
-          symbol,
-          entry_price,
-          exit_price,
-          side,
-          quantity,
-          commission,
-          fees,
-          instrument_type,
-          contract_size,
-          point_value,
-          underlying_asset
-        } = trade;
+        const matchesPreviousDefault = matcherSettings.some(settings => {
+          const expectedStopLoss = this.calculateDefaultStopLossFromSettings(trade, settings);
+          return this.stopLossMatches(trade.stop_loss, expectedStopLoss);
+        });
 
-        // Calculate stop loss based on entry price and side
-        let stopLoss;
-        if (side === 'long' || side === 'buy') {
-          stopLoss = entry_price * (1 - defaultStopLossPercent / 100);
-        } else if (side === 'short' || side === 'sell') {
-          stopLoss = entry_price * (1 + defaultStopLossPercent / 100);
-        } else {
-          console.warn(`[STOP LOSS] Unknown side "${side}" for trade ${id}, skipping`);
+        if (trade.stop_loss != null && !matchesPreviousDefault) {
           continue;
         }
 
-        // Round to 4 decimal places
-        stopLoss = Math.round(stopLoss * 10000) / 10000;
+        const rValue = trade.exit_price
+          ? this.calculateRValue(trade.entry_price, newStopLoss, trade.exit_price, trade.side, {
+            quantity: trade.quantity,
+            commission: trade.commission,
+            fees: trade.fees,
+            instrumentType: trade.instrument_type || 'stock',
+            contractSize: trade.contract_size,
+            pointValue: trade.point_value,
+            symbol: trade.symbol,
+            underlyingAsset: trade.underlying_asset
+          })
+          : null;
 
-        // Calculate R value if exit price exists
-        let rValue = null;
-        if (exit_price) {
-          rValue = this.calculateRValue(entry_price, stopLoss, exit_price, side, {
-            quantity,
-            commission,
-            fees,
-            instrumentType: instrument_type || 'stock',
-            contractSize: contract_size,
-            pointValue: point_value,
-            symbol,
-            underlyingAsset: underlying_asset
-          });
+        // This sync runs on every settings write for users in the dollar
+        // regression-repair state; skip the UPDATE when nothing would change
+        // so repeated writes (e.g. debounced UI preference flushes) don't
+        // rewrite every trade with identical values.
+        const existingRValue = trade.r_value == null ? null : parseFloat(trade.r_value);
+        const rValueUnchanged = (rValue == null && existingRValue == null)
+          || (rValue != null && existingRValue != null && Math.abs(existingRValue - rValue) < 0.005);
+        if (this.stopLossMatches(trade.stop_loss, newStopLoss) && rValueUnchanged) {
+          continue;
         }
 
-        // Update the trade
-        const updateQuery = `
-          UPDATE trades
-          SET stop_loss = $1, r_value = $2
-          WHERE id = $3 AND user_id = $4
-        `;
-
-        await client.query(updateQuery, [stopLoss, rValue, id, userId]);
+        await client.query(
+          `UPDATE trades SET stop_loss = $1, r_value = $2 WHERE id = $3 AND user_id = $4`,
+          [newStopLoss, rValue, trade.id, userId]
+        );
         updatedCount++;
       }
 
       await client.query('COMMIT');
-      console.log(`[STOP LOSS] Successfully updated ${updatedCount} trades with default stop loss`);
+      if (updatedCount > 0) {
+        console.log(`[STOP LOSS] Synced ${updatedCount} default-derived stop losses for user ${userId}`);
+      }
       return updatedCount;
-
     } catch (error) {
       await client.query('ROLLBACK');
-      console.error('[STOP LOSS] Error applying default stop loss to existing trades:', error);
+      console.error('[STOP LOSS] Error syncing default stop losses:', error);
       throw error;
     } finally {
       client.release();
     }
   }
 
-  /**
-   * Apply default dollar stop loss to all trades without a stop loss
-   * @param {number} userId - The user ID
-   * @param {number} defaultStopLossDollars - The default stop loss in dollars per trade
-   * @returns {Promise<number>} The number of trades updated
-   */
-  static async applyDefaultStopLossToExistingTradesByDollars(userId, defaultStopLossDollars) {
-    if (!defaultStopLossDollars || defaultStopLossDollars <= 0) {
-      console.log('[STOP LOSS] Invalid default stop loss dollars, skipping update');
-      return 0;
-    }
-
-    console.log(`[STOP LOSS] Applying $${defaultStopLossDollars} default stop loss to existing trades without stop loss for user ${userId}`);
-
-    const client = await db.pool.connect();
+  static async syncDollarDefaultStopLossesForAffectedUsers() {
+    let settingsResult;
     try {
-      await client.query('BEGIN');
-
-      const tradesQuery = `
-        SELECT id, symbol, entry_price, exit_price, side, quantity, commission,
-               fees, instrument_type, contract_size, point_value, underlying_asset
-        FROM trades
-        WHERE user_id = $1
-          AND stop_loss IS NULL
-          AND entry_price IS NOT NULL
-          AND side IS NOT NULL
-          AND quantity IS NOT NULL
-          AND quantity > 0
-      `;
-
-      const tradesResult = await client.query(tradesQuery, [userId]);
-      const trades = tradesResult.rows;
-
-      console.log(`[STOP LOSS] Found ${trades.length} trades without stop loss (with quantity for dollar SL)`);
-
-      if (trades.length === 0) {
-        await client.query('COMMIT');
-        return 0;
-      }
-
-      let updatedCount = 0;
-
-      for (const trade of trades) {
-        const {
-          id,
-          symbol,
-          entry_price,
-          exit_price,
-          side,
-          quantity,
-          commission,
-          fees,
-          instrument_type,
-          contract_size,
-          point_value,
-          underlying_asset
-        } = trade;
-
-        const instrumentType = instrument_type || 'stock';
-        const priceMove = this.getDollarStopLossPriceMove(defaultStopLossDollars, quantity, instrumentType, contract_size, point_value);
-        if (priceMove == null) {
-          console.warn(`[STOP LOSS] Could not compute dollar stop for trade ${id}, skipping`);
-          continue;
-        }
-
-        let stopLoss;
-        if (side === 'long' || side === 'buy') {
-          stopLoss = entry_price - priceMove;
-        } else if (side === 'short' || side === 'sell') {
-          stopLoss = entry_price + priceMove;
-        } else {
-          console.warn(`[STOP LOSS] Unknown side "${side}" for trade ${id}, skipping`);
-          continue;
-        }
-
-        stopLoss = Math.round(stopLoss * 10000) / 10000;
-
-        let rValue = null;
-        if (exit_price) {
-          rValue = this.calculateRValue(entry_price, stopLoss, exit_price, side, {
-            quantity,
-            commission,
-            fees,
-            instrumentType,
-            contractSize: contract_size,
-            pointValue: point_value,
-            symbol,
-            underlyingAsset: underlying_asset
-          });
-        }
-
-        const updateQuery = `
-          UPDATE trades
-          SET stop_loss = $1, r_value = $2
-          WHERE id = $3 AND user_id = $4
-        `;
-
-        await client.query(updateQuery, [stopLoss, rValue, id, userId]);
-        updatedCount++;
-      }
-
-      await client.query('COMMIT');
-      console.log(`[STOP LOSS] Successfully updated ${updatedCount} trades with default dollar stop loss`);
-      return updatedCount;
-
+      settingsResult = await db.query(`
+        SELECT user_id, default_stop_loss_type, default_stop_loss_percent, default_stop_loss_dollars
+        FROM user_settings
+        WHERE default_stop_loss_type = 'dollar'
+          AND default_stop_loss_dollars IS NOT NULL
+          AND default_stop_loss_dollars > 0
+          AND default_stop_loss_percent IS NOT NULL
+          AND default_stop_loss_percent > 0
+      `);
     } catch (error) {
-      await client.query('ROLLBACK');
-      console.error('[STOP LOSS] Error applying default dollar stop loss to existing trades:', error);
+      if (error.code === '42P01' || error.code === '42703') {
+        console.log('[STOP LOSS] Dollar stop-loss repair skipped; settings table/columns are not migrated yet.');
+        return { usersProcessed: 0, tradesUpdated: 0 };
+      }
       throw error;
-    } finally {
-      client.release();
     }
+
+    let usersProcessed = 0;
+    let tradesUpdated = 0;
+    const AnalyticsCache = require('../services/analyticsCache');
+
+    for (const settings of settingsResult.rows) {
+      usersProcessed++;
+      const updated = await this.syncDefaultStopLossToExistingTrades(
+        settings.user_id,
+        settings,
+        settings
+      );
+      tradesUpdated += updated;
+
+      if (updated > 0) {
+        try {
+          await AnalyticsCache.invalidate(settings.user_id);
+        } catch (error) {
+          console.warn(`[STOP LOSS] Failed to invalidate analytics cache for user ${settings.user_id}: ${error.message}`);
+        }
+      }
+    }
+
+    if (usersProcessed > 0) {
+      console.log(`[STOP LOSS] Dollar default repair checked ${usersProcessed} users and updated ${tradesUpdated} trades.`);
+    }
+
+    return { usersProcessed, tradesUpdated };
   }
 
   /**
@@ -2898,8 +2986,13 @@ class Trade {
     console.log(`[MONTHLY] Getting monthly performance for user ${userId}, year ${year}, accounts:`, accounts, 'filters:', filters);
 
     const { getBreakevenToleranceConfig, breakevenPredicate } = require('../utils/breakeven');
+    const { POSITION_GROUP_KEY, GROUPED_BREAKEVEN, isPositionGroupingEnabled } = require('../utils/positionGrouping');
     const breakevenConfig = await getBreakevenToleranceConfig(userId);
-    const be = breakevenPredicate({
+    // Whole-trade win rate (issue #339): when enabled, collapse multi-leg
+    // positions before the monthly aggregation so counts and win rate match
+    // the headline analytics. P&L sums are unchanged either way.
+    const groupByPosition = await isPositionGroupingEnabled(userId);
+    const be = groupByPosition ? GROUPED_BREAKEVEN : breakevenPredicate({
       gross: '(pnl + COALESCE(commission, 0) + COALESCE(fees, 0))',
       tickSize: 'tick_size',
       pointValue: 'point_value',
@@ -2931,8 +3024,38 @@ class Trade {
       params.push(...filters.strategies);
     }
 
+    const whereBody = `
+        WHERE user_id = $1
+          AND EXTRACT(YEAR FROM trade_date) = $2
+          AND exit_price IS NOT NULL
+          AND pnl IS NOT NULL${extraFilter}`;
+
+    // Grouped mode aggregates legs to positions first; r-value stats then read
+    // the position-level sum, gated on any leg having a stop (has_stop).
+    const sourceCte = groupByPosition ? `position_trades AS (
+        SELECT
+          MIN(trade_date) as trade_date,
+          MIN(COALESCE(NULLIF(underlying_symbol, ''), symbol)) as symbol,
+          SUM(pnl) as pnl,
+          SUM(r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL) as r_value,
+          BOOL_OR(stop_loss IS NOT NULL) as has_stop
+        FROM trades
+        ${whereBody}
+        GROUP BY ${POSITION_GROUP_KEY}
+      ),
+      ` : '';
+
+    const monthlySource = groupByPosition
+      ? 'FROM position_trades'
+      : `FROM trades
+        ${whereBody}`;
+
+    const rValueFilter = groupByPosition
+      ? 'r_value IS NOT NULL AND has_stop'
+      : 'r_value IS NOT NULL AND stop_loss IS NOT NULL';
+
     const monthlyQuery = `
-      WITH monthly_trades AS (
+      WITH ${sourceCte}monthly_trades AS (
         SELECT
           EXTRACT(MONTH FROM trade_date) as month,
           COUNT(*)::integer as total_trades,
@@ -2946,15 +3069,11 @@ class Trade {
           COALESCE(AVG(pnl) FILTER (WHERE ${be.isNot} AND pnl < 0), 0)::numeric as avg_loss,
           COALESCE(MAX(pnl), 0)::numeric as best_trade,
           COALESCE(MIN(pnl), 0)::numeric as worst_trade,
-          COALESCE(AVG(r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL), 0)::numeric as avg_r_value,
-          COALESCE(SUM(r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL), 0)::numeric as total_r_value,
+          COALESCE(AVG(r_value) FILTER (WHERE ${rValueFilter}), 0)::numeric as avg_r_value,
+          COALESCE(SUM(r_value) FILTER (WHERE ${rValueFilter}), 0)::numeric as total_r_value,
           COUNT(DISTINCT symbol)::integer as symbols_traded,
           COUNT(DISTINCT trade_date)::integer as trading_days
-        FROM trades
-        WHERE user_id = $1
-          AND EXTRACT(YEAR FROM trade_date) = $2
-          AND exit_price IS NOT NULL
-          AND pnl IS NOT NULL${extraFilter}
+        ${monthlySource}
         GROUP BY EXTRACT(MONTH FROM trade_date)
       ),
       all_months AS (
@@ -3105,11 +3224,20 @@ class Trade {
     // Return each strategy with how many trades use it, most-used first, so
     // dropdowns can surface the strategies the user actually relies on.
     const query = `
-      SELECT strategy AS name, COUNT(*)::int AS count
-      FROM trades
-      WHERE user_id = $1 AND strategy IS NOT NULL AND strategy != ''
-      GROUP BY strategy
-      ORDER BY count DESC, strategy ASC
+      SELECT name, SUM(count)::int AS count
+      FROM (
+        SELECT strategy AS name, COUNT(*)::int AS count
+        FROM trades
+        WHERE user_id = $1 AND strategy IS NOT NULL AND strategy != ''
+        GROUP BY strategy
+        UNION ALL
+        SELECT detected_strategy AS name, COUNT(*)::int AS count
+        FROM trade_position_groups
+        WHERE user_id = $1 AND detected_strategy IS NOT NULL AND detected_strategy != ''
+        GROUP BY detected_strategy
+      ) strategies
+      GROUP BY name
+      ORDER BY count DESC, name ASC
     `;
     const result = await db.query(query, [userId]);
     return result.rows;
@@ -3147,6 +3275,10 @@ class Trade {
         UNION
         SELECT account_identifier
         FROM user_accounts
+        WHERE user_id = $1 AND account_identifier IS NOT NULL AND account_identifier != ''
+        UNION
+        SELECT account_identifier
+        FROM investment_lots
         WHERE user_id = $1 AND account_identifier IS NOT NULL AND account_identifier != ''
       ) combined
       ORDER BY account_identifier
@@ -3265,10 +3397,13 @@ class Trade {
   }
 
   static async updateSymbolForCusip(userId, cusip, ticker) {
+    // Option trades are excluded: a CUSIP resolves to the underlying equity ticker,
+    // and renaming an option trade to it corrupts the contract's identity.
     const query = `
       UPDATE trades
       SET symbol = $3
       WHERE user_id = $1 AND symbol = $2
+        AND instrument_type IS DISTINCT FROM 'option'
     `;
     const result = await db.query(query, [userId, cusip, ticker]);
     console.log(`Updated ${result.rowCount} trades: changed symbol from ${cusip} to ${ticker}`);
@@ -4255,7 +4390,8 @@ class Trade {
           to,
           async (sym, resolution, fromTs, toTs) => {
             return await finnhub.getStockCandles(sym, resolution, fromTs, toTs, userId);
-          }
+          },
+          finnhub.providerName || 'finnhub'
         );
 
         if (data && data.length > 0) {
@@ -4387,7 +4523,8 @@ class Trade {
           to,
           async (sym, resolution, fromTs, toTs) => {
             return await finnhub.getStockCandles(sym, resolution, fromTs, toTs, userId);
-          }
+          },
+          finnhub.providerName || 'finnhub'
         );
 
         if (data && data.length > 0) {

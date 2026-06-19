@@ -83,13 +83,17 @@ const validate = (schema) => {
 };
 
 const nullableString = (max = 255) => Joi.string().max(max).allow('', null);
+// Date-only fields (DATE columns) must stay strings through validation.
+// Joi.date() converts to a UTC-midnight Date object, which pg serializes in
+// the server's LOCAL timezone - on servers west of UTC the stored DATE lands
+// one day early (issue #349). .raw() validates but returns the original value.
+const isoDateOnly = Joi.date().iso().raw();
 const nullableDate = Joi.alternatives().try(
-  Joi.date().iso(),
-  Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/),
+  isoDateOnly,
   Joi.valid(null, '')
 );
 const nullableNumber = Joi.alternatives().try(Joi.number(), Joi.valid(null, ''));
-const aiProviderSchema = Joi.string().valid('gemini', 'claude', 'openai', 'ollama', 'lmstudio', 'perplexity', 'local');
+const aiProviderSchema = Joi.string().valid('gemini', 'claude', 'openai', 'deepseek', 'kimi', 'ollama', 'lmstudio', 'perplexity', 'local');
 
 const schemas = {
   register: Joi.object({
@@ -209,7 +213,7 @@ const schemas = {
     underlyingSymbol: Joi.string().max(10).allow(null, ''),
     optionType: Joi.string().valid('call', 'put').allow(null, ''),
     strikePrice: Joi.number().positive().allow(null, ''),
-    expirationDate: Joi.date().iso().allow(null, ''),
+    expirationDate: isoDateOnly.allow(null, ''),
     contractSize: Joi.number().integer().positive().allow(null, ''),
     // Futures-specific fields
     underlyingAsset: Joi.string().max(50).allow(null, ''),
@@ -289,7 +293,7 @@ const schemas = {
     underlyingSymbol: Joi.string().max(10).allow(null, ''),
     optionType: Joi.string().valid('call', 'put').allow(null, ''),
     strikePrice: Joi.number().positive().allow(null, ''),
-    expirationDate: Joi.date().iso().allow(null, ''),
+    expirationDate: isoDateOnly.allow(null, ''),
     contractSize: Joi.number().integer().positive().allow(null, ''),
     // Futures-specific fields
     underlyingAsset: Joi.string().max(50).allow(null, ''),
@@ -350,12 +354,15 @@ const schemas = {
       Joi.number().positive(),
       Joi.valid(null, '')
     ),
-    // Additional take profit targets (TP2, TP3, etc.)
+    // Additional take profit targets (TP2, TP3, etc.). No .default([])
+    // here: updateTrade handles partial payloads, and an injected empty
+    // array would silently wipe saved targets on any update that omits
+    // the field (same bug class as issue #345).
     takeProfitTargets: Joi.array().items(Joi.object({
       price: Joi.number().positive().required(),
       shares: Joi.number().integer().positive().allow(null).optional(),
       percentage: Joi.number().min(1).max(100).allow(null).optional()
-    })).default([]),
+    })),
     // Chart URL for TradingView links
     chartUrl: Joi.string().uri().max(1000).allow(null, ''),
     // Manual target hit override (SL/TP hit first)
@@ -364,7 +371,7 @@ const schemas = {
     underlyingSymbol: Joi.string().max(10).allow(null, ''),
     optionType: Joi.string().valid('call', 'put').allow(null, ''),
     strikePrice: Joi.number().positive().allow(null, ''),
-    expirationDate: Joi.date().iso().allow(null, ''),
+    expirationDate: isoDateOnly.allow(null, ''),
     contractSize: Joi.number().integer().positive().allow(null, ''),
     // Futures-specific fields
     underlyingAsset: Joi.string().max(50).allow(null, ''),
@@ -423,6 +430,8 @@ const schemas = {
     timezone: Joi.string().max(50),
     timeDisplayFormat: Joi.string().valid('12h', '24h'),
     statisticsCalculation: Joi.string().valid('average', 'median'),
+    analyticsPositionGrouping: Joi.boolean(),
+    edgeReportEnabled: Joi.boolean(),
     breakevenToleranceTicks: Joi.number().integer().min(0).max(1000).allow(null),
     breakevenToleranceTicksByUnderlying: Joi.object()
       .pattern(/^[A-Za-z0-9]+$/, Joi.number().integer().min(0).max(1000))
@@ -430,7 +439,7 @@ const schemas = {
     enableTradeGrouping: Joi.boolean(),
     tradeGroupingTimeGapMinutes: Joi.number().integer().min(1).max(1440),
     autoCloseExpiredOptions: Joi.boolean(),
-    defaultStopLossType: Joi.string().valid('percent', 'lod', 'dollar').default('percent'),
+    defaultStopLossType: Joi.string().valid('percent', 'lod', 'dollar'),
     defaultStopLossPercent: Joi.number().min(0).max(100).allow(null),
     defaultStopLossDollars: Joi.number().min(0).allow(null),
     defaultTakeProfitPercent: Joi.number().min(0).max(1000).allow(null),
@@ -581,7 +590,7 @@ const schemas = {
 
   // Diary validation schemas
   createDiaryEntry: Joi.object({
-    entryDate: Joi.date().iso().required(),
+    entryDate: isoDateOnly.required(),
     entryType: Joi.string().valid('diary', 'playbook').default('diary'),
     title: Joi.string().max(255).allow(null, ''),
     marketBias: Joi.string().valid('bullish', 'bearish', 'neutral').allow(null, ''),
@@ -595,7 +604,7 @@ const schemas = {
   }),
 
   updateDiaryEntry: Joi.object({
-    entryDate: Joi.date().iso(), // Add entryDate for update operations
+    entryDate: isoDateOnly, // Add entryDate for update operations
     entryType: Joi.string().valid('diary', 'playbook'),
     title: Joi.string().max(255).allow(null, ''),
     marketBias: Joi.string().valid('bullish', 'bearish', 'neutral').allow(null, ''),
@@ -863,7 +872,34 @@ const schemas = {
     rating: Joi.number().integer().min(1).max(5).required(),
     body: Joi.string().trim().max(2000).required(),
     display_name: nullableString(100)
-  })
+  }),
+
+  // Prop-firm rule profiles use snake_case end to end (project standard for new fields)
+  propFirmProfileCreate: Joi.object({
+    account_identifier: Joi.string().trim().min(1).max(50).required(),
+    label: nullableString(100),
+    account_size: Joi.number().positive().required(),
+    max_daily_loss: Joi.number().positive().allow(null),
+    max_drawdown: Joi.number().positive().allow(null),
+    drawdown_mode: Joi.string().valid('static', 'trailing').default('static'),
+    profit_target: Joi.number().positive().allow(null),
+    min_trading_days: Joi.number().integer().positive().allow(null),
+    start_date: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).required(),
+    is_active: Joi.boolean().default(true)
+  }),
+
+  propFirmProfileUpdate: Joi.object({
+    account_identifier: Joi.string().trim().min(1).max(50),
+    label: nullableString(100),
+    account_size: Joi.number().positive(),
+    max_daily_loss: Joi.number().positive().allow(null),
+    max_drawdown: Joi.number().positive().allow(null),
+    drawdown_mode: Joi.string().valid('static', 'trailing'),
+    profit_target: Joi.number().positive().allow(null),
+    min_trading_days: Joi.number().integer().positive().allow(null),
+    start_date: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/),
+    is_active: Joi.boolean()
+  }).min(1)
 };
 
 schemas.trade = schemas.createTrade;

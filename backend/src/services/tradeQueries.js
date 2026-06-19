@@ -25,6 +25,85 @@ async function timedDbQuery(label, query, values = []) {
   }
 }
 
+function futuresRootSql(alias) {
+  return `COALESCE(
+    NULLIF(UPPER(${alias}.underlying_asset), ''),
+    SUBSTRING(UPPER(REGEXP_REPLACE(${alias}.symbol, '^/', '')) FROM '^([A-Z][A-Z0-9]{0,3})(?:[FGHJKMNQUVXZ]\\d{1,2})$')
+  )`;
+}
+
+function futuresPointValueSql(alias) {
+  const root = futuresRootSql(alias);
+  return `CASE ${root}
+    WHEN 'ES' THEN 50
+    WHEN 'NQ' THEN 20
+    WHEN 'YM' THEN 5
+    WHEN 'RTY' THEN 50
+    WHEN 'MES' THEN 5
+    WHEN 'MNQ' THEN 2
+    WHEN 'MYM' THEN 0.5
+    WHEN 'M2K' THEN 5
+    WHEN 'CL' THEN 1000
+    WHEN 'MCL' THEN 100
+    WHEN 'NG' THEN 10000
+    WHEN 'MNG' THEN 1000
+    WHEN 'QG' THEN 2500
+    WHEN 'GC' THEN 100
+    WHEN 'MGC' THEN 10
+    WHEN 'SI' THEN 5000
+    WHEN 'SIL' THEN 1000
+    WHEN 'HG' THEN 12500
+    WHEN 'ZB' THEN 1000
+    WHEN 'ZN' THEN 1000
+    WHEN 'ZF' THEN 1000
+    WHEN 'ZT' THEN 2000
+    ELSE 50
+  END`;
+}
+
+function tradeMultiplierSql(alias) {
+  const root = futuresRootSql(alias);
+  return `CASE
+    WHEN LOWER(COALESCE(${alias}.instrument_type, 'stock')) = 'option'
+      THEN COALESCE(NULLIF(${alias}.contract_size, 0), 100)
+    WHEN LOWER(COALESCE(${alias}.instrument_type, 'stock')) IN ('future', 'futures') OR ${root} IS NOT NULL
+      THEN COALESCE(NULLIF(${alias}.point_value, 0), ${futuresPointValueSql(alias)})
+    ELSE 1
+  END`;
+}
+
+function riskPerUnitSql(alias) {
+  return `CASE
+    WHEN LOWER(${alias}.side) IN ('long', 'buy')
+      AND ${alias}.entry_price IS NOT NULL
+      AND ${alias}.stop_loss IS NOT NULL
+      AND ${alias}.stop_loss < ${alias}.entry_price
+      THEN ${alias}.entry_price - ${alias}.stop_loss
+    WHEN LOWER(${alias}.side) IN ('short', 'sell')
+      AND ${alias}.entry_price IS NOT NULL
+      AND ${alias}.stop_loss IS NOT NULL
+      AND ${alias}.stop_loss > ${alias}.entry_price
+      THEN ${alias}.stop_loss - ${alias}.entry_price
+    ELSE NULL
+  END`;
+}
+
+function riskAmountSql(alias) {
+  return `((${riskPerUnitSql(alias)}) * ${alias}.quantity * (${tradeMultiplierSql(alias)}))`;
+}
+
+function derivedRValueSql(alias = 't') {
+  const riskAmount = riskAmountSql(alias);
+  return `CASE
+    WHEN ${alias}.pnl IS NOT NULL
+      AND ${alias}.quantity IS NOT NULL
+      AND ${alias}.quantity > 0
+      AND ${riskAmount} > 0
+      THEN ${alias}.pnl / ${riskAmount}
+    ELSE NULL
+  END`;
+}
+
 class TradeQueries {
   // Internal: builds the WHERE clause and parameter array for a filter spec.
   // Returns { whereClause, values, paramCount, needsSectorOuterJoin }.
@@ -119,6 +198,13 @@ class TradeQueries {
       whereClause += ` AND t.strategy IN (${placeholders})`;
       filters.strategies.forEach(s => values.push(s));
       paramCount += filters.strategies.length;
+    }
+
+    if (filters.setups && filters.setups.length > 0) {
+      const placeholders = filters.setups.map((_, i) => `$${paramCount + i}`).join(',');
+      whereClause += ` AND t.setup IN (${placeholders})`;
+      filters.setups.forEach(s => values.push(s));
+      paramCount += filters.setups.length;
     }
 
     if (filters.sectors && filters.sectors.length > 0) {
@@ -332,14 +418,17 @@ class TradeQueries {
         (SELECT array_agg(tch.chart_url ORDER BY tch.uploaded_at ASC) FROM trade_charts tch WHERE tch.trade_id = t.id) as chart_urls,
         count(DISTINCT tc.id)::integer as comment_count,
         sc.finnhub_industry as sector,
-        sc.company_name as company_name
+        sc.company_name as company_name,
+        tpg.detected_strategy as group_detected_strategy,
+        tpg.leg_count as group_leg_count
       FROM (${subquery}) AS trade_ids
       INNER JOIN trades t ON t.id = trade_ids.id
       LEFT JOIN price_monitoring pm ON pm.symbol = t.symbol
       LEFT JOIN trade_attachments ta ON t.id = ta.trade_id
       LEFT JOIN trade_comments tc ON t.id = tc.trade_id
       LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
-      GROUP BY t.id, pm.current_price, sc.finnhub_industry, sc.company_name
+      LEFT JOIN trade_position_groups tpg ON t.position_group_id = tpg.id
+      GROUP BY t.id, pm.current_price, sc.finnhub_industry, sc.company_name, tpg.detected_strategy, tpg.leg_count
       ORDER BY t.trade_date DESC, t.entry_time DESC
     `;
 
@@ -359,11 +448,18 @@ class TradeQueries {
 
     const User = require('../models/User');
     const { normalizeConfig, breakevenPredicate } = require('../utils/breakeven');
+    const { POSITION_GROUP_KEY, GROUPED_BREAKEVEN } = require('../utils/positionGrouping');
     let useMedian = false;
     let breakevenConfig = { default: 0, byUnderlying: {} };
+    // Whole-trade win rate (issue #339): when the profile setting is on, the
+    // completed_trades CTE collapses multi-leg positions opened together into a
+    // single trade so the headline win rate / counts / profit factor are
+    // measured per position. Total P&L is unchanged.
+    let groupByPosition = false;
     try {
       const userSettings = await User.getSettings(userId);
       useMedian = userSettings?.statistics_calculation === 'median';
+      groupByPosition = userSettings?.analytics_position_grouping === true;
       breakevenConfig = normalizeConfig({
         default: userSettings?.breakeven_tolerance_ticks,
         byUnderlying: userSettings?.breakeven_tolerance_ticks_by_underlying
@@ -381,13 +477,18 @@ class TradeQueries {
 
     // Breakeven predicates: one over the completed_trades CTE aliases
     // (trade_pnl / trade_costs), one over the raw columns used by the daily query.
-    const beCte = breakevenPredicate({
-      gross: '(trade_pnl + trade_costs)',
-      tickSize: 'tick_size',
-      pointValue: 'point_value',
-      quantity: 'quantity',
-      underlying: 'underlying_asset'
-    }, breakevenConfig);
+    // In position-grouping mode the per-leg tick tolerance no longer applies to a
+    // combined position, so a grouped trade is breakeven only when its net P&L
+    // (trade_pnl) rounds to zero.
+    const beCte = groupByPosition
+      ? { is: '(ROUND(trade_pnl::numeric, 2) = 0)', isNot: '(ROUND(trade_pnl::numeric, 2) <> 0)' }
+      : breakevenPredicate({
+          gross: '(trade_pnl + trade_costs)',
+          tickSize: 'tick_size',
+          pointValue: 'point_value',
+          quantity: 'quantity',
+          underlying: 'underlying_asset'
+        }, breakevenConfig);
     const beDaily = breakevenPredicate({
       gross: '(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0))',
       tickSize: 'tick_size',
@@ -402,8 +503,33 @@ class TradeQueries {
       ${whereClause}
     `;
 
-    const analyticsQuery = `
-      WITH completed_trades AS (
+    const derivedRValue = derivedRValueSql('t');
+
+    // Per-leg vs per-position completed_trades. The grouped form sums legs that
+    // share account + underlying/symbol + entry_time into one synthetic trade.
+    // Only columns referenced downstream are projected; the grouped beCte above
+    // works on trade_pnl, so tick_size/point_value/quantity/underlying_asset are
+    // not needed in grouped mode.
+    const completedTradesCte = groupByPosition
+      ? `completed_trades AS (
+        SELECT
+          MIN(symbol) as symbol,
+          MIN(id::text) as trade_group,
+          SUM(pnl) as trade_pnl,
+          SUM(COALESCE(commission, 0) + COALESCE(fees, 0)) as trade_costs,
+          COUNT(*) as execution_count,
+          AVG(pnl_percent) as avg_return_pct,
+          MIN(trade_date) as first_trade_date,
+          MIN(entry_time) as first_entry,
+          MAX(COALESCE(exit_time, entry_time)) as last_exit,
+          SUM(${derivedRValue}) as r_value
+        FROM trades t
+        ${whereClause}
+          AND exit_price IS NOT NULL
+          AND pnl IS NOT NULL
+        GROUP BY ${POSITION_GROUP_KEY}
+      )`
+      : `completed_trades AS (
         SELECT
           symbol,
           id as trade_group,
@@ -418,12 +544,15 @@ class TradeQueries {
           trade_date as first_trade_date,
           entry_time as first_entry,
           COALESCE(exit_time, entry_time) as last_exit,
-          r_value
+          ${derivedRValue} as r_value
         FROM trades t
         ${whereClause}
           AND exit_price IS NOT NULL
           AND pnl IS NOT NULL
-      ),
+      )`;
+
+    const analyticsQuery = `
+      WITH ${completedTradesCte},
       trade_stats AS (
         SELECT
           COUNT(*)::integer as total_trades,
@@ -447,6 +576,7 @@ class TradeQueries {
           COUNT(DISTINCT first_trade_date) as trading_days,
           AVG(avg_return_pct) as avg_return_pct,
           AVG(r_value) as avg_r_value,
+          SUM(r_value) as total_r_value,
           STDDEV(trade_pnl) as pnl_stddev,
           SUM(CASE WHEN trade_pnl > 0 THEN trade_pnl ELSE 0 END) as total_gross_wins,
           SUM(CASE WHEN trade_pnl < 0 THEN trade_pnl ELSE 0 END) as total_gross_losses
@@ -499,6 +629,7 @@ class TradeQueries {
         ts.trading_days,
         ts.avg_return_pct,
         ts.avg_r_value,
+        ts.total_r_value,
         ts.pnl_stddev,
         dp.max_daily_gain,
         dp.max_daily_loss,
@@ -549,7 +680,34 @@ class TradeQueries {
     ] = await Promise.all([
       timedDbQuery('analytics.executionCountQuery', executionCountQuery, values),
       timedDbQuery('analytics.analyticsQuery', analyticsQuery, values),
-      timedDbQuery('analytics.symbolBreakdownQuery', `
+      timedDbQuery('analytics.symbolBreakdownQuery', groupByPosition ? `
+        -- Whole-trade mode: one row per position (multi-leg groups collapsed),
+        -- keyed by underlying so option legs roll up under their underlying.
+        -- Matches the grouped completed_trades semantics above so this
+        -- widget's "Trades" column agrees with the Win Rate card's total.
+        WITH positions AS (
+          SELECT
+            COALESCE(NULLIF(underlying_symbol, ''), symbol) as symbol,
+            SUM(pnl) as pnl,
+            SUM(quantity) as volume
+          FROM trades t
+          ${whereClause}
+            AND exit_price IS NOT NULL
+            AND pnl IS NOT NULL
+          GROUP BY COALESCE(NULLIF(underlying_symbol, ''), symbol), ${POSITION_GROUP_KEY}
+        )
+        SELECT
+          symbol,
+          COUNT(*) as trades,
+          SUM(pnl) as total_pnl,
+          AVG(pnl) as avg_pnl,
+          COUNT(*) FILTER (WHERE pnl > 0) as wins,
+          SUM(volume) as total_volume
+        FROM positions
+        GROUP BY symbol
+        ORDER BY total_pnl DESC
+        LIMIT 10
+      ` : `
         -- One row per completed round-trip trade — matches analyticsQuery's
         -- completed_trades semantics so this widget's "Trades" column agrees
         -- with the Win Rate card's total. The old version pre-aggregated by
@@ -575,14 +733,48 @@ class TradeQueries {
           trade_date,
           SUM(COALESCE(pnl, 0)) as daily_pnl,
           SUM(SUM(COALESCE(pnl, 0))) OVER (ORDER BY trade_date) as cumulative_pnl,
-          COUNT(*) as trade_count
+          COALESCE(SUM(${derivedRValue}), 0) as r_value,
+          COALESCE(SUM(SUM(${derivedRValue})) OVER (ORDER BY trade_date), 0) as cumulative_r_value,
+          ${groupByPosition ? `COUNT(DISTINCT ${POSITION_GROUP_KEY})` : 'COUNT(*)'} as trade_count
         FROM trades t
         ${whereClause}
         GROUP BY trade_date
         HAVING COUNT(*) > 0
         ORDER BY trade_date
       `, values),
-      timedDbQuery('analytics.dailyWinRateQuery', `
+      timedDbQuery('analytics.dailyWinRateQuery', groupByPosition ? `
+        -- Whole-trade mode: wins/losses counted per position, not per leg, so
+        -- the Daily Win Rate & P/R Ratio widget matches the headline win rate.
+        -- Grouped positions use the net-P&L breakeven (rounds to zero) since
+        -- the per-leg tick tolerance doesn't apply to a combined position.
+        WITH positions AS (
+          SELECT
+            MIN(trade_date) as trade_date,
+            SUM(COALESCE(pnl, 0)) as pnl
+          FROM trades t
+          ${whereClause}
+          GROUP BY ${POSITION_GROUP_KEY}
+        )
+        SELECT
+          trade_date,
+          COUNT(*) FILTER (WHERE ${GROUPED_BREAKEVEN.isNot} AND pnl > 0) as wins,
+          COUNT(*) FILTER (WHERE ${GROUPED_BREAKEVEN.isNot} AND pnl < 0) as losses,
+          COUNT(*) FILTER (WHERE ${GROUPED_BREAKEVEN.is}) as breakeven,
+          COUNT(*) as total_trades,
+          CASE
+            WHEN COUNT(*) > 0 THEN ROUND((COUNT(*) FILTER (WHERE ${GROUPED_BREAKEVEN.isNot} AND pnl > 0)::decimal / COUNT(*)::decimal) * 100, 2)
+            ELSE 0
+          END as win_rate,
+          CASE
+            WHEN AVG(pnl) FILTER (WHERE ${GROUPED_BREAKEVEN.isNot} AND pnl < 0) IS NULL THEN
+              CASE WHEN AVG(pnl) FILTER (WHERE ${GROUPED_BREAKEVEN.isNot} AND pnl > 0) IS NOT NULL THEN 999.99 ELSE 0 END
+            ELSE ROUND(ABS(AVG(pnl) FILTER (WHERE ${GROUPED_BREAKEVEN.isNot} AND pnl > 0) / AVG(pnl) FILTER (WHERE ${GROUPED_BREAKEVEN.isNot} AND pnl < 0))::numeric, 2)
+          END as pl_ratio
+        FROM positions
+        GROUP BY trade_date
+        HAVING COUNT(*) > 0
+        ORDER BY trade_date
+      ` : `
         SELECT
           trade_date,
           COUNT(*) FILTER (WHERE ${beDaily.isNot} AND COALESCE(pnl, 0) > 0) as wins,
@@ -703,7 +895,8 @@ class TradeQueries {
         symbolsTraded: parseInt(analytics.symbols_traded) || 0,
         tradingDays: parseInt(analytics.trading_days) || 0,
         avgReturnPercent: parseFloat(analytics.avg_return_pct) || 0,
-        avgRValue: parseFloat(analytics.avg_r_value) || 0
+        avgRValue: parseFloat(analytics.avg_r_value) || 0,
+        totalRValue: parseFloat(analytics.total_r_value) || 0
       },
       performanceBySymbol: symbolResult.rows,
       dailyPnL: dailyPnLResult.rows,

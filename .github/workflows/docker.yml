@@ -1,11 +1,17 @@
 name: Build Docker Images
 
 on:
+  pull_request:
+    branches:
+      - main
+      - develop
   push:
     branches:
       - main
       - develop
       - fix/pnl-canonical-engine
+    tags:
+      - 'v*.*.*'
   release:
     types:
       - published
@@ -31,6 +37,21 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: tradetally
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: tradetally_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: Check out manually selected release tag
@@ -67,12 +88,20 @@ jobs:
       - name: Run backend tests
         run: pnpm --dir backend test
 
+      - name: Run backend integration tests (real Postgres)
+        run: pnpm --dir backend test:integration
+        env:
+          TEST_DATABASE_URL: postgres://tradetally:testpass@localhost:5432/tradetally_test
+
       - name: Run frontend tests
         run: pnpm --dir frontend test:run
 
   build:
     needs: test
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Check out manually selected release tag
@@ -106,34 +135,35 @@ jobs:
       - name: Determine tags
         id: tags
         run: |
-          if [[ "${{ github.event_name }}" == "release" ]]; then
-            release_tag="${{ github.event.release.tag_name }}"
-            tags="potentialmidas/tradetally:${release_tag}"
+          build_release_tags() {
+            local release_tag="$1"
+            local is_prerelease="$2"
 
-            if [[ "${{ github.event.release.prerelease }}" == "true" ]]; then
-              tags="${tags},potentialmidas/tradetally:nightly"
-            else
-              tags="${tags},potentialmidas/tradetally:latest"
-            fi
-
-            echo "tags=${tags}" >> "$GITHUB_OUTPUT"
-          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            release_tag="${{ inputs.release_tag }}"
-
-            if [[ ! "$release_tag" =~ ^v.+$ ]]; then
-              echo "Release tag must start with 'v', got: $release_tag"
+            if [[ ! "$release_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Release tag must match vX.Y.Z, got: $release_tag"
               exit 1
             fi
 
-            tags="potentialmidas/tradetally:${release_tag}"
+            local version="${release_tag#v}"
+            local major_minor="${version%.*}"
+            local major="${version%%.*}"
+            local tags="potentialmidas/tradetally:${version},potentialmidas/tradetally:${major_minor},potentialmidas/tradetally:${major}"
 
-            if [[ "${{ inputs.prerelease }}" == "true" ]]; then
+            if [[ "$is_prerelease" == "true" ]]; then
               tags="${tags},potentialmidas/tradetally:nightly"
             else
               tags="${tags},potentialmidas/tradetally:latest"
             fi
 
             echo "tags=${tags}" >> "$GITHUB_OUTPUT"
+          }
+
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            build_release_tags "${{ github.event.release.tag_name }}" "${{ github.event.release.prerelease }}"
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            build_release_tags "${{ inputs.release_tag }}" "${{ inputs.prerelease }}"
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            build_release_tags "${{ github.ref_name }}" "false"
           elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
             echo "tags=potentialmidas/tradetally:latest" >> "$GITHUB_OUTPUT"
           elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
@@ -152,3 +182,53 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.tags.outputs.tags }}
+
+  android-apk:
+    # Attach the prebuilt Android APK to the release. Kept as its own job so a
+    # Docker build/push failure can't block the asset upload, and so it can be
+    # run manually (workflow_dispatch) to attach the APK when a release event
+    # didn't fire or the asset is missing.
+    needs: test
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out manually selected release tag
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.release_tag }}
+
+      - name: Check out release tag
+        if: github.event_name == 'release'
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Resolve release tag
+        id: rel
+        run: |
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify APK is present
+        run: |
+          apk="release-assets/android/tradetally-android.apk"
+          if [[ ! -f "$apk" ]]; then
+            echo "::error::Android APK not found at $apk for ${{ steps.rel.outputs.tag }}. Build and commit the APK before releasing."
+            exit 1
+          fi
+          ls -lh "$apk"
+
+      - name: Upload Android APK release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ steps.rel.outputs.tag }}" \
+            release-assets/android/tradetally-android.apk#TradeTally-Android-${{ steps.rel.outputs.tag }}.apk \
+            --clobber

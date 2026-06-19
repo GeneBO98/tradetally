@@ -215,6 +215,28 @@
       </div>
     </section>
 
+    <!-- Free Tools -->
+    <section data-reveal class="bg-gray-50 dark:bg-gray-900 py-12 sm:py-16">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center mb-8">
+          <h2 class="text-2xl sm:text-3xl font-extrabold text-gray-900 dark:text-white">
+            Plus, Free Trader Tools and Calculators
+          </h2>
+          <p class="mt-3 max-w-2xl mx-auto text-gray-500 dark:text-gray-400">
+            Use our free position size, risk/reward, expectancy, win rate, and DCA calculators &mdash; no signup required.
+          </p>
+        </div>
+        <div class="text-center">
+          <router-link to="/tools" class="inline-flex items-center px-6 py-3 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-primary-600 dark:text-primary-400 font-semibold hover:border-primary-500 dark:hover:border-primary-500 transition-colors">
+            Browse Free Tools
+            <svg class="ml-2 w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </router-link>
+        </div>
+      </div>
+    </section>
+
     <div class="h-3"></div>
 
     <!-- CTA -->
@@ -262,7 +284,6 @@ import {
 } from '@heroicons/vue/24/outline'
 import { usePricingExperiment } from '@/composables/usePricingExperiment'
 import { useScrollReveal } from '@/composables/useScrollReveal'
-import { PRO_MONTHLY_PRICE } from '@/config/pricing'
 
 useScrollReveal()
 const { monthlyPricePerMoLabel } = usePricingExperiment()
@@ -278,7 +299,7 @@ const featureTabs = [
 
 const tabContent = {
   dashboard: {
-    image: '/images/trading-performance-dashboard.webp',
+    image: '/images/screenshot-dashboard.webp',
     alt: 'TradeTally Dashboard with P&L charts, win rate, and open positions',
     badge: 'ANALYTICS',
     badgeClass: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300',
@@ -293,7 +314,7 @@ const tabContent = {
     ]
   },
   journal: {
-    image: '/images/trading-journal-daily-entries.webp',
+    image: '/images/screenshot-journal.webp',
     alt: 'TradeTally Trading Journal with daily entries, market bias, and watchlists',
     badge: 'JOURNAL',
     badgeClass: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300',
@@ -308,7 +329,7 @@ const tabContent = {
     ]
   },
   'trade-mgmt': {
-    image: '/images/r-multiple-trade-management.webp',
+    image: '/images/screenshot-trade-management.webp',
     alt: 'TradeTally Trade Management with R-Multiple performance chart',
     badge: 'RISK MANAGEMENT',
     badgeClass: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300',
@@ -323,7 +344,7 @@ const tabContent = {
     ]
   },
   'stock-analyzer': {
-    image: '/images/dcf-stock-valuation-calculator.webp',
+    image: '/images/screenshot-stock-analyzer.webp',
     alt: 'TradeTally Stock Analyzer with DCF valuation calculator',
     badge: 'INVESTMENTS',
     badgeClass: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300',
@@ -614,11 +635,11 @@ onMounted(() => {
       {
         "@type": "Offer",
         "name": "Pro Tier",
-        "price": String(PRO_MONTHLY_PRICE),
+        "price": "8",
         "priceCurrency": "USD",
         "priceSpecification": {
           "@type": "UnitPriceSpecification",
-          "price": String(PRO_MONTHLY_PRICE),
+          "price": "8",
           "priceCurrency": "USD",
           "billingDuration": "P1M"
         },

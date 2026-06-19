@@ -17,6 +17,10 @@ describe('Trade.calculateRiskAmount', () => {
     expect(Trade.calculateRiskAmount(22000, 21995, 1, 'long', 'future', null, null, 'MNQH6')).toBe(10);
   });
 
+  it('treats futures-shaped symbols as futures even when legacy rows say stock', () => {
+    expect(Trade.calculateRiskAmount(22000, 21995, 1, 'long', 'stock', null, null, 'MNQH6')).toBe(10);
+  });
+
   it('returns null when stop loss is on the wrong side of entry', () => {
     expect(Trade.calculateRiskAmount(100, 101, 10, 'long')).toBeNull();
     expect(Trade.calculateRiskAmount(100, 99, 10, 'short')).toBeNull();
@@ -44,5 +48,15 @@ describe('Trade.calculateRValue', () => {
       instrumentType: 'option',
       contractSize: 100
     })).toBe(0.95);
+  });
+
+  it('uses futures symbol multipliers for net R on legacy stock-typed futures rows', () => {
+    expect(Trade.calculateRValue(22000, 21995, 22010, 'long', {
+      quantity: 1,
+      commission: 0,
+      fees: 0,
+      instrumentType: 'stock',
+      symbol: 'MNQH6'
+    })).toBe(2);
   });
 });

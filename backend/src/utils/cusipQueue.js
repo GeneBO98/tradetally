@@ -99,11 +99,14 @@ class CusipQueueManager {
     `;
     await db.query(queueQuery, [cusip]);
     
-    // Update all trades that have this CUSIP as their symbol
+    // Update all trades that have this CUSIP as their symbol.
+    // Skip option trades: CUSIP lookups resolve to the underlying equity ticker,
+    // which corrupts the option contract's identity and splits open-position grouping.
     const tradesQuery = `
-      UPDATE trades 
+      UPDATE trades
       SET symbol = $2
       WHERE symbol = $1
+        AND instrument_type IS DISTINCT FROM 'option'
     `;
     const updateResult = await db.query(tradesQuery, [cusip, ticker]);
     
@@ -358,10 +361,11 @@ Response:`;
     const query = `
       SELECT DISTINCT t.symbol as cusip
       FROM trades t
-      WHERE LENGTH(t.symbol) = 9 
+      WHERE LENGTH(t.symbol) = 9
         AND t.symbol ~ '[0-9A-Z]{9}'
+        AND t.instrument_type IS DISTINCT FROM 'option'
         AND EXISTS (
-          SELECT 1 FROM cusip_lookup_queue q 
+          SELECT 1 FROM cusip_lookup_queue q
           WHERE q.cusip = t.symbol AND q.status = 'completed'
         )
     `;
@@ -375,11 +379,12 @@ Response:`;
       // Get the resolved symbol from cache
       const ticker = await cache.get('cusip_resolution', cusip);
       if (ticker) {
-        // Update trades with this CUSIP
+        // Update trades with this CUSIP (option trades keep their symbol, see markAsCompleted)
         const updateQuery = `
-          UPDATE trades 
+          UPDATE trades
           SET symbol = $2
           WHERE symbol = $1
+            AND instrument_type IS DISTINCT FROM 'option'
         `;
         const updateResult = await db.query(updateQuery, [cusip, ticker]);
         console.log(`Updated ${updateResult.rowCount} trades: ${cusip} → ${ticker}`);

@@ -23,9 +23,11 @@ router.get('/debug/trade-identifiers', accountController.getTradeIdentifiersSumm
 router.post('/plaid/link-token', plaidController.createLinkToken);
 router.post('/plaid/exchange', plaidController.exchangePublicToken);
 router.get('/plaid/connections', plaidController.getConnections);
+router.get('/plaid/balances/history', plaidController.getBalanceHistory);
 router.put('/plaid/connections/:connectionId', plaidController.updateConnection);
 router.delete('/plaid/connections/:connectionId', plaidController.deleteConnection);
 router.post('/plaid/connections/:connectionId/sync', plaidController.syncConnection);
+router.post('/plaid/connections/:connectionId/reconnect-token', plaidController.createReconnectToken);
 router.put('/plaid/accounts/:plaidAccountId/link', plaidController.linkPlaidAccount);
 router.delete('/plaid/accounts/:plaidAccountId/link', plaidController.unlinkPlaidAccount);
 router.get('/:accountId/plaid/review', plaidController.getReviewQueue);
@@ -54,6 +56,7 @@ router.post('/:accountId/transactions', validate(schemas.accountTransaction), ac
 
 // Cashflow
 router.get('/:accountId/cashflow', accountController.getCashflow);
+router.get('/:accountId/cashflow/day', accountController.getDayActivity);
 router.get('/:accountId/debug-cashflow', accountController.debugCashflow);
 
 // Fix trades with redacted account identifiers

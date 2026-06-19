@@ -6,6 +6,8 @@
 
 const Account = require('../models/Account');
 const plaidFundingService = require('../services/plaid/plaidFundingService');
+const OptionStrategyGroupingService = require('../services/optionStrategyGroupingService');
+const AnalyticsCache = require('../services/analyticsCache');
 
 const accountController = {
   /**
@@ -530,6 +532,43 @@ const accountController = {
   },
 
   /**
+   * Get the itemized trades and transactions behind a single day's cashflow
+   * GET /api/accounts/:accountId/cashflow/day?date=YYYY-MM-DD
+   */
+  async getDayActivity(req, res) {
+    try {
+      const { date } = req.query;
+
+      if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return res.status(400).json({
+          success: false,
+          message: 'A valid date (YYYY-MM-DD) is required'
+        });
+      }
+
+      const activity = await Account.getDayActivity(req.user.id, req.params.accountId, date);
+
+      if (!activity) {
+        return res.status(404).json({
+          success: false,
+          message: 'Account not found'
+        });
+      }
+
+      res.json({
+        success: true,
+        data: activity
+      });
+    } catch (error) {
+      console.error('[ACCOUNTS] Error fetching day activity:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch day activity'
+      });
+    }
+  },
+
+  /**
    * Fix trades with redacted account identifiers
    * POST /api/accounts/:accountId/fix-trades
    *
@@ -574,6 +613,10 @@ const accountController = {
       `, [fullIdentifier, userId, last4]);
 
       const updatedCount = result.rowCount;
+      if (updatedCount > 0) {
+        await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'account identifier repair');
+        await AnalyticsCache.invalidate(userId);
+      }
 
       console.log(`[ACCOUNTS] Fixed ${updatedCount} trades with redacted identifiers for account ${accountId}`);
 
@@ -652,6 +695,11 @@ const accountController = {
           success: false,
           message: 'Must provide sourceIdentifier or set linkAll to true'
         });
+      }
+
+      if (result.rowCount > 0) {
+        await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'account trade linking');
+        await AnalyticsCache.invalidate(userId);
       }
 
       res.json({

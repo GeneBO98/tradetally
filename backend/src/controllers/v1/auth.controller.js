@@ -2,7 +2,7 @@ const User = require('../../models/User');
 const refreshTokenService = require('../../services/refreshToken.service');
 const deviceService = require('../../services/device.service');
 const { sendVerificationEmailInBackground } = require('../auth.controller');
-const sequenzySubscriberSyncService = require('../../services/sequenzySubscriberSyncService');
+const accountLockout = require('../../services/accountLockoutService');
 const crypto = require('crypto');
 
 function useDetailedErrors() {
@@ -88,7 +88,6 @@ const authV1Controller = {
       });
       
       await User.createSettings(user.id);
-      sequenzySubscriberSyncService.queueSyncUserById(user.id);
 
       // Register device if provided
       let device = null;
@@ -152,17 +151,27 @@ const authV1Controller = {
       const detailedErrors = useDetailedErrors();
       
       if (!user || !user.is_active) {
-        return res.status(401).json({ 
+        return res.status(401).json({
           error: detailedErrors ? 'No account found with this email address' : 'Invalid credentials'
         });
       }
 
+      if (await accountLockout.isLocked(user)) {
+        return res.status(423).json({ error: accountLockout.LOCKED_MESSAGE, accountLocked: true });
+      }
+
       const isValid = await User.verifyPassword(user, password);
       if (!isValid) {
-        return res.status(401).json({ 
+        const nowLocked = await accountLockout.recordFailedAttempt(user);
+        if (nowLocked) {
+          return res.status(423).json({ error: accountLockout.LOCKED_MESSAGE, accountLocked: true });
+        }
+        return res.status(401).json({
           error: detailedErrors ? 'Incorrect password' : 'Invalid credentials'
         });
       }
+
+      await accountLockout.recordSuccess(user);
 
       if (isEmailConfigured() && !user.is_verified) {
         return res.status(403).json({
@@ -212,17 +221,27 @@ const authV1Controller = {
       const detailedErrors = useDetailedErrors();
       
       if (!user || !user.is_active) {
-        return res.status(401).json({ 
+        return res.status(401).json({
           error: detailedErrors ? 'No account found with this email address' : 'Invalid credentials'
         });
       }
 
+      if (await accountLockout.isLocked(user)) {
+        return res.status(423).json({ error: accountLockout.LOCKED_MESSAGE, accountLocked: true });
+      }
+
       const isValid = await User.verifyPassword(user, password);
       if (!isValid) {
-        return res.status(401).json({ 
+        const nowLocked = await accountLockout.recordFailedAttempt(user);
+        if (nowLocked) {
+          return res.status(423).json({ error: accountLockout.LOCKED_MESSAGE, accountLocked: true });
+        }
+        return res.status(401).json({
           error: detailedErrors ? 'Incorrect password' : 'Invalid credentials'
         });
       }
+
+      await accountLockout.recordSuccess(user);
 
       // Check email verification
       const emailConfigured = isEmailConfigured();

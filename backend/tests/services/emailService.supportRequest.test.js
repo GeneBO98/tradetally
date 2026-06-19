@@ -8,7 +8,6 @@ describe('EmailService.sendSupportRequest', () => {
 
   beforeEach(() => {
     process.env = { ...originalEnv };
-    process.env.EMAIL_PROVIDER = 'sequenzy';
     sendMail = jest.fn().mockResolvedValue({ success: true });
     createTransporterSpy = jest.spyOn(EmailService, 'createTransporter').mockReturnValue({ sendMail });
     logEmailSpy = jest.spyOn(EmailService, 'logEmail').mockResolvedValue();
@@ -20,7 +19,7 @@ describe('EmailService.sendSupportRequest', () => {
     logEmailSpy.mockRestore();
   });
 
-  test('sends inline HTML with escaped content and <br> line breaks (no Sequenzy slug)', async () => {
+  test('sends inline HTML with escaped content and <br> line breaks', async () => {
     await EmailService.sendSupportRequest({
       to: 'owner@example.com',
       userEmail: 'user@example.com',
@@ -33,8 +32,8 @@ describe('EmailService.sendSupportRequest', () => {
     expect(sendMail).toHaveBeenCalledTimes(1);
     const mailOptions = sendMail.mock.calls[0][0];
 
-    // No slug/variables — we send raw HTML so Sequenzy's Handlebars
-    // renderer can't escape the `<br>` line breaks into literal text.
+    // No slug/variables — we send raw HTML so the `<br>` line breaks
+    // render correctly instead of being escaped to literal text.
     expect(mailOptions.slug).toBeUndefined();
     expect(mailOptions.variables).toBeUndefined();
 

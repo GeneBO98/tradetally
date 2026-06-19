@@ -10,6 +10,7 @@ const EightPillarsService = require('./eightPillarsService');
 const FundamentalDataService = require('./fundamentalDataService');
 const path = require('path');
 const fs = require('fs');
+const marketData = require('../utils/finnhub');
 
 class StockScannerService {
   // Rate limiting configuration
@@ -21,11 +22,15 @@ class StockScannerService {
   static currentScan = null;
 
   /**
-   * Get index constituents from Finnhub
+   * Get index constituents from the configured market data provider
    * @param {string} symbol - Index symbol (e.g., ^GSPC for S&P 500)
    * @returns {Promise<Array<string>>} Array of stock symbols
    */
   static async getIndexConstituents(symbol) {
+    if (marketData.providerName === 'fmp') {
+      return marketData.getIndexConstituents(symbol);
+    }
+
     const apiKey = process.env.FINNHUB_API_KEY;
     if (!apiKey) {
       throw new Error('FINNHUB_API_KEY not configured');
@@ -140,17 +145,17 @@ class StockScannerService {
       console.warn('[SCANNER] Cache not available or invalid');
     }
 
-    // Fallback to Finnhub API
-    console.log('[SCANNER] Falling back to Finnhub API...');
+    // Fallback to configured market data provider
+    console.log(`[SCANNER] Falling back to ${marketData.displayName} API...`);
     try {
       const finnhubStocks = await this.getIndexConstituents('^RUT');
       if (finnhubStocks.length > 0) {
-        console.log(`[SCANNER] Got ${finnhubStocks.length} stocks from Finnhub API`);
+        console.log(`[SCANNER] Got ${finnhubStocks.length} stocks from ${marketData.displayName} API`);
         console.log('[SCANNER] ========================================');
         return finnhubStocks.sort(() => Math.random() - 0.5);
       }
     } catch (finnhubErr) {
-      console.error('[SCANNER] Finnhub API also failed:', finnhubErr.message);
+      console.error(`[SCANNER] ${marketData.displayName} API also failed:`, finnhubErr.message);
     }
 
     throw new Error('Failed to fetch Russell 2000 stocks from any source');
@@ -162,9 +167,8 @@ class StockScannerService {
    * @returns {Promise<Array<string>>} Array of unique stock symbols
    */
   static async getUSStockUniverse() {
-    const apiKey = process.env.FINNHUB_API_KEY;
-    if (!apiKey) {
-      throw new Error('FINNHUB_API_KEY not configured');
+    if (!marketData.isConfigured()) {
+      throw new Error(`${marketData.displayName} API key not configured`);
     }
 
     console.log('[SCANNER] Fetching US stock universe from multiple indices...');
@@ -300,7 +304,7 @@ class StockScannerService {
           // If we got too few stocks, this is a problem - don't silently fall back
           if (stocks.length < 100) {
             console.error(`[SCANNER] ERROR: Only got ${stocks.length} stocks from Russell 2000 API (expected ~2000)`);
-            console.error('[SCANNER] This likely indicates an API issue. Check FINNHUB_API_KEY and API limits.');
+            console.error(`[SCANNER] This likely indicates an API issue. Check ${marketData.providerName === 'fmp' ? 'FMP_API_KEY' : 'FINNHUB_API_KEY'} and API limits.`);
             // Still use what we got rather than failing completely, but log the issue
             if (stocks.length === 0) {
               throw new Error('Russell 2000 API returned 0 stocks. Check API key and limits.');

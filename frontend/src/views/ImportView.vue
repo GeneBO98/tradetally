@@ -929,6 +929,7 @@
                       v-model="logSearchQuery"
                       type="text"
                       placeholder="Search logs... (e.g. CURR, SLRX, duplicate, error)"
+                      aria-label="Search import logs"
                       class="input pl-10 pr-10"
                       @input="searchLogs"
                     />
@@ -3089,7 +3090,33 @@ function pollImportStatus(importId) {
         const diagnostics = errorDetails.diagnostics || null
         const tradesImported = importLog?.trades_imported || 0
         const duplicatesSkipped = errorDetails.duplicates || 0
+        const duplicateExecutions = diagnostics?.duplicateExecutions || 0
         const failedTrades = errorDetails.failedTrades || []
+
+        // A hard parse failure carries a specific, user-facing reason (e.g. the
+        // user uploaded a positions/holdings statement instead of a trade
+        // history). Surface that exact message instead of the generic
+        // "No Trades Imported" guidance below, which would otherwise hide it.
+        if (status === 'failed' && errorDetails.error) {
+          const reason = String(errorDetails.error).replace(/^CSV parsing failed:\s*/i, '')
+          track('import_failed', {
+            broker: selectedBroker.value || 'unknown',
+            detected_broker: diagnostics?.detectedBroker || 'unknown',
+            import_id: importId,
+            error: errorDetails.error
+          })
+          trackImport(selectedBroker.value || 'unknown', 'failed', 0)
+          showImportantWarning(
+            'Import Failed',
+            reason,
+            {
+              confirmText: 'OK',
+              linkUrl: 'https://tradetally.io/docs/usage/importing-trades/#supported-brokers',
+              linkText: 'View Documentation'
+            }
+          )
+          return
+        }
 
         // Evaluate the demo-CTA feature only when the user is actually about to
         // see the zero-trades state. This fires the GrowthBook exposure event
@@ -3113,8 +3140,25 @@ function pollImportStatus(importId) {
           showImportResultsModal.value = true
         }
 
+        // The whole file was already imported: executions matched activity already
+        // in the account, so no new trades were created and no trade-level
+        // duplicates were counted. Reassure the user instead of showing the
+        // generic "no trades found" troubleshooting, which reads like a failure.
+        if (tradesImported === 0 && duplicatesSkipped === 0 && duplicateExecutions > 0) {
+          track('import_all_duplicates', {
+            broker: selectedBroker.value || 'unknown',
+            detected_broker: diagnostics?.detectedBroker || 'unknown',
+            import_id: importId,
+            duplicate_executions: duplicateExecutions
+          })
+          showImportantWarning(
+            'Already Imported',
+            `These trades were already imported.\n\nEvery order in this file matches activity already in your account (${duplicateExecutions} duplicate execution${duplicateExecutions === 1 ? '' : 's'} skipped), so there was nothing new to add.`,
+            { confirmText: 'OK' }
+          )
+        }
         // Show actionable help when 0 trades imported
-        if (tradesImported === 0 && duplicatesSkipped === 0) {
+        else if (tradesImported === 0 && duplicatesSkipped === 0) {
           track('import_zero_trades', {
             broker: selectedBroker.value,
             detected_broker: diagnostics?.detectedBroker || 'unknown'

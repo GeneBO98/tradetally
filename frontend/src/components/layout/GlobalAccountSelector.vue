@@ -98,6 +98,19 @@
               <CheckIcon v-if="selectedAccount === account.value" class="h-4 w-4 flex-shrink-0" />
             </button>
           </template>
+
+          <!-- Divider -->
+          <div class="border-t border-gray-100 dark:border-gray-700 my-1"></div>
+
+          <!-- Manage Accounts -->
+          <button
+            @click="handleManageAccounts"
+            class="w-full text-left px-4 py-2 text-sm flex items-center space-x-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            role="menuitem"
+          >
+            <Cog6ToothIcon class="h-4 w-4 flex-shrink-0" />
+            <span>Manage Accounts</span>
+          </button>
         </div>
       </div>
     </transition>
@@ -106,8 +119,11 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
-import { BuildingOfficeIcon, ChevronDownIcon, CheckIcon } from '@heroicons/vue/24/outline'
+import { useRouter } from 'vue-router'
+import { BuildingOfficeIcon, ChevronDownIcon, CheckIcon, Cog6ToothIcon } from '@heroicons/vue/24/outline'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
+
+const router = useRouter()
 
 const {
   selectedAccount,
@@ -144,6 +160,11 @@ function handleClearAccount() {
 function handleSelectUnsorted() {
   setAccount(UNSORTED_ACCOUNT)
   isOpen.value = false
+}
+
+function handleManageAccounts() {
+  isOpen.value = false
+  router.push('/accounts')
 }
 
 function handleClickOutside(event) {

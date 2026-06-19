@@ -9,7 +9,7 @@
 
         <!-- Tabs Navigation -->
         <div class="border-b border-gray-200 dark:border-gray-700 mb-8">
-            <nav class="-mb-px flex space-x-8" aria-label="Tabs">
+            <nav class="-mb-px flex space-x-8 overflow-x-auto" aria-label="Tabs">
                 <button
                     v-for="tab in tabs"
                     :key="tab.id"
@@ -47,9 +47,9 @@
 
                         <form
                             @submit.prevent="updateAnalyticsSettings"
-                            class="space-y-6"
+                            class="divide-y divide-gray-100 dark:divide-gray-700"
                         >
-                            <div>
+                            <div class="pb-6">
                                 <label for="statisticsCalculation" class="label"
                                     >Statistics Calculation Method</label
                                 >
@@ -61,24 +61,132 @@
                                     ]"
                                 />
                                 <p
-                                    class="mt-1 text-sm text-gray-500 dark:text-gray-400"
+                                    class="mt-2 text-sm text-gray-500 dark:text-gray-400"
                                 >
                                     Choose whether to use averages or medians
                                     for calculations like Average P&L, Average
                                     Win, Average Loss, etc. Medians are less
                                     affected by outliers and may provide a more
                                     representative view of typical performance.
-                                    <span
-                                        class="block mt-2 text-primary-600 dark:text-primary-400 font-medium"
-                                    >
-                                        Note: Changes take effect immediately
-                                        and will update labels throughout the
-                                        application.
-                                    </span>
+                                </p>
+                                <p class="mt-1 text-sm text-primary-600 dark:text-primary-400 font-medium">
+                                    Note: Changes take effect immediately
+                                    and will update labels throughout the
+                                    application.
                                 </p>
                             </div>
 
-                            <div>
+                            <div class="py-6">
+                                <div
+                                    class="flex items-start justify-between gap-6 p-4 bg-gray-50 dark:bg-gray-800/60 rounded-lg border border-gray-200 dark:border-gray-700"
+                                >
+                                    <div class="flex-1 min-w-0">
+                                        <label
+                                            for="analyticsPositionGrouping"
+                                            class="block text-sm font-semibold text-gray-900 dark:text-white"
+                                        >
+                                            Win Rate by Whole Trade
+                                        </label>
+                                        <p
+                                            class="mt-1.5 text-sm text-gray-500 dark:text-gray-400 leading-relaxed"
+                                        >
+                                            Group multi-leg option positions (spreads,
+                                            iron condors, straddles, etc.) into a
+                                            single trade for win rate and trade counts.
+                                            Legs are grouped when they share the same
+                                            account, underlying, expiration, and trade
+                                            date, with fills within 5 minutes of each
+                                            other. Common strategies are auto-detected
+                                            and shown as a badge in the trade list.
+                                            Affects all analytics; total P&amp;L is
+                                            unchanged.
+                                        </p>
+                                    </div>
+                                    <div class="flex-shrink-0 pt-0.5">
+                                        <button
+                                            type="button"
+                                            @click="
+                                                analyticsForm.analyticsPositionGrouping =
+                                                    !analyticsForm.analyticsPositionGrouping
+                                            "
+                                            :class="[
+                                                analyticsForm.analyticsPositionGrouping
+                                                    ? 'bg-primary-600'
+                                                    : 'bg-gray-200 dark:bg-gray-700',
+                                                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2',
+                                            ]"
+                                            role="switch"
+                                            :aria-checked="
+                                                analyticsForm.analyticsPositionGrouping
+                                            "
+                                        >
+                                            <span
+                                                :class="[
+                                                    analyticsForm.analyticsPositionGrouping
+                                                        ? 'translate-x-5'
+                                                        : 'translate-x-0',
+                                                    'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                                                ]"
+                                            />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="py-6">
+                                <div
+                                    class="flex items-start justify-between gap-6 p-4 bg-gray-50 dark:bg-gray-800/60 rounded-lg border border-gray-200 dark:border-gray-700"
+                                >
+                                    <div class="flex-1 min-w-0">
+                                        <label
+                                            for="edgeReportEnabled"
+                                            class="block text-sm font-semibold text-gray-900 dark:text-white"
+                                        >
+                                            Weekly Edge Report
+                                        </label>
+                                        <p
+                                            class="mt-1.5 text-sm text-gray-500 dark:text-gray-400 leading-relaxed"
+                                        >
+                                            Get a weekly coaching digest every Monday:
+                                            your numbers vs last week, your best edge,
+                                            your biggest leak, and one concrete action
+                                            item. The narrative is written by your
+                                            configured AI provider when available and
+                                            delivered by email.
+                                        </p>
+                                    </div>
+                                    <div class="flex-shrink-0 pt-0.5">
+                                        <button
+                                            type="button"
+                                            @click="
+                                                analyticsForm.edgeReportEnabled =
+                                                    !analyticsForm.edgeReportEnabled
+                                            "
+                                            :class="[
+                                                analyticsForm.edgeReportEnabled
+                                                    ? 'bg-primary-600'
+                                                    : 'bg-gray-200 dark:bg-gray-700',
+                                                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2',
+                                            ]"
+                                            role="switch"
+                                            :aria-checked="
+                                                analyticsForm.edgeReportEnabled
+                                            "
+                                        >
+                                            <span
+                                                :class="[
+                                                    analyticsForm.edgeReportEnabled
+                                                        ? 'translate-x-5'
+                                                        : 'translate-x-0',
+                                                    'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                                                ]"
+                                            />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="py-6">
                                 <label for="breakevenToleranceTicks" class="label"
                                     >Default Breakeven Tolerance (ticks)</label
                                 >
@@ -93,7 +201,7 @@
                                     class="input"
                                 />
                                 <p
-                                    class="mt-1 text-sm text-gray-500 dark:text-gray-400"
+                                    class="mt-2 text-sm text-gray-500 dark:text-gray-400"
                                 >
                                     Trades whose gross P&L (price only, ignoring
                                     commissions and fees) land within this many
@@ -106,15 +214,13 @@
                                 </p>
 
                                 <!-- Per-instrument overrides -->
-                                <div class="mt-4">
-                                    <span class="label"
-                                        >Per-Instrument Overrides</span
-                                    >
+                                <div class="mt-5 p-4 bg-gray-50 dark:bg-gray-800/60 rounded-lg border border-gray-200 dark:border-gray-700">
+                                    <p class="text-sm font-semibold text-gray-900 dark:text-white mb-1">Per-Instrument Overrides</p>
                                     <p
-                                        class="mt-1 mb-2 text-sm text-gray-500 dark:text-gray-400"
+                                        class="text-sm text-gray-500 dark:text-gray-400 mb-3"
                                     >
                                         Set a different tolerance for specific
-                                        instruments by their underlying symbol -
+                                        instruments by their underlying symbol —
                                         e.g. 2 ticks on ES but 5 on NQ. Instruments
                                         not listed use the default above.
                                     </p>
@@ -149,7 +255,7 @@
                                     </div>
                                     <button
                                         type="button"
-                                        class="btn-secondary mt-2"
+                                        class="btn-secondary mt-3"
                                         @click="addBreakevenToleranceRow"
                                     >
                                         Add Instrument
@@ -157,7 +263,7 @@
                                 </div>
                             </div>
 
-                            <div>
+                            <div class="py-6">
                                 <label for="displayCurrency" class="label"
                                     >Display Currency</label
                                 >
@@ -166,7 +272,7 @@
                                     :options="currencySelectOptions"
                                 />
                                 <p
-                                    class="mt-1 text-sm text-gray-500 dark:text-gray-400"
+                                    class="mt-2 text-sm text-gray-500 dark:text-gray-400"
                                 >
                                     Changes the currency symbol displayed for
                                     P&L, prices, and commissions. This is a
@@ -177,56 +283,58 @@
                                 </p>
                             </div>
 
-                            <div
-                                class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg"
-                            >
-                                <div class="flex-1">
-                                    <label
-                                        for="autoCloseExpiredOptions"
-                                        class="block text-sm font-medium text-gray-900 dark:text-white"
-                                    >
-                                        Auto-Close Expired Options
-                                    </label>
-                                    <p
-                                        class="mt-1 text-sm text-gray-600 dark:text-gray-400"
-                                    >
-                                        Automatically close expired options
-                                        positions with appropriate P&L (Long:
-                                        -100%, Short: +100%). The system checks
-                                        hourly for expired options.
-                                    </p>
-                                </div>
-                                <div class="ml-4 flex-shrink-0">
-                                    <button
-                                        type="button"
-                                        @click="
-                                            analyticsForm.autoCloseExpiredOptions =
-                                                !analyticsForm.autoCloseExpiredOptions
-                                        "
-                                        :class="[
-                                            analyticsForm.autoCloseExpiredOptions
-                                                ? 'bg-primary-600'
-                                                : 'bg-gray-200 dark:bg-gray-700',
-                                            'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2',
-                                        ]"
-                                        role="switch"
-                                        :aria-checked="
-                                            analyticsForm.autoCloseExpiredOptions
-                                        "
-                                    >
-                                        <span
+                            <div class="py-6">
+                                <div
+                                    class="flex items-start justify-between gap-6 p-4 bg-gray-50 dark:bg-gray-800/60 rounded-lg border border-gray-200 dark:border-gray-700"
+                                >
+                                    <div class="flex-1 min-w-0">
+                                        <label
+                                            for="autoCloseExpiredOptions"
+                                            class="block text-sm font-semibold text-gray-900 dark:text-white"
+                                        >
+                                            Auto-Close Expired Options
+                                        </label>
+                                        <p
+                                            class="mt-1.5 text-sm text-gray-500 dark:text-gray-400 leading-relaxed"
+                                        >
+                                            Automatically close expired options
+                                            positions with appropriate P&L (Long:
+                                            -100%, Short: +100%). The system checks
+                                            hourly for expired options.
+                                        </p>
+                                    </div>
+                                    <div class="flex-shrink-0 pt-0.5">
+                                        <button
+                                            type="button"
+                                            @click="
+                                                analyticsForm.autoCloseExpiredOptions =
+                                                    !analyticsForm.autoCloseExpiredOptions
+                                            "
                                             :class="[
                                                 analyticsForm.autoCloseExpiredOptions
-                                                    ? 'translate-x-5'
-                                                    : 'translate-x-0',
-                                                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                                                    ? 'bg-primary-600'
+                                                    : 'bg-gray-200 dark:bg-gray-700',
+                                                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2',
                                             ]"
-                                        />
-                                    </button>
+                                            role="switch"
+                                            :aria-checked="
+                                                analyticsForm.autoCloseExpiredOptions
+                                            "
+                                        >
+                                            <span
+                                                :class="[
+                                                    analyticsForm.autoCloseExpiredOptions
+                                                        ? 'translate-x-5'
+                                                        : 'translate-x-0',
+                                                    'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                                                ]"
+                                            />
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
 
-                            <div>
+                            <div class="py-6">
                                 <label for="defaultStopLossType" class="label"
                                     >Default Stop Loss Type</label
                                 >
@@ -238,22 +346,11 @@
                                         { value: 'lod', label: 'Low of Day (LoD)' }
                                     ]"
                                 />
-                                <p
-                                    class="mt-1 text-sm text-gray-500 dark:text-gray-400"
-                                >
-                                    <strong>Percentage:</strong> Use a fixed
-                                    percentage below/above entry price.
-                                    <br />
-                                    <strong>Dollar amount:</strong> Use a fixed
-                                    risk per trade in dollars (e.g., $100 or
-                                    $150 per trade).
-                                    <br />
-                                    <strong>Low of Day (LoD):</strong> Use the
-                                    low price of the entry day
-                                    (Qullamaggie-style swing trades). Uses Low
-                                    of Day for long positions and High of Day
-                                    for short positions.
-                                </p>
+                                <div class="mt-2 text-sm text-gray-500 dark:text-gray-400 space-y-1">
+                                    <p><strong class="text-gray-700 dark:text-gray-300">Percentage:</strong> Use a fixed percentage below/above entry price.</p>
+                                    <p><strong class="text-gray-700 dark:text-gray-300">Dollar amount:</strong> Use a fixed risk per trade in dollars (e.g., $100 or $150 per trade).</p>
+                                    <p><strong class="text-gray-700 dark:text-gray-300">Low of Day (LoD):</strong> Use the low price of the entry day (Qullamaggie-style swing trades). Uses Low of Day for long positions and High of Day for short positions.</p>
+                                </div>
                             </div>
 
                             <div
@@ -261,6 +358,7 @@
                                     analyticsForm.defaultStopLossType ===
                                     'percent'
                                 "
+                                class="py-6"
                             >
                                 <label for="defaultStopLoss" class="label"
                                     >Default Stop Loss Percentage</label
@@ -288,7 +386,7 @@
                                     </div>
                                 </div>
                                 <p
-                                    class="mt-1 text-sm text-gray-500 dark:text-gray-400"
+                                    class="mt-2 text-sm text-gray-500 dark:text-gray-400"
                                 >
                                     Automatically apply this stop loss
                                     percentage to all new and imported trades.
@@ -296,12 +394,10 @@
                                     positions, the stop loss will be below entry
                                     price. For short positions, it will be above
                                     entry price.
-                                    <span
-                                        class="block mt-2 text-primary-600 dark:text-primary-400 font-medium"
-                                    >
-                                        Example: 2% stop loss on a $100 long
-                                        entry = $98 stop loss price
-                                    </span>
+                                </p>
+                                <p class="mt-1 text-sm text-primary-600 dark:text-primary-400 font-medium">
+                                    Example: 2% stop loss on a $100 long
+                                    entry = $98 stop loss price
                                 </p>
                             </div>
 
@@ -310,6 +406,7 @@
                                     analyticsForm.defaultStopLossType ===
                                     'dollar'
                                 "
+                                class="py-6"
                             >
                                 <label
                                     for="defaultStopLossDollars"
@@ -339,7 +436,7 @@
                                     </div>
                                 </div>
                                 <p
-                                    class="mt-1 text-sm text-gray-500 dark:text-gray-400"
+                                    class="mt-2 text-sm text-gray-500 dark:text-gray-400"
                                 >
                                     Automatically apply this dollar risk per
                                     trade to all new and imported trades. Leave
@@ -348,17 +445,15 @@
                                     for a long, stop = entry - (dollars /
                                     quantity); for a short, stop = entry +
                                     (dollars / quantity).
-                                    <span
-                                        class="block mt-2 text-primary-600 dark:text-primary-400 font-medium"
-                                    >
-                                        Example: $100 stop loss on 50 shares =
-                                        $2 per share risk, so a $100 long entry
-                                        becomes $98 stop loss
-                                    </span>
+                                </p>
+                                <p class="mt-1 text-sm text-primary-600 dark:text-primary-400 font-medium">
+                                    Example: $100 stop loss on 50 shares =
+                                    $2 per share risk, so a $100 long entry
+                                    becomes $98 stop loss
                                 </p>
                             </div>
 
-                            <div>
+                            <div class="py-6">
                                 <label for="defaultTakeProfit" class="label"
                                     >Default Take Profit Percentage</label
                                 >
@@ -385,7 +480,7 @@
                                     </div>
                                 </div>
                                 <p
-                                    class="mt-1 text-sm text-gray-500 dark:text-gray-400"
+                                    class="mt-2 text-sm text-gray-500 dark:text-gray-400"
                                 >
                                     Automatically apply this take profit
                                     percentage to all new and imported trades.
@@ -393,16 +488,14 @@
                                     positions, the take profit will be above
                                     entry price. For short positions, it will be
                                     below entry price.
-                                    <span
-                                        class="block mt-2 text-primary-600 dark:text-primary-400 font-medium"
-                                    >
-                                        Example: 6% take profit on a $100 long
-                                        entry = $106 take profit price
-                                    </span>
+                                </p>
+                                <p class="mt-1 text-sm text-primary-600 dark:text-primary-400 font-medium">
+                                    Example: 6% take profit on a $100 long
+                                    entry = $106 take profit price
                                 </p>
                             </div>
 
-                            <div class="flex justify-end">
+                            <div class="pt-6 flex justify-end">
                                 <button
                                     type="submit"
                                     :disabled="analyticsLoading"
@@ -820,6 +913,8 @@
                                             { value: 'gemini', label: 'Google Gemini' },
                                             { value: 'claude', label: 'Anthropic Claude' },
                                             { value: 'openai', label: 'OpenAI' },
+                                            { value: 'deepseek', label: 'DeepSeek' },
+                                            { value: 'kimi', label: 'Kimi' },
                                             { value: 'ollama', label: 'Ollama' },
                                             { value: 'lmstudio', label: 'LM Studio' },
                                             { value: 'perplexity', label: 'Perplexity AI' },
@@ -995,6 +1090,8 @@
                                                 { value: 'gemini', label: 'Google Gemini' },
                                                 { value: 'claude', label: 'Anthropic Claude' },
                                                 { value: 'openai', label: 'OpenAI' },
+                                            { value: 'deepseek', label: 'DeepSeek' },
+                                            { value: 'kimi', label: 'Kimi' },
                                                 { value: 'ollama', label: 'Ollama' },
                                                 { value: 'lmstudio', label: 'LM Studio' },
                                                 { value: 'perplexity', label: 'Perplexity AI' },
@@ -1128,6 +1225,8 @@
                                             { value: 'gemini', label: 'Google Gemini' },
                                             { value: 'claude', label: 'Anthropic Claude' },
                                             { value: 'openai', label: 'OpenAI' },
+                                            { value: 'deepseek', label: 'DeepSeek' },
+                                            { value: 'kimi', label: 'Kimi' },
                                             { value: 'ollama', label: 'Ollama' },
                                             { value: 'lmstudio', label: 'LM Studio' },
                                             { value: 'perplexity', label: 'Perplexity AI' },
@@ -1293,6 +1392,8 @@
                                                     { value: 'gemini', label: 'Google Gemini' },
                                                     { value: 'claude', label: 'Anthropic Claude' },
                                                     { value: 'openai', label: 'OpenAI' },
+                                            { value: 'deepseek', label: 'DeepSeek' },
+                                            { value: 'kimi', label: 'Kimi' },
                                                     { value: 'ollama', label: 'Ollama' },
                                                     { value: 'lmstudio', label: 'LM Studio' },
                                                     { value: 'perplexity', label: 'Perplexity AI' },
@@ -1459,6 +1560,8 @@
                                                 { value: 'gemini', label: 'Google Gemini' },
                                                 { value: 'claude', label: 'Anthropic Claude' },
                                                 { value: 'openai', label: 'OpenAI' },
+                                            { value: 'deepseek', label: 'DeepSeek' },
+                                            { value: 'kimi', label: 'Kimi' },
                                                 { value: 'ollama', label: 'Ollama' },
                                                 { value: 'lmstudio', label: 'LM Studio' },
                                                 { value: 'perplexity', label: 'Perplexity AI' },
@@ -2784,6 +2887,8 @@ const cusipAiLoading = ref(false);
 // Analytics Settings
 const analyticsForm = ref({
     statisticsCalculation: "average",
+    analyticsPositionGrouping: false,
+    edgeReportEnabled: false,
     breakevenToleranceTicks: 0,
     autoCloseExpiredOptions: true,
     defaultStopLossType: "percent",
@@ -2932,6 +3037,10 @@ function getModelPlaceholder() {
             return "e.g., claude-3-5-sonnet";
         case "openai":
             return "e.g., gpt-4o";
+        case "deepseek":
+            return "e.g., deepseek-chat";
+        case "kimi":
+            return "e.g., moonshot-v1-8k";
         case "ollama":
             return "e.g., llama3.1";
         case "lmstudio":
@@ -2952,6 +3061,10 @@ function getApiKeyPlaceholder() {
         case "claude":
             return "sk-ant-...";
         case "openai":
+            return "sk-...";
+        case "deepseek":
+            return "sk-...";
+        case "kimi":
             return "sk-...";
         case "ollama":
             return "Optional API key";
@@ -2974,6 +3087,10 @@ function getApiKeyHelp() {
             return "Get your API key from Anthropic Console";
         case "openai":
             return "Get your API key from OpenAI Dashboard";
+        case "deepseek":
+            return "Get your API key from DeepSeek Platform";
+        case "kimi":
+            return "Get your API key from Moonshot AI Platform";
         case "ollama":
             return "API key is optional for Ollama";
         case "perplexity":
@@ -3039,6 +3156,10 @@ function getCusipModelPlaceholder() {
             return "e.g., claude-3-5-sonnet-20241022";
         case "openai":
             return "e.g., gpt-4o";
+        case "deepseek":
+            return "e.g., deepseek-chat";
+        case "kimi":
+            return "e.g., moonshot-v1-8k";
         case "ollama":
             return "e.g., llama3.2";
         case "perplexity":
@@ -3058,6 +3179,10 @@ function getCusipApiKeyPlaceholder() {
             return "Your Anthropic API key";
         case "openai":
             return "Your OpenAI API key";
+        case "deepseek":
+            return "Your DeepSeek API key";
+        case "kimi":
+            return "Your Moonshot AI API key";
         case "perplexity":
             return "Your Perplexity API key";
         default:
@@ -3127,6 +3252,10 @@ async function loadAnalyticsSettings() {
         analyticsForm.value = {
             statisticsCalculation:
                 response.data.settings.statisticsCalculation || "average",
+            analyticsPositionGrouping:
+                response.data.settings.analyticsPositionGrouping === true,
+            edgeReportEnabled:
+                response.data.settings.edgeReportEnabled === true,
             breakevenToleranceTicks:
                 Number(response.data.settings.breakevenToleranceTicks) || 0,
             autoCloseExpiredOptions:
@@ -3151,6 +3280,7 @@ async function loadAnalyticsSettings() {
         console.error("Failed to load analytics settings:", error);
         // Default values if loading fails
         analyticsForm.value.statisticsCalculation = "average";
+        analyticsForm.value.analyticsPositionGrouping = false;
         analyticsForm.value.breakevenToleranceTicks = 0;
         analyticsForm.value.autoCloseExpiredOptions = true;
         analyticsForm.value.defaultStopLossType = "percent";
@@ -3166,6 +3296,10 @@ async function updateAnalyticsSettings() {
     try {
         await api.put("/settings", {
             statisticsCalculation: analyticsForm.value.statisticsCalculation,
+            analyticsPositionGrouping:
+                analyticsForm.value.analyticsPositionGrouping === true,
+            edgeReportEnabled:
+                analyticsForm.value.edgeReportEnabled === true,
             breakevenToleranceTicks:
                 Number(analyticsForm.value.breakevenToleranceTicks) || 0,
             breakevenToleranceTicksByUnderlying: breakevenMapFromRows(),
@@ -3520,6 +3654,10 @@ function getAdminClassifierModelPlaceholder() {
             return "claude-3-haiku-20240307";
         case "openai":
             return "gpt-4o-mini";
+        case "deepseek":
+            return "deepseek-chat";
+        case "kimi":
+            return "moonshot-v1-8k";
         case "ollama":
             return "llama3.1";
         case "lmstudio":
@@ -3554,6 +3692,10 @@ function getAdminClassifierApiKeyPlaceholder() {
             return "Enter Anthropic Claude API key";
         case "openai":
             return "Enter OpenAI API key";
+        case "deepseek":
+            return "Enter DeepSeek API key";
+        case "kimi":
+            return "Enter Moonshot AI API key";
         case "perplexity":
             return "Enter Perplexity API key";
         case "ollama":
@@ -3572,6 +3714,10 @@ function getAdminModelPlaceholder() {
             return "claude-3-5-sonnet-20241022";
         case "openai":
             return "gpt-4o";
+        case "deepseek":
+            return "deepseek-chat";
+        case "kimi":
+            return "moonshot-v1-8k";
         case "ollama":
             return "llama3.1";
         case "lmstudio":
@@ -3593,6 +3739,10 @@ function getAdminApiKeyPlaceholder() {
             return "Enter Anthropic Claude API key";
         case "openai":
             return "Enter OpenAI API key";
+        case "deepseek":
+            return "Enter DeepSeek API key";
+        case "kimi":
+            return "Enter Moonshot AI API key";
         case "ollama":
             return "Optional: Enter Ollama API key";
         default:
@@ -3608,6 +3758,10 @@ function getAdminApiKeyHelp() {
             return "Get your API key at: https://console.anthropic.com/";
         case "openai":
             return "Get your API key at: https://platform.openai.com/api-keys";
+        case "deepseek":
+            return "Get your API key at: https://platform.deepseek.com/api_keys";
+        case "kimi":
+            return "Get your API key at: https://platform.moonshot.ai/console/api-keys";
         case "ollama":
             return "API key is optional for Ollama. Leave blank if not needed.";
         default:
@@ -3680,6 +3834,10 @@ function getAdminCusipModelPlaceholder() {
             return "claude-3-5-sonnet-20241022";
         case "openai":
             return "gpt-4o";
+        case "deepseek":
+            return "deepseek-chat";
+        case "kimi":
+            return "moonshot-v1-8k";
         case "ollama":
             return "llama3.1";
         case "lmstudio":
@@ -3701,6 +3859,10 @@ function getAdminCusipApiKeyPlaceholder() {
             return "Enter Anthropic Claude API key";
         case "openai":
             return "Enter OpenAI API key";
+        case "deepseek":
+            return "Enter DeepSeek API key";
+        case "kimi":
+            return "Enter Moonshot AI API key";
         case "ollama":
             return "Optional: Enter Ollama API key";
         default:

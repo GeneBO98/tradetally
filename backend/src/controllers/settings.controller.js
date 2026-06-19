@@ -6,6 +6,11 @@ const encryptionService = require('../services/brokerSync/encryptionService');
 const { computeTradePnl } = require('../services/pnlEngine');
 const { getUserTimezone } = require('../utils/timezone');
 const AnalyticsCache = require('../services/analyticsCache');
+const OptionStrategyGroupingService = require('../services/optionStrategyGroupingService');
+const Trade = require('../models/Trade');
+
+const VALID_AI_PROVIDERS = ['gemini', 'claude', 'openai', 'deepseek', 'kimi', 'ollama', 'lmstudio', 'perplexity', 'local'];
+const LOCAL_AI_PROVIDERS = ['local', 'ollama', 'lmstudio'];
 
 function recomputeImportedTradePnl(trade, timezone) {
   const executions = trade.executions || trade.executionData || trade.execution_data;
@@ -92,6 +97,30 @@ function keysToSnakeCase(obj) {
   return result;
 }
 
+function hasAnyOwnProperty(obj, keys) {
+  return keys.some(key => Object.prototype.hasOwnProperty.call(obj, key));
+}
+
+function shouldSyncDefaultStopLosses(body, currentSettings) {
+  const explicitStopLossUpdate = hasAnyOwnProperty(body, [
+    'defaultStopLossType',
+    'default_stop_loss_type',
+    'defaultStopLossPercent',
+    'default_stop_loss_percent',
+    'defaultStopLossDollars',
+    'default_stop_loss_dollars'
+  ]);
+
+  if (explicitStopLossUpdate) return true;
+
+  // Issue #345 regression repair: dashboard preference updates can be the next
+  // settings write after a user already selected dollar risk. In that state,
+  // repair any trades that still have the saved percent-default stop.
+  return currentSettings?.default_stop_loss_type === 'dollar'
+    && parseFloat(currentSettings.default_stop_loss_dollars) > 0
+    && parseFloat(currentSettings.default_stop_loss_percent) > 0;
+}
+
 // Cache for table columns (populated per import session)
 const _tableColumnsCache = {};
 async function getTableColumns(dbClient, tableName) {
@@ -149,6 +178,8 @@ const settingsController = {
 
   async updateSettings(req, res, next) {
     try {
+      const previousSettings = await User.getSettings(req.user.id);
+
       // Strip masked placeholders so clients that echo back "***" don't overwrite the real key
       const body = { ...req.body };
       if (body.aiApiKey === '***') delete body.aiApiKey;
@@ -157,6 +188,10 @@ const settingsController = {
       if (body.cusip_ai_api_key === '***') delete body.cusip_ai_api_key;
 
       const settings = await User.updateSettings(req.user.id, body);
+
+      if (shouldSyncDefaultStopLosses(body, settings)) {
+        await Trade.syncDefaultStopLossToExistingTrades(req.user.id, previousSettings, settings);
+      }
 
       // Settings like breakeven tolerance and statistics calculation change
       // analytics outputs, so drop this user's cached analytics on any update.
@@ -319,7 +354,7 @@ const settingsController = {
       const normalizedProvider = aiProvider ? String(aiProvider).trim() : '';
 
       // Validate AI provider
-      const validProviders = ['gemini', 'claude', 'openai', 'ollama', 'lmstudio', 'perplexity', 'local'];
+      const validProviders = VALID_AI_PROVIDERS;
       if (normalizedProvider && !validProviders.includes(normalizedProvider)) {
         return res.status(400).json({
           error: 'Invalid AI provider. Must be one of: ' + validProviders.join(', ')
@@ -344,13 +379,13 @@ const settingsController = {
       }
 
       // Validate required fields
-      if (!['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !aiApiKey) {
+      if (!LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !aiApiKey) {
         return res.status(400).json({
           error: 'API key is required for ' + normalizedProvider
         });
       }
 
-      if (['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !aiApiUrl) {
+      if (LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !aiApiUrl) {
         return res.status(400).json({
           error: 'API URL is required for ' + normalizedProvider
         });
@@ -440,7 +475,7 @@ const settingsController = {
       }
 
       // Validate AI provider
-      const validProviders = ['gemini', 'claude', 'openai', 'ollama', 'lmstudio', 'perplexity', 'local'];
+      const validProviders = VALID_AI_PROVIDERS;
       if (normalizedProvider && !validProviders.includes(normalizedProvider)) {
         return res.status(400).json({
           error: 'Invalid AI provider. Must be one of: ' + validProviders.join(', ')
@@ -448,13 +483,13 @@ const settingsController = {
       }
 
       // Validate required fields based on provider type
-      if (!['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !cusipAiApiKey) {
+      if (!LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !cusipAiApiKey) {
         return res.status(400).json({
           error: 'API key is required for ' + normalizedProvider
         });
       }
 
-      if (['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !cusipAiApiUrl) {
+      if (LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !cusipAiApiUrl) {
         return res.status(400).json({
           error: 'API URL is required for ' + normalizedProvider
         });
@@ -984,8 +1019,10 @@ const settingsController = {
       console.log('[IMPORT] Database connection established');
       clearTableColumnsCache();
 
-      // Determine if this is a v3.0+ dynamic import or legacy
-      const isV3 = importData.exportVersion >= '3.0';
+      // Determine if this is a v3.0+ dynamic import or legacy. Numeric
+      // comparison — a lexicographic string compare would route a future
+      // '10.0' export ('1' < '3') to the legacy path.
+      const isV3 = parseFloat(importData.exportVersion) >= 3;
 
       // Counters for import results
       let tradesAdded = 0;
@@ -1250,6 +1287,16 @@ const settingsController = {
             // v3.0 dynamic settings import
             const tableColumns = await getTableColumns(client, 'user_settings');
             const mergedSettings = { ...keysToSnakeCase(s), ...keysToSnakeCase(tp) };
+
+            // Encrypt AI provider keys like the legacy path does. Idempotent
+            // for already-encrypted exports; protects plaintext keys from
+            // hand-edited or cross-instance v3 files.
+            if (mergedSettings.ai_api_key) {
+              mergedSettings.ai_api_key = encryptKeyIfPresent(mergedSettings.ai_api_key);
+            }
+            if (mergedSettings.cusip_ai_api_key) {
+              mergedSettings.cusip_ai_api_key = encryptKeyIfPresent(mergedSettings.cusip_ai_api_key);
+            }
 
             // Filter to valid columns only
             const validSettings = {};
@@ -1754,6 +1801,7 @@ const settingsController = {
 
         if (tradesAdded > 0) {
           try {
+            await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'TradeTally backup import');
             await AnalyticsCache.invalidate(userId);
           } catch (cacheErr) {
             console.warn(`[IMPORT] AnalyticsCache invalidation failed: ${cacheErr.message}`);
@@ -1847,7 +1895,7 @@ const settingsController = {
       const classifierApiKeyUpdate = aiClassifierApiKey === '***' ? undefined : aiClassifierApiKey;
 
       // Validate AI provider
-      const validProviders = ['gemini', 'claude', 'openai', 'ollama', 'lmstudio', 'perplexity', 'local'];
+      const validProviders = VALID_AI_PROVIDERS;
       if (normalizedProvider && !validProviders.includes(normalizedProvider)) {
         return res.status(400).json({
           error: 'Invalid AI provider. Must be one of: ' + validProviders.join(', ')
@@ -1892,13 +1940,13 @@ const settingsController = {
       }
 
       // Validate required fields
-      if (!['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !aiApiKey) {
+      if (!LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !aiApiKey) {
         return res.status(400).json({
           error: 'API key is required for ' + normalizedProvider
         });
       }
 
-      if (['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !aiApiUrl) {
+      if (LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !aiApiUrl) {
         return res.status(400).json({
           error: 'API URL is required for ' + normalizedProvider
         });
@@ -1919,7 +1967,7 @@ const settingsController = {
         const classifierUsesMainProvider = effectiveClassifierProvider === normalizedProvider;
         if (
           !classifierUsesMainProvider &&
-          !['local', 'ollama', 'lmstudio'].includes(effectiveClassifierProvider) &&
+          !LOCAL_AI_PROVIDERS.includes(effectiveClassifierProvider) &&
           !aiClassifierApiKey
         ) {
           return res.status(400).json({
@@ -1929,7 +1977,7 @@ const settingsController = {
 
         if (
           !classifierUsesMainProvider &&
-          ['local', 'ollama', 'lmstudio'].includes(effectiveClassifierProvider) &&
+          LOCAL_AI_PROVIDERS.includes(effectiveClassifierProvider) &&
           !aiClassifierApiUrl
         ) {
           return res.status(400).json({
@@ -2031,7 +2079,7 @@ const settingsController = {
       }
 
       // Validate AI provider
-      const validProviders = ['gemini', 'claude', 'openai', 'ollama', 'lmstudio', 'perplexity', 'local'];
+      const validProviders = VALID_AI_PROVIDERS;
       if (normalizedProvider && !validProviders.includes(normalizedProvider)) {
         return res.status(400).json({
           error: 'Invalid AI provider. Must be one of: ' + validProviders.join(', ')
@@ -2039,13 +2087,13 @@ const settingsController = {
       }
 
       // Validate required fields based on provider type
-      if (!['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !cusipAiApiKey) {
+      if (!LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !cusipAiApiKey) {
         return res.status(400).json({
           error: 'API key is required for ' + normalizedProvider
         });
       }
 
-      if (['local', 'ollama', 'lmstudio'].includes(normalizedProvider) && !cusipAiApiUrl) {
+      if (LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !cusipAiApiUrl) {
         return res.status(400).json({
           error: 'API URL is required for ' + normalizedProvider
         });

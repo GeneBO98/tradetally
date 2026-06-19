@@ -19,8 +19,8 @@
       cta-route="calendar"
     />
 
-    <!-- Loading State -->
-    <div v-if="loading" class="flex justify-center py-12">
+    <!-- Loading State (initial load only; refreshes keep content mounted) -->
+    <div v-if="initialLoading" class="flex justify-center py-12">
       <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
     </div>
 
@@ -211,7 +211,7 @@
         <div class="card-body">
           <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Unmanaged Account Identifiers</h3>
           <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">
-            These account identifiers exist on your trades but don't have a managed account. Add them to track cashflow and balances.
+            These account identifiers exist on your trades or investments but don't have a managed account. Add them to set a display name and track cashflow and balances.
           </p>
 
           <div class="space-y-3">
@@ -296,6 +296,8 @@ import { useAuthStore } from '@/stores/auth'
 const authStore = useAuthStore()
 
 const loading = ref(true)
+// Full-page spinner only on first load (CLAUDE.md pattern)
+const initialLoading = ref(true)
 const saving = ref(false)
 const deleting = ref(false)
 const error = ref(null)
@@ -387,6 +389,7 @@ async function fetchAccounts() {
     error.value = err.response?.data?.error || err.response?.data?.message || 'Failed to load accounts'
   } finally {
     loading.value = false
+    initialLoading.value = false
   }
 }
 

@@ -6,6 +6,38 @@ const PLAID_BASE_URLS = {
   production: 'https://production.plaid.com'
 };
 
+function compactOptionalFields(body) {
+  return Object.fromEntries(
+    Object.entries(body).filter(([, value]) => value !== null && value !== undefined)
+  );
+}
+
+function buildPlaidError(error) {
+  const plaidError = error.response?.data;
+  if (!plaidError || typeof plaidError !== 'object') {
+    return error;
+  }
+
+  const parts = [
+    plaidError.error_code,
+    plaidError.error_message || plaidError.display_message
+  ].filter(Boolean);
+
+  const message = parts.length > 0
+    ? `Plaid request failed: ${parts.join(' - ')}`
+    : error.message;
+
+  const wrapped = new Error(message);
+  wrapped.status = error.response?.status;
+  wrapped.plaid = {
+    errorType: plaidError.error_type,
+    errorCode: plaidError.error_code,
+    requestId: plaidError.request_id
+  };
+  wrapped.cause = error;
+  return wrapped;
+}
+
 class PlaidClient {
   constructor() {
     this.clientId = process.env.PLAID_CLIENT_ID;
@@ -38,33 +70,57 @@ class PlaidClient {
       throw new Error('Plaid is not configured on this server');
     }
 
-    const response = await axios.post(`${this.getBaseUrl()}${path}`, this.buildRequestBody(body), {
-      headers: {
-        'Content-Type': 'application/json',
-        'Plaid-Version': '2020-09-14'
-      },
-      timeout: 30000
-    });
+    try {
+      const response = await axios.post(
+        `${this.getBaseUrl()}${path}`,
+        this.buildRequestBody(compactOptionalFields(body)),
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Plaid-Version': '2020-09-14'
+          },
+          timeout: 30000
+        }
+      );
 
-    return response.data;
+      return response.data;
+    } catch (error) {
+      throw buildPlaidError(error);
+    }
   }
 
-  async createLinkToken({ userId, email, targetType = 'bank' }) {
+  async createLinkToken({ userId, email, targetType = 'bank', accessToken = null }) {
     const countryCodes = (process.env.PLAID_COUNTRY_CODES || 'US')
       .split(',')
-      .map(value => value.trim())
-      .filter(Boolean);
+      .map(value => value.trim().toUpperCase())
+      .filter(value => /^[A-Z]{2}$/.test(value));
 
-    const products = targetType === 'investment' ? ['investments'] : ['transactions'];
+    if (countryCodes.length === 0) {
+      countryCodes.push('US');
+    }
+
     const body = {
       user: {
         client_user_id: String(userId)
       },
       client_name: 'TradeTally',
       language: 'en',
-      country_codes: countryCodes,
-      products
+      country_codes: countryCodes
     };
+
+    if (accessToken) {
+      // Update mode (re-authentication of an existing Item). Plaid rejects
+      // requests that combine access_token with products.
+      body.access_token = accessToken;
+    } else {
+      body.products = targetType === 'investment' ? ['investments'] : ['transactions'];
+
+      if (targetType === 'bank') {
+        body.transactions = {
+          days_requested: 730
+        };
+      }
+    }
 
     if (email) {
       body.user.email_address = email;
@@ -74,14 +130,8 @@ class PlaidClient {
       body.redirect_uri = process.env.PLAID_REDIRECT_URI;
     }
 
-    if (process.env.PLAID_WEBHOOK_URL && targetType === 'bank') {
+    if (process.env.PLAID_WEBHOOK_URL) {
       body.webhook = process.env.PLAID_WEBHOOK_URL;
-    }
-
-    if (targetType === 'bank') {
-      body.transactions = {
-        days_requested: 730
-      };
     }
 
     return this.post('/link/token/create', body);
@@ -100,10 +150,27 @@ class PlaidClient {
   }
 
   async syncTransactions(accessToken, cursor = null) {
-    return this.post('/transactions/sync', {
+    const body = {
       access_token: accessToken,
-      cursor,
       count: 100
+    };
+
+    if (cursor) {
+      body.cursor = cursor;
+    }
+
+    return this.post('/transactions/sync', body);
+  }
+
+  async getWebhookVerificationKey(keyId) {
+    return this.post('/webhook_verification_key/get', {
+      key_id: keyId
+    });
+  }
+
+  async getInvestmentHoldings(accessToken) {
+    return this.post('/investments/holdings/get', {
+      access_token: accessToken
     });
   }
 

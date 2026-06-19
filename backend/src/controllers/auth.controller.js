@@ -9,7 +9,7 @@ const YearWrappedService = require('../services/yearWrappedService');
 const refreshTokenService = require('../services/refreshToken.service');
 const SampleDataService = require('../services/sampleDataService');
 const activityTrackingService = require('../services/activityTrackingService');
-const sequenzySubscriberSyncService = require('../services/sequenzySubscriberSyncService');
+const accountLockout = require('../services/accountLockoutService');
 const { getClientIp } = require('../utils/clientIp');
 const { findMatchingBackupCodeIndex } = require('../utils/twoFactorBackupCodes');
 const { generateCsrfToken } = require('../middleware/csrf');
@@ -82,6 +82,7 @@ function queuePasswordResetEmail(email, token) {
     }
   });
 }
+
 
 const authController = {
   async register(req, res, next) {
@@ -157,7 +158,6 @@ const authController = {
         marketingConsent: marketing_consent || false
       });
       await User.createSettings(user.id);
-      sequenzySubscriberSyncService.queueSyncUserById(user.id);
 
       // Record acquisition data (UTM params, referral source, IP, user agent)
       try {
@@ -332,19 +332,31 @@ const authController = {
 
       const user = await User.findByEmail(email);
       const detailedErrors = useDetailedErrors();
-      
+
       if (!user || !user.is_active) {
-        return res.status(401).json({ 
+        return res.status(401).json({
           error: detailedErrors ? 'No account found with this email address' : 'Invalid credentials'
         });
       }
 
+      // Block locked accounts before checking the password so they can't be probed.
+      if (await accountLockout.isLocked(user)) {
+        return res.status(423).json({ error: accountLockout.LOCKED_MESSAGE, accountLocked: true });
+      }
+
       const isValid = await User.verifyPassword(user, password);
       if (!isValid) {
-        return res.status(401).json({ 
+        const nowLocked = await accountLockout.recordFailedAttempt(user);
+        if (nowLocked) {
+          return res.status(423).json({ error: accountLockout.LOCKED_MESSAGE, accountLocked: true });
+        }
+        return res.status(401).json({
           error: detailedErrors ? 'Incorrect password' : 'Invalid credentials'
         });
       }
+
+      // Correct password clears the failed-attempt counter.
+      await accountLockout.recordSuccess(user);
 
       // Check if user is approved by admin (if approval mode is enabled)
       const registrationMode = getRegistrationMode();
@@ -701,6 +713,27 @@ const authController = {
       await User.updatePassword(user.id, hashedPassword);
 
       res.json({ message: 'Password has been reset successfully' });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async unlockAccount(req, res, next) {
+    try {
+      const { token } = req.body;
+
+      if (!token) {
+        return res.status(400).json({ error: 'Unlock token is required' });
+      }
+
+      const user = await User.findByUnlockToken(token);
+      if (!user) {
+        return res.status(400).json({ error: 'Invalid or expired unlock link. Please reset your password to regain access.' });
+      }
+
+      await User.unlockAccount(user.id);
+
+      res.json({ message: 'Your account has been unlocked. You can now sign in.' });
     } catch (error) {
       next(error);
     }

@@ -91,6 +91,7 @@ backend/uploads/
 database_backup_*.sql
 
 # App-specific local/generated files
+kestra/
 backend/src/email-templates/
 backend/src/data/backups/
 backend/src/data/cusip_cache*.json

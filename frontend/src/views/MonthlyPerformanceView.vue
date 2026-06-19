@@ -33,82 +33,9 @@
             <div
                 class="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end"
             >
-                <div class="w-full sm:w-64" data-monthly-dropdown="tags">
+                <div class="w-full sm:w-64">
                     <label class="label">Tags</label>
-                    <div class="relative">
-                        <button
-                            type="button"
-                            @click.stop="toggleDropdown('tags')"
-                            class="input w-full text-left flex items-center justify-between"
-                        >
-                            <span class="truncate">{{ tagsButtonLabel }}</span>
-                            <svg
-                                class="h-4 w-4 text-gray-400"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                            >
-                                <path
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    stroke-width="2"
-                                    d="M19 9l-7 7-7-7"
-                                ></path>
-                            </svg>
-                        </button>
-                        <div
-                            v-if="openDropdown === 'tags'"
-                            class="absolute z-20 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none"
-                        >
-                            <div class="p-1">
-                                <label
-                                    class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer"
-                                >
-                                    <input
-                                        type="checkbox"
-                                        :checked="selectedTags.length === 0"
-                                        @change="selectedTags = []"
-                                        class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
-                                    />
-                                    <span
-                                        class="ml-3 text-sm text-gray-900 dark:text-white"
-                                        >All Tags</span
-                                    >
-                                </label>
-                            </div>
-                            <div
-                                v-if="availableTags.length > 0"
-                                class="border-t border-gray-200 dark:border-gray-600"
-                            >
-                                <div
-                                    v-for="tag in availableTags"
-                                    :key="tag"
-                                    class="p-1"
-                                >
-                                    <label
-                                        class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer"
-                                    >
-                                        <input
-                                            type="checkbox"
-                                            :value="tag"
-                                            v-model="selectedTags"
-                                            class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
-                                        />
-                                        <span
-                                            class="ml-3 text-sm text-gray-900 dark:text-white"
-                                            >{{ tag }}</span
-                                        >
-                                    </label>
-                                </div>
-                            </div>
-                            <div
-                                v-else
-                                class="px-3 py-2 text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-600"
-                            >
-                                No tags yet
-                            </div>
-                        </div>
-                    </div>
+                    <TagManagement v-model="selectedTags" />
                 </div>
 
                 <div
@@ -363,11 +290,25 @@
             <!-- Monthly Performance Table -->
             <div class="card">
                 <div class="card-body">
-                    <h2
-                        class="text-xl font-semibold text-gray-900 dark:text-white mb-6"
-                    >
-                        Month-by-Month Breakdown
-                    </h2>
+                    <div class="flex items-center justify-between mb-6">
+                        <h2
+                            class="text-xl font-semibold text-gray-900 dark:text-white"
+                        >
+                            Month-by-Month Breakdown
+                        </h2>
+                        <button
+                            @click="toggleRValue"
+                            class="px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
+                            :class="
+                                showRValue
+                                    ? 'bg-primary-600 text-white hover:bg-primary-700'
+                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
+                            "
+                            :title="showRValue ? 'Showing R-multiples (dollar columns hidden)' : 'Show R-multiples and hide dollar columns'"
+                        >
+                            {{ showRValue ? "Showing R" : "Show R" }}
+                        </button>
+                    </div>
                     <div class="overflow-x-auto">
                         <table
                             class="min-w-full divide-y divide-gray-200 dark:divide-gray-700"
@@ -405,21 +346,25 @@
                                         Win Rate
                                     </th>
                                     <th
+                                        v-if="!showRValue"
                                         class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
                                     >
                                         Total P&L
                                     </th>
                                     <th
+                                        v-if="!showRValue"
                                         class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
                                     >
                                         Avg P&L
                                     </th>
                                     <th
+                                        v-if="!showRValue"
                                         class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
                                     >
                                         Avg Win
                                     </th>
                                     <th
+                                        v-if="!showRValue"
                                         class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
                                     >
                                         Avg Loss
@@ -543,6 +488,7 @@
                                         >
                                     </td>
                                     <td
+                                        v-if="!showRValue"
                                         class="px-6 py-4 whitespace-nowrap text-right text-sm font-semibold"
                                         :class="
                                             month.trades.total > 0
@@ -559,6 +505,7 @@
                                         }}
                                     </td>
                                     <td
+                                        v-if="!showRValue"
                                         class="px-6 py-4 whitespace-nowrap text-right text-sm"
                                         :class="
                                             month.trades.total > 0
@@ -575,6 +522,7 @@
                                         }}
                                     </td>
                                     <td
+                                        v-if="!showRValue"
                                         class="px-6 py-4 whitespace-nowrap text-right text-sm text-success"
                                     >
                                         {{
@@ -586,6 +534,7 @@
                                         }}
                                     </td>
                                     <td
+                                        v-if="!showRValue"
                                         class="px-6 py-4 whitespace-nowrap text-right text-sm text-danger"
                                     >
                                         {{
@@ -711,6 +660,7 @@ import { useGlobalAccountFilter } from "@/composables/useGlobalAccountFilter";
 import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
 import api from "@/services/api";
 import BaseSelect from "@/components/common/BaseSelect.vue";
+import TagManagement from "@/components/trades/TagManagement.vue";
 
 Chart.register(...registerables);
 
@@ -758,16 +708,8 @@ const readStoredArray = (key) => {
 };
 const selectedTags = ref(readStoredArray(STORAGE_KEYS.tags));
 const selectedStrategies = ref(readStoredArray(STORAGE_KEYS.strategies));
-const availableTags = ref([]);
 const availableStrategies = ref([]);
 const openDropdown = ref(null);
-
-const tagsButtonLabel = computed(() => {
-    const count = selectedTags.value.length;
-    if (count === 0) return "All Tags";
-    if (count === 1) return selectedTags.value[0];
-    return `${count} tags selected`;
-});
 
 const strategiesButtonLabel = computed(() => {
     const count = selectedStrategies.value.length;
@@ -795,21 +737,6 @@ const handleOutsideClick = (event) => {
 const clearFilters = () => {
     selectedTags.value = [];
     selectedStrategies.value = [];
-};
-
-const fetchAvailableTags = async () => {
-    try {
-        const response = await api.get("/tags");
-        const tags = response.data?.tags || [];
-        // /tags returns either string[] or [{ name }]; normalize to string[].
-        availableTags.value = tags
-            .map((t) => (typeof t === "string" ? t : t?.name))
-            .filter((t) => typeof t === "string" && t.trim() !== "")
-            .sort((a, b) => a.localeCompare(b));
-    } catch (err) {
-        console.warn("[MONTHLY] Failed to load tags:", err);
-        availableTags.value = [];
-    }
 };
 
 const fetchAvailableStrategies = async () => {
@@ -1137,7 +1064,6 @@ const getRValueClass = (value) => {
 onMounted(() => {
     console.log("[MONTHLY] Component mounted");
     loadMonthlyData();
-    fetchAvailableTags();
     fetchAvailableStrategies();
     document.addEventListener("click", handleOutsideClick);
 });

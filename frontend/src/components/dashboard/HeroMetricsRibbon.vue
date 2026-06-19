@@ -1,22 +1,47 @@
 <template>
-  <div class="card-dense relative overflow-hidden">
+  <!-- @container: the ribbon lays itself out by its OWN width, not the
+       viewport. This matters because the dashboard's news rail steals
+       320-384px from the main column at lg+, so a viewport-based breakpoint
+       would flip the ribbon to its cramped 4-across row while it's actually
+       narrow. Container queries flip only when the ribbon itself is wide
+       enough, with or without the rail present. -->
+  <div class="@container card-dense relative overflow-hidden">
     <!-- Subtle grid background for command-center feel -->
     <div class="absolute inset-0 opacity-[0.04] dark:opacity-[0.08] pointer-events-none" aria-hidden="true">
       <div class="w-full h-full" style="background-image: linear-gradient(rgba(120,120,120,0.6) 1px, transparent 1px), linear-gradient(90deg, rgba(120,120,120,0.6) 1px, transparent 1px); background-size: 24px 24px;" />
     </div>
 
     <div class="relative card-dense-body">
-      <div class="flex flex-col lg:flex-row gap-4 lg:gap-6 lg:items-stretch">
+      <div class="flex flex-col @3xl:flex-row gap-4 @3xl:gap-6 @3xl:items-stretch">
         <!-- Hero P&L: full row on mobile, ~40% on desktop. min-w-0 lets the
              number shrink to fit inside the flex item instead of pushing
              out into the sub-stats. The number itself uses whitespace-nowrap
              (never truncated) and a length-aware size class so it always
              reads completely. The bar chart is hidden below xl since the
              number takes priority for available space. -->
-        <div class="lg:flex-[2] min-w-0 flex flex-col">
+        <div class="@3xl:flex-[2] min-w-0 flex flex-col">
           <div class="flex items-baseline justify-between mb-1 gap-2">
-            <span class="text-label whitespace-nowrap">Net P&amp;L</span>
-            <span class="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{{ rangeLabel }}</span>
+            <span class="text-label whitespace-nowrap">{{ rMode ? 'Net R' : 'Net P&L' }}</span>
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap truncate">{{ rangeLabel }}</span>
+              <!-- $ / R toggle: lets the ribbon be shared without dollar values -->
+              <div class="inline-flex shrink-0 rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden text-xs font-medium" role="group" aria-label="Display values in dollars or R-multiples">
+                <button
+                  type="button"
+                  class="px-2 py-0.5 transition-colors"
+                  :class="!rMode ? 'bg-primary-600 text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
+                  :aria-pressed="!rMode"
+                  @click="emit('update:rMode', false)"
+                >$</button>
+                <button
+                  type="button"
+                  class="px-2 py-0.5 transition-colors"
+                  :class="rMode ? 'bg-primary-600 text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
+                  :aria-pressed="rMode"
+                  @click="emit('update:rMode', true)"
+                >R</button>
+              </div>
+            </div>
           </div>
           <!-- Value block is bottom-anchored with mt-auto so the hero number,
                win-rate, profit-factor and streak all share a virtual row at
@@ -29,13 +54,16 @@
                 class="text-mono-num font-semibold tracking-tight leading-none whitespace-nowrap"
                 :class="[pnlValueClass, pnlSizeClass]"
               >
-                {{ formatSignedCurrency(netPnl) }}
+                {{ heroDisplay }}
               </div>
               <!-- Recent daily P&L bars: distinct from the cumulative equity
-                   curve below — shows per-day rhythm and magnitude. -->
+                   curve below — shows per-day rhythm and magnitude. Shown
+                   from @xl (576px ribbon) so it appears in the roomy STACKED
+                   hero row too, not only the wide horizontal layout — it sits
+                   beside the number as a sparkline whenever there's room. -->
               <div
                 v-if="dailyBarValues.length >= 2"
-                class="hidden xl:flex flex-1 min-w-0 items-center pb-1"
+                class="hidden @xl:flex flex-1 min-w-0 items-center pb-1"
               >
                 <MiniBarChart
                   :values="dailyBarValues"
@@ -50,7 +78,7 @@
               <span v-if="totalTrades > 0">
                 {{ totalTrades }} {{ totalTrades === 1 ? 'trade' : 'trades' }}<!--
                 --><span v-if="tradingDays > 0"> · {{ tradingDays }} {{ tradingDays === 1 ? 'day' : 'days' }}</span><!--
-                --><span v-if="totalCosts > 0"> · {{ formatCurrency(totalCosts) }} costs</span>
+                --><span v-if="totalCosts > 0 && !rMode"> · {{ formatCurrency(totalCosts) }} costs</span>
               </span>
               <span v-else class="italic">Import trades to see your P&amp;L</span>
             </div>
@@ -62,11 +90,11 @@
              stat values line up even when a label wraps to two lines at
              narrow widths. Labels are allowed to wrap (no whitespace-nowrap)
              to keep them from overflowing into adjacent cells. -->
-        <div class="grid grid-cols-3 gap-3 sm:gap-4 lg:flex-[3] lg:gap-6 lg:border-l lg:border-gray-200 lg:dark:border-gray-700 lg:pl-4 xl:pl-6">
+        <div class="grid grid-cols-3 gap-3 @sm:gap-4 @3xl:flex-[3] @3xl:gap-6 @3xl:border-l @3xl:border-gray-200 @3xl:dark:border-gray-700 @3xl:pl-4 @4xl:pl-6">
           <div class="flex flex-col min-w-0">
             <div class="text-label mb-1">Win Rate</div>
             <div class="mt-auto pt-1">
-              <div class="text-mono-num text-xl sm:text-2xl xl:text-3xl font-semibold tracking-tight" :class="winRateClass">
+              <div class="text-mono-num text-lg @sm:text-xl @3xl:text-2xl @4xl:text-3xl font-semibold tracking-tight" :class="winRateClass">
                 {{ totalTrades > 0 ? winRate + '%' : '—' }}<span v-if="totalTrades > 0" class="text-xs font-normal text-gray-500 dark:text-gray-400"> incl. BE</span>
               </div>
               <div class="text-xs text-gray-500 dark:text-gray-400 text-mono-num mt-0.5 truncate">
@@ -76,10 +104,10 @@
             </div>
           </div>
 
-          <div class="flex flex-col min-w-0 lg:border-l lg:border-gray-200 lg:dark:border-gray-700 lg:pl-4 xl:pl-6">
+          <div class="flex flex-col min-w-0 @3xl:border-l @3xl:border-gray-200 @3xl:dark:border-gray-700 @3xl:pl-4 @4xl:pl-6">
             <div class="text-label mb-1">Profit Factor</div>
             <div class="mt-auto pt-1">
-              <div class="text-mono-num text-xl sm:text-2xl xl:text-3xl font-semibold tracking-tight" :class="profitFactorClass">
+              <div class="text-mono-num text-lg @sm:text-xl @3xl:text-2xl @4xl:text-3xl font-semibold tracking-tight" :class="profitFactorClass">
                 {{ profitFactorDisplay }}
               </div>
               <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
@@ -92,18 +120,23 @@
             </div>
           </div>
 
-          <div class="flex flex-col min-w-0 lg:border-l lg:border-gray-200 lg:dark:border-gray-700 lg:pl-4 xl:pl-6">
+          <div class="flex flex-col min-w-0 @3xl:border-l @3xl:border-gray-200 @3xl:dark:border-gray-700 @3xl:pl-4 @4xl:pl-6">
             <div class="text-label mb-1">Streak</div>
             <div class="mt-auto pt-1">
               <div class="flex items-baseline gap-1 min-w-0">
-                <div class="text-mono-num text-xl sm:text-2xl xl:text-3xl font-semibold tracking-tight" :class="streakClass">
+                <div
+                  class="text-mono-num text-lg @sm:text-xl @3xl:text-2xl @4xl:text-3xl font-semibold tracking-tight"
+                  :class="streakClass"
+                  :title="streakTooltip"
+                >
                   {{ streakDisplay }}
                 </div>
+                <!-- "2L days" read as a cryptic unit; spell out win/loss -->
                 <span v-if="currentStreak !== 0" class="text-xs text-gray-500 dark:text-gray-400 lowercase whitespace-nowrap">
-                  {{ Math.abs(currentStreak) === 1 ? 'day' : 'days' }}
+                  {{ currentStreak > 0 ? 'win' : 'loss' }} {{ Math.abs(currentStreak) === 1 ? 'day' : 'days' }}
                 </span>
               </div>
-              <div class="text-xs text-gray-500 dark:text-gray-400 text-mono-num mt-0.5 truncate" v-if="bestWinStreak > 0">
+              <div class="text-xs text-gray-500 dark:text-gray-400 text-mono-num mt-0.5 truncate" v-if="bestWinStreak > 0" title="Longest run of consecutive winning days">
                 best {{ bestWinStreak }}W
               </div>
               <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5" v-else>—</div>
@@ -122,7 +155,7 @@
           {{ todayTradeCount }} {{ todayTradeCount === 1 ? 'trade' : 'trades' }}
         </span>
         <span class="text-mono-num font-medium" :class="todayPnlClass">
-          {{ formatSignedCurrency(todayPnl) }}
+          {{ rMode ? formatSignedR(todayR) : formatSignedCurrency(todayPnl) }}
         </span>
         <span class="text-gray-500 dark:text-gray-400 text-mono-num" v-if="avgDailyTrades > 0">
           avg {{ avgDailyTrades.toFixed(1) }}/day
@@ -146,14 +179,36 @@ const props = defineProps({
   rangeLabel: {
     type: String,
     default: 'All Time'
+  },
+  // When true, the hero number and daily bars show R-multiples instead of
+  // dollar values so the ribbon can be shared without exposing account size.
+  rMode: {
+    type: Boolean,
+    default: false
   }
 })
 
+const emit = defineEmits(['update:rMode'])
+
 const { formatCurrency, formatSignedCurrency } = useCurrencyFormatter()
+
+// R-multiples are unitless; show a signed value with a trailing R.
+function formatSignedR(value) {
+  const v = Number(value) || 0
+  return `${v >= 0 ? '+' : ''}${v.toFixed(2)}R`
+}
 
 const summary = computed(() => props.analytics?.summary || {})
 
 const netPnl = computed(() => parseFloat(summary.value.totalNetPnL ?? summary.value.totalPnL ?? 0) || 0)
+// Total R across trades with a defined stop loss (NULL r_value trades are
+// excluded server-side, matching the analytics performance endpoint).
+const totalR = computed(() => parseFloat(summary.value.totalRValue ?? summary.value.total_r_value ?? 0) || 0)
+
+// The active hero metric: drives both the displayed string and the sign-based
+// color/size classes so $ and R modes share one code path.
+const heroSign = computed(() => props.rMode ? totalR.value : netPnl.value)
+const heroDisplay = computed(() => props.rMode ? formatSignedR(totalR.value) : formatSignedCurrency(netPnl.value))
 const totalTrades = computed(() => parseInt(summary.value.totalTrades) || 0)
 const winningTrades = computed(() => parseInt(summary.value.winningTrades) || 0)
 const losingTrades = computed(() => parseInt(summary.value.losingTrades) || 0)
@@ -188,7 +243,7 @@ const dailyPnL = computed(() => Array.isArray(props.analytics?.dailyPnL) ? props
 const streakStats = computed(() => {
   const days = dailyPnL.value
   if (days.length === 0) {
-    return { current: 0, bestWin: 0, worstLoss: 0, todayPnl: 0, todayTrades: 0, avgDailyTrades: 0 }
+    return { current: 0, bestWin: 0, worstLoss: 0, todayPnl: 0, todayR: 0, todayTrades: 0, avgDailyTrades: 0 }
   }
   let current = 0
   let bestWin = 0
@@ -229,6 +284,7 @@ const streakStats = computed(() => {
   // Today's data (last entry, if it's today)
   const lastDay = days[days.length - 1]
   const todayPnl = parseFloat(lastDay?.daily_pnl ?? lastDay?.dailyPnL ?? 0) || 0
+  const todayR = parseFloat(lastDay?.r_value ?? lastDay?.rValue ?? 0) || 0
   const todayTrades = parseInt(lastDay?.trade_count ?? lastDay?.tradeCount ?? 0) || 0
 
   // Is the last entry actually today? Compare as YYYY-MM-DD strings in LOCAL
@@ -246,6 +302,7 @@ const streakStats = computed(() => {
     bestWin,
     worstLoss,
     todayPnl: isToday ? todayPnl : 0,
+    todayR: isToday ? todayR : 0,
     todayTrades: isToday ? todayTrades : 0,
     avgDailyTrades
   }
@@ -263,6 +320,13 @@ const streakDisplay = computed(() => {
   return `${abs}${currentStreak.value > 0 ? 'W' : 'L'}`
 })
 
+const streakTooltip = computed(() => {
+  if (currentStreak.value === 0) return 'No active streak'
+  const abs = Math.abs(currentStreak.value)
+  const kind = currentStreak.value > 0 ? 'winning' : 'losing'
+  return `${abs} consecutive ${kind} ${abs === 1 ? 'day' : 'days'}`
+})
+
 const streakClass = computed(() => {
   if (currentStreak.value > 0) return 'text-green-600 dark:text-green-400'
   if (currentStreak.value < 0) return 'text-red-600 dark:text-red-400'
@@ -270,21 +334,24 @@ const streakClass = computed(() => {
 })
 
 const pnlValueClass = computed(() => {
-  if (netPnl.value > 0) return 'text-green-600 dark:text-green-400 hero-glow-positive'
-  if (netPnl.value < 0) return 'text-red-600 dark:text-red-400 hero-glow-negative'
+  if (heroSign.value > 0) return 'text-green-600 dark:text-green-400 hero-glow-positive'
+  if (heroSign.value < 0) return 'text-red-600 dark:text-red-400 hero-glow-negative'
   return 'text-gray-500 dark:text-gray-400'
 })
 
 // Scale the hero P&L font size by character count so the FULL number
-// always reads. lg is the tight "narrow main column + news rail" case,
-// so the lg sizes are intentionally one step below xl. The number is
-// never truncated — fitting it is always the priority.
+// always reads. Sizes key off CONTAINER width (@-variants), not the
+// viewport. @4xl (896px ribbon) is the "full desktop" tier — on a 1080p
+// screen the main column with the news rail leaves the ribbon ~960px, so
+// the biggest sizes deliberately land at @4xl (not higher) to keep that
+// common case looking full. The number is never truncated — fitting it
+// is always the priority.
 const pnlSizeClass = computed(() => {
-  const len = formatSignedCurrency(netPnl.value).length
-  if (len >= 12) return 'text-xl sm:text-2xl lg:text-2xl xl:text-3xl'    // e.g. +$1,234,567.89
-  if (len >= 10) return 'text-2xl sm:text-3xl lg:text-2xl xl:text-4xl'   // e.g. +$15,786.64
-  if (len >= 8)  return 'text-3xl sm:text-4xl lg:text-3xl xl:text-4xl'   // e.g. +$1,234.56
-  return 'text-3xl sm:text-4xl lg:text-4xl xl:text-5xl'                  // shorter
+  const len = heroDisplay.value.length
+  if (len >= 12) return 'text-xl @sm:text-2xl @3xl:text-3xl @4xl:text-4xl'    // e.g. +$1,234,567.89
+  if (len >= 10) return 'text-2xl @sm:text-3xl @3xl:text-3xl @4xl:text-4xl'   // e.g. +$15,786.64
+  if (len >= 8)  return 'text-2xl @sm:text-3xl @3xl:text-4xl'                 // e.g. +$1,234.56
+  return 'text-3xl @sm:text-4xl @3xl:text-4xl @4xl:text-5xl'                  // shorter
 })
 
 const winRateClass = computed(() => {
@@ -303,9 +370,12 @@ const profitFactorClass = computed(() => {
   return 'text-red-600 dark:text-red-400'
 })
 
+const todayR = computed(() => streakStats.value.todayR)
+
 const todayPnlClass = computed(() => {
-  if (todayPnl.value > 0) return 'text-green-600 dark:text-green-400'
-  if (todayPnl.value < 0) return 'text-red-600 dark:text-red-400'
+  const v = props.rMode ? todayR.value : todayPnl.value
+  if (v > 0) return 'text-green-600 dark:text-green-400'
+  if (v < 0) return 'text-red-600 dark:text-red-400'
   return 'text-gray-700 dark:text-gray-300'
 })
 
@@ -315,14 +385,19 @@ const todayPnlClass = computed(() => {
 const recentDays = computed(() => dailyPnL.value.slice(-30))
 
 const dailyBarValues = computed(() =>
-  recentDays.value.map(d => parseFloat(d.daily_pnl ?? d.dailyPnL ?? 0) || 0)
+  recentDays.value.map(d => props.rMode
+    ? parseFloat(d.r_value ?? d.rValue ?? 0) || 0
+    : parseFloat(d.daily_pnl ?? d.dailyPnL ?? 0) || 0)
 )
 
 const dailyBarLabels = computed(() =>
   recentDays.value.map(d => {
     const date = String(d.trade_date ?? d.tradeDate ?? '').slice(0, 10)
-    const pnl = parseFloat(d.daily_pnl ?? d.dailyPnL ?? 0) || 0
-    return date ? `${date}: ${formatSignedCurrency(pnl)}` : formatSignedCurrency(pnl)
+    const value = props.rMode
+      ? parseFloat(d.r_value ?? d.rValue ?? 0) || 0
+      : parseFloat(d.daily_pnl ?? d.dailyPnL ?? 0) || 0
+    const formatted = props.rMode ? formatSignedR(value) : formatSignedCurrency(value)
+    return date ? `${date}: ${formatted}` : formatted
   })
 )
 </script>

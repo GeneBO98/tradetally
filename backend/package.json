@@ -1,6 +1,7 @@
 {
   "name": "tradetally-backend",
-  "version": "2.7.0",
+  "version": "2.7.4",
+  "packageManager": "pnpm@10.13.1",
   "description": "Backend API for TradeTally trade journaling platform",
   "main": "src/server.js",
   "scripts": {
@@ -26,7 +27,9 @@
     "load:execution": "node scripts/load-test-execution-endpoints.js",
     "soak:execution": "node scripts/soak-execution-endpoints.js",
     "load:execution:disposable": "../scripts/load-test-disposable-db.sh",
-    "migrate:export": "node run-export-migration.js"
+    "migrate:export": "node run-export-migration.js",
+    "announce:release": "node scripts/send_release_announcement.js",
+    "test:integration": "jest --config jest.integration.config.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
@@ -47,7 +50,7 @@
     "@simplewebauthn/server": "^13.2.3",
     "archiver": "^7.0.1",
     "autocannon": "^8.0.0",
-    "axios": "^1.15.2",
+    "axios": "^1.17.0",
     "bcrypt": "^6.0.0",
     "bcryptjs": "^2.4.3",
     "cheerio": "^1.1.2",
@@ -103,6 +106,5 @@
     "@parse/node-apn": {
       "node-forge": "^1.4.0"
     }
-  },
-  "packageManager": "pnpm@10.13.1"
+  }
 }

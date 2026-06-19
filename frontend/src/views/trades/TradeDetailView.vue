@@ -19,7 +19,7 @@
 
     <div v-else-if="trade" class="space-y-8">
       <!-- Header -->
-      <div class="flex items-center justify-between">
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 class="heading-page">
             {{ trade.symbol }} Trade
@@ -28,7 +28,7 @@
             {{ formatDate(trade.trade_date) }} • {{ trade.side }}
           </p>
         </div>
-        <div class="flex flex-wrap justify-end gap-3">
+        <div v-if="isOwner" class="flex flex-wrap gap-3 sm:justify-end">
           <button
             @click="toggleAIPanel"
             class="btn-primary inline-flex items-center gap-2"
@@ -36,7 +36,15 @@
             <SparklesIcon class="h-4 w-4" />
             <span>{{ showAIPanel ? 'Hide Analysis' : 'Analyze Trade' }}</span>
           </button>
-          <router-link :to="`/analysis/trade-management?tradeId=${trade.id}`" class="btn-primary">
+          <button
+            v-if="trade.entry_price !== null && trade.entry_price !== undefined"
+            @click="showShareCard = true"
+            class="btn-secondary inline-flex items-center gap-2"
+          >
+            <ShareIcon class="h-4 w-4" />
+            <span>Share</span>
+          </button>
+          <router-link :to="`/analysis/trade-management?tradeId=${trade.id}`" class="btn-secondary">
             Manage
           </router-link>
           <router-link :to="{ path: `/trades/${trade.id}/edit`, query: { from: 'trade-detail' } }" class="btn-secondary">
@@ -47,6 +55,9 @@
           </button>
         </div>
       </div>
+
+      <!-- Shareable trade card generator -->
+      <TradeShareCard v-if="trade" v-model="showShareCard" :trade="trade" @made-public="trade.is_public = true" />
 
       <!-- Stored AI Analyses -->
       <div v-if="storedAIResponseCount > 0" class="rounded-lg border border-primary-200 bg-primary-50/60 dark:border-primary-900/50 dark:bg-primary-900/10">
@@ -266,28 +277,28 @@
                     </span>
                   </dd>
                 </div>
-                <div>
+                <div v-if="trade.mae !== null && trade.mae !== undefined">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">MAE</dt>
                   <dd class="mt-1 text-sm font-mono" :class="trade.mae !== null && trade.mae !== undefined ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'">
-                    {{ trade.mae !== null && trade.mae !== undefined ? formatCurrency(trade.mae) : '—' }}
+                    {{ trade.mae !== null && trade.mae !== undefined ? formatExcursionValue(trade.mae) : '—' }}
                   </dd>
                 </div>
-                <div>
+                <div v-if="trade.mfe !== null && trade.mfe !== undefined">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">MFE</dt>
                   <dd class="mt-1 text-sm font-mono" :class="trade.mfe !== null && trade.mfe !== undefined ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'">
-                    {{ trade.mfe !== null && trade.mfe !== undefined ? formatCurrency(trade.mfe) : '—' }}
+                    {{ trade.mfe !== null && trade.mfe !== undefined ? formatExcursionValue(trade.mfe) : '—' }}
                   </dd>
                 </div>
-                <div>
+                <div v-if="(trade.post_exit_mae ?? trade.postExitMae) !== null && (trade.post_exit_mae ?? trade.postExitMae) !== undefined">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">After-Trade MAE</dt>
                   <dd class="mt-1 text-sm font-mono" :class="(trade.post_exit_mae ?? trade.postExitMae) !== null && (trade.post_exit_mae ?? trade.postExitMae) !== undefined ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'">
-                    {{ (trade.post_exit_mae ?? trade.postExitMae) !== null && (trade.post_exit_mae ?? trade.postExitMae) !== undefined ? formatCurrency(trade.post_exit_mae ?? trade.postExitMae) : '—' }}
+                    {{ (trade.post_exit_mae ?? trade.postExitMae) !== null && (trade.post_exit_mae ?? trade.postExitMae) !== undefined ? formatExcursionValue(trade.post_exit_mae ?? trade.postExitMae) : '—' }}
                   </dd>
                 </div>
-                <div>
+                <div v-if="(trade.post_exit_mfe ?? trade.postExitMfe) !== null && (trade.post_exit_mfe ?? trade.postExitMfe) !== undefined">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">After-Trade MFE</dt>
                   <dd class="mt-1 text-sm font-mono" :class="(trade.post_exit_mfe ?? trade.postExitMfe) !== null && (trade.post_exit_mfe ?? trade.postExitMfe) !== undefined ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'">
-                    {{ (trade.post_exit_mfe ?? trade.postExitMfe) !== null && (trade.post_exit_mfe ?? trade.postExitMfe) !== undefined ? formatCurrency(trade.post_exit_mfe ?? trade.postExitMfe) : '—' }}
+                    {{ (trade.post_exit_mfe ?? trade.postExitMfe) !== null && (trade.post_exit_mfe ?? trade.postExitMfe) !== undefined ? formatExcursionValue(trade.post_exit_mfe ?? trade.postExitMfe) : '—' }}
                   </dd>
                 </div>
                 <div>
@@ -1313,7 +1324,7 @@
                 </div>
 
                 <!-- Add Comment Form -->
-                <form @submit.prevent="submitComment" class="mt-6">
+                <form v-if="authStore.isAuthenticated" @submit.prevent="submitComment" class="mt-6">
                   <div>
                     <label for="comment" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
                       Add a comment
@@ -1356,23 +1367,23 @@
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
                     Net P&L
-                    <span v-if="!trade.exit_time && openOptionUnrealizedPnL !== null" class="text-xs font-normal text-gray-400">(unrealized)</span>
+                    <span v-if="!trade.exit_time && openUnrealizedPnL !== null" class="text-xs font-normal text-gray-400">(unrealized)</span>
                   </dt>
                   <dd class="mt-1 text-2xl font-semibold" :class="[
-                    (trade.exit_time ? displayPnl : openOptionUnrealizedPnL) >= 0 ? 'text-green-600' : 'text-red-600'
+                    (trade.exit_time ? displayPnl : openUnrealizedPnL) >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
                     <template v-if="trade.exit_time">{{ formatCurrency(displayPnl) }}</template>
-                    <template v-else-if="openOptionUnrealizedPnL !== null">{{ formatCurrency(openOptionUnrealizedPnL) }}</template>
+                    <template v-else-if="openUnrealizedPnL !== null">{{ formatCurrency(openUnrealizedPnL) }}</template>
                     <template v-else>Open</template>
                   </dd>
                 </div>
-                <div v-if="trade.pnl_percent || openOptionUnrealizedPnLPercent !== null">
+                <div v-if="trade.pnl_percent || openUnrealizedPnLPercent !== null">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">P&L %</dt>
                   <dd class="mt-1 text-lg font-semibold" :class="[
-                    (trade.exit_time ? trade.pnl_percent : openOptionUnrealizedPnLPercent) >= 0 ? 'text-green-600' : 'text-red-600'
+                    (trade.exit_time ? trade.pnl_percent : openUnrealizedPnLPercent) >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
                     <template v-if="trade.exit_time">{{ trade.pnl_percent > 0 ? '+' : '' }}{{ formatNumber(trade.pnl_percent) }}%</template>
-                    <template v-else>{{ openOptionUnrealizedPnLPercent > 0 ? '+' : '' }}{{ formatNumber(openOptionUnrealizedPnLPercent) }}%</template>
+                    <template v-else>{{ openUnrealizedPnLPercent > 0 ? '+' : '' }}{{ formatNumber(openUnrealizedPnLPercent) }}%</template>
                   </dd>
                 </div>
                 <div>
@@ -1510,7 +1521,8 @@ import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { format, formatDistanceToNow, formatDistance } from 'date-fns'
-import { DocumentIcon, ChatBubbleLeftIcon, SparklesIcon } from '@heroicons/vue/24/outline'
+import { DocumentIcon, ChatBubbleLeftIcon, SparklesIcon, ShareIcon } from '@heroicons/vue/24/outline'
+import TradeShareCard from '@/components/trades/TradeShareCard.vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
@@ -1522,6 +1534,7 @@ import AIConversationPanel from '@/components/ai/AIConversationPanel.vue'
 import AIReportRenderer from '@/components/ai/AIReportRenderer.vue'
 import BaseSelect from '@/components/common/BaseSelect.vue'
 import { useAIStore } from '@/stores/ai'
+import { getTradeDateOnlyParts } from '@/utils/date'
 
 const route = useRoute()
 const router = useRouter()
@@ -1532,8 +1545,46 @@ const { showSuccess, showError, showConfirmation } = useNotification()
 const { formatDateTime: formatDateTimeTz, formatTime: formatTimeTz, timezoneLabel } = useUserTimezone()
 const { formatCurrency, currencySymbol, formatSignedCurrency } = useCurrencyFormatter()
 
+function formatExcursionValue(value) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return '—'
+  const currentTrade = trade.value || {}
+  if ((currentTrade.instrument_type ?? currentTrade.instrumentType) !== 'future') return formatCurrency(numeric)
+
+  const quantity = Math.abs(Number(currentTrade.quantity) || 0)
+  const pointValue = Number(currentTrade.point_value ?? currentTrade.pointValue) || 0
+  if (quantity <= 0 || pointValue <= 0) return formatCurrency(numeric)
+
+  const scale = quantity * pointValue
+  const captured = getCapturedMoveDollars(currentTrade, scale)
+  const legacyPointUnits = hasLegacyFuturesExcursionUnits(currentTrade, captured, scale)
+  const points = legacyPointUnits ? numeric : numeric / scale
+  const dollars = legacyPointUnits ? numeric * scale : numeric
+  return `${points.toFixed(2)} pts (${formatCurrency(dollars)})`
+}
+
+function getCapturedMoveDollars(currentTrade, scale) {
+  const entry = Number(currentTrade.entry_price ?? currentTrade.entryPrice)
+  const exit = Number(currentTrade.exit_price ?? currentTrade.exitPrice)
+  if (!Number.isFinite(entry) || !Number.isFinite(exit)) return null
+  const move = currentTrade.side === 'short' ? entry - exit : exit - entry
+  return Math.max(0, move * scale)
+}
+
+function hasLegacyFuturesExcursionUnits(currentTrade, captured, scale) {
+  if (!captured || captured <= 0 || scale <= 1) return false
+  const candidates = [
+    currentTrade.mfe,
+    currentTrade.post_exit_mfe ?? currentTrade.postExitMfe
+  ].map(Number).filter(value => Number.isFinite(value) && value > 0)
+  return candidates.some(value => value < captured - 0.005 && value * scale >= captured - 0.005)
+}
+
 const loading = ref(true)
 const trade = ref(null)
+// True only for the trade's owner. Guests/other users viewing a public trade get
+// a read-only view: owner actions and owner-only data fetches are skipped.
+const isOwner = computed(() => !!authStore.user && !!trade.value && trade.value.user_id === authStore.user.id)
 const calculatingQuality = ref(false)
 const splittingTrade = ref(false)
 const splitMode = ref(false)
@@ -1549,6 +1600,7 @@ const playbookOptions = computed(() =>
 const loadingPlaybooks = ref(false)
 const savingPlaybookReview = ref(false)
 const showAIPanel = ref(false)
+const showShareCard = ref(false)
 const storedAIAnalyses = ref([])
 const storedAIExpanded = ref(false)
 const loadingStoredAIAnalyses = ref(false)
@@ -1937,6 +1989,33 @@ const openOptionUnrealizedPnLPercent = computed(() => {
   return (openOptionUnrealizedPnL.value / entryValue) * 100
 })
 
+// Unrealized P&L for ANY open position. Stocks/futures use the live quote the
+// backend now attaches (trade.unrealizedPnl / currentPrice); options use the
+// manually-entered premium from the dashboard's Open Positions table.
+const openCurrentPrice = computed(() => {
+  const t = trade.value
+  if (!t || t.exit_time) return null
+  if (t.instrument_type === 'option') return manualOptionPrice.value
+  const p = Number(t.currentPrice ?? t.current_price)
+  return Number.isFinite(p) && p > 0 ? p : null
+})
+
+const openUnrealizedPnL = computed(() => {
+  const t = trade.value
+  if (!t || t.exit_time) return null
+  if (t.instrument_type === 'option') return openOptionUnrealizedPnL.value
+  const v = Number(t.unrealizedPnl)
+  return Number.isFinite(v) ? v : null
+})
+
+const openUnrealizedPnLPercent = computed(() => {
+  const t = trade.value
+  if (!t || t.exit_time) return null
+  if (t.instrument_type === 'option') return openOptionUnrealizedPnLPercent.value
+  const v = Number(t.unrealizedPnlPercent)
+  return Number.isFinite(v) ? v : null
+})
+
 const executionSummary = computed(() => {
   if (!processedExecutions.value || !Array.isArray(processedExecutions.value)) return {
     totalVolume: 0,
@@ -2035,14 +2114,9 @@ function formatQuantity(num) {
 function formatDate(date) {
   if (!date) return 'N/A'
   try {
-    // Parse date string manually to avoid timezone issues
-    // If it's a date-only string (YYYY-MM-DD), parse components directly
-    const dateStr = date.toString()
-
-    // Match date-only format (YYYY-MM-DD) or date with midnight time (YYYY-MM-DDT00:00:00...)
-    const dateOnlyMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})(?:T00:00:00(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$/)
-    if (dateOnlyMatch) {
-      const [, year, month, day] = dateOnlyMatch.map(Number)
+    const dateOnlyParts = getTradeDateOnlyParts(date)
+    if (dateOnlyParts) {
+      const { year, month, day } = dateOnlyParts
       // Create date in local timezone (month is 0-indexed)
       const dateObj = new Date(year, month - 1, day)
       return format(dateObj, 'MMM dd, yyyy')
@@ -2081,7 +2155,20 @@ function formatAIModelLabel(metadata) {
 }
 
 function calculateRiskReward() {
-  if (!trade.value.exit_time) return 'Open'
+  const isLongSide = trade.value.side === 'long'
+
+  // Open position: show the move from entry to the live current price.
+  if (!trade.value.exit_time) {
+    const entry = Number(trade.value.entry_price)
+    const current = openCurrentPrice.value
+    if (!Number.isFinite(entry) || entry === 0 || current === null) return 'Open'
+    const move = isLongSide
+      ? ((current - entry) / entry) * 100
+      : ((entry - current) / entry) * 100
+    if (move > 0) return `+${move.toFixed(2)}%`
+    if (move < 0) return `${move.toFixed(2)}%`
+    return 'Breakeven'
+  }
 
   // For closed trades, we can't calculate a true risk/reward ratio without stop-loss/target levels
   // Instead, we'll show the actual outcome as a ratio
@@ -2401,16 +2488,22 @@ async function loadTrade() {
         metrics: trade.value.qualityMetrics || null
       }
     }
-    await loadPlaybooks()
-    
-    // Load comments after trade is loaded
-    if (trade.value) {
+    // Owner-only data (playbooks, comments, AI analyses) require auth - skip it for
+    // guests viewing a public trade so their requests don't 401 and bounce them to login.
+    if (trade.value && authStore.isAuthenticated) {
+      await loadPlaybooks()
       loadComments()
       loadStoredAIAnalyses()
     }
   } catch (error) {
-    showError('Error', 'Failed to load trade')
-    router.push('/trades')
+    // A guest hitting a private/non-existent trade gets a 404; send them to login
+    // (the owner can sign in and come back). Authenticated users go to their list.
+    if (!authStore.isAuthenticated) {
+      router.push({ name: 'login', query: { redirect: route.fullPath } })
+    } else {
+      showError('Error', 'Failed to load trade')
+      router.push('/trades')
+    }
   } finally {
     loading.value = false
   }

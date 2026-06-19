@@ -2,6 +2,7 @@ const axios = require('axios');
 const Trade = require('../../models/Trade');
 const BrokerConnection = require('../../models/BrokerConnection');
 const AnalyticsCache = require('../analyticsCache');
+const OptionStrategyGroupingService = require('../optionStrategyGroupingService');
 const cache = require('../../utils/cache');
 const db = require('../../config/database');
 
@@ -16,6 +17,12 @@ function invalidateInMemoryCache(userId) {
 
 function toDateOnly(value) {
   if (!value) return null;
+  // Offset timestamps (e.g. 2026-07-03T19:30:00-05:00) carry the broker's
+  // local calendar date in the string itself; converting through
+  // toISOString() would shift evening trades to the next UTC day.
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) {
+    return value.slice(0, 10);
+  }
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) {
     return String(value).slice(0, 10);
@@ -195,10 +202,14 @@ class OAuthBrokerBase {
       while (remaining > 0 && lots.length > 0 && lots[0].action !== fill.action) {
         const lot = lots[0];
         const quantity = Math.min(remaining, lot.remainingQuantity);
-        const longTrade = lot.action === 'buy';
-        const entryFill = longTrade ? lot : fill;
-        const exitFill = longTrade ? fill : lot;
-        const side = longTrade ? 'long' : 'short';
+        // The queued lot is always the chronological opener and the incoming
+        // fill the closer. Picking entry/exit by buy/sell direction swapped
+        // them for shorts: the cover became the "entry", entryTime landed
+        // after exitTime, tradeDate came from the open instead of the close,
+        // and a profitable short reported a sign-flipped P&L.
+        const entryFill = lot;
+        const exitFill = fill;
+        const side = lot.action === 'buy' ? 'long' : 'short';
         const pnl = this.calculatePnL(entryFill.price, exitFill.price, quantity, side, entryFill.instrumentType);
 
         trades.push({
@@ -296,7 +307,8 @@ class OAuthBrokerBase {
         tradeData.brokerConnectionId = connectionId;
         await Trade.create(userId, tradeData, {
           skipAchievements: true,
-          skipApiCalls: true
+          skipApiCalls: true,
+          skipOptionGrouping: true
         });
 
         imported++;
@@ -321,6 +333,7 @@ class OAuthBrokerBase {
     }
 
     if (imported > 0) {
+      await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, `${this.config.logPrefix} broker sync`);
       await AnalyticsCache.invalidate(userId);
       invalidateInMemoryCache(userId);
     }

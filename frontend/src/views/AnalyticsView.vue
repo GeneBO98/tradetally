@@ -10,10 +10,33 @@
     <!-- Onboarding card removed - Analytics is no longer in the tour flow -->
 
     <div class="space-y-8">
-      <!-- Filters -->
+      <!-- Filters: collapsed by default so the charts (the point of this
+           page) aren't pushed below the fold by a permanently open panel. -->
       <div class="card">
         <div class="card-body">
-          <TradeFilters @filter="handleFilter" />
+          <button
+            type="button"
+            class="flex w-full items-center justify-between text-left"
+            :aria-expanded="filtersExpanded"
+            @click="filtersExpanded = !filtersExpanded"
+          >
+            <span class="inline-flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+              <FunnelIcon class="h-4 w-4 text-gray-500 dark:text-gray-400" />
+              Filters
+              <span
+                v-if="activeFilterCount > 0"
+                class="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-primary-600 px-1.5 text-xs font-semibold text-white"
+              >{{ activeFilterCount }}</span>
+            </span>
+            <ChevronDownIcon
+              class="h-4 w-4 text-gray-500 transition-transform dark:text-gray-400"
+              :class="{ 'rotate-180': filtersExpanded }"
+            />
+          </button>
+
+          <div v-show="filtersExpanded" class="mt-4">
+            <TradeFilters @filter="handleFilter" />
+          </div>
 
           <!-- R-Value Mode Toggle -->
           <div class="mt-6 border-t border-gray-200 dark:border-gray-700 pt-4">
@@ -97,15 +120,15 @@
       </div>
 
       <!-- Customization Mode Message -->
-      <div v-if="isCustomizing" class="card bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+      <div v-if="isCustomizing" class="card bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800">
         <div class="card-body">
           <div class="flex items-center gap-3">
-            <svg class="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-5 h-5 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <div>
-              <p class="text-sm font-medium text-blue-900 dark:text-blue-100">Customization Mode Active</p>
-              <p class="text-xs text-blue-700 dark:text-blue-300 mt-1">Drag and drop chart sections to reorder them. Charts will auto-resize based on their width setting.</p>
+              <p class="text-sm font-medium text-primary-900 dark:text-primary-100">Customization Mode Active</p>
+              <p class="text-xs text-primary-700 dark:text-primary-300 mt-1">Drag and drop chart sections to reorder them. Charts will auto-resize based on their width setting.</p>
             </div>
           </div>
         </div>
@@ -177,7 +200,7 @@
         <div class="card card-mobile-safe flex-1">
           <div class="card-body">
             <dt class="text-data-secondary truncate">
-              Total P&L{{ rValueMode ? ' (R-Trades)' : '' }}
+              Total P&L
             </dt>
             <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold whitespace-nowrap" :class="[
               displayOverview.total_pnl >= 0 ? 'text-green-600' : 'text-red-600'
@@ -190,7 +213,7 @@
         <div class="card card-mobile-safe flex-1">
           <div class="card-body">
             <dt class="text-data-secondary truncate">
-              Win Rate{{ rValueMode ? ' (R-Trades)' : '' }}
+              Win Rate<span v-if="displayOverview.position_grouping" class="ml-1 text-xs font-normal normal-case text-primary-600 dark:text-primary-400">· whole trade</span>
             </dt>
             <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
               {{ displayOverview.win_rate }}%<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
@@ -207,7 +230,7 @@
         <div class="card card-mobile-safe flex-1">
           <div class="card-body">
             <dt class="text-data-secondary truncate">
-              Total Trades{{ rValueMode ? ' (R-Trades)' : '' }}
+              Total Trades
             </dt>
             <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
               {{ displayOverview.total_trades }}
@@ -218,7 +241,7 @@
         <div class="card card-mobile-safe flex-1">
           <div class="card-body">
             <dt class="text-data-secondary truncate">
-              {{ calculationMethod }} Trade{{ rValueMode ? ' (R-Trades)' : '' }}
+              {{ calculationMethod }} Trade
             </dt>
             <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold whitespace-nowrap" :class="[
               displayOverview.avg_pnl >= 0 ? 'text-green-600' : 'text-red-600'
@@ -231,7 +254,7 @@
         <div class="card card-mobile-safe flex-1">
           <div class="card-body">
             <dt class="text-data-secondary truncate">
-              Profit Factor{{ rValueMode ? ' (R-Trades)' : '' }}
+              Profit Factor
             </dt>
             <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
               {{ displayOverview.profit_factor ?? '0.00' }}
@@ -292,7 +315,7 @@
         <div class="card-body">
           <div class="flex items-start space-x-3">
             <div class="flex-shrink-0">
-              <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
@@ -1038,7 +1061,7 @@
 
             <!-- Strategy/Setup Performance -->
             <template v-else-if="element.id === 'strategy-performance'">
-      <div v-if="filteredStrategyStats.length > 0" class="card">
+      <div v-if="filteredStrategyStats.length > 0" id="strategies" class="card">
         <div class="card-body">
           <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Strategy/Setup Performance</h3>
           <div class="overflow-x-auto">
@@ -1313,6 +1336,8 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import api from '@/services/api'
+import { parseTradeDate } from '@/utils/date'
+import { FunnelIcon, ChevronDownIcon } from '@heroicons/vue/24/outline'
 import PerformanceChart from '@/components/charts/PerformanceChart.vue'
 import MdiIcon from '@/components/MdiIcon.vue'
 import NewsCorrelationAnalytics from '@/components/analytics/NewsCorrelationAnalytics.vue'
@@ -1345,6 +1370,11 @@ import {
 const loading = ref(true)
 const initialLoading = ref(true) // Track initial load separately to preserve scroll on refresh
 const rValueMode = ref(false)
+
+// Filter panel collapse state + badge count (matches the Trades/Dashboard
+// labeled-button pattern).
+const filtersExpanded = ref(false)
+const activeFilterCount = ref(0)
 const rMultipleFlipped = ref(false)
 const performancePeriod = ref('daily')
 const userSettings = ref(null)
@@ -1406,6 +1436,7 @@ const localFilters = ref({
   startDate: '',
   endDate: '',
   strategies: [],
+  setups: [],
   sectors: [],
   tags: [],
   hasNews: '',
@@ -1433,6 +1464,7 @@ const filters = ref({
   startDate: '',
   endDate: '',
   strategies: '',
+  setups: '',
   sectors: '',
   tags: '',
   hasNews: '',
@@ -1589,43 +1621,12 @@ const filteredHourOfDayStats = computed(() => {
 })
 
 // Display overview - switches between regular and R-value filtered stats based on mode
-const displayOverview = computed(() => {
-  if (!rValueMode.value) {
-    return overview.value
-  }
-
-  // In R-value mode, use the R-specific stats from the backend
-  const rTotalTrades = overview.value.r_total_trades || 0
-  const rWinningTrades = overview.value.r_winning_trades || 0
-  const rLosingTrades = overview.value.r_losing_trades || 0
-  const rWinRate = rTotalTrades > 0 ? Math.round((rWinningTrades / rTotalTrades) * 100) : 0
-  const rDecisiveTrades = rWinningTrades + rLosingTrades
-  const rWinRateExclBe = rDecisiveTrades > 0 ? (rWinningTrades / rDecisiveTrades * 100).toFixed(2) : 0
-
-  // Calculate profit factor for R-value trades
-  const rGrossWins = overview.value.r_winning_trades > 0
-    ? Math.abs(parseFloat(overview.value.r_avg_win || 0) * overview.value.r_winning_trades)
-    : 0
-  const rGrossLosses = overview.value.r_losing_trades > 0
-    ? Math.abs(parseFloat(overview.value.r_avg_loss || 0) * overview.value.r_losing_trades)
-    : 0
-  const rProfitFactor = rGrossLosses > 0 ? (rGrossWins / rGrossLosses).toFixed(2) : rGrossWins > 0 ? 'Inf' : '0.00'
-
-  return {
-    ...overview.value,
-    total_trades: rTotalTrades,
-    winning_trades: rWinningTrades,
-    losing_trades: overview.value.r_losing_trades || 0,
-    breakeven_trades: overview.value.r_breakeven_trades || 0,
-    win_rate: rWinRate,
-    win_rate_excluding_breakeven: rWinRateExclBe,
-    total_pnl: parseFloat(overview.value.r_total_pnl || 0),
-    avg_pnl: parseFloat(overview.value.r_avg_pnl || 0),
-    avg_win: parseFloat(overview.value.r_avg_win || 0),
-    avg_loss: parseFloat(overview.value.r_avg_loss || 0),
-    profit_factor: rProfitFactor
-  }
-})
+// The summary cards always show the full filtered dataset in dollars. The
+// R-multiple toggle is charts-only and must not alter these headline metrics
+// (it previously swapped in an R-trade subset, still rendered in dollars, which
+// silently changed P&L / win rate / MAE with no R values shown). R headline
+// numbers live in the dedicated "Avg R-Multiple / Total R" flip card.
+const displayOverview = computed(() => overview.value)
 
 // Computed property for visible charts in order
 const visibleCharts = computed(() => {
@@ -2457,7 +2458,7 @@ function createDailyVolumeChart() {
 
   const ctx = dailyVolumeChart.value.getContext('2d')
   const labels = dailyVolumeData.value.map(d => {
-    const date = new Date(d.trade_date)
+    const date = parseTradeDate(d.trade_date)
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   })
   const volumes = dailyVolumeData.value.map(d => d.total_volume)
@@ -2548,7 +2549,7 @@ function createDrawdownChart() {
 
   const ctx = drawdownChart.value.getContext('2d')
   const labels = drawdownData.value.map(d => {
-    const date = new Date(d.trade_date)
+    const date = parseTradeDate(d.trade_date)
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   })
 
@@ -2803,11 +2804,10 @@ function buildFilterParams(additionalParams = {}) {
     params.accounts = selectedAccount.value
   }
 
-  // Add hasRValue filter when R-value mode is active
-  // This ensures the entire dataset is filtered to only trades with valid R-values (stop_loss set)
-  if (rValueMode.value) {
-    params.hasRValue = 'true'
-  }
+  // NOTE: R-value mode (rValueMode) is a CHARTS-ONLY display toggle. It must
+  // NOT filter the dataset — the summary cards (P&L, win rate, trades, MAE/MFE)
+  // always reflect the full filtered dataset in dollars. Only the charts switch
+  // to R-multiples. Do not inject a hasRValue filter here.
 
   // Remove null/undefined/empty string values to keep params clean
   Object.keys(params).forEach(key => {
@@ -2902,6 +2902,11 @@ async function fetchDrawdownData() {
 // TradeFilters only sends non-empty values, so we need to treat newFilters as the complete active filter set
 async function handleFilter(newFilters) {
   console.log('[AnalyticsView] handleFilter received:', newFilters)
+
+  // TradeFilters only emits non-empty values, so their count is the badge.
+  activeFilterCount.value = Object.values(newFilters || {}).filter(
+    v => v !== '' && v !== null && v !== undefined && v !== false && !(Array.isArray(v) && v.length === 0)
+  ).length
   
   // CRITICAL: TradeFilters only sends non-empty filters, so we must reset all filters first,
   // then apply only what's in newFilters. This ensures cleared filters are actually cleared.
@@ -2911,6 +2916,7 @@ async function handleFilter(newFilters) {
     startDate: '',
     endDate: '',
     strategies: '',
+    setups: '',
     sectors: '',
     tags: '',
     hasNews: '',
@@ -2944,6 +2950,7 @@ async function handleFilter(newFilters) {
     startDate: '',
     endDate: '',
     strategies: [],
+    setups: [],
     sectors: [],
     tags: [],
     hasNews: '',
@@ -3082,6 +3089,7 @@ async function resetFilters() {
     startDate: '',
     endDate: '',
     strategies: [],
+    setups: [],
     sectors: [],
     hasNews: '',
     side: '',
@@ -3112,6 +3120,7 @@ async function clearFilters() {
     startDate: '',
     endDate: '',
     strategies: [],
+    setups: [],
     sectors: [],
     hasNews: '',
     side: '',
@@ -3138,6 +3147,7 @@ async function clearFilters() {
     startDate: '',
     endDate: '',
     strategies: '',
+    setups: '',
     sectors: '',
     hasNews: '',
     // Advanced filters
@@ -3730,6 +3740,17 @@ onMounted(async () => {
       }
     }
 
+    // The Strategy/Setup Performance table lives on the "By Symbol & Strategy"
+    // tab and may be hidden via layout customization. Switch to that tab and
+    // force the section visible so the scroll target actually renders.
+    if (route.hash === '#strategies') {
+      activeAnalyticsTab.value = 'symbol'
+      const strategyTable = chartLayout.value.find(c => c.id === 'strategy-performance')
+      if (strategyTable && !strategyTable.visible) {
+        strategyTable.visible = true
+      }
+    }
+
     await nextTick()
     const element = document.querySelector(route.hash)
     if (element) {
@@ -3792,26 +3813,12 @@ function collapseSectors() {
   console.log(`[DISPLAY] Collapsed to show ${sectorsToShow.value} sectors`)
 }
 
-// Watch for R-value mode changes and refetch all data with hasRValue filter
+// Watch for R-value mode changes and rebuild charts (charts-only toggle)
 watch(() => rValueMode.value, async () => {
-  // Refetch all data with the new hasRValue filter applied
-  loading.value = true
-
-  await Promise.all([
-    fetchOverview(),
-    fetchPerformance(),
-    fetchSymbolStats(),
-    fetchTagStats(),
-    fetchStrategyStats(),
-    fetchHourOfDayStats(),
-    fetchChartData(),
-    fetchDrawdownData()
-  ])
-
-  loading.value = false
-  initialLoading.value = false
-
-  // Recreate charts after data is loaded
+  // R-multiple mode is a charts-only display toggle — the dataset is identical
+  // whether it's on or off, so there's no need to refetch. Just rebuild the
+  // charts so they redraw in R-multiples (or back to dollars). The summary
+  // cards intentionally do not change.
   await nextTick()
   setTimeout(() => {
     initializeAllCharts()

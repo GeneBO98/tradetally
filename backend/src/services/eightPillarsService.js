@@ -15,6 +15,7 @@
 
 const db = require('../config/database');
 const FundamentalDataService = require('./fundamentalDataService');
+const marketData = require('../utils/finnhub');
 
 class EightPillarsService {
   static CALCULATION_VERSION = 7;
@@ -494,7 +495,7 @@ class EightPillarsService {
           roic,
           raw_value: numericValue,
           metric_key: metricKey,
-          source: 'finnhub'
+          source: marketData.providerName || 'finnhub'
         };
       })
       .filter(Boolean)

@@ -3,7 +3,8 @@ const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('..
 
 /**
  * One-time migration: fix MAE/MFE values that were stored without the
- * contract multiplier (point_value for futures, contract_size for options).
+ * contract multiplier (point_value for futures, contract_size for options),
+ * plus futures manual entries that were typed as points but stored as dollars.
  *
  * Background:
  *   Prior to the multiplier fix in maeEstimator.js, auto-calculated MAE/MFE
@@ -12,10 +13,8 @@ const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('..
  *   stored value is 1/5 of the correct dollar amount.
  *
  *   Manual entries cannot be reliably distinguished from auto-calc'd values,
- *   so this script only fixes rows where the stored value is *mathematically
- *   impossible* — MAE must be at least the realized loss in dollars, and MFE
- *   must be at least the realized gain. Anything that fails that check was
- *   produced by the buggy estimator.
+ *   so this script only fixes rows where the stored value is mathematically
+ *   inconsistent with realized/captured P&L.
  *
  * Usage:
  *   node scripts/fix_mae_mfe_multipliers.js           # dry-run (default)
@@ -58,12 +57,11 @@ async function run() {
   }
 
   const query = `
-    SELECT id, user_id, symbol, side, pnl, mae, mfe,
+    SELECT id, user_id, symbol, side, entry_price, exit_price, quantity, pnl, commission, fees,
+           mae, mfe, post_exit_mae, post_exit_mfe,
            instrument_type, point_value, underlying_asset, contract_size
     FROM trades
     WHERE instrument_type IN ('future', 'option')
-      AND mae IS NOT NULL
-      AND mfe IS NOT NULL
       AND pnl IS NOT NULL
       ${userClause}
   `;
@@ -78,39 +76,69 @@ async function run() {
 
   for (const trade of trades) {
     const multiplier = resolveMultiplier(trade);
-    if (multiplier <= 1) {
+    const quantity = Math.abs(parseFloat(trade.quantity) || 0);
+    if (multiplier <= 1 || quantity <= 0) {
       skipCount++;
       continue;
     }
 
-    const mae = parseFloat(trade.mae);
-    const mfe = parseFloat(trade.mfe);
     const pnl = parseFloat(trade.pnl);
+    const commission = parseFloat(trade.commission) || 0;
+    const fees = parseFloat(trade.fees) || 0;
+    const grossPnl = pnl + commission + fees;
+    const entry = parseFloat(trade.entry_price);
+    const exit = parseFloat(trade.exit_price);
+    const signedMove = trade.side === 'short' ? entry - exit : exit - entry;
+    const capturedDollars = isFinite(signedMove) ? Math.max(0, signedMove * quantity * multiplier) : Math.max(0, grossPnl);
 
-    if (!isFinite(mae) || !isFinite(mfe) || !isFinite(pnl)) {
+    if (!isFinite(pnl)) {
       skipCount++;
       continue;
     }
 
-    // A correctly-stored MAE must satisfy: mae >= |min(pnl, 0)| (at least the realized loss).
-    // A correctly-stored MFE must satisfy: mfe >= max(pnl, 0)    (at least the realized gain).
-    // Either failing => the value is in "points * qty" units, not dollars.
-    const maeImpossible = pnl < 0 && mae < Math.abs(pnl) - 0.005;
-    const mfeImpossible = pnl > 0 && mfe < pnl - 0.005;
+    const updates = {};
+    const pickScaledValue = (value, minimumDollars) => {
+      const numeric = parseFloat(value);
+      if (!isFinite(numeric) || numeric <= 0 || !isFinite(minimumDollars) || minimumDollars <= 0) return null;
+      if (numeric >= minimumDollars - 0.005) return null;
 
-    if (!maeImpossible && !mfeImpossible) {
+      const autoMissingMultiplier = numeric * multiplier;
+      const manualPoints = numeric * quantity * multiplier;
+
+      if (autoMissingMultiplier >= minimumDollars - 0.005) return autoMissingMultiplier;
+      if (manualPoints >= minimumDollars - 0.005) return manualPoints;
+      return null;
+    };
+
+    const maeMinimum = grossPnl < 0 ? Math.abs(grossPnl) : null;
+    const mfeMinimum = capturedDollars > 0 ? capturedDollars : (grossPnl > 0 ? grossPnl : null);
+
+    const newMae = pickScaledValue(trade.mae, maeMinimum);
+    const newMfe = pickScaledValue(trade.mfe, mfeMinimum);
+    const newPostExitMae = pickScaledValue(trade.post_exit_mae, maeMinimum);
+    const newPostExitMfe = pickScaledValue(trade.post_exit_mfe, mfeMinimum);
+
+    if (newMae != null) updates.mae = newMae;
+    if (newMfe != null) updates.mfe = newMfe;
+    if (newPostExitMae != null) updates.post_exit_mae = newPostExitMae;
+    if (newPostExitMfe != null) updates.post_exit_mfe = newPostExitMfe;
+
+    if (Object.keys(updates).length === 0) {
       skipCount++;
       continue;
     }
 
-    const newMae = mae * multiplier;
-    const newMfe = mfe * multiplier;
-
-    console.log(`[FIX] Trade ${trade.id} ${trade.symbol} (${trade.instrument_type}, x${multiplier})`);
-    console.log(`      pnl=${pnl.toFixed(2)}  mae: ${mae.toFixed(2)} -> ${newMae.toFixed(2)}  mfe: ${mfe.toFixed(2)} -> ${newMfe.toFixed(2)}`);
+    console.log(`[FIX] Trade ${trade.id} ${trade.symbol} (${trade.instrument_type}, qty=${quantity}, x${multiplier})`);
+    console.log(`      pnl=${pnl.toFixed(2)} gross=${grossPnl.toFixed(2)} captured=${capturedDollars.toFixed(2)}`);
+    for (const [field, value] of Object.entries(updates)) {
+      console.log(`      ${field}: ${parseFloat(trade[field]).toFixed(2)} -> ${value.toFixed(2)}`);
+    }
 
     if (apply) {
-      await db.query('UPDATE trades SET mae = $1, mfe = $2 WHERE id = $3', [newMae, newMfe, trade.id]);
+      const fields = Object.keys(updates);
+      const values = Object.values(updates);
+      const setSql = fields.map((field, index) => `${field} = $${index + 1}`).join(', ');
+      await db.query(`UPDATE trades SET ${setSql} WHERE id = $${fields.length + 1}`, [...values, trade.id]);
     }
     updateCount++;
   }

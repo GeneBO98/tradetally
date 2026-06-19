@@ -559,7 +559,7 @@ const watchlistController = {
           data: limitedNews.map(article => ({
             ...article,
             symbol: symbol.toUpperCase(),
-            source: 'finnhub'
+            source: finnhub.providerName || 'finnhub'
           })),
           meta: {
             symbol: symbol.toUpperCase(),

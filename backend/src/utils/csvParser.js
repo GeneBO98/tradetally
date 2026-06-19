@@ -308,7 +308,7 @@ function isExecutionDuplicate(execution, symbol, context) {
 
   const symbolExecutions = context.existingExecutions[symbol];
 
-  return symbolExecutions.some(existingExec => {
+  const matched = symbolExecutions.some(existingExec => {
     // Skip if existingExec is invalid
     if (!existingExec) {
       return false;
@@ -369,6 +369,16 @@ function isExecutionDuplicate(execution, symbol, context) {
            existingExec.quantity === execution.quantity &&
            Math.abs((existingPrice || 0) - (execution.price || 0)) < 0.01;
   });
+
+  // Count executions skipped because they already exist in the DB. This is the
+  // signal that distinguishes a re-imported (already-imported) file from a file
+  // that genuinely contained no trades, so the import summary can tell the user
+  // their trades were already imported rather than reporting an empty result.
+  if (matched && context.diagnostics) {
+    context.diagnostics.duplicateExecutions = (context.diagnostics.duplicateExecutions || 0) + 1;
+  }
+
+  return matched;
 }
 
 /**
@@ -653,6 +663,63 @@ function extractIBKRActivityStatementSection(csvString) {
 
   const csv = [renderRow(headerFields), ...collectedRows.map(renderRow)].join('\n');
   return { section, csv, dataRows: collectedRows.length };
+}
+
+/**
+ * Detect a positions / holdings statement (a point-in-time snapshot of what is
+ * currently held) rather than a transaction / trade history.
+ *
+ * Brokers like Schwab and thinkorswim let users export a "Positions" /
+ * "Individual-Positions" CSV whose columns describe current holdings — Symbol,
+ * Qty, Price, Mkt Val, Cost Basis, Day Chng, Gain/Loss, Reinvest? — but which
+ * contain NO dated buy/sell transactions. These files can never produce trades,
+ * so importing them silently "succeeds" with 0 trades and leaves the user with no
+ * idea why. We detect them up-front so the import can fail with a clear,
+ * actionable message instead.
+ *
+ * Returns true only when the header has holdings-snapshot markers AND lacks the
+ * date / action columns that every real transaction export carries, so it will
+ * not misfire on Schwab's completed-trades or transaction-history exports.
+ */
+function detectHoldingsStatement(fileBuffer) {
+  try {
+    let csvString = fileBuffer.toString('utf-8');
+    csvString = csvString.replace(/^﻿/, '');
+    const lines = csvString.split('\n');
+    const headerInfo = findLikelyDelimitedHeaderLine(lines);
+    const headerLine = headerInfo?.line || '';
+    if (!headerLine) return false;
+    const headers = headerLine.toLowerCase();
+
+    // Every transaction/trade export carries a date and/or an action/side column.
+    // A holdings snapshot has neither — it is just a list of current positions.
+    const hasTransactionMarkers =
+      headers.includes('date') ||
+      headers.includes('time') ||
+      headers.includes('action') ||
+      headers.includes('b/s') ||
+      headers.includes('side') ||
+      headers.includes('opened') ||
+      headers.includes('closed') ||
+      headers.includes('proceeds');
+    if (hasTransactionMarkers) return false;
+
+    // Positive holdings markers (Schwab / thinkorswim positions export).
+    const hasSymbol = headers.includes('symbol');
+    const hasQuantity = headers.includes('qty') || headers.includes('quantity');
+    const hasMarketValue = headers.includes('mkt val') || headers.includes('market value');
+    const hasCostBasis = headers.includes('cost basis');
+    // Day-change / reinvest columns only appear on a live holdings view, never on
+    // a transaction export.
+    const hasSnapshotMarker =
+      headers.includes('day chng') || headers.includes('day change') ||
+      headers.includes('price chng') || headers.includes('price change') ||
+      headers.includes('reinvest');
+
+    return hasSymbol && hasQuantity && hasMarketValue && hasCostBasis && hasSnapshotMarker;
+  } catch (e) {
+    return false;
+  }
 }
 
 function detectBrokerFormat(fileBuffer) {
@@ -1217,6 +1284,7 @@ const brokerParsers = {
       row.trade_date || row['trade_date'] || row['Entry Date'] ||
       row['Transaction Date'] || row['Activity Date'] || row['Exec Date'] || row['Execution Date'] ||
       row['Date and time'] || row.Time || row.time ||
+      row['Close time'] || row['Close Time'] || row['close time'] ||
       row['Entry Time'] || row['Entry time'] || row['entry time'] ||
       row['Exit Time'] || row['Exit time'] || row['exit time'] ||
       row['Opening time (UTC-4)'] || row['Opening Time'] || row['Open Time'] ||
@@ -1228,6 +1296,7 @@ const brokerParsers = {
       row['Fill Time'] || row['Trade Time'] || row.Timestamp ||
       row.order_execution_time || row['order_execution_time'] ||
       row['Date and time'] || row.Time || row.time ||
+      row['Close time'] || row['Close Time'] || row['close time'] ||
       row['Opening time (UTC-4)'] || row['Opening Time'] || row['Open Time'] ||
       row['Opened Time'] ||
       row.opening_time_utc || row['opening_time_utc'] ||
@@ -1259,6 +1328,7 @@ const brokerParsers = {
       row['Entry Price'] || row['Buy Price'] || row.Price || row.price ||
       row['Price / share'] || row.TradePrice || row['TradePrice'] ||
       row['Fill Price'] || row['Avg Price'] || row['Average Price'] ||
+      row['Avg fill price'] || row['Avg Fill Price'] || row['Average fill price'] ||
       row['Open Price'] || row['Opening Price'] || row['Purchase Price'] ||
       row['Entry price'] ||
       row.opening_price || row['opening_price']
@@ -1278,7 +1348,8 @@ const brokerParsers = {
       row.Quantity || row.quantity || row.Qty || row.qty ||
       row.Shares || row.shares || row['No. of shares'] || row.Size || row.size ||
       row.Volume || row.volume || row.Amount || row.amount ||
-      row['Fill Qty'] || row['Filled Qty'] || row['Closing Quantity'] ||
+      row['Fill Qty'] || row['Filled Qty'] || row['Filled quantity'] || row['Filled Quantity'] ||
+      row['Quantity filled'] || row['Quantity Filled'] || row['Closing Quantity'] ||
       row.original_position_size || row['original_position_size'] ||
       row.lots || row.Lots
     ));
@@ -1300,12 +1371,14 @@ const brokerParsers = {
     const commission = parseNumeric(
       row.Commission || row.commission || row.Comm || row.comm ||
       row.Commissions || row.commissions || row['Commission Amount'] ||
+      row['Commission fee'] || row['Commission Fee'] ||
       row['Comm']
     ) || 0;
 
     const fees = parseNumeric(
       row.Fees || row.fees || row.Fee || row.fee ||
       row['Total Fees'] || row['Fee Amount'] ||
+      row['Route fee'] || row['Route Fee'] ||
       row.SEC || row.TAF || row.NSCC
     ) || 0;
 
@@ -1731,7 +1804,7 @@ const brokerParsers = {
     const execTime = row['Exec Time'] || '';
     const entryTime = parseDateTime(`${row['T/D']} ${execTime}`);
     const side = parseSide(row.Side);
-    const quantity = Math.abs(parseInteger(row.Qty));
+    let quantity = Math.abs(parseNumeric(row.Qty));
     const price = parseNumeric(row.Price);
 
     // TradeStation exports commission separately from regulatory/venue fees.
@@ -1749,10 +1822,12 @@ const brokerParsers = {
     const type = cleanString(row.Type); // E, O for equity/option
     const note = cleanString(row.Note);
 
-    // Check if this is an option based on Type field
+    // Check if this is an option based on Type field or parseable OCC symbol metadata.
+    const parsedInstrumentData = parseInstrumentData(symbol);
     let instrumentData = {};
-    if (type === 'O' || type === 'Option') {
-      instrumentData = parseInstrumentData(symbol);
+    if (type === 'O' || type === 'Option' || parsedInstrumentData.instrumentType === 'option') {
+      instrumentData = parsedInstrumentData;
+      quantity = Math.round(quantity);
     }
 
     return {
@@ -2245,7 +2320,14 @@ function normalizeParsedTradeInstrumentData(trade) {
   const currentContractSize = trade.contractSize ?? trade.contract_size;
   const currentPointValue = trade.pointValue ?? trade.point_value;
 
-  if ((!currentType || currentType === 'stock') && parsed.instrumentType && parsed.instrumentType !== 'stock') {
+  // Only promote a stock to futures when we have the fields the DB requires
+  // (contract_month, contract_year, underlying_asset). Promoting without them
+  // would violate the check_futures_fields constraint and fail the import.
+  const canPromoteToFuture = parsed.instrumentType === 'future' &&
+    parsed.underlyingAsset && parsed.contractMonth != null && parsed.contractYear != null;
+  const canPromote = parsed.instrumentType === 'option' || canPromoteToFuture;
+
+  if ((!currentType || currentType === 'stock') && canPromote) {
     trade.instrumentType = parsed.instrumentType;
     if (parsed.underlyingSymbol && !trade.underlyingSymbol && !trade.underlying_symbol) {
       trade.underlyingSymbol = parsed.underlyingSymbol;
@@ -2258,6 +2340,20 @@ function normalizeParsedTradeInstrumentData(trade) {
     }
     if (parsed.optionType && !trade.optionType && !trade.option_type) {
       trade.optionType = parsed.optionType;
+    }
+    if (parsed.instrumentType === 'future') {
+      if (!trade.underlyingAsset && !trade.underlying_asset) {
+        trade.underlyingAsset = parsed.underlyingAsset;
+      }
+      if (trade.contractMonth == null && trade.contract_month == null) {
+        trade.contractMonth = parsed.contractMonth;
+      }
+      if (trade.contractYear == null && trade.contract_year == null) {
+        trade.contractYear = parsed.contractYear;
+      }
+      if ((trade.pointValue == null && trade.point_value == null) && parsed.pointValue != null) {
+        trade.pointValue = parsed.pointValue;
+      }
     }
   }
 
@@ -2419,6 +2515,21 @@ function buildDiagnosticSummary(diagnostics, context = {}) {
     return null;
   }
 
+  // Re-imported file: no new trades were produced because the executions already
+  // exist in the database. This is not an error — the trades were imported
+  // previously — so say so plainly instead of implying the file was empty.
+  const duplicateExecutions = diagnostics.duplicateExecutions || 0;
+  if (diagnostics.parsedRows === 0 && duplicateExecutions > 0) {
+    return {
+      title: 'These trades were already imported.',
+      body: `Every order in this file matches activity already in your account (${duplicateExecutions} duplicate execution${duplicateExecutions === 1 ? '' : 's'} skipped), so there was nothing new to add.`,
+      steps: [
+        'No action is needed if you already imported this file.',
+        'To add new activity, export a file that includes trades not yet in TradeTally.'
+      ]
+    };
+  }
+
   const headers = diagnostics.headerAnalysis?.foundHeaders || [];
   const reasonBreakdown = buildReasonBreakdown(diagnostics.skippedReasons);
   const topReason = reasonBreakdown[0]?.reason || '';
@@ -2529,7 +2640,7 @@ function rebuildTradeFromExecutions(trade) {
       current.totalFees += execFees;
       current.totalQuantity += Math.abs(signedQty);
       current.entryValue += Math.abs(signedQty) * execPrice * valueMultiplier;
-      currentPosition += signedQty;
+      currentPosition = normalizePositionQuantity(currentPosition + signedQty);
       current.currentPosition = currentPosition;
       continue;
     }
@@ -2548,7 +2659,7 @@ function rebuildTradeFromExecutions(trade) {
     });
     current.totalFees += closeFee;
     current.exitValue += closeQty * execPrice * valueMultiplier;
-    currentPosition += signedQty > 0 ? closeQty : -closeQty;
+    currentPosition = normalizePositionQuantity(currentPosition + (signedQty > 0 ? closeQty : -closeQty));
     current.currentPosition = currentPosition;
 
     if (currentPosition === 0) {
@@ -2589,7 +2700,7 @@ function repairTradeReversals(trades, diagnostics) {
       const signedQty = getExecutionSignedQuantity(execution);
       if (!signedQty) continue;
       const previous = position;
-      position += signedQty;
+      position = normalizePositionQuantity(position + signedQty);
       if (previous !== 0 && position !== 0 && Math.sign(previous) !== Math.sign(position)) {
         sawFlip = true;
         break;
@@ -2607,7 +2718,7 @@ function repairTradeReversals(trades, diagnostics) {
     const quantityMismatch =
       position !== 0 &&
       storedQuantity > 0 &&
-      Math.abs(netQuantity - storedQuantity) > 1e-9;
+      Math.abs(netQuantity - storedQuantity) > POSITION_CLOSE_TOLERANCE;
     const statusMismatch =
       (position === 0 && isStoredOpen) ||
       (position !== 0 && !isStoredOpen);
@@ -2677,6 +2788,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     parsedRows: 0,          // Rows successfully parsed
     skippedRows: 0,         // Rows intentionally skipped (wrong type, etc.)
     invalidRows: 0,         // Rows with validation errors
+    duplicateExecutions: 0, // Executions skipped because they already exist in the DB (re-imported file)
     skippedReasons: [],     // Array of { row: number, reason: string }
     warnings: [],           // Non-fatal issues
     detectedBroker: null,   // What auto-detect found (or selected broker)
@@ -2686,6 +2798,19 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       recognizedAs: null    // Which broker pattern matched
     }
   };
+
+  // Reject positions/holdings statements up-front. These are a snapshot of current
+  // holdings (no dated buy/sell transactions) and can never produce trades, so a
+  // silent "0 trades imported" result is confusing. Fail with a clear, actionable
+  // message instead. Runs regardless of selected broker since users have uploaded
+  // these under both 'schwab' and 'thinkorswim'.
+  if (detectHoldingsStatement(fileBuffer)) {
+    throw new Error(
+      'This file looks like a positions/holdings statement — a snapshot of what you currently hold (Qty, Market Value, Cost Basis, Gain/Loss), not a record of trades. ' +
+      'It has no dated buy/sell transactions, so no trades can be imported. ' +
+      'Please export your account\'s transaction/trade history (the report that lists individual buy and sell orders with dates) and import that instead.'
+    );
+  }
 
   try {
     console.log(`[CURRENCY DEBUG] parseCSV called with broker: ${broker}, userId: ${context.userId}`);
@@ -2749,11 +2874,21 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     // Normalize those rows before broker detection and parsing.
     csvString = normalizeWholeLineQuotedCsvRows(csvString);
 
+    const firstHeaderLine = csvString.split('\n').find(line => line.trim().length > 0) || '';
+    const firstHeaders = firstHeaderLine.split(',').map(header => header.replace(/^"|"$/g, '').trim());
+    if (broker === 'tradestation' && hasTradingViewOrderHistoryHeaders(firstHeaders)) {
+      const warning = 'Selected broker was TradeStation, but the CSV headers match TradingView order history. TradeTally used the TradingView parser for this import.';
+      console.log(`[BROKER MISMATCH] ${warning}`);
+      diagnostics.warnings.push(warning);
+      diagnostics.detectedBroker = 'tradingview';
+      diagnostics.headerAnalysis.recognizedAs = 'tradingview';
+      broker = 'tradingview';
+    }
+
     // TradingView sub-format detection: inspect CSV headers to route to the correct parser
     // All TradingView formats come in as broker='tradingview', we determine the sub-format here
     if (broker === 'tradingview') {
-      const headerLine = csvString.split('\n').find(line => line.trim().length > 0) || '';
-      const tvHeaders = headerLine.toLowerCase();
+      const tvHeaders = firstHeaderLine.toLowerCase();
       if (tvHeaders.includes('buyfillid') && tvHeaders.includes('sellfillid') && tvHeaders.includes('pnl')) {
         broker = 'tradingview_performance';
         console.log('[TRADINGVIEW] Sub-format detected: Performance export');
@@ -3602,6 +3737,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       // Process transactions with position tracking
       const completedTrades = [];
       const transactionsBySymbol = {};
+      const nearZeroResidualWarnings = new Set();
 
       for (const transaction of transactions) {
         if (!transactionsBySymbol[transaction.symbol]) {
@@ -3610,17 +3746,34 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
         transactionsBySymbol[transaction.symbol].push(transaction);
       }
 
+      Object.values(transactionsBySymbol).forEach(symbolTransactions => {
+        symbolTransactions.sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
+      });
+
       // Process each symbol's transactions
       for (const [symbol, symbolTransactions] of Object.entries(transactionsBySymbol)) {
         const position = existingPositions[symbol] || { quantity: 0, trades: [] };
-        let currentPosition = position.quantity;
+        if (!existingPositions[symbol] && symbolTransactions[0]?.action === 'sell') {
+          diagnostics.warnings.push(
+            `TradeStation history for ${symbol} starts with a Sell while no prior open position was found. This may be a true short trade, or the CSV may be missing earlier opening buys.`
+          );
+        }
+
+        let currentPosition = normalizePositionQuantity(
+          position.side === 'short' ? -position.quantity : position.quantity
+        );
 
         for (const transaction of symbolTransactions) {
           const isBuy = transaction.action === 'buy';
           const prevPosition = currentPosition;
-          currentPosition = isBuy
+          const rawPosition = isBuy
             ? currentPosition + transaction.quantity
             : currentPosition - transaction.quantity;
+          currentPosition = normalizePositionQuantity(rawPosition);
+          if (rawPosition !== 0 && currentPosition === 0 && !nearZeroResidualWarnings.has(symbol)) {
+            diagnostics.warnings.push(`Ignored near-zero residual position for ${symbol} after decimal quantity matching.`);
+            nearZeroResidualWarnings.add(symbol);
+          }
 
           // Determine if this completes a trade
           if (prevPosition === 0) {
@@ -4550,6 +4703,24 @@ function parseSide(sideStr) {
   return 'long';
 }
 
+const POSITION_CLOSE_TOLERANCE = 1e-8;
+
+function normalizePositionQuantity(quantity) {
+  const numericQuantity = Number(quantity || 0);
+  return Math.abs(numericQuantity) <= POSITION_CLOSE_TOLERANCE ? 0 : numericQuantity;
+}
+
+function hasTradingViewOrderHistoryHeaders(headers = []) {
+  const normalizedHeaders = headers.map(header => String(header || '').toLowerCase().trim());
+  return normalizedHeaders.includes('symbol') &&
+    normalizedHeaders.includes('side') &&
+    normalizedHeaders.includes('status') &&
+    normalizedHeaders.includes('order id') &&
+    normalizedHeaders.includes('quantity') &&
+    normalizedHeaders.includes('closing time') &&
+    (normalizedHeaders.includes('fill price') || normalizedHeaders.includes('avg fill price'));
+}
+
 function parseTradervueSide(sideStr) {
   const normalized = cleanString(sideStr).toUpperCase();
   if (normalized === 'S') return 'short';
@@ -4772,7 +4943,10 @@ function parseInstrumentData(symbol) {
   // alphanumerics after a required leading letter rather than letters only.
   const futuresPatterns = [
     /^([A-Z][A-Z0-9]{0,2})([FGHJKMNQUVXZ])(\d{1,2})$/,  // Standard: ESM4, NQU24, CLZ23, M2KM6
-    /^([A-Z_]+):([A-Z0-9]+)!?$/,                 // TradingView: NYMEX_MINI:QG1!
+    // TradingView futures: NYMEX_MINI:QG1!, CME:ESH2026. The lookahead requires the
+    // contract part to contain a digit or end with "!" so plain exchange-prefixed
+    // stock tickers (e.g. NASDAQ:HUBC, NASDAQ:LASE) are NOT misclassified as futures.
+    /^([A-Z_]+):(?=[A-Z0-9]*\d|[A-Z0-9]+!)([A-Z0-9]+)!?$/,
     /^\/([A-Z][A-Z0-9]{0,2})([FGHJKMNQUVXZ])(\d{2})$/,   // Slash notation: /ESM24
     /^F\.[A-Z]{2,}\.([A-Z][A-Z0-9]{0,2})([FGHJKMNQUVXZ])(\d{1,2})$/  // AvaTrade: F.US.MESM26
   ];
@@ -4824,6 +4998,14 @@ function parseInstrumentData(symbol) {
         }
       }
 
+      // If the symbol matched a futures-shaped pattern but we couldn't extract a
+      // product code (e.g. an exchange-prefixed stock ticker that slipped through),
+      // do not claim it's a future. A future with a null underlying/month/year would
+      // violate the check_futures_fields DB constraint and fail the whole import.
+      if (!underlying) {
+        continue;
+      }
+
       const monthCodes = { F: '01', G: '02', H: '03', J: '04', K: '05', M: '06', N: '07', Q: '08', U: '09', V: '10', X: '11', Z: '12' };
       const month = monthCode ? monthCodes[monthCode] : (year === 9999 ? 'CONT' : null);
 
@@ -4832,6 +5014,39 @@ function parseInstrumentData(symbol) {
         underlyingAsset: underlying,
         contractMonth: month,
         contractYear: year || null,
+        pointValue: getFuturesPointValue(underlying)
+      };
+    }
+  }
+
+  // NinjaTrader-style futures display names: underlying + space + month + year.
+  // NinjaTrader 8 exports the instrument as e.g. "ES JUN26" (3-letter month
+  // abbreviation) or "ES 06-26" (numeric month, dash, year), neither of which
+  // matches the compact "ESM26" patterns above. Without this, "ES JUN26" falls
+  // through to 'stock' and a 1-point move is valued at $1 instead of $50.
+  // The underlying may contain digits (e.g. "M2K"), so allow a leading letter
+  // then alphanumerics. These run after the option patterns above, which also
+  // begin with "<letters> <space>" but always carry a strike + PUT/CALL.
+  const ninjaMonthAbbr = {
+    JAN: '01', FEB: '02', MAR: '03', APR: '04', MAY: '05', JUN: '06',
+    JUL: '07', AUG: '08', SEP: '09', OCT: '10', NOV: '11', DEC: '12'
+  };
+  const ninjaNamedMonth = normalizedSymbol.match(/^([A-Z][A-Z0-9]{0,3})\s+([A-Z]{3})\s?(\d{2})$/);
+  const ninjaNumericMonth = normalizedSymbol.match(/^([A-Z][A-Z0-9]{0,3})\s+(0[1-9]|1[0-2])-(\d{2})$/);
+  if (ninjaNamedMonth || ninjaNumericMonth) {
+    const underlying = (ninjaNamedMonth || ninjaNumericMonth)[1];
+    const month = ninjaNamedMonth
+      ? ninjaMonthAbbr[ninjaNamedMonth[2]]
+      : ninjaNumericMonth[2];
+    const yearStr = (ninjaNamedMonth || ninjaNumericMonth)[3];
+    // Only treat as a future if the month resolved to a valid code (guards
+    // against random 3-letter words that aren't month abbreviations).
+    if (month) {
+      return {
+        instrumentType: 'future',
+        underlyingAsset: underlying,
+        contractMonth: month,
+        contractYear: 2000 + parseInt(yearStr, 10),
         pointValue: getFuturesPointValue(underlying)
       };
     }
@@ -7427,6 +7642,7 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
   const transactions = [];
   const completedTrades = [];
   const lastTradeEndTime = {};
+  const nearZeroResidualWarnings = new Set();
 
   // Debug: Log first few records to see structure
   console.log('Sample TradingView records:');
@@ -7460,7 +7676,7 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
       const side = getField(record, 'Side') ? getField(record, 'Side').toLowerCase() : '';
       const statusRaw = getField(record, 'Status') || '';
       const status = statusRaw.toLowerCase();
-      const quantity = Math.abs(parseInteger(
+      const quantity = Math.abs(parseNumeric(
         getField(record, 'Filled Qty') ||
         getField(record, 'Qty') ||
         getField(record, 'Quantity')
@@ -7622,8 +7838,14 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
     // Track position and round-trip trades
     // Start with existing position if we have one for this symbol
     const existingPosition = existingPositions[symbol];
-    let currentPosition = existingPosition ?
-      (existingPosition.side === 'long' ? existingPosition.quantity : -existingPosition.quantity) : 0;
+    if (!existingPosition && symbolTransactions[0]?.action === 'sell' && diagnostics) {
+      diagnostics.warnings.push(
+        `TradingView order history for ${symbol} starts with a Sell while no prior open position was found. This may be a true short trade, or the CSV may be missing earlier opening buys.`
+      );
+    }
+
+    let currentPosition = normalizePositionQuantity(existingPosition ?
+      (existingPosition.side === 'long' ? existingPosition.quantity : -existingPosition.quantity) : 0);
     let currentTrade = existingPosition ? {
       symbol: tradeSymbol,
       entryTime: existingPosition.entryTime,
@@ -7715,7 +7937,12 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
 
       // Update position and values (only for non-duplicate transactions)
       if (transaction.action === 'buy') {
-        currentPosition += qty;
+        const rawPosition = currentPosition + qty;
+        currentPosition = normalizePositionQuantity(rawPosition);
+        if (rawPosition !== 0 && currentPosition === 0 && diagnostics && !nearZeroResidualWarnings.has(symbol)) {
+          diagnostics.warnings.push(`Ignored near-zero residual position for ${symbol} after decimal quantity matching.`);
+          nearZeroResidualWarnings.add(symbol);
+        }
 
         if (currentTrade && currentTrade.side === 'long') {
           currentTrade.entryValue += qty * transaction.price * valueMultiplier;
@@ -7724,7 +7951,12 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
           currentTrade.exitValue += qty * transaction.price * valueMultiplier;
         }
       } else if (transaction.action === 'sell') {
-        currentPosition -= qty;
+        const rawPosition = currentPosition - qty;
+        currentPosition = normalizePositionQuantity(rawPosition);
+        if (rawPosition !== 0 && currentPosition === 0 && diagnostics && !nearZeroResidualWarnings.has(symbol)) {
+          diagnostics.warnings.push(`Ignored near-zero residual position for ${symbol} after decimal quantity matching.`);
+          nearZeroResidualWarnings.add(symbol);
+        }
 
         if (currentTrade && currentTrade.side === 'short') {
           currentTrade.entryValue += qty * transaction.price * valueMultiplier;
@@ -9565,6 +9797,26 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
   for (const [symbol, symbolTransactions] of Object.entries(symbolGroups)) {
     console.log(`\nProcessing ${symbol}: ${symbolTransactions.length} transactions`);
 
+    // Determine the contract multiplier for this symbol so futures P&L is valued
+    // per point (e.g. ES = $50/pt) instead of dollar-for-dollar. Without this a
+    // 1-point ES move would be recorded as $1 rather than $50. parseInstrumentData
+    // recognizes broker display formats like "ES JUN26" (NinjaTrader) and "ESM26".
+    const symbolInstrumentData = parseInstrumentData(symbol);
+    const contractMultiplier = symbolInstrumentData.instrumentType === 'future'
+      ? (symbolInstrumentData.pointValue || 1)
+      : 1;
+    // Fields to stamp onto completed futures trades so the Trade model, charts,
+    // and analytics treat them as futures (not stocks).
+    const futuresTradeFields = symbolInstrumentData.instrumentType === 'future'
+      ? {
+          instrumentType: 'future',
+          underlyingAsset: symbolInstrumentData.underlyingAsset,
+          contractMonth: symbolInstrumentData.contractMonth,
+          contractYear: symbolInstrumentData.contractYear,
+          pointValue: symbolInstrumentData.pointValue
+        }
+      : null;
+
     // Initialize position tracking
     const existingPosition = existingPositions[symbol];
     let currentPosition = existingPosition ?
@@ -9678,7 +9930,7 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
             if (currentPosition < 0 && currentTrade.totalQuantity > 0) {
               // Calculate P&L for this partial close using weighted average entry price
               const avgEntryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
-              const partialPnl = (avgEntryPrice - transaction.price) * qty;
+              const partialPnl = (avgEntryPrice - transaction.price) * qty * contractMultiplier;
               // Prorate commission for partial close
               const partialCommission = ((currentTrade.totalCommission + currentTrade.totalFees) / currentTrade.totalQuantity) * qty;
               const netPartialPnl = partialPnl - partialCommission;
@@ -9712,7 +9964,7 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
             if (currentPosition > 0 && currentTrade.totalQuantity > 0) {
               // Calculate P&L for this partial close using weighted average entry price
               const avgEntryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
-              const partialPnl = (transaction.price - avgEntryPrice) * qty;
+              const partialPnl = (transaction.price - avgEntryPrice) * qty * contractMultiplier;
               // Prorate commission for partial close
               const partialCommission = ((currentTrade.totalCommission + currentTrade.totalFees) / currentTrade.totalQuantity) * qty;
               const netPartialPnl = partialPnl - partialCommission;
@@ -9740,15 +9992,18 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
         currentTrade.entryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
         currentTrade.exitPrice = currentTrade.exitValue / currentTrade.totalQuantity;
 
-        // Calculate P&L
+        // Calculate P&L. entryValue/exitValue are raw price*qty (so entryPrice/
+        // exitPrice stay per-contract); the contract multiplier is applied to the
+        // gross gain/loss so futures are valued per point (e.g. ES = $50/pt).
         const totalCosts = currentTrade.totalCommission + currentTrade.totalFees;
         if (currentTrade.side === 'long') {
-          currentTrade.pnl = currentTrade.exitValue - currentTrade.entryValue - totalCosts;
+          currentTrade.pnl = (currentTrade.exitValue - currentTrade.entryValue) * contractMultiplier - totalCosts;
         } else {
-          currentTrade.pnl = currentTrade.entryValue - currentTrade.exitValue - totalCosts;
+          currentTrade.pnl = (currentTrade.entryValue - currentTrade.exitValue) * contractMultiplier - totalCosts;
         }
 
-        currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
+        const grossEntryValue = currentTrade.entryValue * contractMultiplier;
+        currentTrade.pnlPercent = grossEntryValue > 0 ? (currentTrade.pnl / grossEntryValue) * 100 : 0;
         currentTrade.quantity = currentTrade.totalQuantity;
         currentTrade.commission = currentTrade.totalCommission;
         currentTrade.fees = currentTrade.totalFees;
@@ -9768,6 +10023,10 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
         } else {
           currentTrade.notes = `Round trip trade: ${currentTrade.executions.length} executions`;
           console.log(`  [CHECK] Completed ${currentTrade.side} trade: P/L: $${currentTrade.pnl.toFixed(2)}`);
+        }
+
+        if (futuresTradeFields) {
+          Object.assign(currentTrade, futuresTradeFields);
         }
 
         currentTrade.executionData = currentTrade.executions;
@@ -9806,6 +10065,10 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
       } else {
         currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
         console.log(`  [CHECK] Created open ${currentTrade.side} position: ${netQuantity} shares`);
+      }
+
+      if (futuresTradeFields) {
+        Object.assign(currentTrade, futuresTradeFields);
       }
 
       currentTrade.executionData = currentTrade.executions;

@@ -230,10 +230,12 @@ class CusipMappingsController {
       const result = await db.query(query, values);
       
       // Update any existing trades with this CUSIP to use the new ticker
+      // (option trades keep their symbol - the ticker identifies the underlying, not the contract)
       const updateTradesQuery = `
-        UPDATE trades 
-        SET symbol = $1 
+        UPDATE trades
+        SET symbol = $1
         WHERE user_id = $2 AND symbol = $3
+          AND instrument_type IS DISTINCT FROM 'option'
       `;
       
       const updateResult = await db.query(updateTradesQuery, [

@@ -47,11 +47,11 @@ describe('trade management controller sync filters', () => {
     const selectionSql = db.query.mock.calls[0][0];
     const countSql = db.query.mock.calls[1][0];
 
-    expect(selectionSql).toContain('WITH filtered_trades AS');
-    expect(selectionSql).toContain('FROM filtered_trades');
+    expect(selectionSql).toContain('WITH numbered_trades AS');
+    expect(selectionSql).toContain('LEFT JOIN numbered_trades');
     expect(selectionSql).toContain('t.exit_time');
     expect(selectionSql).toContain("(t.account_identifier IS NULL OR t.account_identifier = '')");
-    expect(countSql).toContain("(account_identifier IS NULL OR account_identifier = '')");
+    expect(countSql).toContain("(t.account_identifier IS NULL OR t.account_identifier = '')");
     expect(res.json).toHaveBeenCalledWith({
       trades: [],
       pagination: {
@@ -64,7 +64,9 @@ describe('trade management controller sync filters', () => {
   });
 
   test('R performance query handles Unsorted account filter consistently', async () => {
-    db.query.mockResolvedValueOnce({ rows: [] });
+    db.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
 
     const req = {
       user: { id: 'user-1' },
@@ -77,8 +79,10 @@ describe('trade management controller sync filters', () => {
 
     await tradeManagementController.getRPerformance(req, res);
 
-    const rPerformanceSql = db.query.mock.calls[0][0];
-    expect(rPerformanceSql).toContain("(account_identifier IS NULL OR account_identifier = '')");
+    const rPerformanceSql = db.query.mock.calls
+      .map(call => call[0])
+      .find(sql => typeof sql === 'string' && sql.includes('FROM trades t'));
+    expect(rPerformanceSql).toContain("(t.account_identifier IS NULL OR t.account_identifier = '')");
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       chart_data: [],
       summary: expect.objectContaining({

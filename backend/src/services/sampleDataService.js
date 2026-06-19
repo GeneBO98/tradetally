@@ -253,7 +253,73 @@ class SampleDataService {
       console.log(`[SAMPLE-DATA] Failed to create sample account: ${err.message}`);
     }
 
+    // Seed behavioural settings and run the historical analyzers in-process so
+    // the Behavioral Analytics page shows real findings on first load, without
+    // the user having to click "Analyze". Best-effort: never block signup.
+    await this._seedBehavioralSettings(userId);
+    await this._runHistoricalAnalyzers(userId);
+
     console.log(`[SAMPLE-DATA] Sample data creation complete for user ${userId}`);
+  }
+
+  /**
+   * Ensure default behavioural & overconfidence settings rows exist so the
+   * Behavioral Analytics overview can render for the new user.
+   */
+  static async _seedBehavioralSettings(userId) {
+    const db = require('../config/database');
+    try {
+      await db.query(`
+        INSERT INTO behavioral_settings
+          (user_id, revenge_trading_enabled, revenge_trading_sensitivity,
+           cooling_period_minutes, enable_trade_blocking, loss_aversion_sensitivity, min_trades_for_analysis)
+        VALUES ($1, true, 'medium', 30, false, 'medium', 10)
+        ON CONFLICT (user_id) DO NOTHING
+      `, [userId]);
+      await db.query(`
+        INSERT INTO overconfidence_settings
+          (user_id, detection_enabled, min_streak_length, position_increase_threshold, sensitivity)
+        VALUES ($1, true, 4, 40.00, 'medium')
+        ON CONFLICT (user_id) DO NOTHING
+      `, [userId]);
+    } catch (err) {
+      console.log(`[SAMPLE-DATA] Failed to seed behavioural settings: ${err.message}`);
+    }
+  }
+
+  /**
+   * Run each behavioural analyzer once over the freshly-created sample trades
+   * so their findings are persisted for the Behavioral Analytics page. Each is
+   * wrapped so a single failure never blocks the others (or signup).
+   */
+  static async _runHistoricalAnalyzers(userId) {
+    try {
+      const LossAversionAnalyticsService = require('./lossAversionAnalyticsService');
+      const result = await LossAversionAnalyticsService.analyzeLossAversion(userId);
+      if (result?.error) {
+        console.log(`[SAMPLE-DATA] Loss aversion analyzer skipped: ${result.error}`);
+      } else {
+        console.log('[SAMPLE-DATA] Loss aversion analysis persisted');
+      }
+    } catch (err) {
+      console.log(`[SAMPLE-DATA] Loss aversion analyzer failed: ${err.message}`);
+    }
+
+    try {
+      const OverconfidenceAnalyticsService = require('./overconfidenceAnalyticsService');
+      await OverconfidenceAnalyticsService.analyzeHistoricalTrades(userId);
+      console.log('[SAMPLE-DATA] Overconfidence analysis persisted');
+    } catch (err) {
+      console.log(`[SAMPLE-DATA] Overconfidence analyzer failed: ${err.message}`);
+    }
+
+    try {
+      const BehavioralAnalyticsServiceV2 = require('./behavioralAnalyticsServiceV2');
+      await BehavioralAnalyticsServiceV2.analyzeHistoricalTradesV2(userId);
+      console.log('[SAMPLE-DATA] Revenge-trade historical analysis persisted');
+    } catch (err) {
+      console.log(`[SAMPLE-DATA] Revenge-trade analyzer failed: ${err.message}`);
+    }
   }
 
   /**
@@ -262,6 +328,7 @@ class SampleDataService {
   static async removeForUser(userId) {
     const db = require('../config/database');
     const AnalyticsCache = require('./analyticsCache');
+    const OptionStrategyGroupingService = require('./optionStrategyGroupingService');
 
     console.log(`[SAMPLE-DATA] Removing sample data for user ${userId}`);
 
@@ -271,6 +338,9 @@ class SampleDataService {
       [userId]
     );
     console.log(`[SAMPLE-DATA] Deleted ${tradeResult.rowCount} sample trades`);
+    if (tradeResult.rowCount > 0) {
+      await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'sample data removal');
+    }
 
     // Delete sample journal entries (tagged with 'sample')
     const diaryResult = await db.query(

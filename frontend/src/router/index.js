@@ -48,6 +48,12 @@ const router = createRouter({
       meta: { guest: true }
     },
     {
+      path: '/unlock-account/:token',
+      name: 'unlock-account',
+      component: () => import('@/views/auth/UnlockAccountView.vue'),
+      meta: { guest: true }
+    },
+    {
       path: '/unsubscribe',
       name: 'unsubscribe',
       component: () => import('@/views/auth/UnsubscribeView.vue'),
@@ -79,8 +85,10 @@ const router = createRouter({
     {
       path: '/trades/:id',
       name: 'trade-detail',
+      // Public trades are viewable without login (shared links). The view loads
+      // the trade and, if it's private/not found for a guest, redirects to login.
       component: () => import('@/views/trades/TradeDetailView.vue'),
-      meta: { requiresAuth: true }
+      meta: { publicViewable: true }
     },
     {
       path: '/trades/:id/edit',
@@ -98,6 +106,18 @@ const router = createRouter({
       path: '/metrics/monthly',
       name: 'monthly-performance',
       component: () => import('@/views/MonthlyPerformanceView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/metrics/edge-report',
+      name: 'edge-report',
+      component: () => import('@/views/EdgeReportView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/analysis/prop-firm',
+      name: 'prop-firm',
+      component: () => import('@/views/PropFirmView.vue'),
       meta: { requiresAuth: true }
     },
     {
@@ -259,6 +279,13 @@ const router = createRouter({
       name: 'public-trades',
       component: () => import('@/views/PublicTradesView.vue')
     },
+    // Cloud-only: public trade verification page (verified share cards)
+    {
+      path: '/v/:code',
+      name: 'verify-trade',
+      component: () => import('@/views/VerifyTradeView.vue'),
+      meta: { public: true }
+    },
     {
       path: '/u/:username',
       name: 'user-profile',
@@ -300,6 +327,48 @@ const router = createRouter({
       path: '/features',
       name: 'features',
       component: () => import('@/views/FeaturesView.vue'),
+      meta: { requiresOpen: true }
+    },
+    {
+      path: '/tools',
+      name: 'tools-hub',
+      component: () => import('@/views/tools/ToolsHubView.vue'),
+      meta: { requiresOpen: true }
+    },
+    {
+      path: '/tools/position-size-calculator',
+      name: 'tool-position-size',
+      component: () => import('@/views/tools/PositionSizeCalculatorView.vue'),
+      meta: { requiresOpen: true }
+    },
+    {
+      path: '/tools/risk-reward-calculator',
+      name: 'tool-risk-reward',
+      component: () => import('@/views/tools/RiskRewardCalculatorView.vue'),
+      meta: { requiresOpen: true }
+    },
+    {
+      path: '/tools/trade-expectancy-calculator',
+      name: 'tool-expectancy',
+      component: () => import('@/views/tools/ExpectancyCalculatorView.vue'),
+      meta: { requiresOpen: true }
+    },
+    {
+      path: '/tools/required-win-rate-calculator',
+      name: 'tool-win-rate',
+      component: () => import('@/views/tools/RequiredWinRateCalculatorView.vue'),
+      meta: { requiresOpen: true }
+    },
+    {
+      path: '/tools/average-down-calculator',
+      name: 'tool-average-down',
+      component: () => import('@/views/tools/AverageDownCalculatorView.vue'),
+      meta: { requiresOpen: true }
+    },
+    {
+      path: '/tools/what-if-i-invested',
+      name: 'tool-what-if',
+      component: () => import('@/views/tools/WhatIfInvestedView.vue'),
       meta: { requiresOpen: true }
     },
     {
@@ -414,6 +483,12 @@ const router = createRouter({
     {
       path: '/playbooks',
       redirect: '/analysis/playbooks'
+    },
+    // Catch-all: unmatched URLs used to render a blank layout shell.
+    {
+      path: '/:pathMatch(.*)*',
+      name: 'not-found',
+      component: () => import('@/views/NotFoundView.vue')
     }
   ]
 })

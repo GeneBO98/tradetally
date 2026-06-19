@@ -1,5 +1,18 @@
 const db = require('../config/database');
 
+// DATE columns arrive from pg as 'YYYY-MM-DD' strings (see config/database.js).
+// new Date('YYYY-MM-DD') would anchor to UTC midnight, which the local-time
+// getters below (setHours/getDay) shift back a day on servers west of UTC —
+// breaking streak math. Parse to local midnight explicitly instead.
+function parseDateOnly(value) {
+  if (value instanceof Date) return new Date(value);
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) {
+    return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  }
+  return new Date(value);
+}
+
 class YearWrappedService {
 
   /**
@@ -45,7 +58,7 @@ class YearWrappedService {
         return;
       }
 
-      const loginDates = result.rows.map(r => new Date(r.login_date));
+      const loginDates = result.rows.map(r => parseDateOnly(r.login_date));
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
@@ -581,7 +594,7 @@ class YearWrappedService {
     `, [userId, year]);
 
     // Calculate trading day streak accounting for weekends and holidays
-    const tradingDates = tradingDatesResult.rows.map(r => new Date(r.trade_date));
+    const tradingDates = tradingDatesResult.rows.map(r => parseDateOnly(r.trade_date));
     console.log(`[YEAR_WRAPPED] Found ${tradingDates.length} unique trading dates for year ${year}`);
     if (tradingDates.length > 0) {
       console.log(`[YEAR_WRAPPED] Trading dates sample:`, tradingDates.slice(0, 10).map(d => d.toISOString().split('T')[0]));

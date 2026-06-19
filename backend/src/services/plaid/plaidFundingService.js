@@ -1,8 +1,13 @@
 const db = require('../../config/database');
 const Account = require('../../models/Account');
+const AnalyticsCache = require('../analyticsCache');
+const PlaidBalanceSnapshot = require('../../models/PlaidBalanceSnapshot');
 const PlaidConnection = require('../../models/PlaidConnection');
+const PlaidSecurity = require('../../models/PlaidSecurity');
 const plaidClient = require('./plaidClient');
 const plaidClassificationService = require('./plaidClassificationService');
+const plaidHoldingsSyncService = require('./plaidHoldingsSyncService');
+const { derivePlaidAccountIdentifier } = require('./plaidAccountIdentifier');
 
 function formatDate(value) {
   if (!value) return null;
@@ -25,7 +30,8 @@ function normalizePlaidAccount(account) {
     accountType: account.accountType,
     accountSubtype: account.accountSubtype,
     trackingMode: account.trackingMode,
-    linkedAccountId: account.linkedAccountId
+    linkedAccountId: account.linkedAccountId,
+    mask: account.mask
   };
 }
 
@@ -36,6 +42,21 @@ function normalizeRuleDescription(description) {
     .replace(/\s+/g, ' ');
 }
 
+function emptyReviewData() {
+  return {
+    pending: [],
+    history: [],
+    synced: [],
+    summary: {
+      total: 0,
+      pending: 0,
+      bankPending: 0,
+      approved: 0,
+      rejected: 0
+    }
+  };
+}
+
 class PlaidFundingService {
   ensureConfigured() {
     if (!plaidClient.isConfigured()) {
@@ -43,12 +64,56 @@ class PlaidFundingService {
     }
   }
 
+  async ensureSchemaReady() {
+    const schemaReady = await PlaidConnection.hasSchema();
+    if (!schemaReady) {
+      throw new Error('Plaid funding tables are not available. Run database migrations to enable Plaid funding sync.');
+    }
+  }
+
   async createLinkToken(user, targetType = 'bank') {
     this.ensureConfigured();
+
+    try {
+      const response = await plaidClient.createLinkToken({
+        userId: user.id,
+        email: user.email,
+        targetType
+      });
+
+      return {
+        linkToken: response.link_token,
+        expiration: response.expiration
+      };
+    } catch (error) {
+      if (error.plaid?.errorCode === 'INVALID_PRODUCT') {
+        const product = targetType === 'investment' ? 'investments' : 'transactions';
+        error.message = 'Plaid rejected the ' + product + ' product. Enable ' + product + ' for your ' + plaidClient.env + ' environment in the Plaid dashboard, or use a Plaid client_id/secret that has access to it.';
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Create a Link token in update mode so the user can re-authenticate an
+   * existing connection (e.g. after ITEM_LOGIN_REQUIRED). Update mode yields
+   * no new public token; the frontend triggers a sync on Link success, and
+   * updateAfterSync restores connection_status to 'active'.
+   */
+  async createReconnectLinkToken(user, connectionId) {
+    this.ensureConfigured();
+    await this.ensureSchemaReady();
+
+    const connection = await PlaidConnection.findById(connectionId, user.id, true);
+    if (!connection) {
+      throw new Error('Plaid connection not found');
+    }
+
     const response = await plaidClient.createLinkToken({
       userId: user.id,
       email: user.email,
-      targetType
+      targetType: connection.targetType,
+      accessToken: connection.accessToken
     });
 
     return {
@@ -59,6 +124,7 @@ class PlaidFundingService {
 
   async exchangePublicToken(userId, payload) {
     this.ensureConfigured();
+    await this.ensureSchemaReady();
 
     const {
       publicToken,
@@ -86,10 +152,16 @@ class PlaidFundingService {
   }
 
   async listConnections(userId) {
+    const schemaReady = await PlaidConnection.hasSchema();
+    if (!schemaReady) {
+      return [];
+    }
+
     return PlaidConnection.findByUserId(userId);
   }
 
   async updateConnection(userId, connectionId, updates) {
+    await this.ensureSchemaReady();
     const connection = await PlaidConnection.findById(connectionId, userId, false);
     if (!connection) {
       throw new Error('Plaid connection not found');
@@ -111,6 +183,7 @@ class PlaidFundingService {
   }
 
   async deleteConnection(userId, connectionId) {
+    await this.ensureSchemaReady();
     const deleted = await PlaidConnection.delete(connectionId, userId);
     if (!deleted) {
       throw new Error('Plaid connection not found');
@@ -119,17 +192,35 @@ class PlaidFundingService {
   }
 
   async linkPlaidAccount(userId, plaidAccountId, payload) {
+    await this.ensureSchemaReady();
+
     const {
       linkedAccountId,
       trackingMode,
       newAccount
     } = payload;
 
+    // Resolve the synthetic identifier this Plaid account's holdings are
+    // already stamped with, so a newly created managed account can adopt the
+    // same identifier (positions roll up immediately) and an existing account
+    // can have its lots re-tagged below.
+    const existingPlaidAccount = await PlaidConnection.findAccountById(plaidAccountId, userId);
+    if (!existingPlaidAccount) {
+      throw new Error('Plaid account not found');
+    }
+    const connection = await PlaidConnection.findById(existingPlaidAccount.connectionId, userId, false);
+    const syntheticIdentifier = derivePlaidAccountIdentifier(
+      connection?.institutionName,
+      existingPlaidAccount.mask
+    );
+
     let targetAccountId = linkedAccountId || null;
     if (!targetAccountId && newAccount?.accountName) {
       const createdAccount = await Account.create(userId, {
         accountName: newAccount.accountName,
-        accountIdentifier: newAccount.accountIdentifier || null,
+        // Default to the same identifier the holdings sync uses so trades,
+        // holdings, and cash for this Plaid account all roll up here.
+        accountIdentifier: newAccount.accountIdentifier || syntheticIdentifier,
         broker: newAccount.broker || 'other',
         initialBalance: parseFloat(newAccount.initialBalance) || 0,
         initialBalanceDate: newAccount.initialBalanceDate || formatDate(new Date()),
@@ -154,11 +245,46 @@ class PlaidFundingService {
       throw new Error('Plaid account not found');
     }
 
+    await this.unifyHoldingsForLinkedAccount(userId, targetAccountId, syntheticIdentifier);
     await this.reclassifyTransactionsForPlaidAccount(userId, plaidAccount);
     return plaidAccount;
   }
 
+  /**
+   * Re-tag already-synced Plaid holdings so they match the managed account this
+   * Plaid account was just linked to. Lots are stamped with the synthetic
+   * identifier at sync time; when the linked account uses a different
+   * identifier (e.g. linking to an existing "****1234" account), the lots would
+   * otherwise stay orphaned until the next holdings sync. No-op when the
+   * managed account has no identifier or already matches the synthetic value.
+   */
+  async unifyHoldingsForLinkedAccount(userId, managedAccountId, syntheticIdentifier) {
+    if (!syntheticIdentifier) return;
+
+    const accountResult = await db.query(
+      `SELECT account_identifier FROM user_accounts WHERE id = $1 AND user_id = $2`,
+      [managedAccountId, userId]
+    );
+    const targetIdentifier = accountResult.rows[0]?.account_identifier;
+    if (!targetIdentifier || targetIdentifier === syntheticIdentifier) {
+      return;
+    }
+
+    const updated = await db.query(
+      `UPDATE investment_lots
+       SET account_identifier = $1
+       WHERE user_id = $2 AND source = 'plaid' AND account_identifier = $3`,
+      [targetIdentifier, userId, syntheticIdentifier]
+    );
+
+    if (updated.rowCount > 0) {
+      console.log(`[PLAID] Re-tagged ${updated.rowCount} holding lot(s) from "${syntheticIdentifier}" to "${targetIdentifier}"`);
+      await AnalyticsCache.invalidate(userId);
+    }
+  }
+
   async unlinkPlaidAccount(userId, plaidAccountId) {
+    await this.ensureSchemaReady();
     const plaidAccount = await PlaidConnection.setAccountLink(
       plaidAccountId,
       userId,
@@ -175,6 +301,7 @@ class PlaidFundingService {
 
   async syncConnection(connectionId, { userId = null } = {}) {
     this.ensureConfigured();
+    await this.ensureSchemaReady();
 
     const connection = await PlaidConnection.findById(connectionId, userId, true);
     if (!connection) {
@@ -193,8 +320,19 @@ class PlaidFundingService {
         syncedAccounts.map(account => [account.plaidAccountId, normalizePlaidAccount(account)])
       );
 
+      // Record today's balances for the equity curve. Snapshot failures must
+      // not fail the sync.
+      try {
+        if (await PlaidBalanceSnapshot.hasSchema()) {
+          await PlaidBalanceSnapshot.upsertForAccounts(connection.userId, syncedAccounts);
+        }
+      } catch (error) {
+        console.warn('[PLAID] Balance snapshot failed:', error.message);
+      }
+
       let processedCount = 0;
       let nextCursor = connection.lastSyncCursor;
+      let holdingsMessage = '';
 
       if (connection.targetType === 'bank') {
         const bankResult = await this.syncBankTransactions(connection, plaidAccountMap);
@@ -203,11 +341,24 @@ class PlaidFundingService {
       } else {
         const investmentResult = await this.syncInvestmentTransactions(connection, plaidAccountMap);
         processedCount = investmentResult.processedCount;
+
+        // Holdings sync failures must not fail the whole sync; the
+        // transaction sync above has already been committed.
+        try {
+          const holdingsResult = await plaidHoldingsSyncService.syncHoldings(connection, plaidAccountMap);
+          holdingsMessage = `, ${holdingsResult.upserted} holding${holdingsResult.upserted === 1 ? '' : 's'} synced`;
+          if (holdingsResult.removed > 0) {
+            holdingsMessage += `, ${holdingsResult.removed} removed`;
+          }
+        } catch (error) {
+          console.warn('[PLAID] Holdings sync failed:', error.message);
+          holdingsMessage = ', holdings sync failed';
+        }
       }
 
       await PlaidConnection.updateAfterSync(connection.id, {
         lastSyncCursor: nextCursor,
-        message: `Processed ${processedCount} Plaid transaction update${processedCount === 1 ? '' : 's'}`
+        message: `Processed ${processedCount} Plaid transaction update${processedCount === 1 ? '' : 's'}${holdingsMessage}`
       });
 
       return {
@@ -280,6 +431,18 @@ class PlaidFundingService {
       );
 
       const transactions = response.investment_transactions || [];
+
+      // Store security metadata (ticker, name, type) so income analytics can
+      // resolve symbols for dividend/interest/fee transactions, including
+      // securities no longer held (absent from holdings responses).
+      try {
+        if (await PlaidSecurity.hasSchema()) {
+          await PlaidSecurity.upsertMany(response.securities || []);
+        }
+      } catch (error) {
+        console.warn('[PLAID] Failed to upsert securities:', error.message);
+      }
+
       for (const transaction of transactions) {
         const plaidAccount = plaidAccountMap.get(transaction.account_id);
         if (!plaidAccount) continue;
@@ -408,6 +571,11 @@ class PlaidFundingService {
   }
 
   async getReviewData(userId, accountId) {
+    const schemaReady = await PlaidConnection.hasSchema();
+    if (!schemaReady) {
+      return emptyReviewData();
+    }
+
     const [pending, history, synced] = await Promise.all([
       PlaidConnection.listReviewQueue(userId, accountId, 50),
       PlaidConnection.listReviewedActivity(userId, accountId, 20),
@@ -416,7 +584,8 @@ class PlaidFundingService {
 
     const summary = {
       total: synced.length,
-      pending: synced.filter(item => item.reviewStatus === 'pending').length,
+      pending: pending.length,
+      bankPending: synced.filter(item => item.reviewStatus === 'pending' && item.pending).length,
       approved: synced.filter(item => item.reviewStatus === 'approved').length,
       rejected: synced.filter(item => item.reviewStatus === 'rejected').length
     };

@@ -9,6 +9,7 @@ const finnhub = require('../utils/finnhub');
 const cache = require('../utils/cache');
 const AnalyticsCache = require('../services/analyticsCache');
 const { computeTradePnl } = require('../services/pnlEngine');
+const { groupTradesIntoPositions } = require('../utils/openPositionGrouping');
 const symbolCategories = require('../utils/symbolCategories');
 const imageProcessor = require('../utils/imageProcessor');
 const ensureString = require('../utils/ensureString');
@@ -25,6 +26,19 @@ const MAEEstimator = require('../utils/maeEstimator');
 const TierService = require('../services/tierService');
 const { verifyJwtToken, TOKEN_PURPOSES } = require('../middleware/auth');
 const { escapeCsv } = require('../utils/csvEscape');
+const {
+  applyBrokerFeeSettingsToTrades,
+  getBrokerLookupNames
+} = require('../services/brokerFeeApplicationService');
+const OptionStrategyGroupingService = require('../services/optionStrategyGroupingService');
+
+function marketDataApiKeyName() {
+  return finnhub.providerName === 'fmp' ? 'FMP_API_KEY' : 'FINNHUB_API_KEY';
+}
+
+function marketDataConfigDetails(feature) {
+  return `${finnhub.displayName || 'Market data'} API key is required for ${feature}. Add ${marketDataApiKeyName()} to your environment variables.`;
+}
 
 /**
  * Auto-calculate MAE/MFE for a closed trade using Finnhub candle data.
@@ -335,7 +349,12 @@ function calculateRemainingOpenQuantity(trade) {
 function enrichOpenTradePnL(trade) {
   const isOpen = !trade.exit_price && !trade.exit_time;
   trade.currentPrice = trade.current_price != null ? Number(trade.current_price) : null;
-  trade.remainingQuantity = isOpen ? calculateRemainingOpenQuantity(trade) : 0;
+  // Prefer the net open quantity derived from executions; fall back to the
+  // trade's quantity when executions aren't present (e.g. some broker syncs).
+  const remainingFromExecutions = isOpen ? calculateRemainingOpenQuantity(trade) : 0;
+  trade.remainingQuantity = isOpen
+    ? (remainingFromExecutions > 0 ? remainingFromExecutions : (Number(trade.quantity) || 0))
+    : 0;
   trade.unrealizedPnl = null;
   trade.unrealizedPnlPercent = null;
 
@@ -360,6 +379,38 @@ function enrichOpenTradePnL(trade) {
     : null;
 }
 
+const TRADE_DETAIL_QUOTE_TIMEOUT_MS = OPEN_POSITIONS_FINNHUB_TIMEOUT_MS;
+
+// Best-effort current price for a single open stock/futures position, using the
+// same sources as the dashboard Open Positions table: the price_monitoring cache
+// (kept warm by the price monitor) first, then a single Finnhub quote. Never
+// throws - an open trade just keeps showing "Open" if no price is available.
+async function fetchCurrentPriceForSymbol(symbol, userId) {
+  if (!symbol) return null;
+  try {
+    const cached = await db.query(
+      `SELECT current_price FROM price_monitoring
+       WHERE symbol = $1 AND last_updated > NOW() - INTERVAL '2 minutes'
+       LIMIT 1`,
+      [symbol]
+    );
+    const cachedPrice = cached.rows[0] ? parseFloat(cached.rows[0].current_price) : null;
+    if (Number.isFinite(cachedPrice) && cachedPrice > 0) return cachedPrice;
+
+    if (!finnhub.isConfigured()) return null;
+    const quote = await withTimeout(
+      finnhub.getQuote(symbol, { source: 'trade_detail', priority: 0, userId }),
+      TRADE_DETAIL_QUOTE_TIMEOUT_MS,
+      'Trade detail Finnhub quote'
+    );
+    const price = quote && Number.isFinite(Number(quote.c)) ? Number(quote.c) : null;
+    return Number.isFinite(price) && price > 0 ? price : null;
+  } catch (error) {
+    console.warn('[TRADE-DETAIL] current price lookup failed for', symbol, '-', error.message);
+    return null;
+  }
+}
+
 const tradeController = {
   async getUserTrades(req, res, next) {
     const requestStartTime = Date.now();
@@ -367,7 +418,7 @@ const tradeController = {
     try {
       const {
         symbol, symbolExact, startDate, endDate, exitStartDate, exitEndDate, tags, strategy, sector,
-        strategies, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
+        strategies, setups, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, brokers, importId, accounts,
         limit = 50, offset, page
@@ -392,6 +443,7 @@ const tradeController = {
         sector,
         // Multi-select filters
         strategies: strategies ? ensureString(strategies).split(',') : undefined,
+        setups: setups ? ensureString(setups).split(',') : undefined,
         sectors: sectors ? ensureString(sectors).split(',') : undefined,
         hasNews,
         daysOfWeek: daysOfWeek ? ensureString(daysOfWeek).split(',').map(d => parseInt(d)) : undefined,
@@ -507,7 +559,7 @@ const tradeController = {
     try {
       const {
         symbol, startDate, endDate, tags, strategy, sector,
-        strategies, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
+        strategies, setups, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, brokers, importId
       } = req.query;
@@ -520,6 +572,7 @@ const tradeController = {
         strategy,
         sector,
         strategies: strategies ? ensureString(strategies).split(',') : undefined,
+        setups: setups ? ensureString(setups).split(',') : undefined,
         sectors: sectors ? ensureString(sectors).split(',') : undefined,
         hasNews,
         daysOfWeek: daysOfWeek ? ensureString(daysOfWeek).split(',').map(d => parseInt(d)) : undefined,
@@ -556,7 +609,7 @@ const tradeController = {
     try {
       const {
         symbol, startDate, endDate, tags, strategy, sector,
-        strategies, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
+        strategies, setups, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, brokers
       } = req.query;
@@ -569,6 +622,7 @@ const tradeController = {
         strategy,
         sector,
         strategies: strategies ? ensureString(strategies).split(',') : undefined,
+        setups: setups ? ensureString(setups).split(',') : undefined,
         sectors: sectors ? ensureString(sectors).split(',') : undefined,
         hasNews,
         daysOfWeek: daysOfWeek ? ensureString(daysOfWeek).split(',').map(d => parseInt(d)) : undefined,
@@ -964,6 +1018,16 @@ const tradeController = {
 
       trade.setupQuality = buildSetupQuality(trade);
 
+      // Surface live unrealized P&L for open positions the same way the dashboard's
+      // Open Positions table does. Non-options only (open option premiums are entered
+      // manually); best-effort, so any quote failure just leaves the trade as "Open".
+      const isOpenPosition = !trade.exit_price && !trade.exit_time;
+      if (isOpenPosition && trade.instrument_type !== 'option') {
+        const price = await fetchCurrentPriceForSymbol(trade.underlying_symbol || trade.symbol, req.user?.id);
+        if (price != null) trade.current_price = price;
+      }
+      enrichOpenTradePnL(trade);
+
       res.json({ trade });
     } catch (error) {
       next(error);
@@ -1230,7 +1294,7 @@ const tradeController = {
           executions: splitExecutions,
         };
 
-        const newTrade = await Trade.create(req.user.id, tradeData, { skipAchievements: true, skipApiCalls: true });
+        const newTrade = await Trade.create(req.user.id, tradeData, { skipAchievements: true, skipApiCalls: true, skipOptionGrouping: true });
         newTradeIds.push(newTrade.id);
       }
 
@@ -1273,8 +1337,10 @@ const tradeController = {
         );
       } else {
         // Delete the original grouped trade (all entries were split)
-        await Trade.delete(req.params.id, req.user.id);
+        await Trade.delete(req.params.id, req.user.id, { skipOptionGrouping: true });
       }
+
+      await OptionStrategyGroupingService.rebuildUserGroupsSafe(req.user.id, 'trade split');
 
       // Invalidate caches
       await AnalyticsCache.invalidate(req.user.id);
@@ -1326,7 +1392,7 @@ const tradeController = {
           }
 
           // Delete the trade
-          const result = await Trade.delete(tradeId, req.user.id);
+          const result = await Trade.delete(tradeId, req.user.id, { skipOptionGrouping: true });
           
           if (result) {
             deletedCount++;
@@ -1336,6 +1402,10 @@ const tradeController = {
         } catch (error) {
           errors.push({ tradeId, error: error.message });
         }
+      }
+
+      if (deletedCount > 0) {
+        await OptionStrategyGroupingService.rebuildUserGroupsSafe(req.user.id, 'bulk trade deletion');
       }
 
       // Invalidate sector performance cache
@@ -2237,41 +2307,7 @@ const tradeController = {
           // Supports per-instrument fees with fallback to broker-wide default
           // When broker is 'auto', we need to look up fees per-trade based on each trade's detected broker
           try {
-            // Normalize broker names to handle common misspellings and variations
-            // This ensures backwards compatibility with data saved under old names
-            const normalizeBrokerName = (name) => {
-              const normalized = (name || '').toLowerCase().trim();
-              // Map common variations to canonical names
-              const brokerAliases = {
-                'tradeovate': 'tradovate',  // Common misspelling
-                'trade ovate': 'tradovate',
-                'thinkorswim': 'thinkorswim',
-                'tos': 'thinkorswim',
-                'interactive brokers': 'ibkr',
-                'interactivebrokers': 'ibkr',
-              };
-              return brokerAliases[normalized] || normalized;
-            };
-
-            // Get the effective broker - use trade's broker if 'auto' was selected
-            const getEffectiveBroker = (trade) => {
-              if (broker.toLowerCase() === 'auto' && trade.broker) {
-                return normalizeBrokerName(trade.broker);
-              }
-              return normalizeBrokerName(broker);
-            };
-
-            // Get unique brokers from trades when using 'auto'
-            const brokersToLookup = broker.toLowerCase() === 'auto'
-              ? [...new Set(trades.map(t => normalizeBrokerName(t.broker)).filter(Boolean))]
-              : [normalizeBrokerName(broker)];
-
-            // Also include common aliases in lookup to find settings saved under old names
-            const expandedBrokersToLookup = [...new Set([
-              ...brokersToLookup,
-              // Add aliases for tradovate
-              ...(brokersToLookup.includes('tradovate') ? ['tradeovate'] : []),
-            ])];
+            const { brokersToLookup, expandedBrokersToLookup } = getBrokerLookupNames(broker, trades);
 
             logger.logImport(`[BROKER FEES] Looking up fees for brokers: ${expandedBrokersToLookup.join(', ')}`);
 
@@ -2287,139 +2323,11 @@ const tradeController = {
             const brokerFeeResult = await db.query(brokerFeeQuery, [fileUserId, expandedBrokersToLookup]);
 
             if (brokerFeeResult.rows.length > 0) {
-              // Build a nested map: broker -> instrument -> fee settings
-              // Empty string instrument = broker-wide default
-              // Normalize broker names so settings saved under old names (e.g., 'tradeovate') map to canonical names (e.g., 'tradovate')
-              const brokerFeeMap = new Map();
-
-              brokerFeeResult.rows.forEach(row => {
-                const brokerName = normalizeBrokerName(row.broker);
-                const instrument = (row.instrument || '').toUpperCase();
-                // Separate broker commission from regulatory/exchange fees
-                const settings = {
-                  // Commission = broker's commission charges
-                  commissionPerContract: parseFloat(row.commission_per_contract) || 0,
-                  commissionPerSide: parseFloat(row.commission_per_side) || 0,
-                  // Fees = regulatory and exchange fees (NFA, exchange, clearing, platform)
-                  feesPerContract:
-                    (parseFloat(row.exchange_fee_per_contract) || 0) +
-                    (parseFloat(row.nfa_fee_per_contract) || 0) +
-                    (parseFloat(row.clearing_fee_per_contract) || 0) +
-                    (parseFloat(row.platform_fee_per_contract) || 0)
-                };
-
-                if (!brokerFeeMap.has(brokerName)) {
-                  brokerFeeMap.set(brokerName, { instruments: new Map(), default: null });
-                }
-
-                const brokerSettings = brokerFeeMap.get(brokerName);
-                if (instrument === '') {
-                  brokerSettings.default = settings;
-                  logger.logImport(`[BROKER FEES] Default for ${brokerName}: commission=$${settings.commissionPerContract.toFixed(4)}/contract + $${settings.commissionPerSide.toFixed(2)}/side, fees=$${settings.feesPerContract.toFixed(4)}/contract`);
-                } else {
-                  brokerSettings.instruments.set(instrument, settings);
-                  logger.logImport(`[BROKER FEES] ${instrument} for ${brokerName}: commission=$${settings.commissionPerContract.toFixed(4)}/contract + $${settings.commissionPerSide.toFixed(2)}/side, fees=$${settings.feesPerContract.toFixed(4)}/contract`);
-                }
-              });
-
-              trades = trades.map(trade => {
-                // Only apply fees if the trade doesn't already have commission/fees set
-                if ((!trade.commission || trade.commission === 0) && (!trade.fees || trade.fees === 0)) {
-                  const symbol = (trade.symbol || '').toUpperCase();
-                  const quantity = trade.quantity || trade.totalQuantity || 1;
-                  const effectiveBroker = getEffectiveBroker(trade);
-
-                  // Get broker-specific fee settings
-                  const brokerSettings = brokerFeeMap.get(effectiveBroker);
-                  if (!brokerSettings) {
-                    logger.logImport(`[BROKER FEES] No fee settings found for broker '${effectiveBroker}' (symbol: ${symbol}). Available brokers: ${[...brokerFeeMap.keys()].join(', ')}`);
-                    return trade; // No fee settings for this broker
-                  }
-
-                  const feeSettingsMap = brokerSettings.instruments;
-                  const defaultFeeSettings = brokerSettings.default;
-
-                  // Look up fee settings with fallback chain:
-                  // 1. Exact symbol match (e.g., MESZ5)
-                  // 2. Base futures symbol without contract suffix (e.g., MES from MESZ5 or ESH25)
-                  // 3. Broker-wide default
-                  let feeSettings = feeSettingsMap.get(symbol);
-
-                  if (!feeSettings) {
-                    // Try to extract base futures symbol
-                    // Futures format: BASE + MONTH_CODE + YEAR (e.g., MESZ5, ESH25, NQM24)
-                    // Month codes: F,G,H,J,K,M,N,Q,U,V,X,Z
-                    // Base symbol may contain digits (e.g. M2K = Micro Russell 2000),
-                    // so allow alphanumerics after a required leading letter.
-                    const futuresMatch = symbol.match(/^([A-Z][A-Z0-9]{1,3})([FGHJKMNQUVXZ])(\d{1,2})$/);
-                    if (futuresMatch) {
-                      const baseSymbol = futuresMatch[1];
-                      feeSettings = feeSettingsMap.get(baseSymbol);
-                      if (feeSettings) {
-                        logger.logImport(`[BROKER FEES] Matched ${symbol} to base symbol ${baseSymbol}`);
-                      }
-                    }
-                  }
-
-                  // Fall back to broker default if no instrument match
-                  if (!feeSettings) {
-                    feeSettings = defaultFeeSettings;
-                    if (feeSettings) {
-                      logger.logImport(`[BROKER FEES] Using broker default for ${symbol}`);
-                    }
-                  }
-
-                  if (!feeSettings) {
-                    logger.logImport(`[BROKER FEES] No fee settings found for ${symbol} (broker: ${effectiveBroker}). No instrument match and no broker default configured.`);
-                    return trade;
-                  }
-
-                  if (feeSettings) {
-                    const { commissionPerContract, commissionPerSide, feesPerContract } = feeSettings;
-
-                    // Calculate commission and fees separately for a round-trip trade
-                    // Commission = broker commission (per contract + per side)
-                    // Fees = regulatory/exchange fees (NFA, exchange, clearing, platform)
-                    const isRoundTrip = !!trade.exitPrice;
-                    const sides = isRoundTrip ? 2 : 1;
-
-                    // Commission: (perContract * quantity * sides) + (perSide * sides)
-                    const totalCommission = (commissionPerContract * quantity * sides) + (commissionPerSide * sides);
-                    // Fees: perContract * quantity * sides
-                    const totalFees = feesPerContract * quantity * sides;
-
-                    // Split between entry and exit
-                    const entryCommission = (commissionPerContract * quantity) + commissionPerSide;
-                    const exitCommission = isRoundTrip ? (commissionPerContract * quantity) + commissionPerSide : 0;
-                    const entryFees = feesPerContract * quantity;
-                    const exitFees = isRoundTrip ? feesPerContract * quantity : 0;
-
-                    trade.entryCommission = entryCommission;
-                    trade.exitCommission = exitCommission;
-                    trade.commission = totalCommission;
-                    trade.fees = totalFees;
-
-                    // Recalculate P&L with commission and fees if it's a closed trade
-                    if (isRoundTrip && trade.pnl !== undefined && trade.pnl !== null) {
-                      trade.pnl = trade.pnl - totalCommission - totalFees;
-                    }
-
-                    // Determine match type for logging
-                    let matchType = 'broker-default';
-                    if (feeSettingsMap.has(symbol)) {
-                      matchType = 'exact-symbol';
-                    } else {
-                      // Check if we matched on base futures symbol
-                      const futuresMatch = symbol.match(/^([A-Z][A-Z0-9]{1,3})([FGHJKMNQUVXZ])(\d{1,2})$/);
-                      if (futuresMatch && feeSettingsMap.has(futuresMatch[1])) {
-                        matchType = `base-symbol (${futuresMatch[1]})`;
-                      }
-                    }
-                    const totalCost = totalCommission + totalFees;
-                    logger.logImport(`[BROKER FEES] Applied to ${symbol} (${quantity} contracts): commission=$${totalCommission.toFixed(2)}, fees=$${totalFees.toFixed(2)}, total=$${totalCost.toFixed(2)} [${matchType}]`);
-                  }
-                }
-                return trade;
+              trades = applyBrokerFeeSettingsToTrades({
+                trades,
+                broker,
+                feeRows: brokerFeeResult.rows,
+                logger
               });
 
               logger.logImport(`[BROKER FEES] Completed fee application for ${trades.length} trades`);
@@ -2653,14 +2561,14 @@ const tradeController = {
                   cleanTradeData.executions = executionData;
                 }
 
-                await Trade.update(tradeData.existingTradeId, req.user.id, cleanTradeData, { skipAchievements: true, skipApiCalls: true });
+                await Trade.update(tradeData.existingTradeId, req.user.id, cleanTradeData, { skipAchievements: true, skipApiCalls: true, skipOptionGrouping: true });
               } else {
                 // Add import ID to track which import this trade came from
                 tradeData.importId = importId;
                 if (defaultImportStrategy) {
                   tradeData.strategy = defaultImportStrategy;
                 }
-                await Trade.create(req.user.id, tradeData, { skipAchievements: true, skipApiCalls: true });
+                await Trade.create(req.user.id, tradeData, { skipAchievements: true, skipApiCalls: true, skipOptionGrouping: true });
               }
               imported++;
             } catch (error) {
@@ -2676,7 +2584,8 @@ const tradeController = {
             }
           }
 
-          logger.logImport(`Import completed: ${imported} imported, ${failed} failed, ${duplicates} duplicates skipped`);
+          const duplicateExecutions = parseDiagnostics?.duplicateExecutions || 0;
+          logger.logImport(`Import completed: ${imported} imported, ${failed} failed, ${duplicates} duplicates skipped${duplicateExecutions > 0 ? `, ${duplicateExecutions} duplicate executions skipped (already imported)` : ''}`);
 
           // Schedule background CUSIP resolution if there are unresolved CUSIPs
           if (unresolvedCusips.length > 0) {
@@ -2696,6 +2605,7 @@ const tradeController = {
               parsedRows: parseDiagnostics.parsedRows,
               skippedRows: parseDiagnostics.skippedRows,
               invalidRows: parseDiagnostics.invalidRows,
+              duplicateExecutions: parseDiagnostics.duplicateExecutions || 0,
               skippedReasons: parseDiagnostics.skippedReasons?.slice(0, 50) || [], // Limit to first 50 skip reasons
               warnings: parseDiagnostics.warnings || [],
               detectedBroker: parseDiagnostics.detectedBroker,
@@ -2750,6 +2660,10 @@ const tradeController = {
             SET status = 'completed', trades_imported = $1, trades_failed = $2, completed_at = CURRENT_TIMESTAMP, error_details = $4
             WHERE id = $3
           `, [imported, failed, importId, errorDetails]);
+
+          if (imported > 0) {
+            await OptionStrategyGroupingService.rebuildUserGroupsSafe(fileUserId, 'CSV import');
+          }
 
           // Invalidate analytics cache after successful import so counts/P&L update immediately
           try {
@@ -3010,214 +2924,11 @@ const tradeController = {
         }
       });
 
-      // Helper function to calculate net position from executions
-      const calculateNetPosition = (trade) => {
-        // If trade has executions, calculate net position from them
-        if (trade.executions && Array.isArray(trade.executions) && trade.executions.length > 0) {
-          let netPosition = 0;
-          trade.executions.forEach(execution => {
-            const qty = parseFloat(execution.quantity) || 0;
-
-            // Determine if this is a grouped execution (has entryPrice/exitPrice/entryTime) or individual fill
-            const isGroupedExecution = execution.entryPrice !== undefined ||
-                                        execution.exitPrice !== undefined ||
-                                        execution.entryTime !== undefined;
-
-            const isMixedFormat = isGroupedExecution && execution.action && execution.price !== undefined && execution.datetime;
-            if (isGroupedExecution && !isMixedFormat) {
-              // Grouped execution: represents a round-trip trade or open position
-              // If no exitPrice, it's an open position - add/subtract based on trade side
-              // If has exitPrice, it's a closed round-trip - net 0 (but shouldn't be in open trades)
-              if (!execution.exitPrice) {
-                // Open position: use trade side to determine direction
-                if (trade.side === 'long') {
-                  netPosition += qty;
-                } else {
-                  netPosition -= qty;
-                }
-              }
-              // Closed round-trips (exitPrice exists) don't affect net position
-            } else {
-              // Individual fill: use action field to determine buy/sell
-              // Normalize action: 'buy'/'long' = entry, 'sell'/'short' = exit
-              const action = (execution.action || execution.side || '').toLowerCase();
-
-              if (action === 'buy' || action === 'long') {
-                netPosition += qty;
-              } else if (action === 'sell' || action === 'short') {
-                netPosition -= qty;
-              } else if (action === '' || action === 'unknown') {
-                // Fallback: if action is missing, we cannot reliably determine buy/sell
-                // Log a warning but don't count this execution to avoid incorrect calculations
-                console.warn(`[POSITION] Execution missing action for trade ${trade.id}, skipping from net position calculation`);
-              }
-            }
-          });
-          return netPosition;
-        }
-
-        // Fallback to trade.quantity if no executions
-        return trade.side === 'long' ? trade.quantity : -trade.quantity;
-      };
-
-      // Helper function to calculate total shares traded from executions (all quantities count as positive)
-      const calculateTotalSharesTraded = (trade) => {
-        if (trade.executions && Array.isArray(trade.executions) && trade.executions.length > 0) {
-          let totalTraded = 0;
-          trade.executions.forEach(execution => {
-            const qty = parseFloat(execution.quantity) || 0;
-            totalTraded += Math.abs(qty);  // All shares count as traded
-          });
-          return totalTraded;
-        }
-        // Fallback to trade.quantity if no executions
-        return trade.quantity || 0;
-      };
-
-      // Build a unique position key for each trade
-      // Options: use underlying_strike_expiration_type to keep different contracts separate
-      // Stocks/futures: use symbol
-      const normalizeExpDate = (d) => {
-        if (!d) return '';
-        if (d instanceof Date) return d.toISOString().slice(0, 10);
-        return String(d).slice(0, 10);
-      };
-      const getPositionKey = (trade) => {
-        if (trade.instrument_type === 'option' && trade.underlying_symbol && trade.strike_price && trade.expiration_date && trade.option_type) {
-          return `${trade.underlying_symbol}_${trade.strike_price}_${normalizeExpDate(trade.expiration_date)}_${trade.option_type}`;
-        }
-        return trade.symbol;
-      };
-
-      // Group trades by position key and calculate net position
-      const positionMap = Object.create(null);
-      openTrades.forEach(trade => {
-        const posKey = getPositionKey(trade);
-
-        if (!Object.hasOwn(positionMap, posKey)) {
-          positionMap[posKey] = {
-            symbol: trade.symbol,
-            side: null, // Will be determined by net position
-            trades: [],
-            totalQuantity: 0,        // Net position (shares still held)
-            totalSharesTraded: 0,    // Total shares traded (all executions count positive)
-            totalCost: 0,
-            avgPrice: 0,
-            instrumentType: trade.instrument_type || 'stock',
-            contractSize: trade.contract_size || (trade.instrument_type === 'option' ? 100 : 1),
-            pointValue: trade.point_value || null,
-            // Option metadata for Alpaca pricing
-            underlying_symbol: trade.underlying_symbol || null,
-            expiration_date: trade.expiration_date || null,
-            option_type: trade.option_type || null,
-            strike_price: trade.strike_price || null
-          };
-        }
-
-        positionMap[posKey].trades.push(trade);
-
-        // Calculate net position considering executions or trade direction
-        const netPosition = calculateNetPosition(trade);
-        positionMap[posKey].totalQuantity += netPosition;
-
-        // Calculate total shares traded (all executions count as positive)
-        const sharesTraded = calculateTotalSharesTraded(trade);
-        positionMap[posKey].totalSharesTraded += sharesTraded;
-
-        // For cost calculation, account for multipliers (options use contract_size, futures use point_value)
-        let costMultiplier;
-        if (trade.instrument_type === 'future') {
-          // For futures, use point value (e.g., $5 per point for ES, $2 for MNQ)
-          costMultiplier = trade.point_value || 1;
-        } else if (trade.instrument_type === 'option') {
-          // For options, use contract size (typically 100 shares per contract)
-          costMultiplier = trade.contract_size || 100;
-        } else {
-          // For stocks, no multiplier needed
-          costMultiplier = 1;
-        }
-        positionMap[posKey].totalCost += Math.abs(netPosition) * trade.entry_price * costMultiplier;
-      });
-
-      // Merge positions that were split due to incomplete option metadata
-      // When an option trade is missing underlying_symbol/strike/expiration/option_type,
-      // getPositionKey falls back to trade.symbol, creating a separate position from
-      // the same contract that has full metadata (composite key). Merge them here.
-      // Only merge when one position used a fallback key (just the symbol) - never merge
-      // two positions that both have full composite keys (they're genuinely different contracts).
-      const fallbackKeys = new Set();
-      Object.entries(positionMap).forEach(([key, position]) => {
-        // A fallback key is one that equals the trade symbol (no composite option metadata)
-        if (position.instrumentType === 'option' && key === position.symbol) {
-          fallbackKeys.add(key);
-        }
-      });
-
-      if (fallbackKeys.size > 0) {
-        // For each fallback-keyed option position, find a composite-keyed position with same symbol to merge into
-        for (const fbKey of fallbackKeys) {
-          if (!positionMap[fbKey]) continue; // Already merged
-          const fbPosition = positionMap[fbKey];
-          const fbSymbol = fbPosition.symbol;
-
-          // Find composite-keyed positions with same symbol and instrument type
-          const compositeMatch = Object.entries(positionMap).find(([key, pos]) => {
-            return key !== fbKey && pos.symbol === fbSymbol && pos.instrumentType === 'option' && !fallbackKeys.has(key);
-          });
-
-          if (compositeMatch) {
-            const [compositeKey, compositePosition] = compositeMatch;
-            console.log(`[POSITION] Merging fallback position "${fbKey}" into composite position "${compositeKey}" (symbol: ${fbSymbol})`);
-
-            compositePosition.trades.push(...fbPosition.trades);
-            compositePosition.totalQuantity += fbPosition.totalQuantity;
-            compositePosition.totalSharesTraded += fbPosition.totalSharesTraded;
-            compositePosition.totalCost += fbPosition.totalCost;
-
-            // Fill in missing option metadata from fallback position
-            if (!compositePosition.underlying_symbol && fbPosition.underlying_symbol) compositePosition.underlying_symbol = fbPosition.underlying_symbol;
-            if (!compositePosition.strike_price && fbPosition.strike_price) compositePosition.strike_price = fbPosition.strike_price;
-            if (!compositePosition.expiration_date && fbPosition.expiration_date) compositePosition.expiration_date = fbPosition.expiration_date;
-            if (!compositePosition.option_type && fbPosition.option_type) compositePosition.option_type = fbPosition.option_type;
-
-            delete positionMap[fbKey];
-          }
-        }
-      }
-
-      // Calculate average prices and determine position side
-      const keysToDelete = [];
-      Object.entries(positionMap).forEach(([key, position]) => {
-        if (position.totalQuantity === 0) {
-          // No net position, mark for deletion
-          keysToDelete.push(key);
-          return;
-        }
-
-        // Determine side based on net position
-        position.side = position.totalQuantity > 0 ? 'long' : 'short';
-
-        // Use absolute quantity for calculations
-        const absQuantity = Math.abs(position.totalQuantity);
-        position.totalQuantity = absQuantity;
-
-        // Get multiplier from the first trade in the position (for calculating avg price)
-        const firstTrade = position.trades[0];
-        let avgPriceMultiplier;
-        if (firstTrade.instrument_type === 'future') {
-          avgPriceMultiplier = firstTrade.point_value || 1;
-        } else if (firstTrade.instrument_type === 'option') {
-          avgPriceMultiplier = firstTrade.contract_size || 100;
-        } else {
-          avgPriceMultiplier = 1;
-        }
-
-        // avgPrice should be per-share/per-contract price, so divide totalCost by (quantity * multiplier)
-        position.avgPrice = position.totalCost / (absQuantity * avgPriceMultiplier);
-      });
-
-      // Remove positions with zero net quantity
-      keysToDelete.forEach(key => delete positionMap[key]);
+      // Grouping, key normalization, metadata enrichment, and the heal-merge
+      // for legacy split positions live in utils/openPositionGrouping.js
+      // (issue #339) so the logic is unit-testable. Every surviving position
+      // carries a stable position_key.
+      const positionMap = groupTradesIntoPositions(openTrades);
 
       // If skipQuotes is requested, return positions immediately without Finnhub calls
       if (skipQuotes === 'true') {
@@ -3249,14 +2960,9 @@ const tradeController = {
       if (optionPositions.length > 0 && alpacaMarketData.isConfigured()) {
         const positionsWithKeys = optionPositions.map(p => ({
           ...p,
-          _positionKey: getPositionKey({
-            instrument_type: p.instrumentType,
-            underlying_symbol: p.underlying_symbol,
-            strike_price: p.strike_price,
-            expiration_date: p.expiration_date,
-            option_type: p.option_type,
-            symbol: p.symbol
-          })
+          // position_key is the positionMap key, so alpacaQuotes lookups by
+          // posKey stay consistent without recomputing.
+          _positionKey: p.position_key
         }));
 
         try {
@@ -3495,6 +3201,10 @@ const tradeController = {
       // Delete the import log (CASCADE will delete any remaining trades if any)
       await db.query(`DELETE FROM import_logs WHERE id = $1`, [importId]);
 
+      if (deletedTrades.rows.length > 0) {
+        await OptionStrategyGroupingService.rebuildUserGroupsSafe(req.user.id, 'import deletion');
+      }
+
       // Invalidate analytics cache for this user so totals recalculate
       await AnalyticsCache.invalidate(req.user.id);
 
@@ -3565,6 +3275,10 @@ const tradeController = {
       // Delete the import logs
       const importPlaceholders = validIds.map((_, i) => `$${i + 1}`).join(',');
       await db.query(`DELETE FROM import_logs WHERE id IN (${importPlaceholders})`, validIds);
+
+      if (deletedTrades.rows.length > 0) {
+        await OptionStrategyGroupingService.rebuildUserGroupsSafe(req.user.id, 'bulk import deletion');
+      }
 
       // Invalidate caches
       await AnalyticsCache.invalidate(req.user.id);
@@ -3646,7 +3360,7 @@ const tradeController = {
 
       const {
         startDate, endDate, symbol, symbolExact, sector, strategy, tags,
-        strategies, sectors, // Add multi-select parameters
+        strategies, setups, sectors, // Add multi-select parameters
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, brokers, importId, accounts, hasNews,
         holdTime, minHoldTime, maxHoldTime, daysOfWeek, instrumentTypes, optionTypes, qualityGrades
@@ -3662,6 +3376,7 @@ const tradeController = {
         // Multi-select filters
         tags: tags ? ensureString(tags).split(',').map(t => t.trim()).filter(Boolean) : undefined,
         strategies: strategies ? ensureString(strategies).split(',') : undefined,
+        setups: setups ? ensureString(setups).split(',') : undefined,
         sectors: sectors ? ensureString(sectors).split(',') : undefined,
         side,
         minPrice,
@@ -3725,7 +3440,7 @@ const tradeController = {
 
       const {
         startDate, endDate, symbol, symbolExact, sector, strategy, tags,
-        strategies, sectors, side, broker, brokers, accounts,
+        strategies, setups, sectors, side, broker, brokers, accounts,
         instrumentTypes, qualityGrades, minPartials, maxPartials
       } = req.query;
 
@@ -3738,6 +3453,7 @@ const tradeController = {
         strategy,
         tags: tags ? ensureString(tags).split(',').map(t => t.trim()).filter(Boolean) : undefined,
         strategies: strategies ? ensureString(strategies).split(',') : undefined,
+        setups: setups ? ensureString(setups).split(',') : undefined,
         sectors: sectors ? ensureString(sectors).split(',') : undefined,
         side,
         broker: broker || undefined,
@@ -3848,11 +3564,11 @@ const tradeController = {
         return res.status(400).json({ error: 'Valid CUSIP must be 9 characters' });
       }
 
-      // Check if Finnhub is configured before attempting lookup
+      // Check if market data provider is configured before attempting lookup
       if (!finnhub.isConfigured()) {
         return res.status(503).json({ 
           error: 'CUSIP lookup service not configured', 
-          details: 'Finnhub API key is required for CUSIP resolution. Add FINNHUB_API_KEY to your environment variables.',
+          details: marketDataConfigDetails('CUSIP resolution'),
           cusip,
           found: false
         });
@@ -3867,10 +3583,10 @@ const tradeController = {
       }
     } catch (error) {
       // Provide more descriptive error messages for CUSIP lookup failures
-      if (error.message.includes('Finnhub API key not configured')) {
+      if (error.message.includes('API key not configured')) {
         return res.status(503).json({ 
           error: 'CUSIP lookup service not configured', 
-          details: 'Add FINNHUB_API_KEY to your environment variables.',
+          details: `Add ${marketDataApiKeyName()} to your environment variables.`,
           cusip: req.params.cusip,
           found: false
         });
@@ -3951,28 +3667,22 @@ const tradeController = {
 
       const cleanCusip = cusip.replace(/\s/g, '').toUpperCase();
       
-      // Check if mapping exists in Finnhub cache
-      const cacheKey = `cusip_${cleanCusip}`;
-      const cachedMapping = finnhub.cache.get(cacheKey);
+      // Check if mapping exists in shared CUSIP cache
+      const cachedMapping = cache.get('cusip_resolution', cleanCusip);
       
       if (!cachedMapping) {
         return res.status(404).json({ error: 'CUSIP mapping not found' });
       }
 
-      const deletedTicker = cachedMapping.data;
+      const deletedTicker = cachedMapping;
       
       // Remove the mapping from cache
-      const removed = finnhub.cache.delete(cacheKey);
-      
-      if (removed) {
-        res.json({ 
-          message: 'CUSIP mapping deleted successfully',
-          cusip: cleanCusip,
-          ticker: deletedTicker
-        });
-      } else {
-        res.status(404).json({ error: 'CUSIP mapping not found' });
-      }
+      cache.del('cusip_resolution', cleanCusip);
+      res.json({ 
+        message: 'CUSIP mapping deleted successfully',
+        cusip: cleanCusip,
+        ticker: deletedTicker
+      });
     } catch (error) {
       next(error);
     }
@@ -4298,7 +4008,7 @@ const tradeController = {
       if (!finnhub.isConfigured()) {
         return res.status(503).json({
           error: 'News service not configured',
-          details: 'Finnhub API key is required for news data. Add FINNHUB_API_KEY to your environment variables.'
+          details: marketDataConfigDetails('news data')
         });
       }
 
@@ -4351,7 +4061,7 @@ const tradeController = {
       if (!finnhub.isConfigured()) {
         return res.status(503).json({
           error: 'Earnings service not configured',
-          details: 'Finnhub API key is required for earnings data. Add FINNHUB_API_KEY to your environment variables.'
+          details: marketDataConfigDetails('earnings data')
         });
       }
 
@@ -5696,8 +5406,18 @@ const tradeController = {
       const SampleDataService = require('../services/sampleDataService');
       const hasSample = await SampleDataService.hasSampleData(userId);
 
-      if (hasSample) {
+      // ?force=true wipes old sample data and creates fresh. Use this to
+      // upgrade accounts whose sample trades were created with the legacy
+      // 'sample' tag (which hid them from the calendar/dashboard) and which
+      // never had the behavioural analyzers run for them.
+      const force = req.query.force === 'true' || req.body?.force === true;
+
+      if (hasSample && !force) {
         return res.json({ message: 'Sample data already available' });
+      }
+
+      if (hasSample && force) {
+        await SampleDataService.removeForUser(userId);
       }
 
       const result = await SampleDataService.createForUser(userId);

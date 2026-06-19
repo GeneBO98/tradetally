@@ -43,7 +43,7 @@ APP_CONTAINER=""
 
 # Common container names to check
 POSSIBLE_DB_NAMES=("tradetally-db" "tradetally_postgres_1" "tradetally_db_1" "postgres")
-POSSIBLE_APP_NAMES=("tradetally-app" "tradetally_app_1" "tradetally-backend")
+POSSIBLE_APP_NAMES=("tradetally-app" "tradetally_app_1" "tradetally-backend" "tradetally")
 
 for name in "${POSSIBLE_DB_NAMES[@]}"; do
     if check_container "$name"; then

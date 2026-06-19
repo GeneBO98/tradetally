@@ -1,9 +1,19 @@
 jest.mock('../../src/models/Account', () => ({
+  create: jest.fn(),
   addTransaction: jest.fn(),
   deleteTransaction: jest.fn()
 }));
 
 jest.mock('../../src/models/PlaidConnection', () => ({
+  hasSchema: jest.fn(() => Promise.resolve(true)),
+  findByUserId: jest.fn(),
+  findById: jest.fn(),
+  findAccountById: jest.fn(),
+  setAccountLink: jest.fn(),
+  listTransactionsByPlaidAccount: jest.fn(),
+  listReviewQueue: jest.fn(),
+  listReviewedActivity: jest.fn(),
+  listSyncedActivity: jest.fn(),
   findTransactionById: jest.fn(),
   markTransactionApproved: jest.fn(),
   markTransactionRejected: jest.fn(),
@@ -19,17 +29,60 @@ jest.mock('../../src/models/PlaidConnection', () => ({
 
 jest.mock('../../src/services/plaid/plaidClient', () => ({
   isConfigured: jest.fn(() => true),
-  syncTransactions: jest.fn()
+  createLinkToken: jest.fn(),
+  syncTransactions: jest.fn(),
+  env: 'sandbox'
+}));
+
+jest.mock('../../src/config/database', () => ({
+  query: jest.fn(),
+  connect: jest.fn()
+}));
+
+jest.mock('../../src/services/analyticsCache', () => ({
+  invalidate: jest.fn()
 }));
 
 const Account = require('../../src/models/Account');
 const PlaidConnection = require('../../src/models/PlaidConnection');
 const plaidClient = require('../../src/services/plaid/plaidClient');
+const db = require('../../src/config/database');
+const AnalyticsCache = require('../../src/services/analyticsCache');
 const plaidFundingService = require('../../src/services/plaid/plaidFundingService');
+
+
+describe('plaidFundingService createLinkToken', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test('explains INVALID_PRODUCT for investment link tokens', async () => {
+    const error = new Error('Plaid request failed: INVALID_PRODUCT - invalid product');
+    error.status = 400;
+    error.plaid = {
+      errorType: 'INVALID_REQUEST',
+      errorCode: 'INVALID_PRODUCT',
+      requestId: 'request-1'
+    };
+    plaidClient.createLinkToken.mockRejectedValue(error);
+
+    await expect(
+      plaidFundingService.createLinkToken({ id: 'user-1', email: 'user@example.com' }, 'investment')
+    ).rejects.toMatchObject({
+      message: 'Plaid rejected the investments product. Enable investments for your sandbox environment in the Plaid dashboard, or use a Plaid client_id/secret that has access to it.',
+      status: 400,
+      plaid: {
+        errorCode: 'INVALID_PRODUCT',
+        requestId: 'request-1'
+      }
+    });
+  });
+});
 
 describe('plaidFundingService approveTransaction', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    PlaidConnection.hasSchema.mockResolvedValue(true);
   });
 
   test('creates a plaid-backed account transaction using absolute amount', async () => {
@@ -127,6 +180,37 @@ describe('plaidFundingService approveTransaction', () => {
   });
 });
 
+describe('plaidFundingService optional Plaid schema reads', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test('returns no connections when Plaid funding tables are missing', async () => {
+    PlaidConnection.hasSchema.mockResolvedValue(false);
+
+    await expect(plaidFundingService.listConnections('user-1')).resolves.toEqual([]);
+    expect(PlaidConnection.findByUserId).not.toHaveBeenCalled();
+  });
+
+  test('returns empty review data when Plaid funding tables are missing', async () => {
+    PlaidConnection.hasSchema.mockResolvedValue(false);
+
+    await expect(plaidFundingService.getReviewData('user-1', 'acct-1')).resolves.toEqual({
+      pending: [],
+      history: [],
+      synced: [],
+      summary: {
+        total: 0,
+        pending: 0,
+        bankPending: 0,
+        approved: 0,
+        rejected: 0
+      }
+    });
+    expect(PlaidConnection.listReviewQueue).not.toHaveBeenCalled();
+  });
+});
+
 describe('plaidFundingService sync auto-approval', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -214,6 +298,72 @@ describe('plaidFundingService sync auto-approval', () => {
       'deposit'
     );
     expect(PlaidConnection.markTransactionRuleApplied).toHaveBeenCalledWith('rule-1');
+  });
+});
+
+describe('plaidFundingService linkPlaidAccount unification', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    PlaidConnection.hasSchema.mockResolvedValue(true);
+    PlaidConnection.listTransactionsByPlaidAccount.mockResolvedValue([]);
+  });
+
+  test('adopts the synthetic Plaid identifier when creating a managed account', async () => {
+    PlaidConnection.findAccountById.mockResolvedValue({
+      id: 'plaid-account-row-1',
+      connectionId: 'connection-1',
+      mask: '1234'
+    });
+    PlaidConnection.findById.mockResolvedValue({
+      id: 'connection-1',
+      institutionName: 'Fidelity'
+    });
+    Account.create.mockResolvedValue({ id: 'acct-new' });
+    PlaidConnection.setAccountLink.mockResolvedValue({ id: 'plaid-account-row-1', linkedAccountId: 'acct-new' });
+    // unifyHoldingsForLinkedAccount SELECT: new account already carries the
+    // synthetic identifier, so no re-tag UPDATE should run.
+    db.query.mockResolvedValue({ rows: [{ account_identifier: 'Fidelity 1234' }], rowCount: 0 });
+
+    await plaidFundingService.linkPlaidAccount('user-1', 'plaid-account-row-1', {
+      trackingMode: 'tracked_account',
+      newAccount: { accountName: 'Roth IRA' }
+    });
+
+    expect(Account.create).toHaveBeenCalledWith('user-1', expect.objectContaining({
+      accountName: 'Roth IRA',
+      accountIdentifier: 'Fidelity 1234'
+    }));
+    // Only the SELECT ran; the early-return skipped the UPDATE.
+    expect(db.query).toHaveBeenCalledTimes(1);
+    expect(AnalyticsCache.invalidate).not.toHaveBeenCalled();
+  });
+
+  test('re-tags existing Plaid holdings when linking to an account with a different identifier', async () => {
+    PlaidConnection.findAccountById.mockResolvedValue({
+      id: 'plaid-account-row-1',
+      connectionId: 'connection-1',
+      mask: '1234'
+    });
+    PlaidConnection.findById.mockResolvedValue({
+      id: 'connection-1',
+      institutionName: 'Fidelity'
+    });
+    PlaidConnection.setAccountLink.mockResolvedValue({ id: 'plaid-account-row-1', linkedAccountId: 'acct-existing' });
+    db.query
+      .mockResolvedValueOnce({ rows: [{ account_identifier: '****5560' }] }) // SELECT target identifier
+      .mockResolvedValueOnce({ rowCount: 3 }); // UPDATE re-tag
+
+    await plaidFundingService.linkPlaidAccount('user-1', 'plaid-account-row-1', {
+      linkedAccountId: 'acct-existing',
+      trackingMode: 'tracked_account'
+    });
+
+    expect(Account.create).not.toHaveBeenCalled();
+    expect(db.query).toHaveBeenLastCalledWith(
+      expect.stringContaining('UPDATE investment_lots'),
+      ['****5560', 'user-1', 'Fidelity 1234']
+    );
+    expect(AnalyticsCache.invalidate).toHaveBeenCalledWith('user-1');
   });
 });
 

@@ -284,7 +284,7 @@ const behavioralAnalyticsController = {
       // derived-signal SQL via TradeQueries._buildWhereClause.
       const {
         startDate, endDate, symbol, symbolExact, sector, strategy, tags,
-        strategies, sectors,
+        strategies, setups, sectors,
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, broker, brokers, importId, accounts, hasNews,
         holdTime, daysOfWeek, instrumentTypes, optionTypes, qualityGrades
@@ -299,6 +299,7 @@ const behavioralAnalyticsController = {
         strategy,
         tags: tags ? ensureString(tags).split(',').map(t => t.trim()).filter(Boolean) : undefined,
         strategies: strategies ? ensureString(strategies).split(',') : undefined,
+        setups: setups ? ensureString(setups).split(',') : undefined,
         sectors: sectors ? ensureString(sectors).split(',') : undefined,
         side,
         minPrice,

@@ -8,6 +8,7 @@ const FundamentalDataService = require('../services/fundamentalDataService');
 const HoldingsService = require('../services/holdingsService');
 const PortfolioService = require('../services/portfolioService');
 const DCFValuationService = require('../services/dcfValuationService');
+const plaidIncomeService = require('../services/plaid/plaidIncomeService');
 const db = require('../config/database');
 
 // Map service-layer errors to accurate HTTP responses. Without this every
@@ -636,7 +637,31 @@ const deleteLot = async (req, res) => {
     res.json({ success: true, message: 'Lot deleted' });
   } catch (error) {
     console.error('[INVESTMENTS] Delete lot error:', error);
-    res.status(500).json({ error: error.message || 'Failed to delete lot' });
+    const status = /plaid-synced/i.test(error.message || '') ? 400 : 500;
+    res.status(status).json({ error: error.message || 'Failed to delete lot' });
+  }
+};
+
+// ========================================
+// INCOME ANALYTICS
+// ========================================
+
+/**
+ * Get dividend/interest/fee income aggregated from Plaid investment activity
+ * GET /api/investments/income
+ */
+const getInvestmentIncome = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const data = await plaidIncomeService.getIncomeSummary(req.user.id, {
+      startDate: startDate || null,
+      endDate: endDate || null
+    });
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('[INVESTMENTS] Get income error:', error);
+    res.status(500).json({ error: error.message || 'Failed to get income analytics' });
   }
 };
 
@@ -1371,6 +1396,9 @@ module.exports = {
   // Dividends
   getDividends,
   recordDividend,
+
+  // Income analytics
+  getInvestmentIncome,
 
   // Portfolio
   getPortfolioOverview,

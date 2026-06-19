@@ -5,6 +5,12 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    /* Theme token for inline styles that can't use Tailwind classes
+       (e.g. dynamic gradients). Single source: tailwind.config.js. */
+    --color-primary-500: theme('colors.primary.500');
+  }
+
   body {
     @apply bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100;
   }
@@ -124,11 +130,18 @@
 
   /* Container System - Replaces max-w-[65%] pattern */
   .content-wrapper {
+    /* Width strategy: use the FULL available width (minus padding) on small
+       and mid screens, and clamp only on genuinely large screens with a
+       fixed max-width. A percentage cap (the old lg:85% / xl:75%) scaled the
+       wrong way — it gave smaller screens proportionally LESS of their width,
+       wasting real estate on 1280-1600px laptops/MacBooks. A fixed max keeps
+       big monitors from over-stretching while letting everything below it
+       breathe. 1600px ≈ the old xl:75% content width on a ~2130px screen. */
     @apply w-full px-2 mx-auto;
-    @apply sm:px-4 sm:max-w-full;
+    @apply sm:px-4;
     @apply md:px-6;
-    @apply lg:max-w-[85%] lg:px-8;
-    @apply xl:max-w-[75%];
+    @apply lg:px-8;
+    @apply max-w-[1600px];
   }
 
   /* Card Responsive Utilities */

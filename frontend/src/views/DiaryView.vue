@@ -201,9 +201,18 @@
     </div>
 
     <!-- Content Area -->
-    <div class="min-h-96">
-      <!-- Loading State -->
-      <div v-if="loading" class="flex justify-center py-12">
+    <div class="min-h-96 relative">
+      <!-- Subtle refresh indicator: filter changes refetch without unmounting
+           content, so scroll position is preserved (see CLAUDE.md pattern) -->
+      <div v-if="loading && !initialLoading" class="absolute top-0 right-0 z-10">
+        <div class="flex items-center space-x-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm border border-gray-200 dark:border-gray-700">
+          <div class="animate-spin rounded-full h-4 w-4 border-2 border-primary-600 border-t-transparent"></div>
+          <span class="text-xs text-gray-600 dark:text-gray-400">Updating...</span>
+        </div>
+      </div>
+
+      <!-- Loading State (initial load only) -->
+      <div v-if="initialLoading" class="flex justify-center py-12">
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
       </div>
 
@@ -266,6 +275,8 @@
               <router-link
                 :to="`/diary/${entry.id}/edit`"
                 class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                aria-label="Edit entry"
+                title="Edit entry"
               >
                 <PencilIcon class="w-4 h-4" />
               </router-link>
@@ -273,6 +284,8 @@
               <button
                 @click="confirmDelete(entry)"
                 class="text-gray-400 hover:text-red-600 dark:hover:text-red-400"
+                aria-label="Delete entry"
+                title="Delete entry"
               >
                 <TrashIcon class="w-4 h-4" />
               </button>
@@ -642,6 +655,8 @@ const filters = ref(savedFilters ? JSON.parse(savedFilters) : {
 const entries = computed(() => diaryStore.entries)
 const loading = computed(() => diaryStore.loading)
 const error = computed(() => diaryStore.error)
+// Full-page spinner only on first load; refetches keep content mounted.
+const initialLoading = ref(true)
 const pagination = computed(() => diaryStore.pagination)
 
 const hasActiveFilters = computed(() => {
@@ -880,6 +895,8 @@ const loadEntries = async () => {
     await diaryStore.fetchEntries({ page: 1 })
   } catch (error) {
     console.error('Error loading entries:', error)
+  } finally {
+    initialLoading.value = false
   }
 }
 

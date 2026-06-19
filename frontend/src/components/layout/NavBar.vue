@@ -78,6 +78,7 @@
             </div>
 
             <button
+              v-if="$route.name !== 'home'"
               @click="toggleDarkMode"
               class="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
               :aria-label="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
@@ -90,6 +91,7 @@
           <!-- Mobile menu button -->
           <div class="sm:hidden flex items-center space-x-2">
             <button
+              v-if="$route.name !== 'home'"
               @click="toggleDarkMode"
               class="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
               :aria-label="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
@@ -453,6 +455,7 @@ const publicNavigation = computed(() => {
     { name: 'Public Trades', to: '/public', route: 'public-trades' }
   ]
 
+  // Pricing only on billing-enabled (cloud) instances
   if (isBillingEnabled.value) {
     nav.push({ name: 'Pricing', to: '/pricing', route: 'pricing' })
   }
@@ -461,6 +464,7 @@ const publicNavigation = computed(() => {
   if (showSEOPages.value) {
     nav.push(
       { name: 'Features', to: '/features', route: 'features' },
+      { name: 'Tools', to: '/tools', route: 'tools-hub' },
       { name: 'FAQ', to: '/faq', route: 'faq' },
       { name: 'Compare', to: '/compare', route: 'compare' }
     )

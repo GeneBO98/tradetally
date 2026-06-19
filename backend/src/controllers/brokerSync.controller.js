@@ -11,6 +11,7 @@ const alpacaService = require('../services/brokerSync/alpacaService');
 const brokerSyncService = require('../services/brokerSync');
 const TierService = require('../services/tierService');
 const AnalyticsCache = require('../services/analyticsCache');
+const OptionStrategyGroupingService = require('../services/optionStrategyGroupingService');
 const logger = require('../utils/logger');
 const db = require('../config/database');
 const crypto = require('crypto');
@@ -795,6 +796,7 @@ const brokerSyncController = {
       console.log(`[BROKER-SYNC] Deleted ${deletedCount} synced trades for connection ${id} (user ${userId})`);
 
       if (deletedCount > 0) {
+        await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'broker trade deletion');
         console.log(`[BROKER-SYNC] Invalidating analytics cache for user ${userId}`);
         await AnalyticsCache.invalidate(userId);
       }

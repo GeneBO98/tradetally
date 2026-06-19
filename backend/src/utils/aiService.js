@@ -10,6 +10,8 @@ class AIService {
       gemini: this.useGemini.bind(this),
       claude: this.useClaude.bind(this),
       openai: this.useOpenAI.bind(this),
+      deepseek: this.useDeepSeek.bind(this),
+      kimi: this.useKimi.bind(this),
       ollama: this.useOllama.bind(this),
       lmstudio: this.useLMStudio.bind(this),
       perplexity: this.usePerplexity.bind(this),
@@ -155,6 +157,10 @@ class AIService {
         return !!settings.apiKey && settings.apiKey.trim() !== '';
       case 'openai':
         return !!settings.apiKey && settings.apiKey.trim() !== '';
+      case 'deepseek':
+        return !!settings.apiKey && settings.apiKey.trim() !== '';
+      case 'kimi':
+        return !!settings.apiKey && settings.apiKey.trim() !== '';
       case 'ollama':
         // Ollama requires URL, API key is optional
         return !!settings.apiUrl && settings.apiUrl.trim() !== '';
@@ -280,14 +286,42 @@ Your response:`;
   }
 
   async useOpenAI(prompt, settings, options = {}) {
+    return this.useOpenAICompatibleChat(prompt, settings, {
+      ...options,
+      providerName: 'OpenAI',
+      defaultModel: 'gpt-4o'
+    });
+  }
+
+  async useDeepSeek(prompt, settings, options = {}) {
+    return this.useOpenAICompatibleChat(prompt, settings, {
+      ...options,
+      providerName: 'DeepSeek',
+      defaultModel: 'deepseek-chat',
+      defaultBaseUrl: 'https://api.deepseek.com/v1'
+    });
+  }
+
+  async useKimi(prompt, settings, options = {}) {
+    return this.useOpenAICompatibleChat(prompt, settings, {
+      ...options,
+      providerName: 'Kimi',
+      defaultModel: 'moonshot-v1-8k',
+      defaultBaseUrl: 'https://api.moonshot.ai/v1'
+    });
+  }
+
+  async useOpenAICompatibleChat(prompt, settings, options = {}) {
     const { default: OpenAI } = await import('openai');
     
     if (!settings.apiKey) {
-      throw new Error('OpenAI API key not configured');
+      throw new Error(`${options.providerName || 'AI provider'} API key not configured`);
     }
 
-    const validatedBaseUrl = settings.apiUrl
-      ? (await validateAiProviderUrl('openai', settings.apiUrl)).toString()
+    const provider = settings.provider || 'openai';
+    const baseUrl = settings.apiUrl || options.defaultBaseUrl;
+    const validatedBaseUrl = baseUrl
+      ? (await validateAiProviderUrl(provider, baseUrl)).toString()
       : undefined;
 
     const openai = new OpenAI({
@@ -295,11 +329,16 @@ Your response:`;
       baseURL: validatedBaseUrl
     });
 
-    const model = settings.model || 'gpt-4o';
-    console.log(`[OPENAI] OpenAI: Using model ${model}`);
+    const providerName = options.providerName || 'OpenAI-compatible';
+    const model = settings.model || options.defaultModel || 'gpt-4o';
+    console.log(`[${providerName.toUpperCase()}] ${providerName}: Using model ${model}`);
 
     try {
       // Build request parameters
+      const tokenParam = provider === 'openai'
+        ? { max_completion_tokens: options.maxTokens || 1000 }
+        : { max_tokens: options.maxTokens || 1000 };
+
       const requestParams = {
         model: model,
         messages: [
@@ -308,12 +347,12 @@ Your response:`;
             content: prompt
           }
         ],
-        max_completion_tokens: options.maxTokens || 1000,
+        ...tokenParam
       };
       
       // Only add temperature for models that support it.
       // Reasoning models (o-series, all gpt-5 variants) reject any non-default temperature.
-      const isReasoningModel = /^(o\d|gpt-5)/i.test(model);
+      const isReasoningModel = /^(o\d|gpt-5|deepseek-reasoner)/i.test(model);
       if (!isReasoningModel) {
         requestParams.temperature = 0.1;
       }
@@ -333,12 +372,12 @@ Your response:`;
       }
       
       const content = response.choices[0].message.content;
-      console.log('[OPENAI] OpenAI completion received:', content ? 'SUCCESS' : 'EMPTY');
+      console.log(`[${providerName.toUpperCase()}] Completion received:`, content ? 'SUCCESS' : 'EMPTY');
       
       return content;
     } catch (error) {
-      console.error('[ERROR] OpenAI API error:', error.message);
-      console.error('[ERROR] OpenAI error details:', sanitizeErrorForLogging(error));
+      console.error(`[ERROR] ${providerName} API error:`, error.message);
+      console.error(`[ERROR] ${providerName} error details:`, sanitizeErrorForLogging(error));
       throw error;
     }
   }

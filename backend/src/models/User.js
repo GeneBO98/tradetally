@@ -80,7 +80,8 @@ class User {
   static async findById(id) {
     const query = `
       SELECT id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone,
-             two_factor_enabled, two_factor_secret, two_factor_backup_codes, tier, marketing_consent, created_at, updated_at, last_login_at
+             two_factor_enabled, two_factor_secret, two_factor_backup_codes, tier, marketing_consent,
+             trial_used, trial_started_at, created_at, updated_at, last_login_at
       FROM users
       WHERE id = $1 AND is_active = true
     `;
@@ -104,7 +105,8 @@ class User {
   static async findByEmail(email) {
     const query = `
       SELECT id, email, username, password_hash, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone,
-             two_factor_enabled, two_factor_secret, tier, created_at, last_login_at
+             two_factor_enabled, two_factor_secret, tier, created_at, last_login_at,
+             failed_login_attempts, account_locked_at
       FROM users
       WHERE email = $1
     `;
@@ -253,6 +255,8 @@ class User {
       postExitExcursionWindowMode: 'post_exit_excursion_window_mode',
       postExitExcursionWindowMinutes: 'post_exit_excursion_window_minutes',
       statisticsCalculation: 'statistics_calculation',
+      analyticsPositionGrouping: 'analytics_position_grouping',
+      edgeReportEnabled: 'edge_report_enabled',
       breakevenToleranceTicks: 'breakeven_tolerance_ticks',
       breakevenToleranceTicksByUnderlying: 'breakeven_tolerance_ticks_by_underlying',
       defaultBroker: 'default_broker',
@@ -312,27 +316,11 @@ class User {
         console.log('[SETTINGS] Dashboard layout saved successfully');
       }
 
-      // If default stop loss was updated, apply it to existing trades without a stop loss
-      const stopLossType = settings.defaultStopLossType || 'percent';
-      if (stopLossType === 'dollar' && settings.defaultStopLossDollars !== undefined && settings.defaultStopLossDollars > 0) {
-        const Trade = require('./Trade');
-        Trade.applyDefaultStopLossToExistingTradesByDollars(userId, settings.defaultStopLossDollars)
-          .then(count => {
-            console.log(`[SETTINGS] Applied default dollar stop loss to ${count} existing trades`);
-          })
-          .catch(error => {
-            console.error('[SETTINGS] Failed to apply default dollar stop loss to existing trades:', error);
-          });
-      } else if (settings.defaultStopLossPercent !== undefined && settings.defaultStopLossPercent > 0) {
-        const Trade = require('./Trade');
-        Trade.applyDefaultStopLossToExistingTrades(userId, settings.defaultStopLossPercent)
-          .then(count => {
-            console.log(`[SETTINGS] Applied default stop loss to ${count} existing trades`);
-          })
-          .catch(error => {
-            console.error('[SETTINGS] Failed to apply default stop loss to existing trades:', error);
-          });
-      }
+      // Default stop loss propagation is handled by the settings controller via
+      // Trade.syncDefaultStopLossToExistingTrades (awaited, type-aware). The
+      // fire-and-forget applies that used to live here defaulted the type to
+      // 'percent' on partial payloads — overwriting dollar-based stops (issue
+      // #345) — and raced the controller's sync and cache invalidation.
 
       // If default take profit percentage was updated, apply it to existing trades without a take profit
       if (settings.defaultTakeProfitPercent !== undefined && settings.defaultTakeProfitPercent > 0) {
@@ -372,27 +360,8 @@ class User {
           filteredValues.push(userId);
           const result = await db.query(fallbackQuery, filteredValues);
 
-          // If default stop loss was updated, apply it to existing trades without a stop loss
-          const stopLossTypeFallback = settings.defaultStopLossType || 'percent';
-          if (stopLossTypeFallback === 'dollar' && settings.defaultStopLossDollars !== undefined && settings.defaultStopLossDollars > 0) {
-            const Trade = require('./Trade');
-            Trade.applyDefaultStopLossToExistingTradesByDollars(userId, settings.defaultStopLossDollars)
-              .then(count => {
-                console.log(`[SETTINGS] Applied default dollar stop loss to ${count} existing trades`);
-              })
-              .catch(error => {
-                console.error('[SETTINGS] Failed to apply default dollar stop loss to existing trades:', error);
-              });
-          } else if (settings.defaultStopLossPercent !== undefined && settings.defaultStopLossPercent > 0) {
-            const Trade = require('./Trade');
-            Trade.applyDefaultStopLossToExistingTrades(userId, settings.defaultStopLossPercent)
-              .then(count => {
-                console.log(`[SETTINGS] Applied default stop loss to ${count} existing trades`);
-              })
-              .catch(error => {
-                console.error('[SETTINGS] Failed to apply default stop loss to existing trades:', error);
-              });
-          }
+          // Stop loss propagation handled by the settings controller sync
+          // (see comment on the primary path above).
 
           // If default take profit percentage was updated, apply it to existing trades without a take profit
           if (settings.defaultTakeProfitPercent !== undefined && settings.defaultTakeProfitPercent > 0) {
@@ -472,14 +441,73 @@ class User {
   }
 
   static async updatePassword(userId, hashedPassword) {
+    // Resetting the password proves email ownership, so it also clears any
+    // active lockout and the failed-attempt counter.
     const query = `
-      UPDATE users 
-      SET password_hash = $1, reset_token = NULL, reset_expires = NULL
+      UPDATE users
+      SET password_hash = $1, reset_token = NULL, reset_expires = NULL,
+          failed_login_attempts = 0, account_locked_at = NULL,
+          unlock_token = NULL, unlock_expires = NULL
       WHERE id = $2
       RETURNING *
     `;
-    
+
     const result = await db.query(query, [hashedPassword, userId]);
+    return result.rows[0];
+  }
+
+  // --- Account lockout (failed login throttling) -----------------------------
+
+  static async incrementFailedLoginAttempts(userId) {
+    const query = `
+      UPDATE users
+      SET failed_login_attempts = failed_login_attempts + 1
+      WHERE id = $1
+      RETURNING failed_login_attempts
+    `;
+    const result = await db.query(query, [userId]);
+    return result.rows[0]?.failed_login_attempts ?? 0;
+  }
+
+  static async resetFailedLoginAttempts(userId) {
+    const query = `
+      UPDATE users
+      SET failed_login_attempts = 0, account_locked_at = NULL,
+          unlock_token = NULL, unlock_expires = NULL
+      WHERE id = $1
+    `;
+    await db.query(query, [userId]);
+  }
+
+  static async lockAccount(userId, unlockToken, unlockExpires) {
+    const query = `
+      UPDATE users
+      SET account_locked_at = NOW(), unlock_token = $1, unlock_expires = $2
+      WHERE id = $3
+      RETURNING *
+    `;
+    const result = await db.query(query, [hashLookupToken(unlockToken), unlockExpires, userId]);
+    return result.rows[0];
+  }
+
+  static async findByUnlockToken(token) {
+    const query = `
+      SELECT id, email, username FROM users
+      WHERE unlock_token = $1 AND unlock_expires > NOW()
+    `;
+    const result = await db.query(query, [hashLookupToken(token)]);
+    return result.rows[0];
+  }
+
+  static async unlockAccount(userId) {
+    const query = `
+      UPDATE users
+      SET failed_login_attempts = 0, account_locked_at = NULL,
+          unlock_token = NULL, unlock_expires = NULL
+      WHERE id = $1
+      RETURNING id, email, username
+    `;
+    const result = await db.query(query, [userId]);
     return result.rows[0];
   }
 

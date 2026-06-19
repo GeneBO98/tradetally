@@ -5,11 +5,73 @@
 
 const db = require('../config/database');
 const Trade = require('../models/Trade');
+const TradeQueries = require('../services/tradeQueries');
 const logger = require('../utils/logger');
 const TargetHitAnalysisService = require('../services/targetHitAnalysisService');
 const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('../utils/futuresUtils');
 const ensureString = require('../utils/ensureString');
 const { uuidv4 } = require('../utils/uuid');
+const { getBreakevenToleranceConfig, breakevenPredicate } = require('../utils/breakeven');
+
+/**
+ * Parse a Trade Management request's query params into a filter spec for
+ * TradeQueries._buildWhereClause. Mirrors trade.controller.getAnalytics so the
+ * Trade Management page accepts the same filter set as the Performance page.
+ * (limit/offset are handled separately by each endpoint.)
+ */
+function parseTradeManagementFilters(query = {}) {
+  const {
+    startDate, endDate, symbol, symbolExact, sector, strategy, tags,
+    strategies, setups, sectors,
+    side, minPrice, maxPrice, minQuantity, maxQuantity,
+    status, minPnl, maxPnl, pnlType, broker, brokers, importId, accounts, hasNews,
+    holdTime, daysOfWeek, instrumentTypes, optionTypes, qualityGrades
+  } = query;
+
+  return {
+    startDate: startDate || undefined,
+    endDate: endDate || undefined,
+    symbol: ensureString(symbol) || undefined,
+    symbolExact: symbolExact === 'true',
+    sector: sector || undefined,
+    strategy: strategy || undefined,
+    tags: tags ? ensureString(tags).split(',').map(t => t.trim()).filter(Boolean) : undefined,
+    strategies: strategies ? ensureString(strategies).split(',') : undefined,
+    setups: setups ? ensureString(setups).split(',') : undefined,
+    sectors: sectors ? ensureString(sectors).split(',') : undefined,
+    side: side || undefined,
+    minPrice,
+    maxPrice,
+    minQuantity,
+    maxQuantity,
+    status: status || undefined,
+    minPnl,
+    maxPnl,
+    pnlType: pnlType || undefined,
+    broker: broker || undefined,
+    brokers: brokers || undefined,
+    importId: importId || undefined,
+    accounts: accounts ? ensureString(accounts).split(',') : undefined,
+    hasNews,
+    holdTime: holdTime || undefined,
+    daysOfWeek: daysOfWeek ? ensureString(daysOfWeek).split(',').map(d => parseInt(d)) : undefined,
+    instrumentTypes: instrumentTypes ? ensureString(instrumentTypes).split(',') : undefined,
+    optionTypes: optionTypes ? ensureString(optionTypes).split(',') : undefined,
+    qualityGrades: qualityGrades ? ensureString(qualityGrades).split(',') : undefined
+  };
+}
+
+function inferInstrumentType(trade) {
+  const rawType = String(trade?.instrument_type || trade?.instrumentType || 'stock').trim().toLowerCase();
+  if (rawType === 'future' || rawType === 'futures') return 'future';
+  if (rawType !== 'option' && extractUnderlyingFromFuturesSymbol(trade?.symbol)) return 'future';
+  if (rawType === 'option' || rawType === 'crypto' || rawType === 'stock') return rawType;
+  return rawType || 'stock';
+}
+
+function roundR(value) {
+  return Math.round(value * 100) / 100;
+}
 
 const UNSORTED_ACCOUNT = '__unsorted__';
 
@@ -319,7 +381,20 @@ function calculateRMultiples(trade) {
   // For futures: use point_value (e.g., $50 per point for ES, $20 per point for NQ)
   // For stocks: no multiplier (1 share = 1 share)
   let multiplier = 1;
-  const instrumentType = instrument_type || 'stock';
+  const instrumentType = inferInstrumentType(trade);
+  const tradeQuantityForRisk = parseFloat(quantity || 1);
+  const calculatedRiskAmount = Trade.calculateRiskAmount(
+    entryPrice,
+    stopLoss,
+    Number.isFinite(tradeQuantityForRisk) && tradeQuantityForRisk > 0 ? tradeQuantityForRisk : 1,
+    side,
+    instrumentType,
+    contract_size,
+    point_value,
+    trade.symbol,
+    trade.underlying_asset || trade.underlyingAsset
+  );
+
   if (instrumentType === 'future') {
     // For futures, point_value converts price points to dollars
     // Example: ES has point_value = 50, so 1 point = $50
@@ -372,8 +447,13 @@ function calculateRMultiples(trade) {
     logger.warn('[R-CALC] Invalid quantity, defaulting to 1:', quantity);
     tradeQuantity = 1;
   }
-  
-  const riskAmount = risk * tradeQuantity * multiplier;
+
+  const riskAmount = calculatedRiskAmount && calculatedRiskAmount > 0
+    ? calculatedRiskAmount
+    : risk * tradeQuantity * multiplier;
+  if (calculatedRiskAmount && risk > 0 && tradeQuantity > 0) {
+    multiplier = calculatedRiskAmount / (risk * tradeQuantity);
+  }
   const actualPLAmount = actualPL * tradeQuantity * multiplier;
   
   // Calculate target_pl_amount:
@@ -427,6 +507,23 @@ function calculateRMultiples(trade) {
     contract_size: contract_size || 'not set'
   });
 
+  // Actual R is canonical net P&L divided by dollar risk. This keeps Trade
+  // Management aligned with stored r_value and dashboard analytics for partial
+  // exits, futures/options multipliers, and broker-imported net P&L.
+  const netPnl = parseFloat(pnl);
+  let actualRAlreadyNet = false;
+  if (Number.isFinite(netPnl) && riskAmount > 0) {
+    const priceBasedActualR = actualR;
+    actualR = netPnl / riskAmount;
+    actualRAlreadyNet = true;
+    logger.debug('[R-CALC] Actual R from net P&L:', {
+      netPnl,
+      riskAmount: riskAmount.toFixed(2),
+      priceBasedActualR: priceBasedActualR.toFixed(4),
+      netActualR: actualR.toFixed(4)
+    });
+  }
+
   // Adjust actual R AND target R for commission and fees (net R)
   // Commission reduces your actual profit, so it reduces actual R
   // Target R also needs commission adjustment for apples-to-apples comparison
@@ -452,7 +549,9 @@ function calculateRMultiples(trade) {
 
     const commissionR = totalCommission / effectiveRiskAmount;
     const grossActualR = actualR;
-    actualR = actualR - commissionR;
+    if (!actualRAlreadyNet) {
+      actualR = actualR - commissionR;
+    }
 
     // Also adjust target R for commission (hitting targets also incurs commissions)
     if (targetR !== undefined) {
@@ -479,6 +578,10 @@ function calculateRMultiples(trade) {
       grossActualR: grossActualR.toFixed(4),
       netActualR: actualR.toFixed(4)
     });
+  }
+
+  if (targetR !== undefined) {
+    rLost = targetR - actualR;
   }
 
   // Use weighted average target R if available (for multiple targets)
@@ -517,13 +620,13 @@ function calculateRMultiples(trade) {
 
   logger.debug('[R-CALC] ========== Final Results ==========');
   logger.debug('[R-CALC] Final values:', {
-    actual_r: Math.round(actualR * 100) / 100,
-    target_r: targetR !== undefined ? Math.round(targetR * 100) / 100 : null,
-    r_lost: rLost !== undefined ? Math.round(rLost * 100) / 100 : null,
-    weighted_target_r: weightedTargetR !== null ? Math.round(weightedTargetR * 100) / 100 : null,
-    effective_r_lost: effectiveRLost !== undefined ? Math.round(effectiveRLost * 100) / 100 : null,
-    management_r: managementR !== null ? Math.round(managementR * 100) / 100 : null,
-    planned_r: plannedR !== null ? Math.round(plannedR * 100) / 100 : null,
+    actual_r: roundR(actualR),
+    target_r: targetR !== undefined ? roundR(targetR) : null,
+    r_lost: rLost !== undefined ? roundR(rLost) : null,
+    weighted_target_r: weightedTargetR !== null ? roundR(weightedTargetR) : null,
+    effective_r_lost: effectiveRLost !== undefined ? roundR(effectiveRLost) : null,
+    management_r: managementR !== null ? roundR(managementR) : null,
+    planned_r: plannedR !== null ? roundR(plannedR) : null,
     planned_pl_amount: plannedPLAmount !== null ? Math.round(plannedPLAmount * 100) / 100 : null,
     risk_amount: Math.round(riskAmount * 100) / 100,
     multiplier: multiplier,
@@ -549,7 +652,7 @@ function calculateRMultiples(trade) {
     risk_per_share: Math.round(risk * 100) / 100,
     risk_amount: Math.round(riskAmount * 100) / 100,
     actual_pl_per_share: Math.round(actualPL * 100) / 100,
-    actual_pl_amount: pnl ? parseFloat(pnl) : Math.round(actualPLAmount * 100) / 100,
+    actual_pl_amount: pnl !== null && pnl !== undefined ? parseFloat(pnl) : Math.round(actualPLAmount * 100) / 100,
     target_pl_per_share: targetPL !== undefined ? Math.round(targetPL * 100) / 100 : null,
     target_pl_amount: targetPLAmount !== null ? Math.round(targetPLAmount * 100) / 100 : null,
 
@@ -742,54 +845,30 @@ const tradeManagementController = {
   async getTradesForSelection(req, res) {
     try {
       const userId = req.user.id;
-      const { startDate, endDate, limit = 100, offset = 0 } = req.query;
-      const symbol = ensureString(req.query.symbol);
-      const accounts = ensureString(req.query.accounts);
+      const limit = parseInt(req.query.limit) || 100;
+      const offset = parseInt(req.query.offset) || 0;
+      // Same Performance-page filter set as the R-Performance chart (issue #351).
+      const filterSpec = parseTradeManagementFilters(req.query);
 
-      logger.info('[TRADE-MGMT] getTradesForSelection called', { userId, symbol, startDate, endDate, limit, offset, accounts });
+      logger.info('[TRADE-MGMT] getTradesForSelection called', { userId, filters: filterSpec, limit, offset });
 
-      // Filter once, then number the same filtered trade set used by R-Performance.
-      let query = `
-        WITH filtered_trades AS (
-          SELECT
-            t.*
-          FROM trades t
-          WHERE t.user_id = $1
-            AND t.exit_price IS NOT NULL
-        `;
-      const values = [userId];
-      let paramCount = 2;
+      // Shared WHERE clause so the selector list, its trade numbering, and the
+      // R-Performance chart all reflect the same filtered set.
+      const { whereClause, values, paramCount } = await TradeQueries._buildWhereClause(userId, filterSpec);
 
-      if (startDate) {
-        query += ` AND t.trade_date >= $${paramCount}`;
-        values.push(startDate);
-        paramCount++;
-      }
-
-      if (endDate) {
-        query += ` AND t.trade_date <= $${paramCount}`;
-        values.push(endDate);
-        paramCount++;
-      }
-
-      if (symbol && symbol.trim()) {
-        const searchSymbol = symbol.trim();
-        query += ` AND UPPER(t.symbol) LIKE UPPER($${paramCount})`;
-        values.push(`%${searchSymbol}%`);
-        paramCount++;
-        logger.info('[TRADE-MGMT] Searching for symbol:', searchSymbol);
-      }
-
-      ({ query, paramCount } = appendAccountFilter(query, values, paramCount, 't.account_identifier', accounts));
-
-      query += `
-        ),
-        numbered_trades AS (
+      // numbered_trades numbers the SAME filtered set the R-Performance chart
+      // uses (closed trades with a stop loss, chronological) so trade_number
+      // matches the chart. The outer query shows all closed trades so users can
+      // still add stop losses to trades that lack them.
+      const query = `
+        WITH numbered_trades AS (
           SELECT
             id,
             ROW_NUMBER() OVER (ORDER BY trade_date ASC, id ASC) as trade_number
-          FROM filtered_trades
-          WHERE stop_loss IS NOT NULL
+          FROM trades t
+          ${whereClause}
+            AND t.exit_price IS NOT NULL
+            AND t.stop_loss IS NOT NULL
         )
         SELECT
           t.id, t.symbol, t.trade_date, t.entry_time, t.exit_time, t.entry_price, t.exit_price,
@@ -799,14 +878,16 @@ const tradeManagementController = {
           t.account_identifier,
           t.manual_target_hit_first, t.target_hit_analysis,
           nt.trade_number
-        FROM filtered_trades t
+        FROM trades t
         LEFT JOIN numbered_trades nt ON t.id = nt.id
+        ${whereClause}
+          AND t.exit_price IS NOT NULL
+        ORDER BY t.trade_date DESC, t.entry_time DESC
+        LIMIT $${paramCount} OFFSET $${paramCount + 1}
       `;
+      const queryValues = [...values, limit, offset];
 
-      query += ` ORDER BY t.trade_date DESC, t.entry_time DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
-      values.push(parseInt(limit), parseInt(offset));
-
-      const result = await db.query(query, values);
+      const result = await db.query(query, queryValues);
       logger.info('[TRADE-MGMT] Query returned', result.rows.length, 'trades');
 
       // Add flags for missing data
@@ -818,53 +899,23 @@ const tradeManagementController = {
         has_target_hit_data: !!trade.manual_target_hit_first || !!trade.target_hit_analysis
       }));
 
-      // Get total count for pagination
-      let countQuery = `
+      // Get total count for pagination (reuses the same WHERE clause + values)
+      const countQuery = `
         SELECT COUNT(*) as total
-        FROM trades
-        WHERE user_id = $1
-          AND exit_price IS NOT NULL
+        FROM trades t
+        ${whereClause}
+          AND t.exit_price IS NOT NULL
       `;
-      const countValues = [userId];
-      let countParamCount = 2;
-
-      if (startDate) {
-        countQuery += ` AND trade_date >= $${countParamCount}`;
-        countValues.push(startDate);
-        countParamCount++;
-      }
-
-      if (endDate) {
-        countQuery += ` AND trade_date <= $${countParamCount}`;
-        countValues.push(endDate);
-        countParamCount++;
-      }
-
-      if (symbol && symbol.trim()) {
-        const searchSymbol = symbol.trim();
-        countQuery += ` AND UPPER(symbol) LIKE UPPER($${countParamCount})`;
-        countValues.push(`%${searchSymbol}%`);
-        countParamCount++;
-      }
-
-      ({ query: countQuery, paramCount: countParamCount } = appendAccountFilter(
-        countQuery,
-        countValues,
-        countParamCount,
-        'account_identifier',
-        accounts
-      ));
-
-      const countResult = await db.query(countQuery, countValues);
+      const countResult = await db.query(countQuery, values);
       const total = parseInt(countResult.rows[0].total);
 
       res.json({
         trades,
         pagination: {
           total,
-          limit: parseInt(limit),
-          offset: parseInt(offset),
-          has_more: parseInt(offset) + trades.length < total
+          limit,
+          offset,
+          has_more: offset + trades.length < total
         }
       });
     } catch (error) {
@@ -1314,52 +1365,49 @@ const tradeManagementController = {
   async getRPerformance(req, res) {
     try {
       const userId = req.user.id;
-      const { startDate, endDate, limit = 2000 } = req.query;
-      const symbol = ensureString(req.query.symbol);
-      const accounts = ensureString(req.query.accounts);
+      const limit = parseInt(req.query.limit) || 2000;
+      // Full Performance-page filter set, applied via the shared WHERE builder so
+      // statistics stay consistent with the rest of the app (issue #351).
+      const filterSpec = parseTradeManagementFilters(req.query);
 
-      logger.info('[TRADE-MGMT] getRPerformance called', { userId, symbol, startDate, endDate, limit, accounts });
+      logger.info('[TRADE-MGMT] getRPerformance called', { userId, filters: filterSpec, limit });
 
       // Get trades with stop_loss set (required for R calculation)
       // Fetch executions so Management R and execution-based logic match getRMultipleAnalysis
       // Include commission, fees, and instrument fields for commission-adjusted R calculations
-      let query = `
+      const { whereClause, values, paramCount } = await TradeQueries._buildWhereClause(userId, filterSpec);
+
+      // Classify break-even with the SAME tolerance-aware predicate the dashboard
+      // analytics use (gross P&L within the user's configured tick tolerance),
+      // not the naive actual_r == 0. Otherwise a small win inside the tolerance
+      // band counts as a win here but as break-even on the dashboard, so the W/L/BE
+      // splits disagree for the same filtered trades (issue #351).
+      const breakevenConfig = await getBreakevenToleranceConfig(userId);
+      const be = breakevenPredicate({
+        gross: '(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0))',
+        tickSize: 'tick_size',
+        pointValue: 'point_value',
+        quantity: 'quantity',
+        underlying: 'underlying_asset'
+      }, breakevenConfig);
+
+      const query = `
         SELECT
           id, symbol, trade_date, entry_price, exit_price,
-          quantity, side, pnl, stop_loss, take_profit,
+          quantity, side, pnl, stop_loss, take_profit, r_value,
           take_profit_targets, management_r, risk_level_history,
           manual_target_hit_first, executions,
-          commission, fees, instrument_type, contract_size, point_value
-        FROM trades
-        WHERE user_id = $1
-          AND exit_price IS NOT NULL
-          AND stop_loss IS NOT NULL
+          commission, fees, instrument_type, contract_size, point_value,
+          underlying_asset,
+          (${be.is}) AS is_breakeven
+        FROM trades t
+        ${whereClause}
+          AND t.exit_price IS NOT NULL
+          AND t.stop_loss IS NOT NULL
+        ORDER BY t.trade_date ASC, t.id ASC
+        LIMIT $${paramCount}
       `;
-      const values = [userId];
-      let paramCount = 2;
-
-      if (startDate) {
-        query += ` AND trade_date >= $${paramCount}`;
-        values.push(startDate);
-        paramCount++;
-      }
-
-      if (endDate) {
-        query += ` AND trade_date <= $${paramCount}`;
-        values.push(endDate);
-        paramCount++;
-      }
-
-      if (symbol && symbol.trim()) {
-        query += ` AND UPPER(symbol) LIKE UPPER($${paramCount})`;
-        values.push(`%${symbol.trim()}%`);
-        paramCount++;
-      }
-
-      ({ query, paramCount } = appendAccountFilter(query, values, paramCount, 'account_identifier', accounts));
-
-      query += ` ORDER BY trade_date ASC, id ASC LIMIT $${paramCount}`;
-      values.push(parseInt(limit));
+      values.push(limit);
 
       const result = await db.query(query, values);
       logger.info('[TRADE-MGMT] Found', result.rows.length, 'trades with stop_loss for R analysis');
@@ -1395,6 +1443,11 @@ const tradeManagementController = {
       let cumulativeActualR = 0;
       let cumulativePotentialR = 0;
       let cumulativeManagementR = 0;
+      // Actual R summed over ONLY the trades that have a target, so
+      // "R left on the table" compares like-for-like (potential vs actual on
+      // the same trade set). Subtracting all-trades actual R would skew the
+      // metric toward the negative of actual R when few trades have targets.
+      let actualRForTargetTrades = 0;
       let tradesWithTarget = 0;
       let tradesWithManagementR = 0;
 
@@ -1425,6 +1478,7 @@ const tradeManagementController = {
 
         if (tradeTargetR !== null) {
           cumulativePotentialR += tradeTargetR;
+          actualRForTargetTrades += actualR;
         }
 
         const tradeManagementR = analysis.management_r != null ? Math.round(analysis.management_r * 100) / 100 : 0;
@@ -1454,6 +1508,7 @@ const tradeManagementController = {
           trade_date: trade.trade_date,
           side: trade.side,
           pnl: trade.pnl,
+          is_breakeven: trade.is_breakeven === true,
           actual_r: actualR,
           target_r: tradeTargetR,
           management_r: tradeManagementR !== 0 ? tradeManagementR : null
@@ -1465,11 +1520,25 @@ const tradeManagementController = {
       const totalActualR = Math.round(cumulativeActualR * 100) / 100;
       const totalPotentialR = Math.round(cumulativePotentialR * 100) / 100;
       const totalManagementR = Math.round(cumulativeManagementR * 100) / 100;
-      const rLeftOnTable = Math.round((totalPotentialR - totalActualR) * 100) / 100;
-      // Calculate win rate and average R
-      const winningTrades = tradeDetails.filter(t => t.actual_r > 0);
-      const losingTrades = tradeDetails.filter(t => t.actual_r < 0);
+      // Only meaningful for trades with a defined target; compared against the
+      // actual R of those same trades (not all stop-defined trades).
+      const rLeftOnTable = Math.round((totalPotentialR - actualRForTargetTrades) * 100) / 100;
+      // Calculate win rate and average R. Wins/losses are decided by NET P&L
+      // among the non-break-even trades, and break-even uses the dashboard's
+      // tolerance-aware predicate (is_breakeven), so the W/L/BE split matches the
+      // dashboard for the same filtered trades and still reconciles with
+      // total_trades (issue #351). A small win inside the user's break-even
+      // tolerance is classified BE here too, not as a +R win.
+      const winningTrades = tradeDetails.filter(t => !t.is_breakeven && Number(t.pnl) > 0);
+      const losingTrades = tradeDetails.filter(t => !t.is_breakeven && Number(t.pnl) < 0);
+      const breakEvenTrades = totalTrades - winningTrades.length - losingTrades.length;
       const winRate = totalTrades > 0 ? Math.round((winningTrades.length / totalTrades) * 100) : 0;
+      // Win rate among decisive (non-break-even) trades only, matching the
+      // dashboard's "excl. BE" stat (issue #351 follow-up).
+      const decisiveTrades = winningTrades.length + losingTrades.length;
+      const winRateExcludingBreakeven = decisiveTrades > 0
+        ? Math.round((winningTrades.length / decisiveTrades) * 100)
+        : 0;
       const avgWinR = winningTrades.length > 0
         ? Math.round((winningTrades.reduce((sum, t) => sum + t.actual_r, 0) / winningTrades.length) * 100) / 100
         : 0;
@@ -1493,8 +1562,10 @@ const tradeManagementController = {
           total_management_r: totalManagementR,
           r_left_on_table: rLeftOnTable,
           win_rate: winRate,
+          win_rate_excluding_breakeven: winRateExcludingBreakeven,
           winning_trades: winningTrades.length,
           losing_trades: losingTrades.length,
+          break_even_trades: breakEvenTrades,
           avg_win_r: avgWinR,
           avg_loss_r: avgLossR,
           avg_management_r: avgManagementR

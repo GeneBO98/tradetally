@@ -5,7 +5,7 @@
  * Seeds a single dedicated test user with synthetic trades matching one of the
  * highlight scenarios, runs the full pipeline (aggregates → highlight → AI
  * recap → render), prints the prompt and AI response, and saves the rendered
- * HTML to /tmp for sequenzy upload.
+ * HTML to /tmp for manual preview.
  *
  * Usage:
  *   node scripts/test-ai-weekly-recap.js --scenario overtrading

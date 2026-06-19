@@ -190,7 +190,9 @@ const playbookController = {
 
   async getAnalytics(req, res, next) {
     try {
-      const analytics = await Playbook.getAnalytics(req.user.id);
+      const { accounts } = req.query;
+      const accountsArray = accounts ? String(accounts).split(',').filter(Boolean) : undefined;
+      const analytics = await Playbook.getAnalytics(req.user.id, accountsArray);
       res.json(analytics);
     } catch (error) {
       next(error);

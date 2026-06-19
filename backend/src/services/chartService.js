@@ -56,7 +56,7 @@ class ChartService {
 
   // Get chart data for a trade
   // When billing is enabled (tradetally.io): Finnhub only, Pro users only
-  // When billing is disabled (self-hosted): Finnhub preferred, Alpha Vantage fallback, all users
+  // When billing is disabled (self-hosted): configured market data provider preferred, Alpha Vantage fallback, all users
   static async getTradeChartData(userId, symbol, entryDate, exitDate = null, hostHeader = null) {
     try {
       // Crypto symbols always use CoinGecko regardless of tier/billing
@@ -89,22 +89,22 @@ class ChartService {
         return await finnhub.getTradeChartData(symbol, entryDate, exitDate, userId);
       }
 
-      // Self-hosted mode: Finnhub preferred with Alpha Vantage fallback
+      // Self-hosted mode: configured provider preferred with Alpha Vantage fallback
       if (isProUser && finnhub.isConfigured()) {
-        console.log('Using Finnhub for chart data (self-hosted)');
+        console.log(`Using ${finnhub.displayName} for chart data (self-hosted)`);
         try {
           return await finnhub.getTradeChartData(symbol, entryDate, exitDate, userId);
         } catch (error) {
-          console.warn(`Finnhub failed for symbol ${symbol}: ${error.message}`);
+          console.warn(`${finnhub.displayName} failed for symbol ${symbol}: ${error.message}`);
 
           // Fall back to Alpha Vantage if configured
           if (alphaVantage.isConfigured()) {
-            console.warn(`Falling back to Alpha Vantage due to Finnhub failure (${error.message})`);
+            console.warn(`Falling back to Alpha Vantage due to ${finnhub.displayName} failure (${error.message})`);
             try {
               const chartData = await alphaVantage.getTradeChartData(symbol, entryDate, exitDate);
               chartData.source = 'alphavantage';
               chartData.fallback = true;
-              chartData.fallbackReason = 'Finnhub unavailable';
+              chartData.fallbackReason = `${finnhub.displayName} unavailable`;
               return chartData;
             } catch (avError) {
               console.error(`Alpha Vantage fallback also failed for ${symbol}: ${avError.message}`);
@@ -115,7 +115,7 @@ class ChartService {
             }
           }
 
-          throw new Error(`Chart data unavailable for ${symbol}. This symbol may be delisted, inactive, or not supported by Finnhub. Please try a different symbol like AAPL, MSFT, or GOOGL.`);
+          throw new Error(`Chart data unavailable for ${symbol}. This symbol may be delisted, inactive, or not supported by ${finnhub.displayName}. Please try a different symbol like AAPL, MSFT, or GOOGL.`);
         }
       }
 
@@ -128,7 +128,7 @@ class ChartService {
       }
 
       // Neither service is configured
-      throw new Error('No chart data provider is configured. Please configure either Finnhub or Alpha Vantage API keys.');
+      throw new Error(`No chart data provider is configured. Please configure ${finnhub.providerName === 'fmp' ? 'FMP' : 'Finnhub'} or Alpha Vantage API keys.`);
 
     } catch (error) {
       console.error(`Failed to get chart data for ${symbol}:`, error);
@@ -140,9 +140,14 @@ class ChartService {
   static async getServiceStatus(hostHeader = null) {
     const billingEnabled = await TierService.isBillingEnabled(hostHeader);
     const status = {
+      marketData: {
+        provider: finnhub.providerName || 'finnhub',
+        configured: finnhub.isConfigured(),
+        description: billingEnabled ? 'Finnhub API - Pro charts' : `${finnhub.displayName} API - Premium charts with intraday data`
+      },
       finnhub: {
         configured: finnhub.isConfigured(),
-        description: billingEnabled ? 'Finnhub API - Pro charts' : 'Finnhub API - Premium charts with intraday data'
+        description: billingEnabled ? 'Finnhub API - Pro charts' : `${finnhub.displayName} API - Premium charts with intraday data`
       }
     };
 
@@ -165,15 +170,15 @@ class ChartService {
 
     const stats = {
       userTier: userTier || 'free',
-      preferredService: 'finnhub'
+      preferredService: finnhub.providerName || 'finnhub'
     };
 
-    // Add Finnhub stats
+    // Add market data provider stats
     if (finnhub.isConfigured()) {
-      stats.finnhub = {
+      stats[finnhub.providerName || 'finnhub'] = {
         configured: true,
-        rateLimitPerMinute: 150,
-        rateLimitPerSecond: 30
+        rateLimitPerMinute: finnhub.maxCallsPerMinute,
+        rateLimitPerSecond: finnhub.maxCallsPerSecond
       };
     }
 

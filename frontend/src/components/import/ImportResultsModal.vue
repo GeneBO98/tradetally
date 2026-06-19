@@ -443,9 +443,18 @@ const importStatus = computed(() => {
   return 'success'
 })
 
+const allDuplicates = computed(() => {
+  return props.tradesImported === 0 &&
+    (props.duplicatesSkipped || 0) === 0 &&
+    (props.diagnostics?.duplicateExecutions || 0) > 0
+})
+
 const title = computed(() => {
   if (props.tradesImported === 0 && props.failedTrades?.length > 0) {
     return 'Import Failed'
+  }
+  if (allDuplicates.value) {
+    return 'Already Imported'
   }
   if (props.tradesImported === 0) {
     return 'No Trades Imported'
@@ -485,7 +494,8 @@ const isSupportedBroker = computed(() => {
 })
 
 const showNeedHelp = computed(() => {
-  return props.tradesImported === 0 && isSupportedBroker.value
+  // An all-duplicates re-import is expected behaviour, not a problem to debug.
+  return props.tradesImported === 0 && isSupportedBroker.value && !allDuplicates.value
 })
 
 const zeroTradeReason = computed(() => {

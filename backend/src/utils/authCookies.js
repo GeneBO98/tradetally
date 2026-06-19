@@ -10,8 +10,18 @@ function parseUrl(value) {
   }
 }
 
+function getForwardedProto(req) {
+  const value = req.headers?.['x-forwarded-proto'];
+  const firstValue = Array.isArray(value) ? value[0] : value;
+
+  return typeof firstValue === 'string'
+    ? firstValue.split(',')[0].trim().toLowerCase()
+    : null;
+}
+
 function getRequestOrigin(req) {
-  const protocol = req.secure ? 'https' : req.protocol || 'http';
+  const forwardedProto = getForwardedProto(req);
+  const protocol = req.secure ? 'https' : forwardedProto || req.protocol || 'http';
   const host = req.get?.('host') || req.headers.host;
   return host ? parseUrl(`${protocol}://${host}`) : null;
 }
@@ -31,19 +41,31 @@ function isSecureRequest(req) {
   const requestOrigin = getRequestOrigin(req);
   const hostname = requestOrigin?.hostname;
   const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
-  return process.env.NODE_ENV === 'production'
-    || req.secure
-    || req.headers['x-forwarded-proto'] === 'https'
+  // The browser's Origin header proves the user-facing connection is https
+  // even when an intermediate proxy rewrote X-Forwarded-Proto to http
+  // (e.g. the bundled nginx behind an outer TLS-terminating proxy). Marking
+  // the cookie Secure based on it is fail-closed: worst case the cookie is
+  // simply not sent over a later plain-http request.
+  const browserOrigin = parseUrl(req.headers?.origin);
+  return req.secure
+    || getForwardedProto(req) === 'https'
     || Boolean(requestOrigin && requestOrigin.protocol === 'https:')
+    || browserOrigin?.protocol === 'https:'
     || isLocalhost;
 }
 
 function getCookieBaseOptions(req) {
   const crossOrigin = isCrossOriginRequest(req);
+  const secure = isSecureRequest(req);
 
   return {
-    secure: isSecureRequest(req),
-    sameSite: crossOrigin ? 'none' : 'lax',
+    secure,
+    // SameSite=None requires Secure — browsers reject None on insecure
+    // cookies outright, so an insecure cross-origin request falls back to
+    // lax (a lax cookie at least persists; a rejected one never exists).
+    // This also covers proxies that strip the port from the Host header,
+    // which makes same-origin requests look cross-origin (issue #347).
+    sameSite: crossOrigin && secure ? 'none' : 'lax',
     path: '/'
   };
 }
