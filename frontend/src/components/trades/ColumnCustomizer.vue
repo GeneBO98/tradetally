@@ -170,7 +170,7 @@ const defaultColumns = [
   { key: 'exit', label: 'Exit', visible: true, width: 'auto' },
   { key: 'pnl', label: 'Net P&L', visible: true, width: 'auto' },
   { key: 'grossPnl', label: 'Gross P&L', visible: true, width: 'auto' },
-  { key: 'unrealizedPnl', label: 'Unrealized', visible: false, width: 'auto' },
+  { key: 'unrealizedPnl', label: 'Unrealized', visible: true, width: 'auto' },
   { key: 'confidence', label: 'Confidence', visible: true, width: 'auto' },
   { key: 'quality', label: 'Quality', visible: true, width: 'auto' },
   { key: 'sector', label: 'Sector', visible: true, width: 'auto' },

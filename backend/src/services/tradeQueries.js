@@ -431,6 +431,7 @@ class TradeQueries {
       SELECT t.*,
         t.strategy, t.setup,
         pm.current_price,
+        pm.last_updated as current_price_updated_at,
         array_agg(DISTINCT ta.file_url) FILTER (WHERE ta.id IS NOT NULL) as attachment_urls,
         (SELECT array_agg(tch.chart_url ORDER BY tch.uploaded_at ASC) FROM trade_charts tch WHERE tch.trade_id = t.id) as chart_urls,
         count(DISTINCT tc.id)::integer as comment_count,
@@ -445,7 +446,7 @@ class TradeQueries {
       LEFT JOIN trade_comments tc ON t.id = tc.trade_id
       LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
       LEFT JOIN trade_position_groups tpg ON t.position_group_id = tpg.id
-      GROUP BY t.id, pm.current_price, sc.finnhub_industry, sc.company_name, tpg.detected_strategy, tpg.leg_count
+      GROUP BY t.id, pm.current_price, pm.last_updated, sc.finnhub_industry, sc.company_name, tpg.detected_strategy, tpg.leg_count
       ORDER BY t.trade_date DESC, t.entry_time DESC
     `;
 

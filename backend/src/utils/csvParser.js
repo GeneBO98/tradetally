@@ -8687,14 +8687,24 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         // We check for ';P' or standalone 'P' to distinguish from 'EP' (Expired)
         // This is just a HINT - we'll still process the transaction even if we can't find the position
         const hasPartialCode = transactionCode && (transactionCode.includes(';P') || transactionCode === 'P' || transactionCode.startsWith('P;'));
-        const isCloseOnly = transactionCode && transactionCode.includes('C') &&
+        const isExplicitCloseOnly = transactionCode && transactionCode.includes('C') &&
                            !transactionCode.includes('O') && !hasPartialCode;
+        const hasOpeningExecutionInImport = symbolTransactions.some(tx => tx.action === 'buy');
+        const isUnpairedStockSell = transaction.action === 'sell' &&
+                           instrumentData.instrumentType === 'stock' &&
+                           !existingPosition &&
+                           !hasOpeningExecutionInImport &&
+                           !(transactionCode && transactionCode.includes('O'));
+        const isCloseOnly = isExplicitCloseOnly || isUnpairedStockSell;
 
         if (isCloseOnly) {
           // Code='C' or 'A;C' indicates this should close an existing position, but we don't have one loaded
           // Instead of creating an incorrect open position, create a completed "close-only" trade
           // This represents a position that was opened outside this import and is now being closed
-          console.log(`  → [CLOSE-ONLY] Code='${transactionCode}' is a closing transaction without existing position`);
+          const closeOnlyReason = isExplicitCloseOnly
+            ? `Code='${transactionCode}' is a closing transaction without existing position`
+            : 'sell-only stock execution has no opening buy or existing position';
+          console.log(`  → [CLOSE-ONLY] ${closeOnlyReason}`);
           console.log(`  → Creating completed close-only trade for: ${transaction.action} ${qty} ${symbol} @ $${transaction.price}`);
 
           // For close-only transactions, determine the original trade direction:
@@ -8705,8 +8715,27 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
           // Calculate P&L: For close-only, we only have the exit value and commission
           // The entry value is unknown, so we use the close price as entry (P&L = -commission only)
           // This is a best-effort approach when the opening transaction is missing
-          const closeValue = qty * transaction.price * valueMultiplier;
           const pnl = -(transaction.fees || 0); // Only commission loss since we don't know entry
+          const syntheticOpeningExecution = {
+            action: originalSide === 'short' ? 'sell' : 'buy',
+            quantity: qty,
+            price: transaction.price,
+            datetime: transaction.datetime,
+            fees: 0,
+            conid: transaction.conid,
+            orderId: transaction.orderId ? `${transaction.orderId}-synthetic-open` : null,
+            synthetic: true,
+            synthetic_reason: 'missing_opening_execution'
+          };
+          const closingExecution = {
+            action: transaction.action,
+            quantity: qty,
+            price: transaction.price,
+            datetime: transaction.datetime,
+            fees: transaction.fees || 0,
+            conid: transaction.conid,
+            orderId: transaction.orderId || null
+          };
 
           const closeOnlyTrade = {
             symbol: symbol,
@@ -8724,25 +8753,11 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
             fees: 0,
             broker: brokerTag,
             accountIdentifier: transaction.accountIdentifier,
-            executions: [{
-              action: transaction.action,
-              quantity: qty,
-              price: transaction.price,
-              datetime: transaction.datetime,
-              fees: transaction.fees || 0,
-              conid: transaction.conid,
-              orderId: transaction.orderId || null
-            }],
-            executionData: [{
-              action: transaction.action,
-              quantity: qty,
-              price: transaction.price,
-              datetime: transaction.datetime,
-              fees: transaction.fees || 0,
-              conid: transaction.conid,
-              orderId: transaction.orderId || null
-            }],
-            notes: `Close-only trade: ${originalSide} position closed via ${transactionCode}. Opening transaction not in import.`,
+            executions: [syntheticOpeningExecution, closingExecution],
+            executionData: [syntheticOpeningExecution, closingExecution],
+            notes: isExplicitCloseOnly
+              ? `Close-only trade: ${originalSide} position closed via ${transactionCode}. Opening transaction not in import.`
+              : `Close-only trade: ${originalSide} position closed from an imported sell without a matching opening buy. Opening lot may have come from a transfer or external broker.`,
             isCloseOnly: true
           };
 

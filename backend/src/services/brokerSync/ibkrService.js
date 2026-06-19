@@ -595,7 +595,7 @@ class IBKRService {
         id: row.id,
         symbol: row.symbol,
         side: row.side,
-        quantity: parseInt(row.quantity),
+        quantity: parseFloat(row.quantity) || 0,
         entryPrice: parseFloat(row.entry_price),
         entryTime: row.entry_time,
         tradeDate: row.trade_date,

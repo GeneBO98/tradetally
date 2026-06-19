@@ -51,6 +51,7 @@ describe('TradeQueries.findByUser characterization', () => {
       const { sql, values } = captureQuery();
       expect(values).toEqual(['user-1']);
       expect(sql).toContain('WHERE t.user_id = $1');
+      expect(sql).toContain('pm.last_updated as current_price_updated_at');
       // Sample-tagged trades are no longer excluded by the WHERE builder; they
       // are treated as normal trades and removed via the dedicated action.
       expect(sql).not.toContain("NOT COALESCE('sample' = ANY(t.tags), false)");

@@ -93,6 +93,59 @@ describe('csvParser timezone handling', () => {
     expect(result.trades[0].fees).toBe(0.42);
   });
 
+  test('parses IBKR sell-only stock execution as close-only instead of an open short', async () => {
+    const csv = [
+      'Symbol,Quantity,Buy/Sell,Price,Date/Time,Commission,LevelOfDetail,TradeID,Conid,AssetClass',
+      'IBKR,0.0228,SELL,81.67,2026-04-20 10:25:08,-0.018663565,EXECUTION,9349469033,43645865,STK'
+    ].join('\n');
+
+    const result = await parseCSV(Buffer.from(csv), 'ibkr_trade_confirmation', {
+      tradeGroupingSettings: { enabled: false }
+    });
+
+    expect(result.trades).toHaveLength(1);
+    const trade = result.trades[0];
+    expect(trade.side).toBe('long');
+    expect(trade.quantity).toBeCloseTo(0.0228, 8);
+    expect(trade.entryPrice).toBe(81.67);
+    expect(trade.exitPrice).toBe(81.67);
+    expect(trade.exitTime).toBe(trade.entryTime);
+    expect(trade.isCloseOnly).toBe(true);
+    expect(trade.pnl).toBeCloseTo(-0.018663565, 8);
+    expect(trade.executions).toHaveLength(2);
+    expect(trade.executions.find(exec => exec.synthetic)).toMatchObject({
+      action: 'buy',
+      synthetic: true,
+      synthetic_reason: 'missing_opening_execution'
+    });
+    expect(trade.executions.find(exec => !exec.synthetic)).toMatchObject({
+      action: 'sell',
+      orderId: '9349469033'
+    });
+  });
+
+  test('keeps explicit IBKR sell-to-open stock execution as an open short', async () => {
+    const csv = [
+      'Symbol,Quantity,Buy/Sell,Price,Date/Time,Commission,LevelOfDetail,TradeID,Conid,AssetClass,Notes/Codes',
+      'TSLA,5,SELL,210.50,2026-04-20 10:25:08,-1.25,EXECUTION,short-open-1,12345,STK,O'
+    ].join('\n');
+
+    const result = await parseCSV(Buffer.from(csv), 'ibkr_trade_confirmation', {
+      tradeGroupingSettings: { enabled: false }
+    });
+
+    expect(result.trades).toHaveLength(1);
+    const trade = result.trades[0];
+    expect(trade.side).toBe('short');
+    expect(trade.quantity).toBe(5);
+    expect(trade.entryPrice).toBe(210.5);
+    expect(trade.exitPrice).toBeNull();
+    expect(trade.pnl).toBeNull();
+    expect(trade.isCloseOnly).toBeUndefined();
+    expect(trade.executions).toHaveLength(1);
+    expect(trade.executions[0].synthetic).toBeUndefined();
+  });
+
   test('keeps legacy custom fees mappings as combined commission and fees', async () => {
     const csv = [
       'Symbol,Trade Date,Qty,Entry Price,Exit Price,Fees and Commission',

@@ -96,6 +96,40 @@ describe('pnlEngine.computeTradePnl', () => {
       nearly(aggregate.pnl, 0);
     });
 
+    test('synthetic close-only basis closes at zero gross P&L with real exit fees', () => {
+      const { annotatedExecutions, aggregate } = computeTradePnl({
+        side: 'long',
+        instrumentType: 'stock',
+        executions: [
+          {
+            action: 'buy',
+            quantity: 0.0228,
+            price: 81.67,
+            datetime: '2026-04-20T10:25:08Z',
+            fees: 0,
+            synthetic: true,
+            synthetic_reason: 'missing_opening_execution'
+          },
+          {
+            action: 'sell',
+            quantity: 0.0228,
+            price: 81.67,
+            datetime: '2026-04-20T10:25:08Z',
+            fees: 0.018663565
+          }
+        ],
+        timezone: 'UTC'
+      });
+
+      const sellExec = annotatedExecutions.find((e) => e.action === 'sell');
+      nearly(sellExec.realized_pnl, -0.018663565, 0.0000001);
+      nearly(aggregate.pnl, -0.018663565, 0.0000001);
+      expect(aggregate.entry_price).toBe(81.67);
+      expect(aggregate.exit_price).toBe(81.67);
+      expect(aggregate.quantity).toBeCloseTo(0.0228, 8);
+      expect(aggregate.is_fully_closed).toBe(true);
+    });
+
     test('respects unsorted input order (chronological sort)', () => {
       const { aggregate } = computeTradePnl({
         side: 'long',

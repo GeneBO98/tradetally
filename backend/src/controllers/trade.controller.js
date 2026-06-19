@@ -199,6 +199,7 @@ function getPositiveIntEnv(name, fallback) {
 
 const OPEN_POSITIONS_ALPACA_TIMEOUT_MS = getPositiveIntEnv('OPEN_POSITIONS_ALPACA_TIMEOUT_MS', 3000);
 const OPEN_POSITIONS_FINNHUB_TIMEOUT_MS = getPositiveIntEnv('OPEN_POSITIONS_FINNHUB_TIMEOUT_MS', 3000);
+const TRADE_LIST_PRICE_FRESH_MS = getPositiveIntEnv('TRADE_LIST_PRICE_FRESH_MS', 2 * 60 * 1000);
 
 function getPositiveInt(value) {
   const parsed = parseInt(value, 10);
@@ -425,6 +426,112 @@ function enrichOpenTradePnL(trade) {
 
 const TRADE_DETAIL_QUOTE_TIMEOUT_MS = OPEN_POSITIONS_FINNHUB_TIMEOUT_MS;
 
+function isOpenTradeForQuoteHydration(trade) {
+  const isOpen = !trade.exit_price && !trade.exit_time;
+  const instrumentType = trade.instrument_type || trade.instrumentType || 'stock';
+  return isOpen && instrumentType !== 'option';
+}
+
+function isFreshPositivePrice(trade) {
+  const price = Number(trade.current_price);
+  if (!Number.isFinite(price) || price <= 0) return false;
+
+  const updatedAt = trade.current_price_updated_at || trade.currentPriceUpdatedAt;
+  if (!updatedAt) return false;
+
+  const updatedTime = new Date(updatedAt).getTime();
+  return Number.isFinite(updatedTime) && Date.now() - updatedTime <= TRADE_LIST_PRICE_FRESH_MS;
+}
+
+async function persistTradeListQuote(symbol, quote) {
+  const currentPrice = Number(quote?.c);
+  if (!symbol || !Number.isFinite(currentPrice) || currentPrice <= 0) return;
+
+  const previousClose = Number(quote?.pc) || 0;
+  const priceChange = Number.isFinite(Number(quote?.d))
+    ? Number(quote.d)
+    : (previousClose > 0 ? currentPrice - previousClose : 0);
+  const percentChange = Number.isFinite(Number(quote?.dp))
+    ? Number(quote.dp)
+    : (previousClose > 0 ? (priceChange / previousClose) * 100 : 0);
+
+  try {
+    await db.query(`
+      INSERT INTO price_monitoring (symbol, current_price, previous_price, price_change, percent_change, high_of_day, low_of_day, open_price, data_source)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      ON CONFLICT (symbol) DO UPDATE SET
+        previous_price = $3,
+        current_price = $2,
+        price_change = $4,
+        percent_change = $5,
+        high_of_day = COALESCE($6, price_monitoring.high_of_day),
+        low_of_day = COALESCE($7, price_monitoring.low_of_day),
+        open_price = COALESCE($8, price_monitoring.open_price),
+        last_updated = CURRENT_TIMESTAMP,
+        data_source = $9
+    `, [
+      symbol,
+      currentPrice,
+      previousClose,
+      priceChange,
+      percentChange,
+      Number.isFinite(Number(quote?.h)) ? Number(quote.h) : null,
+      Number.isFinite(Number(quote?.l)) ? Number(quote.l) : null,
+      Number.isFinite(Number(quote?.o)) ? Number(quote.o) : null,
+      finnhub.providerName || 'market_data'
+    ]);
+  } catch (error) {
+    console.warn('[TRADE-LIST] Failed to persist quote for', symbol, '-', error.message);
+  }
+}
+
+async function hydrateOpenTradePrices(trades, userId) {
+  const openTrades = trades.filter(isOpenTradeForQuoteHydration);
+  if (openTrades.length === 0) return;
+
+  const symbolsToFetch = new Set();
+  for (const trade of openTrades) {
+    if (isFreshPositivePrice(trade)) continue;
+
+    // Do not let stale price_monitoring rows drive current unrealized P&L.
+    trade.current_price = null;
+    const symbol = trade.underlying_symbol || trade.symbol;
+    if (symbol) symbolsToFetch.add(String(symbol).toUpperCase());
+  }
+
+  if (symbolsToFetch.size === 0 || !finnhub.isConfigured()) return;
+
+  try {
+    const symbols = [...symbolsToFetch];
+    const quotes = await timeAsyncOperation('tradeList.finnhubQuoteFetch', () => withTimeout(
+      finnhub.getBatchQuotes(symbols, {
+        source: 'trade_list',
+        priority: 0,
+        userId,
+        maxQueueWaitMs: OPEN_POSITIONS_FINNHUB_TIMEOUT_MS
+      }),
+      OPEN_POSITIONS_FINNHUB_TIMEOUT_MS,
+      'Trade list quote fetch'
+    ));
+
+    const persistJobs = [];
+    for (const trade of openTrades) {
+      const symbol = String(trade.underlying_symbol || trade.symbol || '').toUpperCase();
+      const quote = quotes?.[symbol];
+      const price = Number(quote?.c);
+      if (!Number.isFinite(price) || price <= 0) continue;
+
+      trade.current_price = price;
+      trade.currentPrice = price;
+      persistJobs.push(persistTradeListQuote(symbol, quote));
+    }
+
+    await Promise.allSettled(persistJobs);
+  } catch (error) {
+    console.warn('[TRADE-LIST] Quote hydration failed:', error.message);
+  }
+}
+
 // Best-effort current price for a single open stock/futures position, using the
 // same sources as the dashboard Open Positions table: the price_monitoring cache
 // (kept warm by the price monitor) first, then a single Finnhub quote. Never
@@ -528,6 +635,8 @@ const tradeController = {
       console.log('[PERF] About to call TradeQueries.findByUser, elapsed:', Date.now() - requestStartTime, 'ms');
       const trades = await TradeQueries.findByUser(req.user.id, filters);
       console.log('[PERF] TradeQueries.findByUser completed, elapsed:', Date.now() - requestStartTime, 'ms');
+
+      await hydrateOpenTradePrices(trades, req.user.id);
 
       // Map snake_case database fields to camelCase for API response
       trades.forEach(trade => {
@@ -2031,7 +2140,7 @@ const tradeController = {
               id: row.id,
               symbol: row.symbol,
               side: row.side,
-              quantity: parseInt(row.quantity),
+              quantity: parseFloat(row.quantity) || 0,
               entryPrice: parseFloat(row.entry_price),
               entryTime: row.entry_time,
               tradeDate: row.trade_date,
