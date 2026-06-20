@@ -676,7 +676,7 @@ const brokerSyncController = {
 
       let testResult;
 
-      if (String(connection.brokerType).toLowerCase() === 'ibkr') {
+      if (connection.brokerType === 'ibkr') {
         testResult = await ibkrService.validateCredentials(
           connection.ibkrFlexToken,
           connection.ibkrFlexQueryId
@@ -775,22 +775,8 @@ const brokerSyncController = {
         [userId, id]
       );
 
-      let legacyDeletedCount = 0;
-      if (String(connection.brokerType).toLowerCase() === 'ibkr') {
-        const legacyResult = await db.query(
-          `DELETE FROM trades
-           WHERE user_id = $1
-             AND broker_connection_id IS NULL
-             AND LOWER(broker) = LOWER($2)
-             AND import_id IS NULL
-           RETURNING id`,
-          [userId, connection.brokerType]
-        );
-        legacyDeletedCount = legacyResult.rowCount;
-      }
-
-      const deletedCount = result.rowCount + legacyDeletedCount;
-      console.log(`[BROKER-SYNC] Deleted ${deletedCount} synced trades for connection ${id} (user ${userId}); legacy=${legacyDeletedCount}`);
+      const deletedCount = result.rowCount;
+      console.log(`[BROKER-SYNC] Deleted ${deletedCount} synced trades for connection ${id} (user ${userId})`);
 
       if (deletedCount > 0) {
         await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'broker trade deletion');
@@ -801,8 +787,7 @@ const brokerSyncController = {
       res.json({
         success: true,
         message: `Deleted ${deletedCount} synced trades from ${connection.brokerType}`,
-        deletedCount,
-        legacyDeletedCount
+        deletedCount
       });
     } catch (error) {
       logger.logError('Error deleting broker trades:', error);
