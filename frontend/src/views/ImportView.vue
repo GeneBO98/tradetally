@@ -1191,6 +1191,7 @@
       :duplicates-skipped="importResultsData.duplicatesSkipped"
       :diagnostics="importResultsData.diagnostics"
       :failed-trades="importResultsData.failedTrades"
+      :manual-review-items="importResultsData.manualReviewItems"
       :achievements="importResultsData.achievements"
       :selected-broker="selectedBroker"
       :file-name="selectedFile?.name || ''"
@@ -1200,8 +1201,19 @@
       @close="handleImportResultsClose"
       @load-demo-data="handleLoadDemoData"
       @support-clicked="handleImportSupportClicked"
+      @review-manual-items="openImportManualReview"
       @view-analytics="handleImportResultsViewAnalytics"
       @view-trades="handleImportResultsViewTrades"
+    />
+
+    <ManualTradeReviewModal
+      v-if="showManualReviewModal"
+      :is-open="showManualReviewModal"
+      :items="manualReviewItems"
+      :loading="manualReviewLoading"
+      :error="manualReviewError"
+      @close="showManualReviewModal = false"
+      @submit="handleManualReviewSubmit"
     />
   </Teleport>
 </template>
@@ -1229,6 +1241,7 @@ const AllCusipMappingsModal = defineAsyncComponent(() => import('@/components/cu
 const CSVColumnMappingModal = defineAsyncComponent(() => import('@/components/import/CSVColumnMappingModal.vue'))
 const BrokerMismatchModal = defineAsyncComponent(() => import('@/components/import/BrokerMismatchModal.vue'))
 const ImportResultsModal = defineAsyncComponent(() => import('@/components/import/ImportResultsModal.vue'))
+const ManualTradeReviewModal = defineAsyncComponent(() => import('@/components/import/ManualTradeReviewModal.vue'))
 import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
 import BaseSelect from '@/components/common/BaseSelect.vue'
 import BaseModal from '@/components/common/BaseModal.vue'
@@ -1411,8 +1424,13 @@ const importResultsData = ref({
   duplicatesSkipped: 0,
   diagnostics: null,
   failedTrades: [],
+  manualReviewItems: [],
   achievements: []
 })
+const showManualReviewModal = ref(false)
+const manualReviewItems = ref([])
+const manualReviewLoading = ref(false)
+const manualReviewError = ref('')
 const activeImportStartedAt = ref(null)
 let activeFileAnalysisId = 0
 
@@ -2466,8 +2484,49 @@ function handleImportResultsClose() {
     duplicatesSkipped: 0,
     diagnostics: null,
     failedTrades: [],
+    manualReviewItems: [],
     achievements: []
   }
+}
+
+async function handleManualReviewSubmit(decisions) {
+  manualReviewLoading.value = true
+  manualReviewError.value = ''
+
+  try {
+    const response = await api.post('/trades/import/manual-review', { decisions })
+    const result = response.data || {}
+
+    if (result.failed > 0) {
+      manualReviewError.value = `Saved ${result.imported || 0} trade(s), but ${result.failed} decision(s) failed.`
+      return
+    }
+
+    showManualReviewModal.value = false
+    manualReviewItems.value = []
+
+    if ((result.imported || 0) > 0) {
+      await tradesStore.fetchTrades()
+      await tradesStore.fetchAnalytics()
+    }
+
+    const duplicateText = result.duplicates > 0 ? `, ${result.duplicates} duplicate(s) skipped` : ''
+    showSuccess('Review Saved', `${result.imported || 0} trade(s) imported, ${result.ignored || 0} ignored${duplicateText}.`)
+  } catch (err) {
+    manualReviewError.value = err.response?.data?.error || 'Failed to save review decisions'
+    showError('Review Failed', manualReviewError.value)
+  } finally {
+    manualReviewLoading.value = false
+  }
+}
+
+function openImportManualReview() {
+  const items = importResultsData.value.manualReviewItems || []
+  if (items.length === 0) return
+
+  manualReviewItems.value = items
+  manualReviewError.value = ''
+  showManualReviewModal.value = true
 }
 
 async function handleImportResultsViewAnalytics() {
@@ -3120,6 +3179,11 @@ function pollImportStatus(importId) {
         const tradesImported = importLog?.trades_imported || 0
         const duplicatesSkipped = errorDetails.duplicates || 0
         const failedTrades = errorDetails.failedTrades || []
+        const manualReviewItemsForImport = Array.isArray(errorDetails.manual_review_items)
+          ? errorDetails.manual_review_items
+          : (Array.isArray(errorDetails.manualReviewItems)
+              ? errorDetails.manualReviewItems
+              : (Array.isArray(diagnostics?.manual_review_items) ? diagnostics.manual_review_items : []))
 
         // Evaluate the demo-CTA feature only when the user is actually about to
         // see the zero-trades state. This fires the GrowthBook exposure event
@@ -3131,16 +3195,23 @@ function pollImportStatus(importId) {
         }
 
         // Show results modal if we have diagnostics or notable stats
-        if (diagnostics || tradesImported > 0 || duplicatesSkipped > 0 || failedTrades.length > 0) {
+        if (diagnostics || tradesImported > 0 || duplicatesSkipped > 0 || failedTrades.length > 0 || manualReviewItemsForImport.length > 0) {
           importResultsData.value = {
             importId,
             tradesImported,
             duplicatesSkipped,
             diagnostics,
             failedTrades,
+            manualReviewItems: manualReviewItemsForImport,
             achievements: []
           }
           showImportResultsModal.value = true
+        }
+
+        if (manualReviewItemsForImport.length > 0) {
+          manualReviewItems.value = manualReviewItemsForImport
+          manualReviewError.value = ''
+          showManualReviewModal.value = true
         }
 
         // Show actionable help when 0 trades imported

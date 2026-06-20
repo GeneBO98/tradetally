@@ -32,6 +32,7 @@ const {
   getBrokerLookupNames
 } = require('../services/brokerFeeApplicationService');
 const OptionStrategyGroupingService = require('../services/optionStrategyGroupingService');
+const AmbiguousTradeReviewService = require('../services/ambiguousTradeReviewService');
 
 function marketDataApiKeyName() {
   return finnhub.providerName === 'fmp' ? 'FMP_API_KEY' : 'FINNHUB_API_KEY';
@@ -2250,6 +2251,7 @@ const tradeController = {
             existingExecutions,
             userId: req.user.id,
             fileName,
+            importId,
             userTimezone,
             tradeGroupingSettings: {
               enabled: userSettings.enable_trade_grouping ?? true,
@@ -2265,6 +2267,9 @@ const tradeController = {
           let trades = Array.isArray(parseResult) ? parseResult : parseResult.trades;
           const unresolvedCusips = parseResult.unresolvedCusips || [];
           const parseDiagnostics = parseResult.diagnostics || null;
+          const manualReviewItems = Array.isArray(parseResult.manualReviewItems)
+            ? parseResult.manualReviewItems
+            : (Array.isArray(parseDiagnostics?.manual_review_items) ? parseDiagnostics.manual_review_items : []);
 
           // Track additional scenarios for unknown_csv_headers
           if (parseDiagnostics) {
@@ -2762,6 +2767,10 @@ const tradeController = {
           // Build error_details with diagnostics information
           const errorDetails = {
             duplicates,
+            manualReviewItems,
+            manualReviewCount: manualReviewItems.length,
+            manual_review_items: manualReviewItems,
+            manual_review_count: manualReviewItems.length,
             diagnostics: parseDiagnostics ? {
               totalRows: parseDiagnostics.totalRows,
               parsedRows: parseDiagnostics.parsedRows,
@@ -2773,6 +2782,8 @@ const tradeController = {
               selectedBroker: parseDiagnostics.selectedBroker,
               headerAnalysis: parseDiagnostics.headerAnalysis,
               reason_breakdown: parseDiagnostics.reason_breakdown || [],
+              manual_review_count: parseDiagnostics.manual_review_count || manualReviewItems.length,
+              manual_review_items: manualReviewItems,
               user_summary: parseDiagnostics.user_summary || null
             } : null
           };
@@ -3005,6 +3016,21 @@ const tradeController = {
       }
 
       res.json({ importLog: result.rows[0] });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async resolveManualReviewTrades(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const decisions = req.body?.decisions || [];
+      const result = await AmbiguousTradeReviewService.applyManualReviewDecisions(userId, decisions);
+
+      res.json({
+        success: true,
+        ...result
+      });
     } catch (error) {
       next(error);
     }

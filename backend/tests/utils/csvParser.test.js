@@ -93,7 +93,7 @@ describe('csvParser timezone handling', () => {
     expect(result.trades[0].fees).toBe(0.42);
   });
 
-  test('parses IBKR sell-only stock execution as close-only instead of an open short', async () => {
+  test('flags IBKR sell-only stock execution for manual review instead of importing it', async () => {
     const csv = [
       'Symbol,Quantity,Buy/Sell,Price,Date/Time,Commission,LevelOfDetail,TradeID,Conid,AssetClass',
       'IBKR,0.0228,SELL,81.67,2026-04-20 10:25:08,-0.018663565,EXECUTION,9349469033,43645865,STK'
@@ -103,25 +103,22 @@ describe('csvParser timezone handling', () => {
       tradeGroupingSettings: { enabled: false }
     });
 
-    expect(result.trades).toHaveLength(1);
-    const trade = result.trades[0];
-    expect(trade.side).toBe('long');
-    expect(trade.quantity).toBeCloseTo(0.0228, 8);
-    expect(trade.entryPrice).toBe(81.67);
-    expect(trade.exitPrice).toBe(81.67);
-    expect(trade.exitTime).toBe(trade.entryTime);
-    expect(trade.isCloseOnly).toBe(true);
-    expect(trade.pnl).toBeCloseTo(-0.018663565, 8);
-    expect(trade.executions).toHaveLength(2);
-    expect(trade.executions.find(exec => exec.synthetic)).toMatchObject({
-      action: 'buy',
-      synthetic: true,
-      synthetic_reason: 'missing_opening_execution'
-    });
-    expect(trade.executions.find(exec => !exec.synthetic)).toMatchObject({
+    expect(result.trades).toHaveLength(0);
+    expect(result.manualReviewItems).toHaveLength(1);
+    expect(result.manualReviewItems[0]).toMatchObject({
+      review_type: 'ambiguous_sell_only_stock',
+      broker: 'ibkr',
+      symbol: 'IBKR',
+      quantity: 0.0228,
+      price: 81.67,
+      commission: 0.018663565,
+      conid: '43645865',
+      order_id: '9349469033',
       action: 'sell',
-      orderId: '9349469033'
+      instrument_type: 'stock',
+      available_actions: ['import_as_short', 'import_as_close_only', 'ignore']
     });
+    expect(result.diagnostics.manual_review_count).toBe(1);
   });
 
   test('keeps explicit IBKR sell-to-open stock execution as an open short', async () => {

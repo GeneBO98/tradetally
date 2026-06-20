@@ -208,6 +208,67 @@ describe('broker sync duplicate protection', () => {
     }
   });
 
+  test('IBKR sync returns manual review items from the parser', async () => {
+    const csv = [
+      'Symbol,Quantity,Buy/Sell,Price,Date/Time,Commission,LevelOfDetail,TradeID,Conid,AssetClass',
+      'IBKR,0.0228,SELL,81.67,2026-04-20 10:25:08,-0.018663565,EXECUTION,9349469033,43645865,STK'
+    ].join('\n');
+    const reviewItem = {
+      review_type: 'ambiguous_sell_only_stock',
+      symbol: 'IBKR',
+      quantity: 0.0228,
+      price: 81.67,
+      action: 'sell'
+    };
+
+    parseCSV.mockResolvedValueOnce({
+      trades: [],
+      manualReviewItems: [reviewItem],
+      diagnostics: { warnings: ['1 sell-only stock execution requires manual review before importing.'] }
+    });
+    const requestSpy = jest.spyOn(ibkrService, 'requestFlexReport').mockResolvedValue({ referenceCode: 'ref-1' });
+    const fetchSpy = jest.spyOn(ibkrService, 'fetchFlexReport').mockResolvedValue(csv);
+    const context = { existingPositions: {}, existingExecutions: {}, userId: 'user-1' };
+    const contextSpy = jest.spyOn(ibkrService, 'getExistingContext').mockResolvedValue(context);
+    const importSpy = jest.spyOn(ibkrService, 'importTrades').mockResolvedValue({
+      imported: 0,
+      updated: 0,
+      skipped: 0,
+      failed: 0,
+      duplicates: 0
+    });
+
+    try {
+      const result = await ibkrService.syncTrades({
+        id: 'conn-1',
+        userId: 'user-1',
+        brokerType: 'ibkr',
+        ibkrFlexToken: 'token',
+        ibkrFlexQueryId: 'query'
+      });
+
+      expect(parseCSV).toHaveBeenCalledWith(
+        Buffer.from(csv, 'utf8'),
+        'ibkr',
+        expect.objectContaining({
+          brokerConnectionId: 'conn-1',
+          brokerType: 'ibkr'
+        })
+      );
+      expect(importSpy).toHaveBeenCalledWith('user-1', [], context);
+      expect(result).toMatchObject({
+        imported: 0,
+        manualReviewCount: 1,
+        manualReviewItems: [reviewItem]
+      });
+    } finally {
+      requestSpy.mockRestore();
+      fetchSpy.mockRestore();
+      contextSpy.mockRestore();
+      importSpy.mockRestore();
+    }
+  });
+
   test('IBKR self-describing stock Open Positions derive entry price from total basis', () => {
     const csv = [
       'ClientAccountID,AssetClass,Symbol,Position,CostBasisMoney,Conid',

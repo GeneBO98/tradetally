@@ -121,7 +121,13 @@ class BrokerSyncService {
         tradesImported: result.imported + expiredClosed,
         tradesSkipped: result.skipped,
         tradesFailed: result.failed,
-        duplicatesDetected: result.duplicates
+        duplicatesDetected: result.duplicates,
+        syncDetails: {
+          warnings: result.warnings || [],
+          open_positions_parsed: result.openPositionsParsed || 0,
+          manual_review_count: result.manualReviewCount || 0,
+          manual_review_items: result.manualReviewItems || []
+        }
       });
 
       // Update connection status

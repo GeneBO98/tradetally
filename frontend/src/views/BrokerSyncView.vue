@@ -238,6 +238,7 @@
                   <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
                   <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Imported</th>
                   <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Duplicates</th>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Review</th>
                   <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date</th>
                 </tr>
               </thead>
@@ -262,6 +263,17 @@
                   </td>
                   <td class="px-4 py-3 whitespace-nowrap text-gray-500 dark:text-gray-400">
                     {{ log.duplicatesDetected || 0 }}
+                  </td>
+                  <td class="px-4 py-3 whitespace-nowrap">
+                    <button
+                      v-if="manualReviewItemsFromSyncLog(log).length > 0"
+                      type="button"
+                      class="text-sm font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                      @click="openManualReviewFromSyncLog(log, true)"
+                    >
+                      Review {{ manualReviewItemsFromSyncLog(log).length }}
+                    </button>
+                    <span v-else class="text-sm text-gray-500 dark:text-gray-400">-</span>
                   </td>
                   <td class="px-4 py-3 whitespace-nowrap text-gray-500 dark:text-gray-400">
                     {{ formatDate(log.startedAt) }}
@@ -291,6 +303,16 @@
       @save="handleSettingsSave"
       :loading="store.loading"
     />
+
+    <ManualTradeReviewModal
+      v-if="showManualReviewModal"
+      :is-open="showManualReviewModal"
+      :items="manualReviewItems"
+      :loading="manualReviewLoading"
+      :error="manualReviewError"
+      @close="showManualReviewModal = false"
+      @submit="handleManualReviewSubmit"
+    />
   </div>
 </template>
 
@@ -304,6 +326,7 @@ import BrokerConnectionCard from '@/components/broker-sync/BrokerConnectionCard.
 import IBKRConnectionModal from '@/components/broker-sync/IBKRConnectionModal.vue'
 import ConnectionSettingsModal from '@/components/broker-sync/ConnectionSettingsModal.vue'
 import IBKRNoticeBanner from '@/components/broker-sync/IBKRNoticeBanner.vue'
+import ManualTradeReviewModal from '@/components/import/ManualTradeReviewModal.vue'
 import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
 
 const store = useBrokerSyncStore()
@@ -341,6 +364,11 @@ const showIBKRModal = ref(false)
 const showSettingsModal = ref(false)
 const selectedConnection = ref(null)
 const successMessage = ref('')
+const showManualReviewModal = ref(false)
+const manualReviewItems = ref([])
+const manualReviewLoading = ref(false)
+const manualReviewError = ref('')
+const reviewedSyncLogIds = ref(new Set())
 const schwabConnecting = ref(false)
 const brokerConnecting = ref({
   tradestation: false,
@@ -378,6 +406,36 @@ function brokerCardClass(broker, environment = null) {
 function scheduleSuccessMessage(message) {
   successMessage.value = message
   setTimeout(() => { successMessage.value = '' }, 5000)
+}
+
+function parseSyncDetails(details) {
+  if (!details) return {}
+  if (typeof details === 'string') {
+    try {
+      return JSON.parse(details)
+    } catch (_) {
+      return {}
+    }
+  }
+  return details
+}
+
+function manualReviewItemsFromSyncLog(log) {
+  const syncDetails = parseSyncDetails(log?.syncDetails || log?.sync_details)
+  const items = syncDetails.manual_review_items || syncDetails.manualReviewItems || []
+  return Array.isArray(items) ? items : []
+}
+
+function openManualReviewFromSyncLog(log, force = false) {
+  if (!log || (!force && reviewedSyncLogIds.value.has(log.id))) return
+
+  const items = manualReviewItemsFromSyncLog(log)
+  if (items.length === 0) return
+
+  reviewedSyncLogIds.value = new Set([...reviewedSyncLogIds.value, log.id])
+  manualReviewItems.value = items
+  manualReviewError.value = ''
+  showManualReviewModal.value = true
 }
 
 async function consumeOAuthCallbackState(query) {
@@ -535,6 +593,11 @@ async function handleSync(connection) {
       if (hasActiveSyncs && attempts < maxAttempts) {
         setTimeout(poll, pollInterval)
       } else {
+        const latestCompletedLog = store.syncLogs.find(log =>
+          log.connectionId === connection.id && log.status === 'completed'
+        )
+        openManualReviewFromSyncLog(latestCompletedLog)
+
         // Sync finished - refresh trades data to update P&L and counts
         await Promise.all([
           tradesStore.fetchTrades(),
@@ -546,6 +609,37 @@ async function handleSync(connection) {
     setTimeout(poll, pollInterval)
   } catch (error) {
     // Error is handled by store
+  }
+}
+
+async function handleManualReviewSubmit(decisions) {
+  manualReviewLoading.value = true
+  manualReviewError.value = ''
+
+  try {
+    const result = await store.submitManualReviewDecisions(decisions)
+
+    if (result.failed > 0) {
+      manualReviewError.value = `Saved ${result.imported || 0} trade(s), but ${result.failed} decision(s) failed.`
+      return
+    }
+
+    showManualReviewModal.value = false
+    manualReviewItems.value = []
+
+    if ((result.imported || 0) > 0) {
+      await Promise.all([
+        tradesStore.fetchTrades(),
+        tradesStore.fetchAnalytics()
+      ])
+    }
+
+    const duplicateText = result.duplicates > 0 ? `, ${result.duplicates} duplicate(s) skipped` : ''
+    scheduleSuccessMessage(`Manual review saved: ${result.imported || 0} imported, ${result.ignored || 0} ignored${duplicateText}.`)
+  } catch (error) {
+    manualReviewError.value = store.error || error.response?.data?.error || 'Failed to save review decisions'
+  } finally {
+    manualReviewLoading.value = false
   }
 }
 

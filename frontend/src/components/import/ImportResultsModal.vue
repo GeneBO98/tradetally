@@ -121,6 +121,26 @@
             </div>
           </div>
 
+          <div v-if="manualReviewItems.length > 0" class="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p class="text-sm font-medium text-amber-900 dark:text-amber-100">
+                  {{ manualReviewItems.length }} sell-only execution{{ manualReviewItems.length === 1 ? '' : 's' }} need review
+                </p>
+                <p class="mt-1 text-sm text-amber-800 dark:text-amber-200">
+                  Confirm whether each row was a short entry, a close-only long, or should be ignored.
+                </p>
+              </div>
+              <button
+                type="button"
+                class="inline-flex shrink-0 items-center justify-center rounded-md border border-amber-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:border-amber-700 dark:bg-gray-800 dark:text-amber-200 dark:hover:bg-amber-900/30"
+                @click="$emit('review-manual-items')"
+              >
+                Review
+              </button>
+            </div>
+          </div>
+
           <!-- Skipped Rows Details (expandable) -->
           <div v-if="skippedReasons && skippedReasons.length > 0" class="mt-4">
             <button
@@ -314,6 +334,10 @@ const props = defineProps({
     type: Array,
     default: () => []
   },
+  manualReviewItems: {
+    type: Array,
+    default: () => []
+  },
   achievements: {
     type: Array,
     default: () => []
@@ -340,7 +364,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['close', 'load-demo-data', 'view-analytics', 'view-trades', 'support-clicked'])
+const emit = defineEmits(['close', 'load-demo-data', 'view-analytics', 'view-trades', 'support-clicked', 'review-manual-items'])
 
 function handleEscape(e) {
   if (e.key === 'Escape' && props.isOpen) {

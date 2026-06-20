@@ -481,14 +481,26 @@ class IBKRService {
     const existingContext = await this.getExistingContext(connection.userId);
 
     // Parse CSV using existing parser
+    const parserContext = {
+      ...existingContext,
+      brokerConnectionId: connection.id,
+      brokerType: connection.brokerType
+    };
     const parseResult = await parseCSV(
       Buffer.from(csvData, 'utf8'),
       brokerFormat,
-      existingContext
+      parserContext
     );
 
     let trades = Array.isArray(parseResult) ? parseResult : parseResult.trades;
+    const manualReviewItems = Array.isArray(parseResult?.manualReviewItems)
+      ? parseResult.manualReviewItems
+      : [];
+    const parseWarnings = parseResult?.diagnostics?.warnings || [];
     console.log(`[IBKR] Parsed ${trades.length} trades`);
+    if (manualReviewItems.length > 0) {
+      console.warn(`[IBKR] ${manualReviewItems.length} sell-only stock execution(s) require manual review`);
+    }
 
     const openPositionResult = this.extractOpenPositionTrades(csvData, connection, existingContext, {
       parsedTrades: trades,
@@ -516,8 +528,10 @@ class IBKRService {
 
     // Import trades
     const result = await this.importTrades(connection.userId, trades, existingContext);
-    result.warnings = openPositionResult.warnings;
+    result.warnings = [...parseWarnings, ...openPositionResult.warnings];
     result.openPositionsParsed = openPositionResult.trades.length;
+    result.manualReviewItems = manualReviewItems;
+    result.manualReviewCount = manualReviewItems.length;
 
     console.log(`[IBKR] Sync complete: ${result.imported} imported, ${result.updated || 0} updated, ${result.skipped} skipped, ${result.duplicates} duplicates, ${result.failed} failed`);
 
