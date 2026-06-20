@@ -3,7 +3,8 @@ jest.mock('axios', () => ({
 }));
 
 jest.mock('../../src/utils/csvParser', () => ({
-  parseCSV: jest.fn()
+  parseCSV: jest.fn(),
+  parseInstrumentData: jest.fn(() => ({ instrumentType: 'stock' }))
 }));
 
 jest.mock('../../src/models/Trade', () => ({
@@ -32,6 +33,7 @@ jest.mock('../../src/config/database', () => ({
 
 const Trade = require('../../src/models/Trade');
 const db = require('../../src/config/database');
+const { parseCSV } = require('../../src/utils/csvParser');
 const ibkrService = require('../../src/services/brokerSync/ibkrService');
 const schwabService = require('../../src/services/brokerSync/schwabService');
 const alpacaService = require('../../src/services/brokerSync/alpacaService');
@@ -146,6 +148,132 @@ describe('broker sync duplicate protection', () => {
     });
     expect(params).not.toHaveProperty('fd');
     expect(params).not.toHaveProperty('td');
+  });
+
+  test('IBKR sync adds transferred Open Positions rows before import', async () => {
+    const csv = [
+      'Statement,Header,Field Name,Field Value',
+      'Statement,Data,Title,Activity Statement',
+      'Open Positions,Header,DataDiscriminator,Asset Category,Currency,Symbol,Quantity,CostBasisPrice,CostBasisMoney,Account,Conid',
+      'Open Positions,Data,Summary,Stocks,USD,AMC,10,5.50,55,U123,265598'
+    ].join('\n');
+
+    parseCSV.mockResolvedValueOnce({ trades: [] });
+    const requestSpy = jest.spyOn(ibkrService, 'requestFlexReport').mockResolvedValue({ referenceCode: 'ref-1' });
+    const fetchSpy = jest.spyOn(ibkrService, 'fetchFlexReport').mockResolvedValue(csv);
+    const context = { existingPositions: {}, existingExecutions: {}, userId: 'user-1' };
+    const contextSpy = jest.spyOn(ibkrService, 'getExistingContext').mockResolvedValue(context);
+    const importSpy = jest.spyOn(ibkrService, 'importTrades').mockResolvedValue({
+      imported: 1,
+      updated: 0,
+      skipped: 0,
+      failed: 0,
+      duplicates: 0
+    });
+
+    try {
+      const result = await ibkrService.syncTrades({
+        id: 'conn-1',
+        userId: 'user-1',
+        brokerType: 'ibkr',
+        ibkrFlexToken: 'token',
+        ibkrFlexQueryId: 'query'
+      }, { endDate: '2026-06-19' });
+
+      expect(importSpy).toHaveBeenCalledWith(
+        'user-1',
+        [
+          expect.objectContaining({
+            symbol: 'AMC',
+            side: 'long',
+            quantity: 10,
+            entryPrice: 5.5,
+            brokerConnectionId: 'conn-1',
+            accountIdentifier: 'U123',
+            conid: '265598',
+            isSyntheticOpenPosition: true
+          })
+        ],
+        context
+      );
+      expect(result).toMatchObject({
+        imported: 1,
+        openPositionsParsed: 1
+      });
+    } finally {
+      requestSpy.mockRestore();
+      fetchSpy.mockRestore();
+      contextSpy.mockRestore();
+      importSpy.mockRestore();
+    }
+  });
+
+  test('IBKR Open Positions rows without usable basis are skipped with a warning', () => {
+    const csv = [
+      'Open Positions,Header,DataDiscriminator,Asset Category,Currency,Symbol,Quantity,CostBasisPrice,CostBasisMoney,Account,Conid',
+      'Open Positions,Data,Summary,Stocks,USD,NVDA,3,,,U123,4815747'
+    ].join('\n');
+
+    const result = ibkrService.extractOpenPositionTrades(
+      csv,
+      { id: 'conn-1', brokerType: 'ibkr' },
+      { existingPositions: {}, existingExecutions: {} },
+      { endDate: '2026-06-19' }
+    );
+
+    expect(result.trades).toHaveLength(0);
+    expect(result.warnings.join(' ')).toContain('missing usable cost basis for NVDA');
+  });
+
+  test('IBKR self-describing Open Positions sections derive entry price from total cost basis', () => {
+    const csv = [
+      'ClientAccountID,AssetClass,Symbol,Quantity,CostBasisMoney,Conid',
+      'U123,STK,NVDA,4,1000,4815747'
+    ].join('\n');
+
+    const result = ibkrService.extractOpenPositionTrades(
+      csv,
+      { id: 'conn-1', brokerType: 'ibkr' },
+      { existingPositions: {}, existingExecutions: {} },
+      { endDate: '2026-06-19' }
+    );
+
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0]).toEqual(expect.objectContaining({
+      symbol: 'NVDA',
+      quantity: 4,
+      entryPrice: 250,
+      accountIdentifier: 'U123',
+      conid: '4815747',
+      isSyntheticOpenPosition: true
+    }));
+  });
+
+  test('IBKR Open Positions rows are skipped when an existing open position matches by conid', () => {
+    const csv = [
+      'Open Positions,Header,DataDiscriminator,Asset Category,Currency,Symbol,Quantity,CostBasisPrice,CostBasisMoney,Account,Conid',
+      'Open Positions,Data,Summary,Stocks,USD,AMC,10,5.50,55,U123,265598'
+    ].join('\n');
+
+    const result = ibkrService.extractOpenPositionTrades(
+      csv,
+      { id: 'conn-1', brokerType: 'ibkr' },
+      {
+        existingPositions: {
+          conid_265598: {
+            symbol: 'AMC',
+            conid: '265598',
+            instrumentType: 'stock',
+            accountIdentifier: 'U123'
+          }
+        },
+        existingExecutions: {}
+      },
+      { endDate: '2026-06-19' }
+    );
+
+    expect(result.trades).toHaveLength(0);
+    expect(result.warnings).toEqual([]);
   });
 
   test('Schwab importTrades skips a trade already imported by a previous sync', async () => {
