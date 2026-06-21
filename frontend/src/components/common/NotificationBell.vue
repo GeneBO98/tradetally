@@ -367,7 +367,6 @@ const markAllAsRead = async () => {
       showError('Notifications', message)
       return
     }
-    await response.json()
 
     // The bell only shows unread notifications, so clear them immediately.
     notifications.value = []
