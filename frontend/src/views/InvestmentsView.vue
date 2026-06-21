@@ -664,7 +664,7 @@
                                         {{ formatPercent(position.actualAllocationPercent, false) }}
                                     </td>
                                     <td class="px-6 py-4 text-right text-sm">
-                                        <div class="flex items-center justify-end gap-2">
+                                        <div class="flex flex-col items-end gap-1">
                                             <input
                                                 v-model="targetAllocationDrafts[position.symbol]"
                                                 type="number"
