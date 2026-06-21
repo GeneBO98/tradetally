@@ -330,6 +330,22 @@ app.get('/api/health', async (req, res) => {
   res.json(health);
 });
 
+// Readiness probe for load-balancer failover. Returns 200 only when this node's
+// database is a writable PRIMARY; a streaming standby returns 503 so the load
+// balancer will not route to it until it has been promoted.
+app.get('/api/ready', async (req, res) => {
+  try {
+    const db = require('./config/database');
+    const { rows } = await db.query('SELECT pg_is_in_recovery() AS in_recovery');
+    if (rows[0] && rows[0].in_recovery === true) {
+      return res.status(503).json({ ready: false, db_role: 'standby' });
+    }
+    return res.status(200).json({ ready: true, db_role: 'primary' });
+  } catch (err) {
+    return res.status(503).json({ ready: false, error: 'db_unreachable' });
+  }
+});
+
 // CSP violation reporting endpoint (OWASP CWE-693 mitigation)
 app.post('/api/csp-report', express.json({ type: 'application/csp-report' }), (req, res) => {
   const cspReport = req.body;
@@ -812,6 +828,25 @@ function scheduleBackgroundServices(backgroundJobsDisabled) {
   }
 }
 
+// Detect a read-only standby (e.g. a streaming-replication hot standby).
+// Auto-detected via pg_is_in_recovery(); STANDBY_MODE=true/false overrides.
+// In standby mode the app performs NO boot-time writes (migrations, schema
+// repair, billing init) and starts NO background schedulers, so a warm-standby
+// box can run safely against a read-only replica without crashing or
+// double-processing jobs with shared credentials.
+async function detectStandbyMode() {
+  if (process.env.STANDBY_MODE === 'true') return true;
+  if (process.env.STANDBY_MODE === 'false') return false;
+  try {
+    const db = require('./config/database');
+    const result = await db.query('SELECT pg_is_in_recovery() AS in_recovery');
+    return !!(result.rows[0] && result.rows[0].in_recovery === true);
+  } catch (err) {
+    logger.warn(`Could not determine database recovery state (${err.message}); assuming primary.`, 'startup');
+    return false;
+  }
+}
+
 // Function to start server with migration
 async function startServer() {
   try {
@@ -820,38 +855,51 @@ async function startServer() {
     warnings.forEach((warning) => logger.warn(warning, 'startup'));
     const storageHealth = await storageHealthService.getHealth();
     storageHealth.warnings.forEach((warning) => logger.warn(warning, 'startup'));
-    const backgroundJobsDisabled = isBackgroundJobsDisabled();
+    // A read-only standby must never write on boot or start schedulers.
+    const standbyMode = await detectStandbyMode();
+    const backgroundJobsDisabled = isBackgroundJobsDisabled() || standbyMode;
+    if (standbyMode) {
+      logger.warn('STANDBY MODE: database is a read-only replica — skipping migrations, schema repair, billing init, and ALL background jobs. Promote the database and restart to run as primary.', 'startup');
+    }
 
     // Initialize PostHog telemetry (optional)
     await initializePostHogTelemetry();
 
-    // Run database migrations first
-    if (process.env.RUN_MIGRATIONS !== 'false') {
+    // Run database migrations first (never against a read-only standby)
+    if (standbyMode) {
+      logger.info('Standby: skipping migrations');
+    } else if (process.env.RUN_MIGRATIONS !== 'false') {
       logger.info('Running database migrations...');
       await migrate();
     } else {
       logger.info('Skipping migrations (RUN_MIGRATIONS=false)');
     }
 
-    const schemaRepair = await ensurePostExitSchema();
-    if (schemaRepair.repairedTradeColumns.length > 0 || schemaRepair.repairedUserSettingsColumns.length > 0) {
-      logger.warn(
-        `Repaired missing post-exit schema columns. trades: ${
-          schemaRepair.repairedTradeColumns.join(', ') || 'none'
-        }; user_settings: ${schemaRepair.repairedUserSettingsColumns.join(', ') || 'none'}`,
-        'startup'
-      );
-    }
+    if (!standbyMode) {
+      const schemaRepair = await ensurePostExitSchema();
+      if (schemaRepair.repairedTradeColumns.length > 0 || schemaRepair.repairedUserSettingsColumns.length > 0) {
+        logger.warn(
+          `Repaired missing post-exit schema columns. trades: ${
+            schemaRepair.repairedTradeColumns.join(', ') || 'none'
+          }; user_settings: ${schemaRepair.repairedUserSettingsColumns.join(', ') || 'none'}`,
+          'startup'
+        );
+      }
 
-    // Initialize billing service (conditional)
-    await BillingService.initialize();
+      // Initialize billing service (conditional)
+      await BillingService.initialize();
+    }
 
     // Start the server
     app.listen(PORT, () => {
       logger.info(`✓ TradeTally server running on port ${PORT}`);
       logger.info(`✓ Environment: ${process.env.NODE_ENV || 'development'}`);
       logger.info(`✓ Log level: ${process.env.LOG_LEVEL || 'INFO'}`);
-      scheduleBackgroundServices(backgroundJobsDisabled);
+      if (standbyMode) {
+        logger.warn('STANDBY MODE: not starting any background schedulers.', 'startup');
+      } else {
+        scheduleBackgroundServices(backgroundJobsDisabled);
+      }
     });
   } catch (error) {
     logger.error('Failed to start server:', error);
