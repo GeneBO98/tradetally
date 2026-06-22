@@ -1999,31 +1999,26 @@ class Trade {
     return totalPnL;
   }
 
-  static calculatePnLPercent(entryPrice, exitPrice, side, pnl = null, quantity = null, instrumentType = 'stock', pointValue = null) {
+  static calculatePnLPercent(entryPrice, exitPrice, side, pnl = null, quantity = null, instrumentType = 'stock', pointValue = null, contractSize = null) {
     // Note: exitPrice === 0 is valid for expired worthless options, so use explicit null checks
     if (exitPrice == null || entryPrice == null || entryPrice <= 0) return null;
 
     let pnlPercent;
 
-    // For futures, calculate ROI based on P&L vs notional value
-    if (instrumentType === 'future' && pnl !== null && quantity !== null) {
-      // Calculate notional value of the position
-      // For futures: notional = entry_price × quantity × point_value
-      const effectivePointValue = pointValue || 1; // Default to 1 if not provided
-      const notionalValue = entryPrice * quantity * effectivePointValue;
+    // Prefer net P&L over opening notional so costs/rebates cannot disagree with the dollar result.
+    if (pnl !== null && quantity !== null) {
+      const multiplier = instrumentType === 'future'
+        ? (pointValue || 1)
+        : instrumentType === 'option'
+          ? (contractSize || 100)
+          : 1;
+      const notionalValue = entryPrice * quantity * multiplier;
 
-      if (notionalValue > 0) {
-        pnlPercent = (pnl / notionalValue) * 100;
-      } else {
-        // Fallback to price-based calculation if notional value is invalid
-        if (side === 'long') {
-          pnlPercent = ((exitPrice - entryPrice) / entryPrice) * 100;
-        } else {
-          pnlPercent = ((entryPrice - exitPrice) / entryPrice) * 100;
-        }
-      }
-    } else {
-      // Standard calculation for stocks and options
+      if (notionalValue > 0) pnlPercent = (pnl / notionalValue) * 100;
+    }
+
+    if (pnlPercent === undefined) {
+      // Fallback for legacy callers that only have prices.
       if (side === 'long') {
         pnlPercent = ((exitPrice - entryPrice) / entryPrice) * 100;
       } else {
