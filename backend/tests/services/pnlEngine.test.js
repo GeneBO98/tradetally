@@ -297,6 +297,22 @@ describe('pnlEngine.computeTradePnl', () => {
       nearly(aggregate.pnl, 90);
     });
 
+    test('pnl_percent uses net P&L so costs can flip a gross winner negative', () => {
+      const { aggregate } = computeTradePnl({
+        side: 'long',
+        instrumentType: 'stock',
+        fallbackCommission: 58734.73,
+        executions: [
+          { action: 'buy', quantity: 51479, price: 119.66, datetime: '2026-04-17T13:30:00Z' },
+          { action: 'sell', quantity: 51479, price: 120.46, datetime: '2026-05-18T20:00:00Z' }
+        ],
+        timezone: 'UTC'
+      });
+
+      nearly(aggregate.pnl, -17551.53, 0.01);
+      nearly(aggregate.pnl_percent, -0.2849284924, 0.0000001);
+    });
+
     test('explicit zero per-exec commission → fallbackCommission applied (Tradovate-style)', () => {
       // Tradovate stores commission: 0 and fees: 0 on every execution even though the
       // broker charges are tracked at the trade level via custom fee settings.

@@ -128,14 +128,17 @@ function isOpeningFill(action, tradeSide) {
   return isSellAction(action);
 }
 
-function computePnlPercent(entryPrice, exitPrice, side, pnl, quantity, instrumentType, pointValue) {
+function computePnlPercent(entryPrice, exitPrice, side, pnl, quantity, instrumentType, pointValue, contractSize) {
   if (exitPrice == null || entryPrice == null || entryPrice <= 0) return null;
-  if (instrumentType === 'future' && pnl != null && quantity != null) {
-    const pv = parseNumeric(pointValue) || 1;
-    const notional = entryPrice * quantity * pv;
-    if (notional <= 0) return null;
-    return (pnl / notional) * 100;
+
+  const parsedPnl = parseNumeric(pnl);
+  const parsedQuantity = parseNumeric(quantity);
+  if (parsedPnl != null && parsedQuantity != null && parsedQuantity > 0) {
+    const multiplier = multiplierFor(instrumentType, contractSize, pointValue);
+    const notional = entryPrice * parsedQuantity * multiplier;
+    if (notional > 0) return (parsedPnl / notional) * 100;
   }
+
   if (side === 'long') {
     return ((exitPrice - entryPrice) / entryPrice) * 100;
   }
@@ -258,7 +261,7 @@ function processGrouped(input, executions, timezone) {
   const exitPriceAvg = isFullyClosed && totalExitQty > 0 ? totalExitNotional / totalExitQty : null;
   const pnl = anyClosed ? totalRealizedPnl : null;
   const pnlPercent = pnl != null && entryPriceAvg != null
-    ? computePnlPercent(entryPriceAvg, exitPriceAvg ?? (totalExitQty > 0 ? totalExitNotional / totalExitQty : null), side, pnl, totalEntryQty || totalExitQty, instrumentType, pointValue)
+    ? computePnlPercent(entryPriceAvg, exitPriceAvg ?? (totalExitQty > 0 ? totalExitNotional / totalExitQty : null), side, pnl, totalEntryQty || totalExitQty, instrumentType, pointValue, contractSize)
     : null;
   const tradeDate = earliestEntryTs ? dateInTimezone(earliestEntryTs, timezone) : null;
 
@@ -435,7 +438,7 @@ function processFillBased(input, executions, timezone, tradeId) {
   const exitPriceAvg = isFullyClosed && totalExitQty > 0 ? totalExitNotional / totalExitQty : null;
   const pnl = anyClosed ? totalRealizedPnl : null;
   const pnlPercent = pnl != null && entryPriceAvg != null
-    ? computePnlPercent(entryPriceAvg, exitPriceAvg ?? (totalExitQty > 0 ? totalExitNotional / totalExitQty : null), side, pnl, totalEntryQty || totalExitQty, instrumentType, pointValue)
+    ? computePnlPercent(entryPriceAvg, exitPriceAvg ?? (totalExitQty > 0 ? totalExitNotional / totalExitQty : null), side, pnl, totalEntryQty || totalExitQty, instrumentType, pointValue, contractSize)
     : null;
   const tradeDate = earliestEntryTs ? dateInTimezone(earliestEntryTs, timezone) : null;
 
