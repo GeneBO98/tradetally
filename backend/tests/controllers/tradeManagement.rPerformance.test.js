@@ -13,10 +13,12 @@ jest.mock('../../src/utils/breakeven', () => {
   const actual = jest.requireActual('../../src/utils/breakeven');
   return { ...actual, getBreakevenToleranceConfig: jest.fn() };
 });
+jest.mock('../../src/models/User', () => ({ getSettings: jest.fn() }));
 
 const db = require('../../src/config/database');
 const TradeQueries = require('../../src/services/tradeQueries');
 const { getBreakevenToleranceConfig } = require('../../src/utils/breakeven');
+const User = require('../../src/models/User');
 const controller = require('../../src/controllers/tradeManagement.controller');
 
 // All trades are long, qty 10, stop 95 -> risk 5/share, so actual_r = (exit-100)/5.
@@ -53,6 +55,7 @@ describe('tradeManagementController.getRPerformance break-even classification (i
     db.query.mockReset();
     TradeQueries._buildWhereClause.mockReset();
     getBreakevenToleranceConfig.mockReset();
+    User.getSettings.mockReset();
 
     TradeQueries._buildWhereClause.mockResolvedValue({
       whereClause: 'WHERE t.user_id = $1',
@@ -60,6 +63,7 @@ describe('tradeManagementController.getRPerformance break-even classification (i
       paramCount: 2
     });
     getBreakevenToleranceConfig.mockResolvedValue({ default: 0, byUnderlying: {} });
+    User.getSettings.mockResolvedValue({ analytics_position_grouping: false });
   });
 
   test('a small win inside the BE tolerance is counted as break-even, not a win', async () => {
@@ -128,5 +132,48 @@ describe('tradeManagementController.getRPerformance break-even classification (i
     expect(chart_data[0].actual_r).toBe(6);
     expect(summary.total_actual_r).toBe(6);
     expect(summary.winning_trades).toBe(1);
+  });
+
+  test('whole-trade grouping collapses multi-leg positions before win rate and R summaries', async () => {
+    User.getSettings.mockResolvedValue({ analytics_position_grouping: true });
+    db.query.mockResolvedValue({
+      rows: [
+        {
+          ...row(1, 110, 100, false),
+          symbol: 'SNOW260116P00400000',
+          underlying_symbol: 'SNOW',
+          position_group_key: 'spread-1',
+          position_symbol: 'SNOW'
+        },
+        {
+          ...row(2, 90, -50, false),
+          symbol: 'SNOW260116P00395000',
+          underlying_symbol: 'SNOW',
+          position_group_key: 'spread-1',
+          position_symbol: 'SNOW'
+        }
+      ]
+    });
+
+    const req = { user: { id: 'user-1' }, query: {} };
+    const res = { json: jest.fn() };
+
+    await controller.getRPerformance(req, res);
+
+    const { chart_data, summary } = res.json.mock.calls[0][0];
+
+    expect(chart_data).toHaveLength(1);
+    expect(chart_data[0].symbol).toBe('SNOW');
+    expect(chart_data[0].position_grouped).toBe(true);
+    expect(chart_data[0].leg_count).toBe(2);
+    expect(chart_data[0].actual_r).toBe(1);
+
+    expect(summary.position_grouping).toBe(true);
+    expect(summary.total_trades).toBe(1);
+    expect(summary.winning_trades).toBe(1);
+    expect(summary.losing_trades).toBe(0);
+    expect(summary.win_rate).toBe(100);
+    expect(summary.total_actual_r).toBe(1);
+    expect(summary.avg_win_r).toBe(1);
   });
 });
