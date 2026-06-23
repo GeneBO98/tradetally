@@ -413,6 +413,18 @@ router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
   const { registrationConfig, fetchRegistrationConfig, isBillingEnabled } = useRegistrationMode()
 
+  // First paint is no longer gated on the /auth/me probe (see main.js). For
+  // routes whose decision depends on auth state we still wait for the probe to
+  // settle, but ONLY when a session-hint cookie was present at boot (token was
+  // optimistically seeded). That keeps logged-in users from flashing the login
+  // page, while anonymous visitors (no cookie) skip the wait entirely so public
+  // and guest pages render at bundle-load speed.
+  const authDependent = to.meta.requiresAuth || to.meta.guest ||
+    to.meta.requiresAdmin || to.meta.requiresTier
+  if (authDependent && authStore.isAuthenticated && router.authReady) {
+    await router.authReady
+  }
+
   // Block navigation when the route depends on registration/billing mode.
   // Tier-gated and admin routes must wait too, otherwise the guard can briefly
   // assume billing is disabled and let the user reach a page the backend 403s.

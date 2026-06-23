@@ -1,5 +1,4 @@
 import { ref } from 'vue'
-import { GrowthBook } from '@growthbook/growthbook'
 import { useAnalytics } from '@/composables/useAnalytics'
 
 const ANON_ID_STORAGE_KEY = 'growthbook_anonymous_id'
@@ -67,31 +66,49 @@ function buildAttributes(user = null, route = null) {
   }
 }
 
-const growthbook = GROWTHBOOK_ENABLED && GROWTHBOOK_CLIENT_KEY
-  ? new GrowthBook({
-      apiHost: GROWTHBOOK_API_HOST,
-      clientKey: GROWTHBOOK_CLIENT_KEY,
-      enableDevMode: GROWTHBOOK_DEV_MODE,
-      subscribeToChanges: true,
-      trackingCallback: (experiment, result) => {
-        const analytics = useAnalytics()
-        analytics.track('growthbook_experiment_viewed', {
-          experiment_id: experiment.key,
-          variation_id: result.variationId,
-          variation_key: result.key,
-          feature_id: result.featureId
-        })
-      }
-    })
-  : null
+// The GrowthBook SDK is loaded lazily so its bytes stay out of the entry chunk
+// and off the LCP critical path. `growthbook` is a live `let` binding: importers
+// (useGrowthBook) read it at call time and see the instance once it loads, and
+// the reactive `version` bump re-evaluates flag consumers. Until then the
+// composable's null-guards return safe fallbacks.
+const GROWTHBOOK_CONFIGURED = Boolean(GROWTHBOOK_ENABLED && GROWTHBOOK_CLIENT_KEY)
+let growthbook = null
+let sdkLoadPromise = null
 
-if (growthbook) {
-  growthbook.setRenderer(() => {
-    version.value += 1
-  })
+async function ensureGrowthBook() {
+  if (growthbook) return growthbook
+  if (!GROWTHBOOK_CONFIGURED) return null
+
+  if (!sdkLoadPromise) {
+    sdkLoadPromise = import('@growthbook/growthbook').then(({ GrowthBook }) => {
+      growthbook = new GrowthBook({
+        apiHost: GROWTHBOOK_API_HOST,
+        clientKey: GROWTHBOOK_CLIENT_KEY,
+        enableDevMode: GROWTHBOOK_DEV_MODE,
+        subscribeToChanges: true,
+        trackingCallback: (experiment, result) => {
+          const analytics = useAnalytics()
+          analytics.track('growthbook_experiment_viewed', {
+            experiment_id: experiment.key,
+            variation_id: result.variationId,
+            variation_key: result.key,
+            feature_id: result.featureId
+          })
+        }
+      })
+      growthbook.setRenderer(() => {
+        version.value += 1
+      })
+      return growthbook
+    })
+  }
+
+  return sdkLoadPromise
 }
 
 export async function initializeGrowthBook({ user = null, route = null } = {}) {
+  await ensureGrowthBook()
+
   if (!growthbook) {
     initialized.value = true
     ready.value = false
@@ -143,7 +160,9 @@ export async function refreshGrowthBook() {
 }
 
 export function isGrowthBookConfigured() {
-  return Boolean(growthbook)
+  // Based on configuration, not instance presence — the SDK loads lazily, so
+  // the instance is null until init even when GrowthBook is fully configured.
+  return GROWTHBOOK_CONFIGURED
 }
 
 export { growthbook, initialized, ready, version }
