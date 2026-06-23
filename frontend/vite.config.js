@@ -3,6 +3,42 @@ import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import pkg from './package.json'
 
+// Route view chunks are lazy-imported, so they're only discovered after the
+// entry chunk downloads, parses, and the router matches — a serial waterfall
+// hop that delays LCP on the first paint. LoginView is the landing target for
+// `/` (the most-hit public URL), so we inject a <link rel="modulepreload"> for
+// its hashed chunk to fetch it in parallel with the entry. The chunk is tiny
+// (~4 KB gzip), so preloading it everywhere is a negligible cost on other pages.
+const PRELOAD_VIEWS = ['/views/auth/LoginView.vue']
+
+function preloadRouteChunks() {
+  return {
+    name: 'tradetally-preload-route-chunks',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html, ctx) {
+        if (!ctx.bundle) return html
+        const tags = []
+        for (const file of Object.values(ctx.bundle)) {
+          if (
+            file.type === 'chunk' &&
+            file.facadeModuleId &&
+            PRELOAD_VIEWS.some((view) => file.facadeModuleId.endsWith(view))
+          ) {
+            tags.push({
+              tag: 'link',
+              attrs: { rel: 'modulepreload', crossorigin: true, href: `/${file.fileName}` },
+              injectTo: 'head'
+            })
+          }
+        }
+        return { html, tags }
+      }
+    }
+  }
+}
+
 export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const exposeDevServer = env.VITE_DEV_SERVER_EXPOSE === 'true'
@@ -25,6 +61,7 @@ export default defineConfig(({ command, mode }) => {
   },
   plugins: [
     vue(),
+    preloadRouteChunks(),
   ],
   resolve: {
     alias: {
