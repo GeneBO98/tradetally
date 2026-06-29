@@ -371,6 +371,69 @@ describe('ThinkorSwim parser', () => {
       })
     ]));
   });
+
+  test('matches a later option closing import to an existing open option contract', async () => {
+    const closingCsv = [
+      'DATE,TIME,TYPE,REF #,DESCRIPTION,Misc Fees,Commissions & Fees,Amount,Balance',
+      '06/22/2026,15:45:00,TRD,54321,SOLD -10 COIN 100 26 JUN 26 10 CALL @13.00,$0.00,-$1.30,$12998.70,$65000.00'
+    ].join('\n');
+
+    const existingExecution = {
+      action: 'buy',
+      quantity: 10,
+      price: 12.11,
+      datetime: '2026-06-18T09:30:00.000Z',
+      fees: 1.3
+    };
+
+    const existingPosition = {
+      id: 'open-option-1',
+      symbol: 'COIN',
+      side: 'long',
+      quantity: 10,
+      entryPrice: 12.11,
+      entryTime: '2026-06-18T09:30:00.000Z',
+      tradeDate: '2026-06-18',
+      commission: 1.3,
+      broker: 'thinkorswim',
+      executions: [existingExecution],
+      instrumentType: 'option',
+      strikePrice: 10,
+      expirationDate: '2026-06-26',
+      optionType: 'call'
+    };
+
+    const result = await parseCSV(buf(closingCsv), 'thinkorswim', {
+      existingPositions: {
+        'COIN_10_2026-06-26_call': existingPosition
+      },
+      existingExecutions: {
+        'COIN_10_2026-06-26_call': [existingExecution]
+      }
+    });
+
+    expectValidResult(result);
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0]).toEqual(expect.objectContaining({
+      symbol: 'COIN',
+      side: 'long',
+      quantity: 10,
+      entryPrice: 12.11,
+      exitPrice: 13,
+      instrumentType: 'option',
+      strikePrice: 10,
+      expirationDate: '2026-06-26',
+      optionType: 'call',
+      isUpdate: true,
+      existingTradeId: 'open-option-1'
+    }));
+    expect(result.trades[0].executions).toHaveLength(2);
+    expect(result.trades[0].executions[1]).toMatchObject({
+      action: 'sell',
+      quantity: 10,
+      price: 13
+    });
+  });
 });
 
 // ──────────────────────────────────────────────

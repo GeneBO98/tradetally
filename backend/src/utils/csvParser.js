@@ -6770,6 +6770,30 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
 
   const transactions = [];
   const completedTrades = [];
+
+  function buildThinkorswimOptionPositionKey(symbol, instrumentData) {
+    if (!instrumentData || instrumentData.instrumentType !== 'option') {
+      return symbol;
+    }
+
+    if (!symbol || !instrumentData.strikePrice || !instrumentData.expirationDate || !instrumentData.optionType) {
+      return symbol;
+    }
+
+    const strike = parseFloat(instrumentData.strikePrice);
+    const expDate = String(instrumentData.expirationDate).split('T')[0];
+    const optionType = String(instrumentData.optionType).toLowerCase();
+    return `${symbol}_${strike}_${expDate}_${optionType}`;
+  }
+
+  function findThinkorswimExistingPosition(symbol, groupKey, instrumentData) {
+    if (instrumentData?.instrumentType === 'option') {
+      const positionKey = buildThinkorswimOptionPositionKey(symbol, instrumentData);
+      return existingPositions[positionKey] || existingPositions[groupKey] || null;
+    }
+
+    return existingPositions[symbol] || null;
+  }
   
   // Debug: Log first few records to see structure
   console.log('Sample records:');
@@ -7038,7 +7062,11 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
 
     // Track position and round-trip trades
     // Start with existing position if we have one for this symbol
-    const existingPosition = existingPositions[symbol];
+    const existingPosition = findThinkorswimExistingPosition(symbol, groupKey, instrumentData);
+    const duplicateLookupKeys = [groupKey, symbol];
+    if (isOption) {
+      duplicateLookupKeys.unshift(buildThinkorswimOptionPositionKey(symbol, instrumentData));
+    }
     let currentPosition = existingPosition ?
       (existingPosition.side === 'long' ? existingPosition.quantity : -existingPosition.quantity) : 0;
     let currentTrade = existingPosition ? {
@@ -7097,7 +7125,7 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
         };
 
         // First, check if this execution exists in ANY existing trade (complete or open)
-        const existsGlobally = isExecutionDuplicate(newExecution, symbol, context);
+        const existsGlobally = isExecutionDuplicateMultiKey(newExecution, duplicateLookupKeys, context);
 
         // Then check if it exists in the current trade being built
         // For fresh imports, we trust each CSV row is a unique execution
