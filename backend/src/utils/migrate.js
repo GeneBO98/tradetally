@@ -14,21 +14,61 @@ const colors = {
   gray: '\x1b[90m'
 };
 
-async function ensureMigrationsTable() {
+function quoteIdentifier(identifier) {
+  return `"${String(identifier).replace(/"/g, '""')}"`;
+}
+
+function qualifiedName(schema, name) {
+  return `${quoteIdentifier(schema)}.${quoteIdentifier(name)}`;
+}
+
+async function getMigrationSchema(client = db) {
+  const configuredSchema = (process.env.DB_SCHEMA || '').trim();
+  if (configuredSchema) {
+    return configuredSchema;
+  }
+
+  const result = await client.query('SELECT current_schema() AS schema');
+  const schema = result.rows[0]?.schema;
+
+  if (!schema) {
+    throw new Error('Could not resolve PostgreSQL schema. Set DB_SCHEMA or configure a valid search_path.');
+  }
+
+  return schema;
+}
+
+async function ensureConfiguredSchema(schema) {
+  if (!process.env.DB_SCHEMA || !process.env.DB_SCHEMA.trim()) {
+    return;
+  }
+
+  const result = await db.query(
+    'SELECT EXISTS (SELECT FROM information_schema.schemata WHERE schema_name = $1)',
+    [schema]
+  );
+
+  if (!result.rows[0].exists) {
+    await db.query(`CREATE SCHEMA ${quoteIdentifier(schema)}`);
+  }
+}
+
+async function ensureMigrationsTable(schema) {
+  const migrationsTable = qualifiedName(schema, 'migrations');
   const tableExistsQuery = `
     SELECT EXISTS (
       SELECT FROM information_schema.tables 
-      WHERE table_schema = 'public' 
+      WHERE table_schema = $1
       AND table_name = 'migrations'
     );
   `;
 
-  const result = await db.query(tableExistsQuery);
+  const result = await db.query(tableExistsQuery, [schema]);
   
   if (!result.rows[0].exists) {
-    console.log(`${colors.blue}Creating migrations table...${colors.reset}`);
+    console.log(`${colors.blue}Creating migrations table in schema "${schema}"...${colors.reset}`);
     await db.query(`
-      CREATE TABLE migrations (
+      CREATE TABLE ${migrationsTable} (
         id SERIAL PRIMARY KEY,
         filename VARCHAR(255) UNIQUE NOT NULL,
         applied_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -39,28 +79,30 @@ async function ensureMigrationsTable() {
   }
 }
 
-async function syncMigrationsSequence(client = db) {
+async function syncMigrationsSequence(schema, client = db) {
+  const migrationsTable = qualifiedName(schema, 'migrations');
   await client.query(`
     SELECT setval(
-      pg_get_serial_sequence('migrations', 'id'),
-      COALESCE((SELECT MAX(id) FROM migrations), 1),
-      COALESCE((SELECT MAX(id) IS NOT NULL FROM migrations), false)
+      pg_get_serial_sequence($1, 'id'),
+      COALESCE((SELECT MAX(id) FROM ${migrationsTable}), 1),
+      COALESCE((SELECT MAX(id) IS NOT NULL FROM ${migrationsTable}), false)
     );
-  `);
+  `, [migrationsTable]);
 }
 
-async function recordMigration(client, filename, checksum) {
+async function recordMigration(client, schema, filename, checksum) {
+  const migrationsTable = qualifiedName(schema, 'migrations');
   try {
     await client.query(
-      'INSERT INTO migrations (filename, checksum) VALUES ($1, $2) ON CONFLICT (filename) DO NOTHING',
+      `INSERT INTO ${migrationsTable} (filename, checksum) VALUES ($1, $2) ON CONFLICT (filename) DO NOTHING`,
       [filename, checksum]
     );
   } catch (error) {
     // If the serial sequence drifted behind existing IDs, resync and retry once.
     if (error.code === '23505' && error.constraint === 'migrations_pkey') {
-      await syncMigrationsSequence(client);
+      await syncMigrationsSequence(schema, client);
       await client.query(
-        'INSERT INTO migrations (filename, checksum) VALUES ($1, $2) ON CONFLICT (filename) DO NOTHING',
+        `INSERT INTO ${migrationsTable} (filename, checksum) VALUES ($1, $2) ON CONFLICT (filename) DO NOTHING`,
         [filename, checksum]
       );
       return;
@@ -69,8 +111,9 @@ async function recordMigration(client, filename, checksum) {
   }
 }
 
-async function getAppliedMigrations() {
-  const result = await db.query('SELECT filename, checksum FROM migrations ORDER BY id');
+async function getAppliedMigrations(schema) {
+  const migrationsTable = qualifiedName(schema, 'migrations');
+  const result = await db.query(`SELECT filename, checksum FROM ${migrationsTable} ORDER BY id`);
   return new Map(result.rows.map(row => [row.filename, row.checksum]));
 }
 
@@ -97,7 +140,7 @@ async function getMigrationFiles() {
   }
 }
 
-async function runMigration(filename, content, checksum) {
+async function runMigration(filename, content, checksum, schema) {
   console.log(`${colors.blue}Running migration: ${filename}${colors.reset}`);
 
   const client = await db.pool.connect();
@@ -140,7 +183,7 @@ async function runMigration(filename, content, checksum) {
     }
 
     // Record the migration
-    await recordMigration(client, filename, checksum);
+    await recordMigration(client, schema, filename, checksum);
 
     await client.query('COMMIT');
     console.log(`${colors.green}[SUCCESS] Migration ${filename} applied successfully${colors.reset}`);
@@ -151,15 +194,15 @@ async function runMigration(filename, content, checksum) {
     if (error.code === '42P07') { // duplicate_table
       console.log(`${colors.yellow}[WARNING] Table already exists in ${filename}, marking as applied${colors.reset}`);
       // Mark migration as applied anyway
-      await recordMigration(client, filename, checksum);
+      await recordMigration(client, schema, filename, checksum);
       return;
     } else if (error.code === '42701') { // duplicate_column
       console.log(`${colors.yellow}[WARNING] Column already exists in ${filename}, marking as applied${colors.reset}`);
-      await recordMigration(client, filename, checksum);
+      await recordMigration(client, schema, filename, checksum);
       return;
     } else if (error.code === '42710') { // duplicate_object (for indexes, etc)
       console.log(`${colors.yellow}[WARNING] Object already exists in ${filename}, marking as applied${colors.reset}`);
-      await recordMigration(client, filename, checksum);
+      await recordMigration(client, schema, filename, checksum);
       return;
     }
 
@@ -172,6 +215,9 @@ async function runMigration(filename, content, checksum) {
 async function migrate() {
   try {
     console.log(`${colors.blue}Starting database migration...${colors.reset}\n`);
+    const migrationSchema = await getMigrationSchema();
+    await ensureConfiguredSchema(migrationSchema);
+    console.log(`${colors.blue}Using PostgreSQL schema: ${migrationSchema}${colors.reset}`);
 
     // Skip base schema for production database imports
     // The production backup already has the complete schema
@@ -196,11 +242,11 @@ async function migrate() {
     }
     
     // Ensure migrations table exists
-    await ensureMigrationsTable();
-    await syncMigrationsSequence();
+    await ensureMigrationsTable(migrationSchema);
+    await syncMigrationsSequence(migrationSchema);
     
     // Get applied migrations
-    const appliedMigrations = await getAppliedMigrations();
+    const appliedMigrations = await getAppliedMigrations(migrationSchema);
     
     // Get migration files
     const migrationFiles = await getMigrationFiles();
@@ -223,7 +269,7 @@ async function migrate() {
         // We don't validate checksums as they cause unnecessary issues
         console.log(`${colors.gray}→ Skipping ${filename} (already applied)${colors.reset}`);
       } else {
-        await runMigration(filename, content, checksum);
+        await runMigration(filename, content, checksum, migrationSchema);
         migrationsRun++;
       }
     }
@@ -245,4 +291,13 @@ if (require.main === module) {
     .catch(() => process.exit(1));
 }
 
-module.exports = { migrate };
+module.exports = {
+  migrate,
+  ensureMigrationsTable,
+  getAppliedMigrations,
+  getMigrationSchema,
+  qualifiedName,
+  quoteIdentifier,
+  recordMigration,
+  syncMigrationsSequence
+};

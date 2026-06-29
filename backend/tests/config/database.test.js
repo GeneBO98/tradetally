@@ -1,12 +1,16 @@
 const mockPoolQuery = jest.fn();
 const mockPoolConnect = jest.fn();
+let mockPoolConfig;
 
 jest.mock('pg', () => ({
-  Pool: jest.fn(() => ({
-    query: mockPoolQuery,
-    connect: mockPoolConnect,
-    on: jest.fn()
-  })),
+  Pool: jest.fn((config) => {
+    mockPoolConfig = config;
+    return {
+      query: mockPoolQuery,
+      connect: mockPoolConnect,
+      on: jest.fn()
+    };
+  }),
   types: { setTypeParser: jest.fn() }
 }));
 
@@ -24,6 +28,8 @@ describe('database query wrapper', () => {
     mockPoolQuery.mockReset();
     mockPoolConnect.mockReset();
     mockEnsurePostExitSchema.mockReset();
+    mockPoolConfig = undefined;
+    delete process.env.DB_SCHEMA;
 
     mockEnsurePostExitSchema.mockResolvedValue({
       repairedTradeColumns: [],
@@ -102,5 +108,14 @@ describe('database query wrapper', () => {
     expect(dateParserCall).toBeDefined();
     const parser = dateParserCall[1];
     expect(parser('2026-06-12')).toBe('2026-06-12');
+  });
+
+  test('sets PostgreSQL search_path when DB_SCHEMA is configured', () => {
+    jest.resetModules();
+    process.env.DB_SCHEMA = 'tradetally';
+
+    require('../../src/config/database');
+
+    expect(mockPoolConfig.options).toBe('-c search_path="tradetally",public');
   });
 });

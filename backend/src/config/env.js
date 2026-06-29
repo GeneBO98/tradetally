@@ -10,6 +10,7 @@ const envSchema = Joi.object({
   DB_USER: Joi.string().min(1).required(),
   DB_PASSWORD: Joi.string().allow('').required(),
   DB_NAME: Joi.string().min(1).required(),
+  DB_SCHEMA: Joi.string().pattern(/^[A-Za-z_][A-Za-z0-9_$]*$/).allow('', null),
   API_BASE_URL: Joi.string().uri({ scheme: ['http', 'https'] }).allow('', null),
   RATE_LIMIT_ENABLED: Joi.string().valid('true', 'false').default('true'),
   RATE_LIMIT_MAX: Joi.number().integer().min(1).optional(),
