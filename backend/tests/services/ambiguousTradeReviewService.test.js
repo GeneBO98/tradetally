@@ -99,6 +99,34 @@ describe('ambiguousTradeReviewService', () => {
     });
   });
 
+  test('builds a zero-basis gifted shares trade for broker reward lots', () => {
+    const trade = buildTradeForDecision(reviewItem, 'import_as_gifted_shares');
+
+    expect(trade).toMatchObject({
+      symbol: 'IBKR',
+      side: 'long',
+      quantity: 0.0228,
+      entryPrice: 0,
+      exitPrice: 81.67,
+      entryTime: '2026-04-20T10:25:08',
+      exitTime: '2026-04-20T10:25:08'
+    });
+    expect(trade.pnl).toBeCloseTo((81.67 * 0.0228) - 0.018663565, 8);
+    expect(trade.executions).toHaveLength(2);
+    expect(trade.executions[0]).toMatchObject({
+      action: 'buy',
+      price: 0,
+      synthetic: true,
+      synthetic_reason: 'manual_review_gifted_shares_zero_basis'
+    });
+    expect(trade.executions[1]).toMatchObject({
+      action: 'sell',
+      price: 81.67,
+      orderId: '9349469033',
+      manual_review_action: 'import_as_gifted_shares'
+    });
+  });
+
   test('applies review decisions and refreshes derived trade data when imports are created', async () => {
     db.query.mockResolvedValue({ rows: [] });
     Trade.create.mockResolvedValue({ id: 'trade-1' });

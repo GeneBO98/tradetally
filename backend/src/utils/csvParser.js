@@ -8538,7 +8538,7 @@ function buildIBKRAmbiguousSellReviewItem({ transaction, symbol, conid, instrume
     account_identifier: accountIdentifier,
     instrument_type: instrumentData.instrumentType || 'stock',
     reason: 'Sell execution has no matching opening buy or existing open position.',
-    available_actions: ['import_as_short', 'import_as_close_only', 'ignore']
+    available_actions: ['import_as_short', 'import_as_close_only', 'import_as_gifted_shares', 'ignore']
   };
 }
 

@@ -12,7 +12,7 @@
               Review sell-only executions
             </h3>
             <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-              These stock sells had no matching opening buy or existing open position. Confirm each one as a short, import it as a close-only long, or ignore it.
+              These stock sells had no matching opening buy or existing open position. Confirm each one as a short, close-only long, gifted shares with $0 basis, or ignore it.
             </p>
           </div>
           <button
@@ -45,7 +45,11 @@
                     Needs review
                   </span>
                 </div>
-                <dl class="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-4">
+                <dl class="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-5">
+                  <div>
+                    <dt class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Symbol</dt>
+                    <dd class="font-medium text-gray-900 dark:text-white">{{ item.symbol || 'Unknown' }}</dd>
+                  </div>
                   <div>
                     <dt class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Quantity</dt>
                     <dd class="font-medium text-gray-900 dark:text-white">{{ formatQuantity(item.quantity) }}</dd>
@@ -92,6 +96,19 @@
                   <span class="ml-2">
                     <span class="block font-medium">{{ closeOnlyLabel(item) }}</span>
                     <span class="block text-xs opacity-80">Use same-price synthetic entry basis.</span>
+                  </span>
+                </label>
+
+                <label class="flex cursor-pointer rounded-md border p-2 text-sm" :class="optionClass(item, index, 'import_as_gifted_shares')">
+                  <input
+                    v-model="decisions[reviewKey(item, index)]"
+                    class="mt-0.5 h-4 w-4 border-gray-300 text-primary-600 focus:ring-primary-500"
+                    type="radio"
+                    value="import_as_gifted_shares"
+                  >
+                  <span class="ml-2">
+                    <span class="block font-medium">Import as gifted shares</span>
+                    <span class="block text-xs opacity-80">$0 basis; realized gain is proceeds minus costs.</span>
                   </span>
                 </label>
 

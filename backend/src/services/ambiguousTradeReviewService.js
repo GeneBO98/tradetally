@@ -3,7 +3,7 @@ const Trade = require('../models/Trade');
 const AnalyticsCache = require('./analyticsCache');
 const OptionStrategyGroupingService = require('./optionStrategyGroupingService');
 
-const VALID_REVIEW_ACTIONS = new Set(['import_as_short', 'import_as_close_only', 'ignore']);
+const VALID_REVIEW_ACTIONS = new Set(['import_as_short', 'import_as_close_only', 'import_as_gifted_shares', 'ignore']);
 
 function parseFiniteNumber(value, fallback = null) {
   if (value === null || value === undefined || value === '') return fallback;
@@ -157,6 +157,52 @@ function buildCloseOnlyTrade(item) {
   };
 }
 
+function buildGiftedSharesTrade(item) {
+  if (item.action !== 'sell') {
+    throw new Error('Gifted shares review can only be applied to sell executions');
+  }
+
+  const syntheticOpeningExecution = {
+    action: 'buy',
+    quantity: item.quantity,
+    price: 0,
+    datetime: item.datetime,
+    commission: 0,
+    fees: 0,
+    conid: item.conid,
+    orderId: item.order_id ? `${item.order_id}-manual-review-gifted-open` : null,
+    synthetic: true,
+    synthetic_reason: 'manual_review_gifted_shares_zero_basis',
+    source: 'manual_review'
+  };
+  const closingExecution = realExecutionFor(item, 'import_as_gifted_shares');
+  const proceeds = item.price * item.quantity;
+
+  return {
+    symbol: item.symbol,
+    side: 'long',
+    quantity: item.quantity,
+    entryPrice: 0,
+    exitPrice: item.price,
+    entryTime: item.datetime,
+    exitTime: item.datetime,
+    tradeDate: item.trade_date,
+    pnl: proceeds - Math.abs(item.commission + item.fees),
+    pnlPercent: null,
+    commission: item.commission,
+    fees: item.fees,
+    broker: item.broker,
+    brokerConnectionId: item.broker_connection_id,
+    accountIdentifier: item.account_identifier,
+    conid: item.conid,
+    importId: item.import_id,
+    instrumentType: 'stock',
+    executions: [syntheticOpeningExecution, closingExecution],
+    executionData: [syntheticOpeningExecution, closingExecution],
+    notes: 'Imported after manual review as gifted, promotional, or reward shares with $0 cost basis. Opening execution was synthetic because no broker buy execution was present.'
+  };
+}
+
 function buildTradeForDecision(reviewItem, action) {
   const item = normalizeReviewItem(reviewItem);
 
@@ -166,6 +212,10 @@ function buildTradeForDecision(reviewItem, action) {
 
   if (action === 'import_as_close_only') {
     return buildCloseOnlyTrade(item);
+  }
+
+  if (action === 'import_as_gifted_shares') {
+    return buildGiftedSharesTrade(item);
   }
 
   throw new Error(`Unsupported manual review action: ${action}`);
