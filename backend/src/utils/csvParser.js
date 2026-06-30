@@ -701,6 +701,46 @@ function detectBrokerFormat(fileBuffer) {
       return detected;
     }
 
+    // ThinkorSwim / paperMoney multi-section "Account Statement" detection.
+    // These exports lead with a disclaimer and several non-tabular sections
+    // (Cash Balance, Account Order History, ...), so the real "Filled Orders"
+    // header (",,Exec Time,Spread,Side,Qty,Pos Effect,Symbol,...") sits far below
+    // the 15-line window the generic header sniffer scans. Scan deeper for the
+    // Filled-Orders column signature and route to the paperMoney parser, which
+    // isolates the Filled Orders section itself (see parseCSV `papermoney` block).
+    {
+      const tosScanLimit = Math.min(lines.length, 2000);
+      for (let i = 0; i < tosScanLimit; i++) {
+        const line = lines[i];
+        if (!line) continue;
+        const lowerLine = line.toLowerCase();
+        if (lowerLine.includes('exec time') && lowerLine.includes('pos effect') && lowerLine.includes('spread')) {
+          console.log('[AUTO-DETECT] Detected: ThinkorSwim/paperMoney Account Statement (multi-section Filled Orders)');
+          return 'papermoney';
+        }
+      }
+    }
+
+    // MetaTrader 5 trade-history report ("Report Cronistorico dei Trade" and
+    // localized equivalents). Semicolon-delimited, a title row offsets the real
+    // header, column names are localized (Italian: Simbolo/Tipo/Volume/Prezzo/
+    // Profitto) and prices use European decimals (e.g. "4 577,86"). The generic
+    // header sniffer can't see past the title row, so scan for the position-report
+    // header signature directly and route to the dedicated MetaTrader 5 parser.
+    {
+      const mtScanLimit = Math.min(lines.length, 30);
+      for (let i = 0; i < mtScanLimit; i++) {
+        const cells = (lines[i] || '').split(';').map(c => c.trim().toLowerCase());
+        if (cells.length >= 8 &&
+            cells.includes('simbolo') && cells.includes('tipo') &&
+            cells.includes('volume') && cells.includes('prezzo') &&
+            cells.includes('profitto')) {
+          console.log('[AUTO-DETECT] Detected: MetaTrader 5 history report (Italian)');
+          return 'metatrader5';
+        }
+      }
+    }
+
     const headerInfo = findLikelyDelimitedHeaderLine(lines);
     const headerLine = headerInfo?.line || '';
     const headerLineIndex = headerInfo?.index || 0;
@@ -1259,7 +1299,7 @@ const brokerParsers = {
     // Price mapping - support more variations
     const entryPrice = parseNumeric(
       row['Entry Price'] || row['Buy Price'] || row.Price || row.price ||
-      row['Price / share'] || row.TradePrice || row['TradePrice'] ||
+      row['Price / share'] || row.TradePrice || row['TradePrice'] || row['Trade Price'] ||
       row['Fill Price'] || row['Avg Price'] || row['Average Price'] ||
       row['Avg fill price'] || row['Avg Fill Price'] || row['Average fill price'] ||
       row['Open Price'] || row['Opening Price'] || row['Purchase Price'] ||
@@ -1293,8 +1333,11 @@ const brokerParsers = {
     // Robinhood uses `Trans Code` with values "Buy"/"Sell".
     const side = parseSide(
       row.Side || row.side || row.Direction || row.direction ||
-      row.Type || row.type || row.trade_type || row['trade_type'] || row.Action || row.action ||
+      // Explicit buy/sell columns must win over the ambiguous `Type` column:
+      // some brokers (e.g. Tiger) use Type for the instrument class ("EQUITY")
+      // and carry the real direction in Buy/Sell.
       row['B/S'] || row['Buy/Sell'] || row.BS ||
+      row.Type || row.type || row.trade_type || row['trade_type'] || row.Action || row.action ||
       row['Trans Code'] || row['trans code'] ||
       row['Opening direction'] || row['Opening Direction'] ||
       row['Market pos.'] || row['Market Pos.'] || row['Market Position']
@@ -2808,6 +2851,17 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     // Normalize those rows before broker detection and parsing.
     csvString = normalizeWholeLineQuotedCsvRows(csvString);
 
+    // MetaTrader 5 history reports are semicolon-delimited with duplicate column
+    // names, a localized title row and European decimals — none of which the
+    // csv-parse pipeline below can represent. Parse the raw string positionally
+    // and return early.
+    if (broker === 'metatrader5') {
+      console.log('Starting MetaTrader 5 history parsing');
+      const result = await parseMetaTrader5History(csvString, { ...context, diagnostics });
+      console.log('Finished MetaTrader 5 history parsing');
+      return wrapResultWithDiagnostics(result, diagnostics, [], userTimezone);
+    }
+
     const firstHeaderLine = csvString.split('\n').find(line => line.trim().length > 0) || '';
     const firstHeaders = firstHeaderLine.split(',').map(header => header.replace(/^"|"$/g, '').trim());
     if (broker === 'tradestation' && hasTradingViewOrderHistoryHeaders(firstHeaders)) {
@@ -4193,7 +4247,11 @@ function parseTimeOnly(timeStr) {
   if (!timeStr || timeStr.toString().trim() === '') return null;
 
   const cleanTimeStr = timeStr.toString().replace(/^[\x27\x22\u2018\u2019\u201C\u201D]|[\x27\x22\u2018\u2019\u201C\u201D]$/g, '').trim();
-  const timeOnlyMatch = cleanTimeStr.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  // Match a leading clock time, tolerating a trailing timezone annotation such as
+  // "04:47:39,GMT-04" (Tiger Brokers), "09:30:00 EST", or "13:05 GMT+0530".
+  // The lookahead requires end-of-string or a non-time character after the time,
+  // so this never grabs a partial time out of a full datetime (which starts with a date).
+  const timeOnlyMatch = cleanTimeStr.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?(?=$|[^\d:])/);
   if (!timeOnlyMatch) return null;
 
   const [, hour, minute, second = '00'] = timeOnlyMatch;
@@ -8274,6 +8332,175 @@ async function parseTradervueCompletedTrades(records, context = {}) {
   }
 
   return trades;
+}
+
+// Parse a number written with European conventions: space (or non-breaking
+// space) thousands separators and a decimal comma, e.g. "4 577,86" -> 4577.86,
+// "1.234,56" -> 1234.56, "0,00" -> 0. Plain US-style numbers pass through.
+function parseEuropeanNumber(value, defaultValue = 0) {
+  if (value === null || value === undefined) return defaultValue;
+  let str = value.toString().trim();
+  if (str === '') return defaultValue;
+  // Strip spaces used as thousands separators (regular, non-breaking, thin, narrow).
+  str = str.replace(/[\s   ]/g, '');
+  const hasComma = str.includes(',');
+  const hasDot = str.includes('.');
+  if (hasComma && hasDot) {
+    // Both present → '.' is the thousands separator, ',' is the decimal.
+    str = str.replace(/\./g, '').replace(',', '.');
+  } else if (hasComma) {
+    // Only a comma → it's the decimal separator.
+    str = str.replace(',', '.');
+  }
+  const parsed = parseFloat(str);
+  return Number.isFinite(parsed) ? parsed : defaultValue;
+}
+
+// MetaTrader stamps timestamps as "YYYY.MM.DD HH:MM:SS". Normalize to an
+// ISO-like local string the rest of the pipeline understands.
+function parseMetaTraderDateTime(value) {
+  if (!value) return null;
+  const s = value.toString().trim();
+  const m = s.match(/^(\d{4})\.(\d{2})\.(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (m) {
+    const [, y, mo, d, h, mi, se = '00'] = m;
+    return `${y}-${mo}-${d}T${h}:${mi}:${se}`;
+  }
+  return parseDateTime(s);
+}
+
+// MetaTrader 5 history/position report parser.
+//
+// These exports are semicolon-delimited with a localized title row above the
+// header, localized column names, European decimal prices, and DUPLICATE column
+// names ("Ora"/"Prezzo" appear twice — open and close). Each data row is a
+// self-contained closed position (open + close + realized P&L), so we parse it
+// positionally into a completed trade and trust the broker-provided "Profitto"
+// for P&L (forex/CFD P&L can't be derived from price × volume without contract
+// size). Run on the raw CSV string because csv-parse can't represent the
+// duplicate column names.
+async function parseMetaTrader5History(csvString, context = {}) {
+  const diagnostics = context.diagnostics;
+  const lines = csvString.split('\n');
+  const completedTrades = [];
+
+  // Locate the header row (semicolon-delimited, contains the position columns).
+  let headerIndex = -1;
+  let headerCells = [];
+  for (let i = 0; i < lines.length; i++) {
+    const cells = lines[i].split(';').map(c => c.trim().toLowerCase());
+    if (cells.includes('simbolo') && cells.includes('tipo') && cells.includes('volume') &&
+        cells.includes('prezzo') && cells.includes('profitto')) {
+      headerIndex = i;
+      headerCells = cells;
+      break;
+    }
+  }
+  if (headerIndex === -1) {
+    if (diagnostics) diagnostics.warnings.push('Could not locate the MetaTrader 5 history header row.');
+    return completedTrades;
+  }
+
+  // Map header tokens to column positions. Duplicate "ora"/"prezzo" tokens:
+  // the first occurrence is the open value, the second is the close value.
+  const col = {};
+  const seen = {};
+  headerCells.forEach((name, idx) => {
+    if (!name) return;
+    seen[name] = (seen[name] || 0) + 1;
+    const key = seen[name] > 1 ? `${name}#${seen[name]}` : name;
+    if (!(key in col)) col[key] = idx;
+  });
+
+  const openTimeIdx = col['ora'];
+  const closeTimeIdx = col['ora#2'] ?? col['ora'];
+  const openPriceIdx = col['prezzo'];
+  const closePriceIdx = col['prezzo#2'] ?? col['prezzo'];
+  const symbolIdx = col['simbolo'];
+  const typeIdx = col['tipo'];
+  const volumeIdx = col['volume'];
+  const commissionIdx = col['commissioni'];
+  const swapIdx = col['swap'];
+  const profitIdx = col['profitto'];
+
+  let rowIndex = 0;
+  for (let i = headerIndex + 1; i < lines.length; i++) {
+    const raw = lines[i];
+    if (!raw || raw.trim() === '') continue;
+    const cells = raw.split(';');
+    rowIndex++;
+    if (diagnostics) diagnostics.totalRows++;
+    try {
+      const symbolRaw = (cells[symbolIdx] || '').trim();
+      const typeRaw = (cells[typeIdx] || '').trim().toLowerCase();
+
+      // Skip footer/summary rows (totals, balance) that carry no buy/sell type.
+      if (!symbolRaw || (typeRaw !== 'buy' && typeRaw !== 'sell')) {
+        if (diagnostics) diagnostics.skippedRows++;
+        continue;
+      }
+
+      // Strip broker-specific symbol suffixes (XAUUSD.x, EURUSD.m, ...).
+      const symbol = symbolRaw.replace(/\.[A-Za-z0-9]+$/, '').toUpperCase();
+      const side = typeRaw === 'buy' ? 'long' : 'short';
+      const quantity = Math.abs(parseEuropeanNumber(cells[volumeIdx]));
+      const entryPrice = parseEuropeanNumber(cells[openPriceIdx]);
+      const exitPrice = parseEuropeanNumber(cells[closePriceIdx]);
+      const entryTime = parseMetaTraderDateTime(cells[openTimeIdx]);
+      const exitTime = parseMetaTraderDateTime(cells[closeTimeIdx]);
+      const tradeDate = entryTime ? entryTime.slice(0, 10) : null;
+      const commission = Math.abs(parseEuropeanNumber(cells[commissionIdx]));
+      const swap = parseEuropeanNumber(cells[swapIdx]);
+      const pnl = parseEuropeanNumber(cells[profitIdx]);
+
+      if (!symbol || !tradeDate || !(quantity > 0) || !(entryPrice > 0)) {
+        if (diagnostics) {
+          diagnostics.invalidRows++;
+          diagnostics.skippedReasons.push({
+            row: rowIndex,
+            reason: 'Could not import this MetaTrader row: missing or invalid symbol, price, quantity, or date.'
+          });
+        }
+        continue;
+      }
+
+      const instrumentData = parseInstrumentData(symbol);
+      const trade = {
+        symbol,
+        tradeDate,
+        entryTime,
+        exitTime,
+        entryPrice,
+        exitPrice,
+        quantity,
+        side,
+        commission,
+        fees: Math.abs(swap), // record swap/financing as a fee
+        pnl,
+        profitLoss: pnl,
+        broker: 'metatrader5',
+        currency: context.currency || 'USD',
+        notes: ''
+      };
+      if (instrumentData.instrumentType === 'future' || instrumentData.instrumentType === 'option') {
+        Object.assign(trade, instrumentData);
+      }
+
+      const accountIdentifier = context.selectedAccountId || null;
+      if (accountIdentifier) trade.accountIdentifier = accountIdentifier;
+
+      completedTrades.push(trade);
+      if (diagnostics) diagnostics.parsedRows++;
+    } catch (error) {
+      if (diagnostics) {
+        diagnostics.invalidRows++;
+        diagnostics.skippedReasons.push({ row: rowIndex, reason: `Parse error: ${error.message}` });
+      }
+    }
+  }
+
+  console.log(`[METATRADER5] Parsed ${completedTrades.length} closed positions`);
+  return completedTrades;
 }
 
 function buildIBKRAmbiguousSellReviewItem({ transaction, symbol, conid, instrumentData, brokerTag, context }) {
