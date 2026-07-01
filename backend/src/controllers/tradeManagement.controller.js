@@ -921,6 +921,210 @@ function buildRPerformanceGroups(rows, groupByPosition) {
   }));
 }
 
+// pg may return JSONB columns as strings in some setups; normalize the fields
+// calculateRMultiples reads. Shared by getRPerformance and the grouped
+// individual-analysis path.
+function parseTradeJsonFields(row) {
+  const trade = { ...row };
+  for (const field of ['executions', 'risk_level_history', 'take_profit_targets']) {
+    if (typeof trade[field] === 'string') {
+      try {
+        trade[field] = JSON.parse(trade[field]);
+      } catch (_) {
+        trade[field] = null;
+      }
+    }
+  }
+  return trade;
+}
+
+// Combine per-leg calculateRMultiples results into one position-level analysis
+// (issue #359). Actual R and Management R are summed across legs exactly like
+// the R-Performance chart's grouped rows; the combined target follows the
+// analysis panel's semantics instead (weighted_target_r ?? target_r, not gated
+// on target-hit data, and only when EVERY analyzed leg has a target). Dollar
+// amounts are summed; per-share values are meaningless for a multi-leg
+// position so they are null.
+function combineLegAnalyses(analyzableEntries, totalLegCount) {
+  const analyses = analyzableEntries.map(entry => entry.analysis);
+
+  const actualR = roundR(analyses.reduce((sum, a) => sum + a.actual_r, 0));
+  const actualPlAmount = roundR(analyses.reduce((sum, a) => sum + (Number(a.actual_pl_amount) || 0), 0));
+  const riskAmount = roundR(analyses.reduce((sum, a) => sum + (Number(a.risk_amount) || 0), 0));
+
+  // A combined target only makes sense when every analyzed leg has one;
+  // otherwise "target vs actual" would compare mismatched leg sets.
+  const targetParts = analyses.map(a => a.weighted_target_r ?? a.target_r);
+  const targetR = targetParts.every(value => value !== null && value !== undefined)
+    ? roundR(targetParts.reduce((sum, value) => sum + value, 0))
+    : null;
+
+  const targetPlParts = analyses.map(a => a.target_pl_amount);
+  const targetPlAmount = targetR !== null && targetPlParts.every(value => value !== null && value !== undefined)
+    ? roundR(targetPlParts.reduce((sum, value) => sum + value, 0))
+    : null;
+
+  const managementParts = analyses
+    .map(a => a.management_r)
+    .filter(value => value !== null && value !== undefined);
+  const managementR = managementParts.length > 0
+    ? roundR(managementParts.reduce((sum, value) => sum + value, 0))
+    : null;
+
+  // planned_r compares like-for-like leg sets: it is only reported when every
+  // analyzed leg has its own planned_r, otherwise legs without management data
+  // would inflate the "planned" figure.
+  const plannedParts = analyses.map(a => a.planned_r);
+  const plannedR = plannedParts.every(value => value !== null && value !== undefined)
+    ? roundR(plannedParts.reduce((sum, value) => sum + value, 0))
+    : null;
+
+  const rLost = targetR !== null ? roundR(targetR - actualR) : null;
+
+  return {
+    actual_r: actualR,
+    target_r: targetR,
+    r_lost: rLost,
+    weighted_target_r: null,
+    effective_r_lost: rLost,
+    management_r: managementR,
+    planned_r: plannedR,
+    planned_pl_amount: null,
+    risk_per_share: null,
+    risk_amount: riskAmount,
+    actual_pl_per_share: null,
+    actual_pl_amount: actualPlAmount,
+    target_pl_per_share: null,
+    target_pl_amount: targetPlAmount,
+    management_score: calculateManagementScore(actualR, targetR ?? undefined, rLost ?? undefined),
+    has_stop_loss: true,
+    has_take_profit: targetR !== null,
+    position_grouped: true,
+    leg_count: totalLegCount,
+    analyzed_leg_count: analyzableEntries.length
+  };
+}
+
+/**
+ * Build the combined analysis response for a multi-leg position (whole-trade
+ * grouping, issue #359 follow-up). Legs without a stop loss are listed but
+ * excluded from the combined R math, mirroring the R-Performance chart.
+ */
+async function respondWithGroupedAnalysis(res, { legs, dollarRisk }) {
+  const parsedLegs = legs.map(parseTradeJsonFields);
+
+  const legEntries = parsedLegs.map(leg => {
+    if (!leg.stop_loss) {
+      return { leg, analysis: null, excluded_reason: 'missing_stop_loss' };
+    }
+    const analysis = calculateRMultiples(leg, { dollarRisk });
+    if (analysis.error || analysis.actual_r == null) {
+      return { leg, analysis: null, excluded_reason: analysis.error || 'no_r_value' };
+    }
+    return { leg, analysis, excluded_reason: null };
+  });
+
+  const analyzable = legEntries.filter(entry => entry.analysis);
+  if (analyzable.length === 0) {
+    // Distinguish "no stop losses" from "stop losses set but every leg failed
+    // to calculate" so the client can show the real error instead of the
+    // set-a-stop-loss flow.
+    const calculationError = legEntries
+      .map(entry => entry.excluded_reason)
+      .find(reason => reason && reason !== 'missing_stop_loss' && reason !== 'no_r_value');
+    if (calculationError) {
+      return res.status(400).json({
+        error: calculationError,
+        position_grouped: true,
+        leg_count: parsedLegs.length
+      });
+    }
+    return res.status(400).json({
+      error: 'Stop loss must be set for R-Multiple analysis',
+      needs_stop_loss: true,
+      needs_take_profit: parsedLegs.some(leg => !leg.take_profit),
+      position_grouped: true,
+      leg_count: parsedLegs.length
+    });
+  }
+
+  const analysis = combineLegAnalyses(analyzable, parsedLegs.length);
+  const repLeg = analyzable[0].leg;
+
+  // Charts uploaded to any leg belong to the position.
+  const chartsResult = await db.query(
+    `SELECT id, chart_url, chart_title, uploaded_at
+     FROM trade_charts
+     WHERE trade_id = ANY($1)
+     ORDER BY uploaded_at ASC`,
+    [parsedLegs.map(leg => leg.id)]
+  );
+  const charts = chartsResult.rows.map(chart => ({
+    id: chart.id,
+    chartUrl: chart.chart_url,
+    chartTitle: chart.chart_title,
+    uploadedAt: chart.uploaded_at
+  }));
+
+  // entry_time/exit_time come back from pg as Date objects; sort numerically,
+  // not lexicographically.
+  const byTime = (a, b) => new Date(a) - new Date(b);
+  const entryTimes = parsedLegs.map(leg => leg.entry_time).filter(Boolean).sort(byTime);
+  const exitTimes = parsedLegs.map(leg => leg.exit_time).filter(Boolean).sort(byTime);
+  const totalPnl = roundR(parsedLegs.reduce((sum, leg) => sum + (parseFloat(leg.pnl) || 0), 0));
+  const totalQuantity = roundR(parsedLegs.reduce((sum, leg) => sum + (parseFloat(leg.quantity) || 0), 0));
+
+  res.json({
+    trade: {
+      // The representative leg's id keeps selection, URL deep-links, and the
+      // grouped selector row (whose id is also the representative leg) aligned.
+      id: repLeg.id,
+      symbol: repLeg.position_symbol || repLeg.symbol,
+      trade_date: parsedLegs.map(leg => leg.trade_date).filter(Boolean).sort()[0] || repLeg.trade_date,
+      side: repLeg.side,
+      quantity: totalQuantity,
+      // Per-share levels do not exist for a combined position; the frontend
+      // renders per-leg values from `legs` instead. stop_loss carries the
+      // representative leg's value so the client knows analysis is possible.
+      entry_price: null,
+      exit_price: null,
+      stop_loss: repLeg.stop_loss,
+      take_profit: null,
+      take_profit_targets: null,
+      pnl: totalPnl,
+      pnl_percent: null,
+      entry_time: entryTimes[0] || null,
+      exit_time: exitTimes[exitTimes.length - 1] || null,
+      instrument_type: repLeg.instrument_type,
+      charts,
+      manual_target_hit_first: null,
+      target_hit_analysis: null,
+      position_grouped: true,
+      leg_count: parsedLegs.length,
+      legs: legEntries.map(({ leg, analysis: legAnalysis, excluded_reason }) => ({
+        id: leg.id,
+        symbol: leg.symbol,
+        side: leg.side,
+        quantity: leg.quantity,
+        entry_price: leg.entry_price,
+        exit_price: leg.exit_price,
+        stop_loss: leg.stop_loss,
+        take_profit: leg.take_profit,
+        pnl: leg.pnl,
+        entry_time: leg.entry_time,
+        exit_time: leg.exit_time,
+        instrument_type: leg.instrument_type,
+        actual_r: legAnalysis ? legAnalysis.actual_r : null,
+        target_r: legAnalysis ? (legAnalysis.weighted_target_r ?? legAnalysis.target_r) : null,
+        management_r: legAnalysis ? legAnalysis.management_r : null,
+        included_in_analysis: !!legAnalysis,
+        excluded_reason
+      }))
+    },
+    analysis
+  });
+}
+
 const tradeManagementController = {
   /**
    * Get trades for selection with filters
@@ -936,8 +1140,118 @@ const tradeManagementController = {
       logger.info('[TRADE-MGMT] getTradesForSelection called', { userId, filters: filterSpec, limit, offset });
 
       // Shared WHERE clause so the selector list, its trade numbering, and the
-      // R-Performance chart all reflect the same filtered set.
-      const { whereClause, values, paramCount } = await TradeQueries._buildWhereClause(userId, filterSpec);
+      // R-Performance chart all reflect the same filtered set. Whole-trade
+      // grouping (issue #359 follow-up): when enabled, the selector collapses
+      // multi-leg positions into one selectable row, matching the
+      // R-Performance chart's grouped rows.
+      const [{ whereClause, values, paramCount }, { groupByPosition }] = await Promise.all([
+        TradeQueries._buildWhereClause(userId, filterSpec),
+        getTradeManagementPreferences(userId)
+      ]);
+
+      if (groupByPosition) {
+        // One row per position group. The representative leg (rep_id) is the
+        // earliest stop-loss-bearing leg so the row exposes a usable stop_loss,
+        // and trade_number ranks groups by their first stop-loss leg in
+        // chronological order — the same order getRPerformance numbers its
+        // grouped chart rows.
+        const groupedQuery = `
+          WITH base AS (
+            SELECT
+              t.id, t.symbol, t.trade_date, t.entry_time, t.exit_time, t.entry_price, t.exit_price,
+              t.quantity, t.side, t.pnl, t.pnl_percent,
+              t.stop_loss, t.take_profit, t.r_value,
+              t.strategy, t.broker, t.instrument_type,
+              t.manual_target_hit_first, t.target_hit_analysis,
+              ${POSITION_GROUP_KEY} AS position_group_key,
+              COALESCE(NULLIF(t.underlying_symbol, ''), t.symbol) AS position_symbol
+            FROM trades t
+            ${whereClause}
+              AND t.exit_price IS NOT NULL
+          ),
+          grouped AS (
+            SELECT
+              position_group_key,
+              COUNT(*)::int AS leg_count,
+              (ARRAY_AGG(id ORDER BY (stop_loss IS NULL) ASC, entry_time ASC NULLS LAST, id ASC))[1] AS rep_id,
+              ARRAY_AGG(id ORDER BY entry_time ASC NULLS LAST, id ASC) AS trade_ids,
+              MIN(trade_date) AS trade_date,
+              MIN(entry_time) AS entry_time,
+              MAX(exit_time) AS exit_time,
+              SUM(pnl) AS pnl,
+              SUM(quantity) AS quantity,
+              BOOL_OR(stop_loss IS NOT NULL) AS has_any_stop_loss,
+              BOOL_OR(stop_loss IS NULL) AS has_missing_stop_loss,
+              BOOL_OR(stop_loss IS NOT NULL AND take_profit IS NULL) AS has_missing_take_profit,
+              BOOL_OR(manual_target_hit_first IS NOT NULL OR target_hit_analysis IS NOT NULL) AS has_target_hit_data,
+              (ARRAY_AGG(trade_date ORDER BY trade_date ASC, id ASC) FILTER (WHERE stop_loss IS NOT NULL))[1] AS first_sl_trade_date,
+              (ARRAY_AGG(id ORDER BY trade_date ASC, id ASC) FILTER (WHERE stop_loss IS NOT NULL))[1] AS first_sl_id
+            FROM base
+            GROUP BY position_group_key
+          ),
+          numbered AS (
+            SELECT position_group_key,
+              ROW_NUMBER() OVER (ORDER BY first_sl_trade_date ASC, first_sl_id ASC) AS trade_number
+            FROM grouped
+            WHERE has_any_stop_loss
+          )
+          SELECT
+            g.rep_id AS id,
+            b.position_symbol AS symbol,
+            g.trade_date, g.entry_time, g.exit_time,
+            b.entry_price, b.exit_price,
+            g.quantity, b.side, g.pnl,
+            CASE WHEN g.leg_count = 1 THEN b.pnl_percent ELSE NULL END AS pnl_percent,
+            b.stop_loss, b.take_profit, b.r_value,
+            b.strategy, b.broker, b.instrument_type,
+            b.manual_target_hit_first, b.target_hit_analysis,
+            g.leg_count, g.trade_ids,
+            g.has_any_stop_loss, g.has_missing_stop_loss,
+            g.has_missing_take_profit, g.has_target_hit_data,
+            n.trade_number
+          FROM grouped g
+          JOIN base b ON b.id = g.rep_id
+          LEFT JOIN numbered n ON n.position_group_key = g.position_group_key
+          ORDER BY g.trade_date DESC, g.entry_time DESC NULLS LAST
+          LIMIT $${paramCount} OFFSET $${paramCount + 1}
+        `;
+        const groupedCountQuery = `
+          SELECT COUNT(DISTINCT ${POSITION_GROUP_KEY}) as total
+          FROM trades t
+          ${whereClause}
+            AND t.exit_price IS NOT NULL
+        `;
+        const groupedValues = [...values, limit, offset];
+        const [groupedResult, countResult] = await Promise.all([
+          db.query(groupedQuery, groupedValues),
+          db.query(groupedCountQuery, values)
+        ]);
+        logger.info('[TRADE-MGMT] Grouped query returned', groupedResult.rows.length, 'positions');
+
+        const trades = groupedResult.rows.map(row => ({
+          ...row,
+          position_grouped: row.leg_count > 1,
+          needs_stop_loss: !row.has_any_stop_loss,
+          // The combined analysis only reports a target when every analyzed
+          // leg has one, so the badge reflects any stop-loss leg missing a TP.
+          needs_take_profit: !!row.has_missing_take_profit,
+          can_analyze: !!row.has_any_stop_loss,
+          has_target_hit_data: !!row.has_target_hit_data
+        }));
+
+        const total = parseInt(countResult.rows[0].total);
+
+        return res.json({
+          trades,
+          position_grouping: true,
+          pagination: {
+            total,
+            limit,
+            offset,
+            has_more: offset + trades.length < total
+          }
+        });
+      }
 
       // numbered_trades numbers the SAME filtered set the R-Performance chart
       // uses (closed trades with a stop loss, chronological) so trade_number
@@ -993,6 +1307,7 @@ const tradeManagementController = {
 
       res.json({
         trades,
+        position_grouping: false,
         pagination: {
           total,
           limit,
@@ -1017,11 +1332,10 @@ const tradeManagementController = {
       logger.debug('[R-ANALYSIS] ========================================');
       logger.debug('[R-ANALYSIS] getRMultipleAnalysis called:', { userId, tradeId });
 
-      // Fetch the trade
-      const result = await db.query(
-        `SELECT * FROM trades WHERE id = $1 AND user_id = $2`,
-        [tradeId, userId]
-      );
+      const [{ groupByPosition, dollarRisk: userDollarRisk }, result] = await Promise.all([
+        getTradeManagementPreferences(userId),
+        db.query(`SELECT * FROM trades WHERE id = $1 AND user_id = $2`, [tradeId, userId])
+      ]);
 
       if (result.rows.length === 0) {
         logger.debug('[R-ANALYSIS] Trade not found');
@@ -1029,6 +1343,54 @@ const tradeManagementController = {
       }
 
       const trade = result.rows[0];
+
+      // Whole-trade grouping (issue #359 follow-up): analyze the full multi-leg
+      // position the selected trade belongs to. Legs are matched on the indexed
+      // components of POSITION_GROUP_KEY (persisted group id, else
+      // account + underlying + entry_time) rather than the computed expression,
+      // and are scoped by the same request filters the trade selector used so
+      // the analyzed leg set matches the selected row.
+      if (groupByPosition && trade.exit_price) {
+        let groupCondition = null;
+        const groupParams = [];
+        if (trade.position_group_id) {
+          groupCondition = (idx) => `t.position_group_id = $${idx}`;
+          groupParams.push(trade.position_group_id);
+        } else if (trade.entry_time) {
+          // Mirrors POSITION_GROUP_KEY's fallback key. A trade with no group id
+          // and no entry_time keys on its own id and can never have siblings.
+          groupCondition = (idx) => `t.position_group_id IS NULL
+             AND COALESCE(t.account_identifier, '') = $${idx}
+             AND COALESCE(NULLIF(t.underlying_symbol, ''), t.symbol) = $${idx + 1}
+             AND t.entry_time = $${idx + 2}`;
+          groupParams.push(
+            trade.account_identifier || '',
+            trade.underlying_symbol || trade.symbol,
+            trade.entry_time
+          );
+        }
+
+        if (groupCondition) {
+          const filterSpec = parseTradeManagementFilters(req.query);
+          const { whereClause, values, paramCount } = await TradeQueries._buildWhereClause(userId, filterSpec);
+          const legsResult = await db.query(
+            `SELECT t.*, COALESCE(NULLIF(t.underlying_symbol, ''), t.symbol) AS position_symbol
+             FROM trades t
+             ${whereClause}
+               AND t.exit_price IS NOT NULL
+               AND ${groupCondition(paramCount)}
+             ORDER BY t.entry_time ASC NULLS LAST, t.id ASC`,
+            [...values, ...groupParams]
+          );
+
+          if (legsResult.rows.length > 1) {
+            return await respondWithGroupedAnalysis(res, {
+              legs: legsResult.rows,
+              dollarRisk: userDollarRisk
+            });
+          }
+        }
+      }
       logger.debug('[R-ANALYSIS] Trade loaded from DB:', {
         id: trade.id,
         symbol: trade.symbol,
@@ -1063,8 +1425,7 @@ const tradeManagementController = {
 
       logger.debug('[R-ANALYSIS] Calling calculateRMultiples...');
       // Calculate R-Multiples
-      const dollarRisk = await getUserDollarRisk(userId);
-      const analysis = calculateRMultiples(trade, { dollarRisk });
+      const analysis = calculateRMultiples(trade, { dollarRisk: userDollarRisk });
       logger.debug('[R-ANALYSIS] Analysis result:', JSON.stringify(analysis));
 
       if (analysis.error) {
@@ -1504,33 +1865,6 @@ const tradeManagementController = {
       const result = await db.query(query, values);
       logger.info('[TRADE-MGMT] Found', result.rows.length, 'trades with stop_loss for R analysis');
 
-      // Helper to parse JSON fields from DB (pg may return strings for JSONB in some setups)
-      const parseTradeRow = (row) => {
-        const trade = { ...row };
-        if (typeof trade.executions === 'string') {
-          try {
-            trade.executions = JSON.parse(trade.executions);
-          } catch (_) {
-            trade.executions = null;
-          }
-        }
-        if (typeof trade.risk_level_history === 'string') {
-          try {
-            trade.risk_level_history = JSON.parse(trade.risk_level_history);
-          } catch (_) {
-            trade.risk_level_history = null;
-          }
-        }
-        if (typeof trade.take_profit_targets === 'string') {
-          try {
-            trade.take_profit_targets = JSON.parse(trade.take_profit_targets);
-          } catch (_) {
-            trade.take_profit_targets = null;
-          }
-        }
-        return trade;
-      };
-
       // Use same calculation as R-Multiple Analysis (calculateRMultiples) so chart matches panel
       let cumulativeActualR = 0;
       let cumulativePotentialR = 0;
@@ -1546,7 +1880,7 @@ const tradeManagementController = {
       const chartData = [];
       const tradeDetails = [];
 
-      const performanceRows = buildRPerformanceGroups(result.rows.map(parseTradeRow), groupByPosition);
+      const performanceRows = buildRPerformanceGroups(result.rows.map(parseTradeJsonFields), groupByPosition);
 
       performanceRows.forEach((performanceTrade) => {
         const legResults = [];

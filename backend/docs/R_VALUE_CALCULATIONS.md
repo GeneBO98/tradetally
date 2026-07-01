@@ -200,6 +200,33 @@ This is different from Weighted Target R (which assumes all targets hit) - it re
 
 ---
 
+## Whole-Trade Position Grouping (issue #359)
+
+When the `analytics_position_grouping` setting is enabled, Trade Management collapses
+multi-leg positions (option spreads, etc., keyed by `POSITION_GROUP_KEY` in
+`utils/positionGrouping.js`) into one position before reporting R values. This applies
+to both the R-Performance summary and the Individual Trade Analysis view.
+
+Combination rules (each leg is first calculated individually with the formulas above,
+then combined):
+
+- **Actual R** = sum of leg Actual R values (same rule as the R-Performance chart)
+- **Management R** = sum over legs that have one, null when none do (same rule as the chart)
+- **Target R** (Individual Trade Analysis) = sum of leg effective targets
+  (`weighted_target_r ?? target_r`), and only when **every analyzed leg** has a target —
+  otherwise the combined target is null. Note this intentionally differs from the
+  R-Performance chart's target line, which follows the reconstructed planned path
+  (`planned_r ?? weighted_target_r ?? target_r`) and only counts legs with target-hit data.
+- **Planned R** = sum of leg planned_r values, and only when every analyzed leg has one
+- **Dollar amounts** (risk amount, actual P&L, target P&L) are summed
+- **Per-share values** are null for a combined position (they have no meaning across legs)
+- Legs without a stop loss are listed but **excluded** from the combined R math,
+  matching the R-Performance chart's behavior
+- The Individual Trade Analysis legs query is scoped by the **same request filters** as
+  the trade selector, so the analyzed leg set matches the selected row
+
+---
+
 ## Key Rules
 
 1. **Use current stop loss** for R calculations (risk_level_history is only for tracking move history)
