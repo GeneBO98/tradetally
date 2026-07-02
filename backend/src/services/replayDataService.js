@@ -1,0 +1,540 @@
+/**
+ * Trade Replay data service
+ *
+ * Builds the full payload a replay session needs in one request: 1-minute
+ * OHLCV bars for the trade's session window plus the trade's fills normalized
+ * to signed buy/sell events. Bars are stepped client-side; nothing streams.
+ *
+ * Provider selection follows the instance's MARKET_DATA_PROVIDER (FMP or
+ * Finnhub) via utils/finnhub. Closed-session bars are immutable market data,
+ * so they are cached globally in Postgres (intraday_candles) and each
+ * symbol/session is fetched from the upstream provider at most once.
+ *
+ * All timestamps in the payload are epoch seconds UTC. The payload carries
+ * the exchange timezone and its UTC offset so the frontend can shift bar
+ * times uniformly for display without depending on the browser timezone.
+ */
+
+const db = require('../config/database');
+const marketData = require('../utils/finnhub');
+const alphaVantage = require('../utils/alphaVantage');
+const { multiplierFor, isBuyAction, isSellAction, normalizeAction } = require('./pnlEngine');
+
+const NY_TZ = 'America/New_York';
+const INTERVAL = '1min';
+// Extended-hours session window in exchange time (04:00 - 20:00 ET)
+const SESSION_START_HOUR = 4;
+const SESSION_END_HOUR = 20;
+// Don't persist bars for a session until this long after it ends, so a
+// partially-complete day is never recorded as covered.
+const SESSION_CLOSE_BUFFER_SECONDS = 30 * 60;
+
+function wallClockPartsInZone(epochMs, timeZone) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  }).formatToParts(new Date(epochMs));
+  const get = (type) => Number(parts.find((p) => p.type === type)?.value);
+  // Intl formats midnight as hour 24 in some environments
+  const hour = get('hour') % 24;
+  return {
+    year: get('year'),
+    month: get('month'),
+    day: get('day'),
+    hour,
+    minute: get('minute'),
+    second: get('second')
+  };
+}
+
+function tzOffsetMs(epochMs, timeZone) {
+  const p = wallClockPartsInZone(epochMs, timeZone);
+  const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+  return asUtc - epochMs;
+}
+
+// Epoch seconds for a wall-clock time in a specific timezone. Single-pass
+// offset lookup is sufficient here: US DST transitions happen at 2am Sunday
+// when equity markets are closed, so session windows never straddle one.
+function zonedEpochSeconds(year, month, day, hour, minute, second, timeZone) {
+  const guess = Date.UTC(year, month - 1, day, hour, minute, second);
+  return Math.floor((guess - tzOffsetMs(guess, timeZone)) / 1000);
+}
+
+// FMP intraday rows carry Eastern-time wall-clock strings with no offset, and
+// fmpClient parses them with `new Date(...)`, i.e. in the SERVER's local
+// timezone. Recover the original wall clock via local getters and reinterpret
+// it as Eastern time to get a true UTC epoch, whatever the server TZ is.
+function fmpBarTimeToUtcSeconds(storedSeconds) {
+  const d = new Date(storedSeconds * 1000);
+  return zonedEpochSeconds(
+    d.getFullYear(),
+    d.getMonth() + 1,
+    d.getDate(),
+    d.getHours(),
+    d.getMinutes(),
+    d.getSeconds(),
+    NY_TZ
+  );
+}
+
+function toEpochSeconds(value) {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) return Math.floor(value.getTime() / 1000);
+  if (typeof value === 'number') return Math.floor(value > 1e12 ? value / 1000 : value);
+  const str = String(value).trim();
+  if (!str) return null;
+  // Executions were normalized to UTC (migration 134) but many stored strings
+  // carry no offset suffix; Node would parse those as server-local, so pin
+  // offsetless strings to UTC explicitly.
+  const hasOffset = /(?:Z|[+-]\d{2}:?\d{2})$/.test(str);
+  const isoish = str.replace(' ', 'T');
+  const ms = Date.parse(hasOffset ? isoish : `${isoish}Z`);
+  return Number.isNaN(ms) ? null : Math.floor(ms / 1000);
+}
+
+function parseExecutions(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function asNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Normalize a trade's executions to chronological signed fills:
+ *   { time (epoch s UTC), price, quantity (positive), action ('buy'|'sell') }
+ *
+ * Handles the two stored execution shapes (raw broker fills with
+ * action/datetime, and grouped round-trip records carrying entry/exit pairs)
+ * and falls back to synthesizing entry/exit fills from the trade record.
+ */
+function normalizeFills(trade) {
+  const executions = parseExecutions(trade.executions);
+  const side = trade.side === 'short' ? 'short' : 'long';
+  const fills = [];
+
+  const grouped = executions.length > 0 && executions.every((e) =>
+    e && (e.entry_price !== undefined || e.entryPrice !== undefined)
+  );
+
+  if (grouped) {
+    for (const exec of executions) {
+      const quantity = Math.abs(asNumber(exec.quantity) ?? 0);
+      if (!quantity) continue;
+      const entryTime = toEpochSeconds(exec.entry_time ?? exec.entryTime);
+      const entryPrice = asNumber(exec.entry_price ?? exec.entryPrice);
+      if (entryTime && entryPrice !== null) {
+        fills.push({ time: entryTime, price: entryPrice, quantity, action: side === 'short' ? 'sell' : 'buy' });
+      }
+      const exitTime = toEpochSeconds(exec.exit_time ?? exec.exitTime);
+      const exitPrice = asNumber(exec.exit_price ?? exec.exitPrice);
+      if (exitTime && exitPrice !== null) {
+        fills.push({ time: exitTime, price: exitPrice, quantity, action: side === 'short' ? 'buy' : 'sell' });
+      }
+    }
+  } else {
+    for (const exec of executions) {
+      const quantity = Math.abs(asNumber(exec.quantity) ?? 0);
+      const price = asNumber(exec.price);
+      const time = toEpochSeconds(exec.datetime ?? exec.time);
+      if (!quantity || price === null || !time) continue;
+      const action = normalizeAction(exec.action || exec.side || '');
+      if (isBuyAction(action)) {
+        fills.push({ time, price, quantity, action: 'buy' });
+      } else if (isSellAction(action)) {
+        fills.push({ time, price, quantity, action: 'sell' });
+      }
+    }
+  }
+
+  if (fills.length === 0) {
+    const quantity = Math.abs(asNumber(trade.quantity) ?? 0);
+    const entryTime = toEpochSeconds(trade.entry_time || trade.trade_date);
+    const entryPrice = asNumber(trade.entry_price);
+    if (quantity && entryTime && entryPrice !== null) {
+      fills.push({ time: entryTime, price: entryPrice, quantity, action: side === 'short' ? 'sell' : 'buy' });
+    }
+    const exitTime = toEpochSeconds(trade.exit_time);
+    const exitPrice = asNumber(trade.exit_price);
+    if (quantity && exitTime && exitPrice !== null) {
+      fills.push({ time: exitTime, price: exitPrice, quantity, action: side === 'short' ? 'buy' : 'sell' });
+    }
+  }
+
+  fills.sort((a, b) => a.time - b.time);
+  return fills;
+}
+
+/**
+ * Compute the extended-hours session window (04:00-20:00 ET) containing the
+ * trade's entry, in true UTC epoch seconds.
+ */
+function sessionWindowForEntry(entryEpochSeconds) {
+  const p = wallClockPartsInZone(entryEpochSeconds * 1000, NY_TZ);
+  const fromTs = zonedEpochSeconds(p.year, p.month, p.day, SESSION_START_HOUR, 0, 0, NY_TZ);
+  const toTs = zonedEpochSeconds(p.year, p.month, p.day, SESSION_END_HOUR, 0, 0, NY_TZ);
+  const pad = (n) => String(n).padStart(2, '0');
+  return {
+    date: `${p.year}-${pad(p.month)}-${pad(p.day)}`,
+    fromTs,
+    toTs
+  };
+}
+
+async function getCoverage(symbol, sessionDate) {
+  const result = await db.query(
+    `SELECT from_ts, to_ts, source, candle_count
+     FROM intraday_candle_coverage
+     WHERE symbol = $1 AND interval = $2 AND session_date = $3`,
+    [symbol, INTERVAL, sessionDate]
+  );
+  return result.rows[0] || null;
+}
+
+async function getCachedBars(symbol, fromTs, toTs) {
+  const result = await db.query(
+    `SELECT ts, open, high, low, close, volume
+     FROM intraday_candles
+     WHERE symbol = $1 AND interval = $2 AND ts >= $3 AND ts <= $4
+     ORDER BY ts ASC`,
+    [symbol, INTERVAL, fromTs, toTs]
+  );
+  return result.rows.map((row) => ({
+    time: Number(row.ts),
+    open: Number(row.open),
+    high: Number(row.high),
+    low: Number(row.low),
+    close: Number(row.close),
+    volume: row.volume === null ? null : Number(row.volume)
+  }));
+}
+
+async function storeBars(symbol, sessionDate, fromTs, toTs, bars, source) {
+  if (bars.length === 0) return;
+  const values = [];
+  const params = [];
+  let i = 1;
+  for (const bar of bars) {
+    // FMP occasionally reports fractional volumes; the column is BIGINT
+    const volume = bar.volume === null || bar.volume === undefined
+      ? null
+      : Math.round(Number(bar.volume));
+    values.push(`($${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++})`);
+    params.push(symbol, INTERVAL, bar.time, bar.open, bar.high, bar.low, bar.close, volume, source);
+  }
+  await db.query(
+    `INSERT INTO intraday_candles (symbol, interval, ts, open, high, low, close, volume, source)
+     VALUES ${values.join(', ')}
+     ON CONFLICT (symbol, interval, ts) DO NOTHING`,
+    params
+  );
+  await db.query(
+    `INSERT INTO intraday_candle_coverage (symbol, interval, session_date, from_ts, to_ts, source, candle_count)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (symbol, interval, session_date) DO UPDATE
+       SET from_ts = EXCLUDED.from_ts,
+           to_ts = EXCLUDED.to_ts,
+           source = EXCLUDED.source,
+           candle_count = EXCLUDED.candle_count,
+           fetched_at = NOW()`,
+    [symbol, INTERVAL, sessionDate, fromTs, toTs, source, bars.length]
+  );
+}
+
+function dedupeSortBars(bars) {
+  const byTime = new Map();
+  for (const bar of bars) {
+    if (bar && Number.isFinite(bar.time) && Number.isFinite(bar.close)) {
+      byTime.set(bar.time, bar);
+    }
+  }
+  return Array.from(byTime.values()).sort((a, b) => a.time - b.time);
+}
+
+/**
+ * Fetch 1-min bars from the configured provider for the session window,
+ * normalized to true UTC epochs. Throws if the provider has no intraday data
+ * (paywalled key, delisted symbol, too-old session).
+ */
+async function fetchIntradayBars(symbol, fromTs, toTs, userId) {
+  const rawBars = await marketData.getStockCandles(symbol, '1', fromTs, toTs, userId, { source: 'replay' });
+  const bars = rawBars.map((bar) => ({
+    ...bar,
+    time: marketData.isFmp ? fmpBarTimeToUtcSeconds(bar.time) : bar.time
+  }));
+  // Providers are queried by date, so responses can spill past the session
+  // window; keep only bars inside it.
+  return dedupeSortBars(bars).filter((bar) => bar.time >= fromTs && bar.time <= toTs);
+}
+
+/**
+ * Daily-candle fallback when intraday data is unavailable. Returns bars in
+ * the same shape with `time` at daily granularity.
+ */
+async function fetchDailyBars(symbol, entryEpochSeconds, exitEpochSeconds, userId) {
+  const daySeconds = 24 * 60 * 60;
+  const fromTs = entryEpochSeconds - 30 * daySeconds;
+  const toTs = (exitEpochSeconds || entryEpochSeconds) + 10 * daySeconds;
+  try {
+    const bars = await marketData.getStockCandles(symbol, 'D', fromTs, toTs, userId, { source: 'replay' });
+    return { bars: dedupeSortBars(bars), source: marketData.providerName };
+  } catch (providerError) {
+    if (!alphaVantage.isConfigured()) throw providerError;
+    const entryIso = new Date(entryEpochSeconds * 1000).toISOString();
+    const exitIso = exitEpochSeconds ? new Date(exitEpochSeconds * 1000).toISOString() : null;
+    const chartData = await alphaVantage.getTradeChartData(symbol, entryIso, exitIso);
+    return { bars: dedupeSortBars(chartData.candles || []), source: 'alphavantage' };
+  }
+}
+
+function isQuotaError(error) {
+  return error && (error.code === 'PRO_REQUIRED' || error.code === 'RATE_LIMIT_EXCEEDED');
+}
+
+function closeAtTime(candles, time) {
+  let candidate = candles[0];
+  for (const bar of candles) {
+    if (bar.time > time) break;
+    candidate = bar;
+  }
+  return candidate ? Number(candidate.close) : null;
+}
+
+/**
+ * Detect split-adjustment mismatch between provider bars and the trade's
+ * fills. Providers serve TODAY'S split-adjusted view of a past session, while
+ * fills carry the raw prices from trade time — after a 1:25 reverse split the
+ * bars sit 25x above the fills (SQQQ-style ETFs do this constantly, and
+ * provider "nonadjusted" flags only partially undo stacked splits).
+ *
+ * Split factors are clean ratios, so: take the median bar/fill price ratio at
+ * fill time and, when it lands within 10% of an integer (or an integer
+ * reciprocal for forward splits), rescale the bars into the fill's price
+ * space. Ordinary venue/data noise (ratio near 1) is left untouched.
+ *
+ * @returns {number} factor to DIVIDE bar prices by (1 = no adjustment)
+ */
+function resolvePriceScale(candles, fills) {
+  if (candles.length === 0 || fills.length === 0) return 1;
+  const ratios = fills
+    .map((fill) => {
+      const barClose = closeAtTime(candles, fill.time);
+      return barClose && fill.price > 0 ? barClose / fill.price : null;
+    })
+    .filter((r) => r !== null && Number.isFinite(r))
+    .sort((a, b) => a - b);
+  if (ratios.length === 0) return 1;
+  const median = ratios[Math.floor(ratios.length / 2)];
+
+  if (median >= 1.5) {
+    const rounded = Math.round(median);
+    if (rounded >= 2 && Math.abs(median - rounded) / rounded <= 0.1) return rounded;
+  } else if (median <= 0.67 && median > 0) {
+    const inverse = Math.round(1 / median);
+    if (inverse >= 2 && Math.abs(1 / median - inverse) / inverse <= 0.1) return 1 / inverse;
+  }
+  return 1;
+}
+
+function applyPriceScale(candles, scale) {
+  if (scale === 1) return candles;
+  return candles.map((bar) => ({
+    ...bar,
+    open: Number(bar.open) / scale,
+    high: Number(bar.high) / scale,
+    low: Number(bar.low) / scale,
+    close: Number(bar.close) / scale,
+    // Adjusted volume shrinks by the split factor; scale it back up so
+    // share counts are in the same raw space as the prices
+    volume: bar.volume === null || bar.volume === undefined
+      ? null
+      : Number(bar.volume) * scale
+  }));
+}
+
+/**
+ * Build the complete replay payload for one trade.
+ *
+ * @param {object} trade - trade row (snake_case fields, from Trade.findById)
+ * @param {string} userId
+ * @returns {object} replay payload (all times epoch seconds UTC)
+ */
+async function getTradeReplayData(trade, userId) {
+  const instrumentType = trade.instrument_type || 'stock';
+  if (instrumentType === 'future') {
+    const error = new Error('Futures replay is not yet available');
+    error.statusCode = 422;
+    throw error;
+  }
+
+  const entryTs = toEpochSeconds(trade.entry_time || trade.trade_date);
+  if (!entryTs) {
+    const error = new Error('Trade is missing entry time information');
+    error.statusCode = 400;
+    throw error;
+  }
+  const exitTs = toEpochSeconds(trade.exit_time);
+
+  // For options, trade.symbol holds the underlying; the chart shows the
+  // underlying's price action with option fills overlaid as markers.
+  const chartSymbol = String(trade.symbol || '').toUpperCase();
+  if (!chartSymbol) {
+    const error = new Error('Trade is missing symbol information');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const session = sessionWindowForEntry(entryTs);
+  const fills = normalizeFills(trade);
+
+  let candles = [];
+  let resolution = INTERVAL;
+  let source = null;
+  let degraded = false;
+  let degradedReason = null;
+
+  const coverage = await getCoverage(chartSymbol, session.date);
+  if (coverage) {
+    candles = await getCachedBars(chartSymbol, session.fromTs, session.toTs);
+    source = `cache:${coverage.source || 'unknown'}`;
+  }
+
+  if (candles.length === 0) {
+    try {
+      candles = await fetchIntradayBars(chartSymbol, session.fromTs, session.toTs, userId);
+      source = marketData.providerName;
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      const sessionClosed = session.toTs + SESSION_CLOSE_BUFFER_SECONDS < nowSeconds;
+      if (sessionClosed && candles.length > 0) {
+        try {
+          await storeBars(chartSymbol, session.date, session.fromTs, session.toTs, candles, marketData.providerName);
+        } catch (cacheError) {
+          console.warn(`[REPLAY] Failed to cache bars for ${chartSymbol} ${session.date}: ${cacheError.message}`);
+        }
+      }
+    } catch (intradayError) {
+      if (isQuotaError(intradayError)) throw intradayError;
+      console.warn(`[REPLAY] Intraday data unavailable for ${chartSymbol} ${session.date} (${intradayError.message}), degrading to daily`);
+      try {
+        const daily = await fetchDailyBars(chartSymbol, entryTs, exitTs, userId);
+        candles = daily.bars;
+        resolution = 'daily';
+        source = daily.source;
+        degraded = true;
+        degradedReason = intradayError.message;
+      } catch (dailyError) {
+        if (isQuotaError(dailyError)) throw dailyError;
+        const error = new Error(`No chart data available for ${chartSymbol}. The symbol may be delisted, inactive, or not supported by the market data provider.`);
+        error.statusCode = 404;
+        throw error;
+      }
+    }
+  }
+
+  if (candles.length === 0) {
+    const error = new Error(`No chart data available for ${chartSymbol}`);
+    error.statusCode = 404;
+    throw error;
+  }
+
+  // Rescale split-adjusted provider bars into the fills' raw price space.
+  // Done at serve time (never at cache time) so the cache stays a verbatim
+  // provider mirror and later splits self-correct against the fills.
+  const priceScale = resolvePriceScale(candles, fills);
+  candles = applyPriceScale(candles, priceScale);
+
+  return {
+    symbol: trade.symbol,
+    chart_symbol: chartSymbol,
+    resolution,
+    source,
+    degraded,
+    degraded_reason: degradedReason,
+    price_scale: priceScale,
+    session: {
+      date: session.date,
+      from_ts: session.fromTs,
+      to_ts: session.toTs,
+      timezone: NY_TZ,
+      // Add this to every timestamp before feeding the chart so axis labels
+      // read as exchange-local wall clock regardless of browser timezone.
+      display_offset_seconds: Math.floor(tzOffsetMs(session.fromTs * 1000, NY_TZ) / 1000)
+    },
+    candles,
+    fills,
+    trade: {
+      id: trade.id,
+      symbol: trade.symbol,
+      side: trade.side,
+      entry_price: asNumber(trade.entry_price),
+      exit_price: asNumber(trade.exit_price),
+      quantity: asNumber(trade.quantity),
+      pnl: asNumber(trade.pnl),
+      pnl_percent: asNumber(trade.pnl_percent),
+      stop_loss: asNumber(trade.stop_loss),
+      take_profit: asNumber(trade.take_profit),
+      instrument_type: instrumentType,
+      option_type: trade.option_type || null,
+      strike_price: asNumber(trade.strike_price),
+      multiplier: multiplierFor(instrumentType, trade.contract_size, trade.point_value),
+      entry_time_ts: entryTs,
+      exit_time_ts: exitTs
+    }
+  };
+}
+
+async function countReplayedTrades(userId) {
+  const result = await db.query(
+    'SELECT COUNT(*)::int AS count FROM replay_usage WHERE user_id = $1',
+    [userId]
+  );
+  return result.rows[0].count;
+}
+
+async function hasReplayedTrade(userId, tradeId) {
+  const result = await db.query(
+    'SELECT 1 FROM replay_usage WHERE user_id = $1 AND trade_id = $2',
+    [userId, tradeId]
+  );
+  return result.rows.length > 0;
+}
+
+async function recordReplayUsage(userId, tradeId) {
+  await db.query(
+    `INSERT INTO replay_usage (user_id, trade_id)
+     VALUES ($1, $2)
+     ON CONFLICT (user_id, trade_id) DO NOTHING`,
+    [userId, tradeId]
+  );
+}
+
+module.exports = {
+  getTradeReplayData,
+  countReplayedTrades,
+  hasReplayedTrade,
+  recordReplayUsage,
+  // Exported for tests
+  normalizeFills,
+  sessionWindowForEntry,
+  fmpBarTimeToUtcSeconds,
+  toEpochSeconds
+};

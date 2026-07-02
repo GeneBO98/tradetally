@@ -62,6 +62,7 @@ const testimonialsRoutes = require('./routes/testimonials.routes');
 const supportRoutes = require('./routes/support.routes');
 const internalRoutes = require('./routes/internal.routes');
 const edgeReportRoutes = require('./routes/edgeReport.routes');
+const replayRoutes = require('./routes/replay.routes');
 const propFirmRoutes = require('./routes/propFirm.routes');
 const BillingService = require('./services/billingService');
 const priceMonitoringService = require('./services/priceMonitoringService');
@@ -295,6 +296,7 @@ app.use('/api/trial-feedback', trialFeedbackRoutes);
 app.use('/api/auth/passkey', passkeyRoutes);
 app.use('/api/testimonials', testimonialsRoutes);
 app.use('/api/edge-reports', edgeReportRoutes);
+app.use('/api/replay', replayRoutes);
 app.use('/api/prop-firm', propFirmRoutes);
 
 // OAuth2 Provider endpoints

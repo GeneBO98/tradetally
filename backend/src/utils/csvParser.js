@@ -4615,19 +4615,19 @@ function getExecutionTimeBounds(executions = []) {
 // Lightspeed-specific datetime parser that handles Central Time
 function parseLightspeedDateTime(dateTimeStr) {
   if (!dateTimeStr) return null;
-  
+
   try {
-    // Lightspeed exports times in Central Time (America/Chicago)
-    // We need to parse the datetime and convert it to UTC properly
-    
-    // Parse the datetime string components manually to avoid timezone interpretation
+    // Lightspeed exports execution times in Eastern Time (America/New_York).
+    // A previous version applied a fixed +4h offset (correct only during
+    // daylight saving), which stored every EST-season trade an hour early —
+    // convert via localToUTC so DST is handled properly.
     // Expected formats: "2025-04-09 16:33" or "04/09/2025 16:33:00"
     const parts = dateTimeStr.trim().split(' ');
     if (parts.length < 2) return null;
-    
+
     const [datePart, timePart] = parts;
     let year, month, day;
-    
+
     // Check if date is in MM/DD/YYYY format
     if (datePart.includes('/')) {
       const dateMatch = datePart.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
@@ -4640,49 +4640,26 @@ function parseLightspeedDateTime(dateTimeStr) {
       // Assume YYYY-MM-DD format
       [year, month, day] = datePart.split('-').map(Number);
     }
-    
+
     // Parse time part (HH:MM or HH:MM:SS)
     const timeParts = timePart.split(':');
     const hours = parseInt(timeParts[0]);
     const minutes = parseInt(timeParts[1]);
-    
-    if (!year || !month || !day || hours === undefined || minutes === undefined) return null;
-    
-    // Create UTC date object with explicit values (treating input as literal time)
-    // Month is 0-indexed in JavaScript Date
-    const literalDate = new Date(Date.UTC(year, month - 1, day, hours, minutes, 0));
-    
-    // Now adjust for Lightspeed timezone
-    // Based on your requirement: 16:33 should become 20:33 UTC
-    // This means we need to add 4 hours to the literal time
-    const offsetHours = 4; // Fixed 4-hour offset to get 16:33 -> 20:33 conversion
-    
-    // Add offset hours to convert from Lightspeed time to UTC
-    const utcDate = new Date(literalDate.getTime() + (offsetHours * 60 * 60 * 1000));
-    
-    console.log(`Lightspeed time conversion: ${dateTimeStr} (Central) -> ${utcDate.toISOString()} (UTC)`);
-    
-    return utcDate.toISOString();
+    const seconds = parseInt(timeParts[2]) || 0;
+
+    if (!year || !month || !day || !Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+
+    const pad = (n) => String(n).padStart(2, '0');
+    const naive = `${year}-${pad(month)}-${pad(day)}T${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+    const utc = localToUTC(naive, 'America/New_York');
+
+    console.log(`Lightspeed time conversion: ${dateTimeStr} (Eastern) -> ${utc} (UTC)`);
+
+    return utc;
   } catch (error) {
     console.warn('Error parsing Lightspeed datetime:', dateTimeStr, error.message);
     return null;
   }
-}
-
-// Helper function to determine if a date is in daylight saving time
-function isDaylightSavingTime(date) {
-  // DST in US typically runs from second Sunday in March to first Sunday in November
-  const year = date.getFullYear();
-  
-  // Second Sunday in March
-  const marchSecondSunday = new Date(year, 2, 1); // March 1st
-  marchSecondSunday.setDate(marchSecondSunday.getDate() + (7 - marchSecondSunday.getDay()) + 7);
-  
-  // First Sunday in November  
-  const novemberFirstSunday = new Date(year, 10, 1); // November 1st
-  novemberFirstSunday.setDate(novemberFirstSunday.getDate() + (7 - novemberFirstSunday.getDay()));
-  
-  return date >= marchSecondSunday && date < novemberFirstSunday;
 }
 
 function parseSide(sideStr) {

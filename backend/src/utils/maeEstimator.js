@@ -109,7 +109,9 @@ class MAEEstimator {
       throw new Error(`Invalid calculated quantity: ${quantity}`);
     }
 
-    const candles = await this.getCandlesForExcursion(trade, entry_time, exit_time);
+    // Providers return different shapes (Finnhub: {c,h,l} arrays; FMP: array
+    // of bar objects) — normalize before use
+    const candles = this.normalizeCandles(await this.getCandlesForExcursion(trade, entry_time, exit_time));
 
     if (!candles || candles.c.length === 0) {
       throw new Error('No candle data returned for MAE/MFE calculation');
@@ -193,7 +195,7 @@ class MAEEstimator {
       throw new Error('Post-exit window must end after entry time');
     }
 
-    const candles = await this.getCandlesForExcursion(trade, trade.entry_time, windowEnd);
+    const candles = this.normalizeCandles(await this.getCandlesForExcursion(trade, trade.entry_time, windowEnd));
 
     if (!candles || candles.c.length === 0) {
       throw new Error('No candle data returned for post-exit MAE/MFE calculation');

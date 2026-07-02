@@ -96,6 +96,15 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      // Free users get a limited number of replays (quota enforced by the
+      // API); the view renders the upgrade prompt in place, so no
+      // requiresTier guard here.
+      path: '/replay/:id',
+      name: 'trade-replay',
+      component: () => import('@/views/replay/TradeReplayView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/metrics',
       name: 'metrics',
       component: () => import('@/views/AnalyticsView.vue'),

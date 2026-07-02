@@ -10,7 +10,7 @@ class JobQueue {
 
   /**
    * Add a job to the queue
-   * @param {string} type - Job type (cusip_resolution, strategy_classification, news_enrichment, news_backfill, quality_backfill, verification_email, password_reset_email, account_lockout_email, support_request_email)
+   * @param {string} type - Job type (cusip_resolution, strategy_classification, news_enrichment, news_backfill, quality_backfill, mae_recalc, verification_email, password_reset_email, account_lockout_email, support_request_email)
    * @param {object} data - Job data
    * @param {number} priority - Priority (1=highest, 5=lowest)
    * @param {string} userId - User ID for the job
@@ -267,6 +267,9 @@ class JobQueue {
           break;
         case 'quality_backfill':
           result = await this.processQualityBackfill(data);
+          break;
+        case 'mae_recalc':
+          result = await this.processMAERecalc(data);
           break;
         case 'verification_email':
           result = await this.processVerificationEmail(data);
@@ -644,6 +647,91 @@ class JobQueue {
 
     logger.logImport(`Quality backfill completed: ${graded} graded, ${skipped} skipped`);
     return { message: `Quality backfill completed: ${graded} graded, ${skipped} skipped` };
+  }
+
+  /**
+   * Recalculate persisted MAE/MFE for a user's trades where the fields are
+   * NULL. NULL is the system's "needs recalculation" marker, so data-fix
+   * migrations invalidate derived values by nulling them and enqueue one of
+   * these jobs per affected user (see migration 222).
+   *
+   * Processes up to maxTrades per run and re-enqueues itself while it is
+   * still making progress; a pass with zero successful updates stops the
+   * chain so trades whose candle data simply doesn't exist (delisted or
+   * too-old symbols) can't cause an infinite requeue loop.
+   */
+  async processMAERecalc(data) {
+    const MAEEstimator = require('./maeEstimator');
+    const AnalyticsCache = require('../services/analyticsCache');
+    const { userId, batchSize = 5, maxTrades = 50 } = data;
+
+    const pendingCondition = `
+      user_id = $1
+      AND mae IS NULL AND mfe IS NULL
+      AND entry_time IS NOT NULL AND exit_time IS NOT NULL
+      AND entry_price IS NOT NULL AND exit_price IS NOT NULL
+      AND pnl IS NOT NULL
+    `;
+
+    const result = await db.query(
+      `SELECT id, symbol, entry_time, exit_time, entry_price, exit_price, side,
+              pnl, commission, fees, quantity, instrument_type, point_value,
+              underlying_asset, contract_size
+       FROM trades
+       WHERE ${pendingCondition}
+       ORDER BY entry_time DESC
+       LIMIT ${parseInt(maxTrades, 10) || 50}`,
+      [userId]
+    );
+    const trades = result.rows;
+
+    logger.logImport(`MAE recalc: found ${trades.length} trades needing MAE/MFE for user ${userId}`);
+
+    let updated = 0;
+    let skipped = 0;
+
+    for (let i = 0; i < trades.length; i += batchSize) {
+      const batch = trades.slice(i, i + batchSize);
+
+      for (const trade of batch) {
+        if (!MAEEstimator.isValidTradeForEstimation(trade)) {
+          skipped++;
+          continue;
+        }
+        try {
+          const { mae, mfe } = await MAEEstimator.calculateFromCandleData(trade);
+          await db.query('UPDATE trades SET mae = $1, mfe = $2 WHERE id = $3', [mae, mfe, trade.id]);
+          updated++;
+        } catch (error) {
+          logger.logError(`MAE recalc failed for trade ${trade.id} (${trade.symbol}): ${error.message}`);
+          skipped++;
+        }
+      }
+
+      // Delay between batches to respect market-data API rate limits
+      if (i + batchSize < trades.length) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+
+    if (updated > 0) {
+      await AnalyticsCache.invalidate(userId);
+    }
+
+    // Continue in a follow-up job while progress is being made
+    if (updated > 0) {
+      const remaining = await db.query(
+        `SELECT COUNT(*)::int AS n FROM trades WHERE ${pendingCondition}`,
+        [userId]
+      );
+      if (remaining.rows[0].n > 0) {
+        await this.addJob('mae_recalc', { userId, batchSize, maxTrades }, 4, userId);
+        logger.logImport(`MAE recalc: ${remaining.rows[0].n} trades remaining for user ${userId}, re-enqueued`);
+      }
+    }
+
+    logger.logImport(`MAE recalc completed for user ${userId}: ${updated} updated, ${skipped} skipped`);
+    return { message: `MAE recalc completed: ${updated} updated, ${skipped} skipped` };
   }
 
   /**

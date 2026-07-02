@@ -91,6 +91,27 @@ describe('Lightspeed parser', () => {
     // Commission should be populated (sum of entry + exit commissions)
     expect(trade.commission).toBeDefined();
   });
+
+  // Lightspeed files carry Eastern wall-clock times; conversion to UTC must
+  // follow DST. A previous fixed +4h offset stored EST-season trades an hour
+  // early (see migration 220).
+  test('converts execution times as Eastern with DST handling', async () => {
+    const edtCSV = [
+      'Trade Number,Trade Date,Execution Time,Symbol,Side,Qty,Price,Commission Amount,FeeSEC,Buy/Sell,Principal Amount,NET Amount',
+      '1001,07/23/2025,16:33,AAPL,B,100,150.00,1.00,0.01,Long Buy,15000.00,14998.99'
+    ].join('\n');
+    const edt = await parseCSV(buf(edtCSV), 'lightspeed', {});
+    // 16:33 EDT = 20:33 UTC
+    expect(new Date(edt.trades[0].entryTime).toISOString()).toBe('2025-07-23T20:33:00.000Z');
+
+    const estCSV = [
+      'Trade Number,Trade Date,Execution Time,Symbol,Side,Qty,Price,Commission Amount,FeeSEC,Buy/Sell,Principal Amount,NET Amount',
+      '1001,01/15/2025,16:33,AAPL,B,100,150.00,1.00,0.01,Long Buy,15000.00,14998.99'
+    ].join('\n');
+    const est = await parseCSV(buf(estCSV), 'lightspeed', {});
+    // 16:33 EST = 21:33 UTC (the case the old +4h offset got wrong)
+    expect(new Date(est.trades[0].entryTime).toISOString()).toBe('2025-01-15T21:33:00.000Z');
+  });
 });
 
 // ──────────────────────────────────────────────

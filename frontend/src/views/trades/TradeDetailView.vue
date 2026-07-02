@@ -44,6 +44,14 @@
             <ShareIcon class="h-4 w-4" />
             <span>Share</span>
           </button>
+          <router-link
+            v-if="trade.instrument_type !== 'future'"
+            :to="`/replay/${trade.id}`"
+            class="btn-secondary inline-flex items-center gap-2"
+          >
+            <PlayIcon class="h-4 w-4" />
+            <span>Replay</span>
+          </router-link>
           <router-link :to="`/analysis/trade-management?tradeId=${trade.id}`" class="btn-secondary">
             Manage
           </router-link>
@@ -1594,7 +1602,7 @@ import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { format, formatDistanceToNow, formatDistance } from 'date-fns'
-import { DocumentIcon, ChatBubbleLeftIcon, SparklesIcon, ShareIcon, TrashIcon } from '@heroicons/vue/24/outline'
+import { DocumentIcon, ChatBubbleLeftIcon, SparklesIcon, ShareIcon, TrashIcon, PlayIcon } from '@heroicons/vue/24/outline'
 import TradeShareCard from '@/components/trades/TradeShareCard.vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import api from '@/services/api'
