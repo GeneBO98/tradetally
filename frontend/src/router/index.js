@@ -349,6 +349,15 @@ const router = createRouter({
       meta: { requiresAuth: true, requiresTier: 'pro' }
     },
     {
+      // Free users get a limited number of backtest sessions (quota enforced
+      // by the API); the view renders the upgrade prompt in place, so no
+      // requiresTier guard here.
+      path: '/analysis/backtest',
+      name: 'backtest',
+      component: () => import('@/views/backtest/BacktestSandboxView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/price-alerts',
       name: 'price-alerts',
       component: () => import('@/views/PriceAlertsView.vue'),

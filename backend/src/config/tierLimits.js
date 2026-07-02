@@ -53,6 +53,11 @@ const TIER_LIMITS = {
     // Enough to hit the aha moment; session replay stays Pro-only.
     maxFreeReplays: 3,
 
+    // Backtest Sandbox: lifetime number of distinct symbol/session days a free
+    // user can load for simulated playback trading. Same taste-then-Pro model
+    // as trade replay.
+    maxFreeBacktests: 3,
+
     // API
     apiAccess: false,
     apiCallsPerDay: 0,
@@ -70,7 +75,8 @@ const TIER_LIMITS = {
       calendarView: true,
       leaderboardView: true,
       brokerSync: false, // Automatic broker sync is Pro-only
-      tradeReplay: false // Limited free replays via maxFreeReplays, then Pro
+      tradeReplay: false, // Limited free replays via maxFreeReplays, then Pro
+      backtestSandbox: false // Limited free sessions via maxFreeBacktests, then Pro
     }
   },
 
@@ -107,6 +113,9 @@ const TIER_LIMITS = {
 
     // Trade Replay
     maxFreeReplays: null, // Unlimited
+
+    // Backtest Sandbox
+    maxFreeBacktests: null, // Unlimited
 
     // API
     apiAccess: true,
@@ -152,6 +161,7 @@ const TIER_LIMITS = {
       playbookAdherence: true,
       advancedFiltering: true,
       tradeReplay: true,
+      backtestSandbox: true,
       customMetrics: true,
       exportReports: true,
       tradeBlocking: true,

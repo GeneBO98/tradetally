@@ -185,19 +185,27 @@ function normalizeFills(trade) {
 }
 
 /**
+ * Compute the extended-hours session window (04:00-20:00 ET) for a calendar
+ * day, in true UTC epoch seconds.
+ */
+function sessionWindowForDate(year, month, day) {
+  const fromTs = zonedEpochSeconds(year, month, day, SESSION_START_HOUR, 0, 0, NY_TZ);
+  const toTs = zonedEpochSeconds(year, month, day, SESSION_END_HOUR, 0, 0, NY_TZ);
+  const pad = (n) => String(n).padStart(2, '0');
+  return {
+    date: `${year}-${pad(month)}-${pad(day)}`,
+    fromTs,
+    toTs
+  };
+}
+
+/**
  * Compute the extended-hours session window (04:00-20:00 ET) containing the
  * trade's entry, in true UTC epoch seconds.
  */
 function sessionWindowForEntry(entryEpochSeconds) {
   const p = wallClockPartsInZone(entryEpochSeconds * 1000, NY_TZ);
-  const fromTs = zonedEpochSeconds(p.year, p.month, p.day, SESSION_START_HOUR, 0, 0, NY_TZ);
-  const toTs = zonedEpochSeconds(p.year, p.month, p.day, SESSION_END_HOUR, 0, 0, NY_TZ);
-  const pad = (n) => String(n).padStart(2, '0');
-  return {
-    date: `${p.year}-${pad(p.month)}-${pad(p.day)}`,
-    fromTs,
-    toTs
-  };
+  return sessionWindowForDate(p.year, p.month, p.day);
 }
 
 async function getCoverage(symbol, sessionDate) {
@@ -310,6 +318,34 @@ function isQuotaError(error) {
   return error && (error.code === 'PRO_REQUIRED' || error.code === 'RATE_LIMIT_EXCEEDED');
 }
 
+/**
+ * Load 1-min bars for a session window: global cache first, then the
+ * configured provider (persisting the result once the session is closed).
+ * Throws the provider error when intraday data is unavailable; callers decide
+ * whether to degrade (trade replay) or fail (backtest).
+ */
+async function loadSessionBars(symbol, session, userId) {
+  const coverage = await getCoverage(symbol, session.date);
+  if (coverage) {
+    const cached = await getCachedBars(symbol, session.fromTs, session.toTs);
+    if (cached.length > 0) {
+      return { candles: cached, source: `cache:${coverage.source || 'unknown'}` };
+    }
+  }
+
+  const candles = await fetchIntradayBars(symbol, session.fromTs, session.toTs, userId);
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const sessionClosed = session.toTs + SESSION_CLOSE_BUFFER_SECONDS < nowSeconds;
+  if (sessionClosed && candles.length > 0) {
+    try {
+      await storeBars(symbol, session.date, session.fromTs, session.toTs, candles, marketData.providerName);
+    } catch (cacheError) {
+      console.warn(`[REPLAY] Failed to cache bars for ${symbol} ${session.date}: ${cacheError.message}`);
+    }
+  }
+  return { candles, source: marketData.providerName };
+}
+
 function closeAtTime(candles, time) {
   let candidate = candles[0];
   for (const bar of candles) {
@@ -412,41 +448,25 @@ async function getTradeReplayData(trade, userId) {
   let degraded = false;
   let degradedReason = null;
 
-  const coverage = await getCoverage(chartSymbol, session.date);
-  if (coverage) {
-    candles = await getCachedBars(chartSymbol, session.fromTs, session.toTs);
-    source = `cache:${coverage.source || 'unknown'}`;
-  }
-
-  if (candles.length === 0) {
+  try {
+    const loaded = await loadSessionBars(chartSymbol, session, userId);
+    candles = loaded.candles;
+    source = loaded.source;
+  } catch (intradayError) {
+    if (isQuotaError(intradayError)) throw intradayError;
+    console.warn(`[REPLAY] Intraday data unavailable for ${chartSymbol} ${session.date} (${intradayError.message}), degrading to daily`);
     try {
-      candles = await fetchIntradayBars(chartSymbol, session.fromTs, session.toTs, userId);
-      source = marketData.providerName;
-      const nowSeconds = Math.floor(Date.now() / 1000);
-      const sessionClosed = session.toTs + SESSION_CLOSE_BUFFER_SECONDS < nowSeconds;
-      if (sessionClosed && candles.length > 0) {
-        try {
-          await storeBars(chartSymbol, session.date, session.fromTs, session.toTs, candles, marketData.providerName);
-        } catch (cacheError) {
-          console.warn(`[REPLAY] Failed to cache bars for ${chartSymbol} ${session.date}: ${cacheError.message}`);
-        }
-      }
-    } catch (intradayError) {
-      if (isQuotaError(intradayError)) throw intradayError;
-      console.warn(`[REPLAY] Intraday data unavailable for ${chartSymbol} ${session.date} (${intradayError.message}), degrading to daily`);
-      try {
-        const daily = await fetchDailyBars(chartSymbol, entryTs, exitTs, userId);
-        candles = daily.bars;
-        resolution = 'daily';
-        source = daily.source;
-        degraded = true;
-        degradedReason = intradayError.message;
-      } catch (dailyError) {
-        if (isQuotaError(dailyError)) throw dailyError;
-        const error = new Error(`No chart data available for ${chartSymbol}. The symbol may be delisted, inactive, or not supported by the market data provider.`);
-        error.statusCode = 404;
-        throw error;
-      }
+      const daily = await fetchDailyBars(chartSymbol, entryTs, exitTs, userId);
+      candles = daily.bars;
+      resolution = 'daily';
+      source = daily.source;
+      degraded = true;
+      degradedReason = intradayError.message;
+    } catch (dailyError) {
+      if (isQuotaError(dailyError)) throw dailyError;
+      const error = new Error(`No chart data available for ${chartSymbol}. The symbol may be delisted, inactive, or not supported by the market data provider.`);
+      error.statusCode = 404;
+      throw error;
     }
   }
 
@@ -502,6 +522,81 @@ async function getTradeReplayData(trade, userId) {
   };
 }
 
+/**
+ * Build the candle payload for a backtest sandbox session: 1-min bars for an
+ * arbitrary symbol + past session date. No fills exist yet (the user places
+ * simulated orders during playback), so there is no split-rescaling — bars are
+ * served in the provider's current adjusted price space. Intraday-only:
+ * stepping a day bar-by-bar is meaningless on daily candles, so unavailable
+ * intraday data is an error rather than a degradation.
+ *
+ * @param {string} symbol - already validated/uppercased ticker
+ * @param {string} sessionDate - YYYY-MM-DD calendar date (exchange time)
+ * @param {string} userId
+ */
+async function getBacktestSessionData(symbol, sessionDate, userId) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(sessionDate || ''));
+  if (!match) {
+    const error = new Error('Session date must be in YYYY-MM-DD format');
+    error.statusCode = 400;
+    throw error;
+  }
+  const [, yearStr, monthStr, dayStr] = match;
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  const day = Number(dayStr);
+  if (month < 1 || month > 12 || day < 1 || day > 31) {
+    const error = new Error('Invalid session date');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+  if (weekday === 0 || weekday === 6) {
+    const error = new Error('Markets are closed on weekends. Pick a weekday session.');
+    error.statusCode = 422;
+    throw error;
+  }
+
+  const session = sessionWindowForDate(year, month, day);
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  if (session.toTs + SESSION_CLOSE_BUFFER_SECONDS > nowSeconds) {
+    const error = new Error('Backtesting is available for completed sessions only. Pick a past trading day.');
+    error.statusCode = 422;
+    throw error;
+  }
+
+  let loaded;
+  try {
+    loaded = await loadSessionBars(symbol, session, userId);
+  } catch (intradayError) {
+    if (isQuotaError(intradayError) || intradayError.statusCode) throw intradayError;
+    const error = new Error(`No intraday data available for ${symbol} on ${session.date}. The market may have been closed, or the symbol may not be supported by the market data provider.`);
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (loaded.candles.length === 0) {
+    const error = new Error(`No intraday data available for ${symbol} on ${session.date}. The market may have been closed that day.`);
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return {
+    symbol,
+    resolution: INTERVAL,
+    source: loaded.source,
+    session: {
+      date: session.date,
+      from_ts: session.fromTs,
+      to_ts: session.toTs,
+      timezone: NY_TZ,
+      display_offset_seconds: Math.floor(tzOffsetMs(session.fromTs * 1000, NY_TZ) / 1000)
+    },
+    candles: loaded.candles
+  };
+}
+
 async function countReplayedTrades(userId) {
   const result = await db.query(
     'SELECT COUNT(*)::int AS count FROM replay_usage WHERE user_id = $1',
@@ -529,12 +624,14 @@ async function recordReplayUsage(userId, tradeId) {
 
 module.exports = {
   getTradeReplayData,
+  getBacktestSessionData,
   countReplayedTrades,
   hasReplayedTrade,
   recordReplayUsage,
   // Exported for tests
   normalizeFills,
   sessionWindowForEntry,
+  sessionWindowForDate,
   fmpBarTimeToUtcSeconds,
   toEpochSeconds
 };
