@@ -65,6 +65,7 @@ const edgeReportRoutes = require('./routes/edgeReport.routes');
 const replayRoutes = require('./routes/replay.routes');
 const backtestRoutes = require('./routes/backtest.routes');
 const propFirmRoutes = require('./routes/propFirm.routes');
+const marketRiskRoutes = require('./routes/marketRisk.routes');
 const BillingService = require('./services/billingService');
 const priceMonitoringService = require('./services/priceMonitoringService');
 const backupScheduler = require('./services/backupScheduler.service');
@@ -300,6 +301,7 @@ app.use('/api/edge-reports', edgeReportRoutes);
 app.use('/api/replay', replayRoutes);
 app.use('/api/backtest', backtestRoutes);
 app.use('/api/prop-firm', propFirmRoutes);
+app.use('/api/market-risk', marketRiskRoutes);
 
 // OAuth2 Provider endpoints
 app.use('/oauth', oauth2Routes);
