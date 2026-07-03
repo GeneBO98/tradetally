@@ -2,6 +2,7 @@ const Joi = require('joi');
 const { isV1Request, sendV1Error } = require('../utils/apiResponse');
 const { ALL_SCOPES } = require('../utils/apiScopes');
 const { sanitizeForLogging } = require('../utils/logSanitizer');
+const { INVISIBLE_CHARS_REGEX } = require('../utils/normalizeEmail');
 
 const WEBHOOK_EVENT_TYPES = Object.freeze([
   'trade.created',
@@ -83,6 +84,13 @@ const validate = (schema) => {
 };
 
 const nullableString = (max = 255) => Joi.string().max(max).allow('', null);
+// Strip invisible characters mobile keyboards inject, trim, and lowercase
+// before validating - see utils/normalizeEmail.js (issue #362).
+const emailField = Joi.string()
+  .replace(INVISIBLE_CHARS_REGEX, '')
+  .trim()
+  .lowercase()
+  .email();
 // Date-only fields (DATE columns) must stay strings through validation.
 // Joi.date() converts to a UTC-midnight Date object, which pg serializes in
 // the server's LOCAL timezone - on servers west of UTC the stored DATE lands
@@ -97,7 +105,7 @@ const aiProviderSchema = Joi.string().valid('gemini', 'claude', 'openai', 'deeps
 
 const schemas = {
   register: Joi.object({
-    email: Joi.string().email().required(),
+    email: emailField.required(),
     username: Joi.string().pattern(/^[a-zA-Z0-9_-]+$/).min(3).max(30).optional(),
     password: Joi.string().min(8).required(),
     fullName: Joi.string().max(255).allow(''),
@@ -120,7 +128,7 @@ const schemas = {
   }),
 
   login: Joi.object({
-    email: Joi.string().email().required(),
+    email: emailField.required(),
     password: Joi.string().required()
   }),
 
@@ -141,7 +149,7 @@ const schemas = {
   }),
 
   forgotPassword: Joi.object({
-    email: Joi.string().email().required()
+    email: emailField.required()
   }),
 
   resetPassword: Joi.object({
@@ -458,7 +466,7 @@ const schemas = {
 
   // Mobile-specific validation schemas
   deviceLogin: Joi.object({
-    email: Joi.string().email().required(),
+    email: emailField.required(),
     password: Joi.string().required(),
     deviceInfo: Joi.object({
       name: Joi.string().max(255).required(),

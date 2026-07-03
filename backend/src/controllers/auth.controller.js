@@ -22,10 +22,13 @@ function isEmailConfigured() {
   return EmailService.isConfigured();
 }
 
-// Check if detailed error messages are enabled (for self-hosted setups)
+// Check if detailed error messages are enabled (for self-hosted setups).
+// Explicit DETAILED_AUTH_ERRORS=true is honored in any environment (the Docker
+// image runs NODE_ENV=production, and self-hosters need it for diagnostics);
+// the no-email-config fallback stays dev-only.
 function useDetailedErrors() {
-  return process.env.NODE_ENV !== 'production' &&
-    (process.env.DETAILED_AUTH_ERRORS === 'true' || !isEmailConfigured());
+  return process.env.DETAILED_AUTH_ERRORS === 'true' ||
+    (process.env.NODE_ENV !== 'production' && !isEmailConfigured());
 }
 
 // Get registration mode from environment
@@ -331,6 +334,7 @@ const authController = {
       const detailedErrors = useDetailedErrors();
 
       if (!user || !user.is_active) {
+        console.warn(`[AUTH] Login failed: ${!user ? 'no account for submitted email' : 'account is deactivated'}`);
         return res.status(401).json({
           error: detailedErrors ? 'No account found with this email address' : 'Invalid credentials'
         });
@@ -343,6 +347,7 @@ const authController = {
 
       const isValid = await User.verifyPassword(user, password);
       if (!isValid) {
+        console.warn(`[AUTH] Login failed: incorrect password for user ${user.username}`);
         const nowLocked = await accountLockout.recordFailedAttempt(user);
         if (nowLocked) {
           return res.status(423).json({ error: accountLockout.LOCKED_MESSAGE, accountLocked: true });
