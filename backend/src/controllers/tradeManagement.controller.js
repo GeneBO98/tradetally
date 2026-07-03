@@ -938,25 +938,60 @@ function parseTradeJsonFields(row) {
   return trade;
 }
 
+// The position's 1R unit for combined R values. Dollar-mode users (#345) risk
+// the fixed dollar amount per position, so combined R stays SUM(pnl)/risk like
+// the dashboard aggregate; otherwise 1R is the total planned dollar risk across
+// the analyzed legs.
+function positionRiskAmount(analyses, dollarRisk) {
+  if (dollarRisk && dollarRisk > 0) return dollarRisk;
+  return analyses.reduce((sum, a) => sum + (Number(a.risk_amount) || 0), 0);
+}
+
+// Combine per-leg R values into one position-level R by converting each leg's R
+// back to dollars (leg R x leg risk amount) and dividing by the position's risk
+// unit, so the combined R always carries the sign of the combined dollar
+// outcome. Summing raw leg Rs instead let a small-risk leg dominate: a losing
+// bull put spread whose hedge leg risked a few dollars reported a positive
+// combined Actual R next to a negative combined P&L (issue #359 follow-up).
+// For dollar-mode users every leg's risk amount IS the position risk unit, so
+// this reduces to the plain sum of leg Rs.
+function combinePositionR(parts, positionRisk) {
+  if (parts.length === 0) return null;
+  if (!(positionRisk > 0)) {
+    // Degenerate risk data; fall back to the plain sum rather than divide by zero.
+    return parts.reduce((sum, part) => sum + part.r, 0);
+  }
+  const dollars = parts.reduce((sum, part) => sum + part.r * part.risk, 0);
+  return dollars / positionRisk;
+}
+
 // Combine per-leg calculateRMultiples results into one position-level analysis
-// (issue #359). Actual R and Management R are summed across legs exactly like
-// the R-Performance chart's grouped rows; the combined target follows the
+// (issue #359). Actual R and Management R are combined dollar-weighted exactly
+// like the R-Performance chart's grouped rows; the combined target follows the
 // analysis panel's semantics instead (weighted_target_r ?? target_r, not gated
 // on target-hit data, and only when EVERY analyzed leg has a target). Dollar
 // amounts are summed; per-share values are meaningless for a multi-leg
 // position so they are null.
-function combineLegAnalyses(analyzableEntries, totalLegCount) {
+function combineLegAnalyses(analyzableEntries, totalLegCount, dollarRisk = null) {
   const analyses = analyzableEntries.map(entry => entry.analysis);
+  const legRisk = a => Number(a.risk_amount) || 0;
+  const positionRisk = positionRiskAmount(analyses, dollarRisk);
 
-  const actualR = roundR(analyses.reduce((sum, a) => sum + a.actual_r, 0));
+  const actualR = roundR(combinePositionR(
+    analyses.map(a => ({ r: a.actual_r, risk: legRisk(a) })),
+    positionRisk
+  ));
   const actualPlAmount = roundR(analyses.reduce((sum, a) => sum + (Number(a.actual_pl_amount) || 0), 0));
-  const riskAmount = roundR(analyses.reduce((sum, a) => sum + (Number(a.risk_amount) || 0), 0));
+  const riskAmount = roundR(positionRisk);
 
   // A combined target only makes sense when every analyzed leg has one;
   // otherwise "target vs actual" would compare mismatched leg sets.
   const targetParts = analyses.map(a => a.weighted_target_r ?? a.target_r);
   const targetR = targetParts.every(value => value !== null && value !== undefined)
-    ? roundR(targetParts.reduce((sum, value) => sum + value, 0))
+    ? roundR(combinePositionR(
+        targetParts.map((value, i) => ({ r: value, risk: legRisk(analyses[i]) })),
+        positionRisk
+      ))
     : null;
 
   const targetPlParts = analyses.map(a => a.target_pl_amount);
@@ -965,10 +1000,10 @@ function combineLegAnalyses(analyzableEntries, totalLegCount) {
     : null;
 
   const managementParts = analyses
-    .map(a => a.management_r)
-    .filter(value => value !== null && value !== undefined);
+    .filter(a => a.management_r !== null && a.management_r !== undefined)
+    .map(a => ({ r: a.management_r, risk: legRisk(a) }));
   const managementR = managementParts.length > 0
-    ? roundR(managementParts.reduce((sum, value) => sum + value, 0))
+    ? roundR(combinePositionR(managementParts, positionRisk))
     : null;
 
   // planned_r compares like-for-like leg sets: it is only reported when every
@@ -976,7 +1011,10 @@ function combineLegAnalyses(analyzableEntries, totalLegCount) {
   // would inflate the "planned" figure.
   const plannedParts = analyses.map(a => a.planned_r);
   const plannedR = plannedParts.every(value => value !== null && value !== undefined)
-    ? roundR(plannedParts.reduce((sum, value) => sum + value, 0))
+    ? roundR(combinePositionR(
+        plannedParts.map((value, i) => ({ r: value, risk: legRisk(analyses[i]) })),
+        positionRisk
+      ))
     : null;
 
   const rLost = targetR !== null ? roundR(targetR - actualR) : null;
@@ -1048,7 +1086,7 @@ async function respondWithGroupedAnalysis(res, { legs, dollarRisk }) {
     });
   }
 
-  const analysis = combineLegAnalyses(analyzable, parsedLegs.length);
+  const analysis = combineLegAnalyses(analyzable, parsedLegs.length, dollarRisk);
   const repLeg = analyzable[0].leg;
 
   // Charts uploaded to any leg belong to the position.
@@ -1898,23 +1936,33 @@ const tradeManagementController = {
 
         if (legResults.length === 0) return;
 
-        const actualR = Math.round(
-          legResults.reduce((sum, { analysis }) => sum + analysis.actual_r, 0) * 100
-        ) / 100;
+        // Multi-leg positions combine dollar-weighted (leg R x leg risk over the
+        // position risk unit) so the position's R carries the sign of its net
+        // P&L; see combinePositionR. Single-leg rows are unchanged by this.
+        const legRisk = ({ analysis }) => Number(analysis.risk_amount) || 0;
+        const positionRisk = positionRiskAmount(legResults.map(({ analysis }) => analysis), dollarRisk);
+
+        const actualR = roundR(combinePositionR(
+          legResults.map(entry => ({ r: entry.analysis.actual_r, risk: legRisk(entry) })),
+          positionRisk
+        ));
 
         cumulativeActualR += actualR;
 
         // Target R follows the reconstructed planned path when target-hit data exists.
         const targetParts = legResults
-          .map(({ trade, analysis }) => {
+          .map(entry => {
+            const { trade, analysis } = entry;
             const effectiveTargetR = analysis.planned_r ?? analysis.weighted_target_r ?? analysis.target_r;
-            return trade.manual_target_hit_first && effectiveTargetR != null ? effectiveTargetR : null;
+            return trade.manual_target_hit_first && effectiveTargetR != null
+              ? { r: effectiveTargetR, risk: legRisk(entry) }
+              : null;
           })
-          .filter(value => value !== null);
+          .filter(Boolean);
 
         let tradeTargetR = null;
         if (targetParts.length > 0) {
-          tradeTargetR = Math.round(targetParts.reduce((sum, value) => sum + value, 0) * 100) / 100;
+          tradeTargetR = roundR(combinePositionR(targetParts, positionRisk));
           tradesWithTarget++;
         }
 
@@ -1924,10 +1972,10 @@ const tradeManagementController = {
         }
 
         const managementParts = legResults
-          .map(({ analysis }) => analysis.management_r)
-          .filter(value => value !== null && value !== undefined);
+          .filter(({ analysis }) => analysis.management_r !== null && analysis.management_r !== undefined)
+          .map(entry => ({ r: entry.analysis.management_r, risk: legRisk(entry) }));
         const tradeManagementR = managementParts.length > 0
-          ? Math.round(managementParts.reduce((sum, value) => sum + value, 0) * 100) / 100
+          ? roundR(combinePositionR(managementParts, positionRisk))
           : 0;
         if (managementParts.length > 0) tradesWithManagementR++;
         cumulativeManagementR += tradeManagementR;

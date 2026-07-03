@@ -1,8 +1,11 @@
 // Issue #359 follow-up: Individual Trade Analysis must honor whole-trade
 // grouping. When analytics_position_grouping is enabled, selecting any leg of
-// a multi-leg position returns ONE combined analysis (summed R values and
-// dollar amounts, per-leg breakdown attached), and the trade selector lists
-// one row per position instead of one row per leg.
+// a multi-leg position returns ONE combined analysis (dollar-weighted combined
+// R values, summed dollar amounts, per-leg breakdown attached), and the trade
+// selector lists one row per position instead of one row per leg. Combined R
+// = sum(leg R x leg risk) / total risk, so its sign always matches the
+// combined P&L — summing raw leg Rs let a small-risk hedge leg flip a losing
+// spread to a positive R.
 
 jest.mock('../../src/config/database', () => ({ query: jest.fn() }));
 jest.mock('../../src/services/tradeQueries', () => ({
@@ -80,6 +83,7 @@ describe('tradeManagementController grouped individual analysis (issue #359 foll
   test('getRMultipleAnalysis combines the legs of a grouped position', async () => {
     // Leg 1: risk (5-4)*1*100 = 100, pnl 200 -> actual_r 2
     // Leg 2: risk (3-2)*1*100 = 100, pnl -50 -> actual_r -0.5
+    // Combined: (200 - 50) / (100 + 100) total risk = 0.75R
     const legA = leg('leg-1');
     const legB = leg('leg-2', {
       symbol: 'SNOW260116P00395000',
@@ -108,7 +112,7 @@ describe('tradeManagementController grouped individual analysis (issue #359 foll
     expect(analysis.position_grouped).toBe(true);
     expect(analysis.leg_count).toBe(2);
     expect(analysis.analyzed_leg_count).toBe(2);
-    expect(analysis.actual_r).toBe(1.5);              // 2 + (-0.5)
+    expect(analysis.actual_r).toBe(0.75);             // (200 - 50) / 200 total risk
     expect(analysis.actual_pl_amount).toBe(150);      // 200 + (-50)
     expect(analysis.risk_amount).toBe(200);           // 100 + 100
     expect(analysis.target_r).toBeNull();             // no leg has a target
@@ -124,6 +128,52 @@ describe('tradeManagementController grouped individual analysis (issue #359 foll
     // Synthesized position must not trigger frontend per-trade recalculation.
     expect(trade.take_profit).toBeNull();
     expect(trade.take_profit_targets).toBeNull();
+  });
+
+  test('a net-losing spread reports a negative combined Actual R even when a small-risk hedge leg has a large positive leg R', async () => {
+    // Regression for the CEG bull put spread report (issue #359 follow-up):
+    // the panel showed "+0.30R" and an early-exit-with-profit insight next to a
+    // combined net loss because per-leg Rs were summed with unequal risk
+    // denominators.
+    // Short put (main leg): risk (3.5-1.5)*1*100 = 200, pnl -150 -> actual_r -0.75
+    // Long put (hedge): risk (0.5-0.4)*1*100 = 10, pnl +60 -> actual_r 6
+    // Raw sum would be +5.25R on a -$90 position; dollar-weighted combined
+    // R = (-150 + 60) / (200 + 10) = -0.43R, matching the loss.
+    const legA = leg('leg-1', {
+      side: 'short',
+      entry_price: 1.5,
+      exit_price: 3,
+      stop_loss: 3.5,
+      pnl: -150
+    });
+    const legB = leg('leg-2', {
+      symbol: 'SNOW260116P00395000',
+      side: 'long',
+      entry_price: 0.5,
+      exit_price: 1.1,
+      stop_loss: 0.4,
+      pnl: 60,
+      entry_time: '2026-01-05T14:31:00Z'
+    });
+
+    db.query
+      .mockResolvedValueOnce({ rows: [legA] })
+      .mockResolvedValueOnce({ rows: [legA, legB] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const req = { user: { id: 'user-1' }, params: { tradeId: 'leg-1' } };
+    const res = mockRes();
+
+    await controller.getRMultipleAnalysis(req, res);
+
+    const { trade, analysis } = res.json.mock.calls[0][0];
+    expect(trade.legs.find(l => l.id === 'leg-1').actual_r).toBe(-0.75);
+    expect(trade.legs.find(l => l.id === 'leg-2').actual_r).toBe(6);
+    expect(analysis.actual_pl_amount).toBe(-90);
+    expect(analysis.risk_amount).toBe(210);
+    expect(analysis.actual_r).toBe(-0.43);
+    // The insight must describe a loss, not a profitable early exit.
+    expect(['loss', 'significant_loss', 'stopped_out']).toContain(analysis.management_score.score);
   });
 
   test('legs without a stop loss are listed but excluded from the combined R math', async () => {

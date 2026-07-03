@@ -210,15 +210,31 @@ to both the R-Performance summary and the Individual Trade Analysis view.
 Combination rules (each leg is first calculated individually with the formulas above,
 then combined):
 
-- **Actual R** = sum of leg Actual R values (same rule as the R-Performance chart)
-- **Management R** = sum over legs that have one, null when none do (same rule as the chart)
-- **Target R** (Individual Trade Analysis) = sum of leg effective targets
-  (`weighted_target_r ?? target_r`), and only when **every analyzed leg** has a target —
-  otherwise the combined target is null. Note this intentionally differs from the
-  R-Performance chart's target line, which follows the reconstructed planned path
-  (`planned_r ?? weighted_target_r ?? target_r`) and only counts legs with target-hit data.
-- **Planned R** = sum of leg planned_r values, and only when every analyzed leg has one
-- **Dollar amounts** (risk amount, actual P&L, target P&L) are summed
+- **Position risk unit (1R)** = the fixed dollar risk for dollar-mode users (#345 — a
+  grouped position is one bet of the fixed amount), otherwise the total planned dollar
+  risk (sum of leg risk amounts) across the analyzed legs.
+- **Combined R values are dollar-weighted, not raw sums**: each leg's R is converted
+  back to dollars (`leg R × leg risk amount`), summed, and divided by the position risk
+  unit. This guarantees the combined R carries the sign of the combined net P&L.
+  Summing raw leg Rs let a small-risk leg dominate — a losing bull put spread whose
+  hedge leg risked a few dollars reported a positive combined Actual R next to a
+  negative combined P&L (the CEG report in the issue #359 follow-up). For dollar-mode
+  users every leg's risk amount IS the position risk unit, so the weighted form reduces
+  to the plain sum of leg Rs.
+- **Actual R** = dollar-weighted combination of leg Actual R values (same rule as the
+  R-Performance chart's grouped rows)
+- **Management R** = dollar-weighted combination over legs that have one, null when
+  none do (same rule as the chart)
+- **Target R** (Individual Trade Analysis) = dollar-weighted combination of leg
+  effective targets (`weighted_target_r ?? target_r`), and only when **every analyzed
+  leg** has a target — otherwise the combined target is null. Note this intentionally
+  differs from the R-Performance chart's target line, which follows the reconstructed
+  planned path (`planned_r ?? weighted_target_r ?? target_r`) and only counts legs with
+  target-hit data (both dollar-weighted over the same position risk unit).
+- **Planned R** = dollar-weighted combination of leg planned_r values, and only when
+  every analyzed leg has one
+- **Dollar amounts** (actual P&L, target P&L) are summed; the reported risk amount is
+  the position risk unit
 - **Per-share values** are null for a combined position (they have no meaning across legs)
 - Legs without a stop loss are listed but **excluded** from the combined R math,
   matching the R-Performance chart's behavior

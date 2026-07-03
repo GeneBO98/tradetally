@@ -166,14 +166,58 @@ describe('tradeManagementController.getRPerformance break-even classification (i
     expect(chart_data[0].symbol).toBe('SNOW');
     expect(chart_data[0].position_grouped).toBe(true);
     expect(chart_data[0].leg_count).toBe(2);
-    expect(chart_data[0].actual_r).toBe(1);
+    // Legs risk $50 each: +100 and -50 pnl -> (100 - 50) / 100 total risk.
+    expect(chart_data[0].actual_r).toBe(0.5);
 
     expect(summary.position_grouping).toBe(true);
     expect(summary.total_trades).toBe(1);
     expect(summary.winning_trades).toBe(1);
     expect(summary.losing_trades).toBe(0);
     expect(summary.win_rate).toBe(100);
-    expect(summary.total_actual_r).toBe(1);
-    expect(summary.avg_win_r).toBe(1);
+    expect(summary.total_actual_r).toBe(0.5);
+    expect(summary.avg_win_r).toBe(0.5);
+  });
+
+  test('a net-losing grouped position gets a negative combined R even when a small-risk leg has a large positive leg R', async () => {
+    // Issue #359 follow-up: per-leg Rs were summed with unequal risk
+    // denominators, so a hedge leg risking $5 could flip a losing spread to a
+    // positive chart R. Combined R must be dollar-weighted:
+    // leg 1: risk 5*10 = $50, pnl -100 -> -2R
+    // leg 2: risk 0.5*10 = $5, pnl +20 -> +4R (raw sum would be +2R)
+    // combined: (-100 + 20) / (50 + 5) = -1.45R
+    User.getSettings.mockResolvedValue({ analytics_position_grouping: true });
+    db.query.mockResolvedValue({
+      rows: [
+        {
+          ...row(1, 90, -100, false),
+          symbol: 'SNOW260116P00400000',
+          underlying_symbol: 'SNOW',
+          position_group_key: 'spread-1',
+          position_symbol: 'SNOW'
+        },
+        {
+          ...row(2, 102, 20, false),
+          stop_loss: 99.5,
+          symbol: 'SNOW260116P00395000',
+          underlying_symbol: 'SNOW',
+          position_group_key: 'spread-1',
+          position_symbol: 'SNOW'
+        }
+      ]
+    });
+
+    const req = { user: { id: 'user-1' }, query: {} };
+    const res = { json: jest.fn() };
+
+    await controller.getRPerformance(req, res);
+
+    const { chart_data, summary } = res.json.mock.calls[0][0];
+    expect(chart_data).toHaveLength(1);
+    expect(chart_data[0].actual_r).toBe(-1.45);
+    expect(summary.total_trades).toBe(1);
+    expect(summary.winning_trades).toBe(0);
+    expect(summary.losing_trades).toBe(1);
+    expect(summary.total_actual_r).toBe(-1.45);
+    expect(summary.avg_loss_r).toBe(-1.45);
   });
 });
