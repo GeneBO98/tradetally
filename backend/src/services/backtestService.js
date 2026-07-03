@@ -64,9 +64,10 @@ function normalizeSessionFills(rawFills, session) {
 /**
  * Realized P&L and round-trip stats from chronological fills, using the same
  * average-cost accounting as the frontend replay engine. A round trip closes
- * whenever the position returns to zero (or flips through it).
+ * whenever the position returns to zero (or flips through it). `multiplier`
+ * scales price moves into dollars (futures point value; 1 for stocks).
  */
-function computeSessionStats(fills) {
+function computeSessionStats(fills, multiplier = 1) {
   let position = 0;
   let avgCost = 0;
   let realized = 0;
@@ -92,7 +93,7 @@ function computeSessionStats(fills) {
       position = newPosition;
     } else {
       const closingQty = Math.min(Math.abs(qty), Math.abs(position));
-      const pnl = (fill.price - avgCost) * closingQty * Math.sign(position);
+      const pnl = (fill.price - avgCost) * closingQty * Math.sign(position) * multiplier;
       realized += pnl;
       tripPnl += pnl;
       position += qty;
@@ -123,6 +124,8 @@ function toSessionSummary(row) {
     session_date: row.session_date instanceof Date
       ? row.session_date.toISOString().split('T')[0]
       : String(row.session_date),
+    instrument_type: row.instrument_type || 'stock',
+    multiplier: row.multiplier !== undefined ? Number(row.multiplier) : 1,
     total_pnl: Number(row.total_pnl),
     round_trips: row.round_trips,
     wins: row.wins,
@@ -133,16 +136,18 @@ function toSessionSummary(row) {
   };
 }
 
-async function createSession(userId, { symbol, sessionDate, fills, notes, stats }) {
+async function createSession(userId, { symbol, sessionDate, instrumentType, multiplier, fills, notes, stats }) {
   const result = await db.query(
     `INSERT INTO backtest_sessions
-       (user_id, symbol, session_date, fills, total_pnl, round_trips, wins, losses, notes)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-     RETURNING id, symbol, session_date, total_pnl, round_trips, wins, losses, notes, created_at`,
+       (user_id, symbol, session_date, instrument_type, multiplier, fills, total_pnl, round_trips, wins, losses, notes)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+     RETURNING id, symbol, session_date, instrument_type, multiplier, total_pnl, round_trips, wins, losses, notes, created_at`,
     [
       userId,
       symbol,
       sessionDate,
+      instrumentType || 'stock',
+      multiplier || 1,
       JSON.stringify(fills),
       stats.total_pnl,
       stats.round_trips,
@@ -156,7 +161,7 @@ async function createSession(userId, { symbol, sessionDate, fills, notes, stats 
 
 async function listSessions(userId) {
   const result = await db.query(
-    `SELECT id, symbol, session_date, total_pnl, round_trips, wins, losses, notes,
+    `SELECT id, symbol, session_date, instrument_type, multiplier, total_pnl, round_trips, wins, losses, notes,
             jsonb_array_length(fills) AS fill_count, created_at
      FROM backtest_sessions
      WHERE user_id = $1
@@ -169,7 +174,7 @@ async function listSessions(userId) {
 
 async function getSession(sessionId, userId) {
   const result = await db.query(
-    `SELECT id, symbol, session_date, fills, total_pnl, round_trips, wins, losses, notes, created_at
+    `SELECT id, symbol, session_date, instrument_type, multiplier, fills, total_pnl, round_trips, wins, losses, notes, created_at
      FROM backtest_sessions
      WHERE id = $1 AND user_id = $2`,
     [sessionId, userId]

@@ -109,7 +109,7 @@ class DatabentoClient {
    * @param {Date} endDate - End date
    * @param {string} interval - 'minute', 'hour', or 'day'
    */
-  async getFuturesCandles(symbol, startDate, endDate, interval = 'minute') {
+  async getFuturesCandles(symbol, startDate, endDate, interval = 'minute', { exactWindow = false } = {}) {
     const upperSymbol = symbol.toUpperCase();
     const continuousSymbol = this.getContinuousSymbol(upperSymbol);
 
@@ -123,11 +123,20 @@ class DatabentoClient {
 
     const schema = schemaMap[interval] || 'ohlcv-1m';
 
-    // Format dates as ISO strings (YYYY-MM-DD)
-    // Add one day to end date because Databento's end parameter is exclusive
-    const start = startDate.toISOString().split('T')[0];
-    const endPlusOne = new Date(endDate.getTime() + 24 * 60 * 60 * 1000);
-    const end = endPlusOne.toISOString().split('T')[0];
+    // Databento bills by data volume, so exactWindow sends full ISO datetimes
+    // to fetch only the requested range. The default date-only form (used by
+    // the MAE estimator) requests whole days: start date through end date
+    // inclusive (+1 day because Databento's end parameter is exclusive).
+    let start;
+    let end;
+    if (exactWindow) {
+      start = startDate.toISOString();
+      end = endDate.toISOString();
+    } else {
+      start = startDate.toISOString().split('T')[0];
+      const endPlusOne = new Date(endDate.getTime() + 24 * 60 * 60 * 1000);
+      end = endPlusOne.toISOString().split('T')[0];
+    }
 
     console.log(`[DATABENTO] Fetching ${schema} data for ${continuousSymbol} from ${start} to ${end} (inclusive)`);
 
@@ -146,16 +155,13 @@ class DatabentoClient {
         throw new Error(`No data available for ${symbol}`);
       }
 
-      // Debug: Log first record structure to understand the format
-      console.log(`[DATABENTO] Raw record sample:`, JSON.stringify(records[0], null, 2));
-
       // Convert Databento records to standard candle format
       // Databento OHLCV structure varies - check for different field paths
       const PRICE_SCALE = 1000000000; // Prices are in nanodollars (10^-9)
       const TIME_SCALE = 1000000000;  // Timestamps are in nanoseconds
       const TIME_SCALE_MS = 1000000;  // If timestamps are in microseconds
 
-      const candles = records.map((record, index) => {
+      const candles = records.map((record) => {
         // Try different timestamp field paths that Databento might use
         let tsRaw = null;
         if (record.hd && record.hd.ts_event) {
@@ -182,12 +188,6 @@ class DatabentoClient {
         } else {
           // Already in seconds
           timeSeconds = Math.floor(tsNum);
-        }
-
-        // Debug first few records
-        if (index < 3) {
-          console.log(`[DATABENTO] Record ${index}: ts_raw=${tsRaw}, timeSeconds=${timeSeconds}, date=${new Date(timeSeconds * 1000).toISOString()}`);
-          console.log(`[DATABENTO] Record ${index}: open=${record.open}, close=${record.close}`);
         }
 
         return {

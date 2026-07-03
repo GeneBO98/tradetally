@@ -18,6 +18,12 @@
 const db = require('../config/database');
 const marketData = require('../utils/finnhub');
 const alphaVantage = require('../utils/alphaVantage');
+const databento = require('../utils/databento');
+const {
+  getFuturesPointValue,
+  getFuturesTickSize,
+  extractUnderlyingFromFuturesSymbol
+} = require('../utils/futuresUtils');
 const { multiplierFor, isBuyAction, isSellAction, normalizeAction } = require('./pnlEngine');
 
 const NY_TZ = 'America/New_York';
@@ -25,6 +31,11 @@ const INTERVAL = '1min';
 // Extended-hours session window in exchange time (04:00 - 20:00 ET)
 const SESSION_START_HOUR = 4;
 const SESSION_END_HOUR = 20;
+// CME Globex trading day for date D: 18:00 ET on D-1 through 17:00 ET on D
+// (daily maintenance break 17:00-18:00). Closed Sat 18:00 ET - Sun 18:00 ET,
+// so a Globex window never straddles the 2am-Sunday DST transition.
+const FUTURES_SESSION_START_HOUR = 18; // on the previous calendar day
+const FUTURES_SESSION_END_HOUR = 17;
 // Don't persist bars for a session until this long after it ends, so a
 // partially-complete day is never recorded as covered.
 const SESSION_CLOSE_BUFFER_SECONDS = 30 * 60;
@@ -208,6 +219,43 @@ function sessionWindowForEntry(entryEpochSeconds) {
   return sessionWindowForDate(p.year, p.month, p.day);
 }
 
+/**
+ * Compute the CME Globex trading-day window for a calendar trading date:
+ * 18:00 ET on the previous calendar day through 17:00 ET on the date itself,
+ * in true UTC epoch seconds. `date` stays the trading date.
+ */
+function futuresSessionWindowForDate(year, month, day) {
+  const prev = new Date(Date.UTC(year, month - 1, day) - 24 * 60 * 60 * 1000);
+  const fromTs = zonedEpochSeconds(
+    prev.getUTCFullYear(),
+    prev.getUTCMonth() + 1,
+    prev.getUTCDate(),
+    FUTURES_SESSION_START_HOUR, 0, 0, NY_TZ
+  );
+  const toTs = zonedEpochSeconds(year, month, day, FUTURES_SESSION_END_HOUR, 0, 0, NY_TZ);
+  const pad = (n) => String(n).padStart(2, '0');
+  return {
+    date: `${year}-${pad(month)}-${pad(day)}`,
+    fromTs,
+    toTs
+  };
+}
+
+/**
+ * Globex trading-day window containing the trade's entry. Entries at or after
+ * 18:00 ET belong to the NEXT calendar day's trading date. An entry inside the
+ * 17:00-18:00 maintenance break maps to the session that just ended (its fill
+ * marker sits at the session's last bar), which keeps the mapping simple.
+ */
+function futuresSessionWindowForEntry(entryEpochSeconds) {
+  const p = wallClockPartsInZone(entryEpochSeconds * 1000, NY_TZ);
+  if (p.hour >= FUTURES_SESSION_START_HOUR) {
+    const next = new Date(Date.UTC(p.year, p.month - 1, p.day) + 24 * 60 * 60 * 1000);
+    return futuresSessionWindowForDate(next.getUTCFullYear(), next.getUTCMonth() + 1, next.getUTCDate());
+  }
+  return futuresSessionWindowForDate(p.year, p.month, p.day);
+}
+
 async function getCoverage(symbol, sessionDate) {
   const result = await db.query(
     `SELECT from_ts, to_ts, source, candle_count
@@ -319,31 +367,67 @@ function isQuotaError(error) {
 }
 
 /**
- * Load 1-min bars for a session window: global cache first, then the
- * configured provider (persisting the result once the session is closed).
- * Throws the provider error when intraday data is unavailable; callers decide
- * whether to degrade (trade replay) or fail (backtest).
+ * Cache-first 1-min bar loading for a session window: global cache, then
+ * `fetchFn` (persisting the result once the session is closed). Throws the
+ * provider error when intraday data is unavailable; callers decide whether to
+ * degrade (trade replay) or fail (backtest).
  */
-async function loadSessionBars(symbol, session, userId) {
-  const coverage = await getCoverage(symbol, session.date);
+async function loadBarsWithCache(cacheSymbol, session, fetchFn, sourceName) {
+  const coverage = await getCoverage(cacheSymbol, session.date);
   if (coverage) {
-    const cached = await getCachedBars(symbol, session.fromTs, session.toTs);
+    const cached = await getCachedBars(cacheSymbol, session.fromTs, session.toTs);
     if (cached.length > 0) {
       return { candles: cached, source: `cache:${coverage.source || 'unknown'}` };
     }
   }
 
-  const candles = await fetchIntradayBars(symbol, session.fromTs, session.toTs, userId);
+  const candles = await fetchFn();
   const nowSeconds = Math.floor(Date.now() / 1000);
   const sessionClosed = session.toTs + SESSION_CLOSE_BUFFER_SECONDS < nowSeconds;
   if (sessionClosed && candles.length > 0) {
     try {
-      await storeBars(symbol, session.date, session.fromTs, session.toTs, candles, marketData.providerName);
+      await storeBars(cacheSymbol, session.date, session.fromTs, session.toTs, candles, sourceName);
     } catch (cacheError) {
-      console.warn(`[REPLAY] Failed to cache bars for ${symbol} ${session.date}: ${cacheError.message}`);
+      console.warn(`[REPLAY] Failed to cache bars for ${cacheSymbol} ${session.date}: ${cacheError.message}`);
     }
   }
-  return { candles, source: marketData.providerName };
+  return { candles, source: sourceName };
+}
+
+/**
+ * Load 1-min bars for an equity session from the configured stock provider.
+ */
+function loadSessionBars(symbol, session, userId) {
+  return loadBarsWithCache(
+    symbol,
+    session,
+    () => fetchIntradayBars(symbol, session.fromTs, session.toTs, userId),
+    marketData.providerName
+  );
+}
+
+/**
+ * Load 1-min bars for a futures Globex session from Databento. Bars are the
+ * continuous front-month contract, cached under its Databento symbol
+ * (e.g. "MNQ.c.0") so each root/session is billed at most once.
+ */
+function loadFuturesSessionBars(root, session) {
+  const cacheSymbol = databento.getContinuousSymbol(root);
+  return loadBarsWithCache(
+    cacheSymbol,
+    session,
+    async () => {
+      const bars = await databento.getFuturesCandles(
+        root,
+        new Date(session.fromTs * 1000),
+        new Date(session.toTs * 1000),
+        'minute',
+        { exactWindow: true }
+      );
+      return dedupeSortBars(bars).filter((bar) => bar.time >= session.fromTs && bar.time <= session.toTs);
+    },
+    'databento'
+  );
 }
 
 function closeAtTime(candles, time) {
@@ -416,11 +500,7 @@ function applyPriceScale(candles, scale) {
  */
 async function getTradeReplayData(trade, userId) {
   const instrumentType = trade.instrument_type || 'stock';
-  if (instrumentType === 'future') {
-    const error = new Error('Futures replay is not yet available');
-    error.statusCode = 422;
-    throw error;
-  }
+  const isFutures = instrumentType === 'future';
 
   const entryTs = toEpochSeconds(trade.entry_time || trade.trade_date);
   if (!entryTs) {
@@ -432,14 +512,33 @@ async function getTradeReplayData(trade, userId) {
 
   // For options, trade.symbol holds the underlying; the chart shows the
   // underlying's price action with option fills overlaid as markers.
-  const chartSymbol = String(trade.symbol || '').toUpperCase();
+  let chartSymbol = String(trade.symbol || '').toUpperCase();
   if (!chartSymbol) {
     const error = new Error('Trade is missing symbol information');
     error.statusCode = 400;
     throw error;
   }
 
-  const session = sessionWindowForEntry(entryTs);
+  // Futures chart the continuous front-month contract from Databento.
+  let futuresRoot = null;
+  if (isFutures) {
+    if (!databento.isConfigured()) {
+      const error = new Error('Futures replay requires a Databento API key. Self-hosted: set DATABENTO_API_KEY in the backend environment (databento.com signup includes free credits).');
+      error.statusCode = 422;
+      throw error;
+    }
+    futuresRoot = String(
+      trade.underlying_asset || extractUnderlyingFromFuturesSymbol(trade.symbol) || ''
+    ).toUpperCase();
+    if (!futuresRoot) {
+      const error = new Error(`Could not determine the futures contract root for ${trade.symbol}`);
+      error.statusCode = 422;
+      throw error;
+    }
+    chartSymbol = databento.getContinuousSymbol(futuresRoot);
+  }
+
+  const session = isFutures ? futuresSessionWindowForEntry(entryTs) : sessionWindowForEntry(entryTs);
   const fills = normalizeFills(trade);
 
   let candles = [];
@@ -448,25 +547,39 @@ async function getTradeReplayData(trade, userId) {
   let degraded = false;
   let degradedReason = null;
 
-  try {
-    const loaded = await loadSessionBars(chartSymbol, session, userId);
-    candles = loaded.candles;
-    source = loaded.source;
-  } catch (intradayError) {
-    if (isQuotaError(intradayError)) throw intradayError;
-    console.warn(`[REPLAY] Intraday data unavailable for ${chartSymbol} ${session.date} (${intradayError.message}), degrading to daily`);
+  if (isFutures) {
     try {
-      const daily = await fetchDailyBars(chartSymbol, entryTs, exitTs, userId);
-      candles = daily.bars;
-      resolution = 'daily';
-      source = daily.source;
-      degraded = true;
-      degradedReason = intradayError.message;
-    } catch (dailyError) {
-      if (isQuotaError(dailyError)) throw dailyError;
-      const error = new Error(`No chart data available for ${chartSymbol}. The symbol may be delisted, inactive, or not supported by the market data provider.`);
+      const loaded = await loadFuturesSessionBars(futuresRoot, session);
+      candles = loaded.candles;
+      source = loaded.source;
+    } catch (futuresError) {
+      // Databento errors carry actionable detail (auth, credits, no data) -
+      // no daily degradation for futures, playing a day needs intraday bars.
+      const error = new Error(`No futures chart data available for ${futuresRoot} on ${session.date}: ${futuresError.message}`);
       error.statusCode = 404;
       throw error;
+    }
+  } else {
+    try {
+      const loaded = await loadSessionBars(chartSymbol, session, userId);
+      candles = loaded.candles;
+      source = loaded.source;
+    } catch (intradayError) {
+      if (isQuotaError(intradayError)) throw intradayError;
+      console.warn(`[REPLAY] Intraday data unavailable for ${chartSymbol} ${session.date} (${intradayError.message}), degrading to daily`);
+      try {
+        const daily = await fetchDailyBars(chartSymbol, entryTs, exitTs, userId);
+        candles = daily.bars;
+        resolution = 'daily';
+        source = daily.source;
+        degraded = true;
+        degradedReason = intradayError.message;
+      } catch (dailyError) {
+        if (isQuotaError(dailyError)) throw dailyError;
+        const error = new Error(`No chart data available for ${chartSymbol}. The symbol may be delisted, inactive, or not supported by the market data provider.`);
+        error.statusCode = 404;
+        throw error;
+      }
     }
   }
 
@@ -479,8 +592,17 @@ async function getTradeReplayData(trade, userId) {
   // Rescale split-adjusted provider bars into the fills' raw price space.
   // Done at serve time (never at cache time) so the cache stays a verbatim
   // provider mirror and later splits self-correct against the fills.
-  const priceScale = resolvePriceScale(candles, fills);
+  // Futures are exempt: this is stock-split logic, and continuous-contract
+  // basis differences must never trigger an integer rescale.
+  const priceScale = isFutures ? 1 : resolvePriceScale(candles, fills);
   candles = applyPriceScale(candles, priceScale);
+
+  // multiplierFor falls back to 1 when a futures trade has no point_value;
+  // recover the contract's real point value from its root instead.
+  let multiplier = multiplierFor(instrumentType, trade.contract_size, trade.point_value);
+  if (isFutures && !asNumber(trade.point_value)) {
+    multiplier = getFuturesPointValue(futuresRoot);
+  }
 
   return {
     symbol: trade.symbol,
@@ -490,6 +612,7 @@ async function getTradeReplayData(trade, userId) {
     degraded,
     degraded_reason: degradedReason,
     price_scale: priceScale,
+    futures_continuous: isFutures,
     session: {
       date: session.date,
       from_ts: session.fromTs,
@@ -515,7 +638,8 @@ async function getTradeReplayData(trade, userId) {
       instrument_type: instrumentType,
       option_type: trade.option_type || null,
       strike_price: asNumber(trade.strike_price),
-      multiplier: multiplierFor(instrumentType, trade.contract_size, trade.point_value),
+      multiplier,
+      tick_size: isFutures ? (asNumber(trade.tick_size) ?? getFuturesTickSize(futuresRoot)) : null,
       entry_time_ts: entryTs,
       exit_time_ts: exitTs
     }
@@ -534,7 +658,10 @@ async function getTradeReplayData(trade, userId) {
  * @param {string} sessionDate - YYYY-MM-DD calendar date (exchange time)
  * @param {string} userId
  */
-async function getBacktestSessionData(symbol, sessionDate, userId) {
+async function getBacktestSessionData(symbol, sessionDate, userId, options = {}) {
+  const instrument = options.instrument === 'future' ? 'future' : 'stock';
+  const isFutures = instrument === 'future';
+
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(sessionDate || ''));
   if (!match) {
     const error = new Error('Session date must be in YYYY-MM-DD format');
@@ -551,14 +678,31 @@ async function getBacktestSessionData(symbol, sessionDate, userId) {
     throw error;
   }
 
+  // Session dates are Mon-Fri for both instruments. Futures trade Sunday
+  // evening, but on Globex those hours belong to Monday's trading date.
   const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
-  if (weekday === 0 || weekday === 6) {
-    const error = new Error('Markets are closed on weekends. Pick a weekday session.');
+  if (weekday === 6) {
+    const error = new Error('Markets are closed on Saturdays. Pick a weekday session.');
+    error.statusCode = 422;
+    throw error;
+  }
+  if (weekday === 0) {
+    const error = new Error(isFutures
+      ? "Sunday evening trading belongs to Monday's session. Pick Monday's date."
+      : 'Markets are closed on weekends. Pick a weekday session.');
     error.statusCode = 422;
     throw error;
   }
 
-  const session = sessionWindowForDate(year, month, day);
+  if (isFutures && !databento.isConfigured()) {
+    const error = new Error('Futures backtesting requires a Databento API key. Self-hosted: set DATABENTO_API_KEY in the backend environment (databento.com signup includes free credits).');
+    error.statusCode = 422;
+    throw error;
+  }
+
+  const session = isFutures
+    ? futuresSessionWindowForDate(year, month, day)
+    : sessionWindowForDate(year, month, day);
   const nowSeconds = Math.floor(Date.now() / 1000);
   if (session.toTs + SESSION_CLOSE_BUFFER_SECONDS > nowSeconds) {
     const error = new Error('Backtesting is available for completed sessions only. Pick a past trading day.');
@@ -568,10 +712,14 @@ async function getBacktestSessionData(symbol, sessionDate, userId) {
 
   let loaded;
   try {
-    loaded = await loadSessionBars(symbol, session, userId);
+    loaded = isFutures
+      ? await loadFuturesSessionBars(symbol, session)
+      : await loadSessionBars(symbol, session, userId);
   } catch (intradayError) {
     if (isQuotaError(intradayError) || intradayError.statusCode) throw intradayError;
-    const error = new Error(`No intraday data available for ${symbol} on ${session.date}. The market may have been closed, or the symbol may not be supported by the market data provider.`);
+    const error = new Error(isFutures
+      ? `No futures data available for ${symbol} on ${session.date}: ${intradayError.message}`
+      : `No intraday data available for ${symbol} on ${session.date}. The market may have been closed, or the symbol may not be supported by the market data provider.`);
     error.statusCode = 404;
     throw error;
   }
@@ -584,8 +732,12 @@ async function getBacktestSessionData(symbol, sessionDate, userId) {
 
   return {
     symbol,
+    instrument_type: instrument,
+    multiplier: isFutures ? getFuturesPointValue(symbol) : 1,
+    tick_size: isFutures ? getFuturesTickSize(symbol) : null,
     resolution: INTERVAL,
     source: loaded.source,
+    futures_continuous: isFutures,
     session: {
       date: session.date,
       from_ts: session.fromTs,
@@ -632,6 +784,8 @@ module.exports = {
   normalizeFills,
   sessionWindowForEntry,
   sessionWindowForDate,
+  futuresSessionWindowForEntry,
+  futuresSessionWindowForDate,
   fmpBarTimeToUtcSeconds,
   toEpochSeconds
 };

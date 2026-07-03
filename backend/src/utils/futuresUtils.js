@@ -7,46 +7,66 @@
  * @param {string} underlying - The underlying asset symbol (e.g., 'ES', 'MES', 'NQ')
  * @returns {number} Point value in dollars per point
  */
+const POINT_VALUES = {
+  // E-mini contracts
+  'ES': 50,      // E-mini S&P 500
+  'NQ': 20,      // E-mini NASDAQ-100
+  'YM': 5,       // E-mini Dow
+  'RTY': 50,     // E-mini Russell 2000
+
+  // Micro E-mini contracts (1/10th of E-mini)
+  'MES': 5,      // Micro E-mini S&P 500 (10 Micros = 1 E-mini)
+  'MNQ': 2,      // Micro E-mini NASDAQ-100 (10 Micros = 1 E-mini)
+  'MYM': 0.5,    // Micro E-mini Dow (10 Micros = 1 E-mini)
+  'M2K': 5,      // Micro E-mini Russell 2000 (10 Micros = 1 E-mini)
+
+  // Energy
+  'CL': 1000,    // Crude Oil
+  'MCL': 100,    // Micro WTI Crude Oil (1/10th of CL)
+  'NG': 10000,   // Natural Gas
+  'MNG': 1000,   // Micro Natural Gas (1/10th of NG)
+  'QG': 2500,    // Mini Natural Gas
+
+  // Metals
+  'GC': 100,     // Gold
+  'MGC': 10,     // Micro Gold (1/10th of GC)
+  'SI': 5000,    // Silver
+  'SIL': 1000,   // Micro Silver
+  'HG': 12500,   // Copper
+
+  // Treasuries
+  'ZB': 1000,    // 30-Year Treasury Bond
+  'ZN': 1000,    // 10-Year Treasury Note
+  'ZF': 1000,    // 5-Year Treasury Note
+  'ZT': 2000     // 2-Year Treasury Note
+};
+
 function getFuturesPointValue(underlying) {
   if (!underlying) return 50; // Default to $50 if unknown
+  return POINT_VALUES[underlying.toUpperCase()] || 50; // Default to $50 multiplier
+}
 
-  const upperUnderlying = underlying.toUpperCase();
-  
-  const pointValues = {
-    // E-mini contracts
-    'ES': 50,      // E-mini S&P 500
-    'NQ': 20,      // E-mini NASDAQ-100
-    'YM': 5,       // E-mini Dow
-    'RTY': 50,     // E-mini Russell 2000
+/**
+ * Whether a symbol is a known futures root (exact match against the point
+ * value table). Roots collide with real stock tickers (CL, GC, SI...), so
+ * callers must only use this behind an explicit futures context.
+ */
+function isKnownFuturesRoot(root) {
+  if (!root) return false;
+  return Object.prototype.hasOwnProperty.call(POINT_VALUES, root.toUpperCase());
+}
 
-    // Micro E-mini contracts (1/10th of E-mini)
-    'MES': 5,      // Micro E-mini S&P 500 (10 Micros = 1 E-mini)
-    'MNQ': 2,      // Micro E-mini NASDAQ-100 (10 Micros = 1 E-mini)
-    'MYM': 0.5,    // Micro E-mini Dow (10 Micros = 1 E-mini)
-    'M2K': 5,      // Micro E-mini Russell 2000 (10 Micros = 1 E-mini)
-
-    // Energy
-    'CL': 1000,    // Crude Oil
-    'MCL': 100,    // Micro WTI Crude Oil (1/10th of CL)
-    'NG': 10000,   // Natural Gas
-    'MNG': 1000,   // Micro Natural Gas (1/10th of NG)
-    'QG': 2500,    // Mini Natural Gas
-
-    // Metals
-    'GC': 100,     // Gold
-    'MGC': 10,     // Micro Gold (1/10th of GC)
-    'SI': 5000,    // Silver
-    'SIL': 1000,   // Micro Silver
-    'HG': 12500,   // Copper
-
-    // Treasuries
-    'ZB': 1000,    // 30-Year Treasury Bond
-    'ZN': 1000,    // 10-Year Treasury Note
-    'ZF': 1000,    // 5-Year Treasury Note
-    'ZT': 2000     // 2-Year Treasury Note
-  };
-
-  return pointValues[upperUnderlying] || 50; // Default to $50 multiplier
+/**
+ * Resolve user input to a known futures root: accepts a bare root ("MNQ") or
+ * a contract symbol ("MNQM6" -> "MNQ"). Returns null when the input is
+ * neither a known root nor a contract whose extracted root is known.
+ */
+function resolveFuturesRoot(input) {
+  if (!input) return null;
+  const normalized = String(input).trim().toUpperCase();
+  if (isKnownFuturesRoot(normalized)) return normalized;
+  const extracted = extractUnderlyingFromFuturesSymbol(normalized);
+  return extracted && isKnownFuturesRoot(extracted) ? extracted : null;
 }
 
 /**
@@ -134,6 +154,8 @@ function extractUnderlyingFromFuturesSymbol(symbol) {
 module.exports = {
   getFuturesPointValue,
   getFuturesTickSize,
-  extractUnderlyingFromFuturesSymbol
+  extractUnderlyingFromFuturesSymbol,
+  isKnownFuturesRoot,
+  resolveFuturesRoot
 };
 

@@ -45,7 +45,6 @@
             <span>Share</span>
           </button>
           <router-link
-            v-if="trade.instrument_type !== 'future'"
             :to="`/replay/${trade.id}`"
             class="btn-secondary inline-flex items-center gap-2"
           >

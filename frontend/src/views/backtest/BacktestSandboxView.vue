@@ -60,13 +60,40 @@
           </p>
           <form @submit.prevent="loadSessionData" class="flex flex-wrap items-end gap-3">
             <div>
+              <label class="label">Instrument</label>
+              <div class="flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden">
+                <button
+                  type="button"
+                  @click="form.instrument = 'stock'"
+                  class="px-3 py-2 text-sm font-medium"
+                  :class="form.instrument === 'stock'
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'"
+                >
+                  Stocks
+                </button>
+                <button
+                  type="button"
+                  @click="futuresAvailable && (form.instrument = 'future')"
+                  :disabled="!futuresAvailable"
+                  class="px-3 py-2 text-sm font-medium border-l border-gray-300 dark:border-gray-600"
+                  :class="form.instrument === 'future'
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed'"
+                  :title="futuresAvailable ? '' : 'Requires a Databento API key on the server (DATABENTO_API_KEY)'"
+                >
+                  Futures
+                </button>
+              </div>
+            </div>
+            <div>
               <label class="label" for="backtest-symbol">Symbol</label>
               <input
                 id="backtest-symbol"
                 v-model="form.symbol"
                 type="text"
                 class="input w-32 uppercase"
-                placeholder="AAPL"
+                :placeholder="form.instrument === 'future' ? 'MNQ' : 'AAPL'"
                 maxlength="16"
                 required
               />
@@ -87,6 +114,10 @@
               <span v-else>Load Session</span>
             </button>
           </form>
+          <p v-if="form.instrument === 'future'" class="text-xs text-gray-500 dark:text-gray-400 mt-3">
+            Root or contract symbol (MNQ, ES, MNQM6...). Data: CME Globex continuous front-month,
+            session runs 6:00 PM ET the prior evening through 5:00 PM ET.
+          </p>
           <p v-if="error" class="text-sm text-red-600 dark:text-red-400 mt-3">{{ error }}</p>
         </div>
       </div>
@@ -114,7 +145,15 @@
               </thead>
               <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                 <tr v-for="session in sessions" :key="session.id">
-                  <td class="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">{{ session.symbol }}</td>
+                  <td class="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
+                    {{ session.symbol }}
+                    <span
+                      v-if="session.instrument_type === 'future'"
+                      class="ml-1 text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 font-medium"
+                    >
+                      FUT
+                    </span>
+                  </td>
                   <td class="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{{ formatSessionDate(session.session_date) }}</td>
                   <td class="px-4 py-3 text-sm text-right tabular-nums" :class="pnlClass(session.total_pnl)">
                     {{ formatSignedCurrency(session.total_pnl) }}
@@ -176,6 +215,7 @@
             :fills="fills"
             :executed-fills="executedFills"
             :cursor="cursor"
+            :trade="chartTrade"
             :display-offset-seconds="sessionData.session.display_offset_seconds"
             :indicators="indicators"
             :height="480"
@@ -205,7 +245,7 @@
         <div class="card-body">
           <div class="flex flex-wrap items-end gap-4">
             <div>
-              <label class="label" for="backtest-quantity">Shares</label>
+              <label class="label" for="backtest-quantity">{{ isFuturesSession ? 'Contracts' : 'Shares' }}</label>
               <input
                 id="backtest-quantity"
                 v-model.number="orderQuantity"
@@ -215,6 +255,12 @@
                 class="input w-28"
               />
             </div>
+            <span
+              v-if="isFuturesSession"
+              class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 mb-2.5"
+            >
+              {{ sessionData.symbol }} &middot; ${{ sessionData.multiplier }}/pt
+            </span>
             <div class="flex items-center gap-2">
               <button
                 @click="placeOrder('buy')"
@@ -366,7 +412,7 @@ const upgradeRequired = ref(false)
 const sessionData = ref(null)
 const quota = ref(null)
 
-const form = reactive({ symbol: '', date: '' })
+const form = reactive({ symbol: '', date: '', instrument: 'stock' })
 const sessions = ref([])
 const confirmDeleteId = ref(null)
 
@@ -397,6 +443,21 @@ const sessionDateLabel = computed(() =>
 const quotaChip = computed(() => {
   if (!quota.value || quota.value.unlimited) return null
   return `${quota.value.remaining} free ${quota.value.remaining === 1 ? 'session' : 'sessions'} left`
+})
+
+const futuresAvailable = computed(() => quota.value?.futures_available === true)
+
+const isFuturesSession = computed(() => sessionData.value?.instrument_type === 'future')
+
+// Minimal trade-shaped object so the chart (tick-size price format) and the
+// engine (P&L multiplier) treat futures sessions correctly
+const chartTrade = computed(() => {
+  if (!sessionData.value) return null
+  return {
+    instrument_type: sessionData.value.instrument_type || 'stock',
+    multiplier: sessionData.value.multiplier || 1,
+    tick_size: sessionData.value.tick_size || null
+  }
 })
 
 // Orders may only be placed with the cursor at or past the last fill; scrubbed
@@ -442,10 +503,21 @@ function winRateLabel(session) {
 function startPlayback(payload, savedFills) {
   sessionData.value = payload
   if (payload.quota) quota.value = payload.quota
-  engine.load({ candles: payload.candles, fills: savedFills || [], trade: null })
+  engine.load({
+    candles: payload.candles,
+    fills: savedFills || [],
+    trade: {
+      instrument_type: payload.instrument_type || 'stock',
+      multiplier: payload.multiplier || 1,
+      tick_size: payload.tick_size || null
+    }
+  })
   if (!savedFills || savedFills.length === 0) {
-    // Skip most of premarket: start a few bars before the 09:30 ET open
-    const openTs = payload.session.from_ts + 5.5 * 3600
+    // Skip most of the overnight/premarket: start a few bars before the
+    // 09:30 ET regular open. Equity sessions start 04:00 ET (5.5h earlier);
+    // futures Globex sessions start 18:00 ET the prior evening (15.5h earlier).
+    const hoursToOpen = payload.instrument_type === 'future' ? 15.5 : 5.5
+    const openTs = payload.session.from_ts + hoursToOpen * 3600
     const openIndex = payload.candles.findIndex((bar) => bar.time >= openTs)
     if (openIndex > 0) engine.seek(Math.max(0, openIndex - 5))
   }
@@ -456,7 +528,11 @@ async function loadSessionData() {
   error.value = null
   try {
     const response = await api.get('/backtest/session-data', {
-      params: { symbol: form.symbol.trim().toUpperCase(), date: form.date }
+      params: {
+        symbol: form.symbol.trim().toUpperCase(),
+        date: form.date,
+        instrument: form.instrument
+      }
     })
     notes.value = ''
     saveError.value = null
@@ -529,6 +605,7 @@ async function saveSession() {
     await api.post('/backtest/sessions', {
       symbol: sessionData.value.symbol,
       session_date: sessionData.value.session.date,
+      instrument_type: sessionData.value.instrument_type || 'stock',
       fills: fills.value,
       notes: notes.value.trim() || null
     })

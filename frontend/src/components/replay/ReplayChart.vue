@@ -164,14 +164,24 @@ function createChart() {
     }
   })
 
-  candleSeries = chart.addCandlestickSeries({
+  // Futures ticks (0.25, 0.1, 1/32...) drive the price-scale increments
+  const tickSize = Number(props.trade?.tick_size)
+  const seriesOptions = {
     upColor: '#10b981',
     downColor: '#ef4444',
     borderUpColor: '#10b981',
     borderDownColor: '#ef4444',
     wickUpColor: '#10b981',
     wickDownColor: '#ef4444'
-  })
+  }
+  if (Number.isFinite(tickSize) && tickSize > 0) {
+    seriesOptions.priceFormat = {
+      type: 'price',
+      minMove: tickSize,
+      precision: Math.min(8, Math.max(2, Math.ceil(-Math.log10(tickSize))))
+    }
+  }
+  candleSeries = chart.addCandlestickSeries(seriesOptions)
 
   // Only draw stop/target lines when they sit near the data — a level far
   // outside the bar range (mismatched fill/data spaces) would squash the
@@ -200,6 +210,20 @@ function createChart() {
       lineStyle: LightweightCharts.LineStyle.Dashed,
       axisLabelVisible: true,
       title: 'Target'
+    })
+  }
+  if (
+    props.trade?.instrument_type === 'option' &&
+    props.trade.strike_price != null &&
+    nearData(Number(props.trade.strike_price))
+  ) {
+    candleSeries.createPriceLine({
+      price: Number(props.trade.strike_price),
+      color: '#a855f7',
+      lineWidth: 1,
+      lineStyle: LightweightCharts.LineStyle.Dashed,
+      axisLabelVisible: true,
+      title: 'Strike'
     })
   }
 

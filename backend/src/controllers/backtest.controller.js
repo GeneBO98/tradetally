@@ -1,6 +1,8 @@
 const TierService = require('../services/tierService');
 const replayDataService = require('../services/replayDataService');
 const backtestService = require('../services/backtestService');
+const databento = require('../utils/databento');
+const { resolveFuturesRoot, getFuturesPointValue } = require('../utils/futuresUtils');
 const { getTierLimits } = require('../config/tierLimits');
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -19,7 +21,14 @@ async function getQuotaStatus(userId, hostHeader) {
   const limit = billingEnabled ? getTierLimits(tier).maxFreeBacktests : null;
 
   if (limit === null || limit === undefined) {
-    return { unlimited: true, tier, limit: null, used: null, remaining: null };
+    return {
+      unlimited: true,
+      tier,
+      limit: null,
+      used: null,
+      remaining: null,
+      futures_available: databento.isConfigured()
+    };
   }
 
   const used = await backtestService.countBacktestedSessions(userId);
@@ -28,13 +37,20 @@ async function getQuotaStatus(userId, hostHeader) {
     tier,
     limit,
     used,
-    remaining: Math.max(0, limit - used)
+    remaining: Math.max(0, limit - used),
+    futures_available: databento.isConfigured()
   };
 }
 
 function parseSymbol(raw) {
   const symbol = String(raw || '').trim().toUpperCase();
   return SYMBOL_REGEX.test(symbol) ? symbol : null;
+}
+
+// 'stock' (default) or 'future'; null for anything else
+function parseInstrument(raw) {
+  if (raw === undefined || raw === null || raw === '' || raw === 'stock') return 'stock';
+  return raw === 'future' ? 'future' : null;
 }
 
 function parseSessionDate(raw) {
@@ -69,14 +85,29 @@ const backtestController = {
   async getSessionData(req, res, next) {
     try {
       const userId = req.user.id;
-      const symbol = parseSymbol(req.query.symbol);
+      const instrument = parseInstrument(req.query.instrument);
       const sessionDate = parseSessionDate(req.query.date);
 
-      if (!symbol) {
-        return res.status(400).json({ error: 'Invalid symbol' });
+      if (!instrument) {
+        return res.status(400).json({ error: 'Instrument must be "stock" or "future"' });
       }
       if (!sessionDate) {
         return res.status(400).json({ error: 'Session date must be in YYYY-MM-DD format' });
+      }
+
+      // Futures accept a root or contract symbol, normalized to the root so
+      // quota and cache never double-charge MNQM6 vs MNQ.
+      let symbol;
+      if (instrument === 'future') {
+        symbol = resolveFuturesRoot(req.query.symbol);
+        if (!symbol) {
+          return res.status(400).json({ error: 'Unknown futures root. Supported roots include ES, NQ, YM, RTY, MES, MNQ, MYM, M2K, CL, GC, and other CME contracts.' });
+        }
+      } else {
+        symbol = parseSymbol(req.query.symbol);
+        if (!symbol) {
+          return res.status(400).json({ error: 'Invalid symbol' });
+        }
       }
 
       const quota = await getQuotaStatus(userId, req.headers.host);
@@ -91,7 +122,7 @@ const backtestController = {
         }
       }
 
-      const payload = await replayDataService.getBacktestSessionData(symbol, sessionDate.value, userId);
+      const payload = await replayDataService.getBacktestSessionData(symbol, sessionDate.value, userId, { instrument });
 
       // Record usage only after data was successfully served, so a failed
       // load never burns quota. Recorded for all tiers (usage analytics).
@@ -112,28 +143,42 @@ const backtestController = {
   async saveSession(req, res, next) {
     try {
       const userId = req.user.id;
-      const symbol = parseSymbol(req.body.symbol);
+      const instrument = parseInstrument(req.body.instrument_type);
       const sessionDate = parseSessionDate(req.body.session_date);
 
-      if (!symbol) {
-        return res.status(400).json({ error: 'Invalid symbol' });
+      if (!instrument) {
+        return res.status(400).json({ error: 'Instrument must be "stock" or "future"' });
       }
       if (!sessionDate) {
         return res.status(400).json({ error: 'Session date must be in YYYY-MM-DD format' });
       }
 
+      // Multiplier is always derived server-side, never trusted from the client.
+      let symbol;
+      let multiplier = 1;
+      if (instrument === 'future') {
+        symbol = resolveFuturesRoot(req.body.symbol);
+        if (!symbol) {
+          return res.status(400).json({ error: 'Unknown futures root' });
+        }
+        multiplier = getFuturesPointValue(symbol);
+      } else {
+        symbol = parseSymbol(req.body.symbol);
+        if (!symbol) {
+          return res.status(400).json({ error: 'Invalid symbol' });
+        }
+      }
+
       const notes = req.body.notes == null ? null : String(req.body.notes).slice(0, 5000);
-      const window = replayDataService.sessionWindowForDate(
-        sessionDate.year,
-        sessionDate.month,
-        sessionDate.day
-      );
+      const window = instrument === 'future'
+        ? replayDataService.futuresSessionWindowForDate(sessionDate.year, sessionDate.month, sessionDate.day)
+        : replayDataService.sessionWindowForDate(sessionDate.year, sessionDate.month, sessionDate.day);
       const fills = backtestService.normalizeSessionFills(req.body.fills, {
         from_ts: window.fromTs,
         to_ts: window.toTs
       });
 
-      const stats = backtestService.computeSessionStats(fills);
+      const stats = backtestService.computeSessionStats(fills, multiplier);
       if (stats.position !== 0) {
         return res.status(400).json({
           error: 'Backtest sessions must be flat when saved. Close the open position first.'
@@ -143,6 +188,8 @@ const backtestController = {
       const session = await backtestService.createSession(userId, {
         symbol,
         sessionDate: sessionDate.value,
+        instrumentType: instrument,
+        multiplier,
         fills,
         notes,
         stats
@@ -185,7 +232,8 @@ const backtestController = {
       const payload = await replayDataService.getBacktestSessionData(
         session.symbol,
         session.session_date,
-        userId
+        userId,
+        { instrument: session.instrument_type }
       );
       payload.saved_session = session;
 

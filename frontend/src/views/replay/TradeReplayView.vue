@@ -102,7 +102,20 @@
         <p class="text-sm text-primary-800 dark:text-primary-200">
           The chart shows the <strong>underlying stock</strong> ({{ replayData.chart_symbol }});
           markers show when your option fills executed, with contract prices in the marker labels.
-          Running P&amp;L is computed from your option fill prices.
+          Realized P&amp;L is computed from your option fill prices. What-if scenarios and
+          unrealized P&amp;L track the underlying's price movement, not the option's premium.
+        </p>
+      </div>
+
+      <!-- Futures continuous-contract notice -->
+      <div
+        v-if="replayData.futures_continuous"
+        class="mb-4 p-3 rounded-lg border border-primary-200 dark:border-primary-800 bg-primary-50 dark:bg-primary-900/20"
+      >
+        <p class="text-sm text-primary-800 dark:text-primary-200">
+          The chart shows <strong>continuous front-month data</strong> ({{ replayData.chart_symbol }}).
+          Prices may differ slightly from your specific contract; your fills and P&amp;L use your
+          real prices, and P&amp;L is scaled by the contract's point value.
         </p>
       </div>
 

@@ -113,4 +113,19 @@ describe('computeSessionStats', () => {
     expect(stats.position).toBe(100);
     expect(stats.round_trips).toBe(0);
   });
+
+  it('scales realized P&L by the contract multiplier', () => {
+    const fills = [
+      fill(1, 22000, 2, 'buy'),
+      fill(2, 22010, 2, 'sell') // +10 pts x 2 contracts
+    ];
+    const mnq = computeSessionStats(fills, 2); // MNQ = $2/pt
+    expect(mnq.total_pnl).toBeCloseTo(40);
+    expect(mnq.round_trips).toBe(1);
+    expect(mnq.wins).toBe(1);
+
+    // No-arg call stays multiplier 1 (stock regression)
+    const stock = computeSessionStats(fills);
+    expect(stock.total_pnl).toBeCloseTo(20);
+  });
 });
