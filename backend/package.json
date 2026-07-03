@@ -57,7 +57,7 @@
     "supertest": "^6.3.3"
   },
   "engines": {
-    "node": ">=14.0.0"
+    "node": ">=20.19.0"
   },
   "overrides": {
     "tar": "^7.5.9",

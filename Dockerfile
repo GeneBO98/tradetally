@@ -1,4 +1,4 @@
-FROM node:20-alpine3.21 AS frontend-builder
+FROM node:20.19.5-alpine3.21 AS frontend-builder
 # Update packages to fix vulnerabilities
 RUN apk update && apk upgrade --no-cache
 WORKDIR /app
@@ -26,7 +26,7 @@ ENV VITE_PROMOTEKIT_ID=${VITE_PROMOTEKIT_ID}
 
 RUN pnpm --dir frontend run build
 
-FROM node:20-alpine3.21 AS backend-builder
+FROM node:20.19.5-alpine3.21 AS backend-builder
 # Update packages to fix vulnerabilities
 RUN apk update && apk upgrade --no-cache
 WORKDIR /app
@@ -59,7 +59,7 @@ RUN pnpm install --filter tradetally-backend --prod --frozen-lockfile
 COPY backend/ ./backend
 RUN pnpm deploy --filter tradetally-backend --prod --legacy /prod/backend
 
-FROM node:20-alpine3.21
+FROM node:20.19.5-alpine3.21
 # Update packages to fix vulnerabilities
 # Note: vips is NOT needed here - Sharp uses bundled libvips via SHARP_IGNORE_GLOBAL_LIBVIPS=1
 RUN apk update && apk upgrade --no-cache && \

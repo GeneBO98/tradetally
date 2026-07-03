@@ -1,10 +1,13 @@
 describe('finnhub request context', () => {
   let originalApiKey;
+  let originalMarketDataProvider;
 
   beforeEach(() => {
     jest.resetModules();
     originalApiKey = process.env.FINNHUB_API_KEY;
+    originalMarketDataProvider = process.env.MARKET_DATA_PROVIDER;
     process.env.FINNHUB_API_KEY = 'test-key';
+    process.env.MARKET_DATA_PROVIDER = 'finnhub';
 
     jest.doMock('axios', () => ({
       get: jest.fn(async (url) => {
@@ -53,6 +56,11 @@ describe('finnhub request context', () => {
       delete process.env.FINNHUB_API_KEY;
     } else {
       process.env.FINNHUB_API_KEY = originalApiKey;
+    }
+    if (originalMarketDataProvider === undefined) {
+      delete process.env.MARKET_DATA_PROVIDER;
+    } else {
+      process.env.MARKET_DATA_PROVIDER = originalMarketDataProvider;
     }
     jest.dontMock('axios');
     jest.dontMock('../../src/utils/cache');
