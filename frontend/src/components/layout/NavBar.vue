@@ -448,7 +448,8 @@ const baseNavigation = [
 
 const publicNavigation = computed(() => {
   return [
-    { name: 'Public Trades', to: '/public', route: 'public-trades' }
+    { name: 'Public Trades', to: '/public', route: 'public-trades' },
+    { name: 'Market Risk', to: '/market-risk', route: 'market-risk' }
   ]
 })
 

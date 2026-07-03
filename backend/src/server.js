@@ -63,6 +63,7 @@ const supportRoutes = require('./routes/support.routes');
 const internalRoutes = require('./routes/internal.routes');
 const edgeReportRoutes = require('./routes/edgeReport.routes');
 const propFirmRoutes = require('./routes/propFirm.routes');
+const marketRiskRoutes = require('./routes/marketRisk.routes');
 const BillingService = require('./services/billingService');
 const priceMonitoringService = require('./services/priceMonitoringService');
 const backupScheduler = require('./services/backupScheduler.service');
@@ -296,6 +297,7 @@ app.use('/api/auth/passkey', passkeyRoutes);
 app.use('/api/testimonials', testimonialsRoutes);
 app.use('/api/edge-reports', edgeReportRoutes);
 app.use('/api/prop-firm', propFirmRoutes);
+app.use('/api/market-risk', marketRiskRoutes);
 
 // OAuth2 Provider endpoints
 app.use('/oauth', oauth2Routes);

@@ -268,6 +268,11 @@ const router = createRouter({
       component: () => import('@/views/PublicTradesView.vue')
     },
     {
+      path: '/market-risk',
+      name: 'market-risk',
+      component: () => import('@/views/MarketRiskView.vue')
+    },
+    {
       path: '/u/:username',
       name: 'user-profile',
       component: () => import('@/views/UserProfileView.vue')

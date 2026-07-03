@@ -31,6 +31,14 @@
     <priority>0.7</priority>
   </url>
 
+  <!-- Market Risk Indicators (public) -->
+  <url>
+    <loc>https://tradetally.io/market-risk</loc>
+    <lastmod>2026-07-03</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+
   <!-- Privacy Policy -->
   <url>
     <loc>https://tradetally.io/privacy</loc>

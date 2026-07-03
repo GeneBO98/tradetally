@@ -544,6 +544,11 @@
               </div>
             </template>
 
+            <!-- Market Risk Indicators (macro valuation/stress gauges) -->
+            <template v-if="element.id === 'market-risk'">
+              <MarketRiskCard />
+            </template>
+
             <!-- News + Upcoming Earnings now render in the sticky right rail
                  outside the draggable area, not as a section. -->
 
@@ -1619,6 +1624,7 @@ import StreakMomentumCard from '@/components/dashboard/StreakMomentumCard.vue'
 import BehavioralAlertsCard from '@/components/dashboard/BehavioralAlertsCard.vue'
 import RecentTradesTimeline from '@/components/dashboard/RecentTradesTimeline.vue'
 import WinLossPulse from '@/components/dashboard/WinLossPulse.vue'
+import MarketRiskCard from '@/components/dashboard/MarketRiskCard.vue'
 import MdiIcon from '@/components/MdiIcon.vue'
 import { mdiCheckCircle } from '@mdi/js'
 import { getRefreshInterval, shouldRefreshPrices, getMarketStatus } from '@/utils/marketHours'
@@ -1862,6 +1868,7 @@ const sectionDefinitions = [
   { id: 'open-positions', title: 'Open Positions', category: 'content', defaultVisible: true },
   { id: 'momentum-and-risk', title: 'Momentum & Risk Signals', category: 'stats', defaultVisible: true },
   { id: 'recent-trades-and-distribution', title: 'Recent Trades & Win Rate', category: 'tables', defaultVisible: true },
+  { id: 'market-risk', title: 'Market Risk Indicators', category: 'stats', defaultVisible: true },
   // News + Earnings live in a sticky right rail outside the draggable flow.
   // `location: 'rail'` flags it so the draggable template skips rendering it,
   // but the standard visibility toggle still works from customize mode.
