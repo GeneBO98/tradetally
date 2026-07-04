@@ -137,6 +137,7 @@ tramp
 .sentryclirc
 performance-test.js
 .mcp.json
+skills-lock.json
 CLAUDE.md
 AGENTS.md
 backend/.envy
