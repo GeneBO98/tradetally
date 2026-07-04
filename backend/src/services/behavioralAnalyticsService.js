@@ -1,6 +1,8 @@
 const db = require('../config/database');
 const TierService = require('./tierService');
 
+const REVENGE_CALCULATION_VERSION = '2026-07-risk-v2';
+
 class BehavioralAnalyticsService {
   static addDateRange(column, params, filter = {}) {
     const conditions = [];
@@ -256,7 +258,9 @@ class BehavioralAnalyticsService {
         COUNT(CASE WHEN total_additional_loss > 0 THEN 1 END) as loss_events,
         COUNT(CASE WHEN total_additional_loss <= 0 THEN 1 END) as profit_or_neutral_events,
         COUNT(CASE WHEN pattern_broken = true THEN 1 END) as pattern_broken_count,
-        COUNT(CASE WHEN cooling_period_used = true THEN 1 END) as cooling_period_used_count
+        COUNT(CASE WHEN cooling_period_used = true THEN 1 END) as cooling_period_used_count,
+        MAX(analysis_run_at) as latest_analysis_run_at,
+        COUNT(CASE WHEN calculation_version IS NULL OR calculation_version <> '${REVENGE_CALCULATION_VERSION}' THEN 1 END) as stale_event_count
       FROM revenge_trading_events rte
       WHERE rte.user_id = $1 ${dateCondition} ${accountCondition}
     `;
@@ -274,6 +278,12 @@ class BehavioralAnalyticsService {
         loss_rate: totalEvents > 0 ? (stats.loss_events / totalEvents * 100).toFixed(1) : 0,
         pattern_break_rate: totalEvents > 0 ? (stats.pattern_broken_count / totalEvents * 100).toFixed(1) : 0,
         cooling_period_usage_rate: totalEvents > 0 ? (stats.cooling_period_used_count / totalEvents * 100).toFixed(1) : 0
+      },
+      analysis_freshness: {
+        calculation_version: REVENGE_CALCULATION_VERSION,
+        latest_analysis_run_at: stats.latest_analysis_run_at || null,
+        stale_event_count: parseInt(stats.stale_event_count || 0),
+        has_stale_results: parseInt(stats.stale_event_count || 0) > 0
       },
       pagination: {
         page: page,

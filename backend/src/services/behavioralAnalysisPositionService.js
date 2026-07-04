@@ -34,6 +34,11 @@ function formatOptionStrategy(strategy) {
   return strategy ? String(strategy).replace(/_/g, ' ') : null;
 }
 
+function roundMoney(value) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.round(value * 100) / 100;
+}
+
 class BehavioralAnalysisPositionService {
   static addTradeFilters(sqlParts, params, filter = {}) {
     if (filter.startDate) {
@@ -78,6 +83,7 @@ class BehavioralAnalysisPositionService {
         t.exit_price,
         t.quantity,
         t.side,
+        t.stop_loss,
         t.strategy,
         t.manual_override,
         t.commission,
@@ -141,6 +147,172 @@ class BehavioralAnalysisPositionService {
     return Math.abs(parseNumber(row.quantity)) * parseNumber(row.entry_price) * this.tradeMultiplier(row);
   }
 
+  static tradeStopRisk(row) {
+    const entryPrice = parseNumber(row.entry_price, null);
+    const stopLoss = parseNumber(row.stop_loss, null);
+    const quantity = Math.abs(parseNumber(row.quantity));
+    if (!Number.isFinite(entryPrice) || !Number.isFinite(stopLoss) || quantity <= 0) {
+      return 0;
+    }
+
+    const multiplier = this.tradeMultiplier(row);
+    const side = String(row.side || '').toLowerCase();
+    let priceRisk = Math.abs(entryPrice - stopLoss);
+    if (side === 'long' || side === 'buy') {
+      priceRisk = Math.max(entryPrice - stopLoss, 0);
+    } else if (side === 'short' || side === 'sell') {
+      priceRisk = Math.max(stopLoss - entryPrice, 0);
+    }
+
+    return priceRisk * quantity * multiplier;
+  }
+
+  static optionEntryCashFlow(leg) {
+    const side = String(leg.side || '').toLowerCase();
+    const sign = side === 'short' || side === 'sell' ? 1 : -1;
+    return sign * Math.abs(parseNumber(leg.quantity)) * parseNumber(leg.entry_price) * this.tradeMultiplier(leg);
+  }
+
+  static optionExpirationPayoff(leg, underlyingPrice) {
+    const optionType = String(leg.option_type || '').toLowerCase();
+    const side = String(leg.side || '').toLowerCase();
+    const strike = parseNumber(leg.strike_price, null);
+    if (!Number.isFinite(strike)) return 0;
+
+    let intrinsic = 0;
+    if (optionType === 'call') intrinsic = Math.max(underlyingPrice - strike, 0);
+    else if (optionType === 'put') intrinsic = Math.max(strike - underlyingPrice, 0);
+    else return 0;
+
+    const direction = side === 'short' || side === 'sell' ? -1 : 1;
+    return direction * intrinsic * Math.abs(parseNumber(leg.quantity)) * this.tradeMultiplier(leg);
+  }
+
+  static hasUndefinedCallRisk(legs) {
+    const callSlope = legs.reduce((sum, leg) => {
+      if (String(leg.option_type || '').toLowerCase() !== 'call') return sum;
+      const side = String(leg.side || '').toLowerCase();
+      const direction = side === 'short' || side === 'sell' ? -1 : 1;
+      return sum + direction * Math.abs(parseNumber(leg.quantity)) * this.tradeMultiplier(leg);
+    }, 0);
+    return callSlope < 0;
+  }
+
+  static optionPositionRisk(legs, positionSize, positionStrategy) {
+    const optionLegs = legs.filter(row => row.instrument_type === 'option' || row.option_type);
+    const fallback = {
+      amount: roundMoney(positionSize),
+      basis: 'notional',
+      confidence: 'low',
+      is_estimated: true,
+      is_approximate: true,
+      details: {
+        reason: 'option_risk_fallback',
+        strategy: positionStrategy || null,
+        notional_amount: roundMoney(positionSize)
+      }
+    };
+
+    if (optionLegs.length === 0) return fallback;
+
+    const netEntryCashFlow = optionLegs.reduce((sum, leg) => sum + this.optionEntryCashFlow(leg), 0);
+    const netCredit = Math.max(netEntryCashFlow, 0);
+    const netDebit = Math.max(-netEntryCashFlow, 0);
+    const allLongPremium = optionLegs.every(leg => ['long', 'buy'].includes(String(leg.side || '').toLowerCase()));
+    if (allLongPremium && netDebit > 0) {
+      return {
+        amount: roundMoney(netDebit),
+        basis: 'net_debit',
+        confidence: 'high',
+        is_estimated: false,
+        is_approximate: false,
+        details: {
+          strategy: positionStrategy || null,
+          net_debit: roundMoney(netDebit),
+          notional_amount: roundMoney(positionSize)
+        }
+      };
+    }
+
+    const expirations = new Set(optionLegs.map(leg => leg.expiration_date).filter(Boolean));
+    const canModelAtExpiration = expirations.size === 1 &&
+      optionLegs.every(leg => leg.option_type && leg.strike_price !== null && leg.strike_price !== undefined && leg.entry_price !== null && leg.entry_price !== undefined);
+
+    if (canModelAtExpiration && !this.hasUndefinedCallRisk(optionLegs)) {
+      const strikePoints = [...new Set(optionLegs.map(leg => parseNumber(leg.strike_price, null)).filter(Number.isFinite))].sort((a, b) => a - b);
+      const pricePoints = [0, ...strikePoints];
+      const pnlAtPoints = pricePoints.map(price =>
+        netEntryCashFlow + optionLegs.reduce((sum, leg) => sum + this.optionExpirationPayoff(leg, price), 0)
+      );
+      const maxLoss = Math.max(0, -Math.min(...pnlAtPoints));
+
+      if (maxLoss > 0) {
+        return {
+          amount: roundMoney(maxLoss),
+          basis: 'max_loss',
+          confidence: 'high',
+          is_estimated: false,
+          is_approximate: false,
+          details: {
+            strategy: positionStrategy || null,
+            net_credit: roundMoney(netCredit),
+            net_debit: roundMoney(netDebit),
+            notional_amount: roundMoney(positionSize),
+            price_points: pricePoints,
+            min_expiration_pnl: roundMoney(Math.min(...pnlAtPoints))
+          }
+        };
+      }
+    }
+
+    if (this.hasUndefinedCallRisk(optionLegs)) {
+      return {
+        ...fallback,
+        basis: 'undefined_risk_notional',
+        details: {
+          ...fallback.details,
+          reason: 'undefined_short_call_risk',
+          net_credit: roundMoney(netCredit),
+          net_debit: roundMoney(netDebit)
+        }
+      };
+    }
+
+    return fallback;
+  }
+
+  static calculatePositionRisk(rows, positionSize, positionStrategy) {
+    const hasOptionLeg = rows.some(row => row.instrument_type === 'option' || row.option_type);
+    if (hasOptionLeg) {
+      return this.optionPositionRisk(rows, positionSize, positionStrategy);
+    }
+
+    const stopRisk = rows.reduce((sum, row) => sum + this.tradeStopRisk(row), 0);
+    if (stopRisk > 0) {
+      return {
+        amount: roundMoney(stopRisk),
+        basis: 'stop_loss',
+        confidence: 'high',
+        is_estimated: false,
+        is_approximate: false,
+        details: {
+          notional_amount: roundMoney(positionSize)
+        }
+      };
+    }
+
+    return {
+      amount: roundMoney(positionSize),
+      basis: 'notional',
+      confidence: 'medium',
+      is_estimated: true,
+      is_approximate: false,
+      details: {
+        notional_amount: roundMoney(positionSize)
+      }
+    };
+  }
+
   static buildPosition(rows, groupingEnabled) {
     const ordered = [...rows].sort((a, b) => {
       const aTime = toDate(a.entry_time)?.getTime() || 0;
@@ -165,6 +337,7 @@ class BehavioralAnalysisPositionService {
     const fees = ordered.reduce((sum, row) => sum + parseNumber(row.fees), 0);
     const positionSize = ordered.reduce((sum, row) => sum + this.tradePositionSize(row), 0);
     const hasOptionLeg = ordered.some(row => row.instrument_type === 'option' || row.option_type);
+    const positionRisk = this.calculatePositionRisk(ordered, positionSize, positionStrategy);
 
     return {
       id: representative.id,
@@ -195,6 +368,7 @@ class BehavioralAnalysisPositionService {
       fees,
       pnl,
       position_size: positionSize,
+      position_risk: positionRisk,
       hold_time_minutes: entryDate && exitDate ? (exitDate - entryDate) / (1000 * 60) : 0,
       legs: ordered.map(row => ({
         id: row.id,
@@ -204,10 +378,14 @@ class BehavioralAnalysisPositionService {
         entry_price: row.entry_price,
         exit_price: row.exit_price,
         pnl: row.pnl,
+        stop_loss: row.stop_loss,
         strategy: row.strategy,
+        instrument_type: row.instrument_type,
         option_type: row.option_type,
         strike_price: row.strike_price,
-        expiration_date: row.expiration_date
+        expiration_date: row.expiration_date,
+        contract_size: row.contract_size,
+        point_value: row.point_value
       }))
     };
   }

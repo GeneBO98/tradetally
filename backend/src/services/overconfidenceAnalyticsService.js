@@ -6,6 +6,8 @@ const AnalyticsCache = require('./analyticsCache');
 const BehavioralAnalysisPositionService = require('./behavioralAnalysisPositionService');
 const MAEEstimator = require('../utils/maeEstimator');
 
+const OVERCONFIDENCE_CALCULATION_VERSION = '2026-07-risk-v2';
+
 class OverconfidenceAnalyticsService {
   static addTradeAccountFilter(sqlParts, params, accounts, tableAlias = '') {
     if (!accounts || accounts.length === 0) return;
@@ -59,6 +61,11 @@ class OverconfidenceAnalyticsService {
   
   // Calculate monetary position size for any trade
   static calculateMonetaryPositionSize(trade) {
+    const riskAmount = parseFloat(trade?.position_risk?.amount);
+    if (Number.isFinite(riskAmount) && riskAmount > 0) {
+      return riskAmount;
+    }
+
     const explicitPositionSize = parseFloat(trade.position_size);
     if (Number.isFinite(explicitPositionSize) && explicitPositionSize > 0) {
       return explicitPositionSize;
@@ -69,6 +76,16 @@ class OverconfidenceAnalyticsService {
     if (!Number.isFinite(quantity) || !Number.isFinite(entryPrice)) return 0;
 
     return Math.abs(quantity) * entryPrice * MAEEstimator.resolveMultiplier(trade);
+  }
+
+  static riskBasisForPosition(position) {
+    return position?.position_risk || {
+      amount: this.calculateMonetaryPositionSize(position),
+      basis: 'position_size',
+      confidence: 'low',
+      is_estimated: true,
+      is_approximate: true
+    };
   }
 
   // Calculate position size volatility (standard deviation)
@@ -238,6 +255,7 @@ class OverconfidenceAnalyticsService {
     // Calculate position sizes during the streak
     const positionSizes = winStreak.map(trade => this.calculateMonetaryPositionSize(trade));
     const peakPositionSize = Math.max(...positionSizes);
+    const peakIndex = positionSizes.indexOf(peakPositionSize);
     const totalStreakProfit = winStreak.reduce((sum, trade) => sum + parseFloat(trade.pnl || 0), 0);
     
     // If no baseline, use average of first 3 trades in streak
@@ -293,6 +311,19 @@ class OverconfidenceAnalyticsService {
       positionSizeIncreasePercent: positionIncreasePercent,
       totalStreakProfit,
       streakTrades: winStreak.flatMap(t => t.trade_ids || [t.id]),
+      riskBasis: {
+        calculation_version: OVERCONFIDENCE_CALCULATION_VERSION,
+        comparison_basis: 'position_risk',
+        baseline_amount: effectiveBaseline,
+        peak_position_id: winStreak[peakIndex]?.id || null,
+        peak: this.riskBasisForPosition(winStreak[peakIndex]),
+        streak: winStreak.map(trade => ({
+          id: trade.id,
+          trade_ids: trade.trade_ids || [trade.id],
+          symbol: trade.symbol,
+          position_risk: this.riskBasisForPosition(trade)
+        }))
+      },
       severity,
       confidenceScore: confidence
     };
@@ -527,9 +558,10 @@ class OverconfidenceAnalyticsService {
         user_id, win_streak_length, win_streak_start_date, win_streak_end_date,
         baseline_position_size, peak_position_size, position_size_increase_percent,
         total_streak_profit, streak_trades, severity, confidence_score,
-        outcome_after_streak, outcome_trade_id, outcome_amount, outcome_analysis
+        outcome_after_streak, outcome_trade_id, outcome_amount, outcome_analysis,
+        calculation_version, analysis_run_at, risk_basis
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
       RETURNING id
     `;
 
@@ -548,7 +580,10 @@ class OverconfidenceAnalyticsService {
       outcomeType,
       outcomeTradeId,
       outcomeAmount,
-      outcomeAnalysis ? JSON.stringify(outcomeAnalysis) : null
+      outcomeAnalysis ? JSON.stringify(outcomeAnalysis) : null,
+      OVERCONFIDENCE_CALCULATION_VERSION,
+      new Date(),
+      JSON.stringify(eventData.riskBasis || {})
     ]);
 
     // Also create behavioral pattern entry
@@ -579,7 +614,9 @@ class OverconfidenceAnalyticsService {
         positionSizeIncreasePercent: eventData.positionSizeIncreasePercent,
         totalStreakProfit: eventData.totalStreakProfit,
         peakPositionSize: eventData.peakPositionSize,
-        baselinePositionSize: eventData.baselinePositionSize
+        baselinePositionSize: eventData.baselinePositionSize,
+        riskBasis: eventData.riskBasis || {},
+        calculationVersion: OVERCONFIDENCE_CALCULATION_VERSION
       })
     ]);
   }
@@ -696,6 +733,9 @@ class OverconfidenceAnalyticsService {
           baselinePositionSize: parseFloat(event.baseline_position_size),
           peakPositionSize: parseFloat(event.peak_position_size),
           positionSizeIncrease: parseFloat(event.position_size_increase_percent),
+          riskBasis: event.risk_basis ? (typeof event.risk_basis === 'string' ? JSON.parse(event.risk_basis) : event.risk_basis) : {},
+          calculationVersion: event.calculation_version || null,
+          analysisRunAt: event.analysis_run_at || null,
           streakPnl: parseFloat(event.total_streak_profit || 0),
           severity: event.severity,
           confidenceScore: parseFloat(event.confidence_score),
@@ -763,7 +803,9 @@ class OverconfidenceAnalyticsService {
         COUNT(CASE WHEN outcome_after_streak = 'profit' THEN 1 END) as streaks_ending_in_profit,
         COUNT(CASE WHEN severity = 'high' THEN 1 END) as high_severity_count,
         COUNT(CASE WHEN severity = 'medium' THEN 1 END) as medium_severity_count,
-        COUNT(CASE WHEN severity = 'low' THEN 1 END) as low_severity_count
+        COUNT(CASE WHEN severity = 'low' THEN 1 END) as low_severity_count,
+        MAX(analysis_run_at) as latest_analysis_run_at,
+        COUNT(CASE WHEN calculation_version IS NULL OR calculation_version <> '${OVERCONFIDENCE_CALCULATION_VERSION}' THEN 1 END) as stale_event_count
       FROM overconfidence_events
       WHERE user_id = $1 ${dateCondition}
     `;
@@ -804,6 +846,10 @@ class OverconfidenceAnalyticsService {
         highSeverityCount: parseInt(stats.high_severity_count || 0),
         mediumSeverityCount: parseInt(stats.medium_severity_count || 0),
         lowSeverityCount: parseInt(stats.low_severity_count || 0),
+        latestAnalysisRunAt: stats.latest_analysis_run_at || null,
+        calculationVersion: OVERCONFIDENCE_CALCULATION_VERSION,
+        staleEventCount: parseInt(stats.stale_event_count || 0),
+        hasStaleResults: parseInt(stats.stale_event_count || 0) > 0,
         lossRate: totalEvents > 0 ? parseFloat(((stats.streaks_ending_in_loss / totalEvents) * 100).toFixed(1)) : 0,
         profitRate: totalEvents > 0 ? parseFloat(((stats.streaks_ending_in_profit / totalEvents) * 100).toFixed(1)) : 0,
         performanceImpact: performanceImpact,

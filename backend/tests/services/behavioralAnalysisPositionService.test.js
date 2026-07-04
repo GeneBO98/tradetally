@@ -76,7 +76,13 @@ describe('BehavioralAnalysisPositionService.getCompletedPositions', () => {
       leg_count: 2,
       group_detected_strategy: 'bull_put_spread',
       strategy: 'bull_put_spread',
-      has_option_leg: true
+      has_option_leg: true,
+      position_risk: {
+        amount: 360,
+        basis: 'max_loss',
+        confidence: 'high',
+        is_approximate: false
+      }
     });
     expect(positions[0].trade_ids).toEqual([
       '00000000-0000-4000-8000-000000000101',
@@ -98,5 +104,94 @@ describe('BehavioralAnalysisPositionService.getCompletedPositions', () => {
     expect(positions).toHaveLength(2);
     expect(positions.every(position => position.position_grouped === false)).toBe(true);
     expect(positions.map(position => position.pnl)).toEqual([130, -60]);
+  });
+
+  test('uses net debit as risk for long premium option positions', async () => {
+    isPositionGroupingEnabled.mockResolvedValue(false);
+    db.query.mockResolvedValue({
+      rows: [
+        optionLeg({
+          id: '00000000-0000-4000-8000-000000000301',
+          side: 'long',
+          option_type: 'call',
+          strike_price: 100,
+          entry_price: 3,
+          quantity: 2,
+          position_group_id: null,
+          group_detected_strategy: null,
+          persisted_leg_count: null
+        })
+      ]
+    });
+
+    const positions = await BehavioralAnalysisPositionService.getCompletedPositions(USER_ID);
+
+    expect(positions[0].position_risk).toMatchObject({
+      amount: 600,
+      basis: 'net_debit',
+      confidence: 'high',
+      is_approximate: false
+    });
+  });
+
+  test('marks undefined short call structures as approximate notional risk', async () => {
+    isPositionGroupingEnabled.mockResolvedValue(false);
+    db.query.mockResolvedValue({
+      rows: [
+        optionLeg({
+          id: '00000000-0000-4000-8000-000000000401',
+          side: 'short',
+          option_type: 'call',
+          strike_price: 100,
+          entry_price: 2,
+          quantity: 1,
+          position_group_id: null,
+          group_detected_strategy: null,
+          persisted_leg_count: null
+        })
+      ]
+    });
+
+    const positions = await BehavioralAnalysisPositionService.getCompletedPositions(USER_ID);
+
+    expect(positions[0].position_risk).toMatchObject({
+      amount: 200,
+      basis: 'undefined_risk_notional',
+      is_approximate: true
+    });
+  });
+
+  test('uses stop-loss risk for non-option positions when available', async () => {
+    isPositionGroupingEnabled.mockResolvedValue(false);
+    db.query.mockResolvedValue({
+      rows: [
+        {
+          ...optionLeg({
+            id: '00000000-0000-4000-8000-000000000501',
+            symbol: 'AAPL',
+            underlying_symbol: null,
+            instrument_type: 'stock',
+            option_type: null,
+            strike_price: null,
+            expiration_date: null,
+            side: 'long',
+            entry_price: 100,
+            stop_loss: 95,
+            quantity: 10,
+            position_group_id: null,
+            group_detected_strategy: null,
+            persisted_leg_count: null
+          })
+        }
+      ]
+    });
+
+    const positions = await BehavioralAnalysisPositionService.getCompletedPositions(USER_ID);
+
+    expect(positions[0].position_risk).toMatchObject({
+      amount: 50,
+      basis: 'stop_loss',
+      confidence: 'high'
+    });
   });
 });

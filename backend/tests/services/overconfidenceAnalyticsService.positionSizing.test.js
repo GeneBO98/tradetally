@@ -111,6 +111,29 @@ describe('OverconfidenceAnalyticsService position sizing', () => {
     expect(eventInsert[1][6]).toBe(60);
   });
 
+  test('uses position_risk amount before notional position size for escalation percent', async () => {
+    BehavioralAnalysisPositionService.getCompletedPositions.mockResolvedValue([
+      completedPosition({ id: '00000000-0000-4000-8000-000000000501', position_size: 5000, position_risk: { amount: 100, basis: 'max_loss' }, pnl: -10 }),
+      completedPosition({ id: '00000000-0000-4000-8000-000000000502', position_size: 5000, position_risk: { amount: 100, basis: 'max_loss' }, pnl: -10 }),
+      completedPosition({ id: '00000000-0000-4000-8000-000000000503', position_size: 5000, position_risk: { amount: 100, basis: 'max_loss' }, pnl: -10 }),
+      completedPosition({ id: '00000000-0000-4000-8000-000000000504', position_size: 5000, position_risk: { amount: 100, basis: 'max_loss' }, pnl: 50 }),
+      completedPosition({ id: '00000000-0000-4000-8000-000000000505', position_size: 5000, position_risk: { amount: 100, basis: 'max_loss' }, pnl: 60 }),
+      completedPosition({ id: '00000000-0000-4000-8000-000000000506', position_size: 5000, position_risk: { amount: 100, basis: 'max_loss' }, pnl: 70 }),
+      completedPosition({ id: '00000000-0000-4000-8000-000000000507', position_size: 5000, position_risk: { amount: 100, basis: 'max_loss' }, pnl: 80 }),
+      completedPosition({ id: '00000000-0000-4000-8000-000000000508', position_size: 5000, position_risk: { amount: 100, basis: 'max_loss' }, pnl: 90 }),
+      completedPosition({ id: '00000000-0000-4000-8000-000000000509', position_size: 50000, position_risk: { amount: 200, basis: 'max_loss' }, pnl: 100 }),
+      completedPosition({ id: '00000000-0000-4000-8000-000000000510', position_size: 5000, position_risk: { amount: 100, basis: 'max_loss' }, pnl: -20 })
+    ]);
+
+    const result = await OverconfidenceAnalyticsService.analyzeHistoricalTrades('user-1');
+    const eventInsert = db.query.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO overconfidence_events'));
+    const riskBasis = JSON.parse(eventInsert[1][17]);
+
+    expect(result.overconfidenceEventsCreated).toBe(1);
+    expect(eventInsert[1][6]).toBe(100);
+    expect(riskBasis.peak.basis).toBe('max_loss');
+  });
+
   test('flattens grouped trade ids when storing streak trade details', async () => {
     const event = await OverconfidenceAnalyticsService.analyzeWinStreak('user-1', [
       completedPosition({ id: 'group-1', trade_ids: ['leg-1', 'leg-2'], position_size: 1000 }),
