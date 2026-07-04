@@ -174,4 +174,13 @@ describe('detectBrokerFormat', () => {
     const csv = 'Exec Time,Spread,Side,Qty,Pos Effect,Symbol,Exp,Strike,Type,Price,Net Price,Order Type\n01/01/2025 09:30,SINGLE,BUY,100,TO OPEN,AAPL,,,STOCK,150.00,150.00,LIMIT';
     expect(detectBrokerFormat(buf(csv))).toBe('papermoney');
   });
+
+  test('detects PaperMoney trade activity format with Time Placed header', () => {
+    const csv = [
+      'Today\'s Trade Activity for 72074033SCHW (Trading) on 7/2/26 08:44:52',
+      'Notes,,Time Placed,Spread,Side,Qty,Pos Effect,Symbol,Exp,Strike,Type,PRICE,,TIF,Mark,Status',
+      ',,7/1/26 06:50:34,STOCK,SELL,-17,TO CLOSE,LNTH,,,STOCK,~,MKT,GTC,109.135,WAIT STOP'
+    ].join('\n');
+    expect(detectBrokerFormat(buf(csv))).toBe('papermoney');
+  });
 });

@@ -714,7 +714,9 @@ function detectBrokerFormat(fileBuffer) {
         const line = lines[i];
         if (!line) continue;
         const lowerLine = line.toLowerCase();
-        if (lowerLine.includes('exec time') && lowerLine.includes('pos effect') && lowerLine.includes('spread')) {
+        if ((lowerLine.includes('exec time') || lowerLine.includes('time placed')) &&
+            lowerLine.includes('pos effect') &&
+            lowerLine.includes('spread')) {
           console.log('[AUTO-DETECT] Detected: ThinkorSwim/paperMoney Account Statement (multi-section Filled Orders)');
           return 'papermoney';
         }
@@ -825,7 +827,7 @@ function detectBrokerFormat(fileBuffer) {
     }
 
     // PaperMoney detection - look for Exec Time, Pos Effect, Spread columns
-    if (headers.includes('exec time') &&
+    if ((headers.includes('exec time') || headers.includes('time placed')) &&
         headers.includes('pos effect') &&
         headers.includes('spread')) {
       console.log('[AUTO-DETECT] Detected: PaperMoney');
@@ -2901,6 +2903,15 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       }
     }
     
+    const isPaperMoneyOrderHeader = (line) => {
+      const lowerLine = String(line || '').toLowerCase();
+      return (lowerLine.includes('exec time') || lowerLine.includes('time placed')) &&
+        lowerLine.includes('side') &&
+        lowerLine.includes('qty') &&
+        lowerLine.includes('pos effect') &&
+        lowerLine.includes('symbol');
+    };
+
     // Handle PaperMoney CSV files that have multiple sections
     if (broker === 'papermoney') {
       const lines = csvString.split('\n');
@@ -2919,7 +2930,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       if (filledOrdersStart >= 0) {
         // Find the header line (contains "Exec Time,Spread,Side,Qty")
         for (let i = filledOrdersStart; i < lines.length; i++) {
-          if (lines[i].includes('Exec Time') && lines[i].includes('Side') && lines[i].includes('Qty')) {
+          if (isPaperMoneyOrderHeader(lines[i])) {
             filledOrdersStart = i;
             break;
           }
@@ -2941,10 +2952,11 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
         csvString = lines.slice(filledOrdersStart, filledOrdersEnd).join('\n');
         console.log(`[PAPERMONEY] Extracted filled orders section: lines ${filledOrdersStart} to ${filledOrdersEnd}`);
       } else {
-        // No "Filled Orders" section header - check if the CSV starts directly with the header row
+        // No "Filled Orders" section header - check if the CSV starts directly
+        // with the header row or contains a standalone trade activity table.
         let headerLineIndex = -1;
-        for (let i = 0; i < Math.min(lines.length, 5); i++) {
-          if (lines[i].includes('Exec Time') && lines[i].includes('Side') && lines[i].includes('Qty')) {
+        for (let i = 0; i < lines.length; i++) {
+          if (isPaperMoneyOrderHeader(lines[i])) {
             headerLineIndex = i;
             break;
           }
@@ -7316,20 +7328,67 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
   records.slice(0, 5).forEach((record, i) => {
     console.log(`Record ${i}:`, JSON.stringify(record));
   });
+
+  const parsePaperMoneyExpiration = (value) => {
+    const raw = cleanString(value || '').toUpperCase();
+    const match = raw.match(/^(\d{1,2})\s+([A-Z]{3})\s+(\d{2,4})$/);
+    if (!match) return null;
+
+    const [, day, monthStr, yearStr] = match;
+    const months = {
+      JAN: '01', FEB: '02', MAR: '03', APR: '04', MAY: '05', JUN: '06',
+      JUL: '07', AUG: '08', SEP: '09', OCT: '10', NOV: '11', DEC: '12'
+    };
+    const month = months[monthStr];
+    if (!month) return null;
+
+    const yearNum = parseInt(yearStr, 10);
+    const fullYear = yearStr.length === 2
+      ? (yearNum < 50 ? 2000 + yearNum : 1900 + yearNum)
+      : yearNum;
+
+    return `${fullYear}-${month}-${day.padStart(2, '0')}`;
+  };
+
+  const getPaperMoneyInstrumentData = (record, symbol) => {
+    const type = cleanString(record.Type || record.TYPE || '').toLowerCase();
+    if (type === 'call' || type === 'put') {
+      const expirationDate = parsePaperMoneyExpiration(record.Exp);
+      const strikePrice = parseNumeric(record.Strike, NaN);
+      if (expirationDate && Number.isFinite(strikePrice)) {
+        return {
+          instrumentType: 'option',
+          underlyingSymbol: symbol,
+          strikePrice,
+          expirationDate,
+          optionType: type,
+          contractSize: 100
+        };
+      }
+    }
+
+    return parseInstrumentData(symbol);
+  };
   
   // First, parse all trade transactions from the filled orders
   for (const record of records) {
     try {
       const symbol = cleanString(record.Symbol);
       const side = record.Side ? record.Side.toLowerCase() : '';
-      const quantity = Math.abs(parseInt(record.Qty || 0));
-      const price = parseFloat(record.Price || record['Net Price'] || 0);
-      const execTime = record['Exec Time'] || '';
+      const quantity = Math.abs(parseNumeric(record.Qty, 0));
+      const price = parseNumeric(record.Price ?? record.PRICE ?? record['Net Price'], NaN);
+      const execTime = record['Exec Time'] || record['Time Placed'] || '';
       const posEffect = record['Pos Effect'] || '';
       const type = record.Type || 'STOCK';
+      const status = cleanString(record.Status || '').toUpperCase();
+
+      if (status && !['FILLED', 'EXECUTED'].includes(status)) {
+        console.log(`Skipping PaperMoney order with non-filled status: ${status}`);
+        continue;
+      }
       
       // Skip if missing essential data
-      if (!symbol || !side || quantity === 0 || price === 0 || !execTime) {
+      if (!symbol || !side || quantity === 0 || !Number.isFinite(price) || price === 0 || !execTime) {
         console.log(`Skipping PaperMoney record missing data:`, { symbol, side, quantity, price, execTime });
         continue;
       }
@@ -7389,6 +7448,7 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
         posEffect,
         type,
         description: `${posEffect} - ${type}`,
+        instrumentData: getPaperMoneyInstrumentData(record, symbol),
         raw: record,
         accountIdentifier
       });
@@ -7399,35 +7459,41 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
     }
   }
   
-  // Sort transactions by symbol and datetime
-  transactions.sort((a, b) => {
-    if (a.symbol !== b.symbol) return a.symbol.localeCompare(b.symbol);
-    return new Date(a.datetime) - new Date(b.datetime);
-  });
-  
-  console.log(`Parsed ${transactions.length} valid PaperMoney trade transactions`);
-  
-  // Group transactions by symbol
+  // Group transactions by symbol or option contract before sorting.
   const transactionsBySymbol = {};
   for (const transaction of transactions) {
-    if (!transactionsBySymbol[transaction.symbol]) {
-      transactionsBySymbol[transaction.symbol] = [];
+    const instrumentData = transaction.instrumentData || parseInstrumentData(transaction.symbol);
+    transaction.groupKey = instrumentData.instrumentType === 'option'
+      ? `${transaction.symbol}_${instrumentData.expirationDate}_${instrumentData.optionType}_${instrumentData.strikePrice}`
+      : transaction.symbol;
+
+    if (!transactionsBySymbol[transaction.groupKey]) {
+      transactionsBySymbol[transaction.groupKey] = [];
     }
-    transactionsBySymbol[transaction.symbol].push(transaction);
+    transactionsBySymbol[transaction.groupKey].push(transaction);
   }
+
+  // Sort each instrument's transactions by datetime.
+  for (const groupKey of Object.keys(transactionsBySymbol)) {
+    transactionsBySymbol[groupKey].sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
+  }
+
+  console.log(`Parsed ${transactions.length} valid PaperMoney trade transactions`);
   
   // Process transactions using round-trip trade grouping
-  for (const symbol in transactionsBySymbol) {
-    const symbolTransactions = transactionsBySymbol[symbol];
-    const instrumentData = parseInstrumentData(symbol);
-    const valueMultiplier = instrumentData.instrumentType === 'option' ? 100 :
-                            instrumentData.instrumentType === 'future' ? (instrumentData.pointValue || 1) : 1;
+  for (const groupKey in transactionsBySymbol) {
+    const symbolTransactions = transactionsBySymbol[groupKey];
+    const symbol = symbolTransactions[0].symbol;
+    const instrumentData = symbolTransactions[0].instrumentData || parseInstrumentData(symbol);
+    const valueMultiplier = instrumentData.contractSize ||
+                            (instrumentData.instrumentType === 'option' ? 100 :
+                              instrumentData.instrumentType === 'future' ? (instrumentData.pointValue || 1) : 1);
 
     console.log(`\n=== Processing ${symbolTransactions.length} PaperMoney transactions for ${symbol} ===`);
     
     // Track position and round-trip trades
     // Start with existing position if we have one for this symbol
-    const existingPosition = existingPositions[symbol];
+    const existingPosition = existingPositions[groupKey] || existingPositions[symbol];
     let currentPosition = existingPosition ?
       (existingPosition.side === 'long' ? existingPosition.quantity : -existingPosition.quantity) : 0;
     let currentTrade = existingPosition ? {

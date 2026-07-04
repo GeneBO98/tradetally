@@ -942,6 +942,34 @@ describe('PaperMoney parser', () => {
     expect(result.trades[0].exitPrice).toBe(24369.25);
     expect(result.trades[0].pnl).toBe(125);
   });
+
+  test('parses trade activity rows with Time Placed and uppercase PRICE', async () => {
+    const tradeActivityCSV = [
+      'Today\'s Trade Activity for 72074033SCHW (Trading) on 7/2/26 08:44:52',
+      'Notes,,Time Placed,Spread,Side,Qty,Pos Effect,Symbol,Exp,Strike,Type,PRICE,,TIF,Mark,Status',
+      ',,6/22/26 12:40:29,SINGLE,BUY,+1,TO OPEN,MRK,17 JUL 26,120,CALL,.52,LMT,GTC,9.225,FILLED',
+      ',,6/22/26 12:45:29,SINGLE,SELL,-1,TO CLOSE,MRK,17 JUL 26,120,CALL,.72,LMT,GTC,9.225,FILLED',
+      ',,6/29/26 09:37:41,STOCK,SELL,-58,TO CLOSE,VRTX,,,STOCK,~,MKT,GTC,519.85,WORKING',
+      ',,,RE #1006938727494,,,,,,,,460.78,STP,STD,,'
+    ].join('\n');
+
+    const result = await parseCSV(buf(tradeActivityCSV), 'auto', {});
+
+    expectValidResult(result);
+    expect(result.diagnostics.detectedBroker).toBe('papermoney');
+    expect(result.trades).toHaveLength(1);
+
+    const trade = result.trades[0];
+    expect(trade.symbol).toBe('MRK');
+    expect(trade.instrumentType).toBe('option');
+    expect(trade.expirationDate).toBe('2026-07-17');
+    expect(trade.strikePrice).toBe(120);
+    expect(trade.optionType).toBe('call');
+    expect(trade.quantity).toBe(1);
+    expect(trade.entryPrice).toBe(0.52);
+    expect(trade.exitPrice).toBe(0.72);
+    expect(trade.pnl).toBeCloseTo(20, 5);
+  });
 });
 
 // ──────────────────────────────────────────────
