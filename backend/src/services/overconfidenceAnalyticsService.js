@@ -3,6 +3,8 @@ const TierService = require('./tierService');
 const aiService = require('../utils/aiService');
 const adminSettingsService = require('./adminSettings');
 const AnalyticsCache = require('./analyticsCache');
+const BehavioralAnalysisPositionService = require('./behavioralAnalysisPositionService');
+const MAEEstimator = require('../utils/maeEstimator');
 
 class OverconfidenceAnalyticsService {
   static addTradeAccountFilter(sqlParts, params, accounts, tableAlias = '') {
@@ -57,7 +59,16 @@ class OverconfidenceAnalyticsService {
   
   // Calculate monetary position size for any trade
   static calculateMonetaryPositionSize(trade) {
-    return parseFloat(trade.quantity) * parseFloat(trade.entry_price);
+    const explicitPositionSize = parseFloat(trade.position_size);
+    if (Number.isFinite(explicitPositionSize) && explicitPositionSize > 0) {
+      return explicitPositionSize;
+    }
+
+    const quantity = parseFloat(trade.quantity);
+    const entryPrice = parseFloat(trade.entry_price);
+    if (!Number.isFinite(quantity) || !Number.isFinite(entryPrice)) return 0;
+
+    return Math.abs(quantity) * entryPrice * MAEEstimator.resolveMultiplier(trade);
   }
 
   // Calculate position size volatility (standard deviation)
@@ -81,37 +92,9 @@ class OverconfidenceAnalyticsService {
     // Clear existing data (only for the filtered date range if provided)
     await this.clearHistoricalData(userId, dateFilter);
 
-    const queryParams = [userId];
-    const tradeFilters = [];
-
-    if (dateFilter.startDate) {
-      queryParams.push(dateFilter.startDate);
-      tradeFilters.push(`AND exit_time >= $${queryParams.length}`);
-    }
-
-    if (dateFilter.endDate) {
-      queryParams.push(dateFilter.endDate);
-      tradeFilters.push(`AND exit_time <= $${queryParams.length}`);
-    }
-
-    this.addTradeAccountFilter(tradeFilters, queryParams, dateFilter.accounts);
-
-    // Get all completed trades for the user, ordered by entry time
-    const tradesQuery = `
-      SELECT
-        id, symbol, entry_time, exit_time, entry_price, exit_price,
-        quantity, side, commission, fees, pnl
-      FROM trades
-      WHERE user_id = $1
-        AND exit_price IS NOT NULL
-        AND exit_time IS NOT NULL
-        ${tradeFilters.join('\n        ')}
-        AND UPPER(symbol) NOT IN ('TEST', 'DEMO', 'EXAMPLE', 'XXX', 'UNKNOWN')
-      ORDER BY entry_time ASC
-    `;
-
-    const tradesResult = await db.query(tradesQuery, queryParams);
-    const trades = tradesResult.rows;
+    const junkSymbols = new Set(['TEST', 'DEMO', 'EXAMPLE', 'XXX', 'UNKNOWN']);
+    const trades = (await BehavioralAnalysisPositionService.getCompletedPositions(userId, dateFilter))
+      .filter(trade => !junkSymbols.has(String(trade.symbol || '').toUpperCase()));
 
     if (trades.length < 10) {
       return {
@@ -309,7 +292,7 @@ class OverconfidenceAnalyticsService {
       peakPositionSize,
       positionSizeIncreasePercent: positionIncreasePercent,
       totalStreakProfit,
-      streakTrades: winStreak.map(t => t.id),
+      streakTrades: winStreak.flatMap(t => t.trade_ids || [t.id]),
       severity,
       confidenceScore: confidence
     };
@@ -737,7 +720,11 @@ class OverconfidenceAnalyticsService {
           SELECT 
             id, symbol, entry_time, exit_time, entry_price, exit_price, 
             quantity, side, pnl, commission, fees,
-            (quantity * entry_price) as position_size
+            CASE
+              WHEN instrument_type = 'option' THEN ABS(quantity) * entry_price * COALESCE(NULLIF(contract_size, 0), 100)
+              WHEN instrument_type = 'future' THEN ABS(quantity) * entry_price * COALESCE(NULLIF(point_value, 0), 1)
+              ELSE ABS(quantity) * entry_price
+            END as position_size
           FROM trades 
           WHERE id = ANY($1)
           ORDER BY entry_time ASC
@@ -935,11 +922,25 @@ class OverconfidenceAnalyticsService {
       return null;
     }
 
+    let enrichedTrade = newTrade;
+    if (newTrade.id) {
+      const tradeMetaResult = await db.query(
+        `SELECT instrument_type, contract_size, point_value
+         FROM trades
+         WHERE id = $1 AND user_id = $2`,
+        [newTrade.id, userId]
+      );
+      enrichedTrade = {
+        ...newTrade,
+        ...(tradeMetaResult.rows[0] || {})
+      };
+    }
+
     // Get current win/loss streak
     const currentStreak = await this.getCurrentStreak(userId);
     
     // Update streak with new trade
-    const updatedStreak = await this.updateCurrentStreak(userId, newTrade, currentStreak);
+    const updatedStreak = await this.updateCurrentStreak(userId, enrichedTrade, currentStreak);
     
     // Check if we need to alert for overconfidence
     if (updatedStreak.streak_type === 'win' && 

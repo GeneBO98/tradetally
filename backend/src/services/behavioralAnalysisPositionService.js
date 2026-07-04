@@ -164,6 +164,7 @@ class BehavioralAnalysisPositionService {
     const commission = ordered.reduce((sum, row) => sum + parseNumber(row.commission), 0);
     const fees = ordered.reduce((sum, row) => sum + parseNumber(row.fees), 0);
     const positionSize = ordered.reduce((sum, row) => sum + this.tradePositionSize(row), 0);
+    const hasOptionLeg = ordered.some(row => row.instrument_type === 'option' || row.option_type);
 
     return {
       id: representative.id,
@@ -177,6 +178,7 @@ class BehavioralAnalysisPositionService {
       account_identifier: representative.account_identifier || null,
       underlying_symbol: symbol,
       instrument_type: representative.instrument_type || 'stock',
+      has_option_leg: hasOptionLeg,
       entry_time: entryTime,
       exit_time: exitTime,
       trade_date: representative.trade_date,

@@ -4,6 +4,19 @@ const finnhub = require('../utils/finnhub');
 const BehavioralAnalysisPositionService = require('./behavioralAnalysisPositionService');
 
 class TradingPersonalityService {
+  static DIRECT_STRATEGY_MAPPINGS = {
+    scalper: 'scalper',
+    momentum: 'momentum',
+    mean_reversion: 'mean_reversion',
+    mean_reverting: 'mean_reversion',
+    day_trading: 'day_trading',
+    day_trade: 'day_trading',
+    swing: 'swing',
+    swing_trading: 'swing',
+    position: 'position',
+    position_trading: 'position'
+  };
+
   static addAccountFilter(sqlParts, params, tableAlias = '') {
     const accounts = params.accountsFilter;
     if (!accounts || accounts.length === 0) return;
@@ -291,31 +304,33 @@ class TradingPersonalityService {
     }
 
     const storedStrategy = this.normalizeStrategyName(trade.stored_strategy || trade.strategy);
-    if (!storedStrategy) return null;
 
     if (this.isOptionStructureStrategy(storedStrategy)) {
       return 'option_strategy';
     }
 
-    const directMappings = {
-      scalper: 'scalper',
-      momentum: 'momentum',
-      mean_reversion: 'mean_reversion',
-      mean_reverting: 'mean_reversion',
-      day_trading: 'day_trading',
-      day_trade: 'day_trading',
-      swing: 'swing',
-      swing_trading: 'swing',
-      position: 'position',
-      position_trading: 'position'
-    };
+    if (this.isOptionPosition(trade)) {
+      if (trade.manual_override === true && this.DIRECT_STRATEGY_MAPPINGS[storedStrategy]) {
+        return this.DIRECT_STRATEGY_MAPPINGS[storedStrategy];
+      }
+      return 'option_strategy';
+    }
 
-    return directMappings[storedStrategy] || null;
+    if (!storedStrategy) return null;
+
+    return this.DIRECT_STRATEGY_MAPPINGS[storedStrategy] || null;
   }
 
   static normalizeStrategyName(strategy) {
     if (!strategy) return null;
     return String(strategy).trim().toLowerCase().replace(/\s+/g, '_');
+  }
+
+  static isOptionPosition(trade) {
+    if (!trade) return false;
+    return trade.instrument_type === 'option' ||
+      trade.has_option_leg === true ||
+      (Array.isArray(trade.legs) && trade.legs.some(leg => leg.option_type));
   }
 
   static isOptionStructureStrategy(strategy) {

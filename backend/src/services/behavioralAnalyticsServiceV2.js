@@ -3,6 +3,7 @@ const TierService = require('./tierService');
 const TickDataService = require('./tickDataService');
 const finnhub = require('../utils/finnhub');
 const BehavioralAnalysisPositionService = require('./behavioralAnalysisPositionService');
+const symbolCategories = require('../utils/symbolCategories');
 
 // Enhanced version with proper revenge trade aggregation
 class BehavioralAnalyticsServiceV2 {
@@ -52,6 +53,14 @@ class BehavioralAnalyticsServiceV2 {
     // Get all completed positions for the user, ordered by entry time. In
     // whole-trade mode, option strategy legs are already collapsed here.
     const trades = await BehavioralAnalysisPositionService.getCompletedPositions(userId, dateFilter);
+    const userSettings = await this.getUserSettings(userId);
+    const sensitivity = userSettings?.revenge_trading_sensitivity || 'medium';
+    const revengeWindows = this.getRevengeWindows(sensitivity);
+    const maxRevengeWindowMinutes = Math.max(revengeWindows.same, revengeWindows.cross);
+    const industryMap = await this.getIndustryMap(trades);
+    symbolCategories.categorizeNewSymbols(userId).catch(error => {
+      console.warn(`[BEHAVIORAL] Symbol category backfill failed: ${error.message}`);
+    });
 
     let revengeEventsCreated = 0;
     const processedTriggers = new Set(); // Track processed trigger trades
@@ -66,16 +75,19 @@ class BehavioralAnalyticsServiceV2 {
       }
 
       // Check if this loss is significant enough to be a trigger
-      const isSignificantLoss = await this.isSignificantLoss(userId, potentialTrigger, trades);
+      const isSignificantLoss = await this.isSignificantLoss(userId, potentialTrigger, trades, sensitivity);
       if (!isSignificantLoss) {
         continue;
       }
 
       const triggerLoss = Math.abs(parseFloat(potentialTrigger.pnl));
       const triggerExitTime = new Date(potentialTrigger.exit_time);
+      const triggerSymbol = String(potentialTrigger.underlying_symbol || potentialTrigger.symbol || '').toUpperCase();
+      const triggerIndustry = industryMap.get(triggerSymbol) || null;
+      const triggerPositionSize = this.calculateMonetaryPositionSize(potentialTrigger);
 
-      // Look for revenge trades within 2 hours after this loss
-      const revengeWindowEnd = new Date(triggerExitTime.getTime() + (2 * 60 * 60 * 1000));
+      // Look for revenge trades within the configured same/cross-symbol windows.
+      const revengeWindowEnd = new Date(triggerExitTime.getTime() + (maxRevengeWindowMinutes * 60 * 1000));
       const revengeTrades = [];
       let totalRevengePnL = 0;
       let maxPositionIncrease = 0;
@@ -94,13 +106,38 @@ class BehavioralAnalyticsServiceV2 {
 
         // Check if this trade started after the trigger loss
         if (entryTime > triggerExitTime) {
-          // This is a potential revenge trade
+          const candidateSymbol = String(candidateTrade.underlying_symbol || candidateTrade.symbol || '').toUpperCase();
+          const candidateIndustry = industryMap.get(candidateSymbol) || null;
+          const minutesAfterTrigger = (entryTime - triggerExitTime) / (1000 * 60);
+          const isSameSymbol = candidateSymbol === triggerSymbol;
+          const candidatePositionSize = this.calculateMonetaryPositionSize(candidateTrade);
+          const isPositionEscalation = triggerPositionSize > 0 && candidatePositionSize >= triggerPositionSize * 1.3;
+          const isSameSector = Boolean(triggerIndustry && candidateIndustry && triggerIndustry === candidateIndustry);
+          let crossSymbolQualifier = null;
+
+          if (!isSameSymbol) {
+            if (isPositionEscalation) crossSymbolQualifier = 'position_escalation';
+            else if (isSameSector) crossSymbolQualifier = 'same_sector';
+          }
+
+          const admitted = isSameSymbol
+            ? minutesAfterTrigger <= revengeWindows.same
+            : minutesAfterTrigger <= revengeWindows.cross && Boolean(crossSymbolQualifier);
+
+          if (!admitted) continue;
+
+          // This is an admitted potential revenge trade
           const tradePnL = parseFloat(candidateTrade.pnl || 0);
           totalRevengePnL += tradePnL;
           
           revengeTrades.push({
             id: candidateTrade.id,
             symbol: candidateTrade.symbol,
+            is_same_symbol: isSameSymbol,
+            cross_symbol_qualifier: crossSymbolQualifier,
+            trigger_industry: triggerIndustry,
+            revenge_industry: candidateIndustry,
+            window_minutes: isSameSymbol ? revengeWindows.same : revengeWindows.cross,
             pnl: tradePnL,
             position_key: candidateTrade.position_key,
             position_group_id: candidateTrade.position_group_id,
@@ -119,9 +156,9 @@ class BehavioralAnalyticsServiceV2 {
           }
 
           // Calculate position size increase (monetary value comparison)
-          const candidatePositionSize = this.calculateMonetaryPositionSize(candidateTrade);
-          const triggerPositionSize = this.calculateMonetaryPositionSize(potentialTrigger);
-          const positionIncrease = ((candidatePositionSize - triggerPositionSize) / triggerPositionSize) * 100;
+          const positionIncrease = triggerPositionSize > 0
+            ? ((candidatePositionSize - triggerPositionSize) / triggerPositionSize) * 100
+            : 0;
           maxPositionIncrease = Math.max(maxPositionIncrease, Math.abs(positionIncrease));
         }
       }
@@ -204,6 +241,11 @@ class BehavioralAnalyticsServiceV2 {
                 revengeTradeIds: revengeTrade.trade_ids,
                 revengeLegCount: revengeTrade.leg_count,
                 revengeDetectedStrategy: revengeTrade.group_detected_strategy,
+                crossSymbolQualifier: revengeTrade.cross_symbol_qualifier,
+                triggerIndustry: revengeTrade.trigger_industry,
+                revengeIndustry: revengeTrade.revenge_industry,
+                windowMinutes: revengeTrade.window_minutes,
+                sensitivity,
                 totalRevengePnL: totalRevengePnL,
                 analysisMode: 'hybrid_analysis',
                 positionSizeIncrease: maxPositionIncrease,
@@ -232,12 +274,11 @@ class BehavioralAnalyticsServiceV2 {
   }
 
   // Check if a loss is significant enough to be a trigger
-  static async isSignificantLoss(userId, trade, allTrades) {
+  static async isSignificantLoss(userId, trade, allTrades, configuredSensitivity = null) {
     const lossAmount = Math.abs(parseFloat(trade.pnl));
     
     // Get user settings for sensitivity
-    const userSettings = await this.getUserSettings(userId);
-    const sensitivity = userSettings?.revenge_trading_sensitivity || 'medium';
+    const sensitivity = configuredSensitivity || (await this.getUserSettings(userId))?.revenge_trading_sensitivity || 'medium';
     const thresholds = this.getLossThresholds(sensitivity);
     
     // Check if loss meets minimum dollar threshold
@@ -281,6 +322,37 @@ class BehavioralAnalyticsServiceV2 {
     };
 
     return thresholds[sensitivity] || thresholds.medium;
+  }
+
+  static getRevengeWindows(sensitivity = 'medium') {
+    const windows = {
+      low: { same: 90, cross: 30 },
+      medium: { same: 120, cross: 60 },
+      high: { same: 180, cross: 90 }
+    };
+
+    return windows[sensitivity] || windows.medium;
+  }
+
+  static async getIndustryMap(positions) {
+    const symbols = [...new Set((positions || [])
+      .map(position => position.underlying_symbol || position.symbol)
+      .filter(Boolean)
+      .map(symbol => String(symbol).toUpperCase()))];
+
+    if (symbols.length === 0) return new Map();
+
+    const result = await db.query(
+      `SELECT symbol, finnhub_industry FROM symbol_categories WHERE symbol = ANY($1::text[])`,
+      [symbols]
+    );
+
+    const industries = new Map();
+    for (const row of result.rows || []) {
+      if (row.symbol) industries.set(String(row.symbol).toUpperCase(), row.finnhub_industry || null);
+    }
+
+    return industries;
   }
 
   // Estimate account size from trading history
@@ -477,7 +549,8 @@ class BehavioralAnalyticsServiceV2 {
     const hasSignificantPositionIncrease = positionIncrease > 20;
     const hasMultipleTradesWithIncreasingSize = revengeTrades.length >= 2 && 
       revengePositionSizes.some(size => size > triggerPositionSize * 1.3);
-    const hasLargeInitialLoss = triggerLoss > 200; // $200+ initial loss
+    const hasSameSymbolCandidate = revengeTrades.some(trade => trade.is_same_symbol === true);
+    const hasLargeInitialLoss = triggerLoss > 200 && hasSameSymbolCandidate; // $200+ initial loss with same-symbol follow-up
     
     return hasSignificantPositionIncrease || hasMultipleTradesWithIncreasingSize || hasLargeInitialLoss;
   }
@@ -806,7 +879,13 @@ class BehavioralAnalyticsServiceV2 {
     }
 
     await db.query(`DELETE FROM revenge_trading_events WHERE user_id = $1 ${eventConditions.join(' ')}`, eventParams);
-    await db.query(`DELETE FROM behavioral_patterns WHERE user_id = $1 ${patternConditions.join(' ')}`, patternParams);
+    await db.query(
+      `DELETE FROM behavioral_patterns
+       WHERE user_id = $1
+         AND pattern_type IN ('same_symbol_revenge', 'emotional_reactive_trading', 'revenge_trading')
+         ${patternConditions.join(' ')}`,
+      patternParams
+    );
     await db.query(`DELETE FROM behavioral_alerts WHERE user_id = $1 ${alertConditions.join(' ')}`, alertParams);
   }
 }

@@ -12,6 +12,7 @@ jest.mock('../../src/models/Trade', () => ({
 }));
 
 const TierService = require('../../src/services/tierService');
+const Trade = require('../../src/models/Trade');
 const TradingPersonalityService = require('../../src/services/tradingPersonalityService');
 
 describe('TradingPersonalityService option strategy classification', () => {
@@ -60,6 +61,81 @@ describe('TradingPersonalityService option strategy classification', () => {
     }, {});
 
     expect(scores.mean_reversion).toBe(100);
+    expect(scores.swing).toBe(0);
+  });
+
+  test('scores single-leg ungrouped options under option_strategy without time fallback', async () => {
+    const scores = await TradingPersonalityService.calculatePersonalityScores('user-1', {
+      trades: [
+        {
+          id: 'option-1',
+          symbol: 'AAPL260116C00200000',
+          instrument_type: 'option',
+          option_type: 'call',
+          hold_time_minutes: 7200,
+          pnl: 50
+        }
+      ]
+    }, {});
+
+    expect(scores.option_strategy).toBe(100);
+    expect(scores.swing).toBe(0);
+    expect(Trade.classifyTradeStrategy).not.toHaveBeenCalled();
+  });
+
+  test('respects manual time-based labels on option trades', async () => {
+    const scores = await TradingPersonalityService.calculatePersonalityScores('user-1', {
+      trades: [
+        {
+          id: 'manual-option-1',
+          symbol: 'AAPL260116C00200000',
+          instrument_type: 'option',
+          strategy: 'swing',
+          manual_override: true,
+          hold_time_minutes: 7200,
+          pnl: 50
+        }
+      ]
+    }, {});
+
+    expect(scores.swing).toBe(100);
+    expect(scores.option_strategy).toBe(0);
+  });
+
+  test('ignores non-manual stored swing labels on option trades', async () => {
+    const scores = await TradingPersonalityService.calculatePersonalityScores('user-1', {
+      trades: [
+        {
+          id: 'auto-option-1',
+          symbol: 'AAPL260116C00200000',
+          instrument_type: 'option',
+          strategy: 'swing',
+          manual_override: false,
+          hold_time_minutes: 7200,
+          pnl: 50
+        }
+      ]
+    }, {});
+
+    expect(scores.option_strategy).toBe(100);
+    expect(scores.swing).toBe(0);
+  });
+
+  test('uses has_option_leg to classify mixed grouped positions as option_strategy', async () => {
+    const scores = await TradingPersonalityService.calculatePersonalityScores('user-1', {
+      trades: [
+        {
+          id: 'mixed-group-1',
+          symbol: 'AAPL',
+          instrument_type: 'stock',
+          has_option_leg: true,
+          hold_time_minutes: 7200,
+          pnl: 50
+        }
+      ]
+    }, {});
+
+    expect(scores.option_strategy).toBe(100);
     expect(scores.swing).toBe(0);
   });
 });

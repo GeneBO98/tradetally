@@ -75,7 +75,8 @@ describe('BehavioralAnalysisPositionService.getCompletedPositions', () => {
       position_grouped: true,
       leg_count: 2,
       group_detected_strategy: 'bull_put_spread',
-      strategy: 'bull_put_spread'
+      strategy: 'bull_put_spread',
+      has_option_leg: true
     });
     expect(positions[0].trade_ids).toEqual([
       '00000000-0000-4000-8000-000000000101',
