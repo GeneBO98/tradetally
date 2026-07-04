@@ -623,6 +623,38 @@
                                                     event.trigger_trade.symbol
                                                 }}</span>
                                             </div>
+                                            <div
+                                                v-if="
+                                                    event.trigger_trade
+                                                        .group_detected_strategy
+                                                "
+                                            >
+                                                <span
+                                                    class="text-red-600 dark:text-red-400 font-medium"
+                                                    >Strategy:</span
+                                                >
+                                                <span class="ml-1">{{
+                                                    formatStrategyLabel(
+                                                        event.trigger_trade
+                                                            .group_detected_strategy,
+                                                    )
+                                                }}</span>
+                                            </div>
+                                            <div
+                                                v-if="
+                                                    event.trigger_trade
+                                                        .group_leg_count
+                                                "
+                                            >
+                                                <span
+                                                    class="text-red-600 dark:text-red-400 font-medium"
+                                                    >Legs:</span
+                                                >
+                                                <span class="ml-1">{{
+                                                    event.trigger_trade
+                                                        .group_leg_count
+                                                }}</span>
+                                            </div>
                                             <div>
                                                 <span
                                                     class="text-red-600 dark:text-red-400 font-medium"
@@ -863,6 +895,37 @@
                                                                 pattern.symbol
                                                             }}</span
                                                         >
+                                                    </div>
+                                                    <div
+                                                        v-if="
+                                                            pattern.group_detected_strategy
+                                                        "
+                                                    >
+                                                        <span
+                                                            class="text-gray-600 dark:text-gray-400"
+                                                            >Strategy:</span
+                                                        >
+                                                        <span
+                                                            class="ml-1 font-medium"
+                                                            >{{
+                                                                formatStrategyLabel(
+                                                                    pattern.group_detected_strategy,
+                                                                )
+                                                            }}</span
+                                                        >
+                                                    </div>
+                                                    <div
+                                                        v-if="
+                                                            pattern.group_leg_count
+                                                        "
+                                                    >
+                                                        <span
+                                                            class="text-gray-600 dark:text-gray-400"
+                                                            >Legs:</span
+                                                        >
+                                                        <span class="ml-1">{{
+                                                            pattern.group_leg_count
+                                                        }}</span>
                                                     </div>
                                                     <div>
                                                         <span
@@ -1537,6 +1600,27 @@
                         >
                             {{ insights.overallRisk.description }}
                         </p>
+                        <div
+                            v-if="insights.overallRisk.components"
+                            class="mt-4 grid grid-cols-2 md:grid-cols-5 gap-2"
+                        >
+                            <div
+                                v-for="component in riskComponentRows"
+                                :key="component.key"
+                                class="rounded-md border border-gray-200 dark:border-gray-700 px-3 py-2"
+                            >
+                                <p
+                                    class="text-[11px] text-gray-500 dark:text-gray-400"
+                                >
+                                    {{ component.label }}
+                                </p>
+                                <p
+                                    class="text-sm font-semibold text-gray-900 dark:text-white"
+                                >
+                                    {{ component.value }}
+                                </p>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Insights List -->
@@ -1713,9 +1797,9 @@
                                         class="text-xl font-bold text-gray-900 dark:text-white capitalize"
                                     >
                                         {{
-                                            personalityData.profile.primary_personality.replace(
-                                                "_",
-                                                " ",
+                                            formatPersonalityName(
+                                                personalityData.profile
+                                                    .primary_personality,
                                             )
                                         }}
                                         Trader
@@ -1756,7 +1840,7 @@
                             </div>
 
                             <!-- Personality Score Breakdown -->
-                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
                                 <div
                                     class="text-center cursor-pointer p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                                     @click="viewTradesByStrategy('scalper')"
@@ -1784,7 +1868,7 @@
                                         }}%
                                     </p>
                                     <p
-                                        class="text-xs text-blue-600 dark:text-blue-400 mt-1 flex items-center justify-center"
+                                        class="text-xs text-primary-600 dark:text-primary-400 mt-1 flex items-center justify-center"
                                     >
                                         <MdiIcon
                                             :icon="mdiChartBox"
@@ -1821,7 +1905,7 @@
                                         }}%
                                     </p>
                                     <p
-                                        class="text-xs text-blue-600 dark:text-blue-400 mt-1 flex items-center justify-center"
+                                        class="text-xs text-primary-600 dark:text-primary-400 mt-1 flex items-center justify-center"
                                     >
                                         <MdiIcon
                                             :icon="mdiChartBox"
@@ -1860,7 +1944,7 @@
                                         }}%
                                     </p>
                                     <p
-                                        class="text-xs text-blue-600 dark:text-blue-400 mt-1 flex items-center justify-center"
+                                        class="text-xs text-primary-600 dark:text-primary-400 mt-1 flex items-center justify-center"
                                     >
                                         <MdiIcon
                                             :icon="mdiChartBox"
@@ -1897,7 +1981,44 @@
                                         }}%
                                     </p>
                                     <p
-                                        class="text-xs text-blue-600 dark:text-blue-400 mt-1 flex items-center justify-center"
+                                        class="text-xs text-primary-600 dark:text-primary-400 mt-1 flex items-center justify-center"
+                                    >
+                                        <MdiIcon
+                                            :icon="mdiChartBox"
+                                            :size="12"
+                                            class="mr-1"
+                                        />
+                                        View trades
+                                    </p>
+                                </div>
+                                <div
+                                    class="text-center cursor-pointer p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                    @click="viewTradesByStrategy('option_strategy')"
+                                    :title="'Click to view grouped option strategy trades'"
+                                >
+                                    <p
+                                        class="text-xs text-gray-600 dark:text-gray-400 mb-1"
+                                    >
+                                        Options Strategy
+                                    </p>
+                                    <div
+                                        class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-1"
+                                    >
+                                        <div
+                                            class="bg-primary-500 h-2 rounded-full"
+                                            :style="{
+                                                width: `${personalityData.personalityScores?.option_strategy || 0}%`,
+                                            }"
+                                        ></div>
+                                    </div>
+                                    <p class="text-xs font-medium">
+                                        {{
+                                            personalityData.personalityScores
+                                                ?.option_strategy || 0
+                                        }}%
+                                    </p>
+                                    <p
+                                        class="text-xs text-primary-600 dark:text-primary-400 mt-1 flex items-center justify-center"
                                     >
                                         <MdiIcon
                                             :icon="mdiChartBox"
@@ -5691,7 +5812,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, nextTick } from "vue";
+import { ref, onMounted, computed, nextTick, watch } from "vue";
 import { CheckIcon } from "@heroicons/vue/24/outline";
 import { useRouter, useRoute } from "vue-router";
 import api from "@/services/api";
@@ -5793,6 +5914,17 @@ const pagination = ref({
     hasPreviousPage: false,
 });
 
+const riskComponentRows = computed(() => {
+    const components = insights.value?.overallRisk?.components || {};
+    return [
+        { key: "event_frequency", label: "Events", value: components.event_frequency ?? 0 },
+        { key: "loss_rate", label: "Loss Rate", value: components.loss_rate ?? 0 },
+        { key: "position_size_escalation", label: "Size Escalation", value: components.position_size_escalation ?? 0 },
+        { key: "cooling_period_gap", label: "Cooling Gap", value: components.cooling_period_gap ?? 0 },
+        { key: "pattern_severity", label: "Severity", value: components.pattern_severity ?? 0 },
+    ];
+});
+
 // Track which revenge trade events are expanded
 const expandedEvents = ref(new Set());
 
@@ -5809,6 +5941,27 @@ const checkAccess = async () => {
     }
 };
 
+const getAccountFilterParam = () => {
+    if (selectedAccount.value) return selectedAccount.value;
+    if (Array.isArray(filters.value.accounts)) {
+        return filters.value.accounts.join(",");
+    }
+    return filters.value.accounts || "";
+};
+
+const buildBehavioralQueryParams = () => {
+    const queryParams = new URLSearchParams();
+    if (filters.value.startDate)
+        queryParams.append("startDate", filters.value.startDate);
+    if (filters.value.endDate)
+        queryParams.append("endDate", filters.value.endDate);
+
+    const accounts = getAccountFilterParam();
+    if (accounts) queryParams.append("accounts", accounts);
+
+    return queryParams;
+};
+
 // Load behavioral analytics data
 const loadData = async () => {
     if (!hasAccess.value) return;
@@ -5816,13 +5969,7 @@ const loadData = async () => {
     try {
         loading.value = true;
 
-        const queryParams = new URLSearchParams();
-        if (filters.value.startDate)
-            queryParams.append("startDate", filters.value.startDate);
-        if (filters.value.endDate)
-            queryParams.append("endDate", filters.value.endDate);
-        if (filters.value.accounts)
-            queryParams.append("accounts", filters.value.accounts);
+        const queryParams = buildBehavioralQueryParams();
 
         // Add pagination parameters for revenge trading
         const revengeQueryParams = new URLSearchParams(queryParams);
@@ -5978,13 +6125,14 @@ const analyzeHistoricalTrades = async () => {
     try {
         loadingHistorical.value = true;
 
+        const queryParams = buildBehavioralQueryParams();
         const response = await api.post(
-            "/behavioral-analytics/analyze-historical",
+            `/behavioral-analytics/analyze-historical?${queryParams}`,
         );
 
         showSuccess(
             "Analysis Complete",
-            `Analyzed historical trades. Found ${response.data.patternsDetected || 0} revenge trading patterns.`,
+            `Analyzed historical trades. Found ${response.data.data?.revengeEventsCreated || response.data.patternsDetected || 0} revenge trading patterns.`,
         );
 
         // Reload data after analysis
@@ -6069,8 +6217,9 @@ const reRunAnalysis = async () => {
     try {
         loadingHistorical.value = true;
 
+        const queryParams = buildBehavioralQueryParams();
         const response = await api.post(
-            "/behavioral-analytics/re-run-historical",
+            `/behavioral-analytics/re-run-historical?${queryParams}`,
         );
 
         showSuccess(
@@ -6103,6 +6252,18 @@ const formatDate = (dateString) => {
 // Format time only (timezone-aware)
 const formatTime = (dateString) => {
     return formatTimeTz(dateString);
+};
+
+const formatPersonalityName = (personality) => {
+    return String(personality || "")
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const formatStrategyLabel = (strategy) => {
+    return String(strategy || "")
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (char) => char.toUpperCase());
 };
 
 // Calculate time between trades
@@ -6258,13 +6419,7 @@ const analyzeLossAversion = async () => {
         // Clear any existing cache before running fresh analysis
         clearLossAversionCache();
 
-        const queryParams = new URLSearchParams();
-        if (filters.value.startDate)
-            queryParams.append("startDate", filters.value.startDate);
-        if (filters.value.endDate)
-            queryParams.append("endDate", filters.value.endDate);
-        if (filters.value.accounts)
-            queryParams.append("accounts", filters.value.accounts);
+        const queryParams = buildBehavioralQueryParams();
 
         const response = await api.get(
             `/behavioral-analytics/loss-aversion?${queryParams}`,
@@ -6316,13 +6471,7 @@ const analyzeOverconfidence = async () => {
         );
 
         // Build query params for date filters
-        const queryParams = new URLSearchParams();
-        if (filters.value.startDate)
-            queryParams.append("startDate", filters.value.startDate);
-        if (filters.value.endDate)
-            queryParams.append("endDate", filters.value.endDate);
-        if (filters.value.accounts)
-            queryParams.append("accounts", filters.value.accounts);
+        const queryParams = buildBehavioralQueryParams();
 
         const response = await api.post(
             `/behavioral-analytics/overconfidence/analyze-historical?${queryParams}`,
@@ -6425,13 +6574,7 @@ const loadTopMissedTrades = async (forceRefresh = false) => {
             localStorage.removeItem(cacheKey);
         }
 
-        const queryParams = new URLSearchParams();
-        if (filters.value.startDate)
-            queryParams.append("startDate", filters.value.startDate);
-        if (filters.value.endDate)
-            queryParams.append("endDate", filters.value.endDate);
-        if (filters.value.accounts)
-            queryParams.append("accounts", filters.value.accounts);
+        const queryParams = buildBehavioralQueryParams();
         queryParams.append("limit", "50");
         if (forceRefresh) queryParams.append("forceRefresh", "true");
 
@@ -6483,13 +6626,7 @@ const analyzePersonality = async () => {
     try {
         loadingPersonality.value = true;
 
-        const queryParams = new URLSearchParams();
-        if (filters.value.startDate)
-            queryParams.append("startDate", filters.value.startDate);
-        if (filters.value.endDate)
-            queryParams.append("endDate", filters.value.endDate);
-        if (filters.value.accounts)
-            queryParams.append("accounts", filters.value.accounts);
+        const queryParams = buildBehavioralQueryParams();
 
         const response = await api.get(
             `/behavioral-analytics/personality?${queryParams}`,
@@ -6567,6 +6704,13 @@ const viewTradesByStrategy = (strategy) => {
                 tradeTypes: ["swing", "position"],
             },
         },
+        option_strategy: {
+            name: "Option Strategy Trades",
+            description: "Grouped multi-leg option structures and option strategy trades",
+            filters: {
+                instrumentTypes: ["option"],
+            },
+        },
     };
 
     const strategyConfig = strategyFilters[strategy];
@@ -6588,11 +6732,22 @@ const viewTradesByStrategy = (strategy) => {
             strategyConfig.filters.maxHoldTime.toString(),
         );
     }
+    if (strategyConfig.filters.instrumentTypes) {
+        queryParams.set(
+            "instrumentTypes",
+            strategyConfig.filters.instrumentTypes.join(","),
+        );
+    }
 
-    // Add strategy name for filtering - now that backend supports strategy filtering via hold time analysis
-    queryParams.set("strategy", strategy); // Enable strategy filtering
+    // Add strategy name for filtering where it maps to a stored strategy.
+    if (strategy !== "option_strategy") {
+        queryParams.set("strategy", strategy);
+    }
     queryParams.set("strategyName", strategyConfig.name);
     queryParams.set("strategyDescription", strategyConfig.description);
+
+    const accounts = getAccountFilterParam();
+    if (accounts) queryParams.set("accounts", accounts);
 
     // Navigate to trades page with filters
     router.push({
@@ -6640,8 +6795,18 @@ const generateLossAversionMessage = (holdTimeRatio, estimatedMonthlyCost) => {
     }
 };
 
-// Note: Global account filter is handled by TradeFilters component which emits 'filter' event
-// No need for a separate watcher here - handleFilter() receives the account in the filter payload
+watch(selectedAccount, async () => {
+    filters.value.accounts = selectedAccount.value || "";
+    pagination.value.page = 1;
+
+    if (!initialLoadComplete.value || !hasAccess.value) return;
+
+    console.log(
+        "[BehavioralAnalytics] Global account filter changed to:",
+        selectedAccount.value || "All Accounts",
+    );
+    await applyFilters();
+});
 
 onMounted(async () => {
     loadFilters();

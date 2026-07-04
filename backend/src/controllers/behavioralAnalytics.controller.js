@@ -826,20 +826,40 @@ const behavioralAnalyticsController = {
 
   // Calculate overall behavioral risk score
   calculateOverallRisk(overview, revengeAnalysis) {
-    let riskScore = 0;
-    
-    // Revenge trading risk
-    if (revengeAnalysis.statistics?.loss_rate) {
-      riskScore += parseFloat(revengeAnalysis.statistics.loss_rate) / 10;
-    }
-    
-    // Pattern frequency risk
-    const revengePattern = overview.patterns?.find(p => p.pattern_type === 'revenge_trading');
-    if (revengePattern) {
-      riskScore += revengePattern.high_severity_count * 10;
-    }
-    
-    // Cap at 100
+    const stats = revengeAnalysis.statistics || {};
+    const patterns = overview.patterns || [];
+    const revengePatternTypes = new Set([
+      'revenge_trading',
+      'same_symbol_revenge',
+      'emotional_reactive_trading'
+    ]);
+
+    const totalEvents = parseInt(stats.total_events) || 0;
+    const lossRate = parseFloat(stats.loss_rate) || 0;
+    const avgSizeIncrease = parseFloat(stats.avg_size_increase) || 0;
+    const coolingUsageRate = parseFloat(stats.cooling_period_usage_rate) || 0;
+    const revengePatterns = patterns.filter(pattern => revengePatternTypes.has(pattern.pattern_type));
+
+    const highSeverityCount = revengePatterns.reduce(
+      (sum, pattern) => sum + (parseInt(pattern.high_severity_count) || 0),
+      0
+    );
+    const mediumSeverityCount = revengePatterns.reduce(
+      (sum, pattern) => sum + (parseInt(pattern.medium_severity_count) || 0),
+      0
+    );
+
+    const components = {
+      event_frequency: Math.min(totalEvents * 4, 30),
+      loss_rate: Math.min(lossRate * 0.25, 25),
+      position_size_escalation: Math.min(Math.max(avgSizeIncrease, 0) / 10, 25),
+      cooling_period_gap: totalEvents > 0 && coolingUsageRate < 30
+        ? ((30 - coolingUsageRate) / 30) * 10
+        : 0,
+      pattern_severity: Math.min((highSeverityCount * 8) + (mediumSeverityCount * 3), 20)
+    };
+
+    let riskScore = Object.values(components).reduce((sum, value) => sum + value, 0);
     riskScore = Math.min(riskScore, 100);
     
     let riskLevel = 'low';
@@ -849,7 +869,14 @@ const behavioralAnalyticsController = {
     return {
       score: Math.round(riskScore),
       level: riskLevel,
-      description: behavioralAnalyticsController.getRiskDescription(riskLevel)
+      description: behavioralAnalyticsController.getRiskDescription(riskLevel),
+      components: {
+        event_frequency: Math.round(components.event_frequency),
+        loss_rate: Math.round(components.loss_rate),
+        position_size_escalation: Math.round(components.position_size_escalation),
+        cooling_period_gap: Math.round(components.cooling_period_gap),
+        pattern_severity: Math.round(components.pattern_severity)
+      }
     };
   },
 

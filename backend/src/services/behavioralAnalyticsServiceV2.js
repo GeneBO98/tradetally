@@ -2,6 +2,7 @@ const db = require('../config/database');
 const TierService = require('./tierService');
 const TickDataService = require('./tickDataService');
 const finnhub = require('../utils/finnhub');
+const BehavioralAnalysisPositionService = require('./behavioralAnalysisPositionService');
 
 // Enhanced version with proper revenge trade aggregation
 class BehavioralAnalyticsServiceV2 {
@@ -27,7 +28,15 @@ class BehavioralAnalyticsServiceV2 {
   // Calculate monetary position size for any trade
   // For both long and short trades, quantity * entry_price represents the monetary value at risk
   static calculateMonetaryPositionSize(trade) {
-    return parseFloat(trade.quantity) * parseFloat(trade.entry_price);
+    const explicitPositionSize = parseFloat(trade.position_size);
+    if (Number.isFinite(explicitPositionSize) && explicitPositionSize > 0) {
+      return explicitPositionSize;
+    }
+
+    const quantity = parseFloat(trade.quantity);
+    const entryPrice = parseFloat(trade.entry_price);
+    if (!Number.isFinite(quantity) || !Number.isFinite(entryPrice)) return 0;
+    return Math.abs(quantity) * entryPrice;
   }
 
   // Analyze historical trades and properly aggregate revenge trading events
@@ -40,25 +49,9 @@ class BehavioralAnalyticsServiceV2 {
     // Clear existing data
     await this.clearHistoricalData(userId, dateFilter);
 
-    // Get all completed trades for the user, ordered by entry time
-    const tradeParams = [userId];
-    const tradeFilters = [];
-    this.addTradeFilter(tradeFilters, tradeParams, dateFilter);
-
-    const tradesQuery = `
-      SELECT 
-        id, symbol, entry_time, exit_time, entry_price, exit_price, 
-        quantity, side, commission, fees, pnl
-      FROM trades 
-      WHERE user_id = $1 
-        AND exit_price IS NOT NULL 
-        AND exit_time IS NOT NULL
-        ${tradeFilters.join('\n        ')}
-      ORDER BY entry_time ASC
-    `;
-
-    const tradesResult = await db.query(tradesQuery, tradeParams);
-    const trades = tradesResult.rows;
+    // Get all completed positions for the user, ordered by entry time. In
+    // whole-trade mode, option strategy legs are already collapsed here.
+    const trades = await BehavioralAnalysisPositionService.getCompletedPositions(userId, dateFilter);
 
     let revengeEventsCreated = 0;
     const processedTriggers = new Set(); // Track processed trigger trades
@@ -108,7 +101,13 @@ class BehavioralAnalyticsServiceV2 {
           revengeTrades.push({
             id: candidateTrade.id,
             symbol: candidateTrade.symbol,
-            pnl: tradePnL
+            pnl: tradePnL,
+            position_key: candidateTrade.position_key,
+            position_group_id: candidateTrade.position_group_id,
+            position_grouped: candidateTrade.position_grouped,
+            leg_count: candidateTrade.leg_count,
+            group_detected_strategy: candidateTrade.group_detected_strategy,
+            trade_ids: candidateTrade.trade_ids
           });
 
           // Track timing
@@ -195,13 +194,27 @@ class BehavioralAnalyticsServiceV2 {
               earliestRevengeTime,
               JSON.stringify({
                 triggerTradeId: potentialTrigger.id,
+                triggerPositionKey: potentialTrigger.position_key,
+                triggerTradeIds: potentialTrigger.trade_ids,
                 triggerSymbol: potentialTrigger.symbol,
                 triggerLoss: triggerLoss,
                 revengeSymbol: revengeTrade.symbol,
                 revengePnL: revengeTrade.pnl,
+                revengePositionKey: revengeTrade.position_key,
+                revengeTradeIds: revengeTrade.trade_ids,
+                revengeLegCount: revengeTrade.leg_count,
+                revengeDetectedStrategy: revengeTrade.group_detected_strategy,
                 totalRevengePnL: totalRevengePnL,
                 analysisMode: 'hybrid_analysis',
-                positionSizeIncrease: maxPositionIncrease
+                positionSizeIncrease: maxPositionIncrease,
+                positionGrouping: {
+                  triggerGrouped: potentialTrigger.position_grouped === true,
+                  revengeGrouped: revengeTrade.position_grouped === true,
+                  triggerLegCount: potentialTrigger.leg_count,
+                  revengeLegCount: revengeTrade.leg_count,
+                  triggerDetectedStrategy: potentialTrigger.group_detected_strategy,
+                  revengeDetectedStrategy: revengeTrade.group_detected_strategy
+                }
               }),
               potentialTrigger.id
             ]);
@@ -212,6 +225,7 @@ class BehavioralAnalyticsServiceV2 {
 
     return {
       tradesAnalyzed: trades.length,
+      patternsDetected: revengeEventsCreated,
       revengeEventsCreated,
       message: `Created ${revengeEventsCreated} revenge trading events`
     };
@@ -448,7 +462,9 @@ class BehavioralAnalyticsServiceV2 {
     const avgRevengePosition = revengePositionSizes.reduce((a, b) => a + b, 0) / revengePositionSizes.length;
     
     // Calculate position size increase
-    const positionIncrease = ((maxRevengePosition - triggerPositionSize) / triggerPositionSize) * 100;
+    const positionIncrease = triggerPositionSize > 0
+      ? ((maxRevengePosition - triggerPositionSize) / triggerPositionSize) * 100
+      : 0;
     
     // Calculate loss magnitude
     const triggerLoss = Math.abs(parseFloat(triggerTrade.pnl));
