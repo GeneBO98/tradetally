@@ -71,10 +71,7 @@ const passkeyRoutes = require('./routes/passkey.routes');
 const testimonialsRoutes = require('./routes/testimonials.routes');
 const supportRoutes = require('./routes/support.routes');
 const internalRoutes = require('./routes/internal.routes');
-const toolsRoutes = require('./routes/tools.routes');
-const experimentsRoutes = require('./routes/experiments.routes');
 const edgeReportRoutes = require('./routes/edgeReport.routes');
-const tradeVerificationRoutes = require('./routes/tradeVerification.routes'); // cloud-only: verified trades
 const propFirmRoutes = require('./routes/propFirm.routes');
 const BillingService = require('./services/billingService');
 const priceMonitoringService = require('./services/priceMonitoringService');
@@ -98,7 +95,6 @@ const crmSyncScheduler = require('./services/crmSyncScheduler');
 const edgeReportScheduler = require('./services/edgeReportScheduler');
 const activityTrackingService = require('./services/activityTrackingService');
 const engagementScheduler = require('./services/engagementScheduler');
-const demoTradeActivityScheduler = require('./services/demoTradeActivityScheduler');
 const activityTrackingMiddleware = require('./middleware/activityTracking');
 const emailTrackingRoutes = require('./routes/emailTracking.routes');
 const backgroundWorker = require('./workers/backgroundWorker');
@@ -278,10 +274,7 @@ app.use('/api/unsubscribe', unsubscribeRoutes);
 app.use('/api/trial-feedback', trialFeedbackRoutes);
 app.use('/api/auth/passkey', passkeyRoutes);
 app.use('/api/testimonials', testimonialsRoutes);
-app.use('/api/tools', toolsRoutes);
-app.use('/api/experiments', experimentsRoutes);
 app.use('/api/edge-reports', edgeReportRoutes);
-app.use('/api', tradeVerificationRoutes); // cloud-only: /api/verify/:code + /api/trades/:id/verification
 app.use('/api/prop-firm', propFirmRoutes);
 
 // OAuth2 Provider endpoints
@@ -989,14 +982,6 @@ async function startServer() {
       console.log('Engagement tracking disabled (ENABLE_ENGAGEMENT_TRACKING=false)');
     }
 
-    if (process.env.ENABLE_DEMO_TRADE_AUTOMATION !== 'false') {
-      console.log('Starting demo trade activity scheduler...');
-      demoTradeActivityScheduler.start();
-      console.log('[SUCCESS] Demo trade activity scheduler started');
-    } else {
-      console.log('Demo trade activity scheduler disabled (ENABLE_DEMO_TRADE_AUTOMATION=false)');
-    }
-
     // Initialize push notification service
     if (process.env.ENABLE_PUSH_NOTIFICATIONS === 'true') {
       console.log('✓ Push notification service loaded');
@@ -1108,7 +1093,6 @@ process.on('SIGTERM', async () => {
   newsScheduler.stop();
   earningsScheduler.stop();
   symbolCategoryScheduler.stop();
-  demoTradeActivityScheduler.stop();
   portfolioSnapshotScheduler.stop();
   webMentionScheduler.stop();
   edgeReportScheduler.stop();
@@ -1136,7 +1120,6 @@ process.on('SIGINT', async () => {
   newsScheduler.stop();
   earningsScheduler.stop();
   symbolCategoryScheduler.stop();
-  demoTradeActivityScheduler.stop();
   portfolioSnapshotScheduler.stop();
   webMentionScheduler.stop();
   edgeReportScheduler.stop();

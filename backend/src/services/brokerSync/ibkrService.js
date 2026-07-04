@@ -6,6 +6,7 @@
  */
 
 const axios = require('axios');
+const { parse } = require('csv-parse/sync');
 const { parseCSV } = require('../../utils/csvParser');
 const Trade = require('../../models/Trade');
 const BrokerConnection = require('../../models/BrokerConnection');
@@ -22,6 +23,7 @@ const REPORT_REQUEST_TIMEOUT = 120000; // 2 minutes to request report
 const REPORT_POLL_INTERVAL = 5000; // Poll every 5 seconds
 const REPORT_INITIAL_MAX_WAIT = 300000; // Initial 5 min poll window before extending
 const REPORT_EXTENDED_MAX_WAIT = 720000; // 12 min total when first poll times out
+const IBKR_OPEN_POSITION_MAX_SYNTHETIC_TRADES = 50;
 
 // Transient network errors that warrant a retry
 const RETRYABLE_NETWORK_CODES = new Set(['EAI_AGAIN', 'ENOTFOUND', 'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'ECONNABORTED']);
@@ -43,6 +45,167 @@ const RETRYABLE_MESSAGE_PHRASES = [
   'currently unavailable',
   'heavy load'
 ];
+
+const OPEN_POSITION_SECTION_NAMES = new Set(['openpositions', 'openposition']);
+const STOCK_ASSET_CLASSES = new Set(['stock', 'stocks', 'stk', 'equity', 'equities']);
+const SELF_DESCRIBING_OPEN_POSITION_FIELDS = new Set([
+  'position',
+  'positionquantity',
+  'openquantity'
+]);
+const OPEN_POSITION_COST_FIELDS = [
+  'CostBasisPrice',
+  'Cost Basis Price',
+  'OpenPrice',
+  'Open Price',
+  'Average Price',
+  'Avg Price',
+  'Average Cost',
+  'Avg Cost',
+  'Cost Price'
+];
+const OPEN_POSITION_BASIS_FIELDS = [
+  'CostBasisMoney',
+  'Cost Basis Money',
+  'Cost Basis',
+  'CostBasis',
+  'Basis'
+];
+const TRADE_EXECUTION_HEADER_FIELDS = new Set([
+  'tradeid',
+  'tradeprice',
+  'buysell',
+  'opencloseindicator',
+  'levelofdetail',
+  'datetime',
+  'ordertime',
+  'proceeds',
+  'ibcommission',
+  'realizedpl',
+  'mtmpl'
+]);
+
+function normalizeHeader(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function parseCsvLine(line) {
+  try {
+    const [fields] = parse(line, {
+      delimiter: ',',
+      relax: true,
+      relax_column_count: true,
+      relax_quotes: true,
+      skip_empty_lines: true,
+      trim: true
+    });
+    return fields || [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function recordFromFields(headers, fields) {
+  return headers.reduce((record, header, index) => {
+    record[header] = fields[index];
+    return record;
+  }, {});
+}
+
+function getRecordValue(record, candidates) {
+  if (!record) return null;
+
+  for (const candidate of candidates) {
+    if (Object.prototype.hasOwnProperty.call(record, candidate)) {
+      const value = record[candidate];
+      if (value !== null && value !== undefined && String(value).trim() !== '') return value;
+    }
+  }
+
+  const normalizedCandidates = new Set(candidates.map(normalizeHeader));
+  for (const [key, value] of Object.entries(record)) {
+    if (
+      normalizedCandidates.has(normalizeHeader(key)) &&
+      value !== null &&
+      value !== undefined &&
+      String(value).trim() !== ''
+    ) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function parseOpenPositionNumber(value) {
+  if (value === null || value === undefined) return null;
+  let cleaned = String(value).trim();
+  if (!cleaned || cleaned === '-' || cleaned.toUpperCase() === 'N/A') return null;
+
+  const parenMatch = cleaned.match(/^\((.*)\)$/);
+  cleaned = cleaned
+    .replace(/\$/g, '')
+    .replace(/,/g, '')
+    .replace(/%/g, '')
+    .replace(/\u2212/g, '-');
+
+  if (parenMatch) {
+    cleaned = `-${parenMatch[1].replace(/\$/g, '').replace(/,/g, '').replace(/%/g, '')}`;
+  }
+
+  const parsed = parseFloat(cleaned);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isSelfDescribingOpenPositionHeader(fields) {
+  const normalized = fields.map(normalizeHeader);
+  const hasSymbol = normalized.includes('symbol');
+  const hasPositionQuantity = normalized.some(field => SELF_DESCRIBING_OPEN_POSITION_FIELDS.has(field));
+  const hasCostBasis = normalized.some(field => ['costbasisprice', 'costbasismoney', 'openprice', 'averageprice', 'avgprice', 'averagecost', 'avgcost'].includes(field));
+  const hasTradeExecutionFields = normalized.some(field => TRADE_EXECUTION_HEADER_FIELDS.has(field));
+
+  return hasSymbol && hasPositionQuantity && hasCostBasis && !hasTradeExecutionFields;
+}
+
+function isLikelyHeader(fields) {
+  const normalized = fields.map(normalizeHeader);
+  const knownHeaderFields = normalized.filter(field => [
+    'clientaccountid',
+    'accountalias',
+    'assetclass',
+    'assetcategory',
+    'currencyprimary',
+    'symbol',
+    'tradeid',
+    'levelofdetail',
+    'position'
+  ].includes(field));
+
+  return knownHeaderFields.length >= 2;
+}
+
+function normalizeDateString(value) {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  const isoMatch = raw.match(/\b(20\d{2}|19\d{2})-(\d{2})-(\d{2})\b/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+
+  const compactMatch = raw.match(/\b(20\d{2}|19\d{2})(\d{2})(\d{2})\b/);
+  if (compactMatch) return `${compactMatch[1]}-${compactMatch[2]}-${compactMatch[3]}`;
+
+  const slashMatch = raw.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{2,4})\b/);
+  if (slashMatch) {
+    const yearNumber = parseInt(slashMatch[3], 10);
+    const year = yearNumber < 100 ? 2000 + yearNumber : yearNumber;
+    return `${year}-${slashMatch[1].padStart(2, '0')}-${slashMatch[2].padStart(2, '0')}`;
+  }
+
+  return null;
+}
 
 function isRetryableErrorMessage(message) {
   if (!message) return false;
@@ -318,20 +481,36 @@ class IBKRService {
     const existingContext = await this.getExistingContext(connection.userId);
 
     // Parse CSV using existing parser
+    const parserContext = {
+      ...existingContext,
+      brokerConnectionId: connection.id,
+      brokerType: connection.brokerType
+    };
     const parseResult = await parseCSV(
       Buffer.from(csvData, 'utf8'),
       brokerFormat,
-      existingContext
+      parserContext
     );
 
     let trades = Array.isArray(parseResult) ? parseResult : parseResult.trades;
+    const manualReviewItems = Array.isArray(parseResult?.manualReviewItems)
+      ? parseResult.manualReviewItems
+      : [];
+    const parseWarnings = parseResult?.diagnostics?.warnings || [];
     console.log(`[IBKR] Parsed ${trades.length} trades`);
+    if (manualReviewItems.length > 0) {
+      console.warn(`[IBKR] ${manualReviewItems.length} sell-only stock execution(s) require manual review`);
+    }
 
-    // Update sync log with fetched count
-    if (syncLogId) {
-      await BrokerConnection.updateSyncLog(syncLogId, 'importing', {
-        tradesFetched: trades.length
-      });
+    const openPositionResult = this.extractOpenPositionTrades(csvData, connection, existingContext, {
+      parsedTrades: trades,
+      endDate
+    });
+    openPositionResult.warnings.forEach(warning => console.warn(`[IBKR] ${warning}`));
+
+    if (openPositionResult.trades.length > 0) {
+      trades = [...trades, ...openPositionResult.trades];
+      console.log(`[IBKR] Added ${openPositionResult.trades.length} synthetic stock open-position trades from IBKR Open Positions`);
     }
 
     // Filter by date range if specified
@@ -340,8 +519,19 @@ class IBKRService {
       console.log(`[IBKR] After date filter: ${trades.length} trades`);
     }
 
+    // Update sync log with fetched count
+    if (syncLogId) {
+      await BrokerConnection.updateSyncLog(syncLogId, 'importing', {
+        tradesFetched: trades.length
+      });
+    }
+
     // Import trades
     const result = await this.importTrades(connection.userId, trades, existingContext);
+    result.warnings = [...parseWarnings, ...openPositionResult.warnings];
+    result.openPositionsParsed = openPositionResult.trades.length;
+    result.manualReviewItems = manualReviewItems;
+    result.manualReviewCount = manualReviewItems.length;
 
     console.log(`[IBKR] Sync complete: ${result.imported} imported, ${result.updated || 0} updated, ${result.skipped} skipped, ${result.duplicates} duplicates, ${result.failed} failed`);
 
@@ -441,7 +631,7 @@ class IBKRService {
           updated++;
         } else {
           // Create new trade
-          await Trade.create(userId, preparedTrade, {
+          const createdTrade = await Trade.create(userId, preparedTrade, {
             skipAchievements: true,
             skipApiCalls: true,
             skipOptionGrouping: true
@@ -451,7 +641,7 @@ class IBKRService {
 
           // Track newly-created trades so duplicate detection also works within the same sync batch.
           existingTrades.push({
-            id: preparedTrade.id,
+            id: createdTrade?.id || preparedTrade.id,
             symbol: preparedTrade.symbol,
             side: preparedTrade.side,
             quantity: preparedTrade.quantity,
@@ -531,6 +721,296 @@ class IBKRService {
     return 'ibkr';
   }
 
+  extractOpenPositionTrades(csvData, connection, existingContext = {}, options = {}) {
+    const records = this.extractOpenPositionRecords(csvData);
+    const warnings = [];
+
+    if (records.length === 0) {
+      warnings.push('IBKR Flex Query did not include a recognized Open Positions stock section; transferred stock positions without executions cannot be imported.');
+      return { trades: [], warnings };
+    }
+
+    const fallbackTradeDate =
+      this.extractOpenPositionStatementDate(csvData) ||
+      this.extractDateString(options.endDate) ||
+      new Date().toISOString().slice(0, 10);
+    const parsedTrades = Array.isArray(options.parsedTrades) ? options.parsedTrades : [];
+    const trades = [];
+
+    records.forEach((record, index) => {
+      const built = this.buildOpenPositionTrade(record, connection, fallbackTradeDate);
+      if (!built.trade) {
+        warnings.push(`Skipped IBKR open-position row ${index + 1}: ${built.reason}`);
+        return;
+      }
+
+      if (this.openPositionAlreadyRepresented(built.trade, parsedTrades, existingContext)) {
+        console.log(`[IBKR] Skipping Open Positions row for ${built.trade.symbol}; open stock position already exists`);
+        return;
+      }
+
+      trades.push(built.trade);
+    });
+
+    if (trades.length > IBKR_OPEN_POSITION_MAX_SYNTHETIC_TRADES) {
+      warnings.push(`Skipped IBKR Open Positions import because ${trades.length} stock candidates exceeded safety limit ${IBKR_OPEN_POSITION_MAX_SYNTHETIC_TRADES}.`);
+      return { trades: [], warnings };
+    }
+
+    return { trades, warnings };
+  }
+
+  extractOpenPositionRecords(csvData) {
+    const lines = String(csvData || '').split(/\r?\n/);
+    const records = [];
+    let activeHeader = null;
+    let activeHeaderIsExplicitOpenPositions = false;
+
+    for (const line of lines) {
+      if (!line || !line.trim()) continue;
+
+      const fields = parseCsvLine(line);
+      if (fields.length === 0) continue;
+
+      const sectionName = normalizeHeader(fields[0]);
+      const rowType = normalizeHeader(fields[1]);
+
+      if (OPEN_POSITION_SECTION_NAMES.has(sectionName) && rowType === 'header') {
+        activeHeader = fields.slice(2);
+        activeHeaderIsExplicitOpenPositions = true;
+        continue;
+      }
+
+      if (activeHeaderIsExplicitOpenPositions && OPEN_POSITION_SECTION_NAMES.has(sectionName) && rowType === 'data') {
+        const record = recordFromFields(activeHeader, fields.slice(2));
+        if (this.isPotentialOpenPositionRecord(record, true)) {
+          records.push(record);
+        }
+        continue;
+      }
+
+      if (isSelfDescribingOpenPositionHeader(fields)) {
+        activeHeader = fields;
+        activeHeaderIsExplicitOpenPositions = false;
+        continue;
+      }
+
+      if (!activeHeader || activeHeaderIsExplicitOpenPositions) {
+        continue;
+      }
+
+      if (isLikelyHeader(fields)) {
+        activeHeader = isSelfDescribingOpenPositionHeader(fields) ? fields : null;
+        continue;
+      }
+
+      const record = recordFromFields(activeHeader, fields);
+      if (this.isPotentialOpenPositionRecord(record, false)) {
+        records.push(record);
+      }
+    }
+
+    return records;
+  }
+
+  isPotentialOpenPositionRecord(record, explicitOpenPositionsSection) {
+    const symbol = this.getOpenPositionSymbol(record);
+    const quantity = this.getOpenPositionQuantity(record, explicitOpenPositionsSection);
+    return Boolean(symbol) && Number.isFinite(quantity) && quantity !== 0;
+  }
+
+  buildOpenPositionTrade(record, connection, fallbackTradeDate) {
+    const symbol = this.getOpenPositionSymbol(record);
+    if (!symbol) {
+      return { trade: null, reason: 'missing symbol' };
+    }
+
+    const assetClass = normalizeHeader(getRecordValue(record, [
+      'AssetClass',
+      'Asset Class',
+      'Asset Category',
+      'AssetCategory',
+      'SecType',
+      'Security Type'
+    ]));
+    if (!STOCK_ASSET_CLASSES.has(assetClass)) {
+      return { trade: null, reason: `unsupported asset class for ${symbol}` };
+    }
+
+    const quantity = this.getOpenPositionQuantity(record, true);
+    if (!Number.isFinite(quantity) || quantity === 0) {
+      return { trade: null, reason: `invalid quantity for ${symbol}` };
+    }
+
+    const explicitPrice = this.getFirstFiniteRecordNumber(record, OPEN_POSITION_COST_FIELDS);
+    const costBasis = this.getFirstFiniteRecordNumber(record, OPEN_POSITION_BASIS_FIELDS);
+    let entryPrice = Number.isFinite(explicitPrice) && explicitPrice > 0 ? explicitPrice : null;
+
+    if ((!entryPrice || entryPrice <= 0) && Number.isFinite(costBasis)) {
+      entryPrice = Math.abs(costBasis) / Math.abs(quantity);
+    }
+
+    if (!Number.isFinite(entryPrice) || entryPrice <= 0) {
+      return { trade: null, reason: `missing usable cost basis for ${symbol}` };
+    }
+
+    const tradeDate = normalizeDateString(getRecordValue(record, [
+      'ReportDate',
+      'Report Date',
+      'Date',
+      'AsOfDate',
+      'As Of Date',
+      'Position Date',
+      'Statement Date'
+    ])) || fallbackTradeDate;
+    const entryTime = `${tradeDate}T09:30:00`;
+    const side = quantity > 0 ? 'long' : 'short';
+    const action = side === 'long' ? 'buy' : 'sell';
+    const absQuantity = Math.abs(quantity);
+    const conid = getRecordValue(record, ['Conid', 'ConID', 'ConId', 'conid']);
+    const accountIdentifier = getRecordValue(record, [
+      'ClientAccountID',
+      'Account',
+      'Account ID',
+      'AccountId',
+      'Account Number',
+      'AccountNumber'
+    ]);
+    const currency = getRecordValue(record, ['Currency', 'CurrencyPrimary']) || 'USD';
+    const syntheticExecution = {
+      action,
+      quantity: absQuantity,
+      price: entryPrice,
+      datetime: entryTime,
+      fees: 0,
+      conid: conid || null,
+      synthetic: true,
+      synthetic_reason: 'ibkr_open_stock_position_without_execution',
+      source: 'IBKR Open Positions'
+    };
+
+    return {
+      trade: {
+        symbol,
+        side,
+        quantity: absQuantity,
+        entryPrice,
+        exitPrice: null,
+        entryTime,
+        exitTime: null,
+        tradeDate,
+        pnl: null,
+        pnlPercent: null,
+        commission: 0,
+        fees: 0,
+        entryCommission: 0,
+        exitCommission: 0,
+        broker: connection.brokerType || 'ibkr',
+        brokerConnectionId: connection.id,
+        accountIdentifier: accountIdentifier || null,
+        conid: conid || null,
+        originalCurrency: currency,
+        instrumentType: 'stock',
+        executions: [syntheticExecution],
+        executionData: [syntheticExecution],
+        notes: 'Imported from IBKR Open Positions because no stock execution history was present; cost basis came from IBKR position data.',
+        isSyntheticOpenPosition: true,
+        syntheticReason: 'ibkr_open_stock_position_without_execution'
+      }
+    };
+  }
+
+  getOpenPositionSymbol(record) {
+    const rawSymbol = getRecordValue(record, ['Symbol', 'LocalSymbol', 'Local Symbol']);
+    if (!rawSymbol) return null;
+
+    const symbol = String(rawSymbol).trim().toUpperCase();
+    if (!/^[A-Z][A-Z0-9.\-]{0,15}$/.test(symbol)) {
+      return null;
+    }
+
+    return symbol;
+  }
+
+  getOpenPositionQuantity(record, explicitOpenPositionsSection) {
+    const candidates = explicitOpenPositionsSection
+      ? ['Position', 'Position Quantity', 'Open Quantity', 'Quantity', 'Qty']
+      : ['Position', 'Position Quantity', 'Open Quantity'];
+    return parseOpenPositionNumber(getRecordValue(record, candidates));
+  }
+
+  getFirstFiniteRecordNumber(record, fields) {
+    for (const field of fields) {
+      const value = parseOpenPositionNumber(getRecordValue(record, [field]));
+      if (Number.isFinite(value)) {
+        return value;
+      }
+    }
+    return null;
+  }
+
+  extractOpenPositionStatementDate(csvData) {
+    const dates = [];
+    const lines = String(csvData || '').split(/\r?\n/);
+
+    for (const line of lines) {
+      if (!line || !line.trim()) continue;
+      const fields = parseCsvLine(line);
+      const normalizedLine = fields.map(normalizeHeader).join('|');
+      if (!/statement|period|todate|reportdate|generated|asofdate|positiondate/.test(normalizedLine)) {
+        continue;
+      }
+
+      fields.forEach(field => {
+        const date = normalizeDateString(field);
+        if (date) dates.push(date);
+      });
+    }
+
+    return dates.length > 0 ? dates[dates.length - 1] : null;
+  }
+
+  openPositionAlreadyRepresented(openTrade, parsedTrades = [], existingContext = {}) {
+    const parsedOpenTrade = parsedTrades.some(trade => {
+      const isOpen = !trade.exitPrice && !trade.exit_time && !trade.exitTime && !trade.exit_price;
+      return isOpen && this.tradesRepresentSameStockPosition(openTrade, trade);
+    });
+    if (parsedOpenTrade) return true;
+
+    const uniqueExistingPositions = new Set(Object.values(existingContext.existingPositions || {}));
+    for (const existingPosition of uniqueExistingPositions) {
+      if (this.tradesRepresentSameStockPosition(openTrade, existingPosition)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  tradesRepresentSameStockPosition(left, right) {
+    if (!left || !right) return false;
+
+    const leftInstrumentType = left.instrumentType || left.instrument_type || 'stock';
+    const rightInstrumentType = right.instrumentType || right.instrument_type || 'stock';
+    if (leftInstrumentType !== 'stock' || rightInstrumentType !== 'stock') {
+      return false;
+    }
+
+    const leftAccount = left.accountIdentifier || left.account_identifier || null;
+    const rightAccount = right.accountIdentifier || right.account_identifier || null;
+    if (leftAccount && rightAccount && String(leftAccount) !== String(rightAccount)) {
+      return false;
+    }
+
+    const leftConid = left.conid ? String(left.conid) : null;
+    const rightConid = right.conid ? String(right.conid) : null;
+    if (leftConid && rightConid) {
+      return leftConid === rightConid;
+    }
+
+    return String(left.symbol || '').toUpperCase() === String(right.symbol || '').toUpperCase();
+  }
+
   /**
    * Get existing positions and executions for context-aware parsing
    */
@@ -554,7 +1034,7 @@ class IBKRService {
     // Fetch open positions with option fields and conid
     const openPositionsQuery = `
       SELECT id, symbol, side, quantity, entry_price, entry_time, trade_date, commission, broker, executions,
-             instrument_type, strike_price, expiration_date, option_type, conid
+             instrument_type, strike_price, expiration_date, option_type, conid, account_identifier
       FROM trades
       WHERE user_id = $1
       AND exit_price IS NULL
@@ -595,7 +1075,7 @@ class IBKRService {
         id: row.id,
         symbol: row.symbol,
         side: row.side,
-        quantity: parseInt(row.quantity),
+        quantity: parseFloat(row.quantity) || 0,
         entryPrice: parseFloat(row.entry_price),
         entryTime: row.entry_time,
         tradeDate: row.trade_date,
@@ -607,7 +1087,9 @@ class IBKRService {
         strikePrice: row.strike_price ? parseFloat(row.strike_price) : null,
         expirationDate: row.expiration_date,
         optionType: row.option_type,
-        conid: row.conid
+        conid: row.conid,
+        accountIdentifier: row.account_identifier || null,
+        account_identifier: row.account_identifier || null
       };
 
       // Store by composite key (primary)

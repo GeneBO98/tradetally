@@ -598,10 +598,10 @@
                                     <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider" title="Current market value and average cost basis per share">
                                         Value
                                     </th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-help" title="This position's current share of total portfolio value">
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-help whitespace-nowrap" title="This position's current share of total portfolio value">
                                         Actual %
                                     </th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-help" title="Your desired allocation percentage for this position. Edit and save to track rebalancing needs">
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-help whitespace-nowrap" title="Your desired allocation percentage for this position. Edit and save to track rebalancing needs">
                                         Target %
                                     </th>
                                     <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-help" title="How far the actual allocation has strayed from your target. Highlighted when it exceeds your drift alert threshold">
@@ -630,12 +630,12 @@
                                                 size-class="w-8 h-8"
                                             />
                                             <div>
-                                                <div class="flex items-center gap-2">
+                                                <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
                                                     <span class="text-sm font-medium text-gray-900 dark:text-white">
                                                         {{ position.symbol }}
                                                     </span>
                                                     <span
-                                                        class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+                                                        class="inline-flex shrink-0 items-center whitespace-nowrap px-2 py-0.5 rounded-full text-xs font-medium bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
                                                     >
                                                         {{ positionSourceLabel(position) }}
                                                     </span>
@@ -664,7 +664,7 @@
                                         {{ formatPercent(position.actualAllocationPercent, false) }}
                                     </td>
                                     <td class="px-6 py-4 text-right text-sm">
-                                        <div class="flex items-center justify-end gap-2">
+                                        <div class="flex flex-col items-end gap-1">
                                             <input
                                                 v-model="targetAllocationDrafts[position.symbol]"
                                                 type="number"
@@ -2304,8 +2304,8 @@ async function onHoldingCreated() {
 }
 
 function positionSourceLabel(position) {
-    if (position.source === "mixed") return "Holding + Open Trade";
-    if (position.source === "trades") return "Open Trade";
+    if (position.source === "mixed") return "Holding + Open";
+    if (position.source === "trades") return "Open";
     if (position.hasPlaidLots) return "Plaid Synced";
     return "Holding";
 }

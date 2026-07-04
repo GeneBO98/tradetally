@@ -518,7 +518,7 @@ const navItems = computed(() => {
         { name: 'Investments', to: '/analysis', route: 'analysis', badge: 'pro' },
         { name: 'Watchlists', to: '/markets', route: 'markets', badge: 'pro' },
         { name: 'Trade Management', to: '/analysis/trade-management', route: 'trade-management', badge: 'pro' },
-        { name: 'Playbooks', to: '/analysis/playbooks', route: 'playbooks', badge: 'pro' },
+        { name: 'Playbooks & Grading', to: '/analysis/playbooks', route: 'playbooks', badge: 'pro' },
         { name: 'Prop Firm', to: '/analysis/prop-firm', route: 'prop-firm' }
       ]
     },

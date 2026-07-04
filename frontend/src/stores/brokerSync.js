@@ -246,6 +246,22 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     }
   }
 
+  async function submitManualReviewDecisions(decisions) {
+    loading.value = true
+    error.value = null
+
+    try {
+      const response = await api.post('/trades/import/manual-review', { decisions })
+      return response.data
+    } catch (err) {
+      console.error('[BROKER-SYNC] Failed to submit manual review decisions:', err)
+      error.value = err.response?.data?.error || 'Failed to save review decisions'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   function clearError() {
     error.value = null
   }
@@ -284,6 +300,7 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     deleteConnection,
     deleteBrokerTrades,
     triggerSync,
+    submitManualReviewDecisions,
     testConnection,
     fetchSyncLogs,
     getSyncStatus,

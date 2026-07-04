@@ -43,11 +43,15 @@ class DCFValuationService {
     console.log(`[DCF] Fetching historical metrics for ${symbolUpper}...`);
 
     // Get profile for current price and shares
-    const [profile, quote, metricsData] = await Promise.all([
+    const [profile, quote, metricsData, analystEstimates] = await Promise.all([
       FundamentalDataService.getProfile(symbolUpper),
       FundamentalDataService.getQuote(symbolUpper),
       FundamentalDataService.getMetrics(symbolUpper).catch(err => {
         console.warn(`[DCF] Failed to get metrics for ${symbolUpper}: ${err.message}`);
+        return null;
+      }),
+      FundamentalDataService.getAnalystEstimates(symbolUpper).catch(err => {
+        console.warn(`[DCF] Failed to get analyst estimates for ${symbolUpper}: ${err.message}`);
         return null;
       })
     ]);
@@ -119,6 +123,13 @@ class DCFValuationService {
 
     const latest = sorted[0] || {};
     const sharesOutstanding = this.resolveSharesOutstanding(profileShares, latest);
+
+    // Forward P/E from the next fiscal year's consensus EPS estimate.
+    // Null when the provider has no estimates (e.g. Finnhub free tier).
+    const forwardEps = this.resolveForwardEps(analystEstimates, latest.fiscalYear);
+    const forwardPe = currentPrice && forwardEps && forwardEps > 0
+      ? currentPrice / forwardEps
+      : null;
     const computedMarketCap = currentPrice && sharesOutstanding ? currentPrice * sharesOutstanding : null;
     const marketCap = numericFromFinnhub('marketCapitalization')
       ? numericFromFinnhub('marketCapitalization') * 1_000_000
@@ -133,7 +144,18 @@ class DCFValuationService {
       : null;
     const psRatio = numericFromFinnhub('psTTM')
       ?? (marketCap && latest.revenue ? marketCap / latest.revenue : null);
-    const pegRatio = numericFromFinnhub('pegRatio');
+
+    // PEG = trailing P/E divided by the expected long-term EPS growth rate.
+    // We use the true TTM P/E (not the annual-based pe_ratio, which diverges
+    // mid-fiscal-year) over a 3-year forward EPS CAGR from analyst estimates,
+    // matching how mainstream sites report PEG. Falls back to the provider's
+    // own PEG when estimates aren't available (e.g. Finnhub free tier).
+    const ttmPeForPeg = numericFromFinnhub('priceToEarningsRatioTTM')
+      ?? this.calculatePE(latest, currentPrice);
+    const forwardEpsGrowth = this.resolveForwardEpsGrowth(analystEstimates, latest.fiscalYear, latest);
+    const pegRatio = ttmPeForPeg && forwardEpsGrowth && forwardEpsGrowth > 0
+      ? ttmPeForPeg / (forwardEpsGrowth * 100)
+      : numericFromFinnhub('pegRatio');
     const dividendYieldPct = numericFromFinnhub('currentDividendYieldTTM')
       ?? numericFromFinnhub('dividendYieldIndicatedAnnual');
     const dividendYield = dividendYieldPct !== null ? dividendYieldPct / 100 : null;
@@ -179,6 +201,8 @@ class DCFValuationService {
 
       // Ratios - current and historical averages
       pe_ratio: this.calculatePE(latest, currentPrice),
+      forward_pe: forwardPe,
+      forward_eps: forwardEps,
       pe_1yr: this.calculateAvgPE(sorted, yearEndPrices, 1),
       pe_5yr: this.calculateAvgPE(sorted, yearEndPrices, 5),
       pe_10yr: this.calculateAvgPE(sorted, yearEndPrices, 10),
@@ -369,6 +393,82 @@ class DCFValuationService {
     if (eps <= 0) return null;
 
     return currentPrice / eps;
+  }
+
+  /**
+   * Parse the fiscal year out of an estimate row's period-end date string.
+   * @param {string} date - Date like '2026-12-31'
+   * @returns {number|null} Four-digit year, or null if unparseable
+   */
+  static parseEstimateYear(date) {
+    if (!date) return null;
+    const year = parseInt(String(date).slice(0, 4), 10);
+    return Number.isFinite(year) ? year : null;
+  }
+
+  /**
+   * Resolve forward EPS from analyst estimates: the consensus EPS for the
+   * first fiscal year after the latest reported actuals. Falls back to the
+   * earliest estimate at/after the current calendar year when we don't know
+   * the latest reported year.
+   * @param {Array} estimates - Estimate rows (with date + epsAvg)
+   * @param {number} latestFiscalYear - Most recent reported fiscal year
+   * @returns {number|null} Forward EPS, or null when unavailable
+   */
+  static resolveForwardEps(estimates, latestFiscalYear) {
+    if (!Array.isArray(estimates) || estimates.length === 0) return null;
+
+    const candidates = estimates
+      .map(e => ({ year: this.parseEstimateYear(e.date), eps: Number(e.epsAvg) }))
+      .filter(c => c.year && Number.isFinite(c.eps) && c.eps > 0)
+      .sort((a, b) => a.year - b.year);
+
+    if (candidates.length === 0) return null;
+
+    const minForwardYear = latestFiscalYear
+      ? latestFiscalYear + 1
+      : new Date().getFullYear();
+    const forward = candidates.find(c => c.year >= minForwardYear);
+
+    return forward ? forward.eps : null;
+  }
+
+  /**
+   * Estimate the expected long-term annual EPS growth rate (a decimal, e.g.
+   * 0.126 = 12.6%) used for the PEG ratio. Computes the CAGR from the latest
+   * reported annual EPS to the consensus estimate `horizonYears` out, which
+   * approximates the analyst long-term growth consensus PEG conventionally
+   * divides by.
+   * @param {Array} estimates - Estimate rows (with date + epsAvg)
+   * @param {number} latestFiscalYear - Most recent reported fiscal year
+   * @param {Object} latestFinancial - Most recent financial period (for base EPS)
+   * @param {number} horizonYears - Forward window for the CAGR (default 3)
+   * @returns {number|null} Forward EPS CAGR, or null when not computable
+   */
+  static resolveForwardEpsGrowth(estimates, latestFiscalYear, latestFinancial, horizonYears = 3) {
+    if (!Array.isArray(estimates) || estimates.length === 0) return null;
+    if (!latestFiscalYear) return null;
+    if (!latestFinancial?.netIncome || !latestFinancial?.sharesOutstanding) return null;
+
+    const baseEps = latestFinancial.netIncome / latestFinancial.sharesOutstanding;
+    if (!(baseEps > 0)) return null;
+
+    const forward = estimates
+      .map(e => ({ year: this.parseEstimateYear(e.date), eps: Number(e.epsAvg) }))
+      .filter(c => c.year && Number.isFinite(c.eps) && c.eps > 0 && c.year > latestFiscalYear)
+      .sort((a, b) => a.year - b.year);
+
+    if (forward.length === 0) return null;
+
+    // Prefer the estimate `horizonYears` beyond the latest reported year for a
+    // stable growth proxy; otherwise use the furthest year we have.
+    const target = forward.find(c => c.year === latestFiscalYear + horizonYears)
+      ?? forward[forward.length - 1];
+    const years = target.year - latestFiscalYear;
+    if (!(years > 0)) return null;
+
+    const cagr = Math.pow(target.eps / baseEps, 1 / years) - 1;
+    return Number.isFinite(cagr) ? cagr : null;
   }
 
   /**

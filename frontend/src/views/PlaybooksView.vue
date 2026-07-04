@@ -2,14 +2,14 @@
   <div class="content-wrapper py-8 space-y-8">
     <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <h1 class="heading-page">Playbooks</h1>
+        <h1 class="heading-page">Playbooks & Grading Profiles</h1>
         <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-          Define structured setups, review trades against them, and measure plan adherence.
+          Define structured setups, self-grade trades, and measure plan adherence.
         </p>
       </div>
       <div class="flex gap-3">
         <button @click="resetForm" class="btn-secondary">
-          New Playbook
+          New Profile
         </button>
         <button @click="loadData" class="btn-primary" :disabled="loading">
           {{ loading ? 'Refreshing...' : 'Refresh' }}
@@ -19,7 +19,7 @@
 
     <div v-if="loading && playbooks.length === 0" class="card">
       <div class="card-body py-12 text-center text-gray-500 dark:text-gray-400">
-        Loading playbooks...
+        Loading profiles...
       </div>
     </div>
 
@@ -28,12 +28,12 @@
         <div class="card">
           <div class="card-body">
             <div class="flex items-center justify-between mb-4">
-              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Saved Playbooks</h2>
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Saved Profiles</h2>
               <span class="text-sm text-gray-500 dark:text-gray-400">{{ playbooks.length }} total</span>
             </div>
 
             <div v-if="playbooks.length === 0" class="rounded-lg border border-dashed border-gray-300 dark:border-gray-700 p-6 text-sm text-gray-500 dark:text-gray-400">
-              No structured playbooks yet. Create one to start scoring trades against a defined setup.
+              No structured profiles yet. Create one to start scoring trades against a defined setup.
             </div>
 
             <div v-else class="space-y-3">
@@ -70,12 +70,18 @@
                         {{ formatEnum(playbook.timeframe) }}
                       </span>
                       <span class="rounded-full bg-gray-100 px-2 py-1 text-gray-700 dark:bg-gray-700 dark:text-gray-200">
-                        {{ playbook.checklistItems.length }} checklist item{{ playbook.checklistItems.length === 1 ? '' : 's' }}
+                        {{ playbook.checklistItems.length }} {{ playbook.reviewMode === 'score' ? 'criterion' : 'checklist item' }}{{ playbook.checklistItems.length === 1 ? '' : 's' }}
+                      </span>
+                      <span class="rounded-full bg-primary-100 px-2 py-1 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
+                        {{ playbook.reviewMode === 'score' ? '0-5 grading' : 'Checklist' }}
+                      </span>
+                      <span v-if="playbook.autoAssignEnabled" class="rounded-full bg-primary-100 px-2 py-1 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
+                        Auto-suggest
                       </span>
                       <span v-if="playbook.requireStopLoss" class="rounded-full bg-orange-100 px-2 py-1 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">
                         Stop required
                       </span>
-                      <span v-if="playbook.minimumTargetR !== null" class="rounded-full bg-blue-100 px-2 py-1 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                      <span v-if="playbook.minimumTargetR !== null" class="rounded-full bg-primary-100 px-2 py-1 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
                         Min {{ Number(playbook.minimumTargetR).toFixed(1) }}R
                       </span>
                     </div>
@@ -102,7 +108,7 @@
 
             <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                <div class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Active playbooks</div>
+                <div class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Active profiles</div>
                 <div class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ analytics.overview.active_playbook_count || 0 }}</div>
               </div>
               <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
@@ -125,7 +131,7 @@
               <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead>
                   <tr class="text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    <th class="py-3 pr-4">Playbook</th>
+                    <th class="py-3 pr-4">Profile</th>
                     <th class="py-3 pr-4">Reviewed</th>
                     <th class="py-3 pr-4">Win Rate</th>
                     <th class="py-3 pr-4">Profit Factor</th>
@@ -178,10 +184,10 @@
           <div class="flex items-center justify-between">
             <div>
               <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-                {{ form.id ? 'Edit Playbook' : 'Create Playbook' }}
+                {{ form.id ? 'Edit Profile' : 'Create Profile' }}
               </h2>
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Set a checklist and a few hard rules that should always hold for this setup.
+                Set checklist items or 0-5 criteria, then add rules that should hold for matching trades.
               </p>
             </div>
             <div class="flex items-center gap-3">
@@ -208,6 +214,35 @@
               <div class="md:col-span-2">
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
                 <textarea v-model="form.description" rows="3" class="input"></textarea>
+              </div>
+              <div class="md:col-span-2">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Review Type</label>
+                <div class="grid gap-3 sm:grid-cols-2">
+                  <label
+                    class="flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-3"
+                    :class="form.reviewMode === 'checklist'
+                      ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-900/20'
+                      : 'border-gray-200 dark:border-gray-700'"
+                  >
+                    <input v-model="form.reviewMode" value="checklist" type="radio" class="mt-1 h-4 w-4 border-gray-300 text-primary-600 focus:ring-primary-500" />
+                    <span>
+                      <span class="block text-sm font-medium text-gray-900 dark:text-white">Checklist</span>
+                      <span class="block text-xs text-gray-500 dark:text-gray-400">Pass/fail items weighted into adherence.</span>
+                    </span>
+                  </label>
+                  <label
+                    class="flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-3"
+                    :class="form.reviewMode === 'score'
+                      ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-900/20'
+                      : 'border-gray-200 dark:border-gray-700'"
+                  >
+                    <input v-model="form.reviewMode" value="score" type="radio" class="mt-1 h-4 w-4 border-gray-300 text-primary-600 focus:ring-primary-500" />
+                    <span>
+                      <span class="block text-sm font-medium text-gray-900 dark:text-white">0-5 Grading</span>
+                      <span class="block text-xs text-gray-500 dark:text-gray-400">Self-score each criterion, then apply hard-rule penalties.</span>
+                    </span>
+                  </label>
+                </div>
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Market</label>
@@ -323,16 +358,27 @@
                 <input v-model="form.requireStopLoss" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
                 <span class="text-sm text-gray-700 dark:text-gray-300">Require stop loss for a passing review</span>
               </label>
+              <label class="inline-flex items-center gap-3 rounded-xl border border-gray-200 dark:border-gray-700 px-4 py-3 md:col-span-2">
+                <input v-model="form.autoAssignEnabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+                <span>
+                  <span class="block text-sm text-gray-700 dark:text-gray-300">Auto-suggest for matching trades</span>
+                  <span class="block text-xs text-gray-500 dark:text-gray-400">Uses configured strategy, setup, side, timeframe, or tag rules on unreviewed trades.</span>
+                </span>
+              </label>
             </div>
 
             <div>
               <div class="flex items-center justify-between mb-3">
                 <div>
-                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Checklist</h3>
-                  <p class="text-xs text-gray-500 dark:text-gray-400">These items are scored directly before hard-rule penalties are applied.</p>
+                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ form.reviewMode === 'score' ? 'Grading Criteria' : 'Checklist' }}</h3>
+                  <p class="text-xs text-gray-500 dark:text-gray-400">
+                    {{ form.reviewMode === 'score'
+                      ? 'Each criterion is graded from 0 to 5 before hard-rule penalties are applied.'
+                      : 'These items are scored directly before hard-rule penalties are applied.' }}
+                  </p>
                 </div>
                 <button type="button" @click="addChecklistItem" class="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400">
-                  Add item
+                  Add {{ form.reviewMode === 'score' ? 'criterion' : 'item' }}
                 </button>
               </div>
 
@@ -344,7 +390,7 @@
                 >
                   <div class="grid gap-3 md:grid-cols-[1fr_120px_120px_auto]">
                     <div>
-                      <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Label</label>
+                      <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{{ form.reviewMode === 'score' ? 'Criterion' : 'Label' }}</label>
                       <input v-model="item.label" type="text" class="input" maxlength="255" required />
                     </div>
                     <div>
@@ -370,7 +416,7 @@
                 Hard rules evaluate side, timeframe, stop loss, minimum target R, and optional strategy/setup/tag matching.
               </p>
               <button type="submit" class="btn-primary" :disabled="saving">
-                {{ saving ? 'Saving...' : (form.id ? 'Save Playbook' : 'Create Playbook') }}
+                {{ saving ? 'Saving...' : (form.id ? 'Save Profile' : 'Create Profile') }}
               </button>
             </div>
           </form>
@@ -526,6 +572,8 @@ const form = reactive({
   requiredSetup: '',
   requireStopLoss: false,
   minimumTargetR: null,
+  reviewMode: 'checklist',
+  autoAssignEnabled: false,
   checklistItems: [createChecklistItem()]
 })
 
@@ -549,6 +597,8 @@ function resetForm() {
   form.requiredSetup = ''
   form.requireStopLoss = false
   form.minimumTargetR = null
+  form.reviewMode = 'checklist'
+  form.autoAssignEnabled = false
   form.checklistItems = [createChecklistItem()]
   showStrategyInput.value = false
   showSetupInput.value = false
@@ -573,6 +623,8 @@ function selectPlaybook(playbook) {
   form.requiredSetup = playbook.requiredSetup || ''
   form.requireStopLoss = playbook.requireStopLoss === true
   form.minimumTargetR = playbook.minimumTargetR
+  form.reviewMode = playbook.reviewMode === 'score' ? 'score' : 'checklist'
+  form.autoAssignEnabled = playbook.autoAssignEnabled === true
   form.checklistItems = (playbook.checklistItems || []).map((item, index) => ({
     localId: item.id || `${playbook.id}-${index}`,
     label: item.label,
@@ -635,8 +687,8 @@ async function loadData() {
       }
     }
   } catch (error) {
-    console.error('Failed to load playbooks:', error)
-    showError('Error', 'Failed to load playbooks')
+    console.error('Failed to load profiles:', error)
+    showError('Error', 'Failed to load profiles')
   } finally {
     loading.value = false
   }
@@ -644,7 +696,7 @@ async function loadData() {
 
 async function savePlaybook() {
   if (!form.name.trim()) {
-    showError('Validation', 'Playbook name is required')
+    showError('Validation', 'Profile name is required')
     return
   }
 
@@ -658,7 +710,7 @@ async function savePlaybook() {
     .filter(item => item.label)
 
   if (checklistItems.length === 0) {
-    showError('Validation', 'Add at least one checklist item')
+    showError('Validation', `Add at least one ${form.reviewMode === 'score' ? 'criterion' : 'checklist item'}`)
     return
   }
 
@@ -676,6 +728,8 @@ async function savePlaybook() {
       .filter(Boolean),
     requireStopLoss: form.requireStopLoss === true,
     minimumTargetR: form.minimumTargetR === null || form.minimumTargetR === '' ? null : Number(form.minimumTargetR),
+    reviewMode: form.reviewMode === 'score' ? 'score' : 'checklist',
+    autoAssignEnabled: form.autoAssignEnabled === true,
     checklistItems
   }
 
@@ -684,17 +738,17 @@ async function savePlaybook() {
 
     if (form.id) {
       await api.put(`/playbooks/${form.id}`, payload)
-      showSuccess('Success', 'Playbook updated')
+      showSuccess('Success', 'Profile updated')
     } else {
       const response = await api.post('/playbooks', payload)
       selectedPlaybookId.value = response.data.playbook?.id || null
-      showSuccess('Success', 'Playbook created')
+      showSuccess('Success', 'Profile created')
     }
 
     await loadData()
   } catch (error) {
     console.error('Failed to save playbook:', error)
-    showError('Error', error.response?.data?.error || 'Failed to save playbook')
+    showError('Error', error.response?.data?.error || 'Failed to save profile')
   } finally {
     saving.value = false
   }
@@ -702,19 +756,19 @@ async function savePlaybook() {
 
 function archivePlaybook(playbook) {
   showConfirmation(
-    'Archive Playbook',
+    'Archive Profile',
     `Archive "${playbook.name}"? It will stay in analytics and existing reviews but won’t be selectable for new reviews.`,
     async () => {
       try {
         await api.delete(`/playbooks/${playbook.id}`)
-        showSuccess('Success', 'Playbook archived')
+        showSuccess('Success', 'Profile archived')
         if (selectedPlaybookId.value === playbook.id) {
           resetForm()
         }
         await loadData()
       } catch (error) {
         console.error('Failed to archive playbook:', error)
-        showError('Error', error.response?.data?.error || 'Failed to archive playbook')
+        showError('Error', error.response?.data?.error || 'Failed to archive profile')
       }
     }
   )

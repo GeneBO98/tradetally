@@ -809,7 +809,9 @@ const analyticsController = {
                 SUM(r_value) as r_value,
                 MIN(stop_loss) as stop_loss,
                 MIN(trade_date) as trade_date,
-                MIN(entry_time) as entry_time
+                MIN(entry_time) as entry_time,
+                MAX(exit_time) as exit_time,
+                SUM(COALESCE(quantity, 0)) as quantity
             FROM trades
             WHERE user_id = $1 ${filterConditions}
                 AND exit_price IS NOT NULL
@@ -887,6 +889,16 @@ const analyticsController = {
           COALESCE(SUM(commission), 0) as total_commissions,
           COALESCE(SUM(fees), 0) as total_fees,
           COALESCE(STDDEV(pnl), 0) as pnl_stddev,
+          COALESCE(SUM(quantity), 0)::numeric as total_volume,
+          -- Average hold time (minutes) split by outcome, for the stats table
+          COALESCE(AVG(EXTRACT(EPOCH FROM (exit_time - entry_time)) / 60.0)
+            FILTER (WHERE ${be.isNot} AND pnl > 0 AND entry_time IS NOT NULL AND exit_time IS NOT NULL), 0)::numeric as avg_hold_win_minutes,
+          COALESCE(AVG(EXTRACT(EPOCH FROM (exit_time - entry_time)) / 60.0)
+            FILTER (WHERE ${be.isNot} AND pnl < 0 AND entry_time IS NOT NULL AND exit_time IS NOT NULL), 0)::numeric as avg_hold_loss_minutes,
+          COALESCE(AVG(EXTRACT(EPOCH FROM (exit_time - entry_time)) / 60.0)
+            FILTER (WHERE ${be.is} AND entry_time IS NOT NULL AND exit_time IS NOT NULL), 0)::numeric as avg_hold_scratch_minutes,
+          -- Ordered W/L/B sequence for trade-based consecutive win/loss streaks
+          (SELECT array_agg(CASE WHEN ${be.is} THEN 'B' WHEN pnl > 0 THEN 'W' WHEN pnl < 0 THEN 'L' ELSE 'B' END ORDER BY trade_date, entry_time) FROM completed_trades) as result_array,
           (SELECT array_agg(pnl ORDER BY trade_date, entry_time) FROM completed_trades) as pnl_array
         FROM completed_trades
       `;
@@ -908,9 +920,12 @@ const analyticsController = {
           overview: {
             total_pnl: 0, win_rate: 0, win_rate_excluding_breakeven: 0, total_trades: 0, winning_trades: 0, losing_trades: 0,
             breakeven_trades: 0, avg_pnl: 0, avg_win: 0, avg_loss: 0, best_trade: 0,
-            worst_trade: 0, profit_factor: 0, sqn: '0.00', probability_random: 'N/A', 
-            kelly_percentage: '0.00', k_ratio: '0.00', total_commissions: 0, total_fees: 0, 
-            avg_mae: 'N/A', avg_mfe: 'N/A' 
+            worst_trade: 0, profit_factor: 0, sqn: '0.00', probability_random: 'N/A',
+            kelly_percentage: '0.00', k_ratio: '0.00', total_commissions: 0, total_fees: 0,
+            avg_mae: 'N/A', avg_mfe: 'N/A',
+            total_volume: 0, avg_per_share_pnl: 0, avg_daily_pnl: 0, avg_daily_volume: 0,
+            pnl_std_dev: 0, avg_hold_win_minutes: 0, avg_hold_loss_minutes: 0,
+            avg_hold_scratch_minutes: 0, max_consecutive_wins: 0, max_consecutive_losses: 0
           }
         });
       }
@@ -939,6 +954,29 @@ const analyticsController = {
       overview.best_trade = parseFloat(overview.best_trade) || 0;
       overview.worst_trade = parseFloat(overview.worst_trade) || 0;
       overview.avg_r_value = parseFloat(overview.avg_r_value) || 0;
+
+      // Volume, per-share, dispersion and hold-time metrics for the stats table
+      overview.total_volume = parseFloat(overview.total_volume) || 0;
+      overview.pnl_std_dev = parseFloat(overview.pnl_stddev) || 0;
+      overview.avg_hold_win_minutes = parseFloat(overview.avg_hold_win_minutes) || 0;
+      overview.avg_hold_loss_minutes = parseFloat(overview.avg_hold_loss_minutes) || 0;
+      overview.avg_hold_scratch_minutes = parseFloat(overview.avg_hold_scratch_minutes) || 0;
+      overview.avg_per_share_pnl = overview.total_volume > 0
+        ? overview.total_pnl / overview.total_volume
+        : 0;
+
+      // Trade-based max consecutive wins/losses (a scratch/breakeven breaks a run)
+      {
+        const seq = Array.isArray(overview.result_array) ? overview.result_array : [];
+        let maxW = 0, maxL = 0, curW = 0, curL = 0;
+        for (const r of seq) {
+          if (r === 'W') { curW += 1; curL = 0; if (curW > maxW) maxW = curW; }
+          else if (r === 'L') { curL += 1; curW = 0; if (curL > maxL) maxL = curL; }
+          else { curW = 0; curL = 0; }
+        }
+        overview.max_consecutive_wins = maxW;
+        overview.max_consecutive_losses = maxL;
+      }
 
       overview.win_rate = overview.total_trades > 0
         ? (overview.winning_trades / overview.total_trades * 100).toFixed(2)
@@ -1190,9 +1228,18 @@ const analyticsController = {
         overview.worst_loss_streak = 0;
       }
 
+      // Daily averages depend on trading_days resolved by the streak query above
+      overview.avg_daily_pnl = overview.trading_days > 0
+        ? overview.total_pnl / overview.trading_days
+        : 0;
+      overview.avg_daily_volume = overview.trading_days > 0
+        ? overview.total_volume / overview.trading_days
+        : 0;
+
       // Clean up temporary fields
       delete overview.pnl_array;
       delete overview.pnl_stddev;
+      delete overview.result_array;
       delete overview.total_gross_wins;
       delete overview.total_gross_losses;
 

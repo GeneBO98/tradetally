@@ -1,0 +1,23 @@
+name: Guard - no cloud-only paths
+
+# Defense in depth: if cloud-only content ever lands on the public repo
+# (e.g. a misrouted `git push origin main`), this fails loudly so it cannot
+# go unnoticed. The pre-push hook (githooks/pre-push) is the preventive layer;
+# a GitHub push ruleset restricting these paths is the un-bypassable one.
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  no-cloud-paths:
+    runs-on: ubuntu-latest
+    # Only meaningful on the public repo. On the cloud repo these paths exist by
+    # design, so skip there (the file rides along via sync but the job no-ops).
+    if: github.repository == 'GeneBO98/tradetally'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail if any cloud-only path is present
+        run: bash scripts/check-public-clean.sh HEAD

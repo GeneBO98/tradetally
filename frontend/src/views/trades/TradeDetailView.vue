@@ -61,39 +61,49 @@
 
       <!-- Stored AI Analyses -->
       <div v-if="storedAIResponseCount > 0" class="rounded-lg border border-primary-200 bg-primary-50/60 dark:border-primary-900/50 dark:bg-primary-900/10">
-        <button
-          @click="storedAIExpanded = !storedAIExpanded"
-          class="flex w-full items-center justify-between gap-4 px-4 py-3 text-left"
-        >
-          <div class="flex items-center gap-3">
-            <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
-              <SparklesIcon class="h-4 w-4" />
-            </span>
-            <div>
-              <div class="text-sm font-semibold text-gray-900 dark:text-white">
-                {{ storedAIResponseCount }} AI response{{ storedAIResponseCount === 1 ? '' : 's' }} stored
-              </div>
-              <div class="text-xs text-gray-600 dark:text-gray-400">
-                {{ storedAIAnalyses.length }} analysis session{{ storedAIAnalyses.length === 1 ? '' : 's' }} for this trade
+        <div class="flex items-center justify-between gap-3 px-4 py-3">
+          <button
+            @click="storedAIExpanded = !storedAIExpanded"
+            class="flex min-w-0 flex-1 items-center justify-between gap-4 text-left"
+          >
+            <div class="flex min-w-0 items-center gap-3">
+              <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
+                <SparklesIcon class="h-4 w-4" />
+              </span>
+              <div class="min-w-0">
+                <div class="text-sm font-semibold text-gray-900 dark:text-white">
+                  {{ storedAIResponseCount }} AI response{{ storedAIResponseCount === 1 ? '' : 's' }} stored
+                </div>
+                <div class="text-xs text-gray-600 dark:text-gray-400">
+                  {{ storedAIAnalyses.length }} analysis session{{ storedAIAnalyses.length === 1 ? '' : 's' }} for this trade
+                </div>
               </div>
             </div>
-          </div>
-          <svg
-            class="h-5 w-5 text-gray-500 transition-transform dark:text-gray-400"
-            :class="{ 'rotate-180': storedAIExpanded }"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+            <svg
+              class="h-5 w-5 shrink-0 text-gray-500 transition-transform dark:text-gray-400"
+              :class="{ 'rotate-180': storedAIExpanded }"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          <button
+            @click="clearStoredAIAnalyses"
+            class="btn-secondary inline-flex shrink-0 items-center gap-2 text-xs"
+            :disabled="clearingStoredAIAnalyses"
           >
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
+            <TrashIcon class="h-4 w-4" />
+            <span>{{ clearingStoredAIAnalyses ? 'Clearing...' : 'Clear' }}</span>
+          </button>
+        </div>
 
         <div v-if="storedAIExpanded" class="border-t border-primary-200 px-4 py-4 dark:border-primary-900/50">
           <div v-if="loadingStoredAIAnalyses" class="text-sm text-gray-500 dark:text-gray-400">
             Loading stored AI responses...
           </div>
-          <div v-else class="space-y-5">
+          <div v-else class="max-h-[75vh] space-y-5 overflow-y-auto pr-2">
             <div
               v-for="analysis in storedAIAnalyses"
               :key="analysis.id"
@@ -104,10 +114,28 @@
                   Analysis from {{ formatDateTime(analysis.created_at) }}
                 </div>
                 <div class="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                  <span v-if="analysis.position_group"
+                    class="px-1.5 py-0.5 font-semibold rounded-full bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400 whitespace-nowrap"
+                    :title="`Analyzed as a combined ${analysis.position_group.leg_count}-leg strategy`">
+                    {{ formatPositionGroupLabel(analysis.position_group) }}
+                  </span>
                   <span v-if="formatAIModelLabel(analysis.ai_metadata)">
                     {{ formatAIModelLabel(analysis.ai_metadata) }}
                   </span>
+                  <span v-if="formatAIContextSources(analysis.ai_metadata)"
+                    class="px-1.5 py-0.5 font-semibold rounded-full bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                    {{ formatAIContextSources(analysis.ai_metadata) }}
+                  </span>
                   <span>{{ analysis.response_count }} response{{ analysis.response_count === 1 ? '' : 's' }}</span>
+                  <button
+                    @click="deleteStoredAIAnalysis(analysis)"
+                    class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-red-700 hover:bg-red-50 disabled:opacity-60 dark:text-red-400 dark:hover:bg-red-900/20"
+                    :disabled="deletingStoredAIAnalysisId === analysis.id"
+                    title="Delete stored AI analysis"
+                  >
+                    <TrashIcon class="h-3.5 w-3.5" />
+                    <span>{{ deletingStoredAIAnalysisId === analysis.id ? 'Deleting...' : 'Delete' }}</span>
+                  </button>
                 </div>
               </div>
               <div class="space-y-4">
@@ -119,7 +147,9 @@
                   <div class="mb-2 text-xs text-gray-500 dark:text-gray-400">
                     {{ formatDateTime(response.created_at) }}
                   </div>
-                  <AIReportRenderer :content="response.content" />
+                  <div class="max-h-[65vh] overflow-y-auto pr-2">
+                    <AIReportRenderer :content="response.content" />
+                  </div>
                 </div>
               </div>
             </div>
@@ -364,6 +394,9 @@
                         ({{ Number(trade.qualityScore).toFixed(1) }}/5.0)
                       </span>
                     </div>
+                    <div v-else-if="trade.instrument_type === 'future'">
+                      <span class="text-sm text-gray-500 dark:text-gray-400">Not available for futures</span>
+                    </div>
                     <div v-else class="flex items-center space-x-2">
                       <span class="text-sm text-gray-500 dark:text-gray-400">Not calculated</span>
                       <button
@@ -419,212 +452,60 @@
           </div>
 
           <!-- Setup Quality Breakdown -->
-          <div v-if="trade.qualityGrade && trade.qualityMetrics" class="card">
+          <div v-if="trade.qualityMetrics" class="card">
             <div class="card-body">
-              <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Setup Quality Breakdown</h3>
+              <h3 class="text-lg font-medium text-gray-900 dark:text-white" :class="trade.qualityMetrics.dataSymbol ? 'mb-1' : 'mb-4'">Setup Quality Breakdown</h3>
+              <p v-if="!trade.qualityGrade && trade.qualityMetrics.coverage !== undefined" class="text-xs text-yellow-700 dark:text-yellow-300 mb-3">
+                Setup quality was not graded because only {{ formatPercentValue(trade.qualityMetrics.coverage) }} of the configured metric weight had data. Minimum required coverage is {{ formatPercentValue(trade.qualityMetrics.minimumCoverage ?? 0.4) }}.
+              </p>
+              <p v-if="trade.qualityMetrics.dataSymbol" class="text-xs text-gray-500 dark:text-gray-400" :class="trade.qualityMetrics.spotSource === 'live' ? 'mb-1' : 'mb-4'">
+                Option trade - graded using market data for the underlying {{ trade.qualityMetrics.dataSymbol }}
+              </p>
+              <p v-if="trade.qualityMetrics.spotSource === 'live'" class="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                The entry-day candle was unavailable, so strike distance uses the latest underlying price as an approximation.
+              </p>
 
               <div class="space-y-4">
-                <!-- News Sentiment (35% weight) -->
-                <div class="border-l-4 pl-4 py-2"
+                <div v-for="metric in qualityBreakdown" :key="metric.key" class="border-l-4 pl-4 py-2"
                   :class="[
-                    getScore(trade.qualityMetrics.newsSentimentScore) >= 0.8 ? 'border-green-400' :
-                    getScore(trade.qualityMetrics.newsSentimentScore) >= 0.6 ? 'border-blue-400' :
-                    getScore(trade.qualityMetrics.newsSentimentScore) >= 0.4 ? 'border-yellow-400' :
+                    metric.excluded ? 'border-gray-300 dark:border-gray-600' :
+                    metric.score >= 0.8 ? 'border-green-400' :
+                    metric.score >= 0.6 ? 'border-blue-400' :
+                    metric.score >= 0.4 ? 'border-yellow-400' :
                     'border-red-400'
                   ]">
                   <div class="flex items-center justify-between mb-2">
                     <div>
-                      <h4 class="text-sm font-semibold text-gray-900 dark:text-white">News Sentiment</h4>
-                      <p class="text-xs text-gray-500 dark:text-gray-400">Weight: 30% (Highest)</p>
+                      <h4 class="text-sm font-semibold text-gray-900 dark:text-white">{{ metric.label }}</h4>
+                      <p class="text-xs text-gray-500 dark:text-gray-400">Weight: {{ metric.weight }}%</p>
                     </div>
                     <div class="text-right">
-                      <div class="text-sm font-semibold"
+                      <div v-if="metric.excluded" class="text-sm font-semibold text-gray-500 dark:text-gray-400">
+                        No data
+                      </div>
+                      <div v-else class="text-sm font-semibold"
                         :class="[
-                          getScore(trade.qualityMetrics.newsSentimentScore) >= 0.8 ? 'text-green-600 dark:text-green-400' :
-                          getScore(trade.qualityMetrics.newsSentimentScore) >= 0.6 ? 'text-blue-600 dark:text-blue-400' :
-                          getScore(trade.qualityMetrics.newsSentimentScore) >= 0.4 ? 'text-yellow-600 dark:text-yellow-400' :
+                          metric.score >= 0.8 ? 'text-green-600 dark:text-green-400' :
+                          metric.score >= 0.6 ? 'text-blue-600 dark:text-blue-400' :
+                          metric.score >= 0.4 ? 'text-yellow-600 dark:text-yellow-400' :
                           'text-red-600 dark:text-red-400'
                         ]">
-                        {{ (getScore(trade.qualityMetrics.newsSentimentScore) * 100).toFixed(0) }}%
+                        {{ (metric.score * 100).toFixed(0) }}%
                       </div>
                       <div class="text-xs text-gray-500 dark:text-gray-400">
-                        {{ trade.qualityMetrics.newsSentiment !== null && trade.qualityMetrics.newsSentiment !== undefined ? Number(trade.qualityMetrics.newsSentiment).toFixed(2) : 'N/A' }}
+                        {{ metric.excluded ? 'Excluded from score' : metric.display }}
                       </div>
                     </div>
                   </div>
                   <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                    <div class="h-2 rounded-full transition-all"
+                    <div v-if="!metric.excluded" class="h-2 rounded-full transition-all"
                       :class="[
-                        getScore(trade.qualityMetrics.newsSentimentScore) >= 0.8 ? 'bg-green-500' :
-                        getScore(trade.qualityMetrics.newsSentimentScore) >= 0.6 ? 'bg-blue-500' :
-                        getScore(trade.qualityMetrics.newsSentimentScore) >= 0.4 ? 'bg-yellow-500' :
+                        metric.score >= 0.8 ? 'bg-green-500' :
+                        metric.score >= 0.6 ? 'bg-blue-500' :
+                        metric.score >= 0.4 ? 'bg-yellow-500' :
                         'bg-red-500'
                       ]"
-                      :style="{ width: (getScore(trade.qualityMetrics.newsSentimentScore) * 100) + '%' }">
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Gap from Previous Close (20% weight) -->
-                <div class="border-l-4 pl-4 py-2"
-                  :class="[
-                    getScore(trade.qualityMetrics?.gapScore) >= 0.8 ? 'border-green-400' :
-                    getScore(trade.qualityMetrics?.gapScore) >= 0.6 ? 'border-blue-400' :
-                    getScore(trade.qualityMetrics?.gapScore) >= 0.4 ? 'border-yellow-400' :
-                    'border-red-400'
-                  ]">
-                  <div class="flex items-center justify-between mb-2">
-                    <div>
-                      <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Gap from Previous Close</h4>
-                      <p class="text-xs text-gray-500 dark:text-gray-400">Weight: 20% (Previous close to entry price)</p>
-                    </div>
-                    <div class="text-right">
-                      <div class="text-sm font-semibold"
-                        :class="[
-                          getScore(trade.qualityMetrics?.gapScore) >= 0.8 ? 'text-green-600 dark:text-green-400' :
-                          getScore(trade.qualityMetrics?.gapScore) >= 0.6 ? 'text-blue-600 dark:text-blue-400' :
-                          getScore(trade.qualityMetrics?.gapScore) >= 0.4 ? 'text-yellow-600 dark:text-yellow-400' :
-                          'text-red-600 dark:text-red-400'
-                        ]">
-                        {{ (getScore(trade.qualityMetrics?.gapScore) * 100).toFixed(0) }}%
-                      </div>
-                      <div class="text-xs text-gray-500 dark:text-gray-400">
-                        {{ trade.qualityMetrics?.gap !== null && trade.qualityMetrics?.gap !== undefined ? (Number(trade.qualityMetrics.gap) > 0 ? '+' : '') + Number(trade.qualityMetrics.gap).toFixed(2) + '%' : 'N/A' }}
-                      </div>
-                    </div>
-                  </div>
-                  <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                    <div class="h-2 rounded-full transition-all"
-                      :class="[
-                        getScore(trade.qualityMetrics?.gapScore) >= 0.8 ? 'bg-green-500' :
-                        getScore(trade.qualityMetrics?.gapScore) >= 0.6 ? 'bg-blue-500' :
-                        getScore(trade.qualityMetrics?.gapScore) >= 0.4 ? 'bg-yellow-500' :
-                        'bg-red-500'
-                      ]"
-                      :style="{ width: (getScore(trade.qualityMetrics?.gapScore) * 100) + '%' }">
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Relative Volume (20% weight) -->
-                <div class="border-l-4 pl-4 py-2"
-                  :class="[
-                    getScore(trade.qualityMetrics.relativeVolumeScore) >= 0.8 ? 'border-green-400' :
-                    getScore(trade.qualityMetrics.relativeVolumeScore) >= 0.6 ? 'border-blue-400' :
-                    getScore(trade.qualityMetrics.relativeVolumeScore) >= 0.4 ? 'border-yellow-400' :
-                    'border-red-400'
-                  ]">
-                  <div class="flex items-center justify-between mb-2">
-                    <div>
-                      <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Relative Volume</h4>
-                      <p class="text-xs text-gray-500 dark:text-gray-400">Weight: 20%</p>
-                    </div>
-                    <div class="text-right">
-                      <div class="text-sm font-semibold"
-                        :class="[
-                          getScore(trade.qualityMetrics.relativeVolumeScore) >= 0.8 ? 'text-green-600 dark:text-green-400' :
-                          getScore(trade.qualityMetrics.relativeVolumeScore) >= 0.6 ? 'text-blue-600 dark:text-blue-400' :
-                          getScore(trade.qualityMetrics.relativeVolumeScore) >= 0.4 ? 'text-yellow-600 dark:text-yellow-400' :
-                          'text-red-600 dark:text-red-400'
-                        ]">
-                        {{ (getScore(trade.qualityMetrics.relativeVolumeScore) * 100).toFixed(0) }}%
-                      </div>
-                      <div class="text-xs text-gray-500 dark:text-gray-400">
-                        {{ trade.qualityMetrics.relativeVolume !== null && trade.qualityMetrics.relativeVolume !== undefined ? Number(trade.qualityMetrics.relativeVolume).toFixed(1) + 'x' : 'N/A' }}
-                      </div>
-                    </div>
-                  </div>
-                  <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                    <div class="h-2 rounded-full transition-all"
-                      :class="[
-                        getScore(trade.qualityMetrics.relativeVolumeScore) >= 0.8 ? 'bg-green-500' :
-                        getScore(trade.qualityMetrics.relativeVolumeScore) >= 0.6 ? 'bg-blue-500' :
-                        getScore(trade.qualityMetrics.relativeVolumeScore) >= 0.4 ? 'bg-yellow-500' :
-                        'bg-red-500'
-                      ]"
-                      :style="{ width: (getScore(trade.qualityMetrics.relativeVolumeScore) * 100) + '%' }">
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Float (15% weight) -->
-                <div class="border-l-4 pl-4 py-2"
-                  :class="[
-                    getScore(trade.qualityMetrics?.floatScore) >= 0.8 ? 'border-green-400' :
-                    getScore(trade.qualityMetrics?.floatScore) >= 0.6 ? 'border-blue-400' :
-                    getScore(trade.qualityMetrics?.floatScore) >= 0.4 ? 'border-yellow-400' :
-                    'border-red-400'
-                  ]">
-                  <div class="flex items-center justify-between mb-2">
-                    <div>
-                      <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Float (Shares Outstanding)</h4>
-                      <p class="text-xs text-gray-500 dark:text-gray-400">Weight: 15%</p>
-                    </div>
-                    <div class="text-right">
-                      <div class="text-sm font-semibold"
-                        :class="[
-                          getScore(trade.qualityMetrics?.floatScore) >= 0.8 ? 'text-green-600 dark:text-green-400' :
-                          getScore(trade.qualityMetrics?.floatScore) >= 0.6 ? 'text-blue-600 dark:text-blue-400' :
-                          getScore(trade.qualityMetrics?.floatScore) >= 0.4 ? 'text-yellow-600 dark:text-yellow-400' :
-                          'text-red-600 dark:text-red-400'
-                        ]">
-                        {{ (getScore(trade.qualityMetrics?.floatScore) * 100).toFixed(0) }}%
-                      </div>
-                      <div class="text-xs text-gray-500 dark:text-gray-400">
-                        {{ formatFloat(trade.qualityMetrics?.float) }}
-                      </div>
-                    </div>
-                  </div>
-                  <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                    <div class="h-2 rounded-full transition-all"
-                      :class="[
-                        getScore(trade.qualityMetrics?.floatScore) >= 0.8 ? 'bg-green-500' :
-                        getScore(trade.qualityMetrics?.floatScore) >= 0.6 ? 'bg-blue-500' :
-                        getScore(trade.qualityMetrics?.floatScore) >= 0.4 ? 'bg-yellow-500' :
-                        'bg-red-500'
-                      ]"
-                      :style="{ width: (getScore(trade.qualityMetrics?.floatScore) * 100) + '%' }">
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Price Range (15% weight) -->
-                <div class="border-l-4 pl-4 py-2"
-                  :class="[
-                    getScore(trade.qualityMetrics.priceScore) >= 0.8 ? 'border-green-400' :
-                    getScore(trade.qualityMetrics.priceScore) >= 0.6 ? 'border-blue-400' :
-                    getScore(trade.qualityMetrics.priceScore) >= 0.4 ? 'border-yellow-400' :
-                    'border-red-400'
-                  ]">
-                  <div class="flex items-center justify-between mb-2">
-                    <div>
-                      <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Price Range</h4>
-                      <p class="text-xs text-gray-500 dark:text-gray-400">Weight: 15%</p>
-                    </div>
-                    <div class="text-right">
-                      <div class="text-sm font-semibold"
-                        :class="[
-                          getScore(trade.qualityMetrics.priceScore) >= 0.8 ? 'text-green-600 dark:text-green-400' :
-                          getScore(trade.qualityMetrics.priceScore) >= 0.6 ? 'text-blue-600 dark:text-blue-400' :
-                          getScore(trade.qualityMetrics.priceScore) >= 0.4 ? 'text-yellow-600 dark:text-yellow-400' :
-                          'text-red-600 dark:text-red-400'
-                        ]">
-                        {{ (getScore(trade.qualityMetrics.priceScore) * 100).toFixed(0) }}%
-                      </div>
-                      <div class="text-xs text-gray-500 dark:text-gray-400">
-                        {{ trade.qualityMetrics.price !== null && trade.qualityMetrics.price !== undefined ? formatCurrency(trade.qualityMetrics.price) : 'N/A' }}
-                      </div>
-                    </div>
-                  </div>
-                  <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                    <div class="h-2 rounded-full transition-all"
-                      :class="[
-                        getScore(trade.qualityMetrics.priceScore) >= 0.8 ? 'bg-green-500' :
-                        getScore(trade.qualityMetrics.priceScore) >= 0.6 ? 'bg-blue-500' :
-                        getScore(trade.qualityMetrics.priceScore) >= 0.4 ? 'bg-yellow-500' :
-                        'bg-red-500'
-                      ]"
-                      :style="{ width: (getScore(trade.qualityMetrics.priceScore) * 100) + '%' }">
+                      :style="{ width: (metric.score * 100) + '%' }">
                     </div>
                   </div>
                 </div>
@@ -635,10 +516,14 @@
                 <div class="flex items-center justify-between">
                   <div>
                     <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Overall Setup Quality</h4>
-                    <p class="text-xs text-gray-500 dark:text-gray-400">Weighted average of all metrics</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">
+                      {{ hasExcludedQualityMetrics
+                        ? 'Weighted average of metrics with data - metrics without data are excluded and the remaining weights are rescaled'
+                        : 'Weighted average of all metrics' }}
+                    </p>
                   </div>
                   <div class="text-right">
-                    <div class="text-2xl font-bold"
+                    <div v-if="trade.qualityGrade" class="text-2xl font-bold"
                       :class="{
                         'text-green-600 dark:text-green-400': trade.qualityGrade === 'A',
                         'text-blue-600 dark:text-blue-400': trade.qualityGrade === 'B',
@@ -648,8 +533,14 @@
                       }">
                       {{ Number(trade.qualityScore).toFixed(1) }}/5.0
                     </div>
-                    <div class="text-sm font-semibold text-gray-600 dark:text-gray-400">
+                    <div v-else class="text-2xl font-bold text-gray-500 dark:text-gray-400">
+                      Not graded
+                    </div>
+                    <div v-if="trade.qualityGrade" class="text-sm font-semibold text-gray-600 dark:text-gray-400">
                       Grade {{ trade.qualityGrade }}
+                    </div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400">
+                      Data coverage {{ formatPercentValue(trade.qualityMetrics.coverage ?? 0) }}
                     </div>
                   </div>
                 </div>
@@ -661,13 +552,13 @@
             <div class="card-body">
               <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-5">
                 <div>
-                  <h3 class="text-lg font-medium text-gray-900 dark:text-white">Playbook Adherence</h3>
+                  <h3 class="text-lg font-medium text-gray-900 dark:text-white">Playbook & Manual Grading</h3>
                   <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    Review this trade against a structured setup and measure whether you followed plan.
+                    Review this trade against a structured setup or self-grade it against custom criteria.
                   </p>
                 </div>
                 <router-link to="/analysis/playbooks" class="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400">
-                  Manage playbooks
+                  Manage profiles
                 </router-link>
               </div>
 
@@ -699,149 +590,331 @@
               <ProUpgradePrompt
                 v-if="authStore.user && !isPlaybookFeatureAvailable"
                 variant="banner"
-                description="Structured playbooks and adherence reviews are available on Pro."
+                description="Structured playbooks and manual grading profiles are available on Pro."
               />
 
               <div v-else-if="loadingPlaybooks" class="text-sm text-gray-500 dark:text-gray-400">
-                Loading playbooks...
+                Loading profiles...
               </div>
 
               <div v-else-if="playbooks.length === 0" class="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-5 text-sm text-gray-500 dark:text-gray-400">
-                Create a structured playbook first, then return here to score this trade against it.
+                Create a structured profile first, then return here to score this trade against it.
               </div>
 
-              <div v-else class="space-y-5">
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Playbook</label>
-                  <BaseSelect
-                    v-model="selectedPlaybookId"
-                    :options="playbookOptions"
-                    placeholder="Select a playbook"
-                    @change="onPlaybookChange"
-                  />
-                </div>
-
-                <div v-if="selectedPlaybook" class="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-                  <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                    <div class="flex items-center justify-between mb-3">
-                      <div>
-                        <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Checklist</h4>
-                        <p class="text-xs text-gray-500 dark:text-gray-400">
-                          {{ checklistCompletion.checked }}/{{ checklistCompletion.total }} items checked
-                        </p>
-                      </div>
-                      <span
-                        v-if="selectedReview"
-                        class="inline-flex rounded-full px-3 py-1 text-sm font-semibold"
-                        :class="selectedReview.adherenceScore >= 80
-                          ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
-                          : selectedReview.adherenceScore >= 60
-                          ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400'
-                          : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'"
-                      >
-                        {{ Number(selectedReview.adherenceScore || 0).toFixed(2) }} adherence
-                      </span>
-                    </div>
-
-                    <div class="space-y-3">
-                      <label
-                        v-for="item in reviewForm.checklistResponses"
-                        :key="item.checklistItemId"
-                        class="flex items-start gap-3 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-3"
-                      >
-                        <input
-                          v-model="item.checked"
-                          type="checkbox"
-                          class="mt-1 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                        />
-                        <div class="flex-1">
-                          <div class="text-sm font-medium text-gray-900 dark:text-white">
-                            {{ item.label }}
-                          </div>
-                          <div class="mt-1 flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400">
-                            <span>Weight {{ Number(item.weight || 1).toFixed(2) }}</span>
-                            <span v-if="item.isRequired" class="text-orange-600 dark:text-orange-400">Required</span>
-                          </div>
-                        </div>
-                      </label>
-                    </div>
+              <div v-else class="space-y-6">
+                <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-5">
+                  <div>
+                    <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Playbook Assessment</h4>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Keep process adherence separate from setup quality. Use this to review whether the trade followed your rules.
+                    </p>
                   </div>
 
-                  <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-4">
+                  <div v-if="adherencePlaybooks.length === 0" class="rounded-lg border border-dashed border-gray-300 dark:border-gray-700 p-4 text-sm text-gray-500 dark:text-gray-400">
+                    Create a checklist profile to track playbook adherence.
+                  </div>
+
+                  <template v-else>
                     <div>
-                      <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Followed plan?</label>
+                      <div class="mb-1 flex items-center justify-between gap-3">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Playbook</label>
+                        <span
+                          v-if="trade.suggestedPlaybookId && selectedAdherencePlaybookId === trade.suggestedPlaybookId && !trade.playbookAdherenceReview"
+                          class="text-xs font-medium text-primary-700 dark:text-primary-300"
+                        >
+                          Suggested from trade rules
+                        </span>
+                      </div>
                       <BaseSelect
-                        v-model="reviewForm.followedPlan"
-                        :options="[
-                          { value: 'true', label: 'Yes' },
-                          { value: 'false', label: 'No' }
-                        ]"
-                        placeholder="Not set"
+                        v-model="selectedAdherencePlaybookId"
+                        :options="adherencePlaybookOptions"
+                        placeholder="Select a playbook"
+                        @change="onAdherencePlaybookChange"
                       />
                     </div>
 
-                    <div>
-                      <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Review notes</label>
-                      <textarea
-                        v-model="reviewForm.reviewNotes"
-                        rows="5"
-                        class="input"
-                        placeholder="What matched the playbook? What broke down?"
-                      ></textarea>
+                    <div v-if="selectedAdherencePlaybook" class="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+                      <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                        <div class="flex items-center justify-between mb-3">
+                          <div>
+                            <h5 class="text-sm font-semibold text-gray-900 dark:text-white">Checklist</h5>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">
+                              {{ getReviewCompletion(selectedAdherencePlaybook, adherenceReviewForm).label }}
+                            </p>
+                          </div>
+                          <span
+                            v-if="selectedAdherenceReview"
+                            class="inline-flex rounded-full px-3 py-1 text-sm font-semibold"
+                            :class="selectedAdherenceReview.adherenceScore >= 80
+                              ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                              : selectedAdherenceReview.adherenceScore >= 60
+                              ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400'
+                              : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'"
+                          >
+                            {{ Number(selectedAdherenceReview.adherenceScore || 0).toFixed(2) }} adherence
+                          </span>
+                        </div>
+
+                        <div class="space-y-3">
+                          <label
+                            v-for="item in adherenceReviewForm.checklistResponses"
+                            :key="item.checklistItemId"
+                            class="flex items-start gap-3 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-3"
+                          >
+                            <input
+                              v-model="item.checked"
+                              type="checkbox"
+                              class="mt-1 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                            />
+                            <div class="flex-1">
+                              <div class="text-sm font-medium text-gray-900 dark:text-white">
+                                {{ item.label }}
+                              </div>
+                              <div class="mt-1 flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400">
+                                <span>Weight {{ Number(item.weight || 1).toFixed(2) }}</span>
+                                <span v-if="item.isRequired" class="text-orange-600 dark:text-orange-400">Required</span>
+                              </div>
+                            </div>
+                          </label>
+                        </div>
+                      </div>
+
+                      <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-4">
+                        <div>
+                          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Followed plan?</label>
+                          <BaseSelect
+                            v-model="adherenceReviewForm.followedPlan"
+                            :options="[
+                              { value: 'true', label: 'Yes' },
+                              { value: 'false', label: 'No' }
+                            ]"
+                            placeholder="Not set"
+                          />
+                        </div>
+
+                        <div>
+                          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Review notes</label>
+                          <textarea
+                            v-model="adherenceReviewForm.reviewNotes"
+                            rows="5"
+                            class="input"
+                            placeholder="What matched the playbook? What broke down?"
+                          ></textarea>
+                        </div>
+
+                        <button
+                          @click="saveTradeReview('adherence')"
+                          :disabled="savingAdherenceReview || selectedAdherencePlaybook?.isActive === false"
+                          class="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {{ savingAdherenceReview ? 'Saving...' : 'Save Playbook Review' }}
+                        </button>
+                        <p v-if="selectedAdherencePlaybook?.isActive === false" class="text-xs text-amber-600 dark:text-amber-400">
+                          Archived playbooks remain visible on old reviews but cannot be used for new submissions.
+                        </p>
+                      </div>
                     </div>
 
-                    <button
-                      @click="savePlaybookReview"
-                      :disabled="savingPlaybookReview || selectedPlaybook?.isActive === false"
-                      class="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {{ savingPlaybookReview ? 'Saving...' : 'Save Review' }}
-                    </button>
-                    <p v-if="selectedPlaybook?.isActive === false" class="text-xs text-amber-600 dark:text-amber-400">
-                      Archived playbooks remain visible on old reviews but cannot be used for new submissions.
-                    </p>
-                  </div>
-                </div>
+                    <div v-if="selectedAdherencePlaybook" class="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                      <div class="flex items-center justify-between mb-3">
+                        <div>
+                          <h5 class="text-sm font-semibold text-gray-900 dark:text-white">Hard Rule Results</h5>
+                          <p class="text-xs text-gray-500 dark:text-gray-400">
+                            Fixed checks run when a playbook review is saved.
+                          </p>
+                        </div>
+                        <div v-if="selectedAdherenceReview?.reviewedAt" class="text-xs text-gray-500 dark:text-gray-400">
+                          Reviewed {{ formatDateTime(selectedAdherenceReview.reviewedAt) }}
+                        </div>
+                      </div>
 
-                <div v-if="selectedPlaybook" class="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                  <div class="flex items-center justify-between mb-3">
-                    <div>
-                      <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Hard Rule Results</h4>
-                      <p class="text-xs text-gray-500 dark:text-gray-400">
-                        Fixed checks run when a review is saved.
+                      <div v-if="selectedAdherenceReview?.ruleResults?.length" class="space-y-3">
+                        <div
+                          v-for="rule in selectedAdherenceReview.ruleResults"
+                          :key="rule.key"
+                          class="rounded-lg border px-3 py-3"
+                          :class="rule.passed
+                            ? 'border-green-200 bg-green-50 dark:border-green-900/40 dark:bg-green-900/10'
+                            : 'border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-900/10'"
+                        >
+                          <div class="flex items-center justify-between gap-4">
+                            <div class="text-sm font-medium text-gray-900 dark:text-white">{{ rule.label }}</div>
+                            <span :class="rule.passed ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'" class="text-xs font-semibold uppercase tracking-wide">
+                              {{ rule.passed ? 'Passed' : 'Failed' }}
+                            </span>
+                          </div>
+                          <div class="mt-2 text-xs text-gray-600 dark:text-gray-400">
+                            <div><span class="font-medium">Expected:</span> {{ Array.isArray(rule.expected) ? rule.expected.join(', ') : (rule.expected || 'N/A') }}</div>
+                            <div><span class="font-medium">Actual:</span> {{ Array.isArray(rule.actual) ? rule.actual.join(', ') : (rule.actual || 'N/A') }}</div>
+                            <div v-if="rule.violationMessage" class="mt-1 text-red-700 dark:text-red-300">{{ rule.violationMessage }}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <p v-else class="text-sm text-gray-500 dark:text-gray-400">
+                        Save a playbook review to evaluate stop loss, target R, side, timeframe, and configured strategy/setup/tag rules.
                       </p>
                     </div>
-                    <div v-if="selectedReview?.reviewedAt" class="text-xs text-gray-500 dark:text-gray-400">
-                      Reviewed {{ formatDateTime(selectedReview.reviewedAt) }}
-                    </div>
+                  </template>
+                </div>
+
+                <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-5">
+                  <div>
+                    <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Manual Grading Profile</h4>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Use structured 0-5 criteria when you want a setup score that is independent from automated market-data coverage.
+                    </p>
                   </div>
 
-                  <div v-if="selectedReview?.ruleResults?.length" class="space-y-3">
-                    <div
-                      v-for="rule in selectedReview.ruleResults"
-                      :key="rule.key"
-                      class="rounded-lg border px-3 py-3"
-                      :class="rule.passed
-                        ? 'border-green-200 bg-green-50 dark:border-green-900/40 dark:bg-green-900/10'
-                        : 'border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-900/10'"
-                    >
-                      <div class="flex items-center justify-between gap-4">
-                        <div class="text-sm font-medium text-gray-900 dark:text-white">{{ rule.label }}</div>
-                        <span :class="rule.passed ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'" class="text-xs font-semibold uppercase tracking-wide">
-                          {{ rule.passed ? 'Passed' : 'Failed' }}
+                  <div v-if="manualGradingProfiles.length === 0" class="rounded-lg border border-dashed border-gray-300 dark:border-gray-700 p-4 text-sm text-gray-500 dark:text-gray-400">
+                    Create a 0-5 grading profile to score setup quality manually.
+                  </div>
+
+                  <template v-else>
+                    <div>
+                      <div class="mb-1 flex items-center justify-between gap-3">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Grading Profile</label>
+                        <span
+                          v-if="trade.suggestedManualGradingProfileId && selectedManualGradingProfileId === trade.suggestedManualGradingProfileId && !trade.manualGradingReview"
+                          class="text-xs font-medium text-primary-700 dark:text-primary-300"
+                        >
+                          Suggested from trade rules
                         </span>
                       </div>
-                      <div class="mt-2 text-xs text-gray-600 dark:text-gray-400">
-                        <div><span class="font-medium">Expected:</span> {{ Array.isArray(rule.expected) ? rule.expected.join(', ') : (rule.expected || 'N/A') }}</div>
-                        <div><span class="font-medium">Actual:</span> {{ Array.isArray(rule.actual) ? rule.actual.join(', ') : (rule.actual || 'N/A') }}</div>
-                        <div v-if="rule.violationMessage" class="mt-1 text-red-700 dark:text-red-300">{{ rule.violationMessage }}</div>
+                      <BaseSelect
+                        v-model="selectedManualGradingProfileId"
+                        :options="manualGradingProfileOptions"
+                        placeholder="Select a grading profile"
+                        @change="onManualGradingProfileChange"
+                      />
+                    </div>
+
+                    <div v-if="selectedManualGradingProfile" class="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+                      <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                        <div class="flex items-center justify-between mb-3">
+                          <div>
+                            <h5 class="text-sm font-semibold text-gray-900 dark:text-white">Grading Criteria</h5>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">
+                              {{ getReviewCompletion(selectedManualGradingProfile, manualGradingReviewForm).label }}
+                            </p>
+                          </div>
+                          <span
+                            v-if="selectedManualGradingReview"
+                            class="inline-flex rounded-full px-3 py-1 text-sm font-semibold"
+                            :class="selectedManualGradingReview.adherenceScore >= 80
+                              ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                              : selectedManualGradingReview.adherenceScore >= 60
+                              ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400'
+                              : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'"
+                          >
+                            {{ selectedManualGradingReview.grade ? `Grade ${selectedManualGradingReview.grade}` : `${Number(selectedManualGradingReview.adherenceScore || 0).toFixed(2)} score` }}
+                          </span>
+                        </div>
+
+                        <div class="space-y-3">
+                          <div
+                            v-for="item in manualGradingReviewForm.checklistResponses"
+                            :key="item.checklistItemId"
+                            class="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-3"
+                          >
+                            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                              <div class="min-w-0">
+                                <div class="text-sm font-medium text-gray-900 dark:text-white">
+                                  {{ item.label }}
+                                </div>
+                                <div class="mt-1 flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400">
+                                  <span>Weight {{ Number(item.weight || 1).toFixed(2) }}</span>
+                                  <span v-if="item.isRequired" class="text-orange-600 dark:text-orange-400">Required</span>
+                                </div>
+                              </div>
+                              <div class="flex items-center gap-3 sm:w-56">
+                                <input
+                                  v-model.number="item.score"
+                                  type="range"
+                                  min="0"
+                                  max="5"
+                                  step="0.5"
+                                  class="w-full accent-primary-600"
+                                />
+                                <input
+                                  v-model.number="item.score"
+                                  type="number"
+                                  min="0"
+                                  max="5"
+                                  step="0.5"
+                                  class="input w-20"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-4">
+                        <div>
+                          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Grading notes</label>
+                          <textarea
+                            v-model="manualGradingReviewForm.reviewNotes"
+                            rows="6"
+                            class="input"
+                            placeholder="Why did this setup deserve this grade?"
+                          ></textarea>
+                        </div>
+
+                        <button
+                          @click="saveTradeReview('manual_grading')"
+                          :disabled="savingManualGradingReview || selectedManualGradingProfile?.isActive === false"
+                          class="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {{ savingManualGradingReview ? 'Saving...' : 'Save Manual Grade' }}
+                        </button>
+                        <p v-if="selectedManualGradingProfile?.isActive === false" class="text-xs text-amber-600 dark:text-amber-400">
+                          Archived grading profiles remain visible on old reviews but cannot be used for new submissions.
+                        </p>
                       </div>
                     </div>
-                  </div>
 
-                  <p v-else class="text-sm text-gray-500 dark:text-gray-400">
-                    Save a review to evaluate stop loss, target R, side, timeframe, and any configured strategy/setup/tag rules.
-                  </p>
+                    <div v-if="selectedManualGradingProfile" class="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                      <div class="flex items-center justify-between mb-3">
+                        <div>
+                          <h5 class="text-sm font-semibold text-gray-900 dark:text-white">Profile Rule Results</h5>
+                          <p class="text-xs text-gray-500 dark:text-gray-400">
+                            Fixed checks still apply after the manual criterion score is calculated.
+                          </p>
+                        </div>
+                        <div v-if="selectedManualGradingReview?.reviewedAt" class="text-xs text-gray-500 dark:text-gray-400">
+                          Reviewed {{ formatDateTime(selectedManualGradingReview.reviewedAt) }}
+                        </div>
+                      </div>
+
+                      <div v-if="selectedManualGradingReview?.ruleResults?.length" class="space-y-3">
+                        <div
+                          v-for="rule in selectedManualGradingReview.ruleResults"
+                          :key="rule.key"
+                          class="rounded-lg border px-3 py-3"
+                          :class="rule.passed
+                            ? 'border-green-200 bg-green-50 dark:border-green-900/40 dark:bg-green-900/10'
+                            : 'border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-900/10'"
+                        >
+                          <div class="flex items-center justify-between gap-4">
+                            <div class="text-sm font-medium text-gray-900 dark:text-white">{{ rule.label }}</div>
+                            <span :class="rule.passed ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'" class="text-xs font-semibold uppercase tracking-wide">
+                              {{ rule.passed ? 'Passed' : 'Failed' }}
+                            </span>
+                          </div>
+                          <div class="mt-2 text-xs text-gray-600 dark:text-gray-400">
+                            <div><span class="font-medium">Expected:</span> {{ Array.isArray(rule.expected) ? rule.expected.join(', ') : (rule.expected || 'N/A') }}</div>
+                            <div><span class="font-medium">Actual:</span> {{ Array.isArray(rule.actual) ? rule.actual.join(', ') : (rule.actual || 'N/A') }}</div>
+                            <div v-if="rule.violationMessage" class="mt-1 text-red-700 dark:text-red-300">{{ rule.violationMessage }}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <p v-else class="text-sm text-gray-500 dark:text-gray-400">
+                        Save a manual grading review to evaluate any configured side, timeframe, stop loss, target R, strategy, setup, or tag rules.
+                      </p>
+                    </div>
+                  </template>
                 </div>
               </div>
             </div>
@@ -1521,7 +1594,7 @@ import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { format, formatDistanceToNow, formatDistance } from 'date-fns'
-import { DocumentIcon, ChatBubbleLeftIcon, SparklesIcon, ShareIcon } from '@heroicons/vue/24/outline'
+import { DocumentIcon, ChatBubbleLeftIcon, SparklesIcon, ShareIcon, TrashIcon } from '@heroicons/vue/24/outline'
 import TradeShareCard from '@/components/trades/TradeShareCard.vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import api from '@/services/api'
@@ -1541,7 +1614,7 @@ const router = useRouter()
 const tradesStore = useTradesStore()
 const authStore = useAuthStore()
 const aiStore = useAIStore()
-const { showSuccess, showError, showConfirmation } = useNotification()
+const { showSuccess, showError, showConfirmation, showDangerConfirmation } = useNotification()
 const { formatDateTime: formatDateTimeTz, formatTime: formatTimeTz, timezoneLabel } = useUserTimezone()
 const { formatCurrency, currencySymbol, formatSignedCurrency } = useCurrencyFormatter()
 
@@ -1590,24 +1663,41 @@ const splittingTrade = ref(false)
 const splitMode = ref(false)
 const selectedExecutions = ref(new Set())
 const playbooks = ref([])
-const playbookOptions = computed(() =>
-  playbooks.value.map(playbook => ({
+const adherencePlaybooks = computed(() => playbooks.value.filter(playbook => playbook.reviewMode !== 'score'))
+const manualGradingProfiles = computed(() => playbooks.value.filter(playbook => playbook.reviewMode === 'score'))
+const adherencePlaybookOptions = computed(() =>
+  adherencePlaybooks.value.map(playbook => ({
     value: playbook.id,
     label: `${playbook.name}${playbook.isActive === false ? ' (Archived)' : ''}`,
     disabled: playbook.isActive === false && playbook.id !== trade.value?.playbookId
   }))
 )
+const manualGradingProfileOptions = computed(() =>
+  manualGradingProfiles.value.map(playbook => ({
+    value: playbook.id,
+    label: `${playbook.name}${playbook.isActive === false ? ' (Archived)' : ''}`,
+    disabled: playbook.isActive === false && playbook.id !== trade.value?.manualGradingProfileId
+  }))
+)
 const loadingPlaybooks = ref(false)
-const savingPlaybookReview = ref(false)
+const savingAdherenceReview = ref(false)
+const savingManualGradingReview = ref(false)
 const showAIPanel = ref(false)
 const showShareCard = ref(false)
 const storedAIAnalyses = ref([])
 const storedAIExpanded = ref(false)
 const loadingStoredAIAnalyses = ref(false)
-const selectedPlaybookId = ref('')
-const reviewForm = reactive({
+const clearingStoredAIAnalyses = ref(false)
+const deletingStoredAIAnalysisId = ref(null)
+const selectedAdherencePlaybookId = ref('')
+const selectedManualGradingProfileId = ref('')
+const adherenceReviewForm = reactive({
   checklistResponses: [],
   followedPlan: '',
+  reviewNotes: ''
+})
+const manualGradingReviewForm = reactive({
+  checklistResponses: [],
   reviewNotes: ''
 })
 
@@ -1616,25 +1706,44 @@ const isPlaybookFeatureAvailable = computed(() => {
   return authStore.user.billingEnabled === false || authStore.user.tier === 'pro' || authStore.user.role === 'admin'
 })
 
-const selectedPlaybook = computed(() => {
-  return playbooks.value.find(playbook => playbook.id === selectedPlaybookId.value) || null
+const selectedAdherencePlaybook = computed(() => {
+  return adherencePlaybooks.value.find(playbook => playbook.id === selectedAdherencePlaybookId.value) || null
 })
 
-const selectedReview = computed(() => {
-  const review = trade.value?.playbookReview
-  if (!review || review.playbookId !== selectedPlaybookId.value) {
+const selectedManualGradingProfile = computed(() => {
+  return manualGradingProfiles.value.find(playbook => playbook.id === selectedManualGradingProfileId.value) || null
+})
+
+const selectedAdherenceReview = computed(() => {
+  const review = trade.value?.playbookAdherenceReview
+  if (!review || review.playbookId !== selectedAdherencePlaybookId.value) {
     return null
   }
   return review
 })
 
-const checklistCompletion = computed(() => {
+const selectedManualGradingReview = computed(() => {
+  const review = trade.value?.manualGradingReview
+  if (!review || review.playbookId !== selectedManualGradingProfileId.value) {
+    return null
+  }
+  return review
+})
+
+function getReviewCompletion(playbook, reviewForm) {
   const total = reviewForm.checklistResponses.length
-  if (total === 0) return { checked: 0, total: 0 }
+  if (!playbook) {
+    return { label: 'No profile selected' }
+  }
+
+  if (playbook.reviewMode === 'score') {
+    const scored = reviewForm.checklistResponses.filter(item => Number(item.score) > 0).length
+    return { label: `${scored}/${total} criteria scored` }
+  }
 
   const checked = reviewForm.checklistResponses.filter(item => item.checked).length
-  return { checked, total }
-})
+  return { label: `${checked}/${total} items checked` }
+}
 
 const storedAIResponseCount = computed(() => {
   return storedAIAnalyses.value.reduce((sum, analysis) => sum + (analysis.response_count || 0), 0)
@@ -1653,6 +1762,66 @@ const formatFloat = (value) => {
   if (isNaN(num)) return 'N/A'
   return num.toFixed(2) + 'M'
 }
+
+// User's quality grading weights, for the breakdown display (defaults until fetched)
+// Quality weight profiles, for showing each metric's configured weight
+const qualityProfiles = ref(null)
+
+async function fetchQualityWeights() {
+  try {
+    const response = await api.get('/users/quality-weights')
+    qualityProfiles.value = response.data.profiles || { stock: response.data.qualityWeights }
+  } catch (error) {
+    console.error('Error fetching quality weights:', error)
+  }
+}
+
+// Helper: build a breakdown row from stored metric fields
+function buildQualityRow(m, { key, label, weight, valueField, scoreField, format }) {
+  const raw = m[valueField]
+  const rawScore = m[scoreField]
+  return {
+    key,
+    label,
+    weight,
+    raw,
+    rawScore,
+    display: raw != null ? format(raw) : 'N/A',
+    excluded: raw == null || rawScore == null,
+    score: getScore(rawScore)
+  }
+}
+
+const qualityBreakdown = computed(() => {
+  const m = trade.value?.qualityMetrics
+  if (!m) return []
+
+  // Resolve the grading profile (stored on the metrics; legacy rows are stock)
+  const profileType = m.profile === 'option' ? 'option' : 'stock'
+  const w = qualityProfiles.value?.[profileType] || {}
+
+  const signedPct = (v) => (Number(v) > 0 ? '+' : '') + Number(v).toFixed(2) + '%'
+
+  if (profileType === 'option') {
+    return [
+      { key: 'newsSentiment', label: 'News Sentiment', weight: w.news ?? 25, valueField: 'newsSentiment', scoreField: 'newsSentimentScore', format: v => Number(v).toFixed(2) },
+      { key: 'gap', label: 'Underlying Gap', weight: w.gap ?? 15, valueField: 'gap', scoreField: 'gapScore', format: signedPct },
+      { key: 'relativeVolume', label: 'Underlying Relative Volume', weight: w.relativeVolume ?? 15, valueField: 'relativeVolume', scoreField: 'relativeVolumeScore', format: v => Number(v).toFixed(1) + 'x' },
+      { key: 'dte', label: 'Days to Expiration', weight: w.dte ?? 25, valueField: 'dte', scoreField: 'dteScore', format: v => `${Number(v)} day${Number(v) === 1 ? '' : 's'}` },
+      { key: 'moneyness', label: 'Strike Distance (Moneyness)', weight: w.moneyness ?? 20, valueField: 'moneyness', scoreField: 'moneynessScore', format: v => `${signedPct(v)} ITM` }
+    ].map(def => buildQualityRow(m, def))
+  }
+
+  return [
+    { key: 'newsSentiment', label: 'News Sentiment', weight: w.news ?? 30, valueField: 'newsSentiment', scoreField: 'newsSentimentScore', format: v => Number(v).toFixed(2) },
+    { key: 'gap', label: 'Gap from Previous Close', weight: w.gap ?? 20, valueField: 'gap', scoreField: 'gapScore', format: signedPct },
+    { key: 'relativeVolume', label: 'Relative Volume', weight: w.relativeVolume ?? 20, valueField: 'relativeVolume', scoreField: 'relativeVolumeScore', format: v => Number(v).toFixed(1) + 'x' },
+    { key: 'float', label: 'Float (Shares Outstanding)', weight: w.float ?? 15, valueField: 'float', scoreField: 'floatScore', format: v => formatFloat(v) },
+    { key: 'priceRange', label: 'Price Range', weight: w.priceRange ?? 15, valueField: 'price', scoreField: 'priceScore', format: v => formatCurrency(v) }
+  ].map(def => buildQualityRow(m, def))
+})
+
+const hasExcludedQualityMetrics = computed(() => qualityBreakdown.value.some(metric => metric.excluded))
 
 // Comments state
 const comments = ref([])
@@ -1686,7 +1855,7 @@ function toggleAIPanel() {
 
 // Computed property to check if quality calculation is incomplete
 const hasIncompleteQuality = computed(() => {
-  if (!trade.value || !trade.value.qualityGrade || !trade.value.qualityMetrics) {
+  if (!trade.value || !trade.value.qualityMetrics) {
     return false
   }
 
@@ -1712,32 +1881,44 @@ function buildChecklistResponses(playbook, existingReview = null) {
     checklistItemId: item.id,
     label: item.label,
     checked: storedResponses.get(item.id)?.checked === true,
+    score: Number(storedResponses.get(item.id)?.score ?? 0),
     isRequired: item.isRequired === true,
     weight: item.weight ?? 1
   }))
 }
 
-function syncReviewForm() {
-  const playbook = selectedPlaybook.value
-  const review = selectedReview.value
-
+function syncReviewForm(playbook, review, form, includeFollowedPlan = false) {
   if (!playbook) {
-    reviewForm.checklistResponses = []
-    reviewForm.followedPlan = ''
-    reviewForm.reviewNotes = ''
+    form.checklistResponses = []
+    if (includeFollowedPlan && 'followedPlan' in form) {
+      form.followedPlan = ''
+    }
+    form.reviewNotes = ''
     return
   }
 
-  reviewForm.checklistResponses = buildChecklistResponses(playbook, review)
-  reviewForm.followedPlan = review?.followedPlan === true ? 'true' : review?.followedPlan === false ? 'false' : ''
-  reviewForm.reviewNotes = review?.reviewNotes || ''
+  form.checklistResponses = buildChecklistResponses(playbook, review)
+  if (includeFollowedPlan && 'followedPlan' in form) {
+    form.followedPlan = review?.followedPlan === true ? 'true' : review?.followedPlan === false ? 'false' : ''
+  }
+  form.reviewNotes = review?.reviewNotes || ''
+}
+
+function syncAdherenceReviewForm() {
+  syncReviewForm(selectedAdherencePlaybook.value, selectedAdherenceReview.value, adherenceReviewForm, true)
+}
+
+function syncManualGradingReviewForm() {
+  syncReviewForm(selectedManualGradingProfile.value, selectedManualGradingReview.value, manualGradingReviewForm, false)
 }
 
 async function loadPlaybooks() {
   if (!isPlaybookFeatureAvailable.value) {
     playbooks.value = []
-    selectedPlaybookId.value = ''
-    syncReviewForm()
+    selectedAdherencePlaybookId.value = ''
+    selectedManualGradingProfileId.value = ''
+    syncAdherenceReviewForm()
+    syncManualGradingReviewForm()
     return
   }
 
@@ -1746,56 +1927,113 @@ async function loadPlaybooks() {
     const response = await api.get('/playbooks', { params: { includeArchived: true } })
     playbooks.value = response.data.playbooks || []
 
-    if (trade.value?.playbookReview?.playbookId) {
-      selectedPlaybookId.value = trade.value.playbookReview.playbookId
-    } else if (selectedPlaybookId.value && playbooks.value.some(playbook => playbook.id === selectedPlaybookId.value)) {
-      selectedPlaybookId.value = selectedPlaybookId.value
+    if (trade.value?.playbookAdherenceReview?.playbookId) {
+      selectedAdherencePlaybookId.value = trade.value.playbookAdherenceReview.playbookId
+    } else if (trade.value?.suggestedPlaybookId && adherencePlaybooks.value.some(playbook => playbook.id === trade.value.suggestedPlaybookId)) {
+      selectedAdherencePlaybookId.value = trade.value.suggestedPlaybookId
+    } else if (selectedAdherencePlaybookId.value && adherencePlaybooks.value.some(playbook => playbook.id === selectedAdherencePlaybookId.value)) {
+      selectedAdherencePlaybookId.value = selectedAdherencePlaybookId.value
     } else {
-      selectedPlaybookId.value = ''
+      selectedAdherencePlaybookId.value = ''
     }
 
-    syncReviewForm()
+    if (trade.value?.manualGradingReview?.playbookId) {
+      selectedManualGradingProfileId.value = trade.value.manualGradingReview.playbookId
+    } else if (
+      trade.value?.suggestedManualGradingProfileId
+      && manualGradingProfiles.value.some(playbook => playbook.id === trade.value.suggestedManualGradingProfileId)
+    ) {
+      selectedManualGradingProfileId.value = trade.value.suggestedManualGradingProfileId
+    } else if (
+      selectedManualGradingProfileId.value
+      && manualGradingProfiles.value.some(playbook => playbook.id === selectedManualGradingProfileId.value)
+    ) {
+      selectedManualGradingProfileId.value = selectedManualGradingProfileId.value
+    } else {
+      selectedManualGradingProfileId.value = ''
+    }
+
+    syncAdherenceReviewForm()
+    syncManualGradingReviewForm()
   } catch (error) {
-    console.error('Failed to load playbooks:', error)
-    showError('Error', 'Failed to load playbooks')
+    console.error('Failed to load profiles:', error)
+    showError('Error', 'Failed to load profiles')
   } finally {
     loadingPlaybooks.value = false
   }
 }
 
-function onPlaybookChange() {
-  syncReviewForm()
+function onAdherencePlaybookChange() {
+  syncAdherenceReviewForm()
 }
 
-async function savePlaybookReview() {
-  if (!trade.value?.id || !selectedPlaybookId.value) {
-    showError('Validation', 'Select a playbook before saving a review')
+function onManualGradingProfileChange() {
+  syncManualGradingReviewForm()
+}
+
+async function saveTradeReview(reviewType) {
+  const isManualGrading = reviewType === 'manual_grading'
+  const selectedPlaybookId = isManualGrading ? selectedManualGradingProfileId.value : selectedAdherencePlaybookId.value
+  const selectedPlaybook = isManualGrading ? selectedManualGradingProfile.value : selectedAdherencePlaybook.value
+  const reviewForm = isManualGrading ? manualGradingReviewForm : adherenceReviewForm
+  const savingRef = isManualGrading ? savingManualGradingReview : savingAdherenceReview
+
+  if (!trade.value?.id || !selectedPlaybookId) {
+    showError('Validation', `Select a ${isManualGrading ? 'manual grading profile' : 'playbook'} before saving`)
     return
   }
 
+  const isScoreMode = selectedPlaybook?.reviewMode === 'score'
+  if (isScoreMode) {
+    const invalidScore = reviewForm.checklistResponses.some(item => {
+      const score = Number(item.score)
+      return !Number.isFinite(score) || score < 0 || score > 5
+    })
+    if (invalidScore) {
+      showError('Validation', 'Criterion scores must be between 0 and 5')
+      return
+    }
+  }
+
   try {
-    savingPlaybookReview.value = true
+    savingRef.value = true
     const response = await api.put(`/playbooks/trades/${trade.value.id}/review`, {
-      playbookId: selectedPlaybookId.value,
+      playbookId: selectedPlaybookId,
       checklistResponses: reviewForm.checklistResponses.map(item => ({
         checklistItemId: item.checklistItemId,
-        checked: item.checked === true
+        ...(isScoreMode
+          ? { score: Number(item.score) || 0 }
+          : { checked: item.checked === true })
       })),
-      followedPlan: reviewForm.followedPlan === ''
+      followedPlan: isManualGrading
         ? null
-        : reviewForm.followedPlan === 'true',
+        : reviewForm.followedPlan === ''
+          ? null
+          : reviewForm.followedPlan === 'true',
       reviewNotes: reviewForm.reviewNotes?.trim() || null
     })
 
-    trade.value.playbookId = response.data.review.playbookId
-    trade.value.playbookReview = response.data.review
-    syncReviewForm()
-    showSuccess('Success', 'Playbook review saved')
+    if (isManualGrading) {
+      trade.value.manualGradingReview = response.data.review
+      trade.value.manualGradingProfileId = response.data.review.playbookId
+      trade.value.suggestedManualGradingProfile = null
+      trade.value.suggestedManualGradingProfileId = null
+      syncManualGradingReviewForm()
+      showSuccess('Success', 'Manual grading saved')
+    } else {
+      trade.value.playbookId = response.data.review.playbookId
+      trade.value.playbookReview = response.data.review
+      trade.value.playbookAdherenceReview = response.data.review
+      trade.value.suggestedPlaybook = null
+      trade.value.suggestedPlaybookId = null
+      syncAdherenceReviewForm()
+      showSuccess('Success', 'Playbook review saved')
+    }
   } catch (error) {
-    console.error('Failed to save playbook review:', error)
-    showError('Error', error.response?.data?.error || 'Failed to save playbook review')
+    console.error(`Failed to save ${reviewType} review:`, error)
+    showError('Error', error.response?.data?.error || `Failed to save ${isManualGrading ? 'manual grading' : 'playbook review'}`)
   } finally {
-    savingPlaybookReview.value = false
+    savingRef.value = false
   }
 }
 
@@ -2090,6 +2328,12 @@ function formatNumber(num, decimals = 2) {
   }).format(num || 0)
 }
 
+function formatPercentValue(value) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return '0%'
+  return `${Math.round(numeric * 100)}%`
+}
+
 // Redact account identifier for privacy (show only last 4 characters)
 function redactAccountId(accountId) {
   if (!accountId) return null
@@ -2152,6 +2396,25 @@ function formatAIModelLabel(metadata) {
   const model = metadata.model ? String(metadata.model) : ''
   if (provider && model) return `${provider} / ${model}`
   return model || provider
+}
+
+function formatAIContextSources(metadata) {
+  const sources = Array.isArray(metadata?.context_sources) ? metadata.context_sources : []
+  const labels = sources
+    .map(source => ({
+      automated_setup_quality: 'Setup Quality',
+      playbook_assessment: 'Playbook',
+      manual_grading_profile: 'Manual Grade'
+    }[source]))
+    .filter(Boolean)
+
+  return labels.length ? `Context: ${labels.join(', ')}` : ''
+}
+
+function formatPositionGroupLabel(group) {
+  if (!group) return ''
+  const label = (group.strategy_label || 'multi-leg strategy').replace(/\b\w/g, c => c.toUpperCase())
+  return group.leg_count ? `${label} (${group.leg_count} legs)` : label
 }
 
 function calculateRiskReward() {
@@ -2470,6 +2733,17 @@ async function calculateQuality() {
     }
   } catch (error) {
     console.error('Error calculating quality:', error)
+    const partialQuality = error.response?.data?.quality
+    if (partialQuality?.metrics) {
+      trade.value.qualityGrade = null
+      trade.value.qualityScore = null
+      trade.value.qualityMetrics = partialQuality.metrics
+      trade.value.setupQuality = {
+        grade: null,
+        score: null,
+        metrics: partialQuality.metrics
+      }
+    }
     showError('Error', error.response?.data?.error || 'Failed to calculate setup quality')
   } finally {
     calculatingQuality.value = false
@@ -2494,6 +2768,7 @@ async function loadTrade() {
       await loadPlaybooks()
       loadComments()
       loadStoredAIAnalyses()
+      fetchQualityWeights()
     }
   } catch (error) {
     // A guest hitting a private/non-existent trade gets a 404; send them to login
@@ -2522,6 +2797,52 @@ async function loadStoredAIAnalyses() {
   } finally {
     loadingStoredAIAnalyses.value = false
   }
+}
+
+function clearStoredAIAnalyses() {
+  const tradeId = trade.value?.id || route.params.id
+  if (!tradeId || clearingStoredAIAnalyses.value) return
+
+  showDangerConfirmation(
+    'Clear stored AI responses',
+    'This permanently deletes all stored AI analysis responses for this trade. It does not delete the trade or refund AI credits.',
+    async () => {
+      try {
+        clearingStoredAIAnalyses.value = true
+        const response = await api.delete(`/ai/trades/${tradeId}/analyses`)
+        storedAIAnalyses.value = []
+        storedAIExpanded.value = false
+        showSuccess('Success', `${response.data.deleted_count || 0} stored AI analysis session${response.data.deleted_count === 1 ? '' : 's'} deleted`)
+      } catch (error) {
+        showError('Error', error.response?.data?.message || 'Failed to clear stored AI responses')
+      } finally {
+        clearingStoredAIAnalyses.value = false
+      }
+    },
+    { confirmText: 'Clear responses' }
+  )
+}
+
+function deleteStoredAIAnalysis(analysis) {
+  const tradeId = trade.value?.id || route.params.id
+  if (!tradeId || !analysis?.id || deletingStoredAIAnalysisId.value) return
+
+  showDangerConfirmation(
+    'Delete stored AI analysis',
+    'This permanently deletes this stored AI analysis session and its responses.',
+    async () => {
+      try {
+        deletingStoredAIAnalysisId.value = analysis.id
+        await api.delete(`/ai/trades/${tradeId}/analyses/${analysis.id}`)
+        await loadStoredAIAnalyses()
+        showSuccess('Success', 'Stored AI analysis deleted')
+      } catch (error) {
+        showError('Error', error.response?.data?.message || 'Failed to delete stored AI analysis')
+      } finally {
+        deletingStoredAIAnalysisId.value = null
+      }
+    }
+  )
 }
 
 function handleImageDeleted(imageId) {

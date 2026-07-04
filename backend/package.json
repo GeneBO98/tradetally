@@ -1,6 +1,6 @@
 {
   "name": "tradetally-backend",
-  "version": "2.7.4",
+  "version": "2.7.5",
   "packageManager": "pnpm@10.13.1",
   "description": "Backend API for TradeTally trade journaling platform",
   "main": "src/server.js",
@@ -28,7 +28,6 @@
     "soak:execution": "node scripts/soak-execution-endpoints.js",
     "load:execution:disposable": "../scripts/load-test-disposable-db.sh",
     "migrate:export": "node run-export-migration.js",
-    "announce:release": "node scripts/send_release_announcement.js",
     "test:integration": "jest --config jest.integration.config.js"
   },
   "dependencies": {

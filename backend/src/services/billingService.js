@@ -791,11 +791,6 @@ class BillingService {
       WHERE stripe_subscription_id = $1
     `;
     await db.query(updateQuery, [subscription.id]);
-
-    const userResult = await db.query(
-      `SELECT user_id FROM subscriptions WHERE stripe_subscription_id = $1 LIMIT 1`,
-      [subscription.id]
-    );
   }
 
   // Handle successful payment

@@ -20,7 +20,7 @@
           "commission": 2,
           "fees": 0.25,
           "pnl": 197.75,
-          "pnl_percent": 20,
+          "pnl_percent": 19.775,
           "is_fully_closed": true
         },
         "realized_pnl": [null, 197.75]
@@ -46,7 +46,7 @@
           "commission": 1,
           "fees": 0.1,
           "pnl": 98.9,
-          "pnl_percent": 10,
+          "pnl_percent": 9.89,
           "is_fully_closed": true
         },
         "realized_pnl": [null, 98.9]
@@ -73,7 +73,7 @@
           "commission": 2,
           "fees": 0.2,
           "pnl": 147.8,
-          "pnl_percent": 50,
+          "pnl_percent": 49.2666666667,
           "is_fully_closed": true
         },
         "realized_pnl": [null, 147.8]
@@ -127,7 +127,7 @@
           "commission": 2,
           "fees": 0.2,
           "pnl": 157.8,
-          "pnl_percent": 16,
+          "pnl_percent": 15.78,
           "is_fully_closed": true
         },
         "realized_pnl": [null, 39.12, 118.68]
@@ -153,7 +153,7 @@
           "commission": 1.5,
           "fees": 0.3,
           "pnl": 128.2,
-          "pnl_percent": 8.6092715232,
+          "pnl_percent": 8.4900662252,
           "is_fully_closed": true
         },
         "realized_pnl": [98.8, 29.4]
@@ -182,7 +182,7 @@
           "commission": 0,
           "fees": -1.53244,
           "pnl": 189.53244,
-          "pnl_percent": 100,
+          "pnl_percent": 100.8151276596,
           "is_fully_closed": true
         },
         "realized_pnl": [null, 189.53244]

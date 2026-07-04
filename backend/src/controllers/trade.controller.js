@@ -22,6 +22,7 @@ const axios = require('axios');
 const { sendV1NotImplemented } = require('../utils/apiResponse');
 const { getUserTimezone } = require('../utils/timezone');
 const Playbook = require('../models/Playbook');
+const PlaybookAdherenceService = require('../services/playbookAdherence.service');
 const MAEEstimator = require('../utils/maeEstimator');
 const TierService = require('../services/tierService');
 const { verifyJwtToken, TOKEN_PURPOSES } = require('../middleware/auth');
@@ -31,6 +32,7 @@ const {
   getBrokerLookupNames
 } = require('../services/brokerFeeApplicationService');
 const OptionStrategyGroupingService = require('../services/optionStrategyGroupingService');
+const AmbiguousTradeReviewService = require('../services/ambiguousTradeReviewService');
 
 function marketDataApiKeyName() {
   return finnhub.providerName === 'fmp' ? 'FMP_API_KEY' : 'FINNHUB_API_KEY';
@@ -127,8 +129,51 @@ function mapTradeReviewSummary(review) {
     adherenceScore: review.adherence_score !== null && review.adherence_score !== undefined
       ? Number(review.adherence_score)
       : null,
+    grade: review.playbook_review_mode === 'score'
+      ? PlaybookAdherenceService.scoreToGrade(review.adherence_score)
+      : null,
+    reviewMode: review.playbook_review_mode === 'score' ? 'score' : 'checklist',
     followedPlan: review.followed_plan,
     reviewedAt: review.reviewed_at
+  };
+}
+
+function mapSuggestedPlaybook(playbook) {
+  if (!playbook) return null;
+
+  return {
+    id: playbook.id,
+    name: playbook.name,
+    reviewMode: playbook.review_mode === 'score' ? 'score' : 'checklist'
+  };
+}
+
+function mapTradeReview(review) {
+  if (!review) return null;
+
+  return {
+    id: review.id,
+    tradeId: review.trade_id,
+    playbookId: review.playbook_id,
+    playbookName: review.playbook_name,
+    adherenceScore: review.adherence_score !== null && review.adherence_score !== undefined
+      ? Number(review.adherence_score)
+      : null,
+    checklistScore: review.checklist_score !== null && review.checklist_score !== undefined
+      ? Number(review.checklist_score)
+      : null,
+    grade: review.playbook_review_mode === 'score'
+      ? PlaybookAdherenceService.scoreToGrade(review.adherence_score)
+      : null,
+    reviewMode: review.playbook_review_mode === 'score' ? 'score' : 'checklist',
+    reviewType: review.review_type || 'adherence',
+    followedPlan: review.followed_plan,
+    reviewNotes: review.review_notes,
+    checklistResponses: review.checklist_responses || [],
+    ruleResults: review.rule_results || [],
+    violationSummary: review.violation_summary || [],
+    reviewedAt: review.reviewed_at,
+    updatedAt: review.updated_at
   };
 }
 
@@ -155,6 +200,7 @@ function getPositiveIntEnv(name, fallback) {
 
 const OPEN_POSITIONS_ALPACA_TIMEOUT_MS = getPositiveIntEnv('OPEN_POSITIONS_ALPACA_TIMEOUT_MS', 3000);
 const OPEN_POSITIONS_FINNHUB_TIMEOUT_MS = getPositiveIntEnv('OPEN_POSITIONS_FINNHUB_TIMEOUT_MS', 3000);
+const TRADE_LIST_PRICE_FRESH_MS = getPositiveIntEnv('TRADE_LIST_PRICE_FRESH_MS', 2 * 60 * 1000);
 
 function getPositiveInt(value) {
   const parsed = parseInt(value, 10);
@@ -381,6 +427,112 @@ function enrichOpenTradePnL(trade) {
 
 const TRADE_DETAIL_QUOTE_TIMEOUT_MS = OPEN_POSITIONS_FINNHUB_TIMEOUT_MS;
 
+function isOpenTradeForQuoteHydration(trade) {
+  const isOpen = !trade.exit_price && !trade.exit_time;
+  const instrumentType = trade.instrument_type || trade.instrumentType || 'stock';
+  return isOpen && instrumentType !== 'option';
+}
+
+function isFreshPositivePrice(trade) {
+  const price = Number(trade.current_price);
+  if (!Number.isFinite(price) || price <= 0) return false;
+
+  const updatedAt = trade.current_price_updated_at || trade.currentPriceUpdatedAt;
+  if (!updatedAt) return false;
+
+  const updatedTime = new Date(updatedAt).getTime();
+  return Number.isFinite(updatedTime) && Date.now() - updatedTime <= TRADE_LIST_PRICE_FRESH_MS;
+}
+
+async function persistTradeListQuote(symbol, quote) {
+  const currentPrice = Number(quote?.c);
+  if (!symbol || !Number.isFinite(currentPrice) || currentPrice <= 0) return;
+
+  const previousClose = Number(quote?.pc) || 0;
+  const priceChange = Number.isFinite(Number(quote?.d))
+    ? Number(quote.d)
+    : (previousClose > 0 ? currentPrice - previousClose : 0);
+  const percentChange = Number.isFinite(Number(quote?.dp))
+    ? Number(quote.dp)
+    : (previousClose > 0 ? (priceChange / previousClose) * 100 : 0);
+
+  try {
+    await db.query(`
+      INSERT INTO price_monitoring (symbol, current_price, previous_price, price_change, percent_change, high_of_day, low_of_day, open_price, data_source)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      ON CONFLICT (symbol) DO UPDATE SET
+        previous_price = $3,
+        current_price = $2,
+        price_change = $4,
+        percent_change = $5,
+        high_of_day = COALESCE($6, price_monitoring.high_of_day),
+        low_of_day = COALESCE($7, price_monitoring.low_of_day),
+        open_price = COALESCE($8, price_monitoring.open_price),
+        last_updated = CURRENT_TIMESTAMP,
+        data_source = $9
+    `, [
+      symbol,
+      currentPrice,
+      previousClose,
+      priceChange,
+      percentChange,
+      Number.isFinite(Number(quote?.h)) ? Number(quote.h) : null,
+      Number.isFinite(Number(quote?.l)) ? Number(quote.l) : null,
+      Number.isFinite(Number(quote?.o)) ? Number(quote.o) : null,
+      finnhub.providerName || 'market_data'
+    ]);
+  } catch (error) {
+    console.warn('[TRADE-LIST] Failed to persist quote for', symbol, '-', error.message);
+  }
+}
+
+async function hydrateOpenTradePrices(trades, userId) {
+  const openTrades = trades.filter(isOpenTradeForQuoteHydration);
+  if (openTrades.length === 0) return;
+
+  const symbolsToFetch = new Set();
+  for (const trade of openTrades) {
+    if (isFreshPositivePrice(trade)) continue;
+
+    // Do not let stale price_monitoring rows drive current unrealized P&L.
+    trade.current_price = null;
+    const symbol = trade.underlying_symbol || trade.symbol;
+    if (symbol) symbolsToFetch.add(String(symbol).toUpperCase());
+  }
+
+  if (symbolsToFetch.size === 0 || !finnhub.isConfigured()) return;
+
+  try {
+    const symbols = [...symbolsToFetch];
+    const quotes = await timeAsyncOperation('tradeList.finnhubQuoteFetch', () => withTimeout(
+      finnhub.getBatchQuotes(symbols, {
+        source: 'trade_list',
+        priority: 0,
+        userId,
+        maxQueueWaitMs: OPEN_POSITIONS_FINNHUB_TIMEOUT_MS
+      }),
+      OPEN_POSITIONS_FINNHUB_TIMEOUT_MS,
+      'Trade list quote fetch'
+    ));
+
+    const persistJobs = [];
+    for (const trade of openTrades) {
+      const symbol = String(trade.underlying_symbol || trade.symbol || '').toUpperCase();
+      const quote = quotes?.[symbol];
+      const price = Number(quote?.c);
+      if (!Number.isFinite(price) || price <= 0) continue;
+
+      trade.current_price = price;
+      trade.currentPrice = price;
+      persistJobs.push(persistTradeListQuote(symbol, quote));
+    }
+
+    await Promise.allSettled(persistJobs);
+  } catch (error) {
+    console.warn('[TRADE-LIST] Quote hydration failed:', error.message);
+  }
+}
+
 // Best-effort current price for a single open stock/futures position, using the
 // same sources as the dashboard Open Positions table: the price_monitoring cache
 // (kept warm by the price monitor) first, then a single Finnhub quote. Never
@@ -484,6 +636,8 @@ const tradeController = {
       console.log('[PERF] About to call TradeQueries.findByUser, elapsed:', Date.now() - requestStartTime, 'ms');
       const trades = await TradeQueries.findByUser(req.user.id, filters);
       console.log('[PERF] TradeQueries.findByUser completed, elapsed:', Date.now() - requestStartTime, 'ms');
+
+      await hydrateOpenTradePrices(trades, req.user.id);
 
       // Map snake_case database fields to camelCase for API response
       trades.forEach(trade => {
@@ -990,30 +1144,40 @@ const tradeController = {
       if (trade.quality_metrics !== undefined) trade.qualityMetrics = trade.quality_metrics;
 
       if (req.user?.id) {
-        const review = await Playbook.getTradeReviewByTradeId(tradeId, req.user.id);
-        trade.playbookId = review?.playbook_id || null;
-        trade.playbookReview = review ? {
-          id: review.id,
-          tradeId: review.trade_id,
-          playbookId: review.playbook_id,
-          playbookName: review.playbook_name,
-          adherenceScore: review.adherence_score !== null && review.adherence_score !== undefined
-            ? Number(review.adherence_score)
-            : null,
-          checklistScore: review.checklist_score !== null && review.checklist_score !== undefined
-            ? Number(review.checklist_score)
-            : null,
-          followedPlan: review.followed_plan,
-          reviewNotes: review.review_notes,
-          checklistResponses: review.checklist_responses || [],
-          ruleResults: review.rule_results || [],
-          violationSummary: review.violation_summary || [],
-          reviewedAt: review.reviewed_at,
-          updatedAt: review.updated_at
-        } : null;
+        const reviews = await Playbook.getTradeReviewsByTradeId(tradeId, req.user.id);
+        const adherenceReview = reviews.find(review => review.review_type === 'adherence') || null;
+        const manualGradingReview = reviews.find(review => review.review_type === 'manual_grading') || null;
+
+        trade.playbookId = adherenceReview?.playbook_id || null;
+        trade.playbookReview = mapTradeReview(adherenceReview);
+        trade.playbookAdherenceReview = mapTradeReview(adherenceReview);
+        trade.manualGradingReview = mapTradeReview(manualGradingReview);
+        trade.manualGradingProfileId = manualGradingReview?.playbook_id || null;
+
+        const suggestionCandidates = await Playbook.listAutoAssignableByUser(req.user.id);
+        const suggestedAdherencePlaybook = PlaybookAdherenceService.selectSuggestedPlaybook(
+          suggestionCandidates.filter(candidate => Playbook.getReviewTypeForPlaybook(candidate) === 'adherence'),
+          trade
+        );
+        const suggestedManualGradingProfile = PlaybookAdherenceService.selectSuggestedPlaybook(
+          suggestionCandidates.filter(candidate => Playbook.getReviewTypeForPlaybook(candidate) === 'manual_grading'),
+          trade
+        );
+
+        trade.suggestedPlaybook = adherenceReview ? null : mapSuggestedPlaybook(suggestedAdherencePlaybook);
+        trade.suggestedPlaybookId = adherenceReview ? null : (suggestedAdherencePlaybook?.id || null);
+        trade.suggestedManualGradingProfile = manualGradingReview ? null : mapSuggestedPlaybook(suggestedManualGradingProfile);
+        trade.suggestedManualGradingProfileId = manualGradingReview ? null : (suggestedManualGradingProfile?.id || null);
       } else {
         trade.playbookId = null;
         trade.playbookReview = null;
+        trade.playbookAdherenceReview = null;
+        trade.manualGradingReview = null;
+        trade.manualGradingProfileId = null;
+        trade.suggestedPlaybook = null;
+        trade.suggestedPlaybookId = null;
+        trade.suggestedManualGradingProfile = null;
+        trade.suggestedManualGradingProfileId = null;
       }
 
       trade.setupQuality = buildSetupQuality(trade);
@@ -1977,7 +2141,7 @@ const tradeController = {
               id: row.id,
               symbol: row.symbol,
               side: row.side,
-              quantity: parseInt(row.quantity),
+              quantity: parseFloat(row.quantity) || 0,
               entryPrice: parseFloat(row.entry_price),
               entryTime: row.entry_time,
               tradeDate: row.trade_date,
@@ -2087,6 +2251,7 @@ const tradeController = {
             existingExecutions,
             userId: req.user.id,
             fileName,
+            importId,
             userTimezone,
             tradeGroupingSettings: {
               enabled: userSettings.enable_trade_grouping ?? true,
@@ -2102,6 +2267,9 @@ const tradeController = {
           let trades = Array.isArray(parseResult) ? parseResult : parseResult.trades;
           const unresolvedCusips = parseResult.unresolvedCusips || [];
           const parseDiagnostics = parseResult.diagnostics || null;
+          const manualReviewItems = Array.isArray(parseResult.manualReviewItems)
+            ? parseResult.manualReviewItems
+            : (Array.isArray(parseDiagnostics?.manual_review_items) ? parseDiagnostics.manual_review_items : []);
 
           // Track additional scenarios for unknown_csv_headers
           if (parseDiagnostics) {
@@ -2600,6 +2768,10 @@ const tradeController = {
           // Build error_details with diagnostics information
           const errorDetails = {
             duplicates,
+            manualReviewItems,
+            manualReviewCount: manualReviewItems.length,
+            manual_review_items: manualReviewItems,
+            manual_review_count: manualReviewItems.length,
             diagnostics: parseDiagnostics ? {
               totalRows: parseDiagnostics.totalRows,
               parsedRows: parseDiagnostics.parsedRows,
@@ -2612,6 +2784,8 @@ const tradeController = {
               selectedBroker: parseDiagnostics.selectedBroker,
               headerAnalysis: parseDiagnostics.headerAnalysis,
               reason_breakdown: parseDiagnostics.reason_breakdown || [],
+              manual_review_count: parseDiagnostics.manual_review_count || manualReviewItems.length,
+              manual_review_items: manualReviewItems,
               user_summary: parseDiagnostics.user_summary || null
             } : null
           };
@@ -2844,6 +3018,21 @@ const tradeController = {
       }
 
       res.json({ importLog: result.rows[0] });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async resolveManualReviewTrades(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const decisions = req.body?.decisions || [];
+      const result = await AmbiguousTradeReviewService.applyManualReviewDecisions(userId, decisions);
+
+      res.json({
+        success: true,
+        ...result
+      });
     } catch (error) {
       next(error);
     }
@@ -5054,6 +5243,13 @@ const tradeController = {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
+      // Futures are not gradeable - no futures market data from our providers
+      if (trade.instrument_type === 'future') {
+        return res.status(400).json({
+          error: 'Setup quality grading is not available for futures trades.'
+        });
+      }
+
       // Calculate quality with user's custom weights and existing news sentiment
       const quality = await tradeQualityService.calculateQuality(
         trade.symbol,
@@ -5061,12 +5257,36 @@ const tradeController = {
         trade.entry_price,
         trade.side,
         req.user.id,
-        trade.news_sentiment
+        trade.news_sentiment,
+        {
+          instrumentType: trade.instrument_type,
+          underlyingSymbol: trade.underlying_symbol,
+          strikePrice: trade.strike_price,
+          expirationDate: trade.expiration_date,
+          optionType: trade.option_type
+        }
       );
 
-      if (!quality) {
+      if (!quality || !quality.grade) {
+        if (quality?.metrics) {
+          await db.query(
+            `UPDATE trades
+             SET quality_grade = NULL,
+                 quality_score = NULL,
+                 quality_metrics = $1
+             WHERE id = $2 AND user_id = $3`,
+            [JSON.stringify(quality.metrics), id, req.user.id]
+          );
+        }
+
         return res.status(400).json({
-          error: 'Unable to calculate quality. Finnhub API may be unavailable or data not found for this symbol.'
+          error: quality?.message || 'Unable to calculate quality. Not enough market data is available for this symbol, or the market data API is unavailable.',
+          reason: quality?.reason,
+          coverage: quality?.coverage,
+          minimumCoverage: quality?.minimumCoverage,
+          missingMetrics: quality?.missingMetrics,
+          provider: quality?.provider,
+          quality: quality?.metrics ? quality : undefined
         });
       }
 
@@ -5114,11 +5334,13 @@ const tradeController = {
         return res.status(400).json({ error: 'tradeIds must be a non-empty array' });
       }
 
-      // Fetch trades
+      // Fetch trades (futures excluded - not gradeable)
       const tradesQuery = `
-        SELECT id, symbol, entry_time, entry_price
+        SELECT id, user_id, symbol, entry_time, entry_price, side, news_sentiment,
+               instrument_type, underlying_symbol, strike_price, expiration_date, option_type
         FROM trades
         WHERE id = ANY($1) AND user_id = $2
+          AND (instrument_type IS NULL OR instrument_type != 'future')
       `;
       const tradesResult = await db.query(tradesQuery, [tradeIds, req.user.id]);
 
@@ -5132,7 +5354,7 @@ const tradeController = {
       // Update trades with quality data
       const updates = [];
       for (const result of results) {
-        if (result.quality) {
+        if (result.quality && (result.quality.grade || result.quality.metrics)) {
           const updateQuery = `
             UPDATE trades
             SET quality_grade = $1,
@@ -5158,11 +5380,15 @@ const tradeController = {
 
       res.json({
         success: true,
-        message: `Quality calculated for ${updates.length} trade(s)`,
+        message: `Quality calculated or updated for ${updates.length} trade(s)`,
         results: results.map(r => ({
           tradeId: r.tradeId,
           grade: r.quality?.grade,
-          score: r.quality?.score
+          score: r.quality?.score,
+          reason: r.quality?.reason,
+          coverage: r.quality?.coverage,
+          minimumCoverage: r.quality?.minimumCoverage,
+          missingMetrics: r.quality?.missingMetrics
         }))
       });
 
@@ -5179,11 +5405,13 @@ const tradeController = {
     try {
       const tradeQualityService = require('../services/tradeQuality.service');
 
-      // Get all trades for user
+      // Get all gradeable trades for user (futures excluded - not gradeable)
       const tradesQuery = `
-        SELECT id, symbol, entry_time, entry_price
+        SELECT id, user_id, symbol, entry_time, entry_price, side, news_sentiment,
+               instrument_type, underlying_symbol, strike_price, expiration_date, option_type
         FROM trades
         WHERE user_id = $1
+          AND (instrument_type IS NULL OR instrument_type != 'future')
         ORDER BY entry_time DESC
       `;
       const tradesResult = await db.query(tradesQuery, [req.user.id]);
@@ -5204,7 +5432,7 @@ const tradeController = {
 
           const updates = [];
           for (const result of results) {
-            if (result.quality) {
+            if (result.quality && (result.quality.grade || result.quality.metrics)) {
               const updateQuery = `
                 UPDATE trades
                 SET quality_grade = $1,

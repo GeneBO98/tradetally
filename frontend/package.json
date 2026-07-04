@@ -1,12 +1,12 @@
 {
   "name": "tradetally-frontend",
-  "version": "2.7.4",
+  "version": "2.7.5",
   "packageManager": "pnpm@10.13.1",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && node ./scripts/prerender-seo-pages.mjs",
+    "build": "vite build",
     "build:budget": "vite build && node scripts/check-bundle-budgets.mjs",
     "preview": "vite preview",
     "test:e2e": "playwright test",

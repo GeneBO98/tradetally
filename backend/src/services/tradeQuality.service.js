@@ -13,31 +13,154 @@ const marketData = require('../utils/finnhub');
  *
  * NOTE: Weights are user-customizable in user profile settings
  *
+ * Metrics with no data are EXCLUDED from the weighted score (the remaining
+ * weights are renormalized) rather than scored at a neutral default. A trade
+ * is only graded when enough of the configured weight is
+ * backed by real data.
+ *
+ * Grading uses a per-instrument profile (issue #352):
+ * - stock:  news sentiment, gap, relative volume, float, price range
+ * - option: news sentiment / gap / relative volume of the UNDERLYING (market
+ *           data providers have no data for OCC contract symbols), plus time
+ *           to expiration and strike distance from spot computed from the
+ *           trade itself
+ * - future: not gradeable - no futures market data is available from the
+ *           configured providers
+ *
  * Scoring: 5/5 = A, 4/5 = B, 3/5 = C, 2/5 = D, 0-1/5 = F
  */
+
+// Default share of total weight that must be backed by real data to grade a trade
+const DEFAULT_MIN_COVERAGE = 0.4;
+
+// Increment when stored quality_metrics must be recalculated after scoring changes.
+const QUALITY_CALCULATION_VERSION = 2;
+
+// Per-instrument grading profiles. Weights are decimals summing to 1.0.
+const QUALITY_PROFILES = {
+  stock: {
+    metrics: ['newsSentiment', 'gap', 'relativeVolume', 'float', 'priceRange'],
+    defaults: { newsSentiment: 0.30, gap: 0.20, relativeVolume: 0.20, float: 0.15, priceRange: 0.15 }
+  },
+  option: {
+    metrics: ['newsSentiment', 'gap', 'relativeVolume', 'dte', 'moneyness'],
+    defaults: { newsSentiment: 0.25, gap: 0.15, relativeVolume: 0.15, dte: 0.25, moneyness: 0.20 }
+  }
+};
+
+// Internal metric key -> API/JSONB weight key
+const METRIC_TO_WEIGHT_KEY = {
+  newsSentiment: 'news',
+  gap: 'gap',
+  relativeVolume: 'relativeVolume',
+  float: 'float',
+  priceRange: 'priceRange',
+  dte: 'dte',
+  moneyness: 'moneyness'
+};
+
+// Human-readable metric names for failure messages
+const METRIC_LABELS = {
+  newsSentiment: 'news sentiment',
+  gap: 'gap',
+  relativeVolume: 'relative volume',
+  float: 'float',
+  priceRange: 'price range',
+  dte: 'days to expiration',
+  moneyness: 'strike distance'
+};
+
+// Where each metric's raw value and score live in the stored quality_metrics JSONB
+const STORED_METRIC_FIELDS = {
+  newsSentiment: ['newsSentiment', 'newsSentimentScore'],
+  gap: ['gap', 'gapScore'],
+  relativeVolume: ['relativeVolume', 'relativeVolumeScore'],
+  float: ['float', 'floatScore'],
+  priceRange: ['price', 'priceScore'],
+  dte: ['dte', 'dteScore'],
+  moneyness: ['moneyness', 'moneynessScore']
+};
 
 class TradeQualityService {
   constructor() {
     this.marketData = marketData;
   }
 
-  /**
-   * Get user's quality weight preferences from database
-   * Falls back to default weights if user not found or weights not set
-   * @param {number} userId - User ID
-   * @returns {Promise<Object>} User's quality weights (percentages as decimals)
-   */
-  async getUserQualityWeights(userId) {
-    try {
-      // Default weights (matching database defaults)
-      const defaultWeights = {
-        newsSentiment: 0.30,
-        gap: 0.20,
-        relativeVolume: 0.20,
-        float: 0.15,
-        priceRange: 0.15
-      };
+  getCalculationVersion() {
+    return QUALITY_CALCULATION_VERSION;
+  }
 
+  needsQualityBackfill(qualityGrade, qualityMetrics) {
+    if (!qualityGrade || !qualityMetrics || typeof qualityMetrics !== 'object') {
+      return true;
+    }
+
+    const version = Number(qualityMetrics.calculationVersion);
+    return !Number.isInteger(version) || version < QUALITY_CALCULATION_VERSION;
+  }
+
+  getStaleQualityCondition(tableAlias = '') {
+    const prefix = tableAlias ? `${tableAlias}.` : '';
+    const metrics = `${prefix}quality_metrics`;
+    const grade = `${prefix}quality_grade`;
+
+    return `(
+      ${grade} IS NULL
+      OR ${metrics} IS NULL
+      OR CASE
+        WHEN ${metrics}->>'calculationVersion' ~ '^[0-9]+$'
+          THEN (${metrics}->>'calculationVersion')::integer
+        ELSE 0
+      END < ${QUALITY_CALCULATION_VERSION}
+    )`;
+  }
+
+  /**
+   * Resolve the grading profile for an instrument type
+   * @param {string} instrumentType - Trade instrument_type
+   * @returns {string|null} Profile key ('stock', 'option'), or null when the
+   *                        instrument is not gradeable (futures)
+   */
+  getProfileType(instrumentType) {
+    if (instrumentType === 'future') return null;
+    return QUALITY_PROFILES[instrumentType] ? instrumentType : 'stock';
+  }
+
+  /**
+   * Profile metadata for the API and frontend: the ordered list of API weight
+   * keys per profile and their default percentages (integers summing to 100).
+   * Single source of truth so controllers/UI never drift from the service.
+   * @returns {Object} { [profileType]: { weightKeys: string[], defaults: Object } }
+   */
+  getQualityProfilesMeta() {
+    const meta = {};
+    for (const [profileType, profile] of Object.entries(QUALITY_PROFILES)) {
+      const weightKeys = profile.metrics.map(metricKey => METRIC_TO_WEIGHT_KEY[metricKey]);
+      const defaults = {};
+      for (const metricKey of profile.metrics) {
+        defaults[METRIC_TO_WEIGHT_KEY[metricKey]] = Math.round(profile.defaults[metricKey] * 100);
+      }
+      meta[profileType] = {
+        weightKeys,
+        defaults,
+        defaultMinimumCoverage: Math.round(DEFAULT_MIN_COVERAGE * 100)
+      };
+    }
+    return meta;
+  }
+
+  /**
+   * Get user's quality weight preferences for a grading profile
+   * Falls back to the legacy flat columns (stock profile only), then defaults
+   * @param {string} userId - User ID
+   * @param {string} profileType - 'stock' or 'option'
+   * @returns {Promise<Object>} Weights keyed by metric name (decimals summing to 1.0)
+   */
+  async getUserQualityWeights(userId, profileType = 'stock') {
+    const profile = QUALITY_PROFILES[profileType] || QUALITY_PROFILES.stock;
+    const defaultWeights = { ...profile.defaults };
+
+    try {
       // If no userId provided, return defaults
       if (!userId) {
         console.log('[QUALITY] No userId provided, using default weights');
@@ -47,6 +170,7 @@ class TradeQualityService {
       // Fetch user's custom weights from database
       const query = `
         SELECT
+          quality_weight_profiles,
           quality_weight_news,
           quality_weight_gap,
           quality_weight_relative_volume,
@@ -60,40 +184,65 @@ class TradeQualityService {
 
       // If user not found or weights not set, return defaults
       if (!result.rows || result.rows.length === 0) {
-        console.log(`[QUALITY] User ${userId} not found, using default weights`);
+        console.log(`[QUALITY] User ${userId} not found, using default ${profileType} weights`);
         return defaultWeights;
       }
 
-      const userWeights = result.rows[0];
+      const row = result.rows[0];
+      const storedProfile = row.quality_weight_profiles?.[profileType];
 
-      // Convert from percentage integers (0-100) to decimals (0-1)
-      const weights = {
-        newsSentiment: (userWeights.quality_weight_news || 30) / 100,
-        gap: (userWeights.quality_weight_gap || 20) / 100,
-        relativeVolume: (userWeights.quality_weight_relative_volume || 20) / 100,
-        float: (userWeights.quality_weight_float || 15) / 100,
-        priceRange: (userWeights.quality_weight_price_range || 15) / 100
-      };
+      if (storedProfile) {
+        const weights = {};
+        for (const metricKey of profile.metrics) {
+          const value = Number(storedProfile[METRIC_TO_WEIGHT_KEY[metricKey]]);
+          weights[metricKey] = Number.isFinite(value) ? value / 100 : profile.defaults[metricKey];
+        }
+        console.log(`[QUALITY] User ${userId} custom ${profileType} weights:`, weights);
+        return weights;
+      }
 
-      console.log(`[QUALITY] User ${userId} custom weights:`, {
-        news: `${userWeights.quality_weight_news}%`,
-        gap: `${userWeights.quality_weight_gap}%`,
-        relativeVolume: `${userWeights.quality_weight_relative_volume}%`,
-        float: `${userWeights.quality_weight_float}%`,
-        priceRange: `${userWeights.quality_weight_price_range}%`
-      });
+      // Legacy fallback: the original flat columns hold the stock profile
+      if (profileType === 'stock') {
+        return {
+          newsSentiment: (row.quality_weight_news || 30) / 100,
+          gap: (row.quality_weight_gap || 20) / 100,
+          relativeVolume: (row.quality_weight_relative_volume || 20) / 100,
+          float: (row.quality_weight_float || 15) / 100,
+          priceRange: (row.quality_weight_price_range || 15) / 100
+        };
+      }
 
-      return weights;
+      return defaultWeights;
     } catch (error) {
       console.error('[QUALITY] Error fetching user quality weights:', error.message);
       // Return defaults on error
-      return {
-        newsSentiment: 0.30,
-        gap: 0.20,
-        relativeVolume: 0.20,
-        float: 0.15,
-        priceRange: 0.15
-      };
+      return defaultWeights;
+    }
+  }
+
+  /**
+   * Get user's minimum metric coverage threshold for a grading profile.
+   * @param {string} userId - User ID
+   * @param {string} profileType - 'stock' or 'option'
+   * @returns {Promise<number>} Minimum coverage as a decimal between 0 and 1
+   */
+  async getUserMinimumCoverage(userId, profileType = 'stock') {
+    try {
+      if (!userId) return DEFAULT_MIN_COVERAGE;
+
+      const result = await db.query(
+        `SELECT quality_minimum_coverage_profiles FROM users WHERE id = $1`,
+        [userId]
+      );
+
+      const stored = result.rows?.[0]?.quality_minimum_coverage_profiles?.[profileType];
+      const value = Number(stored);
+      if (!Number.isFinite(value)) return DEFAULT_MIN_COVERAGE;
+
+      return Math.max(0, Math.min(100, value)) / 100;
+    } catch (error) {
+      console.error('[QUALITY] Error fetching user minimum coverage:', error.message);
+      return DEFAULT_MIN_COVERAGE;
     }
   }
 
@@ -160,16 +309,39 @@ class TradeQualityService {
    * @param {string} side - Trade side ('long' or 'short')
    * @param {number} userId - User ID (optional, for custom quality weights)
    * @param {string} newsSentiment - Categorical news sentiment ('positive', 'negative', 'neutral', 'mixed')
+   * @param {Object} instrument - Optional instrument info:
+   *        { instrumentType, underlyingSymbol, strikePrice, expirationDate, optionType }
    * @returns {Promise<Object>} Quality grade and metrics
    */
-  async calculateQuality(symbol, entryTime, entryPrice, side = 'long', userId = null, newsSentiment = null) {
+  async calculateQuality(symbol, entryTime, entryPrice, side = 'long', userId = null, newsSentiment = null, instrument = {}) {
     if (!this.marketData.isConfigured()) {
       console.log(`[QUALITY] ${this.marketData.displayName} API key not configured, skipping quality calculation`);
-      return null;
+      return {
+        grade: null,
+        reason: 'not_configured',
+        message: `${this.marketData.displayName} market data is not configured.`
+      };
+    }
+
+    // Futures are not gradeable - the configured market data providers have no
+    // futures data, so there is nothing to score against
+    const profileType = this.getProfileType(instrument?.instrumentType);
+    if (!profileType) {
+      console.log(`[QUALITY] ${symbol}: ${instrument?.instrumentType} instruments are not gradeable, skipping`);
+      return {
+        grade: null,
+        reason: 'not_gradeable',
+        message: `${instrument?.instrumentType || 'This instrument'} trades are not graded.`
+      };
     }
 
     try {
-      console.log(`[QUALITY] Calculating quality for ${symbol} at ${entryPrice}${userId ? ` (user ${userId})` : ''}`);
+      // Option trades are graded against the underlying - market data providers
+      // have no profile/candle/news data for OCC contract symbols
+      const isOption = profileType === 'option' && instrument?.underlyingSymbol;
+      const dataSymbol = isOption ? instrument.underlyingSymbol : symbol;
+
+      console.log(`[QUALITY] Calculating ${profileType} quality for ${symbol} at ${entryPrice}${userId ? ` (user ${userId})` : ''}${isOption ? ` using underlying ${dataSymbol}` : ''}`);
       console.log(`[QUALITY] Using provided news sentiment: ${newsSentiment || 'none'}`);
 
       // Convert categorical sentiment to numeric score
@@ -179,23 +351,23 @@ class TradeQualityService {
       // Use allSettled to continue even if some API calls fail
       // Note: Removed getNewsSentiment call - using provided sentiment instead
       const results = await Promise.allSettled([
-        this.getUserQualityWeights(userId),
-        this.getStockProfile(symbol),
-        this.getQuote(symbol, entryTime),
-        this.getBasicFinancials(symbol)
+        this.getUserQualityWeights(userId, profileType),
+        this.getUserMinimumCoverage(userId, profileType),
+        this.getStockProfile(dataSymbol),
+        this.getQuote(dataSymbol, entryTime),
+        this.getBasicFinancials(dataSymbol)
       ]);
 
       // Extract successful results, use null/defaults for failures
-      const weights = results[0].status === 'fulfilled' ? results[0].value : {
-        newsSentiment: 0.30,
-        gap: 0.20,
-        relativeVolume: 0.20,
-        float: 0.15,
-        priceRange: 0.15
-      };
-      const profile = results[1].status === 'fulfilled' ? results[1].value : null;
-      const quote = results[2].status === 'fulfilled' ? results[2].value : null;
-      const financials = results[3].status === 'fulfilled' ? results[3].value : null;
+      const weights = results[0].status === 'fulfilled'
+        ? results[0].value
+        : { ...QUALITY_PROFILES[profileType].defaults };
+      const minimumCoverage = results[1].status === 'fulfilled'
+        ? results[1].value
+        : DEFAULT_MIN_COVERAGE;
+      const profile = results[2].status === 'fulfilled' ? results[2].value : null;
+      const quote = results[3].status === 'fulfilled' ? results[3].value : null;
+      const financials = results[4].status === 'fulfilled' ? results[4].value : null;
 
       // Create sentiment object from converted score
       const sentiment = sentimentScore !== null ? { sentiment: sentimentScore } : null;
@@ -203,7 +375,7 @@ class TradeQualityService {
       // Log any failures
       results.forEach((result, index) => {
         if (result.status === 'rejected') {
-          const apiName = ['weights', 'profile', 'quote', 'financials'][index];
+          const apiName = ['weights', 'minimum coverage', 'profile', 'quote', 'financials'][index];
           console.log(`[QUALITY] Failed to fetch ${apiName} for ${symbol}: ${result.reason?.message || result.reason}`);
         }
       });
@@ -217,43 +389,26 @@ class TradeQualityService {
         categoricalSentiment: newsSentiment
       });
 
-      // Get shares outstanding (float) - try profile first, then financials
-      const sharesOutstanding = profile?.shareOutstanding || financials?.sharesOutstanding || null;
+      // Reference price for gap scoring (and price-range scoring on stocks).
+      // For options the entry price is the premium, which is meaningless
+      // against the underlying's close - use the underlying's open instead.
+      const referencePrice = isOption ? (quote?.o || null) : entryPrice;
 
-      if (!sharesOutstanding) {
-        console.log(`[QUALITY] WARNING: No shares outstanding data found for ${symbol}`);
-        console.log(`[QUALITY] Profile shareOutstanding: ${profile?.shareOutstanding}`);
-        console.log(`[QUALITY] Financials sharesOutstanding: ${financials?.sharesOutstanding}`);
-      } else {
-        const source = profile?.shareOutstanding ? 'profile' : 'financials';
-        console.log(`[QUALITY] Shares outstanding for ${symbol}: ${sharesOutstanding} (from ${source})`);
-      }
-
-      // Calculate gap from previous day's close to entry price
-      const gap = (quote?.previousClose && entryPrice)
-        ? ((entryPrice - quote.previousClose) / quote.previousClose) * 100
+      // Calculate gap from previous day's close to the reference price
+      const gap = (quote?.previousClose && referencePrice)
+        ? ((referencePrice - quote.previousClose) / quote.previousClose) * 100
         : null;
 
-      console.log(`[QUALITY] Gap calculation for ${symbol}: entryPrice=${entryPrice}, previousClose=${quote?.previousClose}, gap=${gap?.toFixed(2)}%`);
+      console.log(`[QUALITY] Gap calculation for ${dataSymbol}: referencePrice=${referencePrice}, previousClose=${quote?.previousClose}, gap=${gap?.toFixed(2)}%`);
 
-      // Calculate individual metric scores with error handling
-      const metrics = {
-        float: this.scoreFloat(sharesOutstanding),
-        relativeVolume: this.scoreRelativeVolume(quote, financials?.avgVolume10Day),
-        priceRange: this.scorePriceRange(entryPrice),
+      // Shared metrics (both profiles): news sentiment, gap, relative volume
+      const metricScores = {
+        newsSentiment: this.scoreNewsSentiment(sentiment, side, { directional: !isOption }),
         gap: this.scoreGap(gap),
-        newsSentiment: this.scoreNewsSentiment(sentiment, side)
+        relativeVolume: this.scoreRelativeVolume(quote, financials?.avgVolume10Day)
       };
 
-      console.log(`[QUALITY] Individual scores calculated:`, metrics);
-
-      // Calculate weighted score using user's custom weights
-      const weightedScore = this.calculateWeightedScore(metrics, weights);
-
-      // Determine grade
-      const grade = this.scoreToGrade(weightedScore);
-
-      // Calculate actual relative volume ratio
+      // Actual relative volume ratio for display
       const actualVolume = quote?.v || null;
       const avgVolume = financials?.avgVolume10Day || null;
       // avgVolume is in millions, so convert to actual shares before calculating ratio
@@ -261,48 +416,110 @@ class TradeQualityService {
         ? actualVolume / (avgVolume * 1000000)
         : null;
 
+      // Raw values recorded alongside scores in the metrics breakdown
+      const metricValues = {
+        newsSentiment: sentiment?.sentiment ?? null,
+        gap,
+        relativeVolume: relativeVolumeRatio
+      };
+
+      if (isOption) {
+        // Option-specific metrics derived from the trade itself
+        const dte = this.computeDaysToExpiration(entryTime, instrument.expirationDate);
+        const spot = quote?.o ?? quote?.c ?? null;
+        const moneyness = this.computeMoneyness(spot, instrument.strikePrice, instrument.optionType);
+
+        metricScores.dte = this.scoreDte(dte);
+        metricScores.moneyness = this.scoreMoneyness(moneyness);
+        metricValues.dte = dte;
+        metricValues.moneyness = moneyness;
+      } else {
+        // Stock-specific metrics: float and price range
+        const sharesOutstanding = profile?.shareOutstanding || financials?.sharesOutstanding || null;
+        if (!sharesOutstanding) {
+          console.log(`[QUALITY] WARNING: No shares outstanding data found for ${dataSymbol}`);
+        }
+        metricScores.float = this.scoreFloat(sharesOutstanding);
+        metricScores.priceRange = this.scorePriceRange(referencePrice);
+        metricValues.float = sharesOutstanding;
+        metricValues.priceRange = referencePrice;
+      }
+
+      console.log(`[QUALITY] Individual ${profileType} scores calculated:`, metricScores);
+
+      // Weight only the metrics belonging to this profile, excluding metrics
+      // with no data and renormalizing the remaining weights
+      const profileMetricKeys = QUALITY_PROFILES[profileType].metrics;
+      const scopedScores = {};
+      for (const key of profileMetricKeys) scopedScores[key] = metricScores[key];
+
+      const { score: weightedScore, coverage } = this.calculateWeightedScore(scopedScores, weights, minimumCoverage);
+      const missingMetrics = profileMetricKeys
+        .filter(key => scopedScores[key] === null || scopedScores[key] === undefined)
+        .map(key => METRIC_LABELS[key]);
+
+      // Build the stored metrics breakdown - raw value + score per metric.
+      // Store this even when coverage is insufficient so a later threshold
+      // change can re-grade without another provider request.
+      const storedMetrics = {
+        calculationVersion: QUALITY_CALCULATION_VERSION,
+        profile: profileType,
+        dataSymbol: isOption ? dataSymbol : undefined,
+        provider: this.marketData.displayName || this.marketData.providerName || null,
+        coverage: Math.round(coverage * 100) / 100,
+        minimumCoverage: Math.round(minimumCoverage * 100) / 100,
+        missingMetrics,
+        // Flag when the underlying price came from a real-time quote rather than
+        // the entry-day candle, so strike distance can be shown as approximate
+        spotSource: quote?.isLiveFallback ? 'live' : 'historical'
+      };
+      for (const key of profileMetricKeys) {
+        const [valueField, scoreField] = STORED_METRIC_FIELDS[key];
+        storedMetrics[valueField] = metricValues[key] ?? null;
+        storedMetrics[scoreField] = metricScores[key];
+      }
+
+      if (weightedScore === null) {
+        const coveragePct = Math.round(coverage * 100);
+        const minimumCoveragePct = Math.round(minimumCoverage * 100);
+        console.log(`[QUALITY] ${symbol}: only ${coveragePct}% of weight has data (minimum ${minimumCoveragePct}%), not grading`);
+        return {
+          grade: null,
+          reason: 'insufficient_data',
+          coverage,
+          minimumCoverage,
+          missingMetrics,
+          metrics: storedMetrics,
+          provider: storedMetrics.provider,
+          message: `Not enough market data for ${symbol}: only ${coveragePct}% of the metric weight had data, but ${minimumCoveragePct}% is required.` +
+            (missingMetrics.length ? ` No data for ${missingMetrics.join(', ')}.` : '')
+        };
+      }
+
+      // Determine grade
+      const grade = this.scoreToGrade(weightedScore);
+
       console.log(`[QUALITY] ${symbol} quality: ${grade} (${weightedScore.toFixed(2)}/5.0)`);
-      console.log(`[QUALITY] Metrics:`, metrics);
       console.log(`[QUALITY] Volume data: actual=${actualVolume}, 10-day avg=${avgVolume}, relative=${relativeVolumeRatio?.toFixed(2)}x`);
 
       return {
         grade,
         score: Math.round(weightedScore * 10) / 10, // Round to 1 decimal
-        metrics: {
-          float: sharesOutstanding,
-          floatScore: metrics.float,
-          relativeVolume: relativeVolumeRatio,
-          relativeVolumeScore: metrics.relativeVolume,
-          price: entryPrice,
-          priceScore: metrics.priceRange,
-          gap: gap,
-          gapScore: metrics.gap,
-          newsSentiment: sentiment?.sentiment || null,
-          newsSentimentScore: metrics.newsSentiment
-        }
+        metrics: storedMetrics
       };
     } catch (error) {
       console.error(`[QUALITY] Error calculating quality for ${symbol}:`, error.message);
       console.error(`[QUALITY] Stack trace:`, error.stack);
 
-      // Return a fallback grade instead of null to prevent N/A results
-      // This ensures trades always get a grade even when data is unavailable
-      console.log(`[QUALITY] Returning fallback grade C for ${symbol} due to error`);
+      // No fabricated fallback grade - an ungraded trade can be recalculated
+      // later, a fake neutral C cannot be told apart from a real one
+      const timedOut = /timed out|timeout/i.test(error.message || '');
       return {
-        grade: 'C',
-        score: 3.0,
-        metrics: {
-          float: null,
-          floatScore: 0,
-          relativeVolume: null,
-          relativeVolumeScore: 0.5,
-          price: entryPrice,
-          priceScore: 0.5,
-          gap: null,
-          gapScore: 0.5,
-          newsSentiment: null,
-          newsSentimentScore: 0.5
-        }
+        grade: null,
+        reason: timedOut ? 'api_timeout' : 'api_error',
+        message: timedOut
+          ? `Market data request for ${symbol} timed out. The provider may be rate-limiting or slow; try again.`
+          : `Market data request for ${symbol} failed: ${error.message}`
       };
     }
   }
@@ -363,6 +580,10 @@ class TradeQualityService {
     try {
       // Convert entryTime to Unix timestamp (seconds)
       const entryDate = new Date(entryTime);
+      if (isNaN(entryDate.getTime())) {
+        console.log(`[QUALITY] Invalid entry time for ${symbol}, cannot fetch quote`);
+        return null;
+      }
 
       // Get data for 2 days (current day and previous day) to calculate gap
       const startDate = new Date(entryDate);
@@ -375,39 +596,83 @@ class TradeQualityService {
       const from = Math.floor(startDate.getTime() / 1000);
       const to = Math.floor(endDate.getTime() / 1000);
 
-      const candles = await this.marketData.getStockCandles(symbol, 'D', from, to);
-
-      // Check if we have valid data
-      if (!Array.isArray(candles) || candles.length === 0) {
-        console.log(`[QUALITY] No historical data available for ${symbol} on ${entryDate.toISOString()}`);
-        return null;
+      // The daily candle endpoint can be empty (entry day not published yet) OR
+      // throw (timeout / not available on the provider's free tier). Treat both
+      // the same way and fall back to a real-time quote below.
+      let candles = null;
+      try {
+        candles = await this.marketData.getStockCandles(symbol, 'D', from, to);
+      } catch (candleError) {
+        console.log(`[QUALITY] Candle fetch failed for ${symbol}: ${candleError.message}`);
       }
 
-      // Get the most recent day's data (last element)
-      const lastIndex = candles.length - 1;
-      const latest = candles[lastIndex];
-      const open = latest.open;
-      const high = latest.high;
-      const low = latest.low;
-      const close = latest.close;
-      const volume = latest.volume;
+      if (Array.isArray(candles) && candles.length > 0) {
+        // Get the most recent day's data (last element)
+        const lastIndex = candles.length - 1;
+        const latest = candles[lastIndex];
+        const previousClose = lastIndex > 0 ? candles[lastIndex - 1].close : null;
 
-      // Get previous day's close if available
-      const previousClose = lastIndex > 0 ? candles[lastIndex - 1].close : null;
+        console.log(`[QUALITY] Historical data for ${symbol}: open=${latest.open}, close=${latest.close}, previousClose=${previousClose}`);
 
-      console.log(`[QUALITY] Historical data for ${symbol}: open=${open}, close=${close}, previousClose=${previousClose}`);
+        return {
+          o: latest.open,
+          h: latest.high,
+          l: latest.low,
+          c: latest.close,
+          v: latest.volume,
+          previousClose,
+          relativeVolume: null // Will need additional API call for average volume
+        };
+      }
 
-      return {
-        o: open,
-        h: high,
-        l: low,
-        c: close,
-        v: volume,
-        previousClose,
-        relativeVolume: null // Will need additional API call for average volume
-      };
+      // No usable candle. Fall back to a real-time quote so strike distance
+      // (and gap for very recent entries) can still be scored. The quote
+      // endpoint works on tiers where the candle endpoint does not.
+      console.log(`[QUALITY] No candle data for ${symbol} on ${entryDate.toISOString()}, trying live quote`);
+      return await this.fetchLiveQuoteFallback(symbol, entryDate);
     } catch (error) {
       console.error(`[QUALITY] Error fetching historical quote for ${symbol}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Real-time quote fallback for when the daily candle is unavailable (entry
+   * day not published yet, or the provider tier doesn't serve candles).
+   * Always provides spot for option strike-distance scoring. The quote's
+   * previous close is only a valid gap reference when the trade was entered
+   * essentially today, so gap is left out for older entries. Daily volume is
+   * not in a quote, so relative volume stays excluded.
+   * @param {string} symbol - Symbol to quote (underlying for options)
+   * @param {Date} entryDate - Trade entry date (to decide if gap is meaningful)
+   * @returns {Promise<Object|null>} Quote-shaped object, or null on failure
+   */
+  async fetchLiveQuoteFallback(symbol, entryDate) {
+    try {
+      const q = await this.marketData.getQuote(symbol);
+      if (!q || (q.c == null && q.o == null)) return null;
+      const spot = q.c ?? q.o;
+
+      // The live quote's previous close belongs to the current session, so it
+      // is only a correct gap reference for a trade entered in the last day or
+      // two. For older (still-open) trades, current spot is a usable proxy for
+      // strike distance but the gap would be wrong, so omit it.
+      const ageDays = (Date.now() - entryDate.getTime()) / 86400000;
+      const gapValid = ageDays >= 0 && ageDays <= 2;
+
+      console.log(`[QUALITY] Using live quote fallback for ${symbol}: spot=${spot}, previousClose=${gapValid ? q.pc : 'omitted (stale)'}`);
+      return {
+        o: spot,
+        h: q.h ?? null,
+        l: q.l ?? null,
+        c: spot,
+        v: null,              // live quote carries no daily volume -> relative volume stays N/A
+        previousClose: gapValid ? (q.pc ?? null) : null,
+        relativeVolume: null,
+        isLiveFallback: true
+      };
+    } catch (error) {
+      console.log(`[QUALITY] Live quote fallback failed for ${symbol}: ${error.message}`);
       return null;
     }
   }
@@ -527,7 +792,7 @@ class TradeQualityService {
    * @returns {number} Score from 0 to 1
    */
   scoreFloat(floatShares) {
-    if (!floatShares) return 0;
+    if (!floatShares) return null; // No data - excluded from weighting
 
     // Finnhub returns shares outstanding already in millions
     // So we use the value as-is
@@ -548,9 +813,8 @@ class TradeQualityService {
    * @returns {number} Score from 0 to 1
    */
   scoreRelativeVolume(quote, avgVolume10Day) {
-    // If we don't have the required data, return neutral score
     if (!quote || !quote.v || !avgVolume10Day || avgVolume10Day <= 0) {
-      return 0.5; // Default neutral score
+      return null; // No data - excluded from weighting
     }
 
     const actualVolume = quote.v;
@@ -573,7 +837,7 @@ class TradeQualityService {
    * @returns {number} Score from 0 to 1
    */
   scorePriceRange(price) {
-    if (!price) return 0;
+    if (!price) return null; // No data - excluded from weighting
 
     if (price >= 2 && price <= 20) return 1.0;    // Ideal
     if (price >= 1 && price < 2) return 0.7;      // Low but acceptable
@@ -584,13 +848,87 @@ class TradeQualityService {
   }
 
   /**
+   * Days to expiration at trade entry.
+   * @param {Date|string} entryTime - Trade entry time
+   * @param {Date|string} expirationDate - Option expiration date
+   * @returns {number|null} Whole days to expiration, or null if not computable
+   */
+  computeDaysToExpiration(entryTime, expirationDate) {
+    if (!entryTime || !expirationDate) return null;
+    const entry = new Date(entryTime);
+    const expiry = new Date(expirationDate);
+    if (isNaN(entry.getTime()) || isNaN(expiry.getTime())) return null;
+
+    // Compare calendar dates (ignore intraday time) so a same-day 0DTE reads as 0
+    const entryDay = Date.UTC(entry.getUTCFullYear(), entry.getUTCMonth(), entry.getUTCDate());
+    const expiryDay = Date.UTC(expiry.getUTCFullYear(), expiry.getUTCMonth(), expiry.getUTCDate());
+    const days = Math.round((expiryDay - entryDay) / (1000 * 60 * 60 * 24));
+
+    return days >= 0 ? days : null;
+  }
+
+  /**
+   * Score days to expiration.
+   * Rewards swing-friendly tenor and penalizes very short (gamma/theta risk)
+   * and very long (capital-inefficient) holding windows.
+   * @param {number} dte - Days to expiration
+   * @returns {number|null} Score from 0 to 1, or null if no data
+   */
+  scoreDte(dte) {
+    if (dte === null || dte === undefined) return null; // No data - excluded from weighting
+
+    if (dte <= 1) return 0.2;       // 0-1 DTE - high gamma/theta risk
+    if (dte <= 7) return 0.5;       // Weekly - elevated theta decay
+    if (dte <= 21) return 0.8;      // 1-3 weeks - room to be right
+    if (dte <= 45) return 1.0;      // 3-6 weeks - swing sweet spot
+    if (dte <= 90) return 0.7;      // 6-13 weeks - acceptable
+    if (dte <= 180) return 0.5;     // Up to 6 months - capital tied up
+    return 0.3;                     // LEAPS - inefficient for most setups
+  }
+
+  /**
+   * Moneyness as a signed percentage of how far in-the-money the strike is at
+   * entry. Positive = in the money, negative = out of the money, for both
+   * calls and puts.
+   * @param {number} spot - Underlying spot price at entry
+   * @param {number} strike - Option strike price
+   * @param {string} optionType - 'call' or 'put'
+   * @returns {number|null} ITM percentage, or null if not computable
+   */
+  computeMoneyness(spot, strike, optionType) {
+    if (!spot || !strike || spot <= 0) return null;
+    const raw = ((spot - strike) / spot) * 100; // positive = call ITM
+    if (optionType === 'put') return -raw;       // puts are ITM when spot < strike
+    if (optionType === 'call') return raw;
+    return null; // unknown option type - cannot interpret direction
+  }
+
+  /**
+   * Score strike distance from spot (moneyness).
+   * Near-the-money strikes get the best score (balanced delta and premium);
+   * deep ITM ties up capital, far OTM is a low-probability lottery ticket.
+   * @param {number} moneyness - Signed ITM percentage (positive = ITM)
+   * @returns {number|null} Score from 0 to 1, or null if no data
+   */
+  scoreMoneyness(moneyness) {
+    if (moneyness === null || moneyness === undefined) return null; // No data - excluded
+
+    if (moneyness >= 10) return 0.5;       // Deep ITM - capital heavy, low leverage
+    if (moneyness >= 2) return 0.8;        // Moderately ITM
+    if (moneyness >= -2) return 1.0;       // Near the money - balanced
+    if (moneyness >= -10) return 0.7;      // Slightly OTM - common directional play
+    if (moneyness >= -20) return 0.4;      // Far OTM - low probability
+    return 0.2;                            // Very far OTM - lottery ticket
+  }
+
+  /**
    * Score gap from previous day's close to entry price
    * Measures how much the stock has moved from previous close to entry point
    * @param {number} gap - Gap percentage (positive = gapping up, negative = gapping down)
    * @returns {number} Score from 0 to 1
    */
   scoreGap(gap) {
-    if (gap === null || gap === undefined) return 0.5; // Neutral if no data
+    if (gap === null || gap === undefined) return null; // No data - excluded from weighting
 
     // Positive gaps (stock gapping up from previous close)
     if (gap >= 10) return 1.0;      // Excellent - A setup (10%+ gap up)
@@ -604,19 +942,23 @@ class TradeQualityService {
 
   /**
    * Score news sentiment
-   * Positive sentiment is heavily weighted for longs, negative for shorts
+   * Positive sentiment is heavily weighted for longs, negative for shorts.
+   * Option setup quality uses underlying news as shared market context, so
+   * multi-leg strategies do not invert the same sentiment per long/short leg.
    * @param {Object} sentiment - Sentiment object with numeric sentiment score
    * @param {string} side - Trade side ('long' or 'short')
+   * @param {Object} options - Scoring options
+   * @param {boolean} options.directional - Whether to invert the score for shorts
    * @returns {number} Score from 0 to 1
    */
-  scoreNewsSentiment(sentiment, side = 'long') {
-    // No news data - use neutral score
+  scoreNewsSentiment(sentiment, side = 'long', options = {}) {
     if (!sentiment || sentiment.sentiment === undefined || sentiment.sentiment === null) {
-      return 0.5; // Neutral score when sentiment is not available
+      return null; // No data - excluded from weighting
     }
 
     const score = sentiment.sentiment || 0;
-    const isShort = side?.toLowerCase() === 'short';
+    const directional = options.directional !== false;
+    const isShort = directional && side?.toLowerCase() === 'short';
 
     // For LONG positions: positive news = good, negative news = bad
     // For SHORT positions: negative news = good, positive news = bad
@@ -649,11 +991,15 @@ class TradeQualityService {
 
   /**
    * Calculate weighted score using custom or default weights
-   * @param {Object} metrics - Individual metric scores (0-1 scale)
+   * Metrics with a null score (no data) are excluded and the remaining
+   * weights are renormalized so they still sum to 1.0
+   * @param {Object} metrics - Individual metric scores (0-1 scale, null = no data)
    * @param {Object} weights - Custom weight percentages (as decimals, should sum to 1.0)
-   * @returns {number} Weighted score on 0-5 scale
+   * @param {number} minimumCoverage - Minimum coverage required to return a score
+   * @returns {Object} { score, coverage } - score on 0-5 scale (null if coverage below minimumCoverage),
+   *                   coverage = share of total weight backed by real data (0-1)
    */
-  calculateWeightedScore(metrics, weights = null) {
+  calculateWeightedScore(metrics, weights = null, minimumCoverage = DEFAULT_MIN_COVERAGE) {
     // Use provided weights or fall back to defaults
     const finalWeights = weights || {
       newsSentiment: 0.30,    // Default 30%
@@ -663,14 +1009,132 @@ class TradeQualityService {
       priceRange: 0.15        // Default 15%
     };
 
-    const score =
-      metrics.newsSentiment * finalWeights.newsSentiment +
-      metrics.float * finalWeights.float +
-      metrics.relativeVolume * finalWeights.relativeVolume +
-      metrics.priceRange * finalWeights.priceRange +
-      metrics.gap * finalWeights.gap;
+    let weightedSum = 0;
+    let coverage = 0;
 
-    return score * 5; // Convert to 0-5 scale
+    // Weight every metric present in the supplied weights map - this is
+    // profile-agnostic, so it handles both the stock metric set and the
+    // option metric set (dte, moneyness)
+    for (const key of Object.keys(finalWeights)) {
+      const metricScore = metrics[key];
+      if (metricScore === null || metricScore === undefined) continue;
+      weightedSum += metricScore * finalWeights[key];
+      coverage += finalWeights[key];
+    }
+
+    const threshold = Number.isFinite(Number(minimumCoverage))
+      ? Math.max(0, Math.min(1, Number(minimumCoverage)))
+      : DEFAULT_MIN_COVERAGE;
+
+    if (coverage < threshold) {
+      return { score: null, coverage };
+    }
+
+    // Renormalize so excluded metrics don't drag the score toward zero
+    return { score: (weightedSum / coverage) * 5, coverage };
+  }
+
+  /**
+   * Recalculate the weighted score and grade from a trade's stored
+   * quality_metrics, without any API calls. Used to reapply new weights to
+   * already-graded trades. A metric counts as available only when its raw
+   * value was recorded - legacy rows stored neutral default scores (0.5)
+   * alongside null raw values, and those are excluded here.
+   *
+   * The metric set is chosen from the profile recorded on the stored metrics
+   * (defaults to stock for legacy rows that predate profiles).
+   * @param {Object} storedMetrics - quality_metrics JSONB from the trade
+   * @param {Object} weights - Weights as decimals for the matching profile
+   * @param {number} minimumCoverage - Minimum coverage required for the matching profile
+   * @returns {Object|null} { grade, score, coverage } or null if metrics unusable
+   */
+  recalculateFromStoredMetrics(storedMetrics, weights, minimumCoverage = DEFAULT_MIN_COVERAGE) {
+    if (!storedMetrics || typeof storedMetrics !== 'object') return null;
+
+    const available = (rawValue, score) =>
+      rawValue !== null && rawValue !== undefined && score !== null && score !== undefined
+        ? Number(score)
+        : null;
+
+    const profileType = QUALITY_PROFILES[storedMetrics.profile] ? storedMetrics.profile : 'stock';
+    const metricKeys = QUALITY_PROFILES[profileType].metrics;
+
+    const metrics = {};
+    for (const key of metricKeys) {
+      const [valueField, scoreField] = STORED_METRIC_FIELDS[key];
+      metrics[key] = available(storedMetrics[valueField], storedMetrics[scoreField]);
+    }
+
+    const { score, coverage } = this.calculateWeightedScore(metrics, weights, minimumCoverage);
+
+    if (score === null) {
+      return { grade: null, score: null, coverage, profileType };
+    }
+
+    return {
+      grade: this.scoreToGrade(score),
+      score: Math.round(score * 10) / 10,
+      coverage,
+      profileType
+    };
+  }
+
+  /**
+   * Reapply the user's current quality weights to every trade that already
+   * has a stored metrics breakdown. Pure math over stored data - no API
+   * calls - so weight changes take effect immediately. Each trade is graded
+   * with the weights of the profile recorded on its stored metrics.
+   * @param {string} userId - User ID
+   * @returns {Promise<number>} Number of trades updated
+   */
+  async reapplyUserWeights(userId) {
+    // Load each profile's weights once
+    const weightsByProfile = {};
+    const minimumCoverageByProfile = {};
+    for (const profileType of Object.keys(QUALITY_PROFILES)) {
+      weightsByProfile[profileType] = await this.getUserQualityWeights(userId, profileType);
+      minimumCoverageByProfile[profileType] = await this.getUserMinimumCoverage(userId, profileType);
+    }
+
+    const result = await db.query(
+      `SELECT id, quality_metrics FROM trades WHERE user_id = $1 AND quality_metrics IS NOT NULL`,
+      [userId]
+    );
+
+    const ids = [];
+    const grades = [];
+    const scores = [];
+
+    for (const row of result.rows) {
+      const profileType = QUALITY_PROFILES[row.quality_metrics?.profile] ? row.quality_metrics.profile : 'stock';
+      const recalculated = this.recalculateFromStoredMetrics(
+        row.quality_metrics,
+        weightsByProfile[profileType],
+        minimumCoverageByProfile[profileType]
+      );
+      if (!recalculated) continue;
+      ids.push(row.id);
+      grades.push(recalculated.grade);
+      scores.push(recalculated.score);
+    }
+
+    if (ids.length > 0) {
+      await db.query(
+        `UPDATE trades t
+         SET quality_grade = u.grade,
+             quality_score = u.score
+         FROM (
+           SELECT unnest($1::uuid[]) AS id,
+                  unnest($2::varchar[]) AS grade,
+                  unnest($3::numeric[]) AS score
+         ) u
+         WHERE t.id = u.id AND t.user_id = $4`,
+        [ids, grades, scores, userId]
+      );
+    }
+
+    console.log(`[QUALITY] Reapplied weights for user ${userId}: ${ids.length} trades re-graded`);
+    return ids.length;
   }
 
   /**
@@ -699,7 +1163,15 @@ class TradeQualityService {
         trade.entry_time,
         trade.entry_price,
         trade.side || 'long',
-        trade.user_id
+        trade.user_id,
+        trade.news_sentiment || null,
+        {
+          instrumentType: trade.instrument_type,
+          underlyingSymbol: trade.underlying_symbol,
+          strikePrice: trade.strike_price,
+          expirationDate: trade.expiration_date,
+          optionType: trade.option_type
+        }
       );
 
       results.push({

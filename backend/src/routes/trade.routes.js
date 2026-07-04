@@ -548,6 +548,7 @@ router.get('/import/requirements', authenticate, tradeController.checkImportRequ
 router.post('/import/validate', authenticate, importLimiter, upload.single('file'), tradeController.validateImportFile);
 
 router.post('/import', authenticate, importLimiter, upload.single('file'), tradeController.importTrades);
+router.post('/import/manual-review', authenticate, importLimiter, tradeController.resolveManualReviewTrades);
 
 /**
  * @swagger

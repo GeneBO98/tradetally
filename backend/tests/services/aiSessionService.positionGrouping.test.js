@@ -11,6 +11,10 @@ jest.mock('../../src/models/Trade', () => ({
   findById: jest.fn()
 }));
 
+jest.mock('../../src/models/Playbook', () => ({
+  getTradeReviewsByTradeId: jest.fn()
+}));
+
 jest.mock('../../src/utils/positionGrouping', () => ({
   isPositionGroupingEnabled: jest.fn()
 }));
@@ -18,6 +22,7 @@ jest.mock('../../src/utils/positionGrouping', () => ({
 const db = require('../../src/config/database');
 const TradeQueries = require('../../src/services/tradeQueries');
 const Trade = require('../../src/models/Trade');
+const Playbook = require('../../src/models/Playbook');
 const { isPositionGroupingEnabled } = require('../../src/utils/positionGrouping');
 const AISessionService = require('../../src/services/aiSessionService');
 
@@ -182,6 +187,7 @@ describe('AISessionService.buildAnalysisPrompt position grouping note', () => {
 describe('AISessionService.buildSingleTradeSummary with a grouped trade', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    Playbook.getTradeReviewsByTradeId.mockResolvedValue([]);
   });
 
   test('attaches position group with all legs and marks the analyzed leg', async () => {
@@ -258,6 +264,71 @@ describe('AISessionService.buildSingleTradeSummary with a grouped trade', () => 
 
     expect(summary.position_group).toBeNull();
   });
+
+  test('attaches labeled quality context from setup quality and trade reviews', async () => {
+    Trade.findById.mockResolvedValue({
+      id: 'trade-1',
+      user_id: USER_ID,
+      symbol: 'ADBE',
+      position_group_id: null,
+      executions: [],
+      quality_grade: 'B',
+      quality_score: 3.8,
+      quality_metrics: { calculationVersion: 2, coverage: 75 }
+    });
+    Playbook.getTradeReviewsByTradeId.mockResolvedValue([
+      {
+        review_type: 'adherence',
+        playbook_name: 'Opening Range Break',
+        playbook_review_mode: 'checklist',
+        adherence_score: 80,
+        checklist_score: 85,
+        followed_plan: true,
+        checklist_responses: [{ label: 'Waited for confirmation', checked: true }],
+        rule_results: [],
+        violation_summary: [],
+        review_notes: 'Good plan fit',
+        reviewed_at: '2026-06-15T15:00:00Z'
+      },
+      {
+        review_type: 'manual_grading',
+        playbook_name: 'Options Credit Spread Grade',
+        playbook_review_mode: 'score',
+        adherence_score: 92,
+        checklist_score: 92,
+        followed_plan: null,
+        checklist_responses: [{ label: 'Defined risk', score: 5, weight: 2 }],
+        rule_results: [],
+        violation_summary: [],
+        review_notes: 'Clean structure',
+        reviewed_at: '2026-06-15T16:00:00Z'
+      }
+    ]);
+
+    const summary = await AISessionService.buildSingleTradeSummary(USER_ID, 'trade-1');
+
+    expect(summary.quality_context).toEqual({
+      automated_setup_quality: {
+        grade: 'B',
+        score: 3.8,
+        metrics: { calculationVersion: 2, coverage: 75 }
+      },
+      playbook_assessment: expect.objectContaining({
+        profile_name: 'Opening Range Break',
+        score: 80,
+        review_mode: 'checklist',
+        followed_plan: true,
+        review_notes: 'Good plan fit'
+      }),
+      manual_grading_profile: expect.objectContaining({
+        profile_name: 'Options Credit Spread Grade',
+        score: 92,
+        grade: 'A',
+        review_mode: 'score',
+        review_notes: 'Clean structure'
+      })
+    });
+  });
 });
 
 describe('AISessionService.buildSingleTradePrompt with a position group', () => {
@@ -273,7 +344,7 @@ describe('AISessionService.buildSingleTradePrompt with a position group', () => 
     };
   }
 
-  test('renders the multi-leg strategy context section', () => {
+  test('leads with the strategy snapshot and demotes the leg to a component', () => {
     const prompt = AISessionService.buildSingleTradePrompt(singleTradeSummaryFixture({
       group_id: 'grp-1',
       detected_strategy: 'bull_put_spread',
@@ -290,16 +361,123 @@ describe('AISessionService.buildSingleTradePrompt with a position group', () => 
       ]
     }));
 
-    expect(prompt).toContain('MULTI-LEG STRATEGY CONTEXT');
+    expect(prompt).toContain('STRATEGY SNAPSHOT (PRIMARY SUBJECT)');
     expect(prompt).toContain('bull put spread (2 legs) on SNOW');
     expect(prompt).toContain('Combined net P&L (all legs): $70.00');
     expect(prompt).toContain('[THIS LEG]');
     expect(prompt).toContain('evaluate the whole structure');
+
+    // The combined strategy is the primary subject: its snapshot must come
+    // before the analyzed leg's record, and the leg record must be demoted.
+    expect(prompt).toContain('ANALYZED LEG DETAIL');
+    expect(prompt.indexOf('STRATEGY SNAPSHOT')).toBeLessThan(prompt.indexOf('ANALYZED LEG DETAIL'));
+    expect(prompt).not.toContain('TRADE SNAPSHOT:');
+
+    // The response template asks for strategy-level analysis.
+    expect(prompt).toContain('Structure Analysis');
+    expect(prompt).toContain('judged at the strategy level, not per leg');
   });
 
-  test('omits the section for ungrouped trades', () => {
+  test('keeps the original per-trade prompt for ungrouped trades', () => {
     const prompt = AISessionService.buildSingleTradePrompt(singleTradeSummaryFixture(null));
 
-    expect(prompt).not.toContain('MULTI-LEG STRATEGY CONTEXT');
+    expect(prompt).not.toContain('STRATEGY SNAPSHOT');
+    expect(prompt).not.toContain('ANALYZED LEG DETAIL');
+    expect(prompt).toContain('TRADE SNAPSHOT:');
+    expect(prompt).toContain('Analyze one specific trade');
+    expect(prompt).toContain('**Technical Analysis**');
+  });
+
+  test('labels automated and manual quality context in the prompt', () => {
+    const prompt = AISessionService.buildSingleTradePrompt({
+      ...singleTradeSummaryFixture(null),
+      trade: {
+        symbol: 'ADBE',
+        side: 'long',
+        status: 'closed',
+        quality_grade: 'B',
+        quality_score: 3.8,
+        quality_metrics: { coverage: 75 }
+      },
+      quality_context: {
+        automated_setup_quality: { grade: 'B', score: 3.8, metrics: { coverage: 75 } },
+        playbook_assessment: { profile_name: 'Opening Range Break', score: 80, followed_plan: true },
+        manual_grading_profile: { profile_name: 'Options Credit Spread Grade', score: 92, grade: 'A', criterion_responses: [{ label: 'Defined risk', score: 5 }] }
+      }
+    });
+
+    expect(prompt).toContain('QUALITY CONTEXT INCLUDED');
+    expect(prompt).toContain('Automated Setup Quality: B (3.8/5)');
+    expect(prompt).toContain('Playbook Assessment: Opening Range Break (80%)');
+    expect(prompt).toContain('Manual Grading Profile: Options Credit Spread Grade grade A (92%)');
+    expect(prompt).toContain('reference them separately');
+  });
+});
+
+describe('AISessionService trade analysis deletion', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test('deletes one owned single-trade analysis scoped to the trade', async () => {
+    db.query.mockResolvedValue({ rows: [{ id: 'analysis-1' }] });
+
+    const deletedCount = await AISessionService.deleteTradeAnalysis(USER_ID, 'trade-1', 'analysis-1');
+
+    expect(deletedCount).toBe(1);
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining("filters_applied->>'analysisType' = 'single_trade'"),
+      ['analysis-1', USER_ID, 'trade-1']
+    );
+  });
+
+  test('throws when a single analysis is not owned or not tied to the trade', async () => {
+    db.query.mockResolvedValue({ rows: [] });
+
+    await expect(AISessionService.deleteTradeAnalysis(USER_ID, 'trade-1', 'analysis-2'))
+      .rejects.toThrow('Analysis not found or access denied');
+  });
+
+  test('clears all owned single-trade analyses for the trade', async () => {
+    db.query.mockResolvedValue({ rows: [{ id: 'analysis-1' }, { id: 'analysis-2' }] });
+
+    const deletedCount = await AISessionService.deleteTradeAnalyses(USER_ID, 'trade-1');
+
+    expect(deletedCount).toBe(2);
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining("filters_applied->>'tradeId' = $2"),
+      [USER_ID, 'trade-1']
+    );
+  });
+});
+
+describe('AISessionService.summarizePositionGroupForClient', () => {
+  test('trims the group to the fields the UI needs', () => {
+    const summary = AISessionService.summarizePositionGroupForClient({
+      group_id: 'grp-1',
+      detected_strategy: 'bull_put_spread',
+      strategy_label: 'bull put spread',
+      strategy_confidence: 90,
+      leg_count: 2,
+      underlying_symbol: 'SNOW',
+      expiration_date: '2026-06-20',
+      is_completed: true,
+      combined_pnl: 70,
+      combined_costs: 3,
+      legs: [{ symbol: 'SNOW250620P00100000' }]
+    });
+
+    expect(summary).toEqual({
+      strategy_label: 'bull put spread',
+      detected_strategy: 'bull_put_spread',
+      leg_count: 2,
+      underlying_symbol: 'SNOW',
+      combined_pnl: 70,
+      is_completed: true
+    });
+  });
+
+  test('returns null when there is no group', () => {
+    expect(AISessionService.summarizePositionGroupForClient(null)).toBeNull();
   });
 });

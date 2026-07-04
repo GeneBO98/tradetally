@@ -7,6 +7,8 @@ const AIProvider = require('../utils/aiProvider');
 const TierService = require('./tierService');
 const { validateAiProviderUrl } = require('../utils/urlSecurity');
 const adminSettingsService = require('./adminSettings');
+const Playbook = require('../models/Playbook');
+const PlaybookAdherenceService = require('./playbookAdherence.service');
 
 /**
  * AI Session Service
@@ -504,6 +506,94 @@ Keep recommendations specific and data-driven. Use bullet points for clarity.`;
     }, {});
   }
 
+  static mapReviewForAI(review) {
+    if (!review) return null;
+
+    const score = review.adherence_score !== null && review.adherence_score !== undefined
+      ? Number(review.adherence_score)
+      : null;
+
+    return this.compactObject({
+      profile_name: review.playbook_name,
+      score,
+      grade: review.playbook_review_mode === 'score'
+        && score !== null
+        ? PlaybookAdherenceService.scoreToGrade(score)
+        : null,
+      review_mode: review.playbook_review_mode === 'score' ? 'score' : 'checklist',
+      followed_plan: review.followed_plan,
+      checklist_score: review.checklist_score !== null && review.checklist_score !== undefined
+        ? Number(review.checklist_score)
+        : null,
+      review_notes: review.review_notes,
+      criterion_responses: review.checklist_responses || [],
+      rule_results: review.rule_results || [],
+      violation_summary: review.violation_summary || [],
+      reviewed_at: review.reviewed_at
+    });
+  }
+
+  static buildQualityContext(trade, reviews = []) {
+    const automatedSetupQuality = this.compactObject({
+      grade: trade.quality_grade,
+      score: trade.quality_score,
+      metrics: trade.quality_metrics
+    });
+    const playbookAssessment = this.mapReviewForAI(
+      reviews.find(review => review.review_type === 'adherence')
+    );
+    const manualGradingProfile = this.mapReviewForAI(
+      reviews.find(review => review.review_type === 'manual_grading')
+    );
+
+    const context = this.compactObject({
+      automated_setup_quality: Object.keys(automatedSetupQuality).length ? automatedSetupQuality : null,
+      playbook_assessment: playbookAssessment,
+      manual_grading_profile: manualGradingProfile
+    });
+
+    return Object.keys(context).length ? context : null;
+  }
+
+  static getQualityContextSources(qualityContext) {
+    const sources = [];
+    if (qualityContext?.automated_setup_quality) sources.push('automated_setup_quality');
+    if (qualityContext?.playbook_assessment) sources.push('playbook_assessment');
+    if (qualityContext?.manual_grading_profile) sources.push('manual_grading_profile');
+    return sources;
+  }
+
+  static formatQualityContextForPrompt(qualityContext) {
+    if (!qualityContext || Object.keys(qualityContext).length === 0) {
+      return 'No automated setup quality, playbook assessment, or manual grading profile was available for this trade.';
+    }
+
+    const lines = [];
+    if (qualityContext.automated_setup_quality) {
+      const setup = qualityContext.automated_setup_quality;
+      lines.push(`- Automated Setup Quality: ${setup.grade || 'N/A'}${setup.score !== undefined ? ` (${setup.score}/5)` : ''}`);
+      if (setup.metrics) {
+        lines.push(`  Metrics: ${JSON.stringify(setup.metrics)}`);
+      }
+    }
+    if (qualityContext.playbook_assessment) {
+      const review = qualityContext.playbook_assessment;
+      lines.push(`- Playbook Assessment: ${review.profile_name || 'Unnamed playbook'}${review.score !== undefined ? ` (${review.score}%)` : ''}${review.followed_plan !== undefined ? `, followed plan: ${review.followed_plan ? 'yes' : 'no'}` : ''}`);
+      if (review.review_notes) lines.push(`  Notes: ${review.review_notes}`);
+      if (review.criterion_responses?.length) lines.push(`  Responses: ${JSON.stringify(review.criterion_responses)}`);
+      if (review.rule_results?.length) lines.push(`  Rule results: ${JSON.stringify(review.rule_results)}`);
+    }
+    if (qualityContext.manual_grading_profile) {
+      const review = qualityContext.manual_grading_profile;
+      lines.push(`- Manual Grading Profile: ${review.profile_name || 'Unnamed grading profile'}${review.grade ? ` grade ${review.grade}` : ''}${review.score !== undefined ? ` (${review.score}%)` : ''}`);
+      if (review.review_notes) lines.push(`  Notes: ${review.review_notes}`);
+      if (review.criterion_responses?.length) lines.push(`  Criterion scores: ${JSON.stringify(review.criterion_responses)}`);
+      if (review.rule_results?.length) lines.push(`  Rule results: ${JSON.stringify(review.rule_results)}`);
+    }
+
+    return lines.join('\n');
+  }
+
   static async buildSingleTradeSummary(userId, tradeId) {
     if (!tradeId || typeof tradeId !== 'string') {
       throw new Error('Trade ID is required for single trade analysis');
@@ -530,6 +620,13 @@ Keep recommendations specific and data-driven. Use bullet points for clarity.`;
       }));
 
     const newsEvents = Array.isArray(trade.news_events) ? trade.news_events : [];
+    let tradeReviews = [];
+    try {
+      tradeReviews = await Playbook.getTradeReviewsByTradeId(tradeId, userId);
+    } catch (error) {
+      console.warn('[AI_SESSION] Could not load trade reviews for AI context:', error.message);
+    }
+    const qualityContext = this.buildQualityContext(trade, tradeReviews);
 
     // Multi-leg combo context (issue #339): when the trade belongs to a
     // detected option strategy group, give the AI every leg so it analyzes the
@@ -640,6 +737,7 @@ Keep recommendations specific and data-driven. Use bullet points for clarity.`;
         quality_metrics: trade.quality_metrics,
         playbook_id: trade.playbook_id
       }),
+      quality_context: qualityContext,
       executions: executions.map(execution => this.compactObject({
         action: execution.action || execution.side,
         quantity: execution.quantity,
@@ -681,11 +779,26 @@ Keep recommendations specific and data-driven. Use bullet points for clarity.`;
     };
   }
 
+  // Trimmed position group shape returned to the client so the UI can show
+  // that an analysis covered the combined strategy, not just one leg.
+  static summarizePositionGroupForClient(positionGroup) {
+    if (!positionGroup) return null;
+    return {
+      strategy_label: positionGroup.strategy_label,
+      detected_strategy: positionGroup.detected_strategy,
+      leg_count: positionGroup.leg_count,
+      underlying_symbol: positionGroup.underlying_symbol,
+      combined_pnl: positionGroup.combined_pnl,
+      is_completed: positionGroup.is_completed
+    };
+  }
+
   static buildSingleTradePrompt(tradeSummary, tradingProfile = null) {
     const trade = tradeSummary.trade;
     const enrichment = tradeSummary.enrichment;
     const visualContext = tradeSummary.visual_context;
     const positionGroup = tradeSummary.position_group;
+    const qualityContext = tradeSummary.quality_context;
 
     let profileSection = '';
     if (tradingProfile) {
@@ -716,7 +829,14 @@ TRADER PROFILE:
       ? visualContext.images.map((image, index) => `- Image ${index + 1}: ${image.file_name || 'unnamed'} (${image.file_type || 'unknown type'}) at ${image.file_url}`).join('\n')
       : 'No attached trade images available.';
 
+    // Strategy-first framing (issue #339): when the trade belongs to a detected
+    // group, the combined strategy is the primary subject of the analysis. The
+    // snapshot leads the prompt and the leg record is demoted to a component,
+    // otherwise the model anchors on the leg's own P&L and analyzes it in
+    // isolation. The ungrouped prompt is unchanged.
     let positionGroupSection = '';
+    let snapshotHeading = 'TRADE SNAPSHOT:';
+    let executionsHeading = 'EXECUTIONS:';
     if (positionGroup) {
       const strategyLabel = positionGroup.strategy_label || 'multi-leg option strategy';
       const legLines = positionGroup.legs?.length
@@ -729,20 +849,27 @@ TRADER PROFILE:
           }).join('\n')
         : 'Leg details unavailable.';
 
-      positionGroupSection = `
-MULTI-LEG STRATEGY CONTEXT:
-This trade is one leg of a detected ${strategyLabel} (${positionGroup.leg_count} legs) on ${positionGroup.underlying_symbol}${positionGroup.expiration_date ? `, expiring ${positionGroup.expiration_date}` : ''}. Analyze the COMBINED strategy as a single position — net credit/debit, strike structure, defined risk vs reward, and whether the structure fit the market view — rather than judging this leg in isolation. A losing leg inside a profitable structure is usually the planned hedge, not a mistake.
+      positionGroupSection = `STRATEGY SNAPSHOT (PRIMARY SUBJECT):
+This is a detected ${strategyLabel} (${positionGroup.leg_count} legs) on ${positionGroup.underlying_symbol}${positionGroup.expiration_date ? `, expiring ${positionGroup.expiration_date}` : ''}. Analyze the COMBINED strategy as a single position — net credit/debit, strike structure, defined risk vs reward, and whether the structure fit the market view — rather than judging any leg in isolation. A losing leg inside a profitable structure is usually the planned hedge, not a mistake.
 - Combined net P&L (all legs): ${this.formatCurrencyValue(positionGroup.combined_pnl)}
 - Combined commissions/fees: ${this.formatCurrencyValue(positionGroup.combined_costs)}
 - Structure status: ${positionGroup.is_completed ? 'closed' : 'open'}
 Legs:
 ${legLines}
+
 `;
+      snapshotHeading = 'ANALYZED LEG DETAIL (one component of the strategy above — do not judge it in isolation):';
+      executionsHeading = 'EXECUTIONS (for the analyzed leg):';
     }
 
-    return `You are a professional trading coach and technical analyst. Analyze one specific trade to determine what went wrong, what worked, and what the trader should change next time. Base the analysis only on the available trade data, executions, enrichment, news, sector/company context, notes, chart links, and image attachment references below. If chart or image URLs are not directly viewable by your model, explicitly say you are using them as attachment references rather than visually inspecting them.${positionGroup ? ' This trade is part of a multi-leg option strategy; evaluate the whole structure described in the MULTI-LEG STRATEGY CONTEXT section as one combined trade.' : ''}
+    const sharedCaveat = 'Base the analysis only on the available trade data, executions, enrichment, news, sector/company context, notes, chart links, and image attachment references below. If chart or image URLs are not directly viewable by your model, explicitly say you are using them as attachment references rather than visually inspecting them.';
+    const intro = positionGroup
+      ? `You are a professional trading coach and technical analyst. Analyze one multi-leg option strategy as a single combined trade to determine what went wrong, what worked, and what the trader should change next time. ${sharedCaveat} The trade record below is one leg of the strategy; evaluate the whole structure described in the STRATEGY SNAPSHOT section as one combined trade.`
+      : `You are a professional trading coach and technical analyst. Analyze one specific trade to determine what went wrong, what worked, and what the trader should change next time. ${sharedCaveat}`;
 
-${profileSection}TRADE SNAPSHOT:
+    return `${intro}
+
+${profileSection}${positionGroupSection}${snapshotHeading}
 - Symbol: ${trade.symbol}${trade.company_name ? ` (${trade.company_name})` : ''}
 - Sector: ${trade.sector || 'N/A'}
 - Side: ${trade.side || 'N/A'}
@@ -763,9 +890,9 @@ ${profileSection}TRADE SNAPSHOT:
 - Tags: ${Array.isArray(trade.tags) ? trade.tags.join(', ') : (trade.tags || 'N/A')}
 - Notes: ${trade.notes || 'No notes'}
 
-EXECUTIONS:
+${executionsHeading}
 ${executions}
-${positionGroupSection}
+
 ENRICHMENT:
 - News sentiment: ${enrichment.news_sentiment || 'N/A'}
 - News checked at: ${enrichment.news_checked_at || 'N/A'}
@@ -784,12 +911,22 @@ ${images}
 QUALITY METRICS:
 ${JSON.stringify(trade.quality_metrics || {}, null, 2)}
 
-Please structure the response with:
+QUALITY CONTEXT INCLUDED:
+The following labeled quality inputs were included in this AI request. Treat automated Setup Quality as market-data/enrichment driven, Playbook Assessment as checklist adherence, and Manual Grading Profile as user-scored criteria. If more than one exists, reference them separately rather than merging them into one score.
+${this.formatQualityContextForPrompt(qualityContext)}
+
+${positionGroup ? `Please structure the response with:
+1. **Verdict**: A concise diagnosis of why this strategy succeeded or underperformed — structure, strikes, timing — or the biggest risk if it is still open.
+2. **Structure Analysis**: Strike selection, spread width, net credit/debit versus maximum risk, defined risk-reward of the combined position, and expiration choice.
+3. **Technical & Timing**: Underlying trend/context at entry, exit timing, and how the combined position was managed.
+4. **News & Sector Context**: How the linked news sentiment/events and sector/company data may have affected the setup.
+5. **Process Mistakes**: Sizing, plan adherence, psychology, or timing issues — judged at the strategy level, not per leg.
+6. **What To Do Next Time**: 3-5 concrete improvements tied to this exact strategy.` : `Please structure the response with:
 1. **Verdict**: A concise diagnosis of the most likely reason this trade underperformed or the biggest risk if it is still open.
 2. **Technical Analysis**: Entry location, trend/context, stop/target placement, risk-reward, timing, MAE/MFE, and execution quality.
 3. **News & Sector Context**: How the linked news sentiment/events and sector/company data may have affected the setup.
 4. **Process Mistakes**: Specific rule, psychology, sizing, timing, or plan-adherence issues visible in the data.
-5. **What To Do Next Time**: 3-5 concrete improvements tied to this exact trade.
+5. **What To Do Next Time**: 3-5 concrete improvements tied to this exact trade.`}
 
 Be direct, data-driven, and specific. Do not give generic trading advice.`;
   }
@@ -853,7 +990,10 @@ Be direct, data-driven, and specific. Do not give generic trading advice.`;
     const aiSettings = await this.getAISettings(userId, options);
     tradeSummary.ai_metadata = {
       provider: aiSettings.provider || null,
-      model: aiSettings.modelName || null
+      model: aiSettings.modelName || null,
+      context_sources: isSingleTradeAnalysis
+        ? this.getQualityContextSources(tradeSummary.quality_context)
+        : []
     };
 
     // Build the analysis prompt
@@ -908,6 +1048,7 @@ Be direct, data-driven, and specific. Do not give generic trading advice.`;
         trade_id: tradeSummary.trade_id,
         symbol: tradeSummary.trade?.symbol,
         pnl: tradeSummary.trade?.pnl,
+        position_group: this.summarizePositionGroupForClient(tradeSummary.position_group),
         ai_metadata: tradeSummary.ai_metadata
       } : tradeSummary.metrics,
       ai_metadata: tradeSummary.ai_metadata,
@@ -1000,6 +1141,9 @@ ${tradeSummary.position_group ? `- Multi-leg strategy: this trade is one leg of 
 ` : ''}- News sentiment: ${tradeSummary.enrichment?.news_sentiment || 'N/A'}
 - Charts attached: ${tradeSummary.visual_context?.charts?.length || 0}
 - Images attached: ${tradeSummary.visual_context?.images?.length || 0}
+
+QUALITY CONTEXT INCLUDED:
+${this.formatQualityContextForPrompt(tradeSummary.quality_context)}
 
 CONVERSATION HISTORY:
 ${conversationHistory}
@@ -1110,6 +1254,7 @@ Please provide a helpful, specific response to the user's question. Reference th
             trade_id: storedSummary.trade_id,
             symbol: storedSummary.trade?.symbol,
             pnl: storedSummary.trade?.pnl,
+            position_group: this.summarizePositionGroupForClient(storedSummary.position_group),
             ai_metadata: storedSummary.ai_metadata || null
           }
         : storedSummary.metrics || {},
@@ -1199,6 +1344,7 @@ Please provide a helpful, specific response to the user's question. Reference th
       status: row.status,
       trade_id: row.trade_summary?.trade_id || tradeId,
       symbol: row.trade_summary?.trade?.symbol || trade.symbol,
+      position_group: this.summarizePositionGroupForClient(row.trade_summary?.position_group),
       ai_metadata: row.trade_summary?.ai_metadata || null,
       response_count: Array.isArray(row.responses) ? row.responses.length : 0,
       followup_count: row.followup_count,
@@ -1207,6 +1353,48 @@ Please provide a helpful, specific response to the user's question. Reference th
       updated_at: row.updated_at,
       responses: row.responses || []
     }));
+  }
+
+  static async deleteTradeAnalysis(userId, tradeId, analysisId) {
+    if (!tradeId || typeof tradeId !== 'string') {
+      throw new Error('Trade ID is required');
+    }
+    if (!analysisId || typeof analysisId !== 'string') {
+      throw new Error('Analysis ID is required');
+    }
+
+    const result = await db.query(
+      `DELETE FROM ai_sessions
+       WHERE id = $1
+         AND user_id = $2
+         AND filters_applied->>'analysisType' = 'single_trade'
+         AND filters_applied->>'tradeId' = $3
+       RETURNING id`,
+      [analysisId, userId, tradeId]
+    );
+
+    if (result.rows.length === 0) {
+      throw new Error('Analysis not found or access denied');
+    }
+
+    return result.rows.length;
+  }
+
+  static async deleteTradeAnalyses(userId, tradeId) {
+    if (!tradeId || typeof tradeId !== 'string') {
+      throw new Error('Trade ID is required');
+    }
+
+    const result = await db.query(
+      `DELETE FROM ai_sessions
+       WHERE user_id = $1
+         AND filters_applied->>'analysisType' = 'single_trade'
+         AND filters_applied->>'tradeId' = $2
+       RETURNING id`,
+      [userId, tradeId]
+    );
+
+    return result.rows.length;
   }
 
   /**

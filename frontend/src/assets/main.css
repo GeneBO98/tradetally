@@ -126,6 +126,33 @@
     @apply lg:p-6;
   }
 
+  /* Horizontal scroll fade affordance. Soft edge shadows appear ONLY when the
+     content actually overflows (classic background-attachment:local trick) — no
+     JS, and no false fade when everything fits. The "cover" gradients match the
+     card background so they blend seamlessly; tune the card-color stops if the
+     surface changes. */
+  .h-scroll-fade {
+    overflow-x: auto;
+    background:
+      linear-gradient(to right, #ffffff 30%, rgba(255, 255, 255, 0)) left center,
+      linear-gradient(to left, #ffffff 30%, rgba(255, 255, 255, 0)) right center,
+      radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0)) left center,
+      radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0)) right center;
+    background-repeat: no-repeat;
+    background-size: 36px 100%, 36px 100%, 14px 100%, 14px 100%;
+    background-attachment: local, local, scroll, scroll;
+  }
+  .dark .h-scroll-fade {
+    background:
+      linear-gradient(to right, #1f2937 30%, rgba(31, 41, 55, 0)) left center,
+      linear-gradient(to left, #1f2937 30%, rgba(31, 41, 55, 0)) right center,
+      radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0)) left center,
+      radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0)) right center;
+    background-repeat: no-repeat;
+    background-size: 36px 100%, 36px 100%, 14px 100%, 14px 100%;
+    background-attachment: local, local, scroll, scroll;
+  }
+
   /* Mobile-First Responsive Utilities */
 
   /* Container System - Replaces max-w-[65%] pattern */

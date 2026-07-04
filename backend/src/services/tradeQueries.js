@@ -104,6 +104,23 @@ function derivedRValueSql(alias = 't') {
   END`;
 }
 
+// Fixed-dollar-risk traders define R as a constant dollar amount per trade, so
+// every trade's R-multiple is simply net P&L / dollar risk (issue #345). pnl is
+// already stored in dollars with the futures/option multiplier applied, so this
+// needs no per-instrument multiplier and reconciles exactly: SUM(R) = SUM(pnl) /
+// risk. Deriving risk from each stored stop loss instead skewed the aggregate
+// negative — winners trailed to/above breakeven produced a NULL price-based risk
+// and dropped out, while losers with a tight stored stop blew up the denominator.
+// `dollarRisk` is a server-side validated number (never user query input), so
+// interpolating it into the SQL literal is safe.
+function derivedRValueDollarSql(alias, dollarRisk) {
+  return `CASE
+    WHEN ${alias}.pnl IS NOT NULL
+      THEN ${alias}.pnl / ${dollarRisk}
+    ELSE NULL
+  END`;
+}
+
 class TradeQueries {
   // Internal: builds the WHERE clause and parameter array for a filter spec.
   // Returns { whereClause, values, paramCount, needsSectorOuterJoin }.
@@ -414,6 +431,7 @@ class TradeQueries {
       SELECT t.*,
         t.strategy, t.setup,
         pm.current_price,
+        pm.last_updated as current_price_updated_at,
         array_agg(DISTINCT ta.file_url) FILTER (WHERE ta.id IS NOT NULL) as attachment_urls,
         (SELECT array_agg(tch.chart_url ORDER BY tch.uploaded_at ASC) FROM trade_charts tch WHERE tch.trade_id = t.id) as chart_urls,
         count(DISTINCT tc.id)::integer as comment_count,
@@ -428,7 +446,7 @@ class TradeQueries {
       LEFT JOIN trade_comments tc ON t.id = tc.trade_id
       LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
       LEFT JOIN trade_position_groups tpg ON t.position_group_id = tpg.id
-      GROUP BY t.id, pm.current_price, sc.finnhub_industry, sc.company_name, tpg.detected_strategy, tpg.leg_count
+      GROUP BY t.id, pm.current_price, pm.last_updated, sc.finnhub_industry, sc.company_name, tpg.detected_strategy, tpg.leg_count
       ORDER BY t.trade_date DESC, t.entry_time DESC
     `;
 
@@ -456,6 +474,9 @@ class TradeQueries {
     // single trade so the headline win rate / counts / profit factor are
     // measured per position. Total P&L is unchanged.
     let groupByPosition = false;
+    // For fixed-dollar-risk users, R is net P&L / dollar risk rather than a
+    // value derived from each stored stop loss (issue #345).
+    let dollarRisk = null;
     try {
       const userSettings = await User.getSettings(userId);
       useMedian = userSettings?.statistics_calculation === 'median';
@@ -464,6 +485,10 @@ class TradeQueries {
         default: userSettings?.breakeven_tolerance_ticks,
         byUnderlying: userSettings?.breakeven_tolerance_ticks_by_underlying
       });
+      const stopLossDollars = parseFloat(userSettings?.default_stop_loss_dollars);
+      if (userSettings?.default_stop_loss_type === 'dollar' && isFinite(stopLossDollars) && stopLossDollars > 0) {
+        dollarRisk = stopLossDollars;
+      }
     } catch (error) {
       console.warn('Could not fetch user settings for analytics, using default (average):', error.message);
     }
@@ -503,7 +528,9 @@ class TradeQueries {
       ${whereClause}
     `;
 
-    const derivedRValue = derivedRValueSql('t');
+    const derivedRValue = dollarRisk
+      ? derivedRValueDollarSql('t', dollarRisk)
+      : derivedRValueSql('t');
 
     // Per-leg vs per-position completed_trades. The grouped form sums legs that
     // share account + underlying/symbol + entry_time into one synthetic trade.
@@ -796,7 +823,57 @@ class TradeQueries {
         HAVING COUNT(*) > 0
         ORDER BY trade_date
       `, values),
-      timedDbQuery('analytics.topTradesQuery', `
+      timedDbQuery('analytics.topTradesQuery', groupByPosition ? `
+        -- Whole-trade mode (issue #339): rank combined positions, not legs, so a
+        -- spread's hedge leg can't show up as a "worst trade" while its winning
+        -- leg is a "best trade". Keyed by underlying for display so clicking a
+        -- row navigates to all of its legs (the trade list symbol filter is a
+        -- prefix match over OCC symbols). The group join stays outside the CTE:
+        -- both tables have underlying_symbol, and POSITION_GROUP_KEY references
+        -- unqualified trade columns.
+        WITH positions AS (
+          SELECT
+            MIN(id::text) as id,
+            MIN(COALESCE(NULLIF(underlying_symbol, ''), symbol)) as symbol,
+            MIN(entry_price) as entry_price,
+            MAX(exit_price) as exit_price,
+            SUM(quantity) as quantity,
+            SUM(pnl) as pnl,
+            MIN(trade_date) as trade_date,
+            MIN(position_group_id::text) as position_group_id,
+            COUNT(*) as actual_leg_count
+          FROM trades t
+          ${whereClause}
+            AND exit_price IS NOT NULL
+            AND pnl IS NOT NULL
+          GROUP BY ${POSITION_GROUP_KEY}
+        )
+        (
+          SELECT 'best' as type, p.id, p.symbol, p.entry_price, p.exit_price,
+                 p.quantity, p.pnl, p.trade_date,
+                 g.detected_strategy as group_detected_strategy,
+                 CASE WHEN p.actual_leg_count > 1
+                      THEN COALESCE(g.leg_count, p.actual_leg_count::integer) END as group_leg_count
+          FROM positions p
+          LEFT JOIN trade_position_groups g ON g.id = p.position_group_id::uuid
+          WHERE p.pnl > 0
+          ORDER BY p.pnl DESC
+          LIMIT 5
+        )
+        UNION ALL
+        (
+          SELECT 'worst' as type, p.id, p.symbol, p.entry_price, p.exit_price,
+                 p.quantity, p.pnl, p.trade_date,
+                 g.detected_strategy as group_detected_strategy,
+                 CASE WHEN p.actual_leg_count > 1
+                      THEN COALESCE(g.leg_count, p.actual_leg_count::integer) END as group_leg_count
+          FROM positions p
+          LEFT JOIN trade_position_groups g ON g.id = p.position_group_id::uuid
+          WHERE p.pnl < 0
+          ORDER BY p.pnl ASC
+          LIMIT 5
+        )
+      ` : `
         (
           SELECT 'best' as type, id, symbol, entry_price, exit_price,
                  quantity, pnl, trade_date
@@ -815,7 +892,36 @@ class TradeQueries {
           LIMIT 5
         )
       `, values),
-      timedDbQuery('analytics.bestWorstCardsQuery', `
+      timedDbQuery('analytics.bestWorstCardsQuery', groupByPosition ? `
+        -- Whole-trade mode: same position collapsing as topTradesQuery above.
+        WITH positions AS (
+          SELECT
+            MIN(id::text) as id,
+            MIN(COALESCE(NULLIF(underlying_symbol, ''), symbol)) as symbol,
+            SUM(pnl) as pnl,
+            MIN(trade_date) as trade_date
+          FROM trades t
+          ${whereClause}
+            AND exit_price IS NOT NULL
+            AND pnl IS NOT NULL
+          GROUP BY ${POSITION_GROUP_KEY}
+        )
+        (
+          SELECT 'best' as type, id, symbol, pnl, trade_date
+          FROM positions
+          WHERE pnl > 0
+          ORDER BY pnl DESC
+          LIMIT 1
+        )
+        UNION ALL
+        (
+          SELECT 'worst' as type, id, symbol, pnl, trade_date
+          FROM positions
+          WHERE pnl < 0
+          ORDER BY pnl ASC
+          LIMIT 1
+        )
+      ` : `
         (
           SELECT 'best' as type, id, symbol, pnl, trade_date
           FROM trades t

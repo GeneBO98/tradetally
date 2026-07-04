@@ -34,6 +34,17 @@ For Management R calculations, both the actual outcome and the ghost scenario (w
 ### Stop Loss for R Calculations
 R values use the **current** stop loss, not the original. The `risk_level_history` field tracks historical stop loss moves for display purposes (showing "Saved R" from SL moves), but R calculations always use the current stop loss value.
 
+### Fixed-Dollar-Risk Users (issue #345)
+When a user's `default_stop_loss_type` is `dollar`, their risk per trade is a **constant dollar amount** (`default_stop_loss_dollars`), so **1R is that fixed dollar amount on every trade — even when the stop is later trailed**. This is the one place the "use the current stop loss" rule above is overridden: for dollar-risk users the risk unit stays anchored to the planned dollar risk, not the (possibly moved) current stop distance.
+
+This applies consistently across all three R surfaces:
+
+- **Dashboard / analytics aggregate** (`TradeQueries.getAnalytics`): derives R as `pnl / dollar_risk`. Because `pnl` is already in dollars (futures/option multiplier applied), this needs no per-instrument multiplier and reconciles exactly: `SUM(R) = SUM(pnl) / risk`.
+- **R-Multiple Analysis & R-Performance chart** (`calculateRMultiples`): the per-share risk becomes `dollar_risk / (qty × multiplier)` and `riskAmount` becomes `dollar_risk`, so actual R, target R, weighted target R, and R-lost all share that unit.
+- **Management R** (`TargetHitAnalysisService.calculateManagementR`): same per-share risk substitution, so planned/management R stay consistent.
+
+Deriving risk from each stored stop instead skewed results — winners trailed to/above breakeven yielded a NULL/≤0 price-based risk and dropped out, while losers with a tight stored stop blew up the denominator. The dollar substitution is gated on dollar mode; **percent-stop users keep the per-trade `(entry − stop) × qty × multiplier` derivation unchanged.** The controller loads the setting via `getUserDollarRisk(userId)` and threads `{ dollarRisk }` into both functions.
+
 ---
 
 ## Weighted Target R (Potential R)

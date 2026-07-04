@@ -628,6 +628,8 @@ const schemas = {
     requiredTags: Joi.array().items(Joi.string().trim().max(50)).default([]),
     requireStopLoss: Joi.boolean().default(false),
     minimumTargetR: Joi.number().min(0).max(100).allow(null),
+    reviewMode: Joi.string().valid('checklist', 'score').default('checklist'),
+    autoAssignEnabled: Joi.boolean().default(false),
     checklistItems: Joi.array().items(
       Joi.object({
         label: Joi.string().trim().max(255).required(),
@@ -649,6 +651,8 @@ const schemas = {
     requiredTags: Joi.array().items(Joi.string().trim().max(50)).default([]),
     requireStopLoss: Joi.boolean().default(false),
     minimumTargetR: Joi.number().min(0).max(100).allow(null),
+    reviewMode: Joi.string().valid('checklist', 'score').default('checklist'),
+    autoAssignEnabled: Joi.boolean().default(false),
     checklistItems: Joi.array().items(
       Joi.object({
         label: Joi.string().trim().max(255).required(),
@@ -664,8 +668,9 @@ const schemas = {
     checklistResponses: Joi.array().items(
       Joi.object({
         checklistItemId: Joi.string().uuid().required(),
-        checked: Joi.boolean().required()
-      })
+        checked: Joi.boolean(),
+        score: Joi.number().min(0).max(5)
+      }).or('checked', 'score')
     ).required(),
     followedPlan: Joi.boolean().allow(null),
     reviewNotes: Joi.string().allow('', null)

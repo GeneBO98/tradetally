@@ -1,4 +1,14 @@
 class PlaybookAdherenceService {
+  static scoreToGrade(score) {
+    const numeric = Number(score);
+    if (!Number.isFinite(numeric)) return null;
+    if (numeric >= 90) return 'A';
+    if (numeric >= 80) return 'B';
+    if (numeric >= 70) return 'C';
+    if (numeric >= 60) return 'D';
+    return 'F';
+  }
+
   static normalizeChecklistItems(items = []) {
     return (items || [])
       .map((item, index) => ({
@@ -179,6 +189,12 @@ class PlaybookAdherenceService {
     return rules;
   }
 
+  static getReviewMode(playbook) {
+    return playbook?.review_mode === 'score' || playbook?.reviewMode === 'score'
+      ? 'score'
+      : 'checklist';
+  }
+
   static scoreChecklist(checklistItems, checklistResponses = []) {
     const responseMap = new Map(
       (checklistResponses || []).map(response => [
@@ -209,8 +225,48 @@ class PlaybookAdherenceService {
     };
   }
 
+  static scoreCriteria(checklistItems, checklistResponses = []) {
+    const responseMap = new Map(
+      (checklistResponses || []).map(response => [
+        response.checklistItemId || response.checklist_item_id || response.id,
+        response
+      ])
+    );
+
+    const normalizedItems = this.normalizeChecklistItems(checklistItems);
+    const totalWeight = normalizedItems.reduce((sum, item) => sum + (item.weight > 0 ? item.weight : 1), 0) || 1;
+    const responseSummary = normalizedItems.map(item => {
+      const rawScore = Number(responseMap.get(item.id)?.score ?? 0);
+      const score = Number.isFinite(rawScore) ? Math.max(0, Math.min(5, rawScore)) : 0;
+      return {
+        checklistItemId: item.id,
+        label: item.label,
+        checked: score > 0,
+        score,
+        maxScore: 5,
+        isRequired: item.isRequired,
+        weight: item.weight > 0 ? item.weight : 1
+      };
+    });
+
+    const earnedWeight = responseSummary.reduce((sum, item) => (
+      sum + ((item.score / 5) * item.weight)
+    ), 0);
+
+    const checklistScore = (earnedWeight / totalWeight) * 100;
+
+    return {
+      checklistScore: Math.max(0, Math.min(100, checklistScore)),
+      checklistResponses: responseSummary
+    };
+  }
+
   static buildReview(playbook, trade, checklistItems, checklistResponses) {
-    const { checklistScore, checklistResponses: normalizedResponses } = this.scoreChecklist(checklistItems, checklistResponses);
+    const reviewMode = this.getReviewMode(playbook);
+    const scoringResult = reviewMode === 'score'
+      ? this.scoreCriteria(checklistItems, checklistResponses)
+      : this.scoreChecklist(checklistItems, checklistResponses);
+    const { checklistScore, checklistResponses: normalizedResponses } = scoringResult;
     const ruleResults = this.evaluateRules(playbook, trade);
     const penalties = ruleResults.reduce((sum, rule) => sum + (rule.penalty || 0), 0);
     const adherenceScore = Math.max(0, Math.min(100, checklistScore - penalties));
@@ -221,6 +277,7 @@ class PlaybookAdherenceService {
     return {
       checklistScore: Number(checklistScore.toFixed(2)),
       adherenceScore: Number(adherenceScore.toFixed(2)),
+      grade: reviewMode === 'score' ? this.scoreToGrade(adherenceScore) : null,
       checklistResponses: normalizedResponses,
       ruleResults: ruleResults.map(rule => ({
         key: rule.key,
@@ -232,6 +289,74 @@ class PlaybookAdherenceService {
       })),
       violationSummary
     };
+  }
+
+  static hasConfiguredAutoAssignRule(playbook) {
+    return Boolean(
+      (playbook.side && playbook.side !== 'both') ||
+      playbook.timeframe ||
+      playbook.required_strategy ||
+      playbook.requiredStrategy ||
+      playbook.required_setup ||
+      playbook.requiredSetup ||
+      ((playbook.required_tags || playbook.requiredTags || []).length > 0)
+    );
+  }
+
+  static getSuggestionSpecificity(playbook) {
+    let specificity = 0;
+    if (playbook.side && playbook.side !== 'both') specificity += 1;
+    if (playbook.timeframe) specificity += 1;
+    if (playbook.required_strategy || playbook.requiredStrategy) specificity += 1;
+    if (playbook.required_setup || playbook.requiredSetup) specificity += 1;
+    specificity += (playbook.required_tags || playbook.requiredTags || []).length;
+    return specificity;
+  }
+
+  static matchesAutoAssignRules(playbook, trade) {
+    if (!playbook || !trade) return false;
+    if (!(playbook.auto_assign_enabled === true || playbook.autoAssignEnabled === true)) return false;
+    if (playbook.is_active === false || playbook.isActive === false) return false;
+    if (!this.hasConfiguredAutoAssignRule(playbook)) return false;
+
+    if (playbook.side && playbook.side !== 'both' && trade.side !== playbook.side) {
+      return false;
+    }
+
+    if (playbook.timeframe && this.categorizeTimeframe(trade) !== playbook.timeframe) {
+      return false;
+    }
+
+    const requiredStrategy = playbook.required_strategy || playbook.requiredStrategy;
+    if (requiredStrategy && (trade.strategy || '').trim().toLowerCase() !== requiredStrategy.trim().toLowerCase()) {
+      return false;
+    }
+
+    const requiredSetup = playbook.required_setup || playbook.requiredSetup;
+    if (requiredSetup && (trade.setup || '').trim().toLowerCase() !== requiredSetup.trim().toLowerCase()) {
+      return false;
+    }
+
+    const requiredTags = playbook.required_tags || playbook.requiredTags || [];
+    if (Array.isArray(requiredTags) && requiredTags.length > 0) {
+      const actualTags = Array.isArray(trade.tags) ? trade.tags.map(tag => String(tag).toLowerCase()) : [];
+      const missing = requiredTags
+        .map(tag => String(tag).toLowerCase())
+        .filter(tag => !actualTags.includes(tag));
+      if (missing.length > 0) return false;
+    }
+
+    return true;
+  }
+
+  static selectSuggestedPlaybook(playbooks, trade) {
+    return (playbooks || [])
+      .filter(playbook => this.matchesAutoAssignRules(playbook, trade))
+      .sort((a, b) => {
+        const specificityDiff = this.getSuggestionSpecificity(b) - this.getSuggestionSpecificity(a);
+        if (specificityDiff !== 0) return specificityDiff;
+        return String(a.name || '').localeCompare(String(b.name || ''));
+      })[0] || null;
   }
 }
 

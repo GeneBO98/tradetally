@@ -1,4 +1,5 @@
 const DCFValuationService = require('../../src/services/dcfValuationService');
+const FundamentalDataService = require('../../src/services/fundamentalDataService');
 
 describe('DCFValuationService calculation rules', () => {
   let logSpy;
@@ -287,5 +288,218 @@ describe('DCFValuationService calculation rules', () => {
     expect(valuation.revenue_growth_low).toBe(0);
     expect(valuation.desired_return_low).toBe(0);
     expect(valuation.fair_value_low).toBe(0);
+  });
+
+  test('forward EPS uses the first estimated year after the latest reported actuals', () => {
+    const estimates = [
+      { date: '2024-12-31', epsAvg: 6.00 }, // already reported (== latest fiscal year)
+      { date: '2025-12-31', epsAvg: 7.20 }, // first forward year
+      { date: '2026-12-31', epsAvg: 8.50 }
+    ];
+
+    expect(DCFValuationService.resolveForwardEps(estimates, 2024)).toBe(7.20);
+  });
+
+  test('forward EPS ignores past/zero estimates and returns null when none are forward', () => {
+    const estimates = [
+      { date: '2023-12-31', epsAvg: 5.00 },
+      { date: '2024-12-31', epsAvg: 0 } // non-positive estimate is skipped
+    ];
+
+    expect(DCFValuationService.resolveForwardEps(estimates, 2024)).toBeNull();
+    expect(DCFValuationService.resolveForwardEps(null, 2024)).toBeNull();
+    expect(DCFValuationService.resolveForwardEps([], 2024)).toBeNull();
+  });
+
+  test('forward EPS growth is the CAGR from latest actual EPS to the 3-year-out estimate', () => {
+    const latestFinancial = { netIncome: 1000, sharesOutstanding: 100 }; // base EPS = 10
+    const estimates = [
+      { date: '2024-12-31', epsAvg: 10.0 }, // reported year, ignored
+      { date: '2025-12-31', epsAvg: 11.5 },
+      { date: '2026-12-31', epsAvg: 12.7 },
+      { date: '2027-12-31', epsAvg: 14.0 } // 3 years out: CAGR = (14/10)^(1/3)-1
+    ];
+
+    const growth = DCFValuationService.resolveForwardEpsGrowth(estimates, 2024, latestFinancial);
+    expect(growth).toBeCloseTo(Math.pow(14 / 10, 1 / 3) - 1, 6);
+  });
+
+  test('forward EPS growth returns null without estimates or a positive base EPS', () => {
+    const estimates = [{ date: '2027-12-31', epsAvg: 14.0 }];
+    expect(DCFValuationService.resolveForwardEpsGrowth(estimates, 2024, { netIncome: -50, sharesOutstanding: 100 })).toBeNull();
+    expect(DCFValuationService.resolveForwardEpsGrowth(null, 2024, { netIncome: 1000, sharesOutstanding: 100 })).toBeNull();
+    expect(DCFValuationService.resolveForwardEpsGrowth(estimates, 2024, null)).toBeNull();
+  });
+
+  test('getHistoricalMetrics preserves populated key metrics from raw Finnhub metric fields', async () => {
+    const profileSpy = jest.spyOn(FundamentalDataService, 'getProfile').mockResolvedValue({
+      shareOutstanding: 100
+    });
+    const quoteSpy = jest.spyOn(FundamentalDataService, 'getQuote').mockResolvedValue({
+      c: 250
+    });
+    const metricsSpy = jest.spyOn(FundamentalDataService, 'getMetrics').mockResolvedValue({
+      metric: {
+        marketCapitalization: 25_000,
+        psTTM: 6.5,
+        priceToEarningsRatioTTM: 30,
+        pegRatio: 1.8,
+        currentDividendYieldTTM: 0.8,
+        dividendYieldIndicatedAnnual: 1.0,
+        '52WeekHigh': 270,
+        '52WeekLow': 180,
+        '52WeekHighDate': '2026-03-15',
+        '52WeekLowDate': '2025-08-22',
+        beta: 1.25
+      }
+    });
+    const estimatesSpy = jest.spyOn(FundamentalDataService, 'getAnalystEstimates').mockResolvedValue(null);
+    const pricesSpy = jest.spyOn(FundamentalDataService, 'getYearEndPrices').mockResolvedValue({
+      2025: 240,
+      2024: 220
+    });
+    const financialsSpy = jest.spyOn(FundamentalDataService, 'getFinancials').mockResolvedValue([
+      {
+        fiscalYear: 2025,
+        revenue: 1_000_000_000,
+        netIncome: 100_000_000,
+        grossProfit: 400_000_000,
+        freeCashFlow: 120_000_000,
+        dividendsPaid: -20_000_000,
+        totalDebt: 300_000_000,
+        cashAndEquivalents: 150_000_000,
+        totalEquity: 500_000_000,
+        sharesOutstanding: 100_000_000,
+        sharesBasic: 100_000_000,
+        sharesDiluted: 101_000_000,
+        operatingIncome: 150_000_000,
+        incomeBeforeTax: 125_000_000,
+        incomeTaxExpense: 25_000_000,
+        accountsPayable: 50_000_000
+      },
+      {
+        fiscalYear: 2024,
+        revenue: 900_000_000,
+        netIncome: 90_000_000,
+        grossProfit: 360_000_000,
+        freeCashFlow: 100_000_000,
+        dividendsPaid: -18_000_000,
+        totalDebt: 280_000_000,
+        cashAndEquivalents: 140_000_000,
+        totalEquity: 470_000_000,
+        sharesOutstanding: 100_000_000,
+        sharesBasic: 100_000_000,
+        sharesDiluted: 101_000_000,
+        operatingIncome: 135_000_000,
+        incomeBeforeTax: 112_500_000,
+        incomeTaxExpense: 22_500_000,
+        accountsPayable: 48_000_000
+      }
+    ]);
+
+    try {
+      const metrics = await DCFValuationService.getHistoricalMetrics('AAPL');
+
+      expect(metrics.market_cap).toBe(25_000_000_000);
+      expect(metrics.ps_ratio).toBe(6.5);
+      expect(metrics.peg_ratio).toBe(1.8);
+      expect(metrics.dividend_yield).toBe(0.008);
+      expect(metrics.forward_dividend_yield).toBe(0.01);
+      expect(metrics.week_52_high).toBe(270);
+      expect(metrics.week_52_low).toBe(180);
+      expect(metrics.week_52_high_date).toBe('2026-03-15');
+      expect(metrics.week_52_low_date).toBe('2025-08-22');
+      expect(metrics.beta).toBe(1.25);
+      expect(metrics.enterprise_value).toBe(25_150_000_000);
+    } finally {
+      profileSpy.mockRestore();
+      quoteSpy.mockRestore();
+      metricsSpy.mockRestore();
+      estimatesSpy.mockRestore();
+      pricesSpy.mockRestore();
+      financialsSpy.mockRestore();
+    }
+  });
+
+  test('getHistoricalMetrics preserves populated key metrics from FMP-normalized Finnhub-style fields', async () => {
+    const profileSpy = jest.spyOn(FundamentalDataService, 'getProfile').mockResolvedValue({
+      shareOutstanding: 100
+    });
+    const quoteSpy = jest.spyOn(FundamentalDataService, 'getQuote').mockResolvedValue({
+      c: 250
+    });
+    const metricsSpy = jest.spyOn(FundamentalDataService, 'getMetrics').mockResolvedValue({
+      metric: {
+        psTTM: 5.2,
+        currentDividendYieldTTM: 0.65,
+        dividendYieldIndicatedAnnual: 0.9,
+        '52WeekHigh': 275,
+        '52WeekLow': 175,
+        beta: 1.1
+      }
+    });
+    const estimatesSpy = jest.spyOn(FundamentalDataService, 'getAnalystEstimates').mockResolvedValue(null);
+    const pricesSpy = jest.spyOn(FundamentalDataService, 'getYearEndPrices').mockResolvedValue({
+      2025: 240,
+      2024: 220
+    });
+    const financialsSpy = jest.spyOn(FundamentalDataService, 'getFinancials').mockResolvedValue([
+      {
+        fiscalYear: 2025,
+        revenue: 1_000_000_000,
+        netIncome: 100_000_000,
+        grossProfit: 400_000_000,
+        freeCashFlow: 120_000_000,
+        dividendsPaid: -20_000_000,
+        totalDebt: 300_000_000,
+        cashAndEquivalents: 150_000_000,
+        totalEquity: 500_000_000,
+        sharesOutstanding: 100_000_000,
+        sharesBasic: 100_000_000,
+        sharesDiluted: 101_000_000,
+        operatingIncome: 150_000_000,
+        incomeBeforeTax: 125_000_000,
+        incomeTaxExpense: 25_000_000,
+        accountsPayable: 50_000_000
+      },
+      {
+        fiscalYear: 2024,
+        revenue: 900_000_000,
+        netIncome: 90_000_000,
+        grossProfit: 360_000_000,
+        freeCashFlow: 100_000_000,
+        dividendsPaid: -18_000_000,
+        totalDebt: 280_000_000,
+        cashAndEquivalents: 140_000_000,
+        totalEquity: 470_000_000,
+        sharesOutstanding: 100_000_000,
+        sharesBasic: 100_000_000,
+        sharesDiluted: 101_000_000,
+        operatingIncome: 135_000_000,
+        incomeBeforeTax: 112_500_000,
+        incomeTaxExpense: 22_500_000,
+        accountsPayable: 48_000_000
+      }
+    ]);
+
+    try {
+      const metrics = await DCFValuationService.getHistoricalMetrics('MSFT');
+
+      expect(metrics.market_cap).toBe(25_000_000_000);
+      expect(metrics.ps_ratio).toBe(5.2);
+      expect(metrics.dividend_yield).toBeCloseTo(0.0065, 8);
+      expect(metrics.forward_dividend_yield).toBeCloseTo(0.009, 8);
+      expect(metrics.week_52_high).toBe(275);
+      expect(metrics.week_52_low).toBe(175);
+      expect(metrics.beta).toBe(1.1);
+      expect(metrics.enterprise_value).toBe(25_150_000_000);
+    } finally {
+      profileSpy.mockRestore();
+      quoteSpy.mockRestore();
+      metricsSpy.mockRestore();
+      estimatesSpy.mockRestore();
+      pricesSpy.mockRestore();
+      financialsSpy.mockRestore();
+    }
   });
 });

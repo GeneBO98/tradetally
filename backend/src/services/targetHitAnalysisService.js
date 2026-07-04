@@ -6,6 +6,35 @@
 const ChartService = require('./chartService');
 const logger = require('../utils/logger');
 
+// Per-unit dollar multiplier using the same symbol/instrument heuristic as the
+// commission-adjustment blocks in calculateManagementR. MUST stay in sync with
+// them so that, in dollar-risk mode, risk * totalQty * multiplier === dollarRisk
+// (the fixed dollar risk), keeping commission R and every tR consistent (#345).
+function serviceTradeMultiplier(trade) {
+  const { symbol, instrument_type, point_value, contract_size } = trade;
+  const isFutures = instrument_type === 'future' ||
+    (symbol && /^(MES|ES|MNQ|NQ|MYM|YM|M2K|RTY|MGC|GC|MCL|CL|SI|HG)/i.test(symbol));
+  if (isFutures) {
+    if (point_value) return parseFloat(point_value);
+    if (symbol && /^(MES|MNQ|MYM|M2K)/i.test(symbol)) return 5;
+    if (symbol && /^(ES|NQ|YM|RTY)/i.test(symbol)) return 50;
+    return 5;
+  }
+  if (instrument_type === 'option') {
+    return parseFloat(contract_size) || 100;
+  }
+  return 1;
+}
+
+// Fixed-dollar-risk per-share risk unit, or null when not in dollar mode (#345).
+function serviceDollarRiskPerShare(trade, dollarRisk, totalQty) {
+  if (!dollarRisk || dollarRisk <= 0) return null;
+  const mult = serviceTradeMultiplier(trade);
+  const qty = Number.isFinite(totalQty) && totalQty > 0 ? totalQty : 1;
+  if (!Number.isFinite(mult) || mult <= 0) return null;
+  return dollarRisk / (qty * mult);
+}
+
 class TargetHitAnalysisService {
   /**
    * Analyze OHLCV data to determine which target (SL or TP) was crossed first
@@ -638,7 +667,7 @@ class TargetHitAnalysisService {
    * @param {Object} trade - Trade with entry, exit, stop loss, take profit, and manual_target_hit_first
    * @returns {number|null} Management R value
    */
-  static calculateManagementR(trade) {
+  static calculateManagementR(trade, options = {}) {
     const {
       entry_price,
       exit_price,
@@ -657,6 +686,9 @@ class TargetHitAnalysisService {
       contract_size
     } = trade;
 
+    // Fixed-dollar-risk users (#345): risk unit is a constant dollar amount.
+    const dollarRisk = options.dollarRisk && options.dollarRisk > 0 ? options.dollarRisk : null;
+
     if (!entry_price || !exit_price || !stop_loss) {
       return null;
     }
@@ -674,8 +706,11 @@ class TargetHitAnalysisService {
     // Use current stop loss for R calculations
     const originalStopLoss = parseFloat(stop_loss);
 
-    // Calculate risk (R = 1)
-    const risk = isLong ? entryPrice - originalStopLoss : originalStopLoss - entryPrice;
+    // Calculate risk (R = 1). In dollar mode the risk unit is the fixed dollar
+    // risk expressed per share, so it propagates through every tR, the commission
+    // riskAmount, and calculatePlannedR -> weighted/hit-target R (#345).
+    const dollarRiskUnit = serviceDollarRiskPerShare(trade, dollarRisk, totalQty);
+    const risk = dollarRiskUnit ?? (isLong ? entryPrice - originalStopLoss : originalStopLoss - entryPrice);
     if (risk <= 0) return null;
 
     // Check if we have partial exits (multiple targets with shares)

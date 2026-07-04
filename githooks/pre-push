@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+#
+# pre-push hook — block pushing cloud-only content to the PUBLIC repo.
+#
+# Enable once per clone (do this on dev machines AND the prod server):
+#   git config core.hooksPath githooks
+#
+# Pushes to the cloud repo (tradetally-cloud) are never blocked — cloud-only
+# files belong there. Only pushes whose remote URL is the public repo are
+# checked.
+set -euo pipefail
+
+remote_name="${1:-}"
+remote_url="${2:-}"
+
+case "$remote_url" in
+  *tradetally-cloud*) exit 0 ;;                         # cloud repo — allowed
+  *GeneBO98/tradetally*|*tradetally.git*) ;;            # public repo — enforce
+  *) exit 0 ;;                                          # unknown remote — don't block
+esac
+
+repo_root="$(git rev-parse --show-toplevel)"
+checker="$repo_root/scripts/check-public-clean.sh"
+[ -x "$checker" ] || checker="bash $repo_root/scripts/check-public-clean.sh"
+
+zero="0000000000000000000000000000000000000000"
+status=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$local_sha" = "$zero" ] && continue   # branch deletion — nothing to check
+  if ! $checker "$local_sha"; then
+    echo "[pre-push] BLOCKED $local_ref -> $remote_ref on '$remote_name' (public): cloud-only content present."
+    status=1
+  fi
+done
+
+if [ "$status" -ne 0 ]; then
+  echo "[pre-push] Push to the public repo refused. Did you mean to push to 'cloud' instead?"
+fi
+exit $status

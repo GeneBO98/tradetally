@@ -3,6 +3,7 @@ const Trade = require('../models/Trade');
 const TierService = require('../services/tierService');
 const EmailService = require('../services/emailService');
 const ApiUsageService = require('../services/apiUsageService');
+const tradeQualityService = require('../services/tradeQuality.service');
 const db = require('../config/database');
 const path = require('path');
 const fs = require('fs').promises;
@@ -626,15 +627,14 @@ const userController = {
       const userId = req.user.id;
       const db = require('../config/database');
       const jobQueue = require('../utils/jobQueue');
+      const staleQualityCondition = tradeQualityService.getStaleQualityCondition();
 
       // Count trades that need news enrichment
       const newsCountQuery = `
         SELECT COUNT(*) as count
         FROM trades
         WHERE user_id = $1
-          AND exit_time IS NOT NULL
-          AND exit_price IS NOT NULL
-          AND (has_news IS NULL OR news_checked_at IS NULL)
+          AND (has_news = FALSE OR has_news IS NULL OR news_checked_at IS NULL)
       `;
 
       // Count trades that need quality grading
@@ -642,7 +642,8 @@ const userController = {
         SELECT COUNT(*) as count
         FROM trades
         WHERE user_id = $1
-          AND quality_grade IS NULL
+          AND ${staleQualityCondition}
+          AND (instrument_type IS NULL OR instrument_type != 'future')
       `;
 
       const [newsCountResult, qualityCountResult] = await Promise.all([
@@ -702,39 +703,39 @@ const userController = {
   },
 
   /**
-   * Get user's quality weight preferences
+   * Get user's quality weight preferences, per instrument profile (stock,
+   * option). Returns the legacy `qualityWeights` (stock) for backward
+   * compatibility plus a `profiles` map and profile metadata.
    */
   async getQualityWeights(req, res, next) {
     try {
-      const db = require('../config/database');
+      const tradeQualityService = require('../services/tradeQuality.service');
+      const profilesMeta = tradeQualityService.getQualityProfilesMeta();
 
-      const query = `
-        SELECT
-          quality_weight_news,
-          quality_weight_gap,
-          quality_weight_relative_volume,
-          quality_weight_float,
-          quality_weight_price_range
-        FROM users
-        WHERE id = $1
-      `;
-
-      const result = await db.query(query, [req.user.id]);
-
-      if (!result.rows || result.rows.length === 0) {
-        return res.status(404).json({ error: 'User not found' });
+      // Resolve each profile's effective weights (custom or default)
+      const profiles = {};
+      const minimumCoverage = {};
+      for (const profileType of Object.keys(profilesMeta)) {
+        const decimalWeights = await tradeQualityService.getUserQualityWeights(req.user.id, profileType);
+        minimumCoverage[profileType] = Math.round(
+          (await tradeQualityService.getUserMinimumCoverage(req.user.id, profileType)) * 100
+        );
+        const meta = profilesMeta[profileType];
+        const out = {};
+        // Map internal metric keys back to API keys as integer percentages
+        const metricToApi = { newsSentiment: 'news', gap: 'gap', relativeVolume: 'relativeVolume', float: 'float', priceRange: 'priceRange', dte: 'dte', moneyness: 'moneyness' };
+        for (const [metricKey, value] of Object.entries(decimalWeights)) {
+          const apiKey = metricToApi[metricKey];
+          if (meta.weightKeys.includes(apiKey)) out[apiKey] = Math.round(value * 100);
+        }
+        profiles[profileType] = out;
       }
 
-      const weights = result.rows[0];
-
       res.json({
-        qualityWeights: {
-          news: weights.quality_weight_news || 30,
-          gap: weights.quality_weight_gap || 20,
-          relativeVolume: weights.quality_weight_relative_volume || 20,
-          float: weights.quality_weight_float || 15,
-          priceRange: weights.quality_weight_price_range || 15
-        }
+        qualityWeights: profiles.stock, // legacy/back-compat: stock profile
+        profiles,
+        minimumCoverage,
+        profilesMeta
       });
     } catch (error) {
       console.error('[ERROR] Failed to fetch quality weights:', error.message);
@@ -743,81 +744,116 @@ const userController = {
   },
 
   /**
-   * Update user's quality weight preferences
+   * Update user's quality weight preferences for a profile.
+   * Accepts either the legacy flat body { news, gap, relativeVolume, float,
+   * priceRange } (treated as the stock profile) or { profile, weights }.
    */
   async updateQualityWeights(req, res, next) {
     try {
       const db = require('../config/database');
-      const { news, gap, relativeVolume, float, priceRange } = req.body;
+      const tradeQualityService = require('../services/tradeQuality.service');
+      const profilesMeta = tradeQualityService.getQualityProfilesMeta();
 
-      // Validate that all weights are provided
-      if (news === undefined || gap === undefined || relativeVolume === undefined ||
-          float === undefined || priceRange === undefined) {
-        return res.status(400).json({
-          error: 'All quality weights must be provided (news, gap, relativeVolume, float, priceRange)'
-        });
+      // Normalize request into { profileType, weights }
+      let profileType = req.body.profile || 'stock';
+      let weights = req.body.weights || {
+        news: req.body.news,
+        gap: req.body.gap,
+        relativeVolume: req.body.relativeVolume,
+        float: req.body.float,
+        priceRange: req.body.priceRange
+      };
+
+      const meta = profilesMeta[profileType];
+      if (!meta) {
+        return res.status(400).json({ error: `Unknown quality profile: ${profileType}` });
       }
 
-      // Validate that all weights are numbers
-      if (typeof news !== 'number' || typeof gap !== 'number' ||
-          typeof relativeVolume !== 'number' || typeof float !== 'number' ||
-          typeof priceRange !== 'number') {
-        return res.status(400).json({ error: 'All weights must be numbers' });
+      const requestedCoverage = req.body.minimumCoverage ?? req.body.minimum_coverage;
+      let minimumCoverage = null;
+      if (requestedCoverage !== undefined && requestedCoverage !== null) {
+        minimumCoverage = Number(requestedCoverage);
+        if (!Number.isFinite(minimumCoverage)) {
+          return res.status(400).json({ error: 'Minimum data coverage must be a number' });
+        }
+        if (minimumCoverage < 0 || minimumCoverage > 100) {
+          return res.status(400).json({ error: 'Minimum data coverage must be between 0 and 100' });
+        }
       }
 
-      // Validate ranges (0-100)
-      if (news < 0 || news > 100 || gap < 0 || gap > 100 ||
-          relativeVolume < 0 || relativeVolume > 100 ||
-          float < 0 || float > 100 || priceRange < 0 || priceRange > 100) {
-        return res.status(400).json({ error: 'All weights must be between 0 and 100' });
+      // Validate every expected weight key is present, numeric, and in range
+      for (const key of meta.weightKeys) {
+        const value = weights[key];
+        if (value === undefined || value === null) {
+          return res.status(400).json({ error: `Missing weight "${key}" for ${profileType} profile` });
+        }
+        if (typeof value !== 'number' || Number.isNaN(value)) {
+          return res.status(400).json({ error: `Weight "${key}" must be a number` });
+        }
+        if (value < 0 || value > 100) {
+          return res.status(400).json({ error: `Weight "${key}" must be between 0 and 100` });
+        }
       }
 
-      // Validate that weights sum to 100
-      const total = news + gap + relativeVolume + float + priceRange;
+      // Validate weights sum to 100
+      const total = meta.weightKeys.reduce((sum, key) => sum + weights[key], 0);
       if (total !== 100) {
-        return res.status(400).json({
-          error: `Weights must sum to 100. Current total: ${total}`
-        });
+        return res.status(400).json({ error: `Weights must sum to 100. Current total: ${total}` });
       }
 
-      // Update user's quality weights
-      const query = `
-        UPDATE users
-        SET
-          quality_weight_news = $1,
-          quality_weight_gap = $2,
-          quality_weight_relative_volume = $3,
-          quality_weight_float = $4,
-          quality_weight_price_range = $5,
-          updated_at = CURRENT_TIMESTAMP
-        WHERE id = $6
-        RETURNING
-          quality_weight_news,
-          quality_weight_gap,
-          quality_weight_relative_volume,
-          quality_weight_float,
-          quality_weight_price_range
-      `;
+      // Build the profile object with only this profile's keys
+      const profileWeights = {};
+      for (const key of meta.weightKeys) profileWeights[key] = weights[key];
 
-      const result = await db.query(query, [
-        news, gap, relativeVolume, float, priceRange, req.user.id
-      ]);
-
-      if (!result.rows || result.rows.length === 0) {
-        return res.status(404).json({ error: 'User not found' });
+      // Persist into the JSONB profiles map. For the stock profile, also keep
+      // the legacy flat columns in sync (they back the constraint + fallback).
+      if (profileType === 'stock') {
+        await db.query(
+          `UPDATE users
+           SET quality_weight_news = $1,
+               quality_weight_gap = $2,
+               quality_weight_relative_volume = $3,
+               quality_weight_float = $4,
+               quality_weight_price_range = $5,
+               quality_weight_profiles = COALESCE(quality_weight_profiles, '{}'::jsonb) || jsonb_build_object('stock', $6::jsonb),
+               quality_minimum_coverage_profiles = CASE
+                 WHEN $7::integer IS NULL THEN quality_minimum_coverage_profiles
+                 ELSE COALESCE(quality_minimum_coverage_profiles, '{}'::jsonb) || jsonb_build_object('stock', $7::integer)
+               END,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = $8`,
+          [profileWeights.news, profileWeights.gap, profileWeights.relativeVolume,
+           profileWeights.float, profileWeights.priceRange, JSON.stringify(profileWeights), minimumCoverage, req.user.id]
+        );
+      } else {
+        await db.query(
+          `UPDATE users
+           SET quality_weight_profiles = COALESCE(quality_weight_profiles, '{}'::jsonb) || jsonb_build_object($1::text, $2::jsonb),
+               quality_minimum_coverage_profiles = CASE
+                 WHEN $3::integer IS NULL THEN quality_minimum_coverage_profiles
+                 ELSE COALESCE(quality_minimum_coverage_profiles, '{}'::jsonb) || jsonb_build_object($1::text, $3::integer)
+               END,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = $4`,
+          [profileType, JSON.stringify(profileWeights), minimumCoverage, req.user.id]
+        );
       }
 
-      const weights = result.rows[0];
+      // Reapply weights to already-graded trades using their stored metric
+      // scores (no API calls), so the change takes effect immediately
+      let regradedCount = 0;
+      try {
+        regradedCount = await tradeQualityService.reapplyUserWeights(req.user.id);
+      } catch (regradeError) {
+        console.error('[ERROR] Failed to reapply quality weights to existing trades:', regradeError.message);
+      }
 
       res.json({
         message: 'Quality weights updated successfully',
-        qualityWeights: {
-          news: weights.quality_weight_news,
-          gap: weights.quality_weight_gap,
-          relativeVolume: weights.quality_weight_relative_volume,
-          float: weights.quality_weight_float,
-          priceRange: weights.quality_weight_price_range
-        }
+        profile: profileType,
+        regradedCount,
+        qualityWeights: profileWeights,
+        minimumCoverage
       });
     } catch (error) {
       console.error('[ERROR] Failed to update quality weights:', error.message);

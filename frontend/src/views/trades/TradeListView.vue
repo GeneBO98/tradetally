@@ -355,7 +355,7 @@
             </div>
             <div>
               <div class="text-gray-500 dark:text-gray-400">Net P&L</div>
-              <div class="font-medium" :class="[
+              <div v-if="!isTradeOpen(trade)" class="font-medium" :class="[
                 trade.pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
               ]">
                 {{ formatSignedCurrency(trade.pnl) }}
@@ -363,14 +363,16 @@
                   ({{ trade.pnl_percent > 0 ? '+' : '' }}{{ formatNumber(trade.pnl_percent) }}%)
                 </span>
               </div>
+              <div v-else class="font-medium text-gray-400 dark:text-gray-500">-</div>
             </div>
             <div>
               <div class="text-gray-500 dark:text-gray-400">Gross P&L</div>
-              <div class="font-medium" :class="[
+              <div v-if="!isTradeOpen(trade)" class="font-medium" :class="[
                 getTradeGrossPnl(trade) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
               ]">
                 {{ formatSignedCurrency(getTradeGrossPnl(trade)) }}
               </div>
+              <div v-else class="font-medium text-gray-400 dark:text-gray-500">-</div>
             </div>
             <div v-if="trade.unrealizedPnl !== null && trade.unrealizedPnl !== undefined">
               <div class="text-gray-500 dark:text-gray-400">Unrealized</div>
@@ -593,25 +595,27 @@
                 <td v-else-if="column.visible && column.key === 'pnl'" 
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']" 
                     @click="$router.push(`/trades/${trade.id}`)">
-                  <div class="text-sm font-medium" :class="[
+                  <div v-if="!isTradeOpen(trade)" class="text-sm font-medium" :class="[
                     trade.pnl >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
                     {{ formatSignedCurrency(trade.pnl) }}
                   </div>
-                  <div v-if="trade.pnl_percent" class="text-xs text-gray-500 dark:text-gray-400">
+                  <div v-if="!isTradeOpen(trade) && trade.pnl_percent" class="text-xs text-gray-500 dark:text-gray-400">
                     {{ trade.pnl_percent > 0 ? '+' : '' }}{{ formatNumber(trade.pnl_percent) }}%
                   </div>
+                  <div v-if="isTradeOpen(trade)" class="text-sm text-gray-400 dark:text-gray-500">-</div>
                 </td>
 
                 <!-- Gross P&L Column -->
                 <td v-else-if="column.visible && column.key === 'grossPnl'"
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  <div class="text-sm font-medium" :class="[
+                  <div v-if="!isTradeOpen(trade)" class="text-sm font-medium" :class="[
                     getTradeGrossPnl(trade) >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
                     {{ formatSignedCurrency(getTradeGrossPnl(trade)) }}
                   </div>
+                  <div v-else class="text-sm text-gray-400 dark:text-gray-500">-</div>
                 </td>
 
                 <!-- Unrealized P&L Column -->
@@ -1078,6 +1082,7 @@ import { onMounted, computed, watch, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
+import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { DocumentTextIcon, ChatBubbleLeftIcon, FunnelIcon, XMarkIcon, ExclamationTriangleIcon } from '@heroicons/vue/24/outline'
 import TradeFilters from '@/components/trades/TradeFilters.vue'
@@ -1091,10 +1096,11 @@ import { mdiNewspaper } from '@mdi/js'
 import api from '@/services/api'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { getTradeDateOnlyParts } from '@/utils/date'
-import { getTradeGrossPnl } from '@/utils/tradePnl'
+import { getTradeGrossPnl, isTradeOpen } from '@/utils/tradePnl'
 
 const tradesStore = useTradesStore()
 const uiPreferencesStore = useUiPreferencesStore()
+const { selectedAccount } = useGlobalAccountFilter()
 const { formatCurrency, currencySymbol, formatSignedCurrency } = useCurrencyFormatter()
 const { formatTime: formatTimeTz, userTimezone } = useUserTimezone()
 const route = useRoute()
@@ -1312,6 +1318,21 @@ watch(
     tradesStore.fetchTrades()
   }
 )
+
+// React to the global account selector here in the view. TradeFilters has its
+// own watch on selectedAccount, but it lives inside the filters modal
+// (v-if="showFiltersModal") which is unmounted on page load — so its watcher is
+// dormant whenever the modal is closed (the normal state). Without this, the
+// trades list ignored global account switches until a full page reload, while
+// the dashboard (which watches selectedAccount directly) updated correctly
+// (issue #353). When the modal IS open, TradeFilters owns the re-apply, so skip
+// to avoid a redundant double-fetch.
+watch(selectedAccount, () => {
+  if (showFiltersModal.value) return
+  console.log('[TradeListView] Global account filter changed to:', selectedAccount.value || 'All Accounts')
+  tradesStore.setFilters({ ...tradesStore.filters, accounts: selectedAccount.value || '' })
+  tradesStore.fetchTrades()
+})
 
 // Watch for trades changes to update scroll width
 watch(
@@ -1627,7 +1648,23 @@ onMounted(() => {
   // the loading spinner forever. The view owns the initial fetch instead.
   const urlFilters = buildFiltersFromQuery(route.query)
   if (Object.keys(urlFilters).length > 0) {
+    // setFilters already folds in the global account from localStorage when the
+    // URL doesn't specify accounts, so this branch is covered.
     tradesStore.setFilters(urlFilters)
+  } else {
+    // The trades store keeps its filters in memory across SPA navigation, so a
+    // global account change made on another page (e.g. the dashboard) wouldn't
+    // reach the trades list on arrival — the user had to reload or toggle the
+    // account to force it (issue #353). Reconcile the store's account filter
+    // with the current global selection here. Only re-apply when it actually
+    // differs so we don't needlessly reset pagination on every visit.
+    const globalAccount = selectedAccount.value || ''
+    const storeAccount = Array.isArray(tradesStore.filters.accounts)
+      ? tradesStore.filters.accounts.filter(Boolean).join(',')
+      : (tradesStore.filters.accounts || '')
+    if (globalAccount !== storeAccount) {
+      tradesStore.setFilters({ ...tradesStore.filters, accounts: globalAccount })
+    }
   }
   tradesStore.fetchTrades() // fetchTrades now includes analytics in parallel
 

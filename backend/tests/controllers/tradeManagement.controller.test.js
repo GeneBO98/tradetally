@@ -8,8 +8,12 @@ jest.mock('../../src/utils/logger', () => ({
   warn: jest.fn(),
   error: jest.fn()
 }));
+jest.mock('../../src/models/User', () => ({
+  getSettings: jest.fn()
+}));
 
 const db = require('../../src/config/database');
+const User = require('../../src/models/User');
 const tradeManagementController = require('../../src/controllers/tradeManagement.controller');
 
 function createMockRes() {
@@ -22,6 +26,7 @@ function createMockRes() {
 describe('trade management controller sync filters', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    User.getSettings.mockResolvedValue({ analytics_position_grouping: false });
   });
 
   test('selection query handles Unsorted account and returns exit_time for UI date display', async () => {

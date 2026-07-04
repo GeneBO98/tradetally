@@ -2781,6 +2781,36 @@ function wrapResultWithDiagnostics(trades, diagnostics, unresolvedCusips = [], u
   };
 }
 
+function convertManualReviewDatetimesToUTC(manualReviewItems, timezone) {
+  if (!timezone || timezone === 'UTC' || !Array.isArray(manualReviewItems) || manualReviewItems.length === 0) {
+    return manualReviewItems;
+  }
+
+  for (const item of manualReviewItems) {
+    if (item.datetime && typeof item.datetime === 'string') {
+      item.datetime = localToUTC(item.datetime, timezone);
+    }
+  }
+
+  return manualReviewItems;
+}
+
+function attachManualReviewDiagnostics(result, diagnostics, manualReviewItems = [], userTimezone = null) {
+  if (!Array.isArray(manualReviewItems) || manualReviewItems.length === 0) {
+    return result;
+  }
+
+  convertManualReviewDatetimesToUTC(manualReviewItems, userTimezone);
+  result.manualReviewItems = manualReviewItems;
+  diagnostics.manual_review_items = manualReviewItems;
+  diagnostics.manual_review_count = manualReviewItems.length;
+  diagnostics.warnings.push(
+    `${manualReviewItems.length} sell-only stock execution${manualReviewItems.length === 1 ? '' : 's'} require manual review before importing.`
+  );
+
+  return result;
+}
+
 async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
   // Initialize diagnostics object to track parsing details
   const diagnostics = {
@@ -3609,10 +3639,16 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
       // CapTrader is an IBKR introducing broker — same parser, but tag trades
       // with `captrader` so the UI labels them correctly.
-      const ibkrContext = { ...context, brokerTag: broker === 'captrader' ? 'captrader' : 'ibkr' };
+      const manualReviewItems = Array.isArray(context.manualReviewItems) ? context.manualReviewItems : [];
+      const ibkrContext = {
+        ...context,
+        brokerTag: broker === 'captrader' ? 'captrader' : 'ibkr',
+        manualReviewItems
+      };
       const result = await parseIBKRTransactions(records, existingPositions, tradeGroupingSettings, ibkrContext);
       console.log('Finished IBKR transaction parsing');
-      return wrapResultWithDiagnostics(result, diagnostics, [], userTimezone);
+      const wrapped = wrapResultWithDiagnostics(result, diagnostics, [], userTimezone);
+      return attachManualReviewDiagnostics(wrapped, diagnostics, manualReviewItems, userTimezone);
     }
 
     if (broker === 'webull') {
@@ -8308,7 +8344,50 @@ async function parseTradervueCompletedTrades(records, context = {}) {
   return trades;
 }
 
+function buildIBKRAmbiguousSellReviewItem({ transaction, symbol, conid, instrumentData, brokerTag, context }) {
+  const quantity = Math.abs(parseFloat(transaction.quantity) || 0);
+  const price = parseFloat(transaction.price);
+  const accountIdentifier = transaction.accountIdentifier || context.selectedAccountId || null;
+  const brokerConnectionId = context.brokerConnectionId || context.broker_connection_id || null;
+  const sourceId = [
+    brokerTag || 'ibkr',
+    conid || transaction.conid || '',
+    transaction.orderId || '',
+    transaction.datetime || '',
+    symbol || '',
+    quantity,
+    price
+  ].join('|');
+
+  return {
+    id: sourceId,
+    review_type: 'ambiguous_sell_only_stock',
+    source: 'ibkr_sell_only_execution',
+    broker: brokerTag || 'ibkr',
+    broker_connection_id: brokerConnectionId,
+    import_id: context.importId || context.import_id || null,
+    symbol,
+    conid: conid || transaction.conid || null,
+    order_id: transaction.orderId || null,
+    action: transaction.action,
+    quantity,
+    price,
+    commission: transaction.fees || 0,
+    fees: 0,
+    datetime: transaction.datetime,
+    trade_date: transaction.date,
+    account_identifier: accountIdentifier,
+    instrument_type: instrumentData.instrumentType || 'stock',
+    reason: 'Sell execution has no matching opening buy or existing open position.',
+    available_actions: ['import_as_short', 'import_as_close_only', 'ignore']
+  };
+}
+
 async function parseIBKRTransactions(records, existingPositions = {}, tradeGroupingSettings = { enabled: true, timeGapMinutes: 60 }, context = {}) {
+  if (!Array.isArray(context.manualReviewItems)) {
+    context.manualReviewItems = [];
+  }
+
   // Allow callers (e.g. CapTrader) to override the broker label written onto
   // completed trades. Defaults to `ibkr` for backwards compatibility.
   const brokerTag = context.brokerTag || 'ibkr';
@@ -8783,14 +8862,36 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         // We check for ';P' or standalone 'P' to distinguish from 'EP' (Expired)
         // This is just a HINT - we'll still process the transaction even if we can't find the position
         const hasPartialCode = transactionCode && (transactionCode.includes(';P') || transactionCode === 'P' || transactionCode.startsWith('P;'));
-        const isCloseOnly = transactionCode && transactionCode.includes('C') &&
+        const isExplicitCloseOnly = transactionCode && transactionCode.includes('C') &&
                            !transactionCode.includes('O') && !hasPartialCode;
+        const hasOpeningExecutionInImport = symbolTransactions.some(tx => tx.action === 'buy');
+        const isUnpairedStockSell = transaction.action === 'sell' &&
+                           instrumentData.instrumentType === 'stock' &&
+                           !existingPosition &&
+                           !hasOpeningExecutionInImport &&
+                           !(transactionCode && transactionCode.includes('O'));
+        if (isUnpairedStockSell) {
+          const reviewItem = buildIBKRAmbiguousSellReviewItem({
+            transaction,
+            symbol,
+            conid,
+            instrumentData,
+            brokerTag,
+            context
+          });
+          context.manualReviewItems.push(reviewItem);
+          console.log(`  → [MANUAL REVIEW] Sell-only stock execution for ${symbol} requires user confirmation before import`);
+          continue;
+        }
+
+        const isCloseOnly = isExplicitCloseOnly;
 
         if (isCloseOnly) {
           // Code='C' or 'A;C' indicates this should close an existing position, but we don't have one loaded
           // Instead of creating an incorrect open position, create a completed "close-only" trade
           // This represents a position that was opened outside this import and is now being closed
-          console.log(`  → [CLOSE-ONLY] Code='${transactionCode}' is a closing transaction without existing position`);
+          const closeOnlyReason = `Code='${transactionCode}' is a closing transaction without existing position`;
+          console.log(`  → [CLOSE-ONLY] ${closeOnlyReason}`);
           console.log(`  → Creating completed close-only trade for: ${transaction.action} ${qty} ${symbol} @ $${transaction.price}`);
 
           // For close-only transactions, determine the original trade direction:
@@ -8801,8 +8902,27 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
           // Calculate P&L: For close-only, we only have the exit value and commission
           // The entry value is unknown, so we use the close price as entry (P&L = -commission only)
           // This is a best-effort approach when the opening transaction is missing
-          const closeValue = qty * transaction.price * valueMultiplier;
           const pnl = -(transaction.fees || 0); // Only commission loss since we don't know entry
+          const syntheticOpeningExecution = {
+            action: originalSide === 'short' ? 'sell' : 'buy',
+            quantity: qty,
+            price: transaction.price,
+            datetime: transaction.datetime,
+            fees: 0,
+            conid: transaction.conid,
+            orderId: transaction.orderId ? `${transaction.orderId}-synthetic-open` : null,
+            synthetic: true,
+            synthetic_reason: 'missing_opening_execution'
+          };
+          const closingExecution = {
+            action: transaction.action,
+            quantity: qty,
+            price: transaction.price,
+            datetime: transaction.datetime,
+            fees: transaction.fees || 0,
+            conid: transaction.conid,
+            orderId: transaction.orderId || null
+          };
 
           const closeOnlyTrade = {
             symbol: symbol,
@@ -8820,24 +8940,8 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
             fees: 0,
             broker: brokerTag,
             accountIdentifier: transaction.accountIdentifier,
-            executions: [{
-              action: transaction.action,
-              quantity: qty,
-              price: transaction.price,
-              datetime: transaction.datetime,
-              fees: transaction.fees || 0,
-              conid: transaction.conid,
-              orderId: transaction.orderId || null
-            }],
-            executionData: [{
-              action: transaction.action,
-              quantity: qty,
-              price: transaction.price,
-              datetime: transaction.datetime,
-              fees: transaction.fees || 0,
-              conid: transaction.conid,
-              orderId: transaction.orderId || null
-            }],
+            executions: [syntheticOpeningExecution, closingExecution],
+            executionData: [syntheticOpeningExecution, closingExecution],
             notes: `Close-only trade: ${originalSide} position closed via ${transactionCode}. Opening transaction not in import.`,
             isCloseOnly: true
           };
