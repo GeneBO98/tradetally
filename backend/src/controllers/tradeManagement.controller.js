@@ -965,6 +965,76 @@ function combinePositionR(parts, positionRisk) {
   return dollars / positionRisk;
 }
 
+// Structural maximum profit, in dollars, for a defined-risk multi-leg option
+// position (issue #359 follow-up). Per-leg take profits on a spread can be
+// jointly impossible - the short leg targeting full premium decay and the
+// hedge leg targeting a gain cannot both happen - so summing leg targets can
+// report a combined target above what the structure can ever pay (a 3-lot
+// credit spread with a $240 net credit showed a $1,376 combined target).
+//
+// The expiry payoff of same-expiration option legs is piecewise linear in the
+// underlying price, so its maximum sits at underlying = 0 or at one of the
+// strikes; evaluating those points covers verticals, condors, butterflies and
+// any other single-expiry combination without naming strategies. Returns null
+// (no cap) when the group is not a bounded single-expiry option structure:
+// non-option or mixed-expiry legs, missing strike/type/premium data, or a net
+// long call count (unbounded upside).
+function definedRiskMaxProfit(legs) {
+  if (!Array.isArray(legs) || legs.length < 2) return null;
+
+  const parsed = [];
+  for (const leg of legs) {
+    if (inferInstrumentType(leg) !== 'option') return null;
+    const strike = parseFloat(leg.strike_price);
+    const entry = parseFloat(leg.entry_price);
+    const qty = parseFloat(leg.quantity);
+    const optionType = String(leg.option_type || '').toLowerCase();
+    if (!(strike > 0) || !(entry >= 0) || !(qty > 0)) return null;
+    if (optionType !== 'call' && optionType !== 'put') return null;
+    const contractSize = parseFloat(leg.contract_size);
+    const multiplier = contractSize > 0 ? contractSize : 100;
+    const direction = leg.side === 'short' ? -1 : 1;
+    parsed.push({ strike, entry, optionType, units: direction * qty * multiplier });
+  }
+
+  // The single-expiry payoff model only holds when every leg expires together.
+  const expirationKeys = new Set(legs.map(leg => {
+    if (!leg.expiration_date) return null;
+    const date = new Date(leg.expiration_date);
+    return Number.isNaN(date.getTime()) ? String(leg.expiration_date) : date.toISOString().slice(0, 10);
+  }));
+  if (expirationKeys.size !== 1 || expirationKeys.has(null)) return null;
+
+  // Net long calls: payoff grows without bound as the underlying rises.
+  const upsideSlope = parsed
+    .filter(p => p.optionType === 'call')
+    .reduce((sum, p) => sum + p.units, 0);
+  if (upsideSlope > 0) return null;
+
+  const intrinsic = (p, price) => (p.optionType === 'call'
+    ? Math.max(price - p.strike, 0)
+    : Math.max(p.strike - price, 0));
+  const payoffAt = price => parsed.reduce((sum, p) => sum + (intrinsic(p, price) - p.entry) * p.units, 0);
+
+  const maxProfit = Math.max(...[0, ...parsed.map(p => p.strike)].map(payoffAt));
+  return Number.isFinite(maxProfit) && maxProfit > 0 ? maxProfit : null;
+}
+
+// Cap a combined target at the structure's maximum profit. Leg target Rs are
+// net of commissions, so the R cap is too; the dollar target stays gross like
+// the per-leg target_pl_amount values it sums. Returns null when the position
+// is not a recognizable defined-risk structure or the target is within bounds.
+function targetCapForPosition(legs, positionRisk) {
+  const maxProfit = definedRiskMaxProfit(legs);
+  if (maxProfit === null) return null;
+  const totalCommission = legs.reduce((sum, leg) =>
+    sum + Math.abs(parseFloat(leg.commission) || 0) + Math.abs(parseFloat(leg.fees) || 0), 0);
+  return {
+    maxProfit,
+    maxProfitR: positionRisk > 0 ? (maxProfit - totalCommission) / positionRisk : null
+  };
+}
+
 // Combine per-leg calculateRMultiples results into one position-level analysis
 // (issue #359). Actual R and Management R are combined dollar-weighted exactly
 // like the R-Performance chart's grouped rows; the combined target follows the
@@ -972,7 +1042,8 @@ function combinePositionR(parts, positionRisk) {
 // on target-hit data, and only when EVERY analyzed leg has a target). Dollar
 // amounts are summed; per-share values are meaningless for a multi-leg
 // position so they are null.
-function combineLegAnalyses(analyzableEntries, totalLegCount, dollarRisk = null) {
+function combineLegAnalyses(analyzableEntries, allLegs, dollarRisk = null) {
+  const totalLegCount = allLegs.length;
   const analyses = analyzableEntries.map(entry => entry.analysis);
   const legRisk = a => Number(a.risk_amount) || 0;
   const positionRisk = positionRiskAmount(analyses, dollarRisk);
@@ -987,7 +1058,7 @@ function combineLegAnalyses(analyzableEntries, totalLegCount, dollarRisk = null)
   // A combined target only makes sense when every analyzed leg has one;
   // otherwise "target vs actual" would compare mismatched leg sets.
   const targetParts = analyses.map(a => a.weighted_target_r ?? a.target_r);
-  const targetR = targetParts.every(value => value !== null && value !== undefined)
+  let targetR = targetParts.every(value => value !== null && value !== undefined)
     ? roundR(combinePositionR(
         targetParts.map((value, i) => ({ r: value, risk: legRisk(analyses[i]) })),
         positionRisk
@@ -995,9 +1066,28 @@ function combineLegAnalyses(analyzableEntries, totalLegCount, dollarRisk = null)
     : null;
 
   const targetPlParts = analyses.map(a => a.target_pl_amount);
-  const targetPlAmount = targetR !== null && targetPlParts.every(value => value !== null && value !== undefined)
+  let targetPlAmount = targetR !== null && targetPlParts.every(value => value !== null && value !== undefined)
     ? roundR(targetPlParts.reduce((sum, value) => sum + value, 0))
     : null;
+
+  // Defined-risk structures cannot pay more than their max profit, so the
+  // combined target is capped there (issue #359 follow-up). Only applied when
+  // every leg is in the combined math, so the cap and the summed target cover
+  // the same legs.
+  let targetCapped = false;
+  if (targetR !== null && analyses.length === totalLegCount) {
+    const cap = targetCapForPosition(allLegs, positionRisk);
+    if (cap !== null) {
+      if (cap.maxProfitR !== null && targetR > cap.maxProfitR) {
+        targetR = roundR(cap.maxProfitR);
+        targetCapped = true;
+      }
+      if (targetPlAmount !== null && targetPlAmount > cap.maxProfit) {
+        targetPlAmount = roundR(cap.maxProfit);
+        targetCapped = true;
+      }
+    }
+  }
 
   const managementParts = analyses
     .filter(a => a.management_r !== null && a.management_r !== undefined)
@@ -1037,6 +1127,7 @@ function combineLegAnalyses(analyzableEntries, totalLegCount, dollarRisk = null)
     management_score: calculateManagementScore(actualR, targetR ?? undefined, rLost ?? undefined),
     has_stop_loss: true,
     has_take_profit: targetR !== null,
+    target_capped_at_max_profit: targetCapped,
     position_grouped: true,
     leg_count: totalLegCount,
     analyzed_leg_count: analyzableEntries.length
@@ -1086,7 +1177,7 @@ async function respondWithGroupedAnalysis(res, { legs, dollarRisk }) {
     });
   }
 
-  const analysis = combineLegAnalyses(analyzable, parsedLegs.length, dollarRisk);
+  const analysis = combineLegAnalyses(analyzable, parsedLegs, dollarRisk);
   const repLeg = analyzable[0].leg;
 
   // Charts uploaded to any leg belong to the position.
@@ -1889,6 +1980,7 @@ const tradeManagementController = {
           manual_target_hit_first, executions,
           commission, fees, instrument_type, contract_size, point_value,
           underlying_asset, underlying_symbol,
+          strike_price, option_type, expiration_date,
           (${be.is}) AS is_breakeven
           ${positionGroupingSelect}
         FROM trades t
@@ -1963,6 +2055,16 @@ const tradeManagementController = {
         let tradeTargetR = null;
         if (targetParts.length > 0) {
           tradeTargetR = roundR(combinePositionR(targetParts, positionRisk));
+          // Same defined-risk max-profit cap as the Individual Trade Analysis,
+          // applied when every leg contributed to the planned path so the cap
+          // and the target cover the same legs (issue #359 follow-up).
+          if (targetParts.length === performanceTrade.position_legs.length &&
+              performanceTrade.position_legs.length > 1) {
+            const cap = targetCapForPosition(performanceTrade.position_legs, positionRisk);
+            if (cap !== null && cap.maxProfitR !== null && tradeTargetR > cap.maxProfitR) {
+              tradeTargetR = roundR(cap.maxProfitR);
+            }
+          }
           tradesWithTarget++;
         }
 

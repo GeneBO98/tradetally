@@ -38,7 +38,7 @@
             {{ formatCurrency(analysis.target_pl_amount) }}
           </div>
           <div class="text-xs text-gray-500 dark:text-gray-400">
-            If held to target
+            {{ analysis.target_capped_at_max_profit ? 'Capped at strategy max profit' : 'If held to target' }}
           </div>
         </div>
         <div v-else>

@@ -344,6 +344,118 @@ describe('tradeManagementController grouped individual analysis (issue #359 foll
     expect(payload.pagination.total).toBe(1);
   });
 
+  test('combined target on a defined-risk credit spread is capped at the structure max profit', async () => {
+    // Regression for the CEG report (issue #359 follow-up): a 3-lot put credit
+    // spread collected at a net 0.80 credit can never make more than
+    // 0.80 x 3 x 100 = $240 at expiry, but the per-leg take profits (short leg
+    // targeting full premium decay AND the hedge leg targeting a gain - jointly
+    // impossible) summed to a $1,200 combined target.
+    // Short 105 put: entry 3.27, TP 0.27 -> leg target $900 (R 1.5, risk $600)
+    // Long 100 put: entry 2.47, TP 3.47 -> leg target $300 (R 2.5, risk $120)
+    // Max profit = payoff at S >= 105 = (3.27 - 2.47) x 3 x 100 = $240.
+    const legA = leg('leg-1', {
+      symbol: 'CEG260821P00105000',
+      underlying_symbol: 'CEG',
+      position_symbol: 'CEG',
+      side: 'short',
+      quantity: 3,
+      entry_price: 3.27,
+      exit_price: 5,
+      stop_loss: 5.27,
+      take_profit: 0.27,
+      pnl: -519,
+      strike_price: 105,
+      option_type: 'put',
+      expiration_date: '2026-08-21'
+    });
+    const legB = leg('leg-2', {
+      symbol: 'CEG260821P00100000',
+      underlying_symbol: 'CEG',
+      position_symbol: 'CEG',
+      side: 'long',
+      quantity: 3,
+      entry_price: 2.47,
+      exit_price: 2.95,
+      stop_loss: 2.07,
+      take_profit: 3.47,
+      pnl: 144,
+      strike_price: 100,
+      option_type: 'put',
+      expiration_date: '2026-08-21',
+      entry_time: '2026-01-05T14:31:00Z'
+    });
+
+    db.query
+      .mockResolvedValueOnce({ rows: [legA] })
+      .mockResolvedValueOnce({ rows: [legA, legB] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const req = { user: { id: 'user-1' }, params: { tradeId: 'leg-1' } };
+    const res = mockRes();
+
+    await controller.getRMultipleAnalysis(req, res);
+
+    const { analysis } = res.json.mock.calls[0][0];
+    expect(analysis.risk_amount).toBe(720);           // 600 + 120
+    expect(analysis.actual_pl_amount).toBe(-375);     // -519 + 144
+    expect(analysis.actual_r).toBe(-0.52);            // -375 / 720
+    // Uncapped the target would be $1,200 / 1.67R; the structure caps it.
+    expect(analysis.target_pl_amount).toBe(240);
+    expect(analysis.target_r).toBe(0.33);             // 240 / 720
+    expect(analysis.r_lost).toBe(0.85);               // 0.33 - (-0.52)
+    expect(analysis.target_capped_at_max_profit).toBe(true);
+  });
+
+  test('a combined target within the structure max profit is not modified', async () => {
+    // Same spread, modest per-leg targets: $60 + $120 = $180 <= $240 cap.
+    const legA = leg('leg-1', {
+      symbol: 'CEG260821P00105000',
+      underlying_symbol: 'CEG',
+      position_symbol: 'CEG',
+      side: 'short',
+      quantity: 3,
+      entry_price: 3.27,
+      exit_price: 5,
+      stop_loss: 5.27,
+      take_profit: 3.07,
+      pnl: -519,
+      strike_price: 105,
+      option_type: 'put',
+      expiration_date: '2026-08-21'
+    });
+    const legB = leg('leg-2', {
+      symbol: 'CEG260821P00100000',
+      underlying_symbol: 'CEG',
+      position_symbol: 'CEG',
+      side: 'long',
+      quantity: 3,
+      entry_price: 2.47,
+      exit_price: 2.95,
+      stop_loss: 2.07,
+      take_profit: 2.87,
+      pnl: 144,
+      strike_price: 100,
+      option_type: 'put',
+      expiration_date: '2026-08-21',
+      entry_time: '2026-01-05T14:31:00Z'
+    });
+
+    db.query
+      .mockResolvedValueOnce({ rows: [legA] })
+      .mockResolvedValueOnce({ rows: [legA, legB] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const req = { user: { id: 'user-1' }, params: { tradeId: 'leg-1' } };
+    const res = mockRes();
+
+    await controller.getRMultipleAnalysis(req, res);
+
+    const { analysis } = res.json.mock.calls[0][0];
+    expect(analysis.target_pl_amount).toBe(180);      // 60 + 120, uncapped
+    expect(analysis.target_r).toBe(0.25);             // (0.1x600 + 1x120) / 720
+    expect(analysis.target_capped_at_max_profit).toBe(false);
+  });
+
   test('getTradesForSelection keeps the per-leg query when grouping is off', async () => {
     User.getSettings.mockResolvedValue({ analytics_position_grouping: false });
 
