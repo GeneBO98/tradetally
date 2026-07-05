@@ -6,7 +6,7 @@ const BehavioralAnalysisPositionService = require('./behavioralAnalysisPositionS
 const symbolCategories = require('../utils/symbolCategories');
 const AnalyticsCache = require('./analyticsCache');
 
-const REVENGE_CALCULATION_VERSION = '2026-07-risk-v2';
+const REVENGE_CALCULATION_VERSION = '2026-07-risk-v3';
 
 // Enhanced version with proper revenge trade aggregation
 class BehavioralAnalyticsServiceV2 {
@@ -58,6 +58,16 @@ class BehavioralAnalyticsServiceV2 {
     };
   }
 
+  static canUseRiskForCrossSymbolEscalation(triggerRiskBasis, candidateRiskBasis) {
+    const riskItems = [triggerRiskBasis, candidateRiskBasis];
+    return riskItems.every(risk => {
+      if (!risk) return false;
+      if (risk.is_approximate === true) return false;
+      if (risk.confidence === 'low') return false;
+      return Number.isFinite(parseFloat(risk.amount)) && parseFloat(risk.amount) > 0;
+    });
+  }
+
   // Analyze historical trades and properly aggregate revenge trading events
   static async analyzeHistoricalTradesV2(userId, dateFilter = {}) {
     const hasAccess = await TierService.hasFeatureAccess(userId, 'behavioral_analytics');
@@ -102,6 +112,7 @@ class BehavioralAnalyticsServiceV2 {
       const triggerExitTime = new Date(potentialTrigger.exit_time);
       const triggerSymbol = String(potentialTrigger.underlying_symbol || potentialTrigger.symbol || '').toUpperCase();
       const triggerIndustry = industryMap.get(triggerSymbol) || null;
+      const triggerRiskBasis = this.riskBasisForPosition(potentialTrigger);
       const triggerPositionSize = this.calculateMonetaryPositionSize(potentialTrigger);
 
       // Look for revenge trades within the configured same/cross-symbol windows.
@@ -130,7 +141,8 @@ class BehavioralAnalyticsServiceV2 {
           const isSameSymbol = candidateSymbol === triggerSymbol;
           const candidatePositionSize = this.calculateMonetaryPositionSize(candidateTrade);
           const candidateRiskBasis = this.riskBasisForPosition(candidateTrade);
-          const isPositionEscalation = triggerPositionSize > 0 && candidatePositionSize >= triggerPositionSize * 1.3;
+          const canUseRiskEscalation = this.canUseRiskForCrossSymbolEscalation(triggerRiskBasis, candidateRiskBasis);
+          const isPositionEscalation = canUseRiskEscalation && triggerPositionSize > 0 && candidatePositionSize >= triggerPositionSize * 1.3;
           const isSameSector = Boolean(triggerIndustry && candidateIndustry && triggerIndustry === candidateIndustry);
           let crossSymbolQualifier = null;
 
@@ -158,6 +170,7 @@ class BehavioralAnalyticsServiceV2 {
             revenge_industry: candidateIndustry,
             window_minutes: isSameSymbol ? revengeWindows.same : revengeWindows.cross,
             position_risk: candidateRiskBasis,
+            risk_escalation_eligible: canUseRiskEscalation,
             pnl: tradePnL,
             position_key: candidateTrade.position_key,
             position_group_id: candidateTrade.position_group_id,
@@ -212,7 +225,8 @@ class BehavioralAnalyticsServiceV2 {
             id: trade.id,
             symbol: trade.symbol,
             position_risk: trade.position_risk,
-            cross_symbol_qualifier: trade.cross_symbol_qualifier
+            cross_symbol_qualifier: trade.cross_symbol_qualifier,
+            risk_escalation_eligible: trade.risk_escalation_eligible
           }))
         };
 
@@ -280,6 +294,7 @@ class BehavioralAnalyticsServiceV2 {
                 triggerRiskBasis: this.riskBasisForPosition(potentialTrigger),
                 revengeRiskBasis: revengeTrade.position_risk,
                 crossSymbolQualifier: revengeTrade.cross_symbol_qualifier,
+                riskEscalationEligible: revengeTrade.risk_escalation_eligible,
                 triggerIndustry: revengeTrade.trigger_industry,
                 revengeIndustry: revengeTrade.revenge_industry,
                 windowMinutes: revengeTrade.window_minutes,

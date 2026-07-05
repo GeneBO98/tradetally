@@ -29,6 +29,12 @@ function position(overrides = {}) {
     exit_time: overrides.exit_time || '2026-06-01T15:00:00.000Z',
     pnl: overrides.pnl ?? -600,
     position_size: overrides.position_size ?? 1000,
+    position_risk: overrides.position_risk || {
+      amount: overrides.position_size ?? 1000,
+      basis: 'notional',
+      confidence: 'medium',
+      is_approximate: false
+    },
     position_grouped: false,
     leg_count: 1,
     trade_ids: [overrides.id || '00000000-0000-4000-8000-000000000101'],
@@ -130,7 +136,7 @@ describe('BehavioralAnalyticsServiceV2 position-level revenge detection', () => 
     expect(db.query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO revenge_trading_events'))).toBe(false);
   });
 
-  test('admits cross-symbol candidate within 60 minutes with 1.3x size escalation', async () => {
+  test('admits cross-symbol candidate within 60 minutes with reliable 1.3x risk escalation', async () => {
     BehavioralAnalysisPositionService.getCompletedPositions.mockResolvedValue([
       position({ id: '00000000-0000-4000-8000-000000000401', symbol: 'NAB', pnl: -600, position_size: 1000 }),
       position({
@@ -154,6 +160,46 @@ describe('BehavioralAnalyticsServiceV2 position-level revenge detection', () => 
     expect(result.revengeEventsCreated).toBe(1);
     expect(context.crossSymbolQualifier).toBe('position_escalation');
     expect(context.windowMinutes).toBe(60);
+  });
+
+  test('rejects cross-symbol size escalation when option risk basis is approximate', async () => {
+    BehavioralAnalysisPositionService.getCompletedPositions.mockResolvedValue([
+      position({
+        id: '00000000-0000-4000-8000-000000000411',
+        symbol: 'NAB',
+        pnl: -1679.2,
+        position_size: 1000,
+        position_risk: {
+          amount: 1000,
+          basis: 'undefined_risk_notional',
+          confidence: 'low',
+          is_approximate: true
+        }
+      }),
+      position({
+        id: '00000000-0000-4000-8000-000000000412',
+        symbol: 'A2M',
+        entry_time: '2026-06-01T15:24:00.000Z',
+        exit_time: '2026-06-01T16:00:00.000Z',
+        pnl: 362.38,
+        position_size: 3000,
+        position_risk: {
+          amount: 3000,
+          basis: 'undefined_risk_notional',
+          confidence: 'low',
+          is_approximate: true
+        }
+      })
+    ]);
+    industries = new Map([
+      ['NAB', 'Banks'],
+      ['A2M', 'Food Products']
+    ]);
+
+    const result = await BehavioralAnalyticsServiceV2.analyzeHistoricalTradesV2('user-1');
+
+    expect(result.revengeEventsCreated).toBe(0);
+    expect(db.query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO revenge_trading_events'))).toBe(false);
   });
 
   test('admits cross-symbol candidate within 60 minutes when industries match', async () => {

@@ -124,6 +124,68 @@ class BehavioralAnalysisPositionService {
       .sort((a, b) => new Date(a.entry_time) - new Date(b.entry_time));
   }
 
+  static async getCompletedPositionsByTradeIds(userId, tradeIds = []) {
+    const ids = [...new Set((tradeIds || []).filter(Boolean).map(String))];
+    if (ids.length === 0) return [];
+
+    const result = await db.query(`
+      SELECT
+        t.id,
+        t.symbol,
+        t.account_identifier,
+        t.underlying_symbol,
+        t.instrument_type,
+        t.option_type,
+        t.strike_price,
+        t.expiration_date,
+        t.entry_time,
+        t.exit_time,
+        t.trade_date,
+        t.entry_price,
+        t.exit_price,
+        t.quantity,
+        t.side,
+        t.stop_loss,
+        t.strategy,
+        t.manual_override,
+        t.commission,
+        t.fees,
+        t.pnl,
+        t.contract_size,
+        t.point_value,
+        t.position_group_id,
+        tpg.detected_strategy AS group_detected_strategy,
+        tpg.strategy_confidence AS group_strategy_confidence,
+        tpg.leg_count AS persisted_leg_count
+      FROM trades t
+      LEFT JOIN trade_position_groups tpg ON tpg.id = t.position_group_id
+      WHERE t.user_id = $1
+        AND t.id::text = ANY($2::text[])
+        AND t.exit_price IS NOT NULL
+        AND t.exit_time IS NOT NULL
+        AND t.entry_time IS NOT NULL
+        AND t.pnl IS NOT NULL
+      ORDER BY t.entry_time ASC, t.id ASC
+    `, [userId, ids]);
+
+    const rows = result.rows || [];
+    const groupByPosition = await isPositionGroupingEnabled(userId);
+    if (!groupByPosition) {
+      return rows.map(row => this.buildPosition([row], false));
+    }
+
+    const groups = new Map();
+    for (const row of rows) {
+      const key = this.positionKey(row);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(row);
+    }
+
+    return Array.from(groups.values())
+      .map(groupRows => this.buildPosition(groupRows, true))
+      .sort((a, b) => new Date(a.entry_time) - new Date(b.entry_time));
+  }
+
   static positionKey(row) {
     if (row.position_group_id) return String(row.position_group_id);
     return [

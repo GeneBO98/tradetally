@@ -7,7 +7,8 @@ jest.mock('../../src/services/tierService', () => ({
 }));
 
 jest.mock('../../src/services/behavioralAnalysisPositionService', () => ({
-  getCompletedPositions: jest.fn()
+  getCompletedPositions: jest.fn(),
+  getCompletedPositionsByTradeIds: jest.fn()
 }));
 
 jest.mock('../../src/services/analyticsCache', () => ({
@@ -166,7 +167,7 @@ describe('OverconfidenceAnalyticsService position sizing', () => {
     expect(eventInsert[1][8]).toContain('leg-2');
   });
 
-  test('streak trade detail query uses multiplier-aware position size', async () => {
+  test('streak trade details use completed position rows instead of raw legs', async () => {
     db.query.mockImplementation(async (sql) => {
       const text = String(sql);
       if (text.includes('SELECT COUNT(*) as total_count')) {
@@ -191,6 +192,9 @@ describe('OverconfidenceAnalyticsService position sizing', () => {
             outcome_amount: null,
             outcome_analysis: null,
             streak_trades: ['leg-1'],
+            risk_basis: {
+              streak: []
+            },
             outcome_status: 'info'
           }]
         };
@@ -205,10 +209,37 @@ describe('OverconfidenceAnalyticsService position sizing', () => {
     });
     AnalyticsCache.get.mockResolvedValue(null);
     jest.spyOn(OverconfidenceAnalyticsService, 'generateAIRecommendations').mockResolvedValue(null);
+    BehavioralAnalysisPositionService.getCompletedPositionsByTradeIds.mockResolvedValue([
+      completedPosition({
+        id: 'position-1',
+        trade_ids: ['leg-1', 'leg-2'],
+        symbol: 'LITE',
+        pnl: 250,
+        position_size: 7172,
+        position_risk: {
+          amount: 508.4,
+          basis: 'max_loss',
+          confidence: 'high',
+          is_approximate: false
+        },
+        position_grouped: true,
+        leg_count: 2,
+        group_detected_strategy: 'bear_call_spread'
+      })
+    ]);
 
-    await OverconfidenceAnalyticsService.getOverconfidenceAnalysis('user-1', {}, {});
-    const detailQuery = db.query.mock.calls.find(([sql]) => String(sql).includes('CASE') && String(sql).includes('contract_size'));
+    const result = await OverconfidenceAnalyticsService.getOverconfidenceAnalysis('user-1', {}, {});
 
-    expect(detailQuery).toBeTruthy();
+    expect(BehavioralAnalysisPositionService.getCompletedPositionsByTradeIds).toHaveBeenCalledWith('user-1', ['leg-1']);
+    expect(result.events[0].streakTradeDetails).toHaveLength(1);
+    expect(result.events[0].streakTradeDetails[0]).toMatchObject({
+      id: 'position-1',
+      trade_ids: ['leg-1', 'leg-2'],
+      pnl: 250,
+      position_size: 508.4,
+      position_risk_basis: 'max_loss',
+      position_grouped: true,
+      leg_count: 2
+    });
   });
 });

@@ -4863,7 +4863,13 @@
                                                             .outcomeTradeDetails
                                                             .quantity
                                                     }}
-                                                    shares
+                                                    {{
+                                                        event.outcomeTradeDetails
+                                                            .instrument_type ===
+                                                        "option"
+                                                            ? "contracts"
+                                                            : "shares"
+                                                    }}
                                                 </p>
                                             </div>
                                             <div class="text-right">
@@ -4963,13 +4969,7 @@
                                                             parseFloat(
                                                                 event
                                                                     .outcomeTradeDetails
-                                                                    .entry_price ||
-                                                                    0,
-                                                            ) *
-                                                            parseFloat(
-                                                                event
-                                                                    .outcomeTradeDetails
-                                                                    .quantity ||
+                                                                    .position_size ||
                                                                     0,
                                                             )
                                                         ).toLocaleString()
@@ -5444,15 +5444,15 @@
                                                 />
                                                 The
                                                 {{ event.winStreakLength }}
-                                                Consecutive Winning Trades
+                                                Consecutive Winning Positions
                                             </h6>
                                             <p
                                                 class="text-xs text-gray-500 dark:text-gray-400 mt-1"
                                             >
                                                 These
                                                 {{ event.winStreakLength }}
-                                                wins in a row led to escalating
-                                                position sizes as confidence
+                                                completed winning positions led
+                                                to escalating risk as confidence
                                                 grew
                                             </p>
                                         </div>
@@ -5509,7 +5509,7 @@
                                             "
                                             class="text-sm text-gray-500 dark:text-gray-400 italic"
                                         >
-                                            Loading trade details...
+                                            Loading position details...
                                         </div>
                                         <div v-else>
                                             <div
@@ -5581,7 +5581,7 @@
                                                         <div
                                                             class="text-gray-500 dark:text-gray-400"
                                                         >
-                                                            Position Size
+                                                            Position Risk
                                                         </div>
                                                         <div
                                                             class="flex items-center space-x-1"
@@ -5596,6 +5596,24 @@
                                                                     ).toLocaleString()
                                                                 }}</span
                                                             >
+                                                            <span
+                                                                v-if="
+                                                                    trade.position_risk_basis ||
+                                                                    trade
+                                                                        .position_risk
+                                                                        ?.basis
+                                                                "
+                                                                class="text-gray-400 dark:text-gray-500"
+                                                            >
+                                                                {{
+                                                                    formatRiskBasisLabel(
+                                                                        trade.position_risk_basis ||
+                                                                            trade
+                                                                                .position_risk
+                                                                                ?.basis,
+                                                                    )
+                                                                }}
+                                                            </span>
                                                             <span
                                                                 v-if="
                                                                     index > 0 &&
