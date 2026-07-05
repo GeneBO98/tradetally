@@ -469,11 +469,74 @@
             <!-- Revenge Trading Analysis -->
             <div v-if="activeBehavioralTab === 'patterns'" class="card">
                 <div class="card-body">
-                    <h3
-                        class="text-lg font-medium text-gray-900 dark:text-white mb-6"
+                    <div
+                        class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
                     >
-                        Revenge Trading Detection
-                    </h3>
+                        <div>
+                            <h3
+                                class="text-lg font-medium text-gray-900 dark:text-white"
+                            >
+                                Revenge Trading Detection
+                            </h3>
+                            <div
+                                class="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400"
+                            >
+                                <span
+                                    v-if="revengeFreshness.calculationVersion"
+                                    class="rounded-full bg-gray-100 px-2 py-1 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                                >
+                                    Version
+                                    {{ revengeFreshness.calculationVersion }}
+                                </span>
+                                <span
+                                    v-if="revengeFreshness.latestRunAt"
+                                    class="rounded-full bg-gray-100 px-2 py-1 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                                >
+                                    Last run
+                                    {{ formatDate(revengeFreshness.latestRunAt) }}
+                                </span>
+                                <span
+                                    class="rounded-full px-2 py-1"
+                                    :class="
+                                        revengeFreshness.hasStaleResults
+                                            ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300'
+                                            : 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300'
+                                    "
+                                >
+                                    {{
+                                        revengeFreshness.hasStaleResults
+                                            ? `${revengeFreshness.staleEventCount} stale event${revengeFreshness.staleEventCount === 1 ? '' : 's'}`
+                                            : 'Current calculation'
+                                    }}
+                                </span>
+                            </div>
+                        </div>
+                        <button
+                            @click="reRunAnalysis"
+                            :disabled="loadingHistorical"
+                            class="btn btn-primary btn-sm inline-flex items-center justify-center"
+                        >
+                            <div
+                                v-if="loadingHistorical"
+                                class="mr-2 h-4 w-4 animate-spin"
+                            >
+                                <div
+                                    class="h-4 w-4 rounded-full border-2 border-current border-t-transparent"
+                                ></div>
+                            </div>
+                            <MdiIcon
+                                v-else
+                                :icon="mdiRefresh"
+                                :size="16"
+                                class="mr-2"
+                            />
+                            {{
+                                loadingHistorical
+                                    ? "Re-running..."
+                                    : "Re-run Revenge Detection"
+                            }}
+                        </button>
+                    </div>
 
                     <!-- No Data State -->
                     <div
@@ -512,7 +575,6 @@
 
                     <!-- Events List -->
                     <div v-else class="space-y-4">
-                        <!-- Re-run Analysis Button -->
                         <div class="flex justify-between items-center mb-4">
                             <div
                                 class="text-sm text-gray-500 dark:text-gray-400"
@@ -521,29 +583,6 @@
                                 {{ revengeAnalysis.events.length }} of
                                 {{ pagination.total }} revenge trading events
                             </div>
-                            <button
-                                @click="reRunAnalysis"
-                                :disabled="loadingHistorical"
-                                class="px-4 py-2 text-sm font-medium text-white bg-orange-600 border border-transparent rounded-md hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-                            >
-                                <svg
-                                    class="w-4 h-4 mr-2"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                >
-                                    <path
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                        stroke-width="2"
-                                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                                    />
-                                </svg>
-                                <span v-if="loadingHistorical"
-                                    >Re-analyzing...</span
-                                >
-                                <span v-else>Re-run Analysis</span>
-                            </button>
                         </div>
 
                         <div
@@ -621,6 +660,38 @@
                                                 >
                                                 <span class="ml-1">{{
                                                     event.trigger_trade.symbol
+                                                }}</span>
+                                            </div>
+                                            <div
+                                                v-if="
+                                                    event.trigger_trade
+                                                        .group_detected_strategy
+                                                "
+                                            >
+                                                <span
+                                                    class="text-red-600 dark:text-red-400 font-medium"
+                                                    >Strategy:</span
+                                                >
+                                                <span class="ml-1">{{
+                                                    formatStrategyLabel(
+                                                        event.trigger_trade
+                                                            .group_detected_strategy,
+                                                    )
+                                                }}</span>
+                                            </div>
+                                            <div
+                                                v-if="
+                                                    event.trigger_trade
+                                                        .group_leg_count
+                                                "
+                                            >
+                                                <span
+                                                    class="text-red-600 dark:text-red-400 font-medium"
+                                                    >Legs:</span
+                                                >
+                                                <span class="ml-1">{{
+                                                    event.trigger_trade
+                                                        .group_leg_count
                                                 }}</span>
                                             </div>
                                             <div>
@@ -863,6 +934,37 @@
                                                                 pattern.symbol
                                                             }}</span
                                                         >
+                                                    </div>
+                                                    <div
+                                                        v-if="
+                                                            pattern.group_detected_strategy
+                                                        "
+                                                    >
+                                                        <span
+                                                            class="text-gray-600 dark:text-gray-400"
+                                                            >Strategy:</span
+                                                        >
+                                                        <span
+                                                            class="ml-1 font-medium"
+                                                            >{{
+                                                                formatStrategyLabel(
+                                                                    pattern.group_detected_strategy,
+                                                                )
+                                                            }}</span
+                                                        >
+                                                    </div>
+                                                    <div
+                                                        v-if="
+                                                            pattern.group_leg_count
+                                                        "
+                                                    >
+                                                        <span
+                                                            class="text-gray-600 dark:text-gray-400"
+                                                            >Legs:</span
+                                                        >
+                                                        <span class="ml-1">{{
+                                                            pattern.group_leg_count
+                                                        }}</span>
                                                     </div>
                                                     <div>
                                                         <span
@@ -1537,6 +1639,27 @@
                         >
                             {{ insights.overallRisk.description }}
                         </p>
+                        <div
+                            v-if="insights.overallRisk.components"
+                            class="mt-4 grid grid-cols-2 md:grid-cols-5 gap-2"
+                        >
+                            <div
+                                v-for="component in riskComponentRows"
+                                :key="component.key"
+                                class="rounded-md border border-gray-200 dark:border-gray-700 px-3 py-2"
+                            >
+                                <p
+                                    class="text-[11px] text-gray-500 dark:text-gray-400"
+                                >
+                                    {{ component.label }}
+                                </p>
+                                <p
+                                    class="text-sm font-semibold text-gray-900 dark:text-white"
+                                >
+                                    {{ component.value }}
+                                </p>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Insights List -->
@@ -1713,9 +1836,9 @@
                                         class="text-xl font-bold text-gray-900 dark:text-white capitalize"
                                     >
                                         {{
-                                            personalityData.profile.primary_personality.replace(
-                                                "_",
-                                                " ",
+                                            formatPersonalityName(
+                                                personalityData.profile
+                                                    .primary_personality,
                                             )
                                         }}
                                         Trader
@@ -1756,7 +1879,7 @@
                             </div>
 
                             <!-- Personality Score Breakdown -->
-                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
                                 <div
                                     class="text-center cursor-pointer p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                                     @click="viewTradesByStrategy('scalper')"
@@ -1784,7 +1907,7 @@
                                         }}%
                                     </p>
                                     <p
-                                        class="text-xs text-blue-600 dark:text-blue-400 mt-1 flex items-center justify-center"
+                                        class="text-xs text-primary-600 dark:text-primary-400 mt-1 flex items-center justify-center"
                                     >
                                         <MdiIcon
                                             :icon="mdiChartBox"
@@ -1821,7 +1944,7 @@
                                         }}%
                                     </p>
                                     <p
-                                        class="text-xs text-blue-600 dark:text-blue-400 mt-1 flex items-center justify-center"
+                                        class="text-xs text-primary-600 dark:text-primary-400 mt-1 flex items-center justify-center"
                                     >
                                         <MdiIcon
                                             :icon="mdiChartBox"
@@ -1860,7 +1983,7 @@
                                         }}%
                                     </p>
                                     <p
-                                        class="text-xs text-blue-600 dark:text-blue-400 mt-1 flex items-center justify-center"
+                                        class="text-xs text-primary-600 dark:text-primary-400 mt-1 flex items-center justify-center"
                                     >
                                         <MdiIcon
                                             :icon="mdiChartBox"
@@ -1897,7 +2020,44 @@
                                         }}%
                                     </p>
                                     <p
-                                        class="text-xs text-blue-600 dark:text-blue-400 mt-1 flex items-center justify-center"
+                                        class="text-xs text-primary-600 dark:text-primary-400 mt-1 flex items-center justify-center"
+                                    >
+                                        <MdiIcon
+                                            :icon="mdiChartBox"
+                                            :size="12"
+                                            class="mr-1"
+                                        />
+                                        View trades
+                                    </p>
+                                </div>
+                                <div
+                                    class="text-center cursor-pointer p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                    @click="viewTradesByStrategy('option_strategy')"
+                                    :title="'Click to view grouped option strategy trades'"
+                                >
+                                    <p
+                                        class="text-xs text-gray-600 dark:text-gray-400 mb-1"
+                                    >
+                                        Options Strategy
+                                    </p>
+                                    <div
+                                        class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-1"
+                                    >
+                                        <div
+                                            class="bg-primary-500 h-2 rounded-full"
+                                            :style="{
+                                                width: `${personalityData.personalityScores?.option_strategy || 0}%`,
+                                            }"
+                                        ></div>
+                                    </div>
+                                    <p class="text-xs font-medium">
+                                        {{
+                                            personalityData.personalityScores
+                                                ?.option_strategy || 0
+                                        }}%
+                                    </p>
+                                    <p
+                                        class="text-xs text-primary-600 dark:text-primary-400 mt-1 flex items-center justify-center"
                                     >
                                         <MdiIcon
                                             :icon="mdiChartBox"
@@ -4167,7 +4327,7 @@
                                 <p
                                     class="text-xs text-red-700 dark:text-red-400"
                                 >
-                                    During win streaks
+                                    {{ overconfidenceRiskBasisLabel }}
                                 </p>
                             </div>
 
@@ -4303,6 +4463,11 @@
                                             ) || 0
                                         }}%
                                     </p>
+                                    <p
+                                        class="mt-1 text-xs text-primary-700 dark:text-primary-300"
+                                    >
+                                        {{ overconfidenceRiskBasisLabel }}
+                                    </p>
                                 </div>
                             </div>
                         </div>
@@ -4386,8 +4551,18 @@
                                     <h6
                                         class="text-sm font-medium text-orange-800 dark:text-orange-300 mb-2"
                                     >
-                                        Position Size Escalation
+                                        Position Risk Escalation
                                     </h6>
+                                    <p
+                                        class="mb-2 text-xs text-orange-700 dark:text-orange-400"
+                                    >
+                                        Based on
+                                        {{
+                                            formatRiskBasisLabel(
+                                                event.riskBasis?.peak?.basis,
+                                            )
+                                        }}
+                                    </p>
                                     <div class="grid grid-cols-2 gap-3 text-xs">
                                         <div>
                                             <span
@@ -4688,7 +4863,13 @@
                                                             .outcomeTradeDetails
                                                             .quantity
                                                     }}
-                                                    shares
+                                                    {{
+                                                        event.outcomeTradeDetails
+                                                            .instrument_type ===
+                                                        "option"
+                                                            ? "contracts"
+                                                            : "shares"
+                                                    }}
                                                 </p>
                                             </div>
                                             <div class="text-right">
@@ -4788,13 +4969,7 @@
                                                             parseFloat(
                                                                 event
                                                                     .outcomeTradeDetails
-                                                                    .entry_price ||
-                                                                    0,
-                                                            ) *
-                                                            parseFloat(
-                                                                event
-                                                                    .outcomeTradeDetails
-                                                                    .quantity ||
+                                                                    .position_size ||
                                                                     0,
                                                             )
                                                         ).toLocaleString()
@@ -5269,15 +5444,15 @@
                                                 />
                                                 The
                                                 {{ event.winStreakLength }}
-                                                Consecutive Winning Trades
+                                                Consecutive Winning Positions
                                             </h6>
                                             <p
                                                 class="text-xs text-gray-500 dark:text-gray-400 mt-1"
                                             >
                                                 These
                                                 {{ event.winStreakLength }}
-                                                wins in a row led to escalating
-                                                position sizes as confidence
+                                                completed winning positions led
+                                                to escalating risk as confidence
                                                 grew
                                             </p>
                                         </div>
@@ -5334,7 +5509,7 @@
                                             "
                                             class="text-sm text-gray-500 dark:text-gray-400 italic"
                                         >
-                                            Loading trade details...
+                                            Loading position details...
                                         </div>
                                         <div v-else>
                                             <div
@@ -5406,7 +5581,7 @@
                                                         <div
                                                             class="text-gray-500 dark:text-gray-400"
                                                         >
-                                                            Position Size
+                                                            Position Risk
                                                         </div>
                                                         <div
                                                             class="flex items-center space-x-1"
@@ -5421,6 +5596,24 @@
                                                                     ).toLocaleString()
                                                                 }}</span
                                                             >
+                                                            <span
+                                                                v-if="
+                                                                    trade.position_risk_basis ||
+                                                                    trade
+                                                                        .position_risk
+                                                                        ?.basis
+                                                                "
+                                                                class="text-gray-400 dark:text-gray-500"
+                                                            >
+                                                                {{
+                                                                    formatRiskBasisLabel(
+                                                                        trade.position_risk_basis ||
+                                                                            trade
+                                                                                .position_risk
+                                                                                ?.basis,
+                                                                    )
+                                                                }}
+                                                            </span>
                                                             <span
                                                                 v-if="
                                                                     index > 0 &&
@@ -5691,7 +5884,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, nextTick } from "vue";
+import { ref, onMounted, computed, nextTick, watch } from "vue";
 import { CheckIcon } from "@heroicons/vue/24/outline";
 import { useRouter, useRoute } from "vue-router";
 import api from "@/services/api";
@@ -5718,6 +5911,7 @@ import {
     mdiLightbulb,
     mdiFire,
     mdiTrophy,
+    mdiRefresh,
 } from "@mdi/js";
 
 const { showSuccess, showError } = useNotification();
@@ -5793,6 +5987,49 @@ const pagination = ref({
     hasPreviousPage: false,
 });
 
+const riskComponentRows = computed(() => {
+    const components = insights.value?.overallRisk?.components || {};
+    return [
+        { key: "event_frequency", label: "Events", value: components.event_frequency ?? 0 },
+        { key: "loss_rate", label: "Loss Rate", value: components.loss_rate ?? 0 },
+        { key: "position_size_escalation", label: "Size Escalation", value: components.position_size_escalation ?? 0 },
+        { key: "cooling_period_gap", label: "Cooling Gap", value: components.cooling_period_gap ?? 0 },
+        { key: "pattern_severity", label: "Severity", value: components.pattern_severity ?? 0 },
+    ];
+});
+
+const revengeFreshness = computed(() => {
+    const freshness = revengeAnalysis.value?.analysis_freshness || {};
+    return {
+        calculationVersion: freshness.calculation_version || null,
+        latestRunAt: freshness.latest_analysis_run_at || null,
+        staleEventCount: Number(freshness.stale_event_count || 0),
+        hasStaleResults: freshness.has_stale_results === true,
+    };
+});
+
+const formatRiskBasisLabel = (basis) => {
+    const labels = {
+        max_loss: "max theoretical loss",
+        stop_loss: "stop-loss risk",
+        net_debit: "net debit paid",
+        notional: "notional exposure",
+        undefined_risk_notional: "approximate undefined-risk exposure",
+        position_size: "position size fallback",
+    };
+    return labels[basis] || "position size fallback";
+};
+
+const overconfidenceRiskBasisLabel = computed(() => {
+    const eventWithBasis = overconfidenceData.value?.analysis?.events?.find(
+        (event) => event.riskBasis?.peak?.basis,
+    );
+    if (eventWithBasis) {
+        return `Based on ${formatRiskBasisLabel(eventWithBasis.riskBasis.peak.basis)}`;
+    }
+    return "Based on position size fallback";
+});
+
 // Track which revenge trade events are expanded
 const expandedEvents = ref(new Set());
 
@@ -5809,6 +6046,27 @@ const checkAccess = async () => {
     }
 };
 
+const getAccountFilterParam = () => {
+    if (selectedAccount.value) return selectedAccount.value;
+    if (Array.isArray(filters.value.accounts)) {
+        return filters.value.accounts.join(",");
+    }
+    return filters.value.accounts || "";
+};
+
+const buildBehavioralQueryParams = () => {
+    const queryParams = new URLSearchParams();
+    if (filters.value.startDate)
+        queryParams.append("startDate", filters.value.startDate);
+    if (filters.value.endDate)
+        queryParams.append("endDate", filters.value.endDate);
+
+    const accounts = getAccountFilterParam();
+    if (accounts) queryParams.append("accounts", accounts);
+
+    return queryParams;
+};
+
 // Load behavioral analytics data
 const loadData = async () => {
     if (!hasAccess.value) return;
@@ -5816,13 +6074,7 @@ const loadData = async () => {
     try {
         loading.value = true;
 
-        const queryParams = new URLSearchParams();
-        if (filters.value.startDate)
-            queryParams.append("startDate", filters.value.startDate);
-        if (filters.value.endDate)
-            queryParams.append("endDate", filters.value.endDate);
-        if (filters.value.accounts)
-            queryParams.append("accounts", filters.value.accounts);
+        const queryParams = buildBehavioralQueryParams();
 
         // Add pagination parameters for revenge trading
         const revengeQueryParams = new URLSearchParams(queryParams);
@@ -5978,13 +6230,14 @@ const analyzeHistoricalTrades = async () => {
     try {
         loadingHistorical.value = true;
 
+        const queryParams = buildBehavioralQueryParams();
         const response = await api.post(
-            "/behavioral-analytics/analyze-historical",
+            `/behavioral-analytics/analyze-historical?${queryParams}`,
         );
 
         showSuccess(
             "Analysis Complete",
-            `Analyzed historical trades. Found ${response.data.patternsDetected || 0} revenge trading patterns.`,
+            `Analyzed historical trades. Found ${response.data.data?.revengeEventsCreated || response.data.patternsDetected || 0} revenge trading patterns.`,
         );
 
         // Reload data after analysis
@@ -6069,8 +6322,9 @@ const reRunAnalysis = async () => {
     try {
         loadingHistorical.value = true;
 
+        const queryParams = buildBehavioralQueryParams();
         const response = await api.post(
-            "/behavioral-analytics/re-run-historical",
+            `/behavioral-analytics/re-run-historical?${queryParams}`,
         );
 
         showSuccess(
@@ -6103,6 +6357,18 @@ const formatDate = (dateString) => {
 // Format time only (timezone-aware)
 const formatTime = (dateString) => {
     return formatTimeTz(dateString);
+};
+
+const formatPersonalityName = (personality) => {
+    return String(personality || "")
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const formatStrategyLabel = (strategy) => {
+    return String(strategy || "")
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (char) => char.toUpperCase());
 };
 
 // Calculate time between trades
@@ -6258,13 +6524,7 @@ const analyzeLossAversion = async () => {
         // Clear any existing cache before running fresh analysis
         clearLossAversionCache();
 
-        const queryParams = new URLSearchParams();
-        if (filters.value.startDate)
-            queryParams.append("startDate", filters.value.startDate);
-        if (filters.value.endDate)
-            queryParams.append("endDate", filters.value.endDate);
-        if (filters.value.accounts)
-            queryParams.append("accounts", filters.value.accounts);
+        const queryParams = buildBehavioralQueryParams();
 
         const response = await api.get(
             `/behavioral-analytics/loss-aversion?${queryParams}`,
@@ -6316,13 +6576,7 @@ const analyzeOverconfidence = async () => {
         );
 
         // Build query params for date filters
-        const queryParams = new URLSearchParams();
-        if (filters.value.startDate)
-            queryParams.append("startDate", filters.value.startDate);
-        if (filters.value.endDate)
-            queryParams.append("endDate", filters.value.endDate);
-        if (filters.value.accounts)
-            queryParams.append("accounts", filters.value.accounts);
+        const queryParams = buildBehavioralQueryParams();
 
         const response = await api.post(
             `/behavioral-analytics/overconfidence/analyze-historical?${queryParams}`,
@@ -6425,13 +6679,7 @@ const loadTopMissedTrades = async (forceRefresh = false) => {
             localStorage.removeItem(cacheKey);
         }
 
-        const queryParams = new URLSearchParams();
-        if (filters.value.startDate)
-            queryParams.append("startDate", filters.value.startDate);
-        if (filters.value.endDate)
-            queryParams.append("endDate", filters.value.endDate);
-        if (filters.value.accounts)
-            queryParams.append("accounts", filters.value.accounts);
+        const queryParams = buildBehavioralQueryParams();
         queryParams.append("limit", "50");
         if (forceRefresh) queryParams.append("forceRefresh", "true");
 
@@ -6483,13 +6731,7 @@ const analyzePersonality = async () => {
     try {
         loadingPersonality.value = true;
 
-        const queryParams = new URLSearchParams();
-        if (filters.value.startDate)
-            queryParams.append("startDate", filters.value.startDate);
-        if (filters.value.endDate)
-            queryParams.append("endDate", filters.value.endDate);
-        if (filters.value.accounts)
-            queryParams.append("accounts", filters.value.accounts);
+        const queryParams = buildBehavioralQueryParams();
 
         const response = await api.get(
             `/behavioral-analytics/personality?${queryParams}`,
@@ -6567,6 +6809,13 @@ const viewTradesByStrategy = (strategy) => {
                 tradeTypes: ["swing", "position"],
             },
         },
+        option_strategy: {
+            name: "Option Strategy Trades",
+            description: "Grouped multi-leg option structures and option strategy trades",
+            filters: {
+                instrumentTypes: ["option"],
+            },
+        },
     };
 
     const strategyConfig = strategyFilters[strategy];
@@ -6588,11 +6837,22 @@ const viewTradesByStrategy = (strategy) => {
             strategyConfig.filters.maxHoldTime.toString(),
         );
     }
+    if (strategyConfig.filters.instrumentTypes) {
+        queryParams.set(
+            "instrumentTypes",
+            strategyConfig.filters.instrumentTypes.join(","),
+        );
+    }
 
-    // Add strategy name for filtering - now that backend supports strategy filtering via hold time analysis
-    queryParams.set("strategy", strategy); // Enable strategy filtering
+    // Add strategy name for filtering where it maps to a stored strategy.
+    if (strategy !== "option_strategy") {
+        queryParams.set("strategy", strategy);
+    }
     queryParams.set("strategyName", strategyConfig.name);
     queryParams.set("strategyDescription", strategyConfig.description);
+
+    const accounts = getAccountFilterParam();
+    if (accounts) queryParams.set("accounts", accounts);
 
     // Navigate to trades page with filters
     router.push({
@@ -6640,8 +6900,18 @@ const generateLossAversionMessage = (holdTimeRatio, estimatedMonthlyCost) => {
     }
 };
 
-// Note: Global account filter is handled by TradeFilters component which emits 'filter' event
-// No need for a separate watcher here - handleFilter() receives the account in the filter payload
+watch(selectedAccount, async () => {
+    filters.value.accounts = selectedAccount.value || "";
+    pagination.value.page = 1;
+
+    if (!initialLoadComplete.value || !hasAccess.value) return;
+
+    console.log(
+        "[BehavioralAnalytics] Global account filter changed to:",
+        selectedAccount.value || "All Accounts",
+    );
+    await applyFilters();
+});
 
 onMounted(async () => {
     loadFilters();

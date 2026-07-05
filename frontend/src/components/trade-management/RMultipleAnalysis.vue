@@ -137,6 +137,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatR } from '@/utils/rFormat'
 
 const { formatSignedCurrency } = useCurrencyFormatter()
 
@@ -469,12 +470,6 @@ const getAssessmentDescription = computed(() => {
       return `Trade management analysis complete.`
   }
 })
-
-function formatR(value) {
-  if (value === null || value === undefined) return '-'
-  const prefix = value >= 0 ? '+' : ''
-  return `${prefix}${value.toFixed(2)}R`
-}
 
 function formatCurrency(value) {
   if (value === null || value === undefined) return '-'

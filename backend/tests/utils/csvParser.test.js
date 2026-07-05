@@ -116,7 +116,7 @@ describe('csvParser timezone handling', () => {
       order_id: '9349469033',
       action: 'sell',
       instrument_type: 'stock',
-      available_actions: ['import_as_short', 'import_as_close_only', 'ignore']
+      available_actions: ['import_as_short', 'import_as_close_only', 'import_as_gifted_shares', 'ignore']
     });
     expect(result.diagnostics.manual_review_count).toBe(1);
   });
@@ -233,5 +233,97 @@ describe('csvParser timezone handling', () => {
     expect(result.trades[0].exitTime).toBe('2026-04-09T13:40:03Z');
     expect(result.trades[0].executions[0].datetime).toBe('2026-04-09T13:38:40Z');
     expect(result.trades[0].executions[1].datetime).toBe('2026-04-09T13:40:03Z');
+  });
+
+  test('parses Tiger Brokers trade history (Trade Price + Buy/Sell + GMT time) into a long round trip', async () => {
+    // Tiger exports newest-first, uses a "Trade Price" column, carries the
+    // instrument class in "Type" (EQUITY) and the direction in "Buy/Sell",
+    // and stamps the time as "HH:MM:SS,GMT-04".
+    const csv = [
+      'Symbol,Name,Currency,Type,Trade Date,Time,Buy/Sell,Quantity,Trade Price,Gross Amount,Net Amount,Comm/Fee/Tax,GST,Exchange',
+      'FCUV,Focus Unvl Inc,USD,EQUITY,2026/06/25,"04:47:39,GMT-04",SELL,1.0000000000,7.0700000000,7.0700000000,7.0500000000,-0.0200000000,,NAS',
+      'FCUV,Focus Unvl Inc,USD,EQUITY,2026/06/25,"04:46:12,GMT-04",BUY,1.0000000000,6.4800000000,-6.4800000000,-6.4800000000,0.0000000000,,NAS'
+    ].join('\n');
+
+    const diagnostics = { totalRows: 0, parsedRows: 0, invalidRows: 0, skippedRows: 0, skippedReasons: [], warnings: [] };
+    const result = await parseCSV(Buffer.from(csv), 'generic', { diagnostics });
+
+    expect(diagnostics.invalidRows).toBe(0);
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0].symbol).toBe('FCUV');
+    expect(result.trades[0].side).toBe('long');
+    expect(result.trades[0].quantity).toBe(1);
+    expect(result.trades[0].entryPrice).toBe(6.48);
+    expect(result.trades[0].exitPrice).toBe(7.07);
+    expect(result.trades[0].pnl).toBeCloseTo(0.59, 5);
+    expect(result.trades[0].entryTime).toBe('2026-06-25T04:46:12');
+    expect(result.trades[0].exitTime).toBe('2026-06-25T04:47:39');
+  });
+
+  test('auto-detects a multi-section ThinkorSwim/paperMoney Account Statement and parses the Filled Orders section', async () => {
+    // The real "Filled Orders" header is buried under a disclaimer and several
+    // other sections (>15 lines), past the generic header-sniffer window. The
+    // deep scan in detectBrokerFormat must still route this to the paperMoney parser.
+    const csv = [
+      'This document was exported from the paperMoney® platform which provides a simulated trading environment. All data contained herein is for educational and entertainment purposes only.',
+      '',
+      'Account Statement for 123456789 (paperMoney) since ...',
+      '',
+      'Cash Balance',
+      ',,Time,Type,Ref #,Description,Misc Fees,Commissions & Fees,Amount,Balance',
+      ',,6/26/26,,,Some balance line,,,0.00,1000.00',
+      '',
+      'Account Order History',
+      'Notes,,Time Placed,Spread,Side,Qty,Pos Effect,Symbol,Exp,Strike,Type,PRICE,,Amount,TIF,Mark,Status',
+      ',,6/26/26 12:14:00,STOCK,BUY,+350,TO CLOSE,COF,,,STOCK,204.00,,0.00,DAY,204.00,WORKING',
+      '',
+      'Filled Orders',
+      ',,Exec Time,Spread,Side,Qty,Pos Effect,Symbol,Exp,Strike,Type,Price,Net Price,Amount,Price Improvement,Order Type',
+      ',,6/26/26 12:15:06,STOCK,SELL,-10000,TO OPEN,OCGN,,,STOCK,1.48,1.48,0.00,.00,LMT',
+      ',,6/26/26 12:15:11,STOCK,BUY,+10000,TO CLOSE,OCGN,,,STOCK,1.49,1.49,0.00,.00,MKT',
+      '',
+      'Canceled Orders',
+      ',,Exec Time,Spread,Side,Qty,Pos Effect,Symbol'
+    ].join('\n');
+
+    const result = await parseCSV(Buffer.from(csv), 'auto', {});
+
+    expect(result.diagnostics.detectedBroker).toBe('papermoney');
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0].symbol).toBe('OCGN');
+    expect(result.trades[0].side).toBe('short');
+    expect(result.trades[0].quantity).toBe(10000);
+    expect(result.trades[0].entryPrice).toBe(1.48);
+    expect(result.trades[0].exitPrice).toBe(1.49);
+    expect(result.trades[0].pnl).toBeCloseTo(-100, 5);
+  });
+
+  test('auto-detects and parses a MetaTrader 5 Italian history report (semicolons, European decimals, title row, duplicate columns)', async () => {
+    const csv = [
+      'Report Cronistorico dei Trade;;;;;;;;;;;;;;',
+      'Ora;Posizione;Simbolo;Tipo;Volume;Prezzo;S / L;T / P;Ora;Prezzo;Commissioni;Swap;Profitto;;',
+      '2026.04.30 09:37:11;121462806;XAUUSD.x;buy;0.33;4 577,86;4 543,86;4 595,91;2026.04.30 10:43:09;4 595,91;0,00;0,00; 595,65;;',
+      '2026.04.30 13:30:52;121542348;XAUUSD.x;buy;0.33;4 642,72;4 608,45;4 661,02;2026.04.30 19:16:02;4 608,45;0,00;0,00;-1 130,91;;'
+    ].join('\n');
+
+    const result = await parseCSV(Buffer.from(csv), 'auto', {});
+
+    expect(result.diagnostics.detectedBroker).toBe('metatrader5');
+    expect(result.diagnostics.invalidRows).toBe(0);
+    expect(result.trades).toHaveLength(2);
+
+    const [first, second] = result.trades;
+    // First row: open and close prices read from the two duplicate "Prezzo" columns,
+    // European decimals parsed, broker-provided "Profitto" used directly.
+    expect(first.symbol).toBe('XAUUSD'); // broker suffix ".x" stripped
+    expect(first.side).toBe('long');
+    expect(first.quantity).toBe(0.33);
+    expect(first.entryPrice).toBe(4577.86);
+    expect(first.exitPrice).toBe(4595.91);
+    expect(first.pnl).toBeCloseTo(595.65, 2);
+    expect(first.entryTime).toBe('2026-04-30T09:37:11');
+    expect(first.exitTime).toBe('2026-04-30T10:43:09');
+
+    expect(second.pnl).toBeCloseTo(-1130.91, 2);
   });
 });

@@ -2,6 +2,7 @@ const Joi = require('joi');
 const { isV1Request, sendV1Error } = require('../utils/apiResponse');
 const { ALL_SCOPES } = require('../utils/apiScopes');
 const { sanitizeForLogging } = require('../utils/logSanitizer');
+const { INVISIBLE_CHARS_REGEX } = require('../utils/normalizeEmail');
 
 const WEBHOOK_EVENT_TYPES = Object.freeze([
   'trade.created',
@@ -33,7 +34,14 @@ const normalizeFieldNames = (body) => {
     tick_size: 'tickSize',
     point_value: 'pointValue',
     stop_loss: 'stopLoss',
-    take_profit: 'takeProfit'
+    take_profit: 'takeProfit',
+    original_currency: 'originalCurrency',
+    exchange_rate: 'exchangeRate',
+    original_entry_price_currency: 'originalEntryPriceCurrency',
+    original_exit_price_currency: 'originalExitPriceCurrency',
+    original_pnl_currency: 'originalPnlCurrency',
+    original_commission_currency: 'originalCommissionCurrency',
+    original_fees_currency: 'originalFeesCurrency'
   };
   
   Object.keys(fieldMappings).forEach(snakeCase => {
@@ -83,6 +91,13 @@ const validate = (schema) => {
 };
 
 const nullableString = (max = 255) => Joi.string().max(max).allow('', null);
+// Strip invisible characters mobile keyboards inject, trim, and lowercase
+// before validating - see utils/normalizeEmail.js (issue #362).
+const emailField = Joi.string()
+  .replace(INVISIBLE_CHARS_REGEX, '')
+  .trim()
+  .lowercase()
+  .email();
 // Date-only fields (DATE columns) must stay strings through validation.
 // Joi.date() converts to a UTC-midnight Date object, which pg serializes in
 // the server's LOCAL timezone - on servers west of UTC the stored DATE lands
@@ -93,11 +108,12 @@ const nullableDate = Joi.alternatives().try(
   Joi.valid(null, '')
 );
 const nullableNumber = Joi.alternatives().try(Joi.number(), Joi.valid(null, ''));
+const currencyCode = Joi.string().trim().uppercase().pattern(/^[A-Z]{3}$/).allow(null, '');
 const aiProviderSchema = Joi.string().valid('gemini', 'claude', 'openai', 'deepseek', 'kimi', 'ollama', 'lmstudio', 'perplexity', 'local');
 
 const schemas = {
   register: Joi.object({
-    email: Joi.string().email().required(),
+    email: emailField.required(),
     username: Joi.string().pattern(/^[a-zA-Z0-9_-]+$/).min(3).max(30).optional(),
     password: Joi.string().min(8).required(),
     fullName: Joi.string().max(255).allow(''),
@@ -120,7 +136,7 @@ const schemas = {
   }),
 
   login: Joi.object({
-    email: Joi.string().email().required(),
+    email: emailField.required(),
     password: Joi.string().required()
   }),
 
@@ -141,7 +157,7 @@ const schemas = {
   }),
 
   forgotPassword: Joi.object({
-    email: Joi.string().email().required()
+    email: emailField.required()
   }),
 
   resetPassword: Joi.object({
@@ -174,6 +190,13 @@ const schemas = {
     entryCommission: Joi.number().default(0),  // Can be negative for rebates
     exitCommission: Joi.number().default(0),  // Can be negative for rebates
     fees: Joi.number().default(0),  // Can be negative for rebates
+    originalCurrency: currencyCode.default('USD'),
+    exchangeRate: Joi.number().positive().allow(null, ''),
+    originalEntryPriceCurrency: Joi.number().allow(null, ''),
+    originalExitPriceCurrency: Joi.number().allow(null, ''),
+    originalPnlCurrency: Joi.number().allow(null, ''),
+    originalCommissionCurrency: Joi.number().allow(null, ''),
+    originalFeesCurrency: Joi.number().allow(null, ''),
     mae: Joi.number().allow(null, ''),
     mfe: Joi.number().allow(null, ''),
     postExitMae: Joi.number().allow(null, ''),
@@ -325,6 +348,13 @@ const schemas = {
     entryCommission: Joi.number(),  // Can be negative for rebates
     exitCommission: Joi.number(),  // Can be negative for rebates
     fees: Joi.number(),  // Can be negative for rebates
+    originalCurrency: currencyCode,
+    exchangeRate: Joi.number().positive().allow(null, ''),
+    originalEntryPriceCurrency: Joi.number().allow(null, ''),
+    originalExitPriceCurrency: Joi.number().allow(null, ''),
+    originalPnlCurrency: Joi.number().allow(null, ''),
+    originalCommissionCurrency: Joi.number().allow(null, ''),
+    originalFeesCurrency: Joi.number().allow(null, ''),
     mae: Joi.number().allow(null, ''),
     mfe: Joi.number().allow(null, ''),
     postExitMae: Joi.number().allow(null, ''),
@@ -458,7 +488,7 @@ const schemas = {
 
   // Mobile-specific validation schemas
   deviceLogin: Joi.object({
-    email: Joi.string().email().required(),
+    email: emailField.required(),
     password: Joi.string().required(),
     deviceInfo: Joi.object({
       name: Joi.string().max(255).required(),

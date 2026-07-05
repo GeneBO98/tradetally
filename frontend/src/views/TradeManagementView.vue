@@ -101,11 +101,23 @@
         >
             <!-- Candlestick Chart with Markers (only shown when chart data loads successfully and instrument is supported) -->
             <TradeManagementChart
-                v-if="chartAvailable && isChartSupportedInstrument"
+                v-if="chartAvailable && isChartSupportedInstrument && !isGroupedPosition"
                 :trade="selectedTrade"
                 :loading="chartLoading"
                 @chart-loaded="onChartLoaded"
             />
+
+            <!-- Message for grouped multi-leg positions -->
+            <div
+                v-else-if="isGroupedPosition"
+                class="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4"
+            >
+                <p class="text-gray-600 dark:text-gray-400 text-sm">
+                    Chart visualization plots a single symbol's price levels and
+                    is not shown for grouped multi-leg positions. Per-leg
+                    details are listed in the Position Summary below.
+                </p>
+            </div>
 
             <!-- Message for unsupported instruments -->
             <div
@@ -121,8 +133,16 @@
             <!-- R-Multiple Analysis -->
             <RMultipleAnalysis :analysis="analysis" :trade="selectedTrade" />
 
-            <!-- Summary Metrics (with inline editing) -->
+            <!-- Grouped positions: combined summary with per-leg breakdown -->
+            <PositionSummaryMetrics
+                v-if="isGroupedPosition"
+                :trade="selectedTrade"
+                :analysis="analysis"
+            />
+
+            <!-- Single trades: summary metrics with inline editing -->
             <TradeSummaryMetrics
+                v-else
                 :trade="selectedTrade"
                 :analysis="analysis"
                 @levels-updated="onLevelsUpdated"
@@ -178,6 +198,7 @@ import StopLossTakeProfitForm from "@/components/trade-management/StopLossTakePr
 import TradeManagementChart from "@/components/trade-management/TradeManagementChart.vue";
 import RMultipleAnalysis from "@/components/trade-management/RMultipleAnalysis.vue";
 import TradeSummaryMetrics from "@/components/trade-management/TradeSummaryMetrics.vue";
+import PositionSummaryMetrics from "@/components/trade-management/PositionSummaryMetrics.vue";
 import RPerformanceChart from "@/components/trade-management/RPerformanceChart.vue";
 import TradeCharts from "@/components/trades/TradeCharts.vue";
 
@@ -222,6 +243,15 @@ const rPerfRefreshTrigger = ref(0);
 const needsRiskLevels = computed(() => {
     if (!selectedTrade.value) return false;
     return !selectedTrade.value.stop_loss;
+});
+
+// Whole-trade grouping (issue #359 follow-up): the analysis endpoint returns a
+// combined multi-leg position when the setting is enabled.
+const isGroupedPosition = computed(() => {
+    return (
+        selectedTrade.value?.position_grouped === true &&
+        (selectedTrade.value?.leg_count || 0) > 1
+    );
 });
 
 // Check if chart should be available for this instrument type
@@ -358,9 +388,19 @@ async function fetchAnalysis(tradeId) {
     error.value = null;
 
     try {
-        const response = await api.get(`/trade-management/analysis/${tradeId}`);
+        // Pass the active filters so whole-trade grouping analyzes the same
+        // leg set the selector row was built from (issue #359 follow-up).
+        const response = await api.get(`/trade-management/analysis/${tradeId}`, {
+            params: buildTradeParams(),
+        });
         selectedTrade.value = response.data.trade;
         analysis.value = response.data.analysis;
+        // Grouped positions come back keyed by their representative leg so the
+        // selector row highlight and URL stay aligned.
+        if (response.data.trade?.id) {
+            selectedTradeId.value = response.data.trade.id;
+            updateUrlParams();
+        }
 
         // Skip chart visualization for futures (not supported)
         if (selectedTrade.value?.instrument_type === "future") {
@@ -390,7 +430,9 @@ async function onLevelsSaved(updatedTrade) {
 
 async function refreshAnalysisOnly(tradeId) {
     try {
-        const response = await api.get(`/trade-management/analysis/${tradeId}`);
+        const response = await api.get(`/trade-management/analysis/${tradeId}`, {
+            params: buildTradeParams(),
+        });
         analysis.value = response.data.analysis;
         // Keep chart data fresh if present
         if (response.data.trade?.charts && selectedTrade.value) {
@@ -511,8 +553,11 @@ onMounted(async () => {
             try {
                 const response = await api.get(
                     `/trade-management/analysis/${initialTradeId}`,
+                    { params: buildTradeParams() },
                 );
-                selectedTradeId.value = initialTradeId;
+                // Use the returned trade id (the representative leg for grouped
+                // positions) so the selector row highlight matches.
+                selectedTradeId.value = response.data.trade?.id || initialTradeId;
                 selectedTrade.value = response.data.trade;
                 analysis.value = response.data.analysis;
                 updateUrlParams();

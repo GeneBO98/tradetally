@@ -802,13 +802,18 @@ class HealthController {
         };
       }
 
-      // Update trades with heart rate matching by timestamp (within ±2 minutes)
+      // Update trades with heart rate matching by timestamp (within ±10 minutes)
       let updatedCount = 0;
       for (const trade of tradesResult.rows) {
         const tradeTime = new Date(trade.entry_time);
 
-        // Find closest heart rate sample within ±2 minutes
-        const matchWindow = 2 * 60 * 1000; // 2 minutes in milliseconds
+        // Find closest heart rate sample within ±10 minutes.
+        // Apple Watch publishes at most one background heart rate per
+        // non-overlapping 5-minute window, and only when the wearer is still
+        // (Apple: "Using Apple Watch to measure heart rate", Nov 2024) — so
+        // ±10 min covers the nominal cadence plus one missed cycle. We take
+        // the closest sample, so a wider window never reduces precision.
+        const matchWindow = 10 * 60 * 1000; // 10 minutes in milliseconds
         let closestHR = null;
         let minDiff = Infinity;
 

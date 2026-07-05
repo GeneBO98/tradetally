@@ -12,8 +12,9 @@ types.setTypeParser(1082, val => val);
 // Default to 50, allow override via env var
 const poolSize = parseInt(process.env.DB_POOL_SIZE || '50', 10);
 const connectionTimeout = parseInt(process.env.DB_CONNECTION_TIMEOUT || '5000', 10);
+const dbSchema = (process.env.DB_SCHEMA || '').trim();
 
-const pool = new Pool({
+const poolConfig = {
   host: process.env.DB_HOST,
   port: process.env.DB_PORT,
   database: process.env.DB_NAME,
@@ -24,7 +25,17 @@ const pool = new Pool({
   connectionTimeoutMillis: connectionTimeout,
   // Allow statement timeout to prevent hanging queries
   statement_timeout: parseInt(process.env.DB_STATEMENT_TIMEOUT || '30000', 10),
-});
+};
+
+if (dbSchema) {
+  if (!/^[A-Za-z_][A-Za-z0-9_$]*$/.test(dbSchema)) {
+    throw new Error('DB_SCHEMA must be a single PostgreSQL identifier, such as tradetally');
+  }
+
+  poolConfig.options = `-c search_path="${dbSchema}",public`;
+}
+
+const pool = new Pool(poolConfig);
 
 pool.on('error', (err) => {
   console.error('Database pool error:', err);

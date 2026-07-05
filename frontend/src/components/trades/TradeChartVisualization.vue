@@ -5,7 +5,7 @@
         <h3 class="text-lg font-medium text-gray-900 dark:text-white">Trade Visualization</h3>
         <div v-if="chartData" class="flex items-center space-x-2">
           <span class="text-xs text-gray-500 dark:text-gray-400">
-            {{ chartData.interval === 'daily' ? 'Daily' : chartData.interval }} chart
+            {{ chartData.interval === 'daily' ? 'Daily' : chartData.interval }} chart<template v-if="chartData.interval !== 'daily'"> &middot; times in {{ timezoneLabel }}</template>
           </span>
           <span v-if="chartData.trade && chartData.trade.instrumentType === 'option'" class="text-xs px-2 py-1 rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
             Options Trade
@@ -151,6 +151,7 @@ import * as LightweightCharts from 'lightweight-charts'
 import api from '@/services/api'
 import { useNotification } from '@/composables/useNotification'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { useUserTimezone } from '@/composables/useUserTimezone'
 import { useAuthStore } from '@/stores/auth'
 import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
 
@@ -163,6 +164,7 @@ const props = defineProps({
 
 const { showError, showWarning } = useNotification()
 const { formatCurrency, currencySymbol } = useCurrencyFormatter()
+const { userTimezone, timezoneLabel } = useUserTimezone()
 const authStore = useAuthStore()
 
 const chartContainer = ref(null)
@@ -211,32 +213,69 @@ const formatNumber = (num) => {
   return parseFloat(num).toFixed(2)
 }
 
-// Parse datetime string to Unix timestamp (seconds) without timezone conversion
-// Same logic as formatDateTime to ensure consistency
+// Parse a backend datetime string to a true UTC epoch (seconds).
+// entry/exit times arrive as ISO strings with an offset ("...Z" or "-04:00");
+// a naive string (no offset) is treated as UTC since the API always serializes UTC.
 const parseDateTimeToTimestamp = (dateStr) => {
   if (!dateStr) return null
 
-  try {
-    const str = dateStr.toString()
-
-    // If it's an ISO datetime string, parse components directly to avoid timezone issues
-    // Matches formats like: 2025-11-15T14:30:00 or 2025-11-15T14:30:00.000Z
-    const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?/)
-    if (isoMatch) {
-      const [, year, month, day, hour, minute, second] = isoMatch.map(Number)
-      // Create date in local timezone (ignoring any timezone info from the string)
-      const dateObj = new Date(year, month - 1, day, hour, minute, second)
-      return Math.floor(dateObj.getTime() / 1000)
-    }
-
-    // Fallback to standard parsing (will have timezone issues but better than nothing)
-    const dateObj = new Date(dateStr)
-    if (isNaN(dateObj.getTime())) return null
-    return Math.floor(dateObj.getTime() / 1000)
-  } catch (error) {
-    console.error('Error parsing datetime to timestamp:', error, 'for date:', dateStr)
+  const str = dateStr.toString().trim()
+  const naiveIso = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?$/
+  const normalized = naiveIso.test(str) ? `${str.replace(' ', 'T')}Z` : str
+  const ms = Date.parse(normalized)
+  if (isNaN(ms)) {
+    console.error('Error parsing datetime to timestamp for date:', dateStr)
     return null
   }
+  return Math.floor(ms / 1000)
+}
+
+// lightweight-charts has no timezone support: it renders epoch timestamps as UTC
+// wall-clock. To label the axis in the user's timezone, every chart time (candles,
+// markers, visible range) is shifted from its true UTC epoch by the timezone's
+// offset at that moment before being handed to the library.
+const tzPartsFormatterCache = new Map()
+const getTzPartsFormatter = (timeZone) => {
+  if (!tzPartsFormatterCache.has(timeZone)) {
+    tzPartsFormatterCache.set(timeZone, new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23'
+    }))
+  }
+  return tzPartsFormatterCache.get(timeZone)
+}
+
+const partsInTz = (epochSeconds, timeZone) => {
+  const parts = {}
+  for (const part of getTzPartsFormatter(timeZone).formatToParts(new Date(epochSeconds * 1000))) {
+    parts[part.type] = part.value
+  }
+  return parts
+}
+
+// Offset (seconds) of `timeZone` from UTC at the given moment (DST-aware)
+const tzOffsetSeconds = (epochSeconds, timeZone) => {
+  if (!timeZone || timeZone === 'UTC') return 0
+  const p = partsInTz(epochSeconds, timeZone)
+  const asUtc = Date.UTC(+p.year, p.month - 1, +p.day, +p.hour, +p.minute, +p.second) / 1000
+  return asUtc - epochSeconds
+}
+
+const dateStrInTz = (epochSeconds, timeZone) => {
+  const p = partsInTz(epochSeconds, timeZone)
+  return `${p.year}-${p.month}-${p.day}`
+}
+
+// True UTC epoch for a wall-clock time ("HH:MM") on a date in a timezone
+const zonedTimeToEpoch = (dateStr, timeStr, timeZone) => {
+  const guess = Math.floor(Date.parse(`${dateStr}T${timeStr}:00Z`) / 1000)
+  return guess - tzOffsetSeconds(guess, timeZone)
 }
 
 const createTradeChart = () => {
@@ -254,6 +293,13 @@ const createTradeChart = () => {
   }
 
   const trade = chartData.value.trade
+
+  // Daily candles are date-stamped (UTC midnight); shifting them would move the date.
+  // Intraday charts are shifted into the user's profile timezone for display.
+  const isDailyChart = chartData.value.interval === 'daily'
+  const chartTimezone = isDailyChart ? 'UTC' : (userTimezone.value || 'UTC')
+  const toChartTime = (utcEpochSeconds) =>
+    utcEpochSeconds == null ? null : utcEpochSeconds + tzOffsetSeconds(utcEpochSeconds, chartTimezone)
 
   if (!chartData.value.candles || chartData.value.candles.length === 0) {
     const symbol = chartData.value.symbol || 'Unknown'
@@ -311,21 +357,23 @@ const createTradeChart = () => {
 
     // Process and validate our backend data
     const validatedCandles = chartData.value.candles.map((candle, index) => {
+      const rawTime = Number(candle.time)
       const validated = {
-        time: Number(candle.time),
         open: Number(candle.open),
         high: Number(candle.high),
         low: Number(candle.low),
         close: Number(candle.close)
       }
-      
+
       // Check for invalid data
-      if (isNaN(validated.time) || isNaN(validated.open) || isNaN(validated.high) || 
+      if (isNaN(rawTime) || isNaN(validated.open) || isNaN(validated.high) ||
           isNaN(validated.low) || isNaN(validated.close)) {
         console.warn(`Invalid candle at index ${index}:`, candle)
         return null
       }
-      
+
+      // Shift the true UTC epoch into chart display time (user's timezone)
+      validated.time = toChartTime(rawTime)
       return validated
     }).filter(candle => candle !== null)
 
@@ -463,29 +511,33 @@ const createTradeChart = () => {
     const dataStartTime = uniqueCandles[0].time
     const dataEndTime = uniqueCandles[uniqueCandles.length - 1].time
 
-    // Calculate entry and exit timestamps using the correct fields from backend
+    // Calculate entry and exit timestamps using the correct fields from backend.
+    // entryEpochUTC is the true UTC epoch; entryTimestamp/exitTimestamp are in
+    // chart display time (shifted into the user's timezone) to match the candles.
+    let entryEpochUTC = null
     let entryTimestamp, exitTimestamp = null
     try {
       // Use entryTime field (which contains entry_time from database)
       const entryTime = trade.entryTime || trade.entryDate
-      entryTimestamp = parseDateTimeToTimestamp(entryTime)
+      entryEpochUTC = parseDateTimeToTimestamp(entryTime)
+      entryTimestamp = toChartTime(entryEpochUTC)
 
       // Use exitTime field (which contains exit_time from database)
       const exitTime = trade.exitTime
       if (exitTime) {
-        exitTimestamp = parseDateTimeToTimestamp(exitTime)
+        exitTimestamp = toChartTime(parseDateTimeToTimestamp(exitTime))
       }
 
       // Debug timestamp calculation
-      console.log('[TIME] FIXED TIMESTAMP CALCULATION:')
-      console.log('Browser timezone:', Intl.DateTimeFormat().resolvedOptions().timeZone)
+      console.log('[TIME] TIMESTAMP CALCULATION:')
+      console.log('Chart display timezone:', chartTimezone)
       console.log('Using entryTime field:', trade.entryTime)
       console.log('Using exitTime field:', trade.exitTime)
       console.log('Fallback entryDate field:', trade.entryDate)
 
-      console.log('[SUCCESS] Calculated entryTimestamp:', entryTimestamp, entryTimestamp ? new Date(entryTimestamp * 1000).toISOString() : 'none')
-      console.log('[SUCCESS] Entry time in your timezone:', entryTimestamp ? new Date(entryTimestamp * 1000).toLocaleString() : 'none')
-      console.log('[SUCCESS] Calculated exitTimestamp:', exitTimestamp, exitTimestamp ? new Date(exitTimestamp * 1000).toISOString() : 'none')
+      console.log('[SUCCESS] Entry UTC epoch:', entryEpochUTC, entryEpochUTC ? new Date(entryEpochUTC * 1000).toISOString() : 'none')
+      console.log('[SUCCESS] Entry chart-display timestamp:', entryTimestamp)
+      console.log('[SUCCESS] Exit chart-display timestamp:', exitTimestamp)
     } catch (dateError) {
       console.warn('Error parsing trade dates:', dateError.message)
       entryTimestamp = Math.floor(new Date().getTime() / 1000)
@@ -537,7 +589,7 @@ const createTradeChart = () => {
         let exitCount = 0
 
         trade.executions.forEach((execution, index) => {
-          const execTimestamp = parseDateTimeToTimestamp(execution.datetime)
+          const execTimestamp = toChartTime(parseDateTimeToTimestamp(execution.datetime))
           if (!execTimestamp) {
             console.warn(`[OPTIONS] Skipping execution ${index} - invalid datetime:`, execution.datetime)
             return
@@ -617,15 +669,12 @@ const createTradeChart = () => {
         console.log(`Trade Time:  ${new Date(entryTimestamp * 1000).toLocaleString()}`)
         console.log(`Time Diff:   ${Math.abs(entryCandle.time - entryTimestamp)} seconds`)
         
-        // TIMEZONE DEBUGGING
+        // TIMEZONE DEBUGGING (timestamps below are chart display time, i.e.
+        // shifted into the user's timezone, so render them as UTC wall-clock)
         console.log('[WORLD] TIMEZONE ANALYSIS:')
-        console.log(`Trade timestamp raw: ${entryTimestamp}`)
-        console.log(`Trade time UTC: ${new Date(entryTimestamp * 1000).toISOString()}`)
-        console.log(`Trade time Local: ${new Date(entryTimestamp * 1000).toLocaleString()}`)
-        console.log(`Candle timestamp raw: ${entryCandle.time}`)
-        console.log(`Candle time UTC: ${new Date(entryCandle.time * 1000).toISOString()}`)
-        console.log(`Candle time Local: ${new Date(entryCandle.time * 1000).toLocaleString()}`)
-        console.log(`You said trade was at 16:33 - does that match any of these times?`)
+        console.log(`Chart display timezone: ${chartTimezone}`)
+        console.log(`Trade timestamp (display): ${entryTimestamp} = ${new Date(entryTimestamp * 1000).toISOString()}`)
+        console.log(`Candle timestamp (display): ${entryCandle.time} = ${new Date(entryCandle.time * 1000).toISOString()}`)
         // Get entry price first before using it
         const entryPrice = parseFloat(trade.entryPrice)
         
@@ -752,20 +801,13 @@ const createTradeChart = () => {
       visibleFrom = dataStartTime
       visibleTo = dataEndTime
     } else if (tradeDuration === 0 || tradeDuration < 86400) { // Same day trade or no exit
-      // For intraday trades, show the full trading day with some context
-      // Get the entry date in the user's timezone and create market hours for that day
-      const entryDate = new Date(entryTimestamp * 1000)
-      const entryDateStr = entryDate.toISOString().split('T')[0] // YYYY-MM-DD
-      
-      // Create market hours for the entry date (9:30 AM - 4:00 PM ET)
-      // Convert to UTC: ET is UTC-5 (EST) or UTC-4 (EDT)
-      // For simplicity, assume EST (UTC-5)
-      const marketOpen = new Date(entryDateStr + 'T14:30:00.000Z') // 9:30 AM ET = 14:30 UTC
-      const marketClose = new Date(entryDateStr + 'T21:00:00.000Z') // 4:00 PM ET = 21:00 UTC
-      
-      const dayStart = Math.floor(marketOpen.getTime() / 1000)
-      const dayEnd = Math.floor(marketClose.getTime() / 1000)
-      
+      // For intraday trades, show the regular session (9:30 AM - 4:00 PM ET,
+      // DST-aware) for the trade's date, mapped into chart display time
+      const MARKET_TZ = 'America/New_York'
+      const entryDateET = dateStrInTz(entryEpochUTC ?? entryTimestamp, MARKET_TZ)
+      const dayStart = toChartTime(zonedTimeToEpoch(entryDateET, '09:30', MARKET_TZ))
+      const dayEnd = toChartTime(zonedTimeToEpoch(entryDateET, '16:00', MARKET_TZ))
+
       visibleFrom = Math.max(dayStart, dataStartTime)
       visibleTo = Math.min(dayEnd, dataEndTime)
     } else {

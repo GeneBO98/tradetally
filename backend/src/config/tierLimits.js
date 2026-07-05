@@ -49,6 +49,15 @@ const TIER_LIMITS = {
     aiCreditsPerMonth: 0, // No AI credits for free tier
     aiMaxFollowups: 0, // No follow-up questions
 
+    // Trade Replay: lifetime number of distinct trades a free user can replay.
+    // Enough to hit the aha moment; session replay stays Pro-only.
+    maxFreeReplays: 3,
+
+    // Backtest Sandbox: lifetime number of distinct symbol/session days a free
+    // user can load for simulated playback trading. Same taste-then-Pro model
+    // as trade replay.
+    maxFreeBacktests: 3,
+
     // API
     apiAccess: false,
     apiCallsPerDay: 0,
@@ -65,7 +74,9 @@ const TIER_LIMITS = {
       basicCharts: true,
       calendarView: true,
       leaderboardView: true,
-      brokerSync: false // Automatic broker sync is Pro-only
+      brokerSync: false, // Automatic broker sync is Pro-only
+      tradeReplay: false, // Limited free replays via maxFreeReplays, then Pro
+      backtestSandbox: false // Limited free sessions via maxFreeBacktests, then Pro
     }
   },
 
@@ -99,6 +110,12 @@ const TIER_LIMITS = {
     // AI
     aiCreditsPerMonth: 100, // 100 credits per month for AI conversations
     aiMaxFollowups: 5, // Up to 5 follow-up questions per session
+
+    // Trade Replay
+    maxFreeReplays: null, // Unlimited
+
+    // Backtest Sandbox
+    maxFreeBacktests: null, // Unlimited
 
     // API
     apiAccess: true,
@@ -143,6 +160,8 @@ const TIER_LIMITS = {
       aiConversations: true, // Multi-turn AI conversations with follow-ups
       playbookAdherence: true,
       advancedFiltering: true,
+      tradeReplay: true,
+      backtestSandbox: true,
       customMetrics: true,
       exportReports: true,
       tradeBlocking: true,

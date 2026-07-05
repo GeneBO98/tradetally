@@ -701,6 +701,48 @@ function detectBrokerFormat(fileBuffer) {
       return detected;
     }
 
+    // ThinkorSwim / paperMoney multi-section "Account Statement" detection.
+    // These exports lead with a disclaimer and several non-tabular sections
+    // (Cash Balance, Account Order History, ...), so the real "Filled Orders"
+    // header (",,Exec Time,Spread,Side,Qty,Pos Effect,Symbol,...") sits far below
+    // the 15-line window the generic header sniffer scans. Scan deeper for the
+    // Filled-Orders column signature and route to the paperMoney parser, which
+    // isolates the Filled Orders section itself (see parseCSV `papermoney` block).
+    {
+      const tosScanLimit = Math.min(lines.length, 2000);
+      for (let i = 0; i < tosScanLimit; i++) {
+        const line = lines[i];
+        if (!line) continue;
+        const lowerLine = line.toLowerCase();
+        if ((lowerLine.includes('exec time') || lowerLine.includes('time placed')) &&
+            lowerLine.includes('pos effect') &&
+            lowerLine.includes('spread')) {
+          console.log('[AUTO-DETECT] Detected: ThinkorSwim/paperMoney Account Statement (multi-section Filled Orders)');
+          return 'papermoney';
+        }
+      }
+    }
+
+    // MetaTrader 5 trade-history report ("Report Cronistorico dei Trade" and
+    // localized equivalents). Semicolon-delimited, a title row offsets the real
+    // header, column names are localized (Italian: Simbolo/Tipo/Volume/Prezzo/
+    // Profitto) and prices use European decimals (e.g. "4 577,86"). The generic
+    // header sniffer can't see past the title row, so scan for the position-report
+    // header signature directly and route to the dedicated MetaTrader 5 parser.
+    {
+      const mtScanLimit = Math.min(lines.length, 30);
+      for (let i = 0; i < mtScanLimit; i++) {
+        const cells = (lines[i] || '').split(';').map(c => c.trim().toLowerCase());
+        if (cells.length >= 8 &&
+            cells.includes('simbolo') && cells.includes('tipo') &&
+            cells.includes('volume') && cells.includes('prezzo') &&
+            cells.includes('profitto')) {
+          console.log('[AUTO-DETECT] Detected: MetaTrader 5 history report (Italian)');
+          return 'metatrader5';
+        }
+      }
+    }
+
     const headerInfo = findLikelyDelimitedHeaderLine(lines);
     const headerLine = headerInfo?.line || '';
     const headerLineIndex = headerInfo?.index || 0;
@@ -785,7 +827,7 @@ function detectBrokerFormat(fileBuffer) {
     }
 
     // PaperMoney detection - look for Exec Time, Pos Effect, Spread columns
-    if (headers.includes('exec time') &&
+    if ((headers.includes('exec time') || headers.includes('time placed')) &&
         headers.includes('pos effect') &&
         headers.includes('spread')) {
       console.log('[AUTO-DETECT] Detected: PaperMoney');
@@ -1259,7 +1301,7 @@ const brokerParsers = {
     // Price mapping - support more variations
     const entryPrice = parseNumeric(
       row['Entry Price'] || row['Buy Price'] || row.Price || row.price ||
-      row['Price / share'] || row.TradePrice || row['TradePrice'] ||
+      row['Price / share'] || row.TradePrice || row['TradePrice'] || row['Trade Price'] ||
       row['Fill Price'] || row['Avg Price'] || row['Average Price'] ||
       row['Avg fill price'] || row['Avg Fill Price'] || row['Average fill price'] ||
       row['Open Price'] || row['Opening Price'] || row['Purchase Price'] ||
@@ -1293,8 +1335,11 @@ const brokerParsers = {
     // Robinhood uses `Trans Code` with values "Buy"/"Sell".
     const side = parseSide(
       row.Side || row.side || row.Direction || row.direction ||
-      row.Type || row.type || row.trade_type || row['trade_type'] || row.Action || row.action ||
+      // Explicit buy/sell columns must win over the ambiguous `Type` column:
+      // some brokers (e.g. Tiger) use Type for the instrument class ("EQUITY")
+      // and carry the real direction in Buy/Sell.
       row['B/S'] || row['Buy/Sell'] || row.BS ||
+      row.Type || row.type || row.trade_type || row['trade_type'] || row.Action || row.action ||
       row['Trans Code'] || row['trans code'] ||
       row['Opening direction'] || row['Opening Direction'] ||
       row['Market pos.'] || row['Market Pos.'] || row['Market Position']
@@ -2808,6 +2853,17 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     // Normalize those rows before broker detection and parsing.
     csvString = normalizeWholeLineQuotedCsvRows(csvString);
 
+    // MetaTrader 5 history reports are semicolon-delimited with duplicate column
+    // names, a localized title row and European decimals — none of which the
+    // csv-parse pipeline below can represent. Parse the raw string positionally
+    // and return early.
+    if (broker === 'metatrader5') {
+      console.log('Starting MetaTrader 5 history parsing');
+      const result = await parseMetaTrader5History(csvString, { ...context, diagnostics });
+      console.log('Finished MetaTrader 5 history parsing');
+      return wrapResultWithDiagnostics(result, diagnostics, [], userTimezone);
+    }
+
     const firstHeaderLine = csvString.split('\n').find(line => line.trim().length > 0) || '';
     const firstHeaders = firstHeaderLine.split(',').map(header => header.replace(/^"|"$/g, '').trim());
     if (broker === 'tradestation' && hasTradingViewOrderHistoryHeaders(firstHeaders)) {
@@ -2847,6 +2903,15 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       }
     }
     
+    const isPaperMoneyOrderHeader = (line) => {
+      const lowerLine = String(line || '').toLowerCase();
+      return (lowerLine.includes('exec time') || lowerLine.includes('time placed')) &&
+        lowerLine.includes('side') &&
+        lowerLine.includes('qty') &&
+        lowerLine.includes('pos effect') &&
+        lowerLine.includes('symbol');
+    };
+
     // Handle PaperMoney CSV files that have multiple sections
     if (broker === 'papermoney') {
       const lines = csvString.split('\n');
@@ -2865,7 +2930,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       if (filledOrdersStart >= 0) {
         // Find the header line (contains "Exec Time,Spread,Side,Qty")
         for (let i = filledOrdersStart; i < lines.length; i++) {
-          if (lines[i].includes('Exec Time') && lines[i].includes('Side') && lines[i].includes('Qty')) {
+          if (isPaperMoneyOrderHeader(lines[i])) {
             filledOrdersStart = i;
             break;
           }
@@ -2887,10 +2952,11 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
         csvString = lines.slice(filledOrdersStart, filledOrdersEnd).join('\n');
         console.log(`[PAPERMONEY] Extracted filled orders section: lines ${filledOrdersStart} to ${filledOrdersEnd}`);
       } else {
-        // No "Filled Orders" section header - check if the CSV starts directly with the header row
+        // No "Filled Orders" section header - check if the CSV starts directly
+        // with the header row or contains a standalone trade activity table.
         let headerLineIndex = -1;
-        for (let i = 0; i < Math.min(lines.length, 5); i++) {
-          if (lines[i].includes('Exec Time') && lines[i].includes('Side') && lines[i].includes('Qty')) {
+        for (let i = 0; i < lines.length; i++) {
+          if (isPaperMoneyOrderHeader(lines[i])) {
             headerLineIndex = i;
             break;
           }
@@ -4193,7 +4259,11 @@ function parseTimeOnly(timeStr) {
   if (!timeStr || timeStr.toString().trim() === '') return null;
 
   const cleanTimeStr = timeStr.toString().replace(/^[\x27\x22\u2018\u2019\u201C\u201D]|[\x27\x22\u2018\u2019\u201C\u201D]$/g, '').trim();
-  const timeOnlyMatch = cleanTimeStr.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  // Match a leading clock time, tolerating a trailing timezone annotation such as
+  // "04:47:39,GMT-04" (Tiger Brokers), "09:30:00 EST", or "13:05 GMT+0530".
+  // The lookahead requires end-of-string or a non-time character after the time,
+  // so this never grabs a partial time out of a full datetime (which starts with a date).
+  const timeOnlyMatch = cleanTimeStr.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?(?=$|[^\d:])/);
   if (!timeOnlyMatch) return null;
 
   const [, hour, minute, second = '00'] = timeOnlyMatch;
@@ -4557,19 +4627,19 @@ function getExecutionTimeBounds(executions = []) {
 // Lightspeed-specific datetime parser that handles Central Time
 function parseLightspeedDateTime(dateTimeStr) {
   if (!dateTimeStr) return null;
-  
+
   try {
-    // Lightspeed exports times in Central Time (America/Chicago)
-    // We need to parse the datetime and convert it to UTC properly
-    
-    // Parse the datetime string components manually to avoid timezone interpretation
+    // Lightspeed exports execution times in Eastern Time (America/New_York).
+    // A previous version applied a fixed +4h offset (correct only during
+    // daylight saving), which stored every EST-season trade an hour early —
+    // convert via localToUTC so DST is handled properly.
     // Expected formats: "2025-04-09 16:33" or "04/09/2025 16:33:00"
     const parts = dateTimeStr.trim().split(' ');
     if (parts.length < 2) return null;
-    
+
     const [datePart, timePart] = parts;
     let year, month, day;
-    
+
     // Check if date is in MM/DD/YYYY format
     if (datePart.includes('/')) {
       const dateMatch = datePart.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
@@ -4582,49 +4652,26 @@ function parseLightspeedDateTime(dateTimeStr) {
       // Assume YYYY-MM-DD format
       [year, month, day] = datePart.split('-').map(Number);
     }
-    
+
     // Parse time part (HH:MM or HH:MM:SS)
     const timeParts = timePart.split(':');
     const hours = parseInt(timeParts[0]);
     const minutes = parseInt(timeParts[1]);
-    
-    if (!year || !month || !day || hours === undefined || minutes === undefined) return null;
-    
-    // Create UTC date object with explicit values (treating input as literal time)
-    // Month is 0-indexed in JavaScript Date
-    const literalDate = new Date(Date.UTC(year, month - 1, day, hours, minutes, 0));
-    
-    // Now adjust for Lightspeed timezone
-    // Based on your requirement: 16:33 should become 20:33 UTC
-    // This means we need to add 4 hours to the literal time
-    const offsetHours = 4; // Fixed 4-hour offset to get 16:33 -> 20:33 conversion
-    
-    // Add offset hours to convert from Lightspeed time to UTC
-    const utcDate = new Date(literalDate.getTime() + (offsetHours * 60 * 60 * 1000));
-    
-    console.log(`Lightspeed time conversion: ${dateTimeStr} (Central) -> ${utcDate.toISOString()} (UTC)`);
-    
-    return utcDate.toISOString();
+    const seconds = parseInt(timeParts[2]) || 0;
+
+    if (!year || !month || !day || !Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+
+    const pad = (n) => String(n).padStart(2, '0');
+    const naive = `${year}-${pad(month)}-${pad(day)}T${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+    const utc = localToUTC(naive, 'America/New_York');
+
+    console.log(`Lightspeed time conversion: ${dateTimeStr} (Eastern) -> ${utc} (UTC)`);
+
+    return utc;
   } catch (error) {
     console.warn('Error parsing Lightspeed datetime:', dateTimeStr, error.message);
     return null;
   }
-}
-
-// Helper function to determine if a date is in daylight saving time
-function isDaylightSavingTime(date) {
-  // DST in US typically runs from second Sunday in March to first Sunday in November
-  const year = date.getFullYear();
-  
-  // Second Sunday in March
-  const marchSecondSunday = new Date(year, 2, 1); // March 1st
-  marchSecondSunday.setDate(marchSecondSunday.getDate() + (7 - marchSecondSunday.getDay()) + 7);
-  
-  // First Sunday in November  
-  const novemberFirstSunday = new Date(year, 10, 1); // November 1st
-  novemberFirstSunday.setDate(novemberFirstSunday.getDate() + (7 - novemberFirstSunday.getDay()));
-  
-  return date >= marchSecondSunday && date < novemberFirstSunday;
 }
 
 function parseSide(sideStr) {
@@ -6770,6 +6817,30 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
 
   const transactions = [];
   const completedTrades = [];
+
+  function buildThinkorswimOptionPositionKey(symbol, instrumentData) {
+    if (!instrumentData || instrumentData.instrumentType !== 'option') {
+      return symbol;
+    }
+
+    if (!symbol || !instrumentData.strikePrice || !instrumentData.expirationDate || !instrumentData.optionType) {
+      return symbol;
+    }
+
+    const strike = parseFloat(instrumentData.strikePrice);
+    const expDate = String(instrumentData.expirationDate).split('T')[0];
+    const optionType = String(instrumentData.optionType).toLowerCase();
+    return `${symbol}_${strike}_${expDate}_${optionType}`;
+  }
+
+  function findThinkorswimExistingPosition(symbol, groupKey, instrumentData) {
+    if (instrumentData?.instrumentType === 'option') {
+      const positionKey = buildThinkorswimOptionPositionKey(symbol, instrumentData);
+      return existingPositions[positionKey] || existingPositions[groupKey] || null;
+    }
+
+    return existingPositions[symbol] || null;
+  }
   
   // Debug: Log first few records to see structure
   console.log('Sample records:');
@@ -7038,7 +7109,11 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
 
     // Track position and round-trip trades
     // Start with existing position if we have one for this symbol
-    const existingPosition = existingPositions[symbol];
+    const existingPosition = findThinkorswimExistingPosition(symbol, groupKey, instrumentData);
+    const duplicateLookupKeys = [groupKey, symbol];
+    if (isOption) {
+      duplicateLookupKeys.unshift(buildThinkorswimOptionPositionKey(symbol, instrumentData));
+    }
     let currentPosition = existingPosition ?
       (existingPosition.side === 'long' ? existingPosition.quantity : -existingPosition.quantity) : 0;
     let currentTrade = existingPosition ? {
@@ -7097,7 +7172,7 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
         };
 
         // First, check if this execution exists in ANY existing trade (complete or open)
-        const existsGlobally = isExecutionDuplicate(newExecution, symbol, context);
+        const existsGlobally = isExecutionDuplicateMultiKey(newExecution, duplicateLookupKeys, context);
 
         // Then check if it exists in the current trade being built
         // For fresh imports, we trust each CSV row is a unique execution
@@ -7253,20 +7328,67 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
   records.slice(0, 5).forEach((record, i) => {
     console.log(`Record ${i}:`, JSON.stringify(record));
   });
+
+  const parsePaperMoneyExpiration = (value) => {
+    const raw = cleanString(value || '').toUpperCase();
+    const match = raw.match(/^(\d{1,2})\s+([A-Z]{3})\s+(\d{2,4})$/);
+    if (!match) return null;
+
+    const [, day, monthStr, yearStr] = match;
+    const months = {
+      JAN: '01', FEB: '02', MAR: '03', APR: '04', MAY: '05', JUN: '06',
+      JUL: '07', AUG: '08', SEP: '09', OCT: '10', NOV: '11', DEC: '12'
+    };
+    const month = months[monthStr];
+    if (!month) return null;
+
+    const yearNum = parseInt(yearStr, 10);
+    const fullYear = yearStr.length === 2
+      ? (yearNum < 50 ? 2000 + yearNum : 1900 + yearNum)
+      : yearNum;
+
+    return `${fullYear}-${month}-${day.padStart(2, '0')}`;
+  };
+
+  const getPaperMoneyInstrumentData = (record, symbol) => {
+    const type = cleanString(record.Type || record.TYPE || '').toLowerCase();
+    if (type === 'call' || type === 'put') {
+      const expirationDate = parsePaperMoneyExpiration(record.Exp);
+      const strikePrice = parseNumeric(record.Strike, NaN);
+      if (expirationDate && Number.isFinite(strikePrice)) {
+        return {
+          instrumentType: 'option',
+          underlyingSymbol: symbol,
+          strikePrice,
+          expirationDate,
+          optionType: type,
+          contractSize: 100
+        };
+      }
+    }
+
+    return parseInstrumentData(symbol);
+  };
   
   // First, parse all trade transactions from the filled orders
   for (const record of records) {
     try {
       const symbol = cleanString(record.Symbol);
       const side = record.Side ? record.Side.toLowerCase() : '';
-      const quantity = Math.abs(parseInt(record.Qty || 0));
-      const price = parseFloat(record.Price || record['Net Price'] || 0);
-      const execTime = record['Exec Time'] || '';
+      const quantity = Math.abs(parseNumeric(record.Qty, 0));
+      const price = parseNumeric(record.Price ?? record.PRICE ?? record['Net Price'], NaN);
+      const execTime = record['Exec Time'] || record['Time Placed'] || '';
       const posEffect = record['Pos Effect'] || '';
       const type = record.Type || 'STOCK';
+      const status = cleanString(record.Status || '').toUpperCase();
+
+      if (status && !['FILLED', 'EXECUTED'].includes(status)) {
+        console.log(`Skipping PaperMoney order with non-filled status: ${status}`);
+        continue;
+      }
       
       // Skip if missing essential data
-      if (!symbol || !side || quantity === 0 || price === 0 || !execTime) {
+      if (!symbol || !side || quantity === 0 || !Number.isFinite(price) || price === 0 || !execTime) {
         console.log(`Skipping PaperMoney record missing data:`, { symbol, side, quantity, price, execTime });
         continue;
       }
@@ -7326,6 +7448,7 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
         posEffect,
         type,
         description: `${posEffect} - ${type}`,
+        instrumentData: getPaperMoneyInstrumentData(record, symbol),
         raw: record,
         accountIdentifier
       });
@@ -7336,35 +7459,41 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
     }
   }
   
-  // Sort transactions by symbol and datetime
-  transactions.sort((a, b) => {
-    if (a.symbol !== b.symbol) return a.symbol.localeCompare(b.symbol);
-    return new Date(a.datetime) - new Date(b.datetime);
-  });
-  
-  console.log(`Parsed ${transactions.length} valid PaperMoney trade transactions`);
-  
-  // Group transactions by symbol
+  // Group transactions by symbol or option contract before sorting.
   const transactionsBySymbol = {};
   for (const transaction of transactions) {
-    if (!transactionsBySymbol[transaction.symbol]) {
-      transactionsBySymbol[transaction.symbol] = [];
+    const instrumentData = transaction.instrumentData || parseInstrumentData(transaction.symbol);
+    transaction.groupKey = instrumentData.instrumentType === 'option'
+      ? `${transaction.symbol}_${instrumentData.expirationDate}_${instrumentData.optionType}_${instrumentData.strikePrice}`
+      : transaction.symbol;
+
+    if (!transactionsBySymbol[transaction.groupKey]) {
+      transactionsBySymbol[transaction.groupKey] = [];
     }
-    transactionsBySymbol[transaction.symbol].push(transaction);
+    transactionsBySymbol[transaction.groupKey].push(transaction);
   }
+
+  // Sort each instrument's transactions by datetime.
+  for (const groupKey of Object.keys(transactionsBySymbol)) {
+    transactionsBySymbol[groupKey].sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
+  }
+
+  console.log(`Parsed ${transactions.length} valid PaperMoney trade transactions`);
   
   // Process transactions using round-trip trade grouping
-  for (const symbol in transactionsBySymbol) {
-    const symbolTransactions = transactionsBySymbol[symbol];
-    const instrumentData = parseInstrumentData(symbol);
-    const valueMultiplier = instrumentData.instrumentType === 'option' ? 100 :
-                            instrumentData.instrumentType === 'future' ? (instrumentData.pointValue || 1) : 1;
+  for (const groupKey in transactionsBySymbol) {
+    const symbolTransactions = transactionsBySymbol[groupKey];
+    const symbol = symbolTransactions[0].symbol;
+    const instrumentData = symbolTransactions[0].instrumentData || parseInstrumentData(symbol);
+    const valueMultiplier = instrumentData.contractSize ||
+                            (instrumentData.instrumentType === 'option' ? 100 :
+                              instrumentData.instrumentType === 'future' ? (instrumentData.pointValue || 1) : 1);
 
     console.log(`\n=== Processing ${symbolTransactions.length} PaperMoney transactions for ${symbol} ===`);
     
     // Track position and round-trip trades
     // Start with existing position if we have one for this symbol
-    const existingPosition = existingPositions[symbol];
+    const existingPosition = existingPositions[groupKey] || existingPositions[symbol];
     let currentPosition = existingPosition ?
       (existingPosition.side === 'long' ? existingPosition.quantity : -existingPosition.quantity) : 0;
     let currentTrade = existingPosition ? {
@@ -8248,6 +8377,175 @@ async function parseTradervueCompletedTrades(records, context = {}) {
   return trades;
 }
 
+// Parse a number written with European conventions: space (or non-breaking
+// space) thousands separators and a decimal comma, e.g. "4 577,86" -> 4577.86,
+// "1.234,56" -> 1234.56, "0,00" -> 0. Plain US-style numbers pass through.
+function parseEuropeanNumber(value, defaultValue = 0) {
+  if (value === null || value === undefined) return defaultValue;
+  let str = value.toString().trim();
+  if (str === '') return defaultValue;
+  // Strip spaces used as thousands separators (regular, non-breaking, thin, narrow).
+  str = str.replace(/[\s   ]/g, '');
+  const hasComma = str.includes(',');
+  const hasDot = str.includes('.');
+  if (hasComma && hasDot) {
+    // Both present → '.' is the thousands separator, ',' is the decimal.
+    str = str.replace(/\./g, '').replace(',', '.');
+  } else if (hasComma) {
+    // Only a comma → it's the decimal separator.
+    str = str.replace(',', '.');
+  }
+  const parsed = parseFloat(str);
+  return Number.isFinite(parsed) ? parsed : defaultValue;
+}
+
+// MetaTrader stamps timestamps as "YYYY.MM.DD HH:MM:SS". Normalize to an
+// ISO-like local string the rest of the pipeline understands.
+function parseMetaTraderDateTime(value) {
+  if (!value) return null;
+  const s = value.toString().trim();
+  const m = s.match(/^(\d{4})\.(\d{2})\.(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (m) {
+    const [, y, mo, d, h, mi, se = '00'] = m;
+    return `${y}-${mo}-${d}T${h}:${mi}:${se}`;
+  }
+  return parseDateTime(s);
+}
+
+// MetaTrader 5 history/position report parser.
+//
+// These exports are semicolon-delimited with a localized title row above the
+// header, localized column names, European decimal prices, and DUPLICATE column
+// names ("Ora"/"Prezzo" appear twice — open and close). Each data row is a
+// self-contained closed position (open + close + realized P&L), so we parse it
+// positionally into a completed trade and trust the broker-provided "Profitto"
+// for P&L (forex/CFD P&L can't be derived from price × volume without contract
+// size). Run on the raw CSV string because csv-parse can't represent the
+// duplicate column names.
+async function parseMetaTrader5History(csvString, context = {}) {
+  const diagnostics = context.diagnostics;
+  const lines = csvString.split('\n');
+  const completedTrades = [];
+
+  // Locate the header row (semicolon-delimited, contains the position columns).
+  let headerIndex = -1;
+  let headerCells = [];
+  for (let i = 0; i < lines.length; i++) {
+    const cells = lines[i].split(';').map(c => c.trim().toLowerCase());
+    if (cells.includes('simbolo') && cells.includes('tipo') && cells.includes('volume') &&
+        cells.includes('prezzo') && cells.includes('profitto')) {
+      headerIndex = i;
+      headerCells = cells;
+      break;
+    }
+  }
+  if (headerIndex === -1) {
+    if (diagnostics) diagnostics.warnings.push('Could not locate the MetaTrader 5 history header row.');
+    return completedTrades;
+  }
+
+  // Map header tokens to column positions. Duplicate "ora"/"prezzo" tokens:
+  // the first occurrence is the open value, the second is the close value.
+  const col = {};
+  const seen = {};
+  headerCells.forEach((name, idx) => {
+    if (!name) return;
+    seen[name] = (seen[name] || 0) + 1;
+    const key = seen[name] > 1 ? `${name}#${seen[name]}` : name;
+    if (!(key in col)) col[key] = idx;
+  });
+
+  const openTimeIdx = col['ora'];
+  const closeTimeIdx = col['ora#2'] ?? col['ora'];
+  const openPriceIdx = col['prezzo'];
+  const closePriceIdx = col['prezzo#2'] ?? col['prezzo'];
+  const symbolIdx = col['simbolo'];
+  const typeIdx = col['tipo'];
+  const volumeIdx = col['volume'];
+  const commissionIdx = col['commissioni'];
+  const swapIdx = col['swap'];
+  const profitIdx = col['profitto'];
+
+  let rowIndex = 0;
+  for (let i = headerIndex + 1; i < lines.length; i++) {
+    const raw = lines[i];
+    if (!raw || raw.trim() === '') continue;
+    const cells = raw.split(';');
+    rowIndex++;
+    if (diagnostics) diagnostics.totalRows++;
+    try {
+      const symbolRaw = (cells[symbolIdx] || '').trim();
+      const typeRaw = (cells[typeIdx] || '').trim().toLowerCase();
+
+      // Skip footer/summary rows (totals, balance) that carry no buy/sell type.
+      if (!symbolRaw || (typeRaw !== 'buy' && typeRaw !== 'sell')) {
+        if (diagnostics) diagnostics.skippedRows++;
+        continue;
+      }
+
+      // Strip broker-specific symbol suffixes (XAUUSD.x, EURUSD.m, ...).
+      const symbol = symbolRaw.replace(/\.[A-Za-z0-9]+$/, '').toUpperCase();
+      const side = typeRaw === 'buy' ? 'long' : 'short';
+      const quantity = Math.abs(parseEuropeanNumber(cells[volumeIdx]));
+      const entryPrice = parseEuropeanNumber(cells[openPriceIdx]);
+      const exitPrice = parseEuropeanNumber(cells[closePriceIdx]);
+      const entryTime = parseMetaTraderDateTime(cells[openTimeIdx]);
+      const exitTime = parseMetaTraderDateTime(cells[closeTimeIdx]);
+      const tradeDate = entryTime ? entryTime.slice(0, 10) : null;
+      const commission = Math.abs(parseEuropeanNumber(cells[commissionIdx]));
+      const swap = parseEuropeanNumber(cells[swapIdx]);
+      const pnl = parseEuropeanNumber(cells[profitIdx]);
+
+      if (!symbol || !tradeDate || !(quantity > 0) || !(entryPrice > 0)) {
+        if (diagnostics) {
+          diagnostics.invalidRows++;
+          diagnostics.skippedReasons.push({
+            row: rowIndex,
+            reason: 'Could not import this MetaTrader row: missing or invalid symbol, price, quantity, or date.'
+          });
+        }
+        continue;
+      }
+
+      const instrumentData = parseInstrumentData(symbol);
+      const trade = {
+        symbol,
+        tradeDate,
+        entryTime,
+        exitTime,
+        entryPrice,
+        exitPrice,
+        quantity,
+        side,
+        commission,
+        fees: Math.abs(swap), // record swap/financing as a fee
+        pnl,
+        profitLoss: pnl,
+        broker: 'metatrader5',
+        currency: context.currency || 'USD',
+        notes: ''
+      };
+      if (instrumentData.instrumentType === 'future' || instrumentData.instrumentType === 'option') {
+        Object.assign(trade, instrumentData);
+      }
+
+      const accountIdentifier = context.selectedAccountId || null;
+      if (accountIdentifier) trade.accountIdentifier = accountIdentifier;
+
+      completedTrades.push(trade);
+      if (diagnostics) diagnostics.parsedRows++;
+    } catch (error) {
+      if (diagnostics) {
+        diagnostics.invalidRows++;
+        diagnostics.skippedReasons.push({ row: rowIndex, reason: `Parse error: ${error.message}` });
+      }
+    }
+  }
+
+  console.log(`[METATRADER5] Parsed ${completedTrades.length} closed positions`);
+  return completedTrades;
+}
+
 function buildIBKRAmbiguousSellReviewItem({ transaction, symbol, conid, instrumentData, brokerTag, context }) {
   const quantity = Math.abs(parseFloat(transaction.quantity) || 0);
   const price = parseFloat(transaction.price);
@@ -8283,7 +8581,7 @@ function buildIBKRAmbiguousSellReviewItem({ transaction, symbol, conid, instrume
     account_identifier: accountIdentifier,
     instrument_type: instrumentData.instrumentType || 'stock',
     reason: 'Sell execution has no matching opening buy or existing open position.',
-    available_actions: ['import_as_short', 'import_as_close_only', 'ignore']
+    available_actions: ['import_as_short', 'import_as_close_only', 'import_as_gifted_shares', 'ignore']
   };
 }
 

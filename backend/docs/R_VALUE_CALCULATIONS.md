@@ -2,7 +2,7 @@
 
 **IMPORTANT:** These calculations are critical to the trade management feature. Do not modify without careful consideration and testing.
 
-**Last Updated:** 2026-02-03
+**Last Updated:** 2026-07-03
 
 ---
 
@@ -197,6 +197,66 @@ This is different from Weighted Target R (which assumes all targets hit) - it re
 | `backend/src/services/targetHitAnalysisService.js` | `calculateSLMoveImpact()` | Saved R from SL moves |
 | `backend/src/controllers/tradeManagement.controller.js` | `calculateRMultiples()` | R-Multiple analysis (calls service) |
 | `backend/scripts/recalculate_r_values.js` | `calculateRValue()` | Batch recalculation script |
+
+---
+
+## Whole-Trade Position Grouping (issue #359)
+
+When the `analytics_position_grouping` setting is enabled, Trade Management collapses
+multi-leg positions (option spreads, etc., keyed by `POSITION_GROUP_KEY` in
+`utils/positionGrouping.js`) into one position before reporting R values. This applies
+to both the R-Performance summary and the Individual Trade Analysis view.
+
+Combination rules (each leg is first calculated individually with the formulas above,
+then combined):
+
+- **Position risk unit (1R)** = the fixed dollar risk for dollar-mode users (#345 — a
+  grouped position is one bet of the fixed amount), otherwise the total planned dollar
+  risk (sum of leg risk amounts) across the analyzed legs.
+- **Combined R values are dollar-weighted, not raw sums**: each leg's R is converted
+  back to dollars (`leg R × leg risk amount`), summed, and divided by the position risk
+  unit. This guarantees the combined R carries the sign of the combined net P&L.
+  Summing raw leg Rs let a small-risk leg dominate — a losing bull put spread whose
+  hedge leg risked a few dollars reported a positive combined Actual R next to a
+  negative combined P&L (the CEG report in the issue #359 follow-up). For dollar-mode
+  users every leg's risk amount IS the position risk unit, so the weighted form reduces
+  to the plain sum of leg Rs.
+- **Actual R** = dollar-weighted combination of leg Actual R values (same rule as the
+  R-Performance chart's grouped rows)
+- **Management R** = dollar-weighted combination over legs that have one, null when
+  none do (same rule as the chart)
+- **Target R** (Individual Trade Analysis) = dollar-weighted combination of leg
+  effective targets (`weighted_target_r ?? target_r`), and only when **every analyzed
+  leg** has a target — otherwise the combined target is null. Note this intentionally
+  differs from the R-Performance chart's target line, which follows the reconstructed
+  planned path (`planned_r ?? weighted_target_r ?? target_r`) and only counts legs with
+  target-hit data (both dollar-weighted over the same position risk unit).
+- **Planned R** = dollar-weighted combination of leg planned_r values, and only when
+  every analyzed leg has one
+- **Dollar amounts** (actual P&L, target P&L) are summed; the reported risk amount is
+  the position risk unit
+- **Defined-risk max-profit cap on the combined target**: per-leg take profits on a
+  spread can be jointly impossible (the short leg targeting full premium decay and the
+  hedge leg targeting a gain cannot both happen), so the summed target can exceed what
+  the structure can ever pay. When every leg is a same-expiration option with strike,
+  type, and premium data, and the expiry payoff is bounded (not net long calls), the
+  combined Target P&L is capped at the structure's maximum expiry profit and the
+  combined Target R at `(max profit - total commissions) / position risk`. The expiry
+  payoff of a single-expiry option combination is piecewise linear in the underlying,
+  so the max is found by evaluating it at underlying = 0 and at each strike — this
+  covers verticals, condors, butterflies, and any other single-expiry combination
+  without strategy-specific rules. The cap only applies when every leg is in the
+  combined math (for the R-Performance chart's grouped target, when every leg has
+  target-hit data), and the analysis reports `target_capped_at_max_profit: true` when
+  it fires. Example: a 3-lot credit spread collected at a net $0.80 credit can never
+  make more than 0.80 × 3 × 100 = $240, no matter what the per-leg targets say.
+  Single-leg option trades never need the cap: a target premium cannot go below zero,
+  so one leg's target P&L is already bounded by its own max profit.
+- **Per-share values** are null for a combined position (they have no meaning across legs)
+- Legs without a stop loss are listed but **excluded** from the combined R math,
+  matching the R-Performance chart's behavior
+- The Individual Trade Analysis legs query is scoped by the **same request filters** as
+  the trade selector, so the analyzed leg set matches the selected row
 
 ---
 

@@ -1,6 +1,8 @@
 const db = require('../config/database');
 const TierService = require('./tierService');
 
+const REVENGE_CALCULATION_VERSION = '2026-07-risk-v3';
+
 class BehavioralAnalyticsService {
   static addDateRange(column, params, filter = {}) {
     const conditions = [];
@@ -169,9 +171,17 @@ class BehavioralAnalyticsService {
       if (event.trigger_trade_id) {
         const triggerQuery = `
           SELECT 
-            id, symbol, entry_price, exit_price, quantity, side, entry_time, exit_time, 
-            commission, fees, pnl
-          FROM trades WHERE id = $1 AND user_id = $2
+            t.id, COALESCE(NULLIF(t.underlying_symbol, ''), t.symbol) as symbol,
+            t.entry_price, t.exit_price, t.quantity, t.side, t.entry_time, t.exit_time,
+            COALESCE(tpg.total_commission, t.commission) as commission,
+            COALESCE(tpg.total_fees, t.fees) as fees,
+            COALESCE(tpg.total_pnl, t.pnl) as pnl,
+            t.position_group_id,
+            tpg.detected_strategy as group_detected_strategy,
+            tpg.leg_count as group_leg_count
+          FROM trades t
+          LEFT JOIN trade_position_groups tpg ON tpg.id = t.position_group_id
+          WHERE t.id = $1 AND t.user_id = $2
         `;
         const triggerResult = await db.query(triggerQuery, [event.trigger_trade_id, userId]);
         if (triggerResult.rows[0]) {
@@ -183,8 +193,15 @@ class BehavioralAnalyticsService {
       if (event.revenge_trades && event.revenge_trades.length > 0) {
         const revengeTradesQuery = `
           SELECT 
-            t.id as trade_id, t.symbol, t.entry_price, t.exit_price, t.quantity, t.side, 
-            t.entry_time, t.exit_time, t.pnl, t.commission, t.fees,
+            t.id as trade_id, COALESCE(NULLIF(t.underlying_symbol, ''), t.symbol) as symbol,
+            t.entry_price, t.exit_price, t.quantity, t.side,
+            t.entry_time, t.exit_time,
+            COALESCE(tpg.total_pnl, t.pnl) as pnl,
+            COALESCE(tpg.total_commission, t.commission) as commission,
+            COALESCE(tpg.total_fees, t.fees) as fees,
+            t.position_group_id,
+            tpg.detected_strategy as group_detected_strategy,
+            tpg.leg_count as group_leg_count,
             -- Calculate total cost/value
             (t.quantity * t.entry_price) as total_cost,
             -- Calculate gross P&L (before fees)
@@ -200,16 +217,21 @@ class BehavioralAnalyticsService {
               ELSE 0
             END as return_percent,
             -- Calculate total fees
-            COALESCE(t.commission, 0) + COALESCE(t.fees, 0) as total_fees,
+            COALESCE(tpg.total_commission, t.commission, 0) + COALESCE(tpg.total_fees, t.fees, 0) as total_fees,
             -- Pattern classification
             CASE 
-              WHEN t.symbol = (SELECT symbol FROM trades WHERE id = $1) THEN 'same_symbol_revenge'
+              WHEN COALESCE(NULLIF(t.underlying_symbol, ''), t.symbol) = (
+                SELECT COALESCE(NULLIF(trigger.underlying_symbol, ''), trigger.symbol)
+                FROM trades trigger
+                WHERE trigger.id = $1
+              ) THEN 'same_symbol_revenge'
               ELSE 'emotional_reactive_trading'
             END as pattern_type,
             'medium' as severity,
             0.8 as confidence_score,
             t.entry_time as detected_at
           FROM trades t
+          LEFT JOIN trade_position_groups tpg ON tpg.id = t.position_group_id
           WHERE t.id = ANY($2) AND t.user_id = $3
           ORDER BY t.entry_time DESC
           LIMIT 10
@@ -236,7 +258,9 @@ class BehavioralAnalyticsService {
         COUNT(CASE WHEN total_additional_loss > 0 THEN 1 END) as loss_events,
         COUNT(CASE WHEN total_additional_loss <= 0 THEN 1 END) as profit_or_neutral_events,
         COUNT(CASE WHEN pattern_broken = true THEN 1 END) as pattern_broken_count,
-        COUNT(CASE WHEN cooling_period_used = true THEN 1 END) as cooling_period_used_count
+        COUNT(CASE WHEN cooling_period_used = true THEN 1 END) as cooling_period_used_count,
+        MAX(analysis_run_at) as latest_analysis_run_at,
+        COUNT(CASE WHEN calculation_version IS NULL OR calculation_version <> '${REVENGE_CALCULATION_VERSION}' THEN 1 END) as stale_event_count
       FROM revenge_trading_events rte
       WHERE rte.user_id = $1 ${dateCondition} ${accountCondition}
     `;
@@ -254,6 +278,12 @@ class BehavioralAnalyticsService {
         loss_rate: totalEvents > 0 ? (stats.loss_events / totalEvents * 100).toFixed(1) : 0,
         pattern_break_rate: totalEvents > 0 ? (stats.pattern_broken_count / totalEvents * 100).toFixed(1) : 0,
         cooling_period_usage_rate: totalEvents > 0 ? (stats.cooling_period_used_count / totalEvents * 100).toFixed(1) : 0
+      },
+      analysis_freshness: {
+        calculation_version: REVENGE_CALCULATION_VERSION,
+        latest_analysis_run_at: stats.latest_analysis_run_at || null,
+        stale_event_count: parseInt(stats.stale_event_count || 0),
+        has_stale_results: parseInt(stats.stale_event_count || 0) > 0
       },
       pagination: {
         page: page,

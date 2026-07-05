@@ -3,6 +3,10 @@ const TierService = require('./tierService');
 const aiService = require('../utils/aiService');
 const adminSettingsService = require('./adminSettings');
 const AnalyticsCache = require('./analyticsCache');
+const BehavioralAnalysisPositionService = require('./behavioralAnalysisPositionService');
+const MAEEstimator = require('../utils/maeEstimator');
+
+const OVERCONFIDENCE_CALCULATION_VERSION = '2026-07-risk-v3';
 
 class OverconfidenceAnalyticsService {
   static addTradeAccountFilter(sqlParts, params, accounts, tableAlias = '') {
@@ -57,7 +61,57 @@ class OverconfidenceAnalyticsService {
   
   // Calculate monetary position size for any trade
   static calculateMonetaryPositionSize(trade) {
-    return parseFloat(trade.quantity) * parseFloat(trade.entry_price);
+    const riskAmount = parseFloat(trade?.position_risk?.amount);
+    if (Number.isFinite(riskAmount) && riskAmount > 0) {
+      return riskAmount;
+    }
+
+    const explicitPositionSize = parseFloat(trade.position_size);
+    if (Number.isFinite(explicitPositionSize) && explicitPositionSize > 0) {
+      return explicitPositionSize;
+    }
+
+    const quantity = parseFloat(trade.quantity);
+    const entryPrice = parseFloat(trade.entry_price);
+    if (!Number.isFinite(quantity) || !Number.isFinite(entryPrice)) return 0;
+
+    return Math.abs(quantity) * entryPrice * MAEEstimator.resolveMultiplier(trade);
+  }
+
+  static riskBasisForPosition(position) {
+    return position?.position_risk || {
+      amount: this.calculateMonetaryPositionSize(position),
+      basis: 'position_size',
+      confidence: 'low',
+      is_estimated: true,
+      is_approximate: true
+    };
+  }
+
+  static positionDetailForFrontend(position) {
+    const positionRisk = this.riskBasisForPosition(position);
+    return {
+      id: position.id,
+      trade_ids: position.trade_ids || [position.id],
+      symbol: position.symbol,
+      underlying_symbol: position.underlying_symbol || position.symbol,
+      entry_time: position.entry_time,
+      exit_time: position.exit_time,
+      entry_price: position.entry_price,
+      exit_price: position.exit_price,
+      quantity: position.quantity,
+      side: position.side,
+      pnl: position.pnl,
+      commission: position.commission,
+      fees: position.fees,
+      position_size: this.calculateMonetaryPositionSize(position),
+      raw_position_size: position.position_size,
+      position_risk: positionRisk,
+      position_risk_basis: positionRisk.basis || 'position_size',
+      position_grouped: position.position_grouped === true,
+      leg_count: position.leg_count || 1,
+      group_detected_strategy: position.group_detected_strategy || null
+    };
   }
 
   // Calculate position size volatility (standard deviation)
@@ -81,37 +135,9 @@ class OverconfidenceAnalyticsService {
     // Clear existing data (only for the filtered date range if provided)
     await this.clearHistoricalData(userId, dateFilter);
 
-    const queryParams = [userId];
-    const tradeFilters = [];
-
-    if (dateFilter.startDate) {
-      queryParams.push(dateFilter.startDate);
-      tradeFilters.push(`AND exit_time >= $${queryParams.length}`);
-    }
-
-    if (dateFilter.endDate) {
-      queryParams.push(dateFilter.endDate);
-      tradeFilters.push(`AND exit_time <= $${queryParams.length}`);
-    }
-
-    this.addTradeAccountFilter(tradeFilters, queryParams, dateFilter.accounts);
-
-    // Get all completed trades for the user, ordered by entry time
-    const tradesQuery = `
-      SELECT
-        id, symbol, entry_time, exit_time, entry_price, exit_price,
-        quantity, side, commission, fees, pnl
-      FROM trades
-      WHERE user_id = $1
-        AND exit_price IS NOT NULL
-        AND exit_time IS NOT NULL
-        ${tradeFilters.join('\n        ')}
-        AND UPPER(symbol) NOT IN ('TEST', 'DEMO', 'EXAMPLE', 'XXX', 'UNKNOWN')
-      ORDER BY entry_time ASC
-    `;
-
-    const tradesResult = await db.query(tradesQuery, queryParams);
-    const trades = tradesResult.rows;
+    const junkSymbols = new Set(['TEST', 'DEMO', 'EXAMPLE', 'XXX', 'UNKNOWN']);
+    const trades = (await BehavioralAnalysisPositionService.getCompletedPositions(userId, dateFilter))
+      .filter(trade => !junkSymbols.has(String(trade.symbol || '').toUpperCase()));
 
     if (trades.length < 10) {
       return {
@@ -255,6 +281,7 @@ class OverconfidenceAnalyticsService {
     // Calculate position sizes during the streak
     const positionSizes = winStreak.map(trade => this.calculateMonetaryPositionSize(trade));
     const peakPositionSize = Math.max(...positionSizes);
+    const peakIndex = positionSizes.indexOf(peakPositionSize);
     const totalStreakProfit = winStreak.reduce((sum, trade) => sum + parseFloat(trade.pnl || 0), 0);
     
     // If no baseline, use average of first 3 trades in streak
@@ -309,7 +336,28 @@ class OverconfidenceAnalyticsService {
       peakPositionSize,
       positionSizeIncreasePercent: positionIncreasePercent,
       totalStreakProfit,
-      streakTrades: winStreak.map(t => t.id),
+      streakTrades: winStreak.flatMap(t => t.trade_ids || [t.id]),
+      riskBasis: {
+        calculation_version: OVERCONFIDENCE_CALCULATION_VERSION,
+        comparison_basis: 'position_risk',
+        baseline_amount: effectiveBaseline,
+        peak_position_id: winStreak[peakIndex]?.id || null,
+        peak: this.riskBasisForPosition(winStreak[peakIndex]),
+        streak: winStreak.map(trade => ({
+          id: trade.id,
+          trade_ids: trade.trade_ids || [trade.id],
+          symbol: trade.symbol,
+          entry_time: trade.entry_time,
+          exit_time: trade.exit_time,
+          pnl: parseFloat(trade.pnl || 0),
+          position_size: this.calculateMonetaryPositionSize(trade),
+          raw_position_size: trade.position_size,
+          position_grouped: trade.position_grouped === true,
+          leg_count: trade.leg_count || 1,
+          group_detected_strategy: trade.group_detected_strategy || null,
+          position_risk: this.riskBasisForPosition(trade)
+        }))
+      },
       severity,
       confidenceScore: confidence
     };
@@ -544,9 +592,10 @@ class OverconfidenceAnalyticsService {
         user_id, win_streak_length, win_streak_start_date, win_streak_end_date,
         baseline_position_size, peak_position_size, position_size_increase_percent,
         total_streak_profit, streak_trades, severity, confidence_score,
-        outcome_after_streak, outcome_trade_id, outcome_amount, outcome_analysis
+        outcome_after_streak, outcome_trade_id, outcome_amount, outcome_analysis,
+        calculation_version, analysis_run_at, risk_basis
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
       RETURNING id
     `;
 
@@ -565,7 +614,10 @@ class OverconfidenceAnalyticsService {
       outcomeType,
       outcomeTradeId,
       outcomeAmount,
-      outcomeAnalysis ? JSON.stringify(outcomeAnalysis) : null
+      outcomeAnalysis ? JSON.stringify(outcomeAnalysis) : null,
+      OVERCONFIDENCE_CALCULATION_VERSION,
+      new Date(),
+      JSON.stringify(eventData.riskBasis || {})
     ]);
 
     // Also create behavioral pattern entry
@@ -596,7 +648,9 @@ class OverconfidenceAnalyticsService {
         positionSizeIncreasePercent: eventData.positionSizeIncreasePercent,
         totalStreakProfit: eventData.totalStreakProfit,
         peakPositionSize: eventData.peakPositionSize,
-        baselinePositionSize: eventData.baselinePositionSize
+        baselinePositionSize: eventData.baselinePositionSize,
+        riskBasis: eventData.riskBasis || {},
+        calculationVersion: OVERCONFIDENCE_CALCULATION_VERSION
       })
     ]);
   }
@@ -713,6 +767,9 @@ class OverconfidenceAnalyticsService {
           baselinePositionSize: parseFloat(event.baseline_position_size),
           peakPositionSize: parseFloat(event.peak_position_size),
           positionSizeIncrease: parseFloat(event.position_size_increase_percent),
+          riskBasis: event.risk_basis ? (typeof event.risk_basis === 'string' ? JSON.parse(event.risk_basis) : event.risk_basis) : {},
+          calculationVersion: event.calculation_version || null,
+          analysisRunAt: event.analysis_run_at || null,
           streakPnl: parseFloat(event.total_streak_profit || 0),
           severity: event.severity,
           confidenceScore: parseFloat(event.confidence_score),
@@ -733,18 +790,34 @@ class OverconfidenceAnalyticsService {
       const event = eventsResult.rows[i];
       
       if (event.streak_trades && event.streak_trades.length > 0) {
-        const tradesQuery = `
-          SELECT 
-            id, symbol, entry_time, exit_time, entry_price, exit_price, 
-            quantity, side, pnl, commission, fees,
-            (quantity * entry_price) as position_size
-          FROM trades 
-          WHERE id = ANY($1)
-          ORDER BY entry_time ASC
-        `;
-        
-        const tradesResult = await db.query(tradesQuery, [event.streak_trades]);
-        transformedEvents[i].streakTradeDetails = tradesResult.rows;
+        let positionDetails = [];
+
+        try {
+          const positions = await BehavioralAnalysisPositionService.getCompletedPositionsByTradeIds(userId, event.streak_trades);
+          positionDetails = positions.map(position => this.positionDetailForFrontend(position));
+        } catch (error) {
+          console.warn(`[OVERCONFIDENCE] Failed to load position-level streak details for event ${event.id}: ${error.message}`);
+        }
+
+        if (positionDetails.length === 0 && transformedEvents[i].riskBasis?.streak?.length) {
+          positionDetails = transformedEvents[i].riskBasis.streak.map(position => ({
+            id: position.id,
+            trade_ids: position.trade_ids || [position.id],
+            symbol: position.symbol,
+            entry_time: position.entry_time,
+            exit_time: position.exit_time,
+            pnl: position.pnl,
+            position_size: position.position_risk?.amount ?? position.position_size ?? 0,
+            raw_position_size: position.raw_position_size ?? null,
+            position_risk: position.position_risk || null,
+            position_risk_basis: position.position_risk?.basis || 'position_size',
+            position_grouped: position.position_grouped === true,
+            leg_count: position.leg_count || 1,
+            group_detected_strategy: position.group_detected_strategy || null
+          }));
+        }
+
+        transformedEvents[i].streakTradeDetails = positionDetails;
       }
 
       // Get outcome trade details if available
@@ -752,7 +825,12 @@ class OverconfidenceAnalyticsService {
         const outcomeQuery = `
           SELECT 
             id, symbol, entry_time, exit_time, entry_price, exit_price, 
-            quantity, side, pnl, commission, fees
+            quantity, side, pnl, commission, fees, instrument_type,
+            CASE
+              WHEN instrument_type = 'option' THEN ABS(quantity) * entry_price * COALESCE(NULLIF(contract_size, 0), 100)
+              WHEN instrument_type = 'future' THEN ABS(quantity) * entry_price * COALESCE(NULLIF(point_value, 0), 1)
+              ELSE ABS(quantity) * entry_price
+            END as position_size
           FROM trades 
           WHERE id = $1
         `;
@@ -776,7 +854,9 @@ class OverconfidenceAnalyticsService {
         COUNT(CASE WHEN outcome_after_streak = 'profit' THEN 1 END) as streaks_ending_in_profit,
         COUNT(CASE WHEN severity = 'high' THEN 1 END) as high_severity_count,
         COUNT(CASE WHEN severity = 'medium' THEN 1 END) as medium_severity_count,
-        COUNT(CASE WHEN severity = 'low' THEN 1 END) as low_severity_count
+        COUNT(CASE WHEN severity = 'low' THEN 1 END) as low_severity_count,
+        MAX(analysis_run_at) as latest_analysis_run_at,
+        COUNT(CASE WHEN calculation_version IS NULL OR calculation_version <> '${OVERCONFIDENCE_CALCULATION_VERSION}' THEN 1 END) as stale_event_count
       FROM overconfidence_events
       WHERE user_id = $1 ${dateCondition}
     `;
@@ -817,6 +897,10 @@ class OverconfidenceAnalyticsService {
         highSeverityCount: parseInt(stats.high_severity_count || 0),
         mediumSeverityCount: parseInt(stats.medium_severity_count || 0),
         lowSeverityCount: parseInt(stats.low_severity_count || 0),
+        latestAnalysisRunAt: stats.latest_analysis_run_at || null,
+        calculationVersion: OVERCONFIDENCE_CALCULATION_VERSION,
+        staleEventCount: parseInt(stats.stale_event_count || 0),
+        hasStaleResults: parseInt(stats.stale_event_count || 0) > 0,
         lossRate: totalEvents > 0 ? parseFloat(((stats.streaks_ending_in_loss / totalEvents) * 100).toFixed(1)) : 0,
         profitRate: totalEvents > 0 ? parseFloat(((stats.streaks_ending_in_profit / totalEvents) * 100).toFixed(1)) : 0,
         performanceImpact: performanceImpact,
@@ -935,11 +1019,25 @@ class OverconfidenceAnalyticsService {
       return null;
     }
 
+    let enrichedTrade = newTrade;
+    if (newTrade.id) {
+      const tradeMetaResult = await db.query(
+        `SELECT instrument_type, contract_size, point_value
+         FROM trades
+         WHERE id = $1 AND user_id = $2`,
+        [newTrade.id, userId]
+      );
+      enrichedTrade = {
+        ...newTrade,
+        ...(tradeMetaResult.rows[0] || {})
+      };
+    }
+
     // Get current win/loss streak
     const currentStreak = await this.getCurrentStreak(userId);
     
     // Update streak with new trade
-    const updatedStreak = await this.updateCurrentStreak(userId, newTrade, currentStreak);
+    const updatedStreak = await this.updateCurrentStreak(userId, enrichedTrade, currentStreak);
     
     // Check if we need to alert for overconfidence
     if (updatedStreak.streak_type === 'win' && 

@@ -77,6 +77,14 @@
               >
                 {{ trade.side }}
               </span>
+              <!-- Grouped multi-leg position (whole-trade grouping enabled) -->
+              <span
+                v-if="trade.leg_count > 1"
+                class="text-xs px-1.5 py-0.5 rounded font-medium bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-400"
+                title="Grouped multi-leg position"
+              >
+                {{ trade.leg_count }} legs
+              </span>
             </div>
             <div class="text-sm text-gray-500 dark:text-gray-400">
               {{ formatDateWithTime(trade) }}
@@ -99,7 +107,9 @@
             <div
               :class="[
                 'text-sm',
-                parseFloat(trade.pnl_percent) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                trade.pnl_percent == null
+                  ? 'text-gray-400 dark:text-gray-500'
+                  : parseFloat(trade.pnl_percent) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
               ]"
             >
               {{ formatPercent(trade.pnl_percent) }}

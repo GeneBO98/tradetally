@@ -95,7 +95,8 @@ async function insertCandles(symbol, candles, dataSource) {
       candle.high,
       candle.low,
       candle.close,
-      candle.volume || 0,
+      // FMP occasionally reports fractional volumes; the column is BIGINT
+      Math.round(Number(candle.volume) || 0),
       dataSource
     );
     paramIndex += 8;

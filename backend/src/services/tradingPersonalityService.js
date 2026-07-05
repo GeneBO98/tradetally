@@ -1,8 +1,22 @@
 const db = require('../config/database');
 const TierService = require('./tierService');
 const finnhub = require('../utils/finnhub');
+const BehavioralAnalysisPositionService = require('./behavioralAnalysisPositionService');
 
 class TradingPersonalityService {
+  static DIRECT_STRATEGY_MAPPINGS = {
+    scalper: 'scalper',
+    momentum: 'momentum',
+    mean_reversion: 'mean_reversion',
+    mean_reverting: 'mean_reversion',
+    day_trading: 'day_trading',
+    day_trade: 'day_trading',
+    swing: 'swing',
+    swing_trading: 'swing',
+    position: 'position',
+    position_trading: 'position'
+  };
+
   static addAccountFilter(sqlParts, params, tableAlias = '') {
     const accounts = params.accountsFilter;
     if (!accounts || accounts.length === 0) return;
@@ -90,29 +104,14 @@ class TradingPersonalityService {
         }
       }
 
-      // Get all completed trades for analysis
-      const tradeFilters = [];
-      const tradeParams = { values: [userId, start, end], accountsFilter: accounts };
-      this.addAccountFilter(tradeFilters, tradeParams);
-
-      const tradesQuery = `
-        SELECT 
-          id, symbol, entry_time, exit_time, entry_price, exit_price,
-          quantity, side, COALESCE(pnl, 0) as pnl, COALESCE(commission, 0) as commission,
-          EXTRACT(EPOCH FROM (exit_time - entry_time)) / 60 as hold_time_minutes
-        FROM trades
-        WHERE user_id = $1
-          AND exit_time IS NOT NULL
-          AND entry_time IS NOT NULL
-          AND pnl IS NOT NULL
-          AND entry_time >= $2
-          AND exit_time <= $3
-          ${tradeFilters.join('\n          ')}
-        ORDER BY entry_time
-      `;
-
-      const tradesResult = await db.query(tradesQuery, tradeParams.values);
-      const trades = tradesResult.rows;
+      // Get all completed positions for analysis. When whole-trade grouping is
+      // enabled, multi-leg option strategies are collapsed before personality
+      // classification so long-dated spreads are not mislabeled as stock swings.
+      const trades = await BehavioralAnalysisPositionService.getCompletedPositions(userId, {
+        startDate: start,
+        endDate: end,
+        accounts
+      });
 
       console.log(`Personality analysis for user ${userId}: Found ${trades.length} trades`);
 
@@ -197,7 +196,11 @@ class TradingPersonalityService {
     const longTrades = holdTimes.filter(t => t >= 1440).length; // > 1 day
 
     // Position sizing analysis
-    const positionSizes = trades.map(t => parseFloat(t.quantity) * parseFloat(t.entry_price));
+    const positionSizes = trades.map(t => {
+      const positionSize = parseFloat(t.position_size);
+      if (Number.isFinite(positionSize) && positionSize > 0) return positionSize;
+      return parseFloat(t.quantity) * parseFloat(t.entry_price);
+    });
     const avgPosition = positionSizes.reduce((a, b) => a + b, 0) / positionSizes.length;
     const positionStdDev = this.calculateStandardDeviation(positionSizes);
     const positionConsistency = 1 - (positionStdDev / avgPosition); // Higher = more consistent
@@ -294,6 +297,71 @@ class TradingPersonalityService {
     return technicalUsage;
   }
 
+  static classifyTradeFromStoredContext(trade) {
+    const groupedStrategy = this.normalizeStrategyName(trade.group_detected_strategy);
+    if (groupedStrategy && this.isOptionStructureStrategy(groupedStrategy)) {
+      return 'option_strategy';
+    }
+
+    const storedStrategy = this.normalizeStrategyName(trade.stored_strategy || trade.strategy);
+
+    if (this.isOptionStructureStrategy(storedStrategy)) {
+      return 'option_strategy';
+    }
+
+    if (this.isOptionPosition(trade)) {
+      if (trade.manual_override === true && this.DIRECT_STRATEGY_MAPPINGS[storedStrategy]) {
+        return this.DIRECT_STRATEGY_MAPPINGS[storedStrategy];
+      }
+      return 'option_strategy';
+    }
+
+    if (!storedStrategy) return null;
+
+    return this.DIRECT_STRATEGY_MAPPINGS[storedStrategy] || null;
+  }
+
+  static normalizeStrategyName(strategy) {
+    if (!strategy) return null;
+    return String(strategy).trim().toLowerCase().replace(/\s+/g, '_');
+  }
+
+  static isOptionPosition(trade) {
+    if (!trade) return false;
+    return trade.instrument_type === 'option' ||
+      trade.has_option_leg === true ||
+      (Array.isArray(trade.legs) && trade.legs.some(leg => leg.option_type));
+  }
+
+  static isOptionStructureStrategy(strategy) {
+    const normalized = this.normalizeStrategyName(strategy);
+    if (!normalized) return false;
+
+    const optionStrategies = new Set([
+      'multi_leg_option',
+      'option_strategy',
+      'bull_put_spread',
+      'bear_put_spread',
+      'bull_call_spread',
+      'bear_call_spread',
+      'calendar_spread',
+      'diagonal_spread',
+      'long_straddle',
+      'short_straddle',
+      'long_strangle',
+      'short_strangle',
+      'iron_condor',
+      'iron_butterfly'
+    ]);
+
+    return optionStrategies.has(normalized) ||
+      normalized.includes('spread') ||
+      normalized.includes('straddle') ||
+      normalized.includes('strangle') ||
+      normalized.includes('condor') ||
+      normalized.includes('butterfly');
+  }
+
   // Calculate personality scores as actual percentages that add to 100%
   static async calculatePersonalityScores(userId, behaviorMetrics, technicalAnalysis) {
     // Import Trade model to classify individual trades
@@ -307,7 +375,8 @@ class TradingPersonalityService {
         mean_reversion: 0,
         swing: 0,
         day_trading: 0,
-        position: 0
+        position: 0,
+        option_strategy: 0
       };
 
       // Check if user has Pro tier for advanced technical analysis
@@ -342,11 +411,15 @@ class TradingPersonalityService {
           }
           
           try {
-            const strategy = await Trade.classifyTradeStrategyWithAnalysis(trade, userId);
+            const preferredStrategy = this.classifyTradeFromStoredContext(trade);
+            const strategy = preferredStrategy || await Trade.classifyTradeStrategyWithAnalysis(trade, userId);
             analysisResults.push({ trade, strategy });
           } catch (error) {
             console.error(`Error analyzing trade ${trade.id}:`, error);
-            analysisResults.push({ trade, strategy: Trade.classifyTradeStrategy(trade) }); // Fallback
+            analysisResults.push({
+              trade,
+              strategy: this.classifyTradeFromStoredContext(trade) || Trade.classifyTradeStrategy(trade)
+            }); // Fallback
           }
         }
         
@@ -360,7 +433,7 @@ class TradingPersonalityService {
         // For remaining trades, use time-based classification
         const remainingTrades = behaviorMetrics.trades.slice(sampleSize);
         remainingTrades.forEach(trade => {
-          const strategy = Trade.classifyTradeStrategy(trade);
+          const strategy = this.classifyTradeFromStoredContext(trade) || Trade.classifyTradeStrategy(trade);
           if (strategies.hasOwnProperty(strategy)) {
             strategies[strategy]++;
           }
@@ -369,7 +442,7 @@ class TradingPersonalityService {
         // For Free users: Use only time-based classification (no API calls)
         console.log(`Using time-based strategy classification for ${behaviorMetrics.trades.length} trades (Free user)`);
         behaviorMetrics.trades.forEach(trade => {
-          const strategy = Trade.classifyTradeStrategy(trade);
+          const strategy = this.classifyTradeFromStoredContext(trade) || Trade.classifyTradeStrategy(trade);
           if (strategies.hasOwnProperty(strategy)) {
             strategies[strategy]++;
           }
@@ -382,18 +455,19 @@ class TradingPersonalityService {
       console.log('Total trades analyzed:', totalTrades);
       
       // Convert counts to percentages - MUST add to 100%
-      const totalCount = strategies.scalper + strategies.momentum + strategies.mean_reversion + strategies.swing + strategies.day_trading + strategies.position;
+      const totalCount = strategies.scalper + strategies.momentum + strategies.mean_reversion + strategies.swing + strategies.day_trading + strategies.position + strategies.option_strategy;
       
       if (totalCount === 0) {
-        return { scalper: 25, momentum: 25, mean_reversion: 25, swing: 25 };
+        return { scalper: 20, momentum: 20, mean_reversion: 20, swing: 20, option_strategy: 20 };
       }
       
-      // Combine similar strategies for the 4 main personalities
+      // Combine similar strategies for the main personalities
       const combinedCounts = {
         scalper: strategies.scalper,
         momentum: strategies.momentum + Math.round(strategies.day_trading * 0.7), // Most day trading is momentum-like
         mean_reversion: strategies.mean_reversion + Math.round(strategies.day_trading * 0.3), // Some day trading is mean reversion
-        swing: strategies.swing + strategies.position // Combine swing and position
+        swing: strategies.swing + strategies.position, // Combine swing and position
+        option_strategy: strategies.option_strategy
       };
       
       const combinedTotal = Object.values(combinedCounts).reduce((sum, val) => sum + val, 0);
@@ -456,14 +530,15 @@ class TradingPersonalityService {
     // Normalize scores to percentages that add to 100%
     const totalScore = scalperScore + momentumScore + meanReversionScore + swingScore;
     if (totalScore === 0) {
-      return { scalper: 25, momentum: 25, mean_reversion: 25, swing: 25 }; // Equal distribution if no clear signals
+      return { scalper: 20, momentum: 20, mean_reversion: 20, swing: 20, option_strategy: 20 }; // Equal distribution if no clear signals
     }
 
     return {
       scalper: Math.round((scalperScore / totalScore) * 100),
       momentum: Math.round((momentumScore / totalScore) * 100),
       mean_reversion: Math.round((meanReversionScore / totalScore) * 100),
-      swing: Math.round((swingScore / totalScore) * 100)
+      swing: Math.round((swingScore / totalScore) * 100),
+      option_strategy: 0
     };
   }
 
@@ -516,6 +591,13 @@ class TradingPersonalityService {
         // Swing traders should have patient holding, larger moves
         const avgSwingProfit = trades.reduce((sum, t) => sum + parseFloat(t.pnl), 0) / trades.length;
         if (avgSwingProfit > 50) alignmentScore += 0.2;
+        break;
+
+      case 'option_strategy':
+        // Option strategy traders should be evaluated at the net structure level.
+        const optionTrades = trades.filter(t => t.instrument_type === 'option' || t.position_grouped || t.group_detected_strategy);
+        if (optionTrades.length / trades.length > 0.5) alignmentScore += 0.2;
+        if (trades.some(t => t.position_grouped)) alignmentScore += 0.1;
         break;
     }
 
@@ -578,6 +660,14 @@ class TradingPersonalityService {
           });
         }
         break;
+
+      case 'option_strategy':
+        recommendations.push({
+          type: 'strategy',
+          message: 'Review results at the full option-structure level, including net credit/debit, max risk, and all legs together',
+          priority: 'medium'
+        });
+        break;
     }
 
     if (performanceAlignment < 0.6) {
@@ -596,13 +686,13 @@ class TradingPersonalityService {
     const query = `
       INSERT INTO trading_personality_profiles (
         user_id, primary_personality, personality_confidence,
-        scalper_score, momentum_score, mean_reversion_score, swing_score,
+        scalper_score, momentum_score, mean_reversion_score, swing_score, option_strategy_score,
         avg_hold_time_minutes, avg_trade_frequency_per_day,
         risk_tolerance, position_sizing_consistency,
         personality_performance_score, optimal_strategy_adherence,
         total_trades_analyzed, analysis_start_date, analysis_end_date
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
       ON CONFLICT (user_id, analysis_end_date) DO UPDATE SET
         primary_personality = EXCLUDED.primary_personality,
         personality_confidence = EXCLUDED.personality_confidence,
@@ -610,6 +700,7 @@ class TradingPersonalityService {
         momentum_score = EXCLUDED.momentum_score,
         mean_reversion_score = EXCLUDED.mean_reversion_score,
         swing_score = EXCLUDED.swing_score,
+        option_strategy_score = EXCLUDED.option_strategy_score,
         avg_hold_time_minutes = EXCLUDED.avg_hold_time_minutes,
         avg_trade_frequency_per_day = EXCLUDED.avg_trade_frequency_per_day,
         risk_tolerance = EXCLUDED.risk_tolerance,
@@ -630,6 +721,7 @@ class TradingPersonalityService {
       profileData.personalityScores.momentum,
       profileData.personalityScores.mean_reversion,
       profileData.personalityScores.swing,
+      profileData.personalityScores.option_strategy || 0,
       profileData.behaviorMetrics.avgHoldTime,
       profileData.behaviorMetrics.avgTradesPerDay,
       'medium', // default risk tolerance
@@ -1222,7 +1314,8 @@ class TradingPersonalityService {
         scalper: profile.scalper_score || 0,
         momentum: profile.momentum_score || 0,
         mean_reversion: profile.mean_reversion_score || 0,
-        swing: profile.swing_score || 0
+        swing: profile.swing_score || 0,
+        option_strategy: profile.option_strategy_score || 0
       };
 
       // Reconstruct behavior metrics from stored data

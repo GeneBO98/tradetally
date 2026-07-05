@@ -5,6 +5,8 @@ const { renderTradeCardPng } = require('../services/shareCardImageService');
 const FALLBACK_IMAGE = '/social-preview-v3.png';
 const SITE_TITLE = 'TradeTally - Trading Journal with Behavioral Analytics';
 const SITE_DESCRIPTION = 'Free trading journal that detects revenge trading, overconfidence, and behavioral patterns. Auto-sync Schwab and IBKR. Open source and self-hostable.';
+const GENERIC_OG_CACHE = 'public, max-age=300, s-maxage=1800, stale-while-revalidate=86400';
+const PUBLIC_TRADE_OG_CACHE = 'public, max-age=120, s-maxage=600, stale-while-revalidate=3600';
 
 function num(value) {
   const parsed = parseFloat(value);
@@ -24,6 +26,15 @@ function escapeHtml(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function setCrawlerCacheHeaders(res, cacheControl) {
+  res.set('Cache-Control', cacheControl);
+  res.removeHeader('Pragma');
+  res.removeHeader('Expires');
+  // The /og URL is a crawler helper with a canonical URL in the HTML. Keep it
+  // out of indexes while allowing crawlers to follow the canonical destination.
+  res.set('X-Robots-Tag', 'noindex, follow');
 }
 
 // Attach a live current price + unrealized P&L to an open non-option position,
@@ -101,7 +112,7 @@ const ogController = {
     try {
       const trade = await Trade.findById(req.params.id, null); // null user => public-only
       if (!trade || trade.is_public !== true) {
-        res.set('Cache-Control', 'public, max-age=300');
+        setCrawlerCacheHeaders(res, GENERIC_OG_CACHE);
         return res.type('html').send(renderOgHtml({
           title: SITE_TITLE,
           description: SITE_DESCRIPTION,
@@ -111,7 +122,7 @@ const ogController = {
       }
       await enrichOpenPosition(trade);
       const { title, description } = buildCardText(trade);
-      res.set('Cache-Control', 'public, max-age=120');
+      setCrawlerCacheHeaders(res, PUBLIC_TRADE_OG_CACHE);
       return res.type('html').send(renderOgHtml({
         title,
         description,
@@ -120,6 +131,7 @@ const ogController = {
       }));
     } catch (error) {
       console.error('[OG] tradeOgHtml failed:', error.message);
+      setCrawlerCacheHeaders(res, GENERIC_OG_CACHE);
       return res.type('html').send(renderOgHtml({
         title: SITE_TITLE,
         description: SITE_DESCRIPTION,
@@ -140,7 +152,7 @@ const ogController = {
       await enrichOpenPosition(trade);
       const png = await renderTradeCardPng(trade);
       res.set('Content-Type', 'image/png');
-      res.set('Cache-Control', 'public, max-age=120');
+      setCrawlerCacheHeaders(res, PUBLIC_TRADE_OG_CACHE);
       return res.send(png);
     } catch (error) {
       console.error('[OG] tradeCardImage failed:', error.message);

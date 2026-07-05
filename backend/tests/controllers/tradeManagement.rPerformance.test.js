@@ -166,14 +166,117 @@ describe('tradeManagementController.getRPerformance break-even classification (i
     expect(chart_data[0].symbol).toBe('SNOW');
     expect(chart_data[0].position_grouped).toBe(true);
     expect(chart_data[0].leg_count).toBe(2);
-    expect(chart_data[0].actual_r).toBe(1);
+    // Legs risk $50 each: +100 and -50 pnl -> (100 - 50) / 100 total risk.
+    expect(chart_data[0].actual_r).toBe(0.5);
 
     expect(summary.position_grouping).toBe(true);
     expect(summary.total_trades).toBe(1);
     expect(summary.winning_trades).toBe(1);
     expect(summary.losing_trades).toBe(0);
     expect(summary.win_rate).toBe(100);
-    expect(summary.total_actual_r).toBe(1);
-    expect(summary.avg_win_r).toBe(1);
+    expect(summary.total_actual_r).toBe(0.5);
+    expect(summary.avg_win_r).toBe(0.5);
+  });
+
+  test('a net-losing grouped position gets a negative combined R even when a small-risk leg has a large positive leg R', async () => {
+    // Issue #359 follow-up: per-leg Rs were summed with unequal risk
+    // denominators, so a hedge leg risking $5 could flip a losing spread to a
+    // positive chart R. Combined R must be dollar-weighted:
+    // leg 1: risk 5*10 = $50, pnl -100 -> -2R
+    // leg 2: risk 0.5*10 = $5, pnl +20 -> +4R (raw sum would be +2R)
+    // combined: (-100 + 20) / (50 + 5) = -1.45R
+    User.getSettings.mockResolvedValue({ analytics_position_grouping: true });
+    db.query.mockResolvedValue({
+      rows: [
+        {
+          ...row(1, 90, -100, false),
+          symbol: 'SNOW260116P00400000',
+          underlying_symbol: 'SNOW',
+          position_group_key: 'spread-1',
+          position_symbol: 'SNOW'
+        },
+        {
+          ...row(2, 102, 20, false),
+          stop_loss: 99.5,
+          symbol: 'SNOW260116P00395000',
+          underlying_symbol: 'SNOW',
+          position_group_key: 'spread-1',
+          position_symbol: 'SNOW'
+        }
+      ]
+    });
+
+    const req = { user: { id: 'user-1' }, query: {} };
+    const res = { json: jest.fn() };
+
+    await controller.getRPerformance(req, res);
+
+    const { chart_data, summary } = res.json.mock.calls[0][0];
+    expect(chart_data).toHaveLength(1);
+    expect(chart_data[0].actual_r).toBe(-1.45);
+    expect(summary.total_trades).toBe(1);
+    expect(summary.winning_trades).toBe(0);
+    expect(summary.losing_trades).toBe(1);
+    expect(summary.total_actual_r).toBe(-1.45);
+    expect(summary.avg_loss_r).toBe(-1.45);
+  });
+
+  test('a grouped defined-risk spread caps the chart target R at the structure max profit', async () => {
+    // Issue #359 follow-up (CEG report): a 3-lot put credit spread collected
+    // at a net 0.80 credit maxes out at 0.80 x 3 x 100 = $240, but the summed
+    // per-leg targets ($900 + $300) would put the chart's target at 1.67R on a
+    // $720 position risk. The capped target is 240 / 720 = 0.33R.
+    User.getSettings.mockResolvedValue({ analytics_position_grouping: true });
+    const spreadLeg = overrides => ({
+      ...row(1, 0, 0, false),
+      underlying_symbol: 'CEG',
+      position_group_key: 'spread-1',
+      position_symbol: 'CEG',
+      quantity: 3,
+      instrument_type: 'option',
+      contract_size: 100,
+      option_type: 'put',
+      expiration_date: '2026-08-21',
+      manual_target_hit_first: 'take_profit',
+      ...overrides
+    });
+    db.query.mockResolvedValue({
+      rows: [
+        spreadLeg({
+          id: 1,
+          symbol: 'CEG260821P00105000',
+          side: 'short',
+          entry_price: 3.27,
+          exit_price: 5,
+          stop_loss: 5.27,
+          take_profit: 0.27,
+          pnl: -519,
+          strike_price: 105
+        }),
+        spreadLeg({
+          id: 2,
+          symbol: 'CEG260821P00100000',
+          side: 'long',
+          entry_price: 2.47,
+          exit_price: 2.95,
+          stop_loss: 2.07,
+          take_profit: 3.47,
+          pnl: 144,
+          strike_price: 100
+        })
+      ]
+    });
+
+    const req = { user: { id: 'user-1' }, query: {} };
+    const res = { json: jest.fn() };
+
+    await controller.getRPerformance(req, res);
+
+    const { chart_data, summary } = res.json.mock.calls[0][0];
+    expect(chart_data).toHaveLength(1);
+    expect(chart_data[0].actual_r).toBe(-0.52);       // (-519 + 144) / 720
+    expect(chart_data[0].target_r).toBe(0.33);        // capped at 240 / 720
+    expect(summary.total_potential_r).toBe(0.33);
+    expect(summary.r_left_on_table).toBe(0.85);       // 0.33 - (-0.52)
   });
 });

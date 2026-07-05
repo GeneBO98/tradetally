@@ -1812,19 +1812,19 @@ const tradeController = {
         return res.status(400).json({ error: 'Comment content is required' });
       }
 
-      // Check if trade exists
-      const trade = await Trade.findById(tradeId);
+      // Check if trade exists (pass userId so private trades owned by the user are found)
+      const trade = await Trade.findById(tradeId, userId);
       if (!trade) {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
       // Check if comment exists and belongs to user
       const existingCommentQuery = `
-        SELECT * FROM trade_comments 
+        SELECT * FROM trade_comments
         WHERE id = $1 AND trade_id = $2 AND user_id = $3
       `;
       const existingResult = await db.query(existingCommentQuery, [commentId, tradeId, userId]);
-      
+
       if (existingResult.rows.length === 0) {
         return res.status(404).json({ error: 'Comment not found or not authorized' });
       }
@@ -1863,19 +1863,19 @@ const tradeController = {
       const { id: tradeId, commentId } = req.params;
       const userId = req.user.id;
 
-      // Check if trade exists
-      const trade = await Trade.findById(tradeId);
+      // Check if trade exists (pass userId so private trades owned by the user are found)
+      const trade = await Trade.findById(tradeId, userId);
       if (!trade) {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
       // Check if comment exists and belongs to user
       const existingCommentQuery = `
-        SELECT * FROM trade_comments 
+        SELECT * FROM trade_comments
         WHERE id = $1 AND trade_id = $2 AND user_id = $3
       `;
       const existingResult = await db.query(existingCommentQuery, [commentId, tradeId, userId]);
-      
+
       if (existingResult.rows.length === 0) {
         return res.status(404).json({ error: 'Comment not found or not authorized' });
       }

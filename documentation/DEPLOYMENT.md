@@ -47,6 +47,7 @@ nano .env  # or vim .env
 - `FRONTEND_URL`: Frontend URL for CORS (default: http://localhost:5173)
 - `VITE_API_URL`: Frontend API URL (default: http://localhost/api)
 - `REGISTRATION_MODE`: Controls user registration (default: open)
+- `DB_SCHEMA`: PostgreSQL schema for app tables and migrations. Leave blank to use the database `search_path`/`current_schema()`.
 
 **Email configuration (optional but recommended):**
 - `EMAIL_HOST`: SMTP server host

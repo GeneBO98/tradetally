@@ -2,6 +2,7 @@ const db = require('../config/database');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const encryptionService = require('../services/brokerSync/encryptionService');
+const { normalizeEmail } = require('../utils/normalizeEmail');
 
 // Reset and email-verification tokens are stored as sha256 hashes so a read-only
 // DB disclosure (backup dump, replica snapshot) can't be turned into live account-
@@ -59,7 +60,7 @@ class User {
       RETURNING id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, tier, marketing_consent, created_at
     `;
 
-    const values = [email.toLowerCase(), username, hashedPassword, fullName, hashLookupToken(verificationToken), verificationExpires, role, isVerified, adminApproved, tier, marketingConsent];
+    const values = [normalizeEmail(email), username, hashedPassword, fullName, hashLookupToken(verificationToken), verificationExpires, role, isVerified, adminApproved, tier, marketingConsent];
     const result = await db.query(query, values);
 
     return result.rows[0];
@@ -98,7 +99,7 @@ class User {
       WHERE email = $1
     `;
     
-    const result = await db.query(query, [email.toLowerCase()]);
+    const result = await db.query(query, [normalizeEmail(email)]);
     return result.rows[0];
   }
 

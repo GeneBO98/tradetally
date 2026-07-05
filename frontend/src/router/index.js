@@ -96,6 +96,15 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      // Free users get a limited number of replays (quota enforced by the
+      // API); the view renders the upgrade prompt in place, so no
+      // requiresTier guard here.
+      path: '/replay/:id',
+      name: 'trade-replay',
+      component: () => import('@/views/replay/TradeReplayView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/metrics',
       name: 'metrics',
       component: () => import('@/views/AnalyticsView.vue'),
@@ -345,6 +354,15 @@ const router = createRouter({
       meta: { requiresAuth: true, requiresTier: 'pro' }
     },
     {
+      // Free users get a limited number of backtest sessions (quota enforced
+      // by the API); the view renders the upgrade prompt in place, so no
+      // requiresTier guard here.
+      path: '/analysis/backtest',
+      name: 'backtest',
+      component: () => import('@/views/backtest/BacktestSandboxView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/price-alerts',
       name: 'price-alerts',
       component: () => import('@/views/PriceAlertsView.vue'),
@@ -417,6 +435,18 @@ const router = createRouter({
 router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
   const { registrationConfig, fetchRegistrationConfig, isBillingEnabled } = useRegistrationMode()
+
+  // First paint is no longer gated on the /auth/me probe (see main.js). For
+  // routes whose decision depends on auth state we still wait for the probe to
+  // settle, but ONLY when a session-hint cookie was present at boot (token was
+  // optimistically seeded). That keeps logged-in users from flashing the login
+  // page, while anonymous visitors (no cookie) skip the wait entirely so public
+  // and guest pages render at bundle-load speed.
+  const authDependent = to.meta.requiresAuth || to.meta.guest ||
+    to.meta.requiresAdmin || to.meta.requiresTier
+  if (authDependent && authStore.isAuthenticated && router.authReady) {
+    await router.authReady
+  }
 
   // Block navigation when the route depends on registration/billing mode.
   // Tier-gated and admin routes must wait too, otherwise the guard can briefly

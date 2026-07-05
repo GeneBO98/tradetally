@@ -91,9 +91,10 @@ class Trade {
       instrumentType = 'stock', strikePrice, expirationDate, optionType,
       contractSize, underlyingSymbol, contractMonth, contractYear,
       tickSize, pointValue, underlyingAsset, importId,
-      originalCurrency, exchangeRate, originalEntryPriceCurrency,
-      originalExitPriceCurrency, originalPnlCurrency, originalCommissionCurrency,
-      originalFeesCurrency,
+      originalCurrency, original_currency, exchangeRate, exchange_rate, originalEntryPriceCurrency,
+      original_entry_price_currency, originalExitPriceCurrency, original_exit_price_currency,
+      originalPnlCurrency, original_pnl_currency, originalCommissionCurrency, original_commission_currency,
+      originalFeesCurrency, original_fees_currency,
       stopLoss, takeProfit, takeProfitTargets, chartUrl,
       brokerConnectionId, accountIdentifier, account_identifier,
       conid, manualTargetHitFirst,
@@ -103,6 +104,8 @@ class Trade {
 
     // Use snake_case version if provided, fallback to camelCase for legacy support
     const finalAccountIdentifier = account_identifier || accountIdentifier;
+    const finalOriginalCurrency = (originalCurrency ?? original_currency ?? 'USD') || 'USD';
+    const finalExchangeRate = exchangeRate ?? exchange_rate ?? 1.0;
     const rawPostExitWindowOverrideMinutes = postExitWindowOverrideMinutes ?? post_exit_window_override_minutes ?? null;
     const finalPostExitWindowOverrideMinutes = rawPostExitWindowOverrideMinutes === '' ? null : rawPostExitWindowOverrideMinutes;
     const rawPostExitMae = postExitMae ?? post_exit_mae ?? null;
@@ -587,9 +590,12 @@ class Trade {
       contractSize || (instrumentType === 'option' ? 100 : null), normalizeUnderlyingSymbol(underlyingSymbol),
       contractMonth || null, contractYear || null, roundToDbPrecision(finalTickSize), roundToDbPrecision(finalPointValue), finalUnderlyingAsset || null,
       importId || null,
-      originalCurrency || 'USD', roundToDbPrecision(exchangeRate) || 1.0,
-      roundToDbPrecision(originalEntryPriceCurrency), roundToDbPrecision(originalExitPriceCurrency),
-      roundToDbPrecision(originalPnlCurrency), roundToDbPrecision(originalCommissionCurrency), roundToDbPrecision(originalFeesCurrency),
+      String(finalOriginalCurrency).toUpperCase(), roundToDbPrecision(finalExchangeRate) || 1.0,
+      roundToDbPrecision(originalEntryPriceCurrency ?? original_entry_price_currency),
+      roundToDbPrecision(originalExitPriceCurrency ?? original_exit_price_currency),
+      roundToDbPrecision(originalPnlCurrency ?? original_pnl_currency),
+      roundToDbPrecision(originalCommissionCurrency ?? original_commission_currency),
+      roundToDbPrecision(originalFeesCurrency ?? original_fees_currency),
       roundToDbPrecision(finalStopLoss), roundToDbPrecision(finalTakeProfit), JSON.stringify(aggregatedTakeProfitTargets || []),
       roundToDbPrecision(rValue), chartUrl || null, brokerConnectionId || null, finalAccountIdentifier ? String(finalAccountIdentifier).substring(0, 50) : null,
       conid || null,
@@ -954,7 +960,7 @@ class Trade {
         u.avatar_url,
         COALESCE(gp.display_name, u.username) as display_name,
         t.strategy, t.setup,
-        json_agg(
+        (SELECT json_agg(
           json_build_object(
             'id', ta.id,
             'trade_id', ta.trade_id,
@@ -963,8 +969,8 @@ class Trade {
             'file_name', ta.file_name,
             'file_size', ta.file_size,
             'uploaded_at', ta.uploaded_at
-          )
-        ) FILTER (WHERE ta.id IS NOT NULL) as attachments,
+          ) ORDER BY ta.uploaded_at ASC
+        ) FROM trade_attachments ta WHERE ta.trade_id = t.id) as attachments,
 (SELECT json_agg(
           jsonb_build_object(
             'id', tch.id,
@@ -973,14 +979,12 @@ class Trade {
             'uploaded_at', tch.uploaded_at
           ) ORDER BY tch.uploaded_at ASC
         ) FROM trade_charts tch WHERE tch.trade_id = t.id) as charts,
-        count(DISTINCT tc.id)::integer as comment_count,
+        (SELECT count(*)::integer FROM trade_comments tc WHERE tc.trade_id = t.id) as comment_count,
         sc.finnhub_industry as sector,
         sc.company_name as company_name
       FROM trades t
       LEFT JOIN users u ON t.user_id = u.id
       LEFT JOIN gamification_profile gp ON u.id = gp.user_id
-      LEFT JOIN trade_attachments ta ON t.id = ta.trade_id
-      LEFT JOIN trade_comments tc ON t.id = tc.trade_id
       LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
       WHERE t.id = $1
     `;

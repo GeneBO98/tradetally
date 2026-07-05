@@ -71,7 +71,7 @@
         <div class="border-b border-gray-200 dark:border-gray-700 pb-6">
           <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Trade Information</h2>
 
-          <div class="grid grid-cols-1 gap-6 sm:grid-cols-3">
+          <div class="grid grid-cols-1 gap-6 sm:grid-cols-4">
             <div>
               <label for="symbol" class="label">Symbol *</label>
               <SymbolAutocomplete
@@ -96,6 +96,14 @@
               <BaseSelect
                 v-model="form.instrumentType"
                 :options="[{ value: 'stock', label: 'Stock' }, { value: 'option', label: 'Option' }, { value: 'future', label: 'Future' }, { value: 'crypto', label: 'Crypto' }]"
+              />
+            </div>
+
+            <div>
+              <label for="originalCurrency" class="label">Currency</label>
+              <BaseSelect
+                v-model="form.originalCurrency"
+                :options="currencyOptions"
               />
             </div>
           </div>
@@ -1516,6 +1524,7 @@ import BaseSelect from '@/components/common/BaseSelect.vue'
 import { useHiddenDropdownItems } from '@/composables/useHiddenDropdownItems'
 import { useStrategyOrder } from '@/composables/useStrategyOrder'
 import { useSetupOrder } from '@/composables/useSetupOrder'
+import { CURRENCY_OPTIONS } from '@/composables/useCurrencyFormatter'
 
 // Load section preferences from localStorage
 const defaultSectionPrefs = {
@@ -1819,6 +1828,7 @@ const form = ref({
   quantity: '',
   side: '',
   instrumentType: 'stock',
+  originalCurrency: 'USD',
   entryCommission: 0,
   exitCommission: 0,
   fees: 0,
@@ -1873,6 +1883,10 @@ const selectedOptionsTemplate = ref('')
 const showSaveFuturesTemplateModal = ref(false)
 const showSaveOptionsTemplateModal = ref(false)
 const showManageFuturesTemplatesModal = ref(false)
+const currencyOptions = CURRENCY_OPTIONS.map(currency => ({
+  value: currency.code,
+  label: `${currency.code} - ${currency.name}`
+}))
 const showManageOptionsTemplatesModal = ref(false)
 const newFuturesTemplateName = ref('')
 const newOptionsTemplateName = ref('')
@@ -2039,6 +2053,7 @@ async function loadTrade() {
       quantity: tradeData.quantity != null ? Number(tradeData.quantity) : '',
       side: tradeData.side,
       instrumentType: tradeData.instrument_type || 'stock',
+      originalCurrency: (tradeData.original_currency || tradeData.originalCurrency || 'USD').toUpperCase(),
       entryCommission: tradeData.entry_commission != null ? Number(tradeData.entry_commission) : (tradeData.commission != null ? Number(tradeData.commission) : 0),
       exitCommission: tradeData.exit_commission != null ? Number(tradeData.exit_commission) : 0,
       fees: tradeData.fees != null ? Number(tradeData.fees) : 0,
@@ -2581,6 +2596,7 @@ async function handleSubmit(opts = {}) {
       symbol: form.value.symbol,
       side: derivedSide,
       instrumentType: form.value.instrumentType,
+      originalCurrency: (form.value.originalCurrency || 'USD').toUpperCase(),
       entryTime: finalEntryTime,
       exitTime: finalExitTime || null,
       entryPrice: calculatedEntryPrice,

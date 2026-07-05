@@ -72,6 +72,42 @@ describe('broker sync duplicate protection', () => {
     });
   });
 
+  test('IBKR importTrades preserves parsed trade currency as originalCurrency', async () => {
+    db.query.mockResolvedValueOnce({ rows: [] });
+    Trade.create.mockResolvedValue({ id: 'trade-1' });
+
+    const result = await ibkrService.importTrades('user-1', [
+      {
+        symbol: 'USO',
+        side: 'long',
+        quantity: 1,
+        entryPrice: 125,
+        entryTime: '2026-03-06T15:00:00Z',
+        tradeDate: '2026-03-06',
+        currency: 'USD',
+        executionData: [
+          {
+            datetime: '2026-03-06T15:00:00Z',
+            quantity: 1,
+            price: 125,
+            action: 'buy'
+          }
+        ]
+      }
+    ], {});
+
+    expect(result).toMatchObject({ imported: 1, failed: 0 });
+    expect(Trade.create).toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({
+        symbol: 'USO',
+        originalCurrency: 'USD',
+        exchangeRate: 1.0
+      }),
+      expect.any(Object)
+    );
+  });
+
   test('IBKR existing trade lookup is scoped to the incoming sync date range', async () => {
     db.query.mockResolvedValueOnce({ rows: [] });
 

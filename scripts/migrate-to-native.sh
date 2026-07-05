@@ -277,6 +277,30 @@ server {
 
     root /opt/tradetally/frontend/dist;
     index index.html;
+    charset utf-8;
+    server_tokens off;
+    sendfile on;
+    tcp_nopush on;
+    open_file_cache max=1000 inactive=20s;
+    open_file_cache_valid 30s;
+    open_file_cache_min_uses 2;
+    open_file_cache_errors on;
+
+    # Gzip compression for static frontend assets.
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_min_length 256;
+    gzip_types
+        text/plain
+        text/css
+        text/javascript
+        application/javascript
+        application/json
+        application/xml
+        image/svg+xml
+        font/woff2;
 
     # OWASP-aligned security headers for frontend responses
     add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://s3.tradingview.com https://cdn.jsdelivr.net https://unpkg.com https://cdn.promotekit.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; img-src 'self' data: https: blob:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://api.finnhub.io https://www.alphavantage.co https://generativelanguage.googleapis.com https://promotekit.com; frame-src 'none'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self';" always;
@@ -287,6 +311,23 @@ server {
     add_header Permissions-Policy "geolocation=(), camera=(), microphone=(), payment=(), usb=(), fullscreen=(), display-capture=()" always;
     add_header Cross-Origin-Resource-Policy "same-site" always;
     add_header Cross-Origin-Opener-Policy "same-origin" always;
+
+    # Runtime config is generated during deploy, so browsers/CDNs must
+    # revalidate it. The SPA HTML shell is static and safe to cache briefly.
+    location = /runtime-config.js {
+        expires -1;
+        try_files /runtime-config.js =404;
+    }
+
+    location = /robots.txt {
+        expires 1h;
+        try_files /robots.txt =404;
+    }
+
+    location = /sitemap.xml {
+        expires 1h;
+        try_files /sitemap.xml =404;
+    }
 
     location /api {
         proxy_pass http://localhost:3000;
@@ -302,6 +343,7 @@ server {
     }
 
     location / {
+        expires 5m;
         try_files $uri $uri/ /index.html;
     }
 

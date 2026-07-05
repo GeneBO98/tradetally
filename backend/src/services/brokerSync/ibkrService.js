@@ -1309,9 +1309,13 @@ class IBKRService {
    * Prepare trade data for insertion
    */
   prepareTrade(tradeData) {
+    const sourceCurrency = tradeData.originalCurrency || tradeData.original_currency || tradeData.currency || 'USD';
+
     return {
       ...tradeData,
       broker: tradeData.broker || 'ibkr',
+      originalCurrency: String(sourceCurrency).toUpperCase(),
+      exchangeRate: tradeData.exchangeRate || tradeData.exchange_rate || 1.0,
       // Ensure required fields have defaults
       commission: tradeData.commission || 0,
       fees: tradeData.fees || 0
