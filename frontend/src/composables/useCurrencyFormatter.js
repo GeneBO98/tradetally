@@ -79,7 +79,8 @@ export function useCurrencyFormatter() {
       minimumFractionDigits = 2,
       maximumFractionDigits = 2,
       compact = false,
-      abs = false
+      abs = false,
+      currency = currencyCode.value
     } = options
     const digits = normalizeFractionDigits(minimumFractionDigits, maximumFractionDigits)
 
@@ -88,7 +89,8 @@ export function useCurrencyFormatter() {
     if (compact) {
       const absVal = Math.abs(num)
       const sign = num < 0 ? '-' : ''
-      const sym = currencySymbol.value
+      const configuredCurrency = String(currency || currencyCode.value).toUpperCase()
+      const sym = CURRENCY_OPTIONS.find(c => c.code === configuredCurrency)?.symbol || configuredCurrency
       const compactDigits = digits.maximumFractionDigits
       if (absVal >= 1e12) return `${sign}${sym}${(absVal / 1e12).toFixed(compactDigits)}T`
       if (absVal >= 1e9) return `${sign}${sym}${(absVal / 1e9).toFixed(compactDigits)}B`
@@ -98,7 +100,7 @@ export function useCurrencyFormatter() {
 
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: currencyCode.value,
+      currency: String(currency || currencyCode.value).toUpperCase(),
       minimumFractionDigits: digits.minimumFractionDigits,
       maximumFractionDigits: digits.maximumFractionDigits
     }).format(num)

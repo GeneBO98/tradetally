@@ -345,12 +345,12 @@
             </div>
             <div>
               <div class="text-gray-500 dark:text-gray-400">Entry</div>
-              <div class="text-gray-900 dark:text-white">{{ formatCurrency(trade.entry_price) }}</div>
+              <div class="text-gray-900 dark:text-white">{{ formatTradeCurrency(trade.entry_price, trade) }}</div>
             </div>
             <div>
               <div class="text-gray-500 dark:text-gray-400">Exit</div>
               <div class="text-gray-900 dark:text-white">
-                {{ trade.exit_price ? formatCurrency(trade.exit_price) : '-' }}
+                {{ trade.exit_price ? formatTradeCurrency(trade.exit_price, trade) : '-' }}
               </div>
             </div>
             <div>
@@ -358,7 +358,7 @@
               <div v-if="!isTradeOpen(trade)" class="font-medium" :class="[
                 trade.pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
               ]">
-                {{ formatSignedCurrency(trade.pnl) }}
+                {{ formatTradeSignedCurrency(trade.pnl, trade) }}
                 <span v-if="trade.pnl_percent" class="text-xs ml-1">
                   ({{ trade.pnl_percent > 0 ? '+' : '' }}{{ formatNumber(trade.pnl_percent) }}%)
                 </span>
@@ -370,7 +370,7 @@
               <div v-if="!isTradeOpen(trade)" class="font-medium" :class="[
                 getTradeGrossPnl(trade) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
               ]">
-                {{ formatSignedCurrency(getTradeGrossPnl(trade)) }}
+                {{ formatTradeSignedCurrency(getTradeGrossPnl(trade), trade) }}
               </div>
               <div v-else class="font-medium text-gray-400 dark:text-gray-500">-</div>
             </div>
@@ -379,7 +379,7 @@
               <div class="font-medium" :class="[
                 trade.unrealizedPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
               ]">
-                {{ formatSignedCurrency(trade.unrealizedPnl) }}
+                {{ formatTradeSignedCurrency(trade.unrealizedPnl, trade) }}
                 <span v-if="trade.unrealizedPnlPercent !== null && trade.unrealizedPnlPercent !== undefined" class="text-xs ml-1">
                   ({{ trade.unrealizedPnlPercent > 0 ? '+' : '' }}{{ formatNumber(trade.unrealizedPnlPercent) }}%)
                 </span>
@@ -507,7 +507,7 @@
                     <!-- Instrument type badge -->
                     <span v-if="trade.instrument_type === 'option'"
                       class="px-1.5 py-0.5 text-xs font-semibold rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400 whitespace-nowrap flex-shrink-0"
-                      :title="`${trade.option_type?.toUpperCase()} - Strike: ${formatCurrency(trade.strike_price)} - Exp: ${trade.expiration_date}`">
+                      :title="`${trade.option_type?.toUpperCase()} - Strike: ${formatTradeCurrency(trade.strike_price, trade)} - Exp: ${trade.expiration_date}`">
                       OPT
                     </span>
                     <span v-else-if="trade.instrument_type === 'future'"
@@ -581,14 +581,14 @@
                 <td v-else-if="column.visible && column.key === 'entry'" 
                     :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']" 
                     @click="$router.push(`/trades/${trade.id}`)">
-                  {{ formatCurrency(trade.entry_price) }}
+                  {{ formatTradeCurrency(trade.entry_price, trade) }}
                 </td>
 
                 <!-- Exit Column -->
                 <td v-else-if="column.visible && column.key === 'exit'" 
                     :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']" 
                     @click="$router.push(`/trades/${trade.id}`)">
-                  {{ trade.exit_price ? formatCurrency(trade.exit_price) : '-' }}
+                  {{ trade.exit_price ? formatTradeCurrency(trade.exit_price, trade) : '-' }}
                 </td>
 
                 <!-- Net P&L Column -->
@@ -598,7 +598,7 @@
                   <div v-if="!isTradeOpen(trade)" class="text-sm font-medium" :class="[
                     trade.pnl >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
-                    {{ formatSignedCurrency(trade.pnl) }}
+                    {{ formatTradeSignedCurrency(trade.pnl, trade) }}
                   </div>
                   <div v-if="!isTradeOpen(trade) && trade.pnl_percent" class="text-xs text-gray-500 dark:text-gray-400">
                     {{ trade.pnl_percent > 0 ? '+' : '' }}{{ formatNumber(trade.pnl_percent) }}%
@@ -613,7 +613,7 @@
                   <div v-if="!isTradeOpen(trade)" class="text-sm font-medium" :class="[
                     getTradeGrossPnl(trade) >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
-                    {{ formatSignedCurrency(getTradeGrossPnl(trade)) }}
+                    {{ formatTradeSignedCurrency(getTradeGrossPnl(trade), trade) }}
                   </div>
                   <div v-else class="text-sm text-gray-400 dark:text-gray-500">-</div>
                 </td>
@@ -626,7 +626,7 @@
                     <div class="text-sm font-medium" :class="[
                       trade.unrealizedPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
                     ]">
-                      {{ formatSignedCurrency(trade.unrealizedPnl) }}
+                      {{ formatTradeSignedCurrency(trade.unrealizedPnl, trade) }}
                     </div>
                     <div v-if="trade.unrealizedPnlPercent !== null && trade.unrealizedPnlPercent !== undefined" class="text-xs text-gray-500 dark:text-gray-400">
                       {{ trade.unrealizedPnlPercent > 0 ? '+' : '' }}{{ formatNumber(trade.unrealizedPnlPercent) }}%
@@ -713,13 +713,13 @@
                 <td v-else-if="column.visible && column.key === 'commission'" 
                     :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']" 
                     @click="$router.push(`/trades/${trade.id}`)">
-                  {{ trade.commission ? formatCurrency(trade.commission) : '-' }}
+                  {{ trade.commission ? formatTradeCurrency(trade.commission, trade) : '-' }}
                 </td>
                 
                 <td v-else-if="column.visible && column.key === 'fees'" 
                     :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']" 
                     @click="$router.push(`/trades/${trade.id}`)">
-                  {{ trade.fees ? formatCurrency(trade.fees) : '-' }}
+                  {{ trade.fees ? formatTradeCurrency(trade.fees, trade) : '-' }}
                 </td>
                 
                 <td v-else-if="column.visible && column.key === 'strategy'"
@@ -793,7 +793,7 @@
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div class="text-sm text-gray-900 dark:text-white font-mono">
-                    {{ (trade.stop_loss || trade.stopLoss) ? formatCurrency(trade.stop_loss || trade.stopLoss) : '-' }}
+                    {{ (trade.stop_loss || trade.stopLoss) ? formatTradeCurrency(trade.stop_loss || trade.stopLoss, trade) : '-' }}
                   </div>
                 </td>
 
@@ -801,7 +801,7 @@
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div class="text-sm text-gray-900 dark:text-white font-mono">
-                    {{ (trade.take_profit || trade.takeProfit) ? formatCurrency(trade.take_profit || trade.takeProfit) : '-' }}
+                    {{ (trade.take_profit || trade.takeProfit) ? formatTradeCurrency(trade.take_profit || trade.takeProfit, trade) : '-' }}
                   </div>
                 </td>
 
@@ -864,7 +864,7 @@
                 <td v-else-if="column.visible && column.key === 'strikePrice'"
                     :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  {{ trade.strike_price ? formatCurrency(trade.strike_price) : '-' }}
+                  {{ trade.strike_price ? formatTradeCurrency(trade.strike_price, trade) : '-' }}
                 </td>
 
                 <td v-else-if="column.visible && column.key === 'expirationDate'"
@@ -1105,6 +1105,18 @@ const { formatCurrency, currencySymbol, formatSignedCurrency } = useCurrencyForm
 const { formatTime: formatTimeTz, userTimezone } = useUserTimezone()
 const route = useRoute()
 const router = useRouter()
+
+function getTradeCurrency(trade) {
+  return (trade?.original_currency || trade?.originalCurrency || 'USD').toUpperCase()
+}
+
+function formatTradeCurrency(value, trade, options = {}) {
+  return formatCurrency(value, { ...options, currency: getTradeCurrency(trade) })
+}
+
+function formatTradeSignedCurrency(value, trade, options = {}) {
+  return formatSignedCurrency(value, { ...options, currency: getTradeCurrency(trade) })
+}
 
 function formatExcursionValue(trade, value) {
   const numeric = Number(value)

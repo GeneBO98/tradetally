@@ -91,9 +91,10 @@ class Trade {
       instrumentType = 'stock', strikePrice, expirationDate, optionType,
       contractSize, underlyingSymbol, contractMonth, contractYear,
       tickSize, pointValue, underlyingAsset, importId,
-      originalCurrency, exchangeRate, originalEntryPriceCurrency,
-      originalExitPriceCurrency, originalPnlCurrency, originalCommissionCurrency,
-      originalFeesCurrency,
+      originalCurrency, original_currency, exchangeRate, exchange_rate, originalEntryPriceCurrency,
+      original_entry_price_currency, originalExitPriceCurrency, original_exit_price_currency,
+      originalPnlCurrency, original_pnl_currency, originalCommissionCurrency, original_commission_currency,
+      originalFeesCurrency, original_fees_currency,
       stopLoss, takeProfit, takeProfitTargets, chartUrl,
       brokerConnectionId, accountIdentifier, account_identifier,
       conid, manualTargetHitFirst,
@@ -103,6 +104,8 @@ class Trade {
 
     // Use snake_case version if provided, fallback to camelCase for legacy support
     const finalAccountIdentifier = account_identifier || accountIdentifier;
+    const finalOriginalCurrency = (originalCurrency ?? original_currency ?? 'USD') || 'USD';
+    const finalExchangeRate = exchangeRate ?? exchange_rate ?? 1.0;
     const rawPostExitWindowOverrideMinutes = postExitWindowOverrideMinutes ?? post_exit_window_override_minutes ?? null;
     const finalPostExitWindowOverrideMinutes = rawPostExitWindowOverrideMinutes === '' ? null : rawPostExitWindowOverrideMinutes;
     const rawPostExitMae = postExitMae ?? post_exit_mae ?? null;
@@ -587,9 +590,12 @@ class Trade {
       contractSize || (instrumentType === 'option' ? 100 : null), normalizeUnderlyingSymbol(underlyingSymbol),
       contractMonth || null, contractYear || null, roundToDbPrecision(finalTickSize), roundToDbPrecision(finalPointValue), finalUnderlyingAsset || null,
       importId || null,
-      originalCurrency || 'USD', roundToDbPrecision(exchangeRate) || 1.0,
-      roundToDbPrecision(originalEntryPriceCurrency), roundToDbPrecision(originalExitPriceCurrency),
-      roundToDbPrecision(originalPnlCurrency), roundToDbPrecision(originalCommissionCurrency), roundToDbPrecision(originalFeesCurrency),
+      String(finalOriginalCurrency).toUpperCase(), roundToDbPrecision(finalExchangeRate) || 1.0,
+      roundToDbPrecision(originalEntryPriceCurrency ?? original_entry_price_currency),
+      roundToDbPrecision(originalExitPriceCurrency ?? original_exit_price_currency),
+      roundToDbPrecision(originalPnlCurrency ?? original_pnl_currency),
+      roundToDbPrecision(originalCommissionCurrency ?? original_commission_currency),
+      roundToDbPrecision(originalFeesCurrency ?? original_fees_currency),
       roundToDbPrecision(finalStopLoss), roundToDbPrecision(finalTakeProfit), JSON.stringify(aggregatedTakeProfitTargets || []),
       roundToDbPrecision(rValue), chartUrl || null, brokerConnectionId || null, finalAccountIdentifier ? String(finalAccountIdentifier).substring(0, 50) : null,
       conid || null,

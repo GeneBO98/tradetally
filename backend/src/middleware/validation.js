@@ -34,7 +34,14 @@ const normalizeFieldNames = (body) => {
     tick_size: 'tickSize',
     point_value: 'pointValue',
     stop_loss: 'stopLoss',
-    take_profit: 'takeProfit'
+    take_profit: 'takeProfit',
+    original_currency: 'originalCurrency',
+    exchange_rate: 'exchangeRate',
+    original_entry_price_currency: 'originalEntryPriceCurrency',
+    original_exit_price_currency: 'originalExitPriceCurrency',
+    original_pnl_currency: 'originalPnlCurrency',
+    original_commission_currency: 'originalCommissionCurrency',
+    original_fees_currency: 'originalFeesCurrency'
   };
   
   Object.keys(fieldMappings).forEach(snakeCase => {
@@ -101,6 +108,7 @@ const nullableDate = Joi.alternatives().try(
   Joi.valid(null, '')
 );
 const nullableNumber = Joi.alternatives().try(Joi.number(), Joi.valid(null, ''));
+const currencyCode = Joi.string().trim().uppercase().pattern(/^[A-Z]{3}$/).allow(null, '');
 const aiProviderSchema = Joi.string().valid('gemini', 'claude', 'openai', 'deepseek', 'kimi', 'ollama', 'lmstudio', 'perplexity', 'local');
 
 const schemas = {
@@ -182,6 +190,13 @@ const schemas = {
     entryCommission: Joi.number().default(0),  // Can be negative for rebates
     exitCommission: Joi.number().default(0),  // Can be negative for rebates
     fees: Joi.number().default(0),  // Can be negative for rebates
+    originalCurrency: currencyCode.default('USD'),
+    exchangeRate: Joi.number().positive().allow(null, ''),
+    originalEntryPriceCurrency: Joi.number().allow(null, ''),
+    originalExitPriceCurrency: Joi.number().allow(null, ''),
+    originalPnlCurrency: Joi.number().allow(null, ''),
+    originalCommissionCurrency: Joi.number().allow(null, ''),
+    originalFeesCurrency: Joi.number().allow(null, ''),
     mae: Joi.number().allow(null, ''),
     mfe: Joi.number().allow(null, ''),
     postExitMae: Joi.number().allow(null, ''),
@@ -333,6 +348,13 @@ const schemas = {
     entryCommission: Joi.number(),  // Can be negative for rebates
     exitCommission: Joi.number(),  // Can be negative for rebates
     fees: Joi.number(),  // Can be negative for rebates
+    originalCurrency: currencyCode,
+    exchangeRate: Joi.number().positive().allow(null, ''),
+    originalEntryPriceCurrency: Joi.number().allow(null, ''),
+    originalExitPriceCurrency: Joi.number().allow(null, ''),
+    originalPnlCurrency: Joi.number().allow(null, ''),
+    originalCommissionCurrency: Joi.number().allow(null, ''),
+    originalFeesCurrency: Joi.number().allow(null, ''),
     mae: Joi.number().allow(null, ''),
     mfe: Joi.number().allow(null, ''),
     postExitMae: Joi.number().allow(null, ''),
