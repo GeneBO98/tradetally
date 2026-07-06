@@ -216,7 +216,7 @@ class SchwabMarketData {
       };
 
       // Cache for 30 seconds (real-time data shouldn't be cached too long)
-      cache.set(cacheKey, result, 30);
+      cache.set(cacheKey, result, 30 * 1000);
 
       return result;
     } catch (error) {
@@ -451,7 +451,7 @@ class SchwabMarketData {
       }));
 
       // Cache for 5 minutes
-      cache.set(cacheKey, result, 300);
+      cache.set(cacheKey, result, 5 * 60 * 1000);
 
       return result;
     } catch (error) {

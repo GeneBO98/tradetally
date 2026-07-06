@@ -113,7 +113,7 @@ class CusipQueueManager {
     console.log(`CUSIP ${cusip} successfully resolved to ${ticker} - Updated ${updateResult.rowCount} trades`);
     
     // Cache the resolution for future use
-    await cache.set('cusip_resolution', cusip, ticker, 7 * 24 * 60 * 60); // 7 days TTL
+    await cache.set('cusip_resolution', cusip, ticker, 7 * 24 * 60 * 60 * 1000); // 7 days TTL
   }
 
   /**

@@ -120,19 +120,31 @@ class FmpClient {
       return response.data;
     };
 
-    try {
-      return await this.scheduler.schedule(executeRequest, requestContext);
-    } catch (error) {
-      if (error.code && String(error.code).startsWith('FINNHUB_SCHEDULER_')) {
+    const MAX_RATE_LIMIT_RETRIES = 2;
+    let rateLimitRetries = 0;
+
+    while (true) {
+      try {
+        return await this.scheduler.schedule(executeRequest, requestContext);
+      } catch (error) {
+        if (error.code && String(error.code).startsWith('FINNHUB_SCHEDULER_')) {
+          throw error;
+        }
+        if (error.response) {
+          // A 429 puts the scheduler into cooldown; re-queue the request and
+          // let the scheduler pace the retry once the provider window clears.
+          if (error.response.status === 429 && rateLimitRetries < MAX_RATE_LIMIT_RETRIES) {
+            rateLimitRetries++;
+            console.warn(`[FMP] 429 on ${endpoint}, re-queueing (retry ${rateLimitRetries}/${MAX_RATE_LIMIT_RETRIES})`);
+            continue;
+          }
+          if (error.response.status === 429) {
+            throw new Error(`FMP API rate limit exceeded: ${error.response.status}`);
+          }
+          throw new Error(`FMP API error: ${error.response.status} - ${error.response.data?.error || error.response.statusText || 'Unknown error'}`);
+        }
         throw error;
       }
-      if (error.response) {
-        if (error.response.status === 429) {
-          throw new Error(`FMP API rate limit exceeded: ${error.response.status}`);
-        }
-        throw new Error(`FMP API error: ${error.response.status} - ${error.response.data?.error || error.response.statusText || 'Unknown error'}`);
-      }
-      throw error;
     }
   }
 
@@ -520,8 +532,8 @@ class FmpClient {
   async getStockSplits(symbol, from, to, options = {}) {
     if (!this.apiKey) return [];
     const symbolUpper = symbol.toUpperCase();
-    const cacheKey = `fmp_stock_splits_${symbolUpper}_${from}_${to}`;
-    const cached = await cache.get(cacheKey);
+    const cacheKey = `fmp_${symbolUpper}_${from}_${to}`;
+    const cached = await cache.get('stock_splits', cacheKey);
     if (cached) return cached;
 
     const data = await this.makeRequest('/splits', { symbol: symbolUpper, from, to }, {
@@ -537,7 +549,7 @@ class FmpClient {
       toFactor: asNumber(row.denominator ?? row.toFactor),
       ratio: row.ratio || null
     }));
-    await cache.set(cacheKey, splits, 86400);
+    await cache.set('stock_splits', cacheKey, splits, 24 * 60 * 60 * 1000);
     return splits;
   }
 
@@ -578,7 +590,9 @@ class FmpClient {
     const row = (data?.historical || data || [])[0];
     const rate = asNumber(row?.close ?? row?.price);
     if (!rate) throw new Error(`No forex rate available for ${baseUpper}/${targetUpper} on ${formattedDate}`);
-    await cache.set('forex_rates', cacheKey, rate);
+    // Explicit TTL: the value is numeric, so the 3-arg form would be misread
+    // as a direct-key set with a TTL
+    await cache.set('forex_rates', cacheKey, rate, 24 * 60 * 60 * 1000);
     return rate;
   }
 

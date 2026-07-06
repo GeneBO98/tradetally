@@ -101,33 +101,39 @@ class FinnhubClient {
       return response.data;
     };
 
-    try {
-      return await this.scheduler.schedule(executeRequest, requestContext);
-    } catch (error) {
-      if (error.code && String(error.code).startsWith('FINNHUB_SCHEDULER_')) {
-        throw error;
-      }
-      if (error.response) {
-        // Handle 429 rate limit errors with exponential backoff
-        if (error.response.status === 429) {
-          console.log('Rate limit hit, waiting 5 seconds before retry...');
-          await new Promise(resolve => setTimeout(resolve, 5000));
-          throw new Error(`Finnhub API rate limit exceeded: ${error.response.status} - ${error.response.data?.error || 'Rate limit reached'}`);
+    const MAX_RATE_LIMIT_RETRIES = 2;
+    let rateLimitRetries = 0;
+    let serverErrorRetried = false;
+
+    while (true) {
+      try {
+        return await this.scheduler.schedule(executeRequest, requestContext);
+      } catch (error) {
+        if (error.code && String(error.code).startsWith('FINNHUB_SCHEDULER_')) {
+          throw error;
         }
-        // Handle 502/503/504 server errors - these are temporary, retry once
-        if ([502, 503, 504].includes(error.response.status)) {
-          console.log(`Finnhub API server error ${error.response.status}, retrying once...`);
-          await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
-          try {
-            return await this.makeRequest(endpoint, params, context);
-          } catch (retryError) {
-            // If retry also fails, throw the original error
-            throw new Error(`Finnhub API error: ${error.response.status} - ${error.response.data?.error || 'Server error (retry failed)'}`);
+        if (error.response) {
+          // A 429 puts the scheduler into cooldown; re-queue the request and
+          // let the scheduler pace the retry once the provider window clears.
+          if (error.response.status === 429 && rateLimitRetries < MAX_RATE_LIMIT_RETRIES) {
+            rateLimitRetries++;
+            console.warn(`[FINNHUB] 429 on ${endpoint}, re-queueing (retry ${rateLimitRetries}/${MAX_RATE_LIMIT_RETRIES})`);
+            continue;
           }
+          if (error.response.status === 429) {
+            throw new Error(`Finnhub API rate limit exceeded: ${error.response.status} - ${error.response.data?.error || 'Rate limit reached'}`);
+          }
+          // Handle 502/503/504 server errors - these are temporary, retry once
+          if ([502, 503, 504].includes(error.response.status) && !serverErrorRetried) {
+            serverErrorRetried = true;
+            console.log(`Finnhub API server error ${error.response.status}, retrying once...`);
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+            continue;
+          }
+          throw new Error(`Finnhub API error: ${error.response.status} - ${error.response.data?.error || 'Unknown error'}`);
         }
-        throw new Error(`Finnhub API error: ${error.response.status} - ${error.response.data?.error || 'Unknown error'}`);
+        throw new Error(`Finnhub request failed: ${error.message}`);
       }
-      throw new Error(`Finnhub request failed: ${error.message}`);
     }
   }
 
@@ -451,9 +457,22 @@ class FinnhubClient {
     return results;
   }
 
-  async getCompanyProfile(symbol) {
+  // Enrichment context for endpoints that feed background pipelines
+  // (fundamentals, profiles, news). They queue behind active user requests
+  // and trickle out under the rate limit instead of competing with quotes.
+  enrichmentContext(source, options = {}) {
+    return {
+      source: options.source || source,
+      priority: options.priority ?? FinnhubPriority.BACKGROUND_ENRICHMENT,
+      background: options.background ?? true,
+      userId: options.userId,
+      maxQueueWaitMs: options.maxQueueWaitMs
+    };
+  }
+
+  async getCompanyProfile(symbol, options = {}) {
     const symbolUpper = symbol.toUpperCase();
-    
+
     // Check cache first (24 hour TTL for company profiles)
     const cached = await cache.get('company_profile', symbolUpper);
     if (cached) {
@@ -461,7 +480,7 @@ class FinnhubClient {
     }
 
     try {
-      const profile = await this.makeRequest('/stock/profile2', { symbol: symbolUpper });
+      const profile = await this.makeRequest('/stock/profile2', { symbol: symbolUpper }, this.enrichmentContext('company_profile', options));
       
       // Cache the result
       await cache.set('company_profile', symbolUpper, profile);
@@ -473,7 +492,7 @@ class FinnhubClient {
     }
   }
 
-  async getCompanyNews(symbol, fromDate = null, toDate = null) {
+  async getCompanyNews(symbol, fromDate = null, toDate = null, options = {}) {
     const symbolUpper = symbol.toUpperCase();
     const to = toDate || new Date().toISOString().split('T')[0];
     const from = fromDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -488,11 +507,11 @@ class FinnhubClient {
     }
 
     try {
-      const news = await this.makeRequest('/company-news', { 
+      const news = await this.makeRequest('/company-news', {
         symbol: symbolUpper,
         from,
         to
-      });
+      }, this.enrichmentContext('company_news', options));
       
       // Cache the result
       await cache.set('company_news', cacheKey, news);
@@ -1384,8 +1403,8 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
       return [];
     }
 
-    const cacheKey = `stock_splits_${symbol}_${from}_${to}`;
-    const cached = await cache.get(cacheKey);
+    const cacheKey = `${symbol}_${from}_${to}`;
+    const cached = await cache.get('stock_splits', cacheKey);
     if (cached) {
       console.log(`Using cached stock splits for ${symbol}`);
       return cached;
@@ -1408,7 +1427,7 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
       });
       
       // Cache for 24 hours since splits are historical data
-      await cache.set(cacheKey, response, 86400);
+      await cache.set('stock_splits', cacheKey, response, 24 * 60 * 60 * 1000);
       
       return response || [];
     } catch (error) {
@@ -1639,8 +1658,9 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
 
       const rate = parseFloat(response.quote[targetUpper]);
 
-      // Cache the result
-      await cache.set('forex_rates', cacheKey, rate);
+      // Cache the result (explicit TTL: the value is numeric, so the 3-arg
+      // form would be misread as a direct-key set with a TTL)
+      await cache.set('forex_rates', cacheKey, rate, 24 * 60 * 60 * 1000);
 
       console.log(`Finnhub forex rate for ${baseUpper}/${targetUpper} on ${formattedDate}: ${rate}`);
       return rate;
@@ -1704,7 +1724,7 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
    * @param {string} frequency - 'annual' or 'quarterly'
    * @returns {Promise<Object>} Financial statements data
    */
-  async getFinancialStatements(symbol, frequency = 'annual') {
+  async getFinancialStatements(symbol, frequency = 'annual', options = {}) {
     const symbolUpper = symbol.toUpperCase();
 
     // Create cache key
@@ -1724,7 +1744,7 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
         symbol: symbolUpper,
         statement: 'bs,ic,cf', // Balance sheet, income statement, cash flow
         freq: frequency
-      });
+      }, this.enrichmentContext('financial_statements', options));
 
       if (!data || !data.financials || data.financials.length === 0) {
         console.warn(`[FINANCIALS] No financial data available for ${symbolUpper}`);
@@ -1748,7 +1768,7 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
    * @param {string} symbol - Stock symbol
    * @returns {Promise<Object>} Key financial metrics
    */
-  async getBasicFinancials(symbol) {
+  async getBasicFinancials(symbol, options = {}) {
     const symbolUpper = symbol.toUpperCase();
 
     // Create cache key
@@ -1767,7 +1787,7 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
       const data = await this.makeRequest('/stock/metric', {
         symbol: symbolUpper,
         metric: 'all'
-      });
+      }, this.enrichmentContext('basic_financials', options));
 
       if (!data || !data.metric) {
         console.warn(`[METRICS] No metrics data available for ${symbolUpper}`);
@@ -1792,7 +1812,7 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
    * @param {string} frequency - 'annual' or 'quarterly'
    * @returns {Promise<Object>} Reported financial data
    */
-  async getFinancialsReported(symbol, frequency = 'annual') {
+  async getFinancialsReported(symbol, frequency = 'annual', options = {}) {
     const symbolUpper = symbol.toUpperCase();
 
     // Create cache key
@@ -1811,7 +1831,7 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
       const data = await this.makeRequest('/stock/financials-reported', {
         symbol: symbolUpper,
         freq: frequency
-      });
+      }, this.enrichmentContext('financials_reported', options));
 
       if (!data || !data.data || data.data.length === 0) {
         console.warn(`[REPORTED] No reported financial data available for ${symbolUpper}`);
@@ -1835,7 +1855,7 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
    * @param {string} symbol - Crypto symbol (e.g., 'BTC', 'ETH')
    * @returns {Promise<Object>} Crypto profile data
    */
-  async getCryptoProfile(symbol) {
+  async getCryptoProfile(symbol, options = {}) {
     const symbolUpper = symbol.toUpperCase();
 
     // Create cache key
@@ -1853,7 +1873,7 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
 
       const data = await this.makeRequest('/crypto/profile', {
         symbol: symbolUpper
-      });
+      }, this.enrichmentContext('crypto_profile', options));
 
       if (!data || !data.name) {
         console.warn(`[CRYPTO] No profile data available for ${symbolUpper}`);
@@ -1879,7 +1899,7 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
    * @param {string} to - End date (YYYY-MM-DD)
    * @returns {Promise<Array>} Array of dividend objects with date, amount, payDate, etc.
    */
-  async getDividends(symbol, from = null, to = null) {
+  async getDividends(symbol, from = null, to = null, options = {}) {
     const symbolUpper = symbol.toUpperCase();
 
     // Default to last 2 years if no dates provided
@@ -1909,7 +1929,7 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
         symbol: symbolUpper,
         from: from,
         to: to
-      });
+      }, this.enrichmentContext('dividends', options));
 
       // Finnhub returns an array of dividend objects:
       // { symbol, date, amount, adjustedAmount, payDate, recordDate, declarationDate, currency }

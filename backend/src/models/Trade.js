@@ -3757,7 +3757,7 @@ class Trade {
 
       // Record successful API call for circuit breaker
       try {
-        await cache.set(circuitBreakerKey, { failures: 0, lastSuccess: Date.now() }, 3600); // Reset failures on success
+        await cache.set(circuitBreakerKey, { failures: 0, lastSuccess: Date.now() }, 3600 * 1000); // Reset failures on success
       } catch (cacheError) {
         // Ignore cache errors
       }
@@ -3772,7 +3772,7 @@ class Trade {
         const circuitBreakerData = await cache.get(circuitBreakerKey) || { failures: 0 };
         circuitBreakerData.failures = (circuitBreakerData.failures || 0) + 1;
         circuitBreakerData.lastFailure = Date.now();
-        await cache.set(circuitBreakerKey, circuitBreakerData, 3600); // Store for 1 hour
+        await cache.set(circuitBreakerKey, circuitBreakerData, 3600 * 1000); // Store for 1 hour
         
         if (circuitBreakerData.failures >= 10) {
           console.log(`[ERROR] Circuit breaker OPENED: ${circuitBreakerData.failures} Finnhub failures`);
