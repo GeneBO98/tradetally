@@ -48,10 +48,20 @@ const NAMESPACE_TTLS = {
   chart_daily: HOUR
 };
 
-const SWEEP_INTERVAL_MS = 10 * MINUTE;
+const SWEEP_INTERVAL_MS = MINUTE;
+
+// Hard cap on stored entries. Without it the store can grow without bound
+// between sweeps under symbol churn (day-long TTLs across thousands of
+// symbols). When the cap is hit, expired entries are evicted first, then the
+// entries closest to expiry.
+const MAX_ENTRIES = 5000;
 
 const cache = {
   data: {},
+
+  // Timestamp of the last capacity-eviction warning (rate-limited to avoid
+  // log spam when the store sits at the cap under sustained churn)
+  _lastEvictionWarnAt: 0,
 
   get(namespaceOrKey, keyOrUndefined) {
     const actualKey = keyOrUndefined !== undefined ? `${namespaceOrKey}:${keyOrUndefined}` : namespaceOrKey;
@@ -88,10 +98,38 @@ const cache = {
       actualTtl = DEFAULT_TTL;
     }
 
+    // Enforce the entry cap before inserting a NEW key (overwrites are free)
+    if (this.data[actualKey] === undefined && Object.keys(this.data).length >= MAX_ENTRIES) {
+      this.evictForCapacity();
+    }
+
     this.data[actualKey] = {
       value: actualValue,
       expiry: Date.now() + actualTtl,
     };
+  },
+
+  // Make room for one new entry: sweep expired entries first, then evict the
+  // entries with the soonest expiry until the store is below MAX_ENTRIES.
+  evictForCapacity() {
+    this.sweepExpired();
+
+    const keys = Object.keys(this.data);
+    const overflow = keys.length - MAX_ENTRIES + 1;
+    if (overflow <= 0) {
+      return;
+    }
+
+    keys.sort((a, b) => this.data[a].expiry - this.data[b].expiry);
+    for (let i = 0; i < overflow; i++) {
+      delete this.data[keys[i]];
+    }
+
+    const now = Date.now();
+    if (now - this._lastEvictionWarnAt >= MINUTE) {
+      this._lastEvictionWarnAt = now;
+      console.warn(`[CACHE] Entry cap of ${MAX_ENTRIES} reached, evicting soonest-expiry entries`);
+    }
   },
 
   // Get cached value even if expired (for stale-while-revalidate pattern)

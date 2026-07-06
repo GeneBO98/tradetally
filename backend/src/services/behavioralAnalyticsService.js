@@ -165,83 +165,137 @@ class BehavioralAnalyticsService {
 
     const eventsResult = await db.query(eventsQuery, eventsParams);
 
-    // Enhance events with trade details
-    for (let event of eventsResult.rows) {
+    // Enhance events with trade details. Batch the lookups: collect all
+    // trigger/revenge trade ids across the page of events, run each query
+    // once with = ANY($1), then map results back per event in JS.
+    const events = eventsResult.rows;
+
+    const triggerTradeIds = [...new Set(
+      events.filter(event => event.trigger_trade_id).map(event => event.trigger_trade_id)
+    )];
+    const revengeTradeIds = [...new Set(
+      events.flatMap(event => (event.revenge_trades && event.revenge_trades.length > 0) ? event.revenge_trades : [])
+    )];
+
+    // Trigger trade info with calculated P&L (ownership-checked)
+    const triggerTradesById = new Map();
+    if (triggerTradeIds.length > 0) {
+      const triggerQuery = `
+        SELECT
+          t.id, COALESCE(NULLIF(t.underlying_symbol, ''), t.symbol) as symbol,
+          t.entry_price, t.exit_price, t.quantity, t.side, t.entry_time, t.exit_time,
+          COALESCE(tpg.total_commission, t.commission) as commission,
+          COALESCE(tpg.total_fees, t.fees) as fees,
+          COALESCE(tpg.total_pnl, t.pnl) as pnl,
+          t.position_group_id,
+          tpg.detected_strategy as group_detected_strategy,
+          tpg.leg_count as group_leg_count
+        FROM trades t
+        LEFT JOIN trade_position_groups tpg ON tpg.id = t.position_group_id
+        WHERE t.id = ANY($1) AND t.user_id = $2
+      `;
+      const triggerResult = await db.query(triggerQuery, [triggerTradeIds, userId]);
+      for (const row of triggerResult.rows) {
+        triggerTradesById.set(row.id, row);
+      }
+    }
+
+    // Trigger symbols for pattern classification (the old per-event subquery
+    // did not filter by user, so this lookup does not either)
+    const triggerSymbolsById = new Map();
+    if (triggerTradeIds.length > 0 && revengeTradeIds.length > 0) {
+      const triggerSymbolsResult = await db.query(
+        `SELECT id, COALESCE(NULLIF(underlying_symbol, ''), symbol) as symbol
+         FROM trades
+         WHERE id = ANY($1)`,
+        [triggerTradeIds]
+      );
+      for (const row of triggerSymbolsResult.rows) {
+        triggerSymbolsById.set(row.id, row.symbol);
+      }
+    }
+
+    // Revenge trade details for all events; pattern_type depends on the
+    // event's trigger trade, so it is filled in per event below
+    const revengeTradesById = new Map();
+    if (revengeTradeIds.length > 0) {
+      const revengeTradesQuery = `
+        SELECT
+          t.id as trade_id, COALESCE(NULLIF(t.underlying_symbol, ''), t.symbol) as symbol,
+          t.entry_price, t.exit_price, t.quantity, t.side,
+          t.entry_time, t.exit_time,
+          COALESCE(tpg.total_pnl, t.pnl) as pnl,
+          COALESCE(tpg.total_commission, t.commission) as commission,
+          COALESCE(tpg.total_fees, t.fees) as fees,
+          t.position_group_id,
+          tpg.detected_strategy as group_detected_strategy,
+          tpg.leg_count as group_leg_count,
+          -- Calculate total cost/value
+          (t.quantity * t.entry_price) as total_cost,
+          -- Calculate gross P&L (before fees)
+          CASE
+            WHEN t.side = 'long' THEN (t.exit_price - t.entry_price) * t.quantity
+            WHEN t.side = 'short' THEN (t.entry_price - t.exit_price) * t.quantity
+            ELSE 0
+          END as gross_pnl,
+          -- Calculate percentage return
+          CASE
+            WHEN t.side = 'long' THEN ((t.exit_price - t.entry_price) / t.entry_price) * 100
+            WHEN t.side = 'short' THEN ((t.entry_price - t.exit_price) / t.entry_price) * 100
+            ELSE 0
+          END as return_percent,
+          -- Calculate total fees
+          COALESCE(tpg.total_commission, t.commission, 0) + COALESCE(tpg.total_fees, t.fees, 0) as total_fees,
+          -- Pattern classification is event-specific and computed in JS
+          NULL::text as pattern_type,
+          'medium' as severity,
+          0.8 as confidence_score,
+          t.entry_time as detected_at
+        FROM trades t
+        LEFT JOIN trade_position_groups tpg ON tpg.id = t.position_group_id
+        WHERE t.id = ANY($1) AND t.user_id = $2
+      `;
+      const revengeResult = await db.query(revengeTradesQuery, [revengeTradeIds, userId]);
+      for (const row of revengeResult.rows) {
+        revengeTradesById.set(row.trade_id, row);
+      }
+    }
+
+    for (let event of events) {
       // Get trigger trade info with calculated P&L
       if (event.trigger_trade_id) {
-        const triggerQuery = `
-          SELECT 
-            t.id, COALESCE(NULLIF(t.underlying_symbol, ''), t.symbol) as symbol,
-            t.entry_price, t.exit_price, t.quantity, t.side, t.entry_time, t.exit_time,
-            COALESCE(tpg.total_commission, t.commission) as commission,
-            COALESCE(tpg.total_fees, t.fees) as fees,
-            COALESCE(tpg.total_pnl, t.pnl) as pnl,
-            t.position_group_id,
-            tpg.detected_strategy as group_detected_strategy,
-            tpg.leg_count as group_leg_count
-          FROM trades t
-          LEFT JOIN trade_position_groups tpg ON tpg.id = t.position_group_id
-          WHERE t.id = $1 AND t.user_id = $2
-        `;
-        const triggerResult = await db.query(triggerQuery, [event.trigger_trade_id, userId]);
-        if (triggerResult.rows[0]) {
-          event.trigger_trade = triggerResult.rows[0];
+        const triggerTrade = triggerTradesById.get(event.trigger_trade_id);
+        if (triggerTrade) {
+          event.trigger_trade = triggerTrade;
         }
       }
 
       // Get revenge trade details from the revenge_trades array
       if (event.revenge_trades && event.revenge_trades.length > 0) {
-        const revengeTradesQuery = `
-          SELECT 
-            t.id as trade_id, COALESCE(NULLIF(t.underlying_symbol, ''), t.symbol) as symbol,
-            t.entry_price, t.exit_price, t.quantity, t.side,
-            t.entry_time, t.exit_time,
-            COALESCE(tpg.total_pnl, t.pnl) as pnl,
-            COALESCE(tpg.total_commission, t.commission) as commission,
-            COALESCE(tpg.total_fees, t.fees) as fees,
-            t.position_group_id,
-            tpg.detected_strategy as group_detected_strategy,
-            tpg.leg_count as group_leg_count,
-            -- Calculate total cost/value
-            (t.quantity * t.entry_price) as total_cost,
-            -- Calculate gross P&L (before fees)
-            CASE 
-              WHEN t.side = 'long' THEN (t.exit_price - t.entry_price) * t.quantity
-              WHEN t.side = 'short' THEN (t.entry_price - t.exit_price) * t.quantity
-              ELSE 0
-            END as gross_pnl,
-            -- Calculate percentage return
-            CASE 
-              WHEN t.side = 'long' THEN ((t.exit_price - t.entry_price) / t.entry_price) * 100
-              WHEN t.side = 'short' THEN ((t.entry_price - t.exit_price) / t.entry_price) * 100
-              ELSE 0
-            END as return_percent,
-            -- Calculate total fees
-            COALESCE(tpg.total_commission, t.commission, 0) + COALESCE(tpg.total_fees, t.fees, 0) as total_fees,
-            -- Pattern classification
-            CASE 
-              WHEN COALESCE(NULLIF(t.underlying_symbol, ''), t.symbol) = (
-                SELECT COALESCE(NULLIF(trigger.underlying_symbol, ''), trigger.symbol)
-                FROM trades trigger
-                WHERE trigger.id = $1
-              ) THEN 'same_symbol_revenge'
-              ELSE 'emotional_reactive_trading'
-            END as pattern_type,
-            'medium' as severity,
-            0.8 as confidence_score,
-            t.entry_time as detected_at
-          FROM trades t
-          LEFT JOIN trade_position_groups tpg ON tpg.id = t.position_group_id
-          WHERE t.id = ANY($2) AND t.user_id = $3
-          ORDER BY t.entry_time DESC
-          LIMIT 10
-        `;
-        const patternsResult = await db.query(revengeTradesQuery, [
-          event.trigger_trade_id, 
-          event.revenge_trades,
-          userId
-        ]);
-        event.related_patterns = patternsResult.rows;
+        const triggerSymbol = event.trigger_trade_id
+          ? triggerSymbolsById.get(event.trigger_trade_id)
+          : undefined;
+
+        const eventRows = [...new Set(event.revenge_trades)]
+          .map(tradeId => revengeTradesById.get(tradeId))
+          .filter(row => row !== undefined);
+
+        // ORDER BY entry_time DESC (NULLs first, matching Postgres) LIMIT 10
+        eventRows.sort((a, b) => {
+          const aTime = a.entry_time ? new Date(a.entry_time).getTime() : null;
+          const bTime = b.entry_time ? new Date(b.entry_time).getTime() : null;
+          if (aTime === bTime) return 0;
+          if (aTime === null) return -1;
+          if (bTime === null) return 1;
+          return bTime - aTime;
+        });
+
+        event.related_patterns = eventRows.slice(0, 10).map(row => ({
+          ...row,
+          pattern_type: (triggerSymbol != null && row.symbol === triggerSymbol)
+            ? 'same_symbol_revenge'
+            : 'emotional_reactive_trading'
+        }));
       } else {
         event.related_patterns = [];
       }

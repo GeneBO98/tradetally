@@ -1,5 +1,6 @@
 const db = require('../config/database');
 const TierService = require('./tierService');
+const tierCache = require('./tierCache');
 const User = require('../models/User');
 const EmailService = require('./emailService');
 const invoiceNinjaSyncService = require('./invoiceNinjaSyncService');
@@ -23,6 +24,7 @@ class BillingService {
     `;
 
     const result = await db.query(deleteQuery, [userId]);
+    tierCache.invalidate(userId);
     return result.rowCount;
   }
 
@@ -644,17 +646,18 @@ class BillingService {
 
   // Handle subscription deleted
   static async handleSubscriptionDeleted(subscription) {
-    await TierService.handleSubscriptionUpdate(subscription.id, 'canceled');
-    
+    const userId = await TierService.handleSubscriptionUpdate(subscription.id, 'canceled');
+
     // Update subscription status in database
     const updateQuery = `
-      UPDATE subscriptions 
-      SET status = 'canceled', 
+      UPDATE subscriptions
+      SET status = 'canceled',
           canceled_at = CURRENT_TIMESTAMP,
           updated_at = CURRENT_TIMESTAMP
       WHERE stripe_subscription_id = $1
     `;
     await db.query(updateQuery, [subscription.id]);
+    tierCache.invalidate(userId);
   }
 
   // Handle successful payment
@@ -804,6 +807,7 @@ class BillingService {
     ];
 
     const result = await db.query(query, values);
+    tierCache.invalidate(userId);
     return result.rows[0];
   }
 

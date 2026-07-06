@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const db = require('../config/database');
+const tierCache = require('./tierCache');
 const { getTierLimits, hasReachedLimit, getRemainingQuota, PRICING, BROKER_SYNC_ACCESS } = require('../config/tierLimits');
 
 class TierService {
@@ -80,8 +81,21 @@ class TierService {
     return value === true || value === 'true';
   }
 
-  // Get effective tier for a user (optimized: single query when possible)
+  // Get effective tier for a user. Results are memoized briefly (see
+  // services/tierCache.js) because this runs on nearly every market-data
+  // request; tier-changing writes call invalidateTierCache below.
   static async getUserTier(userId, hostHeader = null) {
+    return tierCache.getOrLoad(userId, hostHeader, () => this._fetchUserTier(userId, hostHeader));
+  }
+
+  // Drop memoized tier entries for a user after any tier-changing write
+  // (users.tier, tier_overrides, subscriptions).
+  static invalidateTierCache(userId) {
+    tierCache.invalidate(userId);
+  }
+
+  // Uncached tier lookup (optimized: single query when possible)
+  static async _fetchUserTier(userId, hostHeader = null) {
     // If billing is disabled (self-hosted), always return 'pro'
     const billingEnabled = await this.isBillingEnabled(hostHeader);
     if (!billingEnabled) {
@@ -262,6 +276,9 @@ class TierService {
         await User.updateTier(userId, 'free');
       }
     }
+
+    // Subscription status feeds directly into getUserTier - drop memoized entries
+    this.invalidateTierCache(userId);
 
     return userId;
   }
@@ -499,7 +516,8 @@ class TierService {
     await User.updateTier(userId, tier);
     // Create a permanent tier override (no expiry) so getUserTier picks it up
     await User.createTierOverride(userId, tier, reason, null, null);
-    console.log(`✅ TierService: Set user ${userId} to tier '${tier}' (${reason})`);
+    this.invalidateTierCache(userId);
+    console.log(`[SUCCESS] TierService: Set user ${userId} to tier '${tier}' (${reason})`);
   }
 }
 

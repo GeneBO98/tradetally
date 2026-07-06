@@ -1,6 +1,10 @@
-jest.mock('../../src/config/database', () => ({
-  query: jest.fn()
-}));
+jest.mock('../../src/config/database', () => {
+  const query = jest.fn();
+  return {
+    query,
+    withTransaction: jest.fn(async (fn) => fn({ query }))
+  };
+});
 
 jest.mock('../../src/utils/logger', () => ({
   info: jest.fn(),
@@ -49,10 +53,7 @@ describe('health controller normalization', () => {
   });
 
   test('stores legacy heartRate submissions using canonical heart_rate type', async () => {
-    db.query
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ inserted: true }] })
-      .mockResolvedValueOnce({ rows: [] });
+    db.query.mockResolvedValueOnce({ rows: [{ inserted: true }] });
 
     const req = {
       user: { id: 'user-1' },
@@ -72,8 +73,8 @@ describe('health controller normalization', () => {
     await healthController.submitHealthData(req, res);
 
     expect(res.statusCode).toBe(200);
-    expect(db.query.mock.calls[1][1][2]).toBe('heart_rate');
-    expect(JSON.parse(db.query.mock.calls[1][1][4])).toMatchObject({
+    expect(db.query.mock.calls[0][1][2]).toBe('heart_rate');
+    expect(JSON.parse(db.query.mock.calls[0][1][4])).toMatchObject({
       hrv: 39
     });
   });

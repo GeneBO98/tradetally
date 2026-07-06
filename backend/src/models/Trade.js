@@ -59,27 +59,45 @@ class Trade {
   static async ensureTagsExist(userId, tags) {
     if (!tags || tags.length === 0) return;
 
+    // Trim and dedupe case-insensitively, keeping the first occurrence
+    // (matches the old per-tag LOWER(name) existence check)
+    const seenLower = new Set();
+    const candidates = [];
     for (const tagName of tags) {
       if (!tagName || tagName.trim() === '') continue;
+      const trimmed = tagName.trim();
+      const lower = trimmed.toLowerCase();
+      if (seenLower.has(lower)) continue;
+      seenLower.add(lower);
+      candidates.push(trimmed);
+    }
+    if (candidates.length === 0) return;
 
-      try {
-        // Check if tag exists
-        const checkResult = await db.query(
-          'SELECT id FROM tags WHERE user_id = $1 AND LOWER(name) = LOWER($2)',
-          [userId, tagName.trim()]
-        );
+    try {
+      // The tags unique constraint is case-SENSITIVE (UNIQUE(user_id, name)),
+      // so ON CONFLICT alone cannot dedupe case-insensitively. Pre-filter
+      // against existing tags with a single LOWER(name) lookup instead.
+      const existingResult = await db.query(
+        'SELECT LOWER(name) as lower_name FROM tags WHERE user_id = $1 AND LOWER(name) = ANY($2::text[])',
+        [userId, candidates.map(tag => tag.toLowerCase())]
+      );
+      const existingLower = new Set(existingResult.rows.map(row => row.lower_name));
 
-        // Create tag if it doesn't exist
-        if (checkResult.rows.length === 0) {
-          await db.query(
-            'INSERT INTO tags (user_id, name, color) VALUES ($1, $2, $3) ON CONFLICT (user_id, name) DO NOTHING',
-            [userId, tagName.trim(), '#3B82F6'] // Default blue color
-          );
-          console.log(`[TAGS] Auto-created tag "${tagName}" for user ${userId}`);
-        }
-      } catch (error) {
-        console.warn(`[TAGS] Failed to ensure tag "${tagName}" exists:`, error.message);
+      const newTags = candidates.filter(tag => !existingLower.has(tag.toLowerCase()));
+      if (newTags.length === 0) return;
+
+      await db.query(
+        `INSERT INTO tags (user_id, name, color)
+         SELECT $1, unnest($2::text[]), $3
+         ON CONFLICT (user_id, name) DO NOTHING`,
+        [userId, newTags, '#3B82F6'] // Default blue color
+      );
+
+      for (const tagName of newTags) {
+        console.log(`[TAGS] Auto-created tag "${tagName}" for user ${userId}`);
       }
+    } catch (error) {
+      console.warn(`[TAGS] Failed to ensure tags exist:`, error.message);
     }
   }
 

@@ -1,5 +1,6 @@
 const BillingService = require('../services/billingService');
 const TierService = require('../services/tierService');
+const tierCache = require('../services/tierCache');
 const User = require('../models/User');
 const db = require('../config/database');
 const { verifyAppleSignedTransaction, AppleTransactionVerificationError } = require('../utils/appleIapVerification');
@@ -311,6 +312,7 @@ const billingController = {
         );
 
         await client.query('COMMIT');
+        tierCache.invalidate(userId);
         console.log('[SUCCESS] Trial created successfully for user:', userId, 'Trial ID:', insertResult.rows[0].id);
 
         res.json({
@@ -608,6 +610,7 @@ const billingController = {
         WHERE user_id = $1 AND reason ILIKE '%trial%'
       `;
       const result = await db.query(deleteQuery, [userId]);
+      tierCache.invalidate(userId);
 
       console.log('DEBUG: Deleted', result.rowCount, 'trial records for user:', userId);
       console.log('DEBUG: trial_used flag automatically reset by database trigger');

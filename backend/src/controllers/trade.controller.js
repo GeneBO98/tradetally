@@ -1544,27 +1544,68 @@ const tradeController = {
       let deletedCount = 0;
       let errors = [];
 
-      // Delete each trade individually to ensure permissions and proper cleanup
-      for (const tradeId of tradeIds) {
-        try {
-          // Verify trade exists and belongs to user
-          const trade = await Trade.findById(tradeId, req.user.id);
-          
-          if (!trade) {
-            errors.push({ tradeId, error: 'Trade not found or access denied' });
-            continue;
-          }
+      // Single ownership-checked lookup for all requested trades
+      const ownedResult = await db.query(
+        'SELECT id FROM trades WHERE id = ANY($1::uuid[]) AND user_id = $2',
+        [tradeIds, req.user.id]
+      );
+      const ownedIds = new Set(ownedResult.rows.map(row => row.id));
 
-          // Delete the trade
-          const result = await Trade.delete(tradeId, req.user.id, { skipOptionGrouping: true });
-          
-          if (result) {
-            deletedCount++;
-          } else {
-            errors.push({ tradeId, error: 'Failed to delete trade' });
+      // Partition found/not-found in request order; duplicate ids get the same
+      // error the old per-id loop produced (second delete found nothing)
+      const seenIds = new Set();
+      const idsToDelete = [];
+      for (const tradeId of tradeIds) {
+        const normalizedId = tradeId.toLowerCase();
+        if (!ownedIds.has(normalizedId) || seenIds.has(normalizedId)) {
+          errors.push({ tradeId, error: 'Trade not found or access denied' });
+          continue;
+        }
+        seenIds.add(normalizedId);
+        idsToDelete.push(normalizedId);
+      }
+
+      if (idsToDelete.length > 0) {
+        try {
+          // Delete associated jobs and trades together in one transaction
+          // (same job cleanup predicate as Trade.delete, batched)
+          const deletedRows = await db.withTransaction(async (client) => {
+            const deletedJobs = await client.query(
+              `DELETE FROM job_queue
+               WHERE data->>'tradeId' = ANY($1::text[])
+               OR (data->'tradeIds' ?| $1::text[])
+               RETURNING id`,
+              [idsToDelete]
+            );
+
+            if (deletedJobs.rows.length > 0) {
+              console.log(`Deleted ${deletedJobs.rows.length} jobs for ${idsToDelete.length} trades`);
+            }
+
+            const result = await client.query(
+              'DELETE FROM trades WHERE id = ANY($1::uuid[]) AND user_id = $2 RETURNING id',
+              [idsToDelete, req.user.id]
+            );
+
+            return result.rows;
+          });
+
+          deletedCount = deletedRows.length;
+
+          // Any trade that vanished between the ownership check and the delete
+          if (deletedRows.length < idsToDelete.length) {
+            const deletedSet = new Set(deletedRows.map(row => row.id));
+            for (const tradeId of idsToDelete) {
+              if (!deletedSet.has(tradeId)) {
+                errors.push({ tradeId, error: 'Failed to delete trade' });
+              }
+            }
           }
         } catch (error) {
-          errors.push({ tradeId, error: error.message });
+          console.error('Failed to bulk delete trades:', error.message);
+          for (const tradeId of idsToDelete) {
+            errors.push({ tradeId, error: error.message });
+          }
         }
       }
 
@@ -1620,27 +1661,54 @@ const tradeController = {
       let updatedCount = 0;
       let errors = [];
 
-      // Update each trade individually to ensure permissions
+      // Single ownership-checked lookup for all requested trades
+      const ownedResult = await db.query(
+        'SELECT id FROM trades WHERE id = ANY($1::uuid[]) AND user_id = $2',
+        [tradeIds, req.user.id]
+      );
+      const ownedIds = new Set(ownedResult.rows.map(row => row.id));
+
+      const idsToUpdate = new Set();
       for (const tradeId of tradeIds) {
-        try {
-          // Get current trade to merge tags
-          const trade = await Trade.findById(tradeId, req.user.id);
-
-          if (!trade) {
-            errors.push({ tradeId, error: 'Trade not found or access denied' });
-            continue;
-          }
-
-          // Merge new tags with existing tags (avoid duplicates)
-          const existingTags = trade.tags || [];
-          const mergedTags = [...new Set([...existingTags, ...tags])];
-
-          // Update the trade with merged tags
-          await Trade.update(tradeId, req.user.id, { tags: mergedTags });
-          updatedCount++;
-        } catch (error) {
-          errors.push({ tradeId, error: error.message });
+        const normalizedId = tradeId.toLowerCase();
+        if (!ownedIds.has(normalizedId)) {
+          errors.push({ tradeId, error: 'Trade not found or access denied' });
+          continue;
         }
+        idsToUpdate.add(normalizedId);
+        updatedCount++;
+      }
+
+      if (idsToUpdate.size > 0) {
+        // Merge new tags into existing tags in one statement, preserving the
+        // old JS-Set semantics: existing order kept, first occurrence wins,
+        // case-sensitive dedupe, new tags appended
+        await db.query(
+          `UPDATE trades
+           SET tags = (
+             SELECT COALESCE(array_agg(t ORDER BY ord), '{}')
+             FROM (
+               SELECT DISTINCT ON (t) t, ord
+               FROM unnest(COALESCE(trades.tags, '{}') || $1::text[]) WITH ORDINALITY AS u(t, ord)
+               ORDER BY t, ord
+             ) deduped
+           )
+           WHERE id = ANY($2::uuid[]) AND user_id = $3`,
+          [tags, Array.from(idsToUpdate), req.user.id]
+        );
+
+        // Replicate the Trade.update post-update side effects once for the
+        // whole batch instead of once per trade (async, don't wait)
+        const AchievementService = require('../services/achievementService');
+        AchievementService.checkAndAwardAchievements(req.user.id).catch(error => {
+          console.warn(`Failed to check achievements for user ${req.user.id} after bulk tag update:`, error.message);
+        });
+        AchievementService.updateTradingStreak(req.user.id).catch(error => {
+          console.warn(`Failed to update trading streak for user ${req.user.id} after bulk tag update:`, error.message);
+        });
+
+        // Invalidate analytics cache once for this trade mutation
+        await AnalyticsCache.invalidate(req.user.id);
       }
 
       res.json({
@@ -5022,7 +5090,9 @@ const tradeController = {
       let updatedCount = 0;
       const errors = [];
 
-      // Process each trade update
+      // Parse and validate the requested updates up front
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const parsedUpdates = [];
       for (const tradeUpdate of trades) {
         const tradeId = tradeUpdate.trade_id ?? tradeUpdate.tradeId;
         const heartRate = tradeUpdate.heart_rate ?? tradeUpdate.heartRate;
@@ -5030,39 +5100,67 @@ const tradeController = {
         const sleepHours = tradeUpdate.sleep_hours ?? tradeUpdate.sleepHours;
         const stressLevel = tradeUpdate.stress_level ?? tradeUpdate.stressLevel;
 
-        try {
-          // Validate trade belongs to user
-          const tradeCheck = await db.query(
-            'SELECT id FROM trades WHERE id = $1 AND user_id = $2',
-            [tradeId, req.user.id]
-          );
-
-          if (tradeCheck.rows.length === 0) {
-            errors.push({ tradeId, error: 'Trade not found' });
-            continue;
-          }
-
-          // Update trade with health data
-          const query = `
-            UPDATE trades
-            SET heart_rate = $1, sleep_score = $2, sleep_hours = $3, stress_level = $4, updated_at = CURRENT_TIMESTAMP
-            WHERE id = $5 AND user_id = $6
-          `;
-
-          await db.query(query, [
-            heartRate || null,
-            sleepScore || null,
-            sleepHours || null,
-            stressLevel || null,
-            tradeId,
-            req.user.id
-          ]);
-
-          updatedCount++;
-
-        } catch (error) {
-          errors.push({ tradeId, error: error.message });
+        if (typeof tradeId !== 'string' || !uuidRegex.test(tradeId)) {
+          errors.push({ tradeId, error: `invalid input syntax for type uuid: "${tradeId}"` });
+          continue;
         }
+
+        parsedUpdates.push({
+          tradeId,
+          normalizedId: tradeId.toLowerCase(),
+          heartRate: heartRate || null,
+          sleepScore: sleepScore || null,
+          sleepHours: sleepHours || null,
+          stressLevel: stressLevel || null
+        });
+      }
+
+      // Single ownership check for all requested trades
+      let ownedIds = new Set();
+      if (parsedUpdates.length > 0) {
+        const ownedResult = await db.query(
+          'SELECT id FROM trades WHERE id = ANY($1::uuid[]) AND user_id = $2',
+          [parsedUpdates.map(u => u.tradeId), req.user.id]
+        );
+        ownedIds = new Set(ownedResult.rows.map(row => row.id));
+      }
+
+      // Last occurrence per trade id wins, matching the old sequential updates
+      const updatesById = new Map();
+      for (const parsedUpdate of parsedUpdates) {
+        if (!ownedIds.has(parsedUpdate.normalizedId)) {
+          errors.push({ tradeId: parsedUpdate.tradeId, error: 'Trade not found' });
+          continue;
+        }
+        updatesById.set(parsedUpdate.normalizedId, parsedUpdate);
+        updatedCount++;
+      }
+
+      if (updatesById.size > 0) {
+        // Single multi-row update via VALUES join
+        const valueRows = [];
+        const params = [req.user.id];
+        let paramIndex = 2;
+        for (const row of updatesById.values()) {
+          valueRows.push(`($${paramIndex}::uuid, $${paramIndex + 1}::numeric, $${paramIndex + 2}::numeric, $${paramIndex + 3}::numeric, $${paramIndex + 4}::numeric)`);
+          params.push(row.normalizedId, row.heartRate, row.sleepScore, row.sleepHours, row.stressLevel);
+          paramIndex += 5;
+        }
+
+        await db.query(
+          `UPDATE trades
+           SET heart_rate = v.heart_rate,
+               sleep_score = v.sleep_score,
+               sleep_hours = v.sleep_hours,
+               stress_level = v.stress_level,
+               updated_at = CURRENT_TIMESTAMP
+           FROM (VALUES ${valueRows.join(', ')}) AS v(trade_id, heart_rate, sleep_score, sleep_hours, stress_level)
+           WHERE trades.id = v.trade_id AND trades.user_id = $1`,
+          params
+        );
+
+        // Invalidate analytics cache once for this trade mutation
+        await AnalyticsCache.invalidate(req.user.id);
       }
 
       logger.info(`Bulk updated ${updatedCount} trades with health data for user ${req.user.id}`);

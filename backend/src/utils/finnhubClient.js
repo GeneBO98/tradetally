@@ -157,6 +157,19 @@ class FinnhubClient {
     const requestOptions = normalizedContext.options;
     const symbolUpper = symbol.toUpperCase();
 
+    // Skip symbols that got 429'd and have never returned a successful quote
+    if (this.isSymbolBlacklisted(symbolUpper)) {
+      throw new Error(`Skipping ${symbol}: rate-limited and no prior successful quote`);
+    }
+
+    // Check cache first. Usage limits meter actual Finnhub API calls
+    // (trackApiCall below only fires on real hits), so cached responses are
+    // served before the tier/usage DB lookups.
+    const cached = await cache.get('quote', symbolUpper);
+    if (cached) {
+      return cached;
+    }
+
     // Check tier and usage limits if userId provided
     if (userId) {
       const userTier = await TierService.getUserTier(userId);
@@ -169,17 +182,6 @@ class FinnhubClient {
         error.remaining = limitCheck.remaining;
         throw error;
       }
-    }
-
-    // Skip symbols that got 429'd and have never returned a successful quote
-    if (this.isSymbolBlacklisted(symbolUpper)) {
-      throw new Error(`Skipping ${symbol}: rate-limited and no prior successful quote`);
-    }
-
-    // Check cache first
-    const cached = await cache.get('quote', symbolUpper);
-    if (cached) {
-      return cached;
     }
 
     try {
@@ -1446,6 +1448,17 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
     const requestOptions = normalizedContext.options;
     const symbolUpper = symbol.toUpperCase();
 
+    // Create cache key with parameters
+    const cacheKey = `${symbolUpper}_${resolution}_${from}_${to}`;
+
+    // Check cache first (5 minute TTL for recent candle data). Usage limits
+    // meter actual Finnhub API calls (trackApiCall below only fires on real
+    // hits), so cached responses are served before the tier/usage DB lookups.
+    const cached = await cache.get('stock_candles', cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     // Check tier and usage limits if userId provided
     if (userId) {
       const userTier = await TierService.getUserTier(userId);
@@ -1458,15 +1471,6 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
         error.remaining = limitCheck.remaining;
         throw error;
       }
-    }
-
-    // Create cache key with parameters
-    const cacheKey = `${symbolUpper}_${resolution}_${from}_${to}`;
-
-    // Check cache first (5 minute TTL for recent candle data)
-    const cached = await cache.get('stock_candles', cacheKey);
-    if (cached) {
-      return cached;
     }
 
     try {

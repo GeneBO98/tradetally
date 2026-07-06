@@ -2,6 +2,7 @@ const db = require('../config/database');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const encryptionService = require('../services/brokerSync/encryptionService');
+const tierCache = require('../services/tierCache');
 const { normalizeEmail } = require('../utils/normalizeEmail');
 
 // Reset and email-verification tokens are stored as sha256 hashes so a read-only
@@ -877,6 +878,7 @@ class User {
     `;
     
     const result = await db.query(query, [tier, userId]);
+    tierCache.invalidate(userId);
     return result.rows[0];
   }
 
@@ -960,6 +962,7 @@ class User {
     ];
     
     const result = await db.query(query, values);
+    tierCache.invalidate(userId);
     return result.rows[0];
   }
 
@@ -990,8 +993,9 @@ class User {
       
       const result = await client.query(overrideQuery, [userId, tier, reason, expiresAt, createdBy]);
       await client.query(userUpdateQuery, [tier, userId]);
-      
+
       await client.query('COMMIT');
+      tierCache.invalidate(userId);
       return result.rows[0];
     } catch (error) {
       await client.query('ROLLBACK');
@@ -1026,8 +1030,9 @@ class User {
       
       const result = await client.query(deleteQuery, [userId]);
       await client.query(resetTierQuery, [userId]);
-      
+
       await client.query('COMMIT');
+      tierCache.invalidate(userId);
       return result.rows[0];
     } catch (error) {
       await client.query('ROLLBACK');
@@ -1064,6 +1069,7 @@ class User {
     `;
 
     const result = await db.query(query, [userId, tier, reason, expiresAt, createdBy]);
+    tierCache.invalidate(userId);
     return result.rows[0];
   }
 

@@ -2,12 +2,42 @@ const fs = require('fs');
 const path = require('path');
 const { sanitizeForLogging, sanitizeErrorForLogging } = require('./logSanitizer');
 
+const FLUSH_BYTES = 64 * 1024;      // flush a file's buffer once it reaches ~64KB
+const FLUSH_INTERVAL_MS = 250;      // or on this timer, whichever comes first
+const TAIL_READ_CAP = 2 * 1024 * 1024; // readLogFile reads at most the last 2MB
+const RETENTION_SWEEP_MS = 24 * 60 * 60 * 1000;
+
 class Logger {
   constructor() {
     this.logDir = path.join(__dirname, '../logs');
     this.allowedLogFilenamePattern = /^[a-z0-9-]+_\d{4}-\d{2}-\d{2}\.log$/i;
     this.ensureLogDirectory();
-    
+
+    // Buffered write state: filePath -> { lines: [], size: 0, pending: 0, chain: Promise }
+    this.writeBuffers = new Map();
+    this.flushTimer = null;
+
+    // Flush anything still buffered when the process ends. server.js's SIGINT/SIGTERM
+    // handlers call process.exit(0), which fires 'exit', so graceful shutdown is covered.
+    process.on('exit', () => {
+      try {
+        this.flushSync();
+      } catch (_) {
+        // Silently fail - never throw from the exit path
+      }
+    });
+
+    // Retention sweep: deferred so it does not block boot, then every 24h.
+    setImmediate(() => {
+      this.runRetentionSweep().catch(() => {});
+    });
+    this.retentionTimer = setInterval(() => {
+      this.runRetentionSweep().catch(() => {});
+    }, RETENTION_SWEEP_MS);
+    if (typeof this.retentionTimer.unref === 'function') {
+      this.retentionTimer.unref();
+    }
+
     // Log levels: DEBUG=0, INFO=1, WARN=2, ERROR=3
     this.levels = {
       DEBUG: 0,
@@ -41,6 +71,153 @@ class Logger {
   ensureLogDirectory() {
     if (!fs.existsSync(this.logDir)) {
       fs.mkdirSync(this.logDir, { recursive: true });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Buffered async writes
+  // Lines accumulate per file and are flushed with async fs.appendFile when the
+  // buffer reaches FLUSH_BYTES or on a FLUSH_INTERVAL_MS timer, whichever first.
+  // Flushes for the same file are serialized on a per-file promise chain so
+  // appends never interleave. All failures are swallowed silently: the console
+  // interception calls into the logger, so an error surfaced here could recurse.
+  // ---------------------------------------------------------------------------
+
+  getWriteBuffer(filePath) {
+    let buf = this.writeBuffers.get(filePath);
+    if (!buf) {
+      buf = { lines: [], size: 0, pending: 0, chain: Promise.resolve() };
+      this.writeBuffers.set(filePath, buf);
+    }
+    return buf;
+  }
+
+  enqueueWrite(filePath, line) {
+    try {
+      const buf = this.getWriteBuffer(filePath);
+      buf.lines.push(line);
+      buf.size += Buffer.byteLength(line);
+
+      if (buf.size >= FLUSH_BYTES) {
+        this.flushFile(filePath);
+      } else if (!this.flushTimer) {
+        this.flushTimer = setTimeout(() => {
+          this.flushTimer = null;
+          this.flushAll();
+        }, FLUSH_INTERVAL_MS);
+        if (typeof this.flushTimer.unref === 'function') {
+          this.flushTimer.unref();
+        }
+      }
+    } catch (_) {
+      // Silently fail to avoid recursion through intercepted console methods
+    }
+  }
+
+  // Async flush of one file's buffer, chained so writes to the same file are
+  // strictly ordered and never interleave.
+  flushFile(filePath) {
+    const buf = this.writeBuffers.get(filePath);
+    if (!buf || buf.lines.length === 0) {
+      return buf ? buf.chain : Promise.resolve();
+    }
+    const data = buf.lines.join('');
+    buf.lines = [];
+    buf.size = 0;
+    buf.pending++;
+    buf.chain = buf.chain
+      .then(() => fs.promises.appendFile(filePath, data))
+      .catch(() => {
+        // Silently fail - a console.error here would recurse into the logger
+      })
+      .finally(() => {
+        buf.pending--;
+      });
+    return buf.chain;
+  }
+
+  flushAll() {
+    for (const filePath of this.writeBuffers.keys()) {
+      this.flushFile(filePath);
+    }
+  }
+
+  // Synchronous flush of one file's buffer, used before reading a log file so
+  // the viewer sees fresh lines. Skipped if an async append is in flight for
+  // this file (a sync append would land ahead of it and reorder the file);
+  // in that case the lines arrive within the normal flush interval anyway.
+  flushFileSync(filePath) {
+    const buf = this.writeBuffers.get(filePath);
+    if (!buf || buf.lines.length === 0 || buf.pending > 0) {
+      return;
+    }
+    const data = buf.lines.join('');
+    buf.lines = [];
+    buf.size = 0;
+    try {
+      fs.appendFileSync(filePath, data);
+    } catch (_) {
+      // Silently fail
+    }
+  }
+
+  // Synchronous flush of every buffer. Called on process exit (and available to
+  // graceful-shutdown code paths); safe to call multiple times.
+  flushSync() {
+    for (const [filePath, buf] of this.writeBuffers) {
+      if (buf.lines.length === 0) {
+        continue;
+      }
+      const data = buf.lines.join('');
+      buf.lines = [];
+      buf.size = 0;
+      try {
+        fs.appendFileSync(filePath, data);
+      } catch (_) {
+        // Silently fail - never throw from the exit path
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Retention sweep: delete *.log files older than LOG_RETENTION_DAYS (default 14)
+  // by mtime. Fully async so a directory with ~1600 files never blocks the loop.
+  // ---------------------------------------------------------------------------
+  async runRetentionSweep() {
+    try {
+      const parsed = parseInt(process.env.LOG_RETENTION_DAYS, 10);
+      const retentionDays = Number.isFinite(parsed) && parsed > 0 ? parsed : 14;
+      const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+
+      const entries = await fs.promises.readdir(this.logDir);
+      let deleted = 0;
+      for (const name of entries) {
+        if (!name.endsWith('.log')) {
+          continue;
+        }
+        const filePath = path.join(this.logDir, name);
+        try {
+          const stats = await fs.promises.stat(filePath);
+          if (stats.isFile() && stats.mtimeMs < cutoff) {
+            await fs.promises.unlink(filePath);
+            this.writeBuffers.delete(filePath);
+            deleted++;
+          }
+        } catch (_) {
+          // File may have been removed concurrently - skip
+        }
+      }
+
+      // Prune idle buffers for files we are no longer writing to
+      for (const [filePath, buf] of this.writeBuffers) {
+        if (buf.lines.length === 0 && buf.pending === 0) {
+          this.writeBuffers.delete(filePath);
+        }
+      }
+
+      this.info(`[RETENTION] Log retention sweep complete: deleted ${deleted} file(s) older than ${retentionDays} day(s)`, 'app');
+    } catch (_) {
+      // Silently fail - retention is best-effort
     }
   }
 
@@ -80,7 +257,7 @@ class Logger {
       const message = formatArgs(args);
       const logMessage = `[${timestamp}] [${level}] ${message}\n`;
       try {
-        fs.appendFileSync(self.getLogFileName('debug'), logMessage);
+        self.enqueueWrite(self.getLogFileName('debug'), logMessage);
       } catch (error) {
         // Silently fail to avoid infinite loops
       }
@@ -204,13 +381,9 @@ class Logger {
       console.log(`${color}[${level}]${this.colors.RESET} ${sanitizedMessage}`);
     }
     
-    // Only write to file if the log level permits
+    // Only write to file if the log level permits (buffered, flushed async)
     if (this.shouldLog(level)) {
-      try {
-        fs.appendFileSync(this.getLogFileName(type), logMessage);
-      } catch (error) {
-        console.error('Failed to write to log file:', error);
-      }
+      this.enqueueWrite(this.getLogFileName(type), logMessage);
     }
   }
 
@@ -242,12 +415,8 @@ class Logger {
     const sanitizedMessage = sanitizeForLogging(message);
     const logMessage = `[${timestamp}] [INFO] [IMPORT] ${sanitizedMessage}\n`;
     
-    // Always write to file for UI display
-    try {
-      fs.appendFileSync(this.getLogFileName('import'), logMessage);
-    } catch (error) {
-      console.error('Failed to write to import log file:', error);
-    }
+    // Always write to file for UI display (buffered; readLogFile flushes before reading)
+    this.enqueueWrite(this.getLogFileName('import'), logMessage);
     
     // Only log to console if level permits
     if (this.shouldLog('INFO')) {
@@ -274,15 +443,11 @@ class Logger {
     }
     logMessage += '\n';
     
-    // Always write errors to file
-    try {
-      fs.appendFileSync(this.getLogFileName('error'), logMessage);
-      // Also write to import log if it's import-related
-      if (message.includes('import') || message.includes('Import')) {
-        fs.appendFileSync(this.getLogFileName('import'), logMessage);
-      }
-    } catch (err) {
-      console.error('Failed to write to error log file:', err);
+    // Always write errors to file (buffered, flushed async)
+    this.enqueueWrite(this.getLogFileName('error'), logMessage);
+    // Also write to import log if it's import-related
+    if (message.includes('import') || message.includes('Import')) {
+      this.enqueueWrite(this.getLogFileName('import'), logMessage);
     }
     
     // Always log errors to console (errors should always be visible)
@@ -371,7 +536,31 @@ class Logger {
     try {
       const safeFilename = this.validateLogFilename(filename, options);
       const filePath = this.resolveLogFilePath(safeFilename, options);
-      const content = fs.readFileSync(filePath, 'utf8');
+
+      // Flush any buffered lines for this file so the viewer sees fresh output
+      this.flushFileSync(filePath);
+
+      // Tail read: only read the last TAIL_READ_CAP bytes of large files
+      const stats = fs.statSync(filePath);
+      const fileSize = stats.size;
+      let content;
+      let truncated = false;
+      if (fileSize > TAIL_READ_CAP) {
+        truncated = true;
+        const fd = fs.openSync(filePath, 'r');
+        try {
+          const buffer = Buffer.alloc(TAIL_READ_CAP);
+          const bytesRead = fs.readSync(fd, buffer, 0, TAIL_READ_CAP, fileSize - TAIL_READ_CAP);
+          content = buffer.toString('utf8', 0, bytesRead);
+        } finally {
+          fs.closeSync(fd);
+        }
+        // Drop the first (likely partial) line
+        const firstNewline = content.indexOf('\n');
+        content = firstNewline >= 0 ? content.slice(firstNewline + 1) : '';
+      } else {
+        content = fs.readFileSync(filePath, 'utf8');
+      }
       const lines = content.split('\n').filter(line => line.trim());
       
       // Filter to last 24 hours unless showAll is true
@@ -432,7 +621,8 @@ class Logger {
           filteredOut: allLinesCount - filteredCount,
           searchQuery,
           searchMatchCount,
-          searchLineCount: searchQuery ? searchedLines.length : 0
+          searchLineCount: searchQuery ? searchedLines.length : 0,
+          ...(truncated ? { truncated: true, fileSizeBytes: fileSize, tailBytes: TAIL_READ_CAP } : {})
         }
       };
     } catch (error) {
