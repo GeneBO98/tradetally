@@ -123,7 +123,8 @@ class Logger {
 
   getLogFileName(type = 'import') {
     const date = new Date().toISOString().split('T')[0];
-    return path.join(this.logDir, `${type}_${date}.log`);
+    const safeType = typeof type === 'string' && /^[a-z0-9_-]+$/i.test(type) ? type : 'app';
+    return path.join(this.logDir, `${safeType}_${date}.log`);
   }
 
   validateLogFilename(filename, options = {}) {
@@ -179,6 +180,18 @@ class Logger {
   }
 
   writeLog(message, level = 'INFO', type = 'app') {
+    // Callers sometimes pass an object/array as `type` (console-style logging).
+    // Fold it into the message instead of letting it become the log filename.
+    if (typeof type !== 'string' || !/^[a-z0-9_-]+$/i.test(type)) {
+      let extra;
+      try {
+        extra = typeof type === 'string' ? type : JSON.stringify(sanitizeForLogging(type));
+      } catch {
+        extra = String(type);
+      }
+      message = typeof message === 'string' ? `${message} ${extra}` : message;
+      type = 'app';
+    }
     const timestamp = new Date().toISOString();
     const sanitizedMessage = typeof message === 'string'
       ? sanitizeForLogging(message)
