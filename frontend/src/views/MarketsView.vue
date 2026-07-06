@@ -908,7 +908,7 @@ const alertForm = ref({
 });
 
 // Update market status every minute
-setInterval(() => {
+const marketStatusInterval = setInterval(() => {
     marketStatus.value = getMarketStatus();
 }, 60000);
 
@@ -1241,5 +1241,6 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
     window.removeEventListener("keydown", handleEscape);
+    clearInterval(marketStatusInterval);
 });
 </script>
