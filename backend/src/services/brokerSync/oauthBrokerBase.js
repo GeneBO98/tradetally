@@ -333,7 +333,7 @@ class OAuthBrokerBase {
     }
 
     await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, `${this.config.logPrefix} broker sync`);
-    await AnalyticsCache.invalidateUserCache(userId);
+    await AnalyticsCache.invalidate(userId);
     invalidateInMemoryCache(userId);
 
     return { imported, skipped, failed, duplicates };

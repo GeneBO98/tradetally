@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const compression = require('compression');
 const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
@@ -163,6 +164,16 @@ const skipRateLimit = (req, res, next) => {
 // Apply security middleware (CSP, anti-clickjacking, etc.)
 app.use(securityMiddleware());
 app.use(requestIdMiddleware);
+
+// HTTP response compression (must never buffer Server-Sent Events)
+app.use(compression({
+  filter: (req, res) => {
+    if (req.headers.accept === 'text/event-stream') return false;
+    const contentType = res.getHeader('Content-Type');
+    if (typeof contentType === 'string' && contentType.includes('text/event-stream')) return false;
+    return compression.filter(req, res);
+  }
+}));
 
 // Optimized CORS configuration
 const allowedOrigins = [
