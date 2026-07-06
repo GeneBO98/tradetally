@@ -12,7 +12,7 @@
  * Users can journal as much as they want, but large imports require Pro.
  *
  * Why broker sync is Pro-only: the 100-trade batch limit on CSV import is the
- * free-tier gate, but automatic broker sync (IBKR/Schwab/TradeStation/Alpaca)
+ * free-tier gate, but automatic broker sync (IBKR/Schwab/TradeStation/Alpaca/Webull)
  * imports unlimited trades with no batch limit, which would otherwise let free
  * users sidestep that gate entirely. Sync is therefore a Pro entitlement.
  */
@@ -165,7 +165,7 @@ const TIER_LIMITS = {
       customMetrics: true,
       exportReports: true,
       tradeBlocking: true,
-      brokerSync: true // Automatic broker sync (IBKR/Schwab/TradeStation/Alpaca)
+      brokerSync: true // Automatic broker sync (IBKR/Schwab/TradeStation/Alpaca/Webull)
     }
   }
 };

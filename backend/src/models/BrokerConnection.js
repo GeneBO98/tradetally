@@ -146,6 +146,37 @@ class BrokerConnection {
         RETURNING *
       `;
 
+      if (brokerType === 'webull') {
+        query = `
+          INSERT INTO broker_connections (
+            user_id, broker_type, connection_status,
+            oauth_access_token, oauth_refresh_token, oauth_token_expires_at,
+            oauth_refresh_token_expires_at, oauth_scopes, external_account_id,
+            external_user_id, broker_environment, broker_metadata, account_label,
+            auto_sync_enabled, sync_frequency, sync_time
+          )
+          VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+          ON CONFLICT (user_id) WHERE broker_type = 'webull' DO UPDATE SET
+            oauth_access_token = EXCLUDED.oauth_access_token,
+            oauth_refresh_token = EXCLUDED.oauth_refresh_token,
+            oauth_token_expires_at = EXCLUDED.oauth_token_expires_at,
+            oauth_refresh_token_expires_at = EXCLUDED.oauth_refresh_token_expires_at,
+            oauth_scopes = EXCLUDED.oauth_scopes,
+            external_account_id = EXCLUDED.external_account_id,
+            external_user_id = EXCLUDED.external_user_id,
+            broker_environment = EXCLUDED.broker_environment,
+            broker_metadata = EXCLUDED.broker_metadata,
+            account_label = EXCLUDED.account_label,
+            auto_sync_enabled = EXCLUDED.auto_sync_enabled,
+            sync_frequency = EXCLUDED.sync_frequency,
+            sync_time = EXCLUDED.sync_time,
+            connection_status = 'pending',
+            consecutive_failures = 0,
+            updated_at = CURRENT_TIMESTAMP
+          RETURNING *
+        `;
+      }
+
       if (brokerType === 'alpaca') {
         query = `
           INSERT INTO broker_connections (
@@ -581,7 +612,7 @@ class BrokerConnection {
           connection.schwabRefreshToken = encryptionService.decrypt(row.schwab_refresh_token);
         }
       }
-    } else if (['tradestation', 'alpaca'].includes(row.broker_type)) {
+    } else if (['tradestation', 'alpaca', 'webull'].includes(row.broker_type)) {
       connection.oauthTokenExpiresAt = row.oauth_token_expires_at;
       connection.oauthRefreshTokenExpiresAt = row.oauth_refresh_token_expires_at;
       connection.oauthScopes = row.oauth_scopes || [];

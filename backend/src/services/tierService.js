@@ -476,7 +476,7 @@ class TierService {
         interval: 'month',
         features: [
           'Unlimited batch imports',
-          'Automatic broker sync (IBKR, Schwab, TradeStation, Alpaca)',
+          'Automatic broker sync (IBKR, Schwab, TradeStation, Alpaca, Webull)',
           'Financial news feed + upcoming earnings',
           'All advanced analytics (SQN, Kelly, MAE/MFE, K-ratio, sector breakdowns, time-of-day)',
           'Behavioral analytics suite (revenge trading, loss aversion, personality typing)',
