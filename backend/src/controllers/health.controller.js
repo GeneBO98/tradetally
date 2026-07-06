@@ -108,66 +108,63 @@ class HealthController {
       console.log(`  📊 Data types received:`, dataTypeCounts);
       logger.info(`Data types received: ${JSON.stringify(dataTypeCounts)}`, 'health');
 
-      // Begin transaction
-      await db.query('BEGIN');
-
       let insertedCount = 0;
       let updatedCount = 0;
 
-      for (const dataPoint of healthData) {
-        const { date, type, value, timestamp } = dataPoint;
-        const dataType = this.normalizeDataType(type);
-        const metadata = this.normalizeMetadata(dataPoint.metadata || {});
+      await db.withTransaction(async (client) => {
+        for (const dataPoint of healthData) {
+          const { date, type, value, timestamp } = dataPoint;
+          const dataType = this.normalizeDataType(type);
+          const metadata = this.normalizeMetadata(dataPoint.metadata || {});
 
-        // Validate required fields
-        if (!date || !dataType || value === undefined) {
-          logger.warn(`Invalid health data point received (date=${date || 'missing'}, type=${type || 'missing'})`, 'health');
-          continue;
-        }
-
-        // For time-series data (heart rate), use timestamp instead of date for uniqueness
-        if (timestamp && dataType === 'heart_rate') {
-          // Insert individual time-series samples (heart rate at 1-minute intervals)
-          const result = await db.query(`
-            INSERT INTO health_data (user_id, date, data_type, value, metadata, timestamp, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, NOW())
-            ON CONFLICT (user_id, data_type, timestamp)
-            WHERE timestamp IS NOT NULL
-            DO UPDATE SET
-              value = EXCLUDED.value,
-              metadata = EXCLUDED.metadata,
-              updated_at = NOW()
-            RETURNING (xmax = 0) AS inserted
-          `, [userId, date, dataType, value, JSON.stringify(metadata), timestamp]);
-
-          if (result.rows[0].inserted) {
-            insertedCount++;
-          } else {
-            updatedCount++;
+          // Validate required fields
+          if (!date || !dataType || value === undefined) {
+            logger.warn(`Invalid health data point received (date=${date || 'missing'}, type=${type || 'missing'})`, 'health');
+            continue;
           }
-        } else {
-          // Daily aggregates (sleep data)
-          const result = await db.query(`
-            INSERT INTO health_data (user_id, date, data_type, value, metadata, updated_at)
-            VALUES ($1, $2, $3, $4, $5, NOW())
-            ON CONFLICT (user_id, data_type, date)
-            WHERE timestamp IS NULL
-            DO UPDATE SET
-              value = EXCLUDED.value,
-              metadata = EXCLUDED.metadata,
-              updated_at = NOW()
-            RETURNING (xmax = 0) AS inserted
-          `, [userId, date, dataType, value, JSON.stringify(metadata)]);
 
-          if (result.rows[0].inserted) {
-            insertedCount++;
+          // For time-series data (heart rate), use timestamp instead of date for uniqueness
+          if (timestamp && dataType === 'heart_rate') {
+            // Insert individual time-series samples (heart rate at 1-minute intervals)
+            const result = await client.query(`
+              INSERT INTO health_data (user_id, date, data_type, value, metadata, timestamp, updated_at)
+              VALUES ($1, $2, $3, $4, $5, $6, NOW())
+              ON CONFLICT (user_id, data_type, timestamp)
+              WHERE timestamp IS NOT NULL
+              DO UPDATE SET
+                value = EXCLUDED.value,
+                metadata = EXCLUDED.metadata,
+                updated_at = NOW()
+              RETURNING (xmax = 0) AS inserted
+            `, [userId, date, dataType, value, JSON.stringify(metadata), timestamp]);
+
+            if (result.rows[0].inserted) {
+              insertedCount++;
+            } else {
+              updatedCount++;
+            }
           } else {
-            updatedCount++;
+            // Daily aggregates (sleep data)
+            const result = await client.query(`
+              INSERT INTO health_data (user_id, date, data_type, value, metadata, updated_at)
+              VALUES ($1, $2, $3, $4, $5, NOW())
+              ON CONFLICT (user_id, data_type, date)
+              WHERE timestamp IS NULL
+              DO UPDATE SET
+                value = EXCLUDED.value,
+                metadata = EXCLUDED.metadata,
+                updated_at = NOW()
+              RETURNING (xmax = 0) AS inserted
+            `, [userId, date, dataType, value, JSON.stringify(metadata)]);
+
+            if (result.rows[0].inserted) {
+              insertedCount++;
+            } else {
+              updatedCount++;
+            }
           }
         }
-      }
-
-      await db.query('COMMIT');
+      });
 
       logger.info(`Health data submitted: ${insertedCount} inserted, ${updatedCount} updated for user ${userId}`, 'health');
       
@@ -188,7 +185,6 @@ class HealthController {
       });
 
     } catch (error) {
-      await db.query('ROLLBACK');
       logger.error(`Error submitting health data: ${error.message}`, 'health');
       res.status(500).json({
         success: false,

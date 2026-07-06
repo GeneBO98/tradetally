@@ -5,6 +5,7 @@ const { validateAiProviderUrl } = require('../utils/urlSecurity');
 const encryptionService = require('../services/brokerSync/encryptionService');
 const { computeTradePnl } = require('../services/pnlEngine');
 const { getUserTimezone } = require('../utils/timezone');
+const { toCamelCase, toSnakeCase, keysToCamelCase, keysToSnakeCase } = require('../utils/caseConvert');
 const AnalyticsCache = require('../services/analyticsCache');
 const OptionStrategyGroupingService = require('../services/optionStrategyGroupingService');
 const Trade = require('../models/Trade');
@@ -68,33 +69,6 @@ function encryptKeyIfPresent(value) {
   } catch (_) {
     return value;
   }
-}
-
-// Helper function to convert snake_case to camelCase
-function toCamelCase(obj) {
-  if (!obj) return obj;
-
-  const result = {};
-  for (const [key, value] of Object.entries(obj)) {
-    const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
-    result[camelKey] = value;
-  }
-  return result;
-}
-
-// Helper function to convert camelCase to snake_case
-function toSnakeCase(str) {
-  return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
-}
-
-// Helper to convert all keys of an object from camelCase to snake_case
-function keysToSnakeCase(obj) {
-  if (!obj) return obj;
-  const result = {};
-  for (const [key, value] of Object.entries(obj)) {
-    result[toSnakeCase(key)] = value;
-  }
-  return result;
 }
 
 function hasAnyOwnProperty(obj, keys) {
@@ -168,7 +142,7 @@ const settingsController = {
         : settings;
 
       // Convert snake_case to camelCase for frontend
-      const camelCaseSettings = toCamelCase(safeSettings);
+      const camelCaseSettings = keysToCamelCase(safeSettings);
 
       res.json({ settings: camelCaseSettings });
     } catch (error) {
@@ -210,7 +184,7 @@ const settingsController = {
         : settings;
 
       // Convert snake_case to camelCase for frontend
-      const camelCaseSettings = toCamelCase(safeSettings);
+      const camelCaseSettings = keysToCamelCase(safeSettings);
       res.json({ settings: camelCaseSettings });
     } catch (error) {
       next(error);
@@ -795,7 +769,7 @@ const settingsController = {
           for (const [key, value] of Object.entries(row)) {
             if (excludeSet.has(key)) continue;
             if (addOriginalId && key === 'id') continue;
-            const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+            const camelKey = toCamelCase(key);
             converted[camelKey] = value;
           }
           return converted;
@@ -861,7 +835,7 @@ const settingsController = {
         const profileConverted = {};
         for (const [key, value] of Object.entries(settings)) {
           if (SETTINGS_EXCLUDE.includes(key)) continue;
-          const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+          const camelKey = toCamelCase(key);
           if (TRADING_PROFILE_FIELDS.has(key)) {
             profileConverted[camelKey] = value;
           } else {
@@ -874,7 +848,7 @@ const settingsController = {
 
       // Build trade charts with trade_id remapped to originalTradeId
       const tradeChartsExport = tradeCharts.map(chart => {
-        const converted = toCamelCase(chart);
+        const converted = keysToCamelCase(chart);
         converted.originalTradeId = chart.trade_id;
         delete converted.tradeId;
         delete converted.id;

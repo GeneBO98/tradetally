@@ -4,6 +4,7 @@ const { getUserLocalDate, getUserTimezone } = require('../utils/timezone');
 const { getFuturesPointValue, getFuturesTickSize, extractUnderlyingFromFuturesSymbol } = require('../utils/futuresUtils');
 const { computeTradePnl } = require('../services/pnlEngine');
 const logger = require('../utils/logger');
+const { toSnakeCase } = require('../utils/caseConvert');
 const OptionStrategyGroupingService = require('../services/optionStrategyGroupingService');
 /**
  * Round a numeric value to fit database precision
@@ -1658,7 +1659,7 @@ class Trade {
     Object.entries(updates).forEach(([key, value]) => {
       if (key !== 'id' && key !== 'user_id' && key !== 'created_at') {
         // Convert camelCase to snake_case for database columns
-        const dbKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+        const dbKey = toSnakeCase(key);
         fields.push(`${dbKey} = $${paramCount}`);
 
         // Handle JSON/JSONB fields that need serialization
@@ -1819,48 +1820,57 @@ class Trade {
   }
 
   static async delete(id, userId, options = {}) {
+    // Sentinel used to roll back the job deletions when the trade itself is
+    // not found (or belongs to another user), matching the previous behavior.
+    const TRADE_NOT_FOUND = Symbol('trade_not_found');
     try {
-      // Start transaction to ensure both trade and jobs are deleted together
-      await db.query('BEGIN');
-      
-      // First, delete associated jobs to prevent orphaned jobs
-      const jobDeleteQuery = `
-        DELETE FROM job_queue 
-        WHERE data->>'tradeId' = $1
-        OR (data->'tradeIds' ? $1)
-        RETURNING id, type
-      `;
-      
-      const deletedJobs = await db.query(jobDeleteQuery, [id]);
-      
-      if (deletedJobs.rows.length > 0) {
-        console.log(`Deleted ${deletedJobs.rows.length} jobs for trade ${id}`);
-      }
-      
-      // Then delete the trade
-      const tradeDeleteQuery = `
-        DELETE FROM trades
-        WHERE id = $1 AND user_id = $2
-        RETURNING id
-      `;
-      
-      const result = await db.query(tradeDeleteQuery, [id, userId]);
-      
-      if (result.rows.length === 0) {
-        await db.query('ROLLBACK');
-        return null; // Trade not found or doesn't belong to user
-      }
-      
-      await db.query('COMMIT');
+      // Run both deletes in a single transaction on one dedicated client so
+      // the trade and its associated jobs are removed together.
+      const deletedTrade = await db.withTransaction(async (client) => {
+        // First, delete associated jobs to prevent orphaned jobs
+        const jobDeleteQuery = `
+          DELETE FROM job_queue
+          WHERE data->>'tradeId' = $1
+          OR (data->'tradeIds' ? $1)
+          RETURNING id, type
+        `;
+
+        const deletedJobs = await client.query(jobDeleteQuery, [id]);
+
+        if (deletedJobs.rows.length > 0) {
+          console.log(`Deleted ${deletedJobs.rows.length} jobs for trade ${id}`);
+        }
+
+        // Then delete the trade
+        const tradeDeleteQuery = `
+          DELETE FROM trades
+          WHERE id = $1 AND user_id = $2
+          RETURNING id
+        `;
+
+        const result = await client.query(tradeDeleteQuery, [id, userId]);
+
+        if (result.rows.length === 0) {
+          // Throw to roll back the job deletions as well
+          const notFound = new Error('Trade not found');
+          notFound.sentinel = TRADE_NOT_FOUND;
+          throw notFound;
+        }
+
+        return result.rows[0];
+      });
+
       console.log(`Successfully deleted trade ${id} and its associated jobs`);
       if (!options.skipOptionGrouping) {
         await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'trade deletion');
       }
-      
-      return result.rows[0];
-      
+
+      return deletedTrade;
+
     } catch (error) {
-      await db.query('ROLLBACK');
+      if (error.sentinel === TRADE_NOT_FOUND) {
+        return null; // Trade not found or doesn't belong to user
+      }
       console.error(`Failed to delete trade ${id}:`, error.message);
       throw error;
     }

@@ -103,8 +103,32 @@ async function query(text, params) {
   }
 }
 
+// Run fn inside a single transaction on one dedicated client. pool.query()
+// checks out a different connection per call, so BEGIN/COMMIT issued through
+// db.query() are NOT atomic — always use this helper (or a manually managed
+// client) for multi-statement transactions.
+async function withTransaction(fn) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      console.warn('[DB] Transaction rollback failed:', rollbackError.message);
+    }
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   query,
   connect: () => pool.connect(),
+  withTransaction,
   pool
 };

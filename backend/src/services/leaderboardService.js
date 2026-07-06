@@ -404,43 +404,47 @@ class LeaderboardService {
   
   // Save leaderboard entries
   static async saveLeaderboardEntries(leaderboardId, scores) {
-    try {
-      // Begin transaction
-      await db.query('BEGIN');
-      
+    // Always generate anonymous names for leaderboards (privacy protection).
+    // Batch-resolve them in a single query instead of one round-trip per row.
+    const anonymousNames = await this.generateAnonymousNames(scores.map(score => score.user_id));
+
+    await db.withTransaction(async (client) => {
       // Clear existing entries for this period
-      await db.query(
+      await client.query(
         'DELETE FROM leaderboard_entries WHERE leaderboard_id = $1 AND DATE(recorded_at) = CURRENT_DATE',
         [leaderboardId]
       );
-      
-      // Insert new entries with rankings
+
+      if (scores.length === 0) {
+        return;
+      }
+
+      // Insert new entries with rankings in a single multi-row statement
+      const values = [];
+      const params = [];
+      let paramIndex = 1;
+
       for (let i = 0; i < scores.length; i++) {
         const score = scores[i];
         const rank = i + 1;
-        
-        // Always generate anonymous names for leaderboards (privacy protection)
-        const anonymousName = await this.generateAnonymousName(score.user_id);
-        
-        await db.query(`
-          INSERT INTO leaderboard_entries (
-            leaderboard_id, user_id, anonymous_name, score, rank, metadata, recorded_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
-        `, [
+
+        values.push(`($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, CURRENT_TIMESTAMP)`);
+        params.push(
           leaderboardId,
           score.user_id,
-          anonymousName,
+          anonymousNames.get(score.user_id),
           score.score,
           rank,
           score.metadata
-        ]);
+        );
       }
-      
-      await db.query('COMMIT');
-    } catch (error) {
-      await db.query('ROLLBACK');
-      throw error;
-    }
+
+      await client.query(`
+        INSERT INTO leaderboard_entries (
+          leaderboard_id, user_id, anonymous_name, score, rank, metadata, recorded_at
+        ) VALUES ${values.join(', ')}
+      `, params);
+    });
   }
   
   // Generate anonymous name for user
@@ -450,6 +454,26 @@ class LeaderboardService {
       [userId]
     );
     return result.rows[0].name;
+  }
+
+  // Generate anonymous names for many users in a single query.
+  // Returns a Map of user_id -> anonymous name.
+  static async generateAnonymousNames(userIds) {
+    const names = new Map();
+    if (userIds.length === 0) {
+      return names;
+    }
+
+    const result = await db.query(
+      `SELECT uid AS user_id, generate_anonymous_name(uid) AS name
+       FROM unnest($1::uuid[]) AS uid`,
+      [userIds]
+    );
+
+    for (const row of result.rows) {
+      names.set(row.user_id, row.name);
+    }
+    return names;
   }
   
   // Get leaderboard entries

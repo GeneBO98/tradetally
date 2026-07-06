@@ -5,6 +5,7 @@
 
 const db = require('../config/database');
 const encryptionService = require('../services/brokerSync/encryptionService');
+const { toSnakeCase } = require('../utils/caseConvert');
 
 // pg-types parses PostgreSQL DATE columns via `new Date(y, m, d)` (server-local
 // midnight). Letting JSON serialize that Date via toISOString() shifts the
@@ -368,7 +369,7 @@ class BrokerConnection {
     let paramCount = 1;
 
     for (const [key, value] of Object.entries(updates)) {
-      const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+      const snakeKey = toSnakeCase(key);
       if (allowedFields.includes(snakeKey)) {
         setClauses.push(`${snakeKey} = $${paramCount}`);
         values.push(value);

@@ -3,6 +3,7 @@ const fs = require('fs').promises;
 const path = require('path');
 const archiver = require('archiver');
 const { createWriteStream } = require('fs');
+const { toCamelCase, toSnakeCase } = require('../utils/caseConvert');
 
 function recomputeRestoredTradePnl(tradeData, timezone) {
   const { computeTradePnl } = require('./pnlEngine');
@@ -182,7 +183,7 @@ class BackupService {
     const tableNameMapping = {}; // camelCase -> snake_case
 
     tableNames.forEach((tableName, index) => {
-      const camelCaseName = tableName.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+      const camelCaseName = toCamelCase(tableName);
       tables[camelCaseName] = results[index].rows;
       statistics[tableName] = results[index].rows.length;
       tableNameMapping[camelCaseName] = tableName;
@@ -752,11 +753,6 @@ class BackupService {
         console.log(`[RESTORE] Diary entries: ${results.diaryEntries.added} added, ${results.diaryEntries.skipped} skipped, ${results.diaryEntries.errors} errors`);
       }
 
-      // Helper function to convert camelCase to snake_case
-      const camelToSnake = (str) => {
-        return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
-      };
-
       // Dynamic primary key detection via information_schema (cached per restore session)
       const pkCache = {};
       const getPrimaryKeyField = async (tableName) => {
@@ -911,7 +907,7 @@ class BackupService {
       const resolveSnakeName = (camelKey) => {
         if (tableNameMapping[camelKey]) return tableNameMapping[camelKey];
         // Fallback: convert camelCase to snake_case
-        return camelKey.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+        return toSnakeCase(camelKey);
       };
 
       // Build ordered list: priority tables first, then remaining in backup order

@@ -3,21 +3,11 @@ const settingsController = require('../settings.controller');
 const userController = require('../user.controller');
 const { captureControllerResult } = require('../../utils/legacyControllerAdapter');
 const { sendV1Error, sendV1ErrorFromLegacy, sendV1NotImplemented } = require('../../utils/apiResponse');
-
-function toCamelCaseRecord(record = {}) {
-  const converted = {};
-
-  Object.entries(record || {}).forEach(([key, value]) => {
-    const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
-    converted[camelKey] = value;
-  });
-
-  return converted;
-}
+const { keysToCamelCase } = require('../../utils/caseConvert');
 
 async function getSettingsState(userId) {
   const settings = await User.getSettings(userId);
-  return toCamelCaseRecord(settings || {});
+  return keysToCamelCase(settings || {});
 }
 
 const settingsV1Controller = {

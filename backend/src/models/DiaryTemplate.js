@@ -1,5 +1,6 @@
 const db = require('../config/database');
 const logger = require('../utils/logger');
+const { toSnakeCase } = require('../utils/caseConvert');
 
 class DiaryTemplate {
   /**
@@ -139,7 +140,7 @@ class DiaryTemplate {
       if (!allowedFields.includes(key)) continue;
 
       // Convert camelCase to snake_case for database
-      const dbField = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+      const dbField = toSnakeCase(key);
 
       setters.push(`${dbField} = $${paramCount}`);
       values.push(value);

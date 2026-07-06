@@ -4,17 +4,7 @@ const userController = require('../user.controller');
 const settingsController = require('../settings.controller');
 const { captureControllerResult } = require('../../utils/legacyControllerAdapter');
 const { sendV1ErrorFromLegacy, sendV1NotImplemented } = require('../../utils/apiResponse');
-
-function toCamelCaseRecord(record = {}) {
-  const converted = {};
-
-  Object.entries(record || {}).forEach(([key, value]) => {
-    const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
-    converted[camelKey] = value;
-  });
-
-  return converted;
-}
+const { keysToCamelCase } = require('../../utils/caseConvert');
 
 const userV1Controller = {
   async getProfile(req, res, next) {
@@ -28,7 +18,7 @@ const userV1Controller = {
             cusip_ai_api_key: rawSettings.cusip_ai_api_key ? '***' : ''
           }
         : {};
-      const settings = toCamelCaseRecord(safeRawSettings);
+      const settings = keysToCamelCase(safeRawSettings);
 
       res.json({
         profile: {
@@ -108,7 +98,7 @@ const userV1Controller = {
   async getPreferences(req, res, next) {
     try {
       const rawSettings = await User.getSettings(req.user.id);
-      const settings = toCamelCaseRecord(rawSettings || {});
+      const settings = keysToCamelCase(rawSettings || {});
 
       res.json({
         preferences: {
