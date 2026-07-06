@@ -35,7 +35,10 @@
           </button>
 
           <div v-show="filtersExpanded" class="mt-4">
-            <TradeFilters @filter="handleFilter" />
+            <!-- :auto-apply-on-mount="false" prevents the mount-time emit from
+                 double-fetching: loadData() already restores saved filters from
+                 localStorage and runs the full fetch batch via applyFilters(). -->
+            <TradeFilters :auto-apply-on-mount="false" @filter="handleFilter" />
           </div>
 
           <!-- R-Value Mode Toggle -->

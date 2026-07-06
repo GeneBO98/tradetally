@@ -3308,35 +3308,36 @@ async function updateCusipAISettings() {
 }
 
 // Analytics Settings Functions
-async function loadAnalyticsSettings() {
+async function loadAnalyticsSettings(settingsData = null) {
     try {
-        const response = await api.get("/settings");
+        const settings =
+            settingsData ?? (await api.get("/settings")).data.settings;
         analyticsForm.value = {
             statisticsCalculation:
-                response.data.settings.statisticsCalculation || "average",
+                settings.statisticsCalculation || "average",
             analyticsPositionGrouping:
-                response.data.settings.analyticsPositionGrouping === true,
+                settings.analyticsPositionGrouping === true,
             edgeReportEnabled:
-                response.data.settings.edgeReportEnabled === true,
+                settings.edgeReportEnabled === true,
             breakevenToleranceTicks:
-                Number(response.data.settings.breakevenToleranceTicks) || 0,
+                Number(settings.breakevenToleranceTicks) || 0,
             autoCloseExpiredOptions:
-                response.data.settings.autoCloseExpiredOptions !== undefined
-                    ? response.data.settings.autoCloseExpiredOptions
+                settings.autoCloseExpiredOptions !== undefined
+                    ? settings.autoCloseExpiredOptions
                     : true,
             defaultStopLossType:
-                response.data.settings.defaultStopLossType || "percent",
+                settings.defaultStopLossType || "percent",
             defaultStopLossPercent:
-                response.data.settings.defaultStopLossPercent || null,
+                settings.defaultStopLossPercent || null,
             defaultStopLossDollars:
-                response.data.settings.defaultStopLossDollars ?? null,
+                settings.defaultStopLossDollars ?? null,
             defaultTakeProfitPercent:
-                response.data.settings.defaultTakeProfitPercent || null,
+                settings.defaultTakeProfitPercent || null,
             displayCurrency:
-                response.data.settings.displayCurrency || "USD",
+                settings.displayCurrency || "USD",
         };
         breakevenToleranceRows.value = breakevenRowsFromMap(
-            response.data.settings.breakevenToleranceTicksByUnderlying,
+            settings.breakevenToleranceTicksByUnderlying,
         );
     } catch (error) {
         console.error("Failed to load analytics settings:", error);
@@ -3394,10 +3395,10 @@ async function updateAnalyticsSettings() {
 }
 
 // Privacy Settings Functions
-async function loadPrivacySettings() {
+async function loadPrivacySettings(settingsData = null) {
     try {
-        const response = await api.get("/settings");
-        const settings = response.data.settings;
+        const settings =
+            settingsData ?? (await api.get("/settings")).data.settings;
 
         privacyForm.value = {
             publicProfile: settings.publicProfile ?? false,
@@ -3432,10 +3433,10 @@ async function updatePrivacySettings() {
 }
 
 // Trade Import Settings Functions
-async function loadTradeImportSettings() {
+async function loadTradeImportSettings(settingsData = null) {
     try {
-        const response = await api.get("/settings");
-        const settings = response.data.settings;
+        const settings =
+            settingsData ?? (await api.get("/settings")).data.settings;
 
         tradeImportForm.value = {
             enableTradeGrouping: settings.enableTradeGrouping ?? true,
@@ -3469,6 +3470,26 @@ async function updateTradeImportSettings() {
     } finally {
         tradeImportLoading.value = false;
     }
+}
+
+// Fetch /settings once and hydrate every section that reads from it.
+// The individual loaders keep their optional-fetch fallback so they can
+// still be called standalone (e.g. to refresh a single section).
+async function loadAllSettings() {
+    let settings = null;
+    try {
+        const response = await api.get("/settings");
+        settings = response.data.settings;
+    } catch (error) {
+        console.error("Failed to load settings:", error);
+        // Leave settings null - each loader retries its own fetch and falls
+        // back to its catch-block defaults if that fails too
+    }
+    await Promise.all([
+        loadAnalyticsSettings(settings),
+        loadPrivacySettings(settings),
+        loadTradeImportSettings(settings),
+    ]);
 }
 
 // Broker Fee Settings Functions
@@ -4154,9 +4175,7 @@ async function checkForUpdates() {
 onMounted(() => {
     loadAISettings();
     loadCusipAISettings();
-    loadAnalyticsSettings();
-    loadPrivacySettings();
-    loadTradeImportSettings();
+    loadAllSettings();
     loadBrokerFeeSettings();
     fetchQualityWeights();
 
