@@ -78,6 +78,63 @@ describe('health controller normalization', () => {
     });
   });
 
+  test('submit health data handler keeps controller context when used by Express', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ inserted: true }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const req = {
+      user: { id: 'user-1' },
+      headers: {},
+      body: {
+        healthData: [{
+          date: '2026-07-07',
+          type: 'sleep',
+          value: 7.2,
+          metadata: { sleep_quality: 88 }
+        }]
+      }
+    };
+    const res = createResponse();
+    const handler = healthController.submitHealthData;
+
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(db.query.mock.calls[1][1][2]).toBe('sleep');
+    expect(JSON.parse(db.query.mock.calls[1][1][4])).toMatchObject({
+      sleepQuality: 88,
+      sleep_quality: 88
+    });
+  });
+
+  test('correlate trades handler keeps controller context when used by Express', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const req = {
+      user: { id: 'user-1' },
+      body: {},
+      query: {}
+    };
+    const res = createResponse();
+    const handler = healthController.correlateHealthWithTrades;
+
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(db.query.mock.calls[1][1]).toEqual(['user-1', ['heart_rate', 'heartRate']]);
+    expect(res.payload).toMatchObject({
+      success: true,
+      updatedCount: 0,
+      heartRateSamples: 0,
+      tradesProcessed: 0
+    });
+  });
+
   test('correlation calculation handles old and new heart rate type names', () => {
     const correlations = healthController.calculateCorrelations([
       {
