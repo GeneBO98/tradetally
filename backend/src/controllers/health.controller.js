@@ -3,6 +3,19 @@ const logger = require('../utils/logger');
 const aiService = require('../utils/aiService');
 
 class HealthController {
+  constructor() {
+    [
+      'submitHealthData',
+      'getHealthData',
+      'analyzeCorrelations',
+      'getInsights',
+      'correlateHealthWithTrades',
+      'getHealthInsights'
+    ].forEach((method) => {
+      this[method] = this[method].bind(this);
+    });
+  }
+
   normalizeDataType(type) {
     const normalized = String(type || '').trim();
     const aliases = {
@@ -76,7 +89,7 @@ class HealthController {
       const { healthData } = req.body;
       
       // Enhanced logging for debugging mobile app submissions
-      console.log('\n🔔 HEALTH DATA SUBMISSION RECEIVED FROM MOBILE APP');
+      console.log('\n[INFO] HEALTH DATA SUBMISSION RECEIVED FROM MOBILE APP');
       console.log('  User ID:', userId);
       console.log('  Timestamp:', new Date().toISOString());
       console.log('  Request Headers:', {
@@ -90,7 +103,7 @@ class HealthController {
       });
 
       if (!Array.isArray(healthData)) {
-        console.log('  ❌ ERROR: Health data must be an array');
+        console.log('  [ERROR] Health data must be an array');
         return res.status(400).json({
           success: false,
           message: 'Health data must be an array'
@@ -98,14 +111,14 @@ class HealthController {
       }
 
       logger.info(`Receiving ${healthData.length} health data points for user ${userId}`, 'health');
-      console.log(`  📊 Processing ${healthData.length} health data points...`);
+      console.log(`  [PROCESS] Processing ${healthData.length} health data points...`);
 
       // Debug: Count data types
       const dataTypeCounts = {};
       healthData.forEach(point => {
         dataTypeCounts[point.type] = (dataTypeCounts[point.type] || 0) + 1;
       });
-      console.log(`  📊 Data types received:`, dataTypeCounts);
+      console.log('  [INFO] Data types received:', dataTypeCounts);
       logger.info(`Data types received: ${JSON.stringify(dataTypeCounts)}`, 'health');
 
       let insertedCount = 0;
@@ -168,7 +181,7 @@ class HealthController {
 
       logger.info(`Health data submitted: ${insertedCount} inserted, ${updatedCount} updated for user ${userId}`, 'health');
       
-      console.log('  ✅ SUCCESS: Health data processed');
+      console.log('  [SUCCESS] Health data processed');
       console.log(`     Inserted: ${insertedCount} new records`);
       console.log(`     Updated: ${updatedCount} existing records`);
       console.log(`     Total processed: ${insertedCount + updatedCount}`);
