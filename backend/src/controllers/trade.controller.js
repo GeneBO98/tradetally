@@ -27,6 +27,7 @@ const MAEEstimator = require('../utils/maeEstimator');
 const TierService = require('../services/tierService');
 const { verifyJwtToken, TOKEN_PURPOSES } = require('../middleware/auth');
 const { escapeCsv } = require('../utils/csvEscape');
+const { buildExistingTradeIndex, classifyImportTrade } = require('../utils/importDuplicateDetection');
 const {
   applyBrokerFeeSettingsToTrades,
   getBrokerLookupNames
@@ -2620,167 +2621,74 @@ const tradeController = {
 
           logger.logImport(`Found ${existingTrades.rows.length} existing trades in date range${selectedAccountId ? ` for account ${selectedAccountId}` : ''}`);
 
+          // Pre-process existing trades ONCE into a lookup index (executions
+          // parsed a single time per row) so duplicate detection is
+          // O(new + existing) instead of O(new x existing).
+          const existingTradeIndex = buildExistingTradeIndex(existingTrades.rows);
+
           logger.logImport(`Processing ${trades.length} trades for import...`);
-          
-          for (const tradeData of trades) {
+
+          // Progress updates are throttled (every 25 rows or 2s) and run on the
+          // normal pool: the frontend polls import status, so progress must
+          // stay visible during the loop instead of an UPDATE per row.
+          const PROGRESS_ROW_INTERVAL = 25;
+          const PROGRESS_TIME_INTERVAL_MS = 2000;
+          let processedRows = 0;
+          let lastProgressUpdateAt = Date.now();
+          const maybeUpdateImportProgress = async () => {
+            if (processedRows % PROGRESS_ROW_INTERVAL !== 0 && (Date.now() - lastProgressUpdateAt) < PROGRESS_TIME_INTERVAL_MS) {
+              return;
+            }
+            lastProgressUpdateAt = Date.now();
             try {
-              // Skip duplicate detection for trades that are updates to existing positions
-              // These trades have isUpdate=true and existingTradeId set by the parser
+              await db.query(`
+                UPDATE import_logs
+                SET trades_imported = $1
+                WHERE id = $2
+              `, [imported, importId]);
+            } catch (progressError) {
+              logger.logWarn(`Failed to update import progress: ${progressError.message}`);
+            }
+          };
+
+          // Rows are inserted/updated one at a time in autocommit (Trade.create
+          // must not hold a shared transaction open across its default
+          // stop-loss market-data lookups). A per-row try/catch keeps one bad
+          // row from failing the rest of the import.
+          for (const tradeData of trades) {
+            processedRows++;
+            try {
+              // Skip duplicate detection for trades that are updates to existing
+              // positions (isUpdate/existingTradeId set by the parser).
               if (tradeData.isUpdate && tradeData.existingTradeId) {
-                // This is an update to an existing trade, not a duplicate
                 logger.logImport(`Processing update for existing trade ${tradeData.existingTradeId}: ${tradeData.symbol}`);
               } else {
-                // Check for duplicates based on entry price, exit price, and P/L
-                // This is more reliable than symbol matching as symbols can be resolved differently
-                // (e.g., CUSIP lookups may resolve to different symbols on different imports)
-                // Using price and P/L matching prevents duplicate trades from being imported
-                const isDuplicate = existingTrades.rows.some(existing => {
-                // Parse existing executions if available
-                let existingExecutions = [];
-                if (existing.executions) {
-                  try {
-                    existingExecutions = typeof existing.executions === 'string' 
-                      ? JSON.parse(existing.executions) 
-                      : existing.executions;
-                  } catch (e) {
-                    existingExecutions = [];
-                  }
-                }
-                
-                // If both trades have executions, check for exact timestamp matches
-                // This is the most precise duplicate detection
-                // For trades without executionData array, create one from the trade fields
-                let tradeExecutionsToCheck = tradeData.executionData;
-                if (!tradeExecutionsToCheck || tradeExecutionsToCheck.length === 0) {
-                  // Trade doesn't have executionData (e.g., non-grouped single trade)
-                  // Create a temporary execution from the trade's entry/exit times
-                  tradeExecutionsToCheck = [{
-                    datetime: tradeData.datetime,
-                    entryTime: tradeData.entryTime,
-                    exitTime: tradeData.exitTime,
-                    entryPrice: tradeData.entryPrice,
-                    quantity: tradeData.quantity,
-                    side: tradeData.side
-                  }];
-                }
+                // Duplicate detection via the pre-built index. Matching semantics
+                // live in utils/importDuplicateDetection.js (unit tested for
+                // equivalence with the previous inline predicate).
+                const dupResult = classifyImportTrade(tradeData, existingTradeIndex, logger);
 
-                // For execution timestamp matching, require symbol match to avoid false positives
-                // when multiple symbols have trades on the same day with similar timestamps
-                const symbolsMatch = existing.symbol === tradeData.symbol;
-
-                // CRITICAL: Also check instrument_type to distinguish stock trades from options
-                // on the same underlying symbol (e.g., INTC stock vs INTC 240726P00036000 option)
-                // Both may have the same timestamp if they're from an assignment (A;O/A;C codes)
-                const newInstrumentType = tradeData.instrumentType || tradeData.instrument_type || 'stock';
-                const existingInstrumentType = existing.instrument_type || 'stock';
-                const instrumentTypesMatch = newInstrumentType === existingInstrumentType;
-
-                // For IBKR trades, also check conid if available for precise matching
-                const newConid = tradeData.conid;
-                const existingConid = existing.conid;
-                const conidMatch = newConid && existingConid && newConid === existingConid;
-
-                // Only consider as potential duplicate if:
-                // 1. Symbols match AND instrument types match, OR
-                // 2. Conids match (most precise for IBKR)
-                const tradeTypesMatch = (symbolsMatch && instrumentTypesMatch) || conidMatch;
-
-                if (tradeTypesMatch && tradeExecutionsToCheck && tradeExecutionsToCheck.length > 0 && existingExecutions.length > 0) {
-                  // Create a set of execution timestamps from the new trade
-                  // Handle both datetime (Lightspeed) and entryTime (ProjectX) formats
-                  const newExecutionTimestamps = new Set(
-                    tradeExecutionsToCheck.map(exec => {
-                      const timestamp = exec.datetime || exec.entryTime;
-                      return timestamp ? new Date(timestamp).getTime() : null;
-                    }).filter(t => t !== null && !isNaN(t))
-                  );
-
-                  if (newExecutionTimestamps.size === 0) {
-                    // No valid timestamps found, skip timestamp matching
-                    logger.logImport(`[DEBUG] No valid timestamps in new trade's executions, falling back to price/PnL matching`);
-                  } else {
-                    // Count how many existing executions have matching timestamps
-                    const matchingExecutionCount = existingExecutions.filter(exec => {
-                      const timestamp = exec.datetime || exec.entryTime;
-                      if (!timestamp) return false;
-                      const execTime = new Date(timestamp).getTime();
-                      return !isNaN(execTime) && newExecutionTimestamps.has(execTime);
-                    }).length;
-
-                    // Only mark as duplicate if the new trade doesn't have MORE executions
-                    // If the new trade has more executions, it may contain partial closes or
-                    // additional data that should update the existing trade
-                    if (matchingExecutionCount > 0) {
-                      const newTradeExecCount = tradeExecutionsToCheck.length;
-                      const existingExecCount = existingExecutions.length;
-
-                      if (newTradeExecCount <= existingExecCount) {
-                        // New trade has same or fewer executions - it's a duplicate
-                        logger.logImport(`Found duplicate based on execution timestamp match for ${tradeData.symbol} ${newInstrumentType} (${matchingExecutionCount} matching, new: ${newTradeExecCount}, existing: ${existingExecCount})`);
-                        return true;
-                      } else {
-                        // New trade has MORE executions - this is an UPDATE, not a duplicate
-                        // The new trade likely contains additional partial closes that weren't in the original import
-                        logger.logImport(`[PARTIAL CLOSE] Trade ${tradeData.symbol} has ${newTradeExecCount} executions vs ${existingExecCount} existing - NOT marking as duplicate (has additional data)`);
-                        // Don't return true - let the trade be imported (it will need to be handled as an update)
-                        // Mark the trade as needing to update the existing one
-                        tradeData.isUpdate = true;
-                        tradeData.existingTradeId = existing.id;
-                        tradeData.existingExecutions = existingExecutions;
-                        return false; // Not a duplicate - it's an update
-                      }
-                    }
-                  }
-                }
-                
-                // Fallback to the original logic for trades without execution data
-                // CRITICAL: Also require instrument types to match to avoid false positives
-                // between stock trades and options on the same underlying
-                if (!tradeTypesMatch) {
-                  return false; // Different instrument types (stock vs option) - not a duplicate
-                }
-
-                // For closed trades, check entry, exit, and P/L
-                if (tradeData.exitPrice && existing.exit_price) {
-                  const entryMatch = Math.abs(parseFloat(existing.entry_price) - parseFloat(tradeData.entryPrice)) < 0.01;
-                  const exitMatch = Math.abs(parseFloat(existing.exit_price) - parseFloat(tradeData.exitPrice)) < 0.01;
-                  const pnlMatch = Math.abs(parseFloat(existing.pnl || 0) - parseFloat(tradeData.pnl || 0)) < 0.01; // $0.01 tolerance for P/L consistency
-
-                  // Also check if entry times are very close (within 1 second)
-                  const entryTimeMatch = Math.abs(new Date(existing.entry_time) - new Date(tradeData.entryTime)) < 1000;
-
-                  return entryMatch && exitMatch && pnlMatch && entryTimeMatch;
-                }
-                // For open trades, check entry price, quantity, side, and exact entry time
-                else if (!tradeData.exitPrice && !existing.exit_price) {
-                  return (
-                    Math.abs(parseFloat(existing.entry_price) - parseFloat(tradeData.entryPrice)) < 0.01 &&
-                    existing.quantity === tradeData.quantity &&
-                    existing.side === tradeData.side &&
-                    Math.abs(new Date(existing.entry_time) - new Date(tradeData.entryTime)) < 1000 // Within 1 second (more precise)
-                  );
-                }
-                return false;
-              });
-
-                if (isDuplicate) {
+                if (dupResult.is_duplicate) {
                   const instrumentType = tradeData.instrumentType || tradeData.instrument_type || 'stock';
                   logger.logImport(`Skipping duplicate trade: ${tradeData.symbol} ${instrumentType} ${tradeData.side} ${tradeData.quantity} at $${tradeData.entryPrice} (${new Date(tradeData.entryTime).toISOString()})`);
                   duplicates++;
+                  await maybeUpdateImportProgress();
                   continue;
+                }
+
+                if (dupResult.update_target) {
+                  // The new trade has MORE executions than the stored one
+                  // (additional partial closes) - handle as an update.
+                  tradeData.isUpdate = true;
+                  tradeData.existingTradeId = dupResult.update_target.id;
+                  tradeData.existingExecutions = dupResult.update_target.executions;
                 }
               }
 
               if (imported % 50 === 0) {
                 logger.logImport(`Importing trade ${imported + 1}: ${tradeData.symbol} ${tradeData.side} ${tradeData.quantity} at ${tradeData.entryPrice}`);
-                
-                // Update progress in database every 50 trades
-                await db.query(`
-                  UPDATE import_logs
-                  SET trades_imported = $1
-                  WHERE id = $2
-                `, [imported, importId]);
               }
+
               // Handle updates to existing positions vs creating new trades
               if (tradeData.isUpdate && tradeData.existingTradeId) {
                 logger.logImport(`Updating existing trade ${tradeData.existingTradeId}: ${tradeData.symbol} closed with P/L: $${tradeData.pnl}`);
@@ -2826,6 +2734,7 @@ const tradeController = {
                 error: error.message
               });
             }
+            await maybeUpdateImportProgress();
           }
 
           logger.logImport(`Import completed: ${imported} imported, ${failed} failed, ${duplicates} duplicates skipped`);
