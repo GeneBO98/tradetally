@@ -194,6 +194,7 @@ const placementClasses = computed(() => {
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { useNotificationCenter } from '@/composables/useNotificationCenter'
 import { useNotification } from '@/composables/useNotification'
+import { useVisibilityPolling } from '@/composables/useVisibilityPolling'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -215,9 +216,14 @@ const isOpen = ref(false)
 const notifications = ref([])
 const loading = ref(false)
 const markingAsRead = ref(false)
-const pollInterval = ref(null)
 const pollingDisabled = ref(false)
 const dismissingIds = ref(new Set())
+
+// Poll for unread count every 30 seconds (paused while the tab is hidden)
+const { start: startPolling, stop: stopPolling } = useVisibilityPolling(
+  () => fetchUnreadCount(),
+  30000
+)
 
 // Computed
 const isAuthenticated = computed(() => authStore.isAuthenticated)
@@ -272,13 +278,6 @@ const handleNotificationsUpdated = async (event) => {
       await fetchNotifications()
     }
   }, 250)
-}
-
-const stopPolling = () => {
-  if (pollInterval.value) {
-    clearInterval(pollInterval.value)
-    pollInterval.value = null
-  }
 }
 
 const disablePolling = () => {
@@ -483,8 +482,7 @@ onMounted(() => {
   if (isAuthenticated.value) {
     pollingDisabled.value = false
     fetchUnreadCount()
-    // Poll for unread count every 30 seconds
-    pollInterval.value = setInterval(fetchUnreadCount, 30000)
+    startPolling()
   }
 
   window.addEventListener('notifications-updated', handleNotificationsUpdated)
@@ -493,7 +491,6 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  stopPolling()
   window.removeEventListener('notifications-updated', handleNotificationsUpdated)
   document.removeEventListener('mousedown', handleDocumentClick)
   document.removeEventListener('keydown', handleEscKey)
@@ -505,9 +502,7 @@ watch(isAuthenticated, (newValue) => {
   if (newValue) {
     pollingDisabled.value = false
     fetchUnreadCount()
-    if (!pollInterval.value) {
-      pollInterval.value = setInterval(fetchUnreadCount, 30000)
-    }
+    startPolling()
   } else {
     pollingDisabled.value = false
     stopPolling()

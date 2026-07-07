@@ -854,6 +854,7 @@ import { mdiBell, mdiRepeat, mdiEmailOutline } from "@mdi/js";
 import { getMarketStatus } from "@/utils/marketStatus";
 import SymbolAutocomplete from "@/components/common/SymbolAutocomplete.vue";
 import BaseSelect from "@/components/common/BaseSelect.vue";
+import { useVisibilityPolling } from "@/composables/useVisibilityPolling";
 
 const route = useRoute();
 const router = useRouter();
@@ -907,10 +908,12 @@ const alertForm = ref({
     repeat_enabled: false,
 });
 
-// Update market status every minute
-const marketStatusInterval = setInterval(() => {
+// Update market status every minute - paused while the tab is hidden
+// (stops automatically when the component unmounts)
+const marketStatusPoller = useVisibilityPolling(() => {
     marketStatus.value = getMarketStatus();
 }, 60000);
+marketStatusPoller.start();
 
 const isProUser = computed(() => {
     if (authStore.user?.billingEnabled === false) {
@@ -1241,6 +1244,5 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
     window.removeEventListener("keydown", handleEscape);
-    clearInterval(marketStatusInterval);
 });
 </script>

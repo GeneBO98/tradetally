@@ -1219,7 +1219,7 @@
 </template>
 
 <script setup>
-import { ref, defineAsyncComponent, onMounted, onBeforeUnmount, computed, nextTick, watch } from 'vue'
+import { ref, defineAsyncComponent, onMounted, computed, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useAuthStore } from '@/stores/auth'
@@ -1247,6 +1247,7 @@ import BaseSelect from '@/components/common/BaseSelect.vue'
 import BaseModal from '@/components/common/BaseModal.vue'
 import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotifications'
 import { useStrategyOrder } from '@/composables/useStrategyOrder'
+import { useVisibilityPolling } from '@/composables/useVisibilityPolling'
 import { parseCSVHeaders, parseCSVSampleRows } from '@/utils/csvImportParse'
 
 const tradesStore = useTradesStore()
@@ -2695,18 +2696,12 @@ function hasActiveImportHistory(imports = importHistory.value) {
   return imports.some(importLog => ['pending', 'processing'].includes(importLog.status))
 }
 
-function startImportHistoryPolling() {
-  if (importHistoryInterval) return
-  importHistoryInterval = window.setInterval(() => {
-    fetchImportHistory()
-  }, 5000)
-}
-
-function stopImportHistoryPolling() {
-  if (!importHistoryInterval) return
-  clearInterval(importHistoryInterval)
-  importHistoryInterval = null
-}
+// Poll import history every 5 seconds while an import is pending/processing.
+// Visibility-gated: pauses while the tab is hidden, refreshes on refocus.
+const {
+  start: startImportHistoryPolling,
+  stop: stopImportHistoryPolling
+} = useVisibilityPolling(() => fetchImportHistory(), 5000)
 
 function syncImportHistoryPolling(imports = importHistory.value) {
   if (hasActiveImportHistory(imports)) {
@@ -3568,8 +3563,6 @@ watch(selectedImportIds, (ids) => {
   }
 }, { deep: true })
 
-let importHistoryInterval = null
-
 onMounted(() => {
   track('import_page_viewed', {
     onboarding_step: authStore.onboardingStep || null,
@@ -3606,9 +3599,5 @@ watch(selectedBroker, (broker, previousBroker) => {
     has_file_selected: !!selectedFile.value,
     detected_broker: fileAnalysis.value.detectedBroker || 'unknown'
   })
-})
-
-onBeforeUnmount(() => {
-  stopImportHistoryPolling()
 })
 </script>

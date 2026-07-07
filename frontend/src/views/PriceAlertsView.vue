@@ -566,6 +566,7 @@ import { getMarketStatus } from "@/utils/marketStatus";
 import SymbolAutocomplete from "@/components/common/SymbolAutocomplete.vue";
 import BaseSelect from "@/components/common/BaseSelect.vue";
 import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
+import { useVisibilityPolling } from "@/composables/useVisibilityPolling";
 
 export default {
     name: "PriceAlertsView",
@@ -592,11 +593,13 @@ export default {
         const showCreateAlertModal = ref(false);
         const editingAlert = ref(null);
 
-        // Market status tracking
+        // Market status tracking - refresh every minute, paused while the
+        // tab is hidden (stops automatically when the component unmounts)
         const marketStatus = ref(getMarketStatus());
-        const marketStatusInterval = setInterval(() => {
+        const marketStatusPoller = useVisibilityPolling(() => {
             marketStatus.value = getMarketStatus();
         }, 60000);
+        marketStatusPoller.start();
 
         // Load filters from localStorage
         const savedFilters = localStorage.getItem("priceAlertsFilters");
@@ -831,7 +834,6 @@ export default {
         });
 
         onBeforeUnmount(() => {
-            clearInterval(marketStatusInterval);
             window.removeEventListener("keydown", handleEscape);
         });
 

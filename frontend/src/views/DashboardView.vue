@@ -1637,6 +1637,7 @@ import { useYearWrappedStore } from '@/stores/yearWrapped'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { useTradesStore } from '@/stores/trades'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
+import { useVisibilityPolling } from '@/composables/useVisibilityPolling'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import {
@@ -1850,8 +1851,26 @@ let pnlChartInstance = null
 let distributionChartInstance = null
 let winRateChartInstance = null
 let equityCurveChartInstance = null
-let updateInterval = null
 let countdownInterval = null
+
+// Auto-refresh open positions during market hours. The interval comes from
+// getRefreshInterval() and is captured by startAutoUpdate() before start().
+// Visibility-gated: pauses while the tab is hidden, refreshes on refocus.
+let currentRefreshInterval = 60000
+const openPositionsPoller = useVisibilityPolling(async () => {
+  console.log('Dashboard: Auto-updating open positions and news...')
+  try {
+    // Only refresh open positions during market hours for price updates
+    await fetchOpenTrades({ fastFirst: false })
+    lastRefresh.value = new Date()
+    console.log('Dashboard: Auto-update completed successfully')
+  } catch (error) {
+    console.error('Dashboard: Auto-update failed:', error)
+  }
+}, () => currentRefreshInterval)
+
+// Check market status every minute to handle market open/close transitions
+const marketStatusPoller = useVisibilityPolling(() => checkMarketStatus(), 60000)
 
 // Dashboard layout customization
 // Default section order — optimized for "what convinces in 5 seconds":
@@ -3399,32 +3418,23 @@ function startCountdown(intervalMs) {
 // Auto-update functionality
 function startAutoUpdate() {
   console.log('Dashboard: Starting auto-update check...')
-  clearInterval(updateInterval)
+  openPositionsPoller.stop()
   clearInterval(countdownInterval)
-  
+
   updateMarketStatus()
-  
+
   const refreshInterval = getRefreshInterval()
   console.log('Dashboard: Refresh interval from market hours:', refreshInterval)
-  
+
   if (refreshInterval && shouldRefreshPrices()) {
     console.log(`Dashboard: Setting up auto-update every ${refreshInterval/1000} seconds during market hours`)
     isAutoUpdating.value = true
-    
+
     // Start countdown
     startCountdown(refreshInterval)
-    
-    updateInterval = setInterval(async () => {
-      console.log('Dashboard: Auto-updating open positions and news...')
-      try {
-        // Only refresh open positions during market hours for price updates
-        await fetchOpenTrades({ fastFirst: false })
-        lastRefresh.value = new Date()
-        console.log('Dashboard: Auto-update completed successfully')
-      } catch (error) {
-        console.error('Dashboard: Auto-update failed:', error)
-      }
-    }, refreshInterval)
+
+    currentRefreshInterval = refreshInterval
+    openPositionsPoller.start()
   } else {
     console.log('Dashboard: No auto-update needed - market is closed')
     isAutoUpdating.value = false
@@ -3433,10 +3443,7 @@ function startAutoUpdate() {
 
 function stopAutoUpdate() {
   console.log('Dashboard: Stopping auto-update...')
-  if (updateInterval) {
-    clearInterval(updateInterval)
-    updateInterval = null
-  }
+  openPositionsPoller.stop()
   if (countdownInterval) {
     clearInterval(countdownInterval)
     countdownInterval = null
@@ -3453,10 +3460,10 @@ function checkMarketStatus() {
   const shouldRefresh = shouldRefreshPrices()
 
   // If market status changed, restart auto-update
-  if (shouldRefresh && !updateInterval) {
+  if (shouldRefresh && !openPositionsPoller.isActive.value) {
     console.log('Dashboard: Market opened - starting auto-updates')
     startAutoUpdate()
-  } else if (!shouldRefresh && updateInterval) {
+  } else if (!shouldRefresh && openPositionsPoller.isActive.value) {
     console.log('Dashboard: Market closed - stopping auto-updates')
     stopAutoUpdate()
   }
@@ -3511,8 +3518,6 @@ async function fetchExpiredOptionsCount() {
     console.error('[Dashboard] Error fetching expired options:', error)
   }
 }
-
-let marketStatusChecker = null
 
 function handleClickOutside(event) {
   if (showTimeRangeDropdown.value) {
@@ -3605,7 +3610,7 @@ onMounted(async () => {
   startAutoUpdate()
 
   // Check market status every minute to handle market open/close transitions
-  marketStatusChecker = setInterval(checkMarketStatus, 60000) // Check every minute
+  marketStatusPoller.start()
 })
 
 onUnmounted(() => {
@@ -3614,20 +3619,11 @@ onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
   document.removeEventListener('keydown', handleDashboardEscape)
 
-  // Stop auto-update (clears updateInterval and countdownInterval)
+  // Stop auto-update (stops the open-positions poller and countdown).
+  // The visibility-gated pollers also clean themselves up on scope dispose.
   stopAutoUpdate()
 
-  // Clear market status checker
-  if (marketStatusChecker) {
-    clearInterval(marketStatusChecker)
-    marketStatusChecker = null
-  }
-
-  // Defensive cleanup - ensure all intervals are cleared
-  if (updateInterval) {
-    clearInterval(updateInterval)
-    updateInterval = null
-  }
+  // Defensive cleanup - ensure the countdown interval is cleared
   if (countdownInterval) {
     clearInterval(countdownInterval)
     countdownInterval = null
