@@ -39,6 +39,7 @@
 
 <script setup>
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatTradeDate } from '@/utils/date'
 
 defineProps({
   data: {
@@ -50,13 +51,7 @@ defineProps({
 const { formatCurrency } = useCurrencyFormatter()
 
 function formatDate(dateStr) {
-  if (!dateStr) return ''
-  const date = new Date(dateStr)
-  return date.toLocaleDateString('en-US', {
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric'
-  })
+  return formatTradeDate(dateStr, 'MMMM d, yyyy')
 }
 </script>
 

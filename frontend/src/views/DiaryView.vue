@@ -598,6 +598,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useDiaryStore } from '@/stores/diary'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday, addMonths, subMonths, startOfWeek, endOfWeek } from 'date-fns'
+import { formatTradeDate } from '@/utils/date'
 import { parseMarkdown, truncateHtml as truncateHtmlUtil } from '@/utils/markdown'
 import DiaryAnalysis from '@/components/diary/DiaryAnalysis.vue'
 import GeneralNotes from '@/components/diary/GeneralNotes.vue'
@@ -704,10 +705,8 @@ const calendarDays = computed(() => {
 
 // Methods
 const formatDate = (dateString) => {
-  // Parse as local date to avoid timezone shifts
-  const [year, month, day] = dateString.split('T')[0].split('-')
-  const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
-  return format(date, 'MMM d, yyyy')
+  // formatTradeDate parses date-only values locally to avoid timezone shifts
+  return formatTradeDate(dateString, 'MMM d, yyyy')
 }
 
 const splitContent = (content) => {

@@ -320,7 +320,7 @@
 
 <script setup>
 import { ref, computed, nextTick, watch } from 'vue'
-import { format } from 'date-fns'
+import { formatTradeDate } from '@/utils/date'
 import api from '@/services/api'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
@@ -876,11 +876,7 @@ function formatPercent(value) {
 
 function formatDate(dateString) {
   if (!dateString) return '-'
-  try {
-    return format(new Date(dateString), 'MMM d, yyyy')
-  } catch {
-    return dateString
-  }
+  return formatTradeDate(dateString, 'MMM d, yyyy')
 }
 
 /** Date and time using last execution time (exit_time), fallback to entry_time */

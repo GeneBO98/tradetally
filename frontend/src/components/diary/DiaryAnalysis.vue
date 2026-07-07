@@ -169,7 +169,8 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { format, subDays, subWeeks, subMonths, startOfWeek, startOfMonth } from 'date-fns'
+import { subDays, subWeeks, subMonths, startOfWeek, startOfMonth } from 'date-fns'
+import { formatTradeDate } from '@/utils/date'
 import { useDiaryStore } from '@/stores/diary'
 import api from '@/services/api'
 import AIReportRenderer from '@/components/ai/AIReportRenderer.vue'
@@ -272,7 +273,7 @@ const startNewAnalysis = () => {
 }
 
 const formatDate = (dateString) => {
-  return format(new Date(dateString), 'MMM d, yyyy')
+  return formatTradeDate(dateString, 'MMM d, yyyy')
 }
 
 const shareAnalysis = () => {
