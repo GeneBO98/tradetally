@@ -3,6 +3,8 @@
  * API endpoints for Russell 2000 8 Pillars scan results
  */
 const ensureString = require('../utils/ensureString');
+const asyncHandler = require('../utils/asyncHandler');
+const AppError = require('../utils/AppError');
 
 const StockScannerService = require('../services/stockScannerService');
 
@@ -17,7 +19,7 @@ const StockScannerService = require('../services/stockScannerService');
  *   - sortOrder: ASC or DESC (default: DESC)
  * @access Pro tier
  */
-const getScanResults = async (req, res) => {
+const getScanResults = asyncHandler(async (req, res) => {
   try {
     const {
       pillars,
@@ -43,24 +45,24 @@ const getScanResults = async (req, res) => {
     res.json(results);
   } catch (error) {
     console.error('[SCANNER] Error getting results:', error);
-    res.status(500).json({ error: error.message || 'Failed to get scan results' });
+    throw new AppError(500, { error: error.message || 'Failed to get scan results' });
   }
-};
+});
 
 /**
  * Get current scan status or latest scan info
  * GET /api/scanner/status
  * @access Authenticated
  */
-const getScanStatus = async (req, res) => {
+const getScanStatus = asyncHandler(async (req, res) => {
   try {
     const status = await StockScannerService.getScanStatus();
     res.json(status);
   } catch (error) {
     console.error('[SCANNER] Error getting status:', error);
-    res.status(500).json({ error: error.message || 'Failed to get scan status' });
+    throw new AppError(500, { error: error.message || 'Failed to get scan status' });
   }
-};
+});
 
 /**
  * Manually trigger a scan (admin only)
@@ -69,7 +71,7 @@ const getScanStatus = async (req, res) => {
  *   - russell2000Only: boolean (default: true) - Scan only Russell 2000
  * @access Admin only
  */
-const triggerScan = async (req, res) => {
+const triggerScan = asyncHandler(async (req, res) => {
   try {
     const { russell2000Only = true } = req.body;
     console.log(`[SCANNER] Admin ${req.user.id} triggered manual scan (Russell 2000 only: ${russell2000Only})`);
@@ -92,16 +94,16 @@ const triggerScan = async (req, res) => {
     });
   } catch (error) {
     console.error('[SCANNER] Error triggering scan:', error);
-    res.status(500).json({ error: error.message || 'Failed to trigger scan' });
+    throw new AppError(500, { error: error.message || 'Failed to trigger scan' });
   }
-};
+});
 
 /**
  * Clean up stuck scans (admin only)
  * POST /api/scanner/cleanup
  * @access Admin only
  */
-const cleanupStuckScans = async (req, res) => {
+const cleanupStuckScans = asyncHandler(async (req, res) => {
   try {
     console.log(`[SCANNER] Admin ${req.user.id} triggered cleanup of stuck scans`);
     const cleanedUp = await StockScannerService.cleanupStuckScans();
@@ -111,9 +113,9 @@ const cleanupStuckScans = async (req, res) => {
     });
   } catch (error) {
     console.error('[SCANNER] Error cleaning up stuck scans:', error);
-    res.status(500).json({ error: error.message || 'Failed to clean up stuck scans' });
+    throw new AppError(500, { error: error.message || 'Failed to clean up stuck scans' });
   }
-};
+});
 
 module.exports = {
   getScanResults,

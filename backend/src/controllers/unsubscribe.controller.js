@@ -1,6 +1,8 @@
 const unsubscribeService = require('../services/unsubscribeService');
 const User = require('../models/User');
 const logger = require('../utils/logger');
+const asyncHandler = require('../utils/asyncHandler');
+const AppError = require('../utils/AppError');
 
 function getToken(req) {
   return req.body?.token
@@ -50,7 +52,7 @@ async function getUnsubscribeStatus(req, res) {
     });
   } catch (error) {
     logger.error('[UNSUBSCRIBE] Error getting status:', error);
-    return res.status(500).json({
+    throw new AppError(500, {
       success: false,
       error: 'Failed to check unsubscribe status'
     });
@@ -101,7 +103,7 @@ async function handleUnsubscribe(req, res) {
     });
   } catch (error) {
     logger.error('[UNSUBSCRIBE] Error processing unsubscribe:', error);
-    return res.status(500).json({
+    throw new AppError(500, {
       success: false,
       error: 'Failed to process unsubscribe request'
     });
@@ -109,6 +111,6 @@ async function handleUnsubscribe(req, res) {
 }
 
 module.exports = {
-  getUnsubscribeStatus,
-  handleUnsubscribe
+  getUnsubscribeStatus: asyncHandler(getUnsubscribeStatus),
+  handleUnsubscribe: asyncHandler(handleUnsubscribe)
 };

@@ -1,9 +1,11 @@
 const pool = require('../config/database');
+const asyncHandler = require('../utils/asyncHandler');
+const AppError = require('../utils/AppError');
 
 /**
  * Get all instrument templates for the authenticated user
  */
-const getAllTemplates = async (req, res) => {
+const getAllTemplates = asyncHandler(async (req, res) => {
   try {
     const userId = req.user.id;
     const { instrument_type } = req.query;
@@ -34,17 +36,17 @@ const getAllTemplates = async (req, res) => {
     });
   } catch (error) {
     console.error('[ERROR] Error fetching instrument templates:', error);
-    res.status(500).json({
+    throw new AppError(500, {
       success: false,
       message: 'Failed to fetch instrument templates'
     });
   }
-};
+});
 
 /**
  * Get a single template by ID
  */
-const getTemplate = async (req, res) => {
+const getTemplate = asyncHandler(async (req, res) => {
   try {
     const userId = req.user.id;
     const { id } = req.params;
@@ -73,17 +75,17 @@ const getTemplate = async (req, res) => {
     });
   } catch (error) {
     console.error('[ERROR] Error fetching instrument template:', error);
-    res.status(500).json({
+    throw new AppError(500, {
       success: false,
       message: 'Failed to fetch instrument template'
     });
   }
-};
+});
 
 /**
  * Create a new instrument template
  */
-const createTemplate = async (req, res) => {
+const createTemplate = asyncHandler(async (req, res) => {
   try {
     const userId = req.user.id;
     const {
@@ -175,17 +177,17 @@ const createTemplate = async (req, res) => {
     });
   } catch (error) {
     console.error('[ERROR] Error creating instrument template:', error);
-    res.status(500).json({
+    throw new AppError(500, {
       success: false,
       message: 'Failed to create instrument template'
     });
   }
-};
+});
 
 /**
  * Update an instrument template
  */
-const updateTemplate = async (req, res) => {
+const updateTemplate = asyncHandler(async (req, res) => {
   try {
     const userId = req.user.id;
     const { id } = req.params;
@@ -281,17 +283,17 @@ const updateTemplate = async (req, res) => {
     });
   } catch (error) {
     console.error('[ERROR] Error updating instrument template:', error);
-    res.status(500).json({
+    throw new AppError(500, {
       success: false,
       message: 'Failed to update instrument template'
     });
   }
-};
+});
 
 /**
  * Delete an instrument template
  */
-const deleteTemplate = async (req, res) => {
+const deleteTemplate = asyncHandler(async (req, res) => {
   try {
     const userId = req.user.id;
     const { id } = req.params;
@@ -325,12 +327,12 @@ const deleteTemplate = async (req, res) => {
     });
   } catch (error) {
     console.error('[ERROR] Error deleting instrument template:', error);
-    res.status(500).json({
+    throw new AppError(500, {
       success: false,
       message: 'Failed to delete instrument template'
     });
   }
-};
+});
 
 module.exports = {
   getAllTemplates,

@@ -8,6 +8,15 @@ const errorHandler = (err, req, res, next) => {
                               err.code === 'EPIPE' ||
                               err.code === 'ECONNABORTED';
 
+  // Handled application errors carry an exact HTTP response (status + body).
+  // They replace hand-rolled inline `res.status(n).json(body)` calls in
+  // controllers; the body is emitted verbatim so the wire format is identical
+  // to the original inline call. The handler that threw already logged context,
+  // so skip the generic stack log to keep logging behaviour identical too.
+  if (err && err.isAppError) {
+    return res.status(err.statusCode).json(err.body);
+  }
+
   if (!isClientDisconnect) {
     console.error(err.stack);
   }

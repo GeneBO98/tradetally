@@ -2,6 +2,8 @@ const db = require('../config/database');
 const finnhub = require('../utils/finnhub');
 const cache = require('../utils/cache');
 const symbolCategories = require('../utils/symbolCategories');
+const asyncHandler = require('../utils/asyncHandler');
+const AppError = require('../utils/AppError');
 
 const CACHE_TTL = 300000; // 5 minutes
 
@@ -159,7 +161,7 @@ async function searchSymbols(req, res) {
     return res.json({ results });
   } catch (error) {
     console.error('[SYMBOLS] Search error:', error.message);
-    return res.status(500).json({ error: 'Failed to search symbols' });
+    throw new AppError(500, { error: 'Failed to search symbols' });
   }
 }
 
@@ -246,11 +248,11 @@ async function getSymbolMetadata(req, res) {
     return res.json({ metadata });
   } catch (error) {
     console.error('[SYMBOLS] Metadata error:', error.message);
-    return res.status(500).json({ error: 'Failed to fetch symbol metadata' });
+    throw new AppError(500, { error: 'Failed to fetch symbol metadata' });
   }
 }
 
 module.exports = {
-  searchSymbols,
-  getSymbolMetadata
+  searchSymbols: asyncHandler(searchSymbols),
+  getSymbolMetadata: asyncHandler(getSymbolMetadata)
 };

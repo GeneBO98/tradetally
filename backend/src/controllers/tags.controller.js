@@ -1,9 +1,11 @@
 const pool = require('../config/database');
+const asyncHandler = require('../utils/asyncHandler');
+const AppError = require('../utils/AppError');
 
 /**
  * Get all tags for the authenticated user
  */
-const getAllTags = async (req, res) => {
+const getAllTags = asyncHandler(async (req, res) => {
   try {
     const userId = req.user.id;
 
@@ -30,17 +32,17 @@ const getAllTags = async (req, res) => {
     });
   } catch (error) {
     console.error('[ERROR] Error fetching tags:', error);
-    res.status(500).json({
+    throw new AppError(500, {
       success: false,
       message: 'Failed to fetch tags'
     });
   }
-};
+});
 
 /**
  * Create a new tag
  */
-const createTag = async (req, res) => {
+const createTag = asyncHandler(async (req, res) => {
   try {
     const userId = req.user.id;
     const { name, color = '#3B82F6' } = req.body;
@@ -98,17 +100,17 @@ const createTag = async (req, res) => {
     });
   } catch (error) {
     console.error('[ERROR] Error creating tag:', error);
-    res.status(500).json({
+    throw new AppError(500, {
       success: false,
       message: 'Failed to create tag'
     });
   }
-};
+});
 
 /**
  * Update a tag
  */
-const updateTag = async (req, res) => {
+const updateTag = asyncHandler(async (req, res) => {
   try {
     const userId = req.user.id;
     const { id } = req.params;
@@ -206,17 +208,17 @@ const updateTag = async (req, res) => {
     });
   } catch (error) {
     console.error('[ERROR] Error updating tag:', error);
-    res.status(500).json({
+    throw new AppError(500, {
       success: false,
       message: 'Failed to update tag'
     });
   }
-};
+});
 
 /**
  * Delete a tag
  */
-const deleteTag = async (req, res) => {
+const deleteTag = asyncHandler(async (req, res) => {
   try {
     const userId = req.user.id;
     const { id } = req.params;
@@ -271,12 +273,12 @@ const deleteTag = async (req, res) => {
     }
   } catch (error) {
     console.error('[ERROR] Error deleting tag:', error);
-    res.status(500).json({
+    throw new AppError(500, {
       success: false,
       message: 'Failed to delete tag'
     });
   }
-};
+});
 
 module.exports = {
   getAllTags,
