@@ -876,7 +876,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         currentTrade.executionData = currentTrade.executions;
         // Add instrument data for options/futures
         Object.assign(currentTrade, instrumentData);
-        
+
         // For options, update symbol to use underlying symbol instead of the full option symbol
         if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol) {
           currentTrade.symbol = instrumentData.underlyingSymbol;

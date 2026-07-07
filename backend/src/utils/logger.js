@@ -27,15 +27,18 @@ class Logger {
       }
     });
 
-    // Retention sweep: deferred so it does not block boot, then every 24h.
-    setImmediate(() => {
-      this.runRetentionSweep().catch(() => {});
-    });
-    this.retentionTimer = setInterval(() => {
-      this.runRetentionSweep().catch(() => {});
-    }, RETENTION_SWEEP_MS);
-    if (typeof this.retentionTimer.unref === 'function') {
-      this.retentionTimer.unref();
+    this.retentionTimer = null;
+    if (process.env.NODE_ENV !== 'test') {
+      // Retention sweep: deferred so it does not block boot, then every 24h.
+      setImmediate(() => {
+        this.runRetentionSweep().catch(() => {});
+      });
+      this.retentionTimer = setInterval(() => {
+        this.runRetentionSweep().catch(() => {});
+      }, RETENTION_SWEEP_MS);
+      if (typeof this.retentionTimer.unref === 'function') {
+        this.retentionTimer.unref();
+      }
     }
 
     // Log levels: DEBUG=0, INFO=1, WARN=2, ERROR=3

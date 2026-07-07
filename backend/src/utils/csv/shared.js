@@ -146,7 +146,7 @@ function parseDate(dateStr) {
     const dd = String(date.getDate()).padStart(2, '0');
     return `${yearNum}-${mm}-${dd}`;
   }
-  
+
   // Fall back to default date parsing with validation
   try {
     const date = new Date(normalizedDateStr);
@@ -885,16 +885,16 @@ function parseNumeric(value, defaultValue = 0) {
 
 function parseInteger(value, defaultValue = 0) {
   if (value === null || value === undefined || value === '') return defaultValue;
-  
+
   const cleanValue = value.toString().trim().replace(/[,]/g, '');
   if (cleanValue === '') return defaultValue;
-  
+
   const parsed = parseInt(cleanValue);
   if (isNaN(parsed) || !isFinite(parsed)) return defaultValue;
-  
+
   // PostgreSQL 16 integer limits
   if (parsed < -2147483648 || parsed > 2147483647) return defaultValue;
-  
+
   return Math.abs(parsed); // Ensure positive for quantities
 }
 

@@ -32,13 +32,13 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
 
     return existingPositions[symbol] || null;
   }
-  
+
   // Debug: Log first few records to see structure
   console.log('Sample records:');
   records.slice(0, 5).forEach((record, i) => {
     console.log(`Record ${i}:`, JSON.stringify(record));
   });
-  
+
   // Count record types
   const typeCounts = {};
   records.forEach(record => {
@@ -46,7 +46,7 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
     typeCounts[type] = (typeCounts[type] || 0) + 1;
   });
   console.log('Record type counts:', typeCounts);
-  
+
   // Get diagnostics from context if available
   const diagnostics = context.diagnostics;
 
@@ -200,7 +200,7 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
       console.error('Error parsing thinkorswim transaction:', error, record);
     }
   }
-  
+
   // Sort transactions by symbol and datetime
   transactions.sort((a, b) => {
     if (a.symbol !== b.symbol) return a.symbol.localeCompare(b.symbol);
@@ -286,7 +286,7 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
     }
     transactionsBySymbol[groupKey].push(transaction);
   }
-  
+
   // Process transactions using round-trip trade grouping
   for (const groupKey in transactionsBySymbol) {
     const symbolTransactions = transactionsBySymbol[groupKey];
@@ -322,18 +322,18 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
       existingTradeId: existingPosition.id,
       newExecutionsAdded: 0
     } : null;
-    
+
     if (existingPosition) {
       console.log(`  → Starting with existing ${existingPosition.side} position: ${existingPosition.quantity} shares @ $${existingPosition.entryPrice}`);
       console.log(`  → Initial position: ${currentPosition}`);
     }
-    
+
     for (const transaction of symbolTransactions) {
       const qty = transaction.quantity;
       const prevPosition = currentPosition;
-      
+
       console.log(`\n${transaction.action} ${qty} @ $${transaction.price} | Position: ${currentPosition}`);
-      
+
       // Start new trade if going from flat to position
       if (currentPosition === 0) {
         currentTrade = {

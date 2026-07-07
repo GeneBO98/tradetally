@@ -167,7 +167,7 @@
                                             </h4>
                                             <button
                                                 @click="
-                                                    $emit('open-trade', 
+                                                    $emit('open-trade',
                                                         event.trigger_trade.id,
                                                     )
                                                 "

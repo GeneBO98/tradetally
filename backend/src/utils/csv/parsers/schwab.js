@@ -5,29 +5,29 @@ const { parseDate, parseDateTime, getExecutionTimeBounds, cleanString, parseInst
 
 async function parseSchwabTrades(records, existingPositions = {}, context = {}) {
   console.log(`Processing ${records.length} Schwab trade records`);
-  
+
   // Check if this is the new transaction format: Date,Action,Symbol,Description,Quantity,Price,Fees & Comm,Amount
   if (records.length > 0 && !Array.isArray(records[0])) {
     const columns = Object.keys(records[0]);
     console.log('Available columns:', columns);
-    
+
     // Check for the new transaction format
     if (columns.includes('Date') && columns.includes('Action') && columns.includes('Symbol') && columns.includes('Price')) {
       console.log('Detected new Schwab transaction format - processing buy/sell transactions');
       return await parseSchwabTransactions(records, existingPositions, context);
     }
   }
-  
+
   // Fall back to original format processing
   const completedTrades = [];
   let totalCommissions = 0;
   let totalFees = 0;
   let totalPnL = 0;
-  
+
   for (const record of records) {
     try {
       let symbol, quantity, costPerShare, proceedsPerShare, gainLoss, openedDate, closedDate, costBasis, term, washSale;
-      
+
       // Handle array format (positional data without headers)
       if (Array.isArray(record)) {
         symbol = record[0];
@@ -53,7 +53,7 @@ async function parseSchwabTrades(records, existingPositions = {}, context = {}) 
         term = record['Term'] || 'Unknown';
         washSale = record['Wash Sale?'] === 'Yes';
       }
-      
+
       const estimatedCommission = 0;
       let gainLossPercent = 0;
       if (Array.isArray(record)) {
@@ -61,7 +61,7 @@ async function parseSchwabTrades(records, existingPositions = {}, context = {}) 
       } else {
         gainLossPercent = parseFloat(record['Gain/Loss (%)']?.replace(/[%,]/g, '') || 0);
       }
-      
+
       // Determine account identifier - user selection takes priority, then CSV column, then header extraction
       const accountIdentifier = context.selectedAccountId
         ? context.selectedAccountId
@@ -86,7 +86,7 @@ async function parseSchwabTrades(records, existingPositions = {}, context = {}) 
         notes: `${term} - ${washSale ? 'Wash Sale' : 'Normal'}`,
         accountIdentifier
       };
-      
+
       if (trade.symbol && trade.entryPrice > 0 && trade.exitPrice > 0 && trade.quantity > 0) {
         completedTrades.push(trade);
         totalCommissions += estimatedCommission;
@@ -97,17 +97,17 @@ async function parseSchwabTrades(records, existingPositions = {}, context = {}) 
       console.error('Error parsing Schwab trade:', error, record);
     }
   }
-  
+
   console.log(`Created ${completedTrades.length} Schwab trades`);
   return completedTrades;
 }
 
 async function parseSchwabTransactions(records, existingPositions = {}, context = {}) {
   console.log(`Processing ${records.length} Schwab transaction records`);
-  
+
   const transactions = [];
   const completedTrades = [];
-  
+
   // First, parse all transactions - only process Buy and Sell actions
   for (const record of records) {
     try {
@@ -119,53 +119,53 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
       const feesStr = (record['Fees & Comm'] || '').toString().replace(/[$,]/g, '');
       const date = record['Date'] || '';
       const description = record['Description'] || '';
-      
+
       // Only process buy and sell transactions
       if (!action.includes('buy') && !action.includes('sell')) {
         console.log(`Skipping non-trade action: ${action}`);
         continue;
       }
-      
+
       // Skip if missing essential data
       if (!symbol || !quantityStr || !priceStr) {
         console.log(`Skipping transaction missing data:`, { symbol, quantityStr, priceStr, action });
         continue;
       }
-      
+
       const quantity = Math.abs(parseFloat(quantityStr));
       const price = parseFloat(priceStr);
       const amount = Math.abs(parseFloat(amountStr));
       const fees = parseFloat(feesStr) || 0;
-      
+
       if (quantity === 0 || price === 0) {
         console.log(`Skipping transaction with zero values:`, { symbol, quantity, price });
         continue;
       }
-      
+
       // Detect short sales - only check action field to avoid false positives
       // from security names containing "short" (e.g., "PROSHARES SHORT QQQ ETF")
       const isShort = action.includes('sell short');
-      
+
       let transactionType;
       if (action.includes('buy')) {
         transactionType = isShort ? 'cover' : 'buy';  // Buy to cover vs regular buy
       } else {
         transactionType = isShort ? 'short' : 'sell'; // Short sell vs regular sell
       }
-      
+
       // Parse date and skip if invalid
       const parsedDate = parseDate(date);
       if (!parsedDate) {
         console.log(`Skipping transaction with invalid date:`, { symbol, date, action });
         continue;
       }
-      
+
       const parsedDateTime = parseDateTime(date + ' 09:30');
       if (!parsedDateTime) {
         console.log(`Skipping transaction with invalid datetime:`, { symbol, date, action });
         continue;
       }
-      
+
       // Determine account identifier - user selection takes priority, then CSV column, then header extraction
       const accountIdentifier = context.selectedAccountId
         ? context.selectedAccountId
@@ -187,13 +187,13 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
         raw: record,
         accountIdentifier
       });
-      
+
       console.log(`Parsed transaction: ${transactionType} ${quantity} ${symbol} @ $${price} ${isShort ? '(SHORT)' : ''}`);
     } catch (error) {
       console.error('Error parsing Schwab transaction:', error, record);
     }
   }
-  
+
   // Assign unique times to transactions on the same date+symbol to preserve CSV order
   // This prevents issues with duplicate detection when multiple round trips occur on the same day
   const transactionsByDateSymbol = {};
@@ -361,7 +361,7 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
           console.log(`  → Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price} at ${newExecution.datetime}`);
         }
       }
-      
+
       // Process the transaction
       if (transaction.action === 'buy') {
         currentPosition += qty;
@@ -452,7 +452,7 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
           });
         }
       }
-      
+
       console.log(`  Position: ${prevPosition} → ${currentPosition}`);
 
       // Close trade if position goes to zero

@@ -196,7 +196,7 @@ function applyTradeGrouping(trades, settings) {
               multiplier = 1;
             }
             const groupEntryValue = currentGroup.entryPrice * currentGroup.quantity * multiplier;
-            
+
             // Calculate entry value for the trade being added
             let tradeMultiplier;
             if (trade.instrumentType === 'future') {
@@ -207,7 +207,7 @@ function applyTradeGrouping(trades, settings) {
               tradeMultiplier = 1;
             }
             const tradeEntryValue = trade.entryPrice * trade.quantity * tradeMultiplier;
-            
+
             const totalEntryValue = groupEntryValue + tradeEntryValue;
             if (totalEntryValue > 0) {
               currentGroup.pnlPercent = (totalPnl / totalEntryValue) * 100;

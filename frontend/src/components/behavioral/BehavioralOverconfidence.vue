@@ -1249,7 +1249,7 @@
                                         </div>
                                         <button
                                             @click="
-                                                $emit('toggle-event', 
+                                                $emit('toggle-event',
                                                     event.id,
                                                 )
                                             "

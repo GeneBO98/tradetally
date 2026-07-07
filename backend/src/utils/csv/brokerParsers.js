@@ -361,7 +361,7 @@ const brokerParsers = {
     const quantity = Math.abs(parseFloat(row.Quantity || 0));
     const isShort = parseFloat(row['Cost Per Share'] || 0) > parseFloat(row['Proceeds Per Share'] || 0) &&
                     parseFloat(row['Gain/Loss ($)'] || 0) > 0;
-    
+
     return {
       symbol: cleanString(row.Symbol),
       tradeDate: parseDate(row['Opened Date']),

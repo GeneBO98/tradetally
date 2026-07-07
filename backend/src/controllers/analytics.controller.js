@@ -92,20 +92,20 @@ async function calculateMAEMFEAsync(userId, filterConditions, params) {
   try {
     // First try to get actual MAE/MFE if available
     const actualMaeQuery = `
-      SELECT 
+      SELECT
         COALESCE(AVG(mae), 0) as avg_mae,
         COALESCE(AVG(mfe), 0) as avg_mfe,
         COUNT(mae) as mae_count,
         COUNT(mfe) as mfe_count
       FROM trades
       WHERE user_id = $1 ${filterConditions}
-        AND mae IS NOT NULL 
+        AND mae IS NOT NULL
         AND mfe IS NOT NULL
     `;
-    
+
     const actualMaeResult = await db.query(actualMaeQuery, params);
     const actualMaeData = actualMaeResult.rows[0];
-    
+
     if (actualMaeData && actualMaeData.mae_count > 0) {
       // Use actual data if available
       return {
@@ -142,13 +142,13 @@ async function calculateMAEMFEAsync(userId, filterConditions, params) {
           AND entry_time IS NOT NULL
           AND exit_time IS NOT NULL
       `;
-      
+
       const tradesResult = await db.query(estimateQuery, params);
       const trades = tradesResult.rows.map(trade => ({
         ...trade,
         quantity: parseFloat(trade.quantity)
       }));
-      
+
       if (trades.length > 0) {
         const estimates = await MAEEstimator.estimateForTrades(trades);
         return estimates;
@@ -793,7 +793,7 @@ const analyticsController = {
   async getOverview(req, res, next) {
     try {
       const filterData = buildFilterConditions(req.query);
-      
+
       // Get user's preference for average vs median calculations
       const User = require('../models/User');
       const { normalizeConfig, breakevenPredicate, toleranceCacheKey } = require('../utils/breakeven');
@@ -837,7 +837,7 @@ const analyticsController = {
       const normalizedFiltersForCache = convertQueryToTradeFilters(req.query);
       const filterHashKey = createFilterHash(normalizedFiltersForCache);
       const cacheKey = `analytics_overview_${req.user.id}_${filterHashKey}_${useMedian ? 'median' : 'avg'}_be${toleranceCacheKey(breakevenConfig)}_grp${groupByPosition ? 'pos' : 'leg'}`;
-      
+
       // Check cache first for faster response
       const cachedData = cache.get(cacheKey);
       if (cachedData) {
@@ -973,7 +973,7 @@ const analyticsController = {
         } else {
           console.log('No overview data returned from query.');
           // Send a valid empty response if overview is missing
-          return { 
+          return {
             overview: {
               total_pnl: 0, win_rate: 0, win_rate_excluding_breakeven: 0, total_trades: 0, winning_trades: 0, losing_trades: 0,
               breakeven_trades: 0, avg_pnl: 0, avg_win: 0, avg_loss: 0, best_trade: 0,
@@ -1048,7 +1048,7 @@ const analyticsController = {
           : 0;
 
         // Calculate advanced trading metrics
-      
+
         // 1. Profit Factor (ratio) - Total gross wins divided by total gross losses
         overview.profit_factor = overview.total_gross_losses > 0
           ? (overview.total_gross_wins / overview.total_gross_losses).toFixed(2)
@@ -1059,7 +1059,7 @@ const analyticsController = {
         const stdDev = parseFloat(overview.pnl_stddev) || 0;
         const avgTrade = parseFloat(overview.avg_pnl) || 0;
         const sqrtTrades = Math.sqrt(overview.total_trades);
-      
+
         if (stdDev > 0 && overview.total_trades > 0) {
           overview.sqn = ((avgTrade / stdDev) * sqrtTrades).toFixed(2);
         } else {
@@ -1072,12 +1072,12 @@ const analyticsController = {
         const lossRate = overview.losing_trades / overview.total_trades;
         const avgWin = Math.abs(parseFloat(overview.avg_win)) || 0;
         const avgLoss = Math.abs(parseFloat(overview.avg_loss)) || 0;
-      
+
         if (avgLoss > 0 && overview.total_trades > 0) {
           const winLossRatio = avgWin / avgLoss;
           const kellyDecimal = (winRate * winLossRatio - lossRate) / winLossRatio;
           overview.kelly_percentage = (kellyDecimal * 100).toFixed(2);
-        
+
           // Debug info
           console.log('Kelly % calculation:', {
             winRate: winRate.toFixed(4),
@@ -1095,25 +1095,25 @@ const analyticsController = {
         // 4. K-Ratio (ratio) - Measures consistency of returns over time using user-entered equity values
         // K-Ratio = Average Return / Standard Deviation of Returns
         // Uses only user-entered equity snapshots, not calculated trade data
-      
+
         try {
           console.log('Starting K-Ratio calculation using equity snapshots...');
           // Get user-entered equity snapshots only
           const equityQuery = `
-            SELECT 
+            SELECT
               equity_amount,
               snapshot_date
             FROM equity_snapshots
             WHERE user_id = $1
             ORDER BY snapshot_date ASC
           `;
-        
+
           const equityResult = await db.query(equityQuery, [req.user.id]);
           const equitySnapshots = equityResult.rows;
-        
+
           console.log('K-Ratio equity snapshots found:', equitySnapshots.length);
           console.log('K-Ratio equity snapshots data:', equitySnapshots);
-        
+
           if (equitySnapshots && equitySnapshots.length >= 3) {
             // Calculate daily returns from user-entered equity values
             const returns = [];
@@ -1127,19 +1127,19 @@ const analyticsController = {
                 console.log(`K-Ratio: Daily return: ${dailyReturn.toFixed(6)}`);
               }
             }
-          
+
             console.log('K-Ratio daily returns calculated:', returns.length);
-          
+
             if (returns.length > 0) {
               // Calculate average return and standard deviation
               const avgReturn = returns.reduce((sum, ret) => sum + ret, 0) / returns.length;
               const variance = returns.reduce((sum, ret) => sum + Math.pow(ret - avgReturn, 2), 0) / returns.length;
               const stdDev = Math.sqrt(variance);
-            
+
               // Calculate K-Ratio
               const kRatio = stdDev === 0 ? 0 : avgReturn / stdDev;
               overview.k_ratio = kRatio.toFixed(2);
-            
+
               console.log('K-Ratio calculation details:');
               console.log('  equity snapshots:', equitySnapshots.length);
               console.log('  returns count:', returns.length);
@@ -1165,7 +1165,7 @@ const analyticsController = {
           const expectedWins = overview.total_trades * 0.5;
           const chiSquare = Math.pow(overview.winning_trades - expectedWins, 2) / expectedWins +
                            Math.pow(overview.losing_trades - expectedWins, 2) / expectedWins;
-        
+
           // Convert chi-square to probability (simplified)
           // For df=1, critical value at 95% confidence is 3.841
           if (chiSquare > 3.841) {
@@ -1190,7 +1190,7 @@ const analyticsController = {
           console.log('Starting MAE/MFE calculation...');
           const estimates = await Promise.race([
             calculateMAEMFEAsync(req.user.id, filterConditions, params),
-            new Promise((_, reject) => 
+            new Promise((_, reject) =>
               setTimeout(() => reject(new Error('MAE/MFE calculation timeout')), 5000)
             )
           ]);
@@ -1331,22 +1331,22 @@ const analyticsController = {
   async getMAEMFE(req, res, next) {
     try {
       const { startDate, endDate } = req.query;
-      
+
       let dateFilter = '';
       const params = [req.user.id];
-      
+
       if (startDate) {
         dateFilter += ' AND trade_date >= $2';
         params.push(startDate);
       }
-      
+
       if (endDate) {
         dateFilter += ` AND trade_date <= $${params.length + 1}`;
         params.push(endDate);
       }
 
       const estimates = await calculateMAEMFEAsync(req.user.id, dateFilter, params);
-      
+
       res.json({
         success: true,
         data: estimates
@@ -1524,7 +1524,7 @@ const analyticsController = {
       // Whitelist allowed periods to prevent SQL injection
       const allowedPeriods = ['daily', 'weekly', 'monthly'];
       const sanitizedPeriod = allowedPeriods.includes(period) ? period : 'daily';
-      
+
       let groupBy;
       switch (sanitizedPeriod) {
         case 'weekly':
@@ -1582,7 +1582,7 @@ const analyticsController = {
       `;
 
       const result = await db.query(performanceQuery, params);
-      
+
       res.json({ performance: result.rows });
     } catch (error) {
       next(error);
@@ -1592,7 +1592,7 @@ const analyticsController = {
   async getSymbolStats(req, res, next) {
     try {
       const { limit = 10 } = req.query;
-      
+
       const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
       const params = [req.user.id, ...filterParams];
 
@@ -1601,7 +1601,7 @@ const analyticsController = {
       if (isNaN(sanitizedLimit) || sanitizedLimit < 1 || sanitizedLimit > 100) {
         return res.status(400).json({ error: 'Invalid limit parameter. Must be between 1 and 100' });
       }
-      
+
       params.push(sanitizedLimit);
 
       const groupByPosition = await isPositionGroupingEnabled(req.user.id);
@@ -1652,7 +1652,7 @@ const analyticsController = {
       `;
 
       const result = await db.query(symbolQuery, params);
-      
+
       res.json({ symbols: result.rows });
     } catch (error) {
       next(error);
@@ -1888,12 +1888,12 @@ const analyticsController = {
   async getCalendarData(req, res, next) {
     try {
       const { year } = req.query;
-      
+
       // Require year parameter for performance - fetch only one year at a time
       if (!year) {
         return res.status(400).json({ error: 'Year parameter is required' });
       }
-      
+
       const sanitizedYear = parseInt(year);
       if (isNaN(sanitizedYear) || sanitizedYear < 1900 || sanitizedYear > 2100) {
         return res.status(400).json({ error: 'Invalid year parameter' });
@@ -2131,11 +2131,11 @@ const analyticsController = {
   async exportData(req, res, next) {
     try {
       const { format = 'csv' } = req.query;
-      
+
       // Validate format parameter
       const allowedFormats = ['csv', 'json'];
       const sanitizedFormat = allowedFormats.includes(format) ? format : 'csv';
-      
+
       const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
       const params = [req.user.id, ...filterParams];
 
@@ -2146,7 +2146,7 @@ const analyticsController = {
       `;
 
       const result = await db.query(exportQuery, params);
-      
+
       if (sanitizedFormat === 'csv') {
         const csv = convertToCSV(result.rows);
         res.setHeader('Content-Type', 'text/csv');
@@ -2179,8 +2179,8 @@ const analyticsController = {
         // Trade Distribution by Price
         const tradeDistributionQuery = `
           WITH price_ranges AS (
-            SELECT 
-              CASE 
+            SELECT
+              CASE
                 WHEN entry_price < 2 THEN '< $2'
                 WHEN entry_price < 5 THEN '$2-4.99'
                 WHEN entry_price < 10 THEN '$5-9.99'
@@ -2190,7 +2190,7 @@ const analyticsController = {
                 WHEN entry_price < 200 THEN '$100-199.99'
                 ELSE '$200+'
               END as price_range,
-              CASE 
+              CASE
                 WHEN entry_price < 2 THEN 1
                 WHEN entry_price < 5 THEN 2
                 WHEN entry_price < 10 THEN 3
@@ -2599,9 +2599,9 @@ const analyticsController = {
         // Daily Volume Data - Calculate from executions for accurate trading volume
         const dailyVolumeQuery = `
           WITH execution_volumes AS (
-            SELECT 
+            SELECT
               trade_date,
-              CASE 
+              CASE
                 WHEN executions IS NOT NULL AND jsonb_array_length(executions) > 0 THEN
                   (
                     SELECT COALESCE(SUM((exec->>'quantity')::numeric), 0)
@@ -2612,7 +2612,7 @@ const analyticsController = {
             FROM trades
             WHERE user_id = $1 ${filterConditions}
           )
-          SELECT 
+          SELECT
             trade_date,
             COALESCE(SUM(trade_volume), 0) as total_volume,
             COUNT(*) as trade_count
@@ -2724,7 +2724,7 @@ const analyticsController = {
 
       const drawdownQuery = `
         WITH daily_pnl AS (
-          SELECT 
+          SELECT
             trade_date,
             COALESCE(SUM(pnl), 0) as daily_pnl
           FROM trades
@@ -2733,21 +2733,21 @@ const analyticsController = {
           ORDER BY trade_date
         ),
         cumulative_pnl AS (
-          SELECT 
+          SELECT
             trade_date,
             daily_pnl,
             SUM(daily_pnl) OVER (ORDER BY trade_date) as cumulative_pnl
           FROM daily_pnl
         ),
         running_max AS (
-          SELECT 
+          SELECT
             trade_date,
             daily_pnl,
             cumulative_pnl,
             MAX(cumulative_pnl) OVER (ORDER BY trade_date) as running_max_pnl
           FROM cumulative_pnl
         )
-        SELECT 
+        SELECT
           trade_date,
           daily_pnl,
           cumulative_pnl,
@@ -2758,7 +2758,7 @@ const analyticsController = {
       `;
 
       const result = await db.query(drawdownQuery, params);
-      
+
       res.json({ drawdown: result.rows });
     } catch (error) {
       next(error);
@@ -2800,25 +2800,25 @@ const analyticsController = {
           error: 'AI recommendations are not available. AI provider not configured in settings.'
         });
       }
-      
+
       // Check if API key is required for this provider
       const providersRequiringApiKey = ['gemini', 'claude', 'openai', 'deepseek', 'kimi', 'perplexity'];
       if (providersRequiringApiKey.includes(userSettings.provider) && !userSettings.apiKey) {
         console.log(`[ERROR] API key required for ${userSettings.provider} provider`);
-        return res.status(400).json({ 
-          error: `AI recommendations are not available. API key required for ${userSettings.provider} provider.` 
+        return res.status(400).json({
+          error: `AI recommendations are not available. API key required for ${userSettings.provider} provider.`
         });
       }
-      
+
       // Check if API URL is required for this provider
       const providersRequiringApiUrl = ['ollama', 'lmstudio', 'local'];
       if (providersRequiringApiUrl.includes(userSettings.provider) && !userSettings.apiUrl) {
         console.log(`[ERROR] API URL required for ${userSettings.provider} provider`);
-        return res.status(400).json({ 
-          error: `AI recommendations are not available. API URL required for ${userSettings.provider} provider.` 
+        return res.status(400).json({
+          error: `AI recommendations are not available. API URL required for ${userSettings.provider} provider.`
         });
       }
-      
+
       console.log(`[OK] AI provider configured: ${userSettings.provider}`);
 
       // Use buildFilterConditions for consistency
@@ -2874,17 +2874,17 @@ const analyticsController = {
       console.log(`[INFO] Found ${metrics.total_trades} trades for analysis`);
 
       // Calculate derived metrics
-      metrics.win_rate = metrics.total_trades > 0 
+      metrics.win_rate = metrics.total_trades > 0
         ? (metrics.winning_trades / metrics.total_trades * 100).toFixed(2)
         : 0;
-      
+
       metrics.profit_factor = metrics.avg_loss !== 0
         ? Math.abs(metrics.avg_win / metrics.avg_loss).toFixed(2)
         : 0;
 
       // Get recent trade data for pattern analysis
       const tradesQuery = `
-        SELECT 
+        SELECT
           symbol, entry_time, exit_time, entry_price, exit_price,
           quantity, side, pnl, pnl_percent, commission, fees, broker,
           trade_date, strategy, tags, notes
@@ -2901,11 +2901,11 @@ const analyticsController = {
       console.log('[USER] Fetching user trading profile...');
       let userProfileSettings = null;
       let tradingProfile = null;
-      
+
       try {
         userProfileSettings = await User.getSettings(req.user.id);
         console.log('[CONFIG] User settings found:', !!userProfileSettings);
-        
+
         if (userProfileSettings) {
           // Check if trading profile columns exist before accessing them
           tradingProfile = {
@@ -3028,15 +3028,15 @@ const analyticsController = {
         }
       } catch (aiError) {
         console.error('[ERROR] AI service error:', aiError.message);
-        return res.status(500).json({ 
-          error: 'Failed to generate AI recommendations: ' + aiError.message 
+        return res.status(500).json({
+          error: 'Failed to generate AI recommendations: ' + aiError.message
         });
       }
       console.log('[SUCCESS] AI recommendations generated successfully');
       console.log('[DEBUG] Recommendations type:', typeof recommendations);
       console.log('[DEBUG] Recommendations content preview:', recommendations ? recommendations.substring(0, 100) + '...' : 'undefined');
 
-      const response = { 
+      const response = {
         recommendations,
         analysisDate: new Date().toISOString(),
         tradesAnalyzed: trades.length,
@@ -3045,7 +3045,7 @@ const analyticsController = {
           endDate: endDate || null
         }
       };
-      
+
       console.log('[RESPONSE] Sending response with keys:', Object.keys(response));
       res.json(response);
 
@@ -3062,9 +3062,9 @@ const analyticsController = {
       // Use buildFilterConditions for consistency
       const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
       const params = [req.user.id, ...filterParams];
-      
+
       const { startDate, endDate } = req.query;
-      
+
       console.log('Sector performance request - Filters:', req.query);
       console.log('Sector performance - Query params:', params);
 
@@ -3109,11 +3109,11 @@ const analyticsController = {
 
       const symbolResult = await db.query(symbolQuery, params);
       const symbolData = symbolResult.rows;
-      
+
       console.log(`[INFO] Found ${symbolData.length} unique symbols to analyze`);
 
       if (symbolData.length === 0) {
-        return res.json({ 
+        return res.json({
           sectors: [],
           message: 'No trading data found for the selected date range'
         });
@@ -3122,38 +3122,38 @@ const analyticsController = {
       // Get industry data from permanent storage first (fast)
       console.log('[STORAGE] Fetching industry data from permanent storage...');
       const symbols = symbolData.map(s => s.symbol);
-      
+
       // Get all categories from storage (including those that failed categorization)
       const storedQuery = `
         SELECT symbol, finnhub_industry, company_name
-        FROM symbol_categories 
+        FROM symbol_categories
         WHERE symbol = ANY($1::text[])
       `;
       const storedResult = await db.query(storedQuery, [symbols]);
       const storedCategories = new Map();
-      
+
       for (const row of storedResult.rows) {
         storedCategories.set(row.symbol, row);
       }
-      
+
       console.log(`[DATA] Found ${storedCategories.size} stored symbols in permanent storage`);
-      
+
       const sectorMap = new Map();
       let categorizedCount = 0;
       let uncategorizedSymbols = [];
       let failedSymbols = 0;
-      
+
       // Process symbols with stored categories first
       for (const symbolInfo of symbolData) {
         const category = storedCategories.get(symbolInfo.symbol.toUpperCase());
-        
+
         if (category) {
           // Symbol has been processed
           if (category.finnhub_industry) {
             // Successfully categorized
             const industry = category.finnhub_industry;
             categorizedCount++;
-            
+
             if (!sectorMap.has(industry)) {
               sectorMap.set(industry, {
                 industry: industry,
@@ -3163,7 +3163,7 @@ const analyticsController = {
                 symbols: []
               });
             }
-            
+
             const sector = sectorMap.get(industry);
             sector.total_trades += parseInt(symbolInfo.total_trades);
             sector.total_pnl += parseFloat(symbolInfo.total_pnl);
@@ -3182,7 +3182,7 @@ const analyticsController = {
           uncategorizedSymbols.push(symbolInfo.symbol);
         }
       }
-      
+
       console.log(`[STATS] Immediate sector analysis: ${categorizedCount} categorized, ${uncategorizedSymbols.length} uncategorized`);
 
       // Convert map to array and calculate additional metrics
@@ -3195,7 +3195,7 @@ const analyticsController = {
 
       console.log(`[RETURN] Returning ${sectors.length} sectors immediately`);
 
-      const resultData = { 
+      const resultData = {
         sectors,
         analysisDate: new Date().toISOString(),
         symbolsAnalyzed: categorizedCount,
@@ -3225,19 +3225,19 @@ const analyticsController = {
   async categorizeSymbols(req, res, next) {
     try {
       console.log('[PROCESS] Starting symbol categorization process...');
-      
+
       if (!finnhub.isConfigured()) {
-        return res.status(400).json({ 
-          error: 'Symbol categorization not available. Finnhub API key not configured.' 
+        return res.status(400).json({
+          error: 'Symbol categorization not available. Finnhub API key not configured.'
         });
       }
 
       // Run categorization for the current user's trades
       const result = await symbolCategories.categorizeNewSymbols(req.user.id);
-      
+
       // Get current stats
       const stats = await symbolCategories.getStats();
-      
+
       res.json({
         success: true,
         result,
@@ -3268,14 +3268,14 @@ const analyticsController = {
     try {
       const query = `
         SELECT DISTINCT finnhub_industry
-        FROM symbol_categories 
+        FROM symbol_categories
         WHERE finnhub_industry IS NOT NULL
         ORDER BY finnhub_industry
       `;
-      
+
       const result = await db.query(query);
       const sectors = result.rows.map(row => row.finnhub_industry);
-      
+
       res.json({ sectors });
     } catch (error) {
       console.error('Error getting available sectors:', error);
@@ -3287,16 +3287,16 @@ const analyticsController = {
     try {
       const query = `
         SELECT DISTINCT broker
-        FROM trades 
-        WHERE user_id = $1 
-          AND broker IS NOT NULL 
+        FROM trades
+        WHERE user_id = $1
+          AND broker IS NOT NULL
           AND broker != ''
         ORDER BY broker
       `;
-      
+
       const result = await db.query(query, [req.user.id]);
       const brokers = result.rows.map(row => row.broker);
-      
+
       res.json({ brokers });
     } catch (error) {
       console.error('Error getting available brokers:', error);
@@ -3307,11 +3307,11 @@ const analyticsController = {
   async refreshSectorPerformance(req, res, next) {
     try {
       console.log('[REFRESH] Refreshing sector performance data...');
-      
+
       // Use buildFilterConditions for consistency
       const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
       const params = [req.user.id, ...filterParams];
-      
+
       const { startDate, endDate } = req.query;
 
       // Get all symbols and their P&L from trades
@@ -3354,45 +3354,45 @@ const analyticsController = {
 
       const symbolResult = await db.query(symbolQuery, params);
       const symbolData = symbolResult.rows;
-      
+
       if (symbolData.length === 0) {
-        return res.json({ 
+        return res.json({
           sectors: [],
           message: 'No trading data found for the selected date range'
         });
       }
 
       const symbols = symbolData.map(s => s.symbol);
-      
+
       // Get all categories from storage (including those that failed categorization)
       const storedQuery = `
         SELECT symbol, finnhub_industry, company_name
-        FROM symbol_categories 
+        FROM symbol_categories
         WHERE symbol = ANY($1::text[])
       `;
       const storedResult = await db.query(storedQuery, [symbols]);
       const storedCategories = new Map();
-      
+
       for (const row of storedResult.rows) {
         storedCategories.set(row.symbol, row);
       }
-      
+
       const sectorMap = new Map();
       let categorizedCount = 0;
       let uncategorizedSymbols = [];
       let failedSymbols = 0;
-      
+
       // Process all symbols with their categories
       for (const symbolInfo of symbolData) {
         const category = storedCategories.get(symbolInfo.symbol.toUpperCase());
-        
+
         if (category) {
           // Symbol has been processed
           if (category.finnhub_industry) {
             // Successfully categorized
             const industry = category.finnhub_industry;
             categorizedCount++;
-            
+
             if (!sectorMap.has(industry)) {
               sectorMap.set(industry, {
                 industry: industry,
@@ -3402,7 +3402,7 @@ const analyticsController = {
                 symbols: []
               });
             }
-            
+
             const sector = sectorMap.get(industry);
             sector.total_trades += parseInt(symbolInfo.total_trades);
             sector.total_pnl += parseFloat(symbolInfo.total_pnl);
@@ -3430,7 +3430,7 @@ const analyticsController = {
         symbol_count: sector.symbols.length
       })).sort((a, b) => b.total_pnl - a.total_pnl);
 
-      const resultData = { 
+      const resultData = {
         sectors,
         analysisDate: new Date().toISOString(),
         symbolsAnalyzed: categorizedCount,
@@ -4078,13 +4078,13 @@ Respond with the JSON array now.`;
   },
 
   buildRecommendationPrompt(metrics, trades, tradingProfile, sectorData) {
-    const sectorAnalysis = sectorData && sectorData.length > 0 
-      ? `\n\nSector Performance Analysis:\n${sectorData.map(s => 
+    const sectorAnalysis = sectorData && sectorData.length > 0
+      ? `\n\nSector Performance Analysis:\n${sectorData.map(s =>
           `- ${s.industry}: ${s.total_trades} trades, ${s.total_pnl > 0 ? '+' : ''}$${s.total_pnl.toFixed(2)} P&L, ${s.win_rate}% win rate`
         ).join('\n')}`
       : '';
 
-    const tradingProfileInfo = tradingProfile 
+    const tradingProfileInfo = tradingProfile
       ? `\n\nTrading Profile:\n- Experience: ${tradingProfile.experienceLevel}\n- Risk Tolerance: ${tradingProfile.riskTolerance}\n- Trading Styles: ${tradingProfile.tradingStyles.join(', ')}\n- Strategies: ${tradingProfile.tradingStrategies.join(', ')}`
       : '';
 
@@ -4102,7 +4102,7 @@ PERFORMANCE METRICS:
 - Profit Factor: ${metrics.profit_factor}${tradingProfileInfo}${sectorAnalysis}
 
 RECENT TRADES SAMPLE:
-${trades.slice(0, 10).map(t => 
+${trades.slice(0, 10).map(t =>
   `${t.symbol} - ${t.side} - Entry: $${t.entry_price} - Exit: $${t.exit_price} - P&L: $${t.pnl}`
 ).join('\n')}
 

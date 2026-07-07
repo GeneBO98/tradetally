@@ -90,7 +90,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     });
     console.log(`=====================\n`);
     context.importDate = context.importDate || importDateFromFileName;
-    
+
     let csvString = fileBuffer.toString('utf-8');
 
     // Remove BOM (Byte Order Mark) if present - this can cause parsing issues
@@ -157,7 +157,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
         console.log('Skipped title row in Lightspeed CSV');
       }
     }
-    
+
     const isPaperMoneyOrderHeader = (line) => {
       const lowerLine = String(line || '').toLowerCase();
       return (lowerLine.includes('exec time') || lowerLine.includes('time placed')) &&
@@ -170,18 +170,18 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     // Handle PaperMoney CSV files that have multiple sections
     if (broker === 'papermoney') {
       const lines = csvString.split('\n');
-      
+
       // Find the "Filled Orders" section
       let filledOrdersStart = -1;
       let filledOrdersEnd = -1;
-      
+
       for (let i = 0; i < lines.length; i++) {
         if (lines[i].includes('Filled Orders')) {
           filledOrdersStart = i + 1; // Skip the "Filled Orders" title line
           break;
         }
       }
-      
+
       if (filledOrdersStart >= 0) {
         // Find the header line (contains "Exec Time,Spread,Side,Qty")
         for (let i = filledOrdersStart; i < lines.length; i++) {
@@ -266,7 +266,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       };
       console.log('Using special parsing options for Tradovate CSV');
     }
-    
+
     if (broker === 'schwab') {
       const firstLine = csvString.split('\n')[0];
       if (firstLine.includes('\t') && !firstLine.includes(',')) {
@@ -335,7 +335,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
         console.log(`[ACCOUNT] No Schwab account number found in header rows`);
       }
     }
-    
+
     // Special handling for thinkorswim CSV format
     if (broker === 'thinkorswim') {
       // Thinkorswim CSVs have account statement header rows that need to be removed
@@ -441,7 +441,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       const previewLineCount = Math.min(csvString.split('\n').length, 5);
       console.log(`Prepared thinkorswim CSV for parsing (preview lines redacted, count=${previewLineCount})`);
     }
-    
+
     // Special handling for TradingView Paper Trading CSV (Margin column has commas in quotes)
     if (broker === 'tradingview_paper') {
       parseOptions = {
@@ -565,17 +565,17 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
         console.log(`[CSV] Auto-detected delimiter: ${JSON.stringify(headerInfo.delimiter)}`);
       }
     }
-    
+
     let records;
     try {
       records = parse(csvString, parseOptions);
     } catch (parseError) {
       console.error('CSV parsing error:', parseError.message);
-      
+
       // If IBKR parsing fails, try alternative approach
       if (broker === 'ibkr' || broker === 'ibkr_trade_confirmation' || broker === 'captrader') {
         console.log('Trying alternative parsing approach for IBKR');
-        
+
         // Try with even more relaxed options
         parseOptions = {
           columns: true,
@@ -595,7 +595,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
             return record;
           }
         };
-        
+
         try {
           records = parse(csvString, parseOptions);
         } catch (retryError) {
@@ -662,7 +662,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
         throw parseError;
       }
     }
-    
+
     console.log(`Parsing ${records.length} records with ${broker} parser`);
 
     // Update diagnostics with row count and headers

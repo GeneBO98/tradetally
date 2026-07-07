@@ -6,10 +6,10 @@ const { parseDate, parseDateTime, getExecutionTimeBounds, cleanString, parseInst
 async function parsePaperMoneyTransactions(records, existingPositions = {}, context = {}) {
   const DEBUG = process.env.DEBUG_IMPORT === 'true';
   if (DEBUG) console.log(`Processing ${records.length} PaperMoney transaction records`);
-  
+
   const transactions = [];
   const completedTrades = [];
-  
+
   // Debug: Log first few records to see structure
   console.log('Sample PaperMoney records:');
   records.slice(0, 5).forEach((record, i) => {
@@ -56,7 +56,7 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
 
     return parseInstrumentData(symbol);
   };
-  
+
   // First, parse all trade transactions from the filled orders
   for (const record of records) {
     try {
@@ -73,13 +73,13 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
         console.log(`Skipping PaperMoney order with non-filled status: ${status}`);
         continue;
       }
-      
+
       // Skip if missing essential data
       if (!symbol || !side || quantity === 0 || !Number.isFinite(price) || price === 0 || !execTime) {
         console.log(`Skipping PaperMoney record missing data:`, { symbol, side, quantity, price, execTime });
         continue;
       }
-      
+
       // Parse the execution time (format: "9/19/25 13:24:32")
       let tradeDate = null;
       let entryTime = null;
@@ -96,27 +96,27 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
           entryTime = parseDateTime(fullDate);
         }
       }
-      
+
       if (!tradeDate || !entryTime) {
         console.log(`Skipping PaperMoney record with invalid date: ${execTime}`);
         continue;
       }
-      
+
       // Validate date is reasonable (not in future, not too old)
       const now = new Date();
       const maxFutureDate = new Date(now.getTime() + 24 * 60 * 60 * 1000); // Allow 1 day in future for timezone issues
       const minPastDate = new Date('2000-01-01');
-      
+
       if (entryTime > maxFutureDate) {
         console.log(`Skipping PaperMoney record with future date: ${execTime}`);
         continue;
       }
-      
+
       if (entryTime < minPastDate) {
         console.log(`Skipping PaperMoney record with date too far in past: ${execTime}`);
         continue;
       }
-      
+
       // Determine account identifier - user selection takes priority over CSV column
       const accountIdentifier = context.selectedAccountId
         ? context.selectedAccountId
@@ -145,7 +145,7 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
       console.error('Error parsing PaperMoney transaction:', error, record);
     }
   }
-  
+
   // Group transactions by symbol or option contract before sorting.
   const transactionsBySymbol = {};
   for (const transaction of transactions) {
@@ -166,7 +166,7 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
   }
 
   console.log(`Parsed ${transactions.length} valid PaperMoney trade transactions`);
-  
+
   // Process transactions using round-trip trade grouping
   for (const groupKey in transactionsBySymbol) {
     const symbolTransactions = transactionsBySymbol[groupKey];
@@ -177,7 +177,7 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
                               instrumentData.instrumentType === 'future' ? (instrumentData.pointValue || 1) : 1);
 
     console.log(`\n=== Processing ${symbolTransactions.length} PaperMoney transactions for ${symbol} ===`);
-    
+
     // Track position and round-trip trades
     // Start with existing position if we have one for this symbol
     const existingPosition = existingPositions[groupKey] || existingPositions[symbol];
@@ -198,18 +198,18 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
       existingTradeId: existingPosition.id,
       newExecutionsAdded: 0
     } : null;
-    
+
     if (existingPosition) {
       console.log(`  → Starting with existing ${existingPosition.side} position: ${existingPosition.quantity} shares @ $${existingPosition.entryPrice}`);
       console.log(`  → Initial position: ${currentPosition}`);
     }
-    
+
     for (const transaction of symbolTransactions) {
       const qty = transaction.quantity;
       const prevPosition = currentPosition;
-      
+
       console.log(`\n${transaction.action} ${qty} @ $${transaction.price} | Position: ${currentPosition}`);
-      
+
       // Start new trade if going from flat to position
       if (currentPosition === 0) {
         currentTrade = {
@@ -299,14 +299,14 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
         // Calculate weighted average prices
         currentTrade.entryPrice = currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier);
         currentTrade.exitPrice = currentTrade.exitValue / (currentTrade.totalQuantity * valueMultiplier);
-        
+
         // Calculate P/L
         if (currentTrade.side === 'long') {
           currentTrade.pnl = currentTrade.exitValue - currentTrade.entryValue - currentTrade.totalFees;
         } else {
           currentTrade.pnl = currentTrade.entryValue - currentTrade.exitValue - currentTrade.totalFees;
         }
-        
+
         currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
         currentTrade.quantity = currentTrade.totalQuantity;
         currentTrade.commission = currentTrade.totalFees;
@@ -322,12 +322,12 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
         currentTrade.executionData = currentTrade.executions;
         // Add instrument data for options/futures
         Object.assign(currentTrade, instrumentData);
-        
+
         // For options, update symbol to use underlying symbol instead of the full option symbol
         if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol) {
           currentTrade.symbol = instrumentData.underlyingSymbol;
         }
-        
+
         // Mark as update if this was an existing position
         if (currentTrade.isExistingPosition) {
           currentTrade.isUpdate = currentTrade.newExecutionsAdded > 0;
@@ -337,7 +337,7 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
           currentTrade.notes = `Round trip: ${currentTrade.executions.length} executions`;
           console.log(`  [SUCCESS] Completed ${currentTrade.side} trade: ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions, P/L: $${currentTrade.pnl.toFixed(2)}`);
         }
-        
+
         // Only add trade if it has executions (skip if all were duplicates)
         if (currentTrade.executions.length > 0) {
           // Map executions to executionData for Trade.create
@@ -349,11 +349,11 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
         currentTrade = null;
       }
     }
-    
+
     console.log(`\n${symbol} Final Position: ${currentPosition} shares`);
     if (currentTrade) {
       console.log(`Active trade: ${currentTrade.side} ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions`);
-      
+
       // Add open position as incomplete trade
       // Divide by multiplier to get per-contract/per-share price
       currentTrade.entryPrice = currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier);

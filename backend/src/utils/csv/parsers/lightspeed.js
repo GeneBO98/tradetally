@@ -58,11 +58,11 @@ function parseLightspeedDateTime(dateTimeStr) {
 }
 
 function parseLightspeedSide(sideCode, buySell, principalAmount, netAmount, quantity) {
-  
+
   // PRIORITY 1: Check Side column (B/S indicator) - this is most reliable
   if (sideCode) {
     const cleanSide = sideCode.toString().trim().toUpperCase();
-    
+
     if (cleanSide === 'S' || cleanSide === 'SELL') {
       return 'sell';
     }
@@ -70,7 +70,7 @@ function parseLightspeedSide(sideCode, buySell, principalAmount, netAmount, quan
       return 'buy';
     }
   }
-  
+
   // PRIORITY 2: Check quantity sign (negative = sell, positive = buy)
   if (quantity !== undefined && quantity !== null) {
     const qty = parseFloat(quantity);
@@ -81,11 +81,11 @@ function parseLightspeedSide(sideCode, buySell, principalAmount, netAmount, quan
       return 'buy';
     }
   }
-  
+
   // PRIORITY 3: Check Buy/Sell column (Long Buy/Long Sell)
   if (buySell) {
     const cleanBuySell = buySell.toString().toLowerCase().trim();
-    
+
     if (cleanBuySell.includes('sell') || cleanBuySell === 'long sell' || cleanBuySell === 'short sell') {
       return 'sell';
     }
@@ -93,22 +93,22 @@ function parseLightspeedSide(sideCode, buySell, principalAmount, netAmount, quan
       return 'buy';
     }
   }
-  
+
   // Default to buy if we can't determine
   return 'buy';
 }
 
 function calculateLightspeedFees(row) {
   const fees = [
-    'FeeSEC', 'FeeMF', 'Fee1', 'Fee2', 'Fee3', 
+    'FeeSEC', 'FeeMF', 'Fee1', 'Fee2', 'Fee3',
     'FeeStamp', 'FeeTAF', 'Fee4'
   ];
-  
+
   let totalFees = 0;
   fees.forEach(feeField => {
     totalFees += parseNumeric(row[feeField]);
   });
-  
+
   return totalFees;
 }
 
@@ -185,27 +185,27 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
         console.log(`[CUSIP] ${cleanCusip} not resolved, will process in background`);
       }
     }
-    
+
     console.log(`[CUSIP] Resolved ${Object.keys(cusipToTickerMap).length} of ${cusipsToResolve.size} CUSIPs from database/cache. ${unresolvedCusips.length} will be queued for background processing.`);
-    
+
     // Add unresolved CUSIPs to the processing queue
     if (unresolvedCusips.length > 0) {
       await cusipQueue.addToQueue(unresolvedCusips, 2); // High priority for import
       console.log(`Added ${unresolvedCusips.length} CUSIPs to background processing queue`);
     }
   }
-  
+
   // Parse all transactions
   const transactions = [];
-  
+
   for (const record of records) {
     try {
       // Resolve symbol (convert CUSIP if needed) using batch results
       const rawSymbol = cleanString(record.Symbol);
       const rawCusip = cleanString(record.CUSIP);
-      
+
       let resolvedSymbol = rawSymbol;
-      
+
       // Check if symbol is a CUSIP and we have it in our batch results
       if (rawSymbol && rawSymbol.length === 9 && /^[0-9A-Z]{8}[0-9]$/.test(rawSymbol) && cusipToTickerMap[rawSymbol]) {
         resolvedSymbol = cusipToTickerMap[rawSymbol];
@@ -222,7 +222,7 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
       const sideValue = record.Side || record.side || record.SIDE;
       const buySellValue = record['Buy/Sell'] || record['Buy Sell'] || record.BuySell || record['Long/Short'];
       const side = parseLightspeedSide(sideValue, buySellValue, record['Principal Amount'], record['NET Amount'], record.Qty);
-      
+
       // DEBUG: Log the raw CSV data and parsed side for ALL transactions
       console.log(`[PROCESS] CSV TRANSACTION DEBUG: ${resolvedSymbol}`);
       console.log(`  Side: "${record.Side}"`);
@@ -232,7 +232,7 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
       console.log(`  Raw Symbol: "${record.Symbol}"`);
       console.log(`  Resolved Symbol: "${resolvedSymbol}"`);
       console.log(`---`);
-      
+
       // Determine account identifier - user selection takes priority over CSV column
       const accountIdentifier = context.selectedAccountId
         ? context.selectedAccountId
@@ -265,7 +265,7 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
   }
 
   console.log(`Parsed ${transactions.length} valid transactions`);
-  
+
   // Calculate total commissions from all CSV transactions
   const totalCSVCommissions = transactions.reduce((sum, tx) => sum + tx.commission, 0);
   const totalCSVFees = transactions.reduce((sum, tx) => sum + tx.fees, 0);
@@ -282,7 +282,7 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
   });
 
   const completedTrades = [];
-  
+
   // Process transactions using round-trip trade grouping (like TradersVue and updated Schwab parser)
   Object.keys(symbolGroups).forEach(symbol => {
     const symbolTransactions = symbolGroups[symbol];
@@ -326,30 +326,30 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
       existingTradeId: existingPosition.id, // Store original trade ID for updates
       newExecutionsAdded: 0 // Track how many new executions are actually added
     } : null;
-    
+
     if (existingPosition) {
       console.log(`  → Starting with existing ${existingPosition.side} position: ${existingPosition.quantity} shares @ $${existingPosition.entryPrice}`);
       console.log(`  → Initial position: ${currentPosition}`);
     }
-    
+
     for (const transaction of symbolTransactions) {
       const qty = transaction.quantity;
       const prevPosition = currentPosition;
       let pendingReversalTrade = null;
-      
+
       console.log(`\n${transaction.side} ${qty} @ $${transaction.entryPrice} | Position: ${currentPosition}`);
-      
+
       // DEBUG: Extra logging for PYXS
       if (symbol === 'PYXS') {
         console.log(`🐛 PYXS DEBUG: transaction.side="${transaction.side}", qty=${qty}, currentPosition before=${currentPosition}`);
       }
-      
+
       // Set entry time from first CSV transaction for existing position
       if (currentTrade && currentTrade.entryTime === null) {
         currentTrade.entryTime = transaction.entryTime;
         currentTrade.tradeDate = transaction.tradeDate;
       }
-      
+
       // Start new trade if going from flat to position
       if (currentPosition === 0) {
         currentTrade = {
@@ -368,7 +368,7 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
         };
         console.log(`  → Started new ${currentTrade.side} trade`);
       }
-      
+
       // Add execution to current trade (check for duplicates first)
       if (currentTrade) {
         const newExecution = {
@@ -432,11 +432,11 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
         if (symbol === 'PYXS' || symbol === 'CURR') {
           console.log(`  [SUCCESS] Added new execution (${currentTrade.newExecutionsAdded} new total)`);
         }
-        
+
         // Accumulate total fees for this trade
         currentTrade.totalFees += (transaction.commission || 0) + (transaction.fees || 0);
       }
-      
+
       // Process the transaction
       if (transaction.side === 'buy') {
         currentPosition += qty;
@@ -657,7 +657,7 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
           currentTrade.notes = `Round trip: ${currentTrade.executions.length} executions`;
           console.log(`  [SUCCESS] Completed ${currentTrade.side} trade: ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions, P/L: $${currentTrade.pnl.toFixed(2)}`);
         }
-        
+
         // Only add trade if it has executions (skip if all were duplicates)
         if (currentTrade.executions.length > 0) {
           // Map executions to executionData for Trade.create
@@ -677,17 +677,17 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
         console.log(`  → Started new reversal ${currentTrade.side} trade with ${currentTrade.totalQuantity} shares`);
       }
     }
-    
+
     console.log(`\n${symbol} Final Position: ${currentPosition} shares`);
-    
-    // DEBUG: Extra logging for PYXS  
+
+    // DEBUG: Extra logging for PYXS
     if (symbol === 'PYXS') {
       console.log(`🐛 PYXS FINAL DEBUG: currentPosition=${currentPosition}, Math.abs(currentPosition)=${Math.abs(currentPosition)}`);
       if (currentTrade) {
         console.log(`🐛 PYXS FINAL DEBUG: currentTrade.totalQuantity=${currentTrade.totalQuantity}, currentTrade.side=${currentTrade.side}`);
       }
     }
-    
+
     if (currentTrade) {
       console.log(`Active trade: ${currentTrade.side} ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions`);
 
@@ -730,7 +730,7 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
       currentTrade.exitTime = null;
       currentTrade.pnl = 0;
       currentTrade.pnlPercent = 0;
-      
+
       // Mark as update if this was an existing position (partial or full)
       if (currentTrade.isExistingPosition) {
         currentTrade.isUpdate = true;
@@ -740,7 +740,7 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
         currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
         console.log(`  → Added open ${currentTrade.side} position: ${currentTrade.quantity} shares`);
       }
-      
+
       // Map executions to executionData for Trade.create
       currentTrade.executionData = currentTrade.executions;
       completedTrades.push(currentTrade);
