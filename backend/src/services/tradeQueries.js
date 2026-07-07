@@ -12,6 +12,7 @@
 const db = require('../config/database');
 const Trade = require('../models/Trade');
 const { getUserTimezone } = require('../utils/timezone');
+const { buildTradeDateRangeClause } = require('../utils/tradeDateFilter');
 
 async function timedDbQuery(label, query, values = []) {
   const startedAt = Date.now();
@@ -172,18 +173,11 @@ class TradeQueries {
       paramCount++;
     }
 
-    if (filters.startDate && filters.endDate) {
-      whereClause += ` AND ((t.trade_date >= $${paramCount} AND t.trade_date <= $${paramCount + 1}) OR (t.exit_time::date >= $${paramCount} AND t.exit_time::date <= $${paramCount + 1}))`;
-      values.push(filters.startDate, filters.endDate);
-      paramCount += 2;
-    } else if (filters.startDate) {
-      whereClause += ` AND (t.trade_date >= $${paramCount} OR t.exit_time::date >= $${paramCount})`;
-      values.push(filters.startDate);
-      paramCount++;
-    } else if (filters.endDate) {
-      whereClause += ` AND (t.trade_date <= $${paramCount} OR t.exit_time::date <= $${paramCount})`;
-      values.push(filters.endDate);
-      paramCount++;
+    const dateRange = buildTradeDateRangeClause(filters, paramCount);
+    if (dateRange.clause) {
+      whereClause += dateRange.clause;
+      dateRange.params.forEach(v => values.push(v));
+      paramCount += dateRange.params.length;
     }
 
     if (filters.exitStartDate) {

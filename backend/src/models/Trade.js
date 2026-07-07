@@ -5,6 +5,7 @@ const { getFuturesPointValue, getFuturesTickSize, extractUnderlyingFromFuturesSy
 const { computeTradePnl } = require('../services/pnlEngine');
 const logger = require('../utils/logger');
 const { toSnakeCase } = require('../utils/caseConvert');
+const { buildTradeDateRangeClause } = require('../utils/tradeDateFilter');
 const OptionStrategyGroupingService = require('../services/optionStrategyGroupingService');
 /**
  * Round a numeric value to fit database precision
@@ -2724,24 +2725,24 @@ class Trade {
   static async getPartialExitAnalytics(userId, filters = {}) {
     console.log('[PARTIAL-EXIT] Getting partial exit analytics for user:', userId);
 
-    // Build WHERE clause using the same filter pattern as getAnalytics
+    // Build WHERE clause. The date-range predicate is shared with the canonical
+    // TradeQueries._buildWhereClause via buildTradeDateRangeClause so the two
+    // cannot drift. NOTE: the remaining filters below intentionally stay inline
+    // and are NOT identical to the canonical builder (e.g. symbol here is an
+    // exact/prefix match without the CUSIP fallback, single-strategy is plain
+    // equality rather than the hold-time mapping, tags casts to ::text[]). When
+    // adding a NEW trade filter, add it to TradeQueries._buildWhereClause first
+    // and route this method through it rather than growing this block.
     let whereClause = `WHERE t.user_id = $1 AND t.exit_price IS NOT NULL`;
     const values = [userId];
     let paramCount = 2;
 
-    // Date filtering
-    if (filters.startDate && filters.endDate) {
-      whereClause += ` AND ((t.trade_date >= $${paramCount} AND t.trade_date <= $${paramCount + 1}) OR (t.exit_time::date >= $${paramCount} AND t.exit_time::date <= $${paramCount + 1}))`;
-      values.push(filters.startDate, filters.endDate);
-      paramCount += 2;
-    } else if (filters.startDate) {
-      whereClause += ` AND (t.trade_date >= $${paramCount} OR t.exit_time::date >= $${paramCount})`;
-      values.push(filters.startDate);
-      paramCount++;
-    } else if (filters.endDate) {
-      whereClause += ` AND (t.trade_date <= $${paramCount} OR t.exit_time::date <= $${paramCount})`;
-      values.push(filters.endDate);
-      paramCount++;
+    // Date filtering (shared with the canonical builder)
+    const dateRange = buildTradeDateRangeClause(filters, paramCount);
+    if (dateRange.clause) {
+      whereClause += dateRange.clause;
+      dateRange.params.forEach(v => values.push(v));
+      paramCount += dateRange.params.length;
     }
 
     if (filters.symbol) {
