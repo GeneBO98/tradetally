@@ -20,6 +20,29 @@ function createFilterHash(filters) {
   return crypto.createHash('md5').update(str).digest('hex').slice(0, 16);
 }
 
+// Single-flight coalescing for the expensive cached analytics computations
+// (overview, chart data, dashboard insight summary). Keyed by the SAME cache
+// key each endpoint uses, so after a cache invalidation N concurrent identical
+// requests share one in-flight compute instead of each re-running the heavy
+// SQL. A failed compute rejects every waiter and clears the entry (no negative
+// caching). Pattern mirrors repairPostExitSchema's promise latch in
+// config/database.js.
+const inFlightComputations = new Map();
+
+function coalesceInFlight(key, compute) {
+  const existing = inFlightComputations.get(key);
+  if (existing) {
+    return existing;
+  }
+  const promise = Promise.resolve()
+    .then(compute)
+    .finally(() => {
+      inFlightComputations.delete(key);
+    });
+  inFlightComputations.set(key, promise);
+  return promise;
+}
+
 // Lightweight keyword-based tone classifier for news headlines. NOT a real
 // sentiment model — it just catches the obvious bull/bear signals so the
 // dashboard insight reads as "likely positive/negative for your position"
@@ -734,6 +757,38 @@ async function rawBreakevenPredicate(userId) {
   }, await getBreakevenToleranceConfig(userId));
 }
 
+// Explicit column list for the CSV trade export. convertToCSV emits every
+// selected column via String(value), so JSONB columns (executions,
+// news_events, quality_metrics, take_profit_targets, risk_level_history,
+// target_hit_analysis, updated_targets, classification_metadata) could only
+// ever serialize as "[object Object]" noise -- they are excluded so the export
+// query stops dragging large JSONB blobs it cannot render. The JSON export
+// format keeps SELECT * because it emits those fields faithfully.
+const CSV_EXPORT_COLUMNS = [
+  'id', 'user_id', 'symbol', 'trade_date', 'entry_time', 'exit_time',
+  'entry_price', 'exit_price', 'quantity', 'side', 'commission', 'fees',
+  'pnl', 'pnl_percent', 'notes', 'is_public', 'broker', 'strategy', 'setup',
+  'tags', 'created_at', 'updated_at', 'mae', 'mfe', 'split_adjusted',
+  'original_quantity', 'original_entry_price', 'original_exit_price',
+  'confidence', 'strategy_confidence', 'classification_method',
+  'manual_override', 'enrichment_status', 'enrichment_completed_at',
+  'round_trip_id', 'has_news', 'news_sentiment', 'news_checked_at',
+  'instrument_type', 'strike_price', 'expiration_date', 'option_type',
+  'contract_size', 'underlying_symbol', 'contract_month', 'contract_year',
+  'tick_size', 'point_value', 'underlying_asset', 'heart_rate', 'sleep_score',
+  'sleep_hours', 'stress_level', 'auto_closed', 'auto_close_reason',
+  'import_id', 'original_currency', 'exchange_rate',
+  'original_entry_price_currency', 'original_exit_price_currency',
+  'original_pnl_currency', 'original_commission_currency',
+  'original_fees_currency', 'entry_commission', 'exit_commission',
+  'stop_loss', 'take_profit', 'r_value', 'quality_grade', 'quality_score',
+  'chart_url', 'broker_connection_id', 'account_identifier', 'management_r',
+  'conid', 'manual_target_hit_first', 'post_exit_mae', 'post_exit_mfe',
+  'post_exit_window_override_minutes', 'post_exit_window_minutes',
+  'post_exit_window_source', 'post_exit_window_end', 'post_exit_calculated_at',
+  'position_group_id'
+].join(', ');
+
 const analyticsController = {
   async getOverview(req, res, next) {
     try {
@@ -791,477 +846,482 @@ const analyticsController = {
       }
       console.log(`[CACHE MISS] Computing analytics overview for user ${req.user.id}`);
 
-      const { filterConditions, params: filterParams } = filterData;
-      const params = [req.user.id, ...filterParams];
+      const payload = await coalesceInFlight(cacheKey, async () => {
 
-      // In position-grouping mode each row is one position: legs sharing the
-      // same account, underlying (falling back to symbol), and exact entry_time
-      // are summed into one synthetic trade. Trades with no entry_time fall back
-      // to their own id so they are never merged. Only the columns referenced
-      // downstream are projected; the trivial breakeven predicate above means
-      // tick_size/point_value/quantity/underlying_asset are not needed here.
-      const completedTradesCte = groupByPosition
-        ? `completed_trades AS (
-            SELECT
-                SUM(pnl) as pnl,
-                SUM(COALESCE(commission, 0)) as commission,
-                SUM(COALESCE(fees, 0)) as fees,
-                SUM(r_value) as r_value,
-                MIN(stop_loss) as stop_loss,
-                MIN(trade_date) as trade_date,
-                MIN(entry_time) as entry_time,
-                MAX(exit_time) as exit_time,
-                SUM(COALESCE(quantity, 0)) as quantity
-            FROM trades
-            WHERE user_id = $1 ${filterConditions}
-                AND exit_price IS NOT NULL
-                AND pnl IS NOT NULL
-            GROUP BY ${POSITION_GROUP_KEY}
-        )`
-        : `completed_trades AS (
-            -- Each trade with both entry and exit price is a complete round trip
-            SELECT
-                *
-            FROM trades
-            WHERE user_id = $1 ${filterConditions}
-                AND exit_price IS NOT NULL
-                AND pnl IS NOT NULL
-        )`;
+        const { filterConditions, params: filterParams } = filterData;
+        const params = [req.user.id, ...filterParams];
 
-      const overviewQuery = `
-        WITH ${completedTradesCte},
-        individual_trades AS (
-            -- Get best/worst individual executions
-            SELECT
-                COALESCE(MAX(pnl), 0) as individual_best_trade,
-                COALESCE(MIN(pnl), 0) as individual_worst_trade
-            FROM completed_trades
-        )
-        SELECT
-          (SELECT COUNT(*) FROM completed_trades)::integer as total_trades,
-          -- Breakeven = gross P&L within tolerance (exited ~at entry, ignoring
-          -- commissions/fees). Wins/losses use NET P&L among the rest.
-          (SELECT COUNT(*) FROM completed_trades WHERE ${be.isNot} AND pnl > 0)::integer as winning_trades,
-          (SELECT COUNT(*) FROM completed_trades WHERE ${be.isNot} AND pnl < 0)::integer as losing_trades,
-          (SELECT COUNT(*) FROM completed_trades WHERE ${be.is})::integer as breakeven_trades,
-          COALESCE(SUM(pnl), 0)::numeric as total_pnl,
-          ${useMedian
-            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl), 0)::numeric as avg_pnl'
-            : 'COALESCE(AVG(pnl), 0)::numeric as avg_pnl'
-          },
-          ${useMedian
-            ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE ${be.isNot} AND pnl > 0), 0)::numeric as avg_win`
-            : `COALESCE(AVG(pnl) FILTER (WHERE ${be.isNot} AND pnl > 0), 0)::numeric as avg_win`
-          },
-          ${useMedian
-            ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE ${be.isNot} AND pnl < 0), 0)::numeric as avg_loss`
-            : `COALESCE(AVG(pnl) FILTER (WHERE ${be.isNot} AND pnl < 0), 0)::numeric as avg_loss`
-          },
-          ${useMedian
-            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL), 0)::numeric as avg_r_value'
-            : 'COALESCE(AVG(r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL), 0)::numeric as avg_r_value'
-          },
-          COALESCE(SUM(r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL), 0)::numeric as total_r_value,
-          -- R-value specific stats (only trades with stop_loss set)
-          (SELECT COUNT(*) FROM completed_trades WHERE stop_loss IS NOT NULL)::integer as r_total_trades,
-          (SELECT COUNT(*) FROM completed_trades WHERE ${be.isNot} AND pnl > 0 AND stop_loss IS NOT NULL)::integer as r_winning_trades,
-          (SELECT COUNT(*) FROM completed_trades WHERE ${be.isNot} AND pnl < 0 AND stop_loss IS NOT NULL)::integer as r_losing_trades,
-          (SELECT COUNT(*) FROM completed_trades WHERE ${be.is} AND stop_loss IS NOT NULL)::integer as r_breakeven_trades,
-          COALESCE(SUM(pnl) FILTER (WHERE stop_loss IS NOT NULL), 0)::numeric as r_total_pnl,
-          ${useMedian
-            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE stop_loss IS NOT NULL), 0)::numeric as r_avg_pnl'
-            : 'COALESCE(AVG(pnl) FILTER (WHERE stop_loss IS NOT NULL), 0)::numeric as r_avg_pnl'
-          },
-          ${useMedian
-            ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE ${be.isNot} AND pnl > 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_win`
-            : `COALESCE(AVG(pnl) FILTER (WHERE ${be.isNot} AND pnl > 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_win`
-          },
-          ${useMedian
-            ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE ${be.isNot} AND pnl < 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_loss`
-            : `COALESCE(AVG(pnl) FILTER (WHERE ${be.isNot} AND pnl < 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_loss`
-          },
-          -- Best/worst trades
-          (SELECT individual_best_trade FROM individual_trades) as best_trade,
-          (SELECT individual_worst_trade FROM individual_trades) as worst_trade,
-          (SELECT COUNT(*) FROM completed_trades)::integer as total_executions,
-          COALESCE(SUM(pnl) FILTER (WHERE pnl > 0), 0) as total_gross_wins,
-          COALESCE(ABS(SUM(pnl) FILTER (WHERE pnl < 0)), 0) as total_gross_losses,
-          COALESCE(SUM(commission), 0) as total_commissions,
-          COALESCE(SUM(fees), 0) as total_fees,
-          COALESCE(STDDEV(pnl), 0) as pnl_stddev,
-          COALESCE(SUM(quantity), 0)::numeric as total_volume,
-          -- Average hold time (minutes) split by outcome, for the stats table
-          COALESCE(AVG(EXTRACT(EPOCH FROM (exit_time - entry_time)) / 60.0)
-            FILTER (WHERE ${be.isNot} AND pnl > 0 AND entry_time IS NOT NULL AND exit_time IS NOT NULL), 0)::numeric as avg_hold_win_minutes,
-          COALESCE(AVG(EXTRACT(EPOCH FROM (exit_time - entry_time)) / 60.0)
-            FILTER (WHERE ${be.isNot} AND pnl < 0 AND entry_time IS NOT NULL AND exit_time IS NOT NULL), 0)::numeric as avg_hold_loss_minutes,
-          COALESCE(AVG(EXTRACT(EPOCH FROM (exit_time - entry_time)) / 60.0)
-            FILTER (WHERE ${be.is} AND entry_time IS NOT NULL AND exit_time IS NOT NULL), 0)::numeric as avg_hold_scratch_minutes,
-          -- Ordered W/L/B sequence for trade-based consecutive win/loss streaks
-          (SELECT array_agg(CASE WHEN ${be.is} THEN 'B' WHEN pnl > 0 THEN 'W' WHEN pnl < 0 THEN 'L' ELSE 'B' END ORDER BY trade_date, entry_time) FROM completed_trades) as result_array,
-          (SELECT array_agg(pnl ORDER BY trade_date, entry_time) FROM completed_trades) as pnl_array
-        FROM completed_trades
-      `;
+        // In position-grouping mode each row is one position: legs sharing the
+        // same account, underlying (falling back to symbol), and exact entry_time
+        // are summed into one synthetic trade. Trades with no entry_time fall back
+        // to their own id so they are never merged. Only the columns referenced
+        // downstream are projected; the trivial breakeven predicate above means
+        // tick_size/point_value/quantity/underlying_asset are not needed here.
+        const completedTradesCte = groupByPosition
+          ? `completed_trades AS (
+              SELECT
+                  SUM(pnl) as pnl,
+                  SUM(COALESCE(commission, 0)) as commission,
+                  SUM(COALESCE(fees, 0)) as fees,
+                  SUM(r_value) as r_value,
+                  MIN(stop_loss) as stop_loss,
+                  MIN(trade_date) as trade_date,
+                  MIN(entry_time) as entry_time,
+                  MAX(exit_time) as exit_time,
+                  SUM(COALESCE(quantity, 0)) as quantity
+              FROM trades
+              WHERE user_id = $1 ${filterConditions}
+                  AND exit_price IS NOT NULL
+                  AND pnl IS NOT NULL
+              GROUP BY ${POSITION_GROUP_KEY}
+          )`
+          : `completed_trades AS (
+              -- Each trade with both entry and exit price is a complete round trip
+              SELECT
+                  *
+              FROM trades
+              WHERE user_id = $1 ${filterConditions}
+                  AND exit_price IS NOT NULL
+                  AND pnl IS NOT NULL
+          )`;
 
-      const result = await db.query(overviewQuery, params);
-      const overview = result.rows[0];
-
-      // --- BEGIN DEBUG LOGGING ---
-      console.log('--- Analytics Overview Debug ---');
-      console.log('Query Parameters:', { filters: req.query, userId: req.user.id });
-      console.log('Raw Query Result:', result.rows);
-      if (overview) {
-        console.log('Initial Overview Object:', JSON.parse(JSON.stringify(overview)));
-        console.log('Total trades found:', overview.total_trades);
-      } else {
-        console.log('No overview data returned from query.');
-        // Send a valid empty response if overview is missing
-        return res.json({ 
-          overview: {
-            total_pnl: 0, win_rate: 0, win_rate_excluding_breakeven: 0, total_trades: 0, winning_trades: 0, losing_trades: 0,
-            breakeven_trades: 0, avg_pnl: 0, avg_win: 0, avg_loss: 0, best_trade: 0,
-            worst_trade: 0, profit_factor: 0, sqn: '0.00', probability_random: 'N/A',
-            kelly_percentage: '0.00', k_ratio: '0.00', total_commissions: 0, total_fees: 0,
-            avg_mae: 'N/A', avg_mfe: 'N/A',
-            total_volume: 0, avg_per_share_pnl: 0, avg_daily_pnl: 0, avg_daily_volume: 0,
-            pnl_std_dev: 0, avg_hold_win_minutes: 0, avg_hold_loss_minutes: 0,
-            avg_hold_scratch_minutes: 0, max_consecutive_wins: 0, max_consecutive_losses: 0
-          }
-        });
-      }
-      // --- END DEBUG LOGGING ---
-
-      // Debug logging
-      console.log('Overview query result:', {
-        total_trades: overview.total_trades,
-        has_pnl_array: !!overview.pnl_array,
-        pnl_array_length: overview.pnl_array ? overview.pnl_array.length : 0,
-        total_gross_wins: overview.total_gross_wins,
-        total_gross_losses: overview.total_gross_losses
-      });
-
-      // Convert numeric values to proper format
-      overview.total_trades = parseInt(overview.total_trades) || 0;
-      overview.winning_trades = parseInt(overview.winning_trades) || 0;
-      overview.losing_trades = parseInt(overview.losing_trades) || 0;
-      overview.breakeven_trades = parseInt(overview.breakeven_trades) || 0;
-      overview.total_executions = parseInt(overview.total_executions) || 0;
-
-      overview.total_pnl = parseFloat(overview.total_pnl) || 0;
-      overview.avg_pnl = parseFloat(overview.avg_pnl) || 0;
-      overview.avg_win = parseFloat(overview.avg_win) || 0;
-      overview.avg_loss = parseFloat(overview.avg_loss) || 0;
-      overview.best_trade = parseFloat(overview.best_trade) || 0;
-      overview.worst_trade = parseFloat(overview.worst_trade) || 0;
-      overview.avg_r_value = parseFloat(overview.avg_r_value) || 0;
-
-      // Volume, per-share, dispersion and hold-time metrics for the stats table
-      overview.total_volume = parseFloat(overview.total_volume) || 0;
-      overview.pnl_std_dev = parseFloat(overview.pnl_stddev) || 0;
-      overview.avg_hold_win_minutes = parseFloat(overview.avg_hold_win_minutes) || 0;
-      overview.avg_hold_loss_minutes = parseFloat(overview.avg_hold_loss_minutes) || 0;
-      overview.avg_hold_scratch_minutes = parseFloat(overview.avg_hold_scratch_minutes) || 0;
-      overview.avg_per_share_pnl = overview.total_volume > 0
-        ? overview.total_pnl / overview.total_volume
-        : 0;
-
-      // Trade-based max consecutive wins/losses (a scratch/breakeven breaks a run)
-      {
-        const seq = Array.isArray(overview.result_array) ? overview.result_array : [];
-        let maxW = 0, maxL = 0, curW = 0, curL = 0;
-        for (const r of seq) {
-          if (r === 'W') { curW += 1; curL = 0; if (curW > maxW) maxW = curW; }
-          else if (r === 'L') { curL += 1; curW = 0; if (curL > maxL) maxL = curL; }
-          else { curW = 0; curL = 0; }
-        }
-        overview.max_consecutive_wins = maxW;
-        overview.max_consecutive_losses = maxL;
-      }
-
-      overview.win_rate = overview.total_trades > 0
-        ? (overview.winning_trades / overview.total_trades * 100).toFixed(2)
-        : 0;
-
-      // Win rate excluding breakeven trades (denominator = wins + losses only).
-      // The issue reporter asked for both figures since breakeven-heavy
-      // strategies skew the standard win rate.
-      const decisiveTrades = overview.winning_trades + overview.losing_trades;
-      overview.win_rate_excluding_breakeven = decisiveTrades > 0
-        ? (overview.winning_trades / decisiveTrades * 100).toFixed(2)
-        : 0;
-
-      // Calculate advanced trading metrics
-      
-      // 1. Profit Factor (ratio) - Total gross wins divided by total gross losses
-      overview.profit_factor = overview.total_gross_losses > 0
-        ? (overview.total_gross_wins / overview.total_gross_losses).toFixed(2)
-        : overview.total_gross_wins > 0 ? 'Infinite' : '0.00';
-
-      // 2. System Quality Number (ratio) - Measures trading system quality
-      // SQN = (Average Trade / Standard Deviation) * sqrt(Number of Trades)
-      const stdDev = parseFloat(overview.pnl_stddev) || 0;
-      const avgTrade = parseFloat(overview.avg_pnl) || 0;
-      const sqrtTrades = Math.sqrt(overview.total_trades);
-      
-      if (stdDev > 0 && overview.total_trades > 0) {
-        overview.sqn = ((avgTrade / stdDev) * sqrtTrades).toFixed(2);
-      } else {
-        overview.sqn = '0.00';
-      }
-
-      // 3. Kelly Percentage (% of capital) - Optimal position size for maximum growth
-      // Kelly % = (Win Rate × Avg Win/Avg Loss - Loss Rate) / (Avg Win/Avg Loss)
-      const winRate = overview.winning_trades / overview.total_trades;
-      const lossRate = overview.losing_trades / overview.total_trades;
-      const avgWin = Math.abs(parseFloat(overview.avg_win)) || 0;
-      const avgLoss = Math.abs(parseFloat(overview.avg_loss)) || 0;
-      
-      if (avgLoss > 0 && overview.total_trades > 0) {
-        const winLossRatio = avgWin / avgLoss;
-        const kellyDecimal = (winRate * winLossRatio - lossRate) / winLossRatio;
-        overview.kelly_percentage = (kellyDecimal * 100).toFixed(2);
-        
-        // Debug info
-        console.log('Kelly % calculation:', {
-          winRate: winRate.toFixed(4),
-          lossRate: lossRate.toFixed(4),
-          avgWin: avgWin.toFixed(2),
-          avgLoss: avgLoss.toFixed(2),
-          winLossRatio: winLossRatio.toFixed(4),
-          kellyDecimal: kellyDecimal.toFixed(4),
-          kellyPercentage: overview.kelly_percentage
-        });
-      } else {
-        overview.kelly_percentage = '0.00';
-      }
-
-      // 4. K-Ratio (ratio) - Measures consistency of returns over time using user-entered equity values
-      // K-Ratio = Average Return / Standard Deviation of Returns
-      // Uses only user-entered equity snapshots, not calculated trade data
-      
-      try {
-        console.log('Starting K-Ratio calculation using equity snapshots...');
-        // Get user-entered equity snapshots only
-        const equityQuery = `
-          SELECT 
-            equity_amount,
-            snapshot_date
-          FROM equity_snapshots
-          WHERE user_id = $1
-          ORDER BY snapshot_date ASC
-        `;
-        
-        const equityResult = await db.query(equityQuery, [req.user.id]);
-        const equitySnapshots = equityResult.rows;
-        
-        console.log('K-Ratio equity snapshots found:', equitySnapshots.length);
-        console.log('K-Ratio equity snapshots data:', equitySnapshots);
-        
-        if (equitySnapshots && equitySnapshots.length >= 3) {
-          // Calculate daily returns from user-entered equity values
-          const returns = [];
-          for (let i = 1; i < equitySnapshots.length; i++) {
-            const prevEquity = parseFloat(equitySnapshots[i - 1].equity_amount);
-            const currentEquity = parseFloat(equitySnapshots[i].equity_amount);
-            console.log(`K-Ratio: Processing ${equitySnapshots[i].snapshot_date}: ${prevEquity} -> ${currentEquity}`);
-            if (prevEquity > 0) {
-              const dailyReturn = (currentEquity - prevEquity) / prevEquity;
-              returns.push(dailyReturn);
-              console.log(`K-Ratio: Daily return: ${dailyReturn.toFixed(6)}`);
-            }
-          }
-          
-          console.log('K-Ratio daily returns calculated:', returns.length);
-          
-          if (returns.length > 0) {
-            // Calculate average return and standard deviation
-            const avgReturn = returns.reduce((sum, ret) => sum + ret, 0) / returns.length;
-            const variance = returns.reduce((sum, ret) => sum + Math.pow(ret - avgReturn, 2), 0) / returns.length;
-            const stdDev = Math.sqrt(variance);
-            
-            // Calculate K-Ratio
-            const kRatio = stdDev === 0 ? 0 : avgReturn / stdDev;
-            overview.k_ratio = kRatio.toFixed(2);
-            
-            console.log('K-Ratio calculation details:');
-            console.log('  equity snapshots:', equitySnapshots.length);
-            console.log('  returns count:', returns.length);
-            console.log('  avgReturn:', avgReturn.toFixed(6));
-            console.log('  stdDev:', stdDev.toFixed(6));
-            console.log('  kRatio:', kRatio.toFixed(6));
-          } else {
-            overview.k_ratio = '0.00';
-            console.log('K-Ratio: No valid returns calculated');
-          }
-        } else {
-          overview.k_ratio = '0.00';
-          console.log('K-Ratio: Insufficient equity snapshots (need at least 2)');
-        }
-      } catch (error) {
-        console.error('K-Ratio calculation error:', error);
-        overview.k_ratio = '0.00';
-      }
-
-      // 5. Probability of Random Chance (probability) - Statistical significance of results
-      // Uses chi-square test based on win rate deviation from 50%
-      if (overview.total_trades > 0) {
-        const expectedWins = overview.total_trades * 0.5;
-        const chiSquare = Math.pow(overview.winning_trades - expectedWins, 2) / expectedWins +
-                         Math.pow(overview.losing_trades - expectedWins, 2) / expectedWins;
-        
-        // Convert chi-square to probability (simplified)
-        // For df=1, critical value at 95% confidence is 3.841
-        if (chiSquare > 3.841) {
-          overview.probability_random = '< 5%';
-        } else if (chiSquare > 2.706) {
-          overview.probability_random = '< 10%';
-        } else if (chiSquare > 1.642) {
-          overview.probability_random = '< 20%';
-        } else {
-          overview.probability_random = '> 20%';
-        }
-      } else {
-        overview.probability_random = 'N/A';
-      }
-
-      // 6. Total Commissions and Fees (USD) - Total trading costs
-      overview.total_commissions = parseFloat(overview.total_commissions) || 0;
-      overview.total_fees = parseFloat(overview.total_fees) || 0;
-
-      // 7. Average Position MAE and MFE - Calculate quickly with simple estimation
-      try {
-        console.log('Starting MAE/MFE calculation...');
-        const estimates = await Promise.race([
-          calculateMAEMFEAsync(req.user.id, filterConditions, params),
-          new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('MAE/MFE calculation timeout')), 5000)
-          )
-        ]);
-        console.log('MAE/MFE calculation completed');
-        overview.avg_mae = estimates.avgMAE;
-        overview.avg_mfe = estimates.avgMFE;
-      } catch (error) {
-        console.error('MAE/MFE calculation error:', error);
-        overview.avg_mae = 'N/A';
-        overview.avg_mfe = 'N/A';
-      }
-
-      // Streak & momentum metrics — surfaced on the dashboard hero ribbon
-      // and StreakMomentumCard. Computed from the same filtered trade set
-      // so the global account/time filters apply consistently.
-      try {
-        const streakQuery = `
-          WITH daily AS (
-            SELECT
-              trade_date,
-              COALESCE(SUM(pnl), 0)::numeric AS day_pnl,
-              COUNT(*)::integer AS day_trades
-            FROM trades
-            WHERE user_id = $1 ${filterConditions}
-              AND pnl IS NOT NULL
-              AND exit_price IS NOT NULL
-            GROUP BY trade_date
-            ORDER BY trade_date
-          ),
-          tagged AS (
-            SELECT
-              trade_date,
-              day_pnl,
-              day_trades,
-              CASE WHEN day_pnl > 0 THEN 'W'
-                   WHEN day_pnl < 0 THEN 'L'
-                   ELSE 'B' END AS result
-            FROM daily
-          ),
-          grouped AS (
-            SELECT
-              trade_date,
-              result,
-              ROW_NUMBER() OVER (ORDER BY trade_date)
-                - ROW_NUMBER() OVER (PARTITION BY result ORDER BY trade_date) AS grp
-            FROM tagged
-          ),
-          runs AS (
-            SELECT
-              result,
-              COUNT(*)::integer AS run_length,
-              MAX(trade_date) AS run_end
-            FROM grouped
-            GROUP BY result, grp
+        const overviewQuery = `
+          WITH ${completedTradesCte},
+          individual_trades AS (
+              -- Get best/worst individual executions
+              SELECT
+                  COALESCE(MAX(pnl), 0) as individual_best_trade,
+                  COALESCE(MIN(pnl), 0) as individual_worst_trade
+              FROM completed_trades
           )
           SELECT
-            (SELECT COUNT(*) FROM daily)::integer AS trading_days,
-            (SELECT COALESCE(AVG(day_trades), 0)::numeric FROM daily) AS avg_daily_trades,
-            (SELECT COALESCE(day_trades, 0)::integer FROM daily
-              WHERE trade_date = CURRENT_DATE) AS today_trade_count,
-            (SELECT COALESCE(day_pnl, 0)::numeric FROM daily
-              WHERE trade_date = CURRENT_DATE) AS today_pnl,
-            (SELECT result FROM tagged ORDER BY trade_date DESC LIMIT 1) AS last_day_result,
-            (SELECT run_length FROM runs
-              ORDER BY run_end DESC LIMIT 1) AS current_run_length,
-            (SELECT COALESCE(MAX(run_length), 0)::integer FROM runs WHERE result = 'W') AS best_win_streak,
-            (SELECT COALESCE(MAX(run_length), 0)::integer FROM runs WHERE result = 'L') AS worst_loss_streak
+            (SELECT COUNT(*) FROM completed_trades)::integer as total_trades,
+            -- Breakeven = gross P&L within tolerance (exited ~at entry, ignoring
+            -- commissions/fees). Wins/losses use NET P&L among the rest.
+            (SELECT COUNT(*) FROM completed_trades WHERE ${be.isNot} AND pnl > 0)::integer as winning_trades,
+            (SELECT COUNT(*) FROM completed_trades WHERE ${be.isNot} AND pnl < 0)::integer as losing_trades,
+            (SELECT COUNT(*) FROM completed_trades WHERE ${be.is})::integer as breakeven_trades,
+            COALESCE(SUM(pnl), 0)::numeric as total_pnl,
+            ${useMedian
+              ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl), 0)::numeric as avg_pnl'
+              : 'COALESCE(AVG(pnl), 0)::numeric as avg_pnl'
+            },
+            ${useMedian
+              ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE ${be.isNot} AND pnl > 0), 0)::numeric as avg_win`
+              : `COALESCE(AVG(pnl) FILTER (WHERE ${be.isNot} AND pnl > 0), 0)::numeric as avg_win`
+            },
+            ${useMedian
+              ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE ${be.isNot} AND pnl < 0), 0)::numeric as avg_loss`
+              : `COALESCE(AVG(pnl) FILTER (WHERE ${be.isNot} AND pnl < 0), 0)::numeric as avg_loss`
+            },
+            ${useMedian
+              ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL), 0)::numeric as avg_r_value'
+              : 'COALESCE(AVG(r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL), 0)::numeric as avg_r_value'
+            },
+            COALESCE(SUM(r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL), 0)::numeric as total_r_value,
+            -- R-value specific stats (only trades with stop_loss set)
+            (SELECT COUNT(*) FROM completed_trades WHERE stop_loss IS NOT NULL)::integer as r_total_trades,
+            (SELECT COUNT(*) FROM completed_trades WHERE ${be.isNot} AND pnl > 0 AND stop_loss IS NOT NULL)::integer as r_winning_trades,
+            (SELECT COUNT(*) FROM completed_trades WHERE ${be.isNot} AND pnl < 0 AND stop_loss IS NOT NULL)::integer as r_losing_trades,
+            (SELECT COUNT(*) FROM completed_trades WHERE ${be.is} AND stop_loss IS NOT NULL)::integer as r_breakeven_trades,
+            COALESCE(SUM(pnl) FILTER (WHERE stop_loss IS NOT NULL), 0)::numeric as r_total_pnl,
+            ${useMedian
+              ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE stop_loss IS NOT NULL), 0)::numeric as r_avg_pnl'
+              : 'COALESCE(AVG(pnl) FILTER (WHERE stop_loss IS NOT NULL), 0)::numeric as r_avg_pnl'
+            },
+            ${useMedian
+              ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE ${be.isNot} AND pnl > 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_win`
+              : `COALESCE(AVG(pnl) FILTER (WHERE ${be.isNot} AND pnl > 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_win`
+            },
+            ${useMedian
+              ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE ${be.isNot} AND pnl < 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_loss`
+              : `COALESCE(AVG(pnl) FILTER (WHERE ${be.isNot} AND pnl < 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_loss`
+            },
+            -- Best/worst trades
+            (SELECT individual_best_trade FROM individual_trades) as best_trade,
+            (SELECT individual_worst_trade FROM individual_trades) as worst_trade,
+            (SELECT COUNT(*) FROM completed_trades)::integer as total_executions,
+            COALESCE(SUM(pnl) FILTER (WHERE pnl > 0), 0) as total_gross_wins,
+            COALESCE(ABS(SUM(pnl) FILTER (WHERE pnl < 0)), 0) as total_gross_losses,
+            COALESCE(SUM(commission), 0) as total_commissions,
+            COALESCE(SUM(fees), 0) as total_fees,
+            COALESCE(STDDEV(pnl), 0) as pnl_stddev,
+            COALESCE(SUM(quantity), 0)::numeric as total_volume,
+            -- Average hold time (minutes) split by outcome, for the stats table
+            COALESCE(AVG(EXTRACT(EPOCH FROM (exit_time - entry_time)) / 60.0)
+              FILTER (WHERE ${be.isNot} AND pnl > 0 AND entry_time IS NOT NULL AND exit_time IS NOT NULL), 0)::numeric as avg_hold_win_minutes,
+            COALESCE(AVG(EXTRACT(EPOCH FROM (exit_time - entry_time)) / 60.0)
+              FILTER (WHERE ${be.isNot} AND pnl < 0 AND entry_time IS NOT NULL AND exit_time IS NOT NULL), 0)::numeric as avg_hold_loss_minutes,
+            COALESCE(AVG(EXTRACT(EPOCH FROM (exit_time - entry_time)) / 60.0)
+              FILTER (WHERE ${be.is} AND entry_time IS NOT NULL AND exit_time IS NOT NULL), 0)::numeric as avg_hold_scratch_minutes,
+            -- Ordered W/L/B sequence for trade-based consecutive win/loss streaks
+            (SELECT array_agg(CASE WHEN ${be.is} THEN 'B' WHEN pnl > 0 THEN 'W' WHEN pnl < 0 THEN 'L' ELSE 'B' END ORDER BY trade_date, entry_time) FROM completed_trades) as result_array,
+            (SELECT array_agg(pnl ORDER BY trade_date, entry_time) FROM completed_trades) as pnl_array
+          FROM completed_trades
         `;
-        const streakResult = await db.query(streakQuery, params);
-        const streak = streakResult.rows[0] || {};
-        const lastResult = streak.last_day_result;
-        const runLen = parseInt(streak.current_run_length) || 0;
 
-        overview.trading_days = parseInt(streak.trading_days) || 0;
-        overview.avg_daily_trades = parseFloat(streak.avg_daily_trades) || 0;
-        overview.today_trade_count = parseInt(streak.today_trade_count) || 0;
-        overview.today_pnl = parseFloat(streak.today_pnl) || 0;
-        // Positive = winning streak, negative = losing streak, 0 = no streak / breakeven
-        overview.current_streak = lastResult === 'W' ? runLen
-          : lastResult === 'L' ? -runLen
+        const result = await db.query(overviewQuery, params);
+        const overview = result.rows[0];
+
+        // --- BEGIN DEBUG LOGGING ---
+        console.log('--- Analytics Overview Debug ---');
+        console.log('Query Parameters:', { filters: req.query, userId: req.user.id });
+        console.log('Raw Query Result:', result.rows);
+        if (overview) {
+          console.log('Initial Overview Object:', JSON.parse(JSON.stringify(overview)));
+          console.log('Total trades found:', overview.total_trades);
+        } else {
+          console.log('No overview data returned from query.');
+          // Send a valid empty response if overview is missing
+          return { 
+            overview: {
+              total_pnl: 0, win_rate: 0, win_rate_excluding_breakeven: 0, total_trades: 0, winning_trades: 0, losing_trades: 0,
+              breakeven_trades: 0, avg_pnl: 0, avg_win: 0, avg_loss: 0, best_trade: 0,
+              worst_trade: 0, profit_factor: 0, sqn: '0.00', probability_random: 'N/A',
+              kelly_percentage: '0.00', k_ratio: '0.00', total_commissions: 0, total_fees: 0,
+              avg_mae: 'N/A', avg_mfe: 'N/A',
+              total_volume: 0, avg_per_share_pnl: 0, avg_daily_pnl: 0, avg_daily_volume: 0,
+              pnl_std_dev: 0, avg_hold_win_minutes: 0, avg_hold_loss_minutes: 0,
+              avg_hold_scratch_minutes: 0, max_consecutive_wins: 0, max_consecutive_losses: 0
+            }
+          };
+        }
+        // --- END DEBUG LOGGING ---
+
+        // Debug logging
+        console.log('Overview query result:', {
+          total_trades: overview.total_trades,
+          has_pnl_array: !!overview.pnl_array,
+          pnl_array_length: overview.pnl_array ? overview.pnl_array.length : 0,
+          total_gross_wins: overview.total_gross_wins,
+          total_gross_losses: overview.total_gross_losses
+        });
+
+        // Convert numeric values to proper format
+        overview.total_trades = parseInt(overview.total_trades) || 0;
+        overview.winning_trades = parseInt(overview.winning_trades) || 0;
+        overview.losing_trades = parseInt(overview.losing_trades) || 0;
+        overview.breakeven_trades = parseInt(overview.breakeven_trades) || 0;
+        overview.total_executions = parseInt(overview.total_executions) || 0;
+
+        overview.total_pnl = parseFloat(overview.total_pnl) || 0;
+        overview.avg_pnl = parseFloat(overview.avg_pnl) || 0;
+        overview.avg_win = parseFloat(overview.avg_win) || 0;
+        overview.avg_loss = parseFloat(overview.avg_loss) || 0;
+        overview.best_trade = parseFloat(overview.best_trade) || 0;
+        overview.worst_trade = parseFloat(overview.worst_trade) || 0;
+        overview.avg_r_value = parseFloat(overview.avg_r_value) || 0;
+
+        // Volume, per-share, dispersion and hold-time metrics for the stats table
+        overview.total_volume = parseFloat(overview.total_volume) || 0;
+        overview.pnl_std_dev = parseFloat(overview.pnl_stddev) || 0;
+        overview.avg_hold_win_minutes = parseFloat(overview.avg_hold_win_minutes) || 0;
+        overview.avg_hold_loss_minutes = parseFloat(overview.avg_hold_loss_minutes) || 0;
+        overview.avg_hold_scratch_minutes = parseFloat(overview.avg_hold_scratch_minutes) || 0;
+        overview.avg_per_share_pnl = overview.total_volume > 0
+          ? overview.total_pnl / overview.total_volume
           : 0;
-        overview.best_win_streak = parseInt(streak.best_win_streak) || 0;
-        overview.worst_loss_streak = parseInt(streak.worst_loss_streak) || 0;
-      } catch (streakErr) {
-        console.error('[STREAK] calculation error:', streakErr);
-        overview.trading_days = 0;
-        overview.avg_daily_trades = 0;
-        overview.today_trade_count = 0;
-        overview.today_pnl = 0;
-        overview.current_streak = 0;
-        overview.best_win_streak = 0;
-        overview.worst_loss_streak = 0;
-      }
 
-      // Daily averages depend on trading_days resolved by the streak query above
-      overview.avg_daily_pnl = overview.trading_days > 0
-        ? overview.total_pnl / overview.trading_days
-        : 0;
-      overview.avg_daily_volume = overview.trading_days > 0
-        ? overview.total_volume / overview.trading_days
-        : 0;
+        // Trade-based max consecutive wins/losses (a scratch/breakeven breaks a run)
+        {
+          const seq = Array.isArray(overview.result_array) ? overview.result_array : [];
+          let maxW = 0, maxL = 0, curW = 0, curL = 0;
+          for (const r of seq) {
+            if (r === 'W') { curW += 1; curL = 0; if (curW > maxW) maxW = curW; }
+            else if (r === 'L') { curL += 1; curW = 0; if (curL > maxL) maxL = curL; }
+            else { curW = 0; curL = 0; }
+          }
+          overview.max_consecutive_wins = maxW;
+          overview.max_consecutive_losses = maxL;
+        }
 
-      // Clean up temporary fields
-      delete overview.pnl_array;
-      delete overview.pnl_stddev;
-      delete overview.result_array;
-      delete overview.total_gross_wins;
-      delete overview.total_gross_losses;
+        overview.win_rate = overview.total_trades > 0
+          ? (overview.winning_trades / overview.total_trades * 100).toFixed(2)
+          : 0;
 
-      // Debug logging before sending response
-      console.log('Final overview object keys:', Object.keys(overview));
-      console.log('Advanced metrics values:', {
-        sqn: overview.sqn,
-        k_ratio: overview.k_ratio,
-        kelly_percentage: overview.kelly_percentage,
-        probability_random: overview.probability_random,
-        avg_mae: overview.avg_mae,
-        avg_mfe: overview.avg_mfe
+        // Win rate excluding breakeven trades (denominator = wins + losses only).
+        // The issue reporter asked for both figures since breakeven-heavy
+        // strategies skew the standard win rate.
+        const decisiveTrades = overview.winning_trades + overview.losing_trades;
+        overview.win_rate_excluding_breakeven = decisiveTrades > 0
+          ? (overview.winning_trades / decisiveTrades * 100).toFixed(2)
+          : 0;
+
+        // Calculate advanced trading metrics
+      
+        // 1. Profit Factor (ratio) - Total gross wins divided by total gross losses
+        overview.profit_factor = overview.total_gross_losses > 0
+          ? (overview.total_gross_wins / overview.total_gross_losses).toFixed(2)
+          : overview.total_gross_wins > 0 ? 'Infinite' : '0.00';
+
+        // 2. System Quality Number (ratio) - Measures trading system quality
+        // SQN = (Average Trade / Standard Deviation) * sqrt(Number of Trades)
+        const stdDev = parseFloat(overview.pnl_stddev) || 0;
+        const avgTrade = parseFloat(overview.avg_pnl) || 0;
+        const sqrtTrades = Math.sqrt(overview.total_trades);
+      
+        if (stdDev > 0 && overview.total_trades > 0) {
+          overview.sqn = ((avgTrade / stdDev) * sqrtTrades).toFixed(2);
+        } else {
+          overview.sqn = '0.00';
+        }
+
+        // 3. Kelly Percentage (% of capital) - Optimal position size for maximum growth
+        // Kelly % = (Win Rate × Avg Win/Avg Loss - Loss Rate) / (Avg Win/Avg Loss)
+        const winRate = overview.winning_trades / overview.total_trades;
+        const lossRate = overview.losing_trades / overview.total_trades;
+        const avgWin = Math.abs(parseFloat(overview.avg_win)) || 0;
+        const avgLoss = Math.abs(parseFloat(overview.avg_loss)) || 0;
+      
+        if (avgLoss > 0 && overview.total_trades > 0) {
+          const winLossRatio = avgWin / avgLoss;
+          const kellyDecimal = (winRate * winLossRatio - lossRate) / winLossRatio;
+          overview.kelly_percentage = (kellyDecimal * 100).toFixed(2);
+        
+          // Debug info
+          console.log('Kelly % calculation:', {
+            winRate: winRate.toFixed(4),
+            lossRate: lossRate.toFixed(4),
+            avgWin: avgWin.toFixed(2),
+            avgLoss: avgLoss.toFixed(2),
+            winLossRatio: winLossRatio.toFixed(4),
+            kellyDecimal: kellyDecimal.toFixed(4),
+            kellyPercentage: overview.kelly_percentage
+          });
+        } else {
+          overview.kelly_percentage = '0.00';
+        }
+
+        // 4. K-Ratio (ratio) - Measures consistency of returns over time using user-entered equity values
+        // K-Ratio = Average Return / Standard Deviation of Returns
+        // Uses only user-entered equity snapshots, not calculated trade data
+      
+        try {
+          console.log('Starting K-Ratio calculation using equity snapshots...');
+          // Get user-entered equity snapshots only
+          const equityQuery = `
+            SELECT 
+              equity_amount,
+              snapshot_date
+            FROM equity_snapshots
+            WHERE user_id = $1
+            ORDER BY snapshot_date ASC
+          `;
+        
+          const equityResult = await db.query(equityQuery, [req.user.id]);
+          const equitySnapshots = equityResult.rows;
+        
+          console.log('K-Ratio equity snapshots found:', equitySnapshots.length);
+          console.log('K-Ratio equity snapshots data:', equitySnapshots);
+        
+          if (equitySnapshots && equitySnapshots.length >= 3) {
+            // Calculate daily returns from user-entered equity values
+            const returns = [];
+            for (let i = 1; i < equitySnapshots.length; i++) {
+              const prevEquity = parseFloat(equitySnapshots[i - 1].equity_amount);
+              const currentEquity = parseFloat(equitySnapshots[i].equity_amount);
+              console.log(`K-Ratio: Processing ${equitySnapshots[i].snapshot_date}: ${prevEquity} -> ${currentEquity}`);
+              if (prevEquity > 0) {
+                const dailyReturn = (currentEquity - prevEquity) / prevEquity;
+                returns.push(dailyReturn);
+                console.log(`K-Ratio: Daily return: ${dailyReturn.toFixed(6)}`);
+              }
+            }
+          
+            console.log('K-Ratio daily returns calculated:', returns.length);
+          
+            if (returns.length > 0) {
+              // Calculate average return and standard deviation
+              const avgReturn = returns.reduce((sum, ret) => sum + ret, 0) / returns.length;
+              const variance = returns.reduce((sum, ret) => sum + Math.pow(ret - avgReturn, 2), 0) / returns.length;
+              const stdDev = Math.sqrt(variance);
+            
+              // Calculate K-Ratio
+              const kRatio = stdDev === 0 ? 0 : avgReturn / stdDev;
+              overview.k_ratio = kRatio.toFixed(2);
+            
+              console.log('K-Ratio calculation details:');
+              console.log('  equity snapshots:', equitySnapshots.length);
+              console.log('  returns count:', returns.length);
+              console.log('  avgReturn:', avgReturn.toFixed(6));
+              console.log('  stdDev:', stdDev.toFixed(6));
+              console.log('  kRatio:', kRatio.toFixed(6));
+            } else {
+              overview.k_ratio = '0.00';
+              console.log('K-Ratio: No valid returns calculated');
+            }
+          } else {
+            overview.k_ratio = '0.00';
+            console.log('K-Ratio: Insufficient equity snapshots (need at least 2)');
+          }
+        } catch (error) {
+          console.error('K-Ratio calculation error:', error);
+          overview.k_ratio = '0.00';
+        }
+
+        // 5. Probability of Random Chance (probability) - Statistical significance of results
+        // Uses chi-square test based on win rate deviation from 50%
+        if (overview.total_trades > 0) {
+          const expectedWins = overview.total_trades * 0.5;
+          const chiSquare = Math.pow(overview.winning_trades - expectedWins, 2) / expectedWins +
+                           Math.pow(overview.losing_trades - expectedWins, 2) / expectedWins;
+        
+          // Convert chi-square to probability (simplified)
+          // For df=1, critical value at 95% confidence is 3.841
+          if (chiSquare > 3.841) {
+            overview.probability_random = '< 5%';
+          } else if (chiSquare > 2.706) {
+            overview.probability_random = '< 10%';
+          } else if (chiSquare > 1.642) {
+            overview.probability_random = '< 20%';
+          } else {
+            overview.probability_random = '> 20%';
+          }
+        } else {
+          overview.probability_random = 'N/A';
+        }
+
+        // 6. Total Commissions and Fees (USD) - Total trading costs
+        overview.total_commissions = parseFloat(overview.total_commissions) || 0;
+        overview.total_fees = parseFloat(overview.total_fees) || 0;
+
+        // 7. Average Position MAE and MFE - Calculate quickly with simple estimation
+        try {
+          console.log('Starting MAE/MFE calculation...');
+          const estimates = await Promise.race([
+            calculateMAEMFEAsync(req.user.id, filterConditions, params),
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('MAE/MFE calculation timeout')), 5000)
+            )
+          ]);
+          console.log('MAE/MFE calculation completed');
+          overview.avg_mae = estimates.avgMAE;
+          overview.avg_mfe = estimates.avgMFE;
+        } catch (error) {
+          console.error('MAE/MFE calculation error:', error);
+          overview.avg_mae = 'N/A';
+          overview.avg_mfe = 'N/A';
+        }
+
+        // Streak & momentum metrics — surfaced on the dashboard hero ribbon
+        // and StreakMomentumCard. Computed from the same filtered trade set
+        // so the global account/time filters apply consistently.
+        try {
+          const streakQuery = `
+            WITH daily AS (
+              SELECT
+                trade_date,
+                COALESCE(SUM(pnl), 0)::numeric AS day_pnl,
+                COUNT(*)::integer AS day_trades
+              FROM trades
+              WHERE user_id = $1 ${filterConditions}
+                AND pnl IS NOT NULL
+                AND exit_price IS NOT NULL
+              GROUP BY trade_date
+              ORDER BY trade_date
+            ),
+            tagged AS (
+              SELECT
+                trade_date,
+                day_pnl,
+                day_trades,
+                CASE WHEN day_pnl > 0 THEN 'W'
+                     WHEN day_pnl < 0 THEN 'L'
+                     ELSE 'B' END AS result
+              FROM daily
+            ),
+            grouped AS (
+              SELECT
+                trade_date,
+                result,
+                ROW_NUMBER() OVER (ORDER BY trade_date)
+                  - ROW_NUMBER() OVER (PARTITION BY result ORDER BY trade_date) AS grp
+              FROM tagged
+            ),
+            runs AS (
+              SELECT
+                result,
+                COUNT(*)::integer AS run_length,
+                MAX(trade_date) AS run_end
+              FROM grouped
+              GROUP BY result, grp
+            )
+            SELECT
+              (SELECT COUNT(*) FROM daily)::integer AS trading_days,
+              (SELECT COALESCE(AVG(day_trades), 0)::numeric FROM daily) AS avg_daily_trades,
+              (SELECT COALESCE(day_trades, 0)::integer FROM daily
+                WHERE trade_date = CURRENT_DATE) AS today_trade_count,
+              (SELECT COALESCE(day_pnl, 0)::numeric FROM daily
+                WHERE trade_date = CURRENT_DATE) AS today_pnl,
+              (SELECT result FROM tagged ORDER BY trade_date DESC LIMIT 1) AS last_day_result,
+              (SELECT run_length FROM runs
+                ORDER BY run_end DESC LIMIT 1) AS current_run_length,
+              (SELECT COALESCE(MAX(run_length), 0)::integer FROM runs WHERE result = 'W') AS best_win_streak,
+              (SELECT COALESCE(MAX(run_length), 0)::integer FROM runs WHERE result = 'L') AS worst_loss_streak
+          `;
+          const streakResult = await db.query(streakQuery, params);
+          const streak = streakResult.rows[0] || {};
+          const lastResult = streak.last_day_result;
+          const runLen = parseInt(streak.current_run_length) || 0;
+
+          overview.trading_days = parseInt(streak.trading_days) || 0;
+          overview.avg_daily_trades = parseFloat(streak.avg_daily_trades) || 0;
+          overview.today_trade_count = parseInt(streak.today_trade_count) || 0;
+          overview.today_pnl = parseFloat(streak.today_pnl) || 0;
+          // Positive = winning streak, negative = losing streak, 0 = no streak / breakeven
+          overview.current_streak = lastResult === 'W' ? runLen
+            : lastResult === 'L' ? -runLen
+            : 0;
+          overview.best_win_streak = parseInt(streak.best_win_streak) || 0;
+          overview.worst_loss_streak = parseInt(streak.worst_loss_streak) || 0;
+        } catch (streakErr) {
+          console.error('[STREAK] calculation error:', streakErr);
+          overview.trading_days = 0;
+          overview.avg_daily_trades = 0;
+          overview.today_trade_count = 0;
+          overview.today_pnl = 0;
+          overview.current_streak = 0;
+          overview.best_win_streak = 0;
+          overview.worst_loss_streak = 0;
+        }
+
+        // Daily averages depend on trading_days resolved by the streak query above
+        overview.avg_daily_pnl = overview.trading_days > 0
+          ? overview.total_pnl / overview.trading_days
+          : 0;
+        overview.avg_daily_volume = overview.trading_days > 0
+          ? overview.total_volume / overview.trading_days
+          : 0;
+
+        // Clean up temporary fields
+        delete overview.pnl_array;
+        delete overview.pnl_stddev;
+        delete overview.result_array;
+        delete overview.total_gross_wins;
+        delete overview.total_gross_losses;
+
+        // Debug logging before sending response
+        console.log('Final overview object keys:', Object.keys(overview));
+        console.log('Advanced metrics values:', {
+          sqn: overview.sqn,
+          k_ratio: overview.k_ratio,
+          kelly_percentage: overview.kelly_percentage,
+          probability_random: overview.probability_random,
+          avg_mae: overview.avg_mae,
+          avg_mfe: overview.avg_mfe
+        });
+
+        // Surface whether these numbers are grouped per position (issue #339) so
+        // the UI can label the win rate as "whole trade".
+        overview.position_grouping = groupByPosition;
+
+        // Cache until invalidated by trade mutations (24h fallback TTL)
+        const cacheTTL = 24 * 60 * 60 * 1000;
+        cache.set(cacheKey, { overview }, cacheTTL);
+        return { overview };
       });
 
-      // Surface whether these numbers are grouped per position (issue #339) so
-      // the UI can label the win rate as "whole trade".
-      overview.position_grouping = groupByPosition;
-
-      // Cache until invalidated by trade mutations (24h fallback TTL)
-      const cacheTTL = 24 * 60 * 60 * 1000;
-      cache.set(cacheKey, { overview }, cacheTTL);
-      res.json({ overview });
+      res.json(payload);
     } catch (error) {
       console.error('Analytics overview error:', error);
       next(error);
@@ -2080,7 +2140,7 @@ const analyticsController = {
       const params = [req.user.id, ...filterParams];
 
       const exportQuery = `
-        SELECT * FROM trades
+        SELECT ${sanitizedFormat === 'csv' ? CSV_EXPORT_COLUMNS : '*'} FROM trades
         WHERE user_id = $1 ${filterConditions}
         ORDER BY trade_date DESC, entry_time DESC
       `;
@@ -2112,484 +2172,488 @@ const analyticsController = {
         return res.json(cachedData);
       }
 
-      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
-      const params = [req.user.id, ...filterParams];
+      const responseData = await coalesceInFlight(cacheKey, async () => {
+        const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+        const params = [req.user.id, ...filterParams];
 
-      // Trade Distribution by Price
-      const tradeDistributionQuery = `
-        WITH price_ranges AS (
-          SELECT 
-            CASE 
-              WHEN entry_price < 2 THEN '< $2'
-              WHEN entry_price < 5 THEN '$2-4.99'
-              WHEN entry_price < 10 THEN '$5-9.99'
-              WHEN entry_price < 20 THEN '$10-19.99'
-              WHEN entry_price < 50 THEN '$20-49.99'
-              WHEN entry_price < 100 THEN '$50-99.99'
-              WHEN entry_price < 200 THEN '$100-199.99'
-              ELSE '$200+'
-            END as price_range,
-            CASE 
-              WHEN entry_price < 2 THEN 1
-              WHEN entry_price < 5 THEN 2
-              WHEN entry_price < 10 THEN 3
-              WHEN entry_price < 20 THEN 4
-              WHEN entry_price < 50 THEN 5
-              WHEN entry_price < 100 THEN 6
-              WHEN entry_price < 200 THEN 7
-              ELSE 8
-            END as range_order
-          FROM trades
-          WHERE user_id = $1 ${filterConditions}
-        )
-        SELECT price_range, COUNT(*) as trade_count
-        FROM price_ranges
-        GROUP BY price_range, range_order
-        ORDER BY range_order
-      `;
+        // Trade Distribution by Price
+        const tradeDistributionQuery = `
+          WITH price_ranges AS (
+            SELECT 
+              CASE 
+                WHEN entry_price < 2 THEN '< $2'
+                WHEN entry_price < 5 THEN '$2-4.99'
+                WHEN entry_price < 10 THEN '$5-9.99'
+                WHEN entry_price < 20 THEN '$10-19.99'
+                WHEN entry_price < 50 THEN '$20-49.99'
+                WHEN entry_price < 100 THEN '$50-99.99'
+                WHEN entry_price < 200 THEN '$100-199.99'
+                ELSE '$200+'
+              END as price_range,
+              CASE 
+                WHEN entry_price < 2 THEN 1
+                WHEN entry_price < 5 THEN 2
+                WHEN entry_price < 10 THEN 3
+                WHEN entry_price < 20 THEN 4
+                WHEN entry_price < 50 THEN 5
+                WHEN entry_price < 100 THEN 6
+                WHEN entry_price < 200 THEN 7
+                ELSE 8
+              END as range_order
+            FROM trades
+            WHERE user_id = $1 ${filterConditions}
+          )
+          SELECT price_range, COUNT(*) as trade_count
+          FROM price_ranges
+          GROUP BY price_range, range_order
+          ORDER BY range_order
+        `;
 
-      // Performance by Price
-      const performanceByPriceQuery = `
-        WITH price_ranges AS (
+        // Performance by Price
+        const performanceByPriceQuery = `
+          WITH price_ranges AS (
+            SELECT
+              CASE
+                WHEN entry_price < 2 THEN '< $2'
+                WHEN entry_price < 5 THEN '$2-4.99'
+                WHEN entry_price < 10 THEN '$5-9.99'
+                WHEN entry_price < 20 THEN '$10-19.99'
+                WHEN entry_price < 50 THEN '$20-49.99'
+                WHEN entry_price < 100 THEN '$50-99.99'
+                WHEN entry_price < 200 THEN '$100-199.99'
+                ELSE '$200+'
+              END as price_range,
+              CASE
+                WHEN entry_price < 2 THEN 1
+                WHEN entry_price < 5 THEN 2
+                WHEN entry_price < 10 THEN 3
+                WHEN entry_price < 20 THEN 4
+                WHEN entry_price < 50 THEN 5
+                WHEN entry_price < 100 THEN 6
+                WHEN entry_price < 200 THEN 7
+                ELSE 8
+              END as range_order,
+              pnl,
+              r_value,
+              stop_loss
+            FROM trades
+            WHERE user_id = $1 ${filterConditions}
+          )
           SELECT
-            CASE
-              WHEN entry_price < 2 THEN '< $2'
-              WHEN entry_price < 5 THEN '$2-4.99'
-              WHEN entry_price < 10 THEN '$5-9.99'
-              WHEN entry_price < 20 THEN '$10-19.99'
-              WHEN entry_price < 50 THEN '$20-49.99'
-              WHEN entry_price < 100 THEN '$50-99.99'
-              WHEN entry_price < 200 THEN '$100-199.99'
-              ELSE '$200+'
-            END as price_range,
-            CASE
-              WHEN entry_price < 2 THEN 1
-              WHEN entry_price < 5 THEN 2
-              WHEN entry_price < 10 THEN 3
-              WHEN entry_price < 20 THEN 4
-              WHEN entry_price < 50 THEN 5
-              WHEN entry_price < 100 THEN 6
-              WHEN entry_price < 200 THEN 7
-              ELSE 8
-            END as range_order,
-            pnl,
-            r_value,
-            stop_loss
-          FROM trades
-          WHERE user_id = $1 ${filterConditions}
-        )
-        SELECT
-          price_range,
-          COALESCE(SUM(pnl), 0) as total_pnl,
-          COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value
-        FROM price_ranges
-        GROUP BY price_range, range_order
-        ORDER BY range_order
-      `;
+            price_range,
+            COALESCE(SUM(pnl), 0) as total_pnl,
+            COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value
+          FROM price_ranges
+          GROUP BY price_range, range_order
+          ORDER BY range_order
+        `;
 
-      // Performance by Volume
-      const performanceByVolumeQuery = `
-        WITH trade_volumes AS (
+        // Performance by Volume
+        const performanceByVolumeQuery = `
+          WITH trade_volumes AS (
+            SELECT
+              CASE
+                WHEN executions IS NOT NULL AND jsonb_array_length(executions) > 0 THEN
+                  (
+                    SELECT COALESCE(SUM((exec->>'quantity')::numeric), 0)
+                    FROM jsonb_array_elements(executions) AS exec
+                  )
+                ELSE quantity  -- Fractional quantities (crypto) require numeric, not integer
+              END as total_volume,
+              pnl,
+              r_value,
+              stop_loss
+            FROM trades
+            WHERE user_id = $1 ${filterConditions}
+          ),
+          volume_ranges AS (
+            SELECT
+              CASE
+                WHEN total_volume BETWEEN 2 AND 4 THEN '2-4'
+                WHEN total_volume BETWEEN 5 AND 9 THEN '5-9'
+                WHEN total_volume BETWEEN 10 AND 19 THEN '10-19'
+                WHEN total_volume BETWEEN 20 AND 49 THEN '20-49'
+                WHEN total_volume BETWEEN 50 AND 99 THEN '50-99'
+                WHEN total_volume BETWEEN 100 AND 499 THEN '100-500'
+                WHEN total_volume BETWEEN 500 AND 999 THEN '500-999'
+                WHEN total_volume BETWEEN 1000 AND 1999 THEN '1K-2K'
+                WHEN total_volume BETWEEN 2000 AND 2999 THEN '2K-3K'
+                WHEN total_volume BETWEEN 3000 AND 4999 THEN '3K-5K'
+                WHEN total_volume BETWEEN 5000 AND 9999 THEN '5K-10K'
+                WHEN total_volume BETWEEN 10000 AND 19999 THEN '10K-20K'
+                WHEN total_volume >= 20000 THEN '20K+'
+                ELSE 'Other'
+              END as volume_range,
+              CASE
+                WHEN total_volume BETWEEN 2 AND 4 THEN 1
+                WHEN total_volume BETWEEN 5 AND 9 THEN 2
+                WHEN total_volume BETWEEN 10 AND 19 THEN 3
+                WHEN total_volume BETWEEN 20 AND 49 THEN 4
+                WHEN total_volume BETWEEN 50 AND 99 THEN 5
+                WHEN total_volume BETWEEN 100 AND 499 THEN 6
+                WHEN total_volume BETWEEN 500 AND 999 THEN 7
+                WHEN total_volume BETWEEN 1000 AND 1999 THEN 8
+                WHEN total_volume BETWEEN 2000 AND 2999 THEN 9
+                WHEN total_volume BETWEEN 3000 AND 4999 THEN 10
+                WHEN total_volume BETWEEN 5000 AND 9999 THEN 11
+                WHEN total_volume BETWEEN 10000 AND 19999 THEN 12
+                WHEN total_volume >= 20000 THEN 13
+                ELSE 14
+              END as range_order,
+              pnl,
+              r_value,
+              stop_loss
+            FROM trade_volumes
+          )
           SELECT
-            CASE
-              WHEN executions IS NOT NULL AND jsonb_array_length(executions) > 0 THEN
-                (
-                  SELECT COALESCE(SUM((exec->>'quantity')::numeric), 0)
-                  FROM jsonb_array_elements(executions) AS exec
-                )
-              ELSE quantity  -- Fractional quantities (crypto) require numeric, not integer
-            END as total_volume,
-            pnl,
-            r_value,
-            stop_loss
-          FROM trades
-          WHERE user_id = $1 ${filterConditions}
-        ),
-        volume_ranges AS (
+            volume_range,
+            COALESCE(SUM(pnl), 0) as total_pnl,
+            COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
+            COUNT(*) as trade_count
+          FROM volume_ranges
+          GROUP BY volume_range, range_order
+          ORDER BY range_order
+        `;
+
+        // Performance by Position Size - Consistent dynamic ranges based on actual data
+        const performanceByPositionSizeQuery = `
+          WITH position_sizes AS (
+            SELECT
+              (entry_price * quantity) as position_size,
+              pnl,
+              r_value,
+              stop_loss
+            FROM trades
+            WHERE user_id = $1 ${filterConditions}
+          ),
+          stats AS (
+            SELECT
+              MIN(position_size) as min_size,
+              MAX(position_size) as max_size,
+              COUNT(*) as total_trades,
+              -- Determine increment based on max position size
+              CASE
+                WHEN MAX(position_size) <= 1000 THEN 100
+                WHEN MAX(position_size) <= 5000 THEN 500
+                WHEN MAX(position_size) <= 10000 THEN 1000
+                WHEN MAX(position_size) <= 50000 THEN 5000
+                WHEN MAX(position_size) <= 100000 THEN 10000
+                WHEN MAX(position_size) <= 500000 THEN 50000
+                ELSE 100000
+              END as increment
+            FROM position_sizes
+            WHERE position_size > 0
+          ),
+          range_buckets AS (
+            -- Generate consistent range buckets from 0 to max
+            SELECT
+              generate_series(
+                0,
+                (SELECT CEIL(max_size / increment) * increment FROM stats),
+                (SELECT increment FROM stats)
+              ) as range_start
+            FROM stats
+          ),
+          bucketed_trades AS (
+            SELECT
+              rb.range_start,
+              ps.pnl,
+              ps.r_value,
+              ps.stop_loss
+            FROM position_sizes ps
+            CROSS JOIN stats s
+            JOIN range_buckets rb ON ps.position_size >= rb.range_start
+              AND ps.position_size < rb.range_start + s.increment
+            WHERE ps.position_size > 0
+          )
           SELECT
-            CASE
-              WHEN total_volume BETWEEN 2 AND 4 THEN '2-4'
-              WHEN total_volume BETWEEN 5 AND 9 THEN '5-9'
-              WHEN total_volume BETWEEN 10 AND 19 THEN '10-19'
-              WHEN total_volume BETWEEN 20 AND 49 THEN '20-49'
-              WHEN total_volume BETWEEN 50 AND 99 THEN '50-99'
-              WHEN total_volume BETWEEN 100 AND 499 THEN '100-500'
-              WHEN total_volume BETWEEN 500 AND 999 THEN '500-999'
-              WHEN total_volume BETWEEN 1000 AND 1999 THEN '1K-2K'
-              WHEN total_volume BETWEEN 2000 AND 2999 THEN '2K-3K'
-              WHEN total_volume BETWEEN 3000 AND 4999 THEN '3K-5K'
-              WHEN total_volume BETWEEN 5000 AND 9999 THEN '5K-10K'
-              WHEN total_volume BETWEEN 10000 AND 19999 THEN '10K-20K'
-              WHEN total_volume >= 20000 THEN '20K+'
-              ELSE 'Other'
-            END as volume_range,
-            CASE
-              WHEN total_volume BETWEEN 2 AND 4 THEN 1
-              WHEN total_volume BETWEEN 5 AND 9 THEN 2
-              WHEN total_volume BETWEEN 10 AND 19 THEN 3
-              WHEN total_volume BETWEEN 20 AND 49 THEN 4
-              WHEN total_volume BETWEEN 50 AND 99 THEN 5
-              WHEN total_volume BETWEEN 100 AND 499 THEN 6
-              WHEN total_volume BETWEEN 500 AND 999 THEN 7
-              WHEN total_volume BETWEEN 1000 AND 1999 THEN 8
-              WHEN total_volume BETWEEN 2000 AND 2999 THEN 9
-              WHEN total_volume BETWEEN 3000 AND 4999 THEN 10
-              WHEN total_volume BETWEEN 5000 AND 9999 THEN 11
-              WHEN total_volume BETWEEN 10000 AND 19999 THEN 12
-              WHEN total_volume >= 20000 THEN 13
-              ELSE 14
-            END as range_order,
-            pnl,
-            r_value,
-            stop_loss
-          FROM trade_volumes
-        )
-        SELECT
-          volume_range,
-          COALESCE(SUM(pnl), 0) as total_pnl,
-          COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
-          COUNT(*) as trade_count
-        FROM volume_ranges
-        GROUP BY volume_range, range_order
-        ORDER BY range_order
-      `;
+            range_start,
+            COALESCE(SUM(pnl), 0) as total_pnl,
+            COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
+            COUNT(*) as trade_count
+          FROM bucketed_trades
+          GROUP BY range_start
+          HAVING COUNT(*) > 0
+          ORDER BY range_start
+        `;
 
-      // Performance by Position Size - Consistent dynamic ranges based on actual data
-      const performanceByPositionSizeQuery = `
-        WITH position_sizes AS (
+        // Performance by Hold Time
+        const performanceByHoldTimeQuery = `
+          WITH hold_time_analysis AS (
+            SELECT
+              CASE
+                WHEN entry_time IS NULL OR exit_time IS NULL THEN 'Open Position'
+                WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 60 THEN '< 1 min'
+                WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 300 THEN '1-5 min'
+                WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 900 THEN '5-15 min'
+                WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 1800 THEN '15-30 min'
+                WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 3600 THEN '30-60 min'
+                WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 7200 THEN '1-2 hours'
+                WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 14400 THEN '2-4 hours'
+                WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 86400 THEN '4-24 hours'
+                WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 604800 THEN '1-7 days'
+                WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 2592000 THEN '1-4 weeks'
+                ELSE '1+ months'
+              END as hold_time_range,
+              CASE
+                WHEN entry_time IS NULL OR exit_time IS NULL THEN 0
+                WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 60 THEN 1
+                WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 300 THEN 2
+                WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 900 THEN 3
+                WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 1800 THEN 4
+                WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 3600 THEN 5
+                WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 7200 THEN 6
+                WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 14400 THEN 7
+                WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 86400 THEN 8
+                WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 604800 THEN 9
+                WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 2592000 THEN 10
+                ELSE 11
+              END as range_order,
+              pnl,
+              r_value,
+              stop_loss,
+              CASE WHEN pnl > 0 THEN 1 ELSE 0 END as is_winner
+            FROM trades
+            WHERE user_id = $1 ${filterConditions} AND pnl IS NOT NULL
+          )
           SELECT
-            (entry_price * quantity) as position_size,
-            pnl,
-            r_value,
-            stop_loss
-          FROM trades
-          WHERE user_id = $1 ${filterConditions}
-        ),
-        stats AS (
-          SELECT
-            MIN(position_size) as min_size,
-            MAX(position_size) as max_size,
-            COUNT(*) as total_trades,
-            -- Determine increment based on max position size
-            CASE
-              WHEN MAX(position_size) <= 1000 THEN 100
-              WHEN MAX(position_size) <= 5000 THEN 500
-              WHEN MAX(position_size) <= 10000 THEN 1000
-              WHEN MAX(position_size) <= 50000 THEN 5000
-              WHEN MAX(position_size) <= 100000 THEN 10000
-              WHEN MAX(position_size) <= 500000 THEN 50000
-              ELSE 100000
-            END as increment
-          FROM position_sizes
-          WHERE position_size > 0
-        ),
-        range_buckets AS (
-          -- Generate consistent range buckets from 0 to max
-          SELECT
-            generate_series(
-              0,
-              (SELECT CEIL(max_size / increment) * increment FROM stats),
-              (SELECT increment FROM stats)
-            ) as range_start
-          FROM stats
-        ),
-        bucketed_trades AS (
-          SELECT
-            rb.range_start,
-            ps.pnl,
-            ps.r_value,
-            ps.stop_loss
-          FROM position_sizes ps
-          CROSS JOIN stats s
-          JOIN range_buckets rb ON ps.position_size >= rb.range_start
-            AND ps.position_size < rb.range_start + s.increment
-          WHERE ps.position_size > 0
-        )
-        SELECT
-          range_start,
-          COALESCE(SUM(pnl), 0) as total_pnl,
-          COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
-          COUNT(*) as trade_count
-        FROM bucketed_trades
-        GROUP BY range_start
-        HAVING COUNT(*) > 0
-        ORDER BY range_start
-      `;
+            hold_time_range,
+            COALESCE(SUM(pnl), 0) as total_pnl,
+            COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
+            COUNT(*) as trade_count,
+            SUM(is_winner) as winning_trades
+          FROM hold_time_analysis
+          GROUP BY hold_time_range, range_order
+          ORDER BY range_order
+        `;
 
-      // Performance by Hold Time
-      const performanceByHoldTimeQuery = `
-        WITH hold_time_analysis AS (
-          SELECT
-            CASE
-              WHEN entry_time IS NULL OR exit_time IS NULL THEN 'Open Position'
-              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 60 THEN '< 1 min'
-              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 300 THEN '1-5 min'
-              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 900 THEN '5-15 min'
-              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 1800 THEN '15-30 min'
-              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 3600 THEN '30-60 min'
-              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 7200 THEN '1-2 hours'
-              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 14400 THEN '2-4 hours'
-              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 86400 THEN '4-24 hours'
-              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 604800 THEN '1-7 days'
-              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 2592000 THEN '1-4 weeks'
-              ELSE '1+ months'
-            END as hold_time_range,
-            CASE
-              WHEN entry_time IS NULL OR exit_time IS NULL THEN 0
-              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 60 THEN 1
-              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 300 THEN 2
-              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 900 THEN 3
-              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 1800 THEN 4
-              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 3600 THEN 5
-              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 7200 THEN 6
-              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 14400 THEN 7
-              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 86400 THEN 8
-              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 604800 THEN 9
-              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 2592000 THEN 10
-              ELSE 11
-            END as range_order,
-            pnl,
-            r_value,
-            stop_loss,
-            CASE WHEN pnl > 0 THEN 1 ELSE 0 END as is_winner
-          FROM trades
-          WHERE user_id = $1 ${filterConditions} AND pnl IS NOT NULL
-        )
-        SELECT
-          hold_time_range,
-          COALESCE(SUM(pnl), 0) as total_pnl,
-          COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
-          COUNT(*) as trade_count,
-          SUM(is_winner) as winning_trades
-        FROM hold_time_analysis
-        GROUP BY hold_time_range, range_order
-        ORDER BY range_order
-      `;
+        const [tradeDistResult, perfByPriceResult, perfByVolumeResult, perfByPositionSizeResult, perfByHoldTimeResult] = await Promise.all([
+          db.query(tradeDistributionQuery, params),
+          db.query(performanceByPriceQuery, params),
+          db.query(performanceByVolumeQuery, params),
+          db.query(performanceByPositionSizeQuery, params),
+          db.query(performanceByHoldTimeQuery, params)
+        ]);
 
-      const [tradeDistResult, perfByPriceResult, perfByVolumeResult, perfByPositionSizeResult, perfByHoldTimeResult] = await Promise.all([
-        db.query(tradeDistributionQuery, params),
-        db.query(performanceByPriceQuery, params),
-        db.query(performanceByVolumeQuery, params),
-        db.query(performanceByPositionSizeQuery, params),
-        db.query(performanceByHoldTimeQuery, params)
-      ]);
+        console.log('Chart data query results:', {
+          tradeDistribution: tradeDistResult.rows,
+          performanceByPrice: perfByPriceResult.rows,
+          performanceByVolume: perfByVolumeResult.rows,
+          performanceByPositionSize: perfByPositionSizeResult.rows,
+          performanceByHoldTime: perfByHoldTimeResult.rows
+        });
 
-      console.log('Chart data query results:', {
-        tradeDistribution: tradeDistResult.rows,
-        performanceByPrice: perfByPriceResult.rows,
-        performanceByVolume: perfByVolumeResult.rows,
-        performanceByPositionSize: perfByPositionSizeResult.rows,
-        performanceByHoldTime: perfByHoldTimeResult.rows
-      });
+        // Process data into arrays matching the chart labels
+        const priceLabels = ['< $2', '$2-4.99', '$5-9.99', '$10-19.99', '$20-49.99', '$50-99.99', '$100-199.99', '$200+'];
+        const volumeLabels = ['2-4', '5-9', '10-19', '20-49', '50-99', '100-500', '500-999', '1K-2K', '2K-3K', '3K-5K', '5K-10K', '10K-20K', '20K+'];
+        const holdTimeLabels = ['< 1 min', '1-5 min', '5-15 min', '15-30 min', '30-60 min', '1-2 hours', '2-4 hours', '4-24 hours', '1-7 days', '1-4 weeks', '1+ months'];
 
-      // Process data into arrays matching the chart labels
-      const priceLabels = ['< $2', '$2-4.99', '$5-9.99', '$10-19.99', '$20-49.99', '$50-99.99', '$100-199.99', '$200+'];
-      const volumeLabels = ['2-4', '5-9', '10-19', '20-49', '50-99', '100-500', '500-999', '1K-2K', '2K-3K', '3K-5K', '5K-10K', '10K-20K', '20K+'];
-      const holdTimeLabels = ['< 1 min', '1-5 min', '5-15 min', '15-30 min', '30-60 min', '1-2 hours', '2-4 hours', '4-24 hours', '1-7 days', '1-4 weeks', '1+ months'];
+        const tradeDistribution = priceLabels.map(label => {
+          const found = tradeDistResult.rows.find(row => row.price_range === label);
+          return found ? parseInt(found.trade_count) : 0;
+        });
 
-      const tradeDistribution = priceLabels.map(label => {
-        const found = tradeDistResult.rows.find(row => row.price_range === label);
-        return found ? parseInt(found.trade_count) : 0;
-      });
+        const performanceByPrice = priceLabels.map(label => {
+          const found = perfByPriceResult.rows.find(row => row.price_range === label);
+          return found ? parseFloat(found.total_pnl) : 0;
+        });
 
-      const performanceByPrice = priceLabels.map(label => {
-        const found = perfByPriceResult.rows.find(row => row.price_range === label);
-        return found ? parseFloat(found.total_pnl) : 0;
-      });
+        const performanceByPriceR = priceLabels.map(label => {
+          const found = perfByPriceResult.rows.find(row => row.price_range === label);
+          return found ? parseFloat(found.total_r_value) : 0;
+        });
 
-      const performanceByPriceR = priceLabels.map(label => {
-        const found = perfByPriceResult.rows.find(row => row.price_range === label);
-        return found ? parseFloat(found.total_r_value) : 0;
-      });
+        const performanceByPriceCounts = priceLabels.map(label => {
+          const found = tradeDistResult.rows.find(row => row.price_range === label);
+          return found ? parseInt(found.trade_count) : 0;
+        });
 
-      const performanceByPriceCounts = priceLabels.map(label => {
-        const found = tradeDistResult.rows.find(row => row.price_range === label);
-        return found ? parseInt(found.trade_count) : 0;
-      });
-
-      // Dynamic volume categories - only include categories with data
-      const volumeDataMap = new Map();
-      const volumeRDataMap = new Map();
-      const volumeCountMap = new Map();
-      const volumeOrderMap = {
-        '2-4': 1, '5-9': 2, '10-19': 3, '20-49': 4, '50-99': 5, '100-500': 6,
-        '500-999': 7, '1K-2K': 8, '2K-3K': 9, '3K-5K': 10, '5K-10K': 11,
-        '10K-20K': 12, '20K+': 13
-      };
-
-      // Collect data and filter out empty categories
-      perfByVolumeResult.rows.forEach(row => {
-        if (row.volume_range && row.volume_range !== 'Other' && parseFloat(row.total_pnl) !== 0) {
-          volumeDataMap.set(row.volume_range, parseFloat(row.total_pnl));
-          volumeRDataMap.set(row.volume_range, parseFloat(row.total_r_value || 0));
-          volumeCountMap.set(row.volume_range, parseInt(row.trade_count || 0));
-        }
-      });
-
-      // Sort by order and create arrays
-      const sortedVolumeEntries = Array.from(volumeDataMap.entries())
-        .sort((a, b) => (volumeOrderMap[a[0]] || 999) - (volumeOrderMap[b[0]] || 999));
-
-      const dynamicVolumeLabels = sortedVolumeEntries.map(([label]) => label);
-      const performanceByVolume = sortedVolumeEntries.map(([, pnl]) => pnl);
-      const performanceByVolumeR = sortedVolumeEntries.map(([label]) => volumeRDataMap.get(label) || 0);
-      const performanceByVolumeCounts = sortedVolumeEntries.map(([label]) => volumeCountMap.get(label) || 0);
-
-      // Process dynamic position size data
-      const formatPositionSizeRange = (rangeStart) => {
-        const start = parseFloat(rangeStart);
-
-        // Determine the increment based on the range
-        let increment;
-        if (start < 1000) increment = 100;
-        else if (start < 5000) increment = 500;
-        else if (start < 10000) increment = 1000;
-        else if (start < 50000) increment = 5000;
-        else if (start < 100000) increment = 10000;
-        else if (start < 500000) increment = 50000;
-        else increment = 100000;
-
-        const end = start + increment;
-
-        // Format the range label
-        const formatCurrency = (val) => {
-          if (val >= 1000000) return `$${(val / 1000000).toFixed(1)}M`;
-          if (val >= 1000) return `$${(val / 1000).toFixed(0)}K`;
-          return `$${val}`;
+        // Dynamic volume categories - only include categories with data
+        const volumeDataMap = new Map();
+        const volumeRDataMap = new Map();
+        const volumeCountMap = new Map();
+        const volumeOrderMap = {
+          '2-4': 1, '5-9': 2, '10-19': 3, '20-49': 4, '50-99': 5, '100-500': 6,
+          '500-999': 7, '1K-2K': 8, '2K-3K': 9, '3K-5K': 10, '5K-10K': 11,
+          '10K-20K': 12, '20K+': 13
         };
 
-        return `${formatCurrency(start)}-${formatCurrency(end)}`;
-      };
-
-      const positionSizeDataMap = new Map();
-      perfByPositionSizeResult.rows.forEach(row => {
-        if (row.range_start !== null) {
-          const label = formatPositionSizeRange(row.range_start);
-          positionSizeDataMap.set(label, {
-            pnl: parseFloat(row.total_pnl),
-            rValue: parseFloat(row.total_r_value || 0),
-            tradeCount: parseInt(row.trade_count || 0),
-            rangeStart: parseFloat(row.range_start)
-          });
-        }
-      });
-
-      // Sort by range_start value
-      const sortedPositionSizeEntries = Array.from(positionSizeDataMap.entries())
-        .sort((a, b) => a[1].rangeStart - b[1].rangeStart);
-
-      const dynamicPositionSizeLabels = sortedPositionSizeEntries.map(([label]) => label);
-      const performanceByPositionSize = sortedPositionSizeEntries.map(([, data]) => data.pnl);
-      const performanceByPositionSizeR = sortedPositionSizeEntries.map(([, data]) => data.rValue);
-      const performanceByPositionSizeCounts = sortedPositionSizeEntries.map(([, data]) => data.tradeCount);
-
-      const performanceByHoldTime = holdTimeLabels.map(label => {
-        const found = perfByHoldTimeResult.rows.find(row => row.hold_time_range === label);
-        return found ? parseFloat(found.total_pnl) : 0;
-      });
-
-      const performanceByHoldTimeR = holdTimeLabels.map(label => {
-        const found = perfByHoldTimeResult.rows.find(row => row.hold_time_range === label);
-        return found ? parseFloat(found.total_r_value) : 0;
-      });
-
-      const performanceByHoldTimeCounts = holdTimeLabels.map(label => {
-        const found = perfByHoldTimeResult.rows.find(row => row.hold_time_range === label);
-        return found ? parseInt(found.trade_count) : 0;
-      });
-
-      // Day of Week Performance (timezone-aware and excluding weekends)
-      // Convert entry_time from UTC to user's timezone for day extraction
-      const { getUserTimezone } = require('../utils/timezone');
-      const userTimezone = await getUserTimezone(req.user.id);
-
-      // Timezone is appended after user_id ($1) and all filter params, so its
-      // placeholder index depends on how many filters are active.
-      const dowTzParam = params.length + 1;
-      const dayOfWeekParams = params.concat([userTimezone]);
-
-      const dayOfWeekQuery = `
-        SELECT
-          EXTRACT(DOW FROM (entry_time AT TIME ZONE $${dowTzParam})) as day_of_week,
-          COUNT(*) as trade_count,
-          COALESCE(SUM(pnl), 0) as total_pnl,
-          COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value
-        FROM trades
-        WHERE user_id = $1 ${filterConditions}
-          AND EXTRACT(DOW FROM (entry_time AT TIME ZONE $${dowTzParam})) NOT IN (0, 6) -- Exclude weekends
-        GROUP BY EXTRACT(DOW FROM (entry_time AT TIME ZONE $${dowTzParam}))
-        ORDER BY EXTRACT(DOW FROM (entry_time AT TIME ZONE $${dowTzParam}))
-      `;
-
-      const dayOfWeekResult = await db.query(dayOfWeekQuery, dayOfWeekParams);
-
-      // Process day of week data - only weekdays (1=Monday, ..., 5=Friday)
-      // Skip weekends entirely since stock markets are closed
-      const dayOfWeekData = [];
-      for (let i = 1; i <= 5; i++) { // Only weekdays: 1=Monday through 5=Friday
-        const found = dayOfWeekResult.rows.find(row => parseInt(row.day_of_week) === i);
-        dayOfWeekData.push({
-          total_pnl: found ? parseFloat(found.total_pnl) : 0,
-          total_r_value: found ? parseFloat(found.total_r_value) : 0,
-          trade_count: found ? parseInt(found.trade_count) : 0
+        // Collect data and filter out empty categories
+        perfByVolumeResult.rows.forEach(row => {
+          if (row.volume_range && row.volume_range !== 'Other' && parseFloat(row.total_pnl) !== 0) {
+            volumeDataMap.set(row.volume_range, parseFloat(row.total_pnl));
+            volumeRDataMap.set(row.volume_range, parseFloat(row.total_r_value || 0));
+            volumeCountMap.set(row.volume_range, parseInt(row.trade_count || 0));
+          }
         });
-      }
 
-      // Daily Volume Data - Calculate from executions for accurate trading volume
-      const dailyVolumeQuery = `
-        WITH execution_volumes AS (
-          SELECT 
-            trade_date,
-            CASE 
-              WHEN executions IS NOT NULL AND jsonb_array_length(executions) > 0 THEN
-                (
-                  SELECT COALESCE(SUM((exec->>'quantity')::numeric), 0)
-                  FROM jsonb_array_elements(executions) AS exec
-                )
-              ELSE quantity  -- Fractional quantities (crypto) require numeric, not integer
-            END as trade_volume
+        // Sort by order and create arrays
+        const sortedVolumeEntries = Array.from(volumeDataMap.entries())
+          .sort((a, b) => (volumeOrderMap[a[0]] || 999) - (volumeOrderMap[b[0]] || 999));
+
+        const dynamicVolumeLabels = sortedVolumeEntries.map(([label]) => label);
+        const performanceByVolume = sortedVolumeEntries.map(([, pnl]) => pnl);
+        const performanceByVolumeR = sortedVolumeEntries.map(([label]) => volumeRDataMap.get(label) || 0);
+        const performanceByVolumeCounts = sortedVolumeEntries.map(([label]) => volumeCountMap.get(label) || 0);
+
+        // Process dynamic position size data
+        const formatPositionSizeRange = (rangeStart) => {
+          const start = parseFloat(rangeStart);
+
+          // Determine the increment based on the range
+          let increment;
+          if (start < 1000) increment = 100;
+          else if (start < 5000) increment = 500;
+          else if (start < 10000) increment = 1000;
+          else if (start < 50000) increment = 5000;
+          else if (start < 100000) increment = 10000;
+          else if (start < 500000) increment = 50000;
+          else increment = 100000;
+
+          const end = start + increment;
+
+          // Format the range label
+          const formatCurrency = (val) => {
+            if (val >= 1000000) return `$${(val / 1000000).toFixed(1)}M`;
+            if (val >= 1000) return `$${(val / 1000).toFixed(0)}K`;
+            return `$${val}`;
+          };
+
+          return `${formatCurrency(start)}-${formatCurrency(end)}`;
+        };
+
+        const positionSizeDataMap = new Map();
+        perfByPositionSizeResult.rows.forEach(row => {
+          if (row.range_start !== null) {
+            const label = formatPositionSizeRange(row.range_start);
+            positionSizeDataMap.set(label, {
+              pnl: parseFloat(row.total_pnl),
+              rValue: parseFloat(row.total_r_value || 0),
+              tradeCount: parseInt(row.trade_count || 0),
+              rangeStart: parseFloat(row.range_start)
+            });
+          }
+        });
+
+        // Sort by range_start value
+        const sortedPositionSizeEntries = Array.from(positionSizeDataMap.entries())
+          .sort((a, b) => a[1].rangeStart - b[1].rangeStart);
+
+        const dynamicPositionSizeLabels = sortedPositionSizeEntries.map(([label]) => label);
+        const performanceByPositionSize = sortedPositionSizeEntries.map(([, data]) => data.pnl);
+        const performanceByPositionSizeR = sortedPositionSizeEntries.map(([, data]) => data.rValue);
+        const performanceByPositionSizeCounts = sortedPositionSizeEntries.map(([, data]) => data.tradeCount);
+
+        const performanceByHoldTime = holdTimeLabels.map(label => {
+          const found = perfByHoldTimeResult.rows.find(row => row.hold_time_range === label);
+          return found ? parseFloat(found.total_pnl) : 0;
+        });
+
+        const performanceByHoldTimeR = holdTimeLabels.map(label => {
+          const found = perfByHoldTimeResult.rows.find(row => row.hold_time_range === label);
+          return found ? parseFloat(found.total_r_value) : 0;
+        });
+
+        const performanceByHoldTimeCounts = holdTimeLabels.map(label => {
+          const found = perfByHoldTimeResult.rows.find(row => row.hold_time_range === label);
+          return found ? parseInt(found.trade_count) : 0;
+        });
+
+        // Day of Week Performance (timezone-aware and excluding weekends)
+        // Convert entry_time from UTC to user's timezone for day extraction
+        const { getUserTimezone } = require('../utils/timezone');
+        const userTimezone = await getUserTimezone(req.user.id);
+
+        // Timezone is appended after user_id ($1) and all filter params, so its
+        // placeholder index depends on how many filters are active.
+        const dowTzParam = params.length + 1;
+        const dayOfWeekParams = params.concat([userTimezone]);
+
+        const dayOfWeekQuery = `
+          SELECT
+            EXTRACT(DOW FROM (entry_time AT TIME ZONE $${dowTzParam})) as day_of_week,
+            COUNT(*) as trade_count,
+            COALESCE(SUM(pnl), 0) as total_pnl,
+            COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value
           FROM trades
           WHERE user_id = $1 ${filterConditions}
-        )
-        SELECT 
-          trade_date,
-          COALESCE(SUM(trade_volume), 0) as total_volume,
-          COUNT(*) as trade_count
-        FROM execution_volumes
-        GROUP BY trade_date
-        ORDER BY trade_date
-      `;
+            AND EXTRACT(DOW FROM (entry_time AT TIME ZONE $${dowTzParam})) NOT IN (0, 6) -- Exclude weekends
+          GROUP BY EXTRACT(DOW FROM (entry_time AT TIME ZONE $${dowTzParam}))
+          ORDER BY EXTRACT(DOW FROM (entry_time AT TIME ZONE $${dowTzParam}))
+        `;
 
-      const dailyVolumeResult = await db.query(dailyVolumeQuery, params);
+        const dayOfWeekResult = await db.query(dayOfWeekQuery, dayOfWeekParams);
 
-      const responseData = {
-        tradeDistribution,
-        performanceByPrice,
-        performanceByPriceR,
-        performanceByPriceCounts,
-        performanceByVolume,
-        performanceByVolumeR,
-        performanceByVolumeCounts,
-        performanceByPositionSize,
-        performanceByPositionSizeR,
-        performanceByPositionSizeCounts,
-        performanceByHoldTime,
-        performanceByHoldTimeR,
-        performanceByHoldTimeCounts,
-        dayOfWeek: dayOfWeekData,
-        dailyVolume: dailyVolumeResult.rows,
-        // Include dynamic labels for charts
-        labels: {
-          volume: dynamicVolumeLabels,
-          price: priceLabels,
-          positionSize: dynamicPositionSizeLabels,
-          holdTime: holdTimeLabels
+        // Process day of week data - only weekdays (1=Monday, ..., 5=Friday)
+        // Skip weekends entirely since stock markets are closed
+        const dayOfWeekData = [];
+        for (let i = 1; i <= 5; i++) { // Only weekdays: 1=Monday through 5=Friday
+          const found = dayOfWeekResult.rows.find(row => parseInt(row.day_of_week) === i);
+          dayOfWeekData.push({
+            total_pnl: found ? parseFloat(found.total_pnl) : 0,
+            total_r_value: found ? parseFloat(found.total_r_value) : 0,
+            trade_count: found ? parseInt(found.trade_count) : 0
+          });
         }
-      };
 
-      // Cache until invalidated by trade mutations (24h fallback TTL)
-      const cacheTTL = 24 * 60 * 60 * 1000;
-      cache.set(cacheKey, responseData, cacheTTL);
+        // Daily Volume Data - Calculate from executions for accurate trading volume
+        const dailyVolumeQuery = `
+          WITH execution_volumes AS (
+            SELECT 
+              trade_date,
+              CASE 
+                WHEN executions IS NOT NULL AND jsonb_array_length(executions) > 0 THEN
+                  (
+                    SELECT COALESCE(SUM((exec->>'quantity')::numeric), 0)
+                    FROM jsonb_array_elements(executions) AS exec
+                  )
+                ELSE quantity  -- Fractional quantities (crypto) require numeric, not integer
+              END as trade_volume
+            FROM trades
+            WHERE user_id = $1 ${filterConditions}
+          )
+          SELECT 
+            trade_date,
+            COALESCE(SUM(trade_volume), 0) as total_volume,
+            COUNT(*) as trade_count
+          FROM execution_volumes
+          GROUP BY trade_date
+          ORDER BY trade_date
+        `;
+
+        const dailyVolumeResult = await db.query(dailyVolumeQuery, params);
+
+        const responseData = {
+          tradeDistribution,
+          performanceByPrice,
+          performanceByPriceR,
+          performanceByPriceCounts,
+          performanceByVolume,
+          performanceByVolumeR,
+          performanceByVolumeCounts,
+          performanceByPositionSize,
+          performanceByPositionSizeR,
+          performanceByPositionSizeCounts,
+          performanceByHoldTime,
+          performanceByHoldTimeR,
+          performanceByHoldTimeCounts,
+          dayOfWeek: dayOfWeekData,
+          dailyVolume: dailyVolumeResult.rows,
+          // Include dynamic labels for charts
+          labels: {
+            volume: dynamicVolumeLabels,
+            price: priceLabels,
+            positionSize: dynamicPositionSizeLabels,
+            holdTime: holdTimeLabels
+          }
+        };
+
+        // Cache until invalidated by trade mutations (24h fallback TTL)
+        const cacheTTL = 24 * 60 * 60 * 1000;
+        cache.set(cacheKey, responseData, cacheTTL);
+
+        return responseData;
+      });
 
       res.json(responseData);
     } catch (error) {
@@ -3405,196 +3469,202 @@ const analyticsController = {
         return res.json(cached);
       }
 
-      const be = groupByPosition ? GROUPED_BREAKEVEN : await rawBreakevenPredicate(req.user.id);
+      const response = await coalesceInFlight(summaryCacheKey, async () => {
+        const be = groupByPosition ? GROUPED_BREAKEVEN : await rawBreakevenPredicate(req.user.id);
 
-      // Pull the analytics we need to derive an insight.
-      const completedCte = groupByPosition
-        ? `completed AS (
-            SELECT SUM(pnl) as pnl
+        // Pull the analytics we need to derive an insight.
+        const completedCte = groupByPosition
+          ? `completed AS (
+              SELECT SUM(pnl) as pnl
+              FROM trades
+              WHERE user_id = $1 ${filterConditions}
+                AND exit_price IS NOT NULL AND pnl IS NOT NULL
+              GROUP BY ${POSITION_GROUP_KEY}
+            )`
+          : `completed AS (
+              SELECT pnl, commission, fees, quantity, tick_size, point_value, underlying_asset
+              FROM trades
+              WHERE user_id = $1 ${filterConditions}
+                AND exit_price IS NOT NULL AND pnl IS NOT NULL
+            )`;
+
+        const dataQuery = `
+          WITH ${completedCte}
+          SELECT
+            (SELECT COUNT(*) FROM completed)::integer AS total_trades,
+            (SELECT COUNT(*) FROM completed WHERE ${be.isNot} AND pnl > 0)::integer AS winning_trades,
+            (SELECT COUNT(*) FROM completed WHERE ${be.isNot} AND pnl < 0)::integer AS losing_trades,
+            (SELECT COALESCE(SUM(pnl), 0) FROM completed)::numeric AS total_pnl,
+            (SELECT COALESCE(AVG(pnl), 0) FROM completed WHERE ${be.isNot} AND pnl > 0)::numeric AS avg_win,
+            (SELECT COALESCE(AVG(pnl), 0) FROM completed WHERE ${be.isNot} AND pnl < 0)::numeric AS avg_loss
+        `;
+        const dataResult = await db.query(dataQuery, params);
+        const m = dataResult.rows[0] || {};
+        const totalTrades = parseInt(m.total_trades) || 0;
+
+        // Not enough data yet — return an empty-state insight.
+        if (totalTrades < 5) {
+          const emptyInsight = {
+            type: 'system',
+            priority: 10,
+            headline: 'Your insights unlock at 10 trades',
+            body: totalTrades === 0
+              ? 'Import your first trades to unlock AI-powered insights about your edge.'
+              : `You've logged ${totalTrades} trade${totalTrades === 1 ? '' : 's'}. Insights become useful around 10+ trades.`,
+            source: 'system',
+            action_label: 'Import trades',
+            action_url: '/import'
+          };
+          const response = {
+            summary: emptyInsight,
+            summaries: [emptyInsight],
+            analysisDate: new Date().toISOString(),
+            tradesAnalyzed: totalTrades
+          };
+          cache.set(summaryCacheKey, response, 60 * 60 * 1000); // 1h
+          return response;
+        }
+
+        // Compute strongest per-symbol / per-strategy edge.
+        const edgeQuery = `
+          WITH completed AS (
+            SELECT symbol, strategy, pnl, commission, fees, quantity, tick_size, point_value, underlying_asset
             FROM trades
             WHERE user_id = $1 ${filterConditions}
               AND exit_price IS NOT NULL AND pnl IS NOT NULL
-            GROUP BY ${POSITION_GROUP_KEY}
-          )`
-        : `completed AS (
-            SELECT * FROM trades
-            WHERE user_id = $1 ${filterConditions}
-              AND exit_price IS NOT NULL AND pnl IS NOT NULL
-          )`;
+          ),
+          sym AS (
+            SELECT symbol,
+                   COUNT(*) AS n,
+                   COUNT(*) FILTER (WHERE ${be.isNot} AND pnl > 0) AS wins,
+                   COALESCE(SUM(pnl), 0) AS pnl
+            FROM completed
+            GROUP BY symbol
+            HAVING COUNT(*) >= 3
+          ),
+          strat AS (
+            SELECT strategy,
+                   COUNT(*) AS n,
+                   COUNT(*) FILTER (WHERE ${be.isNot} AND pnl > 0) AS wins,
+                   COALESCE(SUM(pnl), 0) AS pnl
+            FROM completed
+            WHERE strategy IS NOT NULL AND strategy <> ''
+            GROUP BY strategy
+            HAVING COUNT(*) >= 3
+          )
+          SELECT 'symbol' AS kind, symbol AS label, n, wins, pnl
+          FROM sym
+          UNION ALL
+          SELECT 'strategy' AS kind, strategy AS label, n, wins, pnl
+          FROM strat
+          ORDER BY pnl DESC
+        `;
+        const edgeResult = await db.query(edgeQuery, params);
+        const edges = edgeResult.rows;
+        const top = edges[0];
+        const worst = edges[edges.length - 1];
 
-      const dataQuery = `
-        WITH ${completedCte}
-        SELECT
-          (SELECT COUNT(*) FROM completed)::integer AS total_trades,
-          (SELECT COUNT(*) FROM completed WHERE ${be.isNot} AND pnl > 0)::integer AS winning_trades,
-          (SELECT COUNT(*) FROM completed WHERE ${be.isNot} AND pnl < 0)::integer AS losing_trades,
-          (SELECT COALESCE(SUM(pnl), 0) FROM completed)::numeric AS total_pnl,
-          (SELECT COALESCE(AVG(pnl), 0) FROM completed WHERE ${be.isNot} AND pnl > 0)::numeric AS avg_win,
-          (SELECT COALESCE(AVG(pnl), 0) FROM completed WHERE ${be.isNot} AND pnl < 0)::numeric AS avg_loss
-      `;
-      const dataResult = await db.query(dataQuery, params);
-      const m = dataResult.rows[0] || {};
-      const totalTrades = parseInt(m.total_trades) || 0;
+        const winRate = totalTrades > 0
+          ? ((parseInt(m.winning_trades) || 0) / totalTrades * 100)
+          : 0;
+        const avgWin = Math.abs(parseFloat(m.avg_win) || 0);
+        const avgLoss = Math.abs(parseFloat(m.avg_loss) || 0);
 
-      // Not enough data yet — return an empty-state insight.
-      if (totalTrades < 5) {
-        const emptyInsight = {
-          type: 'system',
-          priority: 10,
-          headline: 'Your insights unlock at 10 trades',
-          body: totalTrades === 0
-            ? 'Import your first trades to unlock AI-powered insights about your edge.'
-            : `You've logged ${totalTrades} trade${totalTrades === 1 ? '' : 's'}. Insights become useful around 10+ trades.`,
-          source: 'system',
-          action_label: 'Import trades',
-          action_url: '/import'
-        };
+        // -- Performance edge insight (existing data-driven behavior) --
+        const edgeInsight = (() => {
+          let headline = '';
+          let body = '';
+          let action_url = '/analytics';
+          let action_label = 'View full analytics';
+
+          if (top && parseFloat(top.pnl) > 0) {
+            const winsRate = top.n > 0 ? (parseInt(top.wins) / parseInt(top.n) * 100) : 0;
+            const sign = parseFloat(top.pnl) >= 0 ? '+' : '';
+            headline = top.kind === 'symbol'
+              ? `${top.label} is carrying your edge`
+              : `Your ${top.label} setup is working`;
+            body = `${winsRate.toFixed(0)}% win rate across ${top.n} ${top.kind === 'symbol' ? 'trades on this symbol' : 'attempts of this setup'}, ${sign}$${parseFloat(top.pnl).toFixed(0)} net.`;
+            action_label = top.kind === 'symbol' ? `View ${top.label} trades` : 'View setup breakdown';
+            action_url = top.kind === 'symbol'
+              ? `/trades?symbol=${encodeURIComponent(top.label)}`
+              : '/metrics#strategies';
+          } else if (worst && parseFloat(worst.pnl) < 0) {
+            headline = worst.kind === 'symbol'
+              ? `${worst.label} is dragging on results`
+              : `${worst.label} setup is leaking edge`;
+            body = `${worst.n} trades, $${parseFloat(worst.pnl).toFixed(0)} net. Consider tighter rules or pausing this ${worst.kind === 'symbol' ? 'symbol' : 'setup'}.`;
+            action_label = 'Investigate';
+            action_url = worst.kind === 'symbol'
+              ? `/trades?symbol=${encodeURIComponent(worst.label)}`
+              : '/metrics#strategies';
+          } else if (winRate >= 60) {
+            headline = `${winRate.toFixed(0)}% win rate — your selection is sharp`;
+            body = `Across ${totalTrades} trades, you're winning ${m.winning_trades} of them. Focus on letting winners run: avg win $${avgWin.toFixed(0)} vs avg loss $${avgLoss.toFixed(0)}.`;
+          } else if (avgWin > 0 && avgLoss > 0 && avgWin / avgLoss > 1.5) {
+            headline = `Your wins are ${(avgWin / avgLoss).toFixed(1)}x your losses`;
+            body = `Strong risk-reward across ${totalTrades} trades (${winRate.toFixed(0)}% wins). The losses you take are well-controlled.`;
+          } else if (avgWin > 0 && avgLoss > 0 && avgLoss / avgWin > 1.5) {
+            headline = 'Your losses are bigger than your wins';
+            body = `Avg loss $${avgLoss.toFixed(0)} vs avg win $${avgWin.toFixed(0)} across ${totalTrades} trades. Tighter stops or more disciplined exits would change everything.`;
+          } else {
+            headline = `${totalTrades} trades analyzed`;
+            body = `Win rate ${winRate.toFixed(0)}%. Avg win $${avgWin.toFixed(0)}, avg loss $${avgLoss.toFixed(0)}. Dig into the breakdowns below for setup-level edge.`;
+          }
+          return {
+            type: 'edge',
+            priority: 30,
+            headline,
+            body,
+            source: 'computed',
+            action_label,
+            action_url
+          };
+        })();
+
+        // -- Open-position context: earnings + news insights --
+        const contextInsights = await analyticsController
+          .computeOpenPositionInsights(req.user.id)
+          .catch(err => {
+            console.warn('[AI] open-position insights failed:', err.message);
+            return [];
+          });
+
+        // Final insights list, sorted by priority desc (higher = more urgent /
+        // more time-sensitive). Caller can render top-N or paginate.
+        let summaries = [...contextInsights, edgeInsight].sort(
+          (a, b) => (b.priority || 0) - (a.priority || 0)
+        );
+
+        // Optionally enrich with AI if (a) user has an AI provider configured
+        // AND (b) billing is disabled OR they're on the Pro tier. The
+        // deterministic insights remain the floor; AI just rewrites the
+        // recommendation bodies with deeper, context-aware analysis.
+        try {
+          const useAI = await analyticsController.shouldUseAIEnrichment(req.user.id);
+          if (useAI) {
+            summaries = await analyticsController.enrichInsightsWithAI(req.user.id, summaries);
+          }
+        } catch (aiErr) {
+          console.warn('[AI] enrichment failed, returning deterministic insights:', aiErr.message);
+        }
+
         const response = {
-          summary: emptyInsight,
-          summaries: [emptyInsight],
+          // Keep `summary` for backward compat (current frontend reads the
+          // single top insight). New clients should iterate `summaries`.
+          summary: summaries[0] || null,
+          summaries,
           analysisDate: new Date().toISOString(),
           tradesAnalyzed: totalTrades
         };
-        cache.set(summaryCacheKey, response, 60 * 60 * 1000); // 1h
-        return res.json(response);
-      }
 
-      // Compute strongest per-symbol / per-strategy edge.
-      const edgeQuery = `
-        WITH completed AS (
-          SELECT * FROM trades
-          WHERE user_id = $1 ${filterConditions}
-            AND exit_price IS NOT NULL AND pnl IS NOT NULL
-        ),
-        sym AS (
-          SELECT symbol,
-                 COUNT(*) AS n,
-                 COUNT(*) FILTER (WHERE ${be.isNot} AND pnl > 0) AS wins,
-                 COALESCE(SUM(pnl), 0) AS pnl
-          FROM completed
-          GROUP BY symbol
-          HAVING COUNT(*) >= 3
-        ),
-        strat AS (
-          SELECT strategy,
-                 COUNT(*) AS n,
-                 COUNT(*) FILTER (WHERE ${be.isNot} AND pnl > 0) AS wins,
-                 COALESCE(SUM(pnl), 0) AS pnl
-          FROM completed
-          WHERE strategy IS NOT NULL AND strategy <> ''
-          GROUP BY strategy
-          HAVING COUNT(*) >= 3
-        )
-        SELECT 'symbol' AS kind, symbol AS label, n, wins, pnl
-        FROM sym
-        UNION ALL
-        SELECT 'strategy' AS kind, strategy AS label, n, wins, pnl
-        FROM strat
-        ORDER BY pnl DESC
-      `;
-      const edgeResult = await db.query(edgeQuery, params);
-      const edges = edgeResult.rows;
-      const top = edges[0];
-      const worst = edges[edges.length - 1];
+        // 1h cache: earnings and news shift more frequently than pure analytics.
+        // The whole payload (incl. the deterministic edge insight) is cheap to
+        // recompute, so a shorter TTL keeps the dashboard timely without
+        // hammering Finnhub.
+        cache.set(summaryCacheKey, response, 60 * 60 * 1000);
+        return response;
+      });
 
-      const winRate = totalTrades > 0
-        ? ((parseInt(m.winning_trades) || 0) / totalTrades * 100)
-        : 0;
-      const avgWin = Math.abs(parseFloat(m.avg_win) || 0);
-      const avgLoss = Math.abs(parseFloat(m.avg_loss) || 0);
-
-      // -- Performance edge insight (existing data-driven behavior) --
-      const edgeInsight = (() => {
-        let headline = '';
-        let body = '';
-        let action_url = '/analytics';
-        let action_label = 'View full analytics';
-
-        if (top && parseFloat(top.pnl) > 0) {
-          const winsRate = top.n > 0 ? (parseInt(top.wins) / parseInt(top.n) * 100) : 0;
-          const sign = parseFloat(top.pnl) >= 0 ? '+' : '';
-          headline = top.kind === 'symbol'
-            ? `${top.label} is carrying your edge`
-            : `Your ${top.label} setup is working`;
-          body = `${winsRate.toFixed(0)}% win rate across ${top.n} ${top.kind === 'symbol' ? 'trades on this symbol' : 'attempts of this setup'}, ${sign}$${parseFloat(top.pnl).toFixed(0)} net.`;
-          action_label = top.kind === 'symbol' ? `View ${top.label} trades` : 'View setup breakdown';
-          action_url = top.kind === 'symbol'
-            ? `/trades?symbol=${encodeURIComponent(top.label)}`
-            : '/metrics#strategies';
-        } else if (worst && parseFloat(worst.pnl) < 0) {
-          headline = worst.kind === 'symbol'
-            ? `${worst.label} is dragging on results`
-            : `${worst.label} setup is leaking edge`;
-          body = `${worst.n} trades, $${parseFloat(worst.pnl).toFixed(0)} net. Consider tighter rules or pausing this ${worst.kind === 'symbol' ? 'symbol' : 'setup'}.`;
-          action_label = 'Investigate';
-          action_url = worst.kind === 'symbol'
-            ? `/trades?symbol=${encodeURIComponent(worst.label)}`
-            : '/metrics#strategies';
-        } else if (winRate >= 60) {
-          headline = `${winRate.toFixed(0)}% win rate — your selection is sharp`;
-          body = `Across ${totalTrades} trades, you're winning ${m.winning_trades} of them. Focus on letting winners run: avg win $${avgWin.toFixed(0)} vs avg loss $${avgLoss.toFixed(0)}.`;
-        } else if (avgWin > 0 && avgLoss > 0 && avgWin / avgLoss > 1.5) {
-          headline = `Your wins are ${(avgWin / avgLoss).toFixed(1)}x your losses`;
-          body = `Strong risk-reward across ${totalTrades} trades (${winRate.toFixed(0)}% wins). The losses you take are well-controlled.`;
-        } else if (avgWin > 0 && avgLoss > 0 && avgLoss / avgWin > 1.5) {
-          headline = 'Your losses are bigger than your wins';
-          body = `Avg loss $${avgLoss.toFixed(0)} vs avg win $${avgWin.toFixed(0)} across ${totalTrades} trades. Tighter stops or more disciplined exits would change everything.`;
-        } else {
-          headline = `${totalTrades} trades analyzed`;
-          body = `Win rate ${winRate.toFixed(0)}%. Avg win $${avgWin.toFixed(0)}, avg loss $${avgLoss.toFixed(0)}. Dig into the breakdowns below for setup-level edge.`;
-        }
-        return {
-          type: 'edge',
-          priority: 30,
-          headline,
-          body,
-          source: 'computed',
-          action_label,
-          action_url
-        };
-      })();
-
-      // -- Open-position context: earnings + news insights --
-      const contextInsights = await analyticsController
-        .computeOpenPositionInsights(req.user.id)
-        .catch(err => {
-          console.warn('[AI] open-position insights failed:', err.message);
-          return [];
-        });
-
-      // Final insights list, sorted by priority desc (higher = more urgent /
-      // more time-sensitive). Caller can render top-N or paginate.
-      let summaries = [...contextInsights, edgeInsight].sort(
-        (a, b) => (b.priority || 0) - (a.priority || 0)
-      );
-
-      // Optionally enrich with AI if (a) user has an AI provider configured
-      // AND (b) billing is disabled OR they're on the Pro tier. The
-      // deterministic insights remain the floor; AI just rewrites the
-      // recommendation bodies with deeper, context-aware analysis.
-      try {
-        const useAI = await analyticsController.shouldUseAIEnrichment(req.user.id);
-        if (useAI) {
-          summaries = await analyticsController.enrichInsightsWithAI(req.user.id, summaries);
-        }
-      } catch (aiErr) {
-        console.warn('[AI] enrichment failed, returning deterministic insights:', aiErr.message);
-      }
-
-      const response = {
-        // Keep `summary` for backward compat (current frontend reads the
-        // single top insight). New clients should iterate `summaries`.
-        summary: summaries[0] || null,
-        summaries,
-        analysisDate: new Date().toISOString(),
-        tradesAnalyzed: totalTrades
-      };
-
-      // 1h cache: earnings and news shift more frequently than pure analytics.
-      // The whole payload (incl. the deterministic edge insight) is cheap to
-      // recompute, so a shorter TTL keeps the dashboard timely without
-      // hammering Finnhub.
-      cache.set(summaryCacheKey, response, 60 * 60 * 1000);
       return res.json(response);
     } catch (err) {
       console.error('[AI] summary error:', err);
