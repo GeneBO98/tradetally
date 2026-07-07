@@ -220,40 +220,79 @@ class BehavioralAnalyticsService {
     const revengeTradesById = new Map();
     if (revengeTradeIds.length > 0) {
       const revengeTradesQuery = `
+        WITH revenge_trade_details AS (
+          SELECT
+            t.id as trade_id,
+            COALESCE(NULLIF(t.underlying_symbol, ''), t.symbol) as symbol,
+            t.entry_price,
+            t.exit_price,
+            t.quantity,
+            t.side,
+            t.entry_time,
+            t.exit_time,
+            COALESCE(tpg.total_pnl, grouped.total_pnl, t.pnl, 0) as net_pnl,
+            COALESCE(tpg.total_commission, grouped.total_commission, t.commission, 0) as commission,
+            COALESCE(tpg.total_fees, grouped.total_fees, t.fees, 0) as fees,
+            t.position_group_id,
+            tpg.detected_strategy as group_detected_strategy,
+            tpg.leg_count as group_leg_count,
+            CASE
+              WHEN t.position_group_id IS NOT NULL THEN COALESCE(grouped.total_cost, 0)
+              WHEN t.instrument_type = 'option' THEN ABS(t.quantity) * t.entry_price * COALESCE(NULLIF(t.contract_size, 0), 100)
+              WHEN t.instrument_type = 'future' THEN ABS(t.quantity) * t.entry_price * COALESCE(NULLIF(t.point_value, 0), 1)
+              ELSE ABS(t.quantity) * t.entry_price
+            END as total_cost
+          FROM trades t
+          LEFT JOIN trade_position_groups tpg ON tpg.id = t.position_group_id
+          LEFT JOIN LATERAL (
+            SELECT
+              SUM(COALESCE(tg.pnl, 0)) as total_pnl,
+              SUM(COALESCE(tg.commission, 0)) as total_commission,
+              SUM(COALESCE(tg.fees, 0)) as total_fees,
+              SUM(
+                CASE
+                  WHEN tg.instrument_type = 'option' THEN ABS(tg.quantity) * tg.entry_price * COALESCE(NULLIF(tg.contract_size, 0), 100)
+                  WHEN tg.instrument_type = 'future' THEN ABS(tg.quantity) * tg.entry_price * COALESCE(NULLIF(tg.point_value, 0), 1)
+                  ELSE ABS(tg.quantity) * tg.entry_price
+                END
+              ) as total_cost
+            FROM trades tg
+            WHERE tg.position_group_id = t.position_group_id
+              AND tg.user_id = t.user_id
+          ) grouped ON t.position_group_id IS NOT NULL
+          WHERE t.id = ANY($1) AND t.user_id = $2
+        )
         SELECT
-          t.id as trade_id, COALESCE(NULLIF(t.underlying_symbol, ''), t.symbol) as symbol,
-          t.entry_price, t.exit_price, t.quantity, t.side,
-          t.entry_time, t.exit_time,
-          COALESCE(tpg.total_pnl, t.pnl) as pnl,
-          COALESCE(tpg.total_commission, t.commission) as commission,
-          COALESCE(tpg.total_fees, t.fees) as fees,
-          t.position_group_id,
-          tpg.detected_strategy as group_detected_strategy,
-          tpg.leg_count as group_leg_count,
-          -- Calculate total cost/value
-          (t.quantity * t.entry_price) as total_cost,
-          -- Calculate gross P&L (before fees)
+          trade_id,
+          symbol,
+          entry_price,
+          exit_price,
+          quantity,
+          side,
+          entry_time,
+          exit_time,
+          net_pnl as pnl,
+          commission,
+          fees,
+          position_group_id,
+          group_detected_strategy,
+          group_leg_count,
+          total_cost,
+          net_pnl + commission + fees as gross_pnl,
           CASE
-            WHEN t.side = 'long' THEN (t.exit_price - t.entry_price) * t.quantity
-            WHEN t.side = 'short' THEN (t.entry_price - t.exit_price) * t.quantity
-            ELSE 0
-          END as gross_pnl,
-          -- Calculate percentage return
-          CASE
-            WHEN t.side = 'long' THEN ((t.exit_price - t.entry_price) / t.entry_price) * 100
-            WHEN t.side = 'short' THEN ((t.entry_price - t.exit_price) / t.entry_price) * 100
+            WHEN total_cost > 0 THEN (net_pnl / NULLIF(total_cost, 0)) * 100
             ELSE 0
           END as return_percent,
-          -- Calculate total fees
-          COALESCE(tpg.total_commission, t.commission, 0) + COALESCE(tpg.total_fees, t.fees, 0) as total_fees,
-          -- Pattern classification is event-specific and computed in JS
+          commission + fees as total_fees,
+          CASE
+            WHEN position_group_id IS NOT NULL THEN 'grouped_position'
+            ELSE 'single_trade'
+          END as return_basis,
           NULL::text as pattern_type,
           'medium' as severity,
           0.8 as confidence_score,
-          t.entry_time as detected_at
-        FROM trades t
-        LEFT JOIN trade_position_groups tpg ON tpg.id = t.position_group_id
-        WHERE t.id = ANY($1) AND t.user_id = $2
+          entry_time as detected_at
+        FROM revenge_trade_details
       `;
       const revengeResult = await db.query(revengeTradesQuery, [revengeTradeIds, userId]);
       for (const row of revengeResult.rows) {
@@ -275,6 +314,12 @@ class BehavioralAnalyticsService {
         const triggerSymbol = event.trigger_trade_id
           ? triggerSymbolsById.get(event.trigger_trade_id)
           : undefined;
+        const riskBasis = typeof event.risk_basis === 'string'
+          ? JSON.parse(event.risk_basis || '{}')
+          : (event.risk_basis || {});
+        const revengeRiskById = new Map((riskBasis.revenge || [])
+          .filter(item => item && item.id)
+          .map(item => [String(item.id), item]));
 
         const eventRows = [...new Set(event.revenge_trades)]
           .map(tradeId => revengeTradesById.get(tradeId))
@@ -290,12 +335,25 @@ class BehavioralAnalyticsService {
           return bTime - aTime;
         });
 
-        event.related_patterns = eventRows.slice(0, 10).map(row => ({
-          ...row,
-          pattern_type: (triggerSymbol != null && row.symbol === triggerSymbol)
-            ? 'same_symbol_revenge'
-            : 'emotional_reactive_trading'
-        }));
+        event.related_patterns = eventRows.slice(0, 10).map(row => {
+          const riskMetadata = revengeRiskById.get(String(row.trade_id)) || {};
+          const positionRisk = riskMetadata.position_risk || null;
+          const positionRiskAmount = parseFloat(positionRisk?.amount);
+          const pnl = parseFloat(row.pnl || 0);
+          const hasRiskReturnBasis = Number.isFinite(positionRiskAmount) && positionRiskAmount > 0;
+
+          return {
+            ...row,
+            return_percent: hasRiskReturnBasis ? (pnl / positionRiskAmount) * 100 : row.return_percent,
+            return_basis: hasRiskReturnBasis ? positionRisk.basis : row.return_basis,
+            pattern_type: (triggerSymbol != null && row.symbol === triggerSymbol)
+              ? 'same_symbol_revenge'
+              : 'emotional_reactive_trading',
+            cross_symbol_qualifier: riskMetadata.cross_symbol_qualifier || null,
+            risk_escalation_eligible: riskMetadata.risk_escalation_eligible ?? null,
+            position_risk: positionRisk
+          };
+        });
       } else {
         event.related_patterns = [];
       }

@@ -682,6 +682,18 @@
                                                                 ).toFixed(2)
                                                             }}%
                                                         </span>
+                                                        <span
+                                                            v-if="
+                                                                pattern.return_basis
+                                                            "
+                                                            class="ml-1 text-gray-500 dark:text-gray-400"
+                                                        >
+                                                            {{
+                                                                formatReturnBasis(
+                                                                    pattern.return_basis,
+                                                                )
+                                                            }}
+                                                        </span>
                                                     </div>
                                                 </div>
 
@@ -729,6 +741,19 @@
                                                         {{ pattern.symbol }}
                                                         (different from trigger
                                                         symbol)
+                                                    </span>
+                                                    <span
+                                                        v-if="
+                                                            pattern.cross_symbol_qualifier
+                                                        "
+                                                        class="mt-1 inline-flex rounded bg-primary-50 px-2 py-0.5 text-[11px] font-medium text-primary-700 dark:bg-primary-900/20 dark:text-primary-300"
+                                                    >
+                                                        Qualified by
+                                                        {{
+                                                            formatCrossSymbolQualifier(
+                                                                pattern.cross_symbol_qualifier,
+                                                            )
+                                                        }}
                                                     </span>
                                                 </div>
                                             </div>
@@ -1180,4 +1205,26 @@ const revengeFreshness = computed(() => {
         hasStaleResults: freshness.has_stale_results === true,
     };
 });
+
+const formatCrossSymbolQualifier = (qualifier) => {
+    const labels = {
+        position_escalation: "risk escalation",
+        same_sector: "same sector",
+    };
+    return labels[qualifier] || String(qualifier || "").replace(/_/g, " ");
+};
+
+const formatReturnBasis = (basis) => {
+    const labels = {
+        max_loss: "on max loss",
+        net_debit: "on net debit",
+        stop_loss: "on stop risk",
+        notional: "on notional",
+        undefined_risk_notional: "on approximate notional",
+        position_size: "on position size",
+        grouped_position: "on grouped value",
+        single_trade: "on trade value",
+    };
+    return labels[basis] || `on ${String(basis || "").replace(/_/g, " ")}`;
+};
 </script>
