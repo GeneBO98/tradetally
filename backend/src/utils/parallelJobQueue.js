@@ -1,5 +1,6 @@
 const db = require('../config/database');
 const logger = require('./logger');
+const { PARALLEL_JOB_TYPES } = require('./jobQueueConfig');
 
 class ParallelJobQueue {
   constructor() {
@@ -10,7 +11,9 @@ class ParallelJobQueue {
   }
 
   /**
-   * Start parallel job processing with multiple workers
+   * Start parallel job processing with multiple workers.
+   * Job type ownership is defined in utils/jobQueueConfig.js; the sequential
+   * queue skips these types so each type has exactly one owner.
    */
   startParallelProcessing() {
     if (this.isRunning) {
@@ -21,16 +24,23 @@ class ParallelJobQueue {
     this.isRunning = true;
     logger.logImport('[START] Starting parallel job queue processing');
 
-    // Start workers for different job types (increased concurrency for better performance)
-    this.startWorkerForJobType('cusip_resolution', 3); // 3 concurrent CUSIP workers
-    this.startWorkerForJobType('strategy_classification', 5); // 5 concurrent strategy workers (optimized)
-    this.startWorkerForJobType('news_enrichment', 2); // 2 news workers
-    
+    const concurrencyByType = {
+      cusip_resolution: 3, // 3 concurrent CUSIP workers
+      strategy_classification: 5, // 5 concurrent strategy workers (optimized)
+      news_enrichment: 2 // 2 news workers
+    };
+
+    for (const jobType of PARALLEL_JOB_TYPES) {
+      this.startWorkerForJobType(jobType, concurrencyByType[jobType] || 1);
+    }
+
     logger.logImport(`Started ${this.workers.size} parallel workers`);
   }
 
   /**
-   * Start a worker for a specific job type
+   * Start a worker for a specific job type (self-scheduling poll loop with
+   * idle backoff: 500ms base, doubling after 6 consecutive empty polls up to
+   * 5s; any claimed job or an in-process enqueue resets it to 500ms).
    */
   startWorkerForJobType(jobType, maxConcurrent = 1) {
     if (this.workers.has(jobType)) {
@@ -41,41 +51,100 @@ class ParallelJobQueue {
       jobType,
       maxConcurrent,
       activeJobs: new Set(),
-      interval: null
+      timer: null,
+      stopped: false,
+      basePollIntervalMs: 500,
+      maxPollIntervalMs: 5000,
+      idleThreshold: 6,
+      consecutiveEmptyPolls: 0,
+      currentPollIntervalMs: 500
     };
 
-    // Start processing loop for this job type
-    workerInfo.interval = setInterval(async () => {
-      if (workerInfo.activeJobs.size >= maxConcurrent) {
-        return; // At max capacity for this job type
-      }
-
-      try {
-        await this.processNextJobOfType(jobType, workerInfo);
-      } catch (error) {
-        logger.logError(`Error in ${jobType} worker:`, error.message);
-      }
-    }, 500); // Check every 500ms for faster processing
-    if (typeof workerInfo.interval.unref === 'function') {
-      workerInfo.interval.unref();
-    }
-
     this.workers.set(jobType, workerInfo);
+    this.scheduleWorkerPoll(workerInfo, workerInfo.currentPollIntervalMs);
     logger.logImport(`Started worker for ${jobType} (max concurrent: ${maxConcurrent})`);
   }
 
   /**
-   * Process next job of specific type
+   * Schedule the next poll for a worker, replacing any pending timer
+   */
+  scheduleWorkerPoll(workerInfo, delayMs) {
+    if (!this.isRunning || workerInfo.stopped) return;
+
+    if (workerInfo.timer) {
+      clearTimeout(workerInfo.timer);
+    }
+    workerInfo.timer = setTimeout(() => this.workerPoll(workerInfo), delayMs);
+    if (typeof workerInfo.timer.unref === 'function') {
+      workerInfo.timer.unref();
+    }
+  }
+
+  /**
+   * Run one poll for a worker, adjust idle backoff, reschedule
+   */
+  async workerPoll(workerInfo) {
+    if (!this.isRunning || workerInfo.stopped) return;
+
+    let claimed = false;
+    const atCapacity = workerInfo.activeJobs.size >= workerInfo.maxConcurrent;
+
+    if (!atCapacity) {
+      try {
+        claimed = await this.processNextJobOfType(workerInfo.jobType, workerInfo);
+      } catch (error) {
+        logger.logError(`Error in ${workerInfo.jobType} worker:`, error.message);
+      }
+    }
+
+    if (claimed || atCapacity) {
+      // Found work (or already saturated) - stay on the fast interval
+      workerInfo.consecutiveEmptyPolls = 0;
+      workerInfo.currentPollIntervalMs = workerInfo.basePollIntervalMs;
+    } else {
+      workerInfo.consecutiveEmptyPolls++;
+      if (workerInfo.consecutiveEmptyPolls >= workerInfo.idleThreshold) {
+        workerInfo.currentPollIntervalMs = Math.min(
+          workerInfo.currentPollIntervalMs * 2,
+          workerInfo.maxPollIntervalMs
+        );
+      }
+    }
+
+    this.scheduleWorkerPoll(workerInfo, workerInfo.currentPollIntervalMs);
+  }
+
+  /**
+   * Reset a worker's idle backoff (called by jobQueue.addJob/addBatchJobs
+   * after enqueueing a job of this type in-process)
+   */
+  nudge(jobType) {
+    const workerInfo = this.workers.get(jobType);
+    if (!workerInfo || workerInfo.stopped || !this.isRunning) return;
+
+    workerInfo.consecutiveEmptyPolls = 0;
+    const wasSlow = workerInfo.currentPollIntervalMs !== workerInfo.basePollIntervalMs;
+    workerInfo.currentPollIntervalMs = workerInfo.basePollIntervalMs;
+    if (wasSlow) {
+      this.scheduleWorkerPoll(workerInfo, workerInfo.currentPollIntervalMs);
+    }
+  }
+
+  /**
+   * Claim and process the next job of a specific type. Returns true when a
+   * job was claimed. Processing is intentionally not awaited so a single
+   * worker loop can run up to maxConcurrent jobs simultaneously (matching
+   * the previous overlapping setInterval behavior).
    */
   async processNextJobOfType(jobType, workerInfo) {
     // Get next job of this specific type
     const query = `
-      UPDATE job_queue 
+      UPDATE job_queue
       SET status = 'processing', started_at = CURRENT_TIMESTAMP
       WHERE id = (
-        SELECT id FROM job_queue 
+        SELECT id FROM job_queue
         WHERE status = 'pending' AND type = $1
-        ORDER BY priority ASC, created_at ASC 
+        ORDER BY priority ASC, created_at ASC
         LIMIT 1
         FOR UPDATE SKIP LOCKED
       )
@@ -84,21 +153,27 @@ class ParallelJobQueue {
 
     try {
       const result = await db.query(query, [jobType]);
-      
+
       if (result.rows.length === 0) {
-        return; // No jobs of this type available
+        return false; // No jobs of this type available
       }
 
       const job = result.rows[0];
       workerInfo.activeJobs.add(job.id);
-      
+
       logger.logImport(`[START] [${jobType}] Processing job ${job.id}`);
 
-      // Process the job
-      await this.processJobByType(job, workerInfo);
-      
+      // Process the job without blocking the poll loop (processJobByType
+      // handles its own errors and always removes the job from activeJobs)
+      this.processJobByType(job, workerInfo).catch(error => {
+        logger.logError(`Unhandled error processing ${jobType} job ${job.id}:`, error.message);
+        workerInfo.activeJobs.delete(job.id);
+      });
+
+      return true;
     } catch (error) {
       logger.logError(`Error processing ${jobType} job:`, error.message);
+      return false;
     }
   }
 
@@ -272,16 +347,18 @@ class ParallelJobQueue {
     if (!this.isRunning) return;
 
     this.isRunning = false;
-    
+
     for (const [jobType, workerInfo] of this.workers) {
-      if (workerInfo.interval) {
-        clearInterval(workerInfo.interval);
+      workerInfo.stopped = true;
+      if (workerInfo.timer) {
+        clearTimeout(workerInfo.timer);
+        workerInfo.timer = null;
       }
-      logger.logImport(`🛑 Stopped worker for ${jobType}`);
+      logger.logImport(`[STOP] Stopped worker for ${jobType}`);
     }
     
     this.workers.clear();
-    logger.logImport('🛑 All parallel workers stopped');
+    logger.logImport('[STOP] All parallel workers stopped');
   }
 
   /**
@@ -294,7 +371,8 @@ class ParallelJobQueue {
       workerStatus[jobType] = {
         maxConcurrent: workerInfo.maxConcurrent,
         activeJobs: workerInfo.activeJobs.size,
-        isRunning: workerInfo.interval !== null
+        pollIntervalMs: workerInfo.currentPollIntervalMs,
+        isRunning: !workerInfo.stopped
       };
     }
 

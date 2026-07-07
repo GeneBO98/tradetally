@@ -1,10 +1,95 @@
 const db = require('../config/database');
 const NotificationService = require('./notificationService');
-const LeaderboardService = require('./leaderboardService');
 const logger = require('../utils/logger');
 
+// Lightweight per-trade snapshot: everything the achievement criteria need,
+// computed in a single pass over the user's trades. Date/hour/window values
+// are derived in SQL so they match the semantics of the old per-criterion
+// queries exactly (DB session timezone, CURRENT_TIMESTAMP, ILIKE on NULL).
+const TRADES_SNAPSHOT_QUERY = `
+  SELECT
+    t.pnl::float8 AS pnl,
+    t.side,
+    t.entry_price::float8 AS entry_price,
+    t.exit_price::float8 AS exit_price,
+    t.quantity::float8 AS quantity,
+    t.symbol,
+    t.entry_time,
+    (t.exit_time IS NOT NULL) AS is_closed,
+    (t.stop_loss IS NOT NULL) AS has_stop_loss,
+    (t.take_profit IS NOT NULL) AS has_take_profit,
+    DATE(t.entry_time)::text AS entry_date,
+    EXTRACT(HOUR FROM t.entry_time)::int AS entry_hour,
+    EXTRACT(MINUTE FROM t.entry_time)::int AS entry_minute,
+    EXTRACT(DOW FROM t.entry_time)::int AS entry_dow,
+    EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - t.entry_time))::float8 AS entry_age_seconds,
+    EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - t.exit_time))::float8 AS exit_age_seconds,
+    EXTRACT(EPOCH FROM (t.exit_time - t.entry_time))::float8 / 60 AS duration_minutes,
+    EXTRACT(EPOCH FROM t.exit_time)::float8 AS exit_epoch,
+    EXTRACT(EPOCH FROM t.entry_time)::float8 AS entry_epoch,
+    (t.exit_time >= date_trunc('week', CURRENT_TIMESTAMP)) AS exit_in_current_week,
+    LENGTH(BTRIM(COALESCE(t.notes, ''))) AS notes_length,
+    LENGTH(BTRIM(COALESCE(t.setup, ''))) AS setup_length,
+    COALESCE(t.notes ILIKE '%stop%', false) AS notes_mention_stop,
+    COALESCE(t.notes ILIKE '%profit%' OR t.notes ILIKE '%target%', false) AS notes_mention_profit,
+    COALESCE(
+      LOWER(t.notes) LIKE '%trend%' OR LOWER(t.notes) LIKE '%moving average%'
+      OR LOWER(t.notes) LIKE '%ma%' OR LOWER(t.notes) LIKE '%crossover%',
+      false
+    ) AS notes_mention_trend,
+    COALESCE(
+      LOWER(t.notes) LIKE '%news%' OR LOWER(t.notes) LIKE '%earnings%'
+      OR LOWER(t.notes) LIKE '%catalyst%' OR LOWER(t.notes) LIKE '%announcement%',
+      false
+    ) AS notes_mention_news,
+    COALESCE((
+      SELECT MAX(LENGTH(BTRIM(COALESCE(r.review_notes, ''))))
+      FROM trade_playbook_reviews r
+      WHERE r.trade_id = t.id AND r.user_id = t.user_id
+    ), 0) AS max_review_notes_length,
+    (CASE
+      WHEN t.exit_price IS NOT NULL AND t.entry_price IS NOT NULL AND t.entry_price <> 0 THEN
+        CASE
+          WHEN t.side = 'long' THEN (t.exit_price - t.entry_price) / t.entry_price
+          WHEN t.side = 'short' THEN (t.entry_price - t.exit_price) / t.entry_price
+        END
+    END)::float8 AS price_move_fraction
+  FROM trades t
+  WHERE t.user_id = $1
+  ORDER BY t.exit_time DESC NULLS LAST, t.entry_time DESC
+`;
+
+const REVIEWS_SNAPSHOT_QUERY = `
+  SELECT
+    r.followed_plan,
+    COALESCE(r.adherence_score, 0)::float8 AS adherence_score,
+    EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - r.reviewed_at))::float8 AS reviewed_age_seconds,
+    EXISTS (
+      SELECT 1 FROM trades t
+      WHERE t.id = r.trade_id AND t.user_id = r.user_id AND t.exit_time IS NOT NULL
+    ) AS trade_closed
+  FROM trade_playbook_reviews r
+  WHERE r.user_id = $1
+    AND r.review_type = 'adherence'
+`;
+
+const MISC_SNAPSHOT_QUERY = `
+  SELECT
+    (SELECT EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MAX(created_at)))::float8
+       FROM revenge_trading_events WHERE user_id = $1) AS latest_revenge_age_seconds,
+    (SELECT COUNT(*)::int FROM playbooks WHERE user_id = $1 AND is_active = true) AS active_playbook_count,
+    (SELECT COUNT(DISTINCT pattern_type)::int FROM behavioral_patterns WHERE user_id = $1) AS patterns_identified,
+    (SELECT COUNT(*)::int FROM user_challenges WHERE user_id = $1 AND status = 'completed') AS challenges_completed,
+    (SELECT COUNT(*)::int
+       FROM user_challenges uc
+       JOIN challenges c ON c.id = uc.challenge_id
+      WHERE uc.user_id = $1 AND c.is_community = true AND uc.status IN ('completed', 'active')) AS community_challenges
+`;
+
+const DAY_SECONDS = 86400;
+
 class AchievementService {
-  
+
   // Check and award achievements for a user based on their current stats
   static async checkAndAwardAchievements(userId) {
     try {
@@ -16,9 +101,14 @@ class AchievementService {
       const oldXP = beforeStats.experience_points || 0;
       const oldLevel = beforeStats.level || 1;
       const beforeLevelInfo = this.calculateLevelFromXP(oldXP);
-      
+
+      // One batched snapshot replaces the per-achievement aggregate queries
+      const snapshot = unearned.length > 0
+        ? await this.getUserAchievementStats(userId)
+        : null;
+
       for (const achievement of unearned) {
-        const earned = await this.checkAchievementCriteria(userId, achievement);
+        const earned = await this.checkAchievementCriteria(userId, achievement, snapshot);
         if (earned) {
           const awarded = await this.awardAchievement(userId, achievement.id, earned.metadata);
           if (awarded) {
@@ -27,7 +117,7 @@ class AchievementService {
           }
         }
       }
-      
+
       // Update user stats if new achievements were earned
       if (newAchievements.length > 0) {
         newAchievements.forEach(achievement => {
@@ -43,7 +133,7 @@ class AchievementService {
         const newXP = afterStats.experience_points || 0;
         const newLevel = afterStats.level || 1;
         const afterLevelInfo = this.calculateLevelFromXP(newXP);
-        
+
         // Send XP update event for frontend animation
         try {
           await NotificationService.sendXPUpdateNotification(userId, {
@@ -60,7 +150,7 @@ class AchievementService {
         } catch (e) {
           console.warn('Failed to send XP update notification:', e.message);
         }
-        
+
         // If level changed, also send level-up notification
         if (newLevel > oldLevel) {
           try {
@@ -69,192 +159,258 @@ class AchievementService {
             console.warn('Failed to send level up notification:', e.message);
           }
         }
-        
-        // Refresh leaderboards so rankings reflect new points
+
+        // Refresh leaderboards in the background so rankings reflect new
+        // points without blocking the award path (debounced global job)
         try {
-          await LeaderboardService.updateLeaderboards();
+          await this.enqueueLeaderboardUpdate();
         } catch (e) {
-          console.warn('Failed to trigger leaderboard update after achievements:', e.message);
+          console.warn('Failed to enqueue leaderboard update after achievements:', e.message);
         }
-        
+
         // Send notifications for new achievements
         for (const achievement of newAchievements) {
           await NotificationService.sendAchievementNotification(userId, achievement);
         }
       }
-      
+
       return newAchievements;
     } catch (error) {
       console.error('Error checking achievements:', error);
       throw error;
     }
   }
-  
+
+  // Enqueue a debounced global leaderboard rebuild. Only one pending or
+  // processing leaderboard_update job exists at a time (same NOT EXISTS
+  // dedup pattern as the mae_recalc enqueues in migration 222). The
+  // sequential job queue processes it (jobQueue.processLeaderboardUpdate).
+  static async enqueueLeaderboardUpdate() {
+    const result = await db.query(`
+      INSERT INTO job_queue (type, data, priority, user_id, status, created_at)
+      SELECT 'leaderboard_update', '{}'::jsonb, 4, NULL, 'pending', CURRENT_TIMESTAMP
+      WHERE NOT EXISTS (
+        SELECT 1 FROM job_queue
+        WHERE type = 'leaderboard_update'
+          AND status IN ('pending', 'processing')
+      )
+      RETURNING id
+    `);
+
+    if (result.rows.length > 0) {
+      // Make sure the sequential poller is running and on its fast interval
+      try {
+        const jobQueue = require('../utils/jobQueue');
+        jobQueue.startProcessing();
+        jobQueue.resetBackoff();
+      } catch (e) {
+        console.warn('Failed to nudge job queue after leaderboard enqueue:', e.message);
+      }
+    }
+
+    return result.rows[0]?.id || null;
+  }
+
   // Get achievements user hasn't earned yet
   static async getUnearnedAchievements(userId) {
     const query = `
-      SELECT a.* 
+      SELECT a.*
       FROM achievements a
       WHERE a.is_active = true
         AND (
-          a.is_repeatable = true 
+          a.is_repeatable = true
           OR NOT EXISTS (
-            SELECT 1 FROM user_achievements ua 
+            SELECT 1 FROM user_achievements ua
             WHERE ua.user_id = $1 AND ua.achievement_id = a.id
           )
         )
       ORDER BY a.difficulty, a.points
     `;
-    
+
     const result = await db.query(query, [userId]);
     return result.rows;
   }
-  
-  // Check if user meets criteria for a specific achievement
-  static async checkAchievementCriteria(userId, achievement) {
+
+  // Build the batched snapshot all criteria evaluate against. Three queries
+  // replace the former one-aggregate-query-per-achievement pattern:
+  //   1. one ordered lightweight pass over trades (per-trade derived fields)
+  //   2. one pass over adherence reviews
+  //   3. one scalar query over the small auxiliary tables
+  static async getUserAchievementStats(userId) {
+    const [tradesResult, reviewsResult, miscResult] = await Promise.all([
+      db.query(TRADES_SNAPSHOT_QUERY, [userId]),
+      db.query(REVIEWS_SNAPSHOT_QUERY, [userId]),
+      db.query(MISC_SNAPSHOT_QUERY, [userId])
+    ]);
+
+    const trades = tradesResult.rows;
+
+    return {
+      trades,
+      // Snapshot query orders by exit_time DESC, so this preserves the
+      // "most recent closed trades first" ordering the old queries used
+      closedTrades: trades.filter(t => t.is_closed),
+      reviews: reviewsResult.rows,
+      misc: miscResult.rows[0] || {},
+      // Same "today" the old checks computed in JS (UTC date string)
+      todayStr: new Date().toISOString().split('T')[0]
+    };
+  }
+
+  // Check if user meets criteria for a specific achievement. Evaluates
+  // against the batched snapshot; builds one on demand when not provided
+  // (keeps the old (userId, achievement) call shape working).
+  static async checkAchievementCriteria(userId, achievement, stats = null) {
     try {
       const criteria = achievement.criteria;
-      console.log(`Checking criteria for achievement ${achievement.name}, type: ${criteria.type}`);
-      
+
       switch (criteria.type) {
-      case 'no_revenge_trades':
-        return await AchievementService.checkNoRevengeTrades(userId, criteria.days);
-        
-      case 'discipline_score':
-        return await AchievementService.checkDisciplineScore(userId, criteria.threshold, criteria.days);
-        
-      case 'risk_adherence':
-        return await AchievementService.checkRiskAdherence(userId, criteria.trades);
-
-      case 'closed_trades_with_stop_loss':
-        return await AchievementService.checkClosedTradesWithStopLoss(userId, criteria.count);
-
-      case 'active_playbooks':
-        return await AchievementService.checkActivePlaybooks(userId, criteria.count);
-        
-      case 'cooling_period_usage':
-        return await AchievementService.checkCoolingPeriodUsage(userId, criteria.percentage);
-
-      case 'planned_trades':
-        return await AchievementService.checkPlannedTrades(userId, criteria.count);
-
-      case 'trade_data_hygiene':
-        return await AchievementService.checkTradeDataHygiene(userId, criteria.count, criteria.min_length);
-
-      case 'high_adherence_reviews':
-        return await AchievementService.checkHighAdherenceReviews(userId, criteria.count, criteria.threshold);
-        
-      case 'weekly_pnl':
-        return await AchievementService.checkWeeklyPnL(userId, criteria.positive);
-
-      case 'journaled_trades':
-        return await AchievementService.checkJournaledTrades(userId, criteria.count, criteria.min_length);
-
-      case 'review_habit':
-        return await AchievementService.checkReviewHabit(userId, criteria.count, criteria.days);
-
-      case 'followed_plan_count':
-        return await AchievementService.checkFollowedPlanCount(userId, criteria.count);
-        
-      case 'win_rate':
-        return await AchievementService.checkWinRate(userId, criteria.threshold, criteria.trades);
-        
-      case 'risk_reward':
-        return await AchievementService.checkRiskReward(userId, criteria.ratio, criteria.trades);
-        
-      case 'patterns_identified':
-        return await AchievementService.checkPatternsIdentified(userId, criteria.count);
-        
-      case 'challenges_completed':
-        return await AchievementService.checkChallengesCompleted(userId, criteria.count);
-        
-      case 'peer_rank':
-        return await AchievementService.checkPeerRank(userId, criteria.percentile);
-        
-      case 'community_challenges':
-        return await AchievementService.checkCommunityChallenges(userId, criteria.count);
-        
-      case 'trade_count':
-        return await AchievementService.checkTradeCount(userId, criteria.count);
-        
       case 'registration':
       case 'dashboard_visit':
       case 'achievement_page_visit':
         return await AchievementService.checkImmediateAchievement(userId, criteria.type);
-        
+
+      case 'peer_rank':
+        // Cross-user percentile - cannot come from the per-user snapshot
+        return await AchievementService.checkPeerRank(userId, criteria.percentile);
+
+      default:
+        break;
+      }
+
+      const snapshot = stats || await AchievementService.getUserAchievementStats(userId);
+
+      switch (criteria.type) {
+      case 'no_revenge_trades':
+        return AchievementService.evaluateNoRevengeTrades(snapshot, criteria.days);
+
+      case 'discipline_score':
+        return AchievementService.evaluateDisciplineScore(snapshot, criteria.threshold, criteria.days);
+
+      case 'risk_adherence':
+        return AchievementService.evaluateRiskAdherence(snapshot, criteria.trades);
+
+      case 'closed_trades_with_stop_loss':
+        return AchievementService.evaluateClosedTradesWithStopLoss(snapshot, criteria.count);
+
+      case 'active_playbooks':
+        return AchievementService.evaluateActivePlaybooks(snapshot, criteria.count);
+
+      case 'cooling_period_usage':
+        return AchievementService.evaluateCoolingPeriodUsage(snapshot, criteria.percentage);
+
+      case 'planned_trades':
+        return AchievementService.evaluatePlannedTrades(snapshot, criteria.count);
+
+      case 'trade_data_hygiene':
+        return AchievementService.evaluateTradeDataHygiene(snapshot, criteria.count, criteria.min_length);
+
+      case 'high_adherence_reviews':
+        return AchievementService.evaluateHighAdherenceReviews(snapshot, criteria.count, criteria.threshold);
+
+      case 'weekly_pnl':
+        return AchievementService.evaluateWeeklyPnL(snapshot, criteria.positive);
+
+      case 'journaled_trades':
+        return AchievementService.evaluateJournaledTrades(snapshot, criteria.count, criteria.min_length);
+
+      case 'review_habit':
+        return AchievementService.evaluateReviewHabit(snapshot, criteria.count, criteria.days);
+
+      case 'followed_plan_count':
+        return AchievementService.evaluateFollowedPlanCount(snapshot, criteria.count);
+
+      case 'win_rate':
+        return AchievementService.evaluateWinRate(snapshot, criteria.threshold, criteria.trades);
+
+      case 'risk_reward':
+        return AchievementService.evaluateRiskReward(snapshot, criteria.ratio, criteria.trades);
+
+      case 'patterns_identified':
+        return AchievementService.evaluatePatternsIdentified(snapshot, criteria.count);
+
+      case 'challenges_completed':
+        return AchievementService.evaluateChallengesCompleted(snapshot, criteria.count);
+
+      case 'community_challenges':
+        return AchievementService.evaluateCommunityChallenges(snapshot, criteria.count);
+
+      case 'trade_count':
+        return AchievementService.evaluateTradeCount(snapshot, criteria.count);
+
       case 'first_profitable_trade':
-        return await AchievementService.checkFirstProfitableTrade(userId);
-        
+        return AchievementService.evaluateFirstProfitableTrade(snapshot);
+
       case 'first_stop_loss':
-        return await AchievementService.checkFirstStopLoss(userId);
-        
+        return AchievementService.evaluateFirstStopLoss(snapshot);
+
       case 'first_take_profit':
-        return await AchievementService.checkFirstTakeProfit(userId);
-        
+        return AchievementService.evaluateFirstTakeProfit(snapshot);
+
       case 'weekend_trade':
-        return await AchievementService.checkWeekendTrade(userId);
-        
+        return AchievementService.evaluateWeekendTrade(snapshot);
+
       case 'early_trade':
-        return await AchievementService.checkEarlyTrade(userId, criteria.before_hour);
-        
+        return AchievementService.evaluateEarlyTrade(snapshot, criteria.before_hour);
+
       case 'late_trade':
-        return await AchievementService.checkLateTrade(userId, criteria.after_hour);
-        
+        return AchievementService.evaluateLateTrade(snapshot, criteria.after_hour);
+
       case 'trading_streak':
-        return await AchievementService.checkTradingStreak(userId, criteria.days);
-        
+        return AchievementService.evaluateTradingStreak(snapshot, criteria.days);
+
       case 'different_symbols':
-        return await AchievementService.checkDifferentSymbols(userId, criteria.count);
-        
+        return AchievementService.evaluateDifferentSymbols(snapshot, criteria.count);
+
       case 'first_trade_daily':
-        return await AchievementService.checkFirstTradeDaily(userId);
-        
+        return AchievementService.evaluateFirstTradeDaily(snapshot);
+
       case 'quick_flip':
-        return await AchievementService.checkQuickFlip(userId, criteria.max_duration_minutes);
-        
+        return AchievementService.evaluateQuickFlip(snapshot, criteria.max_duration_minutes);
+
       case 'green_day':
-        return await AchievementService.checkGreenDay(userId);
-        
+        return AchievementService.evaluateGreenDay(snapshot);
+
       case 'profitable_streak':
-        return await AchievementService.checkProfitableStreak(userId, criteria.days);
-        
+        return AchievementService.evaluateProfitableStreak(snapshot, criteria.days);
+
       case 'early_market_trade':
-        return await AchievementService.checkEarlyMarketTrade(userId, criteria.minutes_from_open);
-        
+        return AchievementService.evaluateEarlyMarketTrade(snapshot, criteria.minutes_from_open);
+
       case 'risk_reward_ratio':
-        return await AchievementService.checkRiskRewardRatio(userId, criteria.min_ratio);
-        
+        return AchievementService.evaluateRiskRewardRatio(snapshot, criteria.min_ratio);
+
       case 'trend_following_profit':
-        return await AchievementService.checkTrendFollowingProfit(userId);
-        
+        return AchievementService.evaluateTrendFollowingProfit(snapshot);
+
       case 'news_based_profit':
-        return await AchievementService.checkNewsBasedProfit(userId);
-        
+        return AchievementService.evaluateNewsBasedProfit(snapshot);
+
       case 'daily_volume':
-        return await AchievementService.checkDailyVolume(userId, criteria.shares);
-        
+        return AchievementService.evaluateDailyVolume(snapshot, criteria.shares);
+
       case 'single_trade_profit':
-        return await AchievementService.checkSingleTradeProfit(userId, criteria.min_profit);
-        
+        return AchievementService.evaluateSingleTradeProfit(snapshot, criteria.min_profit);
+
       case 'position_size':
-        return await AchievementService.checkPositionSize(userId, criteria.min_size);
-        
+        return AchievementService.evaluatePositionSize(snapshot, criteria.min_size);
+
       case 'daily_sector_diversity':
-        return await AchievementService.checkDailySectorDiversity(userId, criteria.min_sectors);
-        
+        return AchievementService.evaluateDailySectorDiversity(snapshot, criteria.min_sectors);
+
       case 'weekly_portfolio_gain':
-        return await AchievementService.checkWeeklyPortfolioGain(userId, criteria.min_percentage);
-        
+        return AchievementService.evaluateWeeklyPortfolioGain(snapshot, criteria.min_percentage);
+
       default:
         console.log(`Unknown achievement criteria type: ${criteria.type}`);
         return false;
-    }
+      }
     } catch (error) {
       console.error(`Error checking criteria for achievement ${achievement.name}:`, error);
       return false;
     }
   }
-  
+
   // Award achievement to user
   static async awardAchievement(userId, achievementId, metadata = {}) {
     // Check if user already has this achievement
@@ -262,7 +418,7 @@ class AchievementService {
       'SELECT id FROM user_achievements WHERE user_id = $1 AND achievement_id = $2',
       [userId, achievementId]
     );
-    
+
     if (existing.rows.length > 0) {
       console.log(`User ${userId} already has achievement ${achievementId}`);
       return null; // Already earned
@@ -274,25 +430,25 @@ class AchievementService {
       ON CONFLICT (user_id, achievement_id) DO NOTHING
       RETURNING *
     `;
-    
+
     const result = await db.query(query, [userId, achievementId, JSON.stringify(metadata)]);
     console.log(`Awarded achievement ${achievementId} to user ${userId}`);
     return result.rows[0];
   }
-  
+
   // Update user gamification stats
   static async updateUserStats(userId, newAchievements) {
     const totalPoints = newAchievements.reduce((sum, a) => sum + a.points, 0);
-    
+
     // Get current stats to calculate new level
     const currentStats = await db.query(`
       SELECT experience_points FROM user_gamification_stats WHERE user_id = $1
     `, [userId]);
-    
+
     const currentXP = currentStats.rows.length > 0 ? currentStats.rows[0].experience_points || 0 : 0;
     const newXP = currentXP + totalPoints;
     const levelInfo = this.calculateLevelFromXP(newXP);
-    
+
     const query = `
       INSERT INTO user_gamification_stats (user_id, total_points, achievement_count, last_achievement_date, experience_points, level)
       VALUES ($1, $2, $3, CURRENT_TIMESTAMP, $2, $4)
@@ -305,139 +461,118 @@ class AchievementService {
         level = $4,
         updated_at = CURRENT_TIMESTAMP
     `;
-    
+
     await db.query(query, [userId, totalPoints, newAchievements.length, levelInfo.level]);
   }
-  
-  // Check no revenge trades for X days
-  static async checkNoRevengeTrades(userId, days) {
-    const query = `
-      SELECT COUNT(*) as revenge_count
-      FROM revenge_trading_events
-      WHERE user_id = $1
-        AND created_at >= CURRENT_TIMESTAMP - INTERVAL '${days} days'
-    `;
-    
-    const result = await db.query(query, [userId]);
-    
-    if (parseInt(result.rows[0].revenge_count) === 0) {
-      // Also check if user has been trading during this period
-      const tradesQuery = `
-        SELECT COUNT(*) as trade_count
-        FROM trades
-        WHERE user_id = $1
-          AND entry_time >= CURRENT_TIMESTAMP - INTERVAL '${days} days'
-      `;
-      
-      const tradesResult = await db.query(tradesQuery, [userId]);
-      
-      if (parseInt(tradesResult.rows[0].trade_count) > 0) {
+
+  // --- Snapshot-based criteria evaluators -------------------------------
+  // Each evaluator replicates the exact semantics of the SQL it replaced
+  // (thresholds, NULL handling, ordering, window boundaries).
+
+  // No revenge trades for X days (and trading activity during the window)
+  static evaluateNoRevengeTrades(snapshot, days) {
+    const windowSeconds = days * DAY_SECONDS;
+    const latestRevengeAge = snapshot.misc.latest_revenge_age_seconds;
+    // Old SQL: COUNT of revenge events in window === 0
+    const revengeFree = latestRevengeAge === null || latestRevengeAge === undefined
+      || latestRevengeAge > windowSeconds;
+
+    if (revengeFree) {
+      const tradesDuringPeriod = snapshot.trades.filter(
+        t => t.entry_age_seconds !== null && t.entry_age_seconds <= windowSeconds
+      ).length;
+
+      if (tradesDuringPeriod > 0) {
         return {
           earned: true,
           metadata: {
             days_clean: days,
-            trades_during_period: tradesResult.rows[0].trade_count
+            trades_during_period: tradesDuringPeriod
           }
         };
       }
     }
-    
+
     return false;
   }
-  
-  // Check discipline score maintenance
-  static async checkDisciplineScore(userId, threshold, days) {
-    // This would integrate with behavioral analytics
-    // For now, checking if recent trades follow risk management rules
-    const query = `
-      WITH trade_discipline AS (
-        SELECT 
-          t.entry_time::date as trade_date,
-          COUNT(CASE 
-            WHEN t.pnl > 0 AND t.exit_price IS NOT NULL THEN
-              CASE 
-                WHEN t.side = 'long' AND ((t.exit_price - t.entry_price) / t.entry_price) >= 0.015 THEN 1
-                WHEN t.side = 'short' AND ((t.entry_price - t.exit_price) / t.entry_price) >= 0.015 THEN 1
-                ELSE NULL
-              END
-            ELSE NULL
-          END)::float / COUNT(*)::float * 100 as discipline_score
-        FROM trades t
-        WHERE t.user_id = $1
-          AND t.entry_time >= CURRENT_TIMESTAMP - INTERVAL '${days} days'
-          AND t.exit_time IS NOT NULL
-        GROUP BY t.entry_time::date
-      )
-      SELECT 
-        AVG(discipline_score) as avg_discipline,
-        COUNT(*) as days_traded
-      FROM trade_discipline
-      WHERE discipline_score >= $2
-    `;
-    
-    const result = await db.query(query, [userId, threshold]);
-    
-    if (result.rows[0].avg_discipline >= threshold && result.rows[0].days_traded >= days * 0.7) {
+
+  // Discipline score maintenance (per-day share of >=1.5% winners)
+  static evaluateDisciplineScore(snapshot, threshold, days) {
+    const windowSeconds = days * DAY_SECONDS;
+    const windowTrades = snapshot.trades.filter(
+      t => t.is_closed && t.entry_age_seconds !== null && t.entry_age_seconds <= windowSeconds
+    );
+
+    const byDay = new Map();
+    for (const t of windowTrades) {
+      let day = byDay.get(t.entry_date);
+      if (!day) {
+        day = { total: 0, qualifying: 0 };
+        byDay.set(t.entry_date, day);
+      }
+      day.total++;
+      if (t.pnl !== null && t.pnl > 0 && t.exit_price !== null
+          && t.price_move_fraction !== null && t.price_move_fraction >= 0.015) {
+        day.qualifying++;
+      }
+    }
+
+    // Old SQL filtered days by score >= threshold before AVG/COUNT
+    const qualifyingScores = [];
+    for (const day of byDay.values()) {
+      const score = (day.qualifying / day.total) * 100;
+      if (score >= threshold) {
+        qualifyingScores.push(score);
+      }
+    }
+
+    if (qualifyingScores.length === 0) {
+      return false; // AVG over empty set was NULL -> comparison false
+    }
+
+    const avgDiscipline = qualifyingScores.reduce((sum, s) => sum + s, 0) / qualifyingScores.length;
+    const daysTraded = qualifyingScores.length;
+
+    if (avgDiscipline >= threshold && daysTraded >= days * 0.7) {
       return {
         earned: true,
         metadata: {
-          average_discipline: result.rows[0].avg_discipline,
-          days_maintained: result.rows[0].days_traded
+          average_discipline: avgDiscipline,
+          days_maintained: daysTraded
         }
       };
     }
-    
+
     return false;
   }
-  
-  // Check risk adherence
-  static async checkRiskAdherence(userId, requiredTrades) {
-    // Simplified risk check - count trades with reasonable position sizes
-    // For now, we'll assume good risk management if no single trade exceeds 5% loss
-    const query = `
-      SELECT 
-        COUNT(*) as total_trades,
-        COUNT(CASE WHEN ABS(pnl) <= 1000 THEN 1 END) as within_risk_trades
-      FROM (
-        SELECT pnl 
-        FROM trades
-        WHERE user_id = $1
-          AND exit_time IS NOT NULL
-        ORDER BY exit_time DESC
-        LIMIT $2
-      ) recent_trades
-    `;
-    
-    const result = await db.query(query, [userId, requiredTrades]);
-    
-    if (result.rows[0].total_trades >= requiredTrades && 
-        result.rows[0].within_risk_trades === result.rows[0].total_trades) {
+
+  // Risk adherence: last N closed trades all within |pnl| <= 1000
+  static evaluateRiskAdherence(snapshot, requiredTrades) {
+    const recent = snapshot.closedTrades.slice(0, requiredTrades);
+    const total = recent.length;
+    const withinRisk = recent.filter(t => t.pnl !== null && Math.abs(t.pnl) <= 1000).length;
+
+    if (total >= requiredTrades && withinRisk === total) {
       return {
         earned: true,
         metadata: {
-          trades_checked: result.rows[0].total_trades,
+          trades_checked: total,
           all_within_risk: true
         }
       };
     }
-    
+
     return false;
   }
 
-  static async checkClosedTradesWithStopLoss(userId, requiredTrades) {
-    const result = await db.query(`
-      SELECT COUNT(*)::int AS qualifying_trades
-      FROM trades
-      WHERE user_id = $1
-        AND exit_time IS NOT NULL
-        AND stop_loss IS NOT NULL
-    `, [userId]);
+  static evaluateClosedTradesWithStopLoss(snapshot, requiredTrades) {
+    const qualifying = snapshot.closedTrades.filter(t => t.has_stop_loss).length;
 
-    if (result.rows[0].qualifying_trades >= requiredTrades) {
+    if (qualifying >= requiredTrades) {
       return {
         earned: true,
         metadata: {
-          qualifying_trades: result.rows[0].qualifying_trades,
+          qualifying_trades: qualifying,
           required_trades: requiredTrades
         }
       };
@@ -446,19 +581,14 @@ class AchievementService {
     return false;
   }
 
-  static async checkActivePlaybooks(userId, requiredCount) {
-    const result = await db.query(`
-      SELECT COUNT(*)::int AS active_playbook_count
-      FROM playbooks
-      WHERE user_id = $1
-        AND is_active = true
-    `, [userId]);
+  static evaluateActivePlaybooks(snapshot, requiredCount) {
+    const activePlaybookCount = snapshot.misc.active_playbook_count || 0;
 
-    if (result.rows[0].active_playbook_count >= requiredCount) {
+    if (activePlaybookCount >= requiredCount) {
       return {
         earned: true,
         metadata: {
-          active_playbook_count: result.rows[0].active_playbook_count,
+          active_playbook_count: activePlaybookCount,
           required_count: requiredCount
         }
       };
@@ -467,79 +597,53 @@ class AchievementService {
     return false;
   }
 
-  // Check cooling period usage
-  static async checkCoolingPeriodUsage(userId, percentage) {
-    const query = `
-      WITH loss_trades AS (
-        SELECT 
-          t.id,
-          t.exit_time,
-          LEAD(t.entry_time) OVER (ORDER BY t.exit_time) as next_trade_time
-        FROM trades t
-        WHERE t.user_id = $1
-          AND t.pnl < 0
-          AND t.exit_time IS NOT NULL
-          AND t.exit_time >= CURRENT_TIMESTAMP - INTERVAL '30 days'
-      ),
-      cooling_periods AS (
-        SELECT 
-          COUNT(*) as total_losses,
-          COUNT(CASE 
-            WHEN EXTRACT(EPOCH FROM (next_trade_time - exit_time)) / 60 >= 30 
-            THEN 1 
-          END) as with_cooling_period
-        FROM loss_trades
-      )
-      SELECT 
-        total_losses,
-        with_cooling_period,
-        CASE 
-          WHEN total_losses > 0 
-          THEN (with_cooling_period::float / total_losses::float * 100)
-          ELSE 0 
-        END as usage_percentage
-      FROM cooling_periods
-    `;
-    
-    const result = await db.query(query, [userId]);
-    
-    if (result.rows[0].usage_percentage >= percentage && result.rows[0].total_losses >= 10) {
+  // Cooling period usage after losses (last 30 days)
+  static evaluateCoolingPeriodUsage(snapshot, percentage) {
+    // Old SQL: losing closed trades in the last 30 days, LEAD(entry_time)
+    // ordered by exit_time (i.e. the NEXT losing trade's entry time)
+    const lossTrades = snapshot.trades
+      .filter(t => t.is_closed && t.pnl !== null && t.pnl < 0
+        && t.exit_age_seconds !== null && t.exit_age_seconds <= 30 * DAY_SECONDS)
+      .sort((a, b) => a.exit_epoch - b.exit_epoch);
+
+    const totalLosses = lossTrades.length;
+    let withCooling = 0;
+    for (let i = 0; i < lossTrades.length - 1; i++) {
+      const next = lossTrades[i + 1];
+      if (next.entry_epoch !== null && lossTrades[i].exit_epoch !== null) {
+        const gapMinutes = (next.entry_epoch - lossTrades[i].exit_epoch) / 60;
+        if (gapMinutes >= 30) {
+          withCooling++;
+        }
+      }
+    }
+
+    const usagePercentage = totalLosses > 0 ? (withCooling / totalLosses) * 100 : 0;
+
+    if (usagePercentage >= percentage && totalLosses >= 10) {
       return {
         earned: true,
         metadata: {
-          usage_percentage: result.rows[0].usage_percentage,
-          losses_with_cooling: result.rows[0].with_cooling_period,
-          total_losses: result.rows[0].total_losses
+          usage_percentage: usagePercentage,
+          losses_with_cooling: withCooling,
+          total_losses: totalLosses
         }
       };
     }
-    
+
     return false;
   }
 
-  static async checkJournaledTrades(userId, requiredTrades, minLength = 20) {
-    const result = await db.query(`
-      SELECT COUNT(*)::int AS qualifying_trades
-      FROM trades t
-      WHERE t.user_id = $1
-        AND t.exit_time IS NOT NULL
-        AND (
-          LENGTH(BTRIM(COALESCE(t.notes, ''))) >= $2
-          OR EXISTS (
-            SELECT 1
-            FROM trade_playbook_reviews r
-            WHERE r.trade_id = t.id
-              AND r.user_id = t.user_id
-              AND LENGTH(BTRIM(COALESCE(r.review_notes, ''))) >= $2
-          )
-        )
-    `, [userId, minLength]);
+  static evaluateJournaledTrades(snapshot, requiredTrades, minLength = 20) {
+    const qualifying = snapshot.closedTrades.filter(
+      t => t.notes_length >= minLength || t.max_review_notes_length >= minLength
+    ).length;
 
-    if (result.rows[0].qualifying_trades >= requiredTrades) {
+    if (qualifying >= requiredTrades) {
       return {
         earned: true,
         metadata: {
-          qualifying_trades: result.rows[0].qualifying_trades,
+          qualifying_trades: qualifying,
           required_trades: requiredTrades,
           min_length: minLength
         }
@@ -549,21 +653,16 @@ class AchievementService {
     return false;
   }
 
-  static async checkPlannedTrades(userId, requiredTrades) {
-    const result = await db.query(`
-      SELECT COUNT(*)::int AS qualifying_trades
-      FROM trades
-      WHERE user_id = $1
-        AND exit_time IS NOT NULL
-        AND stop_loss IS NOT NULL
-        AND take_profit IS NOT NULL
-    `, [userId]);
+  static evaluatePlannedTrades(snapshot, requiredTrades) {
+    const qualifying = snapshot.closedTrades.filter(
+      t => t.has_stop_loss && t.has_take_profit
+    ).length;
 
-    if (result.rows[0].qualifying_trades >= requiredTrades) {
+    if (qualifying >= requiredTrades) {
       return {
         earned: true,
         metadata: {
-          qualifying_trades: result.rows[0].qualifying_trades,
+          qualifying_trades: qualifying,
           required_trades: requiredTrades
         }
       };
@@ -572,31 +671,18 @@ class AchievementService {
     return false;
   }
 
-  static async checkTradeDataHygiene(userId, requiredTrades, minLength = 20) {
-    const result = await db.query(`
-      SELECT COUNT(*)::int AS qualifying_trades
-      FROM trades t
-      WHERE t.user_id = $1
-        AND t.exit_time IS NOT NULL
-        AND t.stop_loss IS NOT NULL
-        AND LENGTH(BTRIM(COALESCE(t.setup, ''))) > 0
-        AND (
-          LENGTH(BTRIM(COALESCE(t.notes, ''))) >= $2
-          OR EXISTS (
-            SELECT 1
-            FROM trade_playbook_reviews r
-            WHERE r.trade_id = t.id
-              AND r.user_id = t.user_id
-              AND LENGTH(BTRIM(COALESCE(r.review_notes, ''))) >= $2
-          )
-        )
-    `, [userId, minLength]);
+  static evaluateTradeDataHygiene(snapshot, requiredTrades, minLength = 20) {
+    const qualifying = snapshot.closedTrades.filter(
+      t => t.has_stop_loss
+        && t.setup_length > 0
+        && (t.notes_length >= minLength || t.max_review_notes_length >= minLength)
+    ).length;
 
-    if (result.rows[0].qualifying_trades >= requiredTrades) {
+    if (qualifying >= requiredTrades) {
       return {
         earned: true,
         metadata: {
-          qualifying_trades: result.rows[0].qualifying_trades,
+          qualifying_trades: qualifying,
           required_trades: requiredTrades,
           min_length: minLength
         }
@@ -606,20 +692,17 @@ class AchievementService {
     return false;
   }
 
-  static async checkReviewHabit(userId, requiredReviews, days) {
-    const result = await db.query(`
-      SELECT COUNT(*)::int AS completed_reviews
-      FROM trade_playbook_reviews
-      WHERE user_id = $1
-        AND review_type = 'adherence'
-        AND reviewed_at >= CURRENT_TIMESTAMP - ($2::int * INTERVAL '1 day')
-    `, [userId, days]);
+  static evaluateReviewHabit(snapshot, requiredReviews, days) {
+    const windowSeconds = days * DAY_SECONDS;
+    const completedReviews = snapshot.reviews.filter(
+      r => r.reviewed_age_seconds !== null && r.reviewed_age_seconds <= windowSeconds
+    ).length;
 
-    if (result.rows[0].completed_reviews >= requiredReviews) {
+    if (completedReviews >= requiredReviews) {
       return {
         earned: true,
         metadata: {
-          completed_reviews: result.rows[0].completed_reviews,
+          completed_reviews: completedReviews,
           required_reviews: requiredReviews,
           window_days: days
         }
@@ -629,24 +712,16 @@ class AchievementService {
     return false;
   }
 
-  static async checkFollowedPlanCount(userId, requiredTrades) {
-    const result = await db.query(`
-      SELECT COUNT(*)::int AS followed_reviews
-      FROM trade_playbook_reviews r
-      INNER JOIN trades t
-        ON t.id = r.trade_id
-       AND t.user_id = r.user_id
-      WHERE r.user_id = $1
-        AND r.review_type = 'adherence'
-        AND r.followed_plan = true
-        AND t.exit_time IS NOT NULL
-    `, [userId]);
+  static evaluateFollowedPlanCount(snapshot, requiredTrades) {
+    const followedReviews = snapshot.reviews.filter(
+      r => r.followed_plan === true && r.trade_closed
+    ).length;
 
-    if (result.rows[0].followed_reviews >= requiredTrades) {
+    if (followedReviews >= requiredTrades) {
       return {
         earned: true,
         metadata: {
-          followed_reviews: result.rows[0].followed_reviews,
+          followed_reviews: followedReviews,
           required_trades: requiredTrades
         }
       };
@@ -655,25 +730,16 @@ class AchievementService {
     return false;
   }
 
-  static async checkHighAdherenceReviews(userId, requiredReviews, threshold) {
-    const result = await db.query(`
-      SELECT COUNT(*)::int AS qualifying_reviews
-      FROM trade_playbook_reviews r
-      INNER JOIN trades t
-        ON t.id = r.trade_id
-       AND t.user_id = r.user_id
-      WHERE r.user_id = $1
-        AND r.review_type = 'adherence'
-        AND t.exit_time IS NOT NULL
-        AND r.followed_plan = true
-        AND COALESCE(r.adherence_score, 0) >= $2
-    `, [userId, threshold]);
+  static evaluateHighAdherenceReviews(snapshot, requiredReviews, threshold) {
+    const qualifyingReviews = snapshot.reviews.filter(
+      r => r.followed_plan === true && r.trade_closed && r.adherence_score >= threshold
+    ).length;
 
-    if (result.rows[0].qualifying_reviews >= requiredReviews) {
+    if (qualifyingReviews >= requiredReviews) {
       return {
         earned: true,
         metadata: {
-          qualifying_reviews: result.rows[0].qualifying_reviews,
+          qualifying_reviews: qualifyingReviews,
           required_reviews: requiredReviews,
           threshold
         }
@@ -683,71 +749,50 @@ class AchievementService {
     return false;
   }
 
-  // Check weekly P&L
-  static async checkWeeklyPnL(userId, mustBePositive) {
-    const query = `
-      SELECT 
-        SUM(pnl) as weekly_pnl,
-        COUNT(*) as trade_count
-      FROM trades
-      WHERE user_id = $1
-        AND exit_time >= date_trunc('week', CURRENT_TIMESTAMP)
-        AND exit_time IS NOT NULL
-    `;
-    
-    const result = await db.query(query, [userId]);
-    
-    if (mustBePositive && parseFloat(result.rows[0].weekly_pnl) > 0 && result.rows[0].trade_count >= 5) {
+  // Weekly P&L (current DB week, i.e. date_trunc('week', CURRENT_TIMESTAMP))
+  static evaluateWeeklyPnL(snapshot, mustBePositive) {
+    const weekTrades = snapshot.closedTrades.filter(t => t.exit_in_current_week);
+    const tradeCount = weekTrades.length;
+    const pnlValues = weekTrades.filter(t => t.pnl !== null);
+    // SUM over zero non-null values was NULL -> parseFloat(NULL) > 0 false
+    const weeklyPnl = pnlValues.length > 0
+      ? pnlValues.reduce((sum, t) => sum + t.pnl, 0)
+      : null;
+
+    if (mustBePositive && weeklyPnl !== null && weeklyPnl > 0 && tradeCount >= 5) {
       return {
         earned: true,
         metadata: {
-          weekly_pnl: result.rows[0].weekly_pnl,
-          trade_count: result.rows[0].trade_count
+          weekly_pnl: weeklyPnl,
+          trade_count: tradeCount
         }
       };
     }
-    
+
     return false;
   }
-  
-  // Check win rate
-  static async checkWinRate(userId, threshold, requiredTrades) {
-    const query = `
-      WITH recent_trades AS (
-        SELECT pnl
-        FROM trades
-        WHERE user_id = $1
-          AND exit_time IS NOT NULL
-        ORDER BY exit_time DESC
-        LIMIT $2
-      )
-      SELECT 
-        COUNT(*) as total_trades,
-        COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades,
-        CASE 
-          WHEN COUNT(*) > 0 
-          THEN (COUNT(CASE WHEN pnl > 0 THEN 1 END)::float / COUNT(*)::float * 100)
-          ELSE 0 
-        END as win_rate
-      FROM recent_trades
-    `;
-    
-    const result = await db.query(query, [userId, requiredTrades]);
-    
-    if (result.rows[0].total_trades >= requiredTrades && result.rows[0].win_rate >= threshold) {
+
+  // Win rate over the last N closed trades
+  static evaluateWinRate(snapshot, threshold, requiredTrades) {
+    const recent = snapshot.closedTrades.slice(0, requiredTrades);
+    const total = recent.length;
+    const winning = recent.filter(t => t.pnl !== null && t.pnl > 0).length;
+    const winRate = total > 0 ? (winning / total) * 100 : 0;
+
+    if (total >= requiredTrades && winRate >= threshold) {
       return {
         earned: true,
         metadata: {
-          win_rate: result.rows[0].win_rate,
-          trades_analyzed: result.rows[0].total_trades,
-          winning_trades: result.rows[0].winning_trades
+          win_rate: winRate,
+          trades_analyzed: total,
+          winning_trades: winning
         }
       };
     }
-    
+
     return false;
   }
-  
+
   // Calculate and update current trading streak
   static async updateTradingStreak(userId) {
     try {
@@ -759,7 +804,7 @@ class AchievementService {
           ORDER BY trade_date DESC
         ),
         dated_trades AS (
-          SELECT 
+          SELECT
             trade_date,
             ROW_NUMBER() OVER (ORDER BY trade_date DESC) as row_num,
             trade_date + INTERVAL '1 day' * ROW_NUMBER() OVER (ORDER BY trade_date DESC) as expected_date
@@ -772,24 +817,24 @@ class AchievementService {
           AND trade_date <= CURRENT_DATE
         ),
         longest_streak AS (
-          SELECT 
+          SELECT
             trade_date,
             LAG(trade_date) OVER (ORDER BY trade_date) as prev_date,
-            CASE 
-              WHEN LAG(trade_date) OVER (ORDER BY trade_date) = trade_date - INTERVAL '1 day' 
-              THEN 0 
-              ELSE 1 
+            CASE
+              WHEN LAG(trade_date) OVER (ORDER BY trade_date) = trade_date - INTERVAL '1 day'
+              THEN 0
+              ELSE 1
             END as is_break
           FROM trading_days
         ),
         streak_groups AS (
-          SELECT 
+          SELECT
             trade_date,
             SUM(is_break) OVER (ORDER BY trade_date ROWS UNBOUNDED PRECEDING) as group_id
           FROM longest_streak
         ),
         streak_lengths AS (
-          SELECT 
+          SELECT
             group_id,
             COUNT(*) as streak_length,
             MIN(trade_date) as streak_start,
@@ -797,127 +842,91 @@ class AchievementService {
           FROM streak_groups
           GROUP BY group_id
         )
-        SELECT 
+        SELECT
           COALESCE((SELECT streak_days FROM current_streak), 0) as current_streak_days,
           COALESCE((SELECT MAX(streak_length) FROM streak_lengths), 0) as longest_streak_days
       `;
-      
+
       const result = await db.query(streakQuery, [userId]);
       const { current_streak_days, longest_streak_days } = result.rows[0];
-      
+
       // Update user gamification stats
       await db.query(`
         INSERT INTO user_gamification_stats (user_id, current_streak_days, longest_streak_days)
         VALUES ($1, $2, $3)
-        ON CONFLICT (user_id) 
-        DO UPDATE SET 
+        ON CONFLICT (user_id)
+        DO UPDATE SET
           current_streak_days = EXCLUDED.current_streak_days,
           longest_streak_days = GREATEST(user_gamification_stats.longest_streak_days, EXCLUDED.longest_streak_days),
           updated_at = CURRENT_TIMESTAMP
       `, [userId, current_streak_days, longest_streak_days]);
-      
+
       return { current_streak_days, longest_streak_days };
-      
+
     } catch (error) {
       console.error('Error updating trading streak for user', userId, ':', error);
       return { current_streak_days: 0, longest_streak_days: 0 };
     }
   }
-  
-  // Check risk/reward ratio
-  static async checkRiskReward(userId, targetRatio, requiredTrades) {
-    const query = `
-      WITH recent_trades AS (
-        SELECT *
-        FROM trades
-        WHERE user_id = $1
-          AND exit_time IS NOT NULL
-        ORDER BY exit_time DESC
-        LIMIT $3
-      ),
-      rr_trades AS (
-        SELECT 
-          COUNT(*) as total_trades,
-          COUNT(CASE 
-            WHEN pnl > 0 AND exit_price IS NOT NULL THEN
-              CASE 
-                WHEN side = 'long' AND ((exit_price - entry_price) / entry_price) >= ($2 * 0.01) THEN 1
-                WHEN side = 'short' AND ((entry_price - exit_price) / entry_price) >= ($2 * 0.01) THEN 1
-                ELSE NULL
-              END
-            ELSE NULL
-          END) as good_rr_trades
-        FROM recent_trades
-      )
-      SELECT * FROM rr_trades
-    `;
-    
-    const result = await db.query(query, [userId, targetRatio, requiredTrades]);
-    
-    if (result.rows[0].good_rr_trades >= requiredTrades) {
+
+  // Risk/reward: last N closed trades with sufficient percentage move
+  static evaluateRiskReward(snapshot, targetRatio, requiredTrades) {
+    const recent = snapshot.closedTrades.slice(0, requiredTrades);
+    const goodRRTrades = recent.filter(
+      t => t.pnl !== null && t.pnl > 0 && t.exit_price !== null
+        && t.price_move_fraction !== null && t.price_move_fraction >= targetRatio * 0.01
+    ).length;
+
+    if (goodRRTrades >= requiredTrades) {
       return {
         earned: true,
         metadata: {
-          trades_with_good_rr: result.rows[0].good_rr_trades,
+          trades_with_good_rr: goodRRTrades,
           target_ratio: targetRatio
         }
       };
     }
-    
+
     return false;
   }
-  
-  // Check patterns identified
-  static async checkPatternsIdentified(userId, requiredCount) {
-    const query = `
-      SELECT COUNT(DISTINCT pattern_type) as patterns_count
-      FROM behavioral_patterns
-      WHERE user_id = $1
-    `;
-    
-    const result = await db.query(query, [userId]);
-    
-    if (parseInt(result.rows[0].patterns_count) >= requiredCount) {
+
+  static evaluatePatternsIdentified(snapshot, requiredCount) {
+    const patternsCount = snapshot.misc.patterns_identified || 0;
+
+    if (patternsCount >= requiredCount) {
       return {
         earned: true,
         metadata: {
-          patterns_identified: result.rows[0].patterns_count
+          patterns_identified: patternsCount
         }
       };
     }
-    
+
     return false;
   }
-  
-  // Check challenges completed
-  static async checkChallengesCompleted(userId, requiredCount) {
-    const query = `
-      SELECT COUNT(*) as completed_count
-      FROM user_challenges
-      WHERE user_id = $1
-        AND status = 'completed'
-    `;
-    
-    const result = await db.query(query, [userId]);
-    
-    if (parseInt(result.rows[0].completed_count) >= requiredCount) {
+
+  static evaluateChallengesCompleted(snapshot, requiredCount) {
+    const completedCount = snapshot.misc.challenges_completed || 0;
+
+    if (completedCount >= requiredCount) {
       return {
         earned: true,
         metadata: {
-          challenges_completed: result.rows[0].completed_count
+          challenges_completed: completedCount
         }
       };
     }
-    
+
     return false;
   }
-  
-  // Check peer rank
+
+  // Check peer rank (targeted query - percentile across the peer group
+  // cannot be derived from a single user's snapshot)
   static async checkPeerRank(userId, requiredPercentile) {
     // Get user's peer group and calculate rank
     const query = `
       WITH peer_scores AS (
-        SELECT 
+        SELECT
           u.id,
           COALESCE(gs.total_points, 0) as score,
           PERCENT_RANK() OVER (ORDER BY COALESCE(gs.total_points, 0)) * 100 as percentile
@@ -925,8 +934,8 @@ class AchievementService {
         JOIN user_peer_groups upg ON upg.user_id = u.id
         LEFT JOIN user_gamification_stats gs ON gs.user_id = u.id
         WHERE upg.peer_group_id IN (
-          SELECT peer_group_id 
-          FROM user_peer_groups 
+          SELECT peer_group_id
+          FROM user_peer_groups
           WHERE user_id = $1 AND is_active = true
         )
       )
@@ -934,9 +943,9 @@ class AchievementService {
       FROM peer_scores
       WHERE id = $1
     `;
-    
+
     const result = await db.query(query, [userId]);
-    
+
     if (result.rows.length > 0 && result.rows[0].percentile >= requiredPercentile) {
       return {
         earned: true,
@@ -945,57 +954,40 @@ class AchievementService {
         }
       };
     }
-    
+
     return false;
   }
-  
-  // Check community challenges
-  static async checkCommunityChallenges(userId, requiredCount) {
-    const query = `
-      SELECT COUNT(*) as participated_count
-      FROM user_challenges uc
-      JOIN challenges c ON c.id = uc.challenge_id
-      WHERE uc.user_id = $1
-        AND c.is_community = true
-        AND uc.status IN ('completed', 'active')
-    `;
-    
-    const result = await db.query(query, [userId]);
-    
-    if (parseInt(result.rows[0].participated_count) >= requiredCount) {
+
+  static evaluateCommunityChallenges(snapshot, requiredCount) {
+    const participatedCount = snapshot.misc.community_challenges || 0;
+
+    if (participatedCount >= requiredCount) {
       return {
         earned: true,
         metadata: {
-          community_challenges: result.rows[0].participated_count
+          community_challenges: participatedCount
         }
       };
     }
-    
+
     return false;
   }
-  
-  // Check trade count
-  static async checkTradeCount(userId, requiredCount) {
-    const query = `
-      SELECT COUNT(*) as trade_count
-      FROM trades
-      WHERE user_id = $1
-    `;
-    
-    const result = await db.query(query, [userId]);
-    
-    if (parseInt(result.rows[0].trade_count) >= requiredCount) {
+
+  static evaluateTradeCount(snapshot, requiredCount) {
+    const tradeCount = snapshot.trades.length;
+
+    if (tradeCount >= requiredCount) {
       return {
         earned: true,
         metadata: {
-          total_trades: result.rows[0].trade_count
+          total_trades: tradeCount
         }
       };
     }
-    
+
     return false;
   }
-  
+
   // Get user achievements
   static async getUserAchievements(userId) {
     // Includes unlock_percentage so the UI can show how rare each achievement is.
@@ -1032,7 +1024,7 @@ class AchievementService {
     const result = await db.query(query, [userId]);
     return result.rows;
   }
-  
+
   // Get user stats
   static async getUserStats(userId) {
     const query = `
@@ -1040,9 +1032,9 @@ class AchievementService {
       FROM user_gamification_stats
       WHERE user_id = $1
     `;
-    
+
     const result = await db.query(query, [userId]);
-    
+
     let stats;
     if (result.rows.length === 0) {
       // Initialize stats if not exists
@@ -1051,7 +1043,7 @@ class AchievementService {
         VALUES ($1)
         ON CONFLICT (user_id) DO NOTHING
       `, [userId]);
-      
+
       stats = {
         user_id: userId,
         total_points: 0,
@@ -1066,18 +1058,18 @@ class AchievementService {
     } else {
       stats = result.rows[0];
     }
-    
+
     // Add level progression information using new formula
     const currentXP = stats.experience_points || 0;
     const levelInfo = this.calculateLevelFromXP(currentXP);
-    
+
     const currentLevel = levelInfo.level;
     const currentLevelMinXP = levelInfo.currentLevelMinXP;
     const nextLevelMinXP = levelInfo.nextLevelMinXP;
     const pointsForCurrentLevel = currentXP - currentLevelMinXP;
     const pointsNeededForNextLevel = nextLevelMinXP - currentXP;
     const totalPointsForCurrentLevel = nextLevelMinXP - currentLevelMinXP;
-    
+
     return {
       ...stats,
       level: currentLevel, // Override with calculated level
@@ -1092,7 +1084,7 @@ class AchievementService {
       }
     };
   }
-  
+
   // Get available achievements for user
   static async getAvailableAchievements(userId) {
     // Includes unlock_percentage so the UI can show how rare each achievement is.
@@ -1132,36 +1124,34 @@ class AchievementService {
     const result = await db.query(query, [userId]);
     return result.rows;
   }
-  
+
   // Update achievement progress
   static async updateAchievementProgress(userId, achievementKey, progress) {
     const achievement = await db.query(
       'SELECT id, max_progress FROM achievements WHERE key = $1',
       [achievementKey]
     );
-    
+
     if (achievement.rows.length === 0) return;
-    
+
     const achievementId = achievement.rows[0].id;
     const maxProgress = achievement.rows[0].max_progress;
-    
+
     // Check if progress is complete
     if (progress >= maxProgress) {
       return await AchievementService.awardAchievement(userId, achievementId, { progress });
     }
-    
+
     // Update progress
     await db.query(`
       INSERT INTO user_achievements (user_id, achievement_id, progress, earned_at)
       VALUES ($1, $2, $3, NULL)
-      ON CONFLICT (user_id, achievement_id) 
+      ON CONFLICT (user_id, achievement_id)
       DO UPDATE SET progress = $3
       WHERE user_achievements.earned_at IS NULL
     `, [userId, achievementId, progress]);
   }
-  
-  // New achievement check methods
-  
+
   // Check immediate achievements (always return true for new users)
   static async checkImmediateAchievement(userId, type) {
     return {
@@ -1176,18 +1166,18 @@ class AchievementService {
   // Check for immediate achievements that can be awarded right away
   static async checkImmediateAchievements(userId) {
     const immediateAchievements = [];
-    
+
     try {
       // Check for achievements like "Welcome Aboard", "Dashboard Explorer"
       const welcomeAchievement = await db.query(`
-        SELECT a.* FROM achievements a 
-        WHERE a.key = 'welcome_aboard' 
+        SELECT a.* FROM achievements a
+        WHERE a.key = 'welcome_aboard'
         AND NOT EXISTS (
-          SELECT 1 FROM user_achievements ua 
+          SELECT 1 FROM user_achievements ua
           WHERE ua.user_id = $1 AND ua.achievement_id = a.id
         )
       `, [userId]);
-      
+
       if (welcomeAchievement.rows.length > 0) {
         const achievement = welcomeAchievement.rows[0];
         const awarded = await AchievementService.awardAchievement(userId, achievement.id, { immediate: true });
@@ -1195,16 +1185,16 @@ class AchievementService {
           immediateAchievements.push(achievement);
         }
       }
-      
+
       const dashboardAchievement = await db.query(`
-        SELECT a.* FROM achievements a 
-        WHERE a.key = 'dashboard_explorer' 
+        SELECT a.* FROM achievements a
+        WHERE a.key = 'dashboard_explorer'
         AND NOT EXISTS (
-          SELECT 1 FROM user_achievements ua 
+          SELECT 1 FROM user_achievements ua
           WHERE ua.user_id = $1 AND ua.achievement_id = a.id
         )
       `, [userId]);
-      
+
       if (dashboardAchievement.rows.length > 0) {
         const achievement = dashboardAchievement.rows[0];
         const awarded = await AchievementService.awardAchievement(userId, achievement.id, { dashboard_visit: true });
@@ -1212,7 +1202,7 @@ class AchievementService {
           immediateAchievements.push(achievement);
         }
       }
-      
+
       // Update user stats if we awarded any immediate achievements
       if (immediateAchievements.length > 0) {
         await AchievementService.updateUserStats(userId, immediateAchievements);
@@ -1221,23 +1211,16 @@ class AchievementService {
       console.error('Error in checkImmediateAchievements:', error);
       // Return empty array on error
     }
-    
+
     return immediateAchievements;
   }
-  
-  // Check first profitable trade
-  static async checkFirstProfitableTrade(userId) {
-    const query = `
-      SELECT COUNT(*) as profitable_count
-      FROM trades
-      WHERE user_id = $1
-        AND pnl > 0
-        AND exit_time IS NOT NULL
-    `;
-    
-    const result = await db.query(query, [userId]);
-    
-    if (parseInt(result.rows[0].profitable_count) >= 1) {
+
+  static evaluateFirstProfitableTrade(snapshot) {
+    const profitableCount = snapshot.closedTrades.filter(
+      t => t.pnl !== null && t.pnl > 0
+    ).length;
+
+    if (profitableCount >= 1) {
       return {
         earned: true,
         metadata: {
@@ -1245,26 +1228,17 @@ class AchievementService {
         }
       };
     }
-    
+
     return false;
   }
-  
-  // Check first stop loss - trades table doesn't have stop_loss column
-  static async checkFirstStopLoss(userId) {
-    // Since stop_loss column doesn't exist, we'll check for losing trades that were closed early
-    // This could indicate risk management behavior
-    const query = `
-      SELECT COUNT(*) as managed_loss_count
-      FROM trades
-      WHERE user_id = $1
-        AND pnl < 0
-        AND exit_time IS NOT NULL
-        AND notes ILIKE '%stop%'
-    `;
-    
-    const result = await db.query(query, [userId]);
-    
-    if (parseInt(result.rows[0].managed_loss_count) >= 1) {
+
+  // First stop loss - closed losing trades whose notes mention "stop"
+  static evaluateFirstStopLoss(snapshot) {
+    const managedLossCount = snapshot.closedTrades.filter(
+      t => t.pnl !== null && t.pnl < 0 && t.notes_mention_stop
+    ).length;
+
+    if (managedLossCount >= 1) {
       return {
         earned: true,
         metadata: {
@@ -1272,26 +1246,17 @@ class AchievementService {
         }
       };
     }
-    
+
     return false;
   }
-  
-  // Check first take profit - trades table doesn't have take_profit column
-  static async checkFirstTakeProfit(userId) {
-    // Since take_profit column doesn't exist, we'll check for profitable trades
-    // that mention profit-taking in notes
-    const query = `
-      SELECT COUNT(*) as take_profit_count
-      FROM trades
-      WHERE user_id = $1
-        AND pnl > 0
-        AND exit_time IS NOT NULL
-        AND (notes ILIKE '%profit%' OR notes ILIKE '%target%')
-    `;
-    
-    const result = await db.query(query, [userId]);
-    
-    if (parseInt(result.rows[0].take_profit_count) >= 1) {
+
+  // First take profit - closed winners whose notes mention profit/target
+  static evaluateFirstTakeProfit(snapshot) {
+    const takeProfitCount = snapshot.closedTrades.filter(
+      t => t.pnl !== null && t.pnl > 0 && t.notes_mention_profit
+    ).length;
+
+    if (takeProfitCount >= 1) {
       return {
         earned: true,
         metadata: {
@@ -1299,163 +1264,124 @@ class AchievementService {
         }
       };
     }
-    
+
     return false;
   }
-  
-  // Check weekend trade
-  static async checkWeekendTrade(userId) {
-    const query = `
-      SELECT COUNT(*) as weekend_count
-      FROM trades
-      WHERE user_id = $1
-        AND EXTRACT(DOW FROM entry_time) IN (0, 6)  -- Sunday = 0, Saturday = 6
-    `;
-    
-    const result = await db.query(query, [userId]);
-    
-    if (parseInt(result.rows[0].weekend_count) >= 1) {
+
+  static evaluateWeekendTrade(snapshot) {
+    const weekendCount = snapshot.trades.filter(
+      t => t.entry_dow === 0 || t.entry_dow === 6
+    ).length;
+
+    if (weekendCount >= 1) {
       return {
         earned: true,
         metadata: {
-          weekend_trades: result.rows[0].weekend_count
+          weekend_trades: weekendCount
         }
       };
     }
-    
+
     return false;
   }
-  
-  // Check early trade
-  static async checkEarlyTrade(userId, beforeHour) {
-    const query = `
-      SELECT COUNT(*) as early_count
-      FROM trades
-      WHERE user_id = $1
-        AND EXTRACT(HOUR FROM entry_time) < $2
-    `;
-    
-    const result = await db.query(query, [userId, beforeHour]);
-    
-    if (parseInt(result.rows[0].early_count) >= 1) {
+
+  static evaluateEarlyTrade(snapshot, beforeHour) {
+    const earlyCount = snapshot.trades.filter(
+      t => t.entry_hour !== null && t.entry_hour < beforeHour
+    ).length;
+
+    if (earlyCount >= 1) {
       return {
         earned: true,
         metadata: {
-          early_trades: result.rows[0].early_count,
+          early_trades: earlyCount,
           before_hour: beforeHour
         }
       };
     }
-    
+
     return false;
   }
-  
-  // Check late trade
-  static async checkLateTrade(userId, afterHour) {
-    const query = `
-      SELECT COUNT(*) as late_count
-      FROM trades
-      WHERE user_id = $1
-        AND EXTRACT(HOUR FROM entry_time) >= $2
-    `;
-    
-    const result = await db.query(query, [userId, afterHour]);
-    
-    if (parseInt(result.rows[0].late_count) >= 1) {
+
+  static evaluateLateTrade(snapshot, afterHour) {
+    const lateCount = snapshot.trades.filter(
+      t => t.entry_hour !== null && t.entry_hour >= afterHour
+    ).length;
+
+    if (lateCount >= 1) {
       return {
         earned: true,
         metadata: {
-          late_trades: result.rows[0].late_count,
+          late_trades: lateCount,
           after_hour: afterHour
         }
       };
     }
-    
+
     return false;
   }
-  
-  // Check trading streak
-  static async checkTradingStreak(userId, requiredDays) {
-    const query = `
-      WITH trading_days AS (
-        SELECT DISTINCT DATE(entry_time) as trade_date
-        FROM trades
-        WHERE user_id = $1
-        ORDER BY trade_date DESC
-      ),
-      consecutive_days AS (
-        SELECT 
-          trade_date,
-          ROW_NUMBER() OVER (ORDER BY trade_date DESC) as rn,
-          trade_date - INTERVAL '1 day' * (ROW_NUMBER() OVER (ORDER BY trade_date DESC) - 1) as group_date
-        FROM trading_days
-      ),
-      streak_groups AS (
-        SELECT 
-          group_date,
-          COUNT(*) as streak_length
-        FROM consecutive_days
-        GROUP BY group_date
-      )
-      SELECT MAX(streak_length) as max_streak
-      FROM streak_groups
-    `;
-    
-    const result = await db.query(query, [userId]);
-    
-    if (parseInt(result.rows[0].max_streak || 0) >= requiredDays) {
+
+  // Trading streak - replicates the legacy SQL literally: ROW_NUMBER over
+  // distinct trade dates DESC, grouped by trade_date - (rn - 1) days.
+  // NOTE (pre-existing bug, preserved bit-for-bit): with DESC ordering that
+  // group key never merges consecutive days, so max_streak is always 1 for
+  // any user with at least one trade and the achievement cannot fire for
+  // criteria.days > 1. The correct islands logic lives in
+  // updateTradingStreak (longest_streak_days); fix both together if this
+  // criterion is ever meant to work.
+  static evaluateTradingStreak(snapshot, requiredDays) {
+    const uniqueDatesDesc = [...new Set(
+      snapshot.trades.map(t => t.entry_date).filter(Boolean)
+    )].sort().reverse();
+
+    const groups = new Map();
+    uniqueDatesDesc.forEach((dateStr, idx) => {
+      // group_date = trade_date - (rn - 1) days, rn over dates DESC
+      const groupKey = Date.parse(`${dateStr}T00:00:00Z`) - idx * DAY_SECONDS * 1000;
+      groups.set(groupKey, (groups.get(groupKey) || 0) + 1);
+    });
+
+    let maxStreak = 0;
+    for (const length of groups.values()) {
+      if (length > maxStreak) maxStreak = length;
+    }
+
+    if (maxStreak >= requiredDays) {
       return {
         earned: true,
         metadata: {
-          streak_length: result.rows[0].max_streak,
+          streak_length: maxStreak,
           required_days: requiredDays
         }
       };
     }
-    
+
     return false;
   }
-  
-  // Check different symbols
-  static async checkDifferentSymbols(userId, requiredCount) {
-    const query = `
-      SELECT COUNT(DISTINCT symbol) as symbol_count
-      FROM trades
-      WHERE user_id = $1
-        AND symbol IS NOT NULL
-    `;
-    
-    const result = await db.query(query, [userId]);
-    
-    if (parseInt(result.rows[0].symbol_count) >= requiredCount) {
+
+  static evaluateDifferentSymbols(snapshot, requiredCount) {
+    const symbolCount = new Set(
+      snapshot.trades.map(t => t.symbol).filter(s => s !== null && s !== undefined)
+    ).size;
+
+    if (symbolCount >= requiredCount) {
       return {
         earned: true,
         metadata: {
-          symbols_traded: result.rows[0].symbol_count,
+          symbols_traded: symbolCount,
           required_count: requiredCount
         }
       };
     }
-    
+
     return false;
   }
 
-  // New trading achievement methods
-  
-  // Check first trade of the day
-  static async checkFirstTradeDaily(userId) {
-    const today = new Date().toISOString().split('T')[0];
-    
-    const query = `
-      SELECT COUNT(*) as trade_count
-      FROM trades
-      WHERE user_id = $1
-        AND DATE(entry_time) = $2
-    `;
-    
-    const result = await db.query(query, [userId, today]);
-    
-    if (parseInt(result.rows[0].trade_count) >= 1) {
+  static evaluateFirstTradeDaily(snapshot) {
+    const today = snapshot.todayStr;
+    const tradeCount = snapshot.trades.filter(t => t.entry_date === today).length;
+
+    if (tradeCount >= 1) {
       return {
         earned: true,
         metadata: {
@@ -1463,24 +1389,18 @@ class AchievementService {
         }
       };
     }
-    
+
     return false;
   }
-  
-  // Check quick flip (profitable trade within X minutes)
-  static async checkQuickFlip(userId, maxMinutes) {
-    const query = `
-      SELECT COUNT(*) as quick_flips
-      FROM trades
-      WHERE user_id = $1
-        AND pnl > 0
-        AND exit_time IS NOT NULL
-        AND EXTRACT(EPOCH FROM (exit_time - entry_time))/60 <= $2
-    `;
-    
-    const result = await db.query(query, [userId, maxMinutes]);
-    
-    if (parseInt(result.rows[0].quick_flips) >= 1) {
+
+  // Quick flip: profitable closed trade within X minutes
+  static evaluateQuickFlip(snapshot, maxMinutes) {
+    const quickFlips = snapshot.closedTrades.filter(
+      t => t.pnl !== null && t.pnl > 0
+        && t.duration_minutes !== null && t.duration_minutes <= maxMinutes
+    ).length;
+
+    if (quickFlips >= 1) {
       return {
         earned: true,
         metadata: {
@@ -1488,103 +1408,88 @@ class AchievementService {
         }
       };
     }
-    
+
     return false;
   }
-  
-  // Check green day (positive daily P&L)
-  static async checkGreenDay(userId) {
-    const today = new Date().toISOString().split('T')[0];
-    
-    const query = `
-      SELECT SUM(pnl) as daily_pnl
-      FROM trades
-      WHERE user_id = $1
-        AND DATE(entry_time) = $2
-        AND exit_time IS NOT NULL
-    `;
-    
-    const result = await db.query(query, [userId, today]);
-    
-    if (parseFloat(result.rows[0].daily_pnl || 0) > 0) {
+
+  // Green day: positive P&L on today's closed trades
+  static evaluateGreenDay(snapshot) {
+    const today = snapshot.todayStr;
+    const todayClosed = snapshot.closedTrades.filter(
+      t => t.entry_date === today && t.pnl !== null
+    );
+    const dailyPnl = todayClosed.reduce((sum, t) => sum + t.pnl, 0);
+
+    if (dailyPnl > 0) {
       return {
         earned: true,
         metadata: {
-          daily_pnl: result.rows[0].daily_pnl,
+          daily_pnl: dailyPnl,
           trade_date: today
         }
       };
     }
-    
+
     return false;
   }
-  
-  // Check profitable streak
-  static async checkProfitableStreak(userId, requiredDays) {
-    const query = `
-      WITH daily_pnl AS (
-        SELECT 
-          DATE(entry_time) as trade_date,
-          SUM(pnl) as daily_pnl
-        FROM trades
-        WHERE user_id = $1
-          AND exit_time IS NOT NULL
-        GROUP BY DATE(entry_time)
-        ORDER BY trade_date DESC
-        LIMIT 30
-      ),
-      consecutive_profitable AS (
-        SELECT 
-          trade_date,
-          daily_pnl,
-          ROW_NUMBER() OVER (ORDER BY trade_date DESC) as rn,
-          CASE WHEN daily_pnl > 0 THEN 1 ELSE 0 END as is_profitable
-        FROM daily_pnl
-      ),
-      streak_calc AS (
-        SELECT 
-          COUNT(*) as streak_length
-        FROM consecutive_profitable
-        WHERE rn <= (
-          SELECT COALESCE(MIN(rn), 0)
-          FROM consecutive_profitable
-          WHERE is_profitable = 0
-        ) - 1
-        AND is_profitable = 1
-      )
-      SELECT COALESCE(MAX(streak_length), 0) as max_streak
-      FROM streak_calc
-    `;
-    
-    const result = await db.query(query, [userId]);
-    
-    if (parseInt(result.rows[0].max_streak || 0) >= requiredDays) {
+
+  // Profitable streak: consecutive profitable days counted back from the
+  // most recent trading day (last 30 trading days considered). Replicates
+  // the old SQL exactly, including its quirk that a window with no
+  // unprofitable day yields a streak of 0.
+  static evaluateProfitableStreak(snapshot, requiredDays) {
+    const byDay = new Map();
+    for (const t of snapshot.closedTrades) {
+      if (!t.entry_date) continue;
+      const day = byDay.get(t.entry_date) || { sum: 0, hasPnl: false };
+      if (t.pnl !== null) {
+        day.sum += t.pnl;
+        day.hasPnl = true;
+      }
+      byDay.set(t.entry_date, day);
+    }
+
+    const days = [...byDay.entries()]
+      .sort((a, b) => (a[0] < b[0] ? 1 : -1)) // date DESC
+      .slice(0, 30)
+      .map(([date, day]) => ({
+        date,
+        isProfitable: day.hasPnl && day.sum > 0 // NULL daily pnl is not profitable
+      }));
+
+    // rn of first unprofitable day (1-based); none -> 0 (old COALESCE quirk)
+    let firstUnprofitableRn = 0;
+    for (let i = 0; i < days.length; i++) {
+      if (!days[i].isProfitable) {
+        firstUnprofitableRn = i + 1;
+        break;
+      }
+    }
+
+    const maxStreak = Math.max(firstUnprofitableRn - 1, 0);
+
+    if (maxStreak >= requiredDays) {
       return {
         earned: true,
         metadata: {
-          streak_length: result.rows[0].max_streak,
+          streak_length: maxStreak,
           required_days: requiredDays
         }
       };
     }
-    
+
     return false;
   }
-  
-  // Check early market trade (within X minutes of market open)
-  static async checkEarlyMarketTrade(userId, minutesFromOpen) {
-    // Assuming market opens at 9:30 AM ET
-    const query = `
-      SELECT COUNT(*) as early_trades
-      FROM trades
-      WHERE user_id = $1
-        AND EXTRACT(HOUR FROM entry_time) = 9
-        AND EXTRACT(MINUTE FROM entry_time) BETWEEN 30 AND ${30 + minutesFromOpen}
-    `;
-    
-    const result = await db.query(query, [userId]);
-    
-    if (parseInt(result.rows[0].early_trades) >= 1) {
+
+  // Early market trade: within X minutes of the 9:30 open
+  static evaluateEarlyMarketTrade(snapshot, minutesFromOpen) {
+    const earlyTrades = snapshot.trades.filter(
+      t => t.entry_hour === 9
+        && t.entry_minute !== null
+        && t.entry_minute >= 30 && t.entry_minute <= 30 + minutesFromOpen
+    ).length;
+
+    if (earlyTrades >= 1) {
       return {
         earned: true,
         metadata: {
@@ -1592,30 +1497,17 @@ class AchievementService {
         }
       };
     }
-    
+
     return false;
   }
-  
-  // Check risk-reward ratio
-  static async checkRiskRewardRatio(userId, minRatio) {
-    const query = `
-      SELECT COUNT(CASE 
-        WHEN pnl > 0 AND exit_price IS NOT NULL THEN
-          CASE 
-            WHEN side = 'long' AND ((exit_price - entry_price) / entry_price) >= ($2 * 0.01) THEN 1
-            WHEN side = 'short' AND ((entry_price - exit_price) / entry_price) >= ($2 * 0.01) THEN 1
-            ELSE NULL
-          END
-        ELSE NULL
-      END) as good_rr_trades
-      FROM trades
-      WHERE user_id = $1
-        AND exit_time IS NOT NULL
-    `;
-    
-    const result = await db.query(query, [userId, minRatio]);
-    
-    if (parseInt(result.rows[0].good_rr_trades) >= 1) {
+
+  static evaluateRiskRewardRatio(snapshot, minRatio) {
+    const goodRRTrades = snapshot.closedTrades.filter(
+      t => t.pnl !== null && t.pnl > 0 && t.exit_price !== null
+        && t.price_move_fraction !== null && t.price_move_fraction >= minRatio * 0.01
+    ).length;
+
+    if (goodRRTrades >= 1) {
       return {
         earned: true,
         metadata: {
@@ -1623,111 +1515,81 @@ class AchievementService {
         }
       };
     }
-    
+
     return false;
   }
-  
-  // Check trend following profit (simplified - look for trades with notes mentioning trend)
-  static async checkTrendFollowingProfit(userId) {
-    const query = `
-      SELECT COUNT(*) as trend_trades
-      FROM trades
-      WHERE user_id = $1
-        AND pnl > 0
-        AND (
-          LOWER(notes) LIKE '%trend%' OR
-          LOWER(notes) LIKE '%moving average%' OR
-          LOWER(notes) LIKE '%ma%' OR
-          LOWER(notes) LIKE '%crossover%'
-        )
-    `;
-    
-    const result = await db.query(query, [userId]);
-    
-    if (parseInt(result.rows[0].trend_trades) >= 1) {
+
+  // Trend following profit (notes mention trend/MA/crossover)
+  static evaluateTrendFollowingProfit(snapshot) {
+    const trendTrades = snapshot.trades.filter(
+      t => t.pnl !== null && t.pnl > 0 && t.notes_mention_trend
+    ).length;
+
+    if (trendTrades >= 1) {
       return {
         earned: true,
         metadata: {
-          trend_trades: result.rows[0].trend_trades
+          trend_trades: trendTrades
         }
       };
     }
-    
+
     return false;
   }
-  
-  // Check news-based profit (simplified - look for trades with notes mentioning news/earnings)
-  static async checkNewsBasedProfit(userId) {
-    const query = `
-      SELECT COUNT(*) as news_trades
-      FROM trades
-      WHERE user_id = $1
-        AND pnl > 0
-        AND (
-          LOWER(notes) LIKE '%news%' OR
-          LOWER(notes) LIKE '%earnings%' OR
-          LOWER(notes) LIKE '%catalyst%' OR
-          LOWER(notes) LIKE '%announcement%'
-        )
-    `;
-    
-    const result = await db.query(query, [userId]);
-    
-    if (parseInt(result.rows[0].news_trades) >= 1) {
+
+  // News-based profit (notes mention news/earnings/catalyst/announcement)
+  static evaluateNewsBasedProfit(snapshot) {
+    const newsTrades = snapshot.trades.filter(
+      t => t.pnl !== null && t.pnl > 0 && t.notes_mention_news
+    ).length;
+
+    if (newsTrades >= 1) {
       return {
         earned: true,
         metadata: {
-          news_trades: result.rows[0].news_trades
+          news_trades: newsTrades
         }
       };
     }
-    
+
     return false;
   }
-  
-  // Check daily volume - check if user has EVER achieved the target on any single day
-  static async checkDailyVolume(userId, targetShares) {
-    const query = `
-      SELECT 
-        DATE(entry_time) as trade_date,
-        SUM(ABS(quantity)) as daily_volume
-      FROM trades
-      WHERE user_id = $1
-      GROUP BY DATE(entry_time)
-      HAVING SUM(ABS(quantity)) >= $2
-      ORDER BY daily_volume DESC
-      LIMIT 1
-    `;
-    
-    const result = await db.query(query, [userId, targetShares]);
-    
-    if (result.rows.length > 0) {
+
+  // Daily volume: any single day whose total |quantity| meets the target
+  static evaluateDailyVolume(snapshot, targetShares) {
+    const byDay = new Map();
+    for (const t of snapshot.trades) {
+      if (!t.entry_date || t.quantity === null) continue;
+      byDay.set(t.entry_date, (byDay.get(t.entry_date) || 0) + Math.abs(t.quantity));
+    }
+
+    let best = null;
+    for (const [date, volume] of byDay.entries()) {
+      if (volume >= targetShares && (best === null || volume > best.volume)) {
+        best = { date, volume };
+      }
+    }
+
+    if (best) {
       return {
         earned: true,
         metadata: {
-          daily_volume: result.rows[0].daily_volume,
+          daily_volume: best.volume,
           target_shares: targetShares,
-          trade_date: result.rows[0].trade_date
+          trade_date: best.date
         }
       };
     }
-    
+
     return false;
   }
-  
-  // Check single trade profit
-  static async checkSingleTradeProfit(userId, minProfit) {
-    const query = `
-      SELECT COUNT(*) as big_wins
-      FROM trades
-      WHERE user_id = $1
-        AND pnl >= $2
-        AND exit_time IS NOT NULL
-    `;
-    
-    const result = await db.query(query, [userId, minProfit]);
-    
-    if (parseInt(result.rows[0].big_wins) >= 1) {
+
+  static evaluateSingleTradeProfit(snapshot, minProfit) {
+    const bigWins = snapshot.closedTrades.filter(
+      t => t.pnl !== null && t.pnl >= minProfit
+    ).length;
+
+    if (bigWins >= 1) {
       return {
         earned: true,
         metadata: {
@@ -1735,22 +1597,17 @@ class AchievementService {
         }
       };
     }
-    
+
     return false;
   }
-  
-  // Check position size
-  static async checkPositionSize(userId, minSize) {
-    const query = `
-      SELECT COUNT(*) as large_positions
-      FROM trades
-      WHERE user_id = $1
-        AND ABS(entry_price * quantity) >= $2
-    `;
-    
-    const result = await db.query(query, [userId, minSize]);
-    
-    if (parseInt(result.rows[0].large_positions) >= 1) {
+
+  static evaluatePositionSize(snapshot, minSize) {
+    const largePositions = snapshot.trades.filter(
+      t => t.entry_price !== null && t.quantity !== null
+        && Math.abs(t.entry_price * t.quantity) >= minSize
+    ).length;
+
+    if (largePositions >= 1) {
       return {
         earned: true,
         metadata: {
@@ -1758,81 +1615,67 @@ class AchievementService {
         }
       };
     }
-    
+
     return false;
   }
-  
-  // Check daily sector diversity (simplified - assumes symbol format indicates sector)
-  static async checkDailySectorDiversity(userId, minSectors) {
-    const today = new Date().toISOString().split('T')[0];
-    
-    // This is simplified - in real implementation, you'd need a sectors table
-    const query = `
-      SELECT COUNT(DISTINCT LEFT(symbol, 2)) as sector_count
-      FROM trades
-      WHERE user_id = $1
-        AND DATE(entry_time) = $2
-        AND symbol IS NOT NULL
-    `;
-    
-    const result = await db.query(query, [userId, today]);
-    
-    if (parseInt(result.rows[0].sector_count) >= minSectors) {
+
+  // Daily sector diversity (simplified - first two symbol characters)
+  static evaluateDailySectorDiversity(snapshot, minSectors) {
+    const today = snapshot.todayStr;
+    const sectorCount = new Set(
+      snapshot.trades
+        .filter(t => t.entry_date === today && t.symbol !== null && t.symbol !== undefined)
+        .map(t => String(t.symbol).substring(0, 2))
+    ).size;
+
+    if (sectorCount >= minSectors) {
       return {
         earned: true,
         metadata: {
-          sectors_traded: result.rows[0].sector_count,
+          sectors_traded: sectorCount,
           min_sectors: minSectors,
           trade_date: today
         }
       };
     }
-    
+
     return false;
   }
-  
-  // Check weekly portfolio gain
-  static async checkWeeklyPortfolioGain(userId, minPercentage) {
+
+  // Weekly portfolio gain against the simplified $10k starting balance
+  static evaluateWeeklyPortfolioGain(snapshot, minPercentage) {
     const weekStart = new Date();
     weekStart.setDate(weekStart.getDate() - weekStart.getDay()); // Start of current week
-    
-    const query = `
-      WITH week_trades AS (
-        SELECT SUM(pnl) as weekly_pnl
-        FROM trades
-        WHERE user_id = $1
-          AND entry_time >= $2
-          AND exit_time IS NOT NULL
-      ),
-      initial_balance AS (
-        SELECT 10000 as balance  -- Simplified: assuming starting balance
-      )
-      SELECT 
-        weekly_pnl,
-        (weekly_pnl / balance * 100) as percentage_gain
-      FROM week_trades, initial_balance
-      WHERE weekly_pnl IS NOT NULL
-    `;
-    
-    const result = await db.query(query, [userId, weekStart.toISOString()]);
-    
-    if (result.rows.length > 0 && parseFloat(result.rows[0].percentage_gain || 0) >= minPercentage) {
+
+    const weekTrades = snapshot.closedTrades.filter(
+      t => t.pnl !== null && t.entry_time !== null && new Date(t.entry_time) >= weekStart
+    );
+
+    // Old SQL only returned a row when SUM(pnl) was non-NULL
+    if (weekTrades.length === 0) {
+      return false;
+    }
+
+    const weeklyPnl = weekTrades.reduce((sum, t) => sum + t.pnl, 0);
+    const percentageGain = (weeklyPnl / 10000) * 100;
+
+    if (percentageGain >= minPercentage) {
       return {
         earned: true,
         metadata: {
-          weekly_gain_percentage: result.rows[0].percentage_gain,
+          weekly_gain_percentage: percentageGain,
           min_percentage: minPercentage,
-          weekly_pnl: result.rows[0].weekly_pnl
+          weekly_pnl: weeklyPnl
         }
       };
     }
-    
+
     return false;
   }
 
   // Level progression system
   // Level 1: 0-99 XP (needs 100 to reach level 2)
-  // Level 2: 100-249 XP (needs 150 more to reach level 3) 
+  // Level 2: 100-249 XP (needs 150 more to reach level 3)
   // Level 3: 250-449 XP (needs 200 more to reach level 4)
   // Level 4: 450-699 XP (needs 250 more to reach level 5)
   // Each level requires 50 more XP than the previous level increment
@@ -1852,7 +1695,7 @@ class AchievementService {
     while (xp >= nextLevelMinXP) {
       level++;
       currentLevelMinXP = nextLevelMinXP;
-      
+
       // Calculate XP needed for next level: starts at 100, then 150, 200, 250, etc.
       const xpForNextLevel = 100 + (level - 2) * 50;
       nextLevelMinXP = currentLevelMinXP + xpForNextLevel;

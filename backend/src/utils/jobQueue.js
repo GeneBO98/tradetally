@@ -1,16 +1,26 @@
 const db = require('../config/database');
 const logger = require('./logger');
 const marketData = require('./finnhub');
+const { PARALLEL_JOB_TYPES } = require('./jobQueueConfig');
 
 class JobQueue {
   constructor() {
     this.isProcessing = false;
-    this.processingInterval = null;
+    this.pollTimer = null;
+    this.pollInFlight = false;
+    // Idle backoff: after idleThreshold consecutive empty polls the interval
+    // doubles per empty poll up to maxPollIntervalMs; any claimed job (or an
+    // in-process enqueue) resets it to basePollIntervalMs.
+    this.basePollIntervalMs = 5000;
+    this.maxPollIntervalMs = 30000;
+    this.idleThreshold = 6;
+    this.consecutiveEmptyPolls = 0;
+    this.currentPollIntervalMs = this.basePollIntervalMs;
   }
 
   /**
    * Add a job to the queue
-   * @param {string} type - Job type (cusip_resolution, strategy_classification, news_enrichment, news_backfill, quality_backfill, mae_recalc, verification_email, password_reset_email, account_lockout_email, support_request_email)
+   * @param {string} type - Job type (cusip_resolution, strategy_classification, news_enrichment, news_backfill, quality_backfill, mae_recalc, leaderboard_update, verification_email, password_reset_email, account_lockout_email, support_request_email)
    * @param {object} data - Job data
    * @param {number} priority - Priority (1=highest, 5=lowest)
    * @param {string} userId - User ID for the job
@@ -33,10 +43,12 @@ class JobQueue {
       }
       const result = await db.query(query, [type, serializedData, priority, userId]);
       logger.logImport(`Added job ${result.rows[0].id} of type ${type} to queue`);
-      
+
       // Start processing if not already running
       this.startProcessing();
-      
+      // Wake the owning poller back up to its fast interval
+      this.notifyJobEnqueued([type]);
+
       return result.rows[0].id;
     } catch (error) {
       logger.logError(`Failed to add job to queue: ${error.message}`);
@@ -68,10 +80,12 @@ class JobQueue {
     try {
       const result = await db.query(query, values);
       logger.logImport(`Added ${result.rows.length} jobs to queue`);
-      
+
       // Start processing if not already running
       this.startProcessing();
-      
+      // Wake the owning pollers back up to their fast interval
+      this.notifyJobEnqueued([...new Set(result.rows.map(row => row.type))]);
+
       return result.rows;
     } catch (error) {
       logger.logError(`Failed to add batch jobs to queue: ${error.message}`);
@@ -80,16 +94,60 @@ class JobQueue {
   }
 
   /**
-   * Get next job to process
+   * Notify pollers that new jobs were enqueued in-process so backoff resets
+   * and the next poll happens at the fast interval. Types owned by the
+   * parallel queue nudge that queue's worker instead of this one.
+   */
+  notifyJobEnqueued(types = []) {
+    try {
+      const parallelTypes = types.filter(type => PARALLEL_JOB_TYPES.includes(type));
+      const sequentialTypes = types.filter(type => !PARALLEL_JOB_TYPES.includes(type));
+
+      if (sequentialTypes.length > 0) {
+        this.resetBackoff();
+      }
+      if (parallelTypes.length > 0) {
+        // Lazy require to avoid a module cycle (parallelJobQueue requires
+        // this module inside its job processor)
+        const parallelJobQueue = require('./parallelJobQueue');
+        for (const type of parallelTypes) {
+          parallelJobQueue.nudge(type);
+        }
+      }
+    } catch (error) {
+      logger.logError(`Failed to notify pollers of enqueued jobs: ${error.message}`);
+    }
+  }
+
+  /**
+   * Reset idle backoff to the fast polling interval
+   */
+  resetBackoff() {
+    this.consecutiveEmptyPolls = 0;
+    const wasSlow = this.currentPollIntervalMs !== this.basePollIntervalMs;
+    this.currentPollIntervalMs = this.basePollIntervalMs;
+    // If a slow poll is already scheduled, pull it forward. When a poll is
+    // in flight its completion handler reschedules using the (now reset)
+    // interval, which also covers processMAERecalc re-enqueueing itself.
+    if (this.isProcessing && wasSlow && !this.pollInFlight) {
+      this.scheduleNextPoll(this.currentPollIntervalMs);
+    }
+  }
+
+  /**
+   * Get next job to process. Job types owned by the parallel queue
+   * (see utils/jobQueueConfig.js) are excluded so each type has exactly
+   * one owner.
    */
   async getNextJob() {
     const query = `
-      UPDATE job_queue 
+      UPDATE job_queue
       SET status = 'processing', started_at = CURRENT_TIMESTAMP
       WHERE id = (
-        SELECT id FROM job_queue 
-        WHERE status = 'pending' 
-        ORDER BY priority ASC, created_at ASC 
+        SELECT id FROM job_queue
+        WHERE status = 'pending'
+          AND NOT (type = ANY($1))
+        ORDER BY priority ASC, created_at ASC
         LIMIT 1
         FOR UPDATE SKIP LOCKED
       )
@@ -97,7 +155,7 @@ class JobQueue {
     `;
 
     try {
-      const result = await db.query(query);
+      const result = await db.query(query, [PARALLEL_JOB_TYPES]);
       
       if (result.rows[0]) {
         logger.logImport(`Claimed job ${result.rows[0].id} of type ${result.rows[0].type}`);
@@ -176,45 +234,75 @@ class JobQueue {
   }
 
   /**
-   * Start processing jobs
+   * Start processing jobs (self-scheduling poll loop with idle backoff)
    */
   startProcessing() {
     if (this.isProcessing) {
-      logger.logImport('Job queue processing already started');
       return;
     }
 
     this.isProcessing = true;
+    this.consecutiveEmptyPolls = 0;
+    this.currentPollIntervalMs = this.basePollIntervalMs;
     logger.logImport('[START] Starting job queue processing');
 
-    // Process jobs every 5 seconds
-    this.processingInterval = setInterval(async () => {
-      try {
-        const processed = await this.processNextJob();
-        // Only log when we actually process a job or there's an issue
-        if (processed === null) {
-          // Job processing failed, already logged in processNextJob
-        }
-        // Don't log when processed === false (no jobs found) - this is normal
-      } catch (error) {
-        logger.logError(`[ERROR] Error in job processing: ${error.message}`);
-        logger.logError(`Stack trace: ${error.stack}`);
-      }
-    }, 5000);
-    if (typeof this.processingInterval.unref === 'function') {
-      this.processingInterval.unref();
+    this.scheduleNextPoll(this.currentPollIntervalMs);
+
+    logger.logImport(`[SUCCESS] Job queue polling started (base ${this.basePollIntervalMs}ms, idle backoff up to ${this.maxPollIntervalMs}ms)`);
+  }
+
+  /**
+   * Schedule the next poll, replacing any pending timer
+   */
+  scheduleNextPoll(delayMs) {
+    if (!this.isProcessing) return;
+
+    if (this.pollTimer) {
+      clearTimeout(this.pollTimer);
     }
-    
-    logger.logImport('[SUCCESS] Job queue processing interval started (every 5 seconds)');
+    this.pollTimer = setTimeout(() => this.pollOnce(), delayMs);
+    if (typeof this.pollTimer.unref === 'function') {
+      this.pollTimer.unref();
+    }
+  }
+
+  /**
+   * Run a single poll, adjust backoff based on the outcome, reschedule
+   */
+  async pollOnce() {
+    if (!this.isProcessing) return;
+
+    this.pollInFlight = true;
+    let processed = false;
+    try {
+      processed = await this.processNextJob();
+    } catch (error) {
+      logger.logError(`[ERROR] Error in job processing: ${error.message}`);
+      logger.logError(`Stack trace: ${error.stack}`);
+    } finally {
+      this.pollInFlight = false;
+    }
+
+    if (processed) {
+      this.consecutiveEmptyPolls = 0;
+      this.currentPollIntervalMs = this.basePollIntervalMs;
+    } else {
+      this.consecutiveEmptyPolls++;
+      if (this.consecutiveEmptyPolls >= this.idleThreshold) {
+        this.currentPollIntervalMs = Math.min(this.currentPollIntervalMs * 2, this.maxPollIntervalMs);
+      }
+    }
+
+    this.scheduleNextPoll(this.currentPollIntervalMs);
   }
 
   /**
    * Stop processing jobs
    */
   stopProcessing() {
-    if (this.processingInterval) {
-      clearInterval(this.processingInterval);
-      this.processingInterval = null;
+    if (this.pollTimer) {
+      clearTimeout(this.pollTimer);
+      this.pollTimer = null;
     }
     this.isProcessing = false;
     logger.logImport('Stopped job queue processing');
@@ -270,6 +358,9 @@ class JobQueue {
           break;
         case 'mae_recalc':
           result = await this.processMAERecalc(data);
+          break;
+        case 'leaderboard_update':
+          result = await this.processLeaderboardUpdate(data);
           break;
         case 'verification_email':
           result = await this.processVerificationEmail(data);
@@ -732,6 +823,20 @@ class JobQueue {
 
     logger.logImport(`MAE recalc completed for user ${userId}: ${updated} updated, ${skipped} skipped`);
     return { message: `MAE recalc completed: ${updated} updated, ${skipped} skipped` };
+  }
+
+  /**
+   * Rebuild all active leaderboards. Enqueued (debounced) by
+   * achievementService when achievements are awarded, instead of running the
+   * full rebuild inline on the award path.
+   */
+  async processLeaderboardUpdate() {
+    const LeaderboardService = require('../services/leaderboardService');
+
+    logger.logImport('Processing leaderboard update job');
+    await LeaderboardService.updateLeaderboards();
+
+    return { message: 'Leaderboards updated' };
   }
 
   /**

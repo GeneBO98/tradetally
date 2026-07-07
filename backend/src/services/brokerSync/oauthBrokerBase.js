@@ -336,6 +336,14 @@ class OAuthBrokerBase {
     await AnalyticsCache.invalidate(userId);
     invalidateInMemoryCache(userId);
 
+    // Per-row creates skip achievements; run one end-of-batch check instead
+    if (imported > 0) {
+      const AchievementService = require('../achievementService');
+      AchievementService.checkAndAwardAchievements(userId).catch(error => {
+        console.warn(`[${this.config.logPrefix}] Failed to check achievements after sync for user ${userId}:`, error.message);
+      });
+    }
+
     return { imported, skipped, failed, duplicates };
   }
 

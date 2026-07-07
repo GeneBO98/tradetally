@@ -36,9 +36,10 @@ class BackgroundWorker {
       parallelJobQueue.startParallelProcessing();
       logger.logImport('[SUCCESS] Parallel job queue processing started');
       
-      // Also start sequential processing as fallback for other job types
+      // Start sequential processing for the job types the parallel queue
+      // does not own (see utils/jobQueueConfig.js for ownership)
       jobQueue.startProcessing();
-      logger.logImport('[SUCCESS] Sequential job queue also running as fallback');
+      logger.logImport('[SUCCESS] Sequential job queue running for non-parallel job types');
       
       // Verify parallel job queue is actually processing
       const parallelStatus = parallelJobQueue.getStatus();

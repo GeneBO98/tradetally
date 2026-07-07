@@ -296,6 +296,12 @@ async function applyManualReviewDecisions(userId, decisions = []) {
   if (imported > 0) {
     await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'manual trade review');
     await AnalyticsCache.invalidate(userId);
+
+    // Per-row creates skip achievements; run one end-of-batch check instead
+    const AchievementService = require('./achievementService');
+    AchievementService.checkAndAwardAchievements(userId).catch(error => {
+      console.warn(`Failed to check achievements after manual trade review for user ${userId}:`, error.message);
+    });
   }
 
   return {

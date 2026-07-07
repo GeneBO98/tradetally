@@ -1231,6 +1231,14 @@ class SchwabService {
     console.log(`[SCHWAB] Invalidating analytics cache for user ${userId}`);
     await AnalyticsCache.invalidate(userId);
 
+    // Per-row creates skip achievements; run one end-of-batch check instead
+    if (imported > 0) {
+      const AchievementService = require('../achievementService');
+      AchievementService.checkAndAwardAchievements(userId).catch(error => {
+        console.warn(`[SCHWAB] Failed to check achievements after sync for user ${userId}:`, error.message);
+      });
+    }
+
     return { imported, skipped, failed, duplicates };
   }
 

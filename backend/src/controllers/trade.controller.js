@@ -1509,6 +1509,14 @@ const tradeController = {
       // Invalidate caches
       await AnalyticsCache.invalidate(req.user.id);
 
+      // Per-row creates skip achievements; run one end-of-batch check instead
+      if (newTradeIds.length > 0) {
+        const AchievementService = require('../services/achievementService');
+        AchievementService.checkAndAwardAchievements(req.user.id).catch(error => {
+          console.warn(`Failed to check achievements after trade split for user ${req.user.id}:`, error.message);
+        });
+      }
+
       res.json({
         message: isPartialSplit
           ? `Split ${newTradeIds.length} entry fill(s) into new trades, original trade updated`

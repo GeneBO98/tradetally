@@ -673,6 +673,14 @@ class IBKRService {
       console.warn(`[IBKR] AnalyticsCache invalidation failed: ${cacheErr.message}`);
     }
 
+    // Per-row creates skip achievements; run one end-of-batch check instead
+    if (imported > 0 || updated > 0) {
+      const AchievementService = require('../achievementService');
+      AchievementService.checkAndAwardAchievements(userId).catch(error => {
+        console.warn(`[IBKR] Failed to check achievements after sync for user ${userId}:`, error.message);
+      });
+    }
+
     return { imported, updated, skipped, failed, duplicates };
   }
 
