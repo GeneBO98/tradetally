@@ -1078,14 +1078,16 @@
 </template>
 
 <script setup>
-import { onMounted, computed, watch, ref } from 'vue'
+import { onMounted, computed, watch, ref, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { DocumentTextIcon, ChatBubbleLeftIcon, FunnelIcon, XMarkIcon, ExclamationTriangleIcon } from '@heroicons/vue/24/outline'
-import TradeFilters from '@/components/trades/TradeFilters.vue'
+// TradeFilters only ever renders inside the filters modal (v-if="showFiltersModal"),
+// so lazy-load it to keep its ~50 KB out of the TradeListView entry chunk.
+const TradeFilters = defineAsyncComponent(() => import('@/components/trades/TradeFilters.vue'))
 import TradeCommentsDialog from '@/components/trades/TradeCommentsDialog.vue'
 import EnrichmentStatus from '@/components/trades/EnrichmentStatus.vue'
 import ColumnCustomizer from '@/components/trades/ColumnCustomizer.vue'

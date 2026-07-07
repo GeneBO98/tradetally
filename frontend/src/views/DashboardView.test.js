@@ -9,7 +9,12 @@ import { createPinia, setActivePinia } from 'pinia'
 // DashboardView.
 
 const { apiMock, stub } = vi.hoisted(() => {
+  // __esModule marks the mock as an ES module namespace so Vue's
+  // defineAsyncComponent unwraps `.default` (several of these components are now
+  // lazy-loaded). Without it, Vitest's mock-namespace proxy throws when Vue
+  // probes __esModule/__isTeleport on the resolved module.
   const stub = (name) => ({
+    __esModule: true,
     default: { name, template: `<div data-stub="${name}"></div>` }
   })
 
@@ -60,14 +65,15 @@ vi.mock('vue-router', async (importOriginal) => {
   }
 })
 
-vi.mock('chart.js/auto', () => ({
-  default: class ChartStub {
+vi.mock('@/lib/chartSetup', () => {
+  class ChartStub {
     constructor() {}
     update() {}
     resize() {}
     destroy() {}
   }
-}))
+  return { Chart: ChartStub, default: ChartStub }
+})
 
 vi.mock('vuedraggable', () => ({
   default: {
@@ -116,6 +122,9 @@ vi.mock('@/components/common/StockLogo.vue', () => stub('StockLogo'))
 // TradeFilters is stubbed but keeps its `filter` emit contract so the test
 // can drive the exact event the real component fires from the modal.
 vi.mock('@/components/trades/TradeFilters.vue', () => ({
+  // TradeFilters is lazy-loaded via defineAsyncComponent in DashboardView;
+  // __esModule lets Vue unwrap `.default` from the mocked module namespace.
+  __esModule: true,
   default: {
     name: 'TradeFilters',
     props: {
@@ -172,6 +181,9 @@ describe('DashboardView advanced filter wiring (issue #350)', () => {
   async function openFiltersModal(w) {
     await w.get(FILTER_BUTTON_SELECTOR).trigger('click')
     expect(w.find('[role="dialog"]').exists()).toBe(true)
+    // TradeFilters is a defineAsyncComponent; flush the loader microtask so it
+    // resolves and mounts before the test queries it via findComponent.
+    await flushPromises()
   }
 
   it('hydrates persisted filters on mount without counting symbolExact:false toward the badge', async () => {

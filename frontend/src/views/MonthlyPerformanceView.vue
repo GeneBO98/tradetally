@@ -655,14 +655,12 @@
 import { ref, onMounted, onUnmounted, computed, nextTick, watch } from "vue";
 import { useTradesStore } from "@/stores/trades";
 import { useUiPreferencesStore } from "@/stores/uiPreferences";
-import { Chart, registerables } from "chart.js";
+import { Chart } from "@/lib/chartSetup";
 import { useGlobalAccountFilter } from "@/composables/useGlobalAccountFilter";
 import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
 import api from "@/services/api";
 import BaseSelect from "@/components/common/BaseSelect.vue";
 import TagManagement from "@/components/trades/TagManagement.vue";
-
-Chart.register(...registerables);
 
 const tradesStore = useTradesStore();
 const uiPreferencesStore = useUiPreferencesStore();

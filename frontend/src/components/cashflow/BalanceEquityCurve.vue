@@ -42,11 +42,9 @@
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
-import { Chart, registerables } from 'chart.js'
+import { Chart } from '@/lib/chartSetup'
 import { format } from 'date-fns'
 import { usePlaidFundingStore } from '@/stores/plaidFunding'
-
-Chart.register(...registerables)
 
 const plaidFundingStore = usePlaidFundingStore()
 

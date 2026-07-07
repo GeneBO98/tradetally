@@ -59,6 +59,31 @@ export default defineConfig(({ command, mode }) => {
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version)
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Pin large shared vendor deps to stable, explicitly named chunks so
+        // they cache independently of app code and never get merged into a
+        // route chunk.
+        //
+        // NOTE: Vite 8 bundles with Rolldown, and Rolldown's `manualChunks`
+        // compat shim pulls each matched module's dependencies into the chunk
+        // recursively (it dragged the whole Vue runtime into the draggable
+        // chunk). Use the native `codeSplitting` groups API with
+        // includeDependenciesRecursively: false to get classic Rollup
+        // manualChunks semantics (only the matched modules move).
+        codeSplitting: {
+          includeDependenciesRecursively: false,
+          groups: [
+            { name: 'chart', test: /node_modules[\\/](chart\.js|@kurkle)[\\/]/ },
+            { name: 'draggable', test: /node_modules[\\/](vuedraggable|sortablejs)[\\/]/ },
+            { name: 'vendor-markdown', test: /node_modules[\\/](marked|dompurify)[\\/]/ },
+            { name: 'lwcharts', test: /node_modules[\\/](lightweight-charts|fancy-canvas)[\\/]/ }
+          ]
+        }
+      }
+    }
+  },
   plugins: [
     vue(),
     preloadRouteChunks(),

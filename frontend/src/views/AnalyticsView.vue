@@ -1146,7 +1146,7 @@ import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { usePricingExperiment } from '@/composables/usePricingExperiment'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
-import Chart from 'chart.js/auto'
+import { Chart } from '@/lib/chartSetup'
 
 const { use12Hour } = useUserTimezone()
 const { formatCurrency, currencySymbol } = useCurrencyFormatter()

@@ -124,11 +124,9 @@
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
-import { Chart, registerables } from 'chart.js'
+import { Chart } from '@/lib/chartSetup'
 import { format } from 'date-fns'
 import { useInvestmentsStore } from '@/stores/investments'
-
-Chart.register(...registerables)
 
 const investmentsStore = useInvestmentsStore()
 

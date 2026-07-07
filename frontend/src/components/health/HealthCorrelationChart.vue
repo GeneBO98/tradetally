@@ -121,11 +121,9 @@
 
 <script setup>
 import { ref, onMounted, computed, watch, nextTick } from 'vue'
-import { Chart, registerables } from 'chart.js'
+import { Chart } from '@/lib/chartSetup'
 import api from '@/services/api'
 import BaseSelect from '@/components/common/BaseSelect.vue'
-
-Chart.register(...registerables)
 
 const props = defineProps({
   userId: String

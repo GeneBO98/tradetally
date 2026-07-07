@@ -157,10 +157,8 @@
 
 <script setup>
 import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import { Chart, registerables } from 'chart.js'
+import { Chart } from '@/lib/chartSetup'
 import api from '@/services/api'
-
-Chart.register(...registerables)
 
 const props = defineProps({
   filters: {

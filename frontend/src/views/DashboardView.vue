@@ -1607,32 +1607,40 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick, watch, computed, onUnmounted } from 'vue'
+import { ref, onMounted, nextTick, watch, computed, onUnmounted, defineAsyncComponent } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
 import { format } from 'date-fns'
 import { formatTradeDate, formatLocalDate } from '@/utils/date'
-import Chart from 'chart.js/auto'
+import { Chart } from '@/lib/chartSetup'
 import api from '@/services/api'
-import TradeNewsSection from '@/components/dashboard/TradeNewsSection.vue'
-import UpcomingEarningsSection from '@/components/dashboard/UpcomingEarningsSection.vue'
+// Above-the-fold sections stay statically imported so they render on the
+// first paint without a chunk-fetch waterfall.
 import TodaysJournalEntry from '@/components/diary/TodaysJournalEntry.vue'
 import HeroMetricsRibbon from '@/components/dashboard/HeroMetricsRibbon.vue'
 import AiInsightCard from '@/components/dashboard/AiInsightCard.vue'
-import CalendarHeatmap from '@/components/dashboard/CalendarHeatmap.vue'
-import StreakMomentumCard from '@/components/dashboard/StreakMomentumCard.vue'
-import BehavioralAlertsCard from '@/components/dashboard/BehavioralAlertsCard.vue'
-import RecentTradesTimeline from '@/components/dashboard/RecentTradesTimeline.vue'
-import WinLossPulse from '@/components/dashboard/WinLossPulse.vue'
-import MarketRiskCard from '@/components/dashboard/MarketRiskCard.vue'
 import MdiIcon from '@/components/MdiIcon.vue'
 import { mdiCheckCircle } from '@mdi/js'
 import { getRefreshInterval, shouldRefreshPrices, getMarketStatus } from '@/utils/marketHours'
 import YearWrappedBanner from '@/components/yearWrapped/YearWrappedBanner.vue'
-import YearWrappedModal from '@/components/yearWrapped/YearWrappedModal.vue'
 import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
 import StockLogo from '@/components/common/StockLogo.vue'
-import TradeFilters from '@/components/trades/TradeFilters.vue'
+// Below-the-fold dashboard sections and modal-only panels are lazy-loaded so
+// their code (and deps like the news/earnings and chart helpers) drops out of
+// the DashboardView entry chunk. They mount as the user scrolls / opens the
+// modal — the load delay is invisible for content that isn't in the first
+// viewport. (vuedraggable is deliberately NOT async: it wraps the above-fold
+// hero ribbon, so deferring it would flash the primary content.)
+const TradeNewsSection = defineAsyncComponent(() => import('@/components/dashboard/TradeNewsSection.vue'))
+const UpcomingEarningsSection = defineAsyncComponent(() => import('@/components/dashboard/UpcomingEarningsSection.vue'))
+const CalendarHeatmap = defineAsyncComponent(() => import('@/components/dashboard/CalendarHeatmap.vue'))
+const StreakMomentumCard = defineAsyncComponent(() => import('@/components/dashboard/StreakMomentumCard.vue'))
+const BehavioralAlertsCard = defineAsyncComponent(() => import('@/components/dashboard/BehavioralAlertsCard.vue'))
+const RecentTradesTimeline = defineAsyncComponent(() => import('@/components/dashboard/RecentTradesTimeline.vue'))
+const WinLossPulse = defineAsyncComponent(() => import('@/components/dashboard/WinLossPulse.vue'))
+const MarketRiskCard = defineAsyncComponent(() => import('@/components/dashboard/MarketRiskCard.vue'))
+const YearWrappedModal = defineAsyncComponent(() => import('@/components/yearWrapped/YearWrappedModal.vue'))
+const TradeFilters = defineAsyncComponent(() => import('@/components/trades/TradeFilters.vue'))
 import { useYearWrappedStore } from '@/stores/yearWrapped'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { useTradesStore } from '@/stores/trades'
