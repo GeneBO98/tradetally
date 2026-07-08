@@ -172,6 +172,13 @@ const brokerStyles = computed(() => {
         bgClass: 'bg-cyan-100 dark:bg-cyan-900/30',
         textClass: 'text-cyan-600 dark:text-cyan-400'
       }
+    case 'webull':
+      return {
+        name: 'Webull',
+        abbrev: 'WB',
+        bgClass: 'bg-orange-100 dark:bg-orange-900/30',
+        textClass: 'text-orange-600 dark:text-orange-400'
+      }
     default:
       return {
         name: props.connection.brokerType,

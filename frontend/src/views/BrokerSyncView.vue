@@ -194,6 +194,26 @@
                 </div>
               </div>
             </div>
+
+            <!-- Webull Card -->
+            <div
+              class="p-6 border-2 rounded-lg transition-colors"
+              :class="brokerCardClass('webull')"
+              @click="canConnectBroker('webull') && handleBrokerOAuthConnect('webull')"
+            >
+              <div class="flex items-center space-x-4">
+                <div class="flex-shrink-0 w-12 h-12 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-center justify-center">
+                  <div v-if="brokerConnecting.webull" class="animate-spin h-6 w-6 rounded-full border-2 border-orange-200 border-t-orange-600"></div>
+                  <span v-else class="text-orange-600 dark:text-orange-400 font-bold text-lg">WB</span>
+                </div>
+                <div>
+                  <h4 class="font-medium text-gray-900 dark:text-white">Webull</h4>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ brokerConnection('webull') ? 'Already connected' : brokerConnecting.webull ? 'Connecting...' : 'Connect via OAuth' }}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- Schwab Note -->
@@ -209,7 +229,7 @@
       <ProUpgradePrompt
         v-else-if="showUpgradeGate"
         variant="card"
-        description="Broker sync is a Pro feature. Connect Interactive Brokers, Schwab, TradeStation, or Alpaca to import your trades automatically. Free accounts can still import via CSV (up to 100 trades per import)."
+        description="Broker sync is a Pro feature. Connect Interactive Brokers, Schwab, TradeStation, Alpaca, or Webull to import your trades automatically. Free accounts can still import via CSV (up to 100 trades per import)."
       />
 
       <!-- Sync History -->
@@ -373,7 +393,8 @@ const schwabConnecting = ref(false)
 const brokerConnecting = ref({
   tradestation: false,
   alpacaLive: false,
-  alpacaPaper: false
+  alpacaPaper: false,
+  webull: false
 })
 const SCHWAB_PENDING_STORAGE_KEY = 'broker_sync_schwab_pending'
 const BROKER_PENDING_STORAGE_KEY = 'broker_sync_pending'
@@ -439,7 +460,7 @@ function openManualReviewFromSyncLog(log, force = false) {
 }
 
 async function consumeOAuthCallbackState(query) {
-  const supportedSuccess = ['schwab', 'tradestation', 'alpaca']
+  const supportedSuccess = ['schwab', 'tradestation', 'alpaca', 'webull']
   const hasCallbackState = supportedSuccess.includes(query.success) || Boolean(query.error)
 
   if (!hasCallbackState) {
@@ -476,6 +497,8 @@ async function consumeOAuthCallbackState(query) {
     scheduleSuccessMessage('TradeStation account connected successfully. Ready to sync trades.')
   } else if (query.success === 'alpaca') {
     scheduleSuccessMessage('Alpaca account connected successfully. Ready to sync trades.')
+  } else if (query.success === 'webull') {
+    scheduleSuccessMessage('Webull account connected successfully. Ready to sync trades.')
   }
 
   if (query.error === 'pro_required') {

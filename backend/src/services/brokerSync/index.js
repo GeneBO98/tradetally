@@ -11,6 +11,7 @@ const ibkrService = require('./ibkrService');
 const schwabService = require('./schwabService');
 const tradestationService = require('./tradestationService');
 const alpacaService = require('./alpacaService');
+const webullService = require('./webullService');
 
 class BrokerSyncService {
   /**
@@ -102,6 +103,14 @@ class BrokerSyncService {
 
         case 'alpaca':
           result = await alpacaService.syncTrades(connection, {
+            startDate,
+            endDate,
+            syncLogId: syncLog.id
+          });
+          break;
+
+        case 'webull':
+          result = await webullService.syncTrades(connection, {
             startDate,
             endDate,
             syncLogId: syncLog.id
@@ -261,6 +270,12 @@ class BrokerSyncService {
         return {
           valid: alpacaService.isConfigured(),
           message: alpacaService.isConfigured() ? 'Alpaca OAuth is configured' : 'Alpaca OAuth is not configured'
+        };
+
+      case 'webull':
+        return {
+          valid: webullService.isConfigured(),
+          message: webullService.isConfigured() ? 'Webull OAuth is configured' : 'Webull OAuth is not configured'
         };
 
       default:
