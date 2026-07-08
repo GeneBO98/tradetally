@@ -6,7 +6,7 @@ const BehavioralAnalysisPositionService = require('./behavioralAnalysisPositionS
 const symbolCategories = require('../utils/symbolCategories');
 const AnalyticsCache = require('./analyticsCache');
 
-const REVENGE_CALCULATION_VERSION = '2026-07-risk-v3';
+const REVENGE_CALCULATION_VERSION = '2026-07-risk-v4';
 
 // Enhanced version with proper revenge trade aggregation
 class BehavioralAnalyticsServiceV2 {
@@ -147,8 +147,7 @@ class BehavioralAnalyticsServiceV2 {
           let crossSymbolQualifier = null;
 
           if (!isSameSymbol) {
-            if (isPositionEscalation) crossSymbolQualifier = 'position_escalation';
-            else if (isSameSector) crossSymbolQualifier = 'same_sector';
+            if (isSameSector) crossSymbolQualifier = 'same_sector';
           }
 
           const admitted = isSameSymbol
@@ -171,6 +170,7 @@ class BehavioralAnalyticsServiceV2 {
             window_minutes: isSameSymbol ? revengeWindows.same : revengeWindows.cross,
             position_risk: candidateRiskBasis,
             risk_escalation_eligible: canUseRiskEscalation,
+            risk_escalation_detected: isPositionEscalation,
             pnl: tradePnL,
             position_key: candidateTrade.position_key,
             position_group_id: candidateTrade.position_group_id,
@@ -226,7 +226,8 @@ class BehavioralAnalyticsServiceV2 {
             symbol: trade.symbol,
             position_risk: trade.position_risk,
             cross_symbol_qualifier: trade.cross_symbol_qualifier,
-            risk_escalation_eligible: trade.risk_escalation_eligible
+            risk_escalation_eligible: trade.risk_escalation_eligible,
+            risk_escalation_detected: trade.risk_escalation_detected
           }))
         };
 
@@ -295,6 +296,7 @@ class BehavioralAnalyticsServiceV2 {
                 revengeRiskBasis: revengeTrade.position_risk,
                 crossSymbolQualifier: revengeTrade.cross_symbol_qualifier,
                 riskEscalationEligible: revengeTrade.risk_escalation_eligible,
+                riskEscalationDetected: revengeTrade.risk_escalation_detected,
                 triggerIndustry: revengeTrade.trigger_industry,
                 revengeIndustry: revengeTrade.revenge_industry,
                 windowMinutes: revengeTrade.window_minutes,

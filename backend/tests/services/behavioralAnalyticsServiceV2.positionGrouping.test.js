@@ -136,7 +136,7 @@ describe('BehavioralAnalyticsServiceV2 position-level revenge detection', () => 
     expect(db.query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO revenge_trading_events'))).toBe(false);
   });
 
-  test('admits cross-symbol candidate within 60 minutes with reliable 1.3x risk escalation', async () => {
+  test('rejects unrelated cross-symbol candidate with reliable risk escalation but no relationship signal', async () => {
     BehavioralAnalysisPositionService.getCompletedPositions.mockResolvedValue([
       position({ id: '00000000-0000-4000-8000-000000000401', symbol: 'NAB', pnl: -600, position_size: 1000 }),
       position({
@@ -154,12 +154,9 @@ describe('BehavioralAnalyticsServiceV2 position-level revenge detection', () => 
     ]);
 
     const result = await BehavioralAnalyticsServiceV2.analyzeHistoricalTradesV2('user-1');
-    const patternInsert = db.query.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO behavioral_patterns'));
-    const context = JSON.parse(patternInsert[1][5]);
 
-    expect(result.revengeEventsCreated).toBe(1);
-    expect(context.crossSymbolQualifier).toBe('position_escalation');
-    expect(context.windowMinutes).toBe(60);
+    expect(result.revengeEventsCreated).toBe(0);
+    expect(db.query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO revenge_trading_events'))).toBe(false);
   });
 
   test('rejects cross-symbol size escalation when option risk basis is approximate', async () => {

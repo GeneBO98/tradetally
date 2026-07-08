@@ -1,7 +1,7 @@
 const db = require('../config/database');
 const TierService = require('./tierService');
 
-const REVENGE_CALCULATION_VERSION = '2026-07-risk-v3';
+const REVENGE_CALCULATION_VERSION = '2026-07-risk-v4';
 
 class BehavioralAnalyticsService {
   static addDateRange(column, params, filter = {}) {
