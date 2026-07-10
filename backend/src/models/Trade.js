@@ -7,6 +7,7 @@ const logger = require('../utils/logger');
 const { toSnakeCase } = require('../utils/caseConvert');
 const { buildTradeDateRangeClause } = require('../utils/tradeDateFilter');
 const OptionStrategyGroupingService = require('../services/optionStrategyGroupingService');
+const { getPublicTradeSqlColumns } = require('../utils/publicTrade');
 /**
  * Round a numeric value to fit database precision
  * DECIMAL(20, 8) allows up to 12 integer digits and 8 decimal places
@@ -978,6 +979,7 @@ class Trade {
       SELECT t.*,
         u.username,
         u.avatar_url,
+        generate_anonymous_name(u.id) as anonymous_username,
         COALESCE(gp.display_name, u.username) as display_name,
         t.strategy, t.setup,
         (SELECT json_agg(
@@ -1018,7 +1020,7 @@ class Trade {
       query += ` AND t.is_public = true`;
     }
 
-    query += ` GROUP BY t.id, u.username, u.avatar_url, gp.display_name, sc.finnhub_industry, sc.company_name`;
+    query += ` GROUP BY t.id, u.id, u.username, u.avatar_url, gp.display_name, sc.finnhub_industry, sc.company_name`;
 
     const result = await db.query(query, values);
     const trade = result.rows[0];
@@ -1946,11 +1948,21 @@ class Trade {
   }
 
   static async getPublicTrades(filters = {}) {
+    const values = [];
+    let paramCount = 1;
+    let ownerProjection = 'false AS is_owner';
+    if (filters.viewerUserId) {
+      ownerProjection = `(t.user_id = $${paramCount}) AS is_owner`;
+      values.push(filters.viewerUserId);
+      paramCount++;
+    }
+
     let query = `
-      SELECT t.*,
+      SELECT ${getPublicTradeSqlColumns('t')},
+        ${ownerProjection},
         generate_anonymous_name(u.id) as username,
-        u.avatar_url,
-        COALESCE(gp.display_name, generate_anonymous_name(u.id)) as display_name,
+        NULL::text as avatar_url,
+        generate_anonymous_name(u.id) as display_name,
         array_agg(DISTINCT ta.file_url) FILTER (WHERE ta.id IS NOT NULL) as attachment_urls,
         count(DISTINCT tc.id)::integer as comment_count
       FROM trades t
@@ -1961,9 +1973,6 @@ class Trade {
       LEFT JOIN trade_comments tc ON t.id = tc.trade_id
       WHERE t.is_public = true AND us.public_profile = true
     `;
-
-    const values = [];
-    let paramCount = 1;
 
     if (filters.symbol) {
       if (filters.symbolExact) {

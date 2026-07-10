@@ -19,6 +19,7 @@ const authLimiter = rateLimit({
 // Enhanced mobile authentication routes
 router.post('/register', authLimiter, validate(schemas.register), authV1Controller.register);
 router.post('/login', authLimiter, validate(schemas.login), authV1Controller.login);
+router.post('/verify-2fa', authLimiter, validate(schemas.verify2FA), authV1Controller.verify2FA);
 router.post('/logout', authenticate, authV1Controller.logout);
 router.post('/refresh', authV1Controller.refreshToken);
 

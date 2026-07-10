@@ -512,7 +512,25 @@ class TierService {
    * Set a user's tier directly (used by Apple IAP verification).
    * Updates the base tier and creates/updates a tier override.
    */
-  static async setUserTier(userId, tier, reason) {
+  static async setUserTier(userId, tier, reason, dbClient = null) {
+    if (dbClient) {
+      await dbClient.query(
+        'UPDATE users SET tier = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+        [tier, userId]
+      );
+      await dbClient.query(`
+        INSERT INTO tier_overrides (user_id, tier, reason, expires_at, created_by)
+        VALUES ($1, $2, $3, NULL, NULL)
+        ON CONFLICT (user_id) DO UPDATE SET
+          tier = EXCLUDED.tier,
+          reason = EXCLUDED.reason,
+          expires_at = NULL,
+          created_by = NULL,
+          updated_at = CURRENT_TIMESTAMP
+      `, [userId, tier, reason]);
+      return;
+    }
+
     await User.updateTier(userId, tier);
     // Create a permanent tier override (no expiry) so getUserTier picks it up
     await User.createTierOverride(userId, tier, reason, null, null);

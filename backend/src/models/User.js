@@ -58,7 +58,7 @@ class User {
     const query = `
       INSERT INTO users (email, username, password_hash, full_name, verification_token, verification_expires, role, is_verified, admin_approved, tier, marketing_consent)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-      RETURNING id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, tier, marketing_consent, created_at
+      RETURNING id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, tier, marketing_consent, session_version, created_at
     `;
 
     const values = [normalizeEmail(email), username, hashedPassword, fullName, hashLookupToken(verificationToken), verificationExpires, role, isVerified, adminApproved, tier, marketingConsent];
@@ -70,7 +70,8 @@ class User {
   static async findById(id) {
     const query = `
       SELECT id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone,
-             two_factor_enabled, two_factor_secret, two_factor_backup_codes, tier, marketing_consent, created_at, updated_at, last_login_at
+             two_factor_enabled, two_factor_secret, two_factor_backup_codes, tier, marketing_consent,
+             session_version, created_at, updated_at, last_login_at
       FROM users
       WHERE id = $1 AND is_active = true
     `;
@@ -94,7 +95,7 @@ class User {
   static async findByEmail(email) {
     const query = `
       SELECT id, email, username, password_hash, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone,
-             two_factor_enabled, two_factor_secret, tier, created_at, last_login_at,
+             two_factor_enabled, two_factor_secret, two_factor_backup_codes, tier, session_version, created_at, last_login_at,
              failed_login_attempts, account_locked_at
       FROM users
       WHERE email = $1
@@ -417,12 +418,23 @@ class User {
       UPDATE users
       SET password_hash = $1, reset_token = NULL, reset_expires = NULL,
           failed_login_attempts = 0, account_locked_at = NULL,
-          unlock_token = NULL, unlock_expires = NULL
+          unlock_token = NULL, unlock_expires = NULL,
+          session_version = session_version + 1
       WHERE id = $2
       RETURNING *
     `;
 
     const result = await db.query(query, [hashedPassword, userId]);
+    return result.rows[0];
+  }
+
+  static async revokeSessions(userId) {
+    const result = await db.query(`
+      UPDATE users
+      SET session_version = session_version + 1, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+      RETURNING session_version
+    `, [userId]);
     return result.rows[0];
   }
 

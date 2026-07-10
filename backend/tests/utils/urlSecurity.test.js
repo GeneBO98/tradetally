@@ -46,4 +46,34 @@ describe('url security validation', () => {
       fetchWithValidatedRedirects('https://public.example.test/hook', fetchImpl, {}, { mode: 'public' })
     ).rejects.toThrow(OutboundUrlValidationError);
   });
+
+  test('pins the request agent to the address that passed validation', async () => {
+    dns.lookup.mockResolvedValue([{ address: '203.0.113.10', family: 4 }]);
+    const fetchImpl = jest.fn().mockResolvedValue({ status: 200, headers: { get: jest.fn() } });
+
+    await fetchWithValidatedRedirects('https://public.example.test/hook', fetchImpl, {}, { mode: 'public' });
+
+    const options = fetchImpl.mock.calls[0][1];
+    expect(options.redirect).toBe('manual');
+    expect(options.agent).toBeDefined();
+    const lookup = options.agent.options.lookup;
+    const result = await new Promise((resolve, reject) => {
+      lookup('public.example.test', {}, (error, address, family) => {
+        if (error) reject(error);
+        else resolve({ address, family });
+      });
+    });
+    expect(result).toEqual({ address: '203.0.113.10', family: 4 });
+  });
+
+  test('disables loopback AI providers on cloud deployments', async () => {
+    process.env.ALLOW_LOCAL_AI_ENDPOINTS = 'false';
+    const { validateAiProviderUrl } = require('../../src/utils/urlSecurity');
+
+    await expect(validateAiProviderUrl('ollama', 'http://localhost:11434'))
+      .rejects.toThrow('Local AI endpoints are disabled');
+
+    delete process.env.ALLOW_LOCAL_AI_ENDPOINTS;
+    expect(dns.lookup).not.toHaveBeenCalled();
+  });
 });

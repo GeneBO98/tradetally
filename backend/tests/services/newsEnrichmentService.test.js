@@ -119,4 +119,32 @@ describe('newsEnrichmentService option symbol resolution', () => {
       ]
     ]);
   });
+
+  it('rejects zero and oversized batch controls before querying', async () => {
+    await expect(newsEnrichmentService.backfillTradeNews({
+      userId: 'user-1',
+      batchSize: 0
+    })).rejects.toThrow('batchSize must be an integer between 1 and 100');
+
+    await expect(newsEnrichmentService.backfillTradeNews({
+      userId: 'user-1',
+      maxTrades: 10001
+    })).rejects.toThrow('maxTrades must be an integer between 1 and 10000');
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
+  it('parameterizes the max trade limit', async () => {
+    db.query.mockResolvedValueOnce({ rows: [] });
+
+    await newsEnrichmentService.backfillTradeNews({
+      userId: 'user-1',
+      batchSize: 10,
+      maxTrades: 25
+    });
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('LIMIT $2'),
+      ['user-1', 25]
+    );
+  });
 });

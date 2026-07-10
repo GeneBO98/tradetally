@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const serverController = require('../../controllers/v1/server.controller');
+const { requireAdmin } = require('../../middleware/auth');
 
 // Server discovery and configuration
 router.get('/info', serverController.getServerInfo);
@@ -15,8 +16,8 @@ router.get('/endpoints', serverController.getEndpoints);
 
 // Instance health and status
 router.get('/health', serverController.getHealth);
-router.get('/status', serverController.getStatus);
-router.get('/metrics', serverController.getMetrics);
+router.get('/status', requireAdmin, serverController.getStatus);
+router.get('/metrics', requireAdmin, serverController.getMetrics);
 
 // Mobile app configuration
 router.get('/mobile/config', serverController.getMobileConfig);

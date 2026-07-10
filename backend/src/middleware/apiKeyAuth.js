@@ -2,7 +2,7 @@ const ApiKey = require('../models/ApiKey');
 const logger = require('../utils/logger');
 const { hasScope, resolveEffectiveScopes } = require('../utils/apiScopes');
 const { isV1Request, sendV1Error } = require('../utils/apiResponse');
-const { TOKEN_PURPOSES, verifyJwtToken } = require('./auth');
+const { TOKEN_PURPOSES, verifyJwtToken, isTokenSessionValid } = require('./auth');
 const { AUTH_COOKIE_NAME } = require('../utils/authCookies');
 
 function sendAuthError(req, res, status, code, message, extra = {}) {
@@ -145,7 +145,7 @@ const flexibleAuth = async (req, res, next) => {
         const decoded = verifyJwtToken(token, { requiredPurpose: TOKEN_PURPOSES.ACCESS });
         const user = await User.findById(decoded.id || decoded.userId);
         
-        if (user && user.is_active) {
+        if (user && user.is_active && isTokenSessionValid(decoded, user)) {
           req.user = user;
           req.authMethod = 'jwt';
           return next();
@@ -169,7 +169,7 @@ const flexibleAuth = async (req, res, next) => {
       try {
         const decoded = verifyJwtToken(cookieToken, { requiredPurpose: TOKEN_PURPOSES.ACCESS });
         const user = await User.findById(decoded.id || decoded.userId);
-        if (user && user.is_active) {
+        if (user && user.is_active && isTokenSessionValid(decoded, user)) {
           req.user = user;
           req.authMethod = 'jwt';
           return next();
@@ -221,7 +221,7 @@ const flexibleOptionalAuth = async (req, res, next) => {
       try {
         const decoded = verifyJwtToken(token, { requiredPurpose: TOKEN_PURPOSES.ACCESS });
         const user = await User.findById(decoded.id || decoded.userId);
-        if (user && user.is_active) {
+        if (user && user.is_active && isTokenSessionValid(decoded, user)) {
           req.user = user;
           req.authMethod = 'jwt';
         }
@@ -248,7 +248,7 @@ const flexibleOptionalAuth = async (req, res, next) => {
       try {
         const decoded = verifyJwtToken(cookieToken, { requiredPurpose: TOKEN_PURPOSES.ACCESS });
         const user = await User.findById(decoded.id || decoded.userId);
-        if (user && user.is_active) {
+        if (user && user.is_active && isTokenSessionValid(decoded, user)) {
           req.user = user;
           req.authMethod = 'jwt';
         }

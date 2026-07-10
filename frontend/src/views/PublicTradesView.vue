@@ -330,7 +330,7 @@ function canDeleteTrade(trade) {
   if (!user) return false
   
   // User can delete if they own the trade OR if they are an admin
-  return trade.user_id === user.id || user.role === 'admin'
+  return trade.is_owner === true || user.role === 'admin'
 }
 
 async function deleteTrade(trade) {

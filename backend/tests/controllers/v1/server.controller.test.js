@@ -3,6 +3,7 @@ jest.mock('../../../src/config/database', () => ({
 }));
 
 const serverV1Controller = require('../../../src/controllers/v1/server.controller');
+const serverRoutes = require('../../../src/routes/v1/server.routes');
 
 function createMockRes(requestId = 'req-server') {
   return {
@@ -44,5 +45,14 @@ describe('v1 server controller', () => {
     expect(caps.data.offline_support).toBeUndefined();
     expect(caps.platform.websockets).toBeUndefined();
     expect(next).not.toHaveBeenCalled();
+  });
+});
+
+describe('v1 server diagnostic route authorization', () => {
+  test.each(['/status', '/metrics'])('%s has an authorization middleware before its controller', (path) => {
+    const layer = serverRoutes.stack.find(item => item.route?.path === path);
+    expect(layer).toBeDefined();
+    expect(layer.route.stack).toHaveLength(2);
+    expect(layer.route.stack[0].handle.name).toBe('requireAdmin');
   });
 });

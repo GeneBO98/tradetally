@@ -173,7 +173,7 @@ describe('auth controller 2FA flow', () => {
     }));
   });
 
-  test('verify2FA accepts a legacy temp token without a purpose claim', async () => {
+  test('verify2FA rejects a legacy temp token without a purpose claim', async () => {
     const user = {
       id: 'legacy-user-id',
       email: 'legacy@example.com',
@@ -215,8 +215,9 @@ describe('auth controller 2FA flow', () => {
     await authController.verify2FA(req, res, next);
 
     expect(next).not.toHaveBeenCalled();
-    expect(res.statusCode).toBe(200);
-    expect(res.payload.token).toEqual(expect.any(String));
+    expect(res.statusCode).toBe(401);
+    expect(res.payload).toEqual({ error: 'Invalid or expired temporary token' });
+    expect(User.findById).not.toHaveBeenCalled();
   });
 
   test('register queues verification email for non-first users', async () => {

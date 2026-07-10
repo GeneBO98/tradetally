@@ -8,7 +8,8 @@ const newsEnrichmentController = {
    */
   async getStats(req, res, next) {
     try {
-      const stats = await newsEnrichmentService.getStats();
+      const includeGlobal = ['admin', 'owner'].includes(req.user.role);
+      const stats = await newsEnrichmentService.getStats(req.user.id, includeGlobal);
       res.json(stats);
     } catch (error) {
       logger.logError(`Error getting news enrichment stats: ${error.message}`);
@@ -21,22 +22,28 @@ const newsEnrichmentController = {
    */
   async startBackfill(req, res, next) {
     try {
-      const { userId, batchSize = 50, maxTrades = null } = req.body;
+      const requestedUserId = req.body.user_id || req.body.userId || req.user.id;
+      const batchSize = req.body.batch_size ?? req.body.batchSize ?? 50;
+      const maxTrades = req.body.max_trades ?? req.body.maxTrades ?? null;
+
+      if (requestedUserId !== req.user.id && !['admin', 'owner'].includes(req.user.role)) {
+        return res.status(403).json({ error: 'Admin access is required to backfill another user' });
+      }
       
       // Queue the backfill job to process in background
       const jobId = await jobQueue.addJob('news_backfill', {
-        userId: userId || req.user.id,
+        userId: requestedUserId,
         batchSize,
         maxTrades
       }, 2); // Priority 2 (higher than default)
 
-      logger.logImport(`Queued news backfill job ${jobId} for user ${userId || req.user.id}`);
+      logger.logImport(`Queued news backfill job ${jobId} for user ${requestedUserId}`);
 
       res.json({
         message: 'News backfill job started',
         jobId: jobId,
         details: {
-          userId: userId || req.user.id,
+          userId: requestedUserId,
           batchSize,
           maxTrades
         }

@@ -8,6 +8,8 @@ const db = require('../config/database');
 const path = require('path');
 const fs = require('fs').promises;
 const imageProcessor = require('../utils/imageProcessor');
+const refreshTokenService = require('../services/refreshToken.service');
+const { clearAuthUserCache } = require('../middleware/auth');
 
 const PROTECTED_EMAIL = (process.env.DEMO_EMAIL || 'demo@example.com').toLowerCase();
 
@@ -277,6 +279,9 @@ const userController = {
       }
 
       await User.update(req.user.id, { password: newPassword });
+      await User.revokeSessions(req.user.id);
+      await refreshTokenService.revokeUserTokens(req.user.id, 'password_change');
+      clearAuthUserCache(req.user.id);
       
       res.json({ message: 'Password changed successfully' });
     } catch (error) {

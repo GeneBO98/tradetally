@@ -25,9 +25,10 @@ const Playbook = require('../models/Playbook');
 const PlaybookAdherenceService = require('../services/playbookAdherence.service');
 const MAEEstimator = require('../utils/maeEstimator');
 const TierService = require('../services/tierService');
-const { verifyJwtToken, TOKEN_PURPOSES } = require('../middleware/auth');
+const { verifyJwtToken, TOKEN_PURPOSES, isTokenSessionValid } = require('../middleware/auth');
 const { escapeCsv } = require('../utils/csvEscape');
 const { buildExistingTradeIndex, classifyImportTrade } = require('../utils/importDuplicateDetection');
+const { sanitizePublicTrade } = require('../utils/publicTrade');
 const {
   applyBrokerFeeSettingsToTrades,
   getBrokerLookupNames
@@ -1085,10 +1086,15 @@ const tradeController = {
         return res.status(400).json({ error: 'Invalid trade ID format' });
       }
       
-      const trade = await Trade.findById(tradeId, req.user?.id);
+      let trade = await Trade.findById(tradeId, req.user?.id);
       
       if (!trade) {
         return res.status(404).json({ error: 'Trade not found' });
+      }
+
+      const isOwner = req.user?.id === trade.user_id;
+      if (!isOwner) {
+        trade = sanitizePublicTrade(trade);
       }
 
       // Parse executions JSON if it exists
@@ -1144,7 +1150,7 @@ const tradeController = {
       if (trade.quality_score !== undefined) trade.qualityScore = trade.quality_score;
       if (trade.quality_metrics !== undefined) trade.qualityMetrics = trade.quality_metrics;
 
-      if (req.user?.id) {
+      if (isOwner) {
         const reviews = await Playbook.getTradeReviewsByTradeId(tradeId, req.user.id);
         const adherenceReview = reviews.find(review => review.review_type === 'adherence') || null;
         const manualGradingReview = reviews.find(review => review.review_type === 'manual_grading') || null;
@@ -1738,6 +1744,7 @@ const tradeController = {
       const filters = {
         symbol,
         username,
+        viewerUserId: req.user?.id,
         limit: parseInt(limit),
         offset: parseInt(offset)
       };
@@ -1837,7 +1844,9 @@ const tradeController = {
 
       // Get the comment with user information
       const selectQuery = `
-        SELECT tc.*, ${usernameField}, u.avatar_url
+        SELECT tc.id, tc.trade_id, tc.comment, tc.created_at, tc.updated_at,
+               ${usernameField},
+               CASE WHEN $2::boolean THEN NULL ELSE u.avatar_url END AS avatar_url
         FROM trade_comments tc
         JOIN users u ON tc.user_id = u.id
         WHERE tc.id = $1
@@ -1871,7 +1880,7 @@ const tradeController = {
         ORDER BY tc.created_at DESC
       `;
 
-      const result = await db.query(query, [req.params.id]);
+      const result = await db.query(query, [req.params.id, trade.is_public]);
 
       res.json({ comments: result.rows });
     } catch (error) {
@@ -4534,7 +4543,10 @@ const tradeController = {
       if (!user && req.query.token) {
         try {
           const decoded = verifyJwtToken(req.query.token, { requiredPurpose: TOKEN_PURPOSES.ACCESS });
-          user = { id: decoded.id };
+          const tokenUser = await User.findById(decoded.id);
+          if (tokenUser && tokenUser.is_active && isTokenSessionValid(decoded, tokenUser)) {
+            user = tokenUser;
+          }
         } catch (error) {
           console.log('JWT verification failed for query token:', error.message);
           // Token is invalid, continue without user context
@@ -4591,7 +4603,12 @@ const tradeController = {
 
       // Set appropriate headers
       res.setHeader('Content-Type', attachment.file_type || 'image/webp');
-      res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+      res.setHeader(
+        'Cache-Control',
+        attachment.is_public
+          ? 'public, max-age=31536000, immutable'
+          : 'private, no-store, max-age=0'
+      );
 
       // Send file
       res.sendFile(resolvedPath);

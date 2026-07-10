@@ -4,7 +4,8 @@ jest.mock('../../src/services/tierService', () => ({
 }));
 jest.mock('../../src/models/User', () => ({}));
 jest.mock('../../src/config/database', () => ({
-  query: jest.fn()
+  query: jest.fn(),
+  connect: jest.fn()
 }));
 jest.mock('../../src/utils/appleIapVerification', () => ({
   AppleTransactionVerificationError: class AppleTransactionVerificationError extends Error {
@@ -75,5 +76,59 @@ describe('billing controller Apple verification', () => {
       success: false,
       error: 'verification_failed'
     }));
+  });
+
+  test('binds the verified Apple transaction to the authenticated user and commits atomically', async () => {
+    const client = {
+      query: jest.fn(async (sql) => {
+        if (String(sql).includes('SELECT user_id')) {
+          return { rows: [{
+            user_id: 'user-1',
+            product_id: 'com.tradetally.pro.monthly',
+            expires_date: new Date(Date.now() + 86400000)
+          }] };
+        }
+        return { rows: [] };
+      }),
+      release: jest.fn()
+    };
+    db.connect.mockResolvedValue(client);
+    verifyAppleSignedTransaction.mockResolvedValue({
+      transactionId: 'txn-1',
+      originalTransactionId: 'original-1',
+      productId: 'com.tradetally.pro.monthly',
+      purchaseDate: Date.now(),
+      expiresDate: Date.now() + 86400000,
+      environment: 'Production',
+      type: 'Auto-Renewable Subscription'
+    });
+
+    const req = {
+      user: { id: 'user-1' },
+      body: {
+        transaction_id: 'txn-1',
+        product_id: 'com.tradetally.pro.monthly',
+        receipt_data: 'signed-jws',
+        environment: 'Xcode'
+      }
+    };
+    const res = createResponse();
+
+    await billingController.verifyAppleReceipt(req, res, jest.fn());
+
+    expect(verifyAppleSignedTransaction).toHaveBeenCalledWith('signed-jws', {
+      expectedTransactionId: 'txn-1',
+      expectedProductId: 'com.tradetally.pro.monthly',
+      expectedAppAccountToken: 'user-1'
+    });
+    expect(TierService.setUserTier).toHaveBeenCalledWith(
+      'user-1',
+      'pro',
+      'Apple In-App Purchase',
+      client
+    );
+    expect(client.query).toHaveBeenCalledWith('COMMIT');
+    expect(client.release).toHaveBeenCalled();
+    expect(res.payload.success).toBe(true);
   });
 });

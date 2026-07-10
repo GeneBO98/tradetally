@@ -104,6 +104,7 @@ const { isV1Request, sendV1Error } = require('./utils/apiResponse');
 const { ensureCsrfCookie, requireCsrf } = require('./middleware/csrf');
 const { createRateLimiter } = require('./utils/rateLimit');
 const { isBackgroundJobsDisabled } = require('./utils/runtimeScope');
+const { requireAdmin } = require('./middleware/auth');
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -212,7 +213,10 @@ const corsOptions = {
       callback(null, true);
     } else {
       logger.warn(`Origin ${origin} not allowed. Allowed origins: ${allowedOrigins.join(', ')}`, 'cors');
-      callback(new Error('Not allowed by CORS'));
+      const error = new Error('Origin is not allowed by CORS');
+      error.status = 403;
+      error.code = 'CORS_ORIGIN_DENIED';
+      callback(error);
     }
   },
   credentials: true,
@@ -326,11 +330,12 @@ app.use('/og', ogRoutes);
 
 // Swagger API Documentation
 if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_SWAGGER === 'true') {
-  app.get('/api-docs.json', (req, res) => {
+  const docsAuth = process.env.NODE_ENV === 'production' ? [requireAdmin] : [];
+  app.get('/api-docs.json', ...docsAuth, (req, res) => {
     res.json(buildSwaggerSpec(getApiDocsOrigin(req)));
   });
 
-  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(null, {
+  app.use('/api-docs', ...docsAuth, swaggerUi.serve, swaggerUi.setup(null, {
     explorer: true,
     customCss: '.swagger-ui .topbar { display: none }',
     customSiteTitle: 'TradeTally API Documentation',
@@ -341,10 +346,21 @@ if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_SWAGGER === 'tru
   logger.info('📚 Swagger documentation available at /api-docs');
 }
 
-// Health endpoint with database connection check and background worker status
+// Public liveness endpoint intentionally exposes no topology, filesystem, version,
+// capacity, or backup details. Operators can use the admin endpoint below.
 app.get('/api/health', async (req, res) => {
+  try {
+    const db = require('./config/database');
+    await db.query('SELECT 1');
+    res.json({ status: 'OK', timestamp: new Date().toISOString() });
+  } catch (_) {
+    res.status(503).json({ status: 'DEGRADED', timestamp: new Date().toISOString() });
+  }
+});
+
+app.get('/api/admin/system-health', requireAdmin, async (req, res) => {
   const health = await buildHealthStatus();
-  res.json(health);
+  res.status(health.status === 'OK' ? 200 : 503).json(health);
 });
 
 // Readiness probe for load-balancer failover. Returns 200 only when this node's
@@ -355,11 +371,11 @@ app.get('/api/ready', async (req, res) => {
     const db = require('./config/database');
     const { rows } = await db.query('SELECT pg_is_in_recovery() AS in_recovery');
     if (rows[0] && rows[0].in_recovery === true) {
-      return res.status(503).json({ ready: false, db_role: 'standby' });
+      return res.status(503).json({ ready: false });
     }
-    return res.status(200).json({ ready: true, db_role: 'primary' });
+    return res.status(200).json({ ready: true });
   } catch (err) {
-    return res.status(503).json({ ready: false, error: 'db_unreachable' });
+    return res.status(503).json({ ready: false });
   }
 });
 
@@ -379,7 +395,6 @@ app.post('/api/csp-report', express.json({ type: 'application/csp-report' }), (r
 });
 
 // Admin endpoint to check enrichment status
-const { requireAdmin } = require('./middleware/auth');
 app.get('/api/admin/enrichment-status', requireAdmin, async (req, res) => {
   try {
     const db = require('./config/database');

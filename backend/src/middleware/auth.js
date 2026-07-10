@@ -10,6 +10,7 @@ const TOKEN_PURPOSES = Object.freeze({
 
 const authUserCache = new Map();
 const pendingAuthUserLookups = new Map();
+let authUserCacheGeneration = 0;
 
 function getAuthUserCacheTtlMs() {
   const parsed = parseInt(process.env.AUTH_USER_CACHE_TTL_MS || '30000', 10);
@@ -33,9 +34,10 @@ async function findActiveUserForAuth(userId) {
     return pendingAuthUserLookups.get(userId);
   }
 
+  const lookupGeneration = authUserCacheGeneration;
   const lookup = User.findById(userId)
     .then((user) => {
-      if (user && user.is_active && ttlMs > 0) {
+      if (user && user.is_active && ttlMs > 0 && lookupGeneration === authUserCacheGeneration) {
         authUserCache.set(userId, {
           user,
           expiresAt: Date.now() + ttlMs
@@ -53,7 +55,14 @@ async function findActiveUserForAuth(userId) {
   return lookup;
 }
 
-function clearAuthUserCache() {
+function clearAuthUserCache(userId = null) {
+  authUserCacheGeneration += 1;
+  if (userId) {
+    authUserCache.delete(userId);
+    pendingAuthUserLookups.delete(userId);
+    return;
+  }
+
   authUserCache.clear();
   pendingAuthUserLookups.clear();
 }
@@ -87,6 +96,11 @@ function verifyJwtToken(token, { requiredPurpose = TOKEN_PURPOSES.ACCESS } = {})
   return decoded;
 }
 
+function isTokenSessionValid(decoded, user) {
+  return Number.isInteger(decoded.session_version) &&
+    decoded.session_version === Number(user.session_version || 0);
+}
+
 function extractAccessToken(req) {
   const cookieToken = req.cookies?.[AUTH_COOKIE_NAME];
   if (cookieToken) {
@@ -115,6 +129,10 @@ const authenticate = async (req, res, next) => {
 
     if (!user || !user.is_active) {
       throw new UnauthenticatedError('User not found or inactive');
+    }
+
+    if (!isTokenSessionValid(decoded, user)) {
+      throw new UnauthenticatedError('Session has been revoked');
     }
 
     // Add device tracking headers to request
@@ -186,7 +204,7 @@ const optionalAuth = async (req, res, next) => {
       const decoded = verifyJwtToken(token, { requiredPurpose: TOKEN_PURPOSES.ACCESS });
       const user = await findActiveUserForAuth(decoded.id);
 
-      if (user && user.is_active) {
+      if (user && user.is_active && isTokenSessionValid(decoded, user)) {
         req.user = user;
         req.token = token;
         req.authSource = source;
@@ -198,17 +216,8 @@ const optionalAuth = async (req, res, next) => {
   }
 };
 
-const requireAdmin = async (req, res, next) => {
+function authorizeAdmin(req, res, next) {
   try {
-    // First authenticate the user
-    await new Promise((resolve, reject) => {
-      authenticate(req, res, (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
-
-    // Check if user has admin role
     if (!['admin', 'owner'].includes(req.user.role)) {
       if (isV1Request(req)) {
         return sendV1Error(res, 403, 'FORBIDDEN', 'Admin access required');
@@ -225,6 +234,14 @@ const requireAdmin = async (req, res, next) => {
 
     res.status(401).json({ error: 'Please authenticate' });
   }
+}
+
+const requireAdmin = (req, res, next) => {
+  if (req.user) return authorizeAdmin(req, res, next);
+  return authenticate(req, res, (error) => {
+    if (error) return next(error);
+    return authorizeAdmin(req, res, next);
+  });
 };
 
 const generateToken = (user, options = {}) => {
@@ -237,7 +254,8 @@ const generateToken = (user, options = {}) => {
       email: user.email,
       username: user.username,
       role: user.role,
-      purpose
+      purpose,
+      session_version: Number(user.session_version || 0)
     },
     process.env.JWT_SECRET,
     {
@@ -255,6 +273,7 @@ module.exports = {
   requireAdmin,
   generateToken,
   verifyJwtToken,
+  isTokenSessionValid,
   clearAuthUserCache,
   findActiveUserForAuth
 };

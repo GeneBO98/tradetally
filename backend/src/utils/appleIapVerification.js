@@ -59,14 +59,20 @@ function verifyCertificateChain(header) {
 }
 
 function getAllowedBundleIds() {
-  const configured = process.env.APPLE_BUNDLE_IDS || process.env.APPLE_BUNDLE_ID || 'com.tradetally.app';
+  const configured = process.env.APPLE_BUNDLE_IDS || process.env.APPLE_BUNDLE_ID || 'com.tradetally.ios';
+  return configured.split(',').map(value => value.trim()).filter(Boolean);
+}
+
+function getAllowedProductIds() {
+  const configured = process.env.APPLE_PRO_PRODUCT_IDS || '';
   return configured.split(',').map(value => value.trim()).filter(Boolean);
 }
 
 async function verifyAppleSignedTransaction(jws, expectedClaims = {}) {
   const {
     expectedTransactionId,
-    expectedProductId
+    expectedProductId,
+    expectedAppAccountToken
   } = expectedClaims;
 
   const header = decodeProtectedHeader(jws);
@@ -90,6 +96,24 @@ async function verifyAppleSignedTransaction(jws, expectedClaims = {}) {
     throw new AppleTransactionVerificationError(`Product ID mismatch: expected ${expectedProductId}, got ${payload.productId}`);
   }
 
+
+  const allowedProductIds = getAllowedProductIds();
+  if (allowedProductIds.length === 0) {
+    throw new AppleTransactionVerificationError('Apple Pro product IDs are not configured');
+  }
+  if (!allowedProductIds.includes(payload.productId)) {
+    throw new AppleTransactionVerificationError(`Unexpected Apple product ID: ${payload.productId}`);
+  }
+
+  if (String(payload.type || '').toLowerCase() !== 'auto-renewable subscription') {
+    throw new AppleTransactionVerificationError('Apple transaction is not an auto-renewable subscription');
+  }
+
+  if (!payload.appAccountToken ||
+      String(payload.appAccountToken).toLowerCase() !== String(expectedAppAccountToken).toLowerCase()) {
+    throw new AppleTransactionVerificationError('Apple transaction is not bound to the authenticated user');
+  }
+
   if (!payload.bundleId) {
     throw new AppleTransactionVerificationError('Signed transaction is missing bundleId');
   }
@@ -100,7 +124,10 @@ async function verifyAppleSignedTransaction(jws, expectedClaims = {}) {
   }
 
   const expectedAppAppleId = process.env.APPLE_APPLE_ID || process.env.APPLE_APP_ID;
-  if (expectedAppAppleId && payload.appAppleId && String(payload.appAppleId) !== String(expectedAppAppleId)) {
+  if (process.env.NODE_ENV === 'production' && !expectedAppAppleId) {
+    throw new AppleTransactionVerificationError('Apple application ID is not configured');
+  }
+  if (expectedAppAppleId && String(payload.appAppleId || '') !== String(expectedAppAppleId)) {
     throw new AppleTransactionVerificationError(`Unexpected appAppleId: ${payload.appAppleId}`);
   }
 
@@ -117,5 +144,6 @@ async function verifyAppleSignedTransaction(jws, expectedClaims = {}) {
 
 module.exports = {
   AppleTransactionVerificationError,
-  verifyAppleSignedTransaction
+  verifyAppleSignedTransaction,
+  getAllowedProductIds
 };

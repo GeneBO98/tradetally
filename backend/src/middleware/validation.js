@@ -140,6 +140,15 @@ const schemas = {
     password: Joi.string().required()
   }),
 
+  newsBackfill: Joi.object({
+    user_id: Joi.string().guid({ version: ['uuidv4'] }).optional(),
+    userId: Joi.string().guid({ version: ['uuidv4'] }).optional(),
+    batch_size: Joi.number().integer().min(1).max(100).optional(),
+    batchSize: Joi.number().integer().min(1).max(100).optional(),
+    max_trades: Joi.number().integer().min(1).max(10000).allow(null).optional(),
+    maxTrades: Joi.number().integer().min(1).max(10000).allow(null).optional()
+  }).oxor('user_id', 'userId').oxor('batch_size', 'batchSize').oxor('max_trades', 'maxTrades'),
+
   internalCrmSyncRun: Joi.object({
     targets: Joi.array()
       .items(Joi.string().valid('twenty', 'invoiceNinja'))
@@ -718,9 +727,9 @@ const schemas = {
   }),
 
   billingAppleReceipt: Joi.object({
-    transaction_id: Joi.string().required(),
-    product_id: Joi.string().required(),
-    receipt_data: Joi.string().required(),
+    transaction_id: Joi.string().trim().max(255).required(),
+    product_id: Joi.string().trim().max(255).required(),
+    receipt_data: Joi.string().trim().max(100000).required(),
     environment: Joi.string().valid('Sandbox', 'Production', 'Xcode', 'LocalTesting').allow('', null)
   }),
 

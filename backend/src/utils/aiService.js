@@ -1,7 +1,7 @@
 const gemini = require('./gemini');
 const User = require('../models/User');
 const adminSettingsService = require('../services/adminSettings');
-const { validateAiProviderUrl } = require('./urlSecurity');
+const { validateAiProviderUrl, fetchAiProviderUrl } = require('./urlSecurity');
 const { sanitizeErrorForLogging, summarizeUrlForLogging } = require('./logSanitizer');
 
 class AIService {
@@ -326,7 +326,8 @@ Your response:`;
 
     const openai = new OpenAI({
       apiKey: settings.apiKey,
-      baseURL: validatedBaseUrl
+      baseURL: validatedBaseUrl,
+      fetch: (url, init) => fetchAiProviderUrl(provider, url, init)
     });
 
     const providerName = options.providerName || 'OpenAI-compatible';
@@ -383,8 +384,6 @@ Your response:`;
   }
 
   async useOllama(prompt, settings, options = {}) {
-    const { default: fetch } = await import('node-fetch');
-    
     if (!settings.apiUrl) {
       throw new Error('Ollama API URL not configured');
     }
@@ -409,7 +408,7 @@ Your response:`;
       headers['Authorization'] = `Bearer ${settings.apiKey}`;
     }
 
-    const response = await fetch(url, {
+    const response = await fetchAiProviderUrl('ollama', url, {
       method: 'POST',
       headers,
       body: JSON.stringify({
@@ -438,8 +437,6 @@ Your response:`;
   }
 
   async useLMStudio(prompt, settings, options = {}) {
-    const { default: fetch } = await import('node-fetch');
-    
     // LM Studio defaults to localhost:1234
     const apiUrl = settings.apiUrl || 'http://localhost:1234';
     const validatedApiUrl = await validateAiProviderUrl('lmstudio', apiUrl);
@@ -449,7 +446,7 @@ Your response:`;
 
     try {
       // LM Studio uses OpenAI-compatible API at /v1/chat/completions
-      const response = await fetch(`${validatedApiUrl.toString().replace(/\/$/, '')}/v1/chat/completions`, {
+      const response = await fetchAiProviderUrl('lmstudio', `${validatedApiUrl.toString().replace(/\/$/, '')}/v1/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -488,8 +485,6 @@ Your response:`;
   }
 
   async usePerplexity(prompt, settings, options = {}) {
-    const { default: fetch } = await import('node-fetch');
-    
     if (!settings.apiKey) {
       throw new Error('Perplexity API key not configured');
     }
@@ -498,7 +493,7 @@ Your response:`;
     console.log('[PERPLEXITY] Model:', settings.model || 'sonar');
 
     try {
-      const response = await fetch('https://api.perplexity.ai/chat/completions', {
+      const response = await fetchAiProviderUrl('perplexity', 'https://api.perplexity.ai/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -537,15 +532,13 @@ Your response:`;
   }
 
   async useLocal(prompt, settings, options = {}) {
-    const { default: fetch } = await import('node-fetch');
-    
     if (!settings.apiUrl) {
       throw new Error('Local API URL not configured');
     }
 
     const validatedApiUrl = await validateAiProviderUrl('local', settings.apiUrl);
 
-    const response = await fetch(validatedApiUrl.toString(), {
+    const response = await fetchAiProviderUrl('local', validatedApiUrl.toString(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

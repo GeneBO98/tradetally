@@ -4,7 +4,7 @@ const aiService = require('./aiService');
 const historicalPriceCache = require('./historicalPriceCache');
 const ApiUsageService = require('../services/apiUsageService');
 const TierService = require('../services/tierService');
-const { validateAiProviderUrl } = require('./urlSecurity');
+const { validateAiProviderUrl, fetchAiProviderUrl } = require('./urlSecurity');
 const { FinnhubPriority, FinnhubRequestScheduler } = require('./finnhubScheduler');
 const { getDateInTimezone, localToUTC } = require('./timezone');
 
@@ -708,7 +708,8 @@ class FinnhubClient {
         
         const openai = new OpenAI({ 
           apiKey: settings.default_ai_api_key,
-          baseURL: validatedBaseUrl || undefined
+          baseURL: validatedBaseUrl || undefined,
+          fetch: (url, init) => fetchAiProviderUrl('openai', url, init)
         });
         
         // Note: Some OpenAI models (like o1-preview) don't support temperature parameter
@@ -756,7 +757,8 @@ class FinnhubClient {
 
         const client = new OpenAI({
           apiKey: settings.default_ai_api_key,
-          baseURL: validatedBaseUrl
+          baseURL: validatedBaseUrl,
+          fetch: (url, init) => fetchAiProviderUrl(settings.default_ai_provider, url, init)
         });
 
         const modelName = settings.default_ai_model || defaultModel;
@@ -773,7 +775,6 @@ class FinnhubClient {
         return response.choices[0]?.message?.content?.trim() || '';
 
       } else if (settings.default_ai_provider === 'ollama') {
-        const { default: fetch } = await import('node-fetch');
         const validatedApiUrl = await validateAiProviderUrl('ollama', settings.default_ai_api_url);
         
         const headers = {
@@ -785,7 +786,7 @@ class FinnhubClient {
           headers['Authorization'] = `Bearer ${settings.default_ai_api_key}`;
         }
         
-        const response = await fetch(`${validatedApiUrl.toString().replace(/\/$/, '')}/api/generate`, {
+        const response = await fetchAiProviderUrl('ollama', `${validatedApiUrl.toString().replace(/\/$/, '')}/api/generate`, {
           method: 'POST',
           headers,
           body: JSON.stringify({
@@ -825,8 +826,6 @@ class FinnhubClient {
 
         return response.content[0]?.text?.trim() || '';
       } else if (settings.default_ai_provider === 'lmstudio') {
-        const { default: fetch } = await import('node-fetch');
-        
         // LM Studio defaults to localhost:1234
         const apiUrl = settings.default_ai_api_url || 'http://localhost:1234';
         const validatedApiUrl = await validateAiProviderUrl('lmstudio', apiUrl);
@@ -834,7 +833,7 @@ class FinnhubClient {
         console.log('[LMSTUDIO] Using LM Studio for system AI at:', validatedApiUrl.toString());
         
         try {
-          const response = await fetch(`${validatedApiUrl.toString().replace(/\/$/, '')}/v1/chat/completions`, {
+          const response = await fetchAiProviderUrl('lmstudio', `${validatedApiUrl.toString().replace(/\/$/, '')}/v1/chat/completions`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -861,8 +860,6 @@ class FinnhubClient {
           throw new Error(`LM Studio failed: ${error.message}`);
         }
       } else if (settings.default_ai_provider === 'perplexity') {
-        const { default: fetch } = await import('node-fetch');
-        
         if (!settings.default_ai_api_key) {
           throw new Error('Perplexity API key not configured');
         }
@@ -870,7 +867,7 @@ class FinnhubClient {
         console.log('[PERPLEXITY] Using Perplexity for system AI CUSIP resolution');
         
         try {
-          const response = await fetch('https://api.perplexity.ai/chat/completions', {
+          const response = await fetchAiProviderUrl('perplexity', 'https://api.perplexity.ai/chat/completions', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -900,7 +897,6 @@ class FinnhubClient {
           throw new Error(`Perplexity system AI failed: ${error.message}`);
         }
       } else if (settings.default_ai_provider === 'local') {
-        const { default: fetch } = await import('node-fetch');
         const validatedApiUrl = await validateAiProviderUrl('local', settings.default_ai_api_url);
         
         const headers = {
@@ -911,7 +907,7 @@ class FinnhubClient {
           headers['Authorization'] = `Bearer ${settings.default_ai_api_key}`;
         }
         
-        const response = await fetch(validatedApiUrl.toString(), {
+        const response = await fetchAiProviderUrl('local', validatedApiUrl.toString(), {
           method: 'POST',
           headers,
           body: JSON.stringify({

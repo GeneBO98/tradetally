@@ -26,6 +26,13 @@ const errorHandler = (err, req, res, next) => {
     return;
   }
 
+  if (err.code === 'CORS_ORIGIN_DENIED') {
+    if (isV1Request(req)) {
+      return sendV1Error(res, 403, 'CORS_ORIGIN_DENIED', 'Origin is not allowed');
+    }
+    return res.status(403).json({ error: 'Forbidden', message: 'Origin is not allowed' });
+  }
+
   if (isV1Request(req)) {
     if (err.name === 'ValidationError') {
       return sendV1Error(res, 400, 'VALIDATION_ERROR', err.message);

@@ -632,7 +632,7 @@ const billingController = {
       const userId = req.user.id;
       const { transaction_id, product_id, receipt_data, environment } = req.body;
 
-      console.log('🍎 Apple transaction verification requested:', {
+      console.log('[APPLE-IAP] Transaction verification requested:', {
         userId,
         transaction_id,
         product_id,
@@ -649,31 +649,14 @@ const billingController = {
         });
       }
 
-      // Check for duplicate transaction
-      const existingTransaction = await db.query(
-        'SELECT * FROM apple_transactions WHERE transaction_id = $1',
-        [transaction_id]
-      );
-
-      if (existingTransaction.rows.length > 0) {
-        console.log('🍎 Transaction already processed:', transaction_id);
-        return res.json({
-          success: true,
-          message: 'Transaction already processed',
-          subscription: {
-            tier: 'pro',
-            is_active: true
-          }
-        });
-      }
-
       // receipt_data is the JWS signed transaction from StoreKit 2
       const payload = await verifyAppleSignedTransaction(receipt_data, {
         expectedTransactionId: transaction_id,
-        expectedProductId: product_id
+        expectedProductId: product_id,
+        expectedAppAccountToken: userId
       });
 
-      console.log('🍎 JWS verified. Transaction payload:', {
+      console.log('[APPLE-IAP] JWS verified. Transaction payload:', {
         transactionId: payload.transactionId,
         originalTransactionId: payload.originalTransactionId,
         productId: payload.productId,
@@ -689,27 +672,53 @@ const billingController = {
 
       const isTrialPeriod = payload.offerType === 2; // 2 = free trial
 
-      // Grant Pro tier
-      await TierService.setUserTier(userId, 'pro', 'Apple In-App Purchase');
+      const client = await db.connect();
+      try {
+        await client.query('BEGIN');
 
-      // Store transaction in database
-      await db.query(`
-        INSERT INTO apple_transactions
-        (user_id, transaction_id, original_transaction_id, product_id,
-         purchase_date, expires_date, is_trial, environment)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      `, [
-        userId,
-        String(payload.transactionId),
-        String(payload.originalTransactionId || payload.transactionId),
-        payload.productId,
-        payload.purchaseDate ? new Date(payload.purchaseDate) : new Date(),
-        expiresDate,
-        isTrialPeriod,
-        payload.environment || environment
-      ]);
+        const existingTransaction = await client.query(
+          'SELECT user_id, product_id, expires_date FROM apple_transactions WHERE transaction_id = $1 FOR UPDATE',
+          [String(payload.transactionId)]
+        );
 
-      console.log('🍎 Apple transaction verified successfully for user:', userId);
+        if (existingTransaction.rows.length > 0) {
+          const existing = existingTransaction.rows[0];
+          if (existing.user_id !== userId || existing.product_id !== payload.productId) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+              success: false,
+              error: 'transaction_already_claimed',
+              message: 'This Apple transaction is already associated with another account'
+            });
+          }
+        } else {
+          await client.query(`
+            INSERT INTO apple_transactions
+            (user_id, transaction_id, original_transaction_id, product_id,
+             purchase_date, expires_date, is_trial, environment)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          `, [
+            userId,
+            String(payload.transactionId),
+            String(payload.originalTransactionId || payload.transactionId),
+            payload.productId,
+            payload.purchaseDate ? new Date(payload.purchaseDate) : new Date(),
+            expiresDate,
+            isTrialPeriod,
+            payload.environment
+          ]);
+        }
+
+        await TierService.setUserTier(userId, 'pro', 'Apple In-App Purchase', client);
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+
+      console.log('[APPLE-IAP] Transaction verified successfully for user:', userId);
 
       res.json({
         success: true,
@@ -721,7 +730,7 @@ const billingController = {
         }
       });
     } catch (error) {
-      console.error('🍎 Error verifying Apple transaction:', error);
+      console.error('[APPLE-IAP] Error verifying Apple transaction:', error);
       const statusCode = error instanceof AppleTransactionVerificationError
         ? error.statusCode
         : 500;

@@ -206,7 +206,7 @@ async function loginVerify(req, res, next) {
 
     // Look up credential by ID
     const credResult = await db.query(
-      'SELECT wc.*, u.id as uid, u.email, u.username, u.full_name, u.is_active, u.two_factor_enabled, u.last_login_at, u.role, u.avatar_url, u.is_verified, u.admin_approved FROM webauthn_credentials wc JOIN users u ON wc.user_id = u.id WHERE wc.credential_id = $1',
+      'SELECT wc.*, u.id as uid, u.email, u.username, u.full_name, u.is_active, u.two_factor_enabled, u.last_login_at, u.role, u.avatar_url, u.is_verified, u.admin_approved, u.session_version FROM webauthn_credentials wc JOIN users u ON wc.user_id = u.id WHERE wc.credential_id = $1',
       [response.id]
     );
 
@@ -257,6 +257,7 @@ async function loginVerify(req, res, next) {
       admin_approved: cred.admin_approved,
       two_factor_enabled: cred.two_factor_enabled,
       last_login_at: cred.last_login_at,
+      session_version: cred.session_version,
     };
 
     // Passkey authentication is inherently multi-factor (possession + biometric/PIN),

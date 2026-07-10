@@ -1,5 +1,7 @@
 const dns = require('dns').promises;
 const net = require('net');
+const http = require('http');
+const https = require('https');
 
 class OutboundUrlValidationError extends Error {
   constructor(message) {
@@ -77,7 +79,7 @@ async function resolveHostname(hostname) {
   return [...new Set(records.map(record => record.address))];
 }
 
-async function ensureValidatedOutboundUrl(input, options = {}) {
+async function resolveValidatedOutboundTarget(input, options = {}) {
   const {
     mode = 'public',
     protocols = ['http:', 'https:']
@@ -124,7 +126,42 @@ async function ensureValidatedOutboundUrl(input, options = {}) {
     }
   }
 
-  return url;
+  return { url, addresses: resolvedAddresses };
+}
+
+async function ensureValidatedOutboundUrl(input, options = {}) {
+  return (await resolveValidatedOutboundTarget(input, options)).url;
+}
+
+function createPinnedLookup(addresses) {
+  return (_hostname, options, callback) => {
+    if (typeof options === 'function') {
+      callback = options;
+      options = {};
+    }
+
+    const requestedFamily = Number(options?.family || 0);
+    const candidates = addresses
+      .map(address => ({ address, family: net.isIP(address) }))
+      .filter(candidate => !requestedFamily || candidate.family === requestedFamily);
+
+    if (candidates.length === 0) {
+      const error = new Error('No validated address matches the requested IP family');
+      error.code = 'ENOTFOUND';
+      return callback(error);
+    }
+
+    if (options?.all) return callback(null, candidates);
+    return callback(null, candidates[0].address, candidates[0].family);
+  };
+}
+
+function createPinnedAgent(url, addresses) {
+  const Agent = url.protocol === 'https:' ? https.Agent : http.Agent;
+  return new Agent({
+    keepAlive: false,
+    lookup: createPinnedLookup(addresses)
+  });
 }
 
 async function fetchWithValidatedRedirects(initialUrl, fetchImpl, fetchOptions = {}, validationOptions = {}) {
@@ -133,12 +170,13 @@ async function fetchWithValidatedRedirects(initialUrl, fetchImpl, fetchOptions =
   }
 
   const maxRedirects = validationOptions.maxRedirects ?? 3;
-  let currentUrl = await ensureValidatedOutboundUrl(initialUrl, validationOptions);
+  let currentTarget = await resolveValidatedOutboundTarget(initialUrl, validationOptions);
   let redirects = 0;
 
   while (true) {
-    const response = await fetchImpl(currentUrl.toString(), {
+    const response = await fetchImpl(currentTarget.url.toString(), {
       ...fetchOptions,
+      agent: createPinnedAgent(currentTarget.url, currentTarget.addresses),
       redirect: 'manual'
     });
 
@@ -157,8 +195,26 @@ async function fetchWithValidatedRedirects(initialUrl, fetchImpl, fetchOptions =
       throw new OutboundUrlValidationError('Too many redirects');
     }
 
-    currentUrl = await ensureValidatedOutboundUrl(new URL(location, currentUrl), validationOptions);
+    const redirectUrl = new URL(location, currentTarget.url);
+    if (validationOptions.allowCrossOriginRedirects === false &&
+        redirectUrl.origin !== currentTarget.url.origin) {
+      throw new OutboundUrlValidationError('Cross-origin redirects are not allowed for this request');
+    }
+    currentTarget = await resolveValidatedOutboundTarget(redirectUrl, validationOptions);
   }
+}
+
+function localAiEndpointsAllowed() {
+  if (process.env.ALLOW_LOCAL_AI_ENDPOINTS !== undefined) {
+    return process.env.ALLOW_LOCAL_AI_ENDPOINTS === 'true';
+  }
+
+  const deploymentMode = String(process.env.DEPLOYMENT_MODE || '').toLowerCase();
+  const publicUrls = [process.env.FRONTEND_URL, process.env.INSTANCE_URL, process.env.API_BASE_URL]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  return deploymentMode !== 'cloud' && !publicUrls.includes('tradetally.io');
 }
 
 async function validateAiProviderUrl(provider, apiUrl) {
@@ -167,13 +223,31 @@ async function validateAiProviderUrl(provider, apiUrl) {
   }
 
   const localProviders = new Set(['local', 'ollama', 'lmstudio']);
+  if (localProviders.has(provider) && !localAiEndpointsAllowed()) {
+    throw new OutboundUrlValidationError('Local AI endpoints are disabled on this deployment');
+  }
   const mode = localProviders.has(provider) ? 'loopback-only' : 'public';
   return ensureValidatedOutboundUrl(apiUrl, { mode });
+}
+
+async function fetchAiProviderUrl(provider, input, fetchOptions = {}) {
+  const localProviders = new Set(['local', 'ollama', 'lmstudio']);
+  if (localProviders.has(provider) && !localAiEndpointsAllowed()) {
+    throw new OutboundUrlValidationError('Local AI endpoints are disabled on this deployment');
+  }
+  const { default: fetch } = await import('node-fetch');
+  return fetchWithValidatedRedirects(input, fetch, fetchOptions, {
+    mode: localProviders.has(provider) ? 'loopback-only' : 'public',
+    maxRedirects: 3,
+    allowCrossOriginRedirects: false
+  });
 }
 
 module.exports = {
   OutboundUrlValidationError,
   ensureValidatedOutboundUrl,
   fetchWithValidatedRedirects,
-  validateAiProviderUrl
+  validateAiProviderUrl,
+  fetchAiProviderUrl,
+  localAiEndpointsAllowed
 };

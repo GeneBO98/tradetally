@@ -1,6 +1,5 @@
 const User = require('../models/User');
-const jwt = require('jsonwebtoken');
-const { generateToken, TOKEN_PURPOSES, verifyJwtToken } = require('../middleware/auth');
+const { generateToken, TOKEN_PURPOSES, verifyJwtToken, clearAuthUserCache } = require('../middleware/auth');
 const crypto = require('crypto');
 const EmailService = require('../services/emailService');
 const bcrypt = require('bcryptjs');
@@ -455,22 +454,21 @@ const authController = {
       let decoded;
       try {
         decoded = verifyJwtToken(tempToken, { requiredPurpose: TOKEN_PURPOSES.PRE_2FA });
-      } catch (error) {
-        try {
-          // Accept legacy temp tokens minted before token-purpose enforcement.
-          const legacyDecoded = jwt.verify(tempToken, process.env.JWT_SECRET, { algorithms: ['HS256'] });
-          if (legacyDecoded.purpose) {
-            throw error;
-          }
-          decoded = legacyDecoded;
-        } catch (_) {
-          return res.status(401).json({ error: 'Invalid or expired temporary token' });
-        }
+      } catch (_) {
+        return res.status(401).json({ error: 'Invalid or expired temporary token' });
       }
 
       const user = await User.findById(decoded.id || decoded.userId);
-      if (!user || !user.two_factor_enabled) {
+      if (!user || !user.two_factor_enabled ||
+          decoded.session_version !== Number(user.session_version || 0)) {
         return res.status(400).json({ error: 'Invalid request' });
+      }
+
+      if (getRegistrationMode() === 'approval' && !user.admin_approved) {
+        return res.status(403).json({
+          error: 'Your account is pending admin approval.',
+          requiresApproval: true
+        });
       }
 
       // Verify 2FA code
@@ -548,6 +546,9 @@ const authController = {
 
   async logout(req, res, next) {
     try {
+      await User.revokeSessions(req.user.id);
+      await refreshTokenService.revokeUserTokens(req.user.id, 'web_logout');
+      clearAuthUserCache(req.user.id);
       clearAuthCookies(req, res);
 
       res.json({ message: 'Logout successful' });
@@ -666,6 +667,8 @@ const authController = {
 
       const hashedPassword = await bcrypt.hash(password, 10);
       await User.updatePassword(user.id, hashedPassword);
+      await refreshTokenService.revokeUserTokens(user.id, 'password_reset');
+      clearAuthUserCache(user.id);
 
       res.json({ message: 'Password has been reset successfully' });
     } catch (error) {

@@ -3,6 +3,7 @@
  * Supports Gemini, OpenAI, Claude, DeepSeek, Kimi, LM Studio, Ollama, and other OpenAI-compatible APIs
  */
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { fetchAiProviderUrl } = require('./urlSecurity');
 
 class AIProvider {
   /**
@@ -28,13 +29,13 @@ class AIProvider {
         if (!apiKey) {
           throw new Error('DeepSeek API key not configured');
         }
-        return this.generateOpenAICompatible(prompt, apiKey, modelName || 'deepseek-chat', apiUrl || 'https://api.deepseek.com/v1', options);
+        return this.generateOpenAICompatible(prompt, apiKey, modelName || 'deepseek-chat', apiUrl || 'https://api.deepseek.com/v1', { ...options, provider: 'deepseek' });
 
       case 'kimi':
         if (!apiKey) {
           throw new Error('Kimi API key not configured');
         }
-        return this.generateOpenAICompatible(prompt, apiKey, modelName || 'moonshot-v1-8k', apiUrl || 'https://api.moonshot.ai/v1', options);
+        return this.generateOpenAICompatible(prompt, apiKey, modelName || 'moonshot-v1-8k', apiUrl || 'https://api.moonshot.ai/v1', { ...options, provider: 'kimi' });
 
       case 'claude':
         return this.generateClaude(prompt, apiKey, modelName, options);
@@ -42,7 +43,7 @@ class AIProvider {
       case 'lmstudio':
       case 'ollama':
       case 'local':
-        return this.generateOpenAICompatible(prompt, apiKey, modelName, apiUrl, options);
+        return this.generateOpenAICompatible(prompt, apiKey, modelName, apiUrl, { ...options, provider });
 
       case 'perplexity':
         return this.generateOpenAI(prompt, apiKey, modelName, 'https://api.perplexity.ai', options);
@@ -88,7 +89,8 @@ class AIProvider {
       throw new Error('OpenAI API key not configured');
     }
 
-    return this.generateOpenAICompatible(prompt, apiKey, modelName, baseUrl, options);
+    const provider = baseUrl.includes('perplexity') ? 'perplexity' : 'openai';
+    return this.generateOpenAICompatible(prompt, apiKey, modelName, baseUrl, { ...options, provider });
   }
 
   /**
@@ -180,7 +182,7 @@ class AIProvider {
         ...(supportsTemperature && { temperature: options.temperature ?? 0.7 })
       };
 
-      const response = await fetch(url, {
+      const response = await fetchAiProviderUrl(options.provider || 'openai', url, {
         method: 'POST',
         headers,
         body: JSON.stringify(body)
