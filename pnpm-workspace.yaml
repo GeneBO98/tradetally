@@ -4,6 +4,14 @@ packages:
 
 minimumReleaseAge: 20160
 
+overrides:
+  yaml: ^2.8.3
+  form-data: ^4.0.6
+  protobufjs: ^8.6.0
+  qs: ^6.15.2
+  '@opentelemetry/core': ^2.8.0
+  undici: ^7.28.0
+
 onlyBuiltDependencies:
   - '@scarf/scarf'
   - bcrypt
