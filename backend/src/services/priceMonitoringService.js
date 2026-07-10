@@ -447,13 +447,31 @@ class PriceMonitoringService {
       // notify_price_alerts preference and silently no-ops if they have no
       // active iOS devices, so this is safe to always call.
       try {
-        await pushNotificationService.sendPriceAlert(user_id, {
+        const pushResult = await pushNotificationService.sendPriceAlert(user_id, {
           symbol,
           body: message,
           currentPrice: Number.isFinite(currentPriceNum) ? currentPriceNum : undefined,
           targetPrice: Number.isFinite(targetPriceNum) ? targetPriceNum : undefined
         });
-        await this.logNotification(id, user_id, symbol, 'push', message, alert, 'sent');
+        const deliveryStatus = pushResult.success ? 'sent' : 'failed';
+        const errorMessage = pushResult.success
+          ? null
+          : pushResult.reason || pushResult.error || 'push_delivery_failed';
+
+        await this.logNotification(
+          id,
+          user_id,
+          symbol,
+          'push',
+          message,
+          alert,
+          deliveryStatus,
+          errorMessage
+        );
+
+        if (!pushResult.success) {
+          logger.logWarn(`Push notification failed for user ${user_id}: ${errorMessage}`);
+        }
       } catch (pushError) {
         logger.logError('Error sending push notification for alert:', pushError);
         await this.logNotification(id, user_id, symbol, 'push', message, alert, 'failed', pushError.message);

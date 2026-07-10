@@ -5,7 +5,7 @@ const NotificationPreferenceService = require('./notificationPreferenceService')
 
 class PushNotificationService {
   constructor() {
-    this.apnProvider = null;
+    this.apnProviders = new Map();
     this.isEnabled = process.env.ENABLE_PUSH_NOTIFICATIONS === 'true';
     
     if (this.isEnabled) {
@@ -35,17 +35,19 @@ class PushNotificationService {
         return;
       }
 
-      const apnsConfig = {
-        token: {
-          key: keyPath,
-          keyId: keyId,
-          teamId: teamId
-        },
-        production: process.env.NODE_ENV === 'production'
-      };
+      for (const environment of ['development', 'production']) {
+        const apnsConfig = {
+          token: {
+            key: keyPath,
+            keyId: keyId,
+            teamId: teamId
+          },
+          production: environment === 'production'
+        };
 
-      this.apnProvider = new apn.Provider(apnsConfig);
-      console.log(`[SUCCESS] APNS initialized for ${apnsConfig.production ? 'production' : 'development'}`);
+        this.apnProviders.set(environment, new apn.Provider(apnsConfig));
+        console.log(`[SUCCESS] APNS initialized for ${environment}`);
+      }
     } catch (error) {
       logger.logError('Failed to initialize APNS:', error);
       this.isEnabled = false;
@@ -78,9 +80,22 @@ class PushNotificationService {
       }
 
       const results = [];
+      const configuredBundleId = process.env.APNS_BUNDLE_ID || 'com.tradetally.ios';
       
       for (const device of devices.rows) {
         try {
+          const environment = device.environment === 'development' ? 'development' : 'production';
+          const provider = this.apnProviders.get(environment);
+          if (!provider) {
+            results.push({
+              success: false,
+              device: device.device_token,
+              environment,
+              error: 'provider_unavailable'
+            });
+            continue;
+          }
+
           const notification = new apn.Notification();
           
           // Basic notification properties
@@ -94,32 +109,46 @@ class PushNotificationService {
           
           // Custom payload data
           notification.payload = {
+            type: notificationData.type || notificationData.alert_type || notificationData.alertType || 'price_alert',
             symbol: notificationData.symbol,
-            alertType: notificationData.alertType || 'price_alert',
-            currentPrice: notificationData.currentPrice,
-            targetPrice: notificationData.targetPrice,
+            current_price: notificationData.current_price ?? notificationData.currentPrice,
+            target_price: notificationData.target_price ?? notificationData.targetPrice,
             timestamp: new Date().toISOString()
           };
           
           // Set topic (bundle ID)
-          notification.topic = device.bundle_id || 'com.tradetally.app';
+          notification.topic = device.bundle_id || configuredBundleId;
           
           // Send notification
-          const result = await this.apnProvider.send(notification, device.device_token);
+          const result = await provider.send(notification, device.device_token);
           
           if (result.sent.length > 0) {
             logger.info(`Push notification sent successfully to device ${device.device_token.substring(0, 8)}...`);
-            results.push({ success: true, device: device.device_token });
+            results.push({ success: true, device: device.device_token, environment });
           } else if (result.failed.length > 0) {
             const failure = result.failed[0];
-            logger.logWarn(`Push notification failed for device ${device.device_token.substring(0, 8)}...: ${failure.error}`);
+            const failureReason = failure.response?.reason || failure.error?.message || failure.error || 'unknown_error';
+            logger.logWarn(`Push notification failed for device ${device.device_token.substring(0, 8)}...: ${failureReason}`);
             
             // Handle invalid tokens by marking them inactive
-            if (failure.status === '410' || failure.error === 'BadDeviceToken') {
+            if (failure.status === '410' || ['BadDeviceToken', 'Unregistered', 'DeviceTokenNotForTopic'].includes(failureReason)) {
               await this.markDeviceTokenInactive(device.device_token);
             }
             
-            results.push({ success: false, device: device.device_token, error: failure.error });
+            results.push({
+              success: false,
+              device: device.device_token,
+              environment,
+              status: failure.status,
+              error: failureReason
+            });
+          } else {
+            results.push({
+              success: false,
+              device: device.device_token,
+              environment,
+              error: 'empty_apns_response'
+            });
           }
         } catch (deviceError) {
           logger.logError(`Error sending push notification to device ${device.device_token.substring(0, 8)}...:`, deviceError);
@@ -127,11 +156,16 @@ class PushNotificationService {
         }
       }
 
+      const successCount = results.filter(result => result.success).length;
+      const failureCount = results.length - successCount;
+
       return {
-        success: true,
+        success: successCount > 0,
+        reason: successCount > 0 ? undefined : 'all_devices_failed',
         devicesTargeted: devices.rows.length,
         results: results,
-        successCount: results.filter(r => r.success).length
+        successCount,
+        failureCount
       };
 
     } catch (error) {
@@ -168,7 +202,7 @@ class PushNotificationService {
       title: 'Price Alert Triggered',
       body: alertData.body || fallbackBody,
       symbol: alertData.symbol,
-      alertType: 'price_alert',
+      alert_type: 'price_alert',
       currentPrice: alertData.currentPrice,
       targetPrice: alertData.targetPrice
     };
@@ -188,7 +222,7 @@ class PushNotificationService {
       title: 'Trade Executed',
       body: `${tradeData.side.toUpperCase()} ${tradeData.quantity} ${tradeData.symbol} at $${tradeData.price}`,
       symbol: tradeData.symbol,
-      alertType: 'trade_execution',
+      alert_type: 'trade_execution',
       currentPrice: tradeData.price,
       side: tradeData.side,
       quantity: tradeData.quantity
@@ -209,7 +243,7 @@ class PushNotificationService {
       title: `News Alert: ${newsData.symbol}`,
       body: newsData.headline,
       symbol: newsData.symbol,
-      alertType: 'news_alert',
+      alert_type: 'news_alert',
       sentiment: newsData.sentiment
     };
 
@@ -228,7 +262,7 @@ class PushNotificationService {
       title: `Earnings: ${earningsData.symbol}`,
       body: `${earningsData.company} earnings announcement upcoming`,
       symbol: earningsData.symbol,
-      alertType: 'earnings_announcement',
+      alert_type: 'earnings_announcement',
       date: earningsData.date
     };
 
@@ -241,7 +275,7 @@ class PushNotificationService {
       title: 'Test Notification',
       body: testMessage,
       symbol: 'TEST',
-      alertType: 'test'
+      alert_type: 'test'
     };
 
     return await this.sendPushNotification(userId, notificationData);
@@ -249,10 +283,11 @@ class PushNotificationService {
 
   // Gracefully shutdown the APNS provider
   shutdown() {
-    if (this.apnProvider) {
-      this.apnProvider.shutdown();
-      console.log('APNS provider shutdown');
+    for (const provider of this.apnProviders.values()) {
+      provider.shutdown();
     }
+    this.apnProviders.clear();
+    console.log('APNS providers shut down');
   }
 }
 

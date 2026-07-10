@@ -80,7 +80,10 @@ describe('health controller normalization', () => {
   });
 
   test('submit health data handler keeps controller context when used by Express', async () => {
-    db.query.mockResolvedValueOnce({ rows: [{ inserted: true }] });
+    db.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ inserted: true }] })
+      .mockResolvedValueOnce({ rows: [] });
 
     const req = {
       user: { id: 'user-1' },
@@ -100,8 +103,8 @@ describe('health controller normalization', () => {
     await handler(req, res);
 
     expect(res.statusCode).toBe(200);
-    expect(db.query.mock.calls[0][1][2]).toBe('sleep');
-    expect(JSON.parse(db.query.mock.calls[0][1][4])).toMatchObject({
+    expect(db.query.mock.calls[1][1][2]).toBe('sleep');
+    expect(JSON.parse(db.query.mock.calls[1][1][4])).toMatchObject({
       sleepQuality: 88,
       sleep_quality: 88
     });

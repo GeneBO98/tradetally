@@ -124,6 +124,7 @@ services:
       APNS_KEY_ID: ${APNS_KEY_ID:-}
       APNS_TEAM_ID: ${APNS_TEAM_ID:-}
       APNS_KEY_PATH: ${APNS_KEY_PATH:-}
+      APNS_BUNDLE_ID: ${APNS_BUNDLE_ID:-com.tradetally.ios}
       # Database Configuration
       RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
       SKIP_BASE_SCHEMA: ${SKIP_BASE_SCHEMA:-false}
