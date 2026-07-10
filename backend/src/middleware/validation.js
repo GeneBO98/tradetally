@@ -748,7 +748,7 @@ const schemas = {
     flexQueryId: Joi.string().trim().required(),
     accountLabel: nullableString(255),
     autoSyncEnabled: Joi.boolean().default(false),
-    syncFrequency: Joi.string().valid('manual', 'hourly', 'daily', 'weekly').default('manual'),
+    syncFrequency: Joi.string().valid('manual', 'hourly', 'every_4_hours', 'every_6_hours', 'every_12_hours', 'daily').default('manual'),
     syncTime: nullableString(10),
     syncStartDate: nullableDate
   }),
@@ -756,7 +756,7 @@ const schemas = {
   brokerSyncConnectionUpdate: Joi.object({
     accountLabel: nullableString(255),
     autoSyncEnabled: Joi.boolean(),
-    syncFrequency: Joi.string().valid('manual', 'hourly', 'daily', 'weekly'),
+    syncFrequency: Joi.string().valid('manual', 'hourly', 'every_4_hours', 'every_6_hours', 'every_12_hours', 'daily'),
     syncTime: nullableString(10),
     syncStartDate: nullableDate
   }).min(1),

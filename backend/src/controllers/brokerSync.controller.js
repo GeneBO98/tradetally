@@ -42,6 +42,61 @@ function sendProRequired(res, check) {
   });
 }
 
+function normalizeOAuthContext(context) {
+  if (!context) return {};
+  if (typeof context === 'string') {
+    try {
+      return JSON.parse(context) || {};
+    } catch {
+      return {};
+    }
+  }
+  return context;
+}
+
+function buildBrokerSyncRedirect(params = {}, context = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      query.set(key, String(value));
+    }
+  });
+
+  const queryString = query.toString();
+  const suffix = queryString ? `?${queryString}` : '';
+
+  if (context.platform === 'ios') {
+    return `tradetally://broker-sync${suffix}`;
+  }
+
+  return `${process.env.FRONTEND_URL}/settings/broker-sync${suffix}`;
+}
+
+async function getOAuthStateContext(stateToken, provider) {
+  if (!stateToken || !provider) return {};
+
+  try {
+    const result = await db.query(
+      `SELECT context
+         FROM oauth_pending_states
+        WHERE state_token = $1
+          AND provider = $2
+        LIMIT 1`,
+      [stateToken, provider]
+    );
+
+    return normalizeOAuthContext(result.rows[0]?.context);
+  } catch (error) {
+    logger.logError('Error looking up OAuth state context:', error);
+    return {};
+  }
+}
+
+async function redirectBrokerSync(res, provider, stateToken, params = {}, context = null) {
+  const resolvedContext = context ? normalizeOAuthContext(context) : await getOAuthStateContext(stateToken, provider);
+  return res.redirect(buildBrokerSyncRedirect(params, resolvedContext));
+}
+
 const brokerSyncController = {
   /**
    * Get all broker connections for the current user
@@ -177,6 +232,7 @@ const brokerSyncController = {
   async initSchwabOAuth(req, res, next) {
     try {
       const userId = req.user.id;
+      const { platform } = req.body || {};
 
       // Broker sync is a Pro feature
       const access = await TierService.canCreateBrokerConnection(userId, req.headers?.host);
@@ -197,11 +253,12 @@ const brokerSyncController = {
       // client-supplied state blob (which was forgeable in the legacy design).
       const stateToken = crypto.randomBytes(32).toString('hex');
       const expiresAt = new Date(Date.now() + OAUTH_STATE_TTL_MS);
+      const context = { platform: platform === 'ios' ? 'ios' : 'web' };
 
       await db.query(
-        `INSERT INTO oauth_pending_states (state_token, user_id, provider, expires_at)
-         VALUES ($1, $2, $3, $4)`,
-        [stateToken, userId, 'schwab', expiresAt]
+        `INSERT INTO oauth_pending_states (state_token, user_id, provider, expires_at, context)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [stateToken, userId, 'schwab', expiresAt, JSON.stringify(context)]
       );
 
       // Build authorization URL
@@ -234,11 +291,11 @@ const brokerSyncController = {
       // Handle OAuth errors
       if (oauthError) {
         console.error('[BROKER-SYNC] Schwab OAuth error:', oauthError);
-        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=${oauthError}`);
+        return redirectBrokerSync(res, 'schwab', state, { error: oauthError });
       }
 
       if (!code || !state) {
-        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=missing_params`);
+        return redirectBrokerSync(res, 'schwab', state, { error: 'missing_params' });
       }
 
       // Look up the state server-side. The row recovers the initiating userId;
@@ -251,23 +308,24 @@ const brokerSyncController = {
             AND provider = 'schwab'
             AND consumed_at IS NULL
             AND expires_at > NOW()
-          RETURNING user_id`,
+          RETURNING user_id, context`,
         [state]
       );
 
       if (stateLookup.rows.length === 0) {
         console.warn('[SCHWAB-OAUTH] Rejected callback with invalid, expired, or reused state');
-        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=invalid_state`);
+        return redirectBrokerSync(res, 'schwab', state, { error: 'invalid_state' });
       }
 
       const userId = stateLookup.rows[0].user_id;
+      const redirectContext = normalizeOAuthContext(stateLookup.rows[0].context);
 
       // Broker sync is a Pro feature. The init endpoint already gates this, but
       // re-check here in case the user's tier changed mid-flow.
       const access = await TierService.canCreateBrokerConnection(userId, req.headers?.host);
       if (!access.allowed) {
         console.warn('[SCHWAB-OAUTH] Rejected callback: broker sync is Pro-only for this free user');
-        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=pro_required`);
+        return redirectBrokerSync(res, 'schwab', state, { error: 'pro_required' }, redirectContext);
       }
 
       // Exchange code for tokens
@@ -334,7 +392,7 @@ const brokerSyncController = {
       console.log(`[BROKER-SYNC] Schwab connection created for user ${userId}`);
 
       // Redirect back to frontend
-      res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?success=schwab`);
+      res.redirect(buildBrokerSyncRedirect({ success: 'schwab' }, redirectContext));
     } catch (error) {
       console.error('[SCHWAB-OAUTH] ERROR MESSAGE:', error.message);
       console.error('[SCHWAB-OAUTH] ERROR STATUS:', error.response?.status);
@@ -345,8 +403,11 @@ const brokerSyncController = {
 
       // Provide more specific error message in redirect
       const errorCode = error.response?.status || 'unknown';
-      const errorMsg = encodeURIComponent(error.message || 'oauth_failed');
-      res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=oauth_failed&details=${errorMsg}&status=${errorCode}`);
+      return redirectBrokerSync(res, 'schwab', req.query?.state, {
+        error: 'oauth_failed',
+        details: error.message || 'oauth_failed',
+        status: errorCode
+      });
     }
   },
 
@@ -357,7 +418,7 @@ const brokerSyncController = {
     try {
       const userId = req.user.id;
       const { broker } = req.params;
-      const { environment } = req.body || {};
+      const { environment, platform } = req.body || {};
       const service = OAUTH_BROKER_SERVICES[broker];
 
       // Broker sync is a Pro feature
@@ -382,7 +443,10 @@ const brokerSyncController = {
 
       const stateToken = crypto.randomBytes(32).toString('hex');
       const expiresAt = new Date(Date.now() + OAUTH_STATE_TTL_MS);
-      const context = { environment: environment || null };
+      const context = {
+        environment: environment || null,
+        platform: platform === 'ios' ? 'ios' : 'web'
+      };
 
       await db.query(
         `INSERT INTO oauth_pending_states (state_token, user_id, provider, expires_at, context)
@@ -410,15 +474,15 @@ const brokerSyncController = {
       const service = OAUTH_BROKER_SERVICES[broker];
 
       if (!service) {
-        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=unsupported_broker`);
+        return res.redirect(buildBrokerSyncRedirect({ error: 'unsupported_broker' }));
       }
 
       if (oauthError) {
-        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=${encodeURIComponent(oauthError)}&broker=${broker}`);
+        return redirectBrokerSync(res, broker, state, { error: oauthError, broker });
       }
 
       if (!code || !state) {
-        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=missing_params&broker=${broker}`);
+        return redirectBrokerSync(res, broker, state, { error: 'missing_params', broker });
       }
 
       const stateLookup = await db.query(
@@ -433,27 +497,29 @@ const brokerSyncController = {
       );
 
       if (stateLookup.rows.length === 0) {
-        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=invalid_state&broker=${broker}`);
+        return redirectBrokerSync(res, broker, state, { error: 'invalid_state', broker });
       }
 
       const userId = stateLookup.rows[0].user_id;
+      const context = normalizeOAuthContext(stateLookup.rows[0].context);
 
       // Broker sync is a Pro feature. The init endpoint already gates this, but
       // re-check here in case the user's tier changed mid-flow.
       const access = await TierService.canCreateBrokerConnection(userId, req.headers?.host);
       if (!access.allowed) {
-        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=pro_required&broker=${broker}`);
+        return redirectBrokerSync(res, broker, state, { error: 'pro_required', broker }, context);
       }
 
-      const context = stateLookup.rows[0].context || {};
       const tokens = await service.exchangeCodeForTokens(code);
       await service.createConnectionFromTokens(userId, tokens, context);
 
-      res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?success=${broker}`);
+      res.redirect(buildBrokerSyncRedirect({ success: broker }, context));
     } catch (error) {
       logger.logError('Error handling broker OAuth callback:', error);
-      const errorMsg = encodeURIComponent(error.message || 'oauth_failed');
-      res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=oauth_failed&details=${errorMsg}`);
+      return redirectBrokerSync(res, req.params?.broker, req.query?.state, {
+        error: 'oauth_failed',
+        details: error.message || 'oauth_failed'
+      });
     }
   },
 

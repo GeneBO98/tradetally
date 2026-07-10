@@ -61,6 +61,7 @@ describe('Schwab OAuth state — server-side binding', () => {
     expect(params[1]).toBe('user-123');
     expect(params[2]).toBe('schwab');
     expect(params[3]).toBeInstanceOf(Date);
+    expect(JSON.parse(params[4])).toEqual({ platform: 'web' });
 
     // authUrl must include the state as-is (no client-readable base64 payload)
     const stateParam = new URL(res.payload.authUrl).searchParams.get('state');
@@ -68,7 +69,9 @@ describe('Schwab OAuth state — server-side binding', () => {
   });
 
   test('handleSchwabCallback rejects a state that does not match any row', async () => {
-    // UPDATE ... RETURNING * returns no rows -> invalid/expired/reused state
+    // UPDATE ... RETURNING * returns no rows -> invalid/expired/reused state.
+    // Follow-up context SELECT also returns no rows, so this falls back to web.
+    db.query.mockResolvedValueOnce({ rows: [] });
     db.query.mockResolvedValueOnce({ rows: [] });
 
     const req = { query: { code: 'auth-code', state: 'deadbeef' } };
@@ -83,7 +86,7 @@ describe('Schwab OAuth state — server-side binding', () => {
   });
 
   test('handleSchwabCallback derives userId from the DB row, never from the client state', async () => {
-    db.query.mockResolvedValueOnce({ rows: [{ user_id: 'real-user-from-db' }] });
+    db.query.mockResolvedValueOnce({ rows: [{ user_id: 'real-user-from-db', context: { platform: 'web' } }] });
     axios.post.mockResolvedValueOnce({
       data: { access_token: 'AT', refresh_token: 'RT', expires_in: 3600 }
     });
@@ -111,6 +114,7 @@ describe('Schwab OAuth state — server-side binding', () => {
 
   test('the state lookup UPDATE requires consumed_at IS NULL (no replay)', async () => {
     db.query.mockResolvedValueOnce({ rows: [] });
+    db.query.mockResolvedValueOnce({ rows: [] });
 
     const req = { query: { code: 'x', state: 'y' } };
     const res = createRes();
@@ -124,13 +128,31 @@ describe('Schwab OAuth state — server-side binding', () => {
     expect(sql).toMatch(/SET consumed_at = NOW\(\)/);
   });
 
+  test('handleSchwabCallback redirects iOS flows back to the app URL scheme', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ user_id: 'real-user-from-db', context: { platform: 'ios' } }] });
+    axios.post.mockResolvedValueOnce({
+      data: { access_token: 'AT', refresh_token: 'RT', expires_in: 3600 }
+    });
+    axios.get.mockResolvedValueOnce({
+      data: [{ securitiesAccount: { accountNumber: '12345678' } }]
+    });
+
+    const req = { query: { code: 'auth-code', state: 'ios-state-token' } };
+    const res = createRes();
+    const next = jest.fn();
+
+    await brokerSyncController.handleSchwabCallback(req, res, next);
+
+    expect(res.redirectedTo).toBe('tradetally://broker-sync?success=schwab');
+  });
+
   test('initBrokerOAuth INSERTs state for direct OAuth brokers', async () => {
     db.query.mockResolvedValueOnce({ rows: [] });
 
     const req = {
       user: { id: 'user-123' },
       params: { broker: 'tradestation' },
-      body: {}
+      body: { platform: 'ios' }
     };
     const res = createRes();
     const next = jest.fn();
@@ -142,11 +164,12 @@ describe('Schwab OAuth state — server-side binding', () => {
     expect(sql).toMatch(/INSERT INTO oauth_pending_states/);
     expect(params[1]).toBe('user-123');
     expect(params[2]).toBe('tradestation');
+    expect(JSON.parse(params[4])).toMatchObject({ environment: null, platform: 'ios' });
     expect(new URL(res.payload.authUrl).searchParams.get('state')).toBe(params[0]);
   });
 
   test('handleBrokerOAuthCallback derives userId from state row for direct OAuth brokers', async () => {
-    db.query.mockResolvedValueOnce({ rows: [{ user_id: 'real-user-from-db', context: {} }] });
+    db.query.mockResolvedValueOnce({ rows: [{ user_id: 'real-user-from-db', context: { platform: 'ios' } }] });
     axios.post.mockResolvedValueOnce({
       data: { access_token: 'AT', refresh_token: 'RT', expires_in: 3600, scope: 'ReadAccount' }
     });
@@ -172,6 +195,6 @@ describe('Schwab OAuth state — server-side binding', () => {
         externalAccountId: 'TS1234'
       })
     );
-    expect(res.redirectedTo).toBe('https://example.com/settings/broker-sync?success=tradestation');
+    expect(res.redirectedTo).toBe('tradetally://broker-sync?success=tradestation');
   });
 });
