@@ -347,6 +347,15 @@ const brokerStyles = computed(() => {
                 bgClass: "bg-blue-100 dark:bg-blue-900/30",
                 textClass: "text-blue-600 dark:text-blue-400",
             };
+        case "trading212":
+            return {
+                name: props.connection.brokerEnvironment === "demo"
+                    ? "Trading 212 Demo"
+                    : "Trading 212 Live",
+                abbrev: "T2",
+                bgClass: "bg-primary-100 dark:bg-primary-900/30",
+                textClass: "text-primary-600 dark:text-primary-400",
+            };
         default:
             return {
                 name: props.connection.brokerType,

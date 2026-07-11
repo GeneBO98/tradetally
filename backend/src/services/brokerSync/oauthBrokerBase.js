@@ -227,6 +227,8 @@ class OAuthBrokerBase {
           broker: this.config.brokerType,
           instrumentType: entryFill.instrumentType || fill.instrumentType || 'stock',
           accountIdentifier: fill.accountIdentifier || lot.accountIdentifier || null,
+          originalCurrency: entryFill.currency || fill.currency || null,
+          exchangeRate: entryFill.fxRate || fill.fxRate || 1,
           executionData: [
             this.toExecutionData(entryFill, 'entry'),
             this.toExecutionData(exitFill, 'exit')
@@ -260,6 +262,8 @@ class OAuthBrokerBase {
           broker: this.config.brokerType,
           instrumentType: lot.instrumentType || 'stock',
           accountIdentifier: lot.accountIdentifier || null,
+          originalCurrency: lot.currency || null,
+          exchangeRate: lot.fxRate || 1,
           executionData: [this.toExecutionData(lot, 'entry')]
         });
       }
@@ -384,7 +388,9 @@ class OAuthBrokerBase {
       const existingExecs = Array.isArray(existing.executions) ? existing.executions : [];
       const newExecs = newTrade.executionData || [];
       return newExecs.some(newExec => existingExecs.some(existingExec =>
-        newExec.orderId && existingExec.orderId && String(newExec.orderId) === String(existingExec.orderId)
+        (newExec.order_id ?? newExec.orderId) &&
+        (existingExec.order_id ?? existingExec.orderId) &&
+        String(newExec.order_id ?? newExec.orderId) === String(existingExec.order_id ?? existingExec.orderId)
       ));
     });
   }

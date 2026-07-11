@@ -8,6 +8,7 @@ const ibkrService = require('../services/brokerSync/ibkrService');
 const schwabService = require('../services/brokerSync/schwabService');
 const tradestationService = require('../services/brokerSync/tradestationService');
 const alpacaService = require('../services/brokerSync/alpacaService');
+const trading212Service = require('../services/brokerSync/trading212Service');
 const brokerSyncService = require('../services/brokerSync');
 const TierService = require('../services/tierService');
 const AnalyticsCache = require('../services/analyticsCache');
@@ -222,6 +223,66 @@ const brokerSyncController = {
       });
     } catch (error) {
       logger.logError('Error adding IBKR connection:', error);
+      next(error);
+    }
+  },
+
+  /**
+   * Add a Trading 212 API-key connection.
+   */
+  async addTrading212Connection(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const access = await TierService.canCreateBrokerConnection(userId, req.headers?.host);
+      if (!access.allowed) {
+        return sendProRequired(res, access);
+      }
+
+      const {
+        api_key: apiKey,
+        api_secret: apiSecret,
+        broker_environment: brokerEnvironment = 'live',
+        account_label: accountLabel = '',
+        auto_sync_enabled: autoSyncEnabled = false,
+        sync_frequency: syncFrequency = 'daily',
+        sync_time: syncTime = '06:00:00',
+        sync_start_date: syncStartDate = null
+      } = req.body;
+
+      const validation = await trading212Service.validateCredentials(apiKey, apiSecret, brokerEnvironment);
+      if (!validation.valid) {
+        return res.status(400).json({ success: false, error: validation.message });
+      }
+
+      const connection = await BrokerConnection.create(userId, {
+        brokerType: 'trading212',
+        trading212ApiKey: apiKey,
+        trading212ApiSecret: apiSecret,
+        externalAccountId: validation.accountId,
+        brokerEnvironment,
+        brokerMetadata: { currency: validation.currency || null },
+        accountLabel: accountLabel || null,
+        autoSyncEnabled,
+        syncFrequency,
+        syncTime,
+        syncStartDate
+      });
+
+      await BrokerConnection.updateStatus(connection.id, 'active', 'Connection validated successfully');
+      if (autoSyncEnabled && syncFrequency !== 'manual') {
+        const nextSync = BrokerConnection.calculateNextSync(syncFrequency, syncTime);
+        if (nextSync) await BrokerConnection.update(connection.id, { nextScheduledSync: nextSync });
+      }
+
+      const updatedConnection = await BrokerConnection.findById(connection.id, false);
+      console.log(`[BROKER-SYNC] Trading 212 ${brokerEnvironment} connection created for user ${userId}`);
+      return res.status(201).json({
+        success: true,
+        data: updatedConnection,
+        message: 'Trading 212 connection added successfully'
+      });
+    } catch (error) {
+      logger.logError('Error adding Trading 212 connection:', error);
       next(error);
     }
   },
@@ -761,6 +822,12 @@ const brokerSyncController = {
             testResult = { valid: false, message: `Schwab connection test failed: ${error.message}` };
           }
         }
+      } else if (connection.brokerType === 'trading212') {
+        testResult = await trading212Service.validateCredentials(
+          connection.trading212ApiKey,
+          connection.trading212ApiSecret,
+          connection.brokerEnvironment || 'live'
+        );
       } else if (OAUTH_BROKER_SERVICES[connection.brokerType]) {
         const service = OAUTH_BROKER_SERVICES[connection.brokerType];
         const { accessToken, needsReauth } = await service.ensureValidToken(connection);

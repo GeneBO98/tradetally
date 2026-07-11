@@ -135,6 +135,27 @@
               </div>
             </div>
 
+            <!-- Trading 212 Card -->
+            <div
+              class="rounded-lg border-2 p-6 transition-colors"
+              :class="canAddTrading212
+                ? 'cursor-pointer border-dashed border-gray-300 hover:border-primary-500 dark:border-gray-600 dark:hover:border-primary-400'
+                : 'cursor-not-allowed border-gray-200 bg-gray-50 opacity-50 dark:border-gray-700 dark:bg-gray-800'"
+              @click="canAddTrading212 && openTrading212Modal()"
+            >
+              <div class="flex items-center space-x-4">
+                <div class="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg bg-primary-100 dark:bg-primary-900/30">
+                  <span class="text-lg font-bold text-primary-600 dark:text-primary-400">T2</span>
+                </div>
+                <div>
+                  <h4 class="font-medium text-gray-900 dark:text-white">Trading 212</h4>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ store.trading212Connections.length > 0 ? 'Add another environment' : 'Connect with an API key' }}
+                  </p>
+                </div>
+              </div>
+            </div>
+
             <!-- TradeStation Card -->
             <div
               class="p-6 border-2 rounded-lg transition-colors"
@@ -209,7 +230,7 @@
       <ProUpgradePrompt
         v-else-if="showUpgradeGate"
         variant="card"
-        description="Broker sync is a Pro feature. Connect Interactive Brokers, Schwab, TradeStation, or Alpaca to import your trades automatically. Free accounts can still import via CSV (up to 100 trades per import)."
+        description="Broker sync is a Pro feature. Connect Interactive Brokers, Schwab, Trading 212, TradeStation, or Alpaca to import your trades automatically. Free accounts can still import via CSV (up to 100 trades per import)."
       />
 
       <!-- Sync History -->
@@ -295,6 +316,15 @@
       :error="store.error"
     />
 
+    <Trading212ConnectionModal
+      v-if="showTrading212Modal"
+      :loading="store.loading"
+      :error="store.error"
+      :existing-environments="trading212Environments"
+      @close="closeTrading212Modal"
+      @save="handleTrading212Save"
+    />
+
     <!-- Settings Modal -->
     <ConnectionSettingsModal
       v-if="showSettingsModal"
@@ -324,6 +354,7 @@ import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
 import BrokerConnectionCard from '@/components/broker-sync/BrokerConnectionCard.vue'
 import IBKRConnectionModal from '@/components/broker-sync/IBKRConnectionModal.vue'
+import Trading212ConnectionModal from '@/components/broker-sync/Trading212ConnectionModal.vue'
 import ConnectionSettingsModal from '@/components/broker-sync/ConnectionSettingsModal.vue'
 import IBKRNoticeBanner from '@/components/broker-sync/IBKRNoticeBanner.vue'
 import ManualTradeReviewModal from '@/components/import/ManualTradeReviewModal.vue'
@@ -361,6 +392,7 @@ const graceEndsAtFormatted = computed(() => {
 const pricingLink = computed(() => `/pricing?redirect=${encodeURIComponent(route.fullPath)}`)
 
 const showIBKRModal = ref(false)
+const showTrading212Modal = ref(false)
 const showSettingsModal = ref(false)
 const selectedConnection = ref(null)
 const successMessage = ref('')
@@ -377,6 +409,11 @@ const brokerConnecting = ref({
 })
 const SCHWAB_PENDING_STORAGE_KEY = 'broker_sync_schwab_pending'
 const BROKER_PENDING_STORAGE_KEY = 'broker_sync_pending'
+
+const trading212Environments = computed(() =>
+  store.trading212Connections.map(connection => connection.brokerEnvironment || 'live')
+)
+const canAddTrading212 = computed(() => trading212Environments.value.length < 2)
 
 function brokerConnection(broker, environment = null) {
   return store.connections.find(connection =>
@@ -513,6 +550,20 @@ function closeIBKRModal() {
   showIBKRModal.value = false
 }
 
+function openTrading212Modal() {
+  if (trading212Environments.value.length >= 2) {
+    store.error = 'Both Trading 212 live and demo environments are already connected.'
+    return
+  }
+  store.clearError()
+  showTrading212Modal.value = true
+}
+
+function closeTrading212Modal() {
+  store.clearError()
+  showTrading212Modal.value = false
+}
+
 function openSettingsModal(connection) {
   selectedConnection.value = connection
   showSettingsModal.value = true
@@ -523,6 +574,16 @@ async function handleIBKRSave(credentials) {
     await store.addIBKRConnection(credentials)
     showIBKRModal.value = false
     scheduleSuccessMessage('IBKR connection added successfully!')
+  } catch (error) {
+    // Error is handled by store
+  }
+}
+
+async function handleTrading212Save(connection) {
+  try {
+    await store.addTrading212Connection(connection)
+    showTrading212Modal.value = false
+    scheduleSuccessMessage('Trading 212 connection added successfully. Ready to sync trades.')
   } catch (error) {
     // Error is handled by store
   }
@@ -575,7 +636,7 @@ async function handleSync(connection) {
 
     // Poll for updates until sync completes
     const pollInterval = 3000
-    const maxAttempts = 40 // 2 minutes max
+    const maxAttempts = 200 // 10 minutes max for rate-limited broker history imports
     let attempts = 0
 
     const poll = async () => {

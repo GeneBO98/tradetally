@@ -762,6 +762,17 @@ const schemas = {
     syncStartDate: nullableDate
   }),
 
+  brokerSyncTrading212Connection: Joi.object({
+    api_key: Joi.string().trim().required(),
+    api_secret: Joi.string().trim().required(),
+    broker_environment: Joi.string().valid('live', 'demo').default('live'),
+    account_label: nullableString(255),
+    auto_sync_enabled: Joi.boolean().default(false),
+    sync_frequency: Joi.string().valid('manual', 'hourly', 'every_4_hours', 'every_6_hours', 'every_12_hours', 'daily').default('manual'),
+    sync_time: nullableString(10),
+    sync_start_date: nullableDate
+  }),
+
   brokerSyncConnectionUpdate: Joi.object({
     accountLabel: nullableString(255),
     autoSyncEnabled: Joi.boolean(),

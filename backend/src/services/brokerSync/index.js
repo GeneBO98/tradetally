@@ -11,6 +11,7 @@ const ibkrService = require('./ibkrService');
 const schwabService = require('./schwabService');
 const tradestationService = require('./tradestationService');
 const alpacaService = require('./alpacaService');
+const trading212Service = require('./trading212Service');
 
 class BrokerSyncService {
   /**
@@ -102,6 +103,14 @@ class BrokerSyncService {
 
         case 'alpaca':
           result = await alpacaService.syncTrades(connection, {
+            startDate,
+            endDate,
+            syncLogId: syncLog.id
+          });
+          break;
+
+        case 'trading212':
+          result = await trading212Service.syncTrades(connection, {
             startDate,
             endDate,
             syncLogId: syncLog.id
@@ -262,6 +271,13 @@ class BrokerSyncService {
           valid: alpacaService.isConfigured(),
           message: alpacaService.isConfigured() ? 'Alpaca OAuth is configured' : 'Alpaca OAuth is not configured'
         };
+
+      case 'trading212':
+        return trading212Service.validateCredentials(
+          credentials.apiKey,
+          credentials.apiSecret,
+          credentials.environment
+        );
 
       default:
         return { valid: false, message: `Unknown broker type: ${brokerType}` };

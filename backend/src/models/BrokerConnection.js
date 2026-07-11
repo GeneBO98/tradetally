@@ -36,6 +36,8 @@ class BrokerConnection {
       schwabRefreshToken,
       schwabTokenExpiresAt,
       schwabAccountId,
+      trading212ApiKey,
+      trading212ApiSecret,
       oauthAccessToken,
       oauthRefreshToken,
       oauthTokenExpiresAt,
@@ -56,6 +58,8 @@ class BrokerConnection {
     const encryptedIbkrToken = ibkrFlexToken ? encryptionService.encrypt(ibkrFlexToken) : null;
     const encryptedSchwabAccess = schwabAccessToken ? encryptionService.encrypt(schwabAccessToken) : null;
     const encryptedSchwabRefresh = schwabRefreshToken ? encryptionService.encrypt(schwabRefreshToken) : null;
+    const encryptedTrading212ApiKey = trading212ApiKey ? encryptionService.encrypt(trading212ApiKey) : null;
+    const encryptedTrading212ApiSecret = trading212ApiSecret ? encryptionService.encrypt(trading212ApiSecret) : null;
     const encryptedOAuthAccess = oauthAccessToken ? encryptionService.encrypt(oauthAccessToken) : null;
     const encryptedOAuthRefresh = oauthRefreshToken ? encryptionService.encrypt(oauthRefreshToken) : null;
 
@@ -116,6 +120,36 @@ class BrokerConnection {
         userId, brokerType, encryptedSchwabAccess, encryptedSchwabRefresh,
         schwabTokenExpiresAt, schwabAccountId, accountLabel,
         autoSyncEnabled, syncFrequency, syncTime, syncStartDate
+      ];
+    } else if (brokerType === 'trading212') {
+      query = `
+        INSERT INTO broker_connections (
+          user_id, broker_type, connection_status,
+          trading212_api_key, trading212_api_secret, external_account_id,
+          broker_environment, broker_metadata, account_label,
+          auto_sync_enabled, sync_frequency, sync_time, sync_start_date
+        )
+        VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        ON CONFLICT (user_id, (COALESCE(broker_environment, 'live'))) WHERE broker_type = 'trading212' DO UPDATE SET
+          trading212_api_key = EXCLUDED.trading212_api_key,
+          trading212_api_secret = EXCLUDED.trading212_api_secret,
+          external_account_id = EXCLUDED.external_account_id,
+          broker_metadata = EXCLUDED.broker_metadata,
+          account_label = EXCLUDED.account_label,
+          auto_sync_enabled = EXCLUDED.auto_sync_enabled,
+          sync_frequency = EXCLUDED.sync_frequency,
+          sync_time = EXCLUDED.sync_time,
+          sync_start_date = EXCLUDED.sync_start_date,
+          connection_status = 'pending',
+          consecutive_failures = 0,
+          updated_at = CURRENT_TIMESTAMP
+        RETURNING *
+      `;
+      params = [
+        userId, brokerType, encryptedTrading212ApiKey, encryptedTrading212ApiSecret,
+        externalAccountId || null, brokerEnvironment || 'live',
+        JSON.stringify(brokerMetadata || {}), accountLabel, autoSyncEnabled,
+        syncFrequency, syncTime, syncStartDate
       ];
     } else {
       query = `
@@ -363,7 +397,7 @@ class BrokerConnection {
    * Update connection settings
    */
   static async update(connectionId, updates) {
-    const allowedFields = ['auto_sync_enabled', 'sync_frequency', 'sync_time', 'sync_start_date', 'account_label'];
+    const allowedFields = ['auto_sync_enabled', 'sync_frequency', 'sync_time', 'sync_start_date', 'account_label', 'next_scheduled_sync'];
     const setClauses = [];
     const values = [];
     let paramCount = 1;
@@ -580,6 +614,18 @@ class BrokerConnection {
         }
         if (row.schwab_refresh_token) {
           connection.schwabRefreshToken = encryptionService.decrypt(row.schwab_refresh_token);
+        }
+      }
+    } else if (row.broker_type === 'trading212') {
+      connection.externalAccountId = row.external_account_id;
+      connection.brokerEnvironment = row.broker_environment || 'live';
+      connection.brokerMetadata = row.broker_metadata || {};
+      if (includeCredentials) {
+        if (row.trading212_api_key) {
+          connection.trading212ApiKey = encryptionService.decrypt(row.trading212_api_key);
+        }
+        if (row.trading212_api_secret) {
+          connection.trading212ApiSecret = encryptionService.decrypt(row.trading212_api_secret);
         }
       }
     } else if (['tradestation', 'alpaca'].includes(row.broker_type)) {
