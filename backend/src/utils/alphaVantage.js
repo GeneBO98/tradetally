@@ -2,6 +2,26 @@ const axios = require('axios');
 const cache = require('./cache');
 const historicalPriceCache = require('./historicalPriceCache');
 
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const TRADE_CHART_CONTEXT_DAYS_BEFORE = 180;
+const TRADE_CHART_CONTEXT_DAYS_AFTER = 30;
+
+function candleRangeCoversDate(candles, targetDate) {
+  if (!Array.isArray(candles) || candles.length === 0 || Number.isNaN(targetDate.getTime())) {
+    return false;
+  }
+
+  const targetDateKey = targetDate.toISOString().split('T')[0];
+  const candleDateKeys = candles
+    .map((candle) => new Date(Number(candle.time) * 1000))
+    .filter((date) => !Number.isNaN(date.getTime()))
+    .map((date) => date.toISOString().split('T')[0])
+    .sort();
+
+  if (candleDateKeys.length === 0) return false;
+  return targetDateKey >= candleDateKeys[0] && targetDateKey <= candleDateKeys[candleDateKeys.length - 1];
+}
+
 class AlphaVantageClient {
   constructor() {
     this.apiKey = process.env.ALPHA_VANTAGE_API_KEY;
@@ -219,21 +239,26 @@ class AlphaVantageClient {
     const entryTime = new Date(entryDate);
     const exitTime = exitDate ? new Date(exitDate) : new Date();
     const tradeDuration = exitTime - entryTime;
-    const oneDayMs = 24 * 60 * 60 * 1000;
 
-    console.log(`Alpha Vantage chart request - Symbol: ${symbol}, Entry: ${entryTime.toISOString()}, Exit: ${exitTime.toISOString()}, Duration: ${Math.ceil(tradeDuration / oneDayMs)} days`);
+    console.log(`Alpha Vantage chart request - Symbol: ${symbol}, Entry: ${entryTime.toISOString()}, Exit: ${exitTime.toISOString()}, Duration: ${Math.ceil(tradeDuration / ONE_DAY_MS)} days`);
 
     try {
-      // Compute date window for DB lookup
-      const windowStartDate = new Date(entryTime.getTime() - 7 * oneDayMs).toISOString().split('T')[0];
-      const windowEndDate = new Date(exitTime.getTime() + 7 * oneDayMs).toISOString().split('T')[0];
+      // Daily charts need enough history to show the setup that preceded the trade.
+      // Alpha Vantage compact responses contain at most 100 bars, while the DB cache
+      // can accumulate a wider range over time.
+      const windowStart = entryTime.getTime() - TRADE_CHART_CONTEXT_DAYS_BEFORE * ONE_DAY_MS;
+      const windowEnd = exitTime.getTime() + TRADE_CHART_CONTEXT_DAYS_AFTER * ONE_DAY_MS;
+      const windowStartDate = new Date(windowStart).toISOString().split('T')[0];
+      const windowEndDate = new Date(windowEnd).toISOString().split('T')[0];
 
       // Check persistent DB cache first (zero API calls if covered)
       try {
         const hasCached = await historicalPriceCache.hasRange(symbol, windowStartDate, windowEndDate);
         if (hasCached) {
           const cachedCandles = await historicalPriceCache.getRange(symbol, windowStartDate, windowEndDate);
-          if (cachedCandles.length > 0) {
+          const coversTrade = candleRangeCoversDate(cachedCandles, entryTime) &&
+            (!exitDate || candleRangeCoversDate(cachedCandles, exitTime));
+          if (coversTrade) {
             console.log(`[PRICE-CACHE] Returning ${cachedCandles.length} cached candles from DB for ${symbol} (zero API calls)`);
             return {
               type: 'daily',
@@ -252,21 +277,28 @@ class AlphaVantageClient {
       console.log(`Fetching daily data for ${symbol} (free tier - daily resolution only)`);
       const rawCandles = await this.getDailyData(symbol, 'compact');
 
-      // Filter to include a reasonable window around the trade dates
-      const windowStart = Math.floor((entryTime.getTime() - 7 * oneDayMs) / 1000); // 7 days before entry
-      const windowEnd = Math.floor((exitTime.getTime() + 7 * oneDayMs) / 1000); // 7 days after exit
+      // Never display a recent, unrelated window for an older trade. Doing so makes
+      // correct provider prices appear to disagree with the recorded execution.
+      const coversTrade = candleRangeCoversDate(rawCandles, entryTime) &&
+        (!exitDate || candleRangeCoversDate(rawCandles, exitTime));
+      if (!coversTrade) {
+        throw new Error(
+          `Alpha Vantage compact data for ${symbol} does not include the trade dates. ` +
+          'Historical daily data requires a premium provider or previously cached candles.'
+        );
+      }
 
-      let filteredCandles = rawCandles.filter(candle => {
-        return candle.time >= windowStart && candle.time <= windowEnd;
+      const windowStartSeconds = Math.floor(windowStart / 1000);
+      const windowEndSeconds = Math.floor(windowEnd / 1000);
+
+      const filteredCandles = rawCandles.filter(candle => {
+        return candle.time >= windowStartSeconds && candle.time <= windowEndSeconds;
       });
 
       console.log(`Filtered daily candles: ${filteredCandles.length} of ${rawCandles.length} candles within trade window`);
 
-      // Ensure we have some data to show
       if (filteredCandles.length === 0) {
-        console.warn(`No candles found in focused range for ${symbol}, returning recent data instead`);
-        // Fall back to recent data if no candles in range
-        filteredCandles = rawCandles.slice(-50); // Last 50 candles
+        throw new Error(`No Alpha Vantage candles are available around the ${symbol} trade date.`);
       }
 
       return {

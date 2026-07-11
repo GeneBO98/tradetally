@@ -36,6 +36,36 @@ function applyCategoryMetadata(target, category) {
   };
 }
 
+function isOptionContractSymbol(symbol) {
+  const compact = String(symbol || '').toUpperCase().replace(/\s+/g, '');
+  return /^[A-Z]{1,6}\d{6}[CP]\d{8}$/.test(compact);
+}
+
+function isSupportedProviderResult(item) {
+  const symbol = String(item?.symbol || '').trim().toUpperCase();
+  if (!symbol || symbol.includes('.') || isOptionContractSymbol(symbol)) {
+    return false;
+  }
+
+  // Finnhub labels search results by instrument class. Price alerts operate on
+  // underlyings, so exclude contracts, warrants, rights, preferred shares, and
+  // other derivative-like instruments from this stock/ETF picker.
+  if (finnhub.isFinnhub) {
+    const type = String(item.type || '').trim().toLowerCase();
+    const supportedTypes = new Set([
+      'common stock',
+      'etp',
+      'adr',
+      'reit',
+      'closed-end fund',
+      'open-end fund'
+    ]);
+    return supportedTypes.has(type);
+  }
+
+  return true;
+}
+
 async function searchSymbols(req, res) {
   try {
     const userId = req.user.id;
@@ -57,19 +87,28 @@ async function searchSymbols(req, res) {
 
     // 1. Search user's traded symbols (highest priority)
     const userTradesQuery = `
-      SELECT DISTINCT t.symbol, sc.company_name, sc.exchange, sc.logo
+      SELECT DISTINCT
+        UPPER(COALESCE(NULLIF(t.underlying_symbol, ''), t.symbol)) AS symbol,
+        sc.company_name,
+        sc.exchange,
+        sc.logo
       FROM trades t
-      LEFT JOIN symbol_categories sc ON UPPER(t.symbol) = UPPER(sc.symbol)
+      LEFT JOIN symbol_categories sc
+        ON UPPER(COALESCE(NULLIF(t.underlying_symbol, ''), t.symbol)) = UPPER(sc.symbol)
       WHERE t.user_id = $1
-        AND UPPER(t.symbol) LIKE $2
-      ORDER BY t.symbol
+        AND UPPER(COALESCE(NULLIF(t.underlying_symbol, ''), t.symbol)) LIKE $2
+        AND (
+          t.instrument_type IS DISTINCT FROM 'option'
+          OR NULLIF(t.underlying_symbol, '') IS NOT NULL
+        )
+      ORDER BY symbol
       LIMIT 10
     `;
     const userTradesResult = await db.query(userTradesQuery, [userId, `${query}%`]);
 
     for (const row of userTradesResult.rows) {
       const sym = row.symbol.toUpperCase();
-      if (!seenSymbols.has(sym)) {
+      if (!isOptionContractSymbol(sym) && !seenSymbols.has(sym)) {
         seenSymbols.add(sym);
         results.push({
           symbol: sym,
@@ -116,7 +155,7 @@ async function searchSymbols(req, res) {
 
       for (const row of localResult.rows) {
         const sym = row.symbol.toUpperCase();
-        if (!seenSymbols.has(sym)) {
+        if (!isOptionContractSymbol(sym) && !seenSymbols.has(sym)) {
           seenSymbols.add(sym);
           results.push({
             symbol: sym,
@@ -137,8 +176,7 @@ async function searchSymbols(req, res) {
           for (const item of finnhubResults.result) {
             if (results.length >= 15) break;
             const sym = (item.symbol || '').toUpperCase();
-            // Skip symbols with dots (foreign exchanges) and already-seen
-            if (!sym || sym.includes('.') || seenSymbols.has(sym)) continue;
+            if (!isSupportedProviderResult(item) || seenSymbols.has(sym)) continue;
             seenSymbols.add(sym);
             results.push({
               symbol: sym,
@@ -252,7 +290,43 @@ async function getSymbolMetadata(req, res) {
   }
 }
 
+async function getSymbolQuote(req, res) {
+  const userId = req.user.id;
+  const symbol = (typeof req.query.symbol === 'string' ? req.query.symbol : '')
+    .trim()
+    .toUpperCase();
+
+  if (!symbol) {
+    throw new AppError(400, { error: 'Symbol is required' });
+  }
+
+  const quote = await finnhub.getQuote(symbol, userId);
+  const currentPrice = Number(quote?.c);
+
+  if (!Number.isFinite(currentPrice) || currentPrice <= 0) {
+    throw new AppError(404, { error: `Current price unavailable for ${symbol}` });
+  }
+
+  const numberOrNull = value => {
+    if (value === null || value === undefined || value === '') {
+      return null;
+    }
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+  };
+
+  return res.json({
+    symbol,
+    current_price: currentPrice,
+    previous_close: numberOrNull(quote.pc),
+    change: numberOrNull(quote.d),
+    change_percent: numberOrNull(quote.dp),
+    timestamp: numberOrNull(quote.t)
+  });
+}
+
 module.exports = {
   searchSymbols: asyncHandler(searchSymbols),
-  getSymbolMetadata: asyncHandler(getSymbolMetadata)
+  getSymbolMetadata: asyncHandler(getSymbolMetadata),
+  getSymbolQuote: asyncHandler(getSymbolQuote)
 };

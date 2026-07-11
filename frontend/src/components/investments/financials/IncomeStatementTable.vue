@@ -191,6 +191,9 @@
 
 <script setup>
 import { computed } from 'vue'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+
+const { formatCurrency, currencySymbol } = useCurrencyFormatter()
 
 const props = defineProps({
   data: {
@@ -213,26 +216,18 @@ function formatLargeNumber(value) {
   const isNegative = value < 0
   const prefix = isNegative ? '(' : ''
   const suffix = isNegative ? ')' : ''
+  const sym = currencySymbol.value
 
-  if (absValue >= 1e12) return `${prefix}$${(absValue / 1e12).toFixed(2)}T${suffix}`
-  if (absValue >= 1e9) return `${prefix}$${(absValue / 1e9).toFixed(2)}B${suffix}`
-  if (absValue >= 1e6) return `${prefix}$${(absValue / 1e6).toFixed(2)}M${suffix}`
-  if (absValue >= 1e3) return `${prefix}$${(absValue / 1e3).toFixed(2)}K${suffix}`
-  return `${prefix}$${absValue.toFixed(0)}${suffix}`
+  if (absValue >= 1e12) return `${prefix}${sym}${(absValue / 1e12).toFixed(2)}T${suffix}`
+  if (absValue >= 1e9) return `${prefix}${sym}${(absValue / 1e9).toFixed(2)}B${suffix}`
+  if (absValue >= 1e6) return `${prefix}${sym}${(absValue / 1e6).toFixed(2)}M${suffix}`
+  if (absValue >= 1e3) return `${prefix}${sym}${(absValue / 1e3).toFixed(2)}K${suffix}`
+  return `${prefix}${sym}${absValue.toFixed(0)}${suffix}`
 }
 
 function formatPercent(numerator, denominator) {
   if (!numerator || !denominator) return '-'
   return ((numerator / denominator) * 100).toFixed(1) + '%'
-}
-
-function formatCurrency(value) {
-  if (value === null || value === undefined || isNaN(value)) return '-'
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2
-  }).format(value)
 }
 
 function formatGrowth(current, previous) {

@@ -140,9 +140,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import api from '@/services/api'
 import { useUserTimezone } from '@/composables/useUserTimezone'
+import { useVisibilityPolling } from '@/composables/useVisibilityPolling'
+import { debounce } from '@/utils/debounce'
 import BaseSelect from '@/components/common/BaseSelect.vue'
 
 const { formatTime: formatTimeTz } = useUserTimezone()
@@ -159,8 +161,8 @@ const logLimit = ref(200)
 const logLevels = ['DEBUG', 'INFO', 'WARN', 'ERROR']
 const visibleLevels = ref(['DEBUG', 'INFO', 'WARN', 'ERROR'])
 
-let refreshInterval = null
-let debounceTimeout = null
+// Auto-refresh polling: visibility-gated, started/stopped by the autoRefresh toggle
+useVisibilityPolling(fetchLogs, 5000, { enabled: autoRefresh })
 
 // Parse log line into structured format
 function parseLogLine(line) {
@@ -294,12 +296,9 @@ function highlightSearch(message) {
 }
 
 // Debounced search
-function debouncedSearch() {
-  clearTimeout(debounceTimeout)
-  debounceTimeout = setTimeout(() => {
-    // Search is handled by computed property
-  }, 300)
-}
+const debouncedSearch = debounce(() => {
+  // Search is handled by computed property
+}, 300)
 
 // Format time for display
 function formatTime(date) {
@@ -313,24 +312,11 @@ function formatTime(date) {
   return formatTimeTz(date)
 }
 
-// Set up auto-refresh
-watch(autoRefresh, (enabled) => {
-  if (enabled) {
-    refreshInterval = setInterval(fetchLogs, 5000)
-  } else {
-    clearInterval(refreshInterval)
-  }
-})
-
 onMounted(() => {
   fetchLogs()
-  if (autoRefresh.value) {
-    refreshInterval = setInterval(fetchLogs, 5000)
-  }
 })
 
 onUnmounted(() => {
-  clearInterval(refreshInterval)
-  clearTimeout(debounceTimeout)
+  debouncedSearch.cancel()
 })
 </script>

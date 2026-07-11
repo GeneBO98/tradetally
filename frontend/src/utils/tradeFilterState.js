@@ -6,7 +6,8 @@ const MULTI_SELECT_FILTER_KEYS = Object.freeze([
   'brokers',
   'instrumentTypes',
   'optionTypes',
-  'qualityGrades'
+  'qualityGrades',
+  'market_sessions'
 ])
 
 const NUMERIC_MULTI_SELECT_FILTER_KEYS = Object.freeze([

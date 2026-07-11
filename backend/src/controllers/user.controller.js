@@ -717,14 +717,21 @@ const userController = {
       const tradeQualityService = require('../services/tradeQuality.service');
       const profilesMeta = tradeQualityService.getQualityProfilesMeta();
 
-      // Resolve each profile's effective weights (custom or default)
+      // Resolve each profile's effective weights (custom or default). The
+      // per-profile lookups are independent queries, so run them all at once.
+      const profileTypes = Object.keys(profilesMeta);
+      const resolved = await Promise.all(profileTypes.map(async (profileType) => {
+        const [decimalWeights, coverage] = await Promise.all([
+          tradeQualityService.getUserQualityWeights(req.user.id, profileType),
+          tradeQualityService.getUserMinimumCoverage(req.user.id, profileType)
+        ]);
+        return { profileType, decimalWeights, coverage };
+      }));
+
       const profiles = {};
       const minimumCoverage = {};
-      for (const profileType of Object.keys(profilesMeta)) {
-        const decimalWeights = await tradeQualityService.getUserQualityWeights(req.user.id, profileType);
-        minimumCoverage[profileType] = Math.round(
-          (await tradeQualityService.getUserMinimumCoverage(req.user.id, profileType)) * 100
-        );
+      for (const { profileType, decimalWeights, coverage } of resolved) {
+        minimumCoverage[profileType] = Math.round(coverage * 100);
         const meta = profilesMeta[profileType];
         const out = {};
         // Map internal metric keys back to API keys as integer percentages

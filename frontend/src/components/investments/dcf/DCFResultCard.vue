@@ -35,6 +35,10 @@
 
 <script setup>
 import { computed } from 'vue'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatPercent as formatPercentBase } from '@/utils/formatters'
+
+const { formatCurrency: formatCurrencyBase } = useCurrencyFormatter()
 
 const props = defineProps({
   scenario: {
@@ -131,16 +135,10 @@ const statusText = computed(() => {
 
 function formatCurrency(value) {
   if (value === null || value === undefined) return 'N/A'
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(value)
+  return formatCurrencyBase(value)
 }
 
 function formatPercent(value) {
-  if (value === null || value === undefined) return 'N/A'
-  return (value * 100).toFixed(1) + '%'
+  return formatPercentBase(value, { digits: 1, multiplier: 100, nullValue: 'N/A' })
 }
 </script>

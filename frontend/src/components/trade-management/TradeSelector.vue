@@ -171,6 +171,7 @@
 
 <script setup>
 import { formatTradeDate } from '@/utils/date'
+import { formatPercent as formatPercentBase } from '@/utils/formatters'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 
@@ -219,9 +220,7 @@ function formatDateWithTime(trade) {
 }
 
 function formatPercent(value) {
-  if (value === null || value === undefined) return '-'
-  const num = parseFloat(value)
-  return `${num >= 0 ? '+' : ''}${num.toFixed(2)}%`
+  return formatPercentBase(value, { showSign: true })
 }
 
 function formatInstrumentType(type) {

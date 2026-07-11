@@ -7,6 +7,7 @@ const { computeTradePnl } = require('../services/pnlEngine');
 const { getUserTimezone } = require('../utils/timezone');
 const { toCamelCase, toSnakeCase, keysToCamelCase, keysToSnakeCase } = require('../utils/caseConvert');
 const AnalyticsCache = require('../services/analyticsCache');
+const settingsCache = require('../services/settingsCache');
 const OptionStrategyGroupingService = require('../services/optionStrategyGroupingService');
 const Trade = require('../models/Trade');
 
@@ -1772,6 +1773,7 @@ const settingsController = {
 
         await client.query('COMMIT');
         console.log('[IMPORT] Transaction committed successfully');
+        settingsCache.invalidate(userId);
 
         if (tradesAdded > 0) {
           try {

@@ -55,6 +55,7 @@ export const useTradesStore = defineStore('trades', () => {
     importId: '',
     accounts: [],
     daysOfWeek: [],
+    market_sessions: [],
     instrumentTypes: []
   })
 

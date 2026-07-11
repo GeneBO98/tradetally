@@ -26,6 +26,52 @@ async function timedDbQuery(label, query, values = []) {
   }
 }
 
+// Heavy JSONB columns excluded from the trade LIST query. They can be
+// hundreds of KB per page of 50 rows and nothing on the list path reads them:
+// the web list, iOS, and Android decode none of these, and the detail view
+// (getTrade -> Trade.findById) still returns the full row.
+//
+// Deliberately KEPT in the list: `executions` (remaining-open-quantity calc in
+// enrichOpenTradePnL + decoded by iOS) and `quality_metrics` (setupQuality).
+// The list's news badge only needs a count, so findByUser emits a computed
+// `news_event_count` instead of the news_events payload.
+const TRADE_LIST_EXCLUDED_COLUMNS = new Set([
+  'news_events',
+  'take_profit_targets',
+  'risk_level_history',
+  'target_hit_analysis',
+  'updated_targets',
+  'classification_metadata'
+]);
+
+// Column list is discovered from information_schema so migrations that add
+// columns don't silently drop them from list responses. Short TTL because
+// ensurePostExitSchema can add columns at runtime.
+let tradeListColumnsCache = null;
+
+async function getTradeListSelectColumns() {
+  const now = Date.now();
+  if (tradeListColumnsCache && tradeListColumnsCache.expiresAt > now) {
+    return tradeListColumnsCache.select;
+  }
+
+  const result = await db.query(`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'trades'
+    ORDER BY ordinal_position
+  `);
+
+  const select = result.rows
+    .map(row => row.column_name)
+    .filter(column => !TRADE_LIST_EXCLUDED_COLUMNS.has(column))
+    .map(column => `t."${column}"`)
+    .join(', ');
+
+  tradeListColumnsCache = { select, expiresAt: now + 5 * 60 * 1000 };
+  return select;
+}
+
 function futuresRootSql(alias) {
   return `COALESCE(
     NULLIF(UPPER(${alias}.underlying_asset), ''),
@@ -326,6 +372,22 @@ class TradeQueries {
       paramCount += filters.daysOfWeek.length + 1;
     }
 
+    if (filters.market_sessions && filters.market_sessions.length > 0) {
+      const allowedSessions = ['pre_market', 'regular', 'post_market'];
+      const marketSessions = filters.market_sessions.filter(session => allowedSessions.includes(session));
+
+      if (marketSessions.length > 0) {
+        whereClause += ` AND extract(isodow from (t.entry_time AT TIME ZONE 'America/New_York')) BETWEEN 1 AND 5`;
+        whereClause += ` AND CASE
+          WHEN (t.entry_time AT TIME ZONE 'America/New_York')::time < TIME '09:30:00' THEN 'pre_market'
+          WHEN (t.entry_time AT TIME ZONE 'America/New_York')::time < TIME '16:00:00' THEN 'regular'
+          ELSE 'post_market'
+        END = ANY($${paramCount}::text[])`;
+        values.push(marketSessions);
+        paramCount++;
+      }
+    }
+
     if (filters.instrumentTypes && filters.instrumentTypes.length > 0) {
       const placeholders = filters.instrumentTypes.map((_, i) => `$${paramCount + i}`).join(',');
       whereClause += ` AND t.instrument_type IN (${placeholders})`;
@@ -421,9 +483,11 @@ class TradeQueries {
       paramCount++;
     }
 
+    const listColumns = await getTradeListSelectColumns();
+
     const mainQuery = `
-      SELECT t.*,
-        t.strategy, t.setup,
+      SELECT ${listColumns},
+        CASE WHEN jsonb_typeof(t.news_events) = 'array' THEN jsonb_array_length(t.news_events) ELSE 0 END as news_event_count,
         pm.current_price,
         pm.last_updated as current_price_updated_at,
         array_agg(DISTINCT ta.file_url) FILTER (WHERE ta.id IS NOT NULL) as attachment_urls,

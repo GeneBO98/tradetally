@@ -78,7 +78,8 @@ export default defineConfig(({ command, mode }) => {
             { name: 'chart', test: /node_modules[\\/](chart\.js|@kurkle)[\\/]/ },
             { name: 'draggable', test: /node_modules[\\/](vuedraggable|sortablejs)[\\/]/ },
             { name: 'vendor-markdown', test: /node_modules[\\/](marked|dompurify)[\\/]/ },
-            { name: 'lwcharts', test: /node_modules[\\/](lightweight-charts|fancy-canvas)[\\/]/ }
+            { name: 'lwcharts', test: /node_modules[\\/](lightweight-charts|fancy-canvas)[\\/]/ },
+            { name: 'klinecharts', test: /node_modules[\\/]klinecharts[\\/]/ }
           ]
         }
       }

@@ -9,6 +9,7 @@ const IN_MEMORY_KEY_PREFIXES = [
   'analytics:user_',
   'analytics_overview_',
   'analytics_chart_data_',
+  'analytics_agg_',
   'performance_',
   'partial_exit_analytics:user_'
 ];

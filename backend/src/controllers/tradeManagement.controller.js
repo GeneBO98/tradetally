@@ -10,7 +10,7 @@ const TradeQueries = require('../services/tradeQueries');
 const logger = require('../utils/logger');
 const TargetHitAnalysisService = require('../services/targetHitAnalysisService');
 const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('../utils/futuresUtils');
-const ensureString = require('../utils/ensureString');
+const { parseTradeFilters, tradeFilterProfiles } = require('../utils/tradeFilters');
 const { uuidv4 } = require('../utils/uuid');
 const { getBreakevenToleranceConfig, breakevenPredicate } = require('../utils/breakeven');
 const { POSITION_GROUP_KEY } = require('../utils/positionGrouping');
@@ -22,45 +22,7 @@ const { POSITION_GROUP_KEY } = require('../utils/positionGrouping');
  * (limit/offset are handled separately by each endpoint.)
  */
 function parseTradeManagementFilters(query = {}) {
-  const {
-    startDate, endDate, symbol, symbolExact, sector, strategy, tags,
-    strategies, setups, sectors,
-    side, minPrice, maxPrice, minQuantity, maxQuantity,
-    status, minPnl, maxPnl, pnlType, broker, brokers, importId, accounts, hasNews,
-    holdTime, daysOfWeek, instrumentTypes, optionTypes, qualityGrades
-  } = query;
-
-  return {
-    startDate: startDate || undefined,
-    endDate: endDate || undefined,
-    symbol: ensureString(symbol) || undefined,
-    symbolExact: symbolExact === 'true',
-    sector: sector || undefined,
-    strategy: strategy || undefined,
-    tags: tags ? ensureString(tags).split(',').map(t => t.trim()).filter(Boolean) : undefined,
-    strategies: strategies ? ensureString(strategies).split(',') : undefined,
-    setups: setups ? ensureString(setups).split(',') : undefined,
-    sectors: sectors ? ensureString(sectors).split(',') : undefined,
-    side: side || undefined,
-    minPrice,
-    maxPrice,
-    minQuantity,
-    maxQuantity,
-    status: status || undefined,
-    minPnl,
-    maxPnl,
-    pnlType: pnlType || undefined,
-    broker: broker || undefined,
-    brokers: brokers || undefined,
-    importId: importId || undefined,
-    accounts: accounts ? ensureString(accounts).split(',') : undefined,
-    hasNews,
-    holdTime: holdTime || undefined,
-    daysOfWeek: daysOfWeek ? ensureString(daysOfWeek).split(',').map(d => parseInt(d)) : undefined,
-    instrumentTypes: instrumentTypes ? ensureString(instrumentTypes).split(',') : undefined,
-    optionTypes: optionTypes ? ensureString(optionTypes).split(',') : undefined,
-    qualityGrades: qualityGrades ? ensureString(qualityGrades).split(',') : undefined
-  };
+  return parseTradeFilters(query, tradeFilterProfiles.tradeManagement);
 }
 
 function inferInstrumentType(trade) {

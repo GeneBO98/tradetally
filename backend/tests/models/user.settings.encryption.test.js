@@ -18,6 +18,7 @@ jest.mock('../../src/config/database', () => ({
 
 const db = require('../../src/config/database');
 const User = require('../../src/models/User');
+const settingsCache = require('../../src/services/settingsCache');
 
 describe('User.updateSettings — AI key encryption on write', () => {
   beforeEach(() => {
@@ -67,6 +68,9 @@ describe('User.getSettings — AI key decryption on read', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockEncryptionService._isEncrypted = true;
+    // getSettings is memoized per userId; drop entries so each test's DB mock
+    // is actually consulted.
+    settingsCache.clear();
   });
 
   test('returns decrypted ai_api_key and cusip_ai_api_key', async () => {

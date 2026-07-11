@@ -1,6 +1,7 @@
 const BillingService = require('../services/billingService');
 const TierService = require('../services/tierService');
 const tierCache = require('../services/tierCache');
+const settingsCache = require('../services/settingsCache');
 const User = require('../models/User');
 const db = require('../config/database');
 const { verifyAppleSignedTransaction, AppleTransactionVerificationError } = require('../utils/appleIapVerification');
@@ -313,6 +314,7 @@ const billingController = {
 
         await client.query('COMMIT');
         tierCache.invalidate(userId);
+        settingsCache.invalidate(userId);
         console.log('[SUCCESS] Trial created successfully for user:', userId, 'Trial ID:', insertResult.rows[0].id);
 
         res.json({

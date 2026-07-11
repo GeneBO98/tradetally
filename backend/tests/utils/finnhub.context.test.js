@@ -106,6 +106,27 @@ describe('finnhub request context', () => {
     });
   });
 
+  test('requests the selected Finnhub trade chart resolution', async () => {
+    const { finnhub } = loadFinnhubWithContextCapture();
+    const axios = require('axios');
+
+    const chartData = await finnhub.getTradeChartData(
+      'AAPL',
+      '2025-01-02T15:30:00.000Z',
+      '2025-01-02T16:00:00.000Z',
+      'user-1',
+      '60'
+    );
+
+    expect(chartData).toMatchObject({ type: 'intraday', interval: '1hour', source: 'finnhub' });
+    expect(axios.get).toHaveBeenCalledWith(
+      expect.stringContaining('/stock/candle'),
+      expect.objectContaining({
+        params: expect.objectContaining({ resolution: '60' })
+      })
+    );
+  });
+
   test('getStockSplits passes lowest-priority background context', async () => {
     const { finnhub, contexts } = loadFinnhubWithContextCapture();
 

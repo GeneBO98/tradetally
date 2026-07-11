@@ -249,6 +249,7 @@ import { useRoute, useRouter } from "vue-router";
 import { useInvestmentsStore } from "@/stores/investments";
 import { format } from "date-fns";
 import { useUserTimezone } from "@/composables/useUserTimezone";
+import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
 import PillarRow from "@/components/investments/PillarRow.vue";
 import StockLogo from "@/components/common/StockLogo.vue";
 
@@ -348,24 +349,23 @@ function goBack() {
     }
 }
 
+const { formatCurrency: formatCurrencyBase, currencySymbol } = useCurrencyFormatter();
+
 function formatCurrency(value) {
     if (value === null || value === undefined) return "N/A";
-    return new Intl.NumberFormat("en-US", {
-        style: "currency",
-        currency: "USD",
-        minimumFractionDigits: 2,
-    }).format(value);
+    return formatCurrencyBase(value);
 }
 
 function formatMarketCap(value) {
     if (!value) return "N/A";
 
+    const sym = currencySymbol.value;
     if (value >= 1e12) {
-        return `$${(value / 1e12).toFixed(2)}T`;
+        return `${sym}${(value / 1e12).toFixed(2)}T`;
     } else if (value >= 1e9) {
-        return `$${(value / 1e9).toFixed(2)}B`;
+        return `${sym}${(value / 1e9).toFixed(2)}B`;
     } else if (value >= 1e6) {
-        return `$${(value / 1e6).toFixed(2)}M`;
+        return `${sym}${(value / 1e6).toFixed(2)}M`;
     }
     return formatCurrency(value);
 }

@@ -169,6 +169,17 @@ describe('TradeQueries.getAnalytics characterization', () => {
     });
   });
 
+  test('market_sessions uses the shared New York market-hours filter', async () => {
+    await TradeQueries.getAnalytics('user-1', { market_sessions: ['regular'] });
+
+    const values = captureValues();
+    const sql = captureSql();
+    expect(values).toEqual(['user-1', ['regular']]);
+    expect(sql).toContain("t.entry_time AT TIME ZONE 'America/New_York'");
+    expect(sql).toContain('BETWEEN 1 AND 5');
+    expect(sql).toContain('END = ANY($2::text[])');
+  });
+
   describe('symbol filtering', () => {
     test('prefix mode: ILIKE plus CUSIP fallback (unified with findByUser)', async () => {
       await TradeQueries.getAnalytics('user-1', { symbol: 'aapl' });

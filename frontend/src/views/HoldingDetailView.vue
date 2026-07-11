@@ -595,6 +595,7 @@ import { ref, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useInvestmentsStore } from "@/stores/investments";
 import { useNotification } from "@/composables/useNotification";
+import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
 import { format, parseISO } from "date-fns";
 import EightPillarsCard from "@/components/investments/EightPillarsCard.vue";
 import AddLotModal from "@/components/investments/AddLotModal.vue";
@@ -783,14 +784,7 @@ async function onDividendRecorded() {
     await loadHolding();
 }
 
-function formatCurrency(value) {
-    if (value === null || value === undefined) return "-";
-    return new Intl.NumberFormat("en-US", {
-        style: "currency",
-        currency: "USD",
-        minimumFractionDigits: 2,
-    }).format(value);
-}
+const { formatCurrency } = useCurrencyFormatter();
 
 function formatNumber(value) {
     if (value === null || value === undefined) return "-";

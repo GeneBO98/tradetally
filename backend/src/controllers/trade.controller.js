@@ -13,6 +13,7 @@ const { groupTradesIntoPositions } = require('../utils/openPositionGrouping');
 const symbolCategories = require('../utils/symbolCategories');
 const imageProcessor = require('../utils/imageProcessor');
 const ensureString = require('../utils/ensureString');
+const { parseTradeFilters, tradeFilterProfiles } = require('../utils/tradeFilters');
 const upload = require('../middleware/upload');
 const currencyConverter = require('../utils/currencyConverter');
 const path = require('path');
@@ -45,9 +46,13 @@ function marketDataConfigDetails(feature) {
 }
 
 /**
- * Auto-calculate MAE/MFE for a closed trade using Finnhub candle data.
- * Runs async (fire-and-forget) so it doesn't block the API response.
- * Only runs for Pro users and closed trades without existing MAE/MFE values.
+ * Queue MAE/MFE calculation for a closed trade via the durable mae_recalc
+ * job (rate-limited batches, survives restarts) instead of computing inline
+ * in the request process. Only Pro users get auto-calculation.
+ *
+ * The job sweeps every trade of the user with BOTH mae and mfe NULL, so a
+ * trade where the user manually supplied one of the two values is left
+ * untouched (the old inline path would have overwritten both).
  */
 async function autoCalculateMAEMFE(userId, trade) {
   try {
@@ -60,41 +65,17 @@ async function autoCalculateMAEMFE(userId, trade) {
     const exitPrice = trade.exit_price || trade.exitPrice;
     const entryTime = trade.entry_time || trade.entryTime;
     const entryPrice = trade.entry_price || trade.entryPrice;
-    const existingMAE = trade.mae;
-    const existingMFE = trade.mfe;
 
     if (!exitTime || !exitPrice || !entryTime || !entryPrice) return;
-    if (existingMAE && existingMFE) return;
+    if (trade.mae && trade.mfe) return;
 
-    // Build trade object in the format MAEEstimator expects
-    const tradeData = {
-      symbol: trade.symbol,
-      entry_time: entryTime,
-      exit_time: exitTime,
-      entry_price: entryPrice,
-      exit_price: exitPrice,
-      side: trade.side,
-      pnl: trade.pnl || trade.profit_loss || 0,
-      commission: trade.commission || 0,
-      fees: trade.fees || 0,
-      quantity: trade.quantity,
-      instrument_type: trade.instrument_type || trade.instrumentType,
-      point_value: trade.point_value ?? trade.pointValue,
-      underlying_asset: trade.underlying_asset || trade.underlyingAsset,
-      contract_size: trade.contract_size ?? trade.contractSize
-    };
-
-    if (!MAEEstimator.isValidTradeForEstimation(tradeData)) return;
-
-    console.log(`[MAE/MFE] Auto-calculating for trade ${trade.id} (${trade.symbol})`);
-    const { mae, mfe } = await MAEEstimator.calculateFromCandleData(tradeData);
-
-    // Update the trade with calculated values
-    await Trade.update(trade.id, userId, { mae, mfe });
-    await AnalyticsCache.invalidate(userId);
-    console.log(`[MAE/MFE] Updated trade ${trade.id}: MAE=$${mae.toFixed(2)}, MFE=$${mfe.toFixed(2)}`);
+    const jobQueue = require('../utils/jobQueue');
+    const jobId = await jobQueue.enqueueMAERecalc(userId);
+    if (jobId) {
+      console.log(`[MAE/MFE] Queued mae_recalc job ${jobId} for trade ${trade.id} (${trade.symbol})`);
+    }
   } catch (error) {
-    console.warn(`[MAE/MFE] Auto-calculation failed for trade ${trade.id}: ${error.message}`);
+    console.warn(`[MAE/MFE] Failed to queue recalculation for trade ${trade.id}: ${error.message}`);
   }
 }
 
@@ -204,85 +185,7 @@ const OPEN_POSITIONS_ALPACA_TIMEOUT_MS = getPositiveIntEnv('OPEN_POSITIONS_ALPAC
 const OPEN_POSITIONS_FINNHUB_TIMEOUT_MS = getPositiveIntEnv('OPEN_POSITIONS_FINNHUB_TIMEOUT_MS', 3000);
 const TRADE_LIST_PRICE_FRESH_MS = getPositiveIntEnv('TRADE_LIST_PRICE_FRESH_MS', 2 * 60 * 1000);
 
-function getPositiveInt(value) {
-  const parsed = parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-}
-
-function resolveStyleWindowMinutes(styles = []) {
-  const normalized = styles.map(style => String(style).toLowerCase());
-  if (normalized.some(style => style.includes('scalp'))) return 30;
-  if (normalized.some(style => style.includes('day'))) return 120;
-  if (normalized.some(style => style.includes('swing'))) return 390;
-  if (normalized.some(style => style.includes('position'))) return 1440;
-  return null;
-}
-
-function clampPostExitMinutes(minutes) {
-  if (!Number.isFinite(minutes) || minutes <= 0) return null;
-  return Math.max(30, Math.min(Math.round(minutes), 1440));
-}
-
-async function resolvePostExitWindow(userId, trade) {
-  const exitTime = trade.exit_time || trade.exitTime;
-  if (!exitTime || isNaN(new Date(exitTime))) return null;
-
-  const tradeOverride = getPositiveInt(trade.post_exit_window_override_minutes || trade.postExitWindowOverrideMinutes);
-  if (tradeOverride) {
-    return {
-      minutes: clampPostExitMinutes(tradeOverride),
-      source: 'trade_override',
-      end: new Date(new Date(exitTime).getTime() + clampPostExitMinutes(tradeOverride) * 60000).toISOString()
-    };
-  }
-
-  const settings = await User.getSettings(userId);
-  const manualMinutes = getPositiveInt(settings?.post_exit_excursion_window_minutes);
-  if (settings?.post_exit_excursion_window_mode === 'manual' && manualMinutes) {
-    return {
-      minutes: clampPostExitMinutes(manualMinutes),
-      source: 'profile_manual',
-      end: new Date(new Date(exitTime).getTime() + clampPostExitMinutes(manualMinutes) * 60000).toISOString()
-    };
-  }
-
-  const personalityResult = await db.query(`
-    SELECT primary_personality, avg_hold_time_minutes
-    FROM trading_personality_profiles
-    WHERE user_id = $1
-    ORDER BY analysis_end_date DESC, created_at DESC
-    LIMIT 1
-  `, [userId]);
-
-  const profile = personalityResult.rows[0];
-  const personalityDefaults = {
-    scalper: 30,
-    momentum: 120,
-    mean_reversion: 60,
-    swing: 390,
-    hybrid: null
-  };
-
-  let inferredMinutes = null;
-  let source = 'default';
-
-  if (profile) {
-    inferredMinutes = personalityDefaults[profile.primary_personality] || getPositiveInt(profile.avg_hold_time_minutes);
-    source = 'personality';
-  }
-
-  if (!inferredMinutes) {
-    inferredMinutes = resolveStyleWindowMinutes(settings?.trading_styles || []);
-    source = inferredMinutes ? 'profile_style' : 'default';
-  }
-
-  const minutes = clampPostExitMinutes(inferredMinutes || 60);
-  return {
-    minutes,
-    source,
-    end: new Date(new Date(exitTime).getTime() + minutes * 60000).toISOString()
-  };
-}
+const { resolvePostExitWindow } = require('../utils/postExitWindow');
 
 async function autoCalculatePostExitMAEMFE(userId, trade) {
   try {
@@ -570,13 +473,7 @@ const tradeController = {
     const requestStartTime = Date.now();
     console.log('[PERF] getUserTrades started');
     try {
-      const {
-        symbol, symbolExact, startDate, endDate, exitStartDate, exitEndDate, tags, strategy, sector,
-        strategies, setups, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
-        side, minPrice, maxPrice, minQuantity, maxQuantity,
-        status, minPnl, maxPnl, pnlType, broker, brokers, importId, accounts,
-        limit = 50, offset, page
-      } = req.query;
+      const { limit = 50, offset, page } = req.query;
 
       const parsedLimit = parseInt(limit);
       const parsedOffset = offset !== undefined && offset !== ''
@@ -586,38 +483,7 @@ const tradeController = {
             : 0);
 
       const filters = {
-        symbol,
-        symbolExact: symbolExact === 'true',
-        startDate,
-        endDate,
-        exitStartDate,
-        exitEndDate,
-        tags: tags ? ensureString(tags).split(',').map(t => t.trim()).filter(Boolean) : undefined,
-        strategy,
-        sector,
-        // Multi-select filters
-        strategies: strategies ? ensureString(strategies).split(',') : undefined,
-        setups: setups ? ensureString(setups).split(',') : undefined,
-        sectors: sectors ? ensureString(sectors).split(',') : undefined,
-        hasNews,
-        daysOfWeek: daysOfWeek ? ensureString(daysOfWeek).split(',').map(d => parseInt(d)) : undefined,
-        instrumentTypes: instrumentTypes ? ensureString(instrumentTypes).split(',') : undefined,
-        optionTypes: optionTypes ? ensureString(optionTypes).split(',') : undefined,
-        qualityGrades: qualityGrades ? ensureString(qualityGrades).split(',') : undefined,
-        // New advanced filters
-        side,
-        minPrice: minPrice ? parseFloat(minPrice) : undefined,
-        maxPrice: maxPrice ? parseFloat(maxPrice) : undefined,
-        minQuantity: minQuantity ? parseInt(minQuantity) : undefined,
-        maxQuantity: maxQuantity ? parseInt(maxQuantity) : undefined,
-        status,
-        minPnl: (minPnl !== undefined && minPnl !== null && minPnl !== '') ? parseFloat(minPnl) : undefined,
-        maxPnl: (maxPnl !== undefined && maxPnl !== null && maxPnl !== '') ? parseFloat(maxPnl) : undefined,
-        pnlType,
-        broker, // Keep for backward compatibility
-        brokers, // New multi-select broker filter
-        importId,
-        accounts: accounts ? ensureString(accounts).split(',') : undefined, // Account identifier filter
+        ...parseTradeFilters(req.query, tradeFilterProfiles.tradeList),
         // Pagination
         limit: parsedLimit,
         offset: parsedOffset
@@ -634,6 +500,19 @@ const tradeController = {
       // Check if count should be skipped for faster initial load
       const skipCount = req.query.skipCount === 'true' || req.query.skipCount === '1';
       
+      // The total count depends only on the filters, not the fetched rows, so
+      // run it alongside the row fetch + price hydration instead of serially
+      // after them (hydration can block on an external quote call).
+      let totalCountPromise = null;
+      if (!skipCount) {
+        const totalCountFilters = { ...filters };
+        delete totalCountFilters.limit;
+        delete totalCountFilters.offset;
+        totalCountPromise = Trade.getCountWithFilters(req.user.id, totalCountFilters);
+        // Surface failures through the same catch as the main pipeline
+        totalCountPromise.catch(() => {});
+      }
+
       // Get trades with pagination
       console.log('[PERF] About to call TradeQueries.findByUser, elapsed:', Date.now() - requestStartTime, 'ms');
       const trades = await TradeQueries.findByUser(req.user.id, filters);
@@ -685,16 +564,10 @@ const tradeController = {
       };
 
       // Get total count without pagination (can be skipped for faster initial load)
-      if (!skipCount) {
-        const totalCountFilters = { ...filters };
-        delete totalCountFilters.limit;
-        delete totalCountFilters.offset;
-
-        // Use getCountWithFilters for regular trades table counting
-        console.log('[PERF] About to call Trade.getCountWithFilters, elapsed:', Date.now() - requestStartTime, 'ms');
-        const total = await Trade.getCountWithFilters(req.user.id, totalCountFilters);
+      if (totalCountPromise) {
+        const total = await totalCountPromise;
         console.log('[PERF] Trade.getCountWithFilters completed, total:', total, ', elapsed:', Date.now() - requestStartTime, 'ms');
-        
+
         response.total = total;
         response.totalPages = Math.ceil(total / filters.limit);
       } else {
@@ -713,41 +586,7 @@ const tradeController = {
 
   async getTradesCount(req, res, next) {
     try {
-      const {
-        symbol, startDate, endDate, tags, strategy, sector,
-        strategies, setups, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
-        side, minPrice, maxPrice, minQuantity, maxQuantity,
-        status, minPnl, maxPnl, pnlType, broker, brokers, importId
-      } = req.query;
-
-      const filters = {
-        symbol,
-        startDate,
-        endDate,
-        tags: tags ? ensureString(tags).split(',').map(t => t.trim()).filter(Boolean) : undefined,
-        strategy,
-        sector,
-        strategies: strategies ? ensureString(strategies).split(',') : undefined,
-        setups: setups ? ensureString(setups).split(',') : undefined,
-        sectors: sectors ? ensureString(sectors).split(',') : undefined,
-        hasNews,
-        daysOfWeek: daysOfWeek ? ensureString(daysOfWeek).split(',').map(d => parseInt(d)) : undefined,
-        instrumentTypes: instrumentTypes ? ensureString(instrumentTypes).split(',') : undefined,
-        optionTypes: optionTypes ? ensureString(optionTypes).split(',') : undefined,
-        qualityGrades: qualityGrades ? ensureString(qualityGrades).split(',') : undefined,
-        side,
-        minPrice: minPrice ? parseFloat(minPrice) : undefined,
-        maxPrice: maxPrice ? parseFloat(maxPrice) : undefined,
-        minQuantity: minQuantity ? parseInt(minQuantity) : undefined,
-        maxQuantity: maxQuantity ? parseInt(maxQuantity) : undefined,
-        status,
-        minPnl: (minPnl !== undefined && minPnl !== null && minPnl !== '') ? parseFloat(minPnl) : undefined,
-        maxPnl: (maxPnl !== undefined && maxPnl !== null && maxPnl !== '') ? parseFloat(maxPnl) : undefined,
-        pnlType,
-        broker,
-        brokers: brokers ? ensureString(brokers).split(',') : undefined,
-        importId
-      };
+      const filters = parseTradeFilters(req.query, tradeFilterProfiles.tradeCount);
 
       const total = await Trade.getCountWithFilters(req.user.id, filters);
       
@@ -763,39 +602,8 @@ const tradeController = {
 
   async exportTradesToCSV(req, res, next) {
     try {
-      const {
-        symbol, startDate, endDate, tags, strategy, sector,
-        strategies, setups, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
-        side, minPrice, maxPrice, minQuantity, maxQuantity,
-        status, minPnl, maxPnl, pnlType, broker, brokers
-      } = req.query;
-
       const filters = {
-        symbol,
-        startDate,
-        endDate,
-        tags: tags ? ensureString(tags).split(',').map(t => t.trim()).filter(Boolean) : undefined,
-        strategy,
-        sector,
-        strategies: strategies ? ensureString(strategies).split(',') : undefined,
-        setups: setups ? ensureString(setups).split(',') : undefined,
-        sectors: sectors ? ensureString(sectors).split(',') : undefined,
-        hasNews,
-        daysOfWeek: daysOfWeek ? ensureString(daysOfWeek).split(',').map(d => parseInt(d)) : undefined,
-        instrumentTypes: instrumentTypes ? ensureString(instrumentTypes).split(',') : undefined,
-        optionTypes: optionTypes ? ensureString(optionTypes).split(',') : undefined,
-        qualityGrades: qualityGrades ? ensureString(qualityGrades).split(',') : undefined,
-        side,
-        minPrice: minPrice ? parseFloat(minPrice) : undefined,
-        maxPrice: maxPrice ? parseFloat(maxPrice) : undefined,
-        minQuantity: minQuantity ? parseInt(minQuantity) : undefined,
-        maxQuantity: maxQuantity ? parseInt(maxQuantity) : undefined,
-        status,
-        minPnl: (minPnl !== undefined && minPnl !== null && minPnl !== '') ? parseFloat(minPnl) : undefined,
-        maxPnl: (maxPnl !== undefined && maxPnl !== null && maxPnl !== '') ? parseFloat(maxPnl) : undefined,
-        pnlType,
-        broker,
-        brokers: brokers ? ensureString(brokers).split(',') : undefined,
+        ...parseTradeFilters(req.query, tradeFilterProfiles.tradeExport),
         // No pagination - export all matching trades
         limit: 999999,
         offset: 0
@@ -880,30 +688,10 @@ const tradeController = {
 
   async getRoundTripTrades(req, res, next) {
     try {
-      const { 
-        symbol, startDate, endDate, tags, strategy, sector,
-        side, minPrice, maxPrice, minQuantity, maxQuantity,
-        status, minPnl, maxPnl, pnlType, broker,
-        limit = 50, offset = 0 
-      } = req.query;
-      
+      const { limit = 50, offset = 0 } = req.query;
+
       const filters = {
-        symbol,
-        startDate,
-        endDate,
-        tags: tags ? ensureString(tags).split(',') : undefined,
-        strategy,
-        sector,
-        side,
-        minPrice: minPrice ? parseFloat(minPrice) : undefined,
-        maxPrice: maxPrice ? parseFloat(maxPrice) : undefined,
-        minQuantity: minQuantity ? parseInt(minQuantity) : undefined,
-        maxQuantity: maxQuantity ? parseInt(maxQuantity) : undefined,
-        status,
-        minPnl: (minPnl !== undefined && minPnl !== null && minPnl !== '') ? parseFloat(minPnl) : undefined,
-        maxPnl: (maxPnl !== undefined && maxPnl !== null && maxPnl !== '') ? parseFloat(maxPnl) : undefined,
-        pnlType,
-        broker,
+        ...parseTradeFilters(req.query, tradeFilterProfiles.roundTrip),
         limit: parseInt(limit),
         offset: parseInt(offset)
       };
@@ -990,13 +778,6 @@ const tradeController = {
       }
       const trade = await Trade.create(req.user.id, normalizedBody);
       
-      // Invalidate sector performance cache for this user since new trade was added
-      try {
-        await cache.invalidate('sector_performance');
-        console.log('[SUCCESS] Sector performance cache invalidated after trade creation');
-      } catch (cacheError) {
-        console.warn('[WARNING] Failed to invalidate sector performance cache:', cacheError.message);
-      }
 
       // Invalidate analytics cache for this user
       await AnalyticsCache.invalidate(req.user.id);
@@ -1151,7 +932,10 @@ const tradeController = {
       if (trade.quality_metrics !== undefined) trade.qualityMetrics = trade.quality_metrics;
 
       if (isOwner) {
-        const reviews = await Playbook.getTradeReviewsByTradeId(tradeId, req.user.id);
+        const [reviews, suggestionCandidates] = await Promise.all([
+          Playbook.getTradeReviewsByTradeId(tradeId, req.user.id),
+          Playbook.listAutoAssignableByUser(req.user.id)
+        ]);
         const adherenceReview = reviews.find(review => review.review_type === 'adherence') || null;
         const manualGradingReview = reviews.find(review => review.review_type === 'manual_grading') || null;
 
@@ -1161,7 +945,6 @@ const tradeController = {
         trade.manualGradingReview = mapTradeReview(manualGradingReview);
         trade.manualGradingProfileId = manualGradingReview?.playbook_id || null;
 
-        const suggestionCandidates = await Playbook.listAutoAssignableByUser(req.user.id);
         const suggestedAdherencePlaybook = PlaybookAdherenceService.selectSuggestedPlaybook(
           suggestionCandidates.filter(candidate => Playbook.getReviewTypeForPlaybook(candidate) === 'adherence'),
           trade
@@ -1264,13 +1047,6 @@ const tradeController = {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
-      // Invalidate sector performance cache for this user since trade data changed
-      try {
-        await cache.invalidate('sector_performance');
-        console.log('[SUCCESS] Sector performance cache invalidated after trade update');
-      } catch (cacheError) {
-        console.warn('[WARNING] Failed to invalidate sector performance cache:', cacheError.message);
-      }
 
       // Invalidate analytics cache for this user
       await AnalyticsCache.invalidate(req.user.id);
@@ -1310,13 +1086,6 @@ const tradeController = {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
-      // Invalidate sector performance cache for this user
-      try {
-        await cache.invalidate('sector_performance');
-        console.log('[SUCCESS] Sector performance cache invalidated after trade deletion');
-      } catch (cacheError) {
-        console.warn('[WARNING] Failed to invalidate sector performance cache:', cacheError.message);
-      }
 
       // Invalidate analytics cache for this user
       await AnalyticsCache.invalidate(req.user.id);
@@ -1628,13 +1397,6 @@ const tradeController = {
         await OptionStrategyGroupingService.rebuildUserGroupsSafe(req.user.id, 'bulk trade deletion');
       }
 
-      // Invalidate sector performance cache
-      try {
-        await cache.invalidate('sector_performance');
-        console.log('[SUCCESS] Sector performance cache invalidated after bulk trade deletion');
-      } catch (cacheError) {
-        console.warn('[WARNING] Failed to invalidate sector performance cache:', cacheError.message);
-      }
 
       // Invalidate analytics cache for this user
       await AnalyticsCache.invalidate(req.user.id);
@@ -1852,7 +1614,7 @@ const tradeController = {
         WHERE tc.id = $1
       `;
 
-      const selectResult = await db.query(selectQuery, [insertResult.rows[0].id]);
+      const selectResult = await db.query(selectQuery, [insertResult.rows[0].id, trade.is_public]);
 
       res.status(201).json({ comment: selectResult.rows[0] });
     } catch (error) {
@@ -1873,7 +1635,8 @@ const tradeController = {
         : 'u.username';
 
       const query = `
-        SELECT tc.*, ${usernameField}, u.avatar_url
+        SELECT tc.*, ${usernameField},
+               CASE WHEN $2::boolean THEN NULL ELSE u.avatar_url END AS avatar_url
         FROM trade_comments tc
         JOIN users u ON tc.user_id = u.id
         WHERE tc.trade_id = $1
@@ -1931,12 +1694,13 @@ const tradeController = {
 
       // Get updated comment with user info
       const query = `
-        SELECT tc.*, ${usernameField}, u.avatar_url
+        SELECT tc.*, ${usernameField},
+               CASE WHEN $2::boolean THEN NULL ELSE u.avatar_url END AS avatar_url
         FROM trade_comments tc
         JOIN users u ON tc.user_id = u.id
         WHERE tc.id = $1
       `;
-      const result = await db.query(query, [commentId]);
+      const result = await db.query(query, [commentId, trade.is_public]);
 
       res.json({ comment: result.rows[0] });
     } catch (error) {
@@ -2839,13 +2603,6 @@ const tradeController = {
             console.warn('[WARNING] Failed to invalidate analytics cache:', cacheError.message);
           }
           
-          // Invalidate sector performance cache after successful import
-          try {
-            await cache.invalidate('sector_performance');
-            console.log('[SUCCESS] Sector performance cache invalidated after import completion');
-          } catch (cacheError) {
-            console.warn('[WARNING] Failed to invalidate sector performance cache:', cacheError.message);
-          }
 
           // Check achievements and trigger leaderboard updates after import
           try {
@@ -2870,68 +2627,22 @@ const tradeController = {
             console.warn('[WARNING] Failed to start background symbol categorization:', error.message);
           }
 
-          // Background MAE/MFE calculation for imported trades (Pro only)
+          // Queue MAE/MFE + post-exit calculation for imported trades (Pro
+          // only) via the durable, rate-limited mae_recalc job. The job is
+          // scoped to this import and re-enqueues itself until the batch is
+          // done, so it survives restarts (the old in-process loop lost all
+          // remaining work when the server restarted mid-import).
           try {
             if (imported > 0) {
               const tier = await TierService.getUserTier(fileUserId);
               if (tier === 'pro') {
-                console.log(`[MAE/MFE] Scheduling background calculation for ${imported} imported trades...`);
-                const importedClosedTrades = await db.query(`
-                  SELECT id, symbol, side, entry_time, exit_time, entry_price, exit_price, pnl, commission, fees, mae, mfe,
-                         post_exit_mae, post_exit_mfe, post_exit_window_override_minutes,
-                         quantity, instrument_type, point_value, underlying_asset, contract_size
-                  FROM trades
-                  WHERE user_id = $1 AND import_id = $2
-                  AND exit_time IS NOT NULL AND exit_price IS NOT NULL
-                  AND (mae IS NULL OR mfe IS NULL OR post_exit_mae IS NULL OR post_exit_mfe IS NULL)
-                `, [fileUserId, importId]);
-
-                if (importedClosedTrades.rows.length > 0) {
-                  console.log(`[MAE/MFE] Found ${importedClosedTrades.rows.length} closed trades needing MAE/MFE calculation`);
-                  // Process in background with rate limiting (max 30 per minute for Finnhub basic plan)
-                  (async () => {
-                    let calculated = 0;
-                    for (const trade of importedClosedTrades.rows) {
-                      try {
-                        if (!MAEEstimator.isValidTradeForEstimation(trade)) continue;
-                        const updates = {};
-                        if (trade.mae == null || trade.mfe == null) {
-                          const { mae, mfe } = await MAEEstimator.calculateFromCandleData(trade);
-                          updates.mae = mae;
-                          updates.mfe = mfe;
-                        }
-                        if (trade.post_exit_mae == null || trade.post_exit_mfe == null) {
-                          const window = await resolvePostExitWindow(fileUserId, trade);
-                          if (window) {
-                            const { post_exit_mae, post_exit_mfe } = await MAEEstimator.calculatePostExitFromCandleData(trade, window.end);
-                            updates.postExitMae = post_exit_mae;
-                            updates.postExitMfe = post_exit_mfe;
-                            updates.postExitWindowMinutes = window.minutes;
-                            updates.postExitWindowSource = window.source;
-                            updates.postExitWindowEnd = window.end;
-                            updates.postExitCalculatedAt = new Date().toISOString();
-                          }
-                        }
-                        if (Object.keys(updates).length === 0) continue;
-                        await Trade.update(trade.id, fileUserId, updates);
-                        calculated++;
-                        console.log(`[MAE/MFE] Calculated for ${trade.symbol} (${calculated}/${importedClosedTrades.rows.length})`);
-                        // Rate limit: ~2 seconds between calls
-                        await new Promise(resolve => setTimeout(resolve, 2000));
-                      } catch (err) {
-                        console.warn(`[MAE/MFE] Failed for ${trade.symbol}: ${err.message}`);
-                      }
-                    }
-                    if (calculated > 0) {
-                      await AnalyticsCache.invalidate(fileUserId);
-                    }
-                    console.log(`[MAE/MFE] Background calculation complete: ${calculated}/${importedClosedTrades.rows.length} trades`);
-                  })().catch(err => console.warn('[MAE/MFE] Background batch failed:', err.message));
-                }
+                const jobQueue = require('../utils/jobQueue');
+                const jobId = await jobQueue.enqueueMAERecalc(fileUserId, { importId, includePostExit: true });
+                console.log(`[MAE/MFE] Queued mae_recalc job ${jobId} for import ${importId} (${imported} trades)`);
               }
             }
           } catch (maeError) {
-            console.warn('[WARNING] Failed to start MAE/MFE background calculation:', maeError.message);
+            console.warn('[WARNING] Failed to queue MAE/MFE calculation:', maeError.message);
           }
 
           // Background news enrichment for imported trades
@@ -3389,13 +3100,6 @@ const tradeController = {
       // Invalidate analytics cache for this user so totals recalculate
       await AnalyticsCache.invalidate(req.user.id);
 
-      // Invalidate sector performance cache for this user
-      try {
-        await cache.invalidate('sector_performance');
-        console.log('[SUCCESS] Sector performance cache invalidated after import deletion');
-      } catch (cacheError) {
-        console.warn('[WARNING] Failed to invalidate sector performance cache:', cacheError.message);
-      }
 
       logger.logImport(`Deleted ${deletedTrades.rows.length} trades from import ${importId}`);
 
@@ -3463,12 +3167,6 @@ const tradeController = {
 
       // Invalidate caches
       await AnalyticsCache.invalidate(req.user.id);
-      try {
-        await cache.invalidate('sector_performance');
-        console.log('[SUCCESS] Sector performance cache invalidated after bulk import deletion');
-      } catch (cacheError) {
-        console.warn('[WARNING] Failed to invalidate sector performance cache:', cacheError.message);
-      }
 
       logger.logImport(`Bulk deleted ${deletedTrades.rows.length} trades from ${validIds.length} imports`);
 
@@ -3539,46 +3237,9 @@ const tradeController = {
       console.log('User ID:', req.user.id);
       console.log('Side filter specifically:', req.query.side);
 
-      const {
-        startDate, endDate, symbol, symbolExact, sector, strategy, tags,
-        strategies, setups, sectors, // Add multi-select parameters
-        side, minPrice, maxPrice, minQuantity, maxQuantity,
-        status, minPnl, maxPnl, pnlType, broker, brokers, importId, accounts, hasNews,
-        holdTime, minHoldTime, maxHoldTime, daysOfWeek, instrumentTypes, optionTypes, qualityGrades
-      } = req.query;
+      const { minHoldTime, maxHoldTime } = req.query;
 
-      const filters = {
-        startDate,
-        endDate,
-        symbol,
-        symbolExact: symbolExact === 'true',
-        sector,
-        strategy,
-        // Multi-select filters
-        tags: tags ? ensureString(tags).split(',').map(t => t.trim()).filter(Boolean) : undefined,
-        strategies: strategies ? ensureString(strategies).split(',') : undefined,
-        setups: setups ? ensureString(setups).split(',') : undefined,
-        sectors: sectors ? ensureString(sectors).split(',') : undefined,
-        side,
-        minPrice,
-        maxPrice,
-        minQuantity,
-        maxQuantity,
-        status,
-        minPnl,
-        maxPnl,
-        pnlType,
-        broker: broker || undefined,
-        brokers: brokers || undefined,  // Support both broker and brokers
-        importId,
-        accounts: accounts ? ensureString(accounts).split(',') : undefined, // Account identifier filter
-        hasNews,
-        holdTime,
-        daysOfWeek: daysOfWeek ? ensureString(daysOfWeek).split(',').map(d => parseInt(d)) : undefined,
-        instrumentTypes: instrumentTypes ? ensureString(instrumentTypes).split(',') : undefined,
-        optionTypes: optionTypes ? ensureString(optionTypes).split(',') : undefined,
-        qualityGrades: qualityGrades ? ensureString(qualityGrades).split(',') : undefined
-      };
+      const filters = parseTradeFilters(req.query, tradeFilterProfiles.analytics);
 
       console.log('[ANALYTICS] Raw query:', req.query);
       console.log('[ANALYTICS] Parsed filters:', JSON.stringify(filters, null, 2));
@@ -3619,32 +3280,7 @@ const tradeController = {
     try {
       console.log('[PARTIAL-EXIT] Endpoint called, query:', req.query);
 
-      const {
-        startDate, endDate, symbol, symbolExact, sector, strategy, tags,
-        strategies, setups, sectors, side, broker, brokers, accounts,
-        instrumentTypes, qualityGrades, minPartials, maxPartials
-      } = req.query;
-
-      const filters = {
-        startDate,
-        endDate,
-        symbol,
-        symbolExact: symbolExact === 'true',
-        sector,
-        strategy,
-        tags: tags ? ensureString(tags).split(',').map(t => t.trim()).filter(Boolean) : undefined,
-        strategies: strategies ? ensureString(strategies).split(',') : undefined,
-        setups: setups ? ensureString(setups).split(',') : undefined,
-        sectors: sectors ? ensureString(sectors).split(',') : undefined,
-        side,
-        broker: broker || undefined,
-        brokers: brokers || undefined,
-        accounts: accounts ? ensureString(accounts).split(',') : undefined,
-        instrumentTypes: instrumentTypes ? ensureString(instrumentTypes).split(',') : undefined,
-        qualityGrades: qualityGrades ? ensureString(qualityGrades).split(',') : undefined,
-        minPartials,
-        maxPartials
-      };
+      const filters = parseTradeFilters(req.query, tradeFilterProfiles.partialExit);
 
       const cacheKey = `partial_exit_analytics:user_${req.user.id}:${JSON.stringify(filters)}`;
       const cached = cache.get(cacheKey);
@@ -4259,6 +3895,12 @@ const tradeController = {
     try {
       const userId = req.user.id;
       const tradeId = req.params.id;
+      const resolution = String(req.query?.resolution || '1').toUpperCase();
+      const supportedResolutions = new Set(['1', '5', '15', '60', 'D']);
+
+      if (!supportedResolutions.has(resolution)) {
+        return res.status(400).json({ error: 'Unsupported chart resolution' });
+      }
       
       // Validate UUID format
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -4303,7 +3945,15 @@ const tradeController = {
 
       // Get chart data using the ChartService (for both stocks and options)
       // For options, this fetches the underlying stock's candlestick data (e.g., SPY)
-      const chartData = await ChartService.getTradeChartData(userId, symbol, entryDate, exitDate, req.headers.host);
+      const chartData = await ChartService.getTradeChartData(
+        userId,
+        symbol,
+        entryDate,
+        exitDate,
+        req.headers.host,
+        resolution
+      );
+      ChartService.alignCandlesToTradePrices(chartData, trade);
 
       // Add trade information to the response
       chartData.trade = {
@@ -4346,6 +3996,9 @@ const tradeController = {
       // Get usage statistics for the response
       const usageStats = await ChartService.getUsageStats(userId, req.headers.host);
       chartData.usage = usageStats;
+      chartData.available_resolutions = (
+        ['fmp', 'finnhub'].includes(chartData.source) || chartData.fallback
+      ) ? ['1', '5', '15', '60', 'D'] : ['D'];
 
       res.json(chartData);
     } catch (error) {

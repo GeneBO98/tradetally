@@ -56,12 +56,7 @@ function getBillingEnabled() {
   return process.env.BILLING_ENABLED === 'true';
 }
 
-function maskEmail(email) {
-  if (!email || !email.includes('@')) return '***';
-  const [localPart, domain] = email.split('@');
-  if (localPart.length <= 2) return `**@${domain}`;
-  return `${localPart.slice(0, 2)}***@${domain}`;
-}
+const maskEmail = require('../utils/maskEmail');
 
 function sendVerificationEmailInBackground(email, token) {
   setImmediate(async () => {
@@ -559,8 +554,12 @@ const authController = {
 
   async getMe(req, res, next) {
     try {
-      const user = await User.findById(req.user.id);
-      const settings = await User.getSettings(req.user.id);
+      // Fetch fresh user (bypasses the auth memo so profile edits reflect
+      // immediately) and settings in parallel - they are independent queries.
+      const [user, settings] = await Promise.all([
+        User.findById(req.user.id),
+        User.getSettings(req.user.id)
+      ]);
       const onboardingCompleted = !!(settings && settings.onboarding_completed_at);
 
       res.json({

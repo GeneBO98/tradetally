@@ -169,6 +169,8 @@
 </template>
 
 <script setup>
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+
 defineProps({
   data: {
     type: Array,
@@ -176,17 +178,20 @@ defineProps({
   }
 })
 
+const { formatCurrency, currencySymbol } = useCurrencyFormatter()
+
 function formatLargeNumber(value) {
   if (value === null || value === undefined) return '-'
   const absValue = Math.abs(value)
   const isNegative = value < 0
+  const sym = currencySymbol.value
   const prefix = isNegative ? '-' : ''
 
-  if (absValue >= 1e12) return `${prefix}$${(absValue / 1e12).toFixed(2)}T`
-  if (absValue >= 1e9) return `${prefix}$${(absValue / 1e9).toFixed(2)}B`
-  if (absValue >= 1e6) return `${prefix}$${(absValue / 1e6).toFixed(2)}M`
-  if (absValue >= 1e3) return `${prefix}$${(absValue / 1e3).toFixed(2)}K`
-  return `${prefix}$${absValue.toFixed(0)}`
+  if (absValue >= 1e12) return `${prefix}${sym}${(absValue / 1e12).toFixed(2)}T`
+  if (absValue >= 1e9) return `${prefix}${sym}${(absValue / 1e9).toFixed(2)}B`
+  if (absValue >= 1e6) return `${prefix}${sym}${(absValue / 1e6).toFixed(2)}M`
+  if (absValue >= 1e3) return `${prefix}${sym}${(absValue / 1e3).toFixed(2)}K`
+  return `${prefix}${sym}${absValue.toFixed(0)}`
 }
 
 function formatShares(value) {
@@ -202,12 +207,4 @@ function formatRatio(numerator, denominator) {
   return (numerator / denominator).toFixed(2)
 }
 
-function formatCurrency(value) {
-  if (value === null || value === undefined || isNaN(value)) return '-'
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2
-  }).format(value)
-}
 </script>

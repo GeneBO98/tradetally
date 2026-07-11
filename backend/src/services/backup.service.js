@@ -1,7 +1,6 @@
 const db = require('../config/database');
 const fs = require('fs').promises;
 const path = require('path');
-const archiver = require('archiver');
 const { createWriteStream } = require('fs');
 const { toCamelCase, toSnakeCase } = require('../utils/caseConvert');
 
@@ -42,12 +41,7 @@ function recomputeRestoredTradePnl(tradeData, timezone) {
   };
 }
 
-function maskEmail(email) {
-  if (!email || !email.includes('@')) return '***';
-  const [localPart, domain] = email.split('@');
-  if (localPart.length <= 2) return `**@${domain}`;
-  return `${localPart.slice(0, 2)}***@${domain}`;
-}
+const maskEmail = require('../utils/maskEmail');
 
 /**
  * Backup Service

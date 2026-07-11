@@ -311,6 +311,10 @@
 import { ref, computed, watch } from 'vue'
 import DCFResultCard from './DCFResultCard.vue'
 import BaseSelect from '@/components/common/BaseSelect.vue'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatPercent as formatPercentBase } from '@/utils/formatters'
+
+const { formatCurrency } = useCurrencyFormatter()
 
 const props = defineProps({
   metrics: {
@@ -365,22 +369,12 @@ const awaitingAutoSave = ref(false)
 
 // Helper functions
 function formatPercent(value) {
-  if (value === null || value === undefined) return '-'
-  return `${(value * 100).toFixed(1)}%`
+  return formatPercentBase(value, { digits: 1, multiplier: 100 })
 }
 
 function formatRatio(value) {
   if (value === null || value === undefined) return '-'
   return `${value.toFixed(1)}x`
-}
-
-function formatCurrency(value) {
-  if (value === null || value === undefined) return '-'
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2
-  }).format(value)
 }
 
 // Reset inputs when metrics change (new symbol selected)

@@ -19,6 +19,7 @@ const db = require('../config/database');
 const marketData = require('../utils/finnhub');
 const alphaVantage = require('../utils/alphaVantage');
 const databento = require('../utils/databento');
+const { resolvePriceScale, applyPriceScale } = require('../utils/candlePriceScale');
 const {
   getFuturesPointValue,
   getFuturesTickSize,
@@ -76,23 +77,6 @@ function tzOffsetMs(epochMs, timeZone) {
 function zonedEpochSeconds(year, month, day, hour, minute, second, timeZone) {
   const guess = Date.UTC(year, month - 1, day, hour, minute, second);
   return Math.floor((guess - tzOffsetMs(guess, timeZone)) / 1000);
-}
-
-// FMP intraday rows carry Eastern-time wall-clock strings with no offset, and
-// fmpClient parses them with `new Date(...)`, i.e. in the SERVER's local
-// timezone. Recover the original wall clock via local getters and reinterpret
-// it as Eastern time to get a true UTC epoch, whatever the server TZ is.
-function fmpBarTimeToUtcSeconds(storedSeconds) {
-  const d = new Date(storedSeconds * 1000);
-  return zonedEpochSeconds(
-    d.getFullYear(),
-    d.getMonth() + 1,
-    d.getDate(),
-    d.getHours(),
-    d.getMinutes(),
-    d.getSeconds(),
-    NY_TZ
-  );
 }
 
 function toEpochSeconds(value) {
@@ -333,10 +317,7 @@ function dedupeSortBars(bars) {
  */
 async function fetchIntradayBars(symbol, fromTs, toTs, userId) {
   const rawBars = await marketData.getStockCandles(symbol, '1', fromTs, toTs, userId, { source: 'replay' });
-  const bars = rawBars.map((bar) => ({
-    ...bar,
-    time: marketData.isFmp ? fmpBarTimeToUtcSeconds(bar.time) : bar.time
-  }));
+  const bars = rawBars.map((bar) => ({ ...bar }));
   // Providers are queried by date, so responses can spill past the session
   // window; keep only bars inside it.
   return dedupeSortBars(bars).filter((bar) => bar.time >= fromTs && bar.time <= toTs);
@@ -428,67 +409,6 @@ function loadFuturesSessionBars(root, session) {
     },
     'databento'
   );
-}
-
-function closeAtTime(candles, time) {
-  let candidate = candles[0];
-  for (const bar of candles) {
-    if (bar.time > time) break;
-    candidate = bar;
-  }
-  return candidate ? Number(candidate.close) : null;
-}
-
-/**
- * Detect split-adjustment mismatch between provider bars and the trade's
- * fills. Providers serve TODAY'S split-adjusted view of a past session, while
- * fills carry the raw prices from trade time — after a 1:25 reverse split the
- * bars sit 25x above the fills (SQQQ-style ETFs do this constantly, and
- * provider "nonadjusted" flags only partially undo stacked splits).
- *
- * Split factors are clean ratios, so: take the median bar/fill price ratio at
- * fill time and, when it lands within 10% of an integer (or an integer
- * reciprocal for forward splits), rescale the bars into the fill's price
- * space. Ordinary venue/data noise (ratio near 1) is left untouched.
- *
- * @returns {number} factor to DIVIDE bar prices by (1 = no adjustment)
- */
-function resolvePriceScale(candles, fills) {
-  if (candles.length === 0 || fills.length === 0) return 1;
-  const ratios = fills
-    .map((fill) => {
-      const barClose = closeAtTime(candles, fill.time);
-      return barClose && fill.price > 0 ? barClose / fill.price : null;
-    })
-    .filter((r) => r !== null && Number.isFinite(r))
-    .sort((a, b) => a - b);
-  if (ratios.length === 0) return 1;
-  const median = ratios[Math.floor(ratios.length / 2)];
-
-  if (median >= 1.5) {
-    const rounded = Math.round(median);
-    if (rounded >= 2 && Math.abs(median - rounded) / rounded <= 0.1) return rounded;
-  } else if (median <= 0.67 && median > 0) {
-    const inverse = Math.round(1 / median);
-    if (inverse >= 2 && Math.abs(1 / median - inverse) / inverse <= 0.1) return 1 / inverse;
-  }
-  return 1;
-}
-
-function applyPriceScale(candles, scale) {
-  if (scale === 1) return candles;
-  return candles.map((bar) => ({
-    ...bar,
-    open: Number(bar.open) / scale,
-    high: Number(bar.high) / scale,
-    low: Number(bar.low) / scale,
-    close: Number(bar.close) / scale,
-    // Adjusted volume shrinks by the split factor; scale it back up so
-    // share counts are in the same raw space as the prices
-    volume: bar.volume === null || bar.volume === undefined
-      ? null
-      : Number(bar.volume) * scale
-  }));
 }
 
 /**
@@ -786,6 +706,5 @@ module.exports = {
   sessionWindowForDate,
   futuresSessionWindowForEntry,
   futuresSessionWindowForDate,
-  fmpBarTimeToUtcSeconds,
   toEpochSeconds
 };

@@ -31,18 +31,30 @@ jest.mock('../../src/models/User', () => ({
 const db = require('../../src/config/database');
 const TradeQueries = require('../../src/services/tradeQueries');
 
+// findByUser discovers the trades column list from information_schema (cached
+// in-process), so the main query is the last non-schema-lookup call.
 function captureQuery() {
-  expect(db.query).toHaveBeenCalledTimes(1);
+  const mainCalls = db.query.mock.calls.filter(
+    ([sql]) => !String(sql).includes('information_schema.columns')
+  );
+  expect(mainCalls).toHaveLength(1);
   return {
-    sql: db.query.mock.calls[0][0],
-    values: db.query.mock.calls[0][1]
+    sql: mainCalls[0][0],
+    values: mainCalls[0][1]
   };
 }
 
 describe('TradeQueries.findByUser characterization', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    db.query.mockResolvedValue({ rows: [] });
+    db.query.mockImplementation((sql) => {
+      if (String(sql).includes('information_schema.columns')) {
+        return Promise.resolve({
+          rows: [{ column_name: 'id' }, { column_name: 'symbol' }, { column_name: 'executions' }]
+        });
+      }
+      return Promise.resolve({ rows: [] });
+    });
   });
 
   describe('baseline', () => {
@@ -151,6 +163,19 @@ describe('TradeQueries.findByUser characterization', () => {
       const { sql, values } = captureQuery();
       expect(values).toEqual(['user-1', 'call', 'put']);
       expect(sql).toContain('t.option_type IN ($2,$3)');
+    });
+
+    test('market_sessions: filters weekday entry times using New York market hours', async () => {
+      await TradeQueries.findByUser('user-1', { market_sessions: ['pre_market', 'post_market'] });
+      const { sql, values } = captureQuery();
+      expect(values).toEqual(['user-1', ['pre_market', 'post_market']]);
+      expect(sql).toContain("t.entry_time AT TIME ZONE 'America/New_York'");
+      expect(sql).toContain('extract(isodow');
+      expect(sql).toContain('BETWEEN 1 AND 5');
+      expect(sql).toContain("THEN 'pre_market'");
+      expect(sql).toContain("THEN 'regular'");
+      expect(sql).toContain("ELSE 'post_market'");
+      expect(sql).toContain('END = ANY($2::text[])');
     });
 
     test('qualityGrades: IN with placeholders', async () => {

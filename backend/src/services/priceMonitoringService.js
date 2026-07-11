@@ -10,13 +10,7 @@ const pushNotificationService = require('./pushNotificationService');
 const EmailService = require('./emailService');
 const { publish } = require('../events/domainEvents');
 const escapeHtml = require('../utils/escapeHtml');
-
-function maskEmail(email) {
-  if (!email || !email.includes('@')) return '***';
-  const [localPart, domain] = email.split('@');
-  if (localPart.length <= 2) return `**@${domain}`;
-  return `${localPart.slice(0, 2)}***@${domain}`;
-}
+const maskEmail = require('../utils/maskEmail');
 
 class PriceMonitoringService {
   constructor() {

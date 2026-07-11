@@ -435,6 +435,30 @@
               </div>
             </div>
 
+            <!-- Market Session -->
+            <div>
+              <label class="label">Market Session</label>
+              <div class="grid grid-cols-3 gap-1 rounded-lg border border-gray-200 bg-white p-1 dark:border-gray-600 dark:bg-gray-800">
+                <label
+                  v-for="session in marketSessionOptions"
+                  :key="session.value"
+                  class="cursor-pointer rounded-md px-2 py-2 text-center text-xs font-medium transition-colors"
+                  :class="filters.market_sessions.includes(session.value)
+                    ? 'bg-primary-600 text-white shadow-sm'
+                    : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'"
+                >
+                  <input
+                    v-model="filters.market_sessions"
+                    type="checkbox"
+                    :value="session.value"
+                    class="sr-only"
+                  />
+                  {{ session.label }}
+                </label>
+              </div>
+              <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">Based on entry time in New York.</p>
+            </div>
+
             <!-- Day of Week -->
             <div>
               <label class="label">Day of Week</label>
@@ -902,6 +926,12 @@ const dayOfWeekOptions = [
   { value: 5, label: 'Friday' }
 ]
 
+const marketSessionOptions = [
+  { value: 'pre_market', label: 'Pre-market' },
+  { value: 'regular', label: 'Market' },
+  { value: 'post_market', label: 'Post-market' }
+]
+
 // Instrument type options
 const instrumentTypeOptions = [
   { value: 'stock', label: 'Stocks' },
@@ -1087,6 +1117,7 @@ const defaultFilters = {
   importId: '',
   accounts: '',
   daysOfWeek: [], // New multi-select array for days
+  market_sessions: [],
   instrumentTypes: [], // New multi-select array for instrument types
   optionTypes: [], // New multi-select array for option types (call/put)
   qualityGrades: [] // New multi-select array for quality grades
@@ -1100,7 +1131,7 @@ function urlHasFilterParams() {
     route.query.maxPrice || route.query.minQuantity || route.query.maxQuantity ||
     route.query.holdTime || route.query.broker || route.query.brokers ||
     route.query.minHoldTime || route.query.maxHoldTime || route.query.pnlType ||
-    route.query.importId || route.query.tags
+    route.query.importId || route.query.tags || route.query.market_sessions
   )
 }
 
@@ -1143,6 +1174,9 @@ function loadInitialFilters() {
       delete parsed.accounts
       if (parsed.daysOfWeek && typeof parsed.daysOfWeek === 'string') {
         parsed.daysOfWeek = parsed.daysOfWeek.split(',').filter(Boolean).map(Number)
+      }
+      if (parsed.market_sessions && typeof parsed.market_sessions === 'string') {
+        parsed.market_sessions = parsed.market_sessions.split(',').filter(Boolean)
       }
       if (parsed.instrumentTypes && typeof parsed.instrumentTypes === 'string') {
         parsed.instrumentTypes = parsed.instrumentTypes.split(',').filter(Boolean)
@@ -1384,6 +1418,7 @@ const activeFiltersCount = computed(() => {
   if (filters.value.brokers && filters.value.brokers.length > 0) count++
   if (filters.value.importId) count++
   if (filters.value.daysOfWeek && filters.value.daysOfWeek.length > 0) count++
+  if (filters.value.market_sessions && filters.value.market_sessions.length > 0) count++
   if (filters.value.optionTypes && filters.value.optionTypes.length > 0) count++
   if (filters.value.qualityGrades && filters.value.qualityGrades.length > 0) count++
   return count
@@ -1404,6 +1439,7 @@ const activeAdvancedCount = computed(() => {
   if (filters.value.pnlType) count++
   if (filters.value.holdTime) count++
   if (filters.value.daysOfWeek && filters.value.daysOfWeek.length > 0) count++
+  if (filters.value.market_sessions && filters.value.market_sessions.length > 0) count++
   if (filters.value.optionTypes && filters.value.optionTypes.length > 0) count++
   if (filters.value.qualityGrades && filters.value.qualityGrades.length > 0) count++
   return count
@@ -1472,6 +1508,10 @@ function applyFilters() {
   // Handle multi-select days of week - convert to comma-separated
   if (filters.value.daysOfWeek.length > 0) {
     cleanFilters.daysOfWeek = filters.value.daysOfWeek.join(',')
+  }
+
+  if (filters.value.market_sessions.length > 0) {
+    cleanFilters.market_sessions = filters.value.market_sessions.join(',')
   }
 
   // Handle multi-select instrument types - convert to comma-separated
@@ -1853,6 +1893,9 @@ onMounted(() => {
     if (storeFilters.daysOfWeek && typeof storeFilters.daysOfWeek === 'string') {
       storeFilters.daysOfWeek = storeFilters.daysOfWeek.split(',').filter(Boolean)
     }
+    if (storeFilters.market_sessions && typeof storeFilters.market_sessions === 'string') {
+      storeFilters.market_sessions = storeFilters.market_sessions.split(',').filter(Boolean)
+    }
     if (storeFilters.instrumentTypes && typeof storeFilters.instrumentTypes === 'string') {
       storeFilters.instrumentTypes = storeFilters.instrumentTypes.split(',').filter(Boolean)
     }
@@ -1998,6 +2041,11 @@ onMounted(() => {
     shouldApply = true
   }
 
+  if (route.query.market_sessions) {
+    filters.value.market_sessions = route.query.market_sessions.split(',').filter(Boolean)
+    shouldApply = true
+  }
+
   // Handle instrument types from query parameters
   if (route.query.instrumentTypes) {
     filters.value.instrumentTypes = route.query.instrumentTypes.split(',')
@@ -2022,7 +2070,7 @@ onMounted(() => {
   }
 
   // Auto-expand advanced filters if any advanced filter is set
-  if (route.query.minPrice || route.query.maxPrice || route.query.minQuantity || route.query.maxQuantity || route.query.holdTime || route.query.broker || route.query.minHoldTime || route.query.maxHoldTime || route.query.daysOfWeek || route.query.instrumentTypes || route.query.optionTypes || route.query.qualityGrades) {
+  if (route.query.minPrice || route.query.maxPrice || route.query.minQuantity || route.query.maxQuantity || route.query.holdTime || route.query.broker || route.query.minHoldTime || route.query.maxHoldTime || route.query.daysOfWeek || route.query.market_sessions || route.query.instrumentTypes || route.query.optionTypes || route.query.qualityGrades) {
     showAdvanced.value = true
   }
   

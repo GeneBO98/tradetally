@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const settingsCache = require('../services/settingsCache');
 
 const equityController = {
   async getEquitySnapshots(req, res) {
@@ -185,6 +186,7 @@ const equityController = {
         'UPDATE user_settings SET account_equity = $1 WHERE user_id = $2',
         [accountEquity, userId]
       );
+      settingsCache.invalidate(userId);
 
       // Also create a snapshot for today
       const today = new Date().toISOString().split('T')[0];

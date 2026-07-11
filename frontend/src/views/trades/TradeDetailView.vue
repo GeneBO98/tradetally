@@ -1599,14 +1599,13 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, reactive } from 'vue'
+import { ref, onMounted, computed, reactive, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { format, formatDistanceToNow, formatDistance } from 'date-fns'
 import { DocumentIcon, ChatBubbleLeftIcon, SparklesIcon, ShareIcon, TrashIcon, PlayIcon } from '@heroicons/vue/24/outline'
-import TradeShareCard from '@/components/trades/TradeShareCard.vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
@@ -1614,11 +1613,14 @@ import TradeChartVisualization from '@/components/trades/TradeChartVisualization
 import TradeImages from '@/components/trades/TradeImages.vue'
 import TradeCharts from '@/components/trades/TradeCharts.vue'
 import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
-import AIConversationPanel from '@/components/ai/AIConversationPanel.vue'
-import AIReportRenderer from '@/components/ai/AIReportRenderer.vue'
 import BaseSelect from '@/components/common/BaseSelect.vue'
 import { useAIStore } from '@/stores/ai'
 import { getTradeDateOnlyParts } from '@/utils/date'
+
+// Heavy, conditionally rendered components: load lazily to keep them out of the route chunk
+const TradeShareCard = defineAsyncComponent(() => import('@/components/trades/TradeShareCard.vue'))
+const AIConversationPanel = defineAsyncComponent(() => import('@/components/ai/AIConversationPanel.vue'))
+const AIReportRenderer = defineAsyncComponent(() => import('@/components/ai/AIReportRenderer.vue'))
 
 const route = useRoute()
 const router = useRouter()

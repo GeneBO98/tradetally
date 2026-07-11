@@ -1,14 +1,8 @@
 const db = require('../../config/database');
 const AIService = require('../../utils/aiService');
+const maskEmail = require('../../utils/maskEmail');
 
 const MAX_TRADES_IN_PROMPT = 50;
-
-function maskEmail(email) {
-  if (!email || !email.includes('@')) return '***';
-  const [localPart, domain] = email.split('@');
-  if (localPart.length <= 2) return `**@${domain}`;
-  return `${localPart.slice(0, 2)}***@${domain}`;
-}
 
 async function fetchTradeSummariesForPrompt(userId, startDate, endDate) {
   const query = `

@@ -157,8 +157,10 @@
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 
 const route = useRoute()
+const { currencySymbol } = useCurrencyFormatter()
 
 const props = defineProps({
   pillarNumber: {
@@ -339,14 +341,15 @@ function formatLabel(key) {
 
 function formatCurrency(value) {
   if (value === null || value === undefined) return 'N/A'
+  const sym = currencySymbol.value
   if (Math.abs(value) >= 1e12) {
-    return `$${(value / 1e12).toFixed(2)}T`
+    return `${sym}${(value / 1e12).toFixed(2)}T`
   } else if (Math.abs(value) >= 1e9) {
-    return `$${(value / 1e9).toFixed(2)}B`
+    return `${sym}${(value / 1e9).toFixed(2)}B`
   } else if (Math.abs(value) >= 1e6) {
-    return `$${(value / 1e6).toFixed(2)}M`
+    return `${sym}${(value / 1e6).toFixed(2)}M`
   } else {
-    return `$${value.toLocaleString()}`
+    return `${sym}${value.toLocaleString()}`
   }
 }
 

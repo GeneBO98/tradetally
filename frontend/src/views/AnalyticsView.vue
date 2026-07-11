@@ -1857,8 +1857,8 @@ function createDailyVolumeChart() {
             },
             title: function(context) {
               const originalDate = dailyVolumeData.value[context[0].dataIndex].trade_date
-              const date = new Date(originalDate)
-              return date.toLocaleDateString('en-US', { 
+              const date = parseTradeDate(originalDate)
+              return date.toLocaleDateString('en-US', {
                 weekday: 'short', 
                 year: 'numeric', 
                 month: 'short', 
@@ -1972,8 +1972,8 @@ function createDrawdownChart() {
             },
             title: function(context) {
               const originalDate = drawdownData.value[context[0].dataIndex].trade_date
-              const date = new Date(originalDate)
-              return date.toLocaleDateString('en-US', { 
+              const date = parseTradeDate(originalDate)
+              return date.toLocaleDateString('en-US', {
                 weekday: 'short', 
                 year: 'numeric', 
                 month: 'short', 

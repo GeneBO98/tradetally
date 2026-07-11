@@ -9,18 +9,37 @@ const TickDataService = require('../services/tickDataService');
 const db = require('../config/database');
 const ensureString = require('../utils/ensureString');
 
+// Shared catch-block handler: Pro-tier feature errors surface as a 403
+// upgrade prompt; everything else goes to the standard error middleware.
+function handleAnalyticsError(error, res, next) {
+  if (error.message && error.message.includes('requires Pro tier')) {
+    return res.status(403).json({
+      error: 'Pro tier required',
+      message: error.message,
+      upgradeRequired: true
+    });
+  }
+  next(error);
+}
+
+// Parse the common startDate/endDate/accounts query params into the
+// dateFilter spec consumed by the behavioral analytics services.
+function parseDateFilter(query) {
+  const { startDate, endDate, accounts } = query;
+  const dateFilter = {};
+  if (startDate) dateFilter.startDate = startDate;
+  if (endDate) dateFilter.endDate = endDate;
+  if (accounts) dateFilter.accounts = ensureString(accounts).split(',');
+  return dateFilter;
+}
+
 const behavioralAnalyticsController = {
   
   // Get behavioral analytics overview
   async getOverview(req, res, next) {
     try {
       const userId = req.user.id;
-      const { startDate, endDate, accounts } = req.query;
-
-      const dateFilter = {};
-      if (startDate) dateFilter.startDate = startDate;
-      if (endDate) dateFilter.endDate = endDate;
-      if (accounts) dateFilter.accounts = ensureString(accounts).split(',');
+      const dateFilter = parseDateFilter(req.query);
 
       const overview = await BehavioralAnalyticsService.getBehavioralOverview(userId, dateFilter);
       
@@ -29,14 +48,7 @@ const behavioralAnalyticsController = {
         data: overview
       });
     } catch (error) {
-      if (error.message.includes('requires Pro tier')) {
-        return res.status(403).json({
-          error: 'Pro tier required',
-          message: error.message,
-          upgradeRequired: true
-        });
-      }
-      next(error);
+      return handleAnalyticsError(error, res, next);
     }
   },
 
@@ -44,12 +56,9 @@ const behavioralAnalyticsController = {
   async getRevengeTradeAnalysis(req, res, next) {
     try {
       const userId = req.user.id;
-      const { startDate, endDate, page, limit, accounts } = req.query;
+      const { page, limit } = req.query;
 
-      const dateFilter = {};
-      if (startDate) dateFilter.startDate = startDate;
-      if (endDate) dateFilter.endDate = endDate;
-      if (accounts) dateFilter.accounts = ensureString(accounts).split(',');
+      const dateFilter = parseDateFilter(req.query);
 
       const paginationOptions = {
         page: parseInt(page) || 1,
@@ -63,14 +72,7 @@ const behavioralAnalyticsController = {
         data: analysis
       });
     } catch (error) {
-      if (error.message.includes('requires Pro tier')) {
-        return res.status(403).json({
-          error: 'Pro tier required',
-          message: error.message,
-          upgradeRequired: true
-        });
-      }
-      next(error);
+      return handleAnalyticsError(error, res, next);
     }
   },
 
@@ -236,13 +238,8 @@ const behavioralAnalyticsController = {
   async getInsights(req, res, next) {
     try {
       const userId = req.user.id;
-      const { startDate, endDate, accounts } = req.query;
+      const dateFilter = parseDateFilter(req.query);
 
-      const dateFilter = {};
-      if (startDate) dateFilter.startDate = startDate;
-      if (endDate) dateFilter.endDate = endDate;
-      if (accounts) dateFilter.accounts = ensureString(accounts).split(',');
-      
       // Get recent patterns and statistics
       const overview = await BehavioralAnalyticsService.getBehavioralOverview(userId, dateFilter);
       const revengeAnalysis = await BehavioralAnalyticsService.getRevengeTradeAnalysis(userId, dateFilter);
@@ -255,14 +252,7 @@ const behavioralAnalyticsController = {
         data: insights
       });
     } catch (error) {
-      if (error.message.includes('requires Pro tier')) {
-        return res.status(403).json({
-          error: 'Pro tier required',
-          message: error.message,
-          upgradeRequired: true
-        });
-      }
-      next(error);
+      return handleAnalyticsError(error, res, next);
     }
   },
 
@@ -394,14 +384,7 @@ const behavioralAnalyticsController = {
         }
       });
     } catch (error) {
-      if (error.message && error.message.includes('requires Pro tier')) {
-        return res.status(403).json({
-          error: 'Pro tier required',
-          message: error.message,
-          upgradeRequired: true
-        });
-      }
-      next(error);
+      return handleAnalyticsError(error, res, next);
     }
   },
 
@@ -923,8 +906,7 @@ const behavioralAnalyticsController = {
   async analyzeHistoricalTrades(req, res, next) {
     try {
       const userId = req.user.id;
-      const { startDate, endDate, accounts } = req.query;
-      
+
       // Check if user has access to behavioral analytics
       const hasAccess = await TierService.hasFeatureAccess(userId, 'behavioral_analytics');
       if (!hasAccess) {
@@ -936,10 +918,7 @@ const behavioralAnalyticsController = {
       }
 
       // Use the improved V2 version for proper revenge trade aggregation
-      const dateFilter = {};
-      if (startDate) dateFilter.startDate = startDate;
-      if (endDate) dateFilter.endDate = endDate;
-      if (accounts) dateFilter.accounts = ensureString(accounts).split(',');
+      const dateFilter = parseDateFilter(req.query);
 
       const analysis = await BehavioralAnalyticsServiceV2.analyzeHistoricalTradesV2(userId, dateFilter);
       
@@ -950,14 +929,7 @@ const behavioralAnalyticsController = {
       });
     } catch (error) {
       console.error('Error analyzing historical trades:', error);
-      if (error.message.includes('requires Pro tier')) {
-        return res.status(403).json({
-          error: 'Pro tier required',
-          message: error.message,
-          upgradeRequired: true
-        });
-      }
-      next(error);
+      return handleAnalyticsError(error, res, next);
     }
   },
 
@@ -1109,8 +1081,7 @@ const behavioralAnalyticsController = {
   async reRunHistoricalAnalysis(req, res, next) {
     try {
       const userId = req.user.id;
-      const { startDate, endDate, accounts } = req.query;
-      
+
       // Check if user has access to behavioral analytics
       const hasAccess = await TierService.hasFeatureAccess(userId, 'behavioral_analytics');
       if (!hasAccess) {
@@ -1122,10 +1093,7 @@ const behavioralAnalyticsController = {
       }
 
       // Use the improved V2 version with proper loss thresholds
-      const dateFilter = {};
-      if (startDate) dateFilter.startDate = startDate;
-      if (endDate) dateFilter.endDate = endDate;
-      if (accounts) dateFilter.accounts = ensureString(accounts).split(',');
+      const dateFilter = parseDateFilter(req.query);
 
       const analysis = await BehavioralAnalyticsServiceV2.analyzeHistoricalTradesV2(userId, dateFilter);
       
@@ -1136,14 +1104,7 @@ const behavioralAnalyticsController = {
       });
     } catch (error) {
       console.error('Error re-running historical analysis:', error);
-      if (error.message.includes('requires Pro tier')) {
-        return res.status(403).json({
-          error: 'Pro tier required',
-          message: error.message,
-          upgradeRequired: true
-        });
-      }
-      next(error);
+      return handleAnalyticsError(error, res, next);
     }
   },
 
@@ -1203,14 +1164,11 @@ const behavioralAnalyticsController = {
   async getOverconfidenceAnalysis(req, res, next) {
     try {
       const userId = req.user.id;
-      const { startDate, endDate, page, limit, accounts } = req.query;
+      const { startDate, endDate, page, limit } = req.query;
 
       console.log(`[OVERCONFIDENCE] GET analysis request - userId: ${userId}, startDate: ${startDate}, endDate: ${endDate}, page: ${page}, limit: ${limit}`);
 
-      const dateFilter = {};
-      if (startDate) dateFilter.startDate = startDate;
-      if (endDate) dateFilter.endDate = endDate;
-      if (accounts) dateFilter.accounts = ensureString(accounts).split(',');
+      const dateFilter = parseDateFilter(req.query);
 
       const paginationOptions = {
         page: parseInt(page) || 1,
@@ -1252,7 +1210,7 @@ const behavioralAnalyticsController = {
   async analyzeOverconfidenceHistoricalTrades(req, res, next) {
     try {
       const userId = req.user.id;
-      const { startDate, endDate, accounts } = req.query;
+      const { startDate, endDate } = req.query;
 
       console.log(`[OVERCONFIDENCE] Analyzing trades for user ${userId}, date range: ${startDate || 'all'} to ${endDate || 'now'}`);
 
@@ -1266,10 +1224,7 @@ const behavioralAnalyticsController = {
         });
       }
 
-      const dateFilter = {};
-      if (startDate) dateFilter.startDate = startDate;
-      if (endDate) dateFilter.endDate = endDate;
-      if (accounts) dateFilter.accounts = ensureString(accounts).split(',');
+      const dateFilter = parseDateFilter(req.query);
 
       const analysis = await OverconfidenceAnalyticsService.analyzeHistoricalTrades(userId, dateFilter);
 

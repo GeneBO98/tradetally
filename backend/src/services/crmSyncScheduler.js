@@ -1,4 +1,4 @@
-const cron = require('node-cron');
+const CronScheduler = require('./schedulers/CronScheduler');
 const twentySyncService = require('./twentySyncService');
 const invoiceNinjaSyncService = require('./invoiceNinjaSyncService');
 
@@ -7,10 +7,23 @@ const invoiceNinjaSyncService = require('./invoiceNinjaSyncService');
  * Periodically syncs TradeTally user/billing data to Twenty CRM and Invoice Ninja.
  * Controlled by ENABLE_CRM_SYNC env var and CRM_SYNC_CRON for interval.
  */
-class CrmSyncScheduler {
+class CrmSyncScheduler extends CronScheduler {
   constructor() {
-    this.job = null;
-    this.running = false;
+    super({
+      logPrefix: '[CRM SYNC]',
+      cronEnvVar: 'CRM_SYNC_CRON',
+      defaultCron: '0 */6 * * *',
+      returnBoolean: true,
+      initialDelayMs: 30000, // Run initial sync 30 seconds after startup to let everything settle
+      getScheduleOptions: () => ({
+        scheduled: true,
+        timezone: process.env.TZ || 'UTC',
+      }),
+      messages: {
+        started: (cronExpression) => `[CRM SYNC] Scheduler started (cron: ${cronExpression})`,
+        stopped: '[CRM SYNC] Scheduler stopped'
+      }
+    });
     this.initialized = false;
     this.integrationStatus = {
       twenty: false,
@@ -52,9 +65,9 @@ class CrmSyncScheduler {
   }
 
   /**
-   * Initialize both sync services and start the cron job
+   * Initialize both sync services before the cron job is scheduled
    */
-  start() {
+  beforeStart() {
     const { twenty: twentyReady, invoiceNinja: ninjaReady } = this.ensureServicesInitialized();
 
     if (!twentyReady && !ninjaReady) {
@@ -62,24 +75,11 @@ class CrmSyncScheduler {
       return false;
     }
 
-    const cronExpression = process.env.CRM_SYNC_CRON || '0 */6 * * *';
-
-    if (!cron.validate(cronExpression)) {
-      console.error(`[CRM SYNC] Invalid cron expression: ${cronExpression}`);
-      return false;
-    }
-
-    this.job = cron.schedule(cronExpression, () => this.runSync(), {
-      scheduled: true,
-      timezone: process.env.TZ || 'UTC',
-    });
-
-    console.log(`[CRM SYNC] Scheduler started (cron: ${cronExpression})`);
-
-    // Run initial sync 30 seconds after startup to let everything settle
-    setTimeout(() => this.runSync(), 30000);
-
     return true;
+  }
+
+  onTick() {
+    return this.runSync();
   }
 
   /**
@@ -154,17 +154,6 @@ class CrmSyncScheduler {
 
   async runSync() {
     return this.syncAll();
-  }
-
-  /**
-   * Stop the scheduler
-   */
-  stop() {
-    if (this.job) {
-      this.job.stop();
-      this.job = null;
-      console.log('[CRM SYNC] Scheduler stopped');
-    }
   }
 
   /**

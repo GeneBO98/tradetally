@@ -13,6 +13,7 @@ const { getUserTimezone } = require('../utils/timezone');
 const { POSITION_GROUP_KEY, GROUPED_BREAKEVEN, isPositionGroupingEnabled } = require('../utils/positionGrouping');
 const { buildExcursionMetrics } = require('../utils/excursionMetrics');
 const { normalizeConfig } = require('../utils/breakeven');
+const TradeQueries = require('../services/tradeQueries');
 
 // Helper function to create a short but collision-resistant hash for cache keys
 function createFilterHash(filters) {
@@ -41,6 +42,39 @@ function coalesceInFlight(key, compute) {
     });
   inFlightComputations.set(key, promise);
   return promise;
+}
+
+// Cache + single-flight wrapper for the aggregate analytics endpoints
+// (performance, symbol/tag/strategy/hour stats, calendar, drawdown). Each of
+// these runs a full aggregate scan over the user's trades, and the analytics
+// page fires most of them together on every load, so they get the same
+// treatment as getOverview: serve from the in-memory cache, coalesce
+// concurrent identical computes, cache until invalidated.
+//
+// Freshness contract: keys start with `analytics_agg_<userId>` (registered in
+// services/analyticsCache.js IN_MEMORY_KEY_PREFIXES) so every trade mutation's
+// AnalyticsCache.invalidate(userId) clears them immediately. User settings
+// that shape the SQL (position grouping, breakeven predicate, timezone) MUST
+// be included in keyParts by the caller so a settings change takes effect on
+// the next request instead of waiting out the TTL. The 24h TTL is only a
+// fallback, matching getOverview.
+const ANALYTICS_AGG_TTL_MS = 24 * 60 * 60 * 1000;
+
+async function sendCachedAnalytics(req, res, name, keyParts, compute) {
+  const cacheKey = `analytics_agg_${req.user.id}_${name}_${createFilterHash(keyParts)}`;
+
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    return res.json(cached);
+  }
+
+  const payload = await coalesceInFlight(cacheKey, async () => {
+    const computed = await compute();
+    cache.set(cacheKey, computed, ANALYTICS_AGG_TTL_MS);
+    return computed;
+  });
+
+  return res.json(payload);
 }
 
 // Lightweight keyword-based tone classifier for news headlines. NOT a real
@@ -97,8 +131,8 @@ async function calculateMAEMFEAsync(userId, filterConditions, params) {
         COALESCE(AVG(mfe), 0) as avg_mfe,
         COUNT(mae) as mae_count,
         COUNT(mfe) as mfe_count
-      FROM trades
-      WHERE user_id = $1 ${filterConditions}
+      FROM trades t
+      WHERE t.user_id = $1 ${filterConditions}
         AND mae IS NOT NULL
         AND mfe IS NOT NULL
     `;
@@ -133,8 +167,8 @@ async function calculateMAEMFEAsync(userId, filterConditions, params) {
           point_value,
           underlying_asset,
           contract_size
-        FROM trades
-        WHERE user_id = $1 ${filterConditions}
+        FROM trades t
+        WHERE t.user_id = $1 ${filterConditions}
           AND entry_price IS NOT NULL
           AND exit_price IS NOT NULL
           AND pnl IS NOT NULL
@@ -188,7 +222,10 @@ function convertQueryToTradeFilters(query) {
   // Allowlist for enum-like fields to prevent injection via unexpected values
   const validSides = ['long', 'short'];
   const validStatuses = ['open', 'closed'];
-  const validPnlTypes = ['profit', 'loss'];
+  // Must accept everything the canonical WHERE builder handles (it also
+  // aliases positive/negative and supports breakeven) so analytics and the
+  // trade list agree for API callers, not just the web filter UI.
+  const validPnlTypes = ['profit', 'loss', 'breakeven', 'positive', 'negative'];
   const validHoldTimes = [
     '< 1 min', '1-5 min', '5-15 min', '15-30 min', '30-60 min',
     '1-2 hours', '2-4 hours', '4-24 hours', '1-7 days', '1-4 weeks', '1+ months'
@@ -233,254 +270,27 @@ function convertQueryToTradeFilters(query) {
   };
 }
 
-// Helper function to generate hold time filter SQL conditions
-function getHoldTimeFilter(holdTimeRange) {
-  let timeCondition = '';
-
-  switch (holdTimeRange) {
-    case '< 1 min':
-      timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(exit_time, NOW()) - entry_time)) < 60`;
-      break;
-    case '1-5 min':
-      timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(exit_time, NOW()) - entry_time)) BETWEEN 60 AND 300`;
-      break;
-    case '5-15 min':
-      timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(exit_time, NOW()) - entry_time)) BETWEEN 300 AND 900`;
-      break;
-    case '15-30 min':
-      timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(exit_time, NOW()) - entry_time)) BETWEEN 900 AND 1800`;
-      break;
-    case '30-60 min':
-      timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(exit_time, NOW()) - entry_time)) BETWEEN 1800 AND 3600`;
-      break;
-    case '1-2 hours':
-      timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(exit_time, NOW()) - entry_time)) BETWEEN 3600 AND 7200`;
-      break;
-    case '2-4 hours':
-      timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(exit_time, NOW()) - entry_time)) BETWEEN 7200 AND 14400`;
-      break;
-    case '4-24 hours':
-      timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(exit_time, NOW()) - entry_time)) BETWEEN 14400 AND 86400`;
-      break;
-    case '1-7 days':
-      timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(exit_time, NOW()) - entry_time)) BETWEEN 86400 AND 604800`;
-      break;
-    case '1-4 weeks':
-      timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(exit_time, NOW()) - entry_time)) BETWEEN 604800 AND 2419200`;
-      break;
-    case '1+ months':
-      timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(exit_time, NOW()) - entry_time)) >= 2419200`;
-      break;
-    default:
-      timeCondition = '';
-  }
-
-  return timeCondition;
-}
 
 // Helper function to build filter conditions for analytics queries using normalized Trade filters
-function buildFilterConditions(query) {
+// Builds the analytics filter fragment by delegating to the canonical
+// TradeQueries._buildWhereClause, so analytics and the trade list share ONE
+// filter implementation (date range with the exit_time branch, symbol
+// ILIKE/CUSIP fallback, breakeven-tolerant pnlType, timezone-aware
+// daysOfWeek, __unsorted__ accounts). Previously this module had its own
+// diverged builder and the same filter set could produce different trade
+// populations in analytics vs the trade list.
+//
+// Returns { filterConditions, params } where filterConditions is a fragment
+// of `AND ...` conditions referencing the trades table via alias `t`, with
+// placeholders starting at $2 ($1 is the user id at every call site). Any
+// query embedding the fragment MUST alias its trades table as `t`.
+async function buildFilterConditions(query, userId) {
   const filters = convertQueryToTradeFilters(query);
-
-  console.log('--- Filter Debug (normalized) ---');
-  console.log('Raw query object:', query);
-  console.log('Normalized filters:', filters);
-  console.log('Broker filter specifically:', filters.brokers);
-
-  let filterConditions = '';
-  const params = [];
-  let paramIndex = 2; // $1 is reserved for user_id in callers
-
-  // Date filters
-  if (filters.startDate) {
-    filterConditions += ` AND trade_date >= $${paramIndex}`;
-    params.push(filters.startDate);
-    paramIndex++;
-  }
-
-  if (filters.endDate) {
-    filterConditions += ` AND trade_date <= $${paramIndex}`;
-    params.push(filters.endDate);
-    paramIndex++;
-  }
-
-  // Symbol filter (exact match or LIKE based on Trade expectations – here use exact to align with model)
-  if (filters.symbol) {
-    filterConditions += ` AND symbol = $${paramIndex}`;
-    params.push(filters.symbol);
-    paramIndex++;
-  }
-
-  // Multi-select strategies
-  if (filters.strategies && filters.strategies.length > 0) {
-    const placeholders = filters.strategies.map(() => `$${paramIndex++}`).join(',');
-    filterConditions += ` AND strategy IN (${placeholders})`;
-    params.push(...filters.strategies);
-  }
-
-  // Multi-select setups
-  if (filters.setups && filters.setups.length > 0) {
-    const placeholders = filters.setups.map(() => `$${paramIndex++}`).join(',');
-    filterConditions += ` AND setup IN (${placeholders})`;
-    params.push(...filters.setups);
-  }
-
-  // Multi-select sectors via subquery to symbol_categories (aligns with Trade model join)
-  if (filters.sectors && filters.sectors.length > 0) {
-    const placeholders = filters.sectors.map(() => `$${paramIndex++}`).join(',');
-    filterConditions += ` AND symbol IN (SELECT symbol FROM symbol_categories WHERE finnhub_industry IN (${placeholders}))`;
-    params.push(...filters.sectors);
-  }
-
-  // Tags filter (multi-select supported) - uses array overlap operator
-  if (filters.tags && filters.tags.length > 0) {
-    filterConditions += ` AND tags && $${paramIndex}`;
-    params.push(filters.tags);
-    paramIndex++;
-  }
-
-  // Broker filter (multi-select supported) - exactly like Trade model
-  if (filters.brokers && String(filters.brokers).trim() !== '') {
-    const brokerList = String(filters.brokers).split(',').map(b => b.trim()).filter(Boolean);
-    if (brokerList.length > 0) {
-      filterConditions += ` AND broker = ANY($${paramIndex}::text[])`;
-      params.push(brokerList);
-      paramIndex++;
-    }
-  }
-
-  // Side filter
-  if (filters.side) {
-    filterConditions += ` AND side = $${paramIndex}`;
-    params.push(filters.side);
-    paramIndex++;
-  }
-
-  // Price filters
-  if (filters.minPrice !== undefined) {
-    filterConditions += ` AND entry_price >= $${paramIndex}`;
-    params.push(filters.minPrice);
-    paramIndex++;
-  }
-  if (filters.maxPrice !== undefined) {
-    filterConditions += ` AND entry_price <= $${paramIndex}`;
-    params.push(filters.maxPrice);
-    paramIndex++;
-  }
-
-  // Quantity filters
-  if (filters.minQuantity !== undefined) {
-    filterConditions += ` AND CAST(quantity AS DECIMAL) >= $${paramIndex}`;
-    params.push(filters.minQuantity);
-    paramIndex++;
-  }
-  if (filters.maxQuantity !== undefined) {
-    filterConditions += ` AND CAST(quantity AS DECIMAL) <= $${paramIndex}`;
-    params.push(filters.maxQuantity);
-    paramIndex++;
-  }
-
-  // Status filters
-  if (filters.status === 'open') {
-    filterConditions += ` AND exit_price IS NULL`;
-  } else if (filters.status === 'closed') {
-    filterConditions += ` AND exit_price IS NOT NULL`;
-  }
-
-  // P&L filters
-  if (filters.minPnl !== undefined) {
-    filterConditions += ` AND pnl >= $${paramIndex}`;
-    params.push(filters.minPnl);
-    paramIndex++;
-  }
-  if (filters.maxPnl !== undefined) {
-    filterConditions += ` AND pnl <= $${paramIndex}`;
-    params.push(filters.maxPnl);
-    paramIndex++;
-  }
-  if (filters.pnlType === 'profit') {
-    filterConditions += ` AND pnl > 0`;
-  } else if (filters.pnlType === 'loss') {
-    filterConditions += ` AND pnl < 0`;
-  }
-
-  // Day of week filter (use trade_date for simplicity within analytics context)
-  if (filters.daysOfWeek && filters.daysOfWeek.length > 0) {
-    const placeholders = filters.daysOfWeek.map(() => `$${paramIndex++}`).join(',');
-    filterConditions += ` AND EXTRACT(DOW FROM trade_date) IN (${placeholders})`;
-    params.push(...filters.daysOfWeek);
-  }
-
-  // hasNews filter
-  if (filters.hasNews !== undefined && filters.hasNews !== '' && filters.hasNews !== null) {
-    if (filters.hasNews === 'true' || filters.hasNews === true || filters.hasNews === 1 || filters.hasNews === '1') {
-      filterConditions += ` AND has_news = true`;
-    } else if (filters.hasNews === 'false' || filters.hasNews === false || filters.hasNews === 0 || filters.hasNews === '0') {
-      filterConditions += ` AND (has_news = false OR has_news IS NULL)`;
-    }
-  }
-
-  // Quality grade filter - multi-select support (A, B, C, D, F)
-  if (filters.qualityGrades && filters.qualityGrades.length > 0) {
-    const placeholders = filters.qualityGrades.map(() => `$${paramIndex++}`).join(',');
-    filterConditions += ` AND quality_grade IN (${placeholders})`;
-    params.push(...filters.qualityGrades);
-  }
-
-  // Instrument types filter (stock, option, future)
-  if (filters.instrumentTypes && filters.instrumentTypes.length > 0) {
-    const placeholders = filters.instrumentTypes.map(() => `$${paramIndex++}`).join(',');
-    filterConditions += ` AND instrument_type IN (${placeholders})`;
-    params.push(...filters.instrumentTypes);
-  }
-
-  // Option types filter (call, put) - only applies to options
-  if (filters.optionTypes && filters.optionTypes.length > 0) {
-    const placeholders = filters.optionTypes.map(() => `$${paramIndex++}`).join(',');
-    filterConditions += ` AND option_type IN (${placeholders})`;
-    params.push(...filters.optionTypes);
-  }
-
-  // Hold time filter
-  if (filters.holdTime) {
-    filterConditions += getHoldTimeFilter(filters.holdTime);
-  }
-
-  // hasRValue filter - filter to only trades with stop_loss set (valid R-value trades)
-  if (filters.hasRValue !== undefined && filters.hasRValue !== '' && filters.hasRValue !== null) {
-    if (filters.hasRValue === 'true' || filters.hasRValue === true || filters.hasRValue === '1') {
-      filterConditions += ` AND stop_loss IS NOT NULL`;
-    }
-  }
-
-  // Account identifier filter - multi-select support
-  if (filters.accounts && filters.accounts.length > 0) {
-    const placeholders = filters.accounts.map(() => `$${paramIndex++}`).join(',');
-    filterConditions += ` AND account_identifier IN (${placeholders})`;
-    params.push(...filters.accounts);
-  }
-
-  console.log('--- Filter Results (normalized) ---');
-  console.log('Final filter conditions:', filterConditions);
-  console.log('Final params:', params);
-  console.log('--- End Filter Debug ---');
-
-  // Validate that filterConditions only contains parameterized placeholders ($N), not raw user input.
-  // This serves as a security checkpoint - all user values MUST be in the params array.
-  if (filterConditions) {
-    // Strip all known safe SQL tokens and $N placeholders; remainder should be empty
-    const stripped = filterConditions
-      .replace(/\$\d+/g, '')
-      .replace(/(::\w+\[\]|::\w+)/g, '')
-      .replace(/\b(AND|OR|IN|IS|NOT|NULL|LIKE|UPPER|BETWEEN|EXTRACT|EPOCH|FROM|COALESCE|NOW|ANY|DOW|SELECT|WHERE|symbol|symbol_categories|finnhub_industry|trade_date|strategy|side|entry_price|exit_price|quantity|pnl|broker|tags|quality_grade|instrument_type|option_type|account_identifier|stop_loss|has_news|true|false|CAST|DECIMAL|AS)\b/gi, '')
-      .replace(/[(),\s>=<!.&]+/g, '');
-    if (stripped.length > 0) {
-      console.warn('[SECURITY] Unexpected tokens in filter conditions:', stripped.substring(0, 100));
-    }
-  }
-
-  return { filterConditions, params };
+  const { whereClause, values } = await TradeQueries._buildWhereClause(userId, filters);
+  const filterConditions = whereClause.replace(/^WHERE t\.user_id = \$1/, '');
+  return { filterConditions, params: values.slice(1) };
 }
+
 
 function buildCalendarRiskMetrics(rows = []) {
   const metricsByDate = new Map();
@@ -792,7 +602,7 @@ const CSV_EXPORT_COLUMNS = [
 const analyticsController = {
   async getOverview(req, res, next) {
     try {
-      const filterData = buildFilterConditions(req.query);
+      const filterData = await buildFilterConditions(req.query, req.user.id);
 
       // Get user's preference for average vs median calculations
       const User = require('../models/User');
@@ -869,8 +679,8 @@ const analyticsController = {
                   MIN(entry_time) as entry_time,
                   MAX(exit_time) as exit_time,
                   SUM(COALESCE(quantity, 0)) as quantity
-              FROM trades
-              WHERE user_id = $1 ${filterConditions}
+              FROM trades t
+              WHERE t.user_id = $1 ${filterConditions}
                   AND exit_price IS NOT NULL
                   AND pnl IS NOT NULL
               GROUP BY ${POSITION_GROUP_KEY}
@@ -879,8 +689,8 @@ const analyticsController = {
               -- Each trade with both entry and exit price is a complete round trip
               SELECT
                   *
-              FROM trades
-              WHERE user_id = $1 ${filterConditions}
+              FROM trades t
+              WHERE t.user_id = $1 ${filterConditions}
                   AND exit_price IS NOT NULL
                   AND pnl IS NOT NULL
           )`;
@@ -1213,8 +1023,8 @@ const analyticsController = {
                 trade_date,
                 COALESCE(SUM(pnl), 0)::numeric AS day_pnl,
                 COUNT(*)::integer AS day_trades
-              FROM trades
-              WHERE user_id = $1 ${filterConditions}
+              FROM trades t
+              WHERE t.user_id = $1 ${filterConditions}
                 AND pnl IS NOT NULL
                 AND exit_price IS NOT NULL
               GROUP BY trade_date
@@ -1362,7 +1172,7 @@ const analyticsController = {
 
   async getMAEMFETrades(req, res, next) {
     try {
-      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+      const { filterConditions, params: filterParams } = await buildFilterConditions(req.query, req.user.id);
       const params = [req.user.id, ...filterParams];
       const userSettings = await User.getSettings(req.user.id).catch(() => null);
       const breakevenConfig = normalizeConfig({
@@ -1394,8 +1204,8 @@ const analyticsController = {
           point_value,
           tick_size,
           underlying_asset
-        FROM trades
-        WHERE user_id = $1 ${filterConditions}
+        FROM trades t
+        WHERE t.user_id = $1 ${filterConditions}
           AND exit_time IS NOT NULL
           AND mae IS NOT NULL
           AND mfe IS NOT NULL
@@ -1537,53 +1347,60 @@ const analyticsController = {
           groupBy = 'trade_date';
       }
 
-      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+      const { filterConditions, params: filterParams } = await buildFilterConditions(req.query, req.user.id);
       const params = [req.user.id, ...filterParams];
 
       // Whole-trade win rate (issue #339): P&L and r-value sums are identical
       // either way; only the trade/position counts change when grouping is on.
       const groupByPosition = await isPositionGroupingEnabled(req.user.id);
 
-      const performanceQuery = groupByPosition ? `
-        WITH positions AS (
+      return await sendCachedAnalytics(req, res, 'performance', {
+        query: req.query,
+        period: sanitizedPeriod,
+        grp: groupByPosition
+      }, async () => {
+
+        const performanceQuery = groupByPosition ? `
+          WITH positions AS (
+            SELECT
+              MIN(trade_date) as trade_date,
+              SUM(pnl) as pnl,
+              SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL) as r_value,
+              BOOL_OR(stop_loss IS NOT NULL) as has_stop
+            FROM trades t
+            WHERE t.user_id = $1 ${filterConditions}
+            GROUP BY ${POSITION_GROUP_KEY}
+          )
           SELECT
-            MIN(trade_date) as trade_date,
-            SUM(pnl) as pnl,
-            SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL) as r_value,
-            BOOL_OR(stop_loss IS NOT NULL) as has_stop
-          FROM trades
-          WHERE user_id = $1 ${filterConditions}
-          GROUP BY ${POSITION_GROUP_KEY}
-        )
-        SELECT
-          ${groupBy} as period,
-          COUNT(*) as trades,
-          COALESCE(SUM(pnl), 0) as pnl,
-          COALESCE(SUM(SUM(pnl)) OVER (ORDER BY ${groupBy}), 0) as cumulative_pnl,
-          COALESCE(SUM(r_value) FILTER (WHERE has_stop), 0) as r_value,
-          COALESCE(SUM(SUM(r_value) FILTER (WHERE has_stop)) OVER (ORDER BY ${groupBy}), 0) as cumulative_r_value,
-          COUNT(CASE WHEN has_stop THEN 1 END) as trades_with_r
-        FROM positions
-        GROUP BY ${groupBy}
-        ORDER BY period
-      ` : `
-        SELECT
-          ${groupBy} as period,
-          COUNT(*) as trades,
-          COALESCE(SUM(pnl), 0) as pnl,
-          COALESCE(SUM(SUM(pnl)) OVER (ORDER BY ${groupBy}), 0) as cumulative_pnl,
-          COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as r_value,
-          COALESCE(SUM(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL)) OVER (ORDER BY ${groupBy}), 0) as cumulative_r_value,
-          COUNT(CASE WHEN stop_loss IS NOT NULL THEN 1 END) as trades_with_r
-        FROM trades
-        WHERE user_id = $1 ${filterConditions}
-        GROUP BY ${groupBy}
-        ORDER BY period
-      `;
+            ${groupBy} as period,
+            COUNT(*) as trades,
+            COALESCE(SUM(pnl), 0) as pnl,
+            COALESCE(SUM(SUM(pnl)) OVER (ORDER BY ${groupBy}), 0) as cumulative_pnl,
+            COALESCE(SUM(r_value) FILTER (WHERE has_stop), 0) as r_value,
+            COALESCE(SUM(SUM(r_value) FILTER (WHERE has_stop)) OVER (ORDER BY ${groupBy}), 0) as cumulative_r_value,
+            COUNT(CASE WHEN has_stop THEN 1 END) as trades_with_r
+          FROM positions
+          GROUP BY ${groupBy}
+          ORDER BY period
+        ` : `
+          SELECT
+            ${groupBy} as period,
+            COUNT(*) as trades,
+            COALESCE(SUM(pnl), 0) as pnl,
+            COALESCE(SUM(SUM(pnl)) OVER (ORDER BY ${groupBy}), 0) as cumulative_pnl,
+            COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as r_value,
+            COALESCE(SUM(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL)) OVER (ORDER BY ${groupBy}), 0) as cumulative_r_value,
+            COUNT(CASE WHEN stop_loss IS NOT NULL THEN 1 END) as trades_with_r
+          FROM trades t
+          WHERE t.user_id = $1 ${filterConditions}
+          GROUP BY ${groupBy}
+          ORDER BY period
+        `;
 
-      const result = await db.query(performanceQuery, params);
+        const result = await db.query(performanceQuery, params);
 
-      res.json({ performance: result.rows });
+        return { performance: result.rows };
+      });
     } catch (error) {
       next(error);
     }
@@ -1593,7 +1410,7 @@ const analyticsController = {
     try {
       const { limit = 10 } = req.query;
 
-      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+      const { filterConditions, params: filterParams } = await buildFilterConditions(req.query, req.user.id);
       const params = [req.user.id, ...filterParams];
 
       // Validate and sanitize limit parameter
@@ -1606,54 +1423,62 @@ const analyticsController = {
 
       const groupByPosition = await isPositionGroupingEnabled(req.user.id);
       const be = groupByPosition ? GROUPED_BREAKEVEN : await rawBreakevenPredicate(req.user.id);
-      // Return losing + breakeven counts so the dashboard symbol list can show
-      // an "excl. BE" win-rate line beneath the inclusive rate, matching the
-      // overview and per-tag/strategy/hour tables.
-      const symbolQuery = groupByPosition
-        ? `
-        WITH positions AS (
+
+      return await sendCachedAnalytics(req, res, 'symbols', {
+        query: req.query,
+        limit: sanitizedLimit,
+        grp: groupByPosition,
+        be: be.is
+      }, async () => {
+        // Return losing + breakeven counts so the dashboard symbol list can show
+        // an "excl. BE" win-rate line beneath the inclusive rate, matching the
+        // overview and per-tag/strategy/hour tables.
+        const symbolQuery = groupByPosition
+          ? `
+          WITH positions AS (
+            SELECT
+              COALESCE(NULLIF(underlying_symbol, ''), symbol) as symbol,
+              SUM(pnl) as pnl,
+              COALESCE(AVG(pnl_percent), 0) as pnl_percent
+            FROM trades t
+            WHERE t.user_id = $1 ${filterConditions}
+            GROUP BY COALESCE(NULLIF(underlying_symbol, ''), symbol), ${POSITION_GROUP_KEY}
+          )
           SELECT
-            COALESCE(NULLIF(underlying_symbol, ''), symbol) as symbol,
-            SUM(pnl) as pnl,
-            COALESCE(AVG(pnl_percent), 0) as pnl_percent
-          FROM trades
-          WHERE user_id = $1 ${filterConditions}
-          GROUP BY COALESCE(NULLIF(underlying_symbol, ''), symbol), ${POSITION_GROUP_KEY}
-        )
-        SELECT
-          symbol,
-          COUNT(*) as total_trades,
-          COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
-          COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
-          COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
-          COALESCE(SUM(pnl), 0) as total_pnl,
-          COALESCE(AVG(pnl), 0) as avg_pnl,
-          COALESCE(AVG(pnl_percent), 0) as avg_pnl_percent
-        FROM positions
-        GROUP BY symbol
-        ORDER BY total_pnl DESC
-        LIMIT $${params.length}
-      `
-        : `
-        SELECT
-          symbol,
-          COUNT(*) as total_trades,
-          COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
-          COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
-          COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
-          COALESCE(SUM(pnl), 0) as total_pnl,
-          COALESCE(AVG(pnl), 0) as avg_pnl,
-          COALESCE(AVG(pnl_percent), 0) as avg_pnl_percent
-        FROM trades
-        WHERE user_id = $1 ${filterConditions}
-        GROUP BY symbol
-        ORDER BY total_pnl DESC
-        LIMIT $${params.length}
-      `;
+            symbol,
+            COUNT(*) as total_trades,
+            COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
+            COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
+            COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
+            COALESCE(SUM(pnl), 0) as total_pnl,
+            COALESCE(AVG(pnl), 0) as avg_pnl,
+            COALESCE(AVG(pnl_percent), 0) as avg_pnl_percent
+          FROM positions
+          GROUP BY symbol
+          ORDER BY total_pnl DESC
+          LIMIT $${params.length}
+        `
+          : `
+          SELECT
+            symbol,
+            COUNT(*) as total_trades,
+            COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
+            COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
+            COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
+            COALESCE(SUM(pnl), 0) as total_pnl,
+            COALESCE(AVG(pnl), 0) as avg_pnl,
+            COALESCE(AVG(pnl_percent), 0) as avg_pnl_percent
+          FROM trades t
+          WHERE t.user_id = $1 ${filterConditions}
+          GROUP BY symbol
+          ORDER BY total_pnl DESC
+          LIMIT $${params.length}
+        `;
 
-      const result = await db.query(symbolQuery, params);
+        const result = await db.query(symbolQuery, params);
 
-      res.json({ symbols: result.rows });
+        return { symbols: result.rows };
+      });
     } catch (error) {
       next(error);
     }
@@ -1661,76 +1486,83 @@ const analyticsController = {
 
   async getTagStats(req, res, next) {
     try {
-      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+      const { filterConditions, params: filterParams } = await buildFilterConditions(req.query, req.user.id);
       const params = [req.user.id, ...filterParams];
 
       const groupByPosition = await isPositionGroupingEnabled(req.user.id);
       const be = groupByPosition ? GROUPED_BREAKEVEN : await rawBreakevenPredicate(req.user.id);
-      // Mirror the overview/monthly pattern: classify trades as wins/losses/BE
-      // using the breakeven predicate, then expose both inclusive and exclusive
-      // win rates so the frontend can show "X% incl. BE" with "Y% excl. BE".
-      const tagQuery = groupByPosition
-        ? `
-        WITH leg_tags AS (
-          SELECT
-            UNNEST(tags) as tag,
-            account_identifier,
-            underlying_symbol,
-            symbol,
-            position_group_id,
-            entry_time,
-            id,
-            pnl,
-            r_value,
-            stop_loss
-          FROM trades
-          WHERE user_id = $1 ${filterConditions} AND tags IS NOT NULL
-        ),
-        positions AS (
+
+      return await sendCachedAnalytics(req, res, 'tags', {
+        query: req.query,
+        grp: groupByPosition,
+        be: be.is
+      }, async () => {
+        // Mirror the overview/monthly pattern: classify trades as wins/losses/BE
+        // using the breakeven predicate, then expose both inclusive and exclusive
+        // win rates so the frontend can show "X% incl. BE" with "Y% excl. BE".
+        const tagQuery = groupByPosition
+          ? `
+          WITH leg_tags AS (
+            SELECT
+              UNNEST(tags) as tag,
+              account_identifier,
+              underlying_symbol,
+              symbol,
+              position_group_id,
+              entry_time,
+              id,
+              pnl,
+              r_value,
+              stop_loss
+            FROM trades t
+            WHERE t.user_id = $1 ${filterConditions} AND tags IS NOT NULL
+          ),
+          positions AS (
+            SELECT
+              tag,
+              SUM(pnl) as pnl,
+              SUM(r_value) as r_value,
+              MIN(stop_loss) as stop_loss
+            FROM leg_tags
+            GROUP BY tag, ${POSITION_GROUP_KEY}
+          )
           SELECT
             tag,
-            SUM(pnl) as pnl,
-            SUM(r_value) as r_value,
-            MIN(stop_loss) as stop_loss
-          FROM leg_tags
-          GROUP BY tag, ${POSITION_GROUP_KEY}
-        )
-        SELECT
-          tag,
-          COUNT(*) as total_trades,
-          COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
-          COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
-          COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
-          COALESCE(SUM(pnl), 0) as total_pnl,
-          COALESCE(AVG(pnl), 0) as avg_pnl,
-          COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
-          COALESCE(AVG(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as avg_r_value,
-          COUNT(CASE WHEN stop_loss IS NOT NULL THEN 1 END) as trades_with_r
-        FROM positions
-        GROUP BY tag
-        ORDER BY total_trades DESC
-      `
-        : `
-        SELECT
-          UNNEST(tags) as tag,
-          COUNT(*) as total_trades,
-          COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
-          COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
-          COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
-          COALESCE(SUM(pnl), 0) as total_pnl,
-          COALESCE(AVG(pnl), 0) as avg_pnl,
-          COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
-          COALESCE(AVG(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as avg_r_value,
-          COUNT(CASE WHEN stop_loss IS NOT NULL THEN 1 END) as trades_with_r
-        FROM trades
-        WHERE user_id = $1 ${filterConditions} AND tags IS NOT NULL
-        GROUP BY tag
-        ORDER BY total_trades DESC
-      `;
+            COUNT(*) as total_trades,
+            COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
+            COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
+            COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
+            COALESCE(SUM(pnl), 0) as total_pnl,
+            COALESCE(AVG(pnl), 0) as avg_pnl,
+            COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
+            COALESCE(AVG(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as avg_r_value,
+            COUNT(CASE WHEN stop_loss IS NOT NULL THEN 1 END) as trades_with_r
+          FROM positions
+          GROUP BY tag
+          ORDER BY total_trades DESC
+        `
+          : `
+          SELECT
+            UNNEST(tags) as tag,
+            COUNT(*) as total_trades,
+            COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
+            COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
+            COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
+            COALESCE(SUM(pnl), 0) as total_pnl,
+            COALESCE(AVG(pnl), 0) as avg_pnl,
+            COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
+            COALESCE(AVG(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as avg_r_value,
+            COUNT(CASE WHEN stop_loss IS NOT NULL THEN 1 END) as trades_with_r
+          FROM trades t
+          WHERE t.user_id = $1 ${filterConditions} AND tags IS NOT NULL
+          GROUP BY tag
+          ORDER BY total_trades DESC
+        `;
 
-      const result = await db.query(tagQuery, params);
+        const result = await db.query(tagQuery, params);
 
-      res.json({ tags: result.rows });
+        return { tags: result.rows };
+      });
     } catch (error) {
       next(error);
     }
@@ -1738,75 +1570,82 @@ const analyticsController = {
 
   async getStrategyStats(req, res, next) {
     try {
-      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+      const { filterConditions, params: filterParams } = await buildFilterConditions(req.query, req.user.id);
       const params = [req.user.id, ...filterParams];
 
       const groupByPosition = await isPositionGroupingEnabled(req.user.id);
       const be = groupByPosition ? GROUPED_BREAKEVEN : await rawBreakevenPredicate(req.user.id);
 
-      // In position-grouping mode, collapse legs into positions (within each
-      // strategy) first, then aggregate the win/loss counts per strategy.
-      const strategyQuery = groupByPosition
-        ? `
-        WITH grouped_legs AS (
-          SELECT
-            position_group_id,
-            MIN(NULLIF(strategy, '')) as leg_strategy,
-            SUM(pnl) as pnl,
-            SUM(r_value) as r_value,
-            MIN(stop_loss) as stop_loss
-          FROM trades
-          WHERE user_id = $1 ${filterConditions}
-            AND (strategy IS NOT NULL OR position_group_id IS NOT NULL)
-          GROUP BY position_group_id, ${POSITION_GROUP_KEY}
-        ),
-        positions AS (
-          SELECT
-            COALESCE(tpg.detected_strategy, grouped_legs.leg_strategy) as strategy,
-            grouped_legs.pnl,
-            grouped_legs.r_value,
-            grouped_legs.stop_loss
-          FROM grouped_legs
-          LEFT JOIN trade_position_groups tpg ON tpg.id = grouped_legs.position_group_id
-          WHERE COALESCE(tpg.detected_strategy, grouped_legs.leg_strategy) IS NOT NULL
-            AND COALESCE(tpg.detected_strategy, grouped_legs.leg_strategy) != ''
-        )
-        SELECT
-          strategy,
-          COUNT(*) as total_trades,
-          COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
-          COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
-          COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
-          COALESCE(SUM(pnl), 0) as total_pnl,
-          COALESCE(AVG(pnl), 0) as avg_pnl,
-          COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
-          COALESCE(AVG(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as avg_r_value,
-          COUNT(CASE WHEN stop_loss IS NOT NULL THEN 1 END) as trades_with_r
-        FROM positions
-        GROUP BY strategy
-        ORDER BY total_trades DESC
-      `
-        : `
-        SELECT
-          strategy,
-          COUNT(*) as total_trades,
-          COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
-          COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
-          COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
-          COALESCE(SUM(pnl), 0) as total_pnl,
-          COALESCE(AVG(pnl), 0) as avg_pnl,
-          COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
-          COALESCE(AVG(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as avg_r_value,
-          COUNT(CASE WHEN stop_loss IS NOT NULL THEN 1 END) as trades_with_r
-        FROM trades
-        WHERE user_id = $1 ${filterConditions} AND strategy IS NOT NULL AND strategy != ''
-        GROUP BY strategy
-        ORDER BY total_trades DESC
-      `;
+      return await sendCachedAnalytics(req, res, 'strategies', {
+        query: req.query,
+        grp: groupByPosition,
+        be: be.is
+      }, async () => {
 
-      const result = await db.query(strategyQuery, params);
+        // In position-grouping mode, collapse legs into positions (within each
+        // strategy) first, then aggregate the win/loss counts per strategy.
+        const strategyQuery = groupByPosition
+          ? `
+          WITH grouped_legs AS (
+            SELECT
+              position_group_id,
+              MIN(NULLIF(strategy, '')) as leg_strategy,
+              SUM(pnl) as pnl,
+              SUM(r_value) as r_value,
+              MIN(stop_loss) as stop_loss
+            FROM trades t
+            WHERE t.user_id = $1 ${filterConditions}
+              AND (strategy IS NOT NULL OR position_group_id IS NOT NULL)
+            GROUP BY position_group_id, ${POSITION_GROUP_KEY}
+          ),
+          positions AS (
+            SELECT
+              COALESCE(tpg.detected_strategy, grouped_legs.leg_strategy) as strategy,
+              grouped_legs.pnl,
+              grouped_legs.r_value,
+              grouped_legs.stop_loss
+            FROM grouped_legs
+            LEFT JOIN trade_position_groups tpg ON tpg.id = grouped_legs.position_group_id
+            WHERE COALESCE(tpg.detected_strategy, grouped_legs.leg_strategy) IS NOT NULL
+              AND COALESCE(tpg.detected_strategy, grouped_legs.leg_strategy) != ''
+          )
+          SELECT
+            strategy,
+            COUNT(*) as total_trades,
+            COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
+            COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
+            COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
+            COALESCE(SUM(pnl), 0) as total_pnl,
+            COALESCE(AVG(pnl), 0) as avg_pnl,
+            COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
+            COALESCE(AVG(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as avg_r_value,
+            COUNT(CASE WHEN stop_loss IS NOT NULL THEN 1 END) as trades_with_r
+          FROM positions
+          GROUP BY strategy
+          ORDER BY total_trades DESC
+        `
+          : `
+          SELECT
+            strategy,
+            COUNT(*) as total_trades,
+            COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
+            COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
+            COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
+            COALESCE(SUM(pnl), 0) as total_pnl,
+            COALESCE(AVG(pnl), 0) as avg_pnl,
+            COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
+            COALESCE(AVG(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as avg_r_value,
+            COUNT(CASE WHEN stop_loss IS NOT NULL THEN 1 END) as trades_with_r
+          FROM trades t
+          WHERE t.user_id = $1 ${filterConditions} AND strategy IS NOT NULL AND strategy != ''
+          GROUP BY strategy
+          ORDER BY total_trades DESC
+        `;
 
-      res.json({ strategies: result.rows });
+        const result = await db.query(strategyQuery, params);
+
+        return { strategies: result.rows };
+      });
     } catch (error) {
       next(error);
     }
@@ -1814,7 +1653,7 @@ const analyticsController = {
 
   async getHourOfDayStats(req, res, next) {
     try {
-      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+      const { filterConditions, params: filterParams } = await buildFilterConditions(req.query, req.user.id);
       const params = [req.user.id, ...filterParams];
 
       // Get user timezone for proper hour calculation
@@ -1830,56 +1669,64 @@ const analyticsController = {
       // For timestamptz columns, "AT TIME ZONE 'tz'" converts the UTC time to that timezone
       const groupByPosition = await isPositionGroupingEnabled(req.user.id);
       const be = groupByPosition ? GROUPED_BREAKEVEN : await rawBreakevenPredicate(req.user.id);
-      const hourQuery = groupByPosition
-        ? `
-        WITH positions AS (
+
+      return await sendCachedAnalytics(req, res, 'hours', {
+        query: req.query,
+        grp: groupByPosition,
+        be: be.is,
+        tz: userTimezone
+      }, async () => {
+        const hourQuery = groupByPosition
+          ? `
+          WITH positions AS (
+            SELECT
+              EXTRACT(HOUR FROM (MIN(entry_time) AT TIME ZONE $${tzParam})) as hour,
+              SUM(pnl) as pnl,
+              SUM(r_value) as r_value,
+              MIN(stop_loss) as stop_loss
+            FROM trades t
+            WHERE t.user_id = $1 ${filterConditions}
+              AND entry_time IS NOT NULL
+            GROUP BY ${POSITION_GROUP_KEY}
+          )
           SELECT
-            EXTRACT(HOUR FROM (MIN(entry_time) AT TIME ZONE $${tzParam})) as hour,
-            SUM(pnl) as pnl,
-            SUM(r_value) as r_value,
-            MIN(stop_loss) as stop_loss
-          FROM trades
-          WHERE user_id = $1 ${filterConditions}
+            hour,
+            COUNT(*) as total_trades,
+            COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
+            COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
+            COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
+            COALESCE(SUM(pnl), 0) as total_pnl,
+            COALESCE(AVG(pnl), 0) as avg_pnl,
+            COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
+            COALESCE(AVG(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as avg_r_value,
+            COUNT(CASE WHEN stop_loss IS NOT NULL THEN 1 END) as trades_with_r
+          FROM positions
+          GROUP BY hour
+          ORDER BY hour
+        `
+          : `
+          SELECT
+            EXTRACT(HOUR FROM (entry_time AT TIME ZONE $${tzParam})) as hour,
+            COUNT(*) as total_trades,
+            COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
+            COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
+            COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
+            COALESCE(SUM(pnl), 0) as total_pnl,
+            COALESCE(AVG(pnl), 0) as avg_pnl,
+            COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
+            COALESCE(AVG(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as avg_r_value,
+            COUNT(CASE WHEN stop_loss IS NOT NULL THEN 1 END) as trades_with_r
+          FROM trades t
+          WHERE t.user_id = $1 ${filterConditions}
             AND entry_time IS NOT NULL
-          GROUP BY ${POSITION_GROUP_KEY}
-        )
-        SELECT
-          hour,
-          COUNT(*) as total_trades,
-          COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
-          COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
-          COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
-          COALESCE(SUM(pnl), 0) as total_pnl,
-          COALESCE(AVG(pnl), 0) as avg_pnl,
-          COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
-          COALESCE(AVG(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as avg_r_value,
-          COUNT(CASE WHEN stop_loss IS NOT NULL THEN 1 END) as trades_with_r
-        FROM positions
-        GROUP BY hour
-        ORDER BY hour
-      `
-        : `
-        SELECT
-          EXTRACT(HOUR FROM (entry_time AT TIME ZONE $${tzParam})) as hour,
-          COUNT(*) as total_trades,
-          COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
-          COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
-          COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
-          COALESCE(SUM(pnl), 0) as total_pnl,
-          COALESCE(AVG(pnl), 0) as avg_pnl,
-          COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
-          COALESCE(AVG(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as avg_r_value,
-          COUNT(CASE WHEN stop_loss IS NOT NULL THEN 1 END) as trades_with_r
-        FROM trades
-        WHERE user_id = $1 ${filterConditions}
-          AND entry_time IS NOT NULL
-        GROUP BY EXTRACT(HOUR FROM (entry_time AT TIME ZONE $${tzParam}))
-        ORDER BY hour
-      `;
+          GROUP BY EXTRACT(HOUR FROM (entry_time AT TIME ZONE $${tzParam}))
+          ORDER BY hour
+        `;
 
-      const result = await db.query(hourQuery, hourParams);
+        const result = await db.query(hourQuery, hourParams);
 
-      res.json({ hours: result.rows });
+        return { hours: result.rows };
+      });
     } catch (error) {
       next(error);
     }
@@ -1909,129 +1756,138 @@ const analyticsController = {
       // Build filter conditions without date range - dates are handled explicitly in each CTE
       // Using req.query directly avoids adding trade_date filters that exclude trades whose
       // trade_date moved to a different year (e.g. partial exits spanning calendar years)
-      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+      const { filterConditions, params: filterParams } = await buildFilterConditions(req.query, req.user.id);
       const params = [req.user.id, ...filterParams];
 
-      // Execution-level calendar: aggregate yearly rows with the same execution
-      // reconstruction logic used by the day-detail modal so historical legacy
-      // trades stay consistent even when stored trade P&L is stale.
-      const paramOffset = params.length;
-      const tableAlias = 't';
-      const fc = filterConditions ? filterConditions.replace(/\btrade_date\b/g, `${tableAlias}.trade_date`).replace(/\bsymbol\b/g, `${tableAlias}.symbol`).replace(/\bstrategy\b/g, `${tableAlias}.strategy`).replace(/\bside\b/g, `${tableAlias}.side`) : '';
-      // Note: do NOT require trade.pnl IS NOT NULL here. Open positions with partial
-      // closes have realized P&L in their executions JSONB but trade.pnl stays NULL
-      // until the position is fully closed (see csvParser.js IBKR open-position branch).
-      // The execution-level aggregator handles those rows correctly.
-      const calendarTradesQuery = `
-        SELECT
-          ${tableAlias}.id AS trade_id,
-          ${tableAlias}.symbol,
-          ${tableAlias}.side,
-          ${tableAlias}.pnl,
-          ${tableAlias}.commission,
-          ${tableAlias}.fees,
-          ${tableAlias}.r_value,
-          ${tableAlias}.stop_loss,
-          ${tableAlias}.entry_price,
-          ${tableAlias}.quantity,
-          ${tableAlias}.instrument_type,
-          ${tableAlias}.contract_size,
-          ${tableAlias}.point_value,
-          ${tableAlias}.underlying_asset,
-          ${tableAlias}.exit_time,
-          ${tableAlias}.executions
-        FROM trades ${tableAlias}
-        WHERE ${tableAlias}.user_id = $1
-          AND (
-            (
-              ${tableAlias}.pnl IS NOT NULL
-              AND (${tableAlias}.exit_time AT TIME ZONE $${paramOffset + 3})::date >= $${paramOffset + 1}::date
-              AND (${tableAlias}.exit_time AT TIME ZONE $${paramOffset + 3})::date <= $${paramOffset + 2}::date
-            )
-            OR EXISTS (
-              SELECT 1
-              FROM jsonb_array_elements(COALESCE(${tableAlias}.executions, '[]'::jsonb)) AS arr(exec)
-              WHERE (exec->>'quantity') IS NOT NULL
-                AND COALESCE(exec->>'exitTime', exec->>'exit_time', exec->>'datetime') IS NOT NULL
-                AND (
-                  exec->>'exitTime' IS NOT NULL
-                  OR exec->>'exit_time' IS NOT NULL
-                  OR exec->>'exitPrice' IS NOT NULL
-                  OR exec->>'exit_price' IS NOT NULL
-                  OR (
-                    ${tableAlias}.side IN ('long', 'buy')
-                    AND (
-                      (exec->>'action') IN ('sell', 'short')
-                      OR (exec->>'type') IN ('sell', 'short', 'exit')
+      return await sendCachedAnalytics(req, res, 'calendar', {
+        query: req.query,
+        year: sanitizedYear,
+        tz: userTz
+      }, async () => {
+
+        // Execution-level calendar: aggregate yearly rows with the same execution
+        // reconstruction logic used by the day-detail modal so historical legacy
+        // trades stay consistent even when stored trade P&L is stale.
+        const paramOffset = params.length;
+        const tableAlias = 't';
+        // The canonical fragment already references the trades table as `t`,
+        // which is this query's alias, so no rewriting is needed.
+        const fc = filterConditions;
+        // Note: do NOT require trade.pnl IS NOT NULL here. Open positions with partial
+        // closes have realized P&L in their executions JSONB but trade.pnl stays NULL
+        // until the position is fully closed (see csvParser.js IBKR open-position branch).
+        // The execution-level aggregator handles those rows correctly.
+        const calendarTradesQuery = `
+          SELECT
+            ${tableAlias}.id AS trade_id,
+            ${tableAlias}.symbol,
+            ${tableAlias}.side,
+            ${tableAlias}.pnl,
+            ${tableAlias}.commission,
+            ${tableAlias}.fees,
+            ${tableAlias}.r_value,
+            ${tableAlias}.stop_loss,
+            ${tableAlias}.entry_price,
+            ${tableAlias}.quantity,
+            ${tableAlias}.instrument_type,
+            ${tableAlias}.contract_size,
+            ${tableAlias}.point_value,
+            ${tableAlias}.underlying_asset,
+            ${tableAlias}.exit_time,
+            ${tableAlias}.executions
+          FROM trades ${tableAlias}
+          WHERE ${tableAlias}.user_id = $1
+            AND (
+              (
+                ${tableAlias}.pnl IS NOT NULL
+                AND (${tableAlias}.exit_time AT TIME ZONE $${paramOffset + 3})::date >= $${paramOffset + 1}::date
+                AND (${tableAlias}.exit_time AT TIME ZONE $${paramOffset + 3})::date <= $${paramOffset + 2}::date
+              )
+              OR EXISTS (
+                SELECT 1
+                FROM jsonb_array_elements(COALESCE(${tableAlias}.executions, '[]'::jsonb)) AS arr(exec)
+                WHERE (exec->>'quantity') IS NOT NULL
+                  AND COALESCE(exec->>'exitTime', exec->>'exit_time', exec->>'datetime') IS NOT NULL
+                  AND (
+                    exec->>'exitTime' IS NOT NULL
+                    OR exec->>'exit_time' IS NOT NULL
+                    OR exec->>'exitPrice' IS NOT NULL
+                    OR exec->>'exit_price' IS NOT NULL
+                    OR (
+                      ${tableAlias}.side IN ('long', 'buy')
+                      AND (
+                        (exec->>'action') IN ('sell', 'short')
+                        OR (exec->>'type') IN ('sell', 'short', 'exit')
+                      )
+                    )
+                    OR (
+                      ${tableAlias}.side IN ('short', 'sell')
+                      AND (
+                        (exec->>'action') IN ('buy', 'long')
+                        OR (exec->>'type') IN ('buy', 'long', 'exit')
+                      )
                     )
                   )
-                  OR (
-                    ${tableAlias}.side IN ('short', 'sell')
-                    AND (
-                      (exec->>'action') IN ('buy', 'long')
-                      OR (exec->>'type') IN ('buy', 'long', 'exit')
-                    )
-                  )
-                )
-                AND ((COALESCE(exec->>'exitTime', exec->>'exit_time', exec->>'datetime'))::timestamptz AT TIME ZONE $${paramOffset + 3})::date >= $${paramOffset + 1}::date
-                AND ((COALESCE(exec->>'exitTime', exec->>'exit_time', exec->>'datetime'))::timestamptz AT TIME ZONE $${paramOffset + 3})::date <= $${paramOffset + 2}::date
+                  AND ((COALESCE(exec->>'exitTime', exec->>'exit_time', exec->>'datetime'))::timestamptz AT TIME ZONE $${paramOffset + 3})::date >= $${paramOffset + 1}::date
+                  AND ((COALESCE(exec->>'exitTime', exec->>'exit_time', exec->>'datetime'))::timestamptz AT TIME ZONE $${paramOffset + 3})::date <= $${paramOffset + 2}::date
+              )
             )
-          )
-          ${fc}
-        ORDER BY ${tableAlias}.id
-      `;
+            ${fc}
+          ORDER BY ${tableAlias}.id
+        `;
 
-      const riskMetricsQuery = `
-        SELECT
-          (${tableAlias}.exit_time AT TIME ZONE $${paramOffset + 3})::date::text AS trade_date,
-          ${tableAlias}.r_value,
-          ${tableAlias}.entry_price,
-          ${tableAlias}.stop_loss,
-          ${tableAlias}.quantity,
-          ${tableAlias}.side,
-          ${tableAlias}.instrument_type,
-          ${tableAlias}.contract_size,
-          ${tableAlias}.point_value,
-          ${tableAlias}.symbol,
-          ${tableAlias}.underlying_asset
-        FROM trades ${tableAlias}
-        WHERE ${tableAlias}.user_id = $1
-          AND ${tableAlias}.exit_time IS NOT NULL
-          AND (${tableAlias}.exit_time AT TIME ZONE $${paramOffset + 3})::date >= $${paramOffset + 1}::date
-          AND (${tableAlias}.exit_time AT TIME ZONE $${paramOffset + 3})::date <= $${paramOffset + 2}::date
-          ${fc}
-      `;
+        const riskMetricsQuery = `
+          SELECT
+            (${tableAlias}.exit_time AT TIME ZONE $${paramOffset + 3})::date::text AS trade_date,
+            ${tableAlias}.r_value,
+            ${tableAlias}.entry_price,
+            ${tableAlias}.stop_loss,
+            ${tableAlias}.quantity,
+            ${tableAlias}.side,
+            ${tableAlias}.instrument_type,
+            ${tableAlias}.contract_size,
+            ${tableAlias}.point_value,
+            ${tableAlias}.symbol,
+            ${tableAlias}.underlying_asset
+          FROM trades ${tableAlias}
+          WHERE ${tableAlias}.user_id = $1
+            AND ${tableAlias}.exit_time IS NOT NULL
+            AND (${tableAlias}.exit_time AT TIME ZONE $${paramOffset + 3})::date >= $${paramOffset + 1}::date
+            AND (${tableAlias}.exit_time AT TIME ZONE $${paramOffset + 3})::date <= $${paramOffset + 2}::date
+            ${fc}
+        `;
 
-      // Add start date, end date, and user timezone to params
-      const finalParams = [...params, startDate, endDate, userTz];
-      const [calendarTradesResult, riskMetricsResult] = await Promise.all([
-        db.query(calendarTradesQuery, finalParams),
-        db.query(riskMetricsQuery, finalParams)
-      ]);
+        // Add start date, end date, and user timezone to params
+        const finalParams = [...params, startDate, endDate, userTz];
+        const [calendarTradesResult, riskMetricsResult] = await Promise.all([
+          db.query(calendarTradesQuery, finalParams),
+          db.query(riskMetricsQuery, finalParams)
+        ]);
 
-      const calendarResultRows = buildCalendarOverviewRows(
-        calendarTradesResult.rows,
-        startDate,
-        endDate,
-        userTz
-      );
-      const riskMetricsByDate = buildCalendarRiskMetrics(riskMetricsResult.rows);
-      const calendarRows = calendarResultRows.map((row) => {
-        const riskMetrics = riskMetricsByDate.get(row.trade_date) || {
-          dailyRValue: 0,
-          dailyRiskAmount: 0,
-          riskTradeCount: 0
-        };
+        const calendarResultRows = buildCalendarOverviewRows(
+          calendarTradesResult.rows,
+          startDate,
+          endDate,
+          userTz
+        );
+        const riskMetricsByDate = buildCalendarRiskMetrics(riskMetricsResult.rows);
+        const calendarRows = calendarResultRows.map((row) => {
+          const riskMetrics = riskMetricsByDate.get(row.trade_date) || {
+            dailyRValue: 0,
+            dailyRiskAmount: 0,
+            riskTradeCount: 0
+          };
 
-        return {
-          ...row,
-          daily_r_value: riskMetrics.dailyRValue,
-          daily_risk_amount: riskMetrics.dailyRiskAmount,
-          risk_trade_count: riskMetrics.riskTradeCount
-        };
+          return {
+            ...row,
+            daily_r_value: riskMetrics.dailyRValue,
+            daily_risk_amount: riskMetrics.dailyRiskAmount,
+            risk_trade_count: riskMetrics.riskTradeCount
+          };
+        });
+
+        return { calendar: calendarRows };
       });
-
-      res.json({ calendar: calendarRows });
     } catch (error) {
       console.error('Calendar data error:', error);
       next(error);
@@ -2057,11 +1913,13 @@ const analyticsController = {
       // Bucket trades by the user's configured timezone so the day modal matches
       // the calendar overview's cross-midnight handling.
       const userTz = await getUserTimezone(req.user.id);
-      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+      const { filterConditions, params: filterParams } = await buildFilterConditions(req.query, req.user.id);
       const params = [req.user.id, ...filterParams, dateStr, userTz];
       const dateParam = params.length - 1;
       const tzParam = params.length;
-      const fc = filterConditions ? filterConditions.replace(/\btrade_date\b/g, 't.trade_date').replace(/\bsymbol\b/g, 't.symbol').replace(/\bstrategy\b/g, 't.strategy').replace(/\bside\b/g, 't.side') : '';
+      // The canonical fragment already references the trades table as `t`,
+      // which is this query's alias, so no rewriting is needed.
+      const fc = filterConditions;
 
       // Note: do NOT require trade.pnl IS NOT NULL here. Open positions with partial
       // closes have realized P&L in their executions JSONB but trade.pnl stays NULL
@@ -2136,12 +1994,12 @@ const analyticsController = {
       const allowedFormats = ['csv', 'json'];
       const sanitizedFormat = allowedFormats.includes(format) ? format : 'csv';
 
-      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+      const { filterConditions, params: filterParams } = await buildFilterConditions(req.query, req.user.id);
       const params = [req.user.id, ...filterParams];
 
       const exportQuery = `
-        SELECT ${sanitizedFormat === 'csv' ? CSV_EXPORT_COLUMNS : '*'} FROM trades
-        WHERE user_id = $1 ${filterConditions}
+        SELECT ${sanitizedFormat === 'csv' ? CSV_EXPORT_COLUMNS : '*'} FROM trades t
+        WHERE t.user_id = $1 ${filterConditions}
         ORDER BY trade_date DESC, entry_time DESC
       `;
 
@@ -2173,7 +2031,7 @@ const analyticsController = {
       }
 
       const responseData = await coalesceInFlight(cacheKey, async () => {
-        const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+        const { filterConditions, params: filterParams } = await buildFilterConditions(req.query, req.user.id);
         const params = [req.user.id, ...filterParams];
 
         // Trade Distribution by Price
@@ -2200,8 +2058,8 @@ const analyticsController = {
                 WHEN entry_price < 200 THEN 7
                 ELSE 8
               END as range_order
-            FROM trades
-            WHERE user_id = $1 ${filterConditions}
+            FROM trades t
+            WHERE t.user_id = $1 ${filterConditions}
           )
           SELECT price_range, COUNT(*) as trade_count
           FROM price_ranges
@@ -2236,8 +2094,8 @@ const analyticsController = {
               pnl,
               r_value,
               stop_loss
-            FROM trades
-            WHERE user_id = $1 ${filterConditions}
+            FROM trades t
+            WHERE t.user_id = $1 ${filterConditions}
           )
           SELECT
             price_range,
@@ -2263,8 +2121,8 @@ const analyticsController = {
               pnl,
               r_value,
               stop_loss
-            FROM trades
-            WHERE user_id = $1 ${filterConditions}
+            FROM trades t
+            WHERE t.user_id = $1 ${filterConditions}
           ),
           volume_ranges AS (
             SELECT
@@ -2323,8 +2181,8 @@ const analyticsController = {
               pnl,
               r_value,
               stop_loss
-            FROM trades
-            WHERE user_id = $1 ${filterConditions}
+            FROM trades t
+            WHERE t.user_id = $1 ${filterConditions}
           ),
           stats AS (
             SELECT
@@ -2413,8 +2271,8 @@ const analyticsController = {
               r_value,
               stop_loss,
               CASE WHEN pnl > 0 THEN 1 ELSE 0 END as is_winner
-            FROM trades
-            WHERE user_id = $1 ${filterConditions} AND pnl IS NOT NULL
+            FROM trades t
+            WHERE t.user_id = $1 ${filterConditions} AND pnl IS NOT NULL
           )
           SELECT
             hold_time_range,
@@ -2575,8 +2433,8 @@ const analyticsController = {
             COUNT(*) as trade_count,
             COALESCE(SUM(pnl), 0) as total_pnl,
             COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value
-          FROM trades
-          WHERE user_id = $1 ${filterConditions}
+          FROM trades t
+          WHERE t.user_id = $1 ${filterConditions}
             AND EXTRACT(DOW FROM (entry_time AT TIME ZONE $${dowTzParam})) NOT IN (0, 6) -- Exclude weekends
           GROUP BY EXTRACT(DOW FROM (entry_time AT TIME ZONE $${dowTzParam}))
           ORDER BY EXTRACT(DOW FROM (entry_time AT TIME ZONE $${dowTzParam}))
@@ -2609,8 +2467,8 @@ const analyticsController = {
                   )
                 ELSE quantity  -- Fractional quantities (crypto) require numeric, not integer
               END as trade_volume
-            FROM trades
-            WHERE user_id = $1 ${filterConditions}
+            FROM trades t
+            WHERE t.user_id = $1 ${filterConditions}
           )
           SELECT
             trade_date,
@@ -2719,47 +2577,52 @@ const analyticsController = {
 
   async getDrawdownAnalysis(req, res, next) {
     try {
-      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+      const { filterConditions, params: filterParams } = await buildFilterConditions(req.query, req.user.id);
       const params = [req.user.id, ...filterParams];
 
-      const drawdownQuery = `
-        WITH daily_pnl AS (
-          SELECT
-            trade_date,
-            COALESCE(SUM(pnl), 0) as daily_pnl
-          FROM trades
-          WHERE user_id = $1 ${filterConditions}
-          GROUP BY trade_date
-          ORDER BY trade_date
-        ),
-        cumulative_pnl AS (
-          SELECT
-            trade_date,
-            daily_pnl,
-            SUM(daily_pnl) OVER (ORDER BY trade_date) as cumulative_pnl
-          FROM daily_pnl
-        ),
-        running_max AS (
+      return await sendCachedAnalytics(req, res, 'drawdown', {
+        query: req.query
+      }, async () => {
+
+        const drawdownQuery = `
+          WITH daily_pnl AS (
+            SELECT
+              trade_date,
+              COALESCE(SUM(pnl), 0) as daily_pnl
+            FROM trades t
+            WHERE t.user_id = $1 ${filterConditions}
+            GROUP BY trade_date
+            ORDER BY trade_date
+          ),
+          cumulative_pnl AS (
+            SELECT
+              trade_date,
+              daily_pnl,
+              SUM(daily_pnl) OVER (ORDER BY trade_date) as cumulative_pnl
+            FROM daily_pnl
+          ),
+          running_max AS (
+            SELECT
+              trade_date,
+              daily_pnl,
+              cumulative_pnl,
+              MAX(cumulative_pnl) OVER (ORDER BY trade_date) as running_max_pnl
+            FROM cumulative_pnl
+          )
           SELECT
             trade_date,
             daily_pnl,
             cumulative_pnl,
-            MAX(cumulative_pnl) OVER (ORDER BY trade_date) as running_max_pnl
-          FROM cumulative_pnl
-        )
-        SELECT
-          trade_date,
-          daily_pnl,
-          cumulative_pnl,
-          running_max_pnl,
-          cumulative_pnl - running_max_pnl as drawdown
-        FROM running_max
-        ORDER BY trade_date
-      `;
+            running_max_pnl,
+            cumulative_pnl - running_max_pnl as drawdown
+          FROM running_max
+          ORDER BY trade_date
+        `;
 
-      const result = await db.query(drawdownQuery, params);
+        const result = await db.query(drawdownQuery, params);
 
-      res.json({ drawdown: result.rows });
+        return { drawdown: result.rows };
+      });
     } catch (error) {
       next(error);
     }
@@ -2822,7 +2685,7 @@ const analyticsController = {
       console.log(`[OK] AI provider configured: ${userSettings.provider}`);
 
       // Use buildFilterConditions for consistency
-      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+      const { filterConditions, params: filterParams } = await buildFilterConditions(req.query, req.user.id);
       const params = [req.user.id, ...filterParams];
 
       const { startDate, endDate } = req.query;
@@ -2840,8 +2703,8 @@ const analyticsController = {
             COALESCE(AVG(pnl_percent), 0) as pnl_percent,
             SUM(COALESCE(commission, 0)) as commission,
             SUM(COALESCE(fees, 0)) as fees
-          FROM trades
-          WHERE user_id = $1 ${filterConditions}
+          FROM trades t
+          WHERE t.user_id = $1 ${filterConditions}
           GROUP BY ${POSITION_GROUP_KEY}
         )
         SELECT
@@ -2865,8 +2728,8 @@ const analyticsController = {
           COALESCE(AVG(CASE WHEN ${be.isNot} AND pnl < 0 THEN pnl END), 0) as avg_loss,
           COALESCE(MAX(pnl), 0) as best_trade,
           COALESCE(MIN(pnl), 0) as worst_trade
-        FROM trades
-        WHERE user_id = $1 ${filterConditions}
+        FROM trades t
+        WHERE t.user_id = $1 ${filterConditions}
       `;
 
       const overviewResult = await db.query(overviewQuery, params);
@@ -2888,8 +2751,8 @@ const analyticsController = {
           symbol, entry_time, exit_time, entry_price, exit_price,
           quantity, side, pnl, pnl_percent, commission, fees, broker,
           trade_date, strategy, tags, notes
-        FROM trades
-        WHERE user_id = $1 ${filterConditions}
+        FROM trades t
+        WHERE t.user_id = $1 ${filterConditions}
         ORDER BY trade_date DESC, entry_time DESC
         LIMIT 100
       `;
@@ -2937,8 +2800,8 @@ const analyticsController = {
             SELECT
               COALESCE(NULLIF(underlying_symbol, ''), symbol) as symbol,
               SUM(pnl) as pnl
-            FROM trades
-            WHERE user_id = $1 ${filterConditions}
+            FROM trades t
+            WHERE t.user_id = $1 ${filterConditions}
             GROUP BY COALESCE(NULLIF(underlying_symbol, ''), symbol), ${POSITION_GROUP_KEY}
           )
           SELECT
@@ -2958,8 +2821,8 @@ const analyticsController = {
             COUNT(*) as total_trades,
             COALESCE(SUM(pnl), 0) as total_pnl,
             COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades
-          FROM trades
-          WHERE user_id = $1 ${filterConditions}
+          FROM trades t
+          WHERE t.user_id = $1 ${filterConditions}
           GROUP BY symbol
           HAVING COUNT(*) > 0
           ORDER BY total_pnl DESC
@@ -3060,7 +2923,7 @@ const analyticsController = {
       console.log('[SECTOR] Starting sector performance analysis...');
 
       // Use buildFilterConditions for consistency
-      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+      const { filterConditions, params: filterParams } = await buildFilterConditions(req.query, req.user.id);
       const params = [req.user.id, ...filterParams];
 
       const { startDate, endDate } = req.query;
@@ -3078,8 +2941,8 @@ const analyticsController = {
             SELECT
             COALESCE(NULLIF(underlying_symbol, ''), symbol) as symbol,
             SUM(pnl) as pnl
-          FROM trades
-          WHERE user_id = $1 ${filterConditions}
+          FROM trades t
+          WHERE t.user_id = $1 ${filterConditions}
           GROUP BY COALESCE(NULLIF(underlying_symbol, ''), symbol), ${POSITION_GROUP_KEY}
         )
         SELECT
@@ -3100,8 +2963,8 @@ const analyticsController = {
           COALESCE(SUM(pnl), 0) as total_pnl,
           COALESCE(AVG(pnl), 0) as avg_pnl,
           COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades
-        FROM trades
-        WHERE user_id = $1 ${filterConditions}
+        FROM trades t
+        WHERE t.user_id = $1 ${filterConditions}
         GROUP BY symbol
         HAVING COUNT(*) > 0
         ORDER BY total_pnl DESC
@@ -3309,7 +3172,7 @@ const analyticsController = {
       console.log('[REFRESH] Refreshing sector performance data...');
 
       // Use buildFilterConditions for consistency
-      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+      const { filterConditions, params: filterParams } = await buildFilterConditions(req.query, req.user.id);
       const params = [req.user.id, ...filterParams];
 
       const { startDate, endDate } = req.query;
@@ -3323,8 +3186,8 @@ const analyticsController = {
             SELECT
             COALESCE(NULLIF(underlying_symbol, ''), symbol) as symbol,
             SUM(pnl) as pnl
-          FROM trades
-          WHERE user_id = $1 ${filterConditions}
+          FROM trades t
+          WHERE t.user_id = $1 ${filterConditions}
           GROUP BY COALESCE(NULLIF(underlying_symbol, ''), symbol), ${POSITION_GROUP_KEY}
         )
         SELECT
@@ -3345,8 +3208,8 @@ const analyticsController = {
           COALESCE(SUM(pnl), 0) as total_pnl,
           COALESCE(AVG(pnl), 0) as avg_pnl,
           COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades
-        FROM trades
-        WHERE user_id = $1 ${filterConditions}
+        FROM trades t
+        WHERE t.user_id = $1 ${filterConditions}
         GROUP BY symbol
         HAVING COUNT(*) > 0
         ORDER BY total_pnl DESC
@@ -3458,7 +3321,7 @@ const analyticsController = {
   // so the dashboard doesn't burn AI credits on every refresh.
   async getRecommendationSummary(req, res, next) {
     try {
-      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+      const { filterConditions, params: filterParams } = await buildFilterConditions(req.query, req.user.id);
       const params = [req.user.id, ...filterParams];
       const filterHashKey = createFilterHash(convertQueryToTradeFilters(req.query));
       const groupByPosition = await isPositionGroupingEnabled(req.user.id);
@@ -3476,15 +3339,15 @@ const analyticsController = {
         const completedCte = groupByPosition
           ? `completed AS (
               SELECT SUM(pnl) as pnl
-              FROM trades
-              WHERE user_id = $1 ${filterConditions}
+              FROM trades t
+              WHERE t.user_id = $1 ${filterConditions}
                 AND exit_price IS NOT NULL AND pnl IS NOT NULL
               GROUP BY ${POSITION_GROUP_KEY}
             )`
           : `completed AS (
               SELECT pnl, commission, fees, quantity, tick_size, point_value, underlying_asset
-              FROM trades
-              WHERE user_id = $1 ${filterConditions}
+              FROM trades t
+              WHERE t.user_id = $1 ${filterConditions}
                 AND exit_price IS NOT NULL AND pnl IS NOT NULL
             )`;
 
@@ -3529,8 +3392,8 @@ const analyticsController = {
         const edgeQuery = `
           WITH completed AS (
             SELECT symbol, strategy, pnl, commission, fees, quantity, tick_size, point_value, underlying_asset
-            FROM trades
-            WHERE user_id = $1 ${filterConditions}
+            FROM trades t
+            WHERE t.user_id = $1 ${filterConditions}
               AND exit_price IS NOT NULL AND pnl IS NOT NULL
           ),
           sym AS (

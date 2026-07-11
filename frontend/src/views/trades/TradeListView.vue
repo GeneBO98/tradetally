@@ -246,7 +246,7 @@
       </div>
 
       <!-- Show trades when available -->
-      <div v-else :key="tradesStore.trades.length">
+      <div v-else>
         <!-- Bulk Actions Bar -->
         <div v-if="selectedTrades.length > 0" class="mb-6 p-4 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg">
           <div class="flex items-center justify-between">
@@ -282,7 +282,7 @@
         </div>
 
         <!-- Mobile view (cards) -->
-        <div class="block md:hidden space-y-4" :key="'mobile-' + tradesStore.trades.length">
+        <div class="block md:hidden space-y-4">
         <div v-for="trade in tradesStore.trades" :key="trade.id" 
              class="bg-white dark:bg-gray-800 shadow rounded-lg p-4 hover:shadow-md transition-shadow">
           <div class="flex items-start space-x-3 mb-3">
@@ -315,13 +315,14 @@
                   ]">
                   {{ trade.side }}
                 </span>
+                <TradeMarketSessionBadge :trade="trade" />
                 <!-- News badge for mobile -->
                 <span v-if="trade.has_news" 
                   :class="getNewsBadgeClasses(trade.news_sentiment)"
                   class="px-2 py-1 text-xs font-semibold rounded-full flex items-center"
-                  :title="`${trade.news_events?.length || 0} news article(s) - ${trade.news_sentiment || 'neutral'} sentiment`">
+                  :title="`${trade.news_event_count ?? trade.news_events?.length ?? 0} news article(s) - ${trade.news_sentiment || 'neutral'} sentiment`">
                   <MdiIcon :icon="newspaperIcon" :size="14" class="mr-1" />
-                  <span>{{ trade.news_events?.length || 0 }}</span>
+                  <span>{{ trade.news_event_count ?? trade.news_events?.length ?? 0 }}</span>
                 </span>
               </div>
             <span class="px-2 py-1 text-xs font-semibold rounded-full"
@@ -443,7 +444,7 @@
         </div>
 
         <!-- Desktop view (table) -->
-        <div class="hidden md:block shadow ring-1 ring-black ring-opacity-5 md:rounded-lg" :key="'desktop-' + tradesStore.trades.length">
+        <div class="hidden md:block shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
         <!-- Top scroll bar wrapper -->
         <div ref="topScroll" class="overflow-x-auto overflow-y-hidden bg-gray-100 dark:bg-gray-800" @scroll="syncBottomScroll" style="height: 17px;">
           <div :style="{width: tableScrollWidth, height: '1px'}"></div>
@@ -515,6 +516,7 @@
                       :title="`Futures contract`">
                       FUT
                     </span>
+                    <TradeMarketSessionBadge :trade="trade" />
                     <!-- Position group strategy badge -->
                     <span v-if="trade.group_detected_strategy"
                       class="px-1.5 py-0.5 text-xs font-semibold rounded-full bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400 whitespace-nowrap flex-shrink-0"
@@ -525,9 +527,9 @@
                     <span v-if="trade.has_news"
                       :class="getNewsBadgeClasses(trade.news_sentiment)"
                       class="px-1.5 py-0.5 text-xs font-semibold rounded-full flex items-center whitespace-nowrap flex-shrink-0"
-                      :title="`${trade.news_events?.length || 0} news article(s) - ${trade.news_sentiment || 'neutral'} sentiment`">
+                      :title="`${trade.news_event_count ?? trade.news_events?.length ?? 0} news article(s) - ${trade.news_sentiment || 'neutral'} sentiment`">
                       <MdiIcon :icon="newspaperIcon" :size="12" class="mr-0.5" />
-                      <span>{{ trade.news_events?.length || 0 }}</span>
+                      <span>{{ trade.news_event_count ?? trade.news_events?.length ?? 0 }}</span>
                     </span>
                   </div>
                 </td>
@@ -1094,6 +1096,7 @@ import ColumnCustomizer from '@/components/trades/ColumnCustomizer.vue'
 import TagManagement from '@/components/trades/TagManagement.vue'
 import MdiIcon from '@/components/MdiIcon.vue'
 import StockLogo from '@/components/common/StockLogo.vue'
+import TradeMarketSessionBadge from '@/components/trades/TradeMarketSessionBadge.vue'
 import { mdiNewspaper } from '@mdi/js'
 import api from '@/services/api'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'

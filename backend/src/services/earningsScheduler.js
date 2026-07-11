@@ -8,110 +8,60 @@
  * - Cleans up stale cache entries
  */
 
+const IntervalScheduler = require('./schedulers/IntervalScheduler');
 const EarningsService = require('./earningsService');
 
 const CHECK_INTERVAL = 4 * 60 * 60 * 1000; // Run every 4 hours
+const LOG_PREFIX = '[EARNINGS-SCHEDULER]';
 
-class EarningsScheduler {
+class EarningsScheduler extends IntervalScheduler {
   constructor() {
-    this.interval = null;
-    this.isRunning = false;
-    this.lastRunDate = null;
+    super({
+      intervalMs: CHECK_INTERVAL,
+      useUnref: true,
+      messages: {
+        startLogs: [
+          `${LOG_PREFIX} Starting earnings scheduler...`,
+          `${LOG_PREFIX} Scheduled to run every 4 hours`
+        ],
+        started: `${LOG_PREFIX} Scheduler started`,
+        stopping: `${LOG_PREFIX} Stopping earnings scheduler...`,
+        stopped: `${LOG_PREFIX} Scheduler stopped`,
+        skip: `${LOG_PREFIX} Previous run still in progress, skipping...`,
+        runError: `${LOG_PREFIX} [ERROR] Scheduler error:`,
+        initialError: `${LOG_PREFIX} Initial run failed:`,
+        scheduledError: `${LOG_PREFIX} Scheduled run failed:`,
+        manualRun: `${LOG_PREFIX} Manual run triggered...`
+      }
+    });
   }
 
   /**
    * Fetch and cache earnings calendar
    */
   async processEarnings() {
-    if (this.isRunning) {
-      console.log('[EARNINGS-SCHEDULER] Previous run still in progress, skipping...');
-      return;
-    }
-
-    this.isRunning = true;
-    const logPrefix = '[EARNINGS-SCHEDULER]';
-
-    try {
-      console.log(`${logPrefix} Starting scheduled earnings fetch...`);
-
-      const result = await EarningsService.fetchAndCache();
-
-      // Clean up old entries
-      await EarningsService.cleanupOldEntries();
-
-      this.lastRunDate = new Date().toISOString();
-
-      if (result !== null) {
-        console.log(`${logPrefix} Earnings fetch complete - ${result.length} entries cached`);
-      } else {
-        console.log(`${logPrefix} Earnings fetch failed, will retry next cycle`);
-      }
-
-      return result;
-    } catch (error) {
-      console.error(`${logPrefix} [ERROR] Scheduler error:`, error);
-    } finally {
-      this.isRunning = false;
-    }
+    return this.runGuarded();
   }
 
-  /**
-   * Start the scheduler
-   */
-  start() {
-    console.log('[EARNINGS-SCHEDULER] Starting earnings scheduler...');
-    console.log('[EARNINGS-SCHEDULER] Scheduled to run every 4 hours');
+  async execute() {
+    const logPrefix = LOG_PREFIX;
 
-    // Run immediately on start to populate cache
-    this.processEarnings().catch(error => {
-      console.error('[EARNINGS-SCHEDULER] Initial run failed:', error);
-    });
+    console.log(`${logPrefix} Starting scheduled earnings fetch...`);
 
-    // Schedule periodic runs
-    this.interval = setInterval(() => {
-      this.processEarnings().catch(error => {
-        console.error('[EARNINGS-SCHEDULER] Scheduled run failed:', error);
-      });
-    }, CHECK_INTERVAL);
-    if (typeof this.interval.unref === 'function') {
-      this.interval.unref();
+    const result = await EarningsService.fetchAndCache();
+
+    // Clean up old entries
+    await EarningsService.cleanupOldEntries();
+
+    this.lastRunDate = new Date().toISOString();
+
+    if (result !== null) {
+      console.log(`${logPrefix} Earnings fetch complete - ${result.length} entries cached`);
+    } else {
+      console.log(`${logPrefix} Earnings fetch failed, will retry next cycle`);
     }
 
-    console.log('[EARNINGS-SCHEDULER] Scheduler started');
-  }
-
-  /**
-   * Stop the scheduler
-   */
-  stop() {
-    console.log('[EARNINGS-SCHEDULER] Stopping earnings scheduler...');
-
-    if (this.interval) {
-      clearInterval(this.interval);
-      this.interval = null;
-    }
-
-    console.log('[EARNINGS-SCHEDULER] Scheduler stopped');
-  }
-
-  /**
-   * Force run now (for manual triggering/testing)
-   */
-  async runNow() {
-    console.log('[EARNINGS-SCHEDULER] Manual run triggered...');
-    return await this.processEarnings();
-  }
-
-  /**
-   * Get scheduler status
-   */
-  getStatus() {
-    return {
-      running: this.interval !== null,
-      processing: this.isRunning,
-      checkIntervalMinutes: CHECK_INTERVAL / 60000,
-      lastRunDate: this.lastRunDate
-    };
+    return result;
   }
 }
 

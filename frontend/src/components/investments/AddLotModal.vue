@@ -108,6 +108,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useInvestmentsStore } from '@/stores/investments'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { format } from 'date-fns'
 
 const props = defineProps({
@@ -166,11 +167,5 @@ async function handleSubmit() {
   }
 }
 
-function formatCurrency(value) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2
-  }).format(value)
-}
+const { formatCurrency } = useCurrencyFormatter()
 </script>

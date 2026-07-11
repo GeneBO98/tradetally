@@ -599,6 +599,7 @@ import { useDiaryStore } from '@/stores/diary'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday, addMonths, subMonths, startOfWeek, endOfWeek } from 'date-fns'
 import { formatTradeDate } from '@/utils/date'
+import { debounce } from '@/utils/debounce'
 import { parseMarkdown, truncateHtml as truncateHtmlUtil } from '@/utils/markdown'
 import DiaryAnalysis from '@/components/diary/DiaryAnalysis.vue'
 import GeneralNotes from '@/components/diary/GeneralNotes.vue'
@@ -632,7 +633,6 @@ const savedView = localStorage.getItem('diaryView')
 const currentView = ref(savedView || 'list')
 const savedSearchQuery = localStorage.getItem('diarySearchQuery')
 const searchQuery = ref(savedSearchQuery || '')
-const searchTimeout = ref(null)
 const showDeleteModal = ref(false)
 const entryToDelete = ref(null)
 const deleting = ref(false)
@@ -775,15 +775,16 @@ const debounceSearch = () => {
     uiPreferencesStore.notifyChanged('diarySearchQuery', null)
   }
 
-  clearTimeout(searchTimeout.value)
-  searchTimeout.value = setTimeout(async () => {
-    if (searchQuery.value.trim().length >= 2) {
-      await diaryStore.searchEntries(searchQuery.value, filters.value)
-    } else if (searchQuery.value.trim().length === 0) {
-      await loadEntries()
-    }
-  }, 300)
+  debouncedRunSearch()
 }
+
+const debouncedRunSearch = debounce(async () => {
+  if (searchQuery.value.trim().length >= 2) {
+    await diaryStore.searchEntries(searchQuery.value, filters.value)
+  } else if (searchQuery.value.trim().length === 0) {
+    await loadEntries()
+  }
+}, 300)
 
 const selectTag = (tag) => {
   // Replace everything after the last # with the selected tag

@@ -1550,6 +1550,8 @@ import { ref, computed, nextTick, onMounted, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { useInvestmentsStore } from "@/stores/investments";
 import { useNotification } from "@/composables/useNotification";
+import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
+import { formatPercent as formatPercentBase } from "@/utils/formatters";
 import { format } from "date-fns";
 import api from "@/services/api";
 import EightPillarsCard from "@/components/investments/EightPillarsCard.vue";
@@ -2617,13 +2619,11 @@ async function addToWatchlist() {
     }
 }
 
+const { formatCurrency: formatCurrencyBase } = useCurrencyFormatter();
+
 function formatCurrency(value) {
     if (value === null || value === undefined) return "N/A";
-    return new Intl.NumberFormat("en-US", {
-        style: "currency",
-        currency: "USD",
-        minimumFractionDigits: 2,
-    }).format(value);
+    return formatCurrencyBase(value);
 }
 
 function formatNumber(value) {
@@ -2635,9 +2635,7 @@ function formatNumber(value) {
 }
 
 function formatPercent(value, showSign = true) {
-    if (value === null || value === undefined) return "";
-    const sign = showSign && value >= 0 ? "+" : "";
-    return `${sign}${value.toFixed(2)}%`;
+    return formatPercentBase(value, { showSign, nullValue: "" });
 }
 
 function formatMetric(value, decimals = 2) {

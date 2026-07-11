@@ -320,11 +320,11 @@ const gamificationController = {
         ORDER BY name
       `);
       
-      const result = [];
-      
-      for (const lb of leaderboards.rows) {
+      // One top-10 query per leaderboard; run them concurrently instead of
+      // serially (Promise.all preserves the ORDER BY name ordering).
+      const result = await Promise.all(leaderboards.rows.map(async (lb) => {
         let entries;
-        
+
         if (filteredUserIds) {
           // Get filtered entries for this leaderboard
           entries = await db.query(`
@@ -370,7 +370,7 @@ const gamificationController = {
           `, [lb.id, userId]);
         }
         
-        result.push({
+        return {
           key: lb.key,
           name: lb.name,
           description: lb.description,
@@ -379,9 +379,9 @@ const gamificationController = {
           entries: entries.rows,
           filtered: !!filteredUserIds,
           totalFilteredUsers: filteredUserIds ? filteredUserIds.length : null
-        });
-      }
-      
+        };
+      }));
+
       res.json({
         success: true,
         data: result,

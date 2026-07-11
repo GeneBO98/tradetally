@@ -183,6 +183,7 @@ import VersionDisplay from '@/components/common/VersionDisplay.vue'
 import CookieConsentBanner from '@/components/common/CookieConsentBanner.vue'
 import { useRegistrationMode } from '@/composables/useRegistrationMode'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
+import { useVisibilityPolling } from '@/composables/useVisibilityPolling'
 import api from '@/services/api'
 
 // Rate limit notification handling
@@ -340,9 +341,12 @@ async function dismissPasskeyPrompt() {
   await uiPreferencesStore.flush()
 }
 
-// Version check polling interval (6 hours)
-let versionPollInterval = null
+// Version check polling (6 hours, visibility-gated)
 const VERSION_CHECK_INTERVAL = 6 * 60 * 60 * 1000
+const { start: startVersionPolling } = useVisibilityPolling(
+  () => versionStore.checkForUpdates(),
+  VERSION_CHECK_INTERVAL
+)
 
 // Handle rate limit exceeded events globally
 const handleRateLimitExceeded = (event) => {
@@ -375,19 +379,13 @@ onMounted(async () => {
   versionStore.initialize()
   versionStore.checkForUpdates()
 
-  // Poll for updates every 6 hours
-  versionPollInterval = setInterval(() => {
-    versionStore.checkForUpdates()
-  }, VERSION_CHECK_INTERVAL)
+  // Poll for updates every 6 hours (paused while the tab is hidden)
+  startVersionPolling()
 })
 
 onUnmounted(() => {
   // Clean up rate limit event listener
   window.removeEventListener('app-runtime-error', handleRuntimeError)
   window.removeEventListener('rate-limit-exceeded', handleRateLimitExceeded)
-
-  if (versionPollInterval) {
-    clearInterval(versionPollInterval)
-  }
 })
 </script>

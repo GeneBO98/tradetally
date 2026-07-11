@@ -218,6 +218,8 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import api from '@/services/api'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatPercent as formatPercentBase } from '@/utils/formatters'
 import PortfolioPerformanceChart from '@/components/investments/PortfolioPerformanceChart.vue'
 import BaseSelect from '@/components/common/BaseSelect.vue'
 
@@ -540,19 +542,15 @@ const comparisonMetricRows = computed(() => [
     },
 ])
 
+const { formatCurrency: formatCurrencyBase } = useCurrencyFormatter()
+
 function formatCurrency(value) {
     if (value === null || value === undefined) return '—'
-    return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD',
-        minimumFractionDigits: 2,
-    }).format(value)
+    return formatCurrencyBase(value)
 }
 
 function formatPercent(value, showSign = true) {
-    if (value === null || value === undefined) return ''
-    const sign = showSign && value >= 0 ? '+' : ''
-    return `${sign}${Number(value).toFixed(2)}%`
+    return formatPercentBase(value, { showSign, nullValue: '' })
 }
 
 function formatMetric(value, decimals = 2) {

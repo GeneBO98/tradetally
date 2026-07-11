@@ -1,4 +1,4 @@
-const cron = require('node-cron');
+const CronScheduler = require('./schedulers/CronScheduler');
 
 /**
  * Edge Report Scheduler
@@ -6,10 +6,29 @@ const cron = require('node-cron');
  * Default: Monday 11:30 UTC (pre-market for US sessions), covering the
  * prior Monday-Sunday week. Override with EDGE_REPORT_CRON.
  */
-class EdgeReportScheduler {
+class EdgeReportScheduler extends CronScheduler {
   constructor() {
-    this.job = null;
-    this.running = false;
+    super({
+      logPrefix: '[EDGE-REPORT]',
+      cronEnvVar: 'EDGE_REPORT_CRON',
+      defaultCron: '30 11 * * 1',
+      guardRestart: true,
+      returnBoolean: true,
+      getScheduleOptions: () => ({
+        scheduled: true,
+        timezone: process.env.TZ || 'UTC'
+      }),
+      skipReturnValue: null,
+      errorReturnValue: null,
+      errorLogsMessageOnly: true,
+      messages: {
+        alreadyStarted: '[EDGE-REPORT] Scheduler already running',
+        started: (cronExpression) => `[EDGE-REPORT] Scheduler started (cron: ${cronExpression})`,
+        stopped: '[EDGE-REPORT] Scheduler stopped',
+        skip: '[EDGE-REPORT] Batch already in progress, skipping this run',
+        runError: '[EDGE-REPORT] Weekly batch failed:'
+      }
+    });
   }
 
   getStatus() {
@@ -20,51 +39,17 @@ class EdgeReportScheduler {
     };
   }
 
-  start() {
-    if (this.job) {
-      console.log('[EDGE-REPORT] Scheduler already running');
-      return false;
-    }
-
-    const cronExpression = process.env.EDGE_REPORT_CRON || '30 11 * * 1';
-    if (!cron.validate(cronExpression)) {
-      console.error(`[EDGE-REPORT] Invalid cron expression: ${cronExpression}`);
-      return false;
-    }
-
-    this.job = cron.schedule(cronExpression, () => this.runBatch(), {
-      scheduled: true,
-      timezone: process.env.TZ || 'UTC'
-    });
-
-    console.log(`[EDGE-REPORT] Scheduler started (cron: ${cronExpression})`);
-    return true;
+  onTick() {
+    return this.runBatch();
   }
 
   async runBatch() {
-    if (this.running) {
-      console.log('[EDGE-REPORT] Batch already in progress, skipping this run');
-      return null;
-    }
-
-    this.running = true;
-    try {
-      const EdgeReportService = require('./edgeReportService');
-      return await EdgeReportService.runWeeklyBatch();
-    } catch (error) {
-      console.error('[EDGE-REPORT] Weekly batch failed:', error.message);
-      return null;
-    } finally {
-      this.running = false;
-    }
+    return this.runExclusive();
   }
 
-  stop() {
-    if (this.job) {
-      this.job.stop();
-      this.job = null;
-      console.log('[EDGE-REPORT] Scheduler stopped');
-    }
+  async execute() {
+    const EdgeReportService = require('./edgeReportService');
+    return await EdgeReportService.runWeeklyBatch();
   }
 }
 

@@ -4,7 +4,10 @@ const mockDb = {
 
 const mockFinnhub = {
   isConfigured: jest.fn(() => true),
-  symbolSearch: jest.fn()
+  symbolSearch: jest.fn(),
+  getQuote: jest.fn(),
+  isFinnhub: true,
+  providerName: 'finnhub'
 };
 
 const mockCache = {
@@ -114,6 +117,75 @@ describe('symbols controller', () => {
           exchange: 'NASDAQ',
           logo: 'https://logo.test/amd.png',
           source: 'user_trades'
+        }
+      ]
+    });
+  });
+
+  test('getSymbolQuote returns a normalized current quote', async () => {
+    mockFinnhub.getQuote.mockResolvedValue({
+      c: 213.55,
+      pc: 211.22,
+      d: 2.33,
+      dp: 1.1031,
+      t: 1783708200
+    });
+
+    const req = {
+      user: { id: 'user-1' },
+      query: { symbol: ' aapl ' }
+    };
+    const res = createRes();
+
+    await symbolsController.getSymbolQuote(req, res);
+
+    expect(mockFinnhub.getQuote).toHaveBeenCalledWith('AAPL', 'user-1');
+    expect(res.json).toHaveBeenCalledWith({
+      symbol: 'AAPL',
+      current_price: 213.55,
+      previous_close: 211.22,
+      change: 2.33,
+      change_percent: 1.1031,
+      timestamp: 1783708200
+    });
+  });
+
+  test('searchSymbols excludes option contracts and non-equity provider results', async () => {
+    mockDb.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+    mockFinnhub.symbolSearch.mockResolvedValue({
+      result: [
+        { symbol: 'AAPL', description: 'Apple Inc', type: 'Common Stock' },
+        { symbol: 'AAPL260117C00200000', description: 'AAPL call', type: 'Option' },
+        { symbol: 'AAPLW', description: 'Apple warrant', type: 'Warrant' },
+        { symbol: 'AAXJ', description: 'iShares MSCI All Country Asia ETF', type: 'ETP' }
+      ]
+    });
+
+    const req = {
+      user: { id: 'user-1' },
+      query: { q: 'AA' }
+    };
+    const res = createRes();
+
+    await symbolsController.searchSymbols(req, res);
+
+    expect(res.json).toHaveBeenCalledWith({
+      results: [
+        {
+          symbol: 'AAPL',
+          company_name: 'Apple Inc',
+          exchange: null,
+          logo: null,
+          source: 'finnhub'
+        },
+        {
+          symbol: 'AAXJ',
+          company_name: 'iShares MSCI All Country Asia ETF',
+          exchange: null,
+          logo: null,
+          source: 'finnhub'
         }
       ]
     });

@@ -1227,6 +1227,7 @@ import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { useNotification } from '@/composables/useNotification'
 import { format } from 'date-fns'
 import { formatTradeDate } from '@/utils/date'
+import { debounce } from '@/utils/debounce'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { ArrowUpTrayIcon, XMarkIcon, ExclamationTriangleIcon, Cog6ToothIcon, MagnifyingGlassIcon, DocumentTextIcon } from '@heroicons/vue/24/outline'
 import { useAnalytics } from '@/composables/useAnalytics'
@@ -2879,21 +2880,12 @@ const highlightedLogContent = computed(() => {
 })
 
 // Search logs function - debounced server-side search
-let searchTimeout = null
-function searchLogs() {
-  // Clear existing timeout
-  if (searchTimeout) {
-    clearTimeout(searchTimeout)
+const searchLogs = debounce(() => {
+  if (selectedLogFile.value) {
+    // Reload log file with search query
+    loadLogFile(selectedLogFile.value, 1, logPagination.value.showAll, logSearchQuery.value)
   }
-  
-  // Debounce the search to avoid too many requests
-  searchTimeout = setTimeout(() => {
-    if (selectedLogFile.value) {
-      // Reload log file with search query
-      loadLogFile(selectedLogFile.value, 1, logPagination.value.showAll, logSearchQuery.value)
-    }
-  }, 300) // 300ms debounce
-}
+}, 300) // 300ms debounce
 
 // Clear search
 function clearSearch() {

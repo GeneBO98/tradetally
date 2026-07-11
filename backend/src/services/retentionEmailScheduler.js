@@ -3,13 +3,7 @@ const EmailService = require('./emailService');
 const TierService = require('./tierService');
 const weeklyInsights = require('./weeklyDigest/insights');
 const aiRecap = require('./weeklyDigest/aiRecap');
-
-function maskEmail(email) {
-  if (!email || !email.includes('@')) return '***';
-  const [localPart, domain] = email.split('@');
-  if (localPart.length <= 2) return `**@${domain}`;
-  return `${localPart.slice(0, 2)}***@${domain}`;
-}
+const maskEmail = require('../utils/maskEmail');
 
 /**
  * Sends weekly digest and inactive re-engagement emails.

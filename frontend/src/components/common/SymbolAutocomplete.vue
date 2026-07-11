@@ -89,6 +89,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import api from '@/services/api'
 import StockLogo from '@/components/common/StockLogo.vue'
+import { debounce } from '@/utils/debounce'
 
 const props = defineProps({
   modelValue: {
@@ -128,7 +129,9 @@ const highlightedIndex = ref(-1)
 const queryText = ref('')
 const isFocused = ref(false)
 
-let debounceTimer = null
+const debouncedFetchSuggestions = debounce((value) => {
+  fetchSuggestions(value)
+}, 300)
 
 const inputId = computed(() => props.id || `symbol-autocomplete-${Math.random().toString(36).slice(2, 9)}`)
 
@@ -142,17 +145,14 @@ function onInput(e) {
   queryText.value = value
   highlightedIndex.value = -1
 
-  if (debounceTimer) clearTimeout(debounceTimer)
-
   if (!value || value.length < 1) {
+    debouncedFetchSuggestions.cancel()
     suggestions.value = []
     isOpen.value = false
     return
   }
 
-  debounceTimer = setTimeout(() => {
-    fetchSuggestions(value)
-  }, 300)
+  debouncedFetchSuggestions(value)
 }
 
 async function fetchSuggestions(q) {
@@ -236,6 +236,6 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleClickOutside)
-  if (debounceTimer) clearTimeout(debounceTimer)
+  debouncedFetchSuggestions.cancel()
 })
 </script>

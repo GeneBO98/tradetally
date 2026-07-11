@@ -1,6 +1,7 @@
 import { ref, computed, watch } from 'vue'
 import api from '@/services/api'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
+import { useAccountsStore } from '@/stores/accounts'
 
 export const STORAGE_KEY = 'tradetally_global_account'
 
@@ -80,20 +81,41 @@ export function useGlobalAccountFilter() {
     return selectedAccount.value !== null && selectedAccount.value !== ''
   })
 
-  async function fetchAccounts() {
+  // Managed accounts come from the accounts store (shared cache + in-flight
+  // de-duplication) when Pinia is active; unit tests exercise this composable
+  // without Pinia, so fall back to a direct API call there.
+  async function fetchManagedAccounts(force) {
+    let accountsStore = null
+    try {
+      accountsStore = useAccountsStore()
+    } catch (_) {
+      // no active Pinia (test context) — use the API directly below
+    }
+
+    if (accountsStore) {
+      const managed = await accountsStore.fetchAccounts({ force })
+      return managed || []
+    }
+
+    const response = await api.get('/accounts')
+    return response.data.data || []
+  }
+
+  async function fetchAccounts(options = {}) {
     if (loading.value) return
+    const force = options.force === true
     loading.value = true
     try {
       const [tradeAccountsResult, managedAccountsResult] = await Promise.allSettled([
         api.get('/trades/accounts'),
-        api.get('/accounts')
+        fetchManagedAccounts(force)
       ])
 
       const tradeAccounts = tradeAccountsResult.status === 'fulfilled'
         ? (tradeAccountsResult.value.data.accounts || [])
         : []
       const managedAccounts = managedAccountsResult.status === 'fulfilled'
-        ? (managedAccountsResult.value.data.data || [])
+        ? (managedAccountsResult.value || [])
         : []
 
       const managedAccountMap = new Map(

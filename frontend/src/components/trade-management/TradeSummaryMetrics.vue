@@ -321,6 +321,7 @@
 <script setup>
 import { ref, computed, nextTick, watch } from 'vue'
 import { formatTradeDate } from '@/utils/date'
+import { formatPercent as formatPercentBase } from '@/utils/formatters'
 import api from '@/services/api'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
@@ -869,9 +870,7 @@ function handleTargetHitUpdated(data) {
 
 
 function formatPercent(value) {
-  if (value === null || value === undefined) return '-'
-  const num = parseFloat(value)
-  return `${Math.abs(num).toFixed(2)}%`
+  return formatPercentBase(value, { abs: true })
 }
 
 function formatDate(dateString) {

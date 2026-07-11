@@ -7,6 +7,9 @@ const { randomUUID } = require('crypto');
 
 const db = require('../../src/config/database');
 const TradeQueries = require('../../src/services/tradeQueries');
+// User.getSettings is memoized (services/settingsCache); these tests toggle
+// analytics_position_grouping with raw SQL, so drop the memo after each write.
+const settingsCache = require('../../src/services/settingsCache');
 
 async function createTestUser() {
   const suffix = randomUUID().slice(0, 8);
@@ -118,6 +121,7 @@ describe('TradeQueries.getAnalytics (real database)', () => {
       'UPDATE user_settings SET analytics_position_grouping = true WHERE user_id = $1',
       [user.id]
     );
+    settingsCache.invalidate(user.id);
 
     const analytics = await TradeQueries.getAnalytics(user.id, {});
 
@@ -155,6 +159,7 @@ describe('TradeQueries.getAnalytics (real database)', () => {
       'UPDATE user_settings SET analytics_position_grouping = false WHERE user_id = $1',
       [user.id]
     );
+    settingsCache.invalidate(user.id);
   });
 
   test('whole-trade mode labels positions from their persisted strategy group', async () => {
@@ -162,6 +167,7 @@ describe('TradeQueries.getAnalytics (real database)', () => {
       'UPDATE user_settings SET analytics_position_grouping = true WHERE user_id = $1',
       [user.id]
     );
+    settingsCache.invalidate(user.id);
 
     // A persisted bull put spread on a different underlying, as the option
     // strategy grouping service would store it after detection.
@@ -214,5 +220,6 @@ describe('TradeQueries.getAnalytics (real database)', () => {
       'UPDATE user_settings SET analytics_position_grouping = false WHERE user_id = $1',
       [user.id]
     );
+    settingsCache.invalidate(user.id);
   });
 });

@@ -2,7 +2,7 @@ const ApiKey = require('../models/ApiKey');
 const logger = require('../utils/logger');
 const { hasScope, resolveEffectiveScopes } = require('../utils/apiScopes');
 const { isV1Request, sendV1Error } = require('../utils/apiResponse');
-const { TOKEN_PURPOSES, verifyJwtToken, isTokenSessionValid } = require('./auth');
+const { TOKEN_PURPOSES, verifyJwtToken, isTokenSessionValid, findActiveUserForAuth } = require('./auth');
 const { AUTH_COOKIE_NAME } = require('../utils/authCookies');
 
 function sendAuthError(req, res, status, code, message, extra = {}) {
@@ -124,9 +124,6 @@ const requireApiScope = (scope) => {
  * Tries JWT first, then falls back to API key
  */
 const flexibleAuth = async (req, res, next) => {
-  // First try JWT authentication
-  const User = require('../models/User');
-  
   try {
     const authHeader = req.headers.authorization;
     const apiKeyHeader = req.headers['x-api-key'];
@@ -143,8 +140,8 @@ const flexibleAuth = async (req, res, next) => {
       // Otherwise, try JWT authentication
       try {
         const decoded = verifyJwtToken(token, { requiredPurpose: TOKEN_PURPOSES.ACCESS });
-        const user = await User.findById(decoded.id || decoded.userId);
-        
+        const user = await findActiveUserForAuth(decoded.id || decoded.userId);
+
         if (user && user.is_active && isTokenSessionValid(decoded, user)) {
           req.user = user;
           req.authMethod = 'jwt';
@@ -168,7 +165,7 @@ const flexibleAuth = async (req, res, next) => {
     if (cookieToken) {
       try {
         const decoded = verifyJwtToken(cookieToken, { requiredPurpose: TOKEN_PURPOSES.ACCESS });
-        const user = await User.findById(decoded.id || decoded.userId);
+        const user = await findActiveUserForAuth(decoded.id || decoded.userId);
         if (user && user.is_active && isTokenSessionValid(decoded, user)) {
           req.user = user;
           req.authMethod = 'jwt';
@@ -194,8 +191,6 @@ const flexibleAuth = async (req, res, next) => {
  * Supports JWT, API key, and unauthenticated access (for public trades).
  */
 const flexibleOptionalAuth = async (req, res, next) => {
-  const User = require('../models/User');
-
   try {
     const authHeader = req.headers.authorization;
     const apiKeyHeader = req.headers['x-api-key'];
@@ -220,7 +215,7 @@ const flexibleOptionalAuth = async (req, res, next) => {
       // JWT token
       try {
         const decoded = verifyJwtToken(token, { requiredPurpose: TOKEN_PURPOSES.ACCESS });
-        const user = await User.findById(decoded.id || decoded.userId);
+        const user = await findActiveUserForAuth(decoded.id || decoded.userId);
         if (user && user.is_active && isTokenSessionValid(decoded, user)) {
           req.user = user;
           req.authMethod = 'jwt';
@@ -247,7 +242,7 @@ const flexibleOptionalAuth = async (req, res, next) => {
     if (cookieToken) {
       try {
         const decoded = verifyJwtToken(cookieToken, { requiredPurpose: TOKEN_PURPOSES.ACCESS });
-        const user = await User.findById(decoded.id || decoded.userId);
+        const user = await findActiveUserForAuth(decoded.id || decoded.userId);
         if (user && user.is_active && isTokenSessionValid(decoded, user)) {
           req.user = user;
           req.authMethod = 'jwt';

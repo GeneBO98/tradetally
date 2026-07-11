@@ -751,32 +751,68 @@ class JobQueue {
    * chain so trades whose candle data simply doesn't exist (delisted or
    * too-old symbols) can't cause an infinite requeue loop.
    */
+  /**
+   * Enqueue an MAE/MFE recalculation for a user, skipping the insert when a
+   * pending mae_recalc job for that user already exists (the job sweeps ALL
+   * of the user's trades with NULL mae/mfe, so one pending job covers any
+   * number of newly created/imported trades).
+   */
+  async enqueueMAERecalc(userId, { batchSize = 5, maxTrades = 50, importId = null, includePostExit = false } = {}) {
+    // Only the generic user-wide sweep dedupes; import-scoped jobs (importId /
+    // includePostExit) cover different work and always insert.
+    if (!importId && !includePostExit) {
+      const existing = await db.query(
+        `SELECT 1 FROM job_queue
+         WHERE type = 'mae_recalc' AND user_id = $1 AND status = 'pending'
+         LIMIT 1`,
+        [userId]
+      );
+      if (existing.rows.length > 0) {
+        return null;
+      }
+    }
+    return this.addJob('mae_recalc', { userId, batchSize, maxTrades, importId, includePostExit }, 4, userId);
+  }
+
   async processMAERecalc(data) {
     const MAEEstimator = require('./maeEstimator');
     const AnalyticsCache = require('../services/analyticsCache');
-    const { userId, batchSize = 5, maxTrades = 50 } = data;
+    const { resolvePostExitWindow } = require('./postExitWindow');
+    const { userId, batchSize = 5, maxTrades = 50, importId = null, includePostExit = false } = data;
 
-    const pendingCondition = `
+    // Post-exit windows are only computed when the enqueue site asks for them
+    // (import backfill scoped by importId). A user-wide post-exit sweep would
+    // fire candle-API calls for every historical trade that predates the
+    // post-exit feature, so the default sweep stays mae/mfe-only.
+    const params = [userId];
+    let pendingCondition = `
       user_id = $1
-      AND mae IS NULL AND mfe IS NULL
       AND entry_time IS NOT NULL AND exit_time IS NOT NULL
       AND entry_price IS NOT NULL AND exit_price IS NOT NULL
       AND pnl IS NOT NULL
     `;
+    if (importId) {
+      params.push(importId);
+      pendingCondition += ` AND import_id = $${params.length}`;
+    }
+    pendingCondition += includePostExit
+      ? ` AND (mae IS NULL OR mfe IS NULL OR post_exit_mae IS NULL OR post_exit_mfe IS NULL)`
+      : ` AND (mae IS NULL AND mfe IS NULL)`;
 
     const result = await db.query(
       `SELECT id, symbol, entry_time, exit_time, entry_price, exit_price, side,
               pnl, commission, fees, quantity, instrument_type, point_value,
-              underlying_asset, contract_size
+              underlying_asset, contract_size, mae, mfe,
+              post_exit_mae, post_exit_mfe, post_exit_window_override_minutes
        FROM trades
        WHERE ${pendingCondition}
        ORDER BY entry_time DESC
        LIMIT ${parseInt(maxTrades, 10) || 50}`,
-      [userId]
+      params
     );
     const trades = result.rows;
 
-    logger.logImport(`MAE recalc: found ${trades.length} trades needing MAE/MFE for user ${userId}`);
+    logger.logImport(`MAE recalc: found ${trades.length} trades needing MAE/MFE for user ${userId}${importId ? ` (import ${importId})` : ''}`);
 
     let updated = 0;
     let skipped = 0;
@@ -790,9 +826,34 @@ class JobQueue {
           continue;
         }
         try {
-          const { mae, mfe } = await MAEEstimator.calculateFromCandleData(trade);
-          await db.query('UPDATE trades SET mae = $1, mfe = $2 WHERE id = $3', [mae, mfe, trade.id]);
-          updated++;
+          let progressed = false;
+
+          if (trade.mae == null || trade.mfe == null) {
+            const { mae, mfe } = await MAEEstimator.calculateFromCandleData(trade);
+            await db.query('UPDATE trades SET mae = $1, mfe = $2 WHERE id = $3', [mae, mfe, trade.id]);
+            progressed = true;
+          }
+
+          if (includePostExit && (trade.post_exit_mae == null || trade.post_exit_mfe == null)) {
+            const window = await resolvePostExitWindow(userId, trade);
+            if (window) {
+              const { post_exit_mae, post_exit_mfe } = await MAEEstimator.calculatePostExitFromCandleData(trade, window.end);
+              await db.query(
+                `UPDATE trades
+                 SET post_exit_mae = $1, post_exit_mfe = $2, post_exit_window_minutes = $3,
+                     post_exit_window_source = $4, post_exit_window_end = $5, post_exit_calculated_at = NOW()
+                 WHERE id = $6`,
+                [post_exit_mae, post_exit_mfe, window.minutes, window.source, window.end, trade.id]
+              );
+              progressed = true;
+            }
+          }
+
+          if (progressed) {
+            updated++;
+          } else {
+            skipped++;
+          }
         } catch (error) {
           logger.logError(`MAE recalc failed for trade ${trade.id} (${trade.symbol}): ${error.message}`);
           skipped++;
@@ -813,10 +874,10 @@ class JobQueue {
     if (updated > 0) {
       const remaining = await db.query(
         `SELECT COUNT(*)::int AS n FROM trades WHERE ${pendingCondition}`,
-        [userId]
+        params
       );
       if (remaining.rows[0].n > 0) {
-        await this.addJob('mae_recalc', { userId, batchSize, maxTrades }, 4, userId);
+        await this.addJob('mae_recalc', { userId, batchSize, maxTrades, importId, includePostExit }, 4, userId);
         logger.logImport(`MAE recalc: ${remaining.rows[0].n} trades remaining for user ${userId}, re-enqueued`);
       }
     }

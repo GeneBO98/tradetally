@@ -4,6 +4,7 @@ const historicalPriceCache = require('./historicalPriceCache');
 const ApiUsageService = require('../services/apiUsageService');
 const TierService = require('../services/tierService');
 const { FinnhubPriority, FinnhubRequestScheduler } = require('./finnhubScheduler');
+const { localToUTC } = require('./timezone');
 
 class UnsupportedMarketDataError extends Error {
   constructor(feature) {
@@ -46,8 +47,20 @@ function unixSeconds(dateLike) {
   return Math.floor(new Date(dateLike).getTime() / 1000);
 }
 
+function fmpIntradayUnixSeconds(dateLike) {
+  if (typeof dateLike === 'number') return unixSeconds(dateLike);
+  const easternTimestamp = localToUTC(String(dateLike).replace(' ', 'T'), 'America/New_York');
+  return unixSeconds(easternTimestamp);
+}
+
 function normalizePeriod(frequency) {
   return frequency === 'quarterly' ? 'quarter' : 'annual';
+}
+
+function normalizeFmpStockSymbol(symbol) {
+  const normalizedSymbol = String(symbol || '').trim().toUpperCase();
+  const exchangeQualifiedMatch = normalizedSymbol.match(/^[^:]+:(.+)$/);
+  return exchangeQualifiedMatch ? exchangeQualifiedMatch[1] : normalizedSymbol;
 }
 
 class FmpClient {
@@ -392,7 +405,13 @@ class FmpClient {
     const normalizedContext = this.normalizeUserContext(userIdOrOptions, options);
     const userId = normalizedContext.userId;
     const requestOptions = normalizedContext.options;
-    const symbolUpper = symbol.toUpperCase();
+    // TradingView imports can preserve exchange-qualified stock symbols such as
+    // NASDAQ:DEVS. FMP expects only the provider ticker (DEVS) in candle calls.
+    const symbolUpper = normalizeFmpStockSymbol(symbol);
+
+    if (!symbolUpper) {
+      throw new Error('A symbol is required to get candle data');
+    }
 
     if (userId) {
       const userTier = await TierService.getUserTier(userId);
@@ -406,7 +425,8 @@ class FmpClient {
       }
     }
 
-    const cacheKey = `fmp_${symbolUpper}_${resolution}_${from}_${to}`;
+    // v2 timestamps are true UTC epochs derived from FMP's Eastern wall clock.
+    const cacheKey = `fmp_v2_${symbolUpper}_${resolution}_${from}_${to}`;
     const cached = await cache.get('stock_candles', cacheKey);
     if (cached) return cached;
 
@@ -425,8 +445,11 @@ class FmpClient {
     });
 
     const rows = Array.isArray(data) ? data : (data?.historical || []);
+    const isDaily = endpoint === '/historical-price-eod/full';
     const candles = rows.map(row => ({
-      time: unixSeconds(row.date || row.label),
+      time: isDaily
+        ? unixSeconds(row.date || row.label)
+        : fmpIntradayUnixSeconds(row.date || row.label),
       open: asNumber(row.open),
       high: asNumber(row.high),
       low: asNumber(row.low),
@@ -455,17 +478,30 @@ class FmpClient {
     return this.getStockCandles(symbol, resolution, from, to, userIdOrOptions, options);
   }
 
-  async getTradeChartData(symbol, entryDate, exitDate = null, userId = null) {
+  async getTradeChartData(symbol, entryDate, exitDate = null, userId = null, requestedResolution = '1') {
+    const intervals = {
+      '1': '1min',
+      '5': '5min',
+      '15': '15min',
+      '60': '1hour',
+      D: 'daily'
+    };
+    const resolution = Object.hasOwn(intervals, requestedResolution) ? requestedResolution : '1';
     const entryTime = new Date(entryDate);
     const entryDateUTC = new Date(entryTime.toISOString().split('T')[0] + 'T00:00:00.000Z');
-    const chartFromTime = new Date(entryDateUTC.getTime() + 9 * 60 * 60 * 1000);
-    const chartToTime = new Date(entryDateUTC.getTime() + 25 * 60 * 60 * 1000);
+    const exitTime = exitDate ? new Date(exitDate) : entryTime;
+    const chartFromTime = resolution === 'D'
+      ? new Date(entryDateUTC.getTime() - 30 * 24 * 60 * 60 * 1000)
+      : new Date(entryDateUTC.getTime() + 9 * 60 * 60 * 1000);
+    const chartToTime = resolution === 'D'
+      ? new Date(Math.max(entryTime.getTime(), exitTime.getTime()) + 10 * 24 * 60 * 60 * 1000)
+      : new Date(entryDateUTC.getTime() + 25 * 60 * 60 * 1000);
     const fromTimestamp = Math.floor(chartFromTime.getTime() / 1000);
     const toTimestamp = Math.floor(chartToTime.getTime() / 1000);
-    const candles = await this.getStockCandles(symbol, '1', fromTimestamp, toTimestamp, userId);
+    const candles = await this.getStockCandles(symbol, resolution, fromTimestamp, toTimestamp, userId);
     return {
-      type: 'intraday',
-      interval: '1min',
+      type: resolution === 'D' ? 'daily' : 'intraday',
+      interval: intervals[resolution],
       candles,
       source: 'fmp'
     };

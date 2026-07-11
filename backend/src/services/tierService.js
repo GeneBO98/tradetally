@@ -65,20 +65,29 @@ class TierService {
       return false;
     }
 
-    // Fallback to database config
+    // Fallback to database config. instance_config.billing_enabled is set at
+    // install time and never written by application code, so memoize the read
+    // briefly - this is called inside getUserTier/hasFeatureAccess and was
+    // issuing a SELECT per call on SaaS deployments with no env override.
+    const now = Date.now();
+    if (this._billingDbCache && this._billingDbCache.expiresAt > now) {
+      return this._billingDbCache.value;
+    }
+
     const query = `SELECT value FROM instance_config WHERE key = 'billing_enabled'`;
     const result = await db.query(query);
 
-    if (!result.rows[0]) return false;
-    const value = result.rows[0].value;
+    const value = result.rows[0] ? result.rows[0].value : undefined;
 
     // Handle JSONB, string, and boolean values
-    if (typeof value === 'boolean') return value;
-    if (typeof value === 'string') return value === 'true';
-    if (value === null || value === undefined) return false;
+    let enabled;
+    if (typeof value === 'boolean') enabled = value;
+    else if (typeof value === 'string') enabled = value === 'true';
+    else if (value === null || value === undefined) enabled = false;
+    else enabled = value === true || value === 'true'; // JSONB stored as object
 
-    // For JSONB stored as object
-    return value === true || value === 'true';
+    this._billingDbCache = { value: enabled, expiresAt: now + 60 * 1000 };
+    return enabled;
   }
 
   // Get effective tier for a user. Results are memoized briefly (see
@@ -159,16 +168,17 @@ class TierService {
       return true;
     }
 
-    // Get feature requirements
-    const query = `SELECT required_tier FROM features WHERE feature_key = $1 AND is_active = true`;
-    const result = await db.query(query, [featureKey]);
-    
+    // Get feature requirements from the memoized features table (tiny,
+    // near-static; invalidated on upsert/toggle and self-healing via TTL)
+    const features = await this._getFeatureMap();
+    const feature = features.get(featureKey);
+
     // If feature doesn't exist or is inactive, deny access
-    if (!result.rows[0]) {
+    if (!feature || !feature.is_active) {
       return false;
     }
 
-    const requiredTier = result.rows[0].required_tier;
+    const requiredTier = feature.required_tier;
     
     // If feature is free tier, everyone has access
     if (requiredTier === 'free') {
@@ -180,15 +190,32 @@ class TierService {
     return userTier === 'pro';
   }
 
-  // Get all available features
+  // Get all available features (memoized - the table is tiny and only
+  // changes through upsertFeature/toggleFeature, which invalidate)
   static async getAllFeatures() {
+    const now = Date.now();
+    if (this._featuresCache && this._featuresCache.expiresAt > now) {
+      return this._featuresCache.rows;
+    }
+
     const query = `
       SELECT feature_key, feature_name, description, required_tier, is_active
       FROM features
       ORDER BY required_tier, feature_name
     `;
     const result = await db.query(query);
+    this._featuresCache = { rows: result.rows, expiresAt: now + 60 * 1000 };
     return result.rows;
+  }
+
+  // Features keyed by feature_key, built on the same memo as getAllFeatures
+  static async _getFeatureMap() {
+    const rows = await this.getAllFeatures();
+    return new Map(rows.map(row => [row.feature_key, row]));
+  }
+
+  static invalidateFeaturesCache() {
+    this._featuresCache = null;
   }
 
   // Create or update a feature
@@ -210,6 +237,7 @@ class TierService {
     
     const values = [featureKey, featureName, description, requiredTier, isActive];
     const result = await db.query(query, values);
+    this.invalidateFeaturesCache();
     return result.rows[0];
   }
 
@@ -223,6 +251,7 @@ class TierService {
     `;
     
     const result = await db.query(query, [isActive, featureKey]);
+    this.invalidateFeaturesCache();
     return result.rows[0];
   }
 

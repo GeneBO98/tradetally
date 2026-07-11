@@ -811,7 +811,7 @@ async function removeTransaction(transactionId) {
 
 async function refreshPlaidConnections() {
   await Promise.all([
-    store.fetchAccounts(),
+    store.fetchAccounts({ force: true }),
     plaidStore.fetchConnections()
   ])
 

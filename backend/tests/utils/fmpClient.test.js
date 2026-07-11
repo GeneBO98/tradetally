@@ -23,7 +23,7 @@ describe('FMP market data client', () => {
             }]
           };
         }
-        if (url.includes('/historical-chart/1min')) {
+        if (url.includes('/historical-chart/')) {
           return {
             data: [
               { date: '2025-01-02 09:31:00', open: 200, high: 201, low: 199, close: 200.5, volume: 1000 },
@@ -142,7 +142,43 @@ describe('FMP market data client', () => {
 
     expect(candles).toHaveLength(2);
     expect(candles[0]).toMatchObject({ open: 199, high: 200, low: 198, close: 199.5, volume: 900 });
+    expect(candles[0].time).toBe(Date.parse('2025-01-02T14:30:00.000Z') / 1000);
     expect(candles[0].time).toBeLessThan(candles[1].time);
+  });
+
+  test('strips TradingView exchange prefixes from FMP candle requests', async () => {
+    const fmp = require('../../src/utils/fmpClient');
+    const axios = require('axios');
+
+    await fmp.getStockCandles('NASDAQ:DEVS', '1', 1735810200, 1735810260);
+
+    expect(axios.get).toHaveBeenCalledWith(
+      expect.stringContaining('/historical-chart/1min'),
+      expect.objectContaining({
+        params: expect.objectContaining({ symbol: 'DEVS' })
+      })
+    );
+  });
+
+  test('requests the selected FMP trade chart resolution', async () => {
+    const fmp = require('../../src/utils/fmpClient');
+    const axios = require('axios');
+
+    const chartData = await fmp.getTradeChartData(
+      'NASDAQ:DEVS',
+      '2025-01-02T15:30:00.000Z',
+      '2025-01-02T16:00:00.000Z',
+      null,
+      '15'
+    );
+
+    expect(chartData).toMatchObject({ type: 'intraday', interval: '15min', source: 'fmp' });
+    expect(axios.get).toHaveBeenCalledWith(
+      expect.stringContaining('/historical-chart/15min'),
+      expect.objectContaining({
+        params: expect.objectContaining({ symbol: 'DEVS' })
+      })
+    );
   });
 
   test('maps search and CUSIP responses to existing contracts', async () => {

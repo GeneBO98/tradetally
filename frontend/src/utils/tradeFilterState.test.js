@@ -25,11 +25,13 @@ describe('tradeFilterState', () => {
     expect(normalizeTradeFiltersForSharedState({
       strategies: 'swing,scalper',
       daysOfWeek: '1,5',
+      market_sessions: 'pre_market,post_market',
       tags: ['earnings', 'gap'],
       symbolExact: 'true'
     })).toEqual({
       strategies: ['swing', 'scalper'],
       daysOfWeek: [1, 5],
+      market_sessions: ['pre_market', 'post_market'],
       tags: ['earnings', 'gap'],
       symbolExact: true
     })

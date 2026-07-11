@@ -151,6 +151,29 @@ class FinnhubClient {
     };
   }
 
+  // Shared tier/usage guard for metered endpoints. No-op without a userId.
+  // Throws an error carrying the code/resetAt/remaining (or feature) fields
+  // that mobile clients depend on - do not change the error shape.
+  async enforceUsageLimit(userId, endpoint, { defaultMessage = 'API limit exceeded', feature = null } = {}) {
+    if (!userId) return;
+
+    const userTier = await TierService.getUserTier(userId);
+    const limitCheck = await ApiUsageService.checkLimit(userId, endpoint, userTier);
+
+    if (!limitCheck.allowed) {
+      const error = new Error(limitCheck.message || defaultMessage);
+      if (feature) {
+        error.code = 'PRO_REQUIRED';
+        error.feature = feature;
+      } else {
+        error.code = limitCheck.upgradeRequired ? 'PRO_REQUIRED' : 'RATE_LIMIT_EXCEEDED';
+        error.resetAt = limitCheck.resetAt;
+        error.remaining = limitCheck.remaining;
+      }
+      throw error;
+    }
+  }
+
   async getQuote(symbol, userIdOrOptions = null, options = {}) {
     const normalizedContext = this.normalizeUserContext(userIdOrOptions, options);
     const userId = normalizedContext.userId;
@@ -171,18 +194,7 @@ class FinnhubClient {
     }
 
     // Check tier and usage limits if userId provided
-    if (userId) {
-      const userTier = await TierService.getUserTier(userId);
-      const limitCheck = await ApiUsageService.checkLimit(userId, 'quote', userTier);
-
-      if (!limitCheck.allowed) {
-        const error = new Error(limitCheck.message || 'API limit exceeded');
-        error.code = limitCheck.upgradeRequired ? 'PRO_REQUIRED' : 'RATE_LIMIT_EXCEEDED';
-        error.resetAt = limitCheck.resetAt;
-        error.remaining = limitCheck.remaining;
-        throw error;
-      }
-    }
+    await this.enforceUsageLimit(userId, 'quote');
 
     try {
       const quote = await this.makeRequest('/quote', { symbol: symbolUpper }, {
@@ -1256,17 +1268,10 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
   // Get technical indicators (Pro only)
   async getTechnicalIndicator(symbol, resolution, from, to, indicator, indicatorFields = {}, userId = null) {
     // Check tier - this is a Pro feature
-    if (userId) {
-      const userTier = await TierService.getUserTier(userId);
-      const limitCheck = await ApiUsageService.checkLimit(userId, 'indicator', userTier);
-
-      if (!limitCheck.allowed) {
-        const error = new Error(limitCheck.message || 'Technical indicators require a Pro subscription');
-        error.code = 'PRO_REQUIRED';
-        error.feature = 'Technical Indicators';
-        throw error;
-      }
-    }
+    await this.enforceUsageLimit(userId, 'indicator', {
+      defaultMessage: 'Technical indicators require a Pro subscription',
+      feature: 'Technical Indicators'
+    });
 
     const symbolUpper = symbol.toUpperCase();
 
@@ -1304,17 +1309,10 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
   // Get pattern recognition (Pro only)
   async getPatternRecognition(symbol, resolution, userId = null) {
     // Check tier - this is a Pro feature
-    if (userId) {
-      const userTier = await TierService.getUserTier(userId);
-      const limitCheck = await ApiUsageService.checkLimit(userId, 'pattern', userTier);
-
-      if (!limitCheck.allowed) {
-        const error = new Error(limitCheck.message || 'Pattern recognition requires a Pro subscription');
-        error.code = 'PRO_REQUIRED';
-        error.feature = 'Pattern Recognition';
-        throw error;
-      }
-    }
+    await this.enforceUsageLimit(userId, 'pattern', {
+      defaultMessage: 'Pattern recognition requires a Pro subscription',
+      feature: 'Pattern Recognition'
+    });
 
     const symbolUpper = symbol.toUpperCase();
 
@@ -1346,17 +1344,10 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
   // Get support and resistance levels (Pro only)
   async getSupportResistance(symbol, resolution, userId = null) {
     // Check tier - this is a Pro feature
-    if (userId) {
-      const userTier = await TierService.getUserTier(userId);
-      const limitCheck = await ApiUsageService.checkLimit(userId, 'support_resistance', userTier);
-
-      if (!limitCheck.allowed) {
-        const error = new Error(limitCheck.message || 'Support/Resistance levels require a Pro subscription');
-        error.code = 'PRO_REQUIRED';
-        error.feature = 'Support/Resistance Levels';
-        throw error;
-      }
-    }
+    await this.enforceUsageLimit(userId, 'support_resistance', {
+      defaultMessage: 'Support/Resistance levels require a Pro subscription',
+      feature: 'Support/Resistance Levels'
+    });
 
     const symbolUpper = symbol.toUpperCase();
 
@@ -1456,18 +1447,7 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
     }
 
     // Check tier and usage limits if userId provided
-    if (userId) {
-      const userTier = await TierService.getUserTier(userId);
-      const limitCheck = await ApiUsageService.checkLimit(userId, 'candle', userTier);
-
-      if (!limitCheck.allowed) {
-        const error = new Error(limitCheck.message || 'API limit exceeded');
-        error.code = limitCheck.upgradeRequired ? 'PRO_REQUIRED' : 'RATE_LIMIT_EXCEEDED';
-        error.resetAt = limitCheck.resetAt;
-        error.remaining = limitCheck.remaining;
-        throw error;
-      }
-    }
+    await this.enforceUsageLimit(userId, 'candle');
 
     try {
       const candles = await this.makeRequest('/stock/candle', {
@@ -1517,7 +1497,7 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
   }
 
   // Get appropriate candle data based on trade duration for Pro users
-  async getTradeChartData(symbol, entryDate, exitDate = null, userId = null) {
+  async getTradeChartData(symbol, entryDate, exitDate = null, userId = null, requestedResolution = '1') {
     // Log the dates we're working with to debug timezone issues
     console.log('getTradeChartData input dates:', {
       entryDate,
@@ -1542,8 +1522,21 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
     // Regular hours: 9:30 AM ET to 4:00 PM ET
     // After-hours: 4:00 PM ET to 8:00 PM ET
     // localToUTC is DST-aware (handles both EST and EDT)
-    const chartFromTime = new Date(localToUTC(`${tradeDateET}T04:00:00`, MARKET_TZ));
-    const chartToTime = new Date(localToUTC(`${tradeDateET}T20:00:00`, MARKET_TZ));
+    let chartFromTime = new Date(localToUTC(`${tradeDateET}T04:00:00`, MARKET_TZ));
+    let chartToTime = new Date(localToUTC(`${tradeDateET}T20:00:00`, MARKET_TZ));
+    const intervals = {
+      '1': '1min',
+      '5': '5min',
+      '15': '15min',
+      '60': '1hour',
+      D: 'daily'
+    };
+    const resolution = Object.hasOwn(intervals, requestedResolution) ? requestedResolution : '1';
+
+    if (resolution === 'D') {
+      chartFromTime = new Date(entryTime.getTime() - 30 * oneDayMs);
+      chartToTime = new Date(Math.max(entryTime.getTime(), exitTime.getTime()) + 10 * oneDayMs);
+    }
 
     console.log('Focusing chart on single trading day:', {
       tradeDate: tradeDateET,
@@ -1568,34 +1561,8 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
     });
 
     try {
-      let resolution, intervalName;
-      const chartDuration = chartToTime - chartFromTime;
-      
-      // For Pro users, prioritize high-resolution data for better trade analysis
-      // Use 1-minute data aggressively for short to medium timeframes
-      if (chartDuration <= 7 * oneDayMs) {
-        resolution = '1';
-        intervalName = '1min';
-        console.log(`Fetching 1-minute Finnhub data for ${symbol} (${Math.ceil(chartDuration / oneDayMs)} day window - high precision)`);
-      }
-      // For windows up to 30 days, use 5-minute data
-      else if (chartDuration <= 30 * oneDayMs) {
-        resolution = '5';
-        intervalName = '5min';
-        console.log(`Fetching 5-minute Finnhub data for ${symbol} (${Math.ceil(chartDuration / oneDayMs)} day chart window)`);
-      }
-      // For very large chart windows, use 15-minute data
-      else if (chartDuration <= 90 * oneDayMs) {
-        resolution = '15';
-        intervalName = '15min';
-        console.log(`Fetching 15-minute Finnhub data for ${symbol} (${Math.ceil(chartDuration / oneDayMs)} day chart window)`);
-      }
-      // For extremely large windows, use daily data
-      else {
-        resolution = 'D';
-        intervalName = 'daily';
-        console.log(`Fetching daily Finnhub data for ${symbol} (${Math.ceil(chartDuration / oneDayMs)} day chart window)`);
-      }
+      const intervalName = intervals[resolution];
+      console.log(`Fetching ${intervalName} Finnhub data for ${symbol}`);
       
       const candles = await this.getStockCandles(symbol, resolution, fromTimestamp, toTimestamp, userId);
 

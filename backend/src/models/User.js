@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const encryptionService = require('../services/brokerSync/encryptionService');
 const tierCache = require('../services/tierCache');
+const settingsCache = require('../services/settingsCache');
 const { normalizeEmail } = require('../utils/normalizeEmail');
 
 // Reset and email-verification tokens are stored as sha256 hashes so a read-only
@@ -162,21 +163,26 @@ class User {
     `;
     
     const result = await db.query(query, [userId]);
-    
+    settingsCache.invalidate(userId);
+
     // If no row was returned due to conflict, fetch the existing settings
     if (result.rows.length === 0) {
       return await this.getSettings(userId);
     }
-    
+
     return result.rows[0];
   }
 
   static async getSettings(userId) {
+    return settingsCache.getOrLoad(userId, () => this.loadSettings(userId));
+  }
+
+  static async loadSettings(userId) {
     const query = `
       SELECT * FROM user_settings
       WHERE user_id = $1
     `;
-    
+
     try {
       const result = await db.query(query, [userId]);
       const settings = decryptSettingsRow(result.rows[0]);
@@ -281,7 +287,8 @@ class User {
 
     try {
       const result = await db.query(query, values);
-      
+      settingsCache.invalidate(userId);
+
       // Log if dashboard_layout was saved
       if (settings.dashboardLayout) {
         console.log('[SETTINGS] Dashboard layout saved successfully');
@@ -330,6 +337,7 @@ class User {
           `;
           filteredValues.push(userId);
           const result = await db.query(fallbackQuery, filteredValues);
+          settingsCache.invalidate(userId);
 
           // Stop loss propagation handled by the settings controller sync
           // (see comment on the primary path above).
@@ -513,6 +521,7 @@ class User {
       RETURNING onboarding_completed_at, onboarding_step
     `;
     const result = await db.query(query, [userId]);
+    settingsCache.invalidate(userId);
     return result.rows[0];
   }
 
@@ -528,6 +537,7 @@ class User {
       RETURNING onboarding_step
     `;
     const result = await db.query(query, [userId, step]);
+    settingsCache.invalidate(userId);
     return result.rows[0];
   }
 
@@ -539,6 +549,7 @@ class User {
       RETURNING pro_onboarding_step
     `;
     const result = await db.query(query, [userId, step]);
+    settingsCache.invalidate(userId);
     return result.rows[0];
   }
 
@@ -814,6 +825,7 @@ class User {
 
       // Delete user settings
       await client.query('DELETE FROM user_settings WHERE user_id = $1', [userId]);
+      settingsCache.invalidate(userId);
 
       // Delete API keys
       await client.query('DELETE FROM api_keys WHERE user_id = $1', [userId]);

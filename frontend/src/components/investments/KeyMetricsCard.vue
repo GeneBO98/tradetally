@@ -34,6 +34,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { formatPercent as formatPercentBase } from '@/utils/formatters'
 
 const props = defineProps({
   metrics: {
@@ -65,8 +66,7 @@ function formatPrice(value) {
 }
 
 function formatPercent(decimal, digits = 2) {
-  if (decimal === null || decimal === undefined || !Number.isFinite(Number(decimal))) return 'N/A'
-  return `${(Number(decimal) * 100).toFixed(digits)}%`
+  return formatPercentBase(decimal, { digits, multiplier: 100, nullValue: 'N/A' })
 }
 
 function formatRatio(value) {

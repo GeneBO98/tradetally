@@ -2,8 +2,49 @@ const TierService = require('./tierService');
 const finnhub = require('../utils/finnhub');
 const alphaVantage = require('../utils/alphaVantage');
 const axios = require('axios');
+const { resolvePriceScale, applyPriceScale } = require('../utils/candlePriceScale');
+
+function asNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function toEpochSeconds(value) {
+  if (!value) return null;
+  if (value instanceof Date) return Math.floor(value.getTime() / 1000);
+  if (typeof value === 'number') return Math.floor(value > 1e12 ? value / 1000 : value);
+  const stringValue = String(value).trim().replace(' ', 'T');
+  const hasOffset = /(?:Z|[+-]\d{2}:?\d{2})$/.test(stringValue);
+  const milliseconds = Date.parse(hasOffset ? stringValue : `${stringValue}Z`);
+  return Number.isFinite(milliseconds) ? Math.floor(milliseconds / 1000) : null;
+}
 
 class ChartService {
+  static alignCandlesToTradePrices(chartData, trade) {
+    if (!chartData?.candles?.length || !trade) return chartData;
+
+    const instrumentType = String(trade.instrument_type || 'stock').toLowerCase();
+    if (instrumentType !== 'stock') {
+      chartData.price_scale = 1;
+      return chartData;
+    }
+
+    const fills = [];
+    const entryTime = toEpochSeconds(trade.entry_time || trade.trade_date);
+    const entryPrice = asNumber(trade.entry_price ?? trade.price);
+    if (entryTime && entryPrice !== null) fills.push({ time: entryTime, price: entryPrice });
+
+    const exitTime = toEpochSeconds(trade.exit_time);
+    const exitPrice = asNumber(trade.exit_price);
+    if (exitTime && exitPrice !== null) fills.push({ time: exitTime, price: exitPrice });
+
+    const priceScale = resolvePriceScale(chartData.candles, fills);
+    chartData.candles = applyPriceScale(chartData.candles, priceScale);
+    chartData.price_scale = priceScale;
+    return chartData;
+  }
+
   // Get crypto chart data from CoinGecko for a trade's date range
   static async getCryptoTradeChartData(symbol, entryDate, exitDate = null) {
     const symbolUpper = symbol.toUpperCase();
@@ -57,7 +98,7 @@ class ChartService {
   // Get chart data for a trade
   // When billing is enabled (tradetally.io): Finnhub only, Pro users only
   // When billing is disabled (self-hosted): configured market data provider preferred, Alpha Vantage fallback, all users
-  static async getTradeChartData(userId, symbol, entryDate, exitDate = null, hostHeader = null) {
+  static async getTradeChartData(userId, symbol, entryDate, exitDate = null, hostHeader = null, resolution = '1') {
     try {
       // Crypto symbols always use CoinGecko regardless of tier/billing
       if (finnhub.isCryptoSymbol(symbol)) {
@@ -86,14 +127,14 @@ class ChartService {
         }
 
         console.log('Using Finnhub for Pro user chart data (billing enabled)');
-        return await finnhub.getTradeChartData(symbol, entryDate, exitDate, userId);
+        return await finnhub.getTradeChartData(symbol, entryDate, exitDate, userId, resolution);
       }
 
       // Self-hosted mode: configured provider preferred with Alpha Vantage fallback
       if (isProUser && finnhub.isConfigured()) {
         console.log(`Using ${finnhub.displayName} for chart data (self-hosted)`);
         try {
-          return await finnhub.getTradeChartData(symbol, entryDate, exitDate, userId);
+          return await finnhub.getTradeChartData(symbol, entryDate, exitDate, userId, resolution);
         } catch (error) {
           console.warn(`${finnhub.displayName} failed for symbol ${symbol}: ${error.message}`);
 

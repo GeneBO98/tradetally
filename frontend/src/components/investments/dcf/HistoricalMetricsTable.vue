@@ -89,6 +89,9 @@
 </template>
 
 <script setup>
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatPercent as formatPercentBase } from '@/utils/formatters'
+
 defineProps({
   metrics: {
     type: Object,
@@ -100,29 +103,26 @@ defineProps({
   }
 })
 
+const { formatCurrency: formatCurrencyBase, currencySymbol } = useCurrencyFormatter()
+
 function formatPercent(value) {
-  if (value === null || value === undefined) return '-'
-  return (value * 100).toFixed(1) + '%'
+  return formatPercentBase(value, { digits: 1, multiplier: 100 })
 }
 
 function formatCurrency(value) {
   if (value === null || value === undefined) return 'N/A'
   // Format large numbers with abbreviations
   const absValue = Math.abs(value)
+  const sym = currencySymbol.value
   if (absValue >= 1e12) {
-    return '$' + (value / 1e12).toFixed(2) + 'T'
+    return sym + (value / 1e12).toFixed(2) + 'T'
   }
   if (absValue >= 1e9) {
-    return '$' + (value / 1e9).toFixed(2) + 'B'
+    return sym + (value / 1e9).toFixed(2) + 'B'
   }
   if (absValue >= 1e6) {
-    return '$' + (value / 1e6).toFixed(2) + 'M'
+    return sym + (value / 1e6).toFixed(2) + 'M'
   }
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
-  }).format(value)
+  return formatCurrencyBase(value, { minimumFractionDigits: 0, maximumFractionDigits: 0 })
 }
 </script>

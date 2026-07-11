@@ -292,8 +292,10 @@ import api from '@/services/api'
 import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
 import BaseSelect from '@/components/common/BaseSelect.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useAccountsStore } from '@/stores/accounts'
 
 const authStore = useAuthStore()
+const accountsStore = useAccountsStore()
 
 const loading = ref(true)
 // Full-page spinner only on first load (CLAUDE.md pattern)
@@ -378,11 +380,13 @@ async function fetchAccounts() {
   loading.value = true
   error.value = null
   try {
-    const [accountsRes, unlinkedRes] = await Promise.all([
-      api.get('/accounts'),
+    // Force-fetch through the shared store so other consumers (global account
+    // selector, cashflow, trade form) see fresh data after mutations here
+    const [storeAccounts, unlinkedRes] = await Promise.all([
+      accountsStore.fetchAccounts({ force: true }),
       api.get('/accounts/unlinked-identifiers')
     ])
-    accounts.value = accountsRes.data.data || []
+    accounts.value = storeAccounts || []
     unlinkedIdentifiers.value = unlinkedRes.data.data || []
   } catch (err) {
     console.error('Failed to fetch accounts:', err)

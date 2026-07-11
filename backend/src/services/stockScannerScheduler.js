@@ -5,12 +5,25 @@
  * Runs at 3 AM on the 1st of each quarter (Jan, Apr, Jul, Oct)
  */
 
-const cron = require('node-cron');
+const CronScheduler = require('./schedulers/CronScheduler');
 const StockScannerService = require('./stockScannerService');
 
-class StockScannerScheduler {
+class StockScannerScheduler extends CronScheduler {
   constructor() {
-    this.job = null;
+    super({
+      logPrefix: '[SCANNER SCHEDULER]',
+      // Cron expression: minute hour day-of-month month day-of-week
+      defaultCron: '0 3 1 1,4,7,10 *', // 3 AM on 1st of quarter months
+      validateExpression: false,
+      messages: {
+        startLogs: ['[SCANNER SCHEDULER] Initializing...'],
+        started: [
+          '[SCANNER SCHEDULER] Scheduled quarterly Russell 2000 scan (Jan 1, Apr 1, Jul 1, Oct 1 at 3 AM)',
+          '[SCANNER SCHEDULER] Initialized successfully'
+        ],
+        stopped: '[SCANNER SCHEDULER] Stopped quarterly scan job'
+      }
+    });
     this.enabled = true;
   }
 
@@ -20,22 +33,14 @@ class StockScannerScheduler {
    */
   initialize() {
     try {
-      console.log('[SCANNER SCHEDULER] Initializing...');
-
-      // Schedule quarterly scan at 3 AM on the 1st of Jan, Apr, Jul, Oct
-      // Cron expression: minute hour day-of-month month day-of-week
-      const cronExpression = '0 3 1 1,4,7,10 *'; // 3 AM on 1st of quarter months
-
-      this.job = cron.schedule(cronExpression, async () => {
-        await this.executeQuarterlyScan();
-      });
-
-      console.log('[SCANNER SCHEDULER] Scheduled quarterly Russell 2000 scan (Jan 1, Apr 1, Jul 1, Oct 1 at 3 AM)');
-      console.log('[SCANNER SCHEDULER] Initialized successfully');
-
+      super.start();
     } catch (error) {
       console.error('[SCANNER SCHEDULER] Error initializing:', error);
     }
+  }
+
+  onTick() {
+    return this.executeQuarterlyScan();
   }
 
   /**
@@ -56,17 +61,6 @@ class StockScannerScheduler {
 
     } catch (error) {
       console.error('[SCANNER SCHEDULER] Error during quarterly scan:', error.message);
-    }
-  }
-
-  /**
-   * Stop the scheduled job
-   */
-  stop() {
-    if (this.job) {
-      this.job.stop();
-      this.job = null;
-      console.log('[SCANNER SCHEDULER] Stopped quarterly scan job');
     }
   }
 

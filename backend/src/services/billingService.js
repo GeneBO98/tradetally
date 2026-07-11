@@ -1,6 +1,7 @@
 const db = require('../config/database');
 const TierService = require('./tierService');
 const tierCache = require('./tierCache');
+const settingsCache = require('./settingsCache');
 const User = require('../models/User');
 const EmailService = require('./emailService');
 const invoiceNinjaSyncService = require('./invoiceNinjaSyncService');
@@ -617,6 +618,7 @@ class BillingService {
           `UPDATE user_settings SET pro_onboarding_step = 1 WHERE user_id = $1 AND pro_onboarding_step = 0`,
           [userId]
         );
+        settingsCache.invalidate(userId);
       } catch (onboardErr) {
         console.log('[BILLING] Pro onboarding trigger failed (non-blocking):', onboardErr.message);
       }

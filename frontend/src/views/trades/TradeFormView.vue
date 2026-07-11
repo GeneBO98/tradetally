@@ -1508,6 +1508,7 @@
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
+import { useAccountsStore } from '@/stores/accounts'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
 import { useAnalytics } from '@/composables/useAnalytics'
@@ -3060,15 +3061,18 @@ function startAddAccount() {
 
 async function createAccountRecord(identifier) {
   try {
-    // Check if an account with this identifier already exists
-    const existing = await api.get('/accounts')
-    const accounts = existing.data.data || []
+    const accountsStore = useAccountsStore()
+
+    // Check if an account with this identifier already exists (forced fetch so
+    // the check never runs against a stale cached list)
+    const accounts = (await accountsStore.fetchAccounts({ force: true })) || []
     if (accounts.some(a => a.accountIdentifier === identifier)) {
       console.log('[TRADE FORM] Account record already exists for:', identifier)
       return
     }
 
-    await api.post('/accounts', {
+    // Store action refreshes the shared accounts cache after creation
+    await accountsStore.createAccount({
       accountName: identifier,
       accountIdentifier: identifier,
       broker: form.value.broker || null,

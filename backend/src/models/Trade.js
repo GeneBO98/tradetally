@@ -2610,125 +2610,18 @@ class Trade {
     }
   }
 
+  // Total count for the trade list's pagination. Delegates to the canonical
+  // TradeQueries._buildWhereClause so the count always agrees with the rows
+  // findByUser returns. The previous hand-rolled builder only implemented a
+  // subset of filters (and e.g. ignored pnlType='breakeven' entirely), so the
+  // "total" could wildly disagree with the trades actually listed.
   static async getCountWithFilters(userId, filters = {}) {
-    const { getUserTimezone } = require('../utils/timezone');
-    console.log('[COUNT] getCountWithFilters called with userId:', userId, 'filters:', filters);
-    
-    // Count query with optional join for sectors
-    let needsJoin = (filters.sectors && filters.sectors.length > 0) || filters.sector;
-    
-    let query = needsJoin 
-      ? `SELECT COUNT(DISTINCT t.id) as total FROM trades t LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol WHERE t.user_id = $1`
-      : `SELECT COUNT(*) as total FROM trades WHERE user_id = $1`;
-    
-    const values = [userId];
-    let paramCount = 2;
+    const TradeQueries = require('../services/tradeQueries');
+    const { whereClause, values } = await TradeQueries._buildWhereClause(userId, filters);
 
-    // Only apply the most common filters to avoid SQL errors
-    const tablePrefix = needsJoin ? 't.' : '';
-    
-    if (filters.symbol && filters.symbol.trim()) {
-      if (filters.symbolExact) {
-        query += ` AND UPPER(${tablePrefix}symbol) = $${paramCount}`;
-      } else {
-        query += ` AND ${tablePrefix}symbol ILIKE $${paramCount} || '%'`;
-      }
-      values.push(filters.symbol.toUpperCase().trim());
-      paramCount++;
-    }
-
-    if (filters.startDate && filters.startDate.trim()) {
-      query += ` AND ${tablePrefix}trade_date >= $${paramCount}`;
-      values.push(filters.startDate.trim());
-      paramCount++;
-    }
-
-    if (filters.endDate && filters.endDate.trim()) {
-      query += ` AND ${tablePrefix}trade_date <= $${paramCount}`;
-      values.push(filters.endDate.trim());
-      paramCount++;
-    }
-
-    if (filters.importId && filters.importId.trim()) {
-      query += ` AND ${tablePrefix}import_id = $${paramCount}`;
-      values.push(filters.importId.trim());
-      paramCount++;
-    }
-
-    if (filters.side && filters.side.trim()) {
-      query += ` AND ${tablePrefix}side = $${paramCount}`;
-      values.push(filters.side.trim());
-      paramCount++;
-    }
-
-    if (filters.pnlType === 'profit') {
-      query += ` AND ${tablePrefix}pnl > 0`;
-    } else if (filters.pnlType === 'loss') {
-      query += ` AND ${tablePrefix}pnl < 0`;
-    }
-
-    if (filters.status === 'pending') {
-      query += ` AND ${tablePrefix}entry_price IS NULL`;
-    } else if (filters.status === 'open') {
-      query += ` AND ${tablePrefix}entry_price IS NOT NULL AND ${tablePrefix}exit_price IS NULL`;
-    } else if (filters.status === 'closed') {
-      query += ` AND ${tablePrefix}exit_price IS NOT NULL`;
-    }
-
-    if (filters.hasNews !== undefined && filters.hasNews !== '' && filters.hasNews !== null) {
-      if (filters.hasNews === 'true' || filters.hasNews === true || filters.hasNews === 1 || filters.hasNews === '1') {
-        query += ` AND ${tablePrefix}has_news = true`;
-      } else if (filters.hasNews === 'false' || filters.hasNews === false || filters.hasNews === 0 || filters.hasNews === '0') {
-        query += ` AND (${tablePrefix}has_news = false OR ${tablePrefix}has_news IS NULL)`;
-      }
-    }
-
-    // Multi-select strategies filter for count
-    if (filters.strategies && filters.strategies.length > 0) {
-      const placeholders = filters.strategies.map((_, index) => `$${paramCount + index}`).join(',');
-      query += ` AND ${tablePrefix}strategy IN (${placeholders})`;
-      filters.strategies.forEach(strategy => values.push(strategy));
-      paramCount += filters.strategies.length;
-    } else if (filters.strategy && filters.strategy.trim()) {
-      query += ` AND ${tablePrefix}strategy = $${paramCount}`;
-      values.push(filters.strategy.trim());
-      paramCount++;
-    }
-
-    // Multi-select sectors filter for count  
-    if (filters.sectors && filters.sectors.length > 0) {
-      const sectorPlaceholders = filters.sectors.map((_, index) => `$${paramCount + index}`).join(',');
-      query += ` AND sc.finnhub_industry IN (${sectorPlaceholders})`;
-      filters.sectors.forEach(sector => values.push(sector));
-      paramCount += filters.sectors.length;
-    }
-
-    // Single sector filter for count
-    if (filters.sector && filters.sector.trim()) {
-      query += ` AND sc.finnhub_industry = $${paramCount}`;
-      values.push(filters.sector.trim());
-      paramCount++;
-    }
-
-    // Days of week filter for count (timezone-aware)
-    // "AT TIME ZONE tz" converts timestamptz from UTC to that timezone
-    if (filters.daysOfWeek && filters.daysOfWeek.length > 0) {
-      const userTimezone = await getUserTimezone(userId);
-      const placeholders = filters.daysOfWeek.map((_, index) => `$${paramCount + index}`).join(',');
-      query += ` AND extract(dow from (${tablePrefix}entry_time AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
-      filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
-      values.push(userTimezone);
-      paramCount += filters.daysOfWeek.length + 1;
-    }
-
-    console.log('[COUNT] Count query:', query);
-    console.log('[COUNT] Count values:', values);
-    
+    const query = `SELECT COUNT(*) as total FROM trades t ${whereClause}`;
     const result = await db.query(query, values);
-    const total = parseInt(result.rows[0].total) || 0;
-    
-    console.log('[COUNT] Count result:', total);
-    return total;
+    return parseInt(result.rows[0].total, 10) || 0;
   }
 
   static async getPartialExitAnalytics(userId, filters = {}) {

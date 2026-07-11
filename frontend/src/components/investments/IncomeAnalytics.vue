@@ -127,6 +127,9 @@ import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { Chart } from '@/lib/chartSetup'
 import { format } from 'date-fns'
 import { useInvestmentsStore } from '@/stores/investments'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+
+const { formatCurrency: formatCurrencyBase, currencyCode } = useCurrencyFormatter()
 
 const investmentsStore = useInvestmentsStore()
 
@@ -227,10 +230,7 @@ function createChart() {
         },
         tooltip: {
           callbacks: {
-            label: context => `${context.dataset.label}: ${new Intl.NumberFormat('en-US', {
-              style: 'currency',
-              currency: 'USD'
-            }).format(context.parsed.y)}`
+            label: context => `${context.dataset.label}: ${formatCurrencyBase(context.parsed.y)}`
           }
         }
       },
@@ -246,7 +246,7 @@ function createChart() {
             color: textColor,
             callback: value => new Intl.NumberFormat('en-US', {
               style: 'currency',
-              currency: 'USD',
+              currency: currencyCode.value,
               notation: 'compact'
             }).format(value)
           },
@@ -258,10 +258,7 @@ function createChart() {
 }
 
 function formatCurrency(value) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD'
-  }).format(value || 0)
+  return formatCurrencyBase(value || 0)
 }
 
 function formatDate(value) {
