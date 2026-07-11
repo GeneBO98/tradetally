@@ -1,7 +1,8 @@
 function hasMountedWebhooksRoute(router) {
   return (router.stack || []).some((layer) => {
     const pattern = layer?.regexp ? layer.regexp.toString() : '';
-    return pattern.includes('webhooks');
+    if (pattern.includes('webhooks')) return true;
+    return (layer?.matchers || []).some((matcher) => matcher('/webhooks'));
   });
 }
 
