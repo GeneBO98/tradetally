@@ -176,6 +176,9 @@ importers:
       dompurify:
         specifier: ^3.4.11
         version: 3.4.11
+      klinecharts:
+        specifier: 10.0.0
+        version: 10.0.0
       lightweight-charts:
         specifier: ^4.2.1
         version: 4.2.3
@@ -2362,6 +2365,9 @@ packages:
   kleur@3.0.3:
     resolution: {integrity: sha512-eTIzlVOSUR+JxdDFepEYcBMtZ9Qqdef+rnzWdRZuMbOywu5tO2w2N7rqjoANZ5k9vywhL6Br1VRjUIgTQx4E8w==}
     engines: {node: '>=6'}
+
+  klinecharts@10.0.0:
+    resolution: {integrity: sha512-njopc5Wwff83l9R750Yrj+EcmQUe7JUwN4xgmmwhUPX30jd7ZLabBQT5s2+yTaAk98MMqglCE6vqrSnek/ppbg==}
 
   lazystream@1.0.1:
     resolution: {integrity: sha512-b94GiNHQNy6JNTrt5w6zNyffMrNkXZb3KTkCZJb2V1xaEGCk093vkZ2jk3tpaeP33/OiXC+WvK9AxUebnf5nbw==}
@@ -6196,6 +6202,8 @@ snapshots:
       safe-buffer: 5.2.1
 
   kleur@3.0.3: {}
+
+  klinecharts@10.0.0: {}
 
   lazystream@1.0.1:
     dependencies:
