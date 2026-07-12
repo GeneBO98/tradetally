@@ -696,6 +696,38 @@ describe('IBKR transient error handling', () => {
     jest.restoreAllMocks();
   });
 
+  test('requestFlexReport returns the GetStatement URL supplied by IBKR', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: '<FlexStatementResponse><Status>Success</Status><ReferenceCode>REF-123</ReferenceCode><Url>https://gdcdyn.interactivebrokers.com/AccountManagement/FlexWebService/GetStatement</Url></FlexStatementResponse>'
+    });
+
+    await expect(ibkrService.requestFlexReport('token', 'query')).resolves.toEqual({
+      referenceCode: 'REF-123',
+      statementUrl: 'https://gdcdyn.interactivebrokers.com/AccountManagement/FlexWebService/GetStatement'
+    });
+  });
+
+  test('requestFlexReport falls back to ndcdyn when the response omits Url', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: '<FlexStatementResponse><Status>Success</Status><ReferenceCode>REF-123</ReferenceCode></FlexStatementResponse>'
+    });
+
+    await expect(ibkrService.requestFlexReport('token', 'query')).resolves.toMatchObject({
+      statementUrl: 'https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService/GetStatement'
+    });
+  });
+
+  test('fetchFlexReport polls the statement URL returned by SendRequest', async () => {
+    const statementUrl = 'https://gdcdyn.interactivebrokers.com/AccountManagement/FlexWebService/GetStatement';
+    axios.get.mockResolvedValueOnce({ data: 'Symbol,Quantity,Price\nAAPL,10,150.50\n' });
+
+    await ibkrService.fetchFlexReport('REF-123', 'token', { maxWait: 60000, statementUrl });
+
+    expect(axios.get).toHaveBeenCalledWith(statementUrl, expect.objectContaining({
+      params: { t: 'token', q: 'REF-123', v: '3' }
+    }));
+  });
+
   test('fetchFlexReport keeps polling when IBKR returns an unknown code with a "try again" message', async () => {
     // First poll: unknown error code with retry-hint wording. Second poll: CSV.
     axios.get
