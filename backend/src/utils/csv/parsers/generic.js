@@ -69,6 +69,7 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
       }
 
       const trade = parser(record, context);
+      const allowZeroPrice = record._allow_zero_price === true;
       const transactionPriceCandidates = [
         trade.entryPrice,
         trade.exitPrice,
@@ -79,7 +80,7 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
         trade.symbol &&
         trade.tradeDate &&
         trade.entryTime &&
-        transactionPrice > 0 &&
+        (transactionPrice > 0 || allowZeroPrice) &&
         Number(trade.quantity) > 0
       );
 

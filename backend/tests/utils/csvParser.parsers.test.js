@@ -19,6 +19,7 @@ jest.mock('../../src/utils/currencyConverter', () => ({
 }));
 
 const { parseCSV } = require('../../src/utils/csvParser');
+const calculationContracts = require('../../../tests/fixtures/trading-calculation-contracts.json');
 
 function buf(str) {
   return Buffer.from(str, 'utf-8');
@@ -724,6 +725,11 @@ describe('TradingView parser', () => {
     ].join('\n');
     const result = await parseCSV(buf(withCancelled), 'tradingview', {});
     expectValidResult(result);
+    expect(result.diagnostics.skippedRows).toBe(1);
+    expect(result.diagnostics.expected_skipped_rows).toBe(1);
+    expect(result.diagnostics.warnings).not.toEqual(expect.arrayContaining([
+      expect.stringContaining('High skip rate')
+    ]));
   });
 
   test('keeps fractional order-history quantities from creating fake short open positions', async () => {
@@ -1104,6 +1110,28 @@ describe('E*TRADE parser', () => {
     // E*TRADE uses the generic row-by-row parser; individual rows become trades
     // Each row needs symbol, date, price > 0, quantity > 0 to pass isValidTrade
     expect(result.trades.length).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('Dashboard-derived CSV import contracts', () => {
+  test.each(calculationContracts.csv_import_cases)('$id', async ({ csv, expected }) => {
+    const result = await parseCSV(buf(csv), 'auto', {
+      tradeGroupingSettings: { enabled: false }
+    });
+
+    expectValidResult(result);
+    expect(result.diagnostics.detectedBroker).toBe(expected.detected_broker);
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0]).toEqual(expect.objectContaining({
+      symbol: expected.symbol,
+      broker: expected.broker,
+      side: expected.side,
+      quantity: expected.quantity,
+      entryPrice: expected.entry_price,
+      exitPrice: expected.exit_price,
+      tradeDate: expected.trade_date,
+      instrumentType: expected.instrument_type
+    }));
   });
 });
 

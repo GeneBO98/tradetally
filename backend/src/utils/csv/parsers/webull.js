@@ -1,7 +1,7 @@
 const { isExecutionDuplicate } = require('../dedup');
 const { extractAccountFromRecord } = require('../detect');
 const { normalizeExecutionCollections } = require('../grouping');
-const { parseDate, parseDateTime, getExecutionTimeBounds, cleanString, parseInstrumentData } = require('../shared');
+const { parseDate, parseDateTime, getExecutionTimeBounds, cleanString, parseInstrumentData, parseNumeric } = require('../shared');
 
 
 /**
@@ -38,22 +38,35 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
   for (const record of records) {
     try {
       // Get symbol from Symbol column (full option symbol like SPY251114C00672000)
-      const symbol = cleanString(record.Symbol || record.symbol);
+      const combinedSymbolAndName = cleanString(record['Symbol & Name']);
+      const symbol = cleanString(record.Symbol || record.symbol || combinedSymbolAndName.split(/\s+/)[0]);
       // Support both formats: "Side" (old) and "B/S" (alternate)
-      const sideRaw = cleanString(record.Side || record.side || record['B/S'] || record['b/s']);
+      const sideRaw = cleanString(record.Side || record.side || record['B/S'] || record['b/s'] || record['Buy/Sell']);
       const side = sideRaw.toLowerCase();
       const status = cleanString(record.Status || record.status);
       // Support both "Filled" (old) and "Filled Qty" (alternate)
-      const filled = parseInt(record.Filled || record.filled || record['Filled Qty'] || record['filled qty'] || 0);
+      const filled = Math.abs(parseNumeric(
+        record.Filled || record.filled || record['Filled Qty'] || record['filled qty'] || record.Quantity || 0
+      ));
       // Support both "Avg Price" (old) and "Filled Avg Price" / "Filled AVG Price" (alternate, may have $ prefix)
-      const priceRaw = cleanString(record['Avg Price'] || record['avg price'] || record['Filled Avg Price'] || record['filled avg price'] || record['Filled AVG Price'] || record.Price || record.price || '0');
-      const price = parseFloat(priceRaw.replace(/^\$/, ''));
-      const filledTime = record['Filled Time'] || record['filled time'] || record['Fill Time'] || record['fill time'] || '';
+      const priceRaw = cleanString(record['Avg Price'] || record['avg price'] || record['Filled Avg Price'] || record['filled avg price'] || record['Filled AVG Price'] || record['Traded Price'] || record['Trade Price'] || record.Price || record.price || '0');
+      const price = parseNumeric(priceRaw, 0);
+      const rawTradeDateValue = cleanString(record['Trade Date']);
+      const internationalDateMatch = rawTradeDateValue.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      const tradeDateValue = internationalDateMatch && record['Buy/Sell']
+        ? `${internationalDateMatch[2].padStart(2, '0')}/${internationalDateMatch[1].padStart(2, '0')}/${internationalDateMatch[3]}`
+        : rawTradeDateValue;
+      const tradeTime = cleanString(record.Time);
+      const filledTime = record['Filled Time'] || record['filled time'] || record['Fill Time'] || record['fill time'] ||
+        (tradeDateValue ? `${tradeDateValue}${tradeTime ? ` ${tradeTime}` : ''}` : '');
 
       const diag = context.diagnostics;
 
       // Determine if this is the alternate format (no Status column, uses B/S + Side Type)
-      const isAlternateFormat = !!(record['B/S'] || record['b/s'] || record['Side Type'] || record['side type']);
+      const isAlternateFormat = !!(
+        record['B/S'] || record['b/s'] || record['Side Type'] || record['side type'] ||
+        record['Buy/Sell'] || record['Traded Price'] || record['Trade Price']
+      );
 
       // Only process filled orders (skip status check for alternate format which has no Status column)
       if (!isAlternateFormat && (status.toLowerCase() !== 'filled' || filled === 0)) {
@@ -138,11 +151,11 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
 
       // Parse fees - alternate format has Commission, Fee, Platform Fee, GST columns (may have $ prefix)
       const commissionRaw = cleanString(record.Commission || record.commission || '0');
-      const feeRaw = cleanString(record.Fee || record.fee || '0');
+      const feeRaw = cleanString(record.Fee || record.fee || record['Comm/Fee/Tax'] || '0');
       const platformFeeRaw = cleanString(record['Platform Fee'] || record['platform fee'] || '0');
-      const gstRaw = cleanString(record.GST || record.gst || '0');
-      const totalFees = parseFloat(commissionRaw.replace(/^\$/, '')) + parseFloat(feeRaw.replace(/^\$/, ''))
-        + parseFloat(platformFeeRaw.replace(/^\$/, '')) + parseFloat(gstRaw.replace(/^\$/, ''));
+      const gstRaw = cleanString(record.GST || record.gst || record.VAT || '0');
+      const totalFees = Math.abs(parseNumeric(commissionRaw, 0)) + Math.abs(parseNumeric(feeRaw, 0))
+        + Math.abs(parseNumeric(platformFeeRaw, 0)) + Math.abs(parseNumeric(gstRaw, 0));
 
       transactions.push({
         symbol,

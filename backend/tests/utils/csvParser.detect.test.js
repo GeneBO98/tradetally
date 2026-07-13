@@ -111,6 +111,21 @@ describe('detectBrokerFormat', () => {
     expect(detectBrokerFormat(buf(csv))).toBe('etrade');
   });
 
+  test('detects E*TRADE detailed activity history', () => {
+    const csv = 'Activity/Trade Date,Transaction Date,Settlement Date,Activity Type,Description,Symbol,Cusip,Quantity #,Price $,Amount $,Commission,Category,Note\n07/10/26,07/10/26,07/13/26,Bought To Open,PUT MDB 07/17/26 312.500,MDB,--,5,2.18,-1091.81,1.81,--,--';
+    expect(detectBrokerFormat(buf(csv))).toBe('etrade');
+  });
+
+  test('detects Fidelity account history', () => {
+    const csv = 'Run Date,Account,Account Number,Action,Symbol,Description,Type,Price ($),Quantity,Commission ($),Fees ($),Amount ($),Settlement Date\n07-07-2026,ROTH IRA,123,YOU SOLD AAPL,AAPL,APPLE INC,Cash,155,-10,0,0,1550,07-08-2026';
+    expect(detectBrokerFormat(buf(csv))).toBe('fidelity');
+  });
+
+  test('detects ProjectX completed order rows', () => {
+    const csv = 'order_id,account_id,order_date,qty_sent,qty_done,price_done,last_time,account_type,symbol,trading_symbol,account,id,formattedDate\n1,2,2026-07-09,1,1,29684.25,2026-07-09T13:30:00Z,APEX,CM.MNQU6,CM.MNQU6,acct,1,07/09/2026';
+    expect(detectBrokerFormat(buf(csv))).toBe('projectx_orders');
+  });
+
   test('detects Firstrade format', () => {
     const csv = 'Symbol,Quantity,Price,Action,Description,TradeDate,SettledDate,Interest,Amount,Commission,Fee,CUSIP,RecordType\nSPY,1,600.00,BUY,SPDR S&P 500 ETF TRUST,2025-02-10,2025-02-11,0.00,-600.00,0.00,0.00,78462F103,Trade';
     expect(detectBrokerFormat(buf(csv))).toBe('firstrade');
@@ -123,6 +138,11 @@ describe('detectBrokerFormat', () => {
 
   test('detects Webull alternate format', () => {
     const csv = 'Symbol,B/S,Side Type,Qty,Filled Qty,Filled Avg Price,Filled Time,Status\nAAPL,Buy,Long,100,100,150.00,01/01/2025 09:30,Filled';
+    expect(detectBrokerFormat(buf(csv))).toBe('webull');
+  });
+
+  test('detects Webull international trade record', () => {
+    const csv = 'Symbol & Name,Trade Date,Settlement Date,Buy/Sell,Quantity,Traded Price,Gross Amount,Comm/Fee/Tax,VAT,Net Amount\nGLW CORNING INC,30/06/2026,01/07/2026,SELL,1,254,254,-0.27,-0.02,253.71';
     expect(detectBrokerFormat(buf(csv))).toBe('webull');
   });
 

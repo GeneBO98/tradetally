@@ -139,6 +139,7 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
         console.log(`Skipping non-filled order: ${statusRaw}`);
         if (diagnostics) {
           diagnostics.skippedRows++;
+          diagnostics.expected_skipped_rows = (diagnostics.expected_skipped_rows || 0) + 1;
           // Provide clear, user-friendly skip reasons
           let reason;
           if (!status) {

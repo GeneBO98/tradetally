@@ -18,6 +18,7 @@ const { parseTradervueCompletedTrades } = require('./parsers/tradervue');
 const { hasTradingViewOrderHistoryHeaders, parseTradingViewTransactions, parseTradingViewPaperTrades } = require('./parsers/tradingview');
 const { parseTradovatePerformanceReport, parseTradovateTransactions } = require('./parsers/tradovate');
 const { parseWebullTransactions } = require('./parsers/webull');
+const { normalizeSupportedBrokerRows } = require('./parsers/normalizedBrokerRows');
 const { parseDate, extractDateFromFilename, parseDateTime, parseSide, normalizePositionQuantity, normalizeRecord, parseInstrumentData, parseNumeric, isValidTrade, cleanString, parseInteger } = require('./shared');
 
 
@@ -35,6 +36,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     totalRows: 0,           // Total CSV rows (excluding header)
     parsedRows: 0,          // Rows successfully parsed
     skippedRows: 0,         // Rows intentionally skipped (wrong type, etc.)
+    expected_skipped_rows: 0, // Non-executed rows such as cancelled/pending orders
     invalidRows: 0,         // Rows with validation errors
     skippedReasons: [],     // Array of { row: number, reason: string }
     warnings: [],           // Non-fatal issues
@@ -736,6 +738,29 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     } else if (context.selectedAccountId) {
       // User manually selected an account during import
       console.log(`[ACCOUNT] Using manually selected account: ${context.selectedAccountId}`);
+    }
+
+    if (['etrade', 'fidelity', 'projectx_orders'].includes(broker)) {
+      console.log(`Starting normalized ${broker} transaction parsing`);
+      const normalized = normalizeSupportedBrokerRows(records, broker);
+      diagnostics.skippedRows += normalized.ignored.length;
+      diagnostics.expected_skipped_rows += normalized.ignored.length;
+      diagnostics.skippedReasons.push(...normalized.ignored);
+
+      const result = await parseGenericTransactions(
+        normalized.records,
+        existingPositions,
+        null,
+        context
+      );
+
+      const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
+      const finalTrades = tradeGroupingSettings.enabled && result.length > 0
+        ? applyTradeGrouping(result, tradeGroupingSettings)
+        : result;
+
+      console.log(`Finished normalized ${broker} transaction parsing`);
+      return wrapResultWithDiagnostics(finalTrades, diagnostics, [], userTimezone);
     }
 
     if (broker === 'lightspeed') {

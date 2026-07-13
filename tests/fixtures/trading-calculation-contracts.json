@@ -246,6 +246,98 @@
       "win_rate_excluding_breakeven": 100
     }
   },
+  "csv_import_cases": [
+    {
+      "id": "etrade_detailed_activity_option_round_trip",
+      "csv": "Activity/Trade Date,Transaction Date,Settlement Date,Activity Type,Description,Symbol,Cusip,Quantity #,Price $,Amount $,Commission,Category,Note\n07/10/26,07/10/26,07/13/26,Bought To Open,PUT  MDB    07/17/26   312.500,MDB,--,5,2.18,-1091.81,1.81,--,--\n07/11/26,07/11/26,07/14/26,Sold To Close,PUT  MDB    07/17/26   312.500,MDB,--,-5,3.00,1498.19,1.81,--,--",
+      "expected": {
+        "detected_broker": "etrade",
+        "symbol": "MDB260717P00312500",
+        "broker": "etrade",
+        "side": "long",
+        "quantity": 5,
+        "entry_price": 2.18,
+        "exit_price": 3,
+        "trade_date": "2026-07-10",
+        "instrument_type": "option"
+      }
+    },
+    {
+      "id": "etrade_suffixed_headers_option_round_trip",
+      "csv": "Transaction Date,Transaction Type,Description,Symbol,Quantity #,Price $,Amount $,Commission\n07/10/26,Bought To Open,PUT  MDB    07/17/26   312.500,MDB,5,2.18,-1091.81,1.81\n07/11/26,Sold To Close,PUT  MDB    07/17/26   312.500,MDB,-5,3.00,1498.19,1.81",
+      "expected": {
+        "detected_broker": "etrade",
+        "symbol": "MDB260717P00312500",
+        "broker": "etrade",
+        "side": "long",
+        "quantity": 5,
+        "entry_price": 2.18,
+        "exit_price": 3,
+        "trade_date": "2026-07-10",
+        "instrument_type": "option"
+      }
+    },
+    {
+      "id": "fidelity_account_history_option_round_trip",
+      "csv": "Run Date,Account,Account Number,Action,Symbol,Description,Type,Price ($),Quantity,Commission ($),Fees ($),Accrued Interest ($),Amount ($),Settlement Date\n07-06-2026,ROTH IRA,245259961,YOU BOUGHT OPENING TRANSACTION PUT (NVDA),-NVDA260710P195,PUT (NVDA) JUL 10 26 $195,Cash,1.96,2,1.30,0.03,, -393.25,07-07-2026\n07-07-2026,ROTH IRA,245259961,YOU SOLD CLOSING TRANSACTION PUT (NVDA),-NVDA260710P195,PUT (NVDA) JUL 10 26 $195,Cash,2.49,-2,1.30,0.05,,496.65,07-08-2026",
+      "expected": {
+        "detected_broker": "fidelity",
+        "symbol": "NVDA260710P00195000",
+        "broker": "fidelity",
+        "side": "long",
+        "quantity": 2,
+        "entry_price": 1.96,
+        "exit_price": 2.49,
+        "trade_date": "2026-07-06",
+        "instrument_type": "option"
+      }
+    },
+    {
+      "id": "papermoney_four_digit_year_round_trip",
+      "csv": "Exec Time,Spread,Side,Qty,Pos Effect,Symbol,Exp,Strike,Type,Price,Net Price,Order Type\n6/16/2026 13:45,STOCK,BUY,10,TO OPEN,OBAI,,,STOCK,1.02,1.02,LMT\n6/16/2026 13:54,STOCK,SELL,-10,TO CLOSE,OBAI,,,STOCK,1.04,1.04,LMT",
+      "expected": {
+        "detected_broker": "papermoney",
+        "symbol": "OBAI",
+        "broker": "papermoney",
+        "side": "long",
+        "quantity": 10,
+        "entry_price": 1.02,
+        "exit_price": 1.04,
+        "trade_date": "2026-06-16",
+        "instrument_type": "stock"
+      }
+    },
+    {
+      "id": "webull_international_combined_symbol_round_trip",
+      "csv": "Symbol & Name,Trade Date,Settlement Date,Buy/Sell,Quantity,Traded Price,Gross Amount,Comm/Fee/Tax,VAT,Net Amount\nGLW CORNING INC,30/06/2026,01/07/2026,BUY,1,250.00,250.00,-0.27,-0.02,-250.29\nGLW CORNING INC,01/07/2026,02/07/2026,SELL,1,254.00,254.00,-0.27,-0.02,253.71",
+      "expected": {
+        "detected_broker": "webull",
+        "symbol": "GLW",
+        "broker": "webull",
+        "side": "long",
+        "quantity": 1,
+        "entry_price": 250,
+        "exit_price": 254,
+        "trade_date": "2026-06-30",
+        "instrument_type": "stock"
+      }
+    },
+    {
+      "id": "projectx_completed_order_rows",
+      "csv": "order_id,account_id,order_date,qty_sent,qty_done,price_done,last_time,stop_kind,stop_follow_tick,stop_trigger_tick,account_type,symbol,trading_symbol,account,id,formattedDate\nopen,1827502,Thu Jul 09 2026 16:30:30 GMT+0300,10,10,29684.25,Thu Jul 09 2026 16:30:30 GMT+0300,,,,APEX,CM.MNQU6,CM.MNQU6,APEX-574996-04,open,07/09/2026\nclose,1827502,Thu Jul 09 2026 16:35:30 GMT+0300,-10,-10,29699.25,Thu Jul 09 2026 16:35:30 GMT+0300,,,,APEX,CM.MNQU6,CM.MNQU6,APEX-574996-04,close,07/09/2026",
+      "expected": {
+        "detected_broker": "projectx_orders",
+        "symbol": "MNQU6",
+        "broker": "projectx",
+        "side": "long",
+        "quantity": 10,
+        "entry_price": 29684.25,
+        "exit_price": 29699.25,
+        "trade_date": "2026-07-09",
+        "instrument_type": "future"
+      }
+    }
+  ],
   "r_value": {
     "documented_weighted_target_example": {
       "trade": {

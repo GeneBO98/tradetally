@@ -158,7 +158,7 @@ const brokerParsers = {
       takeProfit: takeProfit,
       notes: notes,
       pnl: parseNumeric(row['Net $'] || row.Net || row.PnL || row.pnl || row['P&L'] || row.Profit, null),
-      broker: 'generic'
+      broker: cleanString(row.Broker || row.broker) || 'generic'
     };
   },
 
@@ -392,12 +392,14 @@ const brokerParsers = {
     let entryTime = null;
     if (execTime) {
       // Convert MM/DD/YY format to full date
-      const dateMatch = execTime.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})\s+(.+)$/);
+      const dateMatch = execTime.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})\s+(.+)$/);
       if (dateMatch) {
         const [_, month, day, year, time] = dateMatch;
         // Smart year conversion: assume 00-49 is 2000-2049, 50-99 is 1950-1999
         const yearNum = parseInt(year);
-        const fullYear = yearNum < 50 ? 2000 + yearNum : 1900 + yearNum;
+        const fullYear = year.length === 4
+          ? yearNum
+          : (yearNum < 50 ? 2000 + yearNum : 1900 + yearNum);
         const fullDate = `${month}/${day}/${fullYear} ${time}`;
         tradeDate = parseDate(fullDate);
         entryTime = parseDateTime(fullDate);

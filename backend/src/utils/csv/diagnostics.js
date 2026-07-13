@@ -81,9 +81,13 @@ function buildDiagnosticSummary(diagnostics, context = {}) {
   const headers = diagnostics.headerAnalysis?.foundHeaders || [];
   const reasonBreakdown = buildReasonBreakdown(diagnostics.skippedReasons);
   const topReason = reasonBreakdown[0]?.reason || '';
+  const actionableSkippedRows = Math.max(
+    0,
+    diagnostics.skippedRows - (diagnostics.expected_skipped_rows || 0)
+  );
   const allRowsSkipped = diagnostics.parsedRows === 0 && (diagnostics.invalidRows + diagnostics.skippedRows) >= diagnostics.totalRows;
   const skipRate = diagnostics.totalRows > 0
-    ? ((diagnostics.skippedRows + diagnostics.invalidRows) / diagnostics.totalRows) * 100
+    ? ((actionableSkippedRows + diagnostics.invalidRows) / diagnostics.totalRows) * 100
     : 0;
   const recognizedBroker = diagnostics.detectedBroker || diagnostics.headerAnalysis?.recognizedAs || 'generic';
   const dateHeadersPresent = hasDateLikeHeader(headers);
@@ -125,7 +129,7 @@ function buildDiagnosticSummary(diagnostics, context = {}) {
   if (skipRate >= 50 && diagnostics.parsedRows > 0) {
     return {
       title: 'Import completed, but many rows could not be used.',
-      body: `TradeTally imported ${diagnostics.parsedRows} trades, but skipped ${(diagnostics.skippedRows + diagnostics.invalidRows)} of ${diagnostics.totalRows} rows.`,
+      body: `TradeTally imported ${diagnostics.parsedRows} trades, but could not use ${(actionableSkippedRows + diagnostics.invalidRows)} of ${diagnostics.totalRows} rows.`,
       steps: [
         'Review skipped row details to see whether non-trade rows are mixed into the file.',
         'Filter the export to executions, fills, or transactions only.',
@@ -153,7 +157,11 @@ function wrapResultWithDiagnostics(trades, diagnostics, unresolvedCusips = [], u
 
   // Calculate skip rate
   if (diagnostics.totalRows > 0) {
-    const skipRate = ((diagnostics.skippedRows + diagnostics.invalidRows) / diagnostics.totalRows) * 100;
+    const actionableSkippedRows = Math.max(
+      0,
+      diagnostics.skippedRows - (diagnostics.expected_skipped_rows || 0)
+    );
+    const skipRate = ((actionableSkippedRows + diagnostics.invalidRows) / diagnostics.totalRows) * 100;
     if (skipRate > 50) {
       diagnostics.warnings.push(`High skip rate: ${skipRate.toFixed(1)}% of rows were skipped or invalid`);
     }

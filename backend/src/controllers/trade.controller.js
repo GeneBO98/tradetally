@@ -2150,9 +2150,15 @@ const tradeController = {
               }
             }
 
-            // Track high skip rate scenario (>50% rows skipped)
+            // Track high skip rate scenario (>50% actionable rows skipped).
+            // Cancelled, pending, and other intentionally non-executed orders
+            // remain visible in diagnostics but should not create parser alerts.
+            const actionableSkippedRows = Math.max(
+              0,
+              parseDiagnostics.skippedRows - (parseDiagnostics.expected_skipped_rows || 0)
+            );
             const skipRate = parseDiagnostics.totalRows > 0
-              ? ((parseDiagnostics.skippedRows + parseDiagnostics.invalidRows) / parseDiagnostics.totalRows) * 100
+              ? ((actionableSkippedRows + parseDiagnostics.invalidRows) / parseDiagnostics.totalRows) * 100
               : 0;
             if (skipRate > 50 && trades.length > 0) {
               try {
@@ -2533,6 +2539,7 @@ const tradeController = {
               totalRows: parseDiagnostics.totalRows,
               parsedRows: parseDiagnostics.parsedRows,
               skippedRows: parseDiagnostics.skippedRows,
+              expected_skipped_rows: parseDiagnostics.expected_skipped_rows || 0,
               invalidRows: parseDiagnostics.invalidRows,
               skippedReasons: parseDiagnostics.skippedReasons?.slice(0, 50) || [], // Limit to first 50 skip reasons
               warnings: parseDiagnostics.warnings || [],

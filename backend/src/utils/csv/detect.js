@@ -752,10 +752,31 @@ function detectBrokerFormat(fileBuffer) {
       return 'ibkr';
     }
 
-    // E*TRADE detection - Transaction Date + Transaction Type is unique to E*TRADE
-    if (headers.includes('transaction date') && headers.includes('transaction type')) {
+    // E*TRADE detection. Detailed account-history exports use Activity Type and
+    // Activity/Trade Date, while the compact export uses Transaction Type.
+    if ((headers.includes('transaction date') && headers.includes('transaction type')) ||
+        (headers.includes('activity/trade date') && headers.includes('activity type') &&
+         headers.includes('quantity #') && headers.includes('price $'))) {
       console.log('[AUTO-DETECT] Detected: E*TRADE');
       return 'etrade';
+    }
+
+    // Fidelity account history export. Action values contain phrases such as
+    // "YOU BOUGHT" and "YOU SOLD", and Price/Commission/Fees use ($) suffixes.
+    if (headers.includes('run date') && headers.includes('account number') &&
+        headers.includes('action') && headers.includes('price ($)') &&
+        headers.includes('quantity')) {
+      console.log('[AUTO-DETECT] Detected: Fidelity account history');
+      return 'fidelity';
+    }
+
+    // ProjectX-derived order export used by several prop firms. Only completed
+    // rows with qty_done and price_done are imported.
+    if (headers.includes('order_id') && headers.includes('account_id') &&
+        headers.includes('qty_done') && headers.includes('price_done') &&
+        headers.includes('trading_symbol')) {
+      console.log('[AUTO-DETECT] Detected: ProjectX completed orders');
+      return 'projectx_orders';
     }
 
     // Firstrade detection - account history export
@@ -789,6 +810,17 @@ function detectBrokerFormat(fileBuffer) {
         headers.includes('filled qty') && headers.includes('filled avg price') &&
         headers.includes('fill time') && headers.includes('symbol')) {
       console.log('[AUTO-DETECT] Detected: Webull (newer format)');
+      return 'webull';
+    }
+
+    // Webull international trade-record export with a distinctive combined
+    // Symbol & Name column. Do not claim the split Symbol/Name + Trade Price
+    // layout here because Tiger Brokers uses that signature and is correctly
+    // handled by the generic parser's timezone-aware mapping.
+    if (headers.includes('symbol & name') && headers.includes('traded price') &&
+        headers.includes('trade date') && headers.includes('buy/sell') &&
+        headers.includes('quantity')) {
+      console.log('[AUTO-DETECT] Detected: Webull international trade record');
       return 'webull';
     }
 
