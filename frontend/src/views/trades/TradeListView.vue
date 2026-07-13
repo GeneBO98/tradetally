@@ -327,11 +327,11 @@
               </div>
             <span class="px-2 py-1 text-xs font-semibold rounded-full"
               :class="[
-                trade.exit_price
+                !isTradeOpen(trade)
                   ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
                   : 'bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400'
               ]">
-              {{ trade.exit_price ? 'Closed' : 'Open' }}
+              {{ isTradeOpen(trade) ? 'Open' : 'Closed' }}
             </span>
           </div>
           
@@ -351,7 +351,7 @@
             <div>
               <div class="text-gray-500 dark:text-gray-400">Exit</div>
               <div class="text-gray-900 dark:text-white">
-                {{ trade.exit_price ? formatTradeCurrency(trade.exit_price, trade) : '-' }}
+                {{ trade.exit_price !== null && trade.exit_price !== undefined ? formatTradeCurrency(trade.exit_price, trade) : '-' }}
               </div>
             </div>
             <div>
@@ -590,7 +590,7 @@
                 <td v-else-if="column.visible && column.key === 'exit'" 
                     :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']" 
                     @click="$router.push(`/trades/${trade.id}`)">
-                  {{ trade.exit_price ? formatTradeCurrency(trade.exit_price, trade) : '-' }}
+                  {{ trade.exit_price !== null && trade.exit_price !== undefined ? formatTradeCurrency(trade.exit_price, trade) : '-' }}
                 </td>
 
                 <!-- Net P&L Column -->
@@ -685,11 +685,11 @@
                     @click="$router.push(`/trades/${trade.id}`)">
                   <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
                     :class="[
-                      trade.exit_price
+                      !isTradeOpen(trade)
                         ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
                         : 'bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400'
                     ]">
-                    {{ trade.exit_price ? 'Closed' : 'Open' }}
+                    {{ isTradeOpen(trade) ? 'Open' : 'Closed' }}
                   </span>
                 </td>
                 

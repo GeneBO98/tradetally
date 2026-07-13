@@ -80,6 +80,32 @@
       }
     },
     {
+      "id": "short_option_expired_worthless",
+      "description": "A zero exit price remains a valid close for a short option that expired worthless.",
+      "input": {
+        "side": "short",
+        "instrumentType": "option",
+        "contractSize": 100,
+        "timezone": "UTC",
+        "executions": [
+          { "entryPrice": 0.1, "exitPrice": 0, "quantity": 1, "commission": 0.5, "fees": 0.02, "entryTime": "2026-02-13T15:30:00Z", "exitTime": "2026-02-20T21:00:00Z" }
+        ]
+      },
+      "expected": {
+        "aggregate": {
+          "entry_price": 0.1,
+          "exit_price": 0,
+          "quantity": 1,
+          "commission": 0.5,
+          "fees": 0.02,
+          "pnl": 9.48,
+          "pnl_percent": 94.8,
+          "is_fully_closed": true
+        },
+        "realized_pnl": [9.48]
+      }
+    },
+    {
       "id": "future_point_value",
       "description": "Futures trades multiply price movement by point value.",
       "input": {

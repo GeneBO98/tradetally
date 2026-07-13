@@ -1526,6 +1526,7 @@ import { useHiddenDropdownItems } from '@/composables/useHiddenDropdownItems'
 import { useStrategyOrder } from '@/composables/useStrategyOrder'
 import { useSetupOrder } from '@/composables/useSetupOrder'
 import { CURRENCY_OPTIONS } from '@/composables/useCurrencyFormatter'
+import { parseNullableNumber } from '@/utils/numbers'
 
 // Load section preferences from localStorage
 const defaultSectionPrefs = {
@@ -2183,7 +2184,13 @@ async function loadTrade() {
                 side: execSideValue,
                 quantity: exec.quantity != null ? Number(exec.quantity) : '',
                 entryPrice: exec.entryPrice != null ? Number(exec.entryPrice) : '',
-                exitPrice: exec.exitPrice != null ? Number(exec.exitPrice) : null,
+                exitPrice: (() => {
+                  const value = exec.exitPrice ?? exec.exit_price
+                  if (value != null) return Number(value)
+
+                  const hasExitTime = exec.exitTime ?? exec.exit_time
+                  return hasExitTime && Number(tradeData.exit_price) === 0 ? 0 : null
+                })(),
                 entryTime: exec.entryTime ? formatDateTimeLocal(exec.entryTime) : (exec.entry_time ? formatDateTimeLocal(exec.entry_time) : (tradeData.entry_time ? formatDateTimeLocal(tradeData.entry_time) : '')),
                 exitTime: exec.exitTime ? formatDateTimeLocal(exec.exitTime) : null,
                 commission: execCommission,
@@ -2385,7 +2392,7 @@ async function handleSubmit(opts = {}) {
     let calculatedEntryTime = form.value.entryTime
     let calculatedExitTime = form.value.exitTime
     let calculatedEntryPrice = parseFloat(form.value.entryPrice) || 0
-    let calculatedExitPrice = form.value.exitPrice ? parseFloat(form.value.exitPrice) : null
+    let calculatedExitPrice = parseNullableNumber(form.value.exitPrice)
     // Commission/fees: positive = fee paid, negative = rebate received
     let calculatedCommission = (parseFloat(form.value.entryCommission) || 0) + (parseFloat(form.value.exitCommission) || 0)
     let calculatedFees = parseFloat(form.value.fees) || 0
@@ -2404,7 +2411,7 @@ async function handleSubmit(opts = {}) {
               side: execSideValue,
               quantity: parseFloat(exec.quantity),
               entryPrice: parseFloat(exec.entryPrice),
-              exitPrice: exec.exitPrice ? parseFloat(exec.exitPrice) : null,
+              exitPrice: parseNullableNumber(exec.exitPrice),
               entryTime: toUTC(exec.entryTime),
               exitTime: exec.exitTime ? toUTC(exec.exitTime) : null,
               commission: parseFloat(exec.commission) || 0,  // Can be negative for rebates
