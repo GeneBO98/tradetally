@@ -131,11 +131,11 @@ Comprehensive documentation is available at [docs.tradetally.io](https://docs.tr
 
 ## Star History
 
-<a href="https://star-history.com/#GeneBO98/tradetally&Date">
+<a href="https://www.star-history.com/?repos=GeneBO98%2Ftradetally&type=timeline&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=GeneBO98/tradetally&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=GeneBO98/tradetally&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=GeneBO98/tradetally&type=Date" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=GeneBO98/tradetally&type=timeline&theme=dark&legend=top-left&sealed_token=UBS6k8qjb3D-uRMAgHc0NQkGrVJ-Bhb9yf53ssS5GlWKUy7r6k7C2lhVCRBFD9NdN49PB80ZBkffU7mzOBv2CeVpxPVo_h-IfV-cIOwGkOa6JAV0ZFFoYIWZ2lNfqZKB-2c_jxULCr20Rw8arixBstPcYXdVuWV3YxxYf7rKjQiNjTOLfAwbKAjUuEyN" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=GeneBO98/tradetally&type=timeline&legend=top-left&sealed_token=UBS6k8qjb3D-uRMAgHc0NQkGrVJ-Bhb9yf53ssS5GlWKUy7r6k7C2lhVCRBFD9NdN49PB80ZBkffU7mzOBv2CeVpxPVo_h-IfV-cIOwGkOa6JAV0ZFFoYIWZ2lNfqZKB-2c_jxULCr20Rw8arixBstPcYXdVuWV3YxxYf7rKjQiNjTOLfAwbKAjUuEyN" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=GeneBO98/tradetally&type=timeline&legend=top-left&sealed_token=UBS6k8qjb3D-uRMAgHc0NQkGrVJ-Bhb9yf53ssS5GlWKUy7r6k7C2lhVCRBFD9NdN49PB80ZBkffU7mzOBv2CeVpxPVo_h-IfV-cIOwGkOa6JAV0ZFFoYIWZ2lNfqZKB-2c_jxULCr20Rw8arixBstPcYXdVuWV3YxxYf7rKjQiNjTOLfAwbKAjUuEyN" />
  </picture>
 </a>
 
