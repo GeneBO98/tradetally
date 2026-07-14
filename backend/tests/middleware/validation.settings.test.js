@@ -25,6 +25,25 @@ describe('settings validation', () => {
     expect(value.defaultStopLossType).toBe('dollar');
   });
 
+  test('accepts a dollar breakeven tolerance update', () => {
+    const payload = {
+      breakeven_tolerance_mode: 'dollars',
+      breakeven_tolerance_dollars: 12.5
+    };
+    const { error, value } = schemas.updateSettings.validate(payload);
+
+    expect(error).toBeUndefined();
+    expect(value).toEqual(payload);
+  });
+
+  test('rejects an unsupported breakeven tolerance mode', () => {
+    const { error } = schemas.updateSettings.validate({
+      breakeven_tolerance_mode: 'percent'
+    });
+
+    expect(error).toBeDefined();
+  });
+
   test.each(['deepseek', 'kimi'])('accepts %s as an admin AI provider', (provider) => {
     const { error, value } = schemas.adminAiSettings.validate({
       aiProvider: provider,

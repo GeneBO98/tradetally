@@ -471,6 +471,22 @@ describe('TradeQueries.getAnalytics characterization', () => {
       expect(dailyWinRateSql).toContain('ROUND(pnl::numeric, 2)');
     });
 
+    test('grouping on: dollar tolerance uses combined gross P&L', async () => {
+      User.getSettings.mockResolvedValueOnce({
+        statistics_calculation: 'average',
+        analytics_position_grouping: true,
+        breakeven_tolerance_mode: 'dollars',
+        breakeven_tolerance_dollars: 10
+      });
+      await TradeQueries.getAnalytics('user-1', {});
+
+      const analyticsSql = sqlAt(1);
+      const dailyWinRateSql = sqlAt(4);
+      expect(analyticsSql).toContain('ABS((trade_pnl + trade_costs)) <= (10)');
+      expect(dailyWinRateSql).toContain('as gross_pnl');
+      expect(dailyWinRateSql).toContain('ABS(gross_pnl) <= (10)');
+    });
+
     test('grouping on: symbol breakdown rolls legs up under the underlying', async () => {
       User.getSettings.mockResolvedValueOnce({
         statistics_calculation: 'average',

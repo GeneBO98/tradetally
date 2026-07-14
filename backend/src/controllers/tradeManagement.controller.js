@@ -12,7 +12,7 @@ const TargetHitAnalysisService = require('../services/targetHitAnalysisService')
 const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('../utils/futuresUtils');
 const { parseTradeFilters, tradeFilterProfiles } = require('../utils/tradeFilters');
 const { uuidv4 } = require('../utils/uuid');
-const { getBreakevenToleranceConfig, breakevenPredicate } = require('../utils/breakeven');
+const { getBreakevenToleranceConfig, breakevenPredicate, isBreakevenGrossPnl } = require('../utils/breakeven');
 const { POSITION_GROUP_KEY } = require('../utils/positionGrouping');
 
 /**
@@ -843,7 +843,7 @@ function calculateTradeR(trade) {
   return result;
 }
 
-function buildRPerformanceGroups(rows, groupByPosition) {
+function buildRPerformanceGroups(rows, groupByPosition, breakevenConfig) {
   if (!groupByPosition) {
     return rows.map(row => ({
       id: row.id,
@@ -865,6 +865,7 @@ function buildRPerformanceGroups(rows, groupByPosition) {
         symbol: row.position_symbol || row.underlying_symbol || row.symbol,
         trade_date: row.trade_date,
         pnl: 0,
+        gross_pnl: 0,
         is_breakeven: false,
         position_legs: []
       });
@@ -872,14 +873,22 @@ function buildRPerformanceGroups(rows, groupByPosition) {
 
     const group = groupsByKey.get(groupKey);
     group.pnl += parseFloat(row.pnl) || 0;
+    group.gross_pnl +=
+      (parseFloat(row.pnl) || 0) +
+      (parseFloat(row.commission) || 0) +
+      (parseFloat(row.fees) || 0);
     group.position_legs.push(row);
   });
 
   return Array.from(groupsByKey.values()).map(group => ({
     ...group,
     pnl: Math.round(group.pnl * 100) / 100,
-    // Grouped positions use the same net-P&L breakeven rule as dashboard whole-trade analytics.
-    is_breakeven: Math.round(group.pnl * 100) / 100 === 0
+    gross_pnl: Math.round(group.gross_pnl * 100) / 100,
+    // Tick mode preserves the historical exact-net grouped rule. Dollar mode
+    // applies the configured range to the combined position's gross P&L.
+    is_breakeven: breakevenConfig?.mode === 'dollars'
+      ? isBreakevenGrossPnl(group.gross_pnl, breakevenConfig)
+      : Math.round(group.pnl * 100) / 100 === 0
   }));
 }
 
@@ -1914,7 +1923,7 @@ const tradeManagementController = {
       const { whereClause, values, paramCount } = await TradeQueries._buildWhereClause(userId, filterSpec);
 
       // Classify break-even with the SAME tolerance-aware predicate the dashboard
-      // analytics use (gross P&L within the user's configured tick tolerance),
+      // analytics use (gross P&L within the user's configured tolerance),
       // not the naive actual_r == 0. Otherwise a small win inside the tolerance
       // band counts as a win here but as break-even on the dashboard, so the W/L/BE
       // splits disagree for the same filtered trades (issue #351).
@@ -1972,7 +1981,11 @@ const tradeManagementController = {
       const chartData = [];
       const tradeDetails = [];
 
-      const performanceRows = buildRPerformanceGroups(result.rows.map(parseTradeJsonFields), groupByPosition);
+      const performanceRows = buildRPerformanceGroups(
+        result.rows.map(parseTradeJsonFields),
+        groupByPosition,
+        breakevenConfig
+      );
 
       performanceRows.forEach((performanceTrade) => {
         const legResults = [];

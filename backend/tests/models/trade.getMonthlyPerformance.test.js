@@ -19,6 +19,7 @@ jest.mock('../../src/models/User', () => ({
 
 const db = require('../../src/config/database');
 const positionGrouping = require('../../src/utils/positionGrouping');
+const User = require('../../src/models/User');
 const Trade = require('../../src/models/Trade');
 
 function monthlyRow(month) {
@@ -49,6 +50,12 @@ describe('Trade.getMonthlyPerformance position grouping', () => {
     db.query.mockReset();
     db.query.mockResolvedValue({ rows: [monthlyRow(1)] });
     positionGrouping.isPositionGroupingEnabled.mockReset();
+    User.getSettings.mockReset();
+    User.getSettings.mockResolvedValue({
+      breakeven_tolerance_mode: 'ticks',
+      breakeven_tolerance_ticks: 0,
+      breakeven_tolerance_ticks_by_underlying: {}
+    });
   });
 
   test('grouping off: aggregates per leg directly from trades', async () => {
@@ -80,5 +87,19 @@ describe('Trade.getMonthlyPerformance position grouping', () => {
     // Filters still apply per leg inside the positions CTE.
     expect(sql).toContain('account_identifier IN ($3)');
     expect(sql).toContain('tags && $4');
+  });
+
+  test('grouping on: dollar tolerance classifies combined gross P&L', async () => {
+    positionGrouping.isPositionGroupingEnabled.mockResolvedValue(true);
+    User.getSettings.mockResolvedValue({
+      breakeven_tolerance_mode: 'dollars',
+      breakeven_tolerance_dollars: 20
+    });
+
+    await Trade.getMonthlyPerformance('user-1', 2026);
+
+    const [sql] = db.query.mock.calls[0];
+    expect(sql).toContain('as gross_pnl');
+    expect(sql).toContain('ABS(gross_pnl) <= (20)');
   });
 });

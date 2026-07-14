@@ -471,7 +471,11 @@ const schemas = {
     statisticsCalculation: Joi.string().valid('average', 'median'),
     analyticsPositionGrouping: Joi.boolean(),
     edgeReportEnabled: Joi.boolean(),
+    breakevenToleranceMode: Joi.string().valid('ticks', 'dollars'),
+    breakeven_tolerance_mode: Joi.string().valid('ticks', 'dollars'),
     breakevenToleranceTicks: Joi.number().integer().min(0).max(1000).allow(null),
+    breakevenToleranceDollars: Joi.number().min(0).max(1000000).allow(null),
+    breakeven_tolerance_dollars: Joi.number().min(0).max(1000000).allow(null),
     breakevenToleranceTicksByUnderlying: Joi.object()
       .pattern(/^[A-Za-z0-9]+$/, Joi.number().integer().min(0).max(1000))
       .allow(null),

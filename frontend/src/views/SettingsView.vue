@@ -187,34 +187,96 @@
                             </div>
 
                             <div class="py-6">
-                                <label for="breakevenToleranceTicks" class="label"
-                                    >Default Breakeven Tolerance (ticks)</label
+                                <label class="label">Breakeven Tolerance</label>
+                                <div
+                                    class="mt-2 inline-flex rounded-lg border border-gray-300 bg-gray-100 p-1 dark:border-gray-600 dark:bg-gray-800"
+                                    role="group"
+                                    aria-label="Breakeven tolerance unit"
                                 >
-                                <input
-                                    id="breakevenToleranceTicks"
-                                    v-model.number="
-                                        analyticsForm.breakevenToleranceTicks
-                                    "
-                                    type="number"
-                                    min="0"
-                                    step="1"
-                                    class="input"
-                                />
+                                    <button
+                                        v-for="option in breakevenToleranceModeOptions"
+                                        :key="option.value"
+                                        type="button"
+                                        class="rounded-md px-4 py-2 text-sm font-medium transition-colors"
+                                        :class="
+                                            analyticsForm.breakeven_tolerance_mode ===
+                                            option.value
+                                                ? 'bg-white text-primary-700 shadow-sm dark:bg-gray-700 dark:text-primary-300'
+                                                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
+                                        "
+                                        :aria-pressed="
+                                            analyticsForm.breakeven_tolerance_mode ===
+                                            option.value
+                                        "
+                                        @click="
+                                            analyticsForm.breakeven_tolerance_mode =
+                                                option.value
+                                        "
+                                    >
+                                        {{ option.label }}
+                                    </button>
+                                </div>
+
+                                <div class="mt-4">
+                                    <label
+                                        :for="breakevenToleranceInputId"
+                                        class="label"
+                                    >
+                                        {{ breakevenToleranceInputLabel }}
+                                    </label>
+                                    <div class="relative">
+                                        <span
+                                            v-if="
+                                                analyticsForm.breakeven_tolerance_mode ===
+                                                'dollars'
+                                            "
+                                            class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500 dark:text-gray-400"
+                                        >
+                                            $
+                                        </span>
+                                        <input
+                                            v-if="
+                                                analyticsForm.breakeven_tolerance_mode ===
+                                                'dollars'
+                                            "
+                                            id="breakevenToleranceDollars"
+                                            v-model.number="
+                                                analyticsForm.breakeven_tolerance_dollars
+                                            "
+                                            type="number"
+                                            min="0"
+                                            max="1000000"
+                                            step="0.01"
+                                            class="input pl-8"
+                                        />
+                                        <input
+                                            v-else
+                                            id="breakevenToleranceTicks"
+                                            v-model.number="
+                                                analyticsForm.breakevenToleranceTicks
+                                            "
+                                            type="number"
+                                            min="0"
+                                            max="1000"
+                                            step="1"
+                                            class="input"
+                                        />
+                                    </div>
+                                </div>
                                 <p
                                     class="mt-2 text-sm text-gray-500 dark:text-gray-400"
                                 >
-                                    Trades whose gross P&L (price only, ignoring
-                                    commissions and fees) land within this many
-                                    ticks of zero are counted as breakeven rather
-                                    than wins or losses. This default applies to
-                                    every instrument; add per-instrument overrides
-                                    below. It only affects trades that have a tick
-                                    size and point value (e.g. futures). Leave at 0
-                                    to count only trades that exit exactly at entry.
+                                    {{ breakevenToleranceDescription }}
                                 </p>
 
                                 <!-- Per-instrument overrides -->
-                                <div class="mt-5 p-4 bg-gray-50 dark:bg-gray-800/60 rounded-lg border border-gray-200 dark:border-gray-700">
+                                <div
+                                    v-if="
+                                        analyticsForm.breakeven_tolerance_mode ===
+                                        'ticks'
+                                    "
+                                    class="mt-5 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/60"
+                                >
                                     <p class="text-sm font-semibold text-gray-900 dark:text-white mb-1">Per-Instrument Overrides</p>
                                     <p
                                         class="text-sm text-gray-500 dark:text-gray-400 mb-3"
@@ -1469,7 +1531,9 @@ const analyticsForm = ref({
     statisticsCalculation: "average",
     analyticsPositionGrouping: false,
     edgeReportEnabled: false,
+    breakeven_tolerance_mode: "ticks",
     breakevenToleranceTicks: 0,
+    breakeven_tolerance_dollars: 0,
     autoCloseExpiredOptions: true,
     defaultStopLossType: "percent",
     defaultStopLossPercent: null,
@@ -1479,6 +1543,31 @@ const analyticsForm = ref({
 });
 
 const analyticsLoading = ref(false);
+
+const breakevenToleranceModeOptions = [
+    { value: "ticks", label: "Ticks" },
+    { value: "dollars", label: "Dollars" },
+];
+
+const breakevenToleranceInputId = computed(() =>
+    analyticsForm.value.breakeven_tolerance_mode === "dollars"
+        ? "breakevenToleranceDollars"
+        : "breakevenToleranceTicks",
+);
+
+const breakevenToleranceInputLabel = computed(() =>
+    analyticsForm.value.breakeven_tolerance_mode === "dollars"
+        ? "Dollar Amount"
+        : "Default Tick Amount",
+);
+
+const breakevenToleranceDescription = computed(() => {
+    if (analyticsForm.value.breakeven_tolerance_mode === "dollars") {
+        return "Trades whose gross P&L falls within plus or minus this amount are counted as breakeven instead of wins or losses. This applies to stocks, options, futures, and combined multi-leg positions. Commissions and fees are ignored. Leave at 0 to count only exact breakeven trades.";
+    }
+
+    return "Trades whose gross P&L falls within this many ticks of zero are counted as breakeven instead of wins or losses. This applies to instruments with a tick size and point value, such as futures. Commissions and fees are ignored. Leave at 0 to count only trades that exit exactly at entry.";
+});
 
 // Per-instrument breakeven tolerance overrides, edited as rows then serialized
 // to a { UNDERLYING: ticks } map on save.
@@ -1779,8 +1868,17 @@ async function loadAnalyticsSettings(settingsData = null) {
                 settings.analyticsPositionGrouping === true,
             edgeReportEnabled:
                 settings.edgeReportEnabled === true,
+            breakeven_tolerance_mode:
+                settings.breakeven_tolerance_mode ??
+                settings.breakevenToleranceMode ??
+                "ticks",
             breakevenToleranceTicks:
                 Number(settings.breakevenToleranceTicks) || 0,
+            breakeven_tolerance_dollars:
+                Number(
+                    settings.breakeven_tolerance_dollars ??
+                        settings.breakevenToleranceDollars,
+                ) || 0,
             autoCloseExpiredOptions:
                 settings.autoCloseExpiredOptions !== undefined
                     ? settings.autoCloseExpiredOptions
@@ -1804,7 +1902,9 @@ async function loadAnalyticsSettings(settingsData = null) {
         // Default values if loading fails
         analyticsForm.value.statisticsCalculation = "average";
         analyticsForm.value.analyticsPositionGrouping = false;
+        analyticsForm.value.breakeven_tolerance_mode = "ticks";
         analyticsForm.value.breakevenToleranceTicks = 0;
+        analyticsForm.value.breakeven_tolerance_dollars = 0;
         analyticsForm.value.autoCloseExpiredOptions = true;
         analyticsForm.value.defaultStopLossType = "percent";
         analyticsForm.value.defaultStopLossPercent = null;
@@ -1823,8 +1923,12 @@ async function updateAnalyticsSettings() {
                 analyticsForm.value.analyticsPositionGrouping === true,
             edgeReportEnabled:
                 analyticsForm.value.edgeReportEnabled === true,
+            breakeven_tolerance_mode:
+                analyticsForm.value.breakeven_tolerance_mode,
             breakevenToleranceTicks:
                 Number(analyticsForm.value.breakevenToleranceTicks) || 0,
+            breakeven_tolerance_dollars:
+                Number(analyticsForm.value.breakeven_tolerance_dollars) || 0,
             breakevenToleranceTicksByUnderlying: breakevenMapFromRows(),
             autoCloseExpiredOptions:
                 analyticsForm.value.autoCloseExpiredOptions,

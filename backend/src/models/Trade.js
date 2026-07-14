@@ -2915,20 +2915,22 @@ class Trade {
   static async getMonthlyPerformance(userId, year, accounts = null, filters = {}) {
     console.log(`[MONTHLY] Getting monthly performance for user ${userId}, year ${year}, accounts:`, accounts, 'filters:', filters);
 
-    const { getBreakevenToleranceConfig, breakevenPredicate } = require('../utils/breakeven');
-    const { POSITION_GROUP_KEY, GROUPED_BREAKEVEN, isPositionGroupingEnabled } = require('../utils/positionGrouping');
+    const { getBreakevenToleranceConfig, breakevenPredicate, groupedBreakevenPredicate } = require('../utils/breakeven');
+    const { POSITION_GROUP_KEY, isPositionGroupingEnabled } = require('../utils/positionGrouping');
     const breakevenConfig = await getBreakevenToleranceConfig(userId);
     // Whole-trade win rate (issue #339): when enabled, collapse multi-leg
     // positions before the monthly aggregation so counts and win rate match
     // the headline analytics. P&L sums are unchanged either way.
     const groupByPosition = await isPositionGroupingEnabled(userId);
-    const be = groupByPosition ? GROUPED_BREAKEVEN : breakevenPredicate({
-      gross: '(pnl + COALESCE(commission, 0) + COALESCE(fees, 0))',
-      tickSize: 'tick_size',
-      pointValue: 'point_value',
-      quantity: 'quantity',
-      underlying: 'underlying_asset'
-    }, breakevenConfig);
+    const be = groupByPosition
+      ? groupedBreakevenPredicate({ gross: 'gross_pnl', net: 'pnl' }, breakevenConfig)
+      : breakevenPredicate({
+          gross: '(pnl + COALESCE(commission, 0) + COALESCE(fees, 0))',
+          tickSize: 'tick_size',
+          pointValue: 'point_value',
+          quantity: 'quantity',
+          underlying: 'underlying_asset'
+        }, breakevenConfig);
 
     // Build account + tag + strategy filter conditions. Param index starts at 3
     // because $1=userId and $2=year. We append conditions in the order they're
@@ -2967,6 +2969,7 @@ class Trade {
           MIN(trade_date) as trade_date,
           MIN(COALESCE(NULLIF(underlying_symbol, ''), symbol)) as symbol,
           SUM(pnl) as pnl,
+          SUM(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0)) as gross_pnl,
           SUM(r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL) as r_value,
           BOOL_OR(stop_loss IS NOT NULL) as has_stop
         FROM trades

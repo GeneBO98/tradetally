@@ -1,5 +1,7 @@
 const {
   breakevenPredicate,
+  configFromSettings,
+  groupedBreakevenPredicate,
   normalizeConfig,
   normalizeTolerance,
   toleranceCacheKey
@@ -27,12 +29,12 @@ describe('breakeven.normalizeTolerance', () => {
 
 describe('breakeven.normalizeConfig', () => {
   test('accepts a scalar as the default', () => {
-    expect(normalizeConfig(3)).toEqual({ default: 3, byUnderlying: {} });
+    expect(normalizeConfig(3)).toEqual({ mode: 'ticks', default: 3, byUnderlying: {} });
   });
 
   test('accepts object form and sanitizes the map', () => {
     expect(normalizeConfig({ default: 2, byUnderlying: { es: 2, NQ: 5 } }))
-      .toEqual({ default: 2, byUnderlying: { ES: 2, NQ: 5 } });
+      .toEqual({ mode: 'ticks', default: 2, byUnderlying: { ES: 2, NQ: 5 } });
   });
 
   test('keeps explicit 0 overrides but drops invalid keys/values', () => {
@@ -46,7 +48,30 @@ describe('breakeven.normalizeConfig', () => {
 
   test('parses a JSON string map', () => {
     expect(normalizeConfig({ default: 1, byUnderlying: '{"ES":2}' }))
-      .toEqual({ default: 1, byUnderlying: { ES: 2 } });
+      .toEqual({ mode: 'ticks', default: 1, byUnderlying: { ES: 2 } });
+  });
+
+  test('accepts dollar mode and ignores an invalid mode', () => {
+    expect(normalizeConfig({ mode: 'dollars', default: 12.5 }))
+      .toEqual({ mode: 'dollars', default: 12.5, byUnderlying: {} });
+    expect(normalizeConfig({ mode: 'percent', default: 2 }).mode).toBe('ticks');
+  });
+});
+
+describe('breakeven.configFromSettings', () => {
+  test('selects the stored amount for the active mode', () => {
+    const settings = {
+      breakeven_tolerance_mode: 'dollars',
+      breakeven_tolerance_ticks: 3,
+      breakeven_tolerance_dollars: '15.50',
+      breakeven_tolerance_ticks_by_underlying: { ES: 2 }
+    };
+
+    expect(configFromSettings(settings)).toEqual({
+      mode: 'dollars',
+      default: 15.5,
+      byUnderlying: { ES: 2 }
+    });
   });
 });
 
@@ -77,6 +102,13 @@ describe('breakeven.breakevenPredicate', () => {
     expect(be.is).not.toMatch(/DROP|;|--/);
   });
 
+  test('dollar mode compares gross P&L directly to the fixed amount', () => {
+    const be = breakevenPredicate(COLS, { mode: 'dollars', default: 10, byUnderlying: { ES: 2 } });
+    expect(be.is).toBe(`ABS(${COLS.gross}) <= (10)`);
+    expect(be.isNot).toBe(`ABS(${COLS.gross}) > (10)`);
+    expect(be.is).not.toContain('tick_size');
+  });
+
   test('map without an underlying column falls back to default scalar', () => {
     const cols = { ...COLS, underlying: undefined };
     const be = breakevenPredicate(cols, { default: 3, byUnderlying: { ES: 2 } });
@@ -85,11 +117,36 @@ describe('breakeven.breakevenPredicate', () => {
   });
 });
 
+describe('breakeven.groupedBreakevenPredicate', () => {
+  test('preserves exact net classification in tick mode', () => {
+    expect(groupedBreakevenPredicate(
+      { gross: 'gross_pnl', net: 'pnl' },
+      { mode: 'ticks', default: 2 }
+    )).toEqual({
+      is: '(ROUND(pnl::numeric, 2) = 0)',
+      isNot: '(ROUND(pnl::numeric, 2) <> 0)'
+    });
+  });
+
+  test('uses combined gross P&L in dollar mode', () => {
+    const be = groupedBreakevenPredicate(
+      { gross: 'gross_pnl', net: 'pnl' },
+      { mode: 'dollars', default: 25 }
+    );
+    expect(be.is).toBe('ABS(gross_pnl) <= (25)');
+  });
+});
+
 describe('breakeven.toleranceCacheKey', () => {
   test('is stable regardless of key order', () => {
     const a = toleranceCacheKey({ default: 1, byUnderlying: { NQ: 5, ES: 2 } });
     const b = toleranceCacheKey({ default: 1, byUnderlying: { ES: 2, NQ: 5 } });
     expect(a).toBe(b);
-    expect(a).toBe('1|ES:2,NQ:5');
+    expect(a).toBe('ticks|1|ES:2,NQ:5');
+  });
+
+  test('distinguishes dollar and tick modes', () => {
+    expect(toleranceCacheKey({ mode: 'dollars', default: 5 }))
+      .not.toBe(toleranceCacheKey({ mode: 'ticks', default: 5 }));
   });
 });

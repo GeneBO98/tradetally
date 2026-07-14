@@ -14,15 +14,6 @@
 const POSITION_GROUP_KEY =
   "COALESCE(position_group_id::text, CONCAT_WS('|', COALESCE(account_identifier, ''), COALESCE(NULLIF(underlying_symbol, ''), symbol), COALESCE(entry_time::text, id::text)))";
 
-// Breakeven predicate for grouped positions. The per-leg tick/point tolerance
-// used for individual trades does not apply to a combined multi-leg position,
-// so a grouped position is breakeven only when its net P&L rounds to zero.
-// Shape matches `breakevenPredicate()` ({ is, isNot }) so it is a drop-in.
-const GROUPED_BREAKEVEN = Object.freeze({
-  is: '(ROUND(pnl::numeric, 2) = 0)',
-  isNot: '(ROUND(pnl::numeric, 2) <> 0)'
-});
-
 // Read the user's whole-trade grouping preference. Defaults to false (per-leg)
 // if settings can't be read.
 async function isPositionGroupingEnabled(userId) {
@@ -36,4 +27,4 @@ async function isPositionGroupingEnabled(userId) {
   }
 }
 
-module.exports = { POSITION_GROUP_KEY, GROUPED_BREAKEVEN, isPositionGroupingEnabled };
+module.exports = { POSITION_GROUP_KEY, isPositionGroupingEnabled };

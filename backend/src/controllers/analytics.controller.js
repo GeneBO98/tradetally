@@ -10,9 +10,15 @@ const symbolCategories = require('../utils/symbolCategories');
 const { sendV1NotImplemented } = require('../utils/apiResponse');
 const ensureString = require('../utils/ensureString');
 const { getUserTimezone } = require('../utils/timezone');
-const { POSITION_GROUP_KEY, GROUPED_BREAKEVEN, isPositionGroupingEnabled } = require('../utils/positionGrouping');
+const { POSITION_GROUP_KEY, isPositionGroupingEnabled } = require('../utils/positionGrouping');
 const { buildExcursionMetrics } = require('../utils/excursionMetrics');
-const { normalizeConfig } = require('../utils/breakeven');
+const {
+  breakevenPredicate,
+  configFromSettings,
+  getBreakevenToleranceConfig,
+  groupedBreakevenPredicate,
+  toleranceCacheKey
+} = require('../utils/breakeven');
 const TradeQueries = require('../services/tradeQueries');
 
 // Helper function to create a short but collision-resistant hash for cache keys
@@ -557,7 +563,6 @@ function buildCalendarOverviewRows(trades, startDateStr, endDateStr, timezone) {
 // their win/loss counts stay consistent with the overview. Falls back to the
 // exact `gross = 0` form when the user has no tolerance configured.
 async function rawBreakevenPredicate(userId) {
-  const { getBreakevenToleranceConfig, breakevenPredicate } = require('../utils/breakeven');
   return breakevenPredicate({
     gross: '(pnl + COALESCE(commission, 0) + COALESCE(fees, 0))',
     tickSize: 'tick_size',
@@ -565,6 +570,20 @@ async function rawBreakevenPredicate(userId) {
     quantity: 'quantity',
     underlying: 'underlying_asset'
   }, await getBreakevenToleranceConfig(userId));
+}
+
+async function analyticsBreakevenPredicate(userId, groupByPosition) {
+  const config = await getBreakevenToleranceConfig(userId);
+  if (groupByPosition) {
+    return groupedBreakevenPredicate({ gross: 'gross_pnl', net: 'pnl' }, config);
+  }
+  return breakevenPredicate({
+    gross: '(pnl + COALESCE(commission, 0) + COALESCE(fees, 0))',
+    tickSize: 'tick_size',
+    pointValue: 'point_value',
+    quantity: 'quantity',
+    underlying: 'underlying_asset'
+  }, config);
 }
 
 // Explicit column list for the CSV trade export. convertToCSV emits every
@@ -606,9 +625,8 @@ const analyticsController = {
 
       // Get user's preference for average vs median calculations
       const User = require('../models/User');
-      const { normalizeConfig, breakevenPredicate, toleranceCacheKey } = require('../utils/breakeven');
       let useMedian = false;
-      let breakevenConfig = { default: 0, byUnderlying: {} };
+      let breakevenConfig = { mode: 'ticks', default: 0, byUnderlying: {} };
       // Whole-trade win rate (issue #339): a global profile setting. When on,
       // the completed_trades CTE collapses each multi-leg position (e.g. an
       // option spread) into a single synthetic trade so win rate, counts, avg,
@@ -619,21 +637,20 @@ const analyticsController = {
         const userSettings = await User.getSettings(req.user.id);
         useMedian = userSettings?.statistics_calculation === 'median';
         groupByPosition = userSettings?.analytics_position_grouping === true;
-        breakevenConfig = normalizeConfig({
-          default: userSettings?.breakeven_tolerance_ticks,
-          byUnderlying: userSettings?.breakeven_tolerance_ticks_by_underlying
-        });
+        breakevenConfig = configFromSettings(userSettings);
       } catch (error) {
         console.warn('Could not fetch user settings for analytics, using default (average):', error.message);
         useMedian = false;
       }
 
       // Breakeven predicate over the completed_trades CTE (SELECT * from trades).
-      // In position-grouping mode the per-leg tick/point/underlying tolerance no
-      // longer applies to a combined position, so a group is breakeven only when
-      // its net P&L rounds to exactly zero.
+      // In position-grouping mode, tick tolerance preserves the historical
+      // exact-net rule while dollar tolerance uses combined gross P&L.
       const be = groupByPosition
-        ? GROUPED_BREAKEVEN
+        ? groupedBreakevenPredicate({
+            gross: '(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0))',
+            net: 'pnl'
+          }, breakevenConfig)
         : breakevenPredicate({
             gross: '(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0))',
             tickSize: 'tick_size',
@@ -1175,10 +1192,7 @@ const analyticsController = {
       const { filterConditions, params: filterParams } = await buildFilterConditions(req.query, req.user.id);
       const params = [req.user.id, ...filterParams];
       const userSettings = await User.getSettings(req.user.id).catch(() => null);
-      const breakevenConfig = normalizeConfig({
-        default: userSettings?.breakeven_tolerance_ticks,
-        byUnderlying: userSettings?.breakeven_tolerance_ticks_by_underlying
-      });
+      const breakevenConfig = configFromSettings(userSettings);
 
       const query = `
         SELECT
@@ -1422,7 +1436,7 @@ const analyticsController = {
       params.push(sanitizedLimit);
 
       const groupByPosition = await isPositionGroupingEnabled(req.user.id);
-      const be = groupByPosition ? GROUPED_BREAKEVEN : await rawBreakevenPredicate(req.user.id);
+      const be = await analyticsBreakevenPredicate(req.user.id, groupByPosition);
 
       return await sendCachedAnalytics(req, res, 'symbols', {
         query: req.query,
@@ -1439,6 +1453,7 @@ const analyticsController = {
             SELECT
               COALESCE(NULLIF(underlying_symbol, ''), symbol) as symbol,
               SUM(pnl) as pnl,
+              SUM(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0)) as gross_pnl,
               COALESCE(AVG(pnl_percent), 0) as pnl_percent
             FROM trades t
             WHERE t.user_id = $1 ${filterConditions}
@@ -1490,7 +1505,7 @@ const analyticsController = {
       const params = [req.user.id, ...filterParams];
 
       const groupByPosition = await isPositionGroupingEnabled(req.user.id);
-      const be = groupByPosition ? GROUPED_BREAKEVEN : await rawBreakevenPredicate(req.user.id);
+      const be = await analyticsBreakevenPredicate(req.user.id, groupByPosition);
 
       return await sendCachedAnalytics(req, res, 'tags', {
         query: req.query,
@@ -1512,6 +1527,7 @@ const analyticsController = {
               entry_time,
               id,
               pnl,
+              COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0) as gross_pnl,
               r_value,
               stop_loss
             FROM trades t
@@ -1521,6 +1537,7 @@ const analyticsController = {
             SELECT
               tag,
               SUM(pnl) as pnl,
+              SUM(gross_pnl) as gross_pnl,
               SUM(r_value) as r_value,
               MIN(stop_loss) as stop_loss
             FROM leg_tags
@@ -1574,7 +1591,7 @@ const analyticsController = {
       const params = [req.user.id, ...filterParams];
 
       const groupByPosition = await isPositionGroupingEnabled(req.user.id);
-      const be = groupByPosition ? GROUPED_BREAKEVEN : await rawBreakevenPredicate(req.user.id);
+      const be = await analyticsBreakevenPredicate(req.user.id, groupByPosition);
 
       return await sendCachedAnalytics(req, res, 'strategies', {
         query: req.query,
@@ -1591,6 +1608,7 @@ const analyticsController = {
               position_group_id,
               MIN(NULLIF(strategy, '')) as leg_strategy,
               SUM(pnl) as pnl,
+              SUM(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0)) as gross_pnl,
               SUM(r_value) as r_value,
               MIN(stop_loss) as stop_loss
             FROM trades t
@@ -1602,6 +1620,7 @@ const analyticsController = {
             SELECT
               COALESCE(tpg.detected_strategy, grouped_legs.leg_strategy) as strategy,
               grouped_legs.pnl,
+              grouped_legs.gross_pnl,
               grouped_legs.r_value,
               grouped_legs.stop_loss
             FROM grouped_legs
@@ -1668,7 +1687,7 @@ const analyticsController = {
       // Convert entry_time from UTC to user's timezone for hour extraction
       // For timestamptz columns, "AT TIME ZONE 'tz'" converts the UTC time to that timezone
       const groupByPosition = await isPositionGroupingEnabled(req.user.id);
-      const be = groupByPosition ? GROUPED_BREAKEVEN : await rawBreakevenPredicate(req.user.id);
+      const be = await analyticsBreakevenPredicate(req.user.id, groupByPosition);
 
       return await sendCachedAnalytics(req, res, 'hours', {
         query: req.query,
@@ -1682,6 +1701,7 @@ const analyticsController = {
             SELECT
               EXTRACT(HOUR FROM (MIN(entry_time) AT TIME ZONE $${tzParam})) as hour,
               SUM(pnl) as pnl,
+              SUM(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0)) as gross_pnl,
               SUM(r_value) as r_value,
               MIN(stop_loss) as stop_loss
             FROM trades t
@@ -2691,7 +2711,7 @@ const analyticsController = {
       const { startDate, endDate } = req.query;
 
       const groupByPosition = await isPositionGroupingEnabled(req.user.id);
-      const be = groupByPosition ? GROUPED_BREAKEVEN : await rawBreakevenPredicate(req.user.id);
+      const be = await analyticsBreakevenPredicate(req.user.id, groupByPosition);
 
       // Get overview metrics
       console.log('[DATA] Fetching trade metrics...');
@@ -2700,6 +2720,7 @@ const analyticsController = {
         WITH positions AS (
           SELECT
             SUM(pnl) as pnl,
+            SUM(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0)) as gross_pnl,
             COALESCE(AVG(pnl_percent), 0) as pnl_percent,
             SUM(COALESCE(commission, 0)) as commission,
             SUM(COALESCE(fees, 0)) as fees
@@ -2799,7 +2820,8 @@ const analyticsController = {
           WITH positions AS (
             SELECT
               COALESCE(NULLIF(underlying_symbol, ''), symbol) as symbol,
-              SUM(pnl) as pnl
+              SUM(pnl) as pnl,
+              SUM(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0)) as gross_pnl
             FROM trades t
             WHERE t.user_id = $1 ${filterConditions}
             GROUP BY COALESCE(NULLIF(underlying_symbol, ''), symbol), ${POSITION_GROUP_KEY}
@@ -2934,13 +2956,14 @@ const analyticsController = {
       // Get all symbols and their P&L from trades
       console.log('[QUERY] Fetching symbols and P&L from trades...');
       const groupByPosition = await isPositionGroupingEnabled(req.user.id);
-      const be = groupByPosition ? GROUPED_BREAKEVEN : await rawBreakevenPredicate(req.user.id);
+      const be = await analyticsBreakevenPredicate(req.user.id, groupByPosition);
       const symbolQuery = groupByPosition
         ? `
         WITH positions AS (
             SELECT
             COALESCE(NULLIF(underlying_symbol, ''), symbol) as symbol,
-            SUM(pnl) as pnl
+            SUM(pnl) as pnl,
+            SUM(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0)) as gross_pnl
           FROM trades t
           WHERE t.user_id = $1 ${filterConditions}
           GROUP BY COALESCE(NULLIF(underlying_symbol, ''), symbol), ${POSITION_GROUP_KEY}
@@ -3179,13 +3202,14 @@ const analyticsController = {
 
       // Get all symbols and their P&L from trades
       const groupByPosition = await isPositionGroupingEnabled(req.user.id);
-      const be = groupByPosition ? GROUPED_BREAKEVEN : await rawBreakevenPredicate(req.user.id);
+      const be = await analyticsBreakevenPredicate(req.user.id, groupByPosition);
       const symbolQuery = groupByPosition
         ? `
         WITH positions AS (
             SELECT
             COALESCE(NULLIF(underlying_symbol, ''), symbol) as symbol,
-            SUM(pnl) as pnl
+            SUM(pnl) as pnl,
+            SUM(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0)) as gross_pnl
           FROM trades t
           WHERE t.user_id = $1 ${filterConditions}
           GROUP BY COALESCE(NULLIF(underlying_symbol, ''), symbol), ${POSITION_GROUP_KEY}
@@ -3325,7 +3349,8 @@ const analyticsController = {
       const params = [req.user.id, ...filterParams];
       const filterHashKey = createFilterHash(convertQueryToTradeFilters(req.query));
       const groupByPosition = await isPositionGroupingEnabled(req.user.id);
-      const summaryCacheKey = `ai_insight_summary_${req.user.id}_${filterHashKey}_grp${groupByPosition ? 'pos' : 'leg'}`;
+      const be = await analyticsBreakevenPredicate(req.user.id, groupByPosition);
+      const summaryCacheKey = `ai_insight_summary_${req.user.id}_${filterHashKey}_grp${groupByPosition ? 'pos' : 'leg'}_be${createFilterHash(be)}`;
 
       const cached = cache.get(summaryCacheKey);
       if (cached) {
@@ -3333,12 +3358,12 @@ const analyticsController = {
       }
 
       const response = await coalesceInFlight(summaryCacheKey, async () => {
-        const be = groupByPosition ? GROUPED_BREAKEVEN : await rawBreakevenPredicate(req.user.id);
-
         // Pull the analytics we need to derive an insight.
         const completedCte = groupByPosition
           ? `completed AS (
-              SELECT SUM(pnl) as pnl
+              SELECT
+                SUM(pnl) as pnl,
+                SUM(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0)) as gross_pnl
               FROM trades t
               WHERE t.user_id = $1 ${filterConditions}
                 AND exit_price IS NOT NULL AND pnl IS NOT NULL
@@ -3391,7 +3416,9 @@ const analyticsController = {
         // Compute strongest per-symbol / per-strategy edge.
         const edgeQuery = `
           WITH completed AS (
-            SELECT symbol, strategy, pnl, commission, fees, quantity, tick_size, point_value, underlying_asset
+            SELECT
+              symbol, strategy, pnl, commission, fees, quantity, tick_size, point_value, underlying_asset,
+              COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0) as gross_pnl
             FROM trades t
             WHERE t.user_id = $1 ${filterConditions}
               AND exit_price IS NOT NULL AND pnl IS NOT NULL

@@ -272,6 +272,18 @@
       "win_rate_excluding_breakeven": 100
     }
   },
+  "dollar_breakeven_tolerance": {
+    "config": {
+      "mode": "dollars",
+      "default": 10,
+      "byUnderlying": {}
+    },
+    "cases": [
+      { "id": "small_gross_win", "gross_pnl": 8, "is_breakeven": true },
+      { "id": "boundary_gross_loss", "gross_pnl": -10, "is_breakeven": true },
+      { "id": "decisive_gross_win", "gross_pnl": 10.01, "is_breakeven": false }
+    ]
+  },
   "csv_import_cases": [
     {
       "id": "etrade_detailed_activity_option_round_trip",
