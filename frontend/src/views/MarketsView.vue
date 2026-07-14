@@ -725,6 +725,8 @@
                             </div>
                         </div>
 
+                        <SymbolCurrentPrice :symbol="alertForm.symbol" />
+
                         <div
                             class="mb-4"
                             v-if="alertForm.alert_type !== 'change_percent'"
@@ -853,6 +855,7 @@ import PriceAlertWebhookManager from "@/components/price-alerts/PriceAlertWebhoo
 import { mdiBell, mdiRepeat, mdiEmailOutline } from "@mdi/js";
 import { getMarketStatus } from "@/utils/marketStatus";
 import SymbolAutocomplete from "@/components/common/SymbolAutocomplete.vue";
+import SymbolCurrentPrice from "@/components/price-alerts/SymbolCurrentPrice.vue";
 import BaseSelect from "@/components/common/BaseSelect.vue";
 import { useVisibilityPolling } from "@/composables/useVisibilityPolling";
 
