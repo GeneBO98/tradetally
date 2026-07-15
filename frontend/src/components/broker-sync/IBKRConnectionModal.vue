@@ -30,7 +30,8 @@
               <li>Log in to <a href="https://www.interactivebrokers.com/sso/Login" target="_blank" class="underline font-medium">IBKR Client Portal</a></li>
               <li>Navigate to <strong>Performance & Reports > Flex Queries</strong></li>
               <li>Under "Activity Flex Query", click the <strong>+</strong> button to create a new query</li>
-              <li>Name your query, select <strong>Trades</strong> in the Sections, then Save</li>
+              <li>Name your query, select <strong>Trades</strong> in the Sections, and set the output format to <strong>CSV</strong></li>
+              <li>Save the query</li>
               <li>Note the <strong>Query ID</strong> shown next to your saved query</li>
               <li>Click the <strong>gear icon</strong> next to "Configure Flex Web Service"</li>
               <li>Generate or copy your <strong>Current Token</strong></li>

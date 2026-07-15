@@ -24,6 +24,7 @@ const REPORT_REQUEST_TIMEOUT = 120000; // 2 minutes to request report
 const REPORT_POLL_INTERVAL = 5000; // Poll every 5 seconds
 const REPORT_INITIAL_MAX_WAIT = 300000; // Initial 5 min poll window before extending
 const REPORT_EXTENDED_MAX_WAIT = 720000; // 12 min total when first poll times out
+const MAX_FLEX_OVERRIDE_DAYS = 365;
 const IBKR_OPEN_POSITION_MAX_SYNTHETIC_TRADES = 50;
 
 // Transient network errors that warrant a retry
@@ -282,8 +283,9 @@ class IBKRService {
     console.log('[IBKR] Requesting Flex report...');
 
     const url = `${FLEX_BASE_URL}/SendRequest`;
-    const params = this.buildReportRequestParams(flexToken, queryId, options);
+    let params = this.buildReportRequestParams(flexToken, queryId, options);
     const maxAttempts = 5;
+    let usedBareRequestFallback = false;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
@@ -301,6 +303,17 @@ class IBKRService {
           const errorMsgMatch = data.match(/<ErrorMessage>([^<]+)<\/ErrorMessage>/);
           const errorCode = errorCodeMatch ? errorCodeMatch[1] : 'Unknown';
           const errorMsg = errorMsgMatch ? errorMsgMatch[1] : 'Unknown error';
+
+          // Some accounts return 1003 when a valid explicit window contains no
+          // activity or conflicts with the saved Flex Query period. Retry once
+          // without the override so those connections retain the old behavior.
+          if (errorCode === '1003' && params.fd && params.td && !usedBareRequestFallback) {
+            console.warn('[IBKR] Date override was unavailable; retrying with the saved Flex Query period');
+            params = this.buildReportRequestParams(flexToken, queryId);
+            usedBareRequestFallback = true;
+            await this.sleep(1000); // Respect IBKR's one SendRequest per second limit
+            continue;
+          }
 
           // Retry if the code is known-transient OR the human message says
           // "try again"/"temporary"/etc. IBKR sometimes returns undocumented
@@ -419,6 +432,16 @@ class IBKRService {
           return data;
         }
 
+        // TradeTally's IBKR importer consumes CSV. A completed XML report will
+        // never turn into CSV on a later poll, so fail immediately with an
+        // actionable configuration error instead of polling until timeout.
+        if (/<FlexQueryResponse\b/i.test(data)) {
+          throw buildIBKRError(
+            'IBKR returned an XML Flex report. Edit the Flex Query in IBKR and set its output format to CSV, then sync again.',
+            { errorCode: 'UNSUPPORTED_REPORT_FORMAT', transient: false }
+          );
+        }
+
         // Handle unexpected response format
         console.warn('[IBKR] Unexpected response format from IBKR; retrying');
         await this.sleep(REPORT_POLL_INTERVAL);
@@ -461,7 +484,7 @@ class IBKRService {
     const reportResponse = await this.requestFlexReport(
       connection.ibkrFlexToken,
       connection.ibkrFlexQueryId,
-      { startDate, endDate, syncType }
+      { startDate, endDate, syncType, overrideDates: true }
     );
 
     if (!reportResponse.referenceCode) {
@@ -1412,15 +1435,40 @@ class IBKRService {
     };
   }
 
-  buildReportRequestParams(flexToken, queryId) {
-    // We intentionally do not send fd/td. The Flex Query's own period (configured
-    // in IBKR) determines what data IBKR returns; TradeTally filters to the
-    // user-requested date range after parsing via filterByDateRange().
-    return {
+  buildReportRequestParams(flexToken, queryId, options = {}) {
+    const params = {
       t: flexToken,
       q: queryId,
       v: '3'
     };
+
+    // Credential validation intentionally stays override-free. Actual syncs
+    // use an explicit window because IBKR can ignore the saved query period and
+    // silently return only one day. IBKR documents a maximum override of 365 days.
+    if (!options.overrideDates) return params;
+
+    const normalizedEnd = options.endDate
+      ? normalizeDateString(options.endDate)
+      : new Date().toISOString().slice(0, 10);
+    const normalizedStart = options.startDate ? normalizeDateString(options.startDate) : null;
+
+    if (!normalizedEnd || (options.startDate && !normalizedStart)) {
+      throw new Error('Invalid IBKR sync date range');
+    }
+    if (normalizedStart && normalizedStart > normalizedEnd) {
+      throw new Error('IBKR sync start date must be on or before end date');
+    }
+
+    const earliestDate = new Date(`${normalizedEnd}T00:00:00Z`);
+    earliestDate.setUTCDate(earliestDate.getUTCDate() - (MAX_FLEX_OVERRIDE_DAYS - 1));
+    const earliestStart = earliestDate.toISOString().slice(0, 10);
+    const effectiveStart = normalizedStart && normalizedStart > earliestStart
+      ? normalizedStart
+      : earliestStart;
+
+    params.fd = effectiveStart.replace(/-/g, '');
+    params.td = normalizedEnd.replace(/-/g, '');
+    return params;
   }
 
   executionsMatch(left, right) {

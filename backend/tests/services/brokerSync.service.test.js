@@ -169,9 +169,15 @@ describe('broker sync duplicate protection', () => {
     ).toBe(true);
   });
 
-  test('IBKR Flex request never sends fd/td date overrides', () => {
+  test('IBKR credential validation request does not send date overrides', () => {
+    const params = ibkrService.buildReportRequestParams('token-1', 'query-1');
+
+    expect(params).toEqual({ t: 'token-1', q: 'query-1', v: '3' });
+  });
+
+  test('IBKR sync request sends an explicit date window capped at 365 days', () => {
     const params = ibkrService.buildReportRequestParams('token-1', 'query-1', {
-      syncType: 'manual',
+      overrideDates: true,
       startDate: '2025-01-01',
       endDate: '2026-01-01'
     });
@@ -179,10 +185,10 @@ describe('broker sync duplicate protection', () => {
     expect(params).toEqual({
       t: 'token-1',
       q: 'query-1',
-      v: '3'
+      v: '3',
+      fd: '20250102',
+      td: '20260101'
     });
-    expect(params).not.toHaveProperty('fd');
-    expect(params).not.toHaveProperty('td');
   });
 
   test('IBKR sync adds transferred stock Open Positions rows before import', async () => {
@@ -717,6 +723,29 @@ describe('IBKR transient error handling', () => {
     });
   });
 
+  test('requestFlexReport retries without date overrides when IBKR returns 1003', async () => {
+    axios.get
+      .mockResolvedValueOnce({
+        data: '<FlexStatementResponse><Status>Fail</Status><ErrorCode>1003</ErrorCode><ErrorMessage>Statement is not available.</ErrorMessage></FlexStatementResponse>'
+      })
+      .mockResolvedValueOnce({
+        data: '<FlexStatementResponse><Status>Success</Status><ReferenceCode>REF-123</ReferenceCode></FlexStatementResponse>'
+      });
+
+    await ibkrService.requestFlexReport('token', 'query', {
+      overrideDates: true,
+      startDate: '2025-07-16',
+      endDate: '2026-07-15'
+    });
+
+    expect(axios.get.mock.calls[0][1].params).toEqual(expect.objectContaining({
+      fd: '20250716',
+      td: '20260715'
+    }));
+    expect(axios.get.mock.calls[1][1].params).toEqual({ t: 'token', q: 'query', v: '3' });
+    expect(ibkrService.sleep).toHaveBeenCalledWith(1000);
+  });
+
   test('fetchFlexReport polls the statement URL returned by SendRequest', async () => {
     const statementUrl = 'https://gdcdyn.interactivebrokers.com/AccountManagement/FlexWebService/GetStatement';
     axios.get.mockResolvedValueOnce({ data: 'Symbol,Quantity,Price\nAAPL,10,150.50\n' });
@@ -726,6 +755,21 @@ describe('IBKR transient error handling', () => {
     expect(axios.get).toHaveBeenCalledWith(statementUrl, expect.objectContaining({
       params: { t: 'token', q: 'REF-123', v: '3' }
     }));
+  });
+
+  test('fetchFlexReport fails immediately with guidance when IBKR returns XML', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: '<FlexQueryResponse queryName="TradeTally"><FlexStatements count="1"><FlexStatement><Trades /></FlexStatement></FlexStatements></FlexQueryResponse>'
+    });
+
+    await expect(ibkrService.fetchFlexReport('REF-123', 'token', { maxWait: 60000 }))
+      .rejects.toMatchObject({
+        errorCode: 'UNSUPPORTED_REPORT_FORMAT',
+        transient: false,
+        message: expect.stringContaining('set its output format to CSV')
+      });
+
+    expect(axios.get).toHaveBeenCalledTimes(1);
   });
 
   test('fetchFlexReport keeps polling when IBKR returns an unknown code with a "try again" message', async () => {
