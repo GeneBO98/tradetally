@@ -274,10 +274,23 @@
                   <td class="px-4 py-3 whitespace-nowrap">
                     <span
                       class="px-2 py-1 text-xs rounded-full"
-                      :class="getStatusClass(log.status)"
+                      :class="getStatusClass(log)"
                     >
-                      {{ log.status }}
+                      {{ getStatusLabel(log) }}
                     </span>
+                    <details
+                      v-if="warningsFromSyncLog(log).length > 0"
+                      class="mt-2 max-w-xs text-xs text-amber-800 dark:text-amber-300"
+                    >
+                      <summary class="cursor-pointer font-medium focus:outline-none focus:ring-2 focus:ring-primary-500 rounded">
+                        View {{ warningsFromSyncLog(log).length }} warning{{ warningsFromSyncLog(log).length === 1 ? '' : 's' }}
+                      </summary>
+                      <ul class="mt-2 space-y-1 list-disc pl-4 whitespace-normal">
+                        <li v-for="(warning, warningIndex) in warningsFromSyncLog(log)" :key="warningIndex">
+                          {{ warning }}
+                        </li>
+                      </ul>
+                    </details>
                   </td>
                   <td class="px-4 py-3 whitespace-nowrap text-gray-900 dark:text-white">
                     {{ log.tradesImported || 0 }}
@@ -461,6 +474,18 @@ function manualReviewItemsFromSyncLog(log) {
   const syncDetails = parseSyncDetails(log?.syncDetails || log?.sync_details)
   const items = syncDetails.manual_review_items || syncDetails.manualReviewItems || []
   return Array.isArray(items) ? items : []
+}
+
+function warningsFromSyncLog(log) {
+  const syncDetails = parseSyncDetails(log?.syncDetails || log?.sync_details)
+  const warnings = syncDetails.warnings || []
+  return Array.isArray(warnings) ? warnings.filter(Boolean).map(warning => String(warning)) : []
+}
+
+function syncCompletedWithWarnings(log) {
+  if (log?.status !== 'completed') return false
+  const syncDetails = parseSyncDetails(log?.syncDetails || log?.sync_details)
+  return syncDetails.outcome === 'warning' || warningsFromSyncLog(log).length > 0
 }
 
 function openManualReviewFromSyncLog(log, force = false) {
@@ -784,8 +809,16 @@ function formatDate(date) {
   return new Date(date).toLocaleString()
 }
 
-function getStatusClass(status) {
-  switch (status) {
+function getStatusLabel(log) {
+  if (syncCompletedWithWarnings(log)) return 'Completed with warnings'
+  return log?.status || 'unknown'
+}
+
+function getStatusClass(log) {
+  if (syncCompletedWithWarnings(log)) {
+    return 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300'
+  }
+  switch (log?.status) {
     case 'completed':
       return 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300'
     case 'failed':

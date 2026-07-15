@@ -1,5 +1,5 @@
 const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('../../futuresUtils');
-const { isExecutionDuplicateMultiKey } = require('../dedup');
+const { isExecutionDuplicateMultiKey, executionIdentityMatches } = require('../dedup');
 const { extractAccountFromRecord } = require('../detect');
 const { parseDate, parseDateTime, getExecutionTimeBounds, cleanString, parseInstrumentData, parseNumeric } = require('../shared');
 
@@ -109,12 +109,12 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
 
   const transactions = [];
   const completedTrades = [];
-
-  // Debug: Log first few records to see structure
-  console.log('\nSample IBKR records:');
-  records.slice(0, 5).forEach((record, i) => {
-    console.log(`Record ${i}:`, JSON.stringify(record));
-  });
+  const diagnostics = context.diagnostics;
+  const noteSkippedRow = (row, reason) => {
+    if (!diagnostics) return;
+    diagnostics.skippedRows += 1;
+    diagnostics.skippedReasons.push({ row, reason });
+  };
 
   // Detect format: Trade Confirmation vs Activity Statement
   const isTradeConfirmation = records.length > 0 && records[0].hasOwnProperty('Buy/Sell');
@@ -205,6 +205,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       // If LevelOfDetail exists in the header and this row has a non-empty value that
       // isn't EXECUTION, skip it (e.g., "DETAIL", "SUMMARY", or text from wrong columns).
       if (levelOfDetail && levelOfDetail !== 'EXECUTION') {
+        noteSkippedRow(rowIndex, `Unsupported trade detail level: ${levelOfDetail}`);
         continue;
       }
 
@@ -217,20 +218,30 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       // (e.g., "CurrencyPrimary" from Financial Instrument Information section)
       const clientAccountId = cleanString(record.ClientAccountID || '');
       if (clientAccountId === 'ClientAccountID' || clientAccountId === 'CurrencyPrimary') {
+        noteSkippedRow(rowIndex, 'Row did not contain a trade execution');
+        continue;
+      }
+
+      const assetClass = cleanString(record.AssetClass || record['Asset Class'] || record['Asset Category'] || '').toUpperCase();
+      const supportedAssetClasses = new Set(['', 'STK', 'STOCK', 'STOCKS', 'OPT', 'OPTION', 'OPTIONS', 'FUT', 'FUTURE', 'FUTURES']);
+      if (!supportedAssetClasses.has(assetClass)) {
+        noteSkippedRow(rowIndex, `Unsupported IBKR asset class: ${assetClass}`);
         continue;
       }
 
       // Skip if missing essential data
       // Note: price === 0 is valid for expired options (Code contains "Ep" or "Ex" or "A" or "C")
       // Also valid when Code is 'C' (close) for options with price=0 (worthless expiration)
-      const isOptionSymbol = symbol && (symbol.includes(' ') || /\d{6}[PC]\d{8}/.test(symbol));
+      const isOptionAssetClass = ['OPT', 'OPTION', 'OPTIONS'].includes(assetClass);
+      const isOptionSymbol = symbol && (isOptionAssetClass || symbol.includes(' ') || /\d{6}[PC]\d{8}/.test(symbol));
       const isExpirationCode = code && (code.includes('EP') || code.includes('EX') || code.includes('A'));
       const isOptionClose = code && code.includes('C') && isOptionSymbol;
       const isExpiration = isExpirationCode || (price === 0 && isOptionClose);
       const invalidQuantity = !isFinite(absQuantity) || absQuantity <= 0;
       const invalidPrice = !isFinite(price) || (price === 0 && !isExpiration);
       if (!symbol || invalidQuantity || invalidPrice || !dateTime) {
-        console.log(`Skipping IBKR record missing data:`, { symbol, quantity, price, dateTime, code });
+        console.log(`[IBKR] Skipping row ${rowIndex} because required execution data was missing`);
+        noteSkippedRow(rowIndex, 'Missing required symbol, quantity, price, or date/time');
         continue;
       }
 
@@ -240,12 +251,15 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
 
       if (!tradeDate || !entryTime) {
         console.log(`Skipping IBKR record with invalid date: ${dateTime}`);
+        noteSkippedRow(rowIndex, `Invalid execution date/time: ${dateTime}`);
         continue;
       }
 
       // For options, IBKR Activity Statement already reports quantity in contracts
       let processedQuantity = absQuantity;
-      const instrumentData = parseInstrumentData(symbol);
+      const instrumentData = isOptionAssetClass
+        ? parseIBKRTradeConfirmationInstrumentData(record, symbol)
+        : parseInstrumentData(symbol);
       if (instrumentData.instrumentType === 'option') {
         // IBKR reports options quantity in contracts already (not shares)
         // So we don't need to divide by 100
@@ -279,17 +293,29 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         record['Order ID'] ||
         record.OrderID ||
         record.OrderId ||
+        record.IBOrderID ||
+        record.ibOrderID ||
         record.orderId ||
         record['OrderId'] ||
         record['Trade ID'] ||
         record.TradeID ||
         ''
       );
+      const executionId = cleanString(
+        record.IBExecID || record['IB Exec ID'] || record.ExecutionID || record.execution_id || ''
+      );
+      const tradeId = cleanString(
+        record.TradeID || record['Trade ID'] || record.trade_id || ''
+      );
+      const currency = cleanString(record.Currency || record.CurrencyPrimary || 'USD') || 'USD';
 
       transactions.push({
         symbol,
         conid, // Contract ID for reliable options grouping
         orderId,
+        executionId,
+        tradeId,
+        currency,
         sourceIndex: rowIndex,
         date: tradeDate,
         datetime: entryTime,
@@ -311,8 +337,13 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         console.log(`Parsed IBKR transaction: ${action} ${processedQuantity} ${symbol} @ $${price}${code ? ` [${code}]` : ''}${commission < 0 ? ` (rebate: $${Math.abs(commission).toFixed(2)})` : ''}`);
       }
     } catch (error) {
-      console.error('Error parsing IBKR transaction:', error, record);
+      console.error(`[IBKR] Error parsing transaction row ${rowIndex}:`, error.message);
+      noteSkippedRow(rowIndex, `Parse error: ${error.message}`);
     }
+  }
+
+  if (diagnostics?.skippedRows > 0) {
+    diagnostics.warnings.push(`${diagnostics.skippedRows} IBKR trade row${diagnostics.skippedRows === 1 ? '' : 's'} were skipped during parsing.`);
   }
 
   // Sort transactions by grouping key (conid if available, otherwise symbol) and datetime
@@ -615,6 +646,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
             fees: 0,
             conid: transaction.conid,
             orderId: transaction.orderId ? `${transaction.orderId}-synthetic-open` : null,
+            order_id: transaction.orderId ? `${transaction.orderId}-synthetic-open` : null,
             synthetic: true,
             synthetic_reason: 'missing_opening_execution'
           };
@@ -625,7 +657,10 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
             datetime: transaction.datetime,
             fees: transaction.fees || 0,
             conid: transaction.conid,
-            orderId: transaction.orderId || null
+            orderId: transaction.orderId || null,
+            order_id: transaction.orderId || null,
+            execution_id: transaction.executionId || null,
+            trade_id: transaction.tradeId || null
           };
 
           const closeOnlyTrade = {
@@ -644,6 +679,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
             fees: 0,
             broker: brokerTag,
             accountIdentifier: transaction.accountIdentifier,
+            originalCurrency: transaction.currency,
             executions: [syntheticOpeningExecution, closingExecution],
             executionData: [syntheticOpeningExecution, closingExecution],
             notes: `Close-only trade: ${originalSide} position closed via ${transactionCode}. Opening transaction not in import.`,
@@ -699,7 +735,8 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
             entryValue: 0,
             exitValue: 0,
             broker: brokerTag,
-            accountIdentifier: transaction.accountIdentifier
+            accountIdentifier: transaction.accountIdentifier,
+            originalCurrency: transaction.currency
           };
 
           // Log with extra detail for short option positions
@@ -721,6 +758,9 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
           fees: transaction.fees,
           conid: transaction.conid, // Include Conid for duplicate detection
           orderId: transaction.orderId || null,
+          order_id: transaction.orderId || null,
+          execution_id: transaction.executionId || null,
+          trade_id: transaction.tradeId || null,
           sourceIndex: transaction.sourceIndex
         };
 
@@ -733,19 +773,11 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         if (symbol && !candidateKeys.includes(symbol)) candidateKeys.push(symbol);
         const existsGlobally = isExecutionDuplicateMultiKey(newExecution, candidateKeys, context);
 
-        // Then check if it exists in the current trade being built
-        // For fresh imports, we trust each CSV row is a unique execution
-        // Only deduplicate if we have unique identifiers (orderId)
-        const executionExists = existsGlobally || currentTrade.executions.some(exec => {
-          // If both have order IDs, use that for comparison (most reliable)
-          if (exec.orderId && newExecution.orderId) {
-            return String(exec.orderId) === String(newExecution.orderId);
-          }
-          // Without unique identifiers, don't deduplicate within the current import
-          // This allows multiple identical executions from the same CSV (legitimate fills)
-          // The global check (existsGlobally) still prevents re-importing existing trades
-          return false;
-        });
+        // An IBKR order can produce multiple fills. Execution/trade IDs identify
+        // fills; order ID alone is only a grouping hint.
+        const hasStableFillId = Boolean(newExecution.execution_id || newExecution.trade_id);
+        const executionExists = existsGlobally || (hasStableFillId &&
+          currentTrade.executions.some(exec => executionIdentityMatches(exec, newExecution)));
 
         if (existsGlobally) {
           console.log(`  [SKIP] Execution already exists in a completed or open trade: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);

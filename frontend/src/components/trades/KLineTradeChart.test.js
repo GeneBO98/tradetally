@@ -2,6 +2,8 @@ import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import KLineTradeChart from './KLineTradeChart.vue'
 
+const { registeredOverlays } = vi.hoisted(() => ({ registeredOverlays: new Map() }))
+
 const chartMock = {
   setSymbol: vi.fn(),
   setPeriod: vi.fn(),
@@ -22,7 +24,7 @@ const chartMock = {
 vi.mock('klinecharts', () => ({
   init: vi.fn(() => chartMock),
   dispose: vi.fn(),
-  registerOverlay: vi.fn(),
+  registerOverlay: vi.fn((template) => registeredOverlays.set(template.name, template)),
 }))
 
 class ResizeObserverMock {
@@ -168,6 +170,131 @@ describe('KLineTradeChart', () => {
     })
 
     wrapper.unmount()
+  })
+
+  it('adds a planned long-position overlay while keeping the actual exit marker separate', async () => {
+    const wrapper = mount(KLineTradeChart, {
+      props: {
+        chartData: {
+          ...chartData,
+          trade: {
+            ...chartData.trade,
+            side: 'long',
+            stop_loss: 98,
+            take_profit: 107,
+          },
+        },
+      },
+    })
+
+    await vi.waitFor(() => expect(chartMock.setDataLoader).toHaveBeenCalledOnce())
+
+    const positionOverlay = chartMock.createOverlay.mock.calls
+      .map(([overlay]) => overlay)
+      .find((overlay) => overlay.groupId === 'trade-planned-position')
+    const exitMarker = chartMock.createOverlay.mock.calls
+      .map(([overlay]) => overlay)
+      .find((overlay) => overlay.groupId === 'trade-executions' && overlay.extendData.kind === 'exit')
+
+    expect(positionOverlay).toMatchObject({
+      name: 'tradePositionOverlay',
+      lock: true,
+      extendData: {
+        side: 'long',
+        entry_price: 101,
+        stop_loss: 98,
+        take_profit: 107,
+        risk_reward: 2,
+      },
+    })
+    expect(positionOverlay.points).toEqual([
+      { timestamp: 1_700_000_000_000, value: 101 },
+      { timestamp: 1_700_086_400_000, value: 101 },
+      { timestamp: 1_700_086_400_000, value: 107 },
+      { timestamp: 1_700_086_400_000, value: 98 },
+    ])
+    expect(exitMarker).toBeTruthy()
+
+    wrapper.unmount()
+  })
+
+  it('orients a valid short-position plan and omits incomplete plans', async () => {
+    const shortWrapper = mount(KLineTradeChart, {
+      props: {
+        chartData: {
+          ...chartData,
+          trade: {
+            ...chartData.trade,
+            side: 'short',
+            stop_loss: 105,
+            take_profit: 97,
+          },
+        },
+      },
+    })
+
+    await vi.waitFor(() => expect(chartMock.setDataLoader).toHaveBeenCalledOnce())
+    expect(chartMock.createOverlay.mock.calls
+      .map(([overlay]) => overlay)
+      .find((overlay) => overlay.groupId === 'trade-planned-position')
+      .extendData).toMatchObject({ side: 'short', risk_reward: 4 / 4 })
+    shortWrapper.unmount()
+
+    vi.clearAllMocks()
+    chartMock.createIndicator.mockImplementation((value) => (
+      typeof value === 'string' ? `${value}-id` : `${value.name}-id`
+    ))
+    chartMock.createOverlay.mockImplementation((value) => `${value.name}-id`)
+    chartMock.getOverlays.mockReturnValue([])
+
+    const incompleteWrapper = mount(KLineTradeChart, {
+      props: {
+        chartData: {
+          ...chartData,
+          trade: {
+            ...chartData.trade,
+            side: 'long',
+            stop_loss: null,
+            take_profit: 107,
+          },
+        },
+      },
+    })
+
+    await vi.waitFor(() => expect(chartMock.setDataLoader).toHaveBeenCalledOnce())
+    expect(chartMock.createOverlay.mock.calls
+      .map(([overlay]) => overlay)
+      .some((overlay) => overlay.groupId === 'trade-planned-position')).toBe(false)
+    incompleteWrapper.unmount()
+  })
+
+  it('renders distinct profit, risk, and entry figures for the planned position', () => {
+    const template = registeredOverlays.get('tradePositionOverlay')
+    const figures = template.createPointFigures({
+      coordinates: [{ x: 40, y: 96 }, { x: 240, y: 96 }],
+      overlay: {
+        extendData: {
+          side: 'long',
+          entry_price: 101,
+          stop_loss: 98,
+          take_profit: 107,
+          risk_reward: 2,
+          price_precision: 2,
+        },
+      },
+      yAxis: { convertToPixel: (value) => 500 - value * 4 },
+      bounding: { width: 800, height: 480 },
+    })
+
+    expect(figures.filter((figure) => figure.type === 'rect')).toHaveLength(2)
+    expect(figures.filter((figure) => figure.type === 'text').map((figure) => figure.attrs.text)).toEqual([
+      'LONG · TP 107.00 · 2.00R',
+      'ENTRY 101.00',
+      'SL 98.00 · 1R',
+    ])
+    expect(figures.find((figure) => figure.type === 'line')).toMatchObject({
+      attrs: { coordinates: [{ x: 40, y: 96 }, { x: 240, y: 96 }] },
+    })
   })
 
   it('stacks multiple executions mapped to the same candle into separate lanes', async () => {

@@ -192,7 +192,12 @@
                             :max="todayIso"
                         />
                         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                            Only sync trades on or after this date. "All Time" pulls the full history available from the broker.
+                            <template v-if="connection.brokerType === 'ibkr'">
+                                Only sync trades on or after this date. "All Time" imports up to the latest 10 years in paced 365-day windows.
+                            </template>
+                            <template v-else>
+                                Only sync trades on or after this date. "All Time" pulls the full history available from the broker.
+                            </template>
                         </p>
                     </div>
 

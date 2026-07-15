@@ -143,6 +143,8 @@ const emit = defineEmits(['resolution-change'])
 const USER_DRAWING_GROUP = 'trade-user-drawings'
 const EXECUTION_GROUP = 'trade-executions'
 const EXECUTION_OVERLAY = 'tradeExecutionMarker'
+const POSITION_GROUP = 'trade-planned-position'
+const POSITION_OVERLAY = 'tradePositionOverlay'
 const resolutionOptions = [
   { value: '1', label: '1m' },
   { value: '5', label: '5m' },
@@ -152,6 +154,7 @@ const resolutionOptions = [
 ]
 
 let executionOverlayRegistered = false
+let positionOverlayRegistered = false
 
 function registerExecutionOverlay() {
   if (executionOverlayRegistered) return
@@ -227,6 +230,101 @@ function registerExecutionOverlay() {
 }
 
 registerExecutionOverlay()
+
+function registerPositionOverlay() {
+  if (positionOverlayRegistered) return
+
+  registerOverlay({
+    name: POSITION_OVERLAY,
+    totalStep: 5,
+    needDefaultPointFigure: false,
+    needDefaultXAxisFigure: false,
+    needDefaultYAxisFigure: false,
+    createPointFigures: ({ coordinates, overlay, yAxis, bounding }) => {
+      if (coordinates.length < 2 || !yAxis) return []
+
+      const data = overlay.extendData || {}
+      const entryPrice = Number(data.entry_price)
+      const stopLoss = Number(data.stop_loss)
+      const takeProfit = Number(data.take_profit)
+      if (![entryPrice, stopLoss, takeProfit].every(Number.isFinite)) return []
+
+      const left = Math.max(0, Math.min(coordinates[0].x, coordinates[1].x))
+      const right = Math.min(bounding.width, Math.max(coordinates[0].x, coordinates[1].x))
+      const width = Math.max(1, right - left)
+      const entryY = yAxis.convertToPixel(entryPrice)
+      const stopY = yAxis.convertToPixel(stopLoss)
+      const targetY = yAxis.convertToPixel(takeProfit)
+      const profitTop = Math.min(entryY, targetY)
+      const riskTop = Math.min(entryY, stopY)
+      const precision = Math.max(0, Number(data.price_precision) || 0)
+      const riskReward = Number(data.risk_reward)
+      const sideLabel = String(data.side || '').toUpperCase()
+      const targetLabel = `${sideLabel}${sideLabel ? ' · ' : ''}TP ${takeProfit.toFixed(precision)}${Number.isFinite(riskReward) ? ` · ${riskReward.toFixed(2)}R` : ''}`
+      const entryLabel = `ENTRY ${entryPrice.toFixed(precision)}`
+      const stopLabel = `SL ${stopLoss.toFixed(precision)} · 1R`
+      const textX = Math.min(bounding.width - 6, right - 5)
+
+      const label = (y, text, backgroundColor) => ({
+        type: 'text',
+        attrs: { x: textX, y, text, align: 'right', baseline: 'middle' },
+        styles: {
+          style: 'fill',
+          color: '#ffffff',
+          size: 10,
+          weight: 600,
+          backgroundColor,
+          borderRadius: 3,
+          paddingLeft: 4,
+          paddingTop: 2,
+          paddingRight: 4,
+          paddingBottom: 2,
+        },
+        ignoreEvent: true,
+      })
+
+      return [
+        {
+          type: 'rect',
+          attrs: { x: left, y: profitTop, width, height: Math.max(1, Math.abs(targetY - entryY)) },
+          styles: {
+            style: 'stroke_fill',
+            color: 'rgba(5, 150, 105, 0.14)',
+            borderColor: '#059669',
+            borderSize: 1,
+            borderStyle: 'solid',
+          },
+          ignoreEvent: true,
+        },
+        {
+          type: 'rect',
+          attrs: { x: left, y: riskTop, width, height: Math.max(1, Math.abs(stopY - entryY)) },
+          styles: {
+            style: 'stroke_fill',
+            color: 'rgba(220, 38, 38, 0.12)',
+            borderColor: '#dc2626',
+            borderSize: 1,
+            borderStyle: 'solid',
+          },
+          ignoreEvent: true,
+        },
+        {
+          type: 'line',
+          attrs: { coordinates: [{ x: left, y: entryY }, { x: right, y: entryY }] },
+          styles: { style: 'dashed', size: 1, color: '#6b7280', dashedValue: [4, 3] },
+          ignoreEvent: true,
+        },
+        label(targetY, targetLabel, '#047857'),
+        label(entryY, entryLabel, '#4b5563'),
+        label(stopY, stopLabel, '#b91c1c'),
+      ]
+    },
+  })
+
+  positionOverlayRegistered = true
+}
+
+registerPositionOverlay()
 
 function requestResolution(resolution) {
   if (props.resolutionLoading || !props.availableResolutions.includes(resolution)) return
@@ -574,6 +672,73 @@ function closestBar(timestamp) {
   ))
 }
 
+function plannedPosition() {
+  const trade = props.chartData?.trade || {}
+  const instrumentType = String(trade.instrumentType ?? trade.instrument_type).toLowerCase()
+  if (instrumentType === 'option') return null
+
+  const side = String(trade.side || '').toLowerCase()
+  const entryPrice = Number(trade.entryPrice ?? trade.entry_price)
+  const stopLoss = Number(trade.stop_loss ?? trade.stopLoss)
+  const takeProfit = Number(trade.take_profit ?? trade.takeProfit)
+  if (!['long', 'short'].includes(side) || ![entryPrice, stopLoss, takeProfit].every(Number.isFinite)) {
+    return null
+  }
+
+  const validDirection = side === 'long'
+    ? stopLoss < entryPrice && takeProfit > entryPrice
+    : stopLoss > entryPrice && takeProfit < entryPrice
+  if (!validDirection) return null
+
+  const risk = Math.abs(entryPrice - stopLoss)
+  const reward = Math.abs(takeProfit - entryPrice)
+  if (risk <= 0 || reward <= 0) return null
+
+  return {
+    side,
+    entry_price: entryPrice,
+    stop_loss: stopLoss,
+    take_profit: takeProfit,
+    risk_reward: reward / risk,
+    price_precision: pricePrecision(),
+  }
+}
+
+function addPositionOverlay() {
+  if (!chart) return
+  chart.removeOverlay({ groupId: POSITION_GROUP })
+
+  const position = plannedPosition()
+  if (!position || normalizedBars.length < 2) return
+
+  const trade = props.chartData?.trade || {}
+  const entryTimestamp = parseExecutionTimestamp(trade.entryTime ?? trade.entryDate)
+  const exitTimestamp = parseExecutionTimestamp(trade.exitTime ?? trade.exitDate)
+  const entryBar = entryTimestamp === null ? null : closestBar(entryTimestamp)
+  if (!entryBar) return
+
+  let endBar = exitTimestamp === null ? normalizedBars.at(-1) : closestBar(exitTimestamp)
+  const entryIndex = normalizedBars.findIndex((bar) => bar.timestamp === entryBar.timestamp)
+  const endIndex = normalizedBars.findIndex((bar) => bar.timestamp === endBar?.timestamp)
+  if (endIndex <= entryIndex) {
+    endBar = normalizedBars[Math.min(entryIndex + 1, normalizedBars.length - 1)]
+  }
+  if (!endBar || endBar.timestamp === entryBar.timestamp) return
+
+  chart.createOverlay({
+    name: POSITION_OVERLAY,
+    groupId: POSITION_GROUP,
+    lock: true,
+    points: [
+      { timestamp: entryBar.timestamp, value: position.entry_price },
+      { timestamp: endBar.timestamp, value: position.entry_price },
+      { timestamp: endBar.timestamp, value: position.take_profit },
+      { timestamp: endBar.timestamp, value: position.stop_loss },
+    ],
+    extendData: position,
+  })
+}
+
 function addExecutionMarkers() {
   if (!chart) return
   chart.removeOverlay({ groupId: EXECUTION_GROUP })
@@ -752,6 +917,7 @@ async function createChart() {
   if (maEnabled.value) addMovingAverages()
   if (volumeEnabled.value) volumeIndicatorId = chart.createIndicator('VOL')
 
+  addPositionOverlay()
   addExecutionMarkers()
   restoreDrawings()
   requestAnimationFrame(focusTradeView)

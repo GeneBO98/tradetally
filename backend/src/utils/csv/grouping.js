@@ -356,11 +356,16 @@ function normalizeExecutionCollections(trades) {
           return 0;
         })
         .filter((execution) => {
+          // An IBKR order can contain multiple fills. Only fill-level identifiers
+          // are safe for collapsing execution rows; an order ID alone is not.
           const identifierKey =
+            execution.execution_id ??
+            execution.executionId ??
+            execution.ibExecID ??
+            execution.ib_exec_id ??
             execution.sequenceNumber ??
             execution.sequence_number ??
-            execution.orderId ??
-            execution.orderID ??
+            execution.trade_id ??
             execution.tradeId ??
             execution.tradeID ??
             null;

@@ -3984,6 +3984,8 @@ const tradeController = {
         side: trade.side,
         pnl: trade.pnl,
         pnlPercent: trade.pnl_percent,
+        stop_loss: trade.stop_loss,
+        take_profit: trade.take_profit,
         // Options-specific fields
         instrumentType: trade.instrument_type,
         strikePrice: trade.strike_price,

@@ -1132,6 +1132,12 @@ describe('Dashboard-derived CSV import contracts', () => {
       tradeDate: expected.trade_date,
       instrumentType: expected.instrument_type
     }));
+    if (expected.commission !== undefined) {
+      expect(result.trades[0].commission).toBeCloseTo(expected.commission, 6);
+    }
+    if (expected.execution_count !== undefined) {
+      expect(result.trades[0].executions).toHaveLength(expected.execution_count);
+    }
   });
 });
 
