@@ -148,6 +148,28 @@ describe('KLineTradeChart', () => {
     wrapper.unmount()
   })
 
+  it('uses continuous-contract metadata for futures chart formatting', async () => {
+    const wrapper = mount(KLineTradeChart, {
+      props: {
+        chartData: {
+          ...chartData,
+          chart_symbol: 'ZN.c.0',
+          tick_size: 0.015625,
+        },
+      },
+    })
+
+    await vi.waitFor(() => expect(chartMock.setSymbol).toHaveBeenCalledOnce())
+
+    expect(chartMock.setSymbol).toHaveBeenCalledWith({
+      ticker: 'ZN.c.0',
+      pricePrecision: 6,
+      volumePrecision: 0,
+    })
+
+    wrapper.unmount()
+  })
+
   it('stacks multiple executions mapped to the same candle into separate lanes', async () => {
     const wrapper = mount(KLineTradeChart, {
       props: {

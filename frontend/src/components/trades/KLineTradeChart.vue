@@ -415,6 +415,13 @@ function intervalToPeriod(interval) {
 }
 
 function pricePrecision() {
+  const tickSize = Number(props.chartData?.tick_size)
+  if (Number.isFinite(tickSize) && tickSize > 0) {
+    const normalized = tickSize.toFixed(8).replace(/0+$/, '')
+    const decimalIndex = normalized.indexOf('.')
+    return decimalIndex === -1 ? 0 : normalized.length - decimalIndex - 1
+  }
+
   const prices = [props.chartData?.trade?.entryPrice, props.chartData?.trade?.exitPrice]
     .map(Number)
     .filter(Number.isFinite)
@@ -732,7 +739,7 @@ async function createChart() {
   if (!chart) return
 
   normalizedBars = normalizeChartData(props.chartData?.candles)
-  const ticker = props.chartData?.trade?.symbol || props.chartData?.symbol || 'Trade'
+  const ticker = props.chartData?.chart_symbol || props.chartData?.trade?.symbol || props.chartData?.symbol || 'Trade'
 
   chart.setSymbol({ ticker, pricePrecision: pricePrecision(), volumePrecision: 0 })
   chart.setPeriod(intervalToPeriod(props.chartData?.interval))

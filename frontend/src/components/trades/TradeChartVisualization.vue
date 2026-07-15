@@ -44,7 +44,7 @@
         </button>
         <p class="mt-3 text-xs text-gray-500 dark:text-gray-500">
           <span v-if="isBillingEnabled">Uses the configured high-precision market data provider.</span>
-          <span v-else>Uses the configured provider with Alpha Vantage as the daily-data fallback.</span>
+          <span v-else>Uses configured providers first, with no-cost fallbacks when available.</span>
         </p>
       </div>
 
@@ -76,6 +76,15 @@
           class="mb-3 rounded-lg border border-primary-200 bg-primary-50 p-3 text-sm text-primary-900 dark:border-primary-800 dark:bg-primary-900/20 dark:text-primary-100"
         >
           This chart displays the underlying security. Execution markers show option fill timing; contract prices remain in the execution table.
+        </div>
+
+        <div
+          v-if="chartData.futures_continuous"
+          class="mb-3 rounded-lg border border-primary-200 bg-primary-50 p-3 text-sm text-primary-900 dark:border-primary-800 dark:bg-primary-900/20 dark:text-primary-100"
+        >
+          This chart displays continuous front-month data
+          <template v-if="chartData.chart_symbol">({{ chartData.chart_symbol }})</template>.
+          Contract rollover can create differences from the recorded fill price.
         </div>
 
         <KLineTradeChart
@@ -182,8 +191,11 @@ const sourceLabel = computed(() => {
     alphavantage_cache: 'Alpha Vantage cache',
     alphavantage_fallback: 'Alpha Vantage fallback',
     coingecko: 'CoinGecko',
+    databento: 'Databento',
+    yahoo: 'Yahoo Finance',
   }
-  return labels[chartData.value?.source] || 'Market data'
+  const source = String(chartData.value?.source || '').replace(/^cache:/, '')
+  return labels[source] || 'Market data'
 })
 
 function metricClass(value) {

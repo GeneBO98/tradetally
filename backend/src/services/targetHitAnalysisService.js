@@ -79,7 +79,7 @@ class TargetHitAnalysisService {
         logger.info(`[TARGET-HIT] Futures contract detected (${symbol}), chart data may not be available. Will use exit price fallback if needed.`);
         // Try to get chart data, but don't fail if unavailable - we'll use exit price fallback
         try {
-          chartData = await ChartService.getTradeChartData(userId, symbol, entry_time, exit_time);
+          chartData = await ChartService.getTradeChartData(userId, symbol, entry_time, exit_time, null, '1', trade);
         } catch (error) {
           logger.warn(`[TARGET-HIT] Chart data unavailable for futures contract ${symbol}: ${error.message}. Will use exit price analysis.`);
           // For futures, if chart data is unavailable, we'll proceed with exit price analysis
@@ -87,7 +87,7 @@ class TargetHitAnalysisService {
         }
       } else {
         try {
-          chartData = await ChartService.getTradeChartData(userId, symbol, entry_time, exit_time);
+          chartData = await ChartService.getTradeChartData(userId, symbol, entry_time, exit_time, null, '1', trade);
         } catch (error) {
           logger.warn(`[TARGET-HIT] Failed to get chart data for ${symbol}: ${error.message}`);
           return {

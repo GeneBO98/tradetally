@@ -3958,7 +3958,8 @@ const tradeController = {
         entryDate,
         exitDate,
         req.headers.host,
-        resolution
+        resolution,
+        trade
       );
       ChartService.alignCandlesToTradePrices(chartData, trade);
 
@@ -4003,9 +4004,11 @@ const tradeController = {
       // Get usage statistics for the response
       const usageStats = await ChartService.getUsageStats(userId, req.headers.host);
       chartData.usage = usageStats;
-      chartData.available_resolutions = (
-        ['fmp', 'finnhub'].includes(chartData.source) || chartData.fallback
-      ) ? ['1', '5', '15', '60', 'D'] : ['D'];
+      if (!Array.isArray(chartData.available_resolutions)) {
+        chartData.available_resolutions = (
+          ['fmp', 'finnhub', 'databento', 'cache:databento'].includes(chartData.source) || chartData.fallback
+        ) ? ['1', '5', '15', '60', 'D'] : ['D'];
+      }
 
       res.json(chartData);
     } catch (error) {
@@ -4039,6 +4042,12 @@ const tradeController = {
           error: 'Chart data unavailable',
           message: error.message,
           symbol: req.params.id ? 'Unknown' : undefined
+        });
+      }
+
+      if ([400, 404, 422].includes(error.statusCode)) {
+        return res.status(error.statusCode).json({
+          error: error.message
         });
       }
       

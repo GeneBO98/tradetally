@@ -181,6 +181,31 @@ describe('FMP market data client', () => {
     );
   });
 
+  test('uses the configured FMP commodities chart before futures fallbacks', async () => {
+    const fmp = require('../../src/utils/fmpClient');
+    const axios = require('axios');
+    const trade = {
+      symbol: 'GCM6',
+      entry_time: '2025-01-02T15:30:00.000Z',
+      exit_time: '2025-01-02T16:00:00.000Z'
+    };
+
+    const chartData = await fmp.getFuturesTradeChartData('GC', trade, 'user-1', '5');
+
+    expect(chartData).toMatchObject({
+      source: 'fmp',
+      interval: '5min',
+      chart_symbol: 'GCUSD',
+      futures_continuous: true
+    });
+    expect(axios.get).toHaveBeenCalledWith(
+      expect.stringContaining('/historical-chart/5min'),
+      expect.objectContaining({
+        params: expect.objectContaining({ symbol: 'GCUSD' })
+      })
+    );
+  });
+
   test('maps search and CUSIP responses to existing contracts', async () => {
     const fmp = require('../../src/utils/fmpClient');
 

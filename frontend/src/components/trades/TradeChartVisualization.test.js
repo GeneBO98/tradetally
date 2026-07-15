@@ -161,4 +161,67 @@ describe('TradeChartVisualization resolutions', () => {
     await vi.waitFor(() => expect(wrapper.findComponent({ name: 'KLineTradeChart' }).exists()).toBe(true))
     expect(wrapper.findComponent({ name: 'KLineTradeChart' }).props('selectedResolution')).toBe('15')
   })
+
+  it('identifies cached Databento continuous-contract futures charts', async () => {
+    apiGet.mockResolvedValue({
+      data: {
+        ...baseChartData,
+        source: 'cache:databento',
+        chart_symbol: 'MNQ.c.0',
+        futures_continuous: true,
+        available_resolutions: ['1', '5', '15', '60', 'D'],
+        trade: {
+          ...baseChartData.trade,
+          symbol: 'MNQM6',
+          instrumentType: 'future',
+        },
+      },
+    })
+
+    const wrapper = mount(TradeChartVisualization, {
+      props: { tradeId: 'trade-future' },
+      global: {
+        stubs: {
+          KLineTradeChart: true,
+          ProUpgradePrompt: true,
+        },
+      },
+    })
+
+    await wrapper.get('button.btn-primary').trigger('click')
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Databento'))
+
+    expect(wrapper.text()).toContain('continuous front-month data (MNQ.c.0)')
+    expect(wrapper.text()).toContain('Contract rollover can create differences')
+    expect(wrapper.findComponent({ name: 'KLineTradeChart' }).props('availableResolutions')).toEqual([
+      '1', '5', '15', '60', 'D',
+    ])
+  })
+
+  it('labels the no-cost Yahoo futures fallback', async () => {
+    apiGet.mockResolvedValue({
+      data: {
+        ...baseChartData,
+        source: 'yahoo',
+        chart_symbol: 'ES=F',
+        futures_continuous: true,
+        available_resolutions: ['5', '15', '60', 'D'],
+      },
+    })
+
+    const wrapper = mount(TradeChartVisualization, {
+      props: { tradeId: 'trade-yahoo' },
+      global: {
+        stubs: {
+          KLineTradeChart: true,
+          ProUpgradePrompt: true,
+        },
+      },
+    })
+
+    await wrapper.get('button.btn-primary').trigger('click')
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Yahoo Finance'))
+
+    expect(wrapper.text()).toContain('continuous front-month data (ES=F)')
+  })
 })

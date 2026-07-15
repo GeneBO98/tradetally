@@ -1,6 +1,8 @@
 jest.mock('../../src/services/tierService', () => ({}));
 jest.mock('../../src/utils/finnhub', () => ({}));
 jest.mock('../../src/utils/alphaVantage', () => ({}));
+jest.mock('../../src/utils/databento', () => ({}));
+jest.mock('../../src/services/replayDataService', () => ({}));
 jest.mock('axios', () => ({}));
 
 const ChartService = require('../../src/services/chartService');
