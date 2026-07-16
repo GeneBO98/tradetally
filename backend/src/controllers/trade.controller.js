@@ -3992,6 +3992,7 @@ const tradeController = {
         expirationDate: trade.expiration_date,
         optionType: trade.option_type,
         contractSize: trade.contract_size,
+        point_value: trade.point_value,
         // Include executions for options trades (to display actual option prices instead of underlying stock)
         executions: trade.executions ? (typeof trade.executions === 'string' ? JSON.parse(trade.executions) : trade.executions) : null
       };

@@ -9,7 +9,8 @@
           class="chart-tool-button"
           :class="activeTool === tool.id ? 'chart-tool-button-active' : ''"
           :aria-pressed="activeTool === tool.id"
-          :title="tool.description"
+          :disabled="drawingToolDisabled(tool)"
+          :title="drawingToolTitle(tool)"
           @click="startDrawing(tool)"
         >
           <component :is="tool.icon" class="h-4 w-4" />
@@ -65,6 +66,9 @@
         <span v-if="hasPriceMismatch" class="font-medium text-amber-700 dark:text-amber-300">
           Recorded fill is outside the provider candle range. Marker is pinned to execution time.
         </span>
+        <span v-else-if="activeTool === 'pnl'" class="font-medium text-primary-600 dark:text-primary-400">
+          P&L starts at the recorded entry price. Click a target price to measure the trade return.
+        </span>
         <span v-else-if="activeTool" class="font-medium text-primary-600 dark:text-primary-400">
           Drawing mode active. Press Esc to cancel.
         </span>
@@ -100,12 +104,13 @@
 </template>
 
 <script setup>
-import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
   ArrowTrendingUpIcon,
   ArrowUturnLeftIcon,
   ArrowsPointingOutIcon,
   ChartBarIcon,
+  CurrencyDollarIcon,
   MinusIcon,
   PaintBrushIcon,
   PencilIcon,
@@ -114,6 +119,11 @@ import {
   TrashIcon,
 } from '@heroicons/vue/24/outline'
 import { dispose, init, registerOverlay } from 'klinecharts'
+import {
+  calculateChartPnlMeasurement,
+  formatSignedChartCurrency,
+  formatSignedChartPercent,
+} from '@/utils/chartPnlMeasurement'
 
 const props = defineProps({
   chartData: {
@@ -136,6 +146,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  currencyCode: {
+    type: String,
+    default: 'USD',
+  },
 })
 
 const emit = defineEmits(['resolution-change'])
@@ -145,6 +159,7 @@ const EXECUTION_GROUP = 'trade-executions'
 const EXECUTION_OVERLAY = 'tradeExecutionMarker'
 const POSITION_GROUP = 'trade-planned-position'
 const POSITION_OVERLAY = 'tradePositionOverlay'
+const PNL_OVERLAY = 'tradePnlMeasurement'
 const resolutionOptions = [
   { value: '1', label: '1m' },
   { value: '5', label: '5m' },
@@ -155,6 +170,117 @@ const resolutionOptions = [
 
 let executionOverlayRegistered = false
 let positionOverlayRegistered = false
+let pnlOverlayRegistered = false
+
+function registerPnlOverlay() {
+  if (pnlOverlayRegistered) return
+
+  registerOverlay({
+    name: PNL_OVERLAY,
+    totalStep: 3,
+    needDefaultPointFigure: true,
+    needDefaultXAxisFigure: true,
+    needDefaultYAxisFigure: true,
+    performEventMoveForDrawing: function ({ performPointIndex, performPoint, points }) {
+      if (performPointIndex !== 0) return
+      const raw_entry_price = this.extendData?.entry_price
+      if (raw_entry_price === null || raw_entry_price === undefined || raw_entry_price === '') return
+      const entry_price = Number(raw_entry_price)
+      if (!Number.isFinite(entry_price)) return
+      performPoint.value = entry_price
+      points[0].value = entry_price
+    },
+    performEventPressedMove: function ({ performPointIndex, performPoint, points }) {
+      if (performPointIndex !== 0) return
+      const raw_entry_price = this.extendData?.entry_price
+      if (raw_entry_price === null || raw_entry_price === undefined || raw_entry_price === '') return
+      const entry_price = Number(raw_entry_price)
+      if (!Number.isFinite(entry_price)) return
+      performPoint.value = entry_price
+      points[0].value = entry_price
+    },
+    createPointFigures: ({ coordinates, overlay, bounding }) => {
+      if (coordinates.length < 2 || overlay.points.length < 2) return []
+
+      const start = coordinates[0]
+      const end = coordinates[1]
+      const data = overlay.extendData || {}
+      const measurement = calculateChartPnlMeasurement({
+        entry_price: data.entry_price ?? overlay.points[0]?.value,
+        exit_price: overlay.points[1]?.value,
+        quantity: data.quantity,
+        side: data.side,
+        instrument_type: data.instrument_type,
+        contract_size: data.contract_size,
+        point_value: data.point_value,
+      })
+      if (!measurement) return []
+
+      const is_profit = measurement.dollar_pnl > 0
+      const is_loss = measurement.dollar_pnl < 0
+      const color = is_profit ? '#059669' : (is_loss ? '#dc2626' : '#6b7280')
+      const fill_color = is_profit
+        ? 'rgba(5, 150, 105, 0.12)'
+        : (is_loss ? 'rgba(220, 38, 38, 0.12)' : 'rgba(107, 114, 128, 0.12)')
+      const left = Math.min(start.x, end.x)
+      const top = Math.min(start.y, end.y)
+      const width = Math.max(1, Math.abs(end.x - start.x))
+      const height = Math.max(1, Math.abs(end.y - start.y))
+      const label_x = Math.max(72, Math.min(bounding.width - 72, (start.x + end.x) / 2))
+      const label_y = Math.max(14, Math.min(bounding.height - 14, (start.y + end.y) / 2))
+      const percent_label = formatSignedChartPercent(measurement.pnl_percent) || 'N/A'
+      const currency_label = data.show_dollar_pnl === false
+        ? null
+        : formatSignedChartCurrency(measurement.dollar_pnl, data.currency_code)
+      const label = currency_label
+        ? `${currency_label} (${percent_label} trade return)`
+        : `${percent_label} underlying move`
+
+      return [
+        {
+          key: 'pnl-range',
+          type: 'rect',
+          attrs: { x: left, y: top, width, height },
+          styles: {
+            style: 'stroke_fill',
+            color: fill_color,
+            borderColor: color,
+            borderSize: 1,
+            borderStyle: 'solid',
+            borderRadius: 2,
+          },
+          ignoreEvent: ['onPressedMoveStart', 'onPressedMoving', 'onPressedMoveEnd'],
+        },
+        {
+          key: 'pnl-label',
+          type: 'text',
+          attrs: {
+            x: label_x,
+            y: label_y,
+            text: label,
+            align: 'center',
+            baseline: 'middle',
+          },
+          styles: {
+            style: 'fill',
+            color: '#ffffff',
+            size: 11,
+            weight: 600,
+            backgroundColor: color,
+            borderRadius: 4,
+            paddingLeft: 6,
+            paddingTop: 3,
+            paddingRight: 6,
+            paddingBottom: 3,
+          },
+          ignoreEvent: true,
+        },
+      ]
+    },
+  })
+
+  pnlOverlayRegistered = true
+}
 
 function registerExecutionOverlay() {
   if (executionOverlayRegistered) return
@@ -230,6 +356,7 @@ function registerExecutionOverlay() {
 }
 
 registerExecutionOverlay()
+registerPnlOverlay()
 
 function registerPositionOverlay() {
   if (positionOverlayRegistered) return
@@ -336,6 +463,10 @@ const activeTool = ref(null)
 const maEnabled = ref(true)
 const volumeEnabled = ref(false)
 const hasPriceMismatch = ref(false)
+const isUnderlyingOptionChart = computed(() => {
+  const trade = props.chartData?.trade || {}
+  return String(trade.instrument_type ?? trade.instrumentType).toLowerCase() === 'option'
+})
 
 let chart = null
 let resizeObserver = null
@@ -375,6 +506,13 @@ const drawingTools = [
     icon: PresentationChartLineIcon,
   },
   {
+    id: 'pnl',
+    label: 'P&L',
+    description: 'Measure percentage return and estimated gross P&L from this trade\'s recorded entry price and size',
+    overlay: PNL_OVERLAY,
+    icon: CurrencyDollarIcon,
+  },
+  {
     id: 'segment',
     label: 'Segment',
     description: 'Draw a finite line segment',
@@ -389,6 +527,34 @@ const drawingTools = [
     icon: PaintBrushIcon,
   },
 ]
+
+function drawingToolDisabled(tool) {
+  return tool.id === 'pnl' && isUnderlyingOptionChart.value
+}
+
+function drawingToolTitle(tool) {
+  if (drawingToolDisabled(tool)) {
+    return 'P&L measurement is unavailable because this chart shows the option underlying, not its premium'
+  }
+  return tool.description
+}
+
+function pnlMeasurementExtendData() {
+  const trade = props.chartData?.trade || {}
+  const instrument_type = String(trade.instrument_type ?? trade.instrumentType ?? 'stock').toLowerCase()
+  const entry_price = Number(trade.entry_price ?? trade.entryPrice)
+
+  return {
+    quantity: Math.abs(Number(trade.quantity)) || 1,
+    side: String(trade.side || 'long').toLowerCase(),
+    instrument_type,
+    contract_size: Number(trade.contract_size ?? trade.contractSize) || 100,
+    point_value: Number(trade.point_value ?? trade.pointValue) || 1,
+    entry_price: Number.isFinite(entry_price) ? entry_price : null,
+    currency_code: props.currencyCode,
+    show_dollar_pnl: instrument_type !== 'option',
+  }
+}
 
 function getPrimaryColor() {
   return getComputedStyle(document.documentElement).getPropertyValue('--color-primary-500').trim() || '#F0812A'
@@ -575,12 +741,25 @@ function restoreDrawings() {
 
     for (const drawing of drawings) {
       if (!drawing?.name || !Array.isArray(drawing.points)) continue
+      const extend_data = drawing.name === PNL_OVERLAY
+        ? { ...(drawing.extendData || {}), ...pnlMeasurementExtendData() }
+        : drawing.extendData
+      const raw_entry_price = extend_data?.entry_price
+      const entry_price = Number(raw_entry_price)
+      const has_entry_price = raw_entry_price !== null && raw_entry_price !== undefined &&
+        raw_entry_price !== '' && Number.isFinite(entry_price)
+      const points = drawing.name === PNL_OVERLAY && has_entry_price
+        ? drawing.points.map((point, index) => (
+          index === 0 ? { ...point, value: entry_price } : point
+        ))
+        : drawing.points
+
       chart.createOverlay({
         name: drawing.name,
         groupId: USER_DRAWING_GROUP,
-        points: drawing.points,
+        points,
         styles: drawing.styles,
-        extendData: drawing.extendData,
+        extendData: extend_data,
         mode: 'weak_magnet',
         modeSensitivity: 8,
         ...drawingCallbacks(),
@@ -782,7 +961,7 @@ function addExecutionMarkers() {
 }
 
 function startDrawing(tool) {
-  if (!chart) return
+  if (!chart || drawingToolDisabled(tool)) return
   activeTool.value = tool.id
   const id = chart.createOverlay({
     name: tool.overlay,
@@ -793,6 +972,7 @@ function startDrawing(tool) {
       line: { color: getPrimaryColor(), size: 2 },
       text: { color: getPrimaryColor() },
     },
+    extendData: tool.id === 'pnl' ? pnlMeasurementExtendData() : undefined,
     ...drawingCallbacks(),
   })
 
@@ -865,14 +1045,34 @@ function resetView() {
 
 function focusTradeView() {
   if (!chart || normalizedBars.length === 0) return
-  const entryEvent = executionEvents().find((event) => event.kind === 'entry')
-  const focusBar = entryEvent ? closestBar(entryEvent.timestamp) : normalizedBars[0]
+  const events = executionEvents()
+  const event_index = (event) => {
+    const bar = closestBar(event.timestamp)
+    return bar ? normalizedBars.findIndex(({ timestamp }) => timestamp === bar.timestamp) : -1
+  }
+  const entry_indices = events
+    .filter(({ kind }) => kind === 'entry')
+    .map(event_index)
+    .filter((index) => index >= 0)
+  const exit_indices = events
+    .filter(({ kind }) => kind === 'exit')
+    .map(event_index)
+    .filter((index) => index >= 0)
+  const entry_index = entry_indices.length > 0 ? Math.min(...entry_indices) : 0
+  const exit_index = exit_indices.length > 0 ? Math.max(...exit_indices) : entry_index
+  const range_start = Math.min(entry_index, exit_index)
+  const range_end = Math.max(entry_index, exit_index)
+  const trade_bar_count = range_end - range_start + 1
+  const padding_bar_count = Math.max(10, Math.ceil(trade_bar_count * 0.15))
+  const visible_bar_count = Math.max(55, trade_bar_count + (padding_bar_count * 2))
+  const focus_index = Math.floor((range_start + range_end) / 2)
+  const focusBar = normalizedBars[focus_index] || normalizedBars[entry_index] || normalizedBars[0]
   const availableWidth = Math.max(320, chartContainer.value?.clientWidth || 800) - 90
-  const barSpace = Math.max(8, Math.min(20, availableWidth / 55))
+  const barSpace = Math.max(1, Math.min(20, availableWidth / visible_bar_count))
 
   chart.setBarSpace(barSpace)
-  chart.setOffsetRightDistance(availableWidth / 2)
-  chart.scrollToTimestamp(focusBar.timestamp, 200)
+  chart.scrollToTimestamp(focusBar.timestamp)
+  chart.scrollByDistance(-((availableWidth - barSpace) / 2))
 }
 
 function applyTheme() {
@@ -948,7 +1148,7 @@ onUnmounted(() => {
 
 <style scoped>
 .chart-tool-button {
-  @apply inline-flex h-8 flex-none items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-gray-600 transition-colors hover:bg-white hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white dark:focus:ring-offset-gray-800;
+  @apply inline-flex h-8 flex-none items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-gray-600 transition-colors hover:bg-white hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white dark:focus:ring-offset-gray-800;
 }
 
 .chart-tool-button-active {

@@ -93,6 +93,7 @@
           :selected-resolution="selectedResolution"
           :available-resolutions="availableResolutions"
           :resolution-loading="loading"
+          :currency-code="currencyCode"
           @resolution-change="selectResolution"
         />
 
@@ -138,7 +139,7 @@ const props = defineProps({
 })
 
 const authStore = useAuthStore()
-const { formatCurrency } = useCurrencyFormatter()
+const { currencyCode, formatCurrency } = useCurrencyFormatter()
 const { showError, showWarning } = useNotification()
 const { userTimezone, timezoneLabel } = useUserTimezone()
 
