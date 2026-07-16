@@ -4,6 +4,7 @@
  */
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { fetchAiProviderUrl } = require('./urlSecurity');
+const { summarizeUrlForLogging } = require('./logSanitizer');
 
 class AIProvider {
   /**
@@ -43,6 +44,7 @@ class AIProvider {
       case 'lmstudio':
       case 'ollama':
       case 'local':
+      case 'custom':
         return this.generateOpenAICompatible(prompt, apiKey, modelName, apiUrl, { ...options, provider });
 
       case 'perplexity':
@@ -132,10 +134,27 @@ class AIProvider {
   /**
    * Generate using OpenAI-compatible API (LM Studio, Ollama, etc.)
    */
-  static async generateOpenAICompatible(prompt, apiKey, modelName, apiUrl, options = {}) {
-    const url = `${apiUrl}/chat/completions`;
+  static buildOpenAIChatCompletionsUrl(apiUrl) {
+    if (!apiUrl) {
+      throw new Error('OpenAI-compatible API URL not configured');
+    }
 
-    console.log(`[AI_PROVIDER] Calling OpenAI-compatible API at: ${url}`);
+    const url = new URL(apiUrl);
+    url.pathname = url.pathname.replace(/\/+$/, '');
+    if (!url.pathname.toLowerCase().endsWith('/chat/completions')) {
+      url.pathname = `${url.pathname}/chat/completions`;
+    }
+    return url.toString();
+  }
+
+  static async generateOpenAICompatible(prompt, apiKey, modelName, apiUrl, options = {}) {
+    if (options.provider === 'custom' && !String(modelName || '').trim()) {
+      throw new Error('Custom AI model not configured');
+    }
+
+    const url = this.buildOpenAIChatCompletionsUrl(apiUrl);
+
+    console.log(`[AI_PROVIDER] Calling OpenAI-compatible API at: ${summarizeUrlForLogging(url)}`);
 
     const headers = {
       'Content-Type': 'application/json'
@@ -238,12 +257,16 @@ class AIProvider {
    * Check if provider is configured correctly
    */
   static isConfigured(settings) {
-    const { provider, apiKey, apiUrl } = settings;
+    const { provider, apiKey, apiUrl, modelName } = settings;
 
     // Local providers don't require API key
     const localProviders = ['lmstudio', 'ollama', 'local'];
     if (localProviders.includes(provider)) {
       return !!apiUrl;
+    }
+
+    if (provider === 'custom') {
+      return !!apiUrl && !!String(modelName || '').trim();
     }
 
     return !!apiKey;

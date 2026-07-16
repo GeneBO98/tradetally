@@ -1497,19 +1497,28 @@ Please provide a helpful, specific response to the user's question. Reference th
       throw new Error('No AI provider configured. Please configure your AI provider in Settings > AI Provider.');
     }
 
-    // For local providers (LM Studio, Ollama), API key is optional
-    const localProviders = ['lmstudio', 'ollama', 'local'];
-    const isLocalProvider = localProviders.includes(provider);
+    // Local and Custom OpenAI-compatible providers may be keyless.
+    const apiKeyOptionalProviders = ['lmstudio', 'ollama', 'local', 'custom'];
+    const defaultUrlProviders = ['lmstudio', 'ollama', 'local'];
+    const isApiKeyOptional = apiKeyOptionalProviders.includes(provider);
 
-    if (!isLocalProvider && !apiKey) {
+    if (!isApiKeyOptional && !apiKey) {
       throw new Error(`No API key configured for ${provider}. Please configure it in Settings > AI Provider.`);
     }
 
     // Set default API URLs for local providers
-    if (isLocalProvider && !apiUrl) {
+    if (defaultUrlProviders.includes(provider) && !apiUrl) {
       if (provider === 'lmstudio') apiUrl = 'http://localhost:1234/v1';
       else if (provider === 'ollama') apiUrl = 'http://localhost:11434/v1';
       else apiUrl = 'http://localhost:1234/v1'; // generic local
+    }
+
+    if (provider === 'custom' && !apiUrl) {
+      throw new Error('No API URL configured for custom. Please configure it in Settings > AI Provider.');
+    }
+
+    if (provider === 'custom' && !String(modelName || '').trim()) {
+      throw new Error('No model configured for custom. Please configure it in Settings > AI Provider.');
     }
 
     if (apiUrl) {
@@ -1533,8 +1542,21 @@ Please provide a helpful, specific response to the user's question. Reference th
       else classifierApiUrl = 'http://localhost:1234/v1';
     }
 
-    if (classifierDefaults.enabled && classifierApiUrl) {
-      classifierApiUrl = (await validateAiProviderUrl(classifierProvider, classifierApiUrl)).toString();
+    const classifierModelName = classifierDefaults.model ||
+      (classifierProvider === provider ? modelName : '');
+    const effectiveClassifierApiUrl = classifierApiUrl ||
+      (classifierProvider === provider ? apiUrl : '');
+
+    if (classifierDefaults.enabled && classifierProvider === 'custom' && !effectiveClassifierApiUrl) {
+      throw new Error('No API URL configured for the custom AI checking provider.');
+    }
+
+    if (classifierDefaults.enabled && classifierProvider === 'custom' && !String(classifierModelName || '').trim()) {
+      throw new Error('No model configured for the custom AI checking provider.');
+    }
+
+    if (classifierDefaults.enabled && effectiveClassifierApiUrl) {
+      classifierApiUrl = (await validateAiProviderUrl(classifierProvider, effectiveClassifierApiUrl)).toString();
     }
 
     return {
@@ -1547,7 +1569,7 @@ Please provide a helpful, specific response to the user's question. Reference th
         provider: classifierProvider,
         apiKey: classifierDefaults.apiKey || '',
         apiUrl: classifierApiUrl,
-        modelName: classifierDefaults.model || ''
+        modelName: classifierModelName
       }
     };
   }

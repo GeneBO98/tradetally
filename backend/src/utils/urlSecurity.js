@@ -19,10 +19,10 @@ function isLocalHostname(hostname) {
 function classifyIPv4(ip) {
   const octets = ip.split('.').map(Number);
   if (octets.length !== 4 || octets.some(Number.isNaN)) {
-    return { allowedPublic: false, allowedLoopback: false };
+    return { allowedPublic: false, allowedLoopback: false, allowedPrivate: false };
   }
 
-  const [a, b] = octets;
+  const [a, b, c] = octets;
   const isLoopback = a === 127;
   const isPrivate =
     a === 10 ||
@@ -31,12 +31,30 @@ function classifyIPv4(ip) {
   const isCarrierGradeNat = a === 100 && b >= 64 && b <= 127;
   const isLinkLocal = a === 169 && b === 254;
   const isBenchmark = a === 198 && (b === 18 || b === 19);
+  const isDocumentation =
+    (a === 192 && b === 0 && c === 2) ||
+    (a === 198 && b === 51 && c === 100) ||
+    (a === 203 && b === 0 && c === 113);
+  const isProtocolAssignment = a === 192 && b === 0 && c === 0;
+  const isDeprecatedRelay = a === 192 && b === 88 && c === 99;
   const isMulticast = a >= 224 && a <= 239;
   const isReserved = a >= 240 || a === 0;
 
   return {
-    allowedPublic: !(isLoopback || isPrivate || isCarrierGradeNat || isLinkLocal || isBenchmark || isMulticast || isReserved),
-    allowedLoopback: isLoopback
+    allowedPublic: !(
+      isLoopback ||
+      isPrivate ||
+      isCarrierGradeNat ||
+      isLinkLocal ||
+      isBenchmark ||
+      isDocumentation ||
+      isProtocolAssignment ||
+      isDeprecatedRelay ||
+      isMulticast ||
+      isReserved
+    ),
+    allowedLoopback: isLoopback,
+    allowedPrivate: isPrivate
   };
 }
 
@@ -52,10 +70,12 @@ function classifyIPv6(ip) {
   const isLinkLocal = normalized.startsWith('fe8') || normalized.startsWith('fe9') || normalized.startsWith('fea') || normalized.startsWith('feb');
   const isUniqueLocal = normalized.startsWith('fc') || normalized.startsWith('fd');
   const isMulticast = normalized.startsWith('ff');
+  const isDocumentation = normalized.startsWith('2001:db8');
 
   return {
-    allowedPublic: !(isLoopback || isUnspecified || isLinkLocal || isUniqueLocal || isMulticast),
-    allowedLoopback: isLoopback
+    allowedPublic: !(isLoopback || isUnspecified || isLinkLocal || isUniqueLocal || isMulticast || isDocumentation),
+    allowedLoopback: isLoopback,
+    allowedPrivate: isUniqueLocal
   };
 }
 
@@ -67,7 +87,7 @@ function classifyIp(ip) {
   if (version === 6) {
     return classifyIPv6(ip);
   }
-  return { allowedPublic: false, allowedLoopback: false };
+  return { allowedPublic: false, allowedLoopback: false, allowedPrivate: false };
 }
 
 async function resolveHostname(hostname) {
@@ -82,7 +102,8 @@ async function resolveHostname(hostname) {
 async function resolveValidatedOutboundTarget(input, options = {}) {
   const {
     mode = 'public',
-    protocols = ['http:', 'https:']
+    protocols = ['http:', 'https:'],
+    allowPrivateAiTargets = false
   } = options;
 
   let url;
@@ -100,7 +121,8 @@ async function resolveValidatedOutboundTarget(input, options = {}) {
     throw new OutboundUrlValidationError('URLs with embedded credentials are not allowed');
   }
 
-  const hostname = url.hostname;
+  // WHATWG URL keeps brackets around IPv6 literals; net.isIP expects the raw address.
+  const hostname = url.hostname.replace(/^\[|\]$/g, '');
   if (!hostname) {
     throw new OutboundUrlValidationError('URL hostname is required');
   }
@@ -120,6 +142,16 @@ async function resolveValidatedOutboundTarget(input, options = {}) {
     if (mode === 'loopback-only') {
       if (!classification.allowedLoopback) {
         throw new OutboundUrlValidationError('Local AI endpoints must resolve to loopback addresses only');
+      }
+    } else if (mode === 'custom-ai') {
+      const isSelfHostedTarget = classification.allowedLoopback || classification.allowedPrivate;
+      if (isSelfHostedTarget && !allowPrivateAiTargets) {
+        throw new OutboundUrlValidationError(
+          'Custom AI endpoints on loopback or private networks require ALLOW_LOCAL_AI_ENDPOINTS=true'
+        );
+      }
+      if (!classification.allowedPublic && !isSelfHostedTarget) {
+        throw new OutboundUrlValidationError('Unsafe or non-routable Custom AI endpoint targets are not allowed');
       }
     } else if (!classification.allowedPublic) {
       throw new OutboundUrlValidationError('Internal, private, or non-public URL targets are not allowed');
@@ -222,22 +254,32 @@ async function validateAiProviderUrl(provider, apiUrl) {
     return null;
   }
 
-  const localProviders = new Set(['local', 'ollama', 'lmstudio']);
-  if (localProviders.has(provider) && !localAiEndpointsAllowed()) {
+  const loopbackProviders = new Set(['local', 'ollama', 'lmstudio']);
+  if (loopbackProviders.has(provider) && !localAiEndpointsAllowed()) {
     throw new OutboundUrlValidationError('Local AI endpoints are disabled on this deployment');
   }
-  const mode = localProviders.has(provider) ? 'loopback-only' : 'public';
-  return ensureValidatedOutboundUrl(apiUrl, { mode });
+  const isCustomProvider = provider === 'custom';
+  const mode = loopbackProviders.has(provider)
+    ? 'loopback-only'
+    : (isCustomProvider ? 'custom-ai' : 'public');
+  return ensureValidatedOutboundUrl(apiUrl, {
+    mode,
+    allowPrivateAiTargets: isCustomProvider && localAiEndpointsAllowed()
+  });
 }
 
 async function fetchAiProviderUrl(provider, input, fetchOptions = {}) {
-  const localProviders = new Set(['local', 'ollama', 'lmstudio']);
-  if (localProviders.has(provider) && !localAiEndpointsAllowed()) {
+  const loopbackProviders = new Set(['local', 'ollama', 'lmstudio']);
+  if (loopbackProviders.has(provider) && !localAiEndpointsAllowed()) {
     throw new OutboundUrlValidationError('Local AI endpoints are disabled on this deployment');
   }
+  const isCustomProvider = provider === 'custom';
   const { default: fetch } = await import('node-fetch');
   return fetchWithValidatedRedirects(input, fetch, fetchOptions, {
-    mode: localProviders.has(provider) ? 'loopback-only' : 'public',
+    mode: loopbackProviders.has(provider)
+      ? 'loopback-only'
+      : (isCustomProvider ? 'custom-ai' : 'public'),
+    allowPrivateAiTargets: isCustomProvider && localAiEndpointsAllowed(),
     maxRedirects: 3,
     allowCrossOriginRedirects: false
   });

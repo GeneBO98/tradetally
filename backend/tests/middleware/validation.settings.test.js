@@ -44,7 +44,7 @@ describe('settings validation', () => {
     expect(error).toBeDefined();
   });
 
-  test.each(['deepseek', 'kimi'])('accepts %s as an admin AI provider', (provider) => {
+  test.each(['deepseek', 'kimi', 'custom'])('accepts %s as an admin AI provider', (provider) => {
     const { error, value } = schemas.adminAiSettings.validate({
       aiProvider: provider,
       aiApiKey: 'test-key',

@@ -11,8 +11,8 @@ const settingsCache = require('../services/settingsCache');
 const OptionStrategyGroupingService = require('../services/optionStrategyGroupingService');
 const Trade = require('../models/Trade');
 
-const VALID_AI_PROVIDERS = ['gemini', 'claude', 'openai', 'deepseek', 'kimi', 'ollama', 'lmstudio', 'perplexity', 'local'];
-const LOCAL_AI_PROVIDERS = ['local', 'ollama', 'lmstudio'];
+const VALID_AI_PROVIDERS = ['gemini', 'claude', 'openai', 'deepseek', 'kimi', 'ollama', 'lmstudio', 'perplexity', 'local', 'custom'];
+const LOCAL_AI_PROVIDERS = ['local', 'ollama', 'lmstudio', 'custom'];
 
 function recomputeImportedTradePnl(trade, timezone) {
   const executions = trade.executions || trade.executionData || trade.execution_data;
@@ -366,6 +366,10 @@ const settingsController = {
         });
       }
 
+      if (normalizedProvider === 'custom' && !String(aiModel || '').trim()) {
+        return res.status(400).json({ error: 'Model is required for custom' });
+      }
+
       if (aiApiUrl) {
         await validateAiProviderUrl(normalizedProvider, aiApiUrl);
       }
@@ -468,6 +472,10 @@ const settingsController = {
         return res.status(400).json({
           error: 'API URL is required for ' + normalizedProvider
         });
+      }
+
+      if (normalizedProvider === 'custom' && !String(cusipAiModel || '').trim()) {
+        return res.status(400).json({ error: 'Model is required for custom' });
       }
 
       if (cusipAiApiUrl) {
@@ -1928,6 +1936,10 @@ const settingsController = {
         });
       }
 
+      if (normalizedProvider === 'custom' && !String(aiModel || '').trim()) {
+        return res.status(400).json({ error: 'Model is required for custom' });
+      }
+
       if (aiApiUrl) {
         await validateAiProviderUrl(normalizedProvider, aiApiUrl);
       }
@@ -1958,6 +1970,14 @@ const settingsController = {
         ) {
           return res.status(400).json({
             error: 'API URL is required for the AI checking provider'
+          });
+        }
+
+        const effectiveClassifierModel = aiClassifierModel ||
+          (classifierUsesMainProvider ? aiModel : '');
+        if (effectiveClassifierProvider === 'custom' && !String(effectiveClassifierModel || '').trim()) {
+          return res.status(400).json({
+            error: 'Model is required for the custom AI checking provider'
           });
         }
 
@@ -2073,6 +2093,10 @@ const settingsController = {
         return res.status(400).json({
           error: 'API URL is required for ' + normalizedProvider
         });
+      }
+
+      if (normalizedProvider === 'custom' && !String(cusipAiModel || '').trim()) {
+        return res.status(400).json({ error: 'Model is required for custom' });
       }
 
       if (cusipAiApiUrl) {

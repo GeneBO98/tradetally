@@ -20,6 +20,10 @@ jest.mock('../../src/services/adminSettings', () => ({
   getDefaultAISettings: jest.fn()
 }));
 
+jest.mock('../../src/utils/urlSecurity', () => ({
+  validateAiProviderUrl: jest.fn(async (_provider, value) => new URL(value))
+}));
+
 const db = require('../../src/config/database');
 const AICreditService = require('../../src/services/aiCreditService');
 const AIProvider = require('../../src/utils/aiProvider');
@@ -106,6 +110,43 @@ describe('AISessionService follow-up topic guard', () => {
     );
     expect(db.query).toHaveBeenCalledTimes(1);
     expect(AICreditService.useCredits).not.toHaveBeenCalled();
+  });
+
+  test('loads a keyless Custom provider and lets its classifier inherit URL and model', async () => {
+    adminSettingsService.getDefaultAISettings.mockResolvedValue({
+      provider: '',
+      apiKey: '',
+      apiUrl: '',
+      model: '',
+      classifier: {
+        enabled: true,
+        provider: 'custom',
+        apiKey: '',
+        apiUrl: '',
+        model: ''
+      }
+    });
+    User.getSettings.mockResolvedValue({
+      ai_provider: 'custom',
+      ai_api_key: '',
+      ai_api_url: 'https://provider.example/v1',
+      ai_model: 'hosted-model'
+    });
+
+    const settings = await AISessionService.getAISettings('user-1');
+
+    expect(settings).toEqual(expect.objectContaining({
+      provider: 'custom',
+      apiKey: '',
+      apiUrl: 'https://provider.example/v1',
+      modelName: 'hosted-model',
+      classifier: expect.objectContaining({
+        enabled: true,
+        provider: 'custom',
+        apiUrl: 'https://provider.example/v1',
+        modelName: 'hosted-model'
+      })
+    }));
   });
 
   test('allows trading follow-ups and then calls the configured analysis model', async () => {

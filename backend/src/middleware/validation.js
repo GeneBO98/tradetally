@@ -109,7 +109,7 @@ const nullableDate = Joi.alternatives().try(
 );
 const nullableNumber = Joi.alternatives().try(Joi.number(), Joi.valid(null, ''));
 const currencyCode = Joi.string().trim().uppercase().pattern(/^[A-Z]{3}$/).allow(null, '');
-const aiProviderSchema = Joi.string().valid('gemini', 'claude', 'openai', 'deepseek', 'kimi', 'ollama', 'lmstudio', 'perplexity', 'local');
+const aiProviderSchema = Joi.string().valid('gemini', 'claude', 'openai', 'deepseek', 'kimi', 'ollama', 'lmstudio', 'perplexity', 'local', 'custom');
 
 const schemas = {
   register: Joi.object({

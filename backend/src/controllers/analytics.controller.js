@@ -2694,11 +2694,17 @@ const analyticsController = {
       }
 
       // Check if API URL is required for this provider
-      const providersRequiringApiUrl = ['ollama', 'lmstudio', 'local'];
+      const providersRequiringApiUrl = ['ollama', 'lmstudio', 'local', 'custom'];
       if (providersRequiringApiUrl.includes(userSettings.provider) && !userSettings.apiUrl) {
         console.log(`[ERROR] API URL required for ${userSettings.provider} provider`);
         return res.status(400).json({
           error: `AI recommendations are not available. API URL required for ${userSettings.provider} provider.`
+        });
+      }
+
+      if (userSettings.provider === 'custom' && !userSettings.model) {
+        return res.status(400).json({
+          error: 'AI recommendations are not available. Model required for custom provider.'
         });
       }
 
@@ -3870,11 +3876,7 @@ const analyticsController = {
       const aiSettings = await aiService.getUserSettings(userId);
       if (!aiSettings || !aiSettings.provider) return false;
 
-      const keyRequired = ['gemini', 'claude', 'openai', 'deepseek', 'kimi'];
-      if (keyRequired.includes(aiSettings.provider) && !aiSettings.apiKey) return false;
-
-      const urlRequired = ['ollama', 'lmstudio', 'local'];
-      if (urlRequired.includes(aiSettings.provider) && !aiSettings.apiUrl) return false;
+      if (!aiService.isProviderConfigured(aiSettings)) return false;
 
       const TierService = require('../services/tierService');
       const billingEnabled = await TierService.isBillingEnabled();
