@@ -3,15 +3,54 @@ const { isExecutionDuplicateMultiKey, executionIdentityMatches } = require('../d
 const { extractAccountFromRecord } = require('../detect');
 const { parseDate, parseDateTime, getExecutionTimeBounds, cleanString, parseInstrumentData, parseNumeric } = require('../shared');
 
+function normalizeIBKRFieldName(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function createIBKRRecordReader(record) {
+  const normalizedValues = new Map();
+
+  for (const [key, value] of Object.entries(record || {})) {
+    const normalizedKey = normalizeIBKRFieldName(key);
+    if (!normalizedValues.has(normalizedKey) || normalizedValues.get(normalizedKey) === '') {
+      normalizedValues.set(normalizedKey, value);
+    }
+  }
+
+  return (...aliases) => {
+    for (const alias of aliases) {
+      const exactValue = record?.[alias];
+      if (exactValue !== undefined && exactValue !== null && String(exactValue).trim() !== '') {
+        return exactValue;
+      }
+
+      const normalizedValue = normalizedValues.get(normalizeIBKRFieldName(alias));
+      if (normalizedValue !== undefined && normalizedValue !== null && String(normalizedValue).trim() !== '') {
+        return normalizedValue;
+      }
+    }
+
+    return '';
+  };
+}
+
+function parseIBKRAction(explicitAction, quantity) {
+  const action = cleanString(explicitAction).toUpperCase();
+  if (['BUY', 'B', 'BOT'].includes(action)) return 'buy';
+  if (['SELL', 'S', 'SLD'].includes(action)) return 'sell';
+  return quantity > 0 ? 'buy' : 'sell';
+}
+
 
 function parseIBKRTradeConfirmationInstrumentData(record, fallbackSymbol = '') {
-  const symbol = cleanString(record.Symbol || fallbackSymbol);
-  const underlyingSymbol = cleanString(record.UnderlyingSymbol);
-  const strike = parseNumeric(record.Strike, NaN);
-  const expiry = cleanString(record.Expiry);
-  const putCall = cleanString(record['Put/Call']);
-  const assetClass = cleanString(record.AssetClass || record.assetClass).toUpperCase();
-  const multiplier = parseNumeric(record.Multiplier, NaN);
+  const read = createIBKRRecordReader(record);
+  const symbol = cleanString(read('Symbol') || fallbackSymbol);
+  const underlyingSymbol = cleanString(read('UnderlyingSymbol', 'Underlying Symbol'));
+  const strike = parseNumeric(read('Strike'), NaN);
+  const expiry = cleanString(read('Expiry', 'ExpirationDate', 'Expiration Date'));
+  const putCall = cleanString(read('Put/Call', 'PutCall'));
+  const assetClass = cleanString(read('AssetClass', 'Asset Class', 'AssetCategory', 'Asset Category')).toUpperCase();
+  const multiplier = parseNumeric(read('Multiplier'), NaN);
   const parsedSymbolData = parseInstrumentData(symbol);
 
   if (underlyingSymbol && Number.isFinite(strike) && expiry && putCall) {
@@ -116,86 +155,44 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
     diagnostics.skippedReasons.push({ row, reason });
   };
 
-  // Detect format: Trade Confirmation vs Activity Statement
-  const isTradeConfirmation = records.length > 0 && records[0].hasOwnProperty('Buy/Sell');
-
   // First, parse all transactions
   let rowIndex = 0;
   for (const record of records) {
     rowIndex++;
     try {
-      let symbol, quantity, absQuantity, price, commission, dateTime, action, multiplierFromCSV;
+      const read = createIBKRRecordReader(record);
 
       // Capture Code column if present (O = Open, P = Partial, C = Close)
       // Handle both "Code" and "Notes/Codes" column names (Flex Query exports use Notes/Codes)
+      const rawCode = read('Code', 'Notes/Codes', 'Notes');
       let code = null;
-      if (record.Code || record.code || record['Notes/Codes']) {
-        code = cleanString(record.Code || record.code || record['Notes/Codes']).toUpperCase();
+      if (rawCode) {
+        code = cleanString(rawCode).toUpperCase();
         console.log(`[IBKR] Transaction code: ${code}`);
       }
 
-      if (isTradeConfirmation) {
-        // Trade Confirmation format (also matches Flex Query exports with Buy/Sell column)
-        symbol = cleanString(record.Symbol);
-        quantity = parseNumeric(record.Quantity, NaN);
-        absQuantity = Math.abs(quantity);
-        // Handle both "Price" and "TradePrice" column names (Flex Query exports use TradePrice)
-        price = parseNumeric(record.Price || record.TradePrice, NaN);
-        // IBKR commission: negative = fee paid, positive = rebate received
-        // Convert to our convention: positive = fee paid, negative = rebate (credit)
-        // Handle both "Commission" and "IBCommission" column names
-        commission = -(parseNumeric(record.Commission || record.IBCommission || 0, 0));
-
-        // Handle multiple DateTime formats:
-        // - YYYYMMDD;HHMMSS (original Trade Confirmation)
-        // - MM/DD/YY;HHMMSS (Flex Query with slash dates, e.g. IBKR Japan)
-        // - Date/Time or DateTime column names
-        const rawDateTime = (record['Date/Time'] || record.DateTime || '').toString();
-        dateTime = rawDateTime.replace(/^[\x27\x22\u2018\u2019\u201C\u201D]|[\x27\x22\u2018\u2019\u201C\u201D]$/g, '').trim();
-
-        // Determine action from Buy/Sell column
-        const buySell = cleanString(record['Buy/Sell']).toUpperCase();
-        action = buySell === 'BUY' ? 'buy' : 'sell';
-        // Read Multiplier column for Trade Confirmation format
-        multiplierFromCSV = record.Multiplier ? parseNumeric(record.Multiplier, null) : null;
-      } else {
-        // Activity Statement format (original) \u2014 includes:
-        //   - IBKR Flex Query exports
-        //   - IBKR Activity Statement Trades section (`T. Price`, `Comm/Fee`)
-        //   - CapTrader Transaction History (Date-only, Transaction Type column)
-        symbol = cleanString(record.Symbol);
-        quantity = parseNumeric(record.Quantity, NaN);
-        absQuantity = Math.abs(quantity);
-        // `T. Price` is the trade price column in Activity Statement Trades sections
-        price = parseNumeric(record.Price ?? record['T. Price'] ?? record['T.Price'], NaN);
-        // IBKR commission: negative = fee paid, positive = rebate received
-        // Convert to our convention: positive = fee paid, negative = rebate (credit)
-        // `Comm/Fee` is the column name in Activity Statement Trades sections
-        commission = -(parseNumeric(record.Commission ?? record['Comm/Fee'] ?? record.IBCommission ?? 0, 0));
-        // Handle "DateTime", "Date/Time", or just "Date" (CapTrader Transaction History)
-        // Clean DateTime - remove leading and trailing apostrophes/quotes if present
-        const rawDateTime = (record.DateTime || record['Date/Time'] || record.Date || record.Datum || '').toString();
-        dateTime = rawDateTime.replace(/^[\x27\x22\u2018\u2019\u201C\u201D]|[\x27\x22\u2018\u2019\u201C\u201D]$/g, '').trim();
-        // Prefer explicit `Transaction Type` (CapTrader Transaction History) over
-        // sign-of-quantity inference, since some Transaction History rows use a
-        // signed quantity that already reflects the action.
-        const txType = cleanString(record['Transaction Type'] || '').toLowerCase();
-        if (txType === 'buy') {
-          action = 'buy';
-        } else if (txType === 'sell') {
-          action = 'sell';
-        } else {
-          action = quantity > 0 ? 'buy' : 'sell';
-        }
-        // Check for Multiplier column (some IBKR Activity Statement exports include this)
-        multiplierFromCSV = record.Multiplier ? parseNumeric(record.Multiplier, null) : null;
-      }
+      // Parse every row independently. IBKR uses several equivalent header styles
+      // across Flex CSV, Activity Statement CSV, XML, and CapTrader exports, and
+      // separate history windows may not use the same spelling or casing.
+      const symbol = cleanString(read('Symbol'));
+      const quantity = parseNumeric(read('Quantity'), NaN);
+      const absQuantity = Math.abs(quantity);
+      const price = parseNumeric(read('Price', 'TradePrice', 'Trade Price', 'T. Price', 'T.Price'), NaN);
+      // IBKR commission: negative = fee paid, positive = rebate received.
+      const commission = -(parseNumeric(read('Commission', 'IBCommission', 'IB Commission', 'Comm/Fee') || 0, 0));
+      const rawDateTime = read('DateTime', 'Date/Time', 'TradeDate', 'Trade Date', 'Date', 'Datum').toString();
+      const dateTime = rawDateTime.replace(/^[\x27\x22\u2018\u2019\u201C\u201D]|[\x27\x22\u2018\u2019\u201C\u201D]$/g, '').trim();
+      const explicitAction = read('Buy/Sell', 'BuySell', 'Transaction Type', 'Action', 'Side');
+      const action = parseIBKRAction(explicitAction, quantity);
+      const rawMultiplier = read('Multiplier');
+      const multiplierFromCSV = rawMultiplier ? parseNumeric(rawMultiplier, null) : null;
 
 
       // Skip header rows and non-execution records in multi-section Flex Query exports
       // Flex Query exports have LevelOfDetail = "EXECUTION" for actual trades
-      const levelOfDetail = record.LevelOfDetail || '';
-      if (levelOfDetail === 'LevelOfDetail' || levelOfDetail === 'Header') {
+      const levelOfDetail = cleanString(read('LevelOfDetail', 'Level Of Detail'));
+      const normalizedLevelOfDetail = levelOfDetail.toUpperCase();
+      if (normalizedLevelOfDetail === 'LEVELOFDETAIL' || normalizedLevelOfDetail === 'HEADER') {
         // This is a header row from a different section, skip it
         continue;
       }
@@ -204,7 +201,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       // When parsed using the first section's headers, these rows produce garbage data.
       // If LevelOfDetail exists in the header and this row has a non-empty value that
       // isn't EXECUTION, skip it (e.g., "DETAIL", "SUMMARY", or text from wrong columns).
-      if (levelOfDetail && levelOfDetail !== 'EXECUTION') {
+      if (normalizedLevelOfDetail && normalizedLevelOfDetail !== 'EXECUTION') {
         noteSkippedRow(rowIndex, `Unsupported trade detail level: ${levelOfDetail}`);
         continue;
       }
@@ -216,13 +213,13 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
 
       // Skip rows from other Flex Query sections where ClientAccountID column has unexpected values
       // (e.g., "CurrencyPrimary" from Financial Instrument Information section)
-      const clientAccountId = cleanString(record.ClientAccountID || '');
+      const clientAccountId = cleanString(read('ClientAccountID', 'Client Account ID', 'Account', 'AccountID'));
       if (clientAccountId === 'ClientAccountID' || clientAccountId === 'CurrencyPrimary') {
         noteSkippedRow(rowIndex, 'Row did not contain a trade execution');
         continue;
       }
 
-      const assetClass = cleanString(record.AssetClass || record['Asset Class'] || record['Asset Category'] || '').toUpperCase();
+      const assetClass = cleanString(read('AssetClass', 'Asset Class', 'AssetCategory', 'Asset Category')).toUpperCase();
       const supportedAssetClasses = new Set(['', 'STK', 'STOCK', 'STOCKS', 'OPT', 'OPTION', 'OPTIONS', 'FUT', 'FUTURE', 'FUTURES']);
       if (!supportedAssetClasses.has(assetClass)) {
         noteSkippedRow(rowIndex, `Unsupported IBKR asset class: ${assetClass}`);
@@ -284,30 +281,15 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
 
       // Extract Conid (Contract ID) for options grouping - this is the most reliable way to group
       // options trades for the same contract regardless of symbol parsing issues
-      const conid = cleanString(record.Conid || record.conid || record.ConId || record.ConID || '');
+      const conid = cleanString(read('Conid', 'ConId', 'ConID'));
       if (conid) {
         console.log(`[IBKR] Contract ID (Conid): ${conid} for symbol ${symbol}`);
       }
 
-      const orderId = cleanString(
-        record['Order ID'] ||
-        record.OrderID ||
-        record.OrderId ||
-        record.IBOrderID ||
-        record.ibOrderID ||
-        record.orderId ||
-        record['OrderId'] ||
-        record['Trade ID'] ||
-        record.TradeID ||
-        ''
-      );
-      const executionId = cleanString(
-        record.IBExecID || record['IB Exec ID'] || record.ExecutionID || record.execution_id || ''
-      );
-      const tradeId = cleanString(
-        record.TradeID || record['Trade ID'] || record.trade_id || ''
-      );
-      const currency = cleanString(record.Currency || record.CurrencyPrimary || 'USD') || 'USD';
+      const orderId = cleanString(read('Order ID', 'OrderID', 'OrderId', 'IBOrderID', 'IB Order ID', 'Trade ID', 'TradeID'));
+      const executionId = cleanString(read('IBExecID', 'IB Exec ID', 'ExecutionID', 'Execution ID', 'execution_id'));
+      const tradeId = cleanString(read('TradeID', 'Trade ID', 'trade_id'));
+      const currency = cleanString(read('Currency', 'CurrencyPrimary', 'Currency Primary') || 'USD') || 'USD';
 
       transactions.push({
         symbol,
@@ -424,8 +406,9 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
     // Parse instrument data to check if this is an option/future
     let instrumentData;
 
-    // Check if Trade Confirmation format with separate columns
-    if (isTradeConfirmation && symbolTransactions[0].raw) {
+    // Prefer explicit instrument metadata whenever the record provides it. The
+    // helper falls back to symbol parsing for Activity Statement rows.
+    if (symbolTransactions[0].raw) {
       instrumentData = parseIBKRTradeConfirmationInstrumentData(symbolTransactions[0].raw, symbol);
     } else {
       // Activity Statement format - parse from symbol

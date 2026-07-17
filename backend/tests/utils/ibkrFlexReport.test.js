@@ -118,6 +118,37 @@ describe('IBKR Flex report decoding', () => {
     expect(result.trades[0].executions).toHaveLength(2);
   });
 
+  test('parses mixed Flex CSV header aliases across independently decoded windows', async () => {
+    const first = decodeIBKRFlexReport([
+      'Account,AssetClass,Symbol,Position,CostBasisPrice,Conid',
+      'U1,STK,AAPL,10,100,265598',
+      'ClientAccountID,AssetClass,Symbol,Conid,DateTime,Quantity,TradePrice,IBCommission,BuySell,LevelOfDetail,IBOrderID,IBExecID,TradeID',
+      'U1,STK,AAPL,265598,20251231;155900,10,100,-0.50,BUY,EXECUTION,O-1,E-1,T-1'
+    ].join('\n'));
+    const second = decodeIBKRFlexReport([
+      'accountId,assetCategory,symbol,conid,dateTime,quantity,tradePrice,ibCommission,buySell,levelOfDetail,ibOrderID,ibExecID,tradeID',
+      'U1,STK,AAPL,265598,20260101;093000,10,105,-0.75,SELL,EXECUTION,O-2,E-2,T-2'
+    ].join('\n'));
+
+    const result = await parseIBKRRecords(
+      [...first.trade_records, ...second.trade_records],
+      {},
+      'ibkr'
+    );
+
+    expect(first.open_position_records).toHaveLength(1);
+    expect(result.diagnostics).toEqual(expect.objectContaining({ skippedRows: 0 }));
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0]).toEqual(expect.objectContaining({
+      symbol: 'AAPL',
+      quantity: 10,
+      entryPrice: 100,
+      exitPrice: 105,
+      commission: 1.25
+    }));
+    expect(result.trades[0].executions.map(execution => execution.execution_id)).toEqual(['E-1', 'E-2']);
+  });
+
   test('supports declarations, BOM, whitespace, and multiple statements and accounts', () => {
     const xml = '\uFEFF  <?xml version="1.0" encoding="UTF-8"?>\n<FlexQueryResponse><FlexStatements count="2"><FlexStatement accountId="U1" fromDate="20260101" toDate="20260102"><Trades /></FlexStatement><FlexStatement accountId="U2" fromDate="20260101" toDate="20260102"><OpenPositions /></FlexStatement></FlexStatements></FlexQueryResponse>  ';
     const decoded = decodeIBKRFlexReport(xml);
