@@ -46,6 +46,22 @@ describe('IBKR Flex report decoding', () => {
     ]);
   });
 
+  test('converts timezone-less Flex executions using the user timezone', async () => {
+    const decoded = decodeIBKRFlexReport([
+      '<FlexQueryResponse><FlexStatements><FlexStatement><Trades>',
+      '<Trade accountId="U123" assetCategory="STK" symbol="AAPL" dateTime="20260714;093000" quantity="1" tradePrice="100" buySell="BUY" levelOfDetail="EXECUTION" />',
+      '</Trades></FlexStatement></FlexStatements></FlexQueryResponse>'
+    ].join(''));
+
+    const result = await parseIBKRRecords(decoded.trade_records, {
+      userTimezone: 'America/New_York'
+    }, 'ibkr');
+
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0].entryTime).toBe('2026-07-14T13:30:00Z');
+    expect(result.trades[0].executions[0].datetime).toBe('2026-07-14T13:30:00Z');
+  });
+
   test('decodes every self-describing CSV section when Open Positions comes first', () => {
     const csv = [
       'Account,AssetClass,Symbol,Position,CostBasisPrice,Conid',

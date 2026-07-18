@@ -690,11 +690,16 @@ class IBKRService {
 
     // Fetch existing positions and trades for duplicate detection
     const existingContext = await this.getExistingContext(connection.userId);
+    const userTimezone = await getUserTimezone(connection.userId);
 
     const parserContext = {
       ...existingContext,
       brokerConnectionId: connection.id,
-      brokerType: connection.brokerType
+      brokerType: connection.brokerType,
+      // IBKR Flex DateTime values are wall-clock timestamps without an offset.
+      // Match manual CSV imports by interpreting them in the user's timezone
+      // before persisting them as UTC.
+      userTimezone
     };
     const parseResult = await parseIBKRRecords(tradeRecords, parserContext, 'ibkr');
 

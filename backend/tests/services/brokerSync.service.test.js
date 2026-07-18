@@ -31,9 +31,14 @@ jest.mock('../../src/config/database', () => ({
   query: jest.fn()
 }));
 
+jest.mock('../../src/utils/timezone', () => ({
+  getUserTimezone: jest.fn().mockResolvedValue('UTC')
+}));
+
 const Trade = require('../../src/models/Trade');
 const db = require('../../src/config/database');
 const { parseCSV, parseIBKRRecords } = require('../../src/utils/csvParser');
+const { getUserTimezone } = require('../../src/utils/timezone');
 const ibkrService = require('../../src/services/brokerSync/ibkrService');
 const schwabService = require('../../src/services/brokerSync/schwabService');
 const alpacaService = require('../../src/services/brokerSync/alpacaService');
@@ -353,6 +358,46 @@ describe('broker sync duplicate protection', () => {
         manualReviewCount: 1,
         manualReviewItems: [reviewItem]
       });
+    } finally {
+      requestSpy.mockRestore();
+      fetchSpy.mockRestore();
+      contextSpy.mockRestore();
+      importSpy.mockRestore();
+    }
+  });
+
+  test('IBKR sync passes the user timezone to the shared import parser', async () => {
+    parseIBKRRecords.mockResolvedValueOnce({ trades: [], diagnostics: { warnings: [] } });
+    getUserTimezone.mockResolvedValueOnce('America/New_York');
+    const requestSpy = jest.spyOn(ibkrService, 'requestFlexReport').mockResolvedValue({ referenceCode: 'ref-1' });
+    const fetchSpy = jest.spyOn(ibkrService, 'fetchFlexReport').mockResolvedValue(
+      'Account,Symbol,DateTime,Quantity,TradePrice,Buy/Sell\nU1,AAPL,20260714;093000,1,100,BUY'
+    );
+    const context = { existingPositions: {}, existingExecutions: {}, userId: 'user-1' };
+    const contextSpy = jest.spyOn(ibkrService, 'getExistingContext').mockResolvedValue(context);
+    const importSpy = jest.spyOn(ibkrService, 'importTrades').mockResolvedValue({
+      imported: 0,
+      updated: 0,
+      skipped: 0,
+      failed: 0,
+      duplicates: 0
+    });
+
+    try {
+      await ibkrService.syncTrades({
+        id: 'conn-1',
+        userId: 'user-1',
+        brokerType: 'ibkr',
+        ibkrFlexToken: 'token',
+        ibkrFlexQueryId: 'query'
+      }, { startDate: '2026-07-14', endDate: '2026-07-14' });
+
+      expect(getUserTimezone).toHaveBeenCalledWith('user-1');
+      expect(parseIBKRRecords).toHaveBeenCalledWith(
+        expect.arrayContaining([expect.objectContaining({ DateTime: '20260714;093000' })]),
+        expect.objectContaining({ userTimezone: 'America/New_York' }),
+        'ibkr'
+      );
     } finally {
       requestSpy.mockRestore();
       fetchSpy.mockRestore();
