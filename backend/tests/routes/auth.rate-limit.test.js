@@ -1,5 +1,6 @@
 jest.mock('../../src/controllers/auth.controller', () => ({
   login: jest.fn((req, res) => res.status(401).json({ error: 'Invalid credentials' })),
+  biometricLogin: jest.fn(),
   getRegistrationConfig: jest.fn(),
   register: jest.fn(),
   verify2FA: jest.fn(),

@@ -137,7 +137,12 @@ const schemas = {
 
   login: Joi.object({
     email: emailField.required(),
-    password: Joi.string().required()
+    password: Joi.string().required(),
+    biometric_enrollment: Joi.boolean().optional()
+  }),
+
+  biometricLogin: Joi.object({
+    biometric_token: Joi.string().required()
   }),
 
   newsBackfill: Joi.object({
@@ -180,7 +185,8 @@ const schemas = {
     token: Joi.string().allow('', null),
     twoFactorCode: Joi.string().allow('', null),
     two_factor_code: Joi.string().allow('', null),
-    code: Joi.string().allow('', null)
+    code: Joi.string().allow('', null),
+    biometric_enrollment: Joi.boolean().optional()
   }).or('tempToken', 'temp_token', 'token')
     .or('twoFactorCode', 'two_factor_code', 'code'),
 

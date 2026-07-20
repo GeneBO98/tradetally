@@ -5,7 +5,8 @@ const { AUTH_COOKIE_NAME, clearAuthCookies } = require('../utils/authCookies');
 
 const TOKEN_PURPOSES = Object.freeze({
   ACCESS: 'access',
-  PRE_2FA: 'pre_2fa'
+  PRE_2FA: 'pre_2fa',
+  BIOMETRIC_LOGIN: 'biometric_login'
 });
 
 const authUserCache = new Map();
@@ -248,6 +249,15 @@ const generateToken = (user, options = {}) => {
   const purpose = options.purpose || TOKEN_PURPOSES.ACCESS;
   const expiresIn = options.expiresIn || (purpose === TOKEN_PURPOSES.PRE_2FA ? '15m' : (process.env.JWT_EXPIRE || '7d'));
 
+  const purposeClaims = purpose === TOKEN_PURPOSES.BIOMETRIC_LOGIN
+    ? {
+        two_factor_enabled: Boolean(user.two_factor_enabled),
+        two_factor_enabled_at: user.two_factor_enabled_at
+          ? new Date(user.two_factor_enabled_at).toISOString()
+          : null
+      }
+    : {};
+
   return jwt.sign(
     { 
       id: user.id, 
@@ -255,7 +265,8 @@ const generateToken = (user, options = {}) => {
       username: user.username,
       role: user.role,
       purpose,
-      session_version: Number(user.session_version || 0)
+      session_version: Number(user.session_version || 0),
+      ...purposeClaims
     },
     process.env.JWT_SECRET,
     {

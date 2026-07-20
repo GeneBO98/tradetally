@@ -71,7 +71,7 @@ class User {
   static async findById(id) {
     const query = `
       SELECT id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone,
-             two_factor_enabled, two_factor_secret, two_factor_backup_codes, tier, marketing_consent,
+             two_factor_enabled, two_factor_enabled_at, two_factor_secret, two_factor_backup_codes, tier, marketing_consent,
              session_version, created_at, updated_at, last_login_at
       FROM users
       WHERE id = $1 AND is_active = true
@@ -96,7 +96,7 @@ class User {
   static async findByEmail(email) {
     const query = `
       SELECT id, email, username, password_hash, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone,
-             two_factor_enabled, two_factor_secret, two_factor_backup_codes, tier, session_version, created_at, last_login_at,
+             two_factor_enabled, two_factor_enabled_at, two_factor_secret, two_factor_backup_codes, tier, session_version, created_at, last_login_at,
              failed_login_attempts, account_locked_at
       FROM users
       WHERE email = $1
