@@ -89,10 +89,9 @@ describe('KLineTradeChart', () => {
       pricePrecision: 2,
       volumePrecision: 0,
     })
-    expect(chartMock.createIndicator).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'MA', paneId: 'candle_pane', calcParams: [20, 50] }),
-      true
-    )
+    expect(chartMock.createIndicator).not.toHaveBeenCalled()
+    expect(wrapper.get('button[title="Toggle 20 and 50 period moving averages"]')
+      .attributes('aria-pressed')).toBe('false')
     expect(chartMock.createOverlay).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'tradeExecutionMarker', groupId: 'trade-executions', lock: true })
     )
@@ -110,6 +109,20 @@ describe('KLineTradeChart', () => {
     expect(chartMock.scrollToTimestamp).toHaveBeenCalledWith(1_700_000_000_000)
     expect(chartMock.scrollByDistance).toHaveBeenCalledWith(expect.any(Number))
     expect(chartMock.scrollByDistance.mock.calls[0][0]).toBeLessThan(0)
+
+    wrapper.unmount()
+  })
+
+  it('adds moving averages only when the user enables them', async () => {
+    const wrapper = mount(KLineTradeChart, { props: { chartData } })
+
+    await vi.waitFor(() => expect(chartMock.setDataLoader).toHaveBeenCalledOnce())
+    await wrapper.get('button[title="Toggle 20 and 50 period moving averages"]').trigger('click')
+
+    expect(chartMock.createIndicator).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'MA', paneId: 'candle_pane', calcParams: [20, 50] }),
+      true
+    )
 
     wrapper.unmount()
   })
@@ -332,7 +345,7 @@ describe('KLineTradeChart', () => {
     wrapper.unmount()
   })
 
-  it('adds a planned long-position overlay while keeping the actual exit marker separate', async () => {
+  it('adds a planned long-position overlay while keeping the actual exit as a separate line', async () => {
     const wrapper = mount(KLineTradeChart, {
       props: {
         chartData: {
@@ -352,9 +365,9 @@ describe('KLineTradeChart', () => {
     const positionOverlay = chartMock.createOverlay.mock.calls
       .map(([overlay]) => overlay)
       .find((overlay) => overlay.groupId === 'trade-planned-position')
-    const exitMarker = chartMock.createOverlay.mock.calls
+    const exitLine = chartMock.createOverlay.mock.calls
       .map(([overlay]) => overlay)
-      .find((overlay) => overlay.groupId === 'trade-executions' && overlay.extendData.kind === 'exit')
+      .find((overlay) => overlay.groupId === 'trade-executions')
 
     expect(positionOverlay).toMatchObject({
       name: 'tradePositionOverlay',
@@ -373,7 +386,15 @@ describe('KLineTradeChart', () => {
       { timestamp: 1_700_086_400_000, value: 107 },
       { timestamp: 1_700_086_400_000, value: 98 },
     ])
-    expect(exitMarker).toBeTruthy()
+    expect(exitLine).toMatchObject({
+      name: 'tradeActualExitLine',
+      lock: true,
+      points: [
+        { timestamp: 1_700_000_000_000, value: 107 },
+        { timestamp: 1_700_086_400_000, value: 107 },
+      ],
+      extendData: { color: '#059669' },
+    })
 
     wrapper.unmount()
   })
@@ -428,7 +449,7 @@ describe('KLineTradeChart', () => {
     incompleteWrapper.unmount()
   })
 
-  it('renders distinct profit, risk, and entry figures for the planned position', () => {
+  it('renders the planned position without text labels', () => {
     const template = registeredOverlays.get('tradePositionOverlay')
     const figures = template.createPointFigures({
       coordinates: [{ x: 40, y: 96 }, { x: 240, y: 96 }],
@@ -447,14 +468,24 @@ describe('KLineTradeChart', () => {
     })
 
     expect(figures.filter((figure) => figure.type === 'rect')).toHaveLength(2)
-    expect(figures.filter((figure) => figure.type === 'text').map((figure) => figure.attrs.text)).toEqual([
-      'LONG · TP 107.00 · 2.00R',
-      'ENTRY 101.00',
-      'SL 98.00 · 1R',
-    ])
+    expect(figures.filter((figure) => figure.type === 'text')).toHaveLength(0)
     expect(figures.find((figure) => figure.type === 'line')).toMatchObject({
       attrs: { coordinates: [{ x: 40, y: 96 }, { x: 240, y: 96 }] },
     })
+  })
+
+  it('renders the actual exit as a minimal semantic line', () => {
+    const template = registeredOverlays.get('tradeActualExitLine')
+    const figures = template.createPointFigures({
+      coordinates: [{ x: 40, y: 96 }, { x: 240, y: 96 }],
+      overlay: { extendData: { color: '#dc2626' } },
+    })
+
+    expect(figures).toEqual([expect.objectContaining({
+      type: 'line',
+      attrs: { coordinates: [{ x: 40, y: 96 }, { x: 240, y: 96 }] },
+      styles: expect.objectContaining({ color: '#dc2626', size: 2 }),
+    })])
   })
   it('stacks multiple executions mapped to the same candle into separate lanes', async () => {
     const wrapper = mount(KLineTradeChart, {

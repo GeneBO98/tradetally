@@ -157,6 +157,7 @@ const emit = defineEmits(['resolution-change'])
 const USER_DRAWING_GROUP = 'trade-user-drawings'
 const EXECUTION_GROUP = 'trade-executions'
 const EXECUTION_OVERLAY = 'tradeExecutionMarker'
+const EXIT_OVERLAY = 'tradeActualExitLine'
 const POSITION_GROUP = 'trade-planned-position'
 const POSITION_OVERLAY = 'tradePositionOverlay'
 const PNL_OVERLAY = 'tradePnlMeasurement'
@@ -169,6 +170,7 @@ const resolutionOptions = [
 ]
 
 let executionOverlayRegistered = false
+let exitOverlayRegistered = false
 let positionOverlayRegistered = false
 let pnlOverlayRegistered = false
 
@@ -355,7 +357,33 @@ function registerExecutionOverlay() {
   executionOverlayRegistered = true
 }
 
+function registerExitOverlay() {
+  if (exitOverlayRegistered) return
+
+  registerOverlay({
+    name: EXIT_OVERLAY,
+    totalStep: 3,
+    needDefaultPointFigure: false,
+    needDefaultXAxisFigure: false,
+    needDefaultYAxisFigure: false,
+    createPointFigures: ({ coordinates, overlay }) => {
+      if (coordinates.length < 2) return []
+
+      const color = overlay.extendData?.color || '#6b7280'
+      return [{
+        type: 'line',
+        attrs: { coordinates: [coordinates[0], coordinates[1]] },
+        styles: { style: 'solid', size: 2, color },
+        ignoreEvent: true,
+      }]
+    },
+  })
+
+  exitOverlayRegistered = true
+}
+
 registerExecutionOverlay()
+registerExitOverlay()
 registerPnlOverlay()
 
 function registerPositionOverlay() {
@@ -384,32 +412,6 @@ function registerPositionOverlay() {
       const targetY = yAxis.convertToPixel(takeProfit)
       const profitTop = Math.min(entryY, targetY)
       const riskTop = Math.min(entryY, stopY)
-      const precision = Math.max(0, Number(data.price_precision) || 0)
-      const riskReward = Number(data.risk_reward)
-      const sideLabel = String(data.side || '').toUpperCase()
-      const targetLabel = `${sideLabel}${sideLabel ? ' · ' : ''}TP ${takeProfit.toFixed(precision)}${Number.isFinite(riskReward) ? ` · ${riskReward.toFixed(2)}R` : ''}`
-      const entryLabel = `ENTRY ${entryPrice.toFixed(precision)}`
-      const stopLabel = `SL ${stopLoss.toFixed(precision)} · 1R`
-      const textX = Math.min(bounding.width - 6, right - 5)
-
-      const label = (y, text, backgroundColor) => ({
-        type: 'text',
-        attrs: { x: textX, y, text, align: 'right', baseline: 'middle' },
-        styles: {
-          style: 'fill',
-          color: '#ffffff',
-          size: 10,
-          weight: 600,
-          backgroundColor,
-          borderRadius: 3,
-          paddingLeft: 4,
-          paddingTop: 2,
-          paddingRight: 4,
-          paddingBottom: 2,
-        },
-        ignoreEvent: true,
-      })
-
       return [
         {
           type: 'rect',
@@ -441,9 +443,6 @@ function registerPositionOverlay() {
           styles: { style: 'dashed', size: 1, color: '#6b7280', dashedValue: [4, 3] },
           ignoreEvent: true,
         },
-        label(targetY, targetLabel, '#047857'),
-        label(entryY, entryLabel, '#4b5563'),
-        label(stopY, stopLabel, '#b91c1c'),
       ]
     },
   })
@@ -460,7 +459,7 @@ function requestResolution(resolution) {
 
 const chartContainer = ref(null)
 const activeTool = ref(null)
-const maEnabled = ref(true)
+const maEnabled = ref(false)
 const volumeEnabled = ref(false)
 const hasPriceMismatch = ref(false)
 const isUnderlyingOptionChart = computed(() => {
@@ -888,13 +887,13 @@ function addPositionOverlay() {
   chart.removeOverlay({ groupId: POSITION_GROUP })
 
   const position = plannedPosition()
-  if (!position || normalizedBars.length < 2) return
+  if (!position || normalizedBars.length < 2) return null
 
   const trade = props.chartData?.trade || {}
   const entryTimestamp = parseExecutionTimestamp(trade.entryTime ?? trade.entryDate)
   const exitTimestamp = parseExecutionTimestamp(trade.exitTime ?? trade.exitDate)
   const entryBar = entryTimestamp === null ? null : closestBar(entryTimestamp)
-  if (!entryBar) return
+  if (!entryBar) return null
 
   let endBar = exitTimestamp === null ? normalizedBars.at(-1) : closestBar(exitTimestamp)
   const entryIndex = normalizedBars.findIndex((bar) => bar.timestamp === entryBar.timestamp)
@@ -902,7 +901,7 @@ function addPositionOverlay() {
   if (endIndex <= entryIndex) {
     endBar = normalizedBars[Math.min(entryIndex + 1, normalizedBars.length - 1)]
   }
-  if (!endBar || endBar.timestamp === entryBar.timestamp) return
+  if (!endBar || endBar.timestamp === entryBar.timestamp) return null
 
   chart.createOverlay({
     name: POSITION_OVERLAY,
@@ -915,6 +914,57 @@ function addPositionOverlay() {
       { timestamp: endBar.timestamp, value: position.stop_loss },
     ],
     extendData: position,
+  })
+
+  return position
+}
+
+function addActualExitLine(position) {
+  if (!chart || !position) return
+  chart.removeOverlay({ groupId: EXECUTION_GROUP })
+  hasPriceMismatch.value = false
+
+  const trade = props.chartData?.trade || {}
+  const entryTimestamp = parseExecutionTimestamp(trade.entryTime ?? trade.entryDate)
+  const exitTimestamp = parseExecutionTimestamp(trade.exitTime ?? trade.exitDate)
+  const exitPrice = Number(trade.exitPrice ?? trade.exit_price)
+  if (entryTimestamp === null || exitTimestamp === null || !Number.isFinite(exitPrice)) return
+
+  const entryBar = closestBar(entryTimestamp)
+  const exitBar = closestBar(exitTimestamp)
+  if (!entryBar || !exitBar) return
+
+  const exitIndex = normalizedBars.findIndex((bar) => bar.timestamp === exitBar.timestamp)
+  let startBar = entryBar
+  if (startBar.timestamp === exitBar.timestamp) {
+    startBar = normalizedBars[Math.max(0, exitIndex - 1)]
+  }
+  if (!startBar || startBar.timestamp === exitBar.timestamp) return
+
+  const candleTolerance = Math.max(
+    Math.abs(exitPrice) * 0.001,
+    Math.abs(exitBar.high - exitBar.low) * 0.1
+  )
+  hasPriceMismatch.value = exitPrice < exitBar.low - candleTolerance || exitPrice > exitBar.high + candleTolerance
+
+  const pnl = Number(trade.pnl)
+  const profitable = Number.isFinite(pnl)
+    ? pnl > 0
+    : (position.side === 'long' ? exitPrice > position.entry_price : exitPrice < position.entry_price)
+  const losing = Number.isFinite(pnl)
+    ? pnl < 0
+    : (position.side === 'long' ? exitPrice < position.entry_price : exitPrice > position.entry_price)
+  const color = profitable ? '#059669' : (losing ? '#dc2626' : '#6b7280')
+
+  chart.createOverlay({
+    name: EXIT_OVERLAY,
+    groupId: EXECUTION_GROUP,
+    lock: true,
+    points: [
+      { timestamp: startBar.timestamp, value: exitPrice },
+      { timestamp: exitBar.timestamp, value: exitPrice },
+    ],
+    extendData: { color },
   })
 }
 
@@ -1117,8 +1167,9 @@ async function createChart() {
   if (maEnabled.value) addMovingAverages()
   if (volumeEnabled.value) volumeIndicatorId = chart.createIndicator('VOL')
 
-  addPositionOverlay()
-  addExecutionMarkers()
+  const position = addPositionOverlay()
+  if (position) addActualExitLine(position)
+  else addExecutionMarkers()
   restoreDrawings()
   requestAnimationFrame(focusTradeView)
 

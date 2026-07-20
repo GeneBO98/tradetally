@@ -38,6 +38,53 @@ describe('TradeChartVisualization resolutions', () => {
   beforeEach(() => {
     apiGet.mockReset()
     sessionStorage.clear()
+    localStorage.clear()
+  })
+
+  it('uses the user default resolution for a newly opened chart', async () => {
+    localStorage.setItem('trade_chart_default_resolution', '5')
+    apiGet.mockResolvedValue({
+      data: { ...baseChartData, interval: '5min' },
+    })
+
+    const wrapper = mount(TradeChartVisualization, {
+      props: { tradeId: 'trade-default-resolution' },
+      global: {
+        stubs: {
+          KLineTradeChart: true,
+          ProUpgradePrompt: true,
+        },
+      },
+    })
+
+    await wrapper.get('button.btn-primary').trigger('click')
+    await vi.waitFor(() => expect(apiGet).toHaveBeenCalledWith(
+      '/trades/trade-default-resolution/chart-data',
+      { params: { resolution: '5' } }
+    ))
+
+    expect(wrapper.findComponent({ name: 'KLineTradeChart' }).props('selectedResolution')).toBe('5')
+  })
+
+  it('falls back to one-minute candles for an invalid saved resolution', async () => {
+    localStorage.setItem('trade_chart_default_resolution', '2')
+    apiGet.mockResolvedValue({ data: baseChartData })
+
+    const wrapper = mount(TradeChartVisualization, {
+      props: { tradeId: 'trade-invalid-resolution' },
+      global: {
+        stubs: {
+          KLineTradeChart: true,
+          ProUpgradePrompt: true,
+        },
+      },
+    })
+
+    await wrapper.get('button.btn-primary').trigger('click')
+    await vi.waitFor(() => expect(apiGet).toHaveBeenCalledWith(
+      '/trades/trade-invalid-resolution/chart-data',
+      { params: { resolution: '1' } }
+    ))
   })
 
   it('requests fresh candles when the selected resolution changes', async () => {
@@ -135,6 +182,7 @@ describe('TradeChartVisualization resolutions', () => {
   })
 
   it('restores an opened chart and its resolution after a page refresh', async () => {
+    localStorage.setItem('trade_chart_default_resolution', '5')
     sessionStorage.setItem('trade_chart_loaded:trade-4', '15')
     apiGet.mockResolvedValue({
       data: {

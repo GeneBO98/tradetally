@@ -346,6 +346,23 @@
                             </div>
 
                             <div class="py-6">
+                                <label for="tradeChartDefaultResolution" class="label">
+                                    Default Trade Chart Resolution
+                                </label>
+                                <BaseSelect
+                                    v-model="analyticsForm.trade_chart_default_resolution"
+                                    :options="tradeChartResolutionOptions"
+                                    :searchable="false"
+                                />
+                                <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                                    Sets the candle interval used when you open a
+                                    trade chart for the first time. A resolution
+                                    you already selected for that trade takes
+                                    precedence.
+                                </p>
+                            </div>
+
+                            <div class="py-6">
                                 <div
                                     class="flex items-start justify-between gap-6 p-4 bg-gray-50 dark:bg-gray-800/60 rounded-lg border border-gray-200 dark:border-gray-700"
                                 >
@@ -1455,8 +1472,15 @@
 import { ref, computed, onMounted } from "vue";
 import { useAuthStore } from "@/stores/auth";
 import { useVersionStore } from "@/stores/version";
+import { useUiPreferencesStore } from "@/stores/uiPreferences";
 import { useNotification } from "@/composables/useNotification";
 import api from "@/services/api";
+import {
+    normalizeTradeChartResolution,
+    readTradeChartDefaultResolution,
+    TRADE_CHART_RESOLUTION_PREFERENCE_KEY,
+    TRADE_CHART_RESOLUTION_OPTIONS,
+} from "@/utils/tradeChartPreferences";
 import { CURRENCY_OPTIONS } from "@/composables/useCurrencyFormatter";
 import MdiIcon from "@/components/MdiIcon.vue";
 import { mdiApi } from "@mdi/js";
@@ -1475,6 +1499,7 @@ import DataExportImport from "@/components/settings/DataExportImport.vue";
 
 const authStore = useAuthStore();
 const versionStore = useVersionStore();
+const uiPreferencesStore = useUiPreferencesStore();
 const { showSuccess, showError, showDangerConfirmation } = useNotification();
 
 // Icons
@@ -1515,6 +1540,18 @@ const currencySelectOptions = computed(() =>
     currencyOptions.map((c) => ({ value: c.code, label: `${c.code} - ${c.name}` }))
 );
 
+const tradeChartResolutionOptions = TRADE_CHART_RESOLUTION_OPTIONS;
+
+function savedTradeChartResolution(settings = null) {
+    const remotePreference =
+        settings?.uiPreferences?.[TRADE_CHART_RESOLUTION_PREFERENCE_KEY];
+    if (remotePreference !== undefined && remotePreference !== null) {
+        return normalizeTradeChartResolution(remotePreference);
+    }
+
+    return readTradeChartDefaultResolution();
+}
+
 // CUSIP AI Provider Settings
 const cusipAiForm = ref({
     provider: "",
@@ -1540,6 +1577,7 @@ const analyticsForm = ref({
     defaultStopLossDollars: null,
     defaultTakeProfitPercent: null,
     displayCurrency: "USD",
+    trade_chart_default_resolution: "1",
 });
 
 const analyticsLoading = ref(false);
@@ -1893,6 +1931,8 @@ async function loadAnalyticsSettings(settingsData = null) {
                 settings.defaultTakeProfitPercent || null,
             displayCurrency:
                 settings.displayCurrency || "USD",
+            trade_chart_default_resolution:
+                savedTradeChartResolution(settings),
         };
         breakevenToleranceRows.value = breakevenRowsFromMap(
             settings.breakevenToleranceTicksByUnderlying,
@@ -1911,12 +1951,15 @@ async function loadAnalyticsSettings(settingsData = null) {
         analyticsForm.value.defaultStopLossDollars = null;
         analyticsForm.value.defaultTakeProfitPercent = null;
         analyticsForm.value.displayCurrency = "USD";
+        analyticsForm.value.trade_chart_default_resolution =
+            savedTradeChartResolution();
     }
 }
 
 async function updateAnalyticsSettings() {
     analyticsLoading.value = true;
     try {
+        await uiPreferencesStore.init();
         await api.put("/settings", {
             statisticsCalculation: analyticsForm.value.statisticsCalculation,
             analyticsPositionGrouping:
@@ -1943,6 +1986,21 @@ async function updateAnalyticsSettings() {
             displayCurrency:
                 analyticsForm.value.displayCurrency || "USD",
         });
+
+        const chartResolution = normalizeTradeChartResolution(
+            analyticsForm.value.trade_chart_default_resolution,
+        );
+        analyticsForm.value.trade_chart_default_resolution = chartResolution;
+        localStorage.setItem(
+            TRADE_CHART_RESOLUTION_PREFERENCE_KEY,
+            chartResolution,
+        );
+        uiPreferencesStore.notifyChanged(
+            TRADE_CHART_RESOLUTION_PREFERENCE_KEY,
+            chartResolution,
+        );
+        await uiPreferencesStore.flush();
+
         // Re-fetch user so the auth store picks up the new display_currency
         await authStore.fetchUser();
         showSuccess("Success", "Analytics preferences updated successfully");

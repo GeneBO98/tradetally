@@ -130,6 +130,10 @@ import { useAuthStore } from '@/stores/auth'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { useNotification } from '@/composables/useNotification'
 import { useUserTimezone } from '@/composables/useUserTimezone'
+import {
+  isTradeChartResolution,
+  readTradeChartDefaultResolution,
+} from '@/utils/tradeChartPreferences'
 
 const props = defineProps({
   tradeId: {
@@ -148,7 +152,7 @@ const error = ref(null)
 const isConfigured = ref(true)
 const chartData = ref(null)
 const showChart = ref(false)
-const selectedResolution = ref('1')
+const selectedResolution = ref(readTradeChartDefaultResolution())
 
 const userTier = computed(() => authStore.user?.tier || 'free')
 const isBillingEnabled = computed(() => authStore.user?.billingEnabled !== false)
@@ -268,7 +272,7 @@ function rememberChartState() {
 function restoredResolution() {
   try {
     const resolution = sessionStorage.getItem(chartStateStorageKey())
-    return ['1', '5', '15', '60', 'D'].includes(resolution) ? resolution : null
+    return isTradeChartResolution(resolution) ? resolution : null
   } catch {
     return null
   }
@@ -303,7 +307,7 @@ watch(
     error.value = null
     isConfigured.value = true
     showChart.value = false
-    selectedResolution.value = '1'
+    selectedResolution.value = readTradeChartDefaultResolution()
     queueMicrotask(restoreChart)
   }
 )
