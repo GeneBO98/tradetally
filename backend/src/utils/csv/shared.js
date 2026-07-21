@@ -1,5 +1,195 @@
 const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('../futuresUtils');
 
+const MONTH_NAME_NUMBERS = {
+  jan: 1,
+  january: 1,
+  feb: 2,
+  february: 2,
+  mar: 3,
+  march: 3,
+  apr: 4,
+  april: 4,
+  may: 5,
+  jun: 6,
+  june: 6,
+  jul: 7,
+  july: 7,
+  aug: 8,
+  august: 8,
+  sep: 9,
+  sept: 9,
+  september: 9,
+  oct: 10,
+  october: 10,
+  nov: 11,
+  november: 11,
+  dec: 12,
+  december: 12
+};
+
+const TIMEZONE_ABBREVIATION_OFFSETS = {
+  UTC: 'Z',
+  GMT: 'Z',
+  EST: '-05:00',
+  EDT: '-04:00',
+  CST: '-06:00',
+  CDT: '-05:00',
+  MST: '-07:00',
+  MDT: '-06:00',
+  PST: '-08:00',
+  PDT: '-07:00',
+  CET: '+01:00',
+  CEST: '+02:00',
+  EET: '+02:00',
+  EEST: '+03:00',
+  JST: '+09:00',
+  KST: '+09:00',
+  AEST: '+10:00',
+  AEDT: '+11:00',
+  ACST: '+09:30',
+  ACDT: '+10:30',
+  AWST: '+08:00',
+  NZST: '+12:00',
+  NZDT: '+13:00'
+};
+
+function formatValidatedDate(yearValue, monthValue, dayValue) {
+  const year = Number(yearValue);
+  const month = Number(monthValue);
+  const day = Number(dayValue);
+
+  if (!Number.isInteger(year) || year < 1900 || year > 2100) return null;
+  if (!Number.isInteger(month) || month < 1 || month > 12) return null;
+  if (!Number.isInteger(day) || day < 1 || day > 31) return null;
+
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+    return null;
+  }
+
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function parseSeparatedNumericDate(value) {
+  const yearFirstMatch = value.match(/^(\d{4})([\/.\-])(\d{1,2})\2(\d{1,2})(?=\D|$)/);
+  if (yearFirstMatch) {
+    return formatValidatedDate(yearFirstMatch[1], yearFirstMatch[3], yearFirstMatch[4]);
+  }
+
+  const yearLastMatch = value.match(/^(\d{1,2})([\/.\-])(\d{1,2})\2(\d{4})(?=\D|$)/);
+  if (!yearLastMatch) return null;
+
+  const first = Number(yearLastMatch[1]);
+  const separator = yearLastMatch[2];
+  const second = Number(yearLastMatch[3]);
+  const year = yearLastMatch[4];
+  let month;
+  let day;
+
+  if (first > 12) {
+    day = first;
+    month = second;
+  } else if (second > 12) {
+    month = first;
+    day = second;
+  } else if (separator === '/') {
+    // Preserve the existing US convention for ambiguous slash-separated dates.
+    month = first;
+    day = second;
+  } else {
+    // Dash- and dot-separated broker exports are conventionally day-first.
+    day = first;
+    month = second;
+  }
+
+  return formatValidatedDate(year, month, day);
+}
+
+function parseMonthNameDate(value) {
+  const monthFirstMatch = value.match(/^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})(?=\D|$)/);
+  if (monthFirstMatch) {
+    const month = MONTH_NAME_NUMBERS[monthFirstMatch[1].toLowerCase()];
+    return month ? formatValidatedDate(monthFirstMatch[3], month, monthFirstMatch[2]) : null;
+  }
+
+  const dayFirstMatch = value.match(/^(\d{1,2})[\s\-]+([A-Za-z]+)[\s\-]+(\d{4})(?=\D|$)/);
+  if (dayFirstMatch) {
+    const month = MONTH_NAME_NUMBERS[dayFirstMatch[2].toLowerCase()];
+    return month ? formatValidatedDate(dayFirstMatch[3], month, dayFirstMatch[1]) : null;
+  }
+
+  return null;
+}
+
+function parseExcelSerial(value) {
+  if (!/^\d{5}(?:\.\d+)?$/.test(value)) return null;
+
+  const serial = Number(value);
+  if (!Number.isFinite(serial) || serial <= 0 || serial >= 100000) return null;
+
+  const milliseconds = Date.UTC(1899, 11, 30) + Math.round(serial * 24 * 60 * 60 * 1000);
+  const date = new Date(milliseconds);
+  const year = date.getUTCFullYear();
+  if (year < 1900 || year > 2100) return null;
+
+  return date;
+}
+
+function parseEpochTimestamp(value) {
+  if (!/^\d{10}(?:\.\d+)?$/.test(value) && !/^\d{13}$/.test(value)) return null;
+
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return null;
+  const milliseconds = value.includes('.') || value.length === 10
+    ? numericValue * 1000
+    : numericValue;
+  const date = new Date(milliseconds);
+  const year = date.getUTCFullYear();
+  return year >= 1900 && year <= 2100 ? date : null;
+}
+
+function normalizeNumericTimezoneOffset(value) {
+  const match = String(value || '').replace(/\s+/g, '').match(/^([+-])(\d{1,2})(?::?(\d{2}))?$/);
+  if (!match) return null;
+
+  const hours = Number(match[2]);
+  const minutes = Number(match[3] || 0);
+  if (hours > 14 || minutes > 59 || (hours === 14 && minutes !== 0)) return null;
+
+  return `${match[1]}${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function extractTimezoneSuffix(value) {
+  const input = String(value || '').trim();
+
+  const namedMatch = input.match(/^(.*?)(?:\s*,\s*|\s+)((?:GMT|UTC)(?:\s*[+-]\s*\d{1,2}(?::?\d{2})?)?|[A-Za-z]{2,5})$/i);
+  if (namedMatch) {
+    const token = namedMatch[2].replace(/\s+/g, '').toUpperCase();
+    const fixedOffset = TIMEZONE_ABBREVIATION_OFFSETS[token];
+    if (fixedOffset) return { body: namedMatch[1].trim(), offset: fixedOffset };
+
+    const gmtOffsetMatch = token.match(/^(?:GMT|UTC)([+-].+)$/);
+    const offset = gmtOffsetMatch ? normalizeNumericTimezoneOffset(gmtOffsetMatch[1]) : null;
+    if (offset) return { body: namedMatch[1].trim(), offset };
+  }
+
+  const numericMatch = input.match(/^(.*?\d)(?:\s*)(Z|[+-]\d{2}:?\d{2})$/i);
+  if (numericMatch) {
+    const offset = numericMatch[2].toUpperCase() === 'Z'
+      ? 'Z'
+      : normalizeNumericTimezoneOffset(numericMatch[2]);
+    if (offset) return { body: numericMatch[1].trim(), offset };
+  }
+
+  const separatedHourOffsetMatch = input.match(/^(.*?\d)\s+([+-]\d{1,2})$/);
+  if (separatedHourOffsetMatch) {
+    const offset = normalizeNumericTimezoneOffset(separatedHourOffsetMatch[2]);
+    if (offset) return { body: separatedHourOffsetMatch[1].trim(), offset };
+  }
+
+  return { body: input, offset: null };
+}
+
 
 function parseDate(dateStr) {
   if (!dateStr || dateStr.toString().trim() === '') return null;
@@ -10,6 +200,18 @@ function parseDate(dateStr) {
     /^([A-Za-z]+ \d{1,2}, \d{4})(\d{1,2}:\d{2}(?::\d{2})?\s*[AP]M)$/i,
     '$1 $2'
   );
+
+  const separatedDate = parseSeparatedNumericDate(normalizedDateStr);
+  if (separatedDate) return separatedDate;
+
+  const namedDate = parseMonthNameDate(normalizedDateStr);
+  if (namedDate) return namedDate;
+
+  const epochDate = parseEpochTimestamp(normalizedDateStr);
+  if (epochDate) return epochDate.toISOString().slice(0, 10);
+
+  const excelDate = parseExcelSerial(normalizedDateStr);
+  if (excelDate) return excelDate.toISOString().slice(0, 10);
 
   const ddmmyyyyMatch = normalizedDateStr.match(/^(\d{1,2})-(\d{1,2})-(\d{4})(?:\s|$)/);
   if (ddmmyyyyMatch) {
@@ -232,26 +434,7 @@ function parseDateTime(dateTimeStr) {
     /^([A-Za-z]+ \d{1,2}, \d{4})(\d{1,2}:\d{2}(?::\d{2})?\s*[AP]M)$/i,
     '$1 $2'
   );
-  const timezoneAbbreviationOffsets = {
-    UTC: 'Z',
-    GMT: 'Z',
-    EST: '-05:00',
-    EDT: '-04:00',
-    CST: '-06:00',
-    CDT: '-05:00',
-    MST: '-07:00',
-    MDT: '-06:00',
-    PST: '-08:00',
-    PDT: '-07:00'
-  };
-  const trailingTimezoneMatch = normalizedDateTimeStr.match(/^(.*?)(?:\s+([A-Z]{2,4}))$/);
-  const trailingTimezone = trailingTimezoneMatch?.[2]?.toUpperCase();
-  const trailingTimezoneOffset = trailingTimezone && timezoneAbbreviationOffsets[trailingTimezone]
-    ? timezoneAbbreviationOffsets[trailingTimezone]
-    : null;
-  const dateTimeBody = trailingTimezoneOffset
-    ? trailingTimezoneMatch[1].trim()
-    : normalizedDateTimeStr;
+  const { body: dateTimeBody, offset: trailingTimezoneOffset } = extractTimezoneSuffix(normalizedDateTimeStr);
 
   const normalizeTimezoneOffset = (offset) => {
     if (!offset || offset === 'Z') return 'Z';
@@ -265,6 +448,12 @@ function parseDateTime(dateTimeStr) {
   };
 
   try {
+    const epochDateTime = parseEpochTimestamp(dateTimeBody);
+    if (epochDateTime) return epochDateTime.toISOString().replace('.000Z', 'Z');
+
+    const excelDateTime = parseExcelSerial(dateTimeBody);
+    if (excelDateTime) return excelDateTime.toISOString().slice(0, 19);
+
     // Preserve ISO timestamps that already include timezone information.
     const isoWithTimezoneMatch = dateTimeBody.match(
       /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?(Z|[+-]\d{2}:?\d{2})$/i
@@ -272,6 +461,33 @@ function parseDateTime(dateTimeStr) {
     if (isoWithTimezoneMatch) {
       const [, datePart, hour, minute, second = '00', offset] = isoWithTimezoneMatch;
       return `${datePart}T${hour}:${minute}:${second}${normalizeTimezoneOffset(offset.toUpperCase())}`;
+    }
+
+    // Shared parser for separated numeric dates and month-name dates. Broker
+    // exports vary widely in separators, component order, AM/PM usage, and
+    // timezone suffixes, so normalize those dimensions before broker logic.
+    const separatedDateTimeMatch = dateTimeBody.match(
+      /^(.+?)[T\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?\s*(AM|PM)?$/i
+    );
+    if (separatedDateTimeMatch) {
+      const [, datePart, rawHour, minute, second = '00', ampm] = separatedDateTimeMatch;
+      const parsedDate = parseDate(datePart);
+      let hour = Number(rawHour);
+      const minuteNumber = Number(minute);
+      const secondNumber = Number(second);
+
+      if (ampm) {
+        if (hour < 1 || hour > 12) return null;
+        if (ampm.toUpperCase() === 'PM' && hour !== 12) hour += 12;
+        if (ampm.toUpperCase() === 'AM' && hour === 12) hour = 0;
+      }
+
+      if (parsedDate) {
+        if (hour < 0 || hour > 23 || minuteNumber > 59 || secondNumber > 59) return null;
+        return withTrailingTimezone(
+          `${parsedDate}T${String(hour).padStart(2, '0')}:${minute}:${String(second).padStart(2, '0')}`
+        );
+      }
     }
 
     // Check for MM/DD/YYYY HH:MM:SS +TZ format (ProjectX with timezone)
@@ -419,6 +635,11 @@ function parseDateTime(dateTimeStr) {
       const [, year, month, day] = isoDateOnlyMatch;
       // Default to 09:30 (market open) when no time is provided
       return withTrailingTimezone(`${year}-${month}-${day}T09:30:00`);
+    }
+
+    if (!dateTimeBody.includes(':')) {
+      const parsedDateOnly = parseDate(dateTimeBody);
+      if (parsedDateOnly) return withTrailingTimezone(`${parsedDateOnly}T09:30:00`);
     }
 
     const monthNameDateTimeMatch = dateTimeBody.match(
