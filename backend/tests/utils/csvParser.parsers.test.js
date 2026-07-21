@@ -479,6 +479,38 @@ describe('IBKR parser', () => {
     expect(result.trades[0].symbol).toBe('AAPL');
   });
 
+  test.each(['auto', 'ibkr'])('parses compact Flex Query TradeDate rows with %s selection', async (broker) => {
+    const compactFlexCSV = [
+      'ClientAccountID,Symbol,Buy/Sell,Quantity,Price,Amount,Commission,NetCash,TradeDate,SettleDate,Exchange,OrderType,CurrencyPrimary,AssetClass',
+      'DUN261693,VIVK,BUY,41,3.13,128.33,-1.000123,-129.330123,20260721,20260722,DRCTEDGE,LMT,USD,STK',
+      'DUN261693,VIVK,BUY,100,3.13,313,-0.0003,-313.0003,20260721,20260722,DRCTEDGE,LMT,USD,STK',
+      'DUN261693,VIVK,BUY,109,3.13,341.17,-0.250327,-341.420327,20260721,20260722,DRCTEDGE,LMT,USD,STK',
+      'DUN261693,VIVK,BUY,148,3.86,571.28,-1.000444,-572.280444,20260721,20260722,DRCTEDGE,LMT,USD,STK',
+      'DUN261693,VIVK,BUY,352,3.86,1358.72,-1.501056,-1360.221056,20260721,20260722,MEMX,LMT,USD,STK'
+    ].join('\n');
+
+    const result = await parseCSV(buf(compactFlexCSV), broker, {
+      tradeGroupingSettings: { enabled: false }
+    });
+
+    expect(result.diagnostics.detectedBroker).toBe('ibkr');
+    expect(result.diagnostics.invalidRows).toBe(0);
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0]).toEqual(expect.objectContaining({
+      symbol: 'VIVK',
+      side: 'long',
+      quantity: 750,
+      entryPrice: 3.6166666666666667,
+      exitPrice: null,
+      tradeDate: '2026-07-21',
+      accountIdentifier: 'DUN261693',
+      originalCurrency: 'USD',
+      commission: 3.75225,
+      broker: 'ibkr'
+    }));
+    expect(result.trades[0].executions).toHaveLength(5);
+  });
+
   test('handles IBKR Flex date format (YYYYMMDD;HHMMSS)', async () => {
     const result = await parseCSV(buf(ibkrActivityCSV), 'ibkr', {});
     expectValidResult(result);

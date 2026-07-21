@@ -70,6 +70,15 @@ describe('detectBrokerFormat', () => {
     expect(detectBrokerFormat(buf(csv))).toBe('ibkr_trade_confirmation');
   });
 
+  test('detects compact IBKR Flex Query format with TradeDate', () => {
+    const csv = [
+      'ClientAccountID,Symbol,Buy/Sell,Quantity,Price,Amount,Commission,NetCash,TradeDate,SettleDate,Exchange,OrderType,CurrencyPrimary,AssetClass',
+      'DUN261693,VIVK,BUY,41,3.13,128.33,-1.000123,-129.330123,20260721,20260722,DRCTEDGE,LMT,USD,STK'
+    ].join('\n');
+
+    expect(detectBrokerFormat(buf(csv))).toBe('ibkr');
+  });
+
   test('detects IBKR multi-section Activity Statement (Trades section)', () => {
     const csv = [
       'Statement,Header,Field Name,Field Value',

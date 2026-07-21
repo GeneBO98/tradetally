@@ -735,7 +735,7 @@ function detectBrokerFormat(fileBuffer) {
       return 'schwab';
     }
 
-    // IBKR detection - two formats
+    // IBKR detection - three formats
     // Format 1: Trade Confirmation (with UnderlyingSymbol, Strike, Expiry, Put/Call, Multiplier, Buy/Sell)
     if (headers.includes('underlyingsymbol') && headers.includes('strike') &&
         headers.includes('expiry') && headers.includes('put/call') &&
@@ -749,6 +749,15 @@ function detectBrokerFormat(fileBuffer) {
         headers.includes('quantity') && headers.includes('price') &&
         !headers.includes('action')) { // Distinguish from Schwab
       console.log('[AUTO-DETECT] Detected: Interactive Brokers Activity Statement');
+      return 'ibkr';
+    }
+    // Format 3: Compact Flex Query trade export. These files use TradeDate
+    // instead of DateTime and include IBKR-specific account/currency fields.
+    if (headers.includes('clientaccountid') && headers.includes('symbol') &&
+        headers.includes('buy/sell') && headers.includes('quantity') &&
+        headers.includes('price') && headers.includes('tradedate') &&
+        headers.includes('currencyprimary') && headers.includes('assetclass')) {
+      console.log('[AUTO-DETECT] Detected: Interactive Brokers compact Flex Query');
       return 'ibkr';
     }
 

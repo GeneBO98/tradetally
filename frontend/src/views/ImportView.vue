@@ -1939,7 +1939,7 @@ function detectBrokerFromHeaders(headers) {
     return 'schwab'
   }
 
-  // IBKR detection (two formats)
+  // IBKR detection (three formats)
   if (headersStr.includes('underlyingsymbol') && headersStr.includes('strike') &&
       headersStr.includes('expiry') && headersStr.includes('put/call') &&
       headersStr.includes('multiplier') && headersStr.includes('buy/sell')) {
@@ -1949,6 +1949,12 @@ function detectBrokerFromHeaders(headers) {
       (headersStr.includes('date/time') || headersStr.includes('datetime')) &&
       headersStr.includes('quantity') && headersStr.includes('price') &&
       !headersStr.includes('action')) {
+    return 'ibkr'
+  }
+  if (headersStr.includes('clientaccountid') && headersStr.includes('symbol') &&
+      headersStr.includes('buy/sell') && headersStr.includes('quantity') &&
+      headersStr.includes('price') && headersStr.includes('tradedate') &&
+      headersStr.includes('currencyprimary') && headersStr.includes('assetclass')) {
     return 'ibkr'
   }
 
