@@ -331,10 +331,11 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        # Timeouts
-        proxy_connect_timeout 60s;
-        proxy_send_timeout 60s;
-        proxy_read_timeout 60s;
+        # Allow slow local AI models to finish on older self-hosted hardware.
+        # This leaves headroom above TradeTally's 10-minute AI request timeout.
+        proxy_connect_timeout 900s;
+        proxy_send_timeout 900s;
+        proxy_read_timeout 900s;
 
         # File upload limits
         client_max_body_size 52M;
