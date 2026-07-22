@@ -493,23 +493,25 @@ class Trade {
           }
         }
 
-        // Apply default take profit if not provided
-        if (!finalTakeProfit && userSettings?.default_take_profit_percent && userSettings.default_take_profit_percent > 0) {
-          const takeProfitPercent = parseFloat(userSettings.default_take_profit_percent);
+        // Apply the active take-profit default after stop loss calculation so
+        // risk/reward mode can use the trade's effective stop distance.
+        if (!finalTakeProfit) {
+          finalTakeProfit = this.calculateDefaultTakeProfitFromSettings({
+            symbol,
+            entry_price: entryPrice,
+            stop_loss: finalStopLoss,
+            side,
+            quantity,
+            instrument_type: instrumentType,
+            contract_size: contractSize,
+            point_value: finalPointValue,
+            underlying_asset: finalUnderlyingAsset
+          }, userSettings);
 
-          // Calculate take profit price based on entry price and side
-          // For long positions: entry price + (entry price * take profit %)
-          // For short positions: entry price - (entry price * take profit %)
-          if (side === 'long' || side === 'buy') {
-            finalTakeProfit = entryPrice * (1 + takeProfitPercent / 100);
-          } else if (side === 'short' || side === 'sell') {
-            finalTakeProfit = entryPrice * (1 - takeProfitPercent / 100);
+          if (finalTakeProfit != null) {
+            const takeProfitType = this.getSettingValue(userSettings, 'default_take_profit_type', 'defaultTakeProfitType') || 'percent';
+            console.log(`[TAKE PROFIT] Applied ${takeProfitType} default for ${side} position: $${finalTakeProfit}`);
           }
-
-          // Round to 2 decimal places for stocks, 4 for precise pricing
-          finalTakeProfit = Math.round(finalTakeProfit * 10000) / 10000;
-
-          console.log(`[TAKE PROFIT] Applied default ${takeProfitPercent}% take profit for ${side} position: $${finalTakeProfit}`);
         }
       } catch (error) {
         console.warn('[DEFAULTS] Failed to apply default stop loss/take profit:', error.message);
@@ -1372,16 +1374,26 @@ class Trade {
           }
         }
 
-        // Apply default take profit if not provided
-        if (needsTakeProfitDefault && userSettings?.default_take_profit_percent && userSettings.default_take_profit_percent > 0) {
-          const takeProfitPercent = parseFloat(userSettings.default_take_profit_percent);
-          if (side === 'long' || side === 'buy') {
-            updates.takeProfit = entryPrice * (1 + takeProfitPercent / 100);
+        // Apply the active take-profit default after any stop-loss default.
+        if (needsTakeProfitDefault) {
+          updates.takeProfit = this.calculateDefaultTakeProfitFromSettings({
+            symbol,
+            entry_price: entryPrice,
+            stop_loss: updates.stopLoss ?? currentTrade.stop_loss,
+            side,
+            quantity: quantityForDefaults,
+            instrument_type: updates.instrumentType ?? currentTrade.instrument_type ?? 'stock',
+            contract_size: updates.contractSize ?? currentTrade.contract_size,
+            point_value: updates.pointValue ?? currentTrade.point_value,
+            underlying_asset: updates.underlyingAsset ?? currentTrade.underlying_asset
+          }, userSettings);
+
+          if (updates.takeProfit != null) {
+            const takeProfitType = this.getSettingValue(userSettings, 'default_take_profit_type', 'defaultTakeProfitType') || 'percent';
+            console.log(`[TAKE PROFIT UPDATE] Applied ${takeProfitType} default for ${side} position: $${updates.takeProfit}`);
           } else {
-            updates.takeProfit = entryPrice * (1 - takeProfitPercent / 100);
+            delete updates.takeProfit;
           }
-          updates.takeProfit = Math.round(updates.takeProfit * 10000) / 10000;
-          console.log(`[TAKE PROFIT UPDATE] Applied ${takeProfitPercent}% take profit for ${side} position: $${updates.takeProfit}`);
         }
       } catch (error) {
         console.warn('[DEFAULTS UPDATE] Failed to apply defaults:', error.message);
@@ -2293,6 +2305,72 @@ class Trade {
     return settings[snakeKey] ?? settings[camelKey];
   }
 
+  /**
+   * Calculate a take-profit price from the user's active default mode.
+   * Percentage uses entry price, risk/reward uses the effective stop distance,
+   * and dollar mode converts a gross trade-level profit into a price move using
+   * the same instrument multipliers as P&L calculations.
+   */
+  static calculateDefaultTakeProfitFromSettings(trade, settings) {
+    const takeProfitType = this.getSettingValue(settings, 'default_take_profit_type', 'defaultTakeProfitType') || 'percent';
+    const entryPrice = parseFloat(trade.entry_price ?? trade.entryPrice);
+    const side = trade.side;
+    const isLong = side === 'long' || side === 'buy';
+    const isShort = side === 'short' || side === 'sell';
+
+    if (!isFinite(entryPrice) || entryPrice <= 0 || (!isLong && !isShort)) {
+      return null;
+    }
+
+    let priceMove = null;
+
+    if (takeProfitType === 'percent') {
+      const percent = parseFloat(this.getSettingValue(settings, 'default_take_profit_percent', 'defaultTakeProfitPercent'));
+      if (isFinite(percent) && percent > 0) {
+        priceMove = entryPrice * percent / 100;
+      }
+    } else if (takeProfitType === 'risk_reward') {
+      const rMultiple = parseFloat(this.getSettingValue(settings, 'default_take_profit_r_multiple', 'defaultTakeProfitRMultiple'));
+      const stopLoss = parseFloat(trade.stop_loss ?? trade.stopLoss);
+      if (isFinite(rMultiple) && rMultiple > 0 && isFinite(stopLoss) && stopLoss > 0) {
+        const riskPerUnit = isLong ? entryPrice - stopLoss : stopLoss - entryPrice;
+        if (riskPerUnit > 0) {
+          priceMove = riskPerUnit * rMultiple;
+        }
+      }
+    } else if (takeProfitType === 'dollar') {
+      const dollars = parseFloat(this.getSettingValue(settings, 'default_take_profit_dollars', 'defaultTakeProfitDollars'));
+      const quantity = parseFloat(trade.quantity);
+      const instrumentType = normalizeInstrumentType(trade.instrument_type || trade.instrumentType || 'stock', trade.symbol);
+      let pointValue = trade.point_value ?? trade.pointValue;
+
+      if (instrumentType === 'future') {
+        const parsedPointValue = parseFloat(pointValue);
+        if (!isFinite(parsedPointValue) || parsedPointValue <= 0) {
+          const underlying = trade.underlying_asset || trade.underlyingAsset || extractUnderlyingFromFuturesSymbol(trade.symbol);
+          pointValue = getFuturesPointValue(underlying);
+        }
+      }
+
+      priceMove = this.getDollarStopLossPriceMove(
+        dollars,
+        quantity,
+        instrumentType,
+        trade.contract_size ?? trade.contractSize,
+        pointValue
+      );
+    }
+
+    if (priceMove == null || !isFinite(priceMove) || priceMove <= 0) {
+      return null;
+    }
+
+    const takeProfit = isLong ? entryPrice + priceMove : entryPrice - priceMove;
+    return isFinite(takeProfit) && takeProfit > 0
+      ? Math.round(takeProfit * 10000) / 10000
+      : null;
+  }
+
   static calculateDefaultStopLossFromSettings(trade, settings) {
     const stopLossType = this.getSettingValue(settings, 'default_stop_loss_type', 'defaultStopLossType') || 'percent';
     const entryPrice = parseFloat(trade.entry_price);
@@ -2527,28 +2605,33 @@ class Trade {
   }
 
   /**
-   * Apply default take profit to all trades without a take profit
-   * This is called when a user updates their default take profit percentage setting
-   * @param {number} userId - The user ID
-   * @param {number} defaultTakeProfitPercent - The default take profit percentage
-   * @returns {Promise<number>} The number of trades updated
+   * Apply the active take-profit default to trades that do not have a target.
+   * Existing explicit targets are never overwritten.
    */
-  static async applyDefaultTakeProfitToExistingTrades(userId, defaultTakeProfitPercent) {
-    if (!defaultTakeProfitPercent || defaultTakeProfitPercent <= 0) {
-      console.log('[TAKE PROFIT] Invalid default take profit percentage, skipping update');
+  static async applyDefaultTakeProfitToExistingTrades(userId, settings = {}) {
+    const takeProfitType = this.getSettingValue(settings, 'default_take_profit_type', 'defaultTakeProfitType') || 'percent';
+    const configuredValue = takeProfitType === 'risk_reward'
+      ? this.getSettingValue(settings, 'default_take_profit_r_multiple', 'defaultTakeProfitRMultiple')
+      : takeProfitType === 'dollar'
+        ? this.getSettingValue(settings, 'default_take_profit_dollars', 'defaultTakeProfitDollars')
+        : this.getSettingValue(settings, 'default_take_profit_percent', 'defaultTakeProfitPercent');
+
+    if (!['percent', 'risk_reward', 'dollar'].includes(takeProfitType)
+      || !isFinite(parseFloat(configuredValue))
+      || parseFloat(configuredValue) <= 0) {
       return 0;
     }
 
-    console.log(`[TAKE PROFIT] Applying ${defaultTakeProfitPercent}% default take profit to existing trades without take profit for user ${userId}`);
+    console.log(`[TAKE PROFIT] Applying ${takeProfitType} default to existing trades without take profit for user ${userId}`);
 
     // Use a transaction to update all trades at once
     const client = await db.pool.connect();
     try {
       await client.query('BEGIN');
 
-      // Find all trades without a take profit that have the necessary data
       const tradesQuery = `
-        SELECT id, entry_price, side
+        SELECT id, symbol, entry_price, stop_loss, side, quantity,
+               instrument_type, contract_size, point_value, underlying_asset
         FROM trades
         WHERE user_id = $1
           AND take_profit IS NULL
@@ -2568,23 +2651,9 @@ class Trade {
 
       let updatedCount = 0;
 
-      // Update each trade with the calculated take profit
       for (const trade of trades) {
-        const { id, entry_price, side } = trade;
-
-        // Calculate take profit based on entry price and side
-        let takeProfit;
-        if (side === 'long' || side === 'buy') {
-          takeProfit = entry_price * (1 + defaultTakeProfitPercent / 100);
-        } else if (side === 'short' || side === 'sell') {
-          takeProfit = entry_price * (1 - defaultTakeProfitPercent / 100);
-        } else {
-          console.warn(`[TAKE PROFIT] Unknown side "${side}" for trade ${id}, skipping`);
-          continue;
-        }
-
-        // Round to 4 decimal places
-        takeProfit = Math.round(takeProfit * 10000) / 10000;
+        const takeProfit = this.calculateDefaultTakeProfitFromSettings(trade, settings);
+        if (takeProfit == null) continue;
 
         // Update the trade
         const updateQuery = `
@@ -2593,7 +2662,7 @@ class Trade {
           WHERE id = $2 AND user_id = $3
         `;
 
-        await client.query(updateQuery, [takeProfit, id, userId]);
+        await client.query(updateQuery, [takeProfit, trade.id, userId]);
         updatedCount++;
       }
 

@@ -533,13 +533,35 @@
                             </div>
 
                             <div class="py-6">
-                                <label for="defaultTakeProfit" class="label"
+                                <label for="defaultTakeProfitType" class="label"
+                                    >Default Take Profit Type</label
+                                >
+                                <BaseSelect
+                                    v-model="analyticsForm.defaultTakeProfitType"
+                                    :options="[
+                                        { value: 'percent', label: 'Percentage' },
+                                        { value: 'risk_reward', label: 'Risk / reward multiple' },
+                                        { value: 'dollar', label: 'Dollar amount' }
+                                    ]"
+                                />
+                                <div class="mt-2 text-sm text-gray-500 dark:text-gray-400 space-y-1">
+                                    <p><strong class="text-gray-700 dark:text-gray-300">Percentage:</strong> Set the target a fixed percentage from entry.</p>
+                                    <p><strong class="text-gray-700 dark:text-gray-300">Risk / reward multiple:</strong> Base the target on the distance between entry and stop loss.</p>
+                                    <p><strong class="text-gray-700 dark:text-gray-300">Dollar amount:</strong> Target a fixed gross profit for the whole trade.</p>
+                                </div>
+                            </div>
+
+                            <div
+                                v-if="analyticsForm.defaultTakeProfitType === 'percent'"
+                                class="py-6"
+                            >
+                                <label for="defaultTakeProfitPercent" class="label"
                                     >Default Take Profit Percentage</label
                                 >
                                 <div class="mt-1 relative rounded-md shadow-sm">
                                     <input
                                         type="number"
-                                        id="defaultTakeProfit"
+                                        id="defaultTakeProfitPercent"
                                         v-model.number="
                                             analyticsForm.defaultTakeProfitPercent
                                         "
@@ -571,6 +593,65 @@
                                 <p class="mt-1 text-sm text-primary-600 dark:text-primary-400 font-medium">
                                     Example: 6% take profit on a $100 long
                                     entry = $106 take profit price
+                                </p>
+                            </div>
+
+                            <div
+                                v-if="analyticsForm.defaultTakeProfitType === 'risk_reward'"
+                                class="py-6"
+                            >
+                                <label for="defaultTakeProfitRMultiple" class="label"
+                                    >Default Risk / Reward Multiple</label
+                                >
+                                <div class="mt-1 relative rounded-md shadow-sm">
+                                    <input
+                                        type="number"
+                                        id="defaultTakeProfitRMultiple"
+                                        v-model.number="analyticsForm.defaultTakeProfitRMultiple"
+                                        step="0.1"
+                                        min="0"
+                                        max="1000"
+                                        placeholder="0"
+                                        class="input pr-12"
+                                    />
+                                    <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                                        <span class="text-gray-500 dark:text-gray-400">R</span>
+                                    </div>
+                                </div>
+                                <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                                    Calculates the target from the trade's stop loss. A valid stop loss is required; manually selected stops take precedence over the default stop.
+                                </p>
+                                <p class="mt-1 text-sm text-primary-600 dark:text-primary-400 font-medium">
+                                    Example: $250 risk at 2R = a $500 gross profit target
+                                </p>
+                            </div>
+
+                            <div
+                                v-if="analyticsForm.defaultTakeProfitType === 'dollar'"
+                                class="py-6"
+                            >
+                                <label for="defaultTakeProfitDollars" class="label"
+                                    >Default Take Profit (Dollars per Trade)</label
+                                >
+                                <div class="mt-1 relative rounded-md shadow-sm">
+                                    <input
+                                        type="number"
+                                        id="defaultTakeProfitDollars"
+                                        v-model.number="analyticsForm.defaultTakeProfitDollars"
+                                        step="1"
+                                        min="0"
+                                        placeholder="0"
+                                        class="input pr-12"
+                                    />
+                                    <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                                        <span class="text-gray-500 dark:text-gray-400">$</span>
+                                    </div>
+                                </div>
+                                <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                                    Sets a fixed gross profit target for the entire position. Quantity and stock, option, or futures multipliers are used to calculate the target price.
+                                </p>
+                                <p class="mt-1 text-sm text-primary-600 dark:text-primary-400 font-medium">
+                                    Example: $500 on 50 shares = a $10 move from entry
                                 </p>
                             </div>
 
@@ -1471,6 +1552,7 @@
 <script setup>
 import { ref, computed, onMounted } from "vue";
 import { useAuthStore } from "@/stores/auth";
+import { useTradesStore } from "@/stores/trades";
 import { useVersionStore } from "@/stores/version";
 import { useUiPreferencesStore } from "@/stores/uiPreferences";
 import { useNotification } from "@/composables/useNotification";
@@ -1498,6 +1580,7 @@ import BrokerFeeSettings from "@/components/settings/BrokerFeeSettings.vue";
 import DataExportImport from "@/components/settings/DataExportImport.vue";
 
 const authStore = useAuthStore();
+const tradesStore = useTradesStore();
 const versionStore = useVersionStore();
 const uiPreferencesStore = useUiPreferencesStore();
 const { showSuccess, showError, showDangerConfirmation } = useNotification();
@@ -1575,7 +1658,10 @@ const analyticsForm = ref({
     defaultStopLossType: "percent",
     defaultStopLossPercent: null,
     defaultStopLossDollars: null,
+    defaultTakeProfitType: "percent",
     defaultTakeProfitPercent: null,
+    defaultTakeProfitRMultiple: null,
+    defaultTakeProfitDollars: null,
     displayCurrency: "USD",
     trade_chart_default_resolution: "1",
 });
@@ -1927,8 +2013,14 @@ async function loadAnalyticsSettings(settingsData = null) {
                 settings.defaultStopLossPercent || null,
             defaultStopLossDollars:
                 settings.defaultStopLossDollars ?? null,
+            defaultTakeProfitType:
+                settings.defaultTakeProfitType || "percent",
             defaultTakeProfitPercent:
                 settings.defaultTakeProfitPercent || null,
+            defaultTakeProfitRMultiple:
+                settings.defaultTakeProfitRMultiple ?? null,
+            defaultTakeProfitDollars:
+                settings.defaultTakeProfitDollars ?? null,
             displayCurrency:
                 settings.displayCurrency || "USD",
             trade_chart_default_resolution:
@@ -1949,7 +2041,10 @@ async function loadAnalyticsSettings(settingsData = null) {
         analyticsForm.value.defaultStopLossType = "percent";
         analyticsForm.value.defaultStopLossPercent = null;
         analyticsForm.value.defaultStopLossDollars = null;
+        analyticsForm.value.defaultTakeProfitType = "percent";
         analyticsForm.value.defaultTakeProfitPercent = null;
+        analyticsForm.value.defaultTakeProfitRMultiple = null;
+        analyticsForm.value.defaultTakeProfitDollars = null;
         analyticsForm.value.displayCurrency = "USD";
         analyticsForm.value.trade_chart_default_resolution =
             savedTradeChartResolution();
@@ -1981,8 +2076,14 @@ async function updateAnalyticsSettings() {
                 analyticsForm.value.defaultStopLossPercent || null,
             defaultStopLossDollars:
                 analyticsForm.value.defaultStopLossDollars ?? null,
+            defaultTakeProfitType:
+                analyticsForm.value.defaultTakeProfitType || "percent",
             defaultTakeProfitPercent:
                 analyticsForm.value.defaultTakeProfitPercent || null,
+            defaultTakeProfitRMultiple:
+                analyticsForm.value.defaultTakeProfitRMultiple ?? null,
+            defaultTakeProfitDollars:
+                analyticsForm.value.defaultTakeProfitDollars ?? null,
             displayCurrency:
                 analyticsForm.value.displayCurrency || "USD",
         });
@@ -2000,6 +2101,10 @@ async function updateAnalyticsSettings() {
             chartResolution,
         );
         await uiPreferencesStore.flush();
+
+        // Stop-loss and take-profit defaults can backfill existing trades.
+        await tradesStore.fetchTrades();
+        await tradesStore.fetchAnalytics();
 
         // Re-fetch user so the auth store picks up the new display_currency
         await authStore.fetchUser();

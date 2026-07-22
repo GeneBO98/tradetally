@@ -491,7 +491,10 @@ const schemas = {
     defaultStopLossType: Joi.string().valid('percent', 'lod', 'dollar'),
     defaultStopLossPercent: Joi.number().min(0).max(100).allow(null),
     defaultStopLossDollars: Joi.number().min(0).allow(null),
+    defaultTakeProfitType: Joi.string().valid('percent', 'risk_reward', 'dollar'),
     defaultTakeProfitPercent: Joi.number().min(0).max(1000).allow(null),
+    defaultTakeProfitRMultiple: Joi.number().min(0).max(1000).allow(null),
+    defaultTakeProfitDollars: Joi.number().min(0).allow(null),
     dashboardLayout: Joi.array().items(Joi.object({
       id: Joi.string().required(),
       visible: Joi.boolean().required()

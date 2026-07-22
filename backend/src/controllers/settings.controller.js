@@ -96,6 +96,19 @@ function shouldSyncDefaultStopLosses(body, currentSettings) {
     && parseFloat(currentSettings.default_stop_loss_percent) > 0;
 }
 
+function shouldApplyDefaultTakeProfit(body) {
+  return hasAnyOwnProperty(body, [
+    'defaultTakeProfitType',
+    'default_take_profit_type',
+    'defaultTakeProfitPercent',
+    'default_take_profit_percent',
+    'defaultTakeProfitRMultiple',
+    'default_take_profit_r_multiple',
+    'defaultTakeProfitDollars',
+    'default_take_profit_dollars'
+  ]);
+}
+
 // Cache for table columns (populated per import session)
 const _tableColumnsCache = {};
 async function getTableColumns(dbClient, tableName) {
@@ -166,6 +179,10 @@ const settingsController = {
 
       if (shouldSyncDefaultStopLosses(body, settings)) {
         await Trade.syncDefaultStopLossToExistingTrades(req.user.id, previousSettings, settings);
+      }
+
+      if (shouldApplyDefaultTakeProfit(body)) {
+        await Trade.applyDefaultTakeProfitToExistingTrades(req.user.id, settings);
       }
 
       // Settings like breakeven tolerance and statistics calculation change
@@ -1349,8 +1366,11 @@ const settingsController = {
                   experience_level, average_position_size, trading_goals, preferred_sectors,
                   enable_trade_grouping, trade_grouping_time_gap_minutes,
                   default_broker, ai_provider, ai_api_key, ai_api_url, ai_model,
-                  default_stop_loss_percent, default_stop_loss_type, default_stop_loss_dollars, default_take_profit_percent, analytics_chart_layout, auto_close_expired_options
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)`,
+                  default_stop_loss_percent, default_stop_loss_type, default_stop_loss_dollars,
+                  default_take_profit_type, default_take_profit_percent,
+                  default_take_profit_r_multiple, default_take_profit_dollars,
+                  analytics_chart_layout, auto_close_expired_options
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)`,
                 [
                   userId,
                   s.emailNotifications ?? true,
@@ -1375,7 +1395,10 @@ const settingsController = {
                   s.defaultStopLossPercent || null,
                   s.defaultStopLossType || 'percent',
                   s.defaultStopLossDollars ?? null,
+                  s.defaultTakeProfitType || 'percent',
                   s.defaultTakeProfitPercent || null,
+                  s.defaultTakeProfitRMultiple ?? null,
+                  s.defaultTakeProfitDollars ?? null,
                   s.analyticsChartLayout ? JSON.stringify(s.analyticsChartLayout) : null,
                   s.autoCloseExpiredOptions ?? false
                 ]
@@ -1404,7 +1427,10 @@ const settingsController = {
               if (s.defaultStopLossPercent !== undefined) { updates.push(`default_stop_loss_percent = $${paramCount++}`); values.push(s.defaultStopLossPercent); }
               if (s.defaultStopLossType !== undefined) { updates.push(`default_stop_loss_type = $${paramCount++}`); values.push(s.defaultStopLossType); }
               if (s.defaultStopLossDollars !== undefined) { updates.push(`default_stop_loss_dollars = $${paramCount++}`); values.push(s.defaultStopLossDollars); }
+              if (s.defaultTakeProfitType !== undefined) { updates.push(`default_take_profit_type = $${paramCount++}`); values.push(s.defaultTakeProfitType); }
               if (s.defaultTakeProfitPercent !== undefined) { updates.push(`default_take_profit_percent = $${paramCount++}`); values.push(s.defaultTakeProfitPercent); }
+              if (s.defaultTakeProfitRMultiple !== undefined) { updates.push(`default_take_profit_r_multiple = $${paramCount++}`); values.push(s.defaultTakeProfitRMultiple); }
+              if (s.defaultTakeProfitDollars !== undefined) { updates.push(`default_take_profit_dollars = $${paramCount++}`); values.push(s.defaultTakeProfitDollars); }
               if (s.analyticsChartLayout) { updates.push(`analytics_chart_layout = $${paramCount++}`); values.push(JSON.stringify(s.analyticsChartLayout)); }
               if (s.autoCloseExpiredOptions !== undefined) { updates.push(`auto_close_expired_options = $${paramCount++}`); values.push(s.autoCloseExpiredOptions); }
               if (tp.tradingStrategies) { updates.push(`trading_strategies = $${paramCount++}`); values.push(tp.tradingStrategies); }
