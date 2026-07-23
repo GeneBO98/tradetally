@@ -26,17 +26,7 @@
                         >
                         <BaseSelect
                             v-model="form.provider"
-                            :options="[
-                                { value: 'gemini', label: 'Google Gemini' },
-                                { value: 'claude', label: 'Anthropic Claude' },
-                                { value: 'openai', label: 'OpenAI' },
-                                { value: 'deepseek', label: 'DeepSeek' },
-                                { value: 'kimi', label: 'Kimi' },
-                                { value: 'ollama', label: 'Ollama' },
-                                { value: 'lmstudio', label: 'LM Studio' },
-                                { value: 'perplexity', label: 'Perplexity AI' },
-                                { value: 'local', label: 'Local/Custom' }
-                            ]"
+                            :options="AI_PROVIDER_OPTIONS"
                             placeholder="No provider"
                             @change="onAdminProviderChange"
                         />
@@ -49,9 +39,9 @@
                     </div>
 
                     <div>
-                        <label for="adminAiModel" class="label"
-                            >Default Model (Optional)</label
-                        >
+                        <label for="adminAiModel" class="label">
+                            Default Model{{ form.provider === "custom" ? "" : " (Optional)" }}
+                        </label>
                         <input
                             id="adminAiModel"
                             v-model="form.model"
@@ -60,22 +50,23 @@
                             :placeholder="
                                 getAdminModelPlaceholder()
                             "
+                            :required="form.provider === 'custom'"
                         />
                         <p
                             class="mt-1 text-sm text-gray-500 dark:text-gray-400"
                         >
-                            Default model to use. Leave blank for
-                            provider default.
+                            <template v-if="form.provider === 'custom'">
+                                Exact model identifier expected by the endpoint.
+                            </template>
+                            <template v-else>
+                                Default model to use. Leave blank for provider default.
+                            </template>
                         </p>
                     </div>
                 </div>
 
                 <div
-                    v-if="
-                        form.provider === 'local' ||
-                        form.provider === 'ollama' ||
-                        form.provider === 'lmstudio'
-                    "
+                    v-if="URL_REQUIRED_AI_PROVIDERS.includes(form.provider)"
                 >
                     <label for="adminAiUrl" class="label"
                         >Default API URL</label
@@ -91,7 +82,9 @@
                                 : form.provider ===
                                     'lmstudio'
                                   ? 'http://localhost:1234'
-                                  : 'http://localhost:8000'
+                                  : form.provider === 'custom'
+                                    ? 'https://provider.example/v1'
+                                    : 'http://localhost:8000'
                         "
                         required
                     />
@@ -102,9 +95,18 @@
                         {{
                             form.provider === "ollama"
                                 ? "Ollama server URL"
-                                : "custom AI API endpoint URL"
+                                : form.provider === "custom"
+                                  ? "OpenAI-compatible base URL or full chat completions endpoint"
+                                  : "legacy local AI endpoint URL"
                         }}
                         for all users.
+                    </p>
+                    <p
+                        v-if="form.provider === 'custom'"
+                        class="mt-3 rounded-lg border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-primary-800 dark:border-primary-800 dark:bg-primary-900/20 dark:text-primary-200"
+                    >
+                        TradeTally sends user AI prompts and relevant trading data to this
+                        endpoint. Configure only a service you trust.
                     </p>
                 </div>
 
@@ -125,9 +127,7 @@
                         :placeholder="getAdminApiKeyPlaceholder()"
                         :required="
                             !!form.provider &&
-                            !['ollama', 'lmstudio'].includes(
-                                form.provider,
-                            )
+                            !OPTIONAL_API_KEY_AI_PROVIDERS.includes(form.provider)
                         "
                     />
                     <p
@@ -193,17 +193,7 @@
                                 </label>
                                 <BaseSelect
                                     v-model="form.classifierProvider"
-                                    :options="[
-                                        { value: 'gemini', label: 'Google Gemini' },
-                                        { value: 'claude', label: 'Anthropic Claude' },
-                                        { value: 'openai', label: 'OpenAI' },
-                                { value: 'deepseek', label: 'DeepSeek' },
-                                { value: 'kimi', label: 'Kimi' },
-                                        { value: 'ollama', label: 'Ollama' },
-                                        { value: 'lmstudio', label: 'LM Studio' },
-                                        { value: 'perplexity', label: 'Perplexity AI' },
-                                        { value: 'local', label: 'Local/Custom' }
-                                    ]"
+                                    :options="AI_PROVIDER_OPTIONS"
                                     placeholder="Use default provider"
                                     @change="onAdminClassifierProviderChange"
                                 />
@@ -226,19 +216,13 @@
                                     :placeholder="
                                         getAdminClassifierModelPlaceholder()
                                     "
+                                    :required="form.classifierProvider === 'custom'"
                                 />
                             </div>
                         </div>
 
                         <div
-                            v-if="
-                                form.classifierProvider ===
-                                    'local' ||
-                                form.classifierProvider ===
-                                    'ollama' ||
-                                form.classifierProvider ===
-                                    'lmstudio'
-                            "
+                            v-if="URL_REQUIRED_AI_PROVIDERS.includes(form.classifierProvider)"
                         >
                             <label
                                 for="adminAiClassifierUrl"
@@ -256,6 +240,7 @@
                                 :placeholder="
                                     getAdminClassifierUrlPlaceholder()
                                 "
+                                :required="form.classifierProvider === 'custom'"
                             />
                         </div>
 
@@ -281,6 +266,10 @@
                                 class="input"
                                 :placeholder="
                                     getAdminClassifierApiKeyPlaceholder()
+                                "
+                                :required="
+                                    !!form.classifierProvider &&
+                                    !OPTIONAL_API_KEY_AI_PROVIDERS.includes(form.classifierProvider)
                                 "
                             />
                         </div>
@@ -312,6 +301,11 @@
 
 <script setup>
 import BaseSelect from "@/components/common/BaseSelect.vue";
+import {
+    AI_PROVIDER_OPTIONS,
+    OPTIONAL_API_KEY_AI_PROVIDERS,
+    URL_REQUIRED_AI_PROVIDERS,
+} from "@/utils/aiProviderOptions";
 
 const props = defineProps({
     form: { type: Object, required: true },
@@ -369,6 +363,8 @@ function getAdminClassifierModelPlaceholder() {
             return "local-model";
         case "perplexity":
             return "sonar";
+        case "custom":
+            return "llama-3.2-3b-instruct";
         case "local":
             return "custom-model";
         default:
@@ -384,6 +380,8 @@ function getAdminClassifierUrlPlaceholder() {
             return "http://localhost:1234";
         case "local":
             return "http://localhost:8000";
+        case "custom":
+            return "https://provider.example/v1";
         default:
             return "API URL";
     }
@@ -405,6 +403,7 @@ function getAdminClassifierApiKeyPlaceholder() {
             return "Enter Perplexity API key";
         case "ollama":
         case "lmstudio":
+        case "custom":
             return "Optional API key";
         default:
             return "Enter API key";
@@ -429,6 +428,8 @@ function getAdminModelPlaceholder() {
             return "local-model (auto-detected)";
         case "perplexity":
             return "sonar";
+        case "custom":
+            return "llama-3.2-3b-instruct";
         case "local":
             return "custom-model";
         default:
@@ -450,6 +451,8 @@ function getAdminApiKeyPlaceholder() {
             return "Enter Moonshot AI API key";
         case "ollama":
             return "Optional: Enter Ollama API key";
+        case "custom":
+            return "Optional API key";
         default:
             return "Enter API key";
     }
@@ -469,6 +472,8 @@ function getAdminApiKeyHelp() {
             return "Get your API key at: https://platform.moonshot.ai/console/api-keys";
         case "ollama":
             return "API key is optional for Ollama. Leave blank if not needed.";
+        case "custom":
+            return "Optional. Sent as a Bearer token when provided.";
         default:
             return "API key for your chosen provider";
     }

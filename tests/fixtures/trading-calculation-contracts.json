@@ -215,6 +215,57 @@
       }
     }
   ],
+  "chart_pnl_measurement_cases": [
+    {
+      "id": "chart_stock_long_measurement",
+      "input": {
+        "entry_price": 100,
+        "exit_price": 105,
+        "quantity": 25,
+        "side": "long",
+        "instrument_type": "stock"
+      },
+      "expected": {
+        "price_change": 5,
+        "position_basis": 2500,
+        "pnl_percent": 5,
+        "dollar_pnl": 125
+      }
+    },
+    {
+      "id": "chart_stock_short_measurement",
+      "input": {
+        "entry_price": 50,
+        "exit_price": 46,
+        "quantity": 10,
+        "side": "short",
+        "instrument_type": "stock"
+      },
+      "expected": {
+        "price_change": 4,
+        "position_basis": 500,
+        "pnl_percent": 8,
+        "dollar_pnl": 40
+      }
+    },
+    {
+      "id": "chart_future_point_value_measurement",
+      "input": {
+        "entry_price": 4500,
+        "exit_price": 4504,
+        "quantity": 3,
+        "side": "long",
+        "instrument_type": "future",
+        "point_value": 5
+      },
+      "expected": {
+        "price_change": 4,
+        "position_basis": 67500,
+        "pnl_percent": 0.0888888889,
+        "dollar_pnl": 60
+      }
+    }
+  ],
   "broker_fee_application": {
     "broker": "tradovate",
     "fee_rows": [
@@ -373,6 +424,23 @@
         "exit_price": 29699.25,
         "trade_date": "2026-07-09",
         "instrument_type": "future"
+      }
+    },
+    {
+      "id": "ibkr_same_order_partial_fills_round_trip",
+      "csv": "ClientAccountID,AssetClass,Symbol,Conid,DateTime,Quantity,TradePrice,IBCommission,Buy/Sell,LevelOfDetail,IBOrderID,IBExecID,TradeID\nU123,STK,AAPL,265598,20260714;093000,103,300,-1.000309,BUY,EXECUTION,ORDER-1,EXEC-1,TRADE-1\nU123,STK,AAPL,265598,20260714;093000,137,300,-0.200411,BUY,EXECUTION,ORDER-1,EXEC-2,TRADE-2\nU123,STK,AAPL,265598,20260714;103000,240,305,-1.25,SELL,EXECUTION,ORDER-2,EXEC-3,TRADE-3",
+      "expected": {
+        "detected_broker": "ibkr",
+        "symbol": "AAPL",
+        "broker": "ibkr",
+        "side": "long",
+        "quantity": 240,
+        "entry_price": 300,
+        "exit_price": 305,
+        "trade_date": "2026-07-14",
+        "instrument_type": "stock",
+        "commission": 2.45072,
+        "execution_count": 3
       }
     }
   ],

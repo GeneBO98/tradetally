@@ -30,7 +30,8 @@
               <li>Log in to <a href="https://www.interactivebrokers.com/sso/Login" target="_blank" class="underline font-medium">IBKR Client Portal</a></li>
               <li>Navigate to <strong>Performance & Reports > Flex Queries</strong></li>
               <li>Under "Activity Flex Query", click the <strong>+</strong> button to create a new query</li>
-              <li>Name your query, select <strong>Trades</strong> in the Sections, then Save</li>
+              <li>Name your query, select <strong>Trades</strong> and <strong>Open Positions</strong>, and choose <strong>CSV or XML</strong></li>
+              <li>Save the query</li>
               <li>Note the <strong>Query ID</strong> shown next to your saved query</li>
               <li>Click the <strong>gear icon</strong> next to "Configure Flex Web Service"</li>
               <li>Generate or copy your <strong>Current Token</strong></li>
@@ -154,7 +155,7 @@
                 :max="todayIso"
               />
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Only sync trades on or after this date. Leave as "All Time" to import the full history available from the broker.
+                Only sync trades on or after this date. For IBKR, "All Time" imports up to the latest 10 years in paced 365-day windows.
               </p>
             </div>
           </form>

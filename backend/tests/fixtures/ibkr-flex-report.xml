@@ -1,0 +1,15 @@
+<FlexQueryResponse queryName="TradeTally" type="AF">
+  <FlexStatements count="1">
+    <FlexStatement accountId="U1234567" fromDate="20250715" toDate="20260714" period="" whenGenerated="20260715;023546">
+      <OpenPositions>
+        <OpenPosition accountId="U1234567" acctAlias="" model="Independent" currency="USD" fxRateToBase="1" assetCategory="STK" subCategory="COMMON" symbol="AAPL" description="APPLE INC" conid="265598" securityID="US0378331005" securityIDType="ISIN" underlyingSymbol="AAPL" multiplier="1" reportDate="20260714" position="340" markPrice="314.86" positionValue="107052.4" openPrice="0" costBasisPrice="0" costBasisMoney="0" side="Long" levelOfDetail="SUMMARY" />
+      </OpenPositions>
+      <Trades>
+        <Trade accountId="U1234567" currency="USD" assetCategory="STK" symbol="GOLD" description="GOLD.COM INC" conid="146266831" underlyingSymbol="GOLD" tradeID="TRD00001" multiplier="1" reportDate="20260126" dateTime="20260126;115715" tradeDate="20260126" quantity="691" tradePrice="43.1" ibCommission="-3.455" ibCommissionCurrency="USD" buySell="BUY" ibOrderID="ORD00001" transactionID="TXN00001" ibExecID="EXEC00001" extExecID="EXT00001" orderTime="20260126;115715" levelOfDetail="EXECUTION" />
+        <Trade accountId="U1234567" currency="USD" assetCategory="STK" symbol="GOLD" description="GOLD.COM INC" conid="146266831" underlyingSymbol="GOLD" tradeID="TRD00002" multiplier="1" reportDate="20260615" dateTime="20260615;130207" tradeDate="20260615" quantity="-100" tradePrice="44.19" ibCommission="-1.1108314" ibCommissionCurrency="USD" buySell="SELL" ibOrderID="ORD00002" transactionID="TXN00002" ibExecID="EXEC00002" extExecID="EXT00002" orderTime="20260615;130207" levelOfDetail="EXECUTION" />
+        <Trade accountId="U1234567" currency="USD" assetCategory="STK" symbol="AAPL" description="APPLE INC" conid="265598" underlyingSymbol="AAPL" tradeID="TRD00003" multiplier="1" reportDate="20260518" dateTime="20260518;093004" tradeDate="20260518" quantity="103" tradePrice="300" ibCommission="-1.000309" ibCommissionCurrency="USD" buySell="BUY" ibOrderID="ORD00003" transactionID="TXN00003" ibExecID="EXEC00003" extExecID="EXT00003" orderTime="20260518;091135" levelOfDetail="EXECUTION" />
+        <Trade accountId="U1234567" currency="USD" assetCategory="STK" symbol="AAPL" description="APPLE INC" conid="265598" underlyingSymbol="AAPL" tradeID="TRD00004" multiplier="1" reportDate="20260518" dateTime="20260518;093004" tradeDate="20260518" quantity="137" tradePrice="300" ibCommission="-0.200411" ibCommissionCurrency="USD" buySell="BUY" ibOrderID="ORD00003" transactionID="TXN00004" ibExecID="EXEC00004" extExecID="EXT00004" orderTime="20260518;091135" levelOfDetail="EXECUTION" />
+      </Trades>
+    </FlexStatement>
+  </FlexStatements>
+</FlexQueryResponse>

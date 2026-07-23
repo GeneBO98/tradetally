@@ -3958,7 +3958,8 @@ const tradeController = {
         entryDate,
         exitDate,
         req.headers.host,
-        resolution
+        resolution,
+        trade
       );
       ChartService.alignCandlesToTradePrices(chartData, trade);
 
@@ -3983,12 +3984,15 @@ const tradeController = {
         side: trade.side,
         pnl: trade.pnl,
         pnlPercent: trade.pnl_percent,
+        stop_loss: trade.stop_loss,
+        take_profit: trade.take_profit,
         // Options-specific fields
         instrumentType: trade.instrument_type,
         strikePrice: trade.strike_price,
         expirationDate: trade.expiration_date,
         optionType: trade.option_type,
         contractSize: trade.contract_size,
+        point_value: trade.point_value,
         // Include executions for options trades (to display actual option prices instead of underlying stock)
         executions: trade.executions ? (typeof trade.executions === 'string' ? JSON.parse(trade.executions) : trade.executions) : null
       };
@@ -4003,9 +4007,11 @@ const tradeController = {
       // Get usage statistics for the response
       const usageStats = await ChartService.getUsageStats(userId, req.headers.host);
       chartData.usage = usageStats;
-      chartData.available_resolutions = (
-        ['fmp', 'finnhub'].includes(chartData.source) || chartData.fallback
-      ) ? ['1', '5', '15', '60', 'D'] : ['D'];
+      if (!Array.isArray(chartData.available_resolutions)) {
+        chartData.available_resolutions = (
+          ['fmp', 'finnhub', 'databento', 'cache:databento'].includes(chartData.source) || chartData.fallback
+        ) ? ['1', '5', '15', '60', 'D'] : ['D'];
+      }
 
       res.json(chartData);
     } catch (error) {
@@ -4039,6 +4045,12 @@ const tradeController = {
           error: 'Chart data unavailable',
           message: error.message,
           symbol: req.params.id ? 'Unknown' : undefined
+        });
+      }
+
+      if ([400, 404, 422].includes(error.statusCode)) {
+        return res.status(error.statusCode).json({
+          error: error.message
         });
       }
       

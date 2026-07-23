@@ -71,7 +71,7 @@ class User {
   static async findById(id) {
     const query = `
       SELECT id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone,
-             two_factor_enabled, two_factor_secret, two_factor_backup_codes, tier, marketing_consent,
+             two_factor_enabled, two_factor_enabled_at, two_factor_secret, two_factor_backup_codes, tier, marketing_consent,
              session_version, created_at, updated_at, last_login_at
       FROM users
       WHERE id = $1 AND is_active = true
@@ -96,7 +96,7 @@ class User {
   static async findByEmail(email) {
     const query = `
       SELECT id, email, username, password_hash, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone,
-             two_factor_enabled, two_factor_secret, two_factor_backup_codes, tier, session_version, created_at, last_login_at,
+             two_factor_enabled, two_factor_enabled_at, two_factor_secret, two_factor_backup_codes, tier, session_version, created_at, last_login_at,
              failed_login_attempts, account_locked_at
       FROM users
       WHERE email = $1
@@ -247,6 +247,9 @@ class User {
       uiPreferences: 'ui_preferences',
       defaultStopLossPercent: 'default_stop_loss_percent',
       defaultTakeProfitPercent: 'default_take_profit_percent',
+      defaultTakeProfitType: 'default_take_profit_type',
+      defaultTakeProfitRMultiple: 'default_take_profit_r_multiple',
+      defaultTakeProfitDollars: 'default_take_profit_dollars',
       defaultStopLossType: 'default_stop_loss_type',
       defaultStopLossDollars: 'default_stop_loss_dollars',
       timeDisplayFormat: 'time_display_format',
@@ -302,17 +305,8 @@ class User {
       // 'percent' on partial payloads — overwriting dollar-based stops (issue
       // #345) — and raced the controller's sync and cache invalidation.
 
-      // If default take profit percentage was updated, apply it to existing trades without a take profit
-      if (settings.defaultTakeProfitPercent !== undefined && settings.defaultTakeProfitPercent > 0) {
-        const Trade = require('./Trade');
-        Trade.applyDefaultTakeProfitToExistingTrades(userId, settings.defaultTakeProfitPercent)
-          .then(count => {
-            console.log(`[SETTINGS] Applied default take profit to ${count} existing trades`);
-          })
-          .catch(error => {
-            console.error('[SETTINGS] Failed to apply default take profit to existing trades:', error);
-          });
-      }
+      // Trade-default propagation is awaited by the settings controller after
+      // persistence so all take-profit modes use the complete saved settings.
 
       return decryptSettingsRow(result.rows[0]);
     } catch (error) {
@@ -343,18 +337,6 @@ class User {
 
           // Stop loss propagation handled by the settings controller sync
           // (see comment on the primary path above).
-
-          // If default take profit percentage was updated, apply it to existing trades without a take profit
-          if (settings.defaultTakeProfitPercent !== undefined && settings.defaultTakeProfitPercent > 0) {
-            const Trade = require('./Trade');
-            Trade.applyDefaultTakeProfitToExistingTrades(userId, settings.defaultTakeProfitPercent)
-              .then(count => {
-                console.log(`[SETTINGS] Applied default take profit to ${count} existing trades`);
-              })
-              .catch(error => {
-                console.error('[SETTINGS] Failed to apply default take profit to existing trades:', error);
-              });
-          }
 
           return decryptSettingsRow(result.rows[0]);
         }

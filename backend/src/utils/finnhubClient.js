@@ -1,6 +1,7 @@
 const axios = require('axios');
 const cache = require('./cache');
 const aiService = require('./aiService');
+const AIProvider = require('./aiProvider');
 const historicalPriceCache = require('./historicalPriceCache');
 const ApiUsageService = require('../services/apiUsageService');
 const TierService = require('../services/tierService');
@@ -686,10 +687,14 @@ class FinnhubClient {
       // Validate configuration based on provider type
       const provider = settings.default_ai_provider || 'gemini';
       
-      if (provider === 'ollama' || provider === 'local') {
-        // Ollama and local providers require URL, API key is optional
+      if (['ollama', 'lmstudio', 'local', 'custom'].includes(provider)) {
+        // Local and Custom OpenAI-compatible providers require a URL; API key is optional.
         if (!settings.default_ai_api_url) {
           console.log(`System AI provider (${provider}) not configured - no admin API URL found, skipping AI CUSIP resolution`);
+          return null;
+        }
+        if (provider === 'custom' && !String(settings.default_ai_model || '').trim()) {
+          console.log('System AI provider (custom) not configured - no admin model found, skipping AI CUSIP resolution');
           return null;
         }
       } else {
@@ -908,6 +913,13 @@ class FinnhubClient {
           console.error('[PERPLEXITY] System AI failed:', error.message);
           throw new Error(`Perplexity system AI failed: ${error.message}`);
         }
+      } else if (settings.default_ai_provider === 'custom') {
+        return AIProvider.generateResponse(prompt, {
+          provider: 'custom',
+          apiKey: settings.default_ai_api_key,
+          apiUrl: settings.default_ai_api_url,
+          modelName: settings.default_ai_model
+        }, { maxTokens: 50, temperature: 0.1 });
       } else if (settings.default_ai_provider === 'local') {
         const validatedApiUrl = await validateAiProviderUrl('local', settings.default_ai_api_url);
         

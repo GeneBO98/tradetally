@@ -39,17 +39,7 @@
                         >
                         <BaseSelect
                             v-model="form.provider"
-                            :options="[
-                                { value: 'gemini', label: 'Google Gemini' },
-                                { value: 'claude', label: 'Anthropic Claude' },
-                                { value: 'openai', label: 'OpenAI' },
-                                { value: 'deepseek', label: 'DeepSeek' },
-                                { value: 'kimi', label: 'Kimi' },
-                                { value: 'ollama', label: 'Ollama' },
-                                { value: 'lmstudio', label: 'LM Studio' },
-                                { value: 'perplexity', label: 'Perplexity AI' },
-                                { value: 'local', label: 'Local/Custom' }
-                            ]"
+                            :options="AI_PROVIDER_OPTIONS"
                             placeholder="No provider"
                             @change="onProviderChange"
                         />
@@ -62,31 +52,32 @@
                     </div>
 
                     <div>
-                        <label for="aiModel" class="label"
-                            >Model (Optional)</label
-                        >
+                        <label for="aiModel" class="label">
+                            Model{{ form.provider === "custom" ? "" : " (Optional)" }}
+                        </label>
                         <input
                             id="aiModel"
                             v-model="form.model"
                             type="text"
                             class="input"
                             :placeholder="getModelPlaceholder()"
+                            :required="form.provider === 'custom'"
                         />
                         <p
                             class="mt-1 text-sm text-gray-500 dark:text-gray-400"
                         >
-                            Specific model to use. Leave blank for
-                            default.
+                            <template v-if="form.provider === 'custom'">
+                                Exact model identifier expected by the endpoint.
+                            </template>
+                            <template v-else>
+                                Specific model to use. Leave blank for default.
+                            </template>
                         </p>
                     </div>
                 </div>
 
                 <div
-                    v-if="
-                        form.provider === 'local' ||
-                        form.provider === 'ollama' ||
-                        form.provider === 'lmstudio'
-                    "
+                    v-if="URL_REQUIRED_AI_PROVIDERS.includes(form.provider)"
                 >
                     <label for="aiUrl" class="label">API URL</label>
                     <input
@@ -99,7 +90,9 @@
                                 ? 'http://localhost:11434'
                                 : form.provider === 'lmstudio'
                                   ? 'http://localhost:1234'
-                                  : 'http://localhost:8000'
+                                  : form.provider === 'custom'
+                                    ? 'https://provider.example/v1'
+                                    : 'http://localhost:8000'
                         "
                         required
                     />
@@ -109,8 +102,17 @@
                         {{
                             form.provider === "ollama"
                                 ? "Ollama server URL"
-                                : "Custom AI API endpoint URL"
+                                : form.provider === "custom"
+                                  ? "OpenAI-compatible base URL or full chat completions endpoint"
+                                  : "Legacy local AI endpoint URL"
                         }}
+                    </p>
+                    <p
+                        v-if="form.provider === 'custom'"
+                        class="mt-3 rounded-lg border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-primary-800 dark:border-primary-800 dark:bg-primary-900/20 dark:text-primary-200"
+                    >
+                        TradeTally sends AI prompts and relevant trading data to this endpoint.
+                        Use a service you trust.
                     </p>
                 </div>
 
@@ -131,9 +133,7 @@
                         :placeholder="getApiKeyPlaceholder()"
                         :required="
                             !!form.provider &&
-                            !['ollama', 'lmstudio'].includes(
-                                form.provider,
-                            )
+                            !OPTIONAL_API_KEY_AI_PROVIDERS.includes(form.provider)
                         "
                     />
                     <p
@@ -169,6 +169,11 @@
 <script setup>
 import { useAuthStore } from "@/stores/auth";
 import BaseSelect from "@/components/common/BaseSelect.vue";
+import {
+    AI_PROVIDER_OPTIONS,
+    OPTIONAL_API_KEY_AI_PROVIDERS,
+    URL_REQUIRED_AI_PROVIDERS,
+} from "@/utils/aiProviderOptions";
 
 const props = defineProps({
     form: { type: Object, required: true },
@@ -197,6 +202,8 @@ function getModelPlaceholder() {
             return "e.g., local-model (auto-detected)";
         case "perplexity":
             return "e.g., sonar";
+        case "custom":
+            return "e.g., llama-3.2-3b-instruct";
         case "local":
             return "e.g., custom-model";
         default:
@@ -221,6 +228,8 @@ function getApiKeyPlaceholder() {
         case "perplexity":
             return "pplx-...";
         case "lmstudio":
+            return "Optional API key";
+        case "custom":
             return "Optional API key";
         case "local":
             return "Enter API key";
@@ -247,6 +256,8 @@ function getApiKeyHelp() {
             return "Get your API key from Perplexity AI Settings";
         case "lmstudio":
             return "API key is optional for LM Studio";
+        case "custom":
+            return "Optional. Sent as a Bearer token when provided";
         case "local":
             return "Enter your custom API key if required";
         default:

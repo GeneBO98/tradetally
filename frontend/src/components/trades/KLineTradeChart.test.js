@@ -2,6 +2,8 @@ import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import KLineTradeChart from './KLineTradeChart.vue'
 
+const { registeredOverlays } = vi.hoisted(() => ({ registeredOverlays: new Map() }))
+
 const chartMock = {
   setSymbol: vi.fn(),
   setPeriod: vi.fn(),
@@ -16,13 +18,14 @@ const chartMock = {
   setOffsetRightDistance: vi.fn(),
   scrollToRealTime: vi.fn(),
   scrollToTimestamp: vi.fn(),
+  scrollByDistance: vi.fn(),
   resize: vi.fn(),
 }
 
 vi.mock('klinecharts', () => ({
   init: vi.fn(() => chartMock),
   dispose: vi.fn(),
-  registerOverlay: vi.fn(),
+  registerOverlay: vi.fn((template) => registeredOverlays.set(template.name, template)),
 }))
 
 class ResizeObserverMock {
@@ -41,6 +44,7 @@ const chartData = {
     id: 'trade-1',
     symbol: 'WDC',
     side: 'long',
+    quantity: 25,
     entryTime: '2023-11-14T22:13:20.000Z',
     exitTime: '2023-11-15T22:13:20.000Z',
     entryPrice: 101,
@@ -85,10 +89,9 @@ describe('KLineTradeChart', () => {
       pricePrecision: 2,
       volumePrecision: 0,
     })
-    expect(chartMock.createIndicator).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'MA', paneId: 'candle_pane', calcParams: [20, 50] }),
-      true
-    )
+    expect(chartMock.createIndicator).not.toHaveBeenCalled()
+    expect(wrapper.get('button[title="Toggle 20 and 50 period moving averages"]')
+      .attributes('aria-pressed')).toBe('false')
     expect(chartMock.createOverlay).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'tradeExecutionMarker', groupId: 'trade-executions', lock: true })
     )
@@ -103,7 +106,23 @@ describe('KLineTradeChart', () => {
         price_mismatch: false,
       }),
     })
-    expect(chartMock.scrollToTimestamp).toHaveBeenCalledWith(1_700_000_000_000, 200)
+    expect(chartMock.scrollToTimestamp).toHaveBeenCalledWith(1_700_000_000_000)
+    expect(chartMock.scrollByDistance).toHaveBeenCalledWith(expect.any(Number))
+    expect(chartMock.scrollByDistance.mock.calls[0][0]).toBeLessThan(0)
+
+    wrapper.unmount()
+  })
+
+  it('adds moving averages only when the user enables them', async () => {
+    const wrapper = mount(KLineTradeChart, { props: { chartData } })
+
+    await vi.waitFor(() => expect(chartMock.setDataLoader).toHaveBeenCalledOnce())
+    await wrapper.get('button[title="Toggle 20 and 50 period moving averages"]').trigger('click')
+
+    expect(chartMock.createIndicator).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'MA', paneId: 'candle_pane', calcParams: [20, 50] }),
+      true
+    )
 
     wrapper.unmount()
   })
@@ -128,6 +147,126 @@ describe('KLineTradeChart', () => {
     wrapper.unmount()
   })
 
+  it('starts a P&L measurement with the trade size, side, and display currency', async () => {
+    const wrapper = mount(KLineTradeChart, {
+      props: { chartData, currencyCode: 'CAD' },
+    })
+
+    await vi.waitFor(() => expect(chartMock.setDataLoader).toHaveBeenCalledOnce())
+    await wrapper.get('button[title*="recorded entry price"]').trigger('click')
+
+    expect(chartMock.createOverlay).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'tradePnlMeasurement',
+        groupId: 'trade-user-drawings',
+        mode: 'weak_magnet',
+        extendData: {
+          quantity: 25,
+          side: 'long',
+          instrument_type: 'stock',
+          contract_size: 100,
+          point_value: 1,
+          entry_price: 101,
+          currency_code: 'CAD',
+          show_dollar_pnl: true,
+        },
+      })
+    )
+    expect(wrapper.text()).toContain('P&L starts at the recorded entry price')
+
+    wrapper.unmount()
+  })
+
+  it('renders the measured dollar and percentage P&L in the custom overlay', () => {
+    const pnlTemplate = registeredOverlays.get('tradePnlMeasurement')
+    const figures = pnlTemplate.createPointFigures({
+      coordinates: [{ x: 100, y: 200 }, { x: 300, y: 100 }],
+      overlay: {
+        points: [{ value: 100 }, { value: 105 }],
+        extendData: {
+          quantity: 25,
+          side: 'long',
+          instrument_type: 'stock',
+          currency_code: 'USD',
+        },
+      },
+      bounding: { width: 800, height: 480 },
+    })
+
+    expect(figures).toEqual([
+      expect.objectContaining({
+        type: 'rect',
+        attrs: { x: 100, y: 100, width: 200, height: 100 },
+        styles: expect.objectContaining({ borderColor: '#059669' }),
+      }),
+      expect.objectContaining({
+        type: 'text',
+        attrs: expect.objectContaining({ text: '+$125.00 (+5.00% trade return)' }),
+        styles: expect.objectContaining({ backgroundColor: '#059669' }),
+      }),
+    ])
+  })
+
+  it('pins the first P&L anchor to the recorded trade entry price', () => {
+    const pnlTemplate = registeredOverlays.get('tradePnlMeasurement')
+    const points = [{ value: 99 }, { value: 105 }]
+    const performPoint = points[0]
+
+    pnlTemplate.performEventMoveForDrawing.call(
+      { extendData: { entry_price: 101 } },
+      { performPointIndex: 0, performPoint, points }
+    )
+
+    expect(points[0].value).toBe(101)
+  })
+
+  it('updates a saved P&L drawing to the trade entry price when restoring it', async () => {
+    localStorage.setItem('trade_chart_drawings:trade-1', JSON.stringify([{
+      name: 'tradePnlMeasurement',
+      points: [
+        { timestamp: 1_700_000_000_000, value: 99 },
+        { timestamp: 1_700_086_400_000, value: 105 },
+      ],
+      extendData: { quantity: 10, side: 'long', instrument_type: 'stock' },
+    }]))
+
+    const wrapper = mount(KLineTradeChart, { props: { chartData } })
+
+    await vi.waitFor(() => expect(chartMock.setDataLoader).toHaveBeenCalledOnce())
+    const restoredDrawing = chartMock.createOverlay.mock.calls
+      .map(([overlay]) => overlay)
+      .find((overlay) => overlay.groupId === 'trade-user-drawings')
+
+    expect(restoredDrawing).toMatchObject({
+      name: 'tradePnlMeasurement',
+      points: [
+        expect.objectContaining({ value: 101 }),
+        expect.objectContaining({ value: 105 }),
+      ],
+      extendData: expect.objectContaining({ entry_price: 101, quantity: 25 }),
+    })
+
+    wrapper.unmount()
+  })
+
+  it('disables P&L measurement when an option chart shows underlying prices', async () => {
+    const wrapper = mount(KLineTradeChart, {
+      props: {
+        chartData: {
+          ...chartData,
+          trade: { ...chartData.trade, instrumentType: 'option' },
+        },
+      },
+    })
+
+    await vi.waitFor(() => expect(chartMock.setDataLoader).toHaveBeenCalledOnce())
+    const pnlButton = wrapper.get('button[title*="option underlying"]')
+
+    expect(pnlButton.attributes()).toHaveProperty('disabled')
+
+    wrapper.unmount()
+  })
+
   it('integrates resolution controls into the chart footer', async () => {
     const wrapper = mount(KLineTradeChart, {
       props: {
@@ -148,6 +287,206 @@ describe('KLineTradeChart', () => {
     wrapper.unmount()
   })
 
+  it('uses continuous-contract metadata for futures chart formatting', async () => {
+    const wrapper = mount(KLineTradeChart, {
+      props: {
+        chartData: {
+          ...chartData,
+          chart_symbol: 'ZN.c.0',
+          tick_size: 0.015625,
+        },
+      },
+    })
+
+    await vi.waitFor(() => expect(chartMock.setSymbol).toHaveBeenCalledOnce())
+
+    expect(chartMock.setSymbol).toHaveBeenCalledWith({
+      ticker: 'ZN.c.0',
+      pricePrecision: 6,
+      volumePrecision: 0,
+    })
+
+    wrapper.unmount()
+  })
+
+  it('frames the complete entry-to-exit window when initially focusing the chart', async () => {
+    const start_timestamp = 1_700_000_000_000
+    const candles = Array.from({ length: 100 }, (_, index) => ({
+      time: (start_timestamp + (index * 60_000)) / 1000,
+      open: 100 + index,
+      high: 101 + index,
+      low: 99 + index,
+      close: 100.5 + index,
+      volume: 1000,
+    }))
+    const entry_timestamp = start_timestamp + (10 * 60_000)
+    const exit_timestamp = start_timestamp + (80 * 60_000)
+    const wrapper = mount(KLineTradeChart, {
+      props: {
+        chartData: {
+          ...chartData,
+          candles,
+          trade: {
+            ...chartData.trade,
+            entryTime: new Date(entry_timestamp).toISOString(),
+            exitTime: new Date(exit_timestamp).toISOString(),
+          },
+        },
+      },
+    })
+
+    await vi.waitFor(() => expect(chartMock.setDataLoader).toHaveBeenCalledOnce())
+
+    const expected_focus_timestamp = start_timestamp + (45 * 60_000)
+    const expected_visible_bar_count = 71 + (11 * 2)
+    expect(chartMock.scrollToTimestamp).toHaveBeenCalledWith(expected_focus_timestamp)
+    expect(chartMock.setBarSpace).toHaveBeenLastCalledWith(710 / expected_visible_bar_count)
+
+    wrapper.unmount()
+  })
+
+  it('adds a planned long-position overlay while keeping the actual exit as a separate line', async () => {
+    const wrapper = mount(KLineTradeChart, {
+      props: {
+        chartData: {
+          ...chartData,
+          trade: {
+            ...chartData.trade,
+            side: 'long',
+            stop_loss: 98,
+            take_profit: 107,
+          },
+        },
+      },
+    })
+
+    await vi.waitFor(() => expect(chartMock.setDataLoader).toHaveBeenCalledOnce())
+
+    const positionOverlay = chartMock.createOverlay.mock.calls
+      .map(([overlay]) => overlay)
+      .find((overlay) => overlay.groupId === 'trade-planned-position')
+    const exitLine = chartMock.createOverlay.mock.calls
+      .map(([overlay]) => overlay)
+      .find((overlay) => overlay.groupId === 'trade-executions')
+
+    expect(positionOverlay).toMatchObject({
+      name: 'tradePositionOverlay',
+      lock: true,
+      extendData: {
+        side: 'long',
+        entry_price: 101,
+        stop_loss: 98,
+        take_profit: 107,
+        risk_reward: 2,
+      },
+    })
+    expect(positionOverlay.points).toEqual([
+      { timestamp: 1_700_000_000_000, value: 101 },
+      { timestamp: 1_700_086_400_000, value: 101 },
+      { timestamp: 1_700_086_400_000, value: 107 },
+      { timestamp: 1_700_086_400_000, value: 98 },
+    ])
+    expect(exitLine).toMatchObject({
+      name: 'tradeActualExitLine',
+      lock: true,
+      points: [
+        { timestamp: 1_700_000_000_000, value: 107 },
+        { timestamp: 1_700_086_400_000, value: 107 },
+      ],
+      extendData: { color: '#059669' },
+    })
+
+    wrapper.unmount()
+  })
+
+  it('orients a valid short-position plan and omits incomplete plans', async () => {
+    const shortWrapper = mount(KLineTradeChart, {
+      props: {
+        chartData: {
+          ...chartData,
+          trade: {
+            ...chartData.trade,
+            side: 'short',
+            stop_loss: 105,
+            take_profit: 97,
+          },
+        },
+      },
+    })
+
+    await vi.waitFor(() => expect(chartMock.setDataLoader).toHaveBeenCalledOnce())
+    expect(chartMock.createOverlay.mock.calls
+      .map(([overlay]) => overlay)
+      .find((overlay) => overlay.groupId === 'trade-planned-position')
+      .extendData).toMatchObject({ side: 'short', risk_reward: 4 / 4 })
+    shortWrapper.unmount()
+
+    vi.clearAllMocks()
+    chartMock.createIndicator.mockImplementation((value) => (
+      typeof value === 'string' ? `${value}-id` : `${value.name}-id`
+    ))
+    chartMock.createOverlay.mockImplementation((value) => `${value.name}-id`)
+    chartMock.getOverlays.mockReturnValue([])
+
+    const incompleteWrapper = mount(KLineTradeChart, {
+      props: {
+        chartData: {
+          ...chartData,
+          trade: {
+            ...chartData.trade,
+            side: 'long',
+            stop_loss: null,
+            take_profit: 107,
+          },
+        },
+      },
+    })
+
+    await vi.waitFor(() => expect(chartMock.setDataLoader).toHaveBeenCalledOnce())
+    expect(chartMock.createOverlay.mock.calls
+      .map(([overlay]) => overlay)
+      .some((overlay) => overlay.groupId === 'trade-planned-position')).toBe(false)
+    incompleteWrapper.unmount()
+  })
+
+  it('renders the planned position without text labels', () => {
+    const template = registeredOverlays.get('tradePositionOverlay')
+    const figures = template.createPointFigures({
+      coordinates: [{ x: 40, y: 96 }, { x: 240, y: 96 }],
+      overlay: {
+        extendData: {
+          side: 'long',
+          entry_price: 101,
+          stop_loss: 98,
+          take_profit: 107,
+          risk_reward: 2,
+          price_precision: 2,
+        },
+      },
+      yAxis: { convertToPixel: (value) => 500 - value * 4 },
+      bounding: { width: 800, height: 480 },
+    })
+
+    expect(figures.filter((figure) => figure.type === 'rect')).toHaveLength(2)
+    expect(figures.filter((figure) => figure.type === 'text')).toHaveLength(0)
+    expect(figures.find((figure) => figure.type === 'line')).toMatchObject({
+      attrs: { coordinates: [{ x: 40, y: 96 }, { x: 240, y: 96 }] },
+    })
+  })
+
+  it('renders the actual exit as a minimal semantic line', () => {
+    const template = registeredOverlays.get('tradeActualExitLine')
+    const figures = template.createPointFigures({
+      coordinates: [{ x: 40, y: 96 }, { x: 240, y: 96 }],
+      overlay: { extendData: { color: '#dc2626' } },
+    })
+
+    expect(figures).toEqual([expect.objectContaining({
+      type: 'line',
+      attrs: { coordinates: [{ x: 40, y: 96 }, { x: 240, y: 96 }] },
+      styles: expect.objectContaining({ color: '#dc2626', size: 2 }),
+    })])
+  })
   it('stacks multiple executions mapped to the same candle into separate lanes', async () => {
     const wrapper = mount(KLineTradeChart, {
       props: {

@@ -7,7 +7,9 @@
 
 const axios = require('axios');
 const { parse } = require('csv-parse/sync');
-const { parseCSV } = require('../../utils/csvParser');
+const { parseIBKRRecords } = require('../../utils/csvParser');
+const { executionIdentityMatches } = require('../../utils/csv/dedup');
+const { decodeIBKRFlexReport } = require('../../utils/ibkrFlexReport');
 const Trade = require('../../models/Trade');
 const BrokerConnection = require('../../models/BrokerConnection');
 const db = require('../../config/database');
@@ -24,6 +26,9 @@ const REPORT_REQUEST_TIMEOUT = 120000; // 2 minutes to request report
 const REPORT_POLL_INTERVAL = 5000; // Poll every 5 seconds
 const REPORT_INITIAL_MAX_WAIT = 300000; // Initial 5 min poll window before extending
 const REPORT_EXTENDED_MAX_WAIT = 720000; // 12 min total when first poll times out
+const MAX_FLEX_OVERRIDE_DAYS = 365;
+const ALL_TIME_LOOKBACK_YEARS = 10;
+const SCHEDULED_OVERLAP_DAYS = 7;
 const IBKR_OPEN_POSITION_MAX_SYNTHETIC_TRADES = 50;
 
 // Transient network errors that warrant a retry
@@ -249,6 +254,25 @@ function buildIBKRError(humanMessage, { errorCode = null, rawMessage = null, tra
 }
 
 class IBKRService {
+  constructor() {
+    this.sendRequestTimestamps = [];
+  }
+
+  async waitForSendRequestSlot() {
+    const now = Date.now();
+    this.sendRequestTimestamps = this.sendRequestTimestamps.filter(timestamp => now - timestamp < 60000);
+    const lastTimestamp = this.sendRequestTimestamps[this.sendRequestTimestamps.length - 1] || 0;
+    const oneSecondWait = Math.max(0, 1000 - (now - lastTimestamp));
+    const minuteWait = this.sendRequestTimestamps.length >= 10
+      ? Math.max(0, 60000 - (now - this.sendRequestTimestamps[0]))
+      : 0;
+    const waitMs = Math.max(oneSecondWait, minuteWait);
+    if (waitMs > 0) await this.sleep(waitMs);
+    const reservedTimestamp = Date.now();
+    this.sendRequestTimestamps = this.sendRequestTimestamps.filter(timestamp => reservedTimestamp - timestamp < 60000);
+    this.sendRequestTimestamps.push(reservedTimestamp);
+  }
+
   /**
    * Validate IBKR credentials by requesting a test report
    * @param {string} flexToken - IBKR Flex Token
@@ -282,11 +306,13 @@ class IBKRService {
     console.log('[IBKR] Requesting Flex report...');
 
     const url = `${FLEX_BASE_URL}/SendRequest`;
-    const params = this.buildReportRequestParams(flexToken, queryId, options);
+    let params = this.buildReportRequestParams(flexToken, queryId, options);
     const maxAttempts = 5;
+    let usedBareRequestFallback = false;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
+        await this.waitForSendRequestSlot();
         const response = await axios.get(url, {
           params,
           timeout: REPORT_REQUEST_TIMEOUT,
@@ -301,6 +327,17 @@ class IBKRService {
           const errorMsgMatch = data.match(/<ErrorMessage>([^<]+)<\/ErrorMessage>/);
           const errorCode = errorCodeMatch ? errorCodeMatch[1] : 'Unknown';
           const errorMsg = errorMsgMatch ? errorMsgMatch[1] : 'Unknown error';
+
+          // Some accounts return 1003 when a valid explicit window contains no
+          // activity or conflicts with the saved Flex Query period. Retry once
+          // without the override so those connections retain the old behavior.
+          if (errorCode === '1003' && params.fd && params.td && !usedBareRequestFallback && options.allowBareFallback !== false) {
+            console.warn('[IBKR] Date override was unavailable; retrying with the saved Flex Query period');
+            params = this.buildReportRequestParams(flexToken, queryId);
+            usedBareRequestFallback = true;
+            await this.sleep(1000); // Respect IBKR's one SendRequest per second limit
+            continue;
+          }
 
           // Retry if the code is known-transient OR the human message says
           // "try again"/"temporary"/etc. IBKR sometimes returns undocumented
@@ -365,7 +402,7 @@ class IBKRService {
    * @param {string} flexToken - IBKR Flex Token
    * @param {object} [options]
    * @param {number} [options.maxWait] - Override the default poll window in ms
-   * @returns {Promise<string>} - CSV data
+   * @returns {Promise<{content: string, format: 'csv'|'xml'}>} - Flex report envelope
    */
   async fetchFlexReport(referenceCode, flexToken, options = {}) {
     const maxWait = options.maxWait || REPORT_INITIAL_MAX_WAIT;
@@ -416,7 +453,28 @@ class IBKRService {
         // If we got CSV data, return it
         if (!data.includes('<?xml') && data.includes(',')) {
           console.log('[IBKR] Got CSV report, length:', data.length);
-          return data;
+          const decoded = decodeIBKRFlexReport(data);
+          return {
+            content: data,
+            format: 'csv',
+            source_window: options.sourceWindow || null,
+            statement_metadata: decoded.statements,
+            decoded
+          };
+        }
+
+        // A completed XML report will not change format on a later poll, so
+        // return it immediately for the shared Flex decoder.
+        if (/<FlexQueryResponse\b/i.test(data)) {
+          console.log('[IBKR] Got XML report, length:', data.length);
+          const decoded = decodeIBKRFlexReport(data);
+          return {
+            content: data,
+            format: 'xml',
+            source_window: options.sourceWindow || null,
+            statement_metadata: decoded.statements,
+            decoded
+          };
         }
 
         // Handle unexpected response format
@@ -440,6 +498,67 @@ class IBKRService {
     });
   }
 
+  buildSyncWindows(connection, options = {}) {
+    const end = normalizeDateString(options.endDate) || new Date().toISOString().slice(0, 10);
+    let floor = normalizeDateString(options.startDate || connection.syncStartDate);
+    if (!floor) {
+      const endDate = new Date(`${end}T00:00:00Z`);
+      const targetYear = endDate.getUTCFullYear() - ALL_TIME_LOOKBACK_YEARS;
+      const targetMonth = endDate.getUTCMonth();
+      const lastDayOfTargetMonth = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
+      const allTimeStart = new Date(Date.UTC(
+        targetYear,
+        targetMonth,
+        Math.min(endDate.getUTCDate(), lastDayOfTargetMonth)
+      ));
+      floor = allTimeStart.toISOString().slice(0, 10);
+    }
+
+    let start = floor;
+    if (['scheduled', 'retry'].includes(options.syncType) && connection.lastSyncAt) {
+      const overlapStart = new Date(connection.lastSyncAt);
+      overlapStart.setUTCDate(overlapStart.getUTCDate() - SCHEDULED_OVERLAP_DAYS);
+      const overlap = overlapStart.toISOString().slice(0, 10);
+      if (overlap > start) start = overlap;
+    }
+
+    if (start > end) throw new Error('IBKR sync start date must be on or before end date');
+
+    const windows = [];
+    let cursor = new Date(`${start}T00:00:00Z`);
+    const finalDate = new Date(`${end}T00:00:00Z`);
+    while (cursor <= finalDate) {
+      const windowStart = cursor.toISOString().slice(0, 10);
+      const windowEndDate = new Date(cursor);
+      windowEndDate.setUTCDate(windowEndDate.getUTCDate() + (MAX_FLEX_OVERRIDE_DAYS - 1));
+      if (windowEndDate > finalDate) windowEndDate.setTime(finalDate.getTime());
+      const windowEnd = windowEndDate.toISOString().slice(0, 10);
+      windows.push({ start_date: windowStart, end_date: windowEnd });
+      cursor = new Date(windowEndDate);
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+    return windows;
+  }
+
+  async fetchGeneratedReport(referenceCode, flexToken, statementUrl, sourceWindow = null) {
+    try {
+      return await this.fetchFlexReport(referenceCode, flexToken, {
+        maxWait: REPORT_INITIAL_MAX_WAIT,
+        statementUrl,
+        sourceWindow
+      });
+    } catch (error) {
+      if (error.errorCode !== 'TIMEOUT') throw error;
+      const remainingMs = REPORT_EXTENDED_MAX_WAIT - REPORT_INITIAL_MAX_WAIT;
+      console.warn(`[IBKR] Report not ready after 5 min, continuing to poll for up to ${Math.round(remainingMs / 60000)} more minutes...`);
+      return this.fetchFlexReport(referenceCode, flexToken, {
+        maxWait: remainingMs,
+        statementUrl,
+        sourceWindow
+      });
+    }
+  }
+
   /**
    * Sync trades from IBKR
    * @param {object} connection - BrokerConnection object with credentials
@@ -457,45 +576,110 @@ class IBKRService {
       await BrokerConnection.updateSyncLog(syncLogId, 'fetching');
     }
 
-    // Request and fetch report
-    const reportResponse = await this.requestFlexReport(
-      connection.ibkrFlexToken,
-      connection.ibkrFlexQueryId,
-      { startDate, endDate, syncType }
-    );
+    const windows = this.buildSyncWindows(connection, { startDate, endDate, syncType });
+    const tradeRecords = [];
+    let openPositionRecords = [];
+    let sawOpenPositionSection = false;
+    let rawOpenPositionRows = 0;
+    const reportFormats = new Set();
+    const returnedRanges = [];
+    const warnings = [];
+    const warningDetails = [];
+    let completedWindows = 0;
 
-    if (!reportResponse.referenceCode) {
-      throw new Error('Failed to request IBKR report');
-    }
-
-    // Two-phase fetch: poll for up to 5 minutes first (fast path). If the
-    // report still isn't ready, keep polling the same reference code for
-    // another window up to a 12-minute total. Larger accounts often need
-    // longer than 5 minutes; small accounts shouldn't have to wait.
-    let csvData;
-    try {
-      csvData = await this.fetchFlexReport(
-        reportResponse.referenceCode,
-        connection.ibkrFlexToken,
-        {
-          maxWait: REPORT_INITIAL_MAX_WAIT,
-          statementUrl: reportResponse.statementUrl
-        }
-      );
-    } catch (error) {
-      if (error.errorCode === 'TIMEOUT') {
-        const remainingMs = REPORT_EXTENDED_MAX_WAIT - REPORT_INITIAL_MAX_WAIT;
-        console.warn(`[IBKR] Report not ready after 5 min, continuing to poll for up to ${Math.round(remainingMs / 60000)} more minutes...`);
-        csvData = await this.fetchFlexReport(
-          reportResponse.referenceCode,
+    for (const window of windows) {
+      let reportResponse;
+      try {
+        reportResponse = await this.requestFlexReport(
           connection.ibkrFlexToken,
+          connection.ibkrFlexQueryId,
           {
-            maxWait: remainingMs,
-            statementUrl: reportResponse.statementUrl
+            startDate: window.start_date,
+            endDate: window.end_date,
+            syncType,
+            overrideDates: true,
+            allowBareFallback: false
           }
         );
-      } else {
+      } catch (error) {
+        if (error.errorCode === '1003') {
+          const message = `IBKR returned no statement for ${window.start_date} through ${window.end_date}.`;
+          warnings.push(message);
+          warningDetails.push({
+            code: 'EMPTY_WINDOW_1003',
+            message,
+            window_start: window.start_date,
+            window_end: window.end_date
+          });
+          completedWindows++;
+          continue;
+        }
         throw error;
+      }
+
+      if (!reportResponse.referenceCode) throw new Error('Failed to request IBKR report');
+      const envelope = await this.fetchGeneratedReport(
+        reportResponse.referenceCode,
+        connection.ibkrFlexToken,
+        reportResponse.statementUrl,
+        window
+      );
+      const reportContent = typeof envelope === 'string' ? envelope : envelope.content;
+      const decoded = envelope?.decoded || decodeIBKRFlexReport(reportContent);
+      if (!decoded.recognized) {
+        throw buildIBKRError('IBKR returned a report without a recognized Trades or Open Positions section', {
+          errorCode: 'INVALID_REPORT_FORMAT',
+          transient: false
+        });
+      }
+      reportFormats.add(decoded.format);
+      tradeRecords.push(...decoded.trade_records);
+      openPositionRecords = decoded.open_position_records;
+      rawOpenPositionRows += decoded.open_position_records.length;
+      sawOpenPositionSection = sawOpenPositionSection || Boolean(decoded.sections?.open_positions);
+      completedWindows++;
+
+      if (decoded.format === 'xml' && decoded.statements.length === 0) {
+        const message = `IBKR XML report did not include statement date metadata for requested window ${window.start_date} through ${window.end_date}.`;
+        warnings.push(message);
+        warningDetails.push({
+          code: 'MISSING_STATEMENT_RANGE',
+          message,
+          window_start: window.start_date,
+          window_end: window.end_date
+        });
+      }
+
+      for (const statement of decoded.statements) {
+        const returned = {
+          account_id: statement.account_id,
+          from_date: normalizeDateString(statement.from_date),
+          to_date: normalizeDateString(statement.to_date)
+        };
+        returnedRanges.push(returned);
+        if (!returned.from_date || !returned.to_date) {
+          const message = `IBKR statement did not include a complete returned date range for requested window ${window.start_date} through ${window.end_date}.`;
+          warnings.push(message);
+          warningDetails.push({
+            code: 'MISSING_STATEMENT_RANGE',
+            message,
+            window_start: window.start_date,
+            window_end: window.end_date,
+            account_id: returned.account_id
+          });
+          continue;
+        }
+        if (returned.from_date && returned.to_date &&
+            (returned.from_date > window.start_date || returned.to_date < window.end_date)) {
+          const message = `IBKR returned ${returned.from_date} through ${returned.to_date} for requested window ${window.start_date} through ${window.end_date}.`;
+          warnings.push(message);
+          warningDetails.push({
+            code: 'RETURNED_RANGE_MISMATCH',
+            message,
+            window_start: window.start_date,
+            window_end: window.end_date
+          });
+        }
       }
     }
 
@@ -504,39 +688,39 @@ class IBKRService {
       await BrokerConnection.updateSyncLog(syncLogId, 'parsing');
     }
 
-    // Detect broker format (Activity Statement vs Trade Confirmation)
-    const brokerFormat = this.detectIBKRFormat(csvData);
-    console.log(`[IBKR] Detected format: ${brokerFormat}`);
-
     // Fetch existing positions and trades for duplicate detection
     const existingContext = await this.getExistingContext(connection.userId);
+    const userTimezone = await getUserTimezone(connection.userId);
 
-    // Parse CSV using existing parser
     const parserContext = {
       ...existingContext,
       brokerConnectionId: connection.id,
-      brokerType: connection.brokerType
+      brokerType: connection.brokerType,
+      // IBKR Flex DateTime values are wall-clock timestamps without an offset.
+      // Match manual CSV imports by interpreting them in the user's timezone
+      // before persisting them as UTC.
+      userTimezone
     };
-    const parseResult = await parseCSV(
-      Buffer.from(csvData, 'utf8'),
-      brokerFormat,
-      parserContext
-    );
+    const parseResult = await parseIBKRRecords(tradeRecords, parserContext, 'ibkr');
 
     let trades = Array.isArray(parseResult) ? parseResult : parseResult.trades;
     const manualReviewItems = Array.isArray(parseResult?.manualReviewItems)
       ? parseResult.manualReviewItems
       : [];
     const parseWarnings = parseResult?.diagnostics?.warnings || [];
+    const skippedReasons = parseResult?.diagnostics?.skippedReasons || [];
     console.log(`[IBKR] Parsed ${trades.length} trades`);
     if (manualReviewItems.length > 0) {
       console.warn(`[IBKR] ${manualReviewItems.length} sell-only stock execution(s) require manual review`);
     }
 
-    const openPositionResult = this.extractOpenPositionTrades(csvData, connection, existingContext, {
-      parsedTrades: trades,
-      endDate
-    });
+    const openPositionResult = sawOpenPositionSection
+      ? this.extractOpenPositionTradesFromRecords(openPositionRecords, connection, existingContext, {
+        parsedTrades: trades,
+        endDate: windows[windows.length - 1]?.end_date,
+        sectionPresent: true
+      })
+      : { trades: [], warnings: [] };
     openPositionResult.warnings.forEach(warning => console.warn(`[IBKR] ${warning}`));
 
     if (openPositionResult.trades.length > 0) {
@@ -559,10 +743,45 @@ class IBKRService {
 
     // Import trades
     const result = await this.importTrades(connection.userId, trades, existingContext);
-    result.warnings = [...parseWarnings, ...openPositionResult.warnings];
+    result.warnings = [...warnings, ...parseWarnings, ...openPositionResult.warnings];
+    result.warningDetails = [
+      ...warningDetails,
+      ...parseWarnings.map(message => ({ code: 'TRADE_ROW_SKIPPED', message })),
+      ...skippedReasons.map(detail => ({
+        code: 'TRADE_ROW_SKIPPED',
+        message: detail.reason || 'IBKR trade row was skipped.',
+        row: detail.row || null
+      })),
+      ...openPositionResult.warnings.map(message => ({ code: 'OPEN_POSITION_WARNING', message }))
+    ];
     result.openPositionsParsed = openPositionResult.trades.length;
     result.manualReviewItems = manualReviewItems;
     result.manualReviewCount = manualReviewItems.length;
+    result.reportFormats = Array.from(reportFormats);
+    result.windowsRequested = windows.length;
+    result.requestedRanges = windows;
+    result.windowsCompleted = completedWindows;
+    result.returnedRanges = returnedRanges;
+    result.tradeRows = tradeRecords.length;
+    result.openPositionRows = rawOpenPositionRows;
+
+    if (tradeRecords.length > 0 &&
+        result.imported === 0 && (result.updated || 0) === 0 && result.duplicates === 0 && manualReviewItems.length === 0) {
+      const message = 'IBKR returned trade rows, but none could be imported or matched as duplicates.';
+      result.warnings.push(message);
+      result.warningDetails.push({ code: 'NONEMPTY_REPORT_NOT_IMPORTED', message });
+    }
+    if ((result.skipped || 0) > 0 || (result.failed || 0) > 0) {
+      const message = `IBKR import skipped ${result.skipped || 0} trade${result.skipped === 1 ? '' : 's'} and failed ${result.failed || 0}.`;
+      result.warnings.push(message);
+      result.warningDetails.push({
+        code: 'IMPORT_ROWS_SKIPPED',
+        message,
+        skipped: result.skipped || 0,
+        failed: result.failed || 0
+      });
+    }
+    result.outcome = result.warnings.length > 0 ? 'warning' : 'success';
 
     console.log(`[IBKR] Sync complete: ${result.imported} imported, ${result.updated || 0} updated, ${result.skipped} skipped, ${result.duplicates} duplicates, ${result.failed} failed`);
 
@@ -762,29 +981,84 @@ class IBKRService {
 
   extractOpenPositionTrades(csvData, connection, existingContext = {}, options = {}) {
     const records = this.extractOpenPositionRecords(csvData);
+    return this.extractOpenPositionTradesFromRecords(records, connection, existingContext, {
+      ...options,
+      statementDate: this.extractOpenPositionStatementDate(csvData)
+    });
+  }
+
+  extractOpenPositionTradesFromRecords(records, connection, existingContext = {}, options = {}) {
     const warnings = [];
 
     if (records.length === 0) {
+      if (options.sectionPresent) return { trades: [], warnings };
       warnings.push('IBKR Flex Query did not include a recognized Open Positions stock section; transferred stock positions without executions cannot be imported.');
       return { trades: [], warnings };
     }
 
     const fallbackTradeDate =
-      this.extractOpenPositionStatementDate(csvData) ||
+      options.statementDate ||
       this.extractDateString(options.endDate) ||
       new Date().toISOString().slice(0, 10);
     const parsedTrades = Array.isArray(options.parsedTrades) ? options.parsedTrades : [];
     const trades = [];
 
     records.forEach((record, index) => {
-      const built = this.buildOpenPositionTrade(record, connection, fallbackTradeDate);
-      if (!built.trade) {
-        warnings.push(`Skipped IBKR open-position row ${index + 1}: ${built.reason}`);
+      const symbol = this.getOpenPositionSymbol(record);
+      const summaryQuantity = this.getOpenPositionQuantity(record, true);
+      const candidate = {
+        symbol,
+        instrumentType: 'stock',
+        conid: getRecordValue(record, ['Conid', 'ConID', 'ConId', 'conid']),
+        accountIdentifier: getRecordValue(record, [
+          'ClientAccountID', 'Account', 'Account ID', 'AccountId', 'Account Number', 'AccountNumber'
+        ])
+      };
+      const representedQuantity = this.getRepresentedOpenPositionQuantity(
+        candidate,
+        parsedTrades,
+        existingContext
+      );
+
+      if (representedQuantity === 0 && this.openPositionAlreadyRepresented(candidate, parsedTrades, existingContext)) {
+        console.log(`[IBKR] Skipping Open Positions row for ${symbol}; matching position exists without a usable quantity`);
         return;
       }
 
-      if (this.openPositionAlreadyRepresented(built.trade, parsedTrades, existingContext)) {
-        console.log(`[IBKR] Skipping Open Positions row for ${built.trade.symbol}; open stock position already exists`);
+      if (Number.isFinite(summaryQuantity) && representedQuantity !== 0) {
+        if (Math.abs(summaryQuantity - representedQuantity) < 0.0001) {
+          console.log(`[IBKR] Open Positions quantity for ${symbol} matches reconstructed executions`);
+          return;
+        }
+
+        const sameDirection = Math.sign(summaryQuantity) === Math.sign(representedQuantity);
+        const summaryIsLarger = Math.abs(summaryQuantity) > Math.abs(representedQuantity);
+        if (!sameDirection || !summaryIsLarger) {
+          warnings.push(
+            `IBKR Open Positions quantity for ${symbol} (${summaryQuantity}) did not match reconstructed quantity (${representedQuantity}); no synthetic adjustment was created.`
+          );
+          return;
+        }
+
+        const missingQuantity = summaryQuantity - representedQuantity;
+        const explicitPrice = this.getFirstFiniteRecordNumber(record, OPEN_POSITION_COST_FIELDS);
+        const totalCostBasis = this.getFirstFiniteRecordNumber(record, OPEN_POSITION_BASIS_FIELDS);
+        const derivedUnitCost = (!Number.isFinite(explicitPrice) || explicitPrice <= 0) && Number.isFinite(totalCostBasis)
+          ? Math.abs(totalCostBasis) / Math.abs(summaryQuantity)
+          : null;
+        record = {
+          ...record,
+          Position: missingQuantity,
+          ...(Number.isFinite(derivedUnitCost) && derivedUnitCost > 0 ? { CostBasisPrice: derivedUnitCost } : {})
+        };
+      }
+
+      const built = this.buildOpenPositionTrade(record, connection, fallbackTradeDate);
+      if (!built.trade) {
+        const mismatchContext = representedQuantity !== 0
+          ? ` Quantity summary was ${summaryQuantity}; reconstructed quantity was ${representedQuantity}.`
+          : '';
+        warnings.push(`Skipped IBKR open-position row ${index + 1}: ${built.reason}.${mismatchContext}`);
         return;
       }
 
@@ -797,6 +1071,32 @@ class IBKRService {
     }
 
     return { trades, warnings };
+  }
+
+  getRepresentedOpenPositionQuantity(openTrade, parsedTrades = [], existingContext = {}) {
+    const signedQuantity = trade => {
+      const quantity = Number(trade.quantity);
+      if (!Number.isFinite(quantity)) return 0;
+      const side = String(trade.side || '').toLowerCase();
+      return side === 'short' ? -Math.abs(quantity) : Math.abs(quantity);
+    };
+
+    const parsedMatches = parsedTrades.filter(trade => {
+      const isOpen = !trade.exitPrice && !trade.exit_time && !trade.exitTime && !trade.exit_price;
+      return isOpen && this.tradesRepresentSameStockPosition(openTrade, trade);
+    });
+    if (parsedMatches.length > 0) {
+      return parsedMatches.reduce((sum, trade) => sum + signedQuantity(trade), 0);
+    }
+
+    const uniqueExistingPositions = new Set(Object.values(existingContext.existingPositions || {}));
+    let quantity = 0;
+    for (const existingPosition of uniqueExistingPositions) {
+      if (this.tradesRepresentSameStockPosition(openTrade, existingPosition)) {
+        quantity += signedQuantity(existingPosition);
+      }
+    }
+    return quantity;
   }
 
   extractOpenPositionRecords(csvData) {
@@ -1412,48 +1712,44 @@ class IBKRService {
     };
   }
 
-  buildReportRequestParams(flexToken, queryId) {
-    // We intentionally do not send fd/td. The Flex Query's own period (configured
-    // in IBKR) determines what data IBKR returns; TradeTally filters to the
-    // user-requested date range after parsing via filterByDateRange().
-    return {
+  buildReportRequestParams(flexToken, queryId, options = {}) {
+    const params = {
       t: flexToken,
       q: queryId,
       v: '3'
     };
+
+    // Credential validation intentionally stays override-free. Actual syncs
+    // use an explicit window because IBKR can ignore the saved query period and
+    // silently return only one day. IBKR documents a maximum override of 365 days.
+    if (!options.overrideDates) return params;
+
+    const normalizedEnd = options.endDate
+      ? normalizeDateString(options.endDate)
+      : new Date().toISOString().slice(0, 10);
+    const normalizedStart = options.startDate ? normalizeDateString(options.startDate) : null;
+
+    if (!normalizedEnd || (options.startDate && !normalizedStart)) {
+      throw new Error('Invalid IBKR sync date range');
+    }
+    if (normalizedStart && normalizedStart > normalizedEnd) {
+      throw new Error('IBKR sync start date must be on or before end date');
+    }
+
+    const earliestDate = new Date(`${normalizedEnd}T00:00:00Z`);
+    earliestDate.setUTCDate(earliestDate.getUTCDate() - (MAX_FLEX_OVERRIDE_DAYS - 1));
+    const earliestStart = earliestDate.toISOString().slice(0, 10);
+    const effectiveStart = normalizedStart && normalizedStart > earliestStart
+      ? normalizedStart
+      : earliestStart;
+
+    params.fd = effectiveStart.replace(/-/g, '');
+    params.td = normalizedEnd.replace(/-/g, '');
+    return params;
   }
 
   executionsMatch(left, right) {
-    if (!left || !right) {
-      return false;
-    }
-
-    if (left.orderId && right.orderId) {
-      return String(left.orderId) === String(right.orderId);
-    }
-
-    const leftTime = new Date(left.datetime || left.entryTime).getTime();
-    const rightTime = new Date(right.datetime || right.entryTime).getTime();
-
-    if (Number.isNaN(leftTime) || Number.isNaN(rightTime) || Math.abs(leftTime - rightTime) > 1000) {
-      return false;
-    }
-
-    const leftQuantity = parseFloat(left.quantity);
-    const rightQuantity = parseFloat(right.quantity);
-    const leftPrice = parseFloat(left.price ?? left.entryPrice);
-    const rightPrice = parseFloat(right.price ?? right.entryPrice);
-
-    const quantityMatches = !Number.isNaN(leftQuantity) && !Number.isNaN(rightQuantity)
-      ? Math.abs(leftQuantity - rightQuantity) < 0.0001
-      : true;
-    const priceMatches = !Number.isNaN(leftPrice) && !Number.isNaN(rightPrice)
-      ? Math.abs(leftPrice - rightPrice) < 0.01
-      : true;
-    const actionMatches = !left.action || !right.action || left.action === right.action;
-    const conidMatches = !left.conid || !right.conid || String(left.conid) === String(right.conid);
-
-    return quantityMatches && priceMatches && actionMatches && conidMatches;
+    return executionIdentityMatches(left, right);
   }
 
   /**

@@ -81,7 +81,8 @@ class BrokerSyncService {
           result = await ibkrService.syncTrades(connection, {
             startDate,
             endDate,
-            syncLogId: syncLog.id
+            syncLogId: syncLog.id,
+            syncType
           });
           break;
 
@@ -133,6 +134,15 @@ class BrokerSyncService {
         duplicatesDetected: result.duplicates,
         syncDetails: {
           warnings: result.warnings || [],
+          warning_details: result.warningDetails || [],
+          outcome: result.outcome || ((result.warnings || []).length > 0 ? 'warning' : 'success'),
+          report_formats: result.reportFormats || [],
+          windows_requested: result.windowsRequested || 0,
+          windows_completed: result.windowsCompleted || 0,
+          requested_ranges: result.requestedRanges || [],
+          returned_ranges: result.returnedRanges || [],
+          trade_rows: result.tradeRows || 0,
+          open_position_rows: result.openPositionRows || 0,
           open_positions_parsed: result.openPositionsParsed || 0,
           manual_review_count: result.manualReviewCount || 0,
           manual_review_items: result.manualReviewItems || []

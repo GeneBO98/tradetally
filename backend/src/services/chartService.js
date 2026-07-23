@@ -1,8 +1,12 @@
 const TierService = require('./tierService');
 const finnhub = require('../utils/finnhub');
 const alphaVantage = require('../utils/alphaVantage');
+const databento = require('../utils/databento');
+const yahooFinance = require('../utils/yahooFinance');
+const replayDataService = require('./replayDataService');
 const axios = require('axios');
 const { resolvePriceScale, applyPriceScale } = require('../utils/candlePriceScale');
+const { getFuturesPointValue, getFuturesTickSize } = require('../utils/futuresUtils');
 
 function asNumber(value) {
   if (value === null || value === undefined || value === '') return null;
@@ -21,6 +25,58 @@ function toEpochSeconds(value) {
 }
 
 class ChartService {
+  static async getFuturesTradeChartData(userId, trade, resolution, billingEnabled) {
+    const futuresRoot = replayDataService.futuresRootForTrade(trade);
+    if (!futuresRoot) {
+      const error = new Error(`Could not determine the futures contract root for ${trade.symbol}`);
+      error.statusCode = 422;
+      throw error;
+    }
+
+    const providerErrors = [];
+
+    // A configured provider always wins. At present FMP exposes an explicit
+    // commodities/futures chart method; providers without that capability are
+    // skipped rather than receiving an ambiguous root such as ES or CL.
+    if (finnhub.isConfigured() && typeof finnhub.getFuturesTradeChartData === 'function') {
+      try {
+        const chartData = await finnhub.getFuturesTradeChartData(futuresRoot, trade, userId, resolution);
+        chartData.tick_size = chartData.tick_size ?? trade.tick_size ?? getFuturesTickSize(futuresRoot);
+        chartData.point_value = chartData.point_value ?? trade.point_value ?? getFuturesPointValue(futuresRoot);
+        return chartData;
+      } catch (error) {
+        providerErrors.push(`${finnhub.displayName}: ${error.message}`);
+        console.warn(`[CHART] ${finnhub.displayName} futures data unavailable for ${trade.symbol}: ${error.message}`);
+      }
+    }
+
+    // Databento remains the preferred fallback when the operator configured it.
+    if (databento.isConfigured()) {
+      try {
+        return await replayDataService.getFuturesTradeChartData(trade, resolution);
+      } catch (error) {
+        providerErrors.push(`Databento: ${error.message}`);
+        console.warn(`[CHART] Databento futures data unavailable for ${trade.symbol}: ${error.message}`);
+      }
+    }
+
+    // Yahoo is deliberately last and self-hosted-only: it provides a no-cost
+    // continuous-contract chart without displacing configured paid providers.
+    if (!billingEnabled && yahooFinance.isEnabled()) {
+      try {
+        return await yahooFinance.getFuturesTradeChartData(futuresRoot, trade, resolution);
+      } catch (error) {
+        providerErrors.push(`Yahoo Finance: ${error.message}`);
+        console.warn(`[CHART] Yahoo Finance futures data unavailable for ${trade.symbol}: ${error.message}`);
+      }
+    }
+
+    const detail = providerErrors.length ? ` ${providerErrors.join('; ')}` : '';
+    const error = new Error(`No futures chart data provider could serve ${trade.symbol}.${detail}`);
+    error.statusCode = providerErrors.length ? 404 : 503;
+    throw error;
+  }
+
   static alignCandlesToTradePrices(chartData, trade) {
     if (!chartData?.candles?.length || !trade) return chartData;
 
@@ -96,9 +152,10 @@ class ChartService {
   }
 
   // Get chart data for a trade
-  // When billing is enabled (tradetally.io): Finnhub only, Pro users only
+  // When billing is enabled (tradetally.io): Pro users only; configured
+  // provider capabilities are preferred for every instrument type.
   // When billing is disabled (self-hosted): configured market data provider preferred, Alpha Vantage fallback, all users
-  static async getTradeChartData(userId, symbol, entryDate, exitDate = null, hostHeader = null, resolution = '1') {
+  static async getTradeChartData(userId, symbol, entryDate, exitDate = null, hostHeader = null, resolution = '1', trade = null) {
     try {
       // Crypto symbols always use CoinGecko regardless of tier/billing
       if (finnhub.isCryptoSymbol(symbol)) {
@@ -110,18 +167,26 @@ class ChartService {
       const userTier = await TierService.getUserTier(userId, hostHeader);
       const isProUser = userTier === 'pro';
       const billingEnabled = await TierService.isBillingEnabled(hostHeader);
+      const isFutures = String(trade?.instrument_type || '').toLowerCase() === 'future';
 
       console.log(`Getting chart data for user ${userId}, tier: ${userTier || 'free'}, symbol: ${symbol}, billingEnabled: ${billingEnabled}`);
       console.log('Chart data input:', { entryDate, exitDate });
 
-      // When billing is enabled (tradetally.io): Charts are Pro-only, Finnhub only
-      if (billingEnabled) {
-        if (!isProUser) {
-          const error = new Error('Trade charts are a Pro feature. Upgrade to Pro for high-precision candlestick charts.');
-          error.statusCode = 403;
-          throw error;
-        }
+      if (billingEnabled && !isProUser) {
+        const error = new Error('Trade charts are a Pro feature. Upgrade to Pro for high-precision candlestick charts.');
+        error.statusCode = 403;
+        throw error;
+      }
 
+      // Futures select by provider capability; configured sources are tried
+      // before any no-cost fallback.
+      if (isFutures) {
+        console.log(`[CHART] ${symbol} is a future, selecting the best configured futures provider`);
+        return ChartService.getFuturesTradeChartData(userId, trade, resolution, billingEnabled);
+      }
+
+      // Hosted stock/option charts use the configured equity provider.
+      if (billingEnabled) {
         if (!finnhub.isConfigured()) {
           throw new Error('Chart service is not configured. Please contact support.');
         }
@@ -197,6 +262,14 @@ class ChartService {
       status.alphaVantage = {
         configured: alphaVantage.isConfigured(),
         description: 'Alpha Vantage API - Daily chart data (self-hosted fallback)'
+      };
+      status.databento = {
+        configured: databento.isConfigured(),
+        description: 'Databento API - configured futures chart fallback using continuous contracts'
+      };
+      status.yahoo_finance = {
+        configured: yahooFinance.isEnabled(),
+        description: 'Yahoo Finance - no-cost self-hosted futures chart fallback'
       };
     }
 

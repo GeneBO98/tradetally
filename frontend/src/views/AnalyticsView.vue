@@ -749,6 +749,8 @@ import {
   mdiAlert
 } from '@mdi/js'
 
+const AI_RECOMMENDATIONS_TIMEOUT_MS = 10 * 60 * 1000
+
 const loading = ref(true)
 const initialLoading = ref(true) // Track initial load separately to preserve scroll on refresh
 const rValueMode = ref(false)
@@ -2518,9 +2520,9 @@ async function getRecommendations() {
     
     console.log('[API] Making API call to /analytics/recommendations with params:', params)
     
-    // Add timeout to the request
+    // Local AI providers can take several minutes on older self-hosted hardware.
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 180000) // 3 minute timeout for AI processing
+    const timeoutId = setTimeout(() => controller.abort(), AI_RECOMMENDATIONS_TIMEOUT_MS)
     
     try {
       const response = await api.get('/analytics/recommendations', {
@@ -2559,8 +2561,8 @@ async function getRecommendations() {
       
     } catch (timeoutError) {
       clearTimeout(timeoutId)
-      if (timeoutError.name === 'AbortError') {
-        throw new Error('Request timed out after 60 seconds')
+      if (timeoutError.name === 'AbortError' || timeoutError.name === 'CanceledError' || timeoutError.code === 'ERR_CANCELED') {
+        throw new Error(`Request timed out after ${AI_RECOMMENDATIONS_TIMEOUT_MS / 60000} minutes`)
       }
       throw timeoutError
     }
@@ -2571,7 +2573,7 @@ async function getRecommendations() {
     console.error('Error status:', error.response?.status)
     console.error('Error data:', error.response?.data)
     
-    recommendationError.value = error.response?.data?.error || 'Failed to generate recommendations. Please try again.'
+    recommendationError.value = error.response?.data?.error || error.message || 'Failed to generate recommendations. Please try again.'
     await nextTick()
     showRecommendations.value = true
   } finally {

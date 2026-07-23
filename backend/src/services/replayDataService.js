@@ -40,6 +40,13 @@ const FUTURES_SESSION_END_HOUR = 17;
 // Don't persist bars for a session until this long after it ends, so a
 // partially-complete day is never recorded as covered.
 const SESSION_CLOSE_BUFFER_SECONDS = 30 * 60;
+const CHART_RESOLUTIONS = {
+  '1': { interval: INTERVAL, bucket_seconds: 60 },
+  '5': { interval: '5min', bucket_seconds: 5 * 60 },
+  '15': { interval: '15min', bucket_seconds: 15 * 60 },
+  '60': { interval: '1hour', bucket_seconds: 60 * 60 },
+  D: { interval: 'daily', bucket_seconds: null }
+};
 
 function wallClockPartsInZone(epochMs, timeZone) {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -310,6 +317,48 @@ function dedupeSortBars(bars) {
   return Array.from(byTime.values()).sort((a, b) => a.time - b.time);
 }
 
+function aggregateBars(bars, bucketSeconds) {
+  if (!bucketSeconds || bucketSeconds === 60) return dedupeSortBars(bars);
+
+  const buckets = new Map();
+  for (const bar of dedupeSortBars(bars)) {
+    const bucketTime = Math.floor(bar.time / bucketSeconds) * bucketSeconds;
+    const current = buckets.get(bucketTime);
+    if (!current) {
+      buckets.set(bucketTime, {
+        time: bucketTime,
+        open: bar.open,
+        high: bar.high,
+        low: bar.low,
+        close: bar.close,
+        volume: bar.volume === null || bar.volume === undefined ? null : Number(bar.volume)
+      });
+      continue;
+    }
+
+    current.high = Math.max(current.high, bar.high);
+    current.low = Math.min(current.low, bar.low);
+    current.close = bar.close;
+    if (current.volume !== null || (bar.volume !== null && bar.volume !== undefined)) {
+      current.volume = (current.volume || 0) + (Number(bar.volume) || 0);
+    }
+  }
+
+  return Array.from(buckets.values()).sort((a, b) => a.time - b.time);
+}
+
+function futuresRootForTrade(trade) {
+  const storedUnderlying = String(trade?.underlying_asset || '').trim().toUpperCase();
+  if (storedUnderlying) return storedUnderlying;
+
+  const symbol = String(trade?.symbol || '').trim().toUpperCase();
+  const extracted = extractUnderlyingFromFuturesSymbol(symbol);
+  if (extracted) return extracted;
+
+  // A bare root is unambiguous once the trade is explicitly typed as a future.
+  return /^[A-Z][A-Z0-9]{0,5}$/.test(symbol) ? symbol : null;
+}
+
 /**
  * Fetch 1-min bars from the configured provider for the session window,
  * normalized to true UTC epochs. Throws if the provider has no intraday data
@@ -412,6 +461,93 @@ function loadFuturesSessionBars(root, session) {
 }
 
 /**
+ * Build KLine-compatible chart data for a futures trade. Intraday requests
+ * reuse the replay cache's immutable 1-minute Globex session and aggregate it
+ * locally. Daily requests use Databento's daily schema to provide the same
+ * wider context window as stock charts without storing image snapshots.
+ */
+async function getFuturesTradeChartData(trade, requestedResolution = '1') {
+  if (!databento.isConfigured()) {
+    const error = new Error('Databento API key not configured for futures charts. Set DATABENTO_API_KEY in the backend environment.');
+    error.statusCode = 503;
+    throw error;
+  }
+
+  const entryTs = toEpochSeconds(trade?.entry_time || trade?.trade_date);
+  if (!entryTs) {
+    const error = new Error('Trade is missing entry time information');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const futuresRoot = futuresRootForTrade(trade);
+  if (!futuresRoot) {
+    const error = new Error(`Could not determine the futures contract root for ${trade?.symbol || 'this trade'}`);
+    error.statusCode = 422;
+    throw error;
+  }
+
+  const resolution = Object.hasOwn(CHART_RESOLUTIONS, requestedResolution)
+    ? requestedResolution
+    : '1';
+  const resolutionConfig = CHART_RESOLUTIONS[resolution];
+  const chartSymbol = databento.getContinuousSymbol(futuresRoot);
+  let candles;
+  let source;
+  let session = null;
+
+  try {
+    if (resolution === 'D') {
+      const oneDayMs = 24 * 60 * 60 * 1000;
+      const entryTime = new Date(entryTs * 1000);
+      const exitTs = toEpochSeconds(trade?.exit_time) || entryTs;
+      const contextEndMs = Math.min(Date.now(), exitTs * 1000 + 10 * oneDayMs);
+      candles = dedupeSortBars(await databento.getFuturesCandles(
+        futuresRoot,
+        new Date(entryTime.getTime() - 30 * oneDayMs),
+        new Date(contextEndMs),
+        'day'
+      ));
+      source = 'databento';
+    } else {
+      session = futuresSessionWindowForEntry(entryTs);
+      const loaded = await loadFuturesSessionBars(futuresRoot, session);
+      candles = aggregateBars(loaded.candles, resolutionConfig.bucket_seconds);
+      source = loaded.source;
+    }
+  } catch (providerError) {
+    const error = new Error(`No futures chart data available for ${futuresRoot}: ${providerError.message}`);
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (!candles.length) {
+    const error = new Error(`No futures chart data available for ${futuresRoot}`);
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return {
+    type: resolution === 'D' ? 'daily' : 'intraday',
+    interval: resolutionConfig.interval,
+    candles,
+    source,
+    symbol: trade.symbol,
+    chart_symbol: chartSymbol,
+    futures_continuous: true,
+    tick_size: asNumber(trade.tick_size) ?? getFuturesTickSize(futuresRoot),
+    point_value: asNumber(trade.point_value) ?? getFuturesPointValue(futuresRoot),
+    session: session ? {
+      date: session.date,
+      from_ts: session.fromTs,
+      to_ts: session.toTs,
+      timezone: NY_TZ
+    } : null,
+    available_resolutions: Object.keys(CHART_RESOLUTIONS)
+  };
+}
+
+/**
  * Build the complete replay payload for one trade.
  *
  * @param {object} trade - trade row (snake_case fields, from Trade.findById)
@@ -447,9 +583,7 @@ async function getTradeReplayData(trade, userId) {
       error.statusCode = 422;
       throw error;
     }
-    futuresRoot = String(
-      trade.underlying_asset || extractUnderlyingFromFuturesSymbol(trade.symbol) || ''
-    ).toUpperCase();
+    futuresRoot = futuresRootForTrade(trade);
     if (!futuresRoot) {
       const error = new Error(`Could not determine the futures contract root for ${trade.symbol}`);
       error.statusCode = 422;
@@ -696,6 +830,7 @@ async function recordReplayUsage(userId, tradeId) {
 
 module.exports = {
   getTradeReplayData,
+  getFuturesTradeChartData,
   getBacktestSessionData,
   countReplayedTrades,
   hasReplayedTrade,
@@ -706,5 +841,7 @@ module.exports = {
   sessionWindowForDate,
   futuresSessionWindowForEntry,
   futuresSessionWindowForDate,
-  toEpochSeconds
+  toEpochSeconds,
+  aggregateBars,
+  futuresRootForTrade
 };

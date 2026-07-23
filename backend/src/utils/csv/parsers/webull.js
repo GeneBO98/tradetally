@@ -35,7 +35,9 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
   });
 
   // First, parse all transactions
+  let rowIndex = 0;
   for (const record of records) {
+    rowIndex++;
     try {
       // Get symbol from Symbol column (full option symbol like SPY251114C00672000)
       const combinedSymbolAndName = cleanString(record['Symbol & Name']);
@@ -110,6 +112,11 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
 
       if (!tradeDate || !entryTime) {
         console.log(`Skipping Webull record with invalid date: ${filledTime}`);
+        if (diag) {
+          diag.invalidRows = (diag.invalidRows || 0) + 1;
+          if (!Array.isArray(diag.skippedReasons)) diag.skippedReasons = [];
+          diag.skippedReasons.push({ row: rowIndex, reason: `Invalid filled time: ${filledTime}` });
+        }
         continue;
       }
 

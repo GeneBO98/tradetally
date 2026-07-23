@@ -1,6 +1,6 @@
 const { isExecutionDuplicate } = require('../dedup');
 const { extractAccountFromRecord } = require('../detect');
-const { cleanString, parseNumeric, parseInteger } = require('../shared');
+const { cleanString, parseDateTime, parseNumeric, parseInteger } = require('../shared');
 
 
 /**
@@ -38,6 +38,9 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
   // Helper to parse Questrade date format: "16 Dec 2025 11:15:58 AM"
   function parseQuestradeDate(dateStr) {
     if (!dateStr) return null;
+
+    const sharedDateTime = parseDateTime(dateStr);
+    if (sharedDateTime) return sharedDateTime;
 
     const isoLikeMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2}):(\d{2})\s*(AM|PM)?$/i);
     if (isoLikeMatch) {

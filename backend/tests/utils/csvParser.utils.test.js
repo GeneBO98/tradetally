@@ -42,6 +42,25 @@ describe('parseDate', () => {
     expect(parseDate('12/31/2024')).toBe('2024-12-31');
   });
 
+  test('parses common year-first and regional separated formats', () => {
+    expect(parseDate('2026/07/20')).toBe('2026-07-20');
+    expect(parseDate('2026.07.20')).toBe('2026-07-20');
+    expect(parseDate('20.07.2026')).toBe('2026-07-20');
+    expect(parseDate('20-07-2026')).toBe('2026-07-20');
+  });
+
+  test('parses month-name dates in month-first and day-first order', () => {
+    expect(parseDate('July 20, 2026')).toBe('2026-07-20');
+    expect(parseDate('20 July 2026')).toBe('2026-07-20');
+    expect(parseDate('20-Jul-2026')).toBe('2026-07-20');
+  });
+
+  test('parses Unix timestamps and Excel serial dates', () => {
+    expect(parseDate('1751630400')).toBe('2025-07-04');
+    expect(parseDate('1751630400000')).toBe('2025-07-04');
+    expect(parseDate('45842')).toBe('2025-07-04');
+  });
+
   test('parses YYYYMMDD (IBKR Flex) format', () => {
     expect(parseDate('20250704')).toBe('2025-07-04');
     expect(parseDate('20241231')).toBe('2024-12-31');
@@ -114,6 +133,23 @@ describe('parseDateTime', () => {
     expect(parseDateTime('07/04/2025 09:30:00 +05:00')).toBe('2025-07-04T09:30:00+05:00');
   });
 
+  test('normalizes year-first Webull timestamps with GMT offsets', () => {
+    expect(parseDateTime('2026/07/20 08:03:36,GMT-04')).toBe('2026-07-20T08:03:36-04:00');
+    expect(parseDateTime('2026.07.20 08:03:36 UTC+0530')).toBe('2026-07-20T08:03:36+05:30');
+  });
+
+  test('parses regional, AM/PM, and timezone-abbreviation variants', () => {
+    expect(parseDateTime('20.07.2026 08:03:36 UTC+02')).toBe('2026-07-20T08:03:36+02:00');
+    expect(parseDateTime('07/20/2026 8:03 PM EDT')).toBe('2026-07-20T20:03:00-04:00');
+    expect(parseDateTime('16 Dec 2025 11:15:58 AM')).toBe('2025-12-16T11:15:58');
+  });
+
+  test('parses Unix timestamps and Excel serial datetimes', () => {
+    expect(parseDateTime('1751630400')).toBe('2025-07-04T12:00:00Z');
+    expect(parseDateTime('1751630400000')).toBe('2025-07-04T12:00:00Z');
+    expect(parseDateTime('45842.5')).toBe('2025-07-04T12:00:00');
+  });
+
   test('parses IBKR Flex YYYYMMDD;HHMMSS format', () => {
     expect(parseDateTime('20250704;093015')).toBe('2025-07-04T09:30:15');
   });
@@ -143,6 +179,8 @@ describe('parseDateTime', () => {
 
   test('returns null for invalid datetimes', () => {
     expect(parseDateTime('not-a-datetime')).toBeNull();
+    expect(parseDateTime('07/04/2025 24:00:00')).toBeNull();
+    expect(parseDateTime('2025-07-04 09:60:00')).toBeNull();
   });
 
   test('returns null for out-of-range IBKR dates', () => {

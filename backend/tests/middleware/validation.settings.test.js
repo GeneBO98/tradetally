@@ -25,6 +25,26 @@ describe('settings validation', () => {
     expect(value.defaultStopLossType).toBe('dollar');
   });
 
+  test.each([
+    ['percent', { defaultTakeProfitPercent: 6 }],
+    ['risk_reward', { defaultTakeProfitRMultiple: 2 }],
+    ['dollar', { defaultTakeProfitDollars: 500 }]
+  ])('accepts the %s take-profit mode', (type, value) => {
+    const payload = { defaultTakeProfitType: type, ...value };
+    const { error, value: validated } = schemas.updateSettings.validate(payload);
+
+    expect(error).toBeUndefined();
+    expect(validated).toEqual(payload);
+  });
+
+  test('rejects an unsupported take-profit mode', () => {
+    const { error } = schemas.updateSettings.validate({
+      defaultTakeProfitType: 'price'
+    });
+
+    expect(error).toBeDefined();
+  });
+
   test('accepts a dollar breakeven tolerance update', () => {
     const payload = {
       breakeven_tolerance_mode: 'dollars',
@@ -44,7 +64,7 @@ describe('settings validation', () => {
     expect(error).toBeDefined();
   });
 
-  test.each(['deepseek', 'kimi'])('accepts %s as an admin AI provider', (provider) => {
+  test.each(['deepseek', 'kimi', 'custom'])('accepts %s as an admin AI provider', (provider) => {
     const { error, value } = schemas.adminAiSettings.validate({
       aiProvider: provider,
       aiApiKey: 'test-key',

@@ -51,28 +51,16 @@
                             >
                             <BaseSelect
                                 v-model="form.provider"
-                                :options="[
-                                    { value: 'gemini', label: 'Google Gemini' },
-                                    { value: 'claude', label: 'Anthropic Claude' },
-                                    { value: 'openai', label: 'OpenAI' },
-                                { value: 'deepseek', label: 'DeepSeek' },
-                                { value: 'kimi', label: 'Kimi' },
-                                    { value: 'ollama', label: 'Ollama' },
-                                    { value: 'lmstudio', label: 'LM Studio' },
-                                    { value: 'perplexity', label: 'Perplexity AI' },
-                                    { value: 'local', label: 'Local/Custom' }
-                                ]"
+                                :options="AI_PROVIDER_OPTIONS"
                                 placeholder="No provider"
                                 @change="onAdminCusipProviderChange"
                             />
                         </div>
 
                         <div>
-                            <label
-                                for="adminCusipAiModel"
-                                class="label"
-                                >Default Model (Optional)</label
-                            >
+                            <label for="adminCusipAiModel" class="label">
+                                Default Model{{ form.provider === "custom" ? "" : " (Optional)" }}
+                            </label>
                             <input
                                 id="adminCusipAiModel"
                                 v-model="form.model"
@@ -81,17 +69,13 @@
                                 :placeholder="
                                     getAdminCusipModelPlaceholder()
                                 "
+                                :required="form.provider === 'custom'"
                             />
                         </div>
                     </div>
 
                     <div
-                        v-if="
-                            form.provider === 'local' ||
-                            form.provider ===
-                                'ollama' ||
-                            form.provider === 'lmstudio'
-                        "
+                        v-if="URL_REQUIRED_AI_PROVIDERS.includes(form.provider)"
                     >
                         <label for="adminCusipAiUrl" class="label"
                             >Default API URL</label
@@ -108,10 +92,19 @@
                                     : form.provider ===
                                         'lmstudio'
                                       ? 'http://localhost:1234'
-                                      : 'http://localhost:8000'
+                                      : form.provider === 'custom'
+                                        ? 'https://provider.example/v1'
+                                        : 'http://localhost:8000'
                             "
                             required
                         />
+                        <p
+                            v-if="form.provider === 'custom'"
+                            class="mt-3 rounded-lg border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-primary-800 dark:border-primary-800 dark:bg-primary-900/20 dark:text-primary-200"
+                        >
+                            CUSIP prompts and relevant trading data are sent to this endpoint.
+                            Configure only a service you trust.
+                        </p>
                     </div>
 
                     <div
@@ -135,9 +128,7 @@
                             "
                             :required="
                                 !!form.provider &&
-                                !['ollama', 'lmstudio'].includes(
-                                    form.provider,
-                                )
+                                !OPTIONAL_API_KEY_AI_PROVIDERS.includes(form.provider)
                             "
                         />
                     </div>
@@ -170,6 +161,11 @@
 
 <script setup>
 import BaseSelect from "@/components/common/BaseSelect.vue";
+import {
+    AI_PROVIDER_OPTIONS,
+    OPTIONAL_API_KEY_AI_PROVIDERS,
+    URL_REQUIRED_AI_PROVIDERS,
+} from "@/utils/aiProviderOptions";
 
 const props = defineProps({
     form: { type: Object, required: true },
@@ -211,6 +207,8 @@ function getAdminCusipModelPlaceholder() {
             return "local-model (auto-detected)";
         case "perplexity":
             return "sonar";
+        case "custom":
+            return "llama-3.2-3b-instruct";
         case "local":
             return "custom-model";
         default:
@@ -232,6 +230,8 @@ function getAdminCusipApiKeyPlaceholder() {
             return "Enter Moonshot AI API key";
         case "ollama":
             return "Optional: Enter Ollama API key";
+        case "custom":
+            return "Optional API key";
         default:
             return "Enter API key";
     }

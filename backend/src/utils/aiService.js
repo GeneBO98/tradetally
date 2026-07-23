@@ -3,6 +3,7 @@ const User = require('../models/User');
 const adminSettingsService = require('../services/adminSettings');
 const { validateAiProviderUrl, fetchAiProviderUrl } = require('./urlSecurity');
 const { sanitizeErrorForLogging, summarizeUrlForLogging } = require('./logSanitizer');
+const AIProvider = require('./aiProvider');
 
 class AIService {
   constructor() {
@@ -15,7 +16,8 @@ class AIService {
       ollama: this.useOllama.bind(this),
       lmstudio: this.useLMStudio.bind(this),
       perplexity: this.usePerplexity.bind(this),
-      local: this.useLocal.bind(this)
+      local: this.useLocal.bind(this),
+      custom: this.useCustom.bind(this)
     };
   }
 
@@ -173,6 +175,10 @@ class AIService {
       case 'local':
         // Local requires URL, API key is optional
         return !!settings.apiUrl && settings.apiUrl.trim() !== '';
+      case 'custom':
+        // Custom OpenAI-compatible providers require a URL and explicit model.
+        return !!settings.apiUrl && settings.apiUrl.trim() !== '' &&
+          !!settings.model && settings.model.trim() !== '';
       default:
         return false;
     }
@@ -529,6 +535,15 @@ Your response:`;
       console.error('[PERPLEXITY] Request failed:', sanitizeErrorForLogging(error));
       throw new Error(`Perplexity API failed: ${error.message}`);
     }
+  }
+
+  async useCustom(prompt, settings, options = {}) {
+    return AIProvider.generateResponse(prompt, {
+      provider: 'custom',
+      apiKey: settings.apiKey,
+      apiUrl: settings.apiUrl,
+      modelName: settings.model
+    }, options);
   }
 
   async useLocal(prompt, settings, options = {}) {

@@ -44,7 +44,7 @@
         </button>
         <p class="mt-3 text-xs text-gray-500 dark:text-gray-500">
           <span v-if="isBillingEnabled">Uses the configured high-precision market data provider.</span>
-          <span v-else>Uses the configured provider with Alpha Vantage as the daily-data fallback.</span>
+          <span v-else>Uses configured providers first, with no-cost fallbacks when available.</span>
         </p>
       </div>
 
@@ -78,12 +78,22 @@
           This chart displays the underlying security. Execution markers show option fill timing; contract prices remain in the execution table.
         </div>
 
+        <div
+          v-if="chartData.futures_continuous"
+          class="mb-3 rounded-lg border border-primary-200 bg-primary-50 p-3 text-sm text-primary-900 dark:border-primary-800 dark:bg-primary-900/20 dark:text-primary-100"
+        >
+          This chart displays continuous front-month data
+          <template v-if="chartData.chart_symbol">({{ chartData.chart_symbol }})</template>.
+          Contract rollover can create differences from the recorded fill price.
+        </div>
+
         <KLineTradeChart
           :chart-data="chartData"
           :timezone="userTimezone || 'UTC'"
           :selected-resolution="selectedResolution"
           :available-resolutions="availableResolutions"
           :resolution-loading="loading"
+          :currency-code="currencyCode"
           @resolution-change="selectResolution"
         />
 
@@ -120,6 +130,10 @@ import { useAuthStore } from '@/stores/auth'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { useNotification } from '@/composables/useNotification'
 import { useUserTimezone } from '@/composables/useUserTimezone'
+import {
+  isTradeChartResolution,
+  readTradeChartDefaultResolution,
+} from '@/utils/tradeChartPreferences'
 
 const props = defineProps({
   tradeId: {
@@ -129,7 +143,7 @@ const props = defineProps({
 })
 
 const authStore = useAuthStore()
-const { formatCurrency } = useCurrencyFormatter()
+const { currencyCode, formatCurrency } = useCurrencyFormatter()
 const { showError, showWarning } = useNotification()
 const { userTimezone, timezoneLabel } = useUserTimezone()
 
@@ -138,7 +152,7 @@ const error = ref(null)
 const isConfigured = ref(true)
 const chartData = ref(null)
 const showChart = ref(false)
-const selectedResolution = ref('1')
+const selectedResolution = ref(readTradeChartDefaultResolution())
 
 const userTier = computed(() => authStore.user?.tier || 'free')
 const isBillingEnabled = computed(() => authStore.user?.billingEnabled !== false)
@@ -182,8 +196,11 @@ const sourceLabel = computed(() => {
     alphavantage_cache: 'Alpha Vantage cache',
     alphavantage_fallback: 'Alpha Vantage fallback',
     coingecko: 'CoinGecko',
+    databento: 'Databento',
+    yahoo: 'Yahoo Finance',
   }
-  return labels[chartData.value?.source] || 'Market data'
+  const source = String(chartData.value?.source || '').replace(/^cache:/, '')
+  return labels[source] || 'Market data'
 })
 
 function metricClass(value) {
@@ -255,7 +272,7 @@ function rememberChartState() {
 function restoredResolution() {
   try {
     const resolution = sessionStorage.getItem(chartStateStorageKey())
-    return ['1', '5', '15', '60', 'D'].includes(resolution) ? resolution : null
+    return isTradeChartResolution(resolution) ? resolution : null
   } catch {
     return null
   }
@@ -290,7 +307,7 @@ watch(
     error.value = null
     isConfigured.value = true
     showChart.value = false
-    selectedResolution.value = '1'
+    selectedResolution.value = readTradeChartDefaultResolution()
     queueMicrotask(restoreChart)
   }
 )

@@ -38,6 +38,53 @@ describe('TradeChartVisualization resolutions', () => {
   beforeEach(() => {
     apiGet.mockReset()
     sessionStorage.clear()
+    localStorage.clear()
+  })
+
+  it('uses the user default resolution for a newly opened chart', async () => {
+    localStorage.setItem('trade_chart_default_resolution', '5')
+    apiGet.mockResolvedValue({
+      data: { ...baseChartData, interval: '5min' },
+    })
+
+    const wrapper = mount(TradeChartVisualization, {
+      props: { tradeId: 'trade-default-resolution' },
+      global: {
+        stubs: {
+          KLineTradeChart: true,
+          ProUpgradePrompt: true,
+        },
+      },
+    })
+
+    await wrapper.get('button.btn-primary').trigger('click')
+    await vi.waitFor(() => expect(apiGet).toHaveBeenCalledWith(
+      '/trades/trade-default-resolution/chart-data',
+      { params: { resolution: '5' } }
+    ))
+
+    expect(wrapper.findComponent({ name: 'KLineTradeChart' }).props('selectedResolution')).toBe('5')
+  })
+
+  it('falls back to one-minute candles for an invalid saved resolution', async () => {
+    localStorage.setItem('trade_chart_default_resolution', '2')
+    apiGet.mockResolvedValue({ data: baseChartData })
+
+    const wrapper = mount(TradeChartVisualization, {
+      props: { tradeId: 'trade-invalid-resolution' },
+      global: {
+        stubs: {
+          KLineTradeChart: true,
+          ProUpgradePrompt: true,
+        },
+      },
+    })
+
+    await wrapper.get('button.btn-primary').trigger('click')
+    await vi.waitFor(() => expect(apiGet).toHaveBeenCalledWith(
+      '/trades/trade-invalid-resolution/chart-data',
+      { params: { resolution: '1' } }
+    ))
   })
 
   it('requests fresh candles when the selected resolution changes', async () => {
@@ -135,6 +182,7 @@ describe('TradeChartVisualization resolutions', () => {
   })
 
   it('restores an opened chart and its resolution after a page refresh', async () => {
+    localStorage.setItem('trade_chart_default_resolution', '5')
     sessionStorage.setItem('trade_chart_loaded:trade-4', '15')
     apiGet.mockResolvedValue({
       data: {
@@ -160,5 +208,68 @@ describe('TradeChartVisualization resolutions', () => {
     ))
     await vi.waitFor(() => expect(wrapper.findComponent({ name: 'KLineTradeChart' }).exists()).toBe(true))
     expect(wrapper.findComponent({ name: 'KLineTradeChart' }).props('selectedResolution')).toBe('15')
+  })
+
+  it('identifies cached Databento continuous-contract futures charts', async () => {
+    apiGet.mockResolvedValue({
+      data: {
+        ...baseChartData,
+        source: 'cache:databento',
+        chart_symbol: 'MNQ.c.0',
+        futures_continuous: true,
+        available_resolutions: ['1', '5', '15', '60', 'D'],
+        trade: {
+          ...baseChartData.trade,
+          symbol: 'MNQM6',
+          instrumentType: 'future',
+        },
+      },
+    })
+
+    const wrapper = mount(TradeChartVisualization, {
+      props: { tradeId: 'trade-future' },
+      global: {
+        stubs: {
+          KLineTradeChart: true,
+          ProUpgradePrompt: true,
+        },
+      },
+    })
+
+    await wrapper.get('button.btn-primary').trigger('click')
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Databento'))
+
+    expect(wrapper.text()).toContain('continuous front-month data (MNQ.c.0)')
+    expect(wrapper.text()).toContain('Contract rollover can create differences')
+    expect(wrapper.findComponent({ name: 'KLineTradeChart' }).props('availableResolutions')).toEqual([
+      '1', '5', '15', '60', 'D',
+    ])
+  })
+
+  it('labels the no-cost Yahoo futures fallback', async () => {
+    apiGet.mockResolvedValue({
+      data: {
+        ...baseChartData,
+        source: 'yahoo',
+        chart_symbol: 'ES=F',
+        futures_continuous: true,
+        available_resolutions: ['5', '15', '60', 'D'],
+      },
+    })
+
+    const wrapper = mount(TradeChartVisualization, {
+      props: { tradeId: 'trade-yahoo' },
+      global: {
+        stubs: {
+          KLineTradeChart: true,
+          ProUpgradePrompt: true,
+        },
+      },
+    })
+
+    await wrapper.get('button.btn-primary').trigger('click')
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Yahoo Finance'))
+
+    expect(wrapper.text()).toContain('continuous front-month data (ES=F)')
   })
 })

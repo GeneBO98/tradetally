@@ -151,7 +151,7 @@ describe('auth controller 2FA flow', () => {
         tempToken,
         twoFactorCode: '123456'
       },
-      headers: {}
+      headers: { 'x-biometric-enrollment': 'true' }
     };
     const res = createResponse();
     const next = jest.fn();
@@ -169,8 +169,93 @@ describe('auth controller 2FA flow', () => {
     }));
     expect(res.payload).toEqual(expect.objectContaining({
       message: 'Login successful',
-      token: expect.any(String)
+      token: expect.any(String),
+      biometric_token: expect.any(String)
     }));
+  });
+
+  test('biometric login exchanges a previously enrolled grant without another 2FA code', async () => {
+    const user = {
+      id: '7f4af2f4-64b0-4ffc-a834-4b2578402e3d',
+      email: 'user@example.com',
+      username: 'user',
+      role: 'user',
+      full_name: 'Test User',
+      avatar_url: null,
+      is_active: true,
+      is_verified: true,
+      admin_approved: true,
+      marketing_consent: false,
+      two_factor_enabled: true,
+      two_factor_enabled_at: new Date('2026-07-01T12:00:00.000Z'),
+      session_version: 4,
+      last_login_at: new Date('2026-07-01T12:05:00.000Z'),
+      created_at: new Date('2025-01-01T00:00:00.000Z')
+    };
+    const biometricToken = generateToken(user, {
+      purpose: TOKEN_PURPOSES.BIOMETRIC_LOGIN,
+      expiresIn: '90d'
+    });
+
+    User.findById.mockResolvedValue(user);
+    User.getSettings.mockResolvedValue({ onboarding_step: 0, pro_onboarding_step: 0 });
+
+    const req = {
+      body: { biometric_token: biometricToken },
+      headers: { host: 'localhost:3030', 'user-agent': 'TradeTally-iOS/1.0' }
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await authController.biometricLogin(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(User.updateLastLogin).toHaveBeenCalledWith(user.id);
+    expect(res.payload).toEqual(expect.objectContaining({
+      message: 'Login successful',
+      token: expect.any(String),
+      biometric_token: expect.any(String),
+      user: expect.objectContaining({ id: user.id })
+    }));
+    expect(jwt.verify(res.payload.token, process.env.JWT_SECRET).purpose).toBe(TOKEN_PURPOSES.ACCESS);
+    expect(jwt.verify(res.payload.biometric_token, process.env.JWT_SECRET).purpose)
+      .toBe(TOKEN_PURPOSES.BIOMETRIC_LOGIN);
+  });
+
+  test('biometric login rejects a grant after the 2FA enrollment changes', async () => {
+    const enrolledUser = {
+      id: '7f4af2f4-64b0-4ffc-a834-4b2578402e3d',
+      email: 'user@example.com',
+      username: 'user',
+      role: 'user',
+      is_active: true,
+      two_factor_enabled: true,
+      two_factor_enabled_at: new Date('2026-07-01T12:00:00.000Z'),
+      session_version: 4
+    };
+    const biometricToken = generateToken(enrolledUser, {
+      purpose: TOKEN_PURPOSES.BIOMETRIC_LOGIN,
+      expiresIn: '90d'
+    });
+
+    User.findById.mockResolvedValue({
+      ...enrolledUser,
+      two_factor_enabled_at: new Date('2026-07-20T12:00:00.000Z')
+    });
+
+    const req = {
+      body: { biometric_token: biometricToken },
+      headers: {}
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await authController.biometricLogin(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(401);
+    expect(res.payload).toEqual({ error: 'Invalid or expired biometric login' });
+    expect(User.updateLastLogin).not.toHaveBeenCalled();
   });
 
   test('verify2FA rejects a legacy temp token without a purpose claim', async () => {

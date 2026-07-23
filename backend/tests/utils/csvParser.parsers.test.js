@@ -479,6 +479,38 @@ describe('IBKR parser', () => {
     expect(result.trades[0].symbol).toBe('AAPL');
   });
 
+  test.each(['auto', 'ibkr'])('parses compact Flex Query TradeDate rows with %s selection', async (broker) => {
+    const compactFlexCSV = [
+      'ClientAccountID,Symbol,Buy/Sell,Quantity,Price,Amount,Commission,NetCash,TradeDate,SettleDate,Exchange,OrderType,CurrencyPrimary,AssetClass',
+      'DUN261693,VIVK,BUY,41,3.13,128.33,-1.000123,-129.330123,20260721,20260722,DRCTEDGE,LMT,USD,STK',
+      'DUN261693,VIVK,BUY,100,3.13,313,-0.0003,-313.0003,20260721,20260722,DRCTEDGE,LMT,USD,STK',
+      'DUN261693,VIVK,BUY,109,3.13,341.17,-0.250327,-341.420327,20260721,20260722,DRCTEDGE,LMT,USD,STK',
+      'DUN261693,VIVK,BUY,148,3.86,571.28,-1.000444,-572.280444,20260721,20260722,DRCTEDGE,LMT,USD,STK',
+      'DUN261693,VIVK,BUY,352,3.86,1358.72,-1.501056,-1360.221056,20260721,20260722,MEMX,LMT,USD,STK'
+    ].join('\n');
+
+    const result = await parseCSV(buf(compactFlexCSV), broker, {
+      tradeGroupingSettings: { enabled: false }
+    });
+
+    expect(result.diagnostics.detectedBroker).toBe('ibkr');
+    expect(result.diagnostics.invalidRows).toBe(0);
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0]).toEqual(expect.objectContaining({
+      symbol: 'VIVK',
+      side: 'long',
+      quantity: 750,
+      entryPrice: 3.6166666666666667,
+      exitPrice: null,
+      tradeDate: '2026-07-21',
+      accountIdentifier: 'DUN261693',
+      originalCurrency: 'USD',
+      commission: 3.75225,
+      broker: 'ibkr'
+    }));
+    expect(result.trades[0].executions).toHaveLength(5);
+  });
+
   test('handles IBKR Flex date format (YYYYMMDD;HHMMSS)', async () => {
     const result = await parseCSV(buf(ibkrActivityCSV), 'ibkr', {});
     expectValidResult(result);
@@ -849,6 +881,44 @@ describe('Webull parser', () => {
     expect(result.trades.length).toBeGreaterThanOrEqual(1);
   });
 
+  test('parses year-first Webull timestamps with comma-prefixed GMT offsets', async () => {
+    const regionalCSV = [
+      'Name,Symbol,Side,Status,Filled,Total Qty,Price,Avg Price,Time-in-Force,Placed Time,Filled Time',
+      'VCI Global Ltd,VCIG,Buy,Filled,40.0,40.0,1.2299,1.2299,DAY,"2026/07/20 08:03:06,GMT-04","2026/07/20 08:03:06,GMT-04"',
+      'VCI Global Ltd,VCIG,Sell,Filled,40.0,40.0,1.23,1.23,DAY,"2026/07/20 08:03:36,GMT-04","2026/07/20 08:03:36,GMT-04"'
+    ].join('\n');
+
+    const result = await parseCSV(buf(regionalCSV), 'generic', {});
+
+    expectValidResult(result);
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0]).toMatchObject({
+      symbol: 'VCIG',
+      side: 'long',
+      quantity: 40,
+      entryPrice: 1.2299,
+      exitPrice: 1.23
+    });
+    expect(result.diagnostics.detectedBroker).toBe('webull');
+    expect(result.diagnostics.selectedBroker).toBe('generic');
+    expect(result.diagnostics.invalidRows).toBe(0);
+  });
+
+  test('reports invalid Webull timestamps in diagnostics', async () => {
+    const invalidDateCSV = [
+      'Name,Symbol,Side,Status,Filled,Price,Time-in-Force,Placed Time,Filled Time',
+      'Apple Inc,AAPL,Buy,Filled,100,150.00,Day,not-a-date,not-a-date'
+    ].join('\n');
+
+    const result = await parseCSV(buf(invalidDateCSV), 'webull', {});
+
+    expect(result.trades).toHaveLength(0);
+    expect(result.diagnostics.invalidRows).toBe(1);
+    expect(result.diagnostics.skippedReasons).toEqual([
+      { row: 1, reason: 'Invalid filled time: not-a-date' }
+    ]);
+  });
+
   test('parses alternate Webull format', async () => {
     const altCSV = [
       'Symbol,B/S,Side Type,Qty,Filled Qty,Filled Avg Price,Filled Time,Status',
@@ -1057,6 +1127,19 @@ describe('Questrade parser', () => {
     const result = await parseCSV(buf(optionsCSV), 'questrade', {});
     expectValidResult(result);
   });
+
+  test('uses shared regional date normalization', async () => {
+    const regionalCSV = [
+      'Symbol,Action,Fill Qty,Fill Price,Exec Time,Commission',
+      'AAPL,Buy,100,150.00,20.07.2026 09:30:00 UTC+02,4.95',
+      'AAPL,Sell,100,155.00,20.07.2026 10:00:00 UTC+02,4.95'
+    ].join('\n');
+
+    const result = await parseCSV(buf(regionalCSV), 'questrade', {});
+
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0].tradeDate).toBe('2026-07-20');
+  });
 });
 
 // ──────────────────────────────────────────────
@@ -1087,6 +1170,19 @@ describe('Tastytrade parser', () => {
     ].join('\n');
     const result = await parseCSV(buf(optCSV), 'tastytrade', {});
     expectValidResult(result);
+  });
+
+  test('uses shared year-first and GMT-offset date normalization', async () => {
+    const regionalCSV = [
+      'Date,Type,Action,Symbol,Instrument Type,Description,Value,Quantity,Average Price,Commissions,Fees,Root Symbol,Underlying Symbol,Expiration Date,Strike Price,Call or Put',
+      '"2026/07/20 08:03:06,GMT-04",Trade,Buy to Open,AAPL,Equity,AAPL Apple Inc,15000.00,100,150.00,-1.00,0.00,AAPL,AAPL,,,',
+      '"2026/07/20 08:33:06,GMT-04",Trade,Sell to Close,AAPL,Equity,AAPL Apple Inc,-15500.00,100,155.00,-1.00,0.00,AAPL,AAPL,,,'
+    ].join('\n');
+
+    const result = await parseCSV(buf(regionalCSV), 'tastytrade', {});
+
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0].tradeDate).toBe('2026-07-20');
   });
 });
 
@@ -1132,6 +1228,12 @@ describe('Dashboard-derived CSV import contracts', () => {
       tradeDate: expected.trade_date,
       instrumentType: expected.instrument_type
     }));
+    if (expected.commission !== undefined) {
+      expect(result.trades[0].commission).toBeCloseTo(expected.commission, 6);
+    }
+    if (expected.execution_count !== undefined) {
+      expect(result.trades[0].executions).toHaveLength(expected.execution_count);
+    }
   });
 });
 

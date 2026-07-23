@@ -53,9 +53,18 @@ function isExecutionDuplicate(execution, symbol, context) {
              Math.abs((existingPrice || 0) - (execution.price || 0)) < 0.01;
     }
 
-    // Check by order ID if available (for Interactive Brokers)
-    if (execution.orderId && existingExec.orderId) {
-      return String(existingExec.orderId) === String(execution.orderId);
+    const executionId = execution.execution_id ?? execution.executionId ?? execution.ibExecID;
+    const existingExecutionId = existingExec.execution_id ?? existingExec.executionId ?? existingExec.ibExecID;
+    if (executionId && existingExecutionId) {
+      return String(executionId) === String(existingExecutionId);
+    }
+    const tradeId = execution.trade_id ?? execution.tradeId ?? execution.tradeID;
+    const existingTradeId = existingExec.trade_id ?? existingExec.tradeId ?? existingExec.tradeID;
+    if (tradeId && existingTradeId) {
+      return String(tradeId) === String(existingTradeId);
+    }
+    if (executionIdentityMatches(execution, existingExec)) {
+      return true;
     }
 
     // Fallback to timestamp + quantity + price matching
@@ -100,5 +109,50 @@ function isExecutionDuplicateMultiKey(execution, keys, context) {
 
 module.exports = {
   isExecutionDuplicate,
-  isExecutionDuplicateMultiKey
+  isExecutionDuplicateMultiKey,
+  executionIdentityMatches
 };
+function executionIdentityMatches(left, right) {
+  if (!left || !right) return false;
+
+  const leftExecutionId = left.execution_id ?? left.executionId ?? left.ibExecID ?? left.IBExecID;
+  const rightExecutionId = right.execution_id ?? right.executionId ?? right.ibExecID ?? right.IBExecID;
+  if (leftExecutionId && rightExecutionId) {
+    return String(leftExecutionId) === String(rightExecutionId);
+  }
+
+  const leftTradeId = left.trade_id ?? left.tradeId ?? left.tradeID ?? left.TradeID;
+  const rightTradeId = right.trade_id ?? right.tradeId ?? right.tradeID ?? right.TradeID;
+  if (leftTradeId && rightTradeId) {
+    return String(leftTradeId) === String(rightTradeId);
+  }
+
+  const leftTime = new Date(left.datetime || left.entryTime || left.entry_time).getTime();
+  const rightTime = new Date(right.datetime || right.entryTime || right.entry_time).getTime();
+  if (Number.isNaN(leftTime) || Number.isNaN(rightTime) || Math.abs(leftTime - rightTime) > 1000) {
+    return false;
+  }
+
+  const leftOrderId = left.order_id ?? left.orderId;
+  const rightOrderId = right.order_id ?? right.orderId;
+  if (leftOrderId && rightOrderId && String(leftOrderId) !== String(rightOrderId)) {
+    return false;
+  }
+
+  const leftQuantity = Number(left.quantity);
+  const rightQuantity = Number(right.quantity);
+  const leftPrice = Number(left.price ?? left.entryPrice ?? left.entry_price);
+  const rightPrice = Number(right.price ?? right.entryPrice ?? right.entry_price);
+  const quantitiesMatch = Number.isFinite(leftQuantity) && Number.isFinite(rightQuantity)
+    ? Math.abs(leftQuantity - rightQuantity) < 0.0001
+    : true;
+  const pricesMatch = Number.isFinite(leftPrice) && Number.isFinite(rightPrice)
+    ? Math.abs(leftPrice - rightPrice) < 0.01
+    : true;
+  const actionsMatch = !left.action || !right.action || left.action === right.action;
+  const leftConid = left.conid;
+  const rightConid = right.conid;
+  const conidsMatch = !leftConid || !rightConid || String(leftConid) === String(rightConid);
+
+  return quantitiesMatch && pricesMatch && actionsMatch && conidsMatch;
+}

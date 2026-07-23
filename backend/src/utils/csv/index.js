@@ -20,6 +20,54 @@ const { parseTradovatePerformanceReport, parseTradovateTransactions } = require(
 const { parseWebullTransactions } = require('./parsers/webull');
 const { normalizeSupportedBrokerRows } = require('./parsers/normalizedBrokerRows');
 const { parseDate, extractDateFromFilename, parseDateTime, parseSide, normalizePositionQuantity, normalizeRecord, parseInstrumentData, parseNumeric, isValidTrade, cleanString, parseInteger } = require('./shared');
+const { decodeIBKRFlexReport } = require('../ibkrFlexReport');
+
+function createDiagnostics(broker) {
+  return {
+    totalRows: 0,
+    parsedRows: 0,
+    skippedRows: 0,
+    expected_skipped_rows: 0,
+    invalidRows: 0,
+    skippedReasons: [],
+    warnings: [],
+    detectedBroker: broker,
+    selectedBroker: broker,
+    headerAnalysis: { foundHeaders: [], recognizedAs: broker }
+  };
+}
+
+async function parseIBKRRecords(inputRecords, context = {}, broker = 'ibkr', providedDiagnostics = null) {
+  const diagnostics = providedDiagnostics || createDiagnostics(broker);
+  const records = Array.isArray(inputRecords)
+    ? inputRecords.map(record => normalizeRecord(record))
+    : [];
+  diagnostics.totalRows = records.length;
+  diagnostics.detectedBroker = broker;
+  diagnostics.selectedBroker = diagnostics.selectedBroker || broker;
+  diagnostics.headerAnalysis.recognizedAs = broker;
+  diagnostics.headerAnalysis.foundHeaders = records[0] ? Object.keys(records[0]) : [];
+
+  const accountColumnName = detectAccountColumn(records);
+  const parserContext = { ...context };
+  if (accountColumnName) {
+    parserContext.accountColumnName = accountColumnName;
+    parserContext.hasAccountColumn = true;
+  }
+
+  const existingPositions = parserContext.existingPositions || {};
+  const tradeGroupingSettings = parserContext.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
+  const manualReviewItems = Array.isArray(parserContext.manualReviewItems) ? parserContext.manualReviewItems : [];
+  const ibkrContext = {
+    ...parserContext,
+    brokerTag: broker === 'captrader' ? 'captrader' : 'ibkr',
+    manualReviewItems,
+    diagnostics
+  };
+  const result = await parseIBKRTransactions(records, existingPositions, tradeGroupingSettings, ibkrContext);
+  const wrapped = wrapResultWithDiagnostics(result, diagnostics, [], parserContext.userTimezone || null);
+  return attachManualReviewDiagnostics(wrapped, diagnostics, manualReviewItems, parserContext.userTimezone || null);
+}
 
 
 // AvaTrade symbol format: F.US.MESM26 → MESM26 (futures), S.US.AAPL → AAPL (stock)
@@ -32,21 +80,9 @@ function normalizeAvaTradeSymbol(symbol) {
 
 async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
   // Initialize diagnostics object to track parsing details
-  const diagnostics = {
-    totalRows: 0,           // Total CSV rows (excluding header)
-    parsedRows: 0,          // Rows successfully parsed
-    skippedRows: 0,         // Rows intentionally skipped (wrong type, etc.)
-    expected_skipped_rows: 0, // Non-executed rows such as cancelled/pending orders
-    invalidRows: 0,         // Rows with validation errors
-    skippedReasons: [],     // Array of { row: number, reason: string }
-    warnings: [],           // Non-fatal issues
-    detectedBroker: null,   // What auto-detect found (or selected broker)
-    selectedBroker: broker, // What user originally selected
-    headerAnalysis: {
-      foundHeaders: [],
-      recognizedAs: null    // Which broker pattern matched
-    }
-  };
+  const diagnostics = createDiagnostics(broker);
+  diagnostics.detectedBroker = null;
+  diagnostics.headerAnalysis.recognizedAs = null;
 
   try {
     console.log(`[CURRENCY DEBUG] parseCSV called with broker: ${broker}, userId: ${context.userId}`);
@@ -109,6 +145,15 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     // Some broker exports wrap the entire header/data row in a single quoted field.
     // Normalize those rows before broker detection and parsing.
     csvString = normalizeWholeLineQuotedCsvRows(csvString);
+
+    if (['ibkr', 'ibkr_trade_confirmation'].includes(broker)) {
+      const decoded = decodeIBKRFlexReport(csvString);
+      if (decoded.recognized) {
+        diagnostics.report_format = decoded.format;
+        diagnostics.open_position_rows = decoded.open_position_records.length;
+        return parseIBKRRecords(decoded.trade_records, context, broker, diagnostics);
+      }
+    }
 
     // MetaTrader 5 history reports are semicolon-delimited with duplicate column
     // names, a localized title row and European decimals — none of which the
@@ -886,19 +931,9 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
 
     if (broker === 'ibkr' || broker === 'ibkr_trade_confirmation' || broker === 'captrader') {
       console.log(`Starting IBKR transaction parsing (${broker} format)`);
-      const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
-      // CapTrader is an IBKR introducing broker — same parser, but tag trades
-      // with `captrader` so the UI labels them correctly.
-      const manualReviewItems = Array.isArray(context.manualReviewItems) ? context.manualReviewItems : [];
-      const ibkrContext = {
-        ...context,
-        brokerTag: broker === 'captrader' ? 'captrader' : 'ibkr',
-        manualReviewItems
-      };
-      const result = await parseIBKRTransactions(records, existingPositions, tradeGroupingSettings, ibkrContext);
+      const result = await parseIBKRRecords(records, context, broker, diagnostics);
       console.log('Finished IBKR transaction parsing');
-      const wrapped = wrapResultWithDiagnostics(result, diagnostics, [], userTimezone);
-      return attachManualReviewDiagnostics(wrapped, diagnostics, manualReviewItems, userTimezone);
+      return result;
     }
 
     if (broker === 'webull') {
@@ -1371,6 +1406,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
 
 module.exports = {
   parseCSV,
+  parseIBKRRecords,
   detectBrokerFormat,
   getCsvHeaderLine,
   getCsvSampleRows,

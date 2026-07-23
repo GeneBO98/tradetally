@@ -1,6 +1,6 @@
 const { isExecutionDuplicate } = require('../dedup');
 const { extractAccountFromRecord } = require('../detect');
-const { cleanString, parseNumeric, parseInteger } = require('../shared');
+const { cleanString, parseDateTime, parseNumeric, parseInteger } = require('../shared');
 
 
 /**
@@ -86,9 +86,11 @@ async function parseTastytradeTransactions(records, existingPositions = {}, cont
         continue;
       }
 
-      // Parse date - ISO 8601 format: 2026-02-18T06:59:36-0800
-      const execDateTime = new Date(dateStr);
-      if (isNaN(execDateTime.getTime())) {
+      // Use the shared date normalizer so regional Tastytrade exports receive
+      // the same format and timezone support as every other importer.
+      const parsedExecDateTime = parseDateTime(dateStr);
+      const execDateTime = parsedExecDateTime ? new Date(parsedExecDateTime) : null;
+      if (!execDateTime || isNaN(execDateTime.getTime())) {
         console.log(`Skipping Tastytrade record with invalid date: ${dateStr}`);
         continue;
       }

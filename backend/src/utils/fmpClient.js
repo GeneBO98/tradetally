@@ -507,6 +507,52 @@ class FmpClient {
     };
   }
 
+  /**
+   * FMP exposes continuous commodity/futures charts through symbols such as
+   * GCUSD. Keep this provider-specific mapping here so futures roots are never
+   * sent to an equity endpoint as ambiguous tickers such as ES or CL.
+   */
+  async getFuturesTradeChartData(root, trade, userId = null, requestedResolution = '1') {
+    const providerSymbol = `${String(root).trim().toUpperCase()}USD`;
+    const entryTime = new Date(trade.entry_time || trade.trade_date);
+    const exitTime = trade.exit_time ? new Date(trade.exit_time) : entryTime;
+    const resolution = Object.hasOwn({ '1': true, '5': true, '15': true, '60': true, D: true }, requestedResolution)
+      ? requestedResolution
+      : '1';
+    const intervals = {
+      '1': '1min',
+      '5': '5min',
+      '15': '15min',
+      '60': '1hour',
+      D: 'daily'
+    };
+    const oneDayMs = 24 * 60 * 60 * 1000;
+    const chartFromTime = resolution === 'D'
+      ? new Date(entryTime.getTime() - 30 * oneDayMs)
+      : new Date(entryTime.getTime() - 12 * 60 * 60 * 1000);
+    const chartToTime = resolution === 'D'
+      ? new Date(Math.min(Date.now(), Math.max(entryTime.getTime(), exitTime.getTime()) + 10 * oneDayMs))
+      : new Date(Math.min(Date.now(), entryTime.getTime() + 12 * 60 * 60 * 1000));
+    const candles = await this.getStockCandles(
+      providerSymbol,
+      resolution,
+      Math.floor(chartFromTime.getTime() / 1000),
+      Math.floor(chartToTime.getTime() / 1000),
+      userId
+    );
+
+    return {
+      type: resolution === 'D' ? 'daily' : 'intraday',
+      interval: intervals[resolution],
+      candles,
+      source: 'fmp',
+      symbol: trade.symbol,
+      chart_symbol: providerSymbol,
+      futures_continuous: true,
+      available_resolutions: ['1', '5', '15', '60', 'D']
+    };
+  }
+
   async getEarningsCalendar(fromDate = null, toDate = null, symbol = null) {
     const from = fromDate || new Date().toISOString().split('T')[0];
     const to = toDate || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];

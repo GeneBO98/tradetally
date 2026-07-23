@@ -140,6 +140,26 @@ describe('csrf middleware', () => {
     expect(res.statusCode).toBe(200);
   });
 
+  test('requireCsrf exempts biometric login before a new session is established', () => {
+    const req = {
+      method: 'POST',
+      originalUrl: '/api/auth/biometric-login',
+      cookies: {
+        token: 'stale-cookie',
+        csrf_token: 'stale-csrf'
+      },
+      headers: {},
+      header: jest.fn(() => undefined)
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    requireCsrf(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(res.statusCode).toBe(200);
+  });
+
   test('requireCsrf exempts stripe webhook path', () => {
     const req = {
       method: 'POST',

@@ -1220,10 +1220,8 @@ class OverconfidenceAnalyticsService {
         return null;
       }
 
-      // For local providers (ollama, lmstudio, local), API key is optional
-      const needsApiKey = !['ollama', 'lmstudio', 'local'].includes(aiSettings.provider);
-      if (needsApiKey && !aiSettings.apiKey) {
-        console.log(`[AI REC] AI recommendations not available - API key required for ${aiSettings.provider} but not configured`);
+      if (!aiService.isProviderConfigured(aiSettings)) {
+        console.log(`[AI REC] AI recommendations not available - ${aiSettings.provider} is not fully configured`);
         return null;
       }
 

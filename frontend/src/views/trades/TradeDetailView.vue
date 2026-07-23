@@ -1599,7 +1599,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, reactive, defineAsyncComponent } from 'vue'
+import { ref, onMounted, onBeforeUnmount, nextTick, computed, reactive, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
@@ -1616,6 +1616,10 @@ import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
 import BaseSelect from '@/components/common/BaseSelect.vue'
 import { useAIStore } from '@/stores/ai'
 import { getTradeDateOnlyParts } from '@/utils/date'
+import {
+  consumeReloadScrollPosition,
+  saveReloadScrollPosition,
+} from '@/utils/reloadScrollPosition'
 
 // Heavy, conditionally rendered components: load lazily to keep them out of the route chunk
 const TradeShareCard = defineAsyncComponent(() => import('@/components/trades/TradeShareCard.vue'))
@@ -1630,6 +1634,29 @@ const aiStore = useAIStore()
 const { showSuccess, showError, showConfirmation, showDangerConfirmation } = useNotification()
 const { formatDateTime: formatDateTimeTz, formatTime: formatTimeTz, timezoneLabel } = useUserTimezone()
 const { formatCurrency, currencySymbol, formatSignedCurrency } = useCurrencyFormatter()
+
+function reloadScrollStorageKey() {
+  return `trade_detail_scroll:${route.params.id}`
+}
+
+function saveTradeDetailScroll(event) {
+  if (event?.persisted) return
+  saveReloadScrollPosition(
+    window.sessionStorage,
+    reloadScrollStorageKey(),
+    window.scrollY
+  )
+}
+
+async function restoreTradeDetailScroll(scroll_y) {
+  if (!Number.isFinite(scroll_y)) return
+  await nextTick()
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: scroll_y, left: 0, behavior: 'auto' })
+    })
+  })
+}
 
 function getTradeCurrency() {
   return (trade.value?.original_currency || trade.value?.originalCurrency || 'USD').toUpperCase()
@@ -2897,10 +2924,18 @@ async function copyChartUrl() {
   }
 }
 
-onMounted(() => {
-  // Scroll to top when the page loads
-  window.scrollTo(0, 0)
+onMounted(async () => {
+  const saved_scroll_y = consumeReloadScrollPosition(
+    window.sessionStorage,
+    reloadScrollStorageKey()
+  )
+  window.addEventListener('pagehide', saveTradeDetailScroll)
 
-  loadTrade()
+  await loadTrade()
+  if (trade.value) await restoreTradeDetailScroll(saved_scroll_y)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('pagehide', saveTradeDetailScroll)
 })
 </script>

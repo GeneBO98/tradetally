@@ -109,7 +109,7 @@ const nullableDate = Joi.alternatives().try(
 );
 const nullableNumber = Joi.alternatives().try(Joi.number(), Joi.valid(null, ''));
 const currencyCode = Joi.string().trim().uppercase().pattern(/^[A-Z]{3}$/).allow(null, '');
-const aiProviderSchema = Joi.string().valid('gemini', 'claude', 'openai', 'deepseek', 'kimi', 'ollama', 'lmstudio', 'perplexity', 'local');
+const aiProviderSchema = Joi.string().valid('gemini', 'claude', 'openai', 'deepseek', 'kimi', 'ollama', 'lmstudio', 'perplexity', 'local', 'custom');
 
 const schemas = {
   register: Joi.object({
@@ -137,7 +137,12 @@ const schemas = {
 
   login: Joi.object({
     email: emailField.required(),
-    password: Joi.string().required()
+    password: Joi.string().required(),
+    biometric_enrollment: Joi.boolean().optional()
+  }),
+
+  biometricLogin: Joi.object({
+    biometric_token: Joi.string().required()
   }),
 
   newsBackfill: Joi.object({
@@ -180,7 +185,8 @@ const schemas = {
     token: Joi.string().allow('', null),
     twoFactorCode: Joi.string().allow('', null),
     two_factor_code: Joi.string().allow('', null),
-    code: Joi.string().allow('', null)
+    code: Joi.string().allow('', null),
+    biometric_enrollment: Joi.boolean().optional()
   }).or('tempToken', 'temp_token', 'token')
     .or('twoFactorCode', 'two_factor_code', 'code'),
 
@@ -485,7 +491,10 @@ const schemas = {
     defaultStopLossType: Joi.string().valid('percent', 'lod', 'dollar'),
     defaultStopLossPercent: Joi.number().min(0).max(100).allow(null),
     defaultStopLossDollars: Joi.number().min(0).allow(null),
+    defaultTakeProfitType: Joi.string().valid('percent', 'risk_reward', 'dollar'),
     defaultTakeProfitPercent: Joi.number().min(0).max(1000).allow(null),
+    defaultTakeProfitRMultiple: Joi.number().min(0).max(1000).allow(null),
+    defaultTakeProfitDollars: Joi.number().min(0).allow(null),
     dashboardLayout: Joi.array().items(Joi.object({
       id: Joi.string().required(),
       visible: Joi.boolean().required()
@@ -746,6 +755,7 @@ const schemas = {
     filters: Joi.object().unknown(true).default({}),
     tradeId: Joi.string().trim().max(64),
     analysisType: Joi.string().valid('single_trade'),
+    request_id: Joi.string().trim().max(100).pattern(/^[a-zA-Z0-9_-]+$/),
     apiKey: Joi.string().trim().max(500),
     modelName: Joi.string().trim().max(200)
   }),

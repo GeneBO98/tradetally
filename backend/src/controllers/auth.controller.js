@@ -16,6 +16,27 @@ const jobQueue = require('../utils/jobQueue');
 
 const PROTECTED_EMAIL = (process.env.DEMO_EMAIL || 'demo@example.com').toLowerCase();
 
+function generateBiometricLoginToken(user) {
+  return generateToken(user, {
+    purpose: TOKEN_PURPOSES.BIOMETRIC_LOGIN,
+    expiresIn: process.env.BIOMETRIC_LOGIN_EXPIRE || '90d'
+  });
+}
+
+function wantsBiometricEnrollment(req) {
+  return req.body.biometric_enrollment === true ||
+    String(req.headers['x-biometric-enrollment'] || '').toLowerCase() === 'true';
+}
+
+function hasMatchingTwoFactorState(decoded, user) {
+  const enabledAt = user.two_factor_enabled_at
+    ? new Date(user.two_factor_enabled_at).toISOString()
+    : null;
+
+  return decoded.two_factor_enabled === Boolean(user.two_factor_enabled) &&
+    decoded.two_factor_enabled_at === enabledAt;
+}
+
 // Check if email configuration is available
 function isEmailConfigured() {
   return EmailService.isConfigured();
@@ -427,7 +448,10 @@ const authController = {
           pro_onboarding_step: (loginSettings && loginSettings.pro_onboarding_step) || 0
         },
         is_first_login: isFirstLogin,
-        token
+        token,
+        ...(wantsBiometricEnrollment(req)
+          ? { biometric_token: generateBiometricLoginToken(user) }
+          : {})
       });
     } catch (error) {
       next(error);
@@ -532,7 +556,87 @@ const authController = {
           twoFactorEnabled: user.two_factor_enabled
         },
         is_first_login: isFirstLogin,
-        token
+        token,
+        ...(wantsBiometricEnrollment(req)
+          ? { biometric_token: generateBiometricLoginToken(user) }
+          : {})
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async biometricLogin(req, res, next) {
+    try {
+      let decoded;
+      try {
+        decoded = verifyJwtToken(req.body.biometric_token, {
+          requiredPurpose: TOKEN_PURPOSES.BIOMETRIC_LOGIN
+        });
+      } catch (_) {
+        return res.status(401).json({ error: 'Invalid or expired biometric login' });
+      }
+
+      const user = await User.findById(decoded.id);
+      if (!user || !user.is_active ||
+          decoded.session_version !== Number(user.session_version || 0) ||
+          !hasMatchingTwoFactorState(decoded, user)) {
+        return res.status(401).json({ error: 'Invalid or expired biometric login' });
+      }
+
+      if (getRegistrationMode() === 'approval' && !user.admin_approved) {
+        return res.status(403).json({
+          error: 'Your account is pending admin approval.',
+          requiresApproval: true
+        });
+      }
+
+      const isFirstLogin = user.last_login_at == null;
+      await User.updateLastLogin(user.id);
+
+      YearWrappedService.recordLogin(user.id).catch(err => {
+        console.warn('[AUTH] Failed to record biometric login for year wrapped:', err.message);
+      });
+
+      activityTrackingService.trackEvent(user.id, 'auth.login', 'auth', {
+        is_first_login: isFirstLogin,
+        method: 'biometric'
+      }, {
+        ip: getClientIp(req),
+        userAgent: req.headers['user-agent'],
+        marketingConsent: user.marketing_consent
+      });
+
+      const token = generateToken(user, { purpose: TOKEN_PURPOSES.ACCESS });
+      setAuthCookies(req, res, token, generateCsrfToken());
+
+      const { tier: userTier, billingEnabled } = await TierService.getUserTierWithBillingStatus(
+        user.id,
+        req.headers.host
+      );
+      const settings = await User.getSettings(user.id);
+
+      return res.json({
+        message: 'Login successful',
+        user: {
+          id: user.id,
+          email: user.email,
+          username: user.username,
+          fullName: user.full_name,
+          avatarUrl: user.avatar_url,
+          role: user.role,
+          tier: userTier,
+          billingEnabled,
+          isVerified: user.is_verified,
+          adminApproved: user.admin_approved,
+          twoFactorEnabled: user.two_factor_enabled || false,
+          createdAt: user.created_at,
+          onboarding_step: (settings && settings.onboarding_step) || 0,
+          pro_onboarding_step: (settings && settings.pro_onboarding_step) || 0
+        },
+        is_first_login: isFirstLogin,
+        token,
+        biometric_token: generateBiometricLoginToken(user)
       });
     } catch (error) {
       next(error);
