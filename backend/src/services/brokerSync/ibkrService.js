@@ -20,10 +20,11 @@ const OptionStrategyGroupingService = require('../optionStrategyGroupingService'
 const { version: APP_VERSION } = require('../../../package.json');
 
 const FLEX_BASE_URL = 'https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService';
-const FLEX_STATEMENT_PATH = '/AccountManagement/FlexWebService/GetStatement';
 const FLEX_USER_AGENT = `TradeTally/${APP_VERSION}`;
 const REPORT_REQUEST_TIMEOUT = 120000; // 2 minutes to request report
-const REPORT_POLL_INTERVAL = 5000; // Poll every 5 seconds
+// IBKR limits Flex requests to 10/minute per token (error 1018) and the limit
+// covers GetStatement polls too, so poll no faster than every 10 seconds.
+const REPORT_POLL_INTERVAL = 10000;
 const REPORT_INITIAL_MAX_WAIT = 300000; // Initial 5 min poll window before extending
 const REPORT_EXTENDED_MAX_WAIT = 720000; // 12 min total when first poll times out
 const MAX_FLEX_OVERRIDE_DAYS = 365;
@@ -219,27 +220,6 @@ function isRetryableErrorMessage(message) {
   return RETRYABLE_MESSAGE_PHRASES.some(phrase => text.includes(phrase));
 }
 
-function getFlexStatementUrl(responseData) {
-  const urlMatch = String(responseData || '').match(/<Url>\s*([^<]+?)\s*<\/Url>/i);
-  if (!urlMatch) return `${FLEX_BASE_URL}/GetStatement`;
-
-  try {
-    const statementUrl = new URL(urlMatch[1].replace(/&amp;/g, '&').trim());
-    const isIBKRHost = statementUrl.hostname === 'interactivebrokers.com' ||
-      statementUrl.hostname.endsWith('.interactivebrokers.com');
-
-    if (statementUrl.protocol !== 'https:' || !isIBKRHost || statementUrl.pathname !== FLEX_STATEMENT_PATH) {
-      console.warn('[IBKR] Ignoring invalid Flex statement URL returned by IBKR');
-      return `${FLEX_BASE_URL}/GetStatement`;
-    }
-
-    return statementUrl.toString();
-  } catch (_) {
-    console.warn('[IBKR] Ignoring malformed Flex statement URL returned by IBKR');
-    return `${FLEX_BASE_URL}/GetStatement`;
-  }
-}
-
 /**
  * Build an Error annotated with the IBKR error code and a transient flag.
  * The caller (sync orchestrator) uses these to (a) save error_details and
@@ -364,9 +344,11 @@ class IBKRService {
 
         const referenceCode = refCodeMatch[1];
         console.log('[IBKR] Got reference code:', referenceCode);
+        // The <Url> element in the response is legacy and IBKR's docs say to
+        // ignore it; always retrieve statements from the documented endpoint.
         return {
           referenceCode,
-          statementUrl: getFlexStatementUrl(data)
+          statementUrl: `${FLEX_BASE_URL}/GetStatement`
         };
       } catch (error) {
         if (error.response) {
@@ -1768,7 +1750,7 @@ class IBKRService {
       '1009': 'IBKR server is under heavy load. Please try again shortly.',
       '1010': 'Legacy Flex Queries are no longer supported. Please convert your query to an Activity Flex Query in IBKR.',
       '1011': 'Service account is inactive. Please check your IBKR account status.',
-      '1012': 'Flex Token has expired. Please generate a new token in IBKR: Performance & Reports > Flex Queries > gear icon > Flex Web Service.',
+      '1012': 'Flex Token has expired. IBKR tokens expire after 6 hours by default. Generate a new token in IBKR (Performance & Reports > Flex Queries > Flex Web Service Configuration) and set "Should Expire After" to 1 Year, then update this connection.',
       '1013': "IP restriction — this server's IP is not authorised for your Flex Token. Add it in IBKR: Performance & Reports > Flex Queries > gear icon > Flex Web Service.",
       '1014': 'Query is invalid. Please verify your Flex Query ID in IBKR.',
       '1015': 'Flex Token is invalid. Please generate a new token in IBKR: Performance & Reports > Flex Queries > gear icon > Flex Web Service.',
