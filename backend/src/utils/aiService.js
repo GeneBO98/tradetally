@@ -401,45 +401,13 @@ Your response:`;
       model: settings.model || 'llama3.1'
     });
 
-    const validatedApiUrl = await validateAiProviderUrl('ollama', settings.apiUrl);
     const model = settings.model || 'llama3.1';
-    const url = `${validatedApiUrl.toString().replace(/\/$/, '')}/api/generate`;
-
-    const headers = {
-      'Content-Type': 'application/json'
-    };
-
-    // Only add Authorization header if API key is provided and not empty
-    if (settings.apiKey && settings.apiKey.trim() !== '') {
-      headers['Authorization'] = `Bearer ${settings.apiKey}`;
-    }
-
-    const response = await fetchAiProviderUrl('ollama', url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model,
-        prompt,
-        stream: false,
-        options: {
-          num_predict: options.maxTokens || 1000
-        }
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`Ollama API error: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    
-    // Ollama returns the response in the 'response' field
-    if (!data.response) {
-      console.error('Ollama response missing expected "response" field');
-      throw new Error('Invalid response format from Ollama API');
-    }
-    
-    return data.response;
+    return AIProvider.generateResponse(prompt, {
+      provider: 'ollama',
+      apiKey: settings.apiKey,
+      apiUrl: settings.apiUrl,
+      modelName: model
+    }, options);
   }
 
   async useLMStudio(prompt, settings, options = {}) {

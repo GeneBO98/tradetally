@@ -64,6 +64,29 @@ describe('Custom OpenAI-compatible provider', () => {
     expect(request.headers.Authorization).toBe('Bearer secret-key');
   });
 
+  test('uses the configured Ollama v1 chat completions endpoint', async () => {
+    const result = await AIProvider.generateResponse('Analyze these journal entries', {
+      provider: 'ollama',
+      apiKey: '',
+      apiUrl: 'http://localhost:11434/v1',
+      modelName: 'qwen2.5:3b-instruct'
+    }, { maxTokens: 1500, temperature: 0.7 });
+
+    expect(result).toBe('Custom response');
+    expect(fetchAiProviderUrl).toHaveBeenCalledWith(
+      'ollama',
+      'http://localhost:11434/v1/chat/completions',
+      expect.objectContaining({ method: 'POST' })
+    );
+
+    const request = fetchAiProviderUrl.mock.calls[0][2];
+    expect(JSON.parse(request.body)).toEqual(expect.objectContaining({
+      model: 'qwen2.5:3b-instruct',
+      max_tokens: 1500,
+      temperature: 0.7
+    }));
+  });
+
   test('requires both URL and model for Custom configuration', () => {
     expect(AIProvider.isConfigured({
       provider: 'custom',
