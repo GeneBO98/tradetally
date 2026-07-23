@@ -28,16 +28,20 @@
             <h4 class="text-sm font-medium text-primary-800 dark:text-primary-300 mb-2">Setup Instructions</h4>
             <ol class="text-sm text-primary-700 dark:text-primary-400 space-y-2 list-decimal list-inside">
               <li>Log in to <a href="https://www.interactivebrokers.com/sso/Login" target="_blank" class="underline font-medium">IBKR Client Portal</a></li>
-              <li>Navigate to <strong>Performance & Reports > Flex Queries</strong></li>
+              <li>Navigate to <strong>Performance & Reports > Flex Queries</strong> (labeled <strong>Reporting</strong> in some accounts)</li>
               <li>Under "Activity Flex Query", click the <strong>+</strong> button to create a new query</li>
               <li>Name your query, select <strong>Trades</strong> and <strong>Open Positions</strong>, and choose <strong>CSV or XML</strong></li>
-              <li>Save the query</li>
-              <li>Note the <strong>Query ID</strong> shown next to your saved query</li>
-              <li>Click the <strong>gear icon</strong> next to "Configure Flex Web Service"</li>
+              <li>In the Trades section options, make sure <strong>Executions</strong> is selected — order-only or summary data cannot be imported</li>
+              <li>Save the query and note the <strong>Query ID</strong> shown next to it</li>
+              <li>Open <strong>Flex Web Service Configuration</strong> (gear icon), enable <strong>Flex Web Service Status</strong>, and save</li>
+              <li>Set <strong>Should Expire After</strong> to <strong>1 Year</strong> — IBKR tokens expire after 6 hours by default, which breaks sync the same day</li>
               <li>Generate or copy your <strong>Current Token</strong></li>
             </ol>
             <p class="mt-3 text-xs text-primary-600 dark:text-primary-400">
-              <a href="https://www.interactivebrokers.com/en/software/am/am/reports/activityflexqueries.htm" target="_blank" class="underline">View IBKR's official Flex Query documentation</a>
+              Note: IBKR updates Activity Flex data once daily after close of business, so new trades appear on the next sync after the following business day. For advisor or linked accounts, the token is only available from the master account.
+            </p>
+            <p class="mt-2 text-xs text-primary-600 dark:text-primary-400">
+              <a href="https://www.interactivebrokers.com/campus/ibkr-api-page/flex-web-service/" target="_blank" class="underline">View IBKR's official Flex Web Service documentation</a>
             </p>
           </div>
 

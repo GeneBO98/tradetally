@@ -965,14 +965,16 @@ describe('IBKR transient error handling', () => {
     expect(ibkrService.sleep).toHaveBeenCalledWith(30000);
   });
 
-  test('requestFlexReport returns the GetStatement URL supplied by IBKR', async () => {
+  test('requestFlexReport ignores the legacy Url element supplied by IBKR', async () => {
+    // IBKR's docs mark the <Url> response element as legacy and instruct
+    // clients to ignore it; statements are always fetched from ndcdyn.
     axios.get.mockResolvedValueOnce({
-      data: '<FlexStatementResponse><Status>Success</Status><ReferenceCode>REF-123</ReferenceCode><Url>https://gdcdyn.interactivebrokers.com/AccountManagement/FlexWebService/GetStatement</Url></FlexStatementResponse>'
+      data: '<FlexStatementResponse><Status>Success</Status><ReferenceCode>REF-123</ReferenceCode><Url>https://gdcdyn.interactivebrokers.com/Universal/servlet/FlexStatementService.GetStatement</Url></FlexStatementResponse>'
     });
 
     await expect(ibkrService.requestFlexReport('token', 'query')).resolves.toEqual({
       referenceCode: 'REF-123',
-      statementUrl: 'https://gdcdyn.interactivebrokers.com/AccountManagement/FlexWebService/GetStatement'
+      statementUrl: 'https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService/GetStatement'
     });
   });
 
