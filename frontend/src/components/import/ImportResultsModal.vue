@@ -409,6 +409,7 @@ const brokerNames = {
   tradovate: 'Tradovate',
   questrade: 'Questrade',
   projectx: 'ProjectX',
+  projectx_orders: 'ProjectX',
   tradestation: 'TradeStation',
   tastytrade: 'Tastytrade'
 }
@@ -416,7 +417,7 @@ const brokerNames = {
 const supportedBrokers = [
   'lightspeed', 'schwab', 'thinkorswim', 'ibkr', 'ibkr_trade_confirmation', 'captrader',
   'webull', 'etrade', 'papermoney', 'tradervue', 'avatrade', 'tradingview', 'tradovate', 'questrade',
-  'projectx', 'tradestation', 'tastytrade'
+  'projectx', 'projectx_orders', 'tradestation', 'tastytrade'
 ]
 
 function formatBrokerName(broker) {

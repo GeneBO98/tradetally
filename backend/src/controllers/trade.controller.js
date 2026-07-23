@@ -1802,10 +1802,12 @@ const tradeController = {
 
       // Determine if there's a mismatch
       // Mismatch only applies if user selected a specific broker (not 'auto' or 'generic')
+      const brokersMatch = broker === detectedBroker ||
+        (broker === 'projectx' && detectedBroker === 'projectx_orders');
       const isMismatch = broker !== 'auto' &&
                          broker !== 'generic' &&
                          detectedBroker !== 'generic' &&
-                         broker !== detectedBroker;
+                         !brokersMatch;
 
       const result = {
         detectedBroker,

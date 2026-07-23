@@ -158,6 +158,7 @@ const brokerParsers = {
       takeProfit: takeProfit,
       notes: notes,
       pnl: parseNumeric(row['Net $'] || row.Net || row.PnL || row.pnl || row['P&L'] || row.Profit, null),
+      orderId: cleanString(row['Order ID'] || row.order_id || row.orderId),
       broker: cleanString(row.Broker || row.broker) || 'generic'
     };
   },

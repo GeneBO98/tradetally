@@ -149,6 +149,7 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
         commission: trade.commission || 0,
         fees: trade.fees || 0,
         broker: trade.broker || 'generic',
+        orderId: trade.orderId || null,
         originalRecord: record,
         accountIdentifier
       });
@@ -264,7 +265,8 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
           price: transaction.price,
           datetime: transaction.datetime,
           commission: transaction.commission,
-          fees: transaction.commission + transaction.fees
+          fees: transaction.commission + transaction.fees,
+          orderId: transaction.orderId
         };
 
         // First, check if this execution exists in ANY existing trade (complete or open)
@@ -291,6 +293,9 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
           if (currentTrade.isExistingPosition) {
             currentTrade.newExecutionsAdded++;
           }
+        } else {
+          console.log(`  [SKIP] Duplicate execution: ${newExecution.orderId || 'matching fill data'}`);
+          continue;
         }
 
         currentTrade.totalCommission += transaction.commission;

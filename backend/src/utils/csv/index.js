@@ -1,7 +1,7 @@
 const { parse } = require('csv-parse/sync');
 const currencyConverter = require('../currencyConverter');
 const { brokerParsers } = require('./brokerParsers');
-const { localizeRecords, normalizeWholeLineQuotedCsvRows, detectCurrencyColumn, redactAccountId, detectAccountColumn, extractAccountFromRecord, extractIBKRActivityStatementSection, detectBrokerFormat, findLikelyDelimitedHeaderLine, getCsvHeaderLine, getCsvSampleRows } = require('./detect');
+const { localizeRecords, normalizeWholeLineQuotedCsvRows, detectCurrencyColumn, redactAccountId, detectAccountColumn, extractAccountFromRecord, extractIBKRActivityStatementSection, detectBrokerFormat, findLikelyDelimitedHeaderLine, getCsvHeaderLine, getCsvSampleRows, hasProjectXOrderHistoryHeaders } = require('./detect');
 const { buildGenericValidationReason, wrapResultWithDiagnostics, attachManualReviewDiagnostics } = require('./diagnostics');
 const { applyTradeGrouping } = require('./grouping');
 const { parseFirstradeTransactions } = require('./parsers/firstrade');
@@ -168,6 +168,16 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
 
     const firstHeaderLine = csvString.split('\n').find(line => line.trim().length > 0) || '';
     const firstHeaders = firstHeaderLine.split(',').map(header => header.replace(/^"|"$/g, '').trim());
+    if (['projectx', 'tradingview'].includes(broker) && hasProjectXOrderHistoryHeaders(firstHeaders)) {
+      if (broker === 'tradingview') {
+        const warning = 'Selected broker was TradingView, but the CSV headers match ProjectX order history. TradeTally used the ProjectX parser for this import.';
+        console.log(`[BROKER MISMATCH] ${warning}`);
+        diagnostics.warnings.push(warning);
+      }
+      diagnostics.detectedBroker = 'projectx_orders';
+      diagnostics.headerAnalysis.recognizedAs = 'projectx_orders';
+      broker = 'projectx_orders';
+    }
     if (broker === 'tradestation' && hasTradingViewOrderHistoryHeaders(firstHeaders)) {
       const warning = 'Selected broker was TradeStation, but the CSV headers match TradingView order history. TradeTally used the TradingView parser for this import.';
       console.log(`[BROKER MISMATCH] ${warning}`);
@@ -792,11 +802,16 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       diagnostics.expected_skipped_rows += normalized.ignored.length;
       diagnostics.skippedReasons.push(...normalized.ignored);
 
+      const normalizedHasAccount = normalized.records.some(record => record.Account);
+      const normalizedContext = normalizedHasAccount
+        ? { ...context, accountColumnName: 'Account', hasAccountColumn: true }
+        : context;
+
       const result = await parseGenericTransactions(
         normalized.records,
         existingPositions,
         null,
-        context
+        normalizedContext
       );
 
       const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };

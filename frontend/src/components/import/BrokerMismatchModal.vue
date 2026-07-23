@@ -169,7 +169,8 @@ const brokerNames = {
   tradingview: 'TradingView',
   tradovate: 'Tradovate',
   questrade: 'Questrade',
-  projectx: 'ProjectX'
+  projectx: 'ProjectX',
+  projectx_orders: 'ProjectX'
 }
 
 function formatBrokerName(broker) {
