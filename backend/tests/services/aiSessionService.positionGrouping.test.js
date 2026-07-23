@@ -481,3 +481,32 @@ describe('AISessionService.summarizePositionGroupForClient', () => {
     expect(AISessionService.summarizePositionGroupForClient(null)).toBeNull();
   });
 });
+
+describe('AISessionService.getUserSessions recovery metadata', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test('returns the request ID used to recover a session after a gateway timeout', async () => {
+    db.query.mockResolvedValue({
+      rows: [{
+        id: 'session-1',
+        status: 'active',
+        trade_count: 1,
+        followup_count: 0,
+        max_followups: 5,
+        filters_applied: { request_id: 'request-1' },
+        created_at: '2026-07-22T06:32:13.882Z'
+      }]
+    });
+
+    const sessions = await AISessionService.getUserSessions(USER_ID, 20);
+
+    expect(sessions).toEqual([
+      expect.objectContaining({
+        id: 'session-1',
+        request_id: 'request-1'
+      })
+    ]);
+  });
+});

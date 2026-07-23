@@ -16,7 +16,7 @@ const aiController = {
     try {
       console.log('[AI_CONTROLLER] Creating new session for user', req.user.id);
 
-      const { filters, tradeId, analysisType } = req.body || {};
+      const { filters, tradeId, analysisType, request_id } = req.body || {};
 
       const result = await AISessionService.createSession(
         req.user.id,
@@ -25,7 +25,8 @@ const aiController = {
           apiKey: req.body.apiKey,
           modelName: req.body.modelName,
           tradeId,
-          analysisType
+          analysisType,
+          request_id
         }
       );
 

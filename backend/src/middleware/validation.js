@@ -755,6 +755,7 @@ const schemas = {
     filters: Joi.object().unknown(true).default({}),
     tradeId: Joi.string().trim().max(64),
     analysisType: Joi.string().valid('single_trade'),
+    request_id: Joi.string().trim().max(100).pattern(/^[a-zA-Z0-9_-]+$/),
     apiKey: Joi.string().trim().max(500),
     modelName: Joi.string().trim().max(200)
   }),

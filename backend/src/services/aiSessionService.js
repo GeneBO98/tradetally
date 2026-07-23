@@ -1005,6 +1005,13 @@ Be direct, data-driven, and specific. Do not give generic trading advice.`;
     console.log('[AI_SESSION] Generating initial analysis...');
     const initialAnalysis = await AIProvider.generateResponse(prompt, aiSettings);
 
+    const storedFilters = isSingleTradeAnalysis
+      ? { tradeId: options.tradeId, analysisType: 'single_trade' }
+      : { ...normalizedFilters };
+    if (options.request_id) {
+      storedFilters.request_id = options.request_id;
+    }
+
     // Create session record
     const sessionResult = await db.query(
       `INSERT INTO ai_sessions
@@ -1013,7 +1020,7 @@ Be direct, data-driven, and specific. Do not give generic trading advice.`;
        RETURNING id, filters_applied, trade_count, followup_count, max_followups, status, expires_at, created_at`,
       [
         userId,
-        JSON.stringify(isSingleTradeAnalysis ? { tradeId: options.tradeId, analysisType: 'single_trade' } : normalizedFilters),
+        JSON.stringify(storedFilters),
         isSingleTradeAnalysis ? 1 : tradeSummary.metrics.trade_count,
         JSON.stringify(tradeSummary),
         this.MAX_FOLLOWUPS
@@ -1042,6 +1049,7 @@ Be direct, data-driven, and specific. Do not give generic trading advice.`;
 
     return {
       session_id: session.id,
+      request_id: options.request_id || null,
       initial_analysis: initialAnalysis,
       trade_summary: isSingleTradeAnalysis ? {
         analysis_type: 'single_trade',
@@ -1291,6 +1299,7 @@ Please provide a helpful, specific response to the user's question. Reference th
       trade_count: row.trade_count,
       followup_count: row.followup_count,
       max_followups: row.max_followups,
+      request_id: row.filters_applied?.request_id || null,
       created_at: row.created_at
     }));
   }
