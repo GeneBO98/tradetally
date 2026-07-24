@@ -20,7 +20,7 @@ describe('AIService Ollama provider routing', () => {
     jest.spyOn(aiService, 'getUserSettings').mockResolvedValue({
       provider: 'ollama',
       apiKey: '',
-      apiUrl: 'http://localhost:11434/v1',
+      apiUrl: 'http://localhost:11434',
       model: 'qwen2.5:3b-instruct'
     });
     AIProvider.generateResponse.mockResolvedValue('Journal analysis');
@@ -41,7 +41,7 @@ describe('AIService Ollama provider routing', () => {
       {
         provider: 'ollama',
         apiKey: '',
-        apiUrl: 'http://localhost:11434/v1',
+        apiUrl: 'http://localhost:11434',
         modelName: 'qwen2.5:3b-instruct'
       },
       { maxTokens: 1500, temperature: 0.7 }

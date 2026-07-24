@@ -1,4 +1,6 @@
 FROM node:20.19.5-alpine3.21 AS frontend-builder
+# Avoid illegal-instruction failures when this stage runs under QEMU for arm64.
+ENV QEMU_CPU=max
 # Update packages to fix vulnerabilities
 RUN apk update && apk upgrade --no-cache
 WORKDIR /app
@@ -27,6 +29,8 @@ ENV VITE_PROMOTEKIT_ID=${VITE_PROMOTEKIT_ID}
 RUN pnpm --dir frontend run build
 
 FROM node:20.19.5-alpine3.21 AS backend-builder
+# Avoid illegal-instruction failures when this stage runs under QEMU for arm64.
+ENV QEMU_CPU=max
 # Update packages to fix vulnerabilities
 RUN apk update && apk upgrade --no-cache
 WORKDIR /app
@@ -60,6 +64,8 @@ COPY backend/ ./backend
 RUN pnpm deploy --filter tradetally-backend --prod --legacy /prod/backend
 
 FROM node:20.19.5-alpine3.21
+# Avoid illegal-instruction failures when this stage runs under QEMU for arm64.
+ENV QEMU_CPU=max
 # Update packages to fix vulnerabilities
 # Note: vips is NOT needed here - Sharp uses bundled libvips via SHARP_IGNORE_GLOBAL_LIBVIPS=1
 RUN apk update && apk upgrade --no-cache && \
