@@ -1971,7 +1971,15 @@ function detectBrokerFromHeaders(headers) {
     return 'firstrade'
   }
 
-  // ProjectX detection
+  // ProjectX order-history detection (ProjectX-powered platforms)
+  if (headersStr.includes('contractname') && headersStr.includes('status') &&
+      headersStr.includes('size') && headersStr.includes('side') &&
+      headersStr.includes('filledat') && headersStr.includes('executeprice') &&
+      headersStr.includes('positiondisposition')) {
+    return 'projectx'
+  }
+
+  // ProjectX completed-trades detection
   if (headersStr.includes('contractname') && headersStr.includes('enteredat') &&
       headersStr.includes('exitedat') && headersStr.includes('pnl') &&
       headersStr.includes('tradeduration')) {

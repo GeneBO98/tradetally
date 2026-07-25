@@ -427,6 +427,24 @@
       }
     },
     {
+      "id": "projectx_order_history_bid_ask_round_trip",
+      "csv": "Id,AccountName,ContractName,Status,Type,Size,Side,CreatedAt,TradeDay,FilledAt,CancelledAt,TriggeredAt,StopPrice,LimitPrice,ExecutePrice,TriggeredPrice,PositionDisposition,CreationDisposition,RejectionReason,ExchangeOrderId,PlatformOrderId\n1,TSB17847,MESM6,Filled,Market,1,Bid,06/11/2026 07:45:21 -06:00,06/11/2026 00:00:00 -05:00,06/11/2026 07:45:21 -06:00,,,,7305.5,7300.5,,Opening,Trader,,EX-1,P-1\n2,TSB17847,MESM6,Filled,Market,1,Ask,06/11/2026 07:46:21 -06:00,06/11/2026 00:00:00 -05:00,06/11/2026 07:46:21 -06:00,,,,7303.75,7303.75,,Closing,ClosePosition,,EX-2,P-2\n3,TSB17847,MESM6,Rejected,Stop,1,Ask,06/11/2026 07:47:00 -06:00,06/11/2026 00:00:00 -05:00,,,,7300.5,,,,Undetermined,StopLoss,CME:Sell order stop price must be below last trade price,,P-3",
+      "expected": {
+        "detected_broker": "projectx_orders",
+        "symbol": "MESM6",
+        "broker": "projectx",
+        "side": "long",
+        "quantity": 1,
+        "entry_price": 7300.5,
+        "exit_price": 7303.75,
+        "trade_date": "2026-06-11",
+        "instrument_type": "future",
+        "pnl": 16.25,
+        "execution_count": 2,
+        "account_identifier": "TSB17847"
+      }
+    },
+    {
       "id": "ibkr_same_order_partial_fills_round_trip",
       "csv": "ClientAccountID,AssetClass,Symbol,Conid,DateTime,Quantity,TradePrice,IBCommission,Buy/Sell,LevelOfDetail,IBOrderID,IBExecID,TradeID\nU123,STK,AAPL,265598,20260714;093000,103,300,-1.000309,BUY,EXECUTION,ORDER-1,EXEC-1,TRADE-1\nU123,STK,AAPL,265598,20260714;093000,137,300,-0.200411,BUY,EXECUTION,ORDER-1,EXEC-2,TRADE-2\nU123,STK,AAPL,265598,20260714;103000,240,305,-1.25,SELL,EXECUTION,ORDER-2,EXEC-3,TRADE-3",
       "expected": {

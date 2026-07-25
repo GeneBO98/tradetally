@@ -134,13 +134,22 @@ class AIProvider {
   /**
    * Generate using OpenAI-compatible API (LM Studio, Ollama, etc.)
    */
-  static buildOpenAIChatCompletionsUrl(apiUrl) {
+  static buildOpenAIChatCompletionsUrl(apiUrl, provider = '') {
     if (!apiUrl) {
       throw new Error('OpenAI-compatible API URL not configured');
     }
 
     const url = new URL(apiUrl);
     url.pathname = url.pathname.replace(/\/+$/, '');
+
+    const normalizedProvider = String(provider).toLowerCase();
+    if (normalizedProvider === 'ollama' || normalizedProvider === 'lmstudio') {
+      const normalizedPath = url.pathname.toLowerCase();
+      if (!normalizedPath || normalizedPath === '/' || (normalizedProvider === 'ollama' && normalizedPath === '/api/generate')) {
+        url.pathname = '/v1';
+      }
+    }
+
     if (!url.pathname.toLowerCase().endsWith('/chat/completions')) {
       url.pathname = `${url.pathname}/chat/completions`;
     }
@@ -152,7 +161,7 @@ class AIProvider {
       throw new Error('Custom AI model not configured');
     }
 
-    const url = this.buildOpenAIChatCompletionsUrl(apiUrl);
+    const url = this.buildOpenAIChatCompletionsUrl(apiUrl, options.provider);
 
     console.log(`[AI_PROVIDER] Calling OpenAI-compatible API at: ${summarizeUrlForLogging(url)}`);
 

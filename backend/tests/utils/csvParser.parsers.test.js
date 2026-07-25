@@ -1234,6 +1234,12 @@ describe('Dashboard-derived CSV import contracts', () => {
     if (expected.execution_count !== undefined) {
       expect(result.trades[0].executions).toHaveLength(expected.execution_count);
     }
+    if (expected.pnl !== undefined) {
+      expect(result.trades[0].pnl).toBeCloseTo(expected.pnl, 6);
+    }
+    if (expected.account_identifier !== undefined) {
+      expect(result.trades[0].accountIdentifier).toBe(expected.account_identifier);
+    }
   });
 });
 
@@ -1246,6 +1252,16 @@ describe('ProjectX parser', () => {
     '1,ESM24,01/01/2025 09:30:00 +00:00,01/01/2025 10:00:00 +00:00,5000.00,5010.00,1.00,500.00,1,Long,01/01/2025,00:30:00,2.00'
   ].join('\n');
 
+  const projectxOrderHistoryCSV = [
+    'Id,AccountName,ContractName,Status,Type,Size,Side,CreatedAt,TradeDay,FilledAt,CancelledAt,TriggeredAt,StopPrice,LimitPrice,ExecutePrice,TriggeredPrice,PositionDisposition,CreationDisposition,RejectionReason,ExchangeOrderId,PlatformOrderId',
+    '1,TSB17847,MESM6,Filled,Market,1,Bid,06/11/2026 07:45:21 -06:00,06/11/2026 00:00:00 -05:00,06/11/2026 07:45:21 -06:00,,,,7305.5,7300.5,,Opening,Trader,,EX-1,P-1',
+    '2,TSB17847,MESM6,Filled,Market,1,Ask,06/11/2026 07:46:21 -06:00,06/11/2026 00:00:00 -05:00,06/11/2026 07:46:21 -06:00,,,,7303.75,7303.75,,Closing,ClosePosition,,EX-2,P-2',
+    '3,TSB17847,MESM6,Filled,Market,2,Ask,06/11/2026 08:00:00 -06:00,06/11/2026 00:00:00 -05:00,06/11/2026 08:00:00 -06:00,,,,7310,7310,,Opening,Trader,,EX-3,P-3',
+    '4,TSB17847,MESM6,Filled,Market,1,Bid,06/11/2026 08:01:00 -06:00,06/11/2026 00:00:00 -05:00,06/11/2026 08:01:00 -06:00,,,,7308,7308,,Closing,Trader,,EX-4,P-4',
+    '5,TSB17847,MESM6,Filled,Market,1,Bid,06/11/2026 08:02:00 -06:00,06/11/2026 00:00:00 -05:00,06/11/2026 08:02:00 -06:00,,,,7307,7307,,Closing,ClosePosition,,EX-5,P-5',
+    '6,TSB17847,MESM6,Rejected,Stop,1,Ask,06/11/2026 08:03:00 -06:00,06/11/2026 00:00:00 -05:00,,,,7300.5,,,,Undetermined,StopLoss,CME:Sell order stop price must be below last trade price,,P-6'
+  ].join('\n');
+
   test('returns valid result with trades array (regression)', async () => {
     const result = await parseCSV(buf(projectxCSV), 'projectx', {});
     expectValidResult(result);
@@ -1254,6 +1270,53 @@ describe('ProjectX parser', () => {
   test('parses ContractName for futures symbol', async () => {
     const result = await parseCSV(buf(projectxCSV), 'projectx', {});
     expect(result.trades.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test('parses ProjectX order history with Bid/Ask sides and partial closes', async () => {
+    const result = await parseCSV(buf(projectxOrderHistoryCSV), 'auto', {
+      tradeGroupingSettings: { enabled: false }
+    });
+
+    expectValidResult(result);
+    expect(result.diagnostics.detectedBroker).toBe('projectx_orders');
+    expect(result.diagnostics.skippedRows).toBe(1);
+    expect(result.diagnostics.skippedReasons).toEqual(expect.arrayContaining([
+      expect.objectContaining({ row: 6, reason: 'Rejected order' })
+    ]));
+    expect(result.trades).toHaveLength(2);
+    expect(result.trades[0]).toEqual(expect.objectContaining({
+      symbol: 'MESM6',
+      broker: 'projectx',
+      side: 'long',
+      quantity: 1,
+      entryPrice: 7300.5,
+      exitPrice: 7303.75,
+      pnl: 16.25,
+      accountIdentifier: 'TSB17847',
+      instrumentType: 'future',
+      pointValue: 5
+    }));
+    expect(result.trades[0].executions.map(execution => execution.orderId)).toEqual(['P-1', 'P-2']);
+    expect(result.trades[1]).toEqual(expect.objectContaining({
+      side: 'short',
+      quantity: 2,
+      entryPrice: 7310,
+      exitPrice: 7307.5,
+      pnl: 25
+    }));
+    expect(result.trades[1].executions).toHaveLength(3);
+  });
+
+  test('reroutes ProjectX order history when TradingView is selected', async () => {
+    const result = await parseCSV(buf(projectxOrderHistoryCSV), 'tradingview', {
+      tradeGroupingSettings: { enabled: false }
+    });
+
+    expect(result.trades).toHaveLength(2);
+    expect(result.diagnostics.detectedBroker).toBe('projectx_orders');
+    expect(result.diagnostics.warnings).toEqual(expect.arrayContaining([
+      expect.stringContaining('headers match ProjectX order history')
+    ]));
   });
 });
 

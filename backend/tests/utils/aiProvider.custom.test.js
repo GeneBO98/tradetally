@@ -25,6 +25,16 @@ describe('Custom OpenAI-compatible provider', () => {
     expect(AIProvider.buildOpenAIChatCompletionsUrl(input)).toBe(expected);
   });
 
+  test.each([
+    ['ollama', 'http://localhost:11434', 'http://localhost:11434/v1/chat/completions'],
+    ['ollama', 'http://localhost:11434/', 'http://localhost:11434/v1/chat/completions'],
+    ['ollama', 'http://localhost:11434/api/generate', 'http://localhost:11434/v1/chat/completions'],
+    ['ollama', 'http://localhost:11434/v1', 'http://localhost:11434/v1/chat/completions'],
+    ['lmstudio', 'http://localhost:1234', 'http://localhost:1234/v1/chat/completions']
+  ])('normalizes a %s URL from %s', (provider, input, expected) => {
+    expect(AIProvider.buildOpenAIChatCompletionsUrl(input, provider)).toBe(expected);
+  });
+
   test('sends a standard chat request without authorization for a keyless endpoint', async () => {
     const result = await AIProvider.generateResponse('Review this trade', {
       provider: 'custom',
@@ -62,6 +72,29 @@ describe('Custom OpenAI-compatible provider', () => {
 
     const request = fetchAiProviderUrl.mock.calls[0][2];
     expect(request.headers.Authorization).toBe('Bearer secret-key');
+  });
+
+  test('uses the Ollama v1 chat completions endpoint for a bare server URL', async () => {
+    const result = await AIProvider.generateResponse('Analyze these journal entries', {
+      provider: 'ollama',
+      apiKey: '',
+      apiUrl: 'http://localhost:11434',
+      modelName: 'qwen2.5:3b-instruct'
+    }, { maxTokens: 1500, temperature: 0.7 });
+
+    expect(result).toBe('Custom response');
+    expect(fetchAiProviderUrl).toHaveBeenCalledWith(
+      'ollama',
+      'http://localhost:11434/v1/chat/completions',
+      expect.objectContaining({ method: 'POST' })
+    );
+
+    const request = fetchAiProviderUrl.mock.calls[0][2];
+    expect(JSON.parse(request.body)).toEqual(expect.objectContaining({
+      model: 'qwen2.5:3b-instruct',
+      max_tokens: 1500,
+      temperature: 0.7
+    }));
   });
 
   test('requires both URL and model for Custom configuration', () => {

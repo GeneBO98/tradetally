@@ -110,22 +110,59 @@ function normalizeFidelityRecord(record) {
 }
 
 function normalizeProjectXOrderRecord(record) {
-  const rawQuantity = parseNumeric(record.qty_done, 0);
-  const price = parseNumeric(record.price_done, NaN);
-  if (!rawQuantity || !Number.isFinite(price) || price <= 0) return null;
+  const isOrderHistoryExport = record.ContractName !== undefined || record.ExecutePrice !== undefined;
+  const status = cleanString(record.Status).toLowerCase();
 
-  const rawSymbol = cleanString(record.trading_symbol || record.symbol);
+  if (isOrderHistoryExport && status !== 'filled') return null;
+
+  const rawQuantity = parseNumeric(isOrderHistoryExport ? record.Size : record.qty_done, 0);
+  const price = parseNumeric(isOrderHistoryExport ? record.ExecutePrice : record.price_done, NaN);
+  const rawSymbol = cleanString(
+    isOrderHistoryExport ? record.ContractName : (record.trading_symbol || record.symbol)
+  );
+  const filledAt = isOrderHistoryExport
+    ? record.FilledAt
+    : (record.last_time || record.order_date || record.formattedDate);
+  const rawSide = cleanString(record.Side).toLowerCase();
+  const side = isOrderHistoryExport
+    ? (rawSide === 'bid' || rawSide === 'buy'
+        ? 'Buy'
+        : rawSide === 'ask' || rawSide === 'sell'
+          ? 'Sell'
+          : null)
+    : (rawQuantity < 0 ? 'Sell' : 'Buy');
+
+  if (!rawQuantity || !Number.isFinite(price) || price <= 0 || !rawSymbol || !filledAt || !side) {
+    return null;
+  }
+
   const symbol = rawSymbol.includes('.') ? rawSymbol.split('.').pop() : rawSymbol;
 
   return {
     Symbol: symbol,
-    'Trade Date': record.last_time || record.order_date || record.formattedDate,
-    Side: rawQuantity < 0 ? 'Sell' : 'Buy',
+    'Trade Date': filledAt,
+    Side: side,
     Quantity: Math.abs(rawQuantity),
     Price: price,
-    Account: record.account || record.account_id,
-    Broker: 'projectx'
+    Account: isOrderHistoryExport ? record.AccountName : (record.account || record.account_id),
+    'Order ID': isOrderHistoryExport
+      ? (record.PlatformOrderId || record.ExchangeOrderId || record.Id)
+      : record.order_id,
+    Description: isOrderHistoryExport
+      ? [record.PositionDisposition, record.Type].filter(Boolean).join(' ')
+      : '',
+    Broker: 'projectx',
+    _position_disposition: isOrderHistoryExport ? record.PositionDisposition : null
   };
+}
+
+function getIgnoredProjectXOrderReason(record) {
+  const status = cleanString(record.Status).toLowerCase();
+  if (!status) return 'Non-trade or unfilled account activity row';
+  if (status === 'rejected') return 'Rejected order';
+  if (status === 'cancelled' || status === 'canceled') return 'Cancelled order (not executed)';
+  if (status !== 'filled') return `Order not filled (status: ${record.Status})`;
+  return 'Missing executed symbol, side, quantity, price, or fill time';
 }
 
 function normalizeSupportedBrokerRows(records, broker) {
@@ -144,7 +181,10 @@ function normalizeSupportedBrokerRows(records, broker) {
     if (row && row.Symbol && row.Quantity > 0) {
       normalized.push(row);
     } else {
-      ignored.push({ row: index + 1, reason: 'Non-trade or unfilled account activity row' });
+      const reason = broker === 'projectx_orders'
+        ? getIgnoredProjectXOrderReason(record)
+        : 'Non-trade or unfilled account activity row';
+      ignored.push({ row: index + 1, reason });
     }
   });
 

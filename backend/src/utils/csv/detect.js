@@ -411,6 +411,27 @@ function extractAccountFromRecord(record, accountColumnName) {
   return str === '' ? null : str;
 }
 
+function hasProjectXOrderHistoryHeaders(headers = []) {
+  const headerValues = typeof headers === 'string'
+    ? headers.split(',')
+    : Array.from(headers || []);
+  const normalizedHeaders = headerValues.map(header =>
+    String(header || '').toLowerCase().trim().replace(/^"|"$/g, '')
+  );
+  const requiredHeaders = [
+    'contractname',
+    'status',
+    'size',
+    'side',
+    'filledat',
+    'executeprice',
+    'positiondisposition'
+  ];
+
+  return requiredHeaders.every(header => normalizedHeaders.includes(header)) &&
+    ['platformorderid', 'exchangeorderid', 'id'].some(header => normalizedHeaders.includes(header));
+}
+
 /**
  * Detects the broker format based on CSV headers
  * @param {Buffer} fileBuffer - The CSV file buffer
@@ -779,6 +800,13 @@ function detectBrokerFormat(fileBuffer) {
       return 'fidelity';
     }
 
+    // ProjectX order-history export used by ProjectX-powered platforms. Filled
+    // rows expose Bid/Ask sides plus ExecutePrice and FilledAt.
+    if (hasProjectXOrderHistoryHeaders(headers)) {
+      console.log('[AUTO-DETECT] Detected: ProjectX order history');
+      return 'projectx_orders';
+    }
+
     // ProjectX-derived order export used by several prop firms. Only completed
     // rows with qty_done and price_done are imported.
     if (headers.includes('order_id') && headers.includes('account_id') &&
@@ -1076,6 +1104,7 @@ module.exports = {
   redactAccountId,
   detectAccountColumn,
   extractAccountFromRecord,
+  hasProjectXOrderHistoryHeaders,
   extractIBKRActivityStatementSection,
   detectBrokerFormat,
   findLikelyDelimitedHeaderLine,

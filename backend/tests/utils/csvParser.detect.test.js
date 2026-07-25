@@ -135,6 +135,11 @@ describe('detectBrokerFormat', () => {
     expect(detectBrokerFormat(buf(csv))).toBe('projectx_orders');
   });
 
+  test('detects ProjectX order-history rows', () => {
+    const csv = 'Id,AccountName,ContractName,Status,Type,Size,Side,CreatedAt,TradeDay,FilledAt,CancelledAt,TriggeredAt,StopPrice,LimitPrice,ExecutePrice,TriggeredPrice,PositionDisposition,CreationDisposition,RejectionReason,ExchangeOrderId,PlatformOrderId\n1,TSB17847,MESM6,Filled,Market,1,Bid,06/11/2026 07:45:21 -06:00,06/11/2026 00:00:00 -05:00,06/11/2026 07:45:21 -06:00,,,,7305.5,7300.5,,Opening,Trader,,EX-1,P-1';
+    expect(detectBrokerFormat(buf(csv))).toBe('projectx_orders');
+  });
+
   test('detects Firstrade format', () => {
     const csv = 'Symbol,Quantity,Price,Action,Description,TradeDate,SettledDate,Interest,Amount,Commission,Fee,CUSIP,RecordType\nSPY,1,600.00,BUY,SPDR S&P 500 ETF TRUST,2025-02-10,2025-02-11,0.00,-600.00,0.00,0.00,78462F103,Trade';
     expect(detectBrokerFormat(buf(csv))).toBe('firstrade');
