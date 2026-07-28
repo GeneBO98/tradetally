@@ -1,5 +1,6 @@
 const { localToUTC } = require('../timezone');
 const { getExecutionTimeBounds, POSITION_CLOSE_TOLERANCE, normalizePositionQuantity, parseInstrumentData } = require('./shared');
+const { computeTradePnl } = require('../../services/pnlEngine');
 
 
 /**
@@ -523,8 +524,24 @@ function finalizeRepairedTrade(trade, valueMultiplier) {
   } else {
     trade.exitPrice = null;
     trade.exitTime = null;
-    trade.pnl = 0;
-    trade.pnlPercent = 0;
+    // An open position can still have realized P&L from partial exits. The
+    // repair pass used to discard that P&L by treating every non-flat position
+    // as zero. Run the repaired fills through the canonical engine so imports
+    // and manually-created trades use the same FIFO/cost calculation.
+    const engineResult = computeTradePnl({
+      executions: trade.executions,
+      side: trade.side,
+      instrumentType: trade.instrumentType || trade.instrument_type,
+      contractSize: trade.contractSize || trade.contract_size,
+      pointValue: trade.pointValue || trade.point_value,
+      fallbackCommission: trade.totalFees,
+      fallbackFees: 0,
+      timezone: 'UTC'
+    });
+    trade.executions = engineResult.annotatedExecutions;
+    trade.executionData = engineResult.annotatedExecutions;
+    trade.pnl = engineResult.aggregate.pnl ?? 0;
+    trade.pnlPercent = engineResult.aggregate.pnl_percent ?? 0;
     trade.notes = trade.notes || `Open position: ${trade.executions.length} executions`;
   }
 
