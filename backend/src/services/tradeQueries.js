@@ -13,6 +13,7 @@ const db = require('../config/database');
 const Trade = require('../models/Trade');
 const { getUserTimezone } = require('../utils/timezone');
 const { buildTradeDateRangeClause } = require('../utils/tradeDateFilter');
+const { buildExecutionDailyPnlRows } = require('../utils/executionPnlByDate');
 
 async function timedDbQuery(label, query, values = []) {
   const startedAt = Date.now();
@@ -470,7 +471,7 @@ class TradeQueries {
     if (needsSectorOuterJoin) {
       subquery += ` LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol`;
     }
-    subquery += ` ${whereClause} ORDER BY t.trade_date DESC, t.entry_time DESC`;
+    subquery += ` ${whereClause} ORDER BY t.entry_time DESC NULLS LAST, t.id DESC`;
 
     if (filters.limit) {
       subquery += ` LIMIT $${paramCount}`;
@@ -505,7 +506,7 @@ class TradeQueries {
       LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
       LEFT JOIN trade_position_groups tpg ON t.position_group_id = tpg.id
       GROUP BY t.id, pm.current_price, pm.last_updated, sc.finnhub_industry, sc.company_name, tpg.detected_strategy, tpg.leg_count
-      ORDER BY t.trade_date DESC, t.entry_time DESC
+      ORDER BY t.entry_time DESC NULLS LAST, t.id DESC
     `;
 
     const queryStartTime = Date.now();
@@ -527,6 +528,7 @@ class TradeQueries {
     const { POSITION_GROUP_KEY } = require('../utils/positionGrouping');
     let useMedian = false;
     let breakevenConfig = { mode: 'ticks', default: 0, byUnderlying: {} };
+    let userTimezone = 'UTC';
     // Whole-trade win rate (issue #339): when the profile setting is on, the
     // completed_trades CTE collapses multi-leg positions opened together into a
     // single trade so the headline win rate / counts / profit factor are
@@ -546,6 +548,11 @@ class TradeQueries {
       }
     } catch (error) {
       console.warn('Could not fetch user settings for analytics, using default (average):', error.message);
+    }
+    try {
+      userTimezone = await getUserTimezone(userId);
+    } catch (error) {
+      console.warn('Could not fetch user timezone for daily analytics, using UTC:', error.message);
     }
 
     // Pass the config we just fetched into the WHERE builder so it doesn't
@@ -592,6 +599,66 @@ class TradeQueries {
     const derivedRValue = dollarRisk
       ? derivedRValueDollarSql('t', dollarRisk)
       : derivedRValueSql('t');
+
+    // Daily P&L is attributed to actual exit executions, not the position's
+    // single stored trade_date. Remove only the top-level date range from this
+    // row fetch so a position opened before the selected window can still
+    // contribute a partial exit inside it; buildExecutionDailyPnlRows applies
+    // the requested range to each realized execution afterward.
+    const dailyFilters = {
+      ...filters,
+      startDate: undefined,
+      endDate: undefined,
+      breakevenToleranceConfig: breakevenConfig
+    };
+    const {
+      whereClause: dailyWhereClause,
+      values: dailyValues
+    } = await this._buildWhereClause(userId, dailyFilters);
+    const dailyQueryValues = [...dailyValues];
+    let dailyCandidateDateClause = '';
+
+    if (filters.startDate || filters.endDate) {
+      const startParam = filters.startDate ? dailyQueryValues.length + 1 : null;
+      if (filters.startDate) dailyQueryValues.push(filters.startDate);
+      const endParam = filters.endDate ? dailyQueryValues.length + 1 : null;
+      if (filters.endDate) dailyQueryValues.push(filters.endDate);
+      const timezoneParam = dailyQueryValues.length + 1;
+      dailyQueryValues.push(userTimezone);
+
+      const eventTimestamp = "COALESCE(exec->>'exitTime', exec->>'exit_time', exec->>'datetime')";
+      const eventDate = `CASE
+        WHEN COALESCE(exec->>'exit_date', '') ~ '^\\d{4}-\\d{2}-\\d{2}$'
+          THEN (exec->>'exit_date')::date
+        WHEN COALESCE(${eventTimestamp}, '') ~ '^\\d{4}-\\d{2}-\\d{2}'
+          THEN SUBSTRING(${eventTimestamp} FROM 1 FOR 10)::date
+        ELSE NULL
+      END`;
+      const rangeConditions = [];
+      // Timestamp strings are screened by their ISO date prefix to avoid a bad
+      // legacy value failing the whole query. Include one adjacent day on each
+      // side so timezone conversion cannot exclude a valid boundary event; the
+      // JS aggregator applies the exact user-timezone range afterward.
+      if (startParam) rangeConditions.push(`event_date >= ($${startParam}::date - 1)`);
+      if (endParam) rangeConditions.push(`event_date <= ($${endParam}::date + 1)`);
+      const exitRangeConditions = [];
+      if (startParam) {
+        exitRangeConditions.push(`(t.exit_time AT TIME ZONE $${timezoneParam})::date >= $${startParam}::date`);
+      }
+      if (endParam) {
+        exitRangeConditions.push(`(t.exit_time AT TIME ZONE $${timezoneParam})::date <= $${endParam}::date`);
+      }
+
+      dailyCandidateDateClause = ` AND (
+        (t.exit_time IS NOT NULL AND ${exitRangeConditions.join(' AND ')})
+        OR EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements(COALESCE(t.executions, '[]'::jsonb)) AS arr(exec)
+          CROSS JOIN LATERAL (SELECT ${eventDate} AS event_date) realized
+          WHERE ${rangeConditions.join(' AND ')}
+        )
+      )`;
+    }
 
     // Per-leg vs per-position completed_trades. The grouped form sums legs that
     // share account + underlying/symbol + entry_time into one synthetic trade.
@@ -818,18 +885,27 @@ class TradeQueries {
       `, values),
       timedDbQuery('analytics.dailyPnLQuery', `
         SELECT
-          trade_date,
-          SUM(COALESCE(pnl, 0)) as daily_pnl,
-          SUM(SUM(COALESCE(pnl, 0))) OVER (ORDER BY trade_date) as cumulative_pnl,
-          COALESCE(SUM(${derivedRValue}), 0) as r_value,
-          COALESCE(SUM(SUM(${derivedRValue})) OVER (ORDER BY trade_date), 0) as cumulative_r_value,
-          ${groupByPosition ? `COUNT(DISTINCT ${POSITION_GROUP_KEY})` : 'COUNT(*)'} as trade_count
+          t.id AS trade_id,
+          t.symbol,
+          t.side,
+          t.pnl,
+          t.commission,
+          t.fees,
+          t.entry_price,
+          t.quantity,
+          t.instrument_type,
+          t.contract_size,
+          t.point_value,
+          t.underlying_asset,
+          t.exit_time,
+          t.executions,
+          ${derivedRValue} AS derived_r_value,
+          (${POSITION_GROUP_KEY}) AS position_key
         FROM trades t
-        ${whereClause}
-        GROUP BY trade_date
-        HAVING COUNT(*) > 0
-        ORDER BY trade_date
-      `, values),
+        ${dailyWhereClause}
+        ${dailyCandidateDateClause}
+        ORDER BY t.id
+      `, dailyQueryValues),
       timedDbQuery('analytics.dailyWinRateQuery', groupByPosition ? `
         -- Whole-trade mode: wins/losses counted per position, not per leg, so
         -- the Daily Win Rate & P/R Ratio widget matches the headline win rate.
@@ -1024,6 +1100,22 @@ class TradeQueries {
 
     const executionCount = parseInt(executionResult.rows[0].execution_count) || 0;
     const analytics = analyticsResult.rows[0];
+    const dailyPnlRows = buildExecutionDailyPnlRows(
+      dailyPnLResult.rows,
+      userTimezone,
+      {
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        groupByPosition
+      }
+    );
+    const dailyPnlValues = dailyPnlRows.map((row) => Number(row.daily_pnl) || 0);
+    const executionMaxDailyGain = dailyPnlValues.length > 0
+      ? Math.max(...dailyPnlValues)
+      : 0;
+    const executionMaxDailyLoss = dailyPnlValues.length > 0
+      ? Math.min(...dailyPnlValues)
+      : 0;
     console.log('[PERF] getAnalytics total time:', Date.now() - analyticsStartedAt, 'ms');
 
     const bestTrade = bestWorstResult.rows.find(t => t.type === 'best') || null;
@@ -1058,16 +1150,16 @@ class TradeQueries {
         profitFactor: parseFloat(analytics.profit_factor) || 0,
         sharpeRatio: parseFloat(analytics.sharpe_ratio) || 0,
         maxDrawdown: parseFloat(analytics.max_drawdown) || 0,
-        maxDailyGain: parseFloat(analytics.max_daily_gain) || 0,
-        maxDailyLoss: parseFloat(analytics.max_daily_loss) || 0,
+        maxDailyGain: executionMaxDailyGain,
+        maxDailyLoss: executionMaxDailyLoss,
         symbolsTraded: parseInt(analytics.symbols_traded) || 0,
-        tradingDays: parseInt(analytics.trading_days) || 0,
+        tradingDays: dailyPnlRows.length,
         avgReturnPercent: parseFloat(analytics.avg_return_pct) || 0,
         avgRValue: parseFloat(analytics.avg_r_value) || 0,
         totalRValue: parseFloat(analytics.total_r_value) || 0
       },
       performanceBySymbol: symbolResult.rows,
-      dailyPnL: dailyPnLResult.rows,
+      dailyPnL: dailyPnlRows,
       dailyWinRate: dailyWinRateResult.rows,
       recentTradePnls: recentTradePnlsResult.rows,
       topTrades: {

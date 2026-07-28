@@ -114,6 +114,84 @@ describe('TradeQueries.getAnalytics characterization', () => {
     expect(analytics.summary.totalRValue).toBe(3.42);
   });
 
+  test('returns dashboard daily metrics from realized exit dates', async () => {
+    db.query.mockResolvedValue(defaultDbResponse());
+    db.query.mockResolvedValueOnce({ rows: [{ execution_count: 4 }] });
+    db.query.mockResolvedValueOnce(defaultDbResponse());
+    db.query.mockResolvedValueOnce({ rows: [] });
+    db.query.mockResolvedValueOnce({
+      rows: [
+        {
+          trade_id: 'multi-day-position',
+          position_key: 'account|AAPL|position',
+          side: 'long',
+          pnl: 500,
+          derived_r_value: 2,
+          instrument_type: 'stock',
+          executions: [
+            {
+              action: 'buy',
+              quantity: 100,
+              price: 100,
+              datetime: '2026-07-16T14:30:00Z',
+              realized_pnl: null
+            },
+            {
+              action: 'sell',
+              quantity: 40,
+              price: 105,
+              datetime: '2026-07-20T15:00:00Z',
+              exit_date: '2026-07-20',
+              realized_pnl: 200
+            },
+            {
+              action: 'sell',
+              quantity: 60,
+              price: 105,
+              datetime: '2026-07-23T15:00:00Z',
+              exit_date: '2026-07-23',
+              realized_pnl: 300
+            }
+          ]
+        },
+        {
+          trade_id: 'losing-position',
+          position_key: 'account|MSFT|position',
+          side: 'long',
+          pnl: -100,
+          derived_r_value: -0.5,
+          instrument_type: 'stock',
+          exit_time: '2026-07-23T18:00:00Z',
+          executions: []
+        }
+      ]
+    });
+
+    const analytics = await TradeQueries.getAnalytics('user-1', {
+      startDate: '2026-07-20',
+      endDate: '2026-07-23'
+    });
+
+    expect(analytics.dailyPnL).toEqual([
+      expect.objectContaining({
+        trade_date: '2026-07-20',
+        daily_pnl: 200,
+        trade_count: 1
+      }),
+      expect.objectContaining({
+        trade_date: '2026-07-23',
+        daily_pnl: 200,
+        trade_count: 2
+      })
+    ]);
+    expect(analytics.summary).toEqual(expect.objectContaining({
+      totalExecutions: 4,
+      maxDailyGain: 200,
+      maxDailyLoss: 200,
+      tradingDays: 2
+    }));
+  });
+
   test('summary and daily R derive from net P&L over risk instead of stored r_value', async () => {
     await TradeQueries.getAnalytics('user-1', {});
 
@@ -157,15 +235,27 @@ describe('TradeQueries.getAnalytics characterization', () => {
       expect(sql).not.toContain("NOT COALESCE('sample' = ANY(t.tags), false)");
     });
 
-    test('all 8 fan-out queries receive identical values', async () => {
+    test('daily execution query removes only the top-level date bindings', async () => {
       await TradeQueries.getAnalytics('user-1', { startDate: '2026-01-01', endDate: '2026-01-31' });
       expect(db.query).toHaveBeenCalledTimes(8);
       const allValues = db.query.mock.calls.map(c => c[1]);
-      // Every call gets the same params array reference (or equal values).
-      const first = allValues[0];
-      for (const v of allValues) {
-        expect(v).toEqual(first);
+      for (const [index, values] of allValues.entries()) {
+        if (index === 3) {
+          expect(values).toEqual([
+            'user-1',
+            '2026-01-01',
+            '2026-01-31',
+            'America/New_York'
+          ]);
+        } else {
+          expect(values).toEqual(['user-1', '2026-01-01', '2026-01-31']);
+        }
       }
+
+      const dailySql = db.query.mock.calls[3][0];
+      expect(dailySql).toContain("jsonb_array_elements(COALESCE(t.executions, '[]'::jsonb))");
+      expect(dailySql).toContain('event_date >= ($2::date - 1)');
+      expect(dailySql).toContain('event_date <= ($3::date + 1)');
     });
   });
 
@@ -449,10 +539,11 @@ describe('TradeQueries.getAnalytics characterization', () => {
       return db.query.mock.calls[index][0];
     }
 
-    test('grouping off: per-leg daily win rate, symbol breakdown, and daily counts', async () => {
+    test('grouping off: per-leg daily win rate and execution rows are selected', async () => {
       await TradeQueries.getAnalytics('user-1', {});
       expect(sqlAt(2)).not.toContain(GROUP_KEY_PREFIX);
-      expect(sqlAt(3)).toContain('COUNT(*) as trade_count');
+      expect(sqlAt(3)).toContain('t.id AS trade_id');
+      expect(sqlAt(3)).toContain('t.executions');
       expect(sqlAt(4)).not.toContain(GROUP_KEY_PREFIX);
       expect(sqlAt(4)).toContain('FROM trades t');
     });
@@ -500,7 +591,7 @@ describe('TradeQueries.getAnalytics characterization', () => {
       expect(symbolSql).toContain('FROM positions');
     });
 
-    test('grouping on: daily P&L counts distinct positions, sums unchanged', async () => {
+    test('grouping on: daily P&L selects a stable position key for execution aggregation', async () => {
       User.getSettings.mockResolvedValueOnce({
         statistics_calculation: 'average',
         analytics_position_grouping: true
@@ -508,8 +599,10 @@ describe('TradeQueries.getAnalytics characterization', () => {
       await TradeQueries.getAnalytics('user-1', {});
 
       const dailyPnLSql = sqlAt(3);
-      expect(dailyPnLSql).toContain(`COUNT(DISTINCT ${GROUP_KEY_PREFIX}`);
-      expect(dailyPnLSql).toContain('SUM(COALESCE(pnl, 0)) as daily_pnl');
+      expect(dailyPnLSql).toContain(`(${GROUP_KEY_PREFIX}`);
+      expect(dailyPnLSql).toContain('AS position_key');
+      expect(dailyPnLSql).toContain('t.executions');
+      expect(dailyPnLSql).not.toContain('GROUP BY trade_date');
     });
   });
 

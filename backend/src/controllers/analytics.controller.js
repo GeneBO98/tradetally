@@ -13,6 +13,12 @@ const { getUserTimezone } = require('../utils/timezone');
 const { POSITION_GROUP_KEY, isPositionGroupingEnabled } = require('../utils/positionGrouping');
 const { buildExcursionMetrics } = require('../utils/excursionMetrics');
 const {
+  buildCalendarOverviewRows,
+  getExecutionDateString,
+  parseNumericValue,
+  tradeExitEvents
+} = require('../utils/executionPnlByDate');
+const {
   breakevenPredicate,
   configFromSettings,
   getBreakevenToleranceConfig,
@@ -338,131 +344,6 @@ function buildCalendarRiskMetrics(rows = []) {
   return metricsByDate;
 }
 
-function parseNumericValue(value) {
-  if (value === null || value === undefined || value === '') return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-// Returns YYYY-MM-DD for a timestamp candidate, interpreted in the given timezone.
-// Used for the legacy fallback when a trade has no annotated executions.
-function getExecutionDateString(timezone, ...candidates) {
-  for (const candidate of candidates) {
-    if (!candidate) continue;
-
-    const str = String(candidate);
-    const dateOnly = str.match(/^(\d{4}-\d{2}-\d{2})$/);
-    if (dateOnly) return dateOnly[1];
-
-    const parsed = new Date(str);
-    if (Number.isNaN(parsed.getTime())) continue;
-
-    try {
-      return new Intl.DateTimeFormat('en-CA', {
-        timeZone: timezone || 'UTC',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-      }).format(parsed);
-    } catch (err) {
-      return parsed.toISOString().split('T')[0];
-    }
-  }
-
-  return null;
-}
-
-function getTradeValueMultiplier(trade) {
-  if (trade.instrument_type === 'future') {
-    const pointValue = parseNumericValue(trade.point_value);
-    return pointValue != null && pointValue > 0 ? pointValue : 1;
-  }
-
-  if (trade.instrument_type === 'option') {
-    const contractSize = parseNumericValue(trade.contract_size);
-    return contractSize != null && contractSize > 0 ? contractSize : 100;
-  }
-
-  return 1;
-}
-
-// Convert a stored execution into { date, pnl } if it represents a closing leg.
-// Prefers engine-stamped realized_pnl + exit_date; falls back to legacy reconstruction
-// for trades that pre-date the canonical engine (pre-backfill).
-function getExitEventFromExecution(execution, trade, timezone) {
-  const realized = parseNumericValue(execution.realized_pnl);
-  if (realized != null) {
-    const date = execution.exit_date
-      ? execution.exit_date
-      : getExecutionDateString(
-          timezone,
-          execution.exitTime,
-          execution.exit_time,
-          execution.datetime
-        );
-    if (date) return { date, pnl: realized };
-  }
-
-  return legacyExitEventFromExecution(execution, trade, timezone);
-}
-
-function legacyExitEventFromExecution(execution, trade, timezone) {
-  const date = getExecutionDateString(
-    timezone,
-    execution.exitTime,
-    execution.exit_time,
-    execution.datetime
-  );
-  if (!date) return null;
-
-  const stored = parseNumericValue(execution.pnl ?? execution.p_l ?? execution.profit_loss);
-  if (stored != null) return { date, pnl: stored };
-
-  const exitPrice = parseNumericValue(execution.exitPrice ?? execution.exit_price);
-  const entryPrice = parseNumericValue(execution.entryPrice ?? execution.entry_price);
-  const quantity = Math.abs(parseNumericValue(execution.quantity) || 0);
-  if (exitPrice == null || entryPrice == null || quantity <= 0) return null;
-
-  const multiplier = getTradeValueMultiplier(trade);
-  const side = execution.side || trade.side;
-  const commission = parseNumericValue(execution.commission) || 0;
-  const fees = parseNumericValue(execution.fees ?? execution.fee) || 0;
-
-  const gross = side === 'short'
-    ? (entryPrice - exitPrice) * quantity * multiplier
-    : (exitPrice - entryPrice) * quantity * multiplier;
-  return { date, pnl: gross - commission - fees };
-}
-
-function tradeExitEvents(trade, timezone) {
-  const executions = Array.isArray(trade.executions) ? trade.executions : [];
-  if (executions.length === 0) return [];
-
-  const hasStamped = executions.some((e) => e && parseNumericValue(e.realized_pnl) != null);
-  if (hasStamped) {
-    return executions
-      .map((exec) => exec && getExitEventFromExecution(exec, trade, timezone))
-      .filter(Boolean);
-  }
-
-  const { computeTradePnl } = require('../services/pnlEngine');
-  const engineResult = computeTradePnl({
-    side: trade.side,
-    instrumentType: trade.instrument_type || 'stock',
-    contractSize: trade.contract_size,
-    pointValue: trade.point_value,
-    fallbackCommission: trade.commission != null ? parseNumericValue(trade.commission) : null,
-    fallbackFees: trade.fees != null ? parseNumericValue(trade.fees) : null,
-    executions,
-    timezone,
-    tradeId: trade.trade_id || trade.id
-  });
-
-  return engineResult.annotatedExecutions
-    .filter((e) => parseNumericValue(e.realized_pnl) != null && e.exit_date)
-    .map((e) => ({ date: e.exit_date, pnl: parseNumericValue(e.realized_pnl) }));
-}
-
 function buildCalendarDayContributions(trades, dateStr, timezone) {
   return trades
     .map((trade) => {
@@ -518,46 +399,6 @@ function buildCalendarDayContributions(trades, dateStr, timezone) {
     .sort((a, b) => (a.trade_id || '').localeCompare(b.trade_id || ''));
 }
 
-function buildCalendarOverviewRows(trades, startDateStr, endDateStr, timezone) {
-  const byDate = new Map();
-
-  const add = (tradeId, date, pnl) => {
-    if (!date || pnl == null) return;
-    let day = byDate.get(date);
-    if (!day) {
-      day = { tradeIds: new Set(), dailyPnl: 0 };
-      byDate.set(date, day);
-    }
-    day.tradeIds.add(tradeId);
-    day.dailyPnl += pnl;
-  };
-
-  trades.forEach((trade) => {
-    const exitEvents = tradeExitEvents(trade, timezone);
-    if (exitEvents.length > 0) {
-      exitEvents.forEach((event) => {
-        if (event.date >= startDateStr && event.date <= endDateStr) {
-          add(trade.trade_id, event.date, event.pnl);
-        }
-      });
-      return;
-    }
-
-    const exactPnl = parseNumericValue(trade.pnl);
-    const date = getExecutionDateString(timezone, trade.exit_time);
-    if (exactPnl != null && date && date >= startDateStr && date <= endDateStr) {
-      add(trade.trade_id, date, exactPnl);
-    }
-  });
-
-  return Array.from(byDate.entries())
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([date, data]) => ({
-      trade_date: date,
-      trades: data.tradeIds.size,
-      daily_pnl: data.dailyPnl
-    }));
-}
 // Build the breakeven predicate (gross P&L within per-instrument tolerance) over
 // raw `trades` columns, for the per-symbol/sector/tag/etc. breakdown queries so
 // their win/loss counts stay consistent with the overview. Falls back to the

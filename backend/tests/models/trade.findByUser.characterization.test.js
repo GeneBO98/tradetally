@@ -338,6 +338,13 @@ describe('TradeQueries.findByUser characterization', () => {
   });
 
   describe('pagination', () => {
+    test('orders by the displayed entry timestamp with a stable id tie-breaker', async () => {
+      await TradeQueries.findByUser('user-1', {});
+      const { sql } = captureQuery();
+      expect(sql).toContain('ORDER BY t.entry_time DESC NULLS LAST, t.id DESC');
+      expect(sql).not.toContain('ORDER BY t.trade_date DESC, t.entry_time DESC');
+    });
+
     test('limit only: appended to subquery', async () => {
       await TradeQueries.findByUser('user-1', { limit: 50 });
       const { sql, values } = captureQuery();
