@@ -83,6 +83,7 @@
                     { value: 'avatrade', label: 'AvaTrade' },
                     { value: 'tradingview', label: 'TradingView' },
                     { value: 'tradovate', label: 'Tradovate' },
+                    { value: 'ninjatrader', label: 'NinjaTrader' },
                     { value: 'other', label: 'Other' }
                   ]"
                   placeholder="Select broker..."
@@ -330,6 +331,7 @@ const brokerLabels = {
   avatrade: 'AvaTrade',
   tradingview: 'TradingView',
   tradovate: 'Tradovate',
+  ninjatrader: 'NinjaTrader',
   other: 'Other'
 }
 

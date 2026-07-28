@@ -148,7 +148,7 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
         price: transactionPrice,
         commission: trade.commission || 0,
         fees: trade.fees || 0,
-        broker: trade.broker || 'generic',
+        broker: context.brokerTag || trade.broker || 'generic',
         orderId: trade.orderId || null,
         originalRecord: record,
         accountIdentifier
@@ -265,7 +265,9 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
           price: transaction.price,
           datetime: transaction.datetime,
           commission: transaction.commission,
-          fees: transaction.commission + transaction.fees,
+          fees: context.separateExecutionCosts
+            ? transaction.fees
+            : transaction.commission + transaction.fees,
           orderId: transaction.orderId
         };
 

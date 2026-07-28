@@ -464,6 +464,27 @@
         "commission": 2.45072,
         "execution_count": 3
       }
+    },
+    {
+      "id": "ninjatrader_trade_performance_accounting_costs",
+      "csv": "Trade number,Instrument,Account,Strategy,Market pos.,Qty,Entry price,Exit price,Entry time,Exit time,Entry name,Exit name,Profit,Cum. net profit,Commission,Clearing Fee,Exchange Fee,IP Fee,NFA Fee,MAE,MFE,ETD,Bars,\n1,MES 09-26,SIM101,ATM Strategy,Short,1,7423.75,7436.00,7/28/2026 10:17:59 AM,7/28/2026 10:24:02 AM,Entry,Stop1,($62.90),($62.90),$1.00,$0.20,$0.30,$0.10,$0.05,$63.75,$13.75,$75.00,0,",
+      "expected": {
+        "detected_broker": "ninjatrader",
+        "symbol": "MES 09-26",
+        "broker": "ninjatrader",
+        "side": "short",
+        "quantity": 1,
+        "entry_price": 7423.75,
+        "exit_price": 7436,
+        "trade_date": "2026-07-28",
+        "instrument_type": "future",
+        "commission": 1,
+        "fees": 0.65,
+        "pnl": -62.9,
+        "account_identifier": "SIM101",
+        "mae": 63.75,
+        "mfe": 13.75
+      }
     }
   ],
   "r_value": {

@@ -1231,6 +1231,9 @@ describe('Dashboard-derived CSV import contracts', () => {
     if (expected.commission !== undefined) {
       expect(result.trades[0].commission).toBeCloseTo(expected.commission, 6);
     }
+    if (expected.fees !== undefined) {
+      expect(result.trades[0].fees).toBeCloseTo(expected.fees, 6);
+    }
     if (expected.execution_count !== undefined) {
       expect(result.trades[0].executions).toHaveLength(expected.execution_count);
     }
@@ -1239,6 +1242,12 @@ describe('Dashboard-derived CSV import contracts', () => {
     }
     if (expected.account_identifier !== undefined) {
       expect(result.trades[0].accountIdentifier).toBe(expected.account_identifier);
+    }
+    if (expected.mae !== undefined) {
+      expect(result.trades[0].mae).toBeCloseTo(expected.mae, 6);
+    }
+    if (expected.mfe !== undefined) {
+      expect(result.trades[0].mfe).toBeCloseTo(expected.mfe, 6);
     }
   });
 });
@@ -1704,6 +1713,42 @@ describe('Generic parser', () => {
     expect(result.diagnostics.skippedReasons[0].reason).toContain('time was present, but no trade date was found');
     expect(result.diagnostics.user_summary).toEqual(expect.objectContaining({
       title: expect.stringContaining('missing a trade date')
+    }));
+  });
+});
+
+describe('NinjaTrader parser', () => {
+  test('parses semicolon execution rows with European decimals without duplicating costs', async () => {
+    const csv = [
+      'Instrument;Action;Quantity;Price;Time;ID;E/X;Position;Order ID;Name;Commission;Rate;Account display name;Connection;',
+      'MES JUN26;Buy;1;7200,75;27/04/2026 6:05:02;execution-1;Entry;1 L;order-1;Entry;0,62 $;1;Playback101;Playback;',
+      'MES JUN26;Sell;1;7204,75;27/04/2026 6:10:02;execution-2;Exit;0;order-2;Exit;0,62 $;1;Playback101;Playback;'
+    ].join('\n');
+
+    const result = await parseCSV(buf(csv), 'auto', {
+      tradeGroupingSettings: { enabled: true, timeGapMinutes: 60 }
+    });
+
+    expectValidResult(result);
+    expect(result.diagnostics.detectedBroker).toBe('ninjatrader');
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0]).toEqual(expect.objectContaining({
+      symbol: 'MES JUN26',
+      broker: 'ninjatrader',
+      side: 'long',
+      quantity: 1,
+      entryPrice: 7200.75,
+      exitPrice: 7204.75,
+      commission: 1.24,
+      fees: 0,
+      pnl: 18.76,
+      accountIdentifier: 'Playback101',
+      instrumentType: 'future'
+    }));
+    expect(result.trades[0].executions).toHaveLength(2);
+    expect(result.trades[0].executions[0]).toEqual(expect.objectContaining({
+      commission: 0.62,
+      fees: 0
     }));
   });
 });

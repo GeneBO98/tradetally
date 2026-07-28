@@ -175,6 +175,22 @@ describe('detectBrokerFormat', () => {
     expect(detectBrokerFormat(buf(csv))).toBe('tradovate');
   });
 
+  test('detects NinjaTrader Trade Performance grid export', () => {
+    const csv = [
+      'Trade number,Instrument,Account,Strategy,Market pos.,Qty,Entry price,Exit price,Entry time,Exit time,Entry name,Exit name,Profit,Cum. net profit,Commission,Clearing Fee,Exchange Fee,IP Fee,NFA Fee,MAE,MFE,ETD,Bars,',
+      '1,MES 09-26,SIM101,ATM Strategy,Short,1,7427.50,7423.50,7/28/2026 9:45:17 AM,7/28/2026 9:46:05 AM,Entry,Target2,$20.00,$20.00,$0.00,$0.00,$0.00,$0.00,$0.00,$8.75,$21.25,$1.25,0,'
+    ].join('\n');
+    expect(detectBrokerFormat(buf(csv))).toBe('ninjatrader');
+  });
+
+  test('detects semicolon-delimited NinjaTrader Executions grid export', () => {
+    const csv = [
+      'Instrument;Action;Quantity;Price;Time;ID;E/X;Position;Order ID;Name;Commission;Rate;Account display name;Connection;',
+      'MES JUN26;Sell;1;7200,75;27/04/2026 6:05:02;execution-1;Entry;1 S;order-1;Entry;0,62 $;1;Playback101;Playback;'
+    ].join('\n');
+    expect(detectBrokerFormat(buf(csv))).toBe('ninjatrader');
+  });
+
   test('detects Questrade format', () => {
     const csv = 'Symbol,Action,Fill Qty,Fill Price,Exec Time,Commission\nAAPL,Buy,100,150.00,01/01/2025 09:30,4.95';
     expect(detectBrokerFormat(buf(csv))).toBe('questrade');

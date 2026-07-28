@@ -658,6 +658,35 @@ const brokerParsers = {
   }
 };
 
+brokerParsers.ninjatrader = (row, options = {}) => {
+  const trade = brokerParsers.generic(row, options);
+  const feeColumns = ['Clearing Fee', 'Exchange Fee', 'IP Fee', 'NFA Fee'];
+  const fees = feeColumns.reduce(
+    (total, column) => total + Math.abs(parseNumeric(row[column], 0)),
+    0
+  );
+  const mae = parseNumeric(row.MAE, null);
+  const mfe = parseNumeric(row.MFE, null);
+  const entryName = cleanString(row['Entry name']);
+  const exitName = cleanString(row['Exit name']);
+  const executionLabels = [
+    entryName ? `Entry: ${entryName}` : '',
+    exitName ? `Exit: ${exitName}` : ''
+  ].filter(Boolean);
+
+  return {
+    ...trade,
+    commission: Math.abs(parseNumeric(row.Commission, trade.commission || 0)),
+    fees,
+    broker: 'ninjatrader',
+    orderId: cleanString(row['Trade number'] || row['Order ID'] || trade.orderId),
+    strategy: cleanString(row.Strategy),
+    notes: trade.notes || executionLabels.join('; '),
+    mae: mae == null ? null : Math.abs(mae),
+    mfe: mfe == null ? null : Math.abs(mfe)
+  };
+};
+
 module.exports = {
   brokerParsers
 };

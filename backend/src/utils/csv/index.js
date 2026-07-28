@@ -1295,13 +1295,19 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
 
     if (useEnhancedMode && (!context.customMapping || customMappingUsesTransactionRows) && !hasGenericCompletedTradeRows) {
       console.log('Using enhanced generic parser with position tracking');
-      const result = await parseGenericTransactions(records, existingPositions, context.customMapping, context);
+      const genericContext = broker === 'ninjatrader'
+        ? { ...context, brokerTag: 'ninjatrader', separateExecutionCosts: true }
+        : context;
+      const result = await parseGenericTransactions(records, existingPositions, context.customMapping, genericContext);
       console.log('Finished generic transaction-based parsing');
 
       // Apply trade grouping if enabled
       const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
       let finalTrades = result;
-      if (tradeGroupingSettings.enabled && result.length > 0) {
+      // NinjaTrader execution exports have already been reconstructed into
+      // round trips. Grouping them again can merge distinct trades from the
+      // same session.
+      if (broker !== 'ninjatrader' && tradeGroupingSettings.enabled && result.length > 0) {
         finalTrades = applyTradeGrouping(result, tradeGroupingSettings);
       }
 
@@ -1367,7 +1373,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     for (const record of records) {
       rowIndex++;
       try {
-        let trade = broker === 'generic' ? parser(record, context) : parser(record);
+        let trade = broker === 'generic' ? parser(record, context) : parser(record, context);
         if (isValidTrade(trade)) {
           // Parse instrument data for futures/options detection
           if (trade.symbol) {
@@ -1440,7 +1446,9 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     // Apply trade grouping if enabled
     const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
     let finalTrades = trades;
-    if (tradeGroupingSettings.enabled && trades.length > 0) {
+    // NinjaTrader Trade Performance rows are already completed trades, often
+    // with multiple partial exits sharing the same entry timestamp.
+    if (broker !== 'ninjatrader' && tradeGroupingSettings.enabled && trades.length > 0) {
       finalTrades = applyTradeGrouping(trades, tradeGroupingSettings);
     }
 

@@ -1079,7 +1079,7 @@ function parseInstrumentData(symbol) {
 function parseNumeric(value, defaultValue = 0) {
   if (value === null || value === undefined || value === '') return defaultValue;
 
-  let cleanValue = value.toString().trim().replace(/\$/g, '');
+  let cleanValue = value.toString().trim().replace(/\$/g, '').trim();
   if (cleanValue === '') return defaultValue;
 
   // European decimal comma (e.g. NinjaTrader 7200,75) — not a thousands separator

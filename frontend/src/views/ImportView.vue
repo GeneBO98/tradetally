@@ -757,6 +757,20 @@
             </div>
 
             <div>
+              <h4 class="font-medium text-gray-900 dark:text-white">NinjaTrader</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                Export the Executions or Trade Performance grid from NinjaTrader. Futures contracts, account identifiers, commissions, and exchange fees are imported automatically.
+              </p>
+              <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
+                Trade number,Instrument,Account,Market pos.,Qty,Entry price,Exit price,Entry time,Exit time,Profit,Commission,Clearing Fee,Exchange Fee,IP Fee,NFA Fee<br>
+                1,MES 09-26,SIM101,Short,1,7427.50,7423.50,7/28/2026 9:45:17 AM,7/28/2026 9:46:05 AM,$20.00,$0.00,$0.00,$0.00,$0.00,$0.00
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                <strong>Trade Performance:</strong> Instrument, Market pos., Qty, Entry/Exit price, and Entry/Exit time. <strong>Executions:</strong> Instrument, Action, Quantity, Price, Time, and E/X or Order ID.
+              </p>
+            </div>
+
+            <div>
               <h4 class="font-medium text-gray-900 dark:text-white">Questrade</h4>
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
                 Export trade executions from Questrade. Supports stocks and options with automatic option symbol parsing.
@@ -1376,6 +1390,7 @@ const brokerFormatOptions = computed(() => {
         { value: 'tradingview', label: 'TradingView' },
         { value: 'avatrade', label: 'AvaTrade' },
         { value: 'tradovate', label: 'Tradovate' },
+        { value: 'ninjatrader', label: 'NinjaTrader' },
         { value: 'questrade', label: 'Questrade' },
         { value: 'tradestation', label: 'TradeStation' },
         { value: 'tastytrade', label: 'Tastytrade' }
@@ -1509,6 +1524,16 @@ const brokerGuides = {
       'Upload the raw CSV and review the pre-import check before starting.'
     ],
     warning: 'Position summaries are not enough. Use fills or execution history so each trade can be reconstructed.'
+  },
+  ninjatrader: {
+    title: 'NinjaTrader',
+    badge: 'Supported',
+    steps: [
+      'Open the Executions or Trade Performance grid in NinjaTrader.',
+      'Right-click the grid, choose Export, and save it as CSV.',
+      'Upload the original file; both execution rows and completed Trade Performance rows are supported.'
+    ],
+    warning: 'Export the grid itself rather than an account summary. Keep the original Entry/Exit or Action/Price headers intact.'
   },
   tradingview: {
     title: 'TradingView',
@@ -1769,6 +1794,7 @@ function formatBrokerName(broker) {
     tradervue: 'TraderVue',
     avatrade: 'AvaTrade',
     tradovate: 'Tradovate',
+    ninjatrader: 'NinjaTrader',
     questrade: 'Questrade',
     tradestation: 'TradeStation',
     tastytrade: 'Tastytrade',
@@ -2002,11 +2028,26 @@ function detectBrokerFromHeaders(headers) {
     return 'tradovate'
   }
 
-  // NinjaTrader grid export (semicolon-delimited, European decimals in price)
-  if (headersStr.includes('instrument') && headersStr.includes('action') &&
-      headersStr.includes('quantity') && headersStr.includes('price') &&
-      (headersStr.includes('e/x') || headersStr.includes('order id'))) {
-    return 'generic'
+  // NinjaTrader execution and Trade Performance grid exports
+  const isNinjaTraderExecutionGrid =
+    headersStr.includes('instrument') &&
+    headersStr.includes('action') &&
+    headersStr.includes('quantity') &&
+    headersStr.includes('price') &&
+    (headersStr.includes('e/x') || headersStr.includes('order id'))
+  const isNinjaTraderTradePerformanceGrid =
+    headersStr.includes('trade number') &&
+    headersStr.includes('instrument') &&
+    headersStr.includes('market pos.') &&
+    headersStr.includes('qty') &&
+    headersStr.includes('entry price') &&
+    headersStr.includes('exit price') &&
+    headersStr.includes('entry time') &&
+    headersStr.includes('exit time') &&
+    headersStr.includes('profit')
+
+  if (isNinjaTraderExecutionGrid || isNinjaTraderTradePerformanceGrid) {
+    return 'ninjatrader'
   }
 
   // Questrade detection

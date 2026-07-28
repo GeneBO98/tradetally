@@ -2228,17 +2228,21 @@ const tradeController = {
                 webull: 'Webull',
                 etrade: 'E*TRADE',
                 tradingview: 'TradingView',
-                tradovate: 'Tradovate'
+                tradovate: 'Tradovate',
+                ninjatrader: 'NinjaTrader'
               };
+              const accountBroker = broker === 'auto'
+                ? parseDiagnostics?.detectedBroker
+                : broker;
 
               for (const identifier of accountIdentifiers) {
                 if (!existingIdentifiers.has(identifier)) {
                   try {
-                    const brokerName = brokerNames[broker] || 'Trading';
+                    const brokerName = brokerNames[accountBroker] || 'Trading';
                     await Account.create(req.user.id, {
                       accountName: `${brokerName} Account`,
                       accountIdentifier: identifier,
-                      broker: broker !== 'auto' && broker !== 'generic' ? broker : null,
+                      broker: accountBroker && accountBroker !== 'generic' ? accountBroker : null,
                       initialBalance: 0,
                       initialBalanceDate: new Date().toISOString().split('T')[0],
                       isPrimary: existingAccounts.length === 0 && accountIdentifiers.size === 1

@@ -973,12 +973,30 @@ function detectBrokerFormat(fileBuffer) {
       return 'generic';
     }
 
-    // NinjaTrader grid export (semicolon-delimited; European decimal commas in price)
-    if (headers.includes('instrument') && headers.includes('action') &&
-        headers.includes('quantity') && headers.includes('price') &&
-        (headers.includes('e/x') || headers.includes('order id'))) {
-      console.log('[AUTO-DETECT] Detected: NinjaTrader grid export (routed to generic parser)');
-      return 'generic';
+    // NinjaTrader supports two grid exports:
+    // - Executions: Instrument, Action, Quantity, Price, Time, E/X, Order ID
+    // - Trade Performance: Trade number, Instrument, Market pos., Qty,
+    //   Entry/Exit price and Entry/Exit time
+    const isNinjaTraderExecutionGrid =
+      headers.includes('instrument') &&
+      headers.includes('action') &&
+      headers.includes('quantity') &&
+      headers.includes('price') &&
+      (headers.includes('e/x') || headers.includes('order id'));
+    const isNinjaTraderTradePerformanceGrid =
+      headers.includes('trade number') &&
+      headers.includes('instrument') &&
+      headers.includes('market pos.') &&
+      headers.includes('qty') &&
+      headers.includes('entry price') &&
+      headers.includes('exit price') &&
+      headers.includes('entry time') &&
+      headers.includes('exit time') &&
+      headers.includes('profit');
+
+    if (isNinjaTraderExecutionGrid || isNinjaTraderTradePerformanceGrid) {
+      console.log('[AUTO-DETECT] Detected: NinjaTrader grid export');
+      return 'ninjatrader';
     }
 
     // Default to generic if no specific format detected

@@ -248,6 +248,11 @@ describe('parseNumeric', () => {
     expect(parseNumeric('$-500.00')).toBe(-500);
   });
 
+  test('parses European decimals with a trailing currency symbol', () => {
+    expect(parseNumeric('0,62 $')).toBe(0.62);
+    expect(parseNumeric('1.234,56 $')).toBe(1234.56);
+  });
+
   test('handles accounting-style negatives (parentheses)', () => {
     expect(parseNumeric('(123.45)')).toBe(-123.45);
     expect(parseNumeric('($1,000.00)')).toBe(-1000);
