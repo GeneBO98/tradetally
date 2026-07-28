@@ -352,11 +352,16 @@ function buildCalendarDayContributions(trades, dateStr, timezone) {
       const exactTradePnl = parseNumericValue(trade.pnl);
 
       let pnl = null;
+      let grossPnl = null;
       let exitCount = 0;
       let totalExitCount = exitEvents.length;
 
       if (eventsOnDay.length > 0) {
         pnl = eventsOnDay.reduce((sum, e) => sum + (e.pnl || 0), 0);
+        grossPnl = eventsOnDay.reduce(
+          (sum, e) => sum + (parseNumericValue(e.gross_pnl) ?? (e.pnl || 0)),
+          0
+        );
         exitCount = eventsOnDay.length;
       } else if (
         totalExitCount === 0 &&
@@ -364,6 +369,9 @@ function buildCalendarDayContributions(trades, dateStr, timezone) {
         getExecutionDateString(timezone, trade.exit_time) === dateStr
       ) {
         pnl = exactTradePnl;
+        grossPnl = exactTradePnl
+          + (parseNumericValue(trade.commission) || 0)
+          + (parseNumericValue(trade.fees) || 0);
         exitCount = 1;
         totalExitCount = 1;
       }
@@ -387,6 +395,7 @@ function buildCalendarDayContributions(trades, dateStr, timezone) {
         symbol: trade.symbol,
         side: trade.side,
         pnl,
+        gross_pnl: grossPnl ?? pnl,
         r_value: (exitCount === totalExitCount && trade.r_value != null && trade.stop_loss != null)
           ? parseFloat(trade.r_value)
           : null,

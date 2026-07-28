@@ -224,12 +224,14 @@ function processGrouped(input, executions, timezone) {
     totalFees += fees;
 
     let realizedPnl = null;
+    let grossRealizedPnl = null;
     let exitDate = null;
 
     if (exitPrice != null && qty > 0 && entryPrice != null) {
       const gross = legSide === 'short'
         ? (entryPrice - exitPrice) * qty * multiplier
         : (exitPrice - entryPrice) * qty * multiplier;
+      grossRealizedPnl = gross;
       realizedPnl = gross - totalCost;
       totalRealizedPnl += realizedPnl;
       totalExitQty += qty;
@@ -251,6 +253,7 @@ function processGrouped(input, executions, timezone) {
       ...execution,
       commission,
       fees,
+      gross_realized_pnl: grossRealizedPnl,
       realized_pnl: realizedPnl,
       exit_date: exitDate
     };
@@ -294,6 +297,7 @@ function processFillBased(input, executions, timezone, tradeId) {
       ...execution,
       commission,
       fees,
+      gross_realized_pnl: null,
       realized_pnl: null,
       exit_date: null,
       _originalIndex: index
@@ -369,6 +373,9 @@ function processFillBased(input, executions, timezone, tradeId) {
 
     if (qty <= 0 || price == null) {
       execution.realized_pnl = parseNumeric(execution.pnl ?? execution.p_l ?? execution.profit_loss);
+      execution.gross_realized_pnl = execution.realized_pnl != null
+        ? execution.realized_pnl + totalCost
+        : null;
       execution.exit_date = dateInTimezone(timestamp, timezone);
       if (execution.realized_pnl != null) {
         totalRealizedPnl += execution.realized_pnl;
@@ -403,6 +410,7 @@ function processFillBased(input, executions, timezone, tradeId) {
         ? (matchedAvgEntry - price) * matchedQty * multiplier
         : (price - matchedAvgEntry) * matchedQty * multiplier;
       const realized = gross - totalCost - matchedEntryCost;
+      execution.gross_realized_pnl = gross;
       execution.realized_pnl = realized;
       execution.exit_date = dateInTimezone(timestamp, timezone);
       totalRealizedPnl += realized;
@@ -417,6 +425,7 @@ function processFillBased(input, executions, timezone, tradeId) {
         }
       }
     } else {
+      execution.gross_realized_pnl = null;
       execution.realized_pnl = null;
       execution.exit_date = dateInTimezone(timestamp, timezone);
       const symbol = tradeId ? ` on trade ${tradeId}` : '';

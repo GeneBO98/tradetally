@@ -58,6 +58,10 @@ describe('trading calculation contract fixtures', () => {
     expected.realized_pnl.forEach((expectedValue, index) => {
       expectClose(result.annotatedExecutions[index].realized_pnl, expectedValue);
     });
+
+    expected.gross_realized_pnl?.forEach((expectedValue, index) => {
+      expectClose(result.annotatedExecutions[index].gross_realized_pnl, expectedValue);
+    });
   });
 
   test.each(contracts.broker_fee_application.cases)('$id', ({ trade, expected }) => {

@@ -23,7 +23,8 @@
           "pnl_percent": 19.775,
           "is_fully_closed": true
         },
-        "realized_pnl": [null, 197.75]
+        "realized_pnl": [null, 197.75],
+        "gross_realized_pnl": [null, 200]
       }
     },
     {
@@ -49,7 +50,8 @@
           "pnl_percent": 9.89,
           "is_fully_closed": true
         },
-        "realized_pnl": [null, 98.9]
+        "realized_pnl": [null, 98.9],
+        "gross_realized_pnl": [null, 100]
       }
     },
     {
@@ -102,7 +104,8 @@
           "pnl_percent": 94.8,
           "is_fully_closed": true
         },
-        "realized_pnl": [9.48]
+        "realized_pnl": [9.48],
+        "gross_realized_pnl": [10]
       }
     },
     {
@@ -156,7 +159,8 @@
           "pnl_percent": 15.78,
           "is_fully_closed": true
         },
-        "realized_pnl": [null, 39.12, 118.68]
+        "realized_pnl": [null, 39.12, 118.68],
+        "gross_realized_pnl": [null, 40, 120]
       }
     },
     {

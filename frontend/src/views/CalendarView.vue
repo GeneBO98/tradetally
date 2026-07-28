@@ -11,7 +11,7 @@
       cta-label="Done"
     />
 
-    <div class="mb-8 flex justify-between items-center">
+    <div class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <h1 class="heading-page">Trading Calendar</h1>
         <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
@@ -19,7 +19,20 @@
         </p>
       </div>
       
-      <div class="flex items-center space-x-4">
+      <div class="flex flex-wrap items-center justify-end gap-2 sm:gap-4">
+        <button
+          v-if="!showRValue"
+          type="button"
+          data-testid="calendar-pnl-toggle"
+          class="inline-flex items-center gap-1.5 rounded-md border border-primary-200 bg-primary-50 px-3 py-1.5 text-xs font-medium text-primary-700 transition-colors hover:bg-primary-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-primary-800 dark:bg-primary-900/20 dark:text-primary-300 dark:hover:bg-primary-900/35 dark:focus-visible:ring-offset-gray-900"
+          :aria-label="`Currently showing ${pnlTypeLabel}. Switch to ${alternatePnlTypeLabel}.`"
+          :title="`Switch to ${alternatePnlTypeLabel}`"
+          @click="togglePnlType"
+        >
+          {{ pnlTypeLabel }}
+          <ArrowsRightLeftIcon class="h-3.5 w-3.5" aria-hidden="true" />
+        </button>
+
         <!-- R-Value Toggle -->
         <button
           @click="toggleRValue"
@@ -28,7 +41,7 @@
             ? 'bg-primary-600 text-white hover:bg-primary-700'
             : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'"
         >
-          {{ showRValue ? `Show P&L (${currencySymbol})` : 'Show R-Value' }}
+          {{ showRValue ? `Show ${pnlTypeLabel} (${currencySymbol})` : 'Show R-Value' }}
         </button>
 
         <!-- Year Navigation -->
@@ -74,19 +87,30 @@
               </div>
               <div class="flex flex-col gap-3 sm:flex-row sm:items-stretch xl:justify-end">
                 <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <div class="card card-mobile-safe min-w-[210px] bg-primary-50 dark:bg-primary-900/15">
-                    <div class="card-body">
-                      <dt class="text-data-secondary truncate">
-                        {{ format(expandedMonth, 'MMMM') }} {{ showRValue ? 'R-Value' : 'P&L' }}
-                      </dt>
-                      <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="monthlyTotal >= 0 ? 'text-green-600' : 'text-red-600'">
+                  <component
+                    :is="showRValue ? 'div' : 'button'"
+                    :type="showRValue ? undefined : 'button'"
+                    data-testid="calendar-pnl-card"
+                    class="card card-mobile-safe min-w-[210px] w-full bg-primary-50 text-left dark:bg-primary-900/15"
+                    :class="showRValue
+                      ? 'cursor-default'
+                      : 'cursor-pointer transition-all hover:border-primary-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:hover:border-primary-700 dark:focus-visible:ring-offset-gray-900'"
+                    :aria-label="showRValue ? undefined : `Currently showing ${pnlTypeLabel}. Switch to ${alternatePnlTypeLabel}.`"
+                    :title="showRValue ? undefined : `Switch to ${alternatePnlTypeLabel}`"
+                    @click="!showRValue && togglePnlType()"
+                  >
+                    <span class="card-body block">
+                      <span class="text-data-secondary block truncate">
+                        {{ format(expandedMonth, 'MMMM') }} {{ showRValue ? 'R-Value' : pnlTypeLabel }}
+                      </span>
+                      <span class="mt-1 block text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="monthlyTotal >= 0 ? 'text-green-600' : 'text-red-600'">
                         {{ showRValue ? formatRValue(monthlyTotal) : formatCurrency(monthlyTotal) }}
-                      </dd>
-                      <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                        {{ showRValue ? 'Performance in R' : 'Net profit and loss' }}
-                      </div>
-                    </div>
-                  </div>
+                      </span>
+                      <span class="mt-2 block text-xs text-gray-500 dark:text-gray-400">
+                        {{ showRValue ? 'Performance in R' : pnlTypeDescription }}
+                      </span>
+                    </span>
+                  </component>
                   <div class="card card-mobile-safe min-w-[210px] bg-gray-100 dark:bg-gray-800/60">
                     <div class="card-body">
                       <dt class="text-data-secondary truncate">
@@ -107,11 +131,11 @@
                       <dt class="text-data-secondary truncate">
                         Year To Date
                       </dt>
-                      <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="ytdPnl >= 0 ? 'text-green-600' : 'text-red-600'">
-                        {{ formatCurrency(ytdPnl) }}
+                      <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="ytdTotal >= 0 ? 'text-green-600' : 'text-red-600'">
+                        {{ formatCurrency(ytdTotal) }}
                       </dd>
                       <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                        Through {{ format(expandedMonth, 'MMMM') }}
+                        {{ pnlTypeLabel }} through {{ format(expandedMonth, 'MMMM') }}
                       </div>
                     </div>
                   </div>
@@ -129,7 +153,7 @@
                 {{ day }}
               </div>
               <div class="text-center text-xs font-medium text-gray-500 dark:text-gray-400 py-2">
-                {{ showRValue ? 'Week R' : 'Week P/L' }}
+                {{ showRValue ? 'Week R' : `Week ${pnl_type === 'net' ? 'Net' : 'Gross'} P/L` }}
               </div>
             </div>
             <div v-for="(week, weekIndex) in expandedMonthWeekdays" :key="weekIndex" class="grid grid-cols-6 gap-1 mb-1">
@@ -144,7 +168,7 @@
                   </div>
                   <div v-if="day.pnl !== undefined && day.trades > 0" class="mt-1">
                     <p class="text-xs sm:text-sm font-semibold truncate" :class="getDayPnlTextColor(day)">
-                      {{ showRValue ? formatRValue(day.rValue || 0, 1) : formatCurrency(day.pnl, { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}
+                      {{ showRValue ? formatRValue(day.rValue || 0, 1) : formatCurrency(getDayDisplayPnl(day), { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}
                     </p>
                     <p class="text-xs" :class="getDaySubTextColor(day)">
                       {{ day.trades }} {{ day.trades === 1 ? 'trade' : 'trades' }}
@@ -155,7 +179,7 @@
               <!-- Week P/L or R-Value Column -->
               <div class="flex items-center justify-center border border-gray-200 dark:border-gray-700 rounded-lg p-2 sm:p-3 bg-gray-50 dark:bg-gray-800">
                 <p class="text-xs sm:text-sm font-semibold" :class="getWeekTotal(week) >= 0 ? 'text-green-600' : 'text-red-600'">
-                  {{ showRValue ? formatRValue(week.weekRValue || 0, 1) : formatCurrency(week.weekPnl, { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}
+                  {{ showRValue ? formatRValue(week.weekRValue || 0, 1) : formatCurrency(getWeekTotal(week), { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}
                 </p>
               </div>
             </div>
@@ -249,8 +273,8 @@
                   </p>
                 </div>
                 <div class="text-right">
-                  <p class="font-semibold" :class="(contrib.pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'">
-                    {{ showRValue && contrib.r_value != null ? formatRValue(contrib.r_value) : formatCurrency(contrib.pnl) }}
+                  <p class="font-semibold" :class="getContributionDisplayPnl(contrib) >= 0 ? 'text-green-600' : 'text-red-600'">
+                    {{ showRValue && contrib.r_value != null ? formatRValue(contrib.r_value) : formatCurrency(getContributionDisplayPnl(contrib)) }}
                   </p>
                   <p v-if="showRValue && contrib.r_value == null && !contrib.is_partial" class="text-xs text-gray-400">
                     No R data
@@ -268,9 +292,9 @@
 
           <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
             <div class="flex justify-between items-center">
-              <span class="font-medium text-gray-900 dark:text-white">{{ showRValue ? 'Total R for day:' : 'Total for day:' }}</span>
+              <span class="font-medium text-gray-900 dark:text-white">{{ showRValue ? 'Total R for day:' : `Total ${pnlTypeLabel} for day:` }}</span>
               <span class="font-bold text-lg" :class="selectedDayTotal >= 0 ? 'text-green-600' : 'text-red-600'">
-                {{ showRValue ? formatRValue(selectedDayTotalRValue) : formatCurrency(selectedDayTotalPnl) }}
+                {{ showRValue ? formatRValue(selectedDayTotalRValue) : formatCurrency(selectedDayTotal) }}
               </span>
             </div>
             <div v-if="selectedDayRiskTradeCount > 0" class="mt-2 flex justify-between items-center text-sm text-gray-500 dark:text-gray-400">
@@ -292,7 +316,7 @@ import { useAuthStore } from '@/stores/auth'
 
 const authStore = useAuthStore()
 import { format, startOfYear, endOfYear, eachMonthOfInterval, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameMonth, addMonths } from 'date-fns'
-import { ChevronLeftIcon, ChevronRightIcon, XMarkIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon } from '@heroicons/vue/24/outline'
+import { ChevronLeftIcon, ChevronRightIcon, XMarkIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon, ArrowsRightLeftIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
@@ -306,7 +330,7 @@ const route = useRoute()
 
 const loading = ref(true)
 const initialLoading = ref(true) // Track initial load separately to preserve scroll on refresh
-const calendarData = ref(new Map()) // Map of date string -> { trades, pnl, rValue, riskAmount, riskTradeCount }
+const calendarData = ref(new Map()) // Map of date string -> daily net/gross P&L, R, and risk metrics
 const dayContributions = ref([]) // Execution-level contributions for selected day (from /analytics/calendar/day)
 const expandedMonth = ref(null)
 // Initialize year from route query, localStorage, or current year (in that order)
@@ -334,26 +358,50 @@ const selectedDay = ref(null)
 const expandedMonthContainer = ref(null)
 const isModalExpanded = ref(false)
 const showRValue = ref(false)
+const saved_pnl_type = localStorage.getItem('calendar_pnl_type')
+const pnl_type = ref(saved_pnl_type === 'gross' ? 'gross' : 'net')
+const pnlTypeLabel = computed(() => pnl_type.value === 'net' ? 'Net P&L' : 'Gross P&L')
+const alternatePnlTypeLabel = computed(() => pnl_type.value === 'net' ? 'Gross P&L' : 'Net P&L')
+const pnlTypeDescription = computed(() => pnl_type.value === 'net'
+  ? 'After commissions and fees'
+  : 'Before commissions and fees')
 
 function toggleRValue() {
   showRValue.value = !showRValue.value
 }
 
+function togglePnlType() {
+  pnl_type.value = pnl_type.value === 'net' ? 'gross' : 'net'
+  localStorage.setItem('calendar_pnl_type', pnl_type.value)
+}
+
 // Helper to get calendar data for a date
 function getCalendarDataForDate(date) {
-  if (!date) return { trades: 0, pnl: 0, rValue: 0, riskAmount: 0, riskTradeCount: 0 }
+  if (!date) return { trades: 0, pnl: 0, gross_pnl: 0, rValue: 0, riskAmount: 0, riskTradeCount: 0 }
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   const dateKey = `${year}-${month}-${day}`
-  return calendarData.value.get(dateKey) || { trades: 0, pnl: 0, rValue: 0, riskAmount: 0, riskTradeCount: 0 }
+  return calendarData.value.get(dateKey) || { trades: 0, pnl: 0, gross_pnl: 0, rValue: 0, riskAmount: 0, riskTradeCount: 0 }
 }
 
 // Day detail shows execution-level contributions (from API), not getTradesForDate
 
 // Helper to get total P&L for a date
 function getPnlForDate(date) {
-  return getCalendarDataForDate(date).pnl
+  return getDayDisplayPnl(getCalendarDataForDate(date))
+}
+
+function getDayDisplayPnl(day) {
+  return pnl_type.value === 'gross'
+    ? (parseFloat(day?.gross_pnl) || 0)
+    : (parseFloat(day?.pnl) || 0)
+}
+
+function getContributionDisplayPnl(contribution) {
+  return pnl_type.value === 'gross'
+    ? (parseFloat(contribution?.gross_pnl ?? contribution?.pnl) || 0)
+    : (parseFloat(contribution?.pnl) || 0)
 }
 
 const yearlyCalendar = computed(() => {
@@ -394,10 +442,17 @@ const expandedMonthWeeks = computed(() => {
       }
       return sum
     }, 0)
+    const week_gross_pnl = weekDays.reduce((sum, day) => {
+      if (day.gross_pnl !== undefined) {
+        return sum + day.gross_pnl
+      }
+      return sum
+    }, 0)
     
     weeks.push({
       days: weekDays,
-      weekPnl
+      weekPnl,
+      week_gross_pnl
     })
   }
   
@@ -411,7 +466,7 @@ const expandedMonthWeekdays = computed(() => {
   const allDays = eachDayOfInterval({ start: monthStart, end: monthEnd })
 
   const weeks = []
-  let currentWeek = { days: [], weekPnl: 0, weekRValue: 0 }
+  let currentWeek = { days: [], weekPnl: 0, week_gross_pnl: 0, weekRValue: 0 }
 
   for (const date of allDays) {
     const dayOfWeek = getDay(date) // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
@@ -425,7 +480,7 @@ const expandedMonthWeekdays = computed(() => {
           currentWeek.days.push({ date: null })
         }
         weeks.push(currentWeek)
-        currentWeek = { days: [], weekPnl: 0, weekRValue: 0 }
+        currentWeek = { days: [], weekPnl: 0, week_gross_pnl: 0, weekRValue: 0 }
       }
       continue
     }
@@ -437,7 +492,7 @@ const expandedMonthWeekdays = computed(() => {
         currentWeek.days.push({ date: null })
       }
       weeks.push(currentWeek)
-      currentWeek = { days: [], weekPnl: 0, weekRValue: 0 }
+      currentWeek = { days: [], weekPnl: 0, week_gross_pnl: 0, weekRValue: 0 }
     }
 
     // Add padding for the first week if it doesn't start on Monday
@@ -454,11 +509,13 @@ const expandedMonthWeekdays = computed(() => {
       date,
       trades: dayData.trades,
       pnl: dayData.trades > 0 ? dayData.pnl : undefined,
+      gross_pnl: dayData.trades > 0 ? dayData.gross_pnl : undefined,
       rValue: dayData.trades > 0 ? dayData.rValue : undefined
     })
 
     if (dayData.trades > 0) {
       currentWeek.weekPnl += dayData.pnl
+      currentWeek.week_gross_pnl += dayData.gross_pnl
       currentWeek.weekRValue += dayData.rValue || 0
     }
   }
@@ -481,6 +538,13 @@ const selectedDayTotalPnl = computed(() => {
   return selectedDayContributions.value.reduce((sum, c) => sum + (parseFloat(c.pnl) || 0), 0)
 })
 
+const selectedDayTotalGrossPnl = computed(() => {
+  return selectedDayContributions.value.reduce(
+    (sum, c) => sum + (parseFloat(c.gross_pnl ?? c.pnl) || 0),
+    0
+  )
+})
+
 function sumCalendarMetric(startDate, endDate, metric) {
   const days = eachDayOfInterval({ start: startDate, end: endDate })
   return days.reduce((sum, date) => {
@@ -500,7 +564,8 @@ const expandedMonthTrades = computed(() => {
     return {
       date: date.toISOString().split('T')[0],
       trades: data.trades,
-      pnl: data.pnl
+      pnl: data.pnl,
+      gross_pnl: data.gross_pnl
     }
   }).filter(day => day.trades > 0)
 })
@@ -510,6 +575,13 @@ const monthlyPnl = computed(() => {
   const monthStart = startOfMonth(expandedMonth.value)
   const monthEnd = endOfMonth(expandedMonth.value)
   return sumCalendarMetric(monthStart, monthEnd, 'pnl')
+})
+
+const monthlyGrossPnl = computed(() => {
+  if (!expandedMonth.value) return 0
+  const monthStart = startOfMonth(expandedMonth.value)
+  const monthEnd = endOfMonth(expandedMonth.value)
+  return sumCalendarMetric(monthStart, monthEnd, 'gross_pnl')
 })
 
 const monthlyRValue = computed(() => {
@@ -545,9 +617,19 @@ const ytdPnl = computed(() => {
   return sumCalendarMetric(yearStart, monthEnd, 'pnl')
 })
 
+const ytdGrossPnl = computed(() => {
+  if (!expandedMonth.value) return 0
+  const yearStart = startOfYear(expandedMonth.value)
+  const monthEnd = endOfMonth(expandedMonth.value)
+  return sumCalendarMetric(yearStart, monthEnd, 'gross_pnl')
+})
+
+const ytdTotal = computed(() => pnl_type.value === 'gross' ? ytdGrossPnl.value : ytdPnl.value)
+
 // Returns P&L or R-value based on toggle
 const monthlyTotal = computed(() => {
-  return showRValue.value ? monthlyRValue.value : monthlyPnl.value
+  if (showRValue.value) return monthlyRValue.value
+  return pnl_type.value === 'gross' ? monthlyGrossPnl.value : monthlyPnl.value
 })
 
 // Total R-value for selected day
@@ -570,7 +652,8 @@ const selectedDayAvgRiskAmount = computed(() => {
 
 // Returns P&L or R-value total for selected day based on toggle
 const selectedDayTotal = computed(() => {
-  return showRValue.value ? selectedDayTotalRValue.value : selectedDayTotalPnl.value
+  if (showRValue.value) return selectedDayTotalRValue.value
+  return pnl_type.value === 'gross' ? selectedDayTotalGrossPnl.value : selectedDayTotalPnl.value
 })
 
 
@@ -592,6 +675,7 @@ function generateMonthDays(monthStart, monthEnd) {
       date,
       trades: dayData.trades,
       pnl: dayData.trades > 0 ? dayData.pnl : undefined,
+      gross_pnl: dayData.trades > 0 ? dayData.gross_pnl : undefined,
       rValue: dayData.trades > 0 ? dayData.rValue : undefined
     })
   }
@@ -609,7 +693,7 @@ function getDayStyle(day) {
   if (!day.date || day.pnl === undefined) return {}
 
   // Flat color scheme - no intensity-based shading
-  if (day.pnl >= 0) {
+  if (getDayDisplayPnl(day) >= 0) {
     return { backgroundColor: 'rgb(34, 197, 94)' } // green-500
   } else {
     return { backgroundColor: 'rgb(239, 68, 68)' } // red-500
@@ -623,7 +707,7 @@ function getDayTextColor(day) {
 }
 
 function getDayPnlTextColor(day) {
-  if (!day.date || day.pnl === undefined) return day.pnl >= 0 ? 'text-green-600' : 'text-red-600'
+  if (!day.date || day.pnl === undefined) return getDayDisplayPnl(day) >= 0 ? 'text-green-600' : 'text-red-600'
   // White bold text on colored backgrounds
   return 'text-white font-bold'
 }
@@ -644,7 +728,7 @@ function getMiniDayStyle(day) {
   if (!day.date || day.pnl === undefined) return {}
 
   // Flat color scheme - no intensity-based shading
-  if (day.pnl >= 0) {
+  if (getDayDisplayPnl(day) >= 0) {
     return { backgroundColor: 'rgb(34, 197, 94)' } // green-500
   } else {
     return { backgroundColor: 'rgb(239, 68, 68)' } // red-500
@@ -727,7 +811,10 @@ function formatRValue(num, decimals = 2) {
 }
 
 function getWeekTotal(week) {
-  return showRValue.value ? (week.weekRValue || 0) : (week.weekPnl || 0)
+  if (showRValue.value) return week.weekRValue || 0
+  return pnl_type.value === 'gross'
+    ? (week.week_gross_pnl || 0)
+    : (week.weekPnl || 0)
 }
 
 function navigateToTrade(tradeId) {
@@ -759,6 +846,7 @@ async function fetchCalendarData() {
         dataMap.set(day.trade_date, {
           trades: parseInt(day.trades) || 0,
           pnl: parseFloat(day.daily_pnl) || 0,
+          gross_pnl: parseFloat(day.daily_gross_pnl ?? day.daily_pnl) || 0,
           rValue: parseFloat(day.daily_r_value) || 0,
           riskAmount: parseFloat(day.daily_risk_amount) || 0,
           riskTradeCount: parseInt(day.risk_trade_count) || 0

@@ -59,26 +59,35 @@ function legacyExitEventFromExecution(execution, trade, timezone) {
   );
   if (!date) return null;
 
-  const stored = parseNumericValue(execution.pnl ?? execution.p_l ?? execution.profit_loss);
-  if (stored != null) return { date, pnl: stored };
-
   const exitPrice = parseNumericValue(execution.exitPrice ?? execution.exit_price);
   const entryPrice = parseNumericValue(execution.entryPrice ?? execution.entry_price);
   const quantity = Math.abs(parseNumericValue(execution.quantity) || 0);
-  if (exitPrice == null || entryPrice == null || quantity <= 0) return null;
-
-  const multiplier = getTradeValueMultiplier(trade);
-  const side = execution.side || trade.side;
   const commission = parseNumericValue(execution.commission) || 0;
   const fees = parseNumericValue(execution.fees ?? execution.fee) || 0;
-  const gross = side === 'short'
-    ? (entryPrice - exitPrice) * quantity * multiplier
-    : (exitPrice - entryPrice) * quantity * multiplier;
+  const stored = parseNumericValue(execution.pnl ?? execution.p_l ?? execution.profit_loss);
+  let grossPnl = null;
 
-  return { date, pnl: gross - commission - fees };
+  if (exitPrice != null && entryPrice != null && quantity > 0) {
+    const multiplier = getTradeValueMultiplier(trade);
+    const side = execution.side || trade.side;
+    grossPnl = side === 'short'
+      ? (entryPrice - exitPrice) * quantity * multiplier
+      : (exitPrice - entryPrice) * quantity * multiplier;
+  }
+
+  if (stored != null) {
+    return {
+      date,
+      pnl: stored,
+      gross_pnl: grossPnl ?? stored + commission + fees
+    };
+  }
+  if (grossPnl == null) return null;
+
+  return { date, pnl: grossPnl - commission - fees, gross_pnl: grossPnl };
 }
 
-function getExitEventFromExecution(execution, trade, timezone) {
+function getExitEventFromExecution(execution, trade, timezone, computedExecution = null) {
   const realized = parseNumericValue(execution.realized_pnl);
   if (realized != null) {
     const date = execution.exit_date
@@ -89,7 +98,17 @@ function getExitEventFromExecution(execution, trade, timezone) {
           execution.exit_time,
           execution.datetime
         );
-    if (date) return { date, pnl: realized };
+    if (date) {
+      const computedGross = parseNumericValue(computedExecution?.gross_realized_pnl);
+      const storedGross = parseNumericValue(execution.gross_realized_pnl);
+      const commission = parseNumericValue(execution.commission) || 0;
+      const fees = parseNumericValue(execution.fees ?? execution.fee) || 0;
+      return {
+        date,
+        pnl: realized,
+        gross_pnl: storedGross ?? computedGross ?? realized + commission + fees
+      };
+    }
   }
 
   return legacyExitEventFromExecution(execution, trade, timezone);
@@ -99,15 +118,32 @@ function getExitEventFromExecution(execution, trade, timezone) {
 // realized_pnl/exit_date values are authoritative; legacy rows are reconstructed
 // with the canonical P&L engine until every installation has completed backfill.
 function tradeExitEvents(trade, timezone) {
-  const executions = Array.isArray(trade.executions) ? trade.executions : [];
+  const executions = Array.isArray(trade.executions) ? trade.executions.filter(Boolean) : [];
   if (executions.length === 0) return [];
 
   const hasStamped = executions.some((execution) =>
     execution && parseNumericValue(execution.realized_pnl) != null
   );
   if (hasStamped) {
+    const engineResult = computeTradePnl({
+      side: trade.side,
+      instrumentType: trade.instrument_type || 'stock',
+      contractSize: trade.contract_size,
+      pointValue: trade.point_value,
+      fallbackCommission: trade.commission != null ? parseNumericValue(trade.commission) : null,
+      fallbackFees: trade.fees != null ? parseNumericValue(trade.fees) : null,
+      executions,
+      timezone,
+      tradeId: trade.trade_id || trade.id
+    });
+
     return executions
-      .map((execution) => execution && getExitEventFromExecution(execution, trade, timezone))
+      .map((execution, index) => execution && getExitEventFromExecution(
+        execution,
+        trade,
+        timezone,
+        engineResult.annotatedExecutions[index]
+      ))
       .filter(Boolean);
   }
 
@@ -129,7 +165,9 @@ function tradeExitEvents(trade, timezone) {
     )
     .map((execution) => ({
       date: execution.exit_date,
-      pnl: parseNumericValue(execution.realized_pnl)
+      pnl: parseNumericValue(execution.realized_pnl),
+      gross_pnl: parseNumericValue(execution.gross_realized_pnl)
+        ?? parseNumericValue(execution.realized_pnl)
     }));
 }
 
@@ -139,27 +177,32 @@ function realizedEventsForTrade(trade, timezone) {
 
   const exactPnl = parseNumericValue(trade.pnl);
   const date = getExecutionDateString(timezone, trade.exit_time);
-  return exactPnl != null && date ? [{ date, pnl: exactPnl }] : [];
+  const commission = parseNumericValue(trade.commission) || 0;
+  const fees = parseNumericValue(trade.fees) || 0;
+  return exactPnl != null && date
+    ? [{ date, pnl: exactPnl, gross_pnl: exactPnl + commission + fees }]
+    : [];
 }
 
 function buildCalendarOverviewRows(trades, startDateStr, endDateStr, timezone) {
   const byDate = new Map();
 
-  const add = (tradeId, date, pnl) => {
+  const add = (tradeId, date, pnl, grossPnl) => {
     if (!date || pnl == null) return;
     let day = byDate.get(date);
     if (!day) {
-      day = { tradeIds: new Set(), dailyPnl: 0 };
+      day = { tradeIds: new Set(), dailyPnl: 0, dailyGrossPnl: 0 };
       byDate.set(date, day);
     }
     day.tradeIds.add(tradeId);
     day.dailyPnl += pnl;
+    day.dailyGrossPnl += grossPnl ?? pnl;
   };
 
   trades.forEach((trade) => {
     realizedEventsForTrade(trade, timezone).forEach((event) => {
       if (event.date >= startDateStr && event.date <= endDateStr) {
-        add(trade.trade_id, event.date, event.pnl);
+        add(trade.trade_id, event.date, event.pnl, event.gross_pnl);
       }
     });
   });
@@ -169,7 +212,8 @@ function buildCalendarOverviewRows(trades, startDateStr, endDateStr, timezone) {
     .map(([date, data]) => ({
       trade_date: date,
       trades: data.tradeIds.size,
-      daily_pnl: data.dailyPnl
+      daily_pnl: data.dailyPnl,
+      daily_gross_pnl: data.dailyGrossPnl
     }));
 }
 
