@@ -70,7 +70,7 @@ function formatValidatedDate(yearValue, monthValue, dayValue) {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
-function parseSeparatedNumericDate(value) {
+function parseSeparatedNumericDate(value, options = {}) {
   const yearFirstMatch = value.match(/^(\d{4})([\/.\-])(\d{1,2})\2(\d{1,2})(?=\D|$)/);
   if (yearFirstMatch) {
     return formatValidatedDate(yearFirstMatch[1], yearFirstMatch[3], yearFirstMatch[4]);
@@ -92,7 +92,7 @@ function parseSeparatedNumericDate(value) {
   } else if (second > 12) {
     month = first;
     day = second;
-  } else if (separator === '/') {
+  } else if (separator === '/' && options.date_order !== 'day_first') {
     // Preserve the existing US convention for ambiguous slash-separated dates.
     month = first;
     day = second;
@@ -191,7 +191,7 @@ function extractTimezoneSuffix(value) {
 }
 
 
-function parseDate(dateStr) {
+function parseDate(dateStr, options = {}) {
   if (!dateStr || dateStr.toString().trim() === '') return null;
 
   // Remove leading and trailing quotes/apostrophes (including Unicode curly quotes), then trim
@@ -201,7 +201,7 @@ function parseDate(dateStr) {
     '$1 $2'
   );
 
-  const separatedDate = parseSeparatedNumericDate(normalizedDateStr);
+  const separatedDate = parseSeparatedNumericDate(normalizedDateStr, options);
   if (separatedDate) return separatedDate;
 
   const namedDate = parseMonthNameDate(normalizedDateStr);
@@ -425,7 +425,7 @@ function extractDateFromFilename(fileName) {
   return null;
 }
 
-function parseDateTime(dateTimeStr) {
+function parseDateTime(dateTimeStr, options = {}) {
   if (!dateTimeStr || dateTimeStr.toString().trim() === '') return null;
 
   // Remove leading and trailing quotes/apostrophes (including Unicode curly quotes), then trim
@@ -471,7 +471,7 @@ function parseDateTime(dateTimeStr) {
     );
     if (separatedDateTimeMatch) {
       const [, datePart, rawHour, minute, second = '00', ampm] = separatedDateTimeMatch;
-      const parsedDate = parseDate(datePart);
+      const parsedDate = parseDate(datePart, options);
       let hour = Number(rawHour);
       const minuteNumber = Number(minute);
       const secondNumber = Number(second);
@@ -638,7 +638,7 @@ function parseDateTime(dateTimeStr) {
     }
 
     if (!dateTimeBody.includes(':')) {
-      const parsedDateOnly = parseDate(dateTimeBody);
+      const parsedDateOnly = parseDate(dateTimeBody, options);
       if (parsedDateOnly) return withTrailingTimezone(`${parsedDateOnly}T09:30:00`);
     }
 

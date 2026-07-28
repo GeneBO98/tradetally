@@ -42,6 +42,12 @@ describe('parseDate', () => {
     expect(parseDate('12/31/2024')).toBe('2024-12-31');
   });
 
+  test('accepts an explicit day-first order for ambiguous slash dates', () => {
+    expect(parseDate('05/08/2026', { date_order: 'day_first' })).toBe('2026-08-05');
+    expect(parseDateTime('05/08/2026 09:30:00', { date_order: 'day_first' }))
+      .toBe('2026-08-05T09:30:00');
+  });
+
   test('parses common year-first and regional separated formats', () => {
     expect(parseDate('2026/07/20')).toBe('2026-07-20');
     expect(parseDate('2026.07.20')).toBe('2026-07-20');

@@ -7,6 +7,9 @@ const brokerParsers = {
   generic: (row, options = {}) => {
     // Enhanced generic parser with flexible column mapping
     // Support various column naming conventions
+    const dateParseOptions = options.generic_date_order
+      ? { date_order: options.generic_date_order }
+      : {};
 
     // Symbol mapping
     const symbol = row.Symbol || row.symbol || row.Ticker || row.ticker || row.Stock || row.stock ||
@@ -16,6 +19,7 @@ const brokerParsers = {
     const rawTradeDateValue =
       row['Trade Date'] || row['T/D'] || row.Date || row.date ||
       row.trade_date || row['trade_date'] || row['Entry Date'] ||
+      row['Open Date'] || row.open_date ||
       row['Transaction Date'] || row['Activity Date'] || row['Exec Date'] || row['Execution Date'] ||
       row['Date and time'] || row.Time || row.time ||
       row['Close time'] || row['Close Time'] || row['close time'] ||
@@ -34,12 +38,13 @@ const brokerParsers = {
       row['Opening time (UTC-4)'] || row['Opening Time'] || row['Open Time'] ||
       row['Opened Time'] ||
       row.opening_time_utc || row['opening_time_utc'] ||
-      row['Trade Date'] || row.trade_date || row['Entry Date'] || row.Date ||
+      row['Trade Date'] || row.trade_date || row['Entry Date'] ||
+      row['Open Date'] || row.open_date || row.Date ||
       row['Activity Date'];
 
     // Date/Time mapping - support more formats
-    let tradeDate = parseDate(rawTradeDateValue);
-    let entryTime = parseDateTime(rawEntryTimeValue) || tradeDate;
+    let tradeDate = parseDate(rawTradeDateValue, dateParseOptions);
+    let entryTime = parseDateTime(rawEntryTimeValue, dateParseOptions) || tradeDate;
 
     const timeOnlyEntry = parseTimeOnly(rawEntryTimeValue);
     if (timeOnlyEntry) {
@@ -52,9 +57,11 @@ const brokerParsers = {
 
     const exitTime = parseDateTime(
       row['Exit Time'] || row['Close Time'] || row['Exit Date'] ||
+      row['Close Date'] || row.close_date ||
       row['Closed Date'] || row['Sell Time'] ||
       row['Closing time (UTC-4)'] || row['Closing Time'] ||
-      row.closing_time_utc || row['closing_time_utc']
+      row.closing_time_utc || row['closing_time_utc'],
+      dateParseOptions
     );
 
     // Price mapping - support more variations

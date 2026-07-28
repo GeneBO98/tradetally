@@ -1479,6 +1479,44 @@ describe('Generic parser', () => {
     }));
   });
 
+  test('parses completed trade rows with Open Date, Close Date, and PnL columns', async () => {
+    const completedTradeCSV = [
+      'Symbol,Side,Quantity,Open Price,Close Price,Open Date,Close Date,PnL',
+      'WallStreet30,Buy,1,52323.3,52258.3,27/07/2026 15:24:08,27/07/2026 16:14:18,-65',
+      'WallStreet30,Buy,1,52224.6,52260.9,27/07/2026 15:29:57,27/07/2026 16:14:18,36.3',
+      'WallStreet30,Buy,1,52217.4,52260.3,27/07/2026 16:09:03,27/07/2026 16:14:17,42.9',
+      'WallStreet30,Buy,1,52216.7,52262.1,27/07/2026 15:31:14,27/07/2026 16:14:16,45.4',
+      'WallStreet30,Buy,0.5,52183.7,52237.5,27/07/2026 16:10:24,27/07/2026 16:13:31,26.9',
+      'WallStreet30,Sell,0.5,52500,52450,05/08/2026 09:30:00,05/08/2026 10:00:00,25'
+    ].join('\n');
+
+    const result = await parseCSV(buf(completedTradeCSV), 'generic', {
+      tradeGroupingSettings: { enabled: false }
+    });
+
+    expectValidResult(result);
+    expect(result.trades).toHaveLength(6);
+    expect(result.diagnostics.invalidRows).toBe(0);
+    expect(result.trades[0]).toEqual(expect.objectContaining({
+      symbol: 'WallStreet30',
+      tradeDate: '2026-07-27',
+      entryTime: '2026-07-27T15:24:08',
+      exitTime: '2026-07-27T16:14:18',
+      entryPrice: 52323.3,
+      exitPrice: 52258.3,
+      quantity: 1,
+      side: 'long',
+      pnl: -65
+    }));
+    expect(result.trades[5]).toEqual(expect.objectContaining({
+      tradeDate: '2026-08-05',
+      entryTime: '2026-08-05T09:30:00',
+      exitTime: '2026-08-05T10:00:00',
+      side: 'short',
+      pnl: 25
+    }));
+  });
+
   test('parses Apex-style completed trade rows with Instrument and dd-mm-yyyy timestamps', async () => {
     const apexCompletedTradeCSV = [
       'Trade number,Instrument,Account,Strategy,Market pos.,Qty,Entry price,Exit price,Entry time,Exit time,Entry name,Exit name,Profit,Cum. net profit,Commission,Clearing Fee,Exchange Fee,IP Fee,NFA Fee,MAE,MFE,ETD,Bars,',

@@ -78,6 +78,27 @@ function normalizeAvaTradeSymbol(symbol) {
   return match ? match[1] : symbol;
 }
 
+function inferGenericOpenCloseDateOrder(records) {
+  let hasDayFirstEvidence = false;
+  let hasMonthFirstEvidence = false;
+
+  for (const record of records) {
+    for (const header of ['Open Date', 'Close Date']) {
+      const value = String(record?.[header] || '').trim();
+      const match = value.match(/^(\d{1,2})\/(\d{1,2})\/\d{4}(?=\D|$)/);
+      if (!match) continue;
+
+      const first = Number(match[1]);
+      const second = Number(match[2]);
+      if (first > 12 && second <= 12) hasDayFirstEvidence = true;
+      if (second > 12 && first <= 12) hasMonthFirstEvidence = true;
+    }
+  }
+
+  if (hasDayFirstEvidence === hasMonthFirstEvidence) return null;
+  return hasDayFirstEvidence ? 'day_first' : 'month_first';
+}
+
 async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
   // Initialize diagnostics object to track parsing details
   const diagnostics = createDiagnostics(broker);
@@ -746,6 +767,14 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       records = records.map(normalizeRecord);
     }
 
+    if (broker === 'generic' && !context.generic_date_order) {
+      const inferredDateOrder = inferGenericOpenCloseDateOrder(records);
+      if (inferredDateOrder) {
+        context.generic_date_order = inferredDateOrder;
+        console.log(`[GENERIC] Inferred ${inferredDateOrder} slash-date order from Open Date/Close Date values`);
+      }
+    }
+
     // Check if CSV contains a currency column BEFORE broker-specific parsing
     const hasCurrencyColumn = detectCurrencyColumn(records);
 
@@ -1243,6 +1272,8 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       record['Closing time (UTC-4)'] ||
       record['Entry Date'] && record['Exit Date'] ||
       record['Entry Price'] && record['Exit Price'] ||
+      record['Open Date'] && record['Close Date'] ||
+      record['Open Price'] && record['Close Price'] ||
       record['Entry Time'] && record['Exit Time'] && record['Entry price'] && record['Exit price'] ||
       record['Entry price'] && record['Closing price'] ||
       // MetaTrader 4/5 exports — each row is a completed trade with open/close
