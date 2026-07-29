@@ -4,6 +4,7 @@ const alphaVantage = require('../utils/alphaVantage');
 const historicalPriceCache = require('../utils/historicalPriceCache');
 const HoldingsService = require('./holdingsService');
 const NotificationService = require('./notificationService');
+const { calculateTimeWeightedReturn } = require('./retirementCalculator');
 
 const UNSORTED_ACCOUNT = '__unsorted__';
 const DEFAULT_BENCHMARK = 'SPY';
@@ -327,8 +328,127 @@ class PortfolioService {
       totalReturn: round(totals.totalReturn),
       totalReturnPercent: round(totals.totalReturnPercent),
       targetCoveragePercent: round(totals.targetCoveragePercent),
+      priceStalePositionCount: positions.filter(position => position.priceStale).length,
       allocation
     };
+  }
+
+  static async getRetirementAccountBreakdown(userId) {
+    const result = await db.query(
+      `WITH trade_executions AS (
+         SELECT
+           t.account_identifier,
+           t.symbol,
+           t.broker,
+           COALESCE(
+             (
+               SELECT SUM(
+                 CASE
+                   WHEN exec->>'entryPrice' IS NOT NULL
+                     OR exec->>'exitPrice' IS NOT NULL
+                     OR exec->>'entryTime' IS NOT NULL
+                   THEN
+                     CASE
+                       WHEN exec->>'exitPrice' IS NULL THEN
+                         CASE
+                           WHEN t.side = 'long' THEN (exec->>'quantity')::numeric
+                           ELSE -(exec->>'quantity')::numeric
+                         END
+                       ELSE 0
+                     END
+                   WHEN COALESCE(exec->>'action', exec->>'side', '') IN ('buy', 'long')
+                     THEN (exec->>'quantity')::numeric
+                   WHEN COALESCE(exec->>'action', exec->>'side', '') IN ('sell', 'short')
+                     THEN -(exec->>'quantity')::numeric
+                   ELSE 0
+                 END
+               )
+               FROM jsonb_array_elements(COALESCE(t.executions, '[]'::jsonb)) AS exec
+               WHERE exec->>'quantity' IS NOT NULL
+             ),
+             t.quantity
+           ) AS net_position
+         FROM trades t
+         WHERE t.user_id = $1
+           AND t.exit_price IS NULL
+           AND t.side = 'long'
+       ),
+       eligible_trade_positions AS (
+         SELECT
+           COALESCE(NULLIF(account_identifier, ''), '${UNSORTED_ACCOUNT}') AS account_identifier,
+           symbol,
+           STRING_AGG(DISTINCT broker, ', ') AS brokers
+         FROM trade_executions
+         GROUP BY account_identifier, symbol
+         HAVING COALESCE(SUM(net_position), 0) > 0
+       ),
+       source_rows AS (
+         SELECT
+           COALESCE(NULLIF(l.account_identifier, ''), '${UNSORTED_ACCOUNT}') AS account_identifier,
+           CASE
+             WHEN l.source = 'plaid' THEN 'plaid_holdings'
+             ELSE 'manual_holdings'
+           END AS source,
+           COUNT(l.id)::integer AS record_count,
+           NULL::text AS brokers
+         FROM investment_lots l
+         JOIN investment_holdings h
+           ON h.id = l.holding_id
+          AND h.user_id = l.user_id
+         WHERE l.user_id = $1
+           AND l.shares > 0
+         GROUP BY
+           COALESCE(NULLIF(l.account_identifier, ''), '${UNSORTED_ACCOUNT}'),
+           CASE WHEN l.source = 'plaid' THEN 'plaid_holdings' ELSE 'manual_holdings' END
+
+         UNION ALL
+
+         SELECT
+           account_identifier,
+           'open_long_positions' AS source,
+           COUNT(*)::integer AS record_count,
+           STRING_AGG(DISTINCT brokers, ', ') AS brokers
+         FROM eligible_trade_positions
+         GROUP BY account_identifier
+       ),
+       account_sources AS (
+         SELECT
+           account_identifier,
+           ARRAY_AGG(DISTINCT source ORDER BY source) AS sources,
+           SUM(record_count)::integer AS source_record_count,
+           STRING_AGG(DISTINCT brokers, ', ') FILTER (WHERE brokers IS NOT NULL) AS trade_brokers
+         FROM source_rows
+         GROUP BY account_identifier
+       )
+       SELECT
+         sources.account_identifier,
+         managed.account_name,
+         COALESCE(managed.broker, sources.trade_brokers) AS broker,
+         sources.sources,
+         sources.source_record_count
+       FROM account_sources sources
+       LEFT JOIN LATERAL (
+         SELECT ua.account_name, ua.broker
+         FROM user_accounts ua
+         WHERE ua.user_id = $1
+           AND sources.account_identifier != '${UNSORTED_ACCOUNT}'
+           AND NULLIF(ua.account_identifier, '') = sources.account_identifier
+         ORDER BY ua.is_primary DESC, ua.created_at ASC
+         LIMIT 1
+       ) managed ON TRUE
+       ORDER BY
+         CASE WHEN sources.account_identifier = '${UNSORTED_ACCOUNT}' THEN 1 ELSE 0 END,
+         COALESCE(managed.account_name, sources.account_identifier)`,
+      [userId]
+    );
+
+    return result.rows.map(row => ({
+      account_identifier: row.account_identifier,
+      account_name: row.account_name || null,
+      broker: row.broker || null,
+      sources: row.sources || [],
+      source_record_count: Number(row.source_record_count) || 0
+    }));
   }
 
   static async getPositions(userId, options = {}) {
@@ -586,6 +706,145 @@ class PortfolioService {
       },
       series
     };
+  }
+
+  /**
+   * Build retirement-planning return assumptions from the user's currently
+   * tracked portfolio. Returns are time-weighted so newly added lots are
+   * treated as external cash flows instead of investment gains.
+   */
+  static async getHistoricalReturnScenarios(userId, options = {}) {
+    const accounts = normalizeAccounts(options.accounts);
+    const [positions, components] = await Promise.all([
+      this.getPositions(userId, { accounts }),
+      this._getPositionComponents(userId, accounts)
+    ]);
+    const totalPortfolioValue = positions.reduce(
+      (sum, position) => sum + Math.max(0, Number(position.currentValue) || 0),
+      0
+    );
+
+    if (totalPortfolioValue <= 0 || components.length === 0) {
+      return [];
+    }
+
+    const longestRange = getPeriodRange('10Y');
+    const symbols = [...new Set(components.map(component => component.symbol))];
+    const [priceSeriesMap, dividends] = await Promise.all([
+      this._getPriceSeriesMap(
+        symbols,
+        longestRange.startDate,
+        longestRange.endDate,
+        userId,
+        { allowFullHistory: true }
+      ),
+      this._getRecordedDividendsForRange(
+        userId,
+        accounts,
+        longestRange.startDate,
+        longestRange.endDate
+      )
+    ]);
+    const scenarios = [];
+
+    for (const periodYears of [1, 5, 10]) {
+      const range = getPeriodRange(`${periodYears}Y`);
+      const requestedDays = Math.max(
+        1,
+        (new Date(`${range.endDate}T00:00:00.000Z`) - new Date(`${range.startDate}T00:00:00.000Z`))
+          / 86_400_000
+      );
+      const expectedTradingDays = Math.max(1, Math.floor(requestedDays * (5 / 7)));
+      const qualifyingSymbols = new Set();
+      const seriesBySymbol = {};
+
+      for (const [symbol, candles] of priceSeriesMap.entries()) {
+        const normalized = (candles || [])
+          .map(candle => ({
+            date: this._normalizeDateValue(candle.time),
+            close: Number(candle.close)
+          }))
+          .filter(candle => (
+            candle.date >= range.startDate
+            && candle.date <= range.endDate
+            && Number.isFinite(candle.close)
+            && candle.close > 0
+          ))
+          .sort((left, right) => left.date.localeCompare(right.date));
+
+        if (normalized.length < 2) continue;
+        const symbolCoveredDays = (
+          new Date(`${normalized[normalized.length - 1].date}T00:00:00.000Z`)
+          - new Date(`${normalized[0].date}T00:00:00.000Z`)
+        ) / 86_400_000;
+        const symbolTimeCoverage = (symbolCoveredDays / requestedDays) * 100;
+        const symbolObservationCoverage = (normalized.length / expectedTradingDays) * 100;
+        if (Math.min(symbolTimeCoverage, symbolObservationCoverage) < 80) continue;
+
+        qualifyingSymbols.add(symbol);
+        seriesBySymbol[symbol] = normalized;
+      }
+
+      const coveredPortfolioValue = positions
+        .filter(position => qualifyingSymbols.has(position.symbol))
+        .reduce((sum, position) => sum + Math.max(0, Number(position.currentValue) || 0), 0);
+      const valueCoveragePercent = (coveredPortfolioValue / totalPortfolioValue) * 100;
+      if (valueCoveragePercent < 80) continue;
+
+      const coveredComponents = components
+        .filter(component => qualifyingSymbols.has(component.symbol))
+        .map(component => ({
+          symbol: component.symbol,
+          shares: component.shares,
+          value_multiplier: component.valueMultiplier,
+          effective_date: component.effectiveDate
+        }));
+      const coveredDividends = dividends.filter(dividend => (
+        qualifyingSymbols.has(dividend.symbol)
+        && dividend.payment_date >= range.startDate
+        && dividend.payment_date <= range.endDate
+      ));
+      const performance = calculateTimeWeightedReturn({
+        components: coveredComponents,
+        price_series_by_symbol: seriesBySymbol,
+        dividends: coveredDividends,
+        start_date: range.startDate,
+        end_date: range.endDate
+      });
+
+      if (!performance) continue;
+      const coveredDays = (
+        new Date(`${performance.data_end}T00:00:00.000Z`)
+        - new Date(`${performance.data_start}T00:00:00.000Z`)
+      ) / 86_400_000;
+      const timeCoveragePercent = Math.min(100, (coveredDays / requestedDays) * 100);
+      const observationCoveragePercent = Math.min(
+        100,
+        (performance.observation_count / expectedTradingDays) * 100
+      );
+      const effectiveTimeCoveragePercent = Math.min(
+        timeCoveragePercent,
+        observationCoveragePercent
+      );
+      if (effectiveTimeCoveragePercent < 80) continue;
+
+      scenarios.push({
+        key: `historical_${periodYears}y`,
+        label: `Historical ${periodYears}-year`,
+        source: 'historical',
+        period_years: periodYears,
+        annual_return_percent: performance.annual_return_percent,
+        total_return_percent: performance.total_return_percent,
+        data_start: performance.data_start,
+        data_end: performance.data_end,
+        observation_count: performance.observation_count,
+        time_coverage_percent: round(effectiveTimeCoveragePercent),
+        portfolio_value_coverage_percent: round(Math.min(100, valueCoveragePercent)),
+        includes_recorded_dividends: coveredDividends.length > 0
+      });
+    }
+
+    return scenarios;
   }
 
   static async getAlertSummary(userId, options = {}) {
@@ -1393,6 +1652,42 @@ class PortfolioService {
     });
   }
 
+  static async _getRecordedDividendsForRange(userId, accounts, startDate, endDate) {
+    const params = [userId, startDate, endDate];
+    let accountClause = '';
+
+    if (accounts.length > 0) {
+      const filter = buildAccountFilter('l.account_identifier', accounts, params, 4);
+      accountClause = `
+        AND EXISTS (
+          SELECT 1
+          FROM investment_lots l
+          WHERE l.holding_id = d.holding_id
+            AND l.user_id = d.user_id
+            ${filter.clause}
+        )`;
+    }
+
+    const result = await db.query(
+      `SELECT
+         d.symbol,
+         d.payment_date,
+         d.total_amount
+       FROM investment_dividends d
+       WHERE d.user_id = $1
+         AND d.payment_date BETWEEN $2 AND $3
+         ${accountClause}
+       ORDER BY d.payment_date ASC`,
+      params
+    );
+
+    return result.rows.map(row => ({
+      symbol: row.symbol,
+      payment_date: this._normalizeDateValue(row.payment_date),
+      total_amount: Number(row.total_amount) || 0
+    }));
+  }
+
   static async _getLotComponents(userId, accounts) {
     const params = [userId];
     const { clause } = buildAccountFilter('l.account_identifier', accounts, params, 2);
@@ -1472,10 +1767,10 @@ class PortfolioService {
     }));
   }
 
-  static async _getPriceSeriesMap(symbols, startDate, endDate, userId) {
+  static async _getPriceSeriesMap(symbols, startDate, endDate, userId, options = {}) {
     const entries = await Promise.all(
       symbols.map(async symbol => {
-        const candles = await this._getDailySeries(symbol, startDate, endDate, userId);
+        const candles = await this._getDailySeries(symbol, startDate, endDate, userId, options);
         return [symbol, candles];
       })
     );
@@ -1483,15 +1778,33 @@ class PortfolioService {
     return new Map(entries);
   }
 
-  static async _getDailySeries(symbol, startDate, endDate, userId) {
+  static async _getDailySeries(symbol, startDate, endDate, userId, options = {}) {
     const cachedCandles = await historicalPriceCache.getRange(symbol, startDate, endDate);
-    if (cachedCandles.length > 0 && await historicalPriceCache.hasRange(symbol, startDate, endDate)) {
+    const requestedDays = Math.max(
+      1,
+      (new Date(`${endDate}T00:00:00.000Z`) - new Date(`${startDate}T00:00:00.000Z`))
+        / 86_400_000
+    );
+    const cachedSpanDays = cachedCandles.length > 1
+      ? (
+          new Date(`${this._normalizeDateValue(cachedCandles[cachedCandles.length - 1].time)}T00:00:00.000Z`)
+          - new Date(`${this._normalizeDateValue(cachedCandles[0].time)}T00:00:00.000Z`)
+        ) / 86_400_000
+      : 0;
+    const cachedCoveragePercent = (cachedSpanDays / requestedDays) * 100;
+    const hasCachedRange = cachedCandles.length > 0
+      && await historicalPriceCache.hasRange(symbol, startDate, endDate);
+    if (
+      hasCachedRange
+      && (!options.allowFullHistory || cachedCoveragePercent >= 80)
+    ) {
       return cachedCandles;
     }
 
     if (alphaVantage.isConfigured()) {
       try {
-        const candles = await alphaVantage.getDailyData(symbol, 'compact');
+        const outputSize = options.allowFullHistory ? 'full' : 'compact';
+        const candles = await alphaVantage.getDailyData(symbol, outputSize);
         return candles.filter(candle => {
           const date = this._toDateString(candle.time);
           return date >= startDate && date <= endDate;

@@ -10,6 +10,7 @@
     "test": "jest",
     "migrate": "node src/utils/migrate.js",
     "migrate:export": "node run-export-migration.js",
+    "seed:retirement-demo": "node scripts/seedRetirementPortfolioDemo.js",
     "test:integration": "jest --config jest.integration.config.js"
   },
   "dependencies": {

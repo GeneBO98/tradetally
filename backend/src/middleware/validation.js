@@ -882,6 +882,29 @@ const schemas = {
     notes: nullableString(2000)
   }),
 
+  // Retirement planner uses snake_case end to end.
+  retirementPlan: Joi.object({
+    current_age: Joi.number().integer().min(18).max(99).required(),
+    age_as_of_date: isoDateOnly.optional(),
+    target_retirement_age: Joi.number()
+      .integer()
+      .min(19)
+      .max(100)
+      .greater(Joi.ref('current_age'))
+      .required(),
+    current_annual_cost_of_living: Joi.number().min(0).max(1_000_000_000_000).required(),
+    desired_annual_retirement_spending: Joi.number().positive().max(1_000_000_000_000).required(),
+    target_portfolio_balance: Joi.number().min(0).max(1_000_000_000_000).allow(null, '').optional(),
+    monthly_contribution: Joi.number().min(0).max(1_000_000_000).required(),
+    annual_contribution_increase_percent: Joi.number().greater(-100).max(100).required(),
+    additional_retirement_savings: Joi.number().min(0).max(1_000_000_000_000).required(),
+    other_annual_retirement_income: Joi.number().min(0).max(1_000_000_000_000).required(),
+    other_income_start_age: Joi.number().integer().min(18).max(100).allow(null, '').optional(),
+    custom_return_rate_percent: Joi.number().greater(-100).max(100).required(),
+    inflation_rate_percent: Joi.number().min(0).max(20).required(),
+    withdrawal_rate_percent: Joi.number().greater(0).max(20).required()
+  }),
+
   investmentFavoriteToggle: Joi.object({
     symbol: Joi.string().trim().max(20).required()
   }),

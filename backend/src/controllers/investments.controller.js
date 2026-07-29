@@ -7,6 +7,7 @@ const EightPillarsService = require('../services/eightPillarsService');
 const FundamentalDataService = require('../services/fundamentalDataService');
 const HoldingsService = require('../services/holdingsService');
 const PortfolioService = require('../services/portfolioService');
+const RetirementService = require('../services/retirementService');
 const DCFValuationService = require('../services/dcfValuationService');
 const plaidIncomeService = require('../services/plaid/plaidIncomeService');
 const db = require('../config/database');
@@ -915,6 +916,78 @@ const refreshPrices = async (req, res) => {
 };
 
 // ========================================
+// RETIREMENT PLANNER
+// ========================================
+
+/**
+ * Get the saved plan and a projection against the current portfolio.
+ * GET /api/investments/retirement
+ */
+const getRetirementPlan = async (req, res) => {
+  try {
+    const result = await RetirementService.get(req.user.id, {
+      accounts: req.query.accounts
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('[INVESTMENTS] Retirement plan error:', error);
+    res.status(500).json({ error: error.message || 'Failed to get retirement plan' });
+  }
+};
+
+/**
+ * Calculate an unsaved retirement plan preview.
+ * POST /api/investments/retirement/calculate
+ */
+const calculateRetirementPlan = async (req, res) => {
+  try {
+    const result = await RetirementService.calculate(req.user.id, req.body, {
+      accounts: req.query.accounts
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('[INVESTMENTS] Retirement calculation error:', error);
+    const status = /age|return|rate|contribution|spending|target/i.test(error.message) ? 400 : 500;
+    res.status(status).json({ error: error.message || 'Failed to calculate retirement plan' });
+  }
+};
+
+/**
+ * Save the user's single plan and return its canonical all-account result.
+ * PUT /api/investments/retirement
+ */
+const saveRetirementPlan = async (req, res) => {
+  try {
+    const plan = await RetirementService.savePlan(req.user.id, req.body);
+    const result = await RetirementService.calculate(req.user.id, plan);
+    res.json({
+      ...result,
+      plan,
+      draft_plan: plan,
+      has_saved_plan: true
+    });
+  } catch (error) {
+    console.error('[INVESTMENTS] Save retirement plan error:', error);
+    const status = /age|return|rate|contribution|spending|target/i.test(error.message) ? 400 : 500;
+    res.status(status).json({ error: error.message || 'Failed to save retirement plan' });
+  }
+};
+
+/**
+ * Delete the saved retirement plan. Portfolio data is unaffected.
+ * DELETE /api/investments/retirement
+ */
+const deleteRetirementPlan = async (req, res) => {
+  try {
+    const deleted = await RetirementService.deletePlan(req.user.id);
+    res.json({ deleted });
+  } catch (error) {
+    console.error('[INVESTMENTS] Delete retirement plan error:', error);
+    res.status(500).json({ error: error.message || 'Failed to reset retirement plan' });
+  }
+};
+
+// ========================================
 // SCREENER
 // ========================================
 
@@ -1412,6 +1485,12 @@ module.exports = {
   setPortfolioTarget,
   getPortfolioSummary,
   refreshPrices,
+
+  // Retirement planner
+  getRetirementPlan,
+  calculateRetirementPlan,
+  saveRetirementPlan,
+  deleteRetirementPlan,
 
   // Screener
   getSearchHistory,

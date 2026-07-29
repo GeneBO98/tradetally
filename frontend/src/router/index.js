@@ -324,6 +324,12 @@ const router = createRouter({
       meta: { requiresAuth: true, requiresTier: 'pro' }
     },
     {
+      path: '/analysis/retirement',
+      name: 'retirement-planner',
+      component: () => import('@/views/RetirementPlannerView.vue'),
+      meta: { requiresAuth: true, requiresTier: 'pro' }
+    },
+    {
       path: '/analysis/compare',
       name: 'analysis-compare',
       component: () => import('@/views/InvestmentsCompareView.vue'),
