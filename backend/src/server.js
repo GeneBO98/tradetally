@@ -140,9 +140,6 @@ const rateLimitEnabled = process.env.RATE_LIMIT_ENABLED !== 'false';
 const rateLimitMax = parseInt(process.env.RATE_LIMIT_MAX) || 1000;
 const rateLimitWindowMs = parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000;
 
-// Custom key generator to properly identify clients behind proxies
-const { getClientIp } = require('./utils/clientIp');
-
 const limiter = createRateLimiter({
   windowMs: rateLimitWindowMs,
   max: rateLimitMax,
