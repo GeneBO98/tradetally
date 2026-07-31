@@ -14,6 +14,7 @@ const TierService = require('../services/tierService');
 const AnalyticsCache = require('../services/analyticsCache');
 const OptionStrategyGroupingService = require('../services/optionStrategyGroupingService');
 const logger = require('../utils/logger');
+const { getUserTimezone } = require('../utils/timezone');
 const db = require('../config/database');
 const crypto = require('crypto');
 
@@ -205,7 +206,8 @@ const brokerSyncController = {
 
       // Calculate next sync time if auto-sync enabled
       if (autoSyncEnabled && syncFrequency !== 'manual') {
-        const nextSync = BrokerConnection.calculateNextSync(syncFrequency, syncTime);
+        const userTimezone = await getUserTimezone(userId);
+        const nextSync = BrokerConnection.calculateNextSync(syncFrequency, syncTime, userTimezone);
         if (nextSync) {
           await BrokerConnection.update(connection.id, { nextScheduledSync: nextSync });
         }
@@ -270,7 +272,8 @@ const brokerSyncController = {
 
       await BrokerConnection.updateStatus(connection.id, 'active', 'Connection validated successfully');
       if (autoSyncEnabled && syncFrequency !== 'manual') {
-        const nextSync = BrokerConnection.calculateNextSync(syncFrequency, syncTime);
+        const userTimezone = await getUserTimezone(userId);
+        const nextSync = BrokerConnection.calculateNextSync(syncFrequency, syncTime, userTimezone);
         if (nextSync) await BrokerConnection.update(connection.id, { nextScheduledSync: nextSync });
       }
 
@@ -619,9 +622,11 @@ const brokerSyncController = {
 
       // Recalculate next sync time
       if (autoSyncEnabled && syncFrequency !== 'manual') {
+        const userTimezone = await getUserTimezone(userId);
         const nextSync = BrokerConnection.calculateNextSync(
           syncFrequency || connection.syncFrequency,
-          syncTime || connection.syncTime
+          syncTime || connection.syncTime,
+          userTimezone
         );
         if (nextSync) {
           await BrokerConnection.update(id, { nextScheduledSync: nextSync });

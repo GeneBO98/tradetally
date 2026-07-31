@@ -12,6 +12,7 @@ const schwabService = require('./schwabService');
 const tradestationService = require('./tradestationService');
 const alpacaService = require('./alpacaService');
 const trading212Service = require('./trading212Service');
+const { getUserTimezone } = require('../../utils/timezone');
 
 class BrokerSyncService {
   /**
@@ -150,9 +151,15 @@ class BrokerSyncService {
       });
 
       // Update connection status
-      const nextSync = connection.autoSyncEnabled && connection.syncFrequency !== 'manual'
-        ? BrokerConnection.calculateNextSync(connection.syncFrequency, connection.syncTime)
-        : null;
+      let nextSync = null;
+      if (connection.autoSyncEnabled && connection.syncFrequency !== 'manual') {
+        const userTimezone = await getUserTimezone(connection.userId);
+        nextSync = BrokerConnection.calculateNextSync(
+          connection.syncFrequency,
+          connection.syncTime,
+          userTimezone
+        );
+      }
 
       await BrokerConnection.updateAfterSync(
         connectionId,
