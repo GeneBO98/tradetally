@@ -3,6 +3,26 @@ import { ref, computed } from 'vue'
 import api from '@/services/api'
 import { getLocalToday } from '@/utils/date'
 
+const JOURNAL_ANALYSIS_RECOVERY_TIMEOUT_MS = 10 * 60 * 1000
+const JOURNAL_ANALYSIS_RECOVERY_POLL_MS = 3000
+
+function createAnalysisRequestId() {
+  if (globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID()
+  }
+  return `journal_${Date.now()}_${Math.random().toString(36).slice(2)}`
+}
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function isRecoverableAnalysisError(err) {
+  const status = err.response?.status
+  return !err.response || [408, 499, 502, 503, 504, 520, 521, 522, 523, 524].includes(status) ||
+    ['ECONNABORTED', 'ERR_NETWORK', 'ETIMEDOUT'].includes(err.code)
+}
+
 export const useDiaryStore = defineStore('diary', () => {
   // State
   const entries = ref([])
@@ -432,19 +452,73 @@ export const useDiaryStore = defineStore('diary', () => {
 
   // AI Analysis
   const analyzeEntries = async (startDate, endDate) => {
+    const request_id = createAnalysisRequestId()
+    const recoveryDeadline = Date.now() + JOURNAL_ANALYSIS_RECOVERY_TIMEOUT_MS
+
     try {
       setLoading(true)
       clearError()
 
-      const response = await api.get(`/diary/analyze?startDate=${startDate}&endDate=${endDate}`)
+      const response = await api.get('/diary/analyze', {
+        params: { startDate, endDate, request_id }
+      })
       return response.data
     } catch (err) {
+      if (isRecoverableAnalysisError(err)) {
+        console.warn('[DIARY] Journal analysis connection ended before completion; waiting for the saved result', {
+          request_id,
+          status: err.response?.status,
+          code: err.code
+        })
+
+        try {
+          return await recoverAnalysis(request_id, recoveryDeadline)
+        } catch (recoveryError) {
+          setError(recoveryError.message)
+          throw recoveryError
+        }
+      }
+
       console.error('Error analyzing diary entries:', err)
       setError(err.response?.data?.error || 'Failed to analyze diary entries')
       throw err
     } finally {
       setLoading(false)
     }
+  }
+
+  const recoverAnalysis = async (request_id, deadline) => {
+    while (Date.now() < deadline) {
+      try {
+        const response = await api.get(`/diary/analyze/${encodeURIComponent(request_id)}`)
+        const result = response.data
+
+        if (result.status === 'completed') {
+          return result
+        }
+
+        if (result.status === 'failed') {
+          const analysisError = new Error(result.error || 'Failed to analyze diary entries')
+          analysisError.isJournalAnalysisFailure = true
+          throw analysisError
+        }
+      } catch (err) {
+        if (err.isJournalAnalysisFailure) {
+          throw err
+        }
+        if (err.response?.status === 401 || err.response?.status === 403) {
+          throw err
+        }
+        if (err.response?.status !== 404 && !isRecoverableAnalysisError(err)) {
+          throw err
+        }
+        console.warn('[DIARY] Waiting for journal analysis recovery:', err.message)
+      }
+
+      await delay(Math.min(JOURNAL_ANALYSIS_RECOVERY_POLL_MS, Math.max(0, deadline - Date.now())))
+    }
+
+    throw new Error('The journal analysis did not finish within 10 minutes. Please try again with a shorter date range or a faster AI model.')
   }
 
   return {

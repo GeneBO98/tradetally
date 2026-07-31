@@ -19,6 +19,7 @@ const {
   getStats,
   searchEntries,
   analyzeEntries,
+  getAnalysisStatus,
   getGeneralNotes,
   createGeneralNote,
   updateGeneralNote,
@@ -49,6 +50,7 @@ router.get('/stats', getStats);
 
 // AI Analysis of diary entries
 router.get('/analyze', analyzeEntries);
+router.get('/analyze/:requestId', getAnalysisStatus);
 
 // Get diary entry by date
 router.get('/date/:date', getEntryByDate);
