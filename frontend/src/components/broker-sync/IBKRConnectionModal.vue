@@ -30,7 +30,7 @@
               <li>Log in to <a href="https://www.interactivebrokers.com/sso/Login" target="_blank" class="underline font-medium">IBKR Client Portal</a></li>
               <li>Navigate to <strong>Performance & Reports > Flex Queries</strong> (labeled <strong>Reporting</strong> in some accounts)</li>
               <li>Under "Activity Flex Query", click the <strong>+</strong> button to create a new query</li>
-              <li>Name your query, select <strong>Trades</strong> and <strong>Open Positions</strong>, and choose <strong>CSV or XML</strong></li>
+              <li>Name your query, set its period to <strong>Last N Calendar Days: 365</strong>, select <strong>Trades</strong> and <strong>Open Positions</strong>, and choose <strong>CSV or XML</strong></li>
               <li>In the Trades section options, make sure <strong>Executions</strong> is selected — order-only or summary data cannot be imported</li>
               <li>Save the query and note the <strong>Query ID</strong> shown next to it</li>
               <li>Open <strong>Flex Web Service Configuration</strong> (gear icon), enable <strong>Flex Web Service Status</strong>, and save</li>

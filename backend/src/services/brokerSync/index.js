@@ -142,6 +142,9 @@ class BrokerSyncService {
           windows_completed: result.windowsCompleted || 0,
           requested_ranges: result.requestedRanges || [],
           returned_ranges: result.returnedRanges || [],
+          reports_retrieved: result.reportsRetrieved || 0,
+          latest_window_retrieved: result.latestWindowRetrieved !== false,
+          latest_retrieved_end_date: result.latestRetrievedEndDate || null,
           trade_rows: result.tradeRows || 0,
           open_position_rows: result.openPositionRows || 0,
           open_positions_parsed: result.openPositionsParsed || 0,
@@ -161,14 +164,20 @@ class BrokerSyncService {
         );
       }
 
+      const latestReportRetrieved = connection.brokerType !== 'ibkr' || result.latestWindowRetrieved !== false;
       await BrokerConnection.updateAfterSync(
         connectionId,
         result.imported + expiredClosed,
         result.skipped,
-        nextSync
+        nextSync,
+        { advanceLastSync: latestReportRetrieved }
       );
 
-      console.log(`[BROKER-SYNC] Sync completed: ${result.imported} imported, ${result.duplicates} duplicates, ${expiredClosed} expired options closed`);
+      if (latestReportRetrieved) {
+        console.log(`[BROKER-SYNC] Sync completed: ${result.imported} imported, ${result.duplicates} duplicates, ${expiredClosed} expired options closed`);
+      } else {
+        console.warn('[BROKER-SYNC] Sync completed with no retrievable IBKR statement; preserving the previous successful-sync cursor');
+      }
 
       return {
         success: true,

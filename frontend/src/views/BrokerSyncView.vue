@@ -365,6 +365,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useBrokerSyncStore } from '@/stores/brokerSync'
 import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
+import { useUserTimezone } from '@/composables/useUserTimezone'
 import BrokerConnectionCard from '@/components/broker-sync/BrokerConnectionCard.vue'
 import IBKRConnectionModal from '@/components/broker-sync/IBKRConnectionModal.vue'
 import Trading212ConnectionModal from '@/components/broker-sync/Trading212ConnectionModal.vue'
@@ -372,6 +373,8 @@ import ConnectionSettingsModal from '@/components/broker-sync/ConnectionSettings
 import IBKRNoticeBanner from '@/components/broker-sync/IBKRNoticeBanner.vue'
 import ManualTradeReviewModal from '@/components/import/ManualTradeReviewModal.vue'
 import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
+
+const { formatDateTime: formatDateTimeTz } = useUserTimezone()
 
 const store = useBrokerSyncStore()
 const tradesStore = useTradesStore()
@@ -806,7 +809,7 @@ async function refreshLogs() {
 
 function formatDate(date) {
   if (!date) return '-'
-  return new Date(date).toLocaleString()
+  return formatDateTimeTz(date, { includeSeconds: true })
 }
 
 function getStatusLabel(log) {

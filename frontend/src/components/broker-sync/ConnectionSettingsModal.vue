@@ -286,6 +286,7 @@
 <script setup>
 import { ref, computed, watch } from "vue";
 import BaseSelect from "@/components/common/BaseSelect.vue";
+import { useUserTimezone } from "@/composables/useUserTimezone";
 import { syncRangePresets, applyPresetToForm, resolveActivePreset, todayIso } from "@/utils/syncRangePresets";
 
 const props = defineProps({
@@ -300,6 +301,7 @@ const props = defineProps({
 });
 
 const emit = defineEmits(["close", "save"]);
+const { formatDateTime: formatDateTimeTz } = useUserTimezone();
 
 function initialSyncStartDate(value) {
     if (!value) return null;
@@ -388,7 +390,7 @@ const statusClass = computed(() => {
 
 function formatDate(date) {
     if (!date) return "-";
-    return new Date(date).toLocaleString();
+    return formatDateTimeTz(date, { includeSeconds: true });
 }
 
 function handleSave() {

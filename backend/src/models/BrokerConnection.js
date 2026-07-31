@@ -339,17 +339,20 @@ class BrokerConnection {
   /**
    * Update connection status
    */
-  static async updateStatus(connectionId, status, message = null) {
+  static async updateStatus(connectionId, status, message = null, resetFailures = false) {
     const query = `
       UPDATE broker_connections
       SET connection_status = $2,
           last_sync_message = COALESCE($3, last_sync_message),
+          consecutive_failures = CASE WHEN $4 THEN 0 ELSE consecutive_failures END,
+          last_error_at = CASE WHEN $4 THEN NULL ELSE last_error_at END,
+          last_error_message = CASE WHEN $4 THEN NULL ELSE last_error_message END,
           updated_at = CURRENT_TIMESTAMP
       WHERE id = $1
       RETURNING *
     `;
 
-    const result = await db.query(query, [connectionId, status, message]);
+    const result = await db.query(query, [connectionId, status, message, resetFailures]);
     if (result.rows.length === 0) return null;
 
     return this.formatConnection(result.rows[0], false);
@@ -358,12 +361,13 @@ class BrokerConnection {
   /**
    * Update connection after successful sync
    */
-  static async updateAfterSync(connectionId, tradesImported, tradesSkipped, nextSync = null) {
+  static async updateAfterSync(connectionId, tradesImported, tradesSkipped, nextSync = null, options = {}) {
+    const advanceLastSync = options.advanceLastSync !== false;
     const query = `
       UPDATE broker_connections
       SET connection_status = 'active',
-          last_sync_at = CURRENT_TIMESTAMP,
-          last_sync_status = 'success',
+          last_sync_at = CASE WHEN $5 THEN CURRENT_TIMESTAMP ELSE last_sync_at END,
+          last_sync_status = CASE WHEN $5 THEN 'success' ELSE 'warning' END,
           last_sync_trades_imported = $2,
           last_sync_trades_skipped = $3,
           next_scheduled_sync = $4,
@@ -375,7 +379,7 @@ class BrokerConnection {
       RETURNING *
     `;
 
-    const result = await db.query(query, [connectionId, tradesImported, tradesSkipped, nextSync]);
+    const result = await db.query(query, [connectionId, tradesImported, tradesSkipped, nextSync, advanceLastSync]);
     if (result.rows.length === 0) return null;
 
     return this.formatConnection(result.rows[0], false);
@@ -392,10 +396,11 @@ class BrokerConnection {
   static async scheduleTransientRetry(connectionId, delayMinutes = 30) {
     const query = `
       UPDATE broker_connections
-      SET next_scheduled_sync = LEAST(
-            COALESCE(next_scheduled_sync, NOW() + ($2 || ' minutes')::interval),
-            NOW() + ($2 || ' minutes')::interval
-          ),
+      SET next_scheduled_sync = CASE
+            WHEN next_scheduled_sync IS NULL OR next_scheduled_sync <= NOW()
+              THEN NOW() + ($2 || ' minutes')::interval
+            ELSE LEAST(next_scheduled_sync, NOW() + ($2 || ' minutes')::interval)
+          END,
           updated_at = CURRENT_TIMESTAMP
       WHERE id = $1
         AND auto_sync_enabled = true

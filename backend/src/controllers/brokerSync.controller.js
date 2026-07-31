@@ -844,7 +844,7 @@ const brokerSyncController = {
       }
 
       if (testResult.valid) {
-        await BrokerConnection.updateStatus(id, 'active', 'Connection test successful');
+        await BrokerConnection.updateStatus(id, 'active', 'Connection test successful', true);
       } else {
         await BrokerConnection.updateStatus(id, 'error', testResult.message);
       }

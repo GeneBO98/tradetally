@@ -25,6 +25,12 @@ vi.mock('@/composables/useNotification', () => ({
   })
 }))
 
+vi.mock('@/composables/useUserTimezone', () => ({
+  useUserTimezone: () => ({
+    formatDateTime: vi.fn(() => 'Jul 31, 2026, 18:00:00')
+  })
+}))
+
 vi.mock('vue-router', async importOriginal => ({
   ...(await importOriginal()),
   useRoute: () => ({ query: {} }),
@@ -43,6 +49,7 @@ describe('BrokerSyncView sync outcomes', () => {
           brokerType: 'ibkr',
           syncType: 'manual',
           status: 'completed',
+          startedAt: '2026-07-31T22:00:00Z',
           syncDetails: {
             outcome: 'warning',
             warnings: ['Open position quantity could not be reconciled safely.']
@@ -53,6 +60,7 @@ describe('BrokerSyncView sync outcomes', () => {
           brokerType: 'ibkr',
           syncType: 'manual',
           status: 'completed',
+          startedAt: '2026-07-31T22:00:00Z',
           syncDetails: { outcome: 'success', warnings: [] }
         }
       ],
@@ -86,6 +94,7 @@ describe('BrokerSyncView sync outcomes', () => {
     expect(warningBadge.classes()).toContain('bg-amber-100')
     expect(successBadge).toBeTruthy()
     expect(successBadge.classes()).toContain('bg-green-100')
+    expect(wrapper.text()).toContain('Jul 31, 2026, 18:00:00')
     expect(wrapper.get('details').text()).toContain('Open position quantity could not be reconciled safely.')
     expect(mocks.brokerStore.fetchSyncLogs).toHaveBeenCalled()
   })

@@ -806,6 +806,18 @@ describe('broker sync duplicate protection', () => {
     expect(windows[windows.length - 1].end_date).toBe('2024-02-29');
   });
 
+  test('IBKR defaults an Activity sync to the prior day in the user timezone', () => {
+    const windows = ibkrService.buildSyncWindows({ syncStartDate: '2026-07-01' }, {
+      now: '2026-08-01T01:30:00Z',
+      timezone: 'America/New_York',
+      syncType: 'manual'
+    });
+
+    // It is still July 31 in New York, so July 30 is the latest default
+    // Activity date even though UTC has already advanced to August 1.
+    expect(windows[windows.length - 1].end_date).toBe('2026-07-30');
+  });
+
   test('IBKR scheduled sync uses a seven-day overlap bounded by the configured floor', () => {
     expect(ibkrService.buildSyncWindows({
       syncStartDate: '2026-07-05',
@@ -883,6 +895,52 @@ describe('broker sync duplicate protection', () => {
       expect(result.warningDetails).toEqual(expect.arrayContaining([
         expect.objectContaining({ code: 'EMPTY_WINDOW_1003' })
       ]));
+    } finally {
+      requestSpy.mockRestore();
+      fetchSpy.mockRestore();
+      contextSpy.mockRestore();
+      importSpy.mockRestore();
+    }
+  });
+
+  test('IBKR backs the implicit Activity end date through a weekend after 1003', async () => {
+    const noStatement = Object.assign(new Error('No statement'), { errorCode: '1003' });
+    const requestSpy = jest.spyOn(ibkrService, 'requestFlexReport')
+      .mockRejectedValueOnce(noStatement)
+      .mockRejectedValueOnce(noStatement)
+      .mockResolvedValueOnce({ referenceCode: 'ref-friday' });
+    const fetchSpy = jest.spyOn(ibkrService, 'fetchGeneratedReport').mockResolvedValue({
+      content: '<FlexQueryResponse><FlexStatements><FlexStatement accountId="U1" fromDate="20260727" toDate="20260731"><OpenPositions /><Trades /></FlexStatement></FlexStatements></FlexQueryResponse>',
+      format: 'xml'
+    });
+    const contextSpy = jest.spyOn(ibkrService, 'getExistingContext').mockResolvedValue({ existingPositions: {}, existingExecutions: {} });
+    const importSpy = jest.spyOn(ibkrService, 'importTrades').mockResolvedValue({ imported: 0, updated: 0, skipped: 0, failed: 0, duplicates: 0 });
+    parseIBKRRecords.mockResolvedValueOnce({ trades: [], diagnostics: { warnings: [], skippedReasons: [] } });
+
+    try {
+      const result = await ibkrService.syncTrades({
+        id: 'conn-1', userId: 'user-1', brokerType: 'ibkr', ibkrFlexToken: 'token', ibkrFlexQueryId: 'query'
+      }, {
+        startDate: '2026-07-27',
+        now: '2026-08-03T12:00:00Z'
+      });
+
+      expect(requestSpy.mock.calls.map(call => call[2].endDate)).toEqual([
+        '2026-08-02',
+        '2026-08-01',
+        '2026-07-31'
+      ]);
+      expect(fetchSpy).toHaveBeenCalledWith('ref-friday', 'token', undefined, {
+        start_date: '2026-07-27',
+        end_date: '2026-07-31'
+      });
+      expect(result).toMatchObject({
+        outcome: 'success',
+        latestWindowRetrieved: true,
+        latestRetrievedEndDate: '2026-07-31',
+        reportsRetrieved: 1,
+        windowsRequested: 3
+      });
     } finally {
       requestSpy.mockRestore();
       fetchSpy.mockRestore();
