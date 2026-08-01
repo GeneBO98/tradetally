@@ -39,7 +39,7 @@ function roundR(value) {
 
 // Per-unit dollar multiplier for a trade (1 share for stocks, contract_size for
 // options, point_value for futures). Mirrors the inline resolution below; used
-// to express a fixed dollar risk as a per-share value (#345).
+// to express the configured dollar-risk fallback as a per-share value.
 function instrumentMultiplier(trade) {
   const instrumentType = inferInstrumentType(trade);
   if (instrumentType === 'future') {
@@ -58,8 +58,10 @@ function instrumentMultiplier(trade) {
   return 1;
 }
 
-// Returns the user's fixed dollar risk per trade when they use dollar-based
-// default stops, else null. Used to switch R's risk unit to dollars (#345).
+// Returns the user's configured default dollar risk, else null. Trade
+// Management uses this only as a fallback when the current stop cannot define
+// a positive price-based risk (for example, after a stop is trailed through
+// breakeven). A valid stored stop always takes precedence.
 async function getUserDollarRisk(userId) {
   const { dollarRisk } = await getTradeManagementPreferences(userId);
   return dollarRisk;
@@ -86,9 +88,7 @@ async function getTradeManagementPreferences(userId) {
   return preferences;
 }
 
-// For fixed-dollar-risk users, R's risk unit is a constant dollar amount, so the
-// per-share risk is that amount spread across the position. Returns null unless
-// the user is in dollar mode with a positive risk (#345).
+// Express the configured dollar-risk fallback as a per-share value.
 function dollarRiskPerShare(trade, dollarRisk) {
   if (!dollarRisk || dollarRisk <= 0) return null;
   const qty = parseFloat(trade.quantity);
@@ -106,11 +106,11 @@ function dollarRiskPerShare(trade, dollarRisk) {
 function calculateRMultiples(trade, options = {}) {
   const { entry_price, exit_price, stop_loss, take_profit, take_profit_targets, side, pnl, quantity, manual_target_hit_first, instrument_type, contract_size, point_value, risk_level_history } = trade;
 
-  // Fixed-dollar-risk users (#345): R's risk unit is a constant dollar amount,
-  // not the stored stop distance. dollarRiskUnit is the equivalent per-share
-  // risk; when set it replaces (entry - stop) everywhere below so actual, target,
-  // weighted, and management R all reconcile to net P&L / dollar risk.
-  const dollarRisk = options.dollarRisk && options.dollarRisk > 0 ? options.dollarRisk : null;
+  // The configured dollar amount is a default, not an override. A valid stored
+  // stop is the trade-specific source of truth; the default is retained only as
+  // a fallback for stops that no longer define positive risk (such as a stop
+  // trailed beyond entry).
+  const configuredDollarRisk = options.dollarRisk && options.dollarRisk > 0 ? options.dollarRisk : null;
 
   // Cap potential R at 10R to prevent unrealistic values from distorting charts
   const MAX_POTENTIAL_R = 10;
@@ -174,10 +174,19 @@ function calculateRMultiples(trade, options = {}) {
   
   logger.debug('[R-CALC] Parsed prices:', { entryPrice, exitPrice, stopLoss, instrument_type: instrument_type || 'stock' });
 
-  // Per-share risk for dollar-mode users; null otherwise (price-based risk used).
+  const priceBasedRisk = side === 'long'
+    ? entryPrice - stopLoss
+    : stopLoss - entryPrice;
+  const dollarRisk = priceBasedRisk > 0 ? null : configuredDollarRisk;
   const dollarRiskUnit = dollarRisk ? dollarRiskPerShare(trade, dollarRisk) : null;
   if (dollarRiskUnit) {
-    logger.debug('[R-CALC] Using fixed dollar risk unit:', { dollarRisk, dollarRiskUnit });
+    logger.debug('[R-CALC] Current stop has no positive risk; using configured dollar-risk fallback:', {
+      priceBasedRisk,
+      dollarRisk,
+      dollarRiskUnit
+    });
+  } else {
+    logger.debug('[R-CALC] Using current stop for risk:', { priceBasedRisk });
   }
 
   // Determine the take profit price to use for single-target analysis
@@ -281,7 +290,7 @@ function calculateRMultiples(trade, options = {}) {
 
   logger.debug('[R-CALC] ========== R-Value Calculation ==========');
   if (side === 'long') {
-    // For long positions: risk is entry - stop loss (or the fixed dollar risk unit)
+    // For long positions: risk is entry - stop loss (or the dollar fallback)
     risk = dollarRiskUnit ?? (entryPrice - stopLoss);
     logger.debug('[R-CALC] LONG trade - risk per share:', risk);
 
@@ -321,7 +330,7 @@ function calculateRMultiples(trade, options = {}) {
       }
     }
   } else {
-    // For short positions: risk is stop loss - entry (or the fixed dollar risk unit)
+    // For short positions: risk is stop loss - entry (or the dollar fallback)
     risk = dollarRiskUnit ?? (stopLoss - entryPrice);
     logger.debug('[R-CALC] SHORT trade - risk per share:', risk);
 
@@ -447,9 +456,8 @@ function calculateRMultiples(trade, options = {}) {
     tradeQuantity = 1;
   }
 
-  // Dollar-mode: the risk amount IS the fixed dollar risk, so actual R becomes
-  // net P&L / dollar risk. Keep the instrument multiplier from the block above so
-  // dollar amounts (actual/target P&L) stay in real dollars.
+  // When the current stop is invalid, the configured dollar default is the
+  // fallback risk amount. Otherwise use the amount calculated from the stop.
   const riskAmount = dollarRisk
     ? dollarRisk
     : (calculatedRiskAmount && calculatedRiskAmount > 0
@@ -539,7 +547,7 @@ function calculateRMultiples(trade, options = {}) {
       (symbol && /^(MES|ES|MNQ|NQ|MYM|YM|M2K|RTY|MGC|GC|MCL|CL|SI|HG)/i.test(symbol));
 
     // For futures detected by symbol but with wrong instrument_type, recalculate riskAmount
-    // (skipped in dollar mode, where the risk amount is the fixed dollar risk).
+    // (skipped when using the configured dollar-risk fallback).
     let effectiveRiskAmount = riskAmount;
     if (!dollarRisk && isFutures && instrumentType !== 'future') {
       // Recalculate with correct futures multiplier
@@ -656,6 +664,7 @@ function calculateRMultiples(trade, options = {}) {
     // Dollar amounts
     risk_per_share: Math.round(risk * 100) / 100,
     risk_amount: Math.round(riskAmount * 100) / 100,
+    risk_basis: dollarRisk ? 'default_dollar' : 'current_stop',
     actual_pl_per_share: Math.round(actualPL * 100) / 100,
     actual_pl_amount: pnl !== null && pnl !== undefined ? parseFloat(pnl) : Math.round(actualPLAmount * 100) / 100,
     target_pl_per_share: targetPL !== undefined ? Math.round(targetPL * 100) / 100 : null,
@@ -909,12 +918,18 @@ function parseTradeJsonFields(row) {
   return trade;
 }
 
-// The position's 1R unit for combined R values. Dollar-mode users (#345) risk
-// the fixed dollar amount per position, so combined R stays SUM(pnl)/risk like
-// the dashboard aggregate; otherwise 1R is the total planned dollar risk across
-// the analyzed legs.
+// The position's 1R unit for combined R values. Valid stop-derived leg risks
+// take precedence. If every leg had to use the configured dollar fallback,
+// preserve the one-fixed-risk-unit-per-position behavior from issue #345.
 function positionRiskAmount(analyses, dollarRisk) {
-  if (dollarRisk && dollarRisk > 0) return dollarRisk;
+  if (
+    dollarRisk &&
+    dollarRisk > 0 &&
+    analyses.length > 0 &&
+    analyses.every(analysis => analysis.risk_basis === 'default_dollar')
+  ) {
+    return dollarRisk;
+  }
   return analyses.reduce((sum, a) => sum + (Number(a.risk_amount) || 0), 0);
 }
 
@@ -924,7 +939,7 @@ function positionRiskAmount(analyses, dollarRisk) {
 // outcome. Summing raw leg Rs instead let a small-risk leg dominate: a losing
 // bull put spread whose hedge leg risked a few dollars reported a positive
 // combined Actual R next to a negative combined P&L (issue #359 follow-up).
-// For dollar-mode users every leg's risk amount IS the position risk unit, so
+// When every leg uses the single configured dollar fallback for the position,
 // this reduces to the plain sum of leg Rs.
 function combinePositionR(parts, positionRisk) {
   if (parts.length === 0) return null;
@@ -1091,6 +1106,9 @@ function combineLegAnalyses(analyzableEntries, allLegs, dollarRisk = null) {
     planned_pl_amount: null,
     risk_per_share: null,
     risk_amount: riskAmount,
+    risk_basis: analyses.every(a => a.risk_basis === 'default_dollar')
+      ? 'default_dollar'
+      : 'current_stop',
     actual_pl_per_share: null,
     actual_pl_amount: actualPlAmount,
     target_pl_per_share: null,

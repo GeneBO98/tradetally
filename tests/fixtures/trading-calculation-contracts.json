@@ -515,6 +515,27 @@
       },
       "expected_risk_amount": 10,
       "expected_r_value": 2
+    },
+    "dollar_default_explicit_stop_example": {
+      "default_stop_loss_dollars": 50,
+      "trade": {
+        "symbol": "MSTR",
+        "entry_price": 94.71,
+        "exit_price": 95.04,
+        "stop_loss": 93.37,
+        "take_profit": 97.39,
+        "quantity": 55,
+        "side": "long",
+        "pnl": 16.29,
+        "instrument_type": "stock"
+      },
+      "expected": {
+        "risk_per_share": 1.34,
+        "risk_amount": 73.7,
+        "actual_r": 0.22,
+        "target_r": 2,
+        "risk_basis": "current_stop"
+      }
     }
   }
 }
