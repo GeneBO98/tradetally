@@ -6,6 +6,44 @@
 const db = require('../config/database');
 const encryptionService = require('../services/brokerSync/encryptionService');
 const { toSnakeCase } = require('../utils/caseConvert');
+const { localToUTC } = require('../utils/timezone');
+
+function getZonedDateTimeParts(date, timezone) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(date);
+
+  const value = (type) => Number(parts.find(part => part.type === type)?.value);
+  return {
+    year: value('year'),
+    month: value('month'),
+    day: value('day'),
+    hour: value('hour') === 24 ? 0 : value('hour'),
+    minute: value('minute'),
+    second: value('second')
+  };
+}
+
+function addCalendarDays({ year, month, day }, days) {
+  const result = new Date(Date.UTC(year, month - 1, day + days));
+  return {
+    year: result.getUTCFullYear(),
+    month: result.getUTCMonth() + 1,
+    day: result.getUTCDate()
+  };
+}
+
+function formatNaiveDateTime(date, hour, minute, second) {
+  const pad = value => String(value).padStart(2, '0');
+  return `${date.year}-${pad(date.month)}-${pad(date.day)}T${pad(hour)}:${pad(minute)}:${pad(second)}`;
+}
 
 // pg-types parses PostgreSQL DATE columns via `new Date(y, m, d)` (server-local
 // midnight). Letting JSON serialize that Date via toISOString() shifts the
@@ -301,17 +339,20 @@ class BrokerConnection {
   /**
    * Update connection status
    */
-  static async updateStatus(connectionId, status, message = null) {
+  static async updateStatus(connectionId, status, message = null, resetFailures = false) {
     const query = `
       UPDATE broker_connections
       SET connection_status = $2,
           last_sync_message = COALESCE($3, last_sync_message),
+          consecutive_failures = CASE WHEN $4 THEN 0 ELSE consecutive_failures END,
+          last_error_at = CASE WHEN $4 THEN NULL ELSE last_error_at END,
+          last_error_message = CASE WHEN $4 THEN NULL ELSE last_error_message END,
           updated_at = CURRENT_TIMESTAMP
       WHERE id = $1
       RETURNING *
     `;
 
-    const result = await db.query(query, [connectionId, status, message]);
+    const result = await db.query(query, [connectionId, status, message, resetFailures]);
     if (result.rows.length === 0) return null;
 
     return this.formatConnection(result.rows[0], false);
@@ -320,12 +361,13 @@ class BrokerConnection {
   /**
    * Update connection after successful sync
    */
-  static async updateAfterSync(connectionId, tradesImported, tradesSkipped, nextSync = null) {
+  static async updateAfterSync(connectionId, tradesImported, tradesSkipped, nextSync = null, options = {}) {
+    const advanceLastSync = options.advanceLastSync !== false;
     const query = `
       UPDATE broker_connections
       SET connection_status = 'active',
-          last_sync_at = CURRENT_TIMESTAMP,
-          last_sync_status = 'success',
+          last_sync_at = CASE WHEN $5 THEN CURRENT_TIMESTAMP ELSE last_sync_at END,
+          last_sync_status = CASE WHEN $5 THEN 'success' ELSE 'warning' END,
           last_sync_trades_imported = $2,
           last_sync_trades_skipped = $3,
           next_scheduled_sync = $4,
@@ -337,7 +379,7 @@ class BrokerConnection {
       RETURNING *
     `;
 
-    const result = await db.query(query, [connectionId, tradesImported, tradesSkipped, nextSync]);
+    const result = await db.query(query, [connectionId, tradesImported, tradesSkipped, nextSync, advanceLastSync]);
     if (result.rows.length === 0) return null;
 
     return this.formatConnection(result.rows[0], false);
@@ -354,10 +396,11 @@ class BrokerConnection {
   static async scheduleTransientRetry(connectionId, delayMinutes = 30) {
     const query = `
       UPDATE broker_connections
-      SET next_scheduled_sync = LEAST(
-            COALESCE(next_scheduled_sync, NOW() + ($2 || ' minutes')::interval),
-            NOW() + ($2 || ' minutes')::interval
-          ),
+      SET next_scheduled_sync = CASE
+            WHEN next_scheduled_sync IS NULL OR next_scheduled_sync <= NOW()
+              THEN NOW() + ($2 || ' minutes')::interval
+            ELSE LEAST(next_scheduled_sync, NOW() + ($2 || ' minutes')::interval)
+          END,
           updated_at = CURRENT_TIMESTAMP
       WHERE id = $1
         AND auto_sync_enabled = true
@@ -508,8 +551,9 @@ class BrokerConnection {
   /**
    * Calculate next scheduled sync time based on frequency
    * Supported frequencies: manual, hourly, every_4_hours, every_6_hours, every_12_hours, daily
+   * Daily times are interpreted in the supplied IANA timezone.
    */
-  static calculateNextSync(syncFrequency, syncTime) {
+  static calculateNextSync(syncFrequency, syncTime, timezone = process.env.TZ || 'UTC') {
     if (syncFrequency === 'manual') return null;
 
     const now = new Date();
@@ -554,14 +598,49 @@ class BrokerConnection {
       }
       case 'daily':
       default: {
-        // Daily sync at specific time
-        const [hours, minutes] = syncTime.split(':').map(Number);
-        const next = new Date(now);
-        next.setHours(hours, minutes, 0, 0);
-        // If the time has passed today, schedule for tomorrow
-        if (next <= now) {
-          next.setDate(next.getDate() + 1);
+        // Interpret the configured clock time in the user's timezone, then
+        // persist the resulting instant as UTC in next_scheduled_sync.
+        const timeMatch = String(syncTime || '').match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+        if (!timeMatch) {
+          throw new Error(`Invalid broker sync time: ${syncTime}`);
         }
+
+        const hours = Number(timeMatch[1]);
+        const minutes = Number(timeMatch[2]);
+        const seconds = Number(timeMatch[3] || 0);
+        if (hours > 23 || minutes > 59 || seconds > 59) {
+          throw new Error(`Invalid broker sync time: ${syncTime}`);
+        }
+
+        let resolvedTimezone = timezone || 'UTC';
+        let localNow;
+        try {
+          localNow = getZonedDateTimeParts(now, resolvedTimezone);
+        } catch (error) {
+          console.warn(`[BROKER-SYNC] Invalid user timezone "${resolvedTimezone}"; scheduling in UTC`);
+          resolvedTimezone = 'UTC';
+          localNow = getZonedDateTimeParts(now, resolvedTimezone);
+        }
+
+        const targetSeconds = (hours * 60 * 60) + (minutes * 60) + seconds;
+        const currentSeconds = (localNow.hour * 60 * 60) + (localNow.minute * 60) + localNow.second;
+        const daysToAdd = targetSeconds <= currentSeconds ? 1 : 0;
+        let targetDate = addCalendarDays(localNow, daysToAdd);
+        let next = new Date(localToUTC(
+          formatNaiveDateTime(targetDate, hours, minutes, seconds),
+          resolvedTimezone
+        ));
+
+        // Guard unusual DST transitions and ambiguous wall-clock times. The
+        // next scheduled instant must always be in the future.
+        if (next <= now) {
+          targetDate = addCalendarDays(targetDate, 1);
+          next = new Date(localToUTC(
+            formatNaiveDateTime(targetDate, hours, minutes, seconds),
+            resolvedTimezone
+          ));
+        }
+
         return next;
       }
     }

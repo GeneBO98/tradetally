@@ -30,6 +30,8 @@ const REPORT_EXTENDED_MAX_WAIT = 720000; // 12 min total when first poll times o
 const MAX_FLEX_OVERRIDE_DAYS = 365;
 const ALL_TIME_LOOKBACK_YEARS = 10;
 const SCHEDULED_OVERLAP_DAYS = 7;
+const ACTIVITY_REPORT_LAG_DAYS = 1;
+const MAX_ACTIVITY_REPORT_FALLBACK_DAYS = 7;
 const IBKR_OPEN_POSITION_MAX_SYNTHETIC_TRADES = 50;
 
 // Transient network errors that warrant a retry
@@ -91,6 +93,28 @@ const TRADE_EXECUTION_HEADER_FIELDS = new Set([
   'realizedpl',
   'mtmpl'
 ]);
+
+function shiftDateString(dateString, days) {
+  const date = new Date(`${dateString}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function getDateStringInTimezone(date, timezone = 'UTC') {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).formatToParts(date);
+    const value = type => parts.find(part => part.type === type)?.value;
+    return `${value('year')}-${value('month')}-${value('day')}`;
+  } catch (error) {
+    console.warn(`[IBKR] Invalid reporting timezone "${timezone}"; using UTC`);
+    return date.toISOString().slice(0, 10);
+  }
+}
 
 function normalizeHeader(value) {
   return String(value || '')
@@ -481,7 +505,13 @@ class IBKRService {
   }
 
   buildSyncWindows(connection, options = {}) {
-    const end = normalizeDateString(options.endDate) || new Date().toISOString().slice(0, 10);
+    const now = options.now ? new Date(options.now) : new Date();
+    const localToday = getDateStringInTimezone(now, options.timezone || 'UTC');
+    // Activity Flex reports are finalized once daily. IBKR recommends fetching
+    // the prior day's data the following day, so never make the unfinished
+    // current reporting date the implicit end of a sync window.
+    const defaultEnd = shiftDateString(localToday, -ACTIVITY_REPORT_LAG_DAYS);
+    const end = normalizeDateString(options.endDate) || defaultEnd;
     let floor = normalizeDateString(options.startDate || connection.syncStartDate);
     if (!floor) {
       const endDate = new Date(`${end}T00:00:00Z`);
@@ -548,17 +578,24 @@ class IBKRService {
    * @returns {Promise<{imported: number, skipped: number, failed: number, duplicates: number}>}
    */
   async syncTrades(connection, options = {}) {
-    const { startDate, endDate, syncLogId, syncType = 'manual' } = options;
+    const { startDate, endDate, syncLogId, syncType = 'manual', now } = options;
 
     console.log(`[IBKR] Starting sync for connection ${connection.id}`);
-    console.log(`[IBKR] Date range: ${startDate || 'default'} to ${endDate || 'default'}`);
 
     // Update sync log status
     if (syncLogId) {
       await BrokerConnection.updateSyncLog(syncLogId, 'fetching');
     }
 
-    const windows = this.buildSyncWindows(connection, { startDate, endDate, syncType });
+    const userTimezone = await getUserTimezone(connection.userId);
+    const windows = this.buildSyncWindows(connection, {
+      startDate,
+      endDate,
+      syncType,
+      timezone: userTimezone,
+      now
+    });
+    console.log(`[IBKR] Resolved date range: ${windows[0]?.start_date || 'none'} to ${windows[windows.length - 1]?.end_date || 'none'} (${endDate ? 'explicit end' : 'latest finalized Activity date'})`);
     const tradeRecords = [];
     let openPositionRecords = [];
     let sawOpenPositionSection = false;
@@ -568,36 +605,61 @@ class IBKRService {
     const warnings = [];
     const warningDetails = [];
     let completedWindows = 0;
+    let reportsRetrieved = 0;
+    let latestWindowRetrieved = false;
+    let latestRetrievedEndDate = null;
+    const requestedRanges = [];
 
-    for (const window of windows) {
+    for (let windowIndex = 0; windowIndex < windows.length; windowIndex++) {
+      const window = { ...windows[windowIndex] };
       let reportResponse;
-      try {
-        reportResponse = await this.requestFlexReport(
-          connection.ibkrFlexToken,
-          connection.ibkrFlexQueryId,
-          {
-            startDate: window.start_date,
-            endDate: window.end_date,
-            syncType,
-            overrideDates: true,
-            allowBareFallback: false
+      let fallbackDays = 0;
+      while (!reportResponse) {
+        requestedRanges.push({ ...window });
+        try {
+          reportResponse = await this.requestFlexReport(
+            connection.ibkrFlexToken,
+            connection.ibkrFlexQueryId,
+            {
+              startDate: window.start_date,
+              endDate: window.end_date,
+              syncType,
+              overrideDates: true,
+              allowBareFallback: false
+            }
+          );
+        } catch (error) {
+          const canTryEarlierActivityDate = error.errorCode === '1003' &&
+            !endDate &&
+            windowIndex === windows.length - 1 &&
+            fallbackDays < MAX_ACTIVITY_REPORT_FALLBACK_DAYS &&
+            window.start_date < window.end_date;
+
+          if (canTryEarlierActivityDate) {
+            const rejectedEnd = window.end_date;
+            window.end_date = shiftDateString(window.end_date, -1);
+            fallbackDays++;
+            console.warn(`[IBKR] No finalized Activity statement through ${rejectedEnd}; retrying through ${window.end_date}`);
+            continue;
           }
-        );
-      } catch (error) {
-        if (error.errorCode === '1003') {
-          const message = `IBKR returned no statement for ${window.start_date} through ${window.end_date}.`;
-          warnings.push(message);
-          warningDetails.push({
-            code: 'EMPTY_WINDOW_1003',
-            message,
-            window_start: window.start_date,
-            window_end: window.end_date
-          });
-          completedWindows++;
-          continue;
+
+          if (error.errorCode === '1003') {
+            const message = `IBKR returned no statement for ${window.start_date} through ${window.end_date}. Confirm the saved Flex Query period covers this range and that IBKR has finalized the ending Activity date.`;
+            warnings.push(message);
+            warningDetails.push({
+              code: 'EMPTY_WINDOW_1003',
+              message,
+              window_start: window.start_date,
+              window_end: window.end_date
+            });
+            completedWindows++;
+            break;
+          }
+          throw error;
         }
-        throw error;
       }
+
+      if (!reportResponse) continue;
 
       if (!reportResponse.referenceCode) throw new Error('Failed to request IBKR report');
       const envelope = await this.fetchGeneratedReport(
@@ -615,6 +677,11 @@ class IBKRService {
         });
       }
       reportFormats.add(decoded.format);
+      reportsRetrieved++;
+      if (windowIndex === windows.length - 1) {
+        latestWindowRetrieved = true;
+        latestRetrievedEndDate = window.end_date;
+      }
       tradeRecords.push(...decoded.trade_records);
       openPositionRecords = decoded.open_position_records;
       rawOpenPositionRows += decoded.open_position_records.length;
@@ -672,8 +739,6 @@ class IBKRService {
 
     // Fetch existing positions and trades for duplicate detection
     const existingContext = await this.getExistingContext(connection.userId);
-    const userTimezone = await getUserTimezone(connection.userId);
-
     const parserContext = {
       ...existingContext,
       brokerConnectionId: connection.id,
@@ -699,7 +764,7 @@ class IBKRService {
     const openPositionResult = sawOpenPositionSection
       ? this.extractOpenPositionTradesFromRecords(openPositionRecords, connection, existingContext, {
         parsedTrades: trades,
-        endDate: windows[windows.length - 1]?.end_date,
+        endDate: latestRetrievedEndDate || windows[windows.length - 1]?.end_date,
         sectionPresent: true
       })
       : { trades: [], warnings: [] };
@@ -740,9 +805,12 @@ class IBKRService {
     result.manualReviewItems = manualReviewItems;
     result.manualReviewCount = manualReviewItems.length;
     result.reportFormats = Array.from(reportFormats);
-    result.windowsRequested = windows.length;
-    result.requestedRanges = windows;
+    result.windowsRequested = requestedRanges.length;
+    result.requestedRanges = requestedRanges;
     result.windowsCompleted = completedWindows;
+    result.reportsRetrieved = reportsRetrieved;
+    result.latestWindowRetrieved = latestWindowRetrieved;
+    result.latestRetrievedEndDate = latestRetrievedEndDate;
     result.returnedRanges = returnedRanges;
     result.tradeRows = tradeRecords.length;
     result.openPositionRows = rawOpenPositionRows;
@@ -765,7 +833,11 @@ class IBKRService {
     }
     result.outcome = result.warnings.length > 0 ? 'warning' : 'success';
 
-    console.log(`[IBKR] Sync complete: ${result.imported} imported, ${result.updated || 0} updated, ${result.skipped} skipped, ${result.duplicates} duplicates, ${result.failed} failed`);
+    if (!latestWindowRetrieved) {
+      console.warn(`[IBKR] Sync finished without retrieving the latest requested Activity statement; imported ${result.imported}, duplicates ${result.duplicates}`);
+    } else {
+      console.log(`[IBKR] Sync complete: ${result.imported} imported, ${result.updated || 0} updated, ${result.skipped} skipped, ${result.duplicates} duplicates, ${result.failed} failed`);
+    }
 
     return result;
   }

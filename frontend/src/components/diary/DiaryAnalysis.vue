@@ -97,7 +97,7 @@
         AI is reviewing your entries from {{ startDate }} to {{ endDate }}...
       </p>
       <div class="mt-4 text-sm text-gray-500 dark:text-gray-400">
-        This may take up to 30 seconds
+        Complex analyses can take several minutes. You can keep this page open while it finishes.
       </div>
     </div>
 
@@ -172,7 +172,6 @@ import { ref, computed } from 'vue'
 import { subDays, subWeeks, subMonths, startOfWeek, startOfMonth } from 'date-fns'
 import { formatTradeDate } from '@/utils/date'
 import { useDiaryStore } from '@/stores/diary'
-import api from '@/services/api'
 import AIReportRenderer from '@/components/ai/AIReportRenderer.vue'
 import {
   SparklesIcon,
@@ -235,15 +234,7 @@ const startAnalysis = async () => {
   error.value = null
   
   try {
-    // Try using the store method first, fallback to direct API call
-    let result
-    if (typeof diaryStore.analyzeEntries === 'function') {
-      result = await diaryStore.analyzeEntries(startDate.value, endDate.value)
-    } else {
-      // Direct API call as fallback
-      const response = await api.get(`/diary/analyze?startDate=${startDate.value}&endDate=${endDate.value}`)
-      result = response.data
-    }
+    const result = await diaryStore.analyzeEntries(startDate.value, endDate.value)
     
     analysis.value = result.analysis
     entriesAnalyzed.value = result.entriesAnalyzed

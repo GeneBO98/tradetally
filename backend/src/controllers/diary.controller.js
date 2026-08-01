@@ -598,12 +598,46 @@ const searchEntries = async (req, res) => {
   }
 };
 
+const isValidAnalysisRequestId = requestId => (
+  typeof requestId === 'string' &&
+  requestId.length >= 8 &&
+  requestId.length <= 100 &&
+  /^[A-Za-z0-9_-]+$/.test(requestId)
+);
+
+const getTrackedJournalAnalysis = async (userId, requestId) => {
+  const result = await db.query(
+    `SELECT request_id, start_date, end_date, status, analysis,
+            entries_analyzed, error, created_at, completed_at
+     FROM diary_ai_analyses
+     WHERE user_id = $1 AND request_id = $2`,
+    [userId, requestId]
+  );
+
+  return result.rows[0] || null;
+};
+
+const formatTrackedJournalAnalysis = analysisRequest => ({
+  request_id: analysisRequest.request_id,
+  status: analysisRequest.status,
+  analysis: analysisRequest.analysis,
+  entriesAnalyzed: analysisRequest.entries_analyzed,
+  dateRange: {
+    startDate: analysisRequest.start_date,
+    endDate: analysisRequest.end_date
+  },
+  error: analysisRequest.error || undefined,
+  created_at: analysisRequest.created_at,
+  completed_at: analysisRequest.completed_at
+});
+
 // AI Analysis of diary entries
 const analyzeEntries = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { startDate, endDate } = req.query;
+  const userId = req.user.id;
+  const { startDate, endDate, request_id: requestId } = req.query;
+  let trackingStarted = false;
 
+  try {
     // Validate date range
     if (!startDate || !endDate) {
       return res.status(400).json({ 
@@ -611,12 +645,60 @@ const analyzeEntries = async (req, res) => {
       });
     }
 
+    if (requestId && !isValidAnalysisRequestId(requestId)) {
+      return res.status(400).json({ error: 'Invalid analysis request ID' });
+    }
+
+    if (requestId) {
+      const insertResult = await db.query(
+        `INSERT INTO diary_ai_analyses
+           (user_id, request_id, start_date, end_date, status)
+         VALUES ($1, $2, $3, $4, 'processing')
+         ON CONFLICT (user_id, request_id) DO NOTHING
+         RETURNING id`,
+        [userId, requestId, startDate, endDate]
+      );
+
+      trackingStarted = insertResult.rows.length > 0;
+      if (!trackingStarted) {
+        const existingRequest = await getTrackedJournalAnalysis(userId, requestId);
+        if (existingRequest?.status === 'completed') {
+          return res.json(formatTrackedJournalAnalysis(existingRequest));
+        }
+        if (existingRequest?.status === 'processing') {
+          return res.status(202).json(formatTrackedJournalAnalysis(existingRequest));
+        }
+        if (existingRequest?.status === 'failed') {
+          return res.status(500).json({
+            ...formatTrackedJournalAnalysis(existingRequest),
+            error: existingRequest.error || 'Failed to analyze diary entries'
+          });
+        }
+
+        throw new Error('Could not initialize journal analysis tracking');
+      }
+    }
+
     // Fetch entries for the specified date range
     const entries = await Diary.findByDateRange(userId, startDate, endDate);
 
     if (!entries || entries.length === 0) {
+      if (requestId) {
+        await db.query(
+          `UPDATE diary_ai_analyses
+           SET status = 'completed', entries_analyzed = 0,
+               completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+           WHERE user_id = $1 AND request_id = $2`,
+          [userId, requestId]
+        );
+      }
+
       return res.json({
+        request_id: requestId || null,
+        status: 'completed',
         analysis: null,
+        entriesAnalyzed: 0,
+        dateRange: { startDate, endDate },
         message: 'No diary entries found in the specified date range'
       });
     }
@@ -644,19 +726,67 @@ const analyzeEntries = async (req, res) => {
       temperature: 0.7
     });
 
+    if (requestId) {
+      await db.query(
+        `UPDATE diary_ai_analyses
+         SET status = 'completed', analysis = $3, entries_analyzed = $4,
+             error = NULL, completed_at = CURRENT_TIMESTAMP,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE user_id = $1 AND request_id = $2`,
+        [userId, requestId, analysis, entries.length]
+      );
+    }
+
     res.json({
+      request_id: requestId || null,
+      status: 'completed',
       analysis,
       entriesAnalyzed: entries.length,
       dateRange: { startDate, endDate }
     });
   } catch (error) {
     console.error('Error analyzing diary entries:', error);
+
+    if (requestId && trackingStarted) {
+      try {
+        await db.query(
+          `UPDATE diary_ai_analyses
+           SET status = 'failed', error = $3, completed_at = CURRENT_TIMESTAMP,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE user_id = $1 AND request_id = $2 AND status = 'processing'`,
+          [userId, requestId, 'Failed to analyze diary entries']
+        );
+      } catch (trackingError) {
+        console.error('Error recording failed diary analysis:', trackingError);
+      }
+    }
+
     if (error.message.includes('not properly configured')) {
       return res.status(400).json({ 
         error: 'AI provider not configured. Please check your AI settings in user preferences.' 
       });
     }
     res.status(500).json({ error: 'Failed to analyze diary entries' });
+  }
+};
+
+const getAnalysisStatus = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+
+    if (!isValidAnalysisRequestId(requestId)) {
+      return res.status(400).json({ error: 'Invalid analysis request ID' });
+    }
+
+    const analysisRequest = await getTrackedJournalAnalysis(req.user.id, requestId);
+    if (!analysisRequest) {
+      return res.status(404).json({ error: 'Journal analysis request not found' });
+    }
+
+    return res.json(formatTrackedJournalAnalysis(analysisRequest));
+  } catch (error) {
+    console.error('Error fetching diary analysis status:', error);
+    return res.status(500).json({ error: 'Failed to fetch journal analysis status' });
   }
 };
 
@@ -822,6 +952,7 @@ module.exports = {
   getStats,
   searchEntries,
   analyzeEntries,
+  getAnalysisStatus,
   getGeneralNotes,
   createGeneralNote,
   updateGeneralNote,

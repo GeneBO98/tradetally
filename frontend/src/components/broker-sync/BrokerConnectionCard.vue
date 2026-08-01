@@ -121,6 +121,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useBrokerSyncStore } from '@/stores/brokerSync'
+import { useUserTimezone } from '@/composables/useUserTimezone'
 
 const props = defineProps({
   connection: {
@@ -137,6 +138,7 @@ const props = defineProps({
 const emit = defineEmits(['sync', 'test', 'settings', 'delete', 'deleteTrades'])
 
 const store = useBrokerSyncStore()
+const { formatDateTime: formatDateTimeTz } = useUserTimezone()
 const showMenu = ref(false)
 const menuRef = ref(null)
 
@@ -218,7 +220,7 @@ function formatDate(date) {
     return `${hours}h ago`
   }
 
-  return d.toLocaleDateString()
+  return formatDateTimeTz(date, { includeTime: false })
 }
 
 // Close menu when clicking outside
