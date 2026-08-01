@@ -1,4 +1,5 @@
 const rateLimit = require('express-rate-limit');
+const { ipKeyGenerator } = rateLimit;
 const { getClientIp } = require('./clientIp');
 
 function buildRateLimitMessage(message, windowMs) {
@@ -18,7 +19,7 @@ function createRateLimiter({
   return rateLimit({
     windowMs,
     max,
-    keyGenerator: getClientIp,
+    keyGenerator: (req) => ipKeyGenerator(getClientIp(req)),
     standardHeaders: true,
     legacyHeaders: false,
     validate: { trustProxy: false },
