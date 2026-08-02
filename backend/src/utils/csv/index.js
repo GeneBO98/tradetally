@@ -1267,19 +1267,33 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       return wrapResultWithDiagnostics(finalTrades, diagnostics, [], userTimezone);
     }
 
-    const hasGenericCompletedTradeRows = records.some(record => Boolean(
-      record['Opening time (UTC-4)'] ||
-      record['Closing time (UTC-4)'] ||
-      record['Entry Date'] && record['Exit Date'] ||
-      record['Entry Price'] && record['Exit Price'] ||
-      record['Open Date'] && record['Close Date'] ||
-      record['Open Price'] && record['Close Price'] ||
-      record['Entry Time'] && record['Exit Time'] && record['Entry price'] && record['Exit price'] ||
-      record['Entry price'] && record['Closing price'] ||
-      // MetaTrader 4/5 exports — each row is a completed trade with open/close
-      record.opening_price && record.closing_price ||
-      record.opening_time_utc && record.closing_time_utc
-    ));
+    const hasGenericCompletedTradeRows = records.some(record => {
+      const hasKnownCompletedColumns = Boolean(
+        record['Opening time (UTC-4)'] ||
+        record['Closing time (UTC-4)'] ||
+        record['Entry Date'] && record['Exit Date'] ||
+        record['Entry Price'] && record['Exit Price'] ||
+        record['Open Date'] && record['Close Date'] ||
+        record['Open Price'] && record['Close Price'] ||
+        record['Entry Time'] && record['Exit Time'] && record['Entry price'] && record['Exit price'] ||
+        record['Entry price'] && record['Closing price'] ||
+        // MetaTrader 4/5 exports — each row is a completed trade with open/close
+        record.opening_price && record.closing_price ||
+        record.opening_time_utc && record.closing_time_utc
+      );
+      if (hasKnownCompletedColumns || broker !== 'generic') return hasKnownCompletedColumns;
+
+      // Generic headers vary in separators and suffixes (EntryPrice,
+      // entry_price, Entry Date UTC, etc.). Use the parsed values to decide
+      // whether each row already represents a completed trade.
+      const parsedTrade = brokerParsers.generic(record, context);
+      return Boolean(
+        parsedTrade.entryTime &&
+        parsedTrade.exitTime &&
+        parsedTrade.entryPrice > 0 &&
+        parsedTrade.exitPrice > 0
+      );
+    });
 
     // Generic parser - Use transaction-based processing for better position tracking
     // Check for user preference or use enhanced mode by default when context is available.

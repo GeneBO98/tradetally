@@ -1488,6 +1488,35 @@ describe('Generic parser', () => {
     }));
   });
 
+  test('parses separator-free UTC completed trade headers and ignores unrelated columns', async () => {
+    const completedTradeCSV = [
+      'Symbol,Type,Side,EntryDateUTC,ExitDateUTC,EntryPrice,ExitPrice,Quantity,Units,PositionSize,Leverage,LotValue,TickSize,TickValue,Fees',
+      'CLRO,stock,long,2026-07-06 16:50:47,2026-07-06 16:53:10,7.45,7.59,2,shares,not-importable,,,,,0',
+      'CLRO,stock,long,2026-07-06 16:50:47,2026-07-06 16:53:10,7.45,7.55,2,shares,,,,,,0',
+      'JLHL,stock,long,2026-07-09 20:16:38,2026-07-09 20:21:29,28.27,28.72,1,shares,,,,,,0'
+    ].join('\n');
+
+    const result = await parseCSV(buf(completedTradeCSV), 'generic', {
+      userTimezone: 'America/Chicago',
+      tradeGroupingSettings: { enabled: false }
+    });
+
+    expectValidResult(result);
+    expect(result.trades).toHaveLength(3);
+    expect(result.diagnostics.invalidRows).toBe(0);
+    expect(result.trades[0]).toEqual(expect.objectContaining({
+      symbol: 'CLRO',
+      tradeDate: '2026-07-06',
+      entryTime: '2026-07-06T16:50:47Z',
+      exitTime: '2026-07-06T16:53:10Z',
+      entryPrice: 7.45,
+      exitPrice: 7.59,
+      quantity: 2,
+      side: 'long',
+      fees: 0
+    }));
+  });
+
   test('parses completed trade rows with Open Date, Close Date, and PnL columns', async () => {
     const completedTradeCSV = [
       'Symbol,Side,Quantity,Open Price,Close Price,Open Date,Close Date,PnL',

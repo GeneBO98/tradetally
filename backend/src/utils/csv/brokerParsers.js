@@ -1,6 +1,44 @@
 const { parseIBKRTradeConfirmationInstrumentData } = require('./parsers/ibkr');
 const { parseLightspeedDateTime, parseLightspeedSide, calculateLightspeedFees } = require('./parsers/lightspeed');
-const { parseDate, parseTimeOnly, parseDateTime, parseSide, parseTradervueSide, cleanString, parseTagList, parseInstrumentData, parseNumeric, parseInteger } = require('./shared');
+const { parseDate, parseTimeOnly, parseDateTime, parseSide, parseTradervueSide, cleanString, parseTagList, parseInstrumentData, parseNumeric, parseInteger, hasExplicitTimezone } = require('./shared');
+
+
+function normalizeGenericHeader(header) {
+  return String(header || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function findGenericColumn(row, aliases) {
+  for (const alias of aliases) {
+    const value = row?.[alias];
+    if (value !== undefined && value !== null && String(value).trim() !== '') {
+      return { header: alias, value };
+    }
+  }
+
+  const normalizedAliases = new Set(aliases.map(normalizeGenericHeader));
+  for (const header of Object.keys(row || {})) {
+    const value = row[header];
+    if (
+      normalizedAliases.has(normalizeGenericHeader(header)) &&
+      value !== undefined &&
+      value !== null &&
+      String(value).trim() !== ''
+    ) {
+      return { header, value };
+    }
+  }
+
+  return { header: null, value: undefined };
+}
+
+function parseGenericDateTime(field, options = {}) {
+  const parsed = parseDateTime(field.value, options);
+  if (!parsed || hasExplicitTimezone(parsed)) return parsed;
+
+  // A UTC suffix in a header is meaningful even when the cell contains a
+  // timezone-less timestamp (for example EntryDateUTC=2026-07-06 16:50:47).
+  return normalizeGenericHeader(field.header).endsWith('utc') ? `${parsed}Z` : parsed;
+}
 
 
 const brokerParsers = {
@@ -12,41 +50,31 @@ const brokerParsers = {
       : {};
 
     // Symbol mapping
-    const symbol = row.Symbol || row.symbol || row.Ticker || row.ticker || row.Stock || row.stock ||
-      row['Underlying Symbol'] || row['underlying symbol'] ||
-      row.Instrument || row.instrument;
+    const symbol = findGenericColumn(row, [
+      'Symbol', 'Ticker', 'Stock', 'Underlying Symbol', 'Instrument'
+    ]).value;
 
-    const rawTradeDateValue =
-      row['Trade Date'] || row['T/D'] || row.Date || row.date ||
-      row.trade_date || row['trade_date'] || row['Entry Date'] ||
-      row['Open Date'] || row.open_date ||
-      row['Transaction Date'] || row['Activity Date'] || row['Exec Date'] || row['Execution Date'] ||
-      row['Date and time'] || row.Time || row.time ||
-      row['Close time'] || row['Close Time'] || row['close time'] ||
-      row['Entry Time'] || row['Entry time'] || row['entry time'] ||
-      row['Exit Time'] || row['Exit time'] || row['exit time'] ||
-      row['Opening time (UTC-4)'] || row['Opening Time'] || row['Open Time'] ||
-      row['Opened Time'] ||
-      row.opening_time_utc || row['opening_time_utc'];
+    const tradeDateField = findGenericColumn(row, [
+      'Trade Date', 'T/D', 'Date', 'trade_date', 'Entry Date UTC', 'Entry Date',
+      'Open Date', 'open_date', 'Transaction Date', 'Activity Date', 'Exec Date',
+      'Execution Date', 'Date and time', 'Time', 'Close time', 'Entry Time',
+      'Exit Time', 'Opening time (UTC-4)', 'Opening Time', 'Open Time',
+      'Opened Time', 'opening_time_utc'
+    ]);
 
-    const rawEntryTimeValue =
-      row['Entry Time'] || row['Exec Time'] || row['Execution Time'] ||
-      row['Fill Time'] || row['Trade Time'] || row.Timestamp ||
-      row.order_execution_time || row['order_execution_time'] ||
-      row['Date and time'] || row.Time || row.time ||
-      row['Close time'] || row['Close Time'] || row['close time'] ||
-      row['Opening time (UTC-4)'] || row['Opening Time'] || row['Open Time'] ||
-      row['Opened Time'] ||
-      row.opening_time_utc || row['opening_time_utc'] ||
-      row['Trade Date'] || row.trade_date || row['Entry Date'] ||
-      row['Open Date'] || row.open_date || row.Date ||
-      row['Activity Date'];
+    const entryTimeField = findGenericColumn(row, [
+      'Entry Date UTC', 'Entry Time', 'Exec Time', 'Execution Time', 'Fill Time',
+      'Trade Time', 'Timestamp', 'order_execution_time', 'Date and time', 'Time',
+      'Close time', 'Opening time (UTC-4)', 'Opening Time', 'Open Time',
+      'Opened Time', 'opening_time_utc', 'Trade Date', 'trade_date', 'Entry Date',
+      'Open Date', 'open_date', 'Date', 'Activity Date'
+    ]);
 
     // Date/Time mapping - support more formats
-    let tradeDate = parseDate(rawTradeDateValue, dateParseOptions);
-    let entryTime = parseDateTime(rawEntryTimeValue, dateParseOptions) || tradeDate;
+    let tradeDate = parseDate(tradeDateField.value, dateParseOptions);
+    let entryTime = parseGenericDateTime(entryTimeField, dateParseOptions) || tradeDate;
 
-    const timeOnlyEntry = parseTimeOnly(rawEntryTimeValue);
+    const timeOnlyEntry = parseTimeOnly(entryTimeField.value);
     if (timeOnlyEntry) {
       const resolvedTradeDate = tradeDate || options.importDate || null;
       if (resolvedTradeDate) {
@@ -55,45 +83,33 @@ const brokerParsers = {
       }
     }
 
-    const exitTime = parseDateTime(
-      row['Exit Time'] || row['Close Time'] || row['Exit Date'] ||
-      row['Close Date'] || row.close_date ||
-      row['Closed Date'] || row['Sell Time'] ||
-      row['Closing time (UTC-4)'] || row['Closing Time'] ||
-      row.closing_time_utc || row['closing_time_utc'],
-      dateParseOptions
-    );
+    const exitTime = parseGenericDateTime(findGenericColumn(row, [
+      'Exit Date UTC', 'Exit Time', 'Close Time', 'Exit Date', 'Close Date',
+      'close_date', 'Closed Date', 'Sell Time', 'Closing time (UTC-4)',
+      'Closing Time', 'closing_time_utc'
+    ]), dateParseOptions);
 
     // Price mapping - support more variations
-    const entryPrice = parseNumeric(
-      row['Entry Price'] || row['Buy Price'] || row.Price || row.price ||
-      row['Price / share'] || row.TradePrice || row['TradePrice'] || row['Trade Price'] ||
-      row['Fill Price'] || row['Avg Price'] || row['Average Price'] ||
-      row['Avg fill price'] || row['Avg Fill Price'] || row['Average fill price'] ||
-      row['Open Price'] || row['Opening Price'] || row['Purchase Price'] ||
-      row['Entry price'] ||
-      row.opening_price || row['opening_price']
-    );
+    const entryPrice = parseNumeric(findGenericColumn(row, [
+      'Entry Price', 'Buy Price', 'Price', 'Price / share', 'Trade Price',
+      'Fill Price', 'Avg Price', 'Average Price', 'Avg fill price', 'Open Price',
+      'Opening Price', 'Purchase Price', 'opening_price'
+    ]).value);
 
-    const exitPrice = parseNumeric(
-      row['Exit Price'] || row['Sell Price'] || row['Close Price'] ||
-      row['Sale Price'] || row['Closing Price'] || row['Closing price'] ||
-      row.closing_price || row['closing_price']
-    );
+    const exitPrice = parseNumeric(findGenericColumn(row, [
+      'Exit Price', 'Sell Price', 'Close Price', 'Sale Price', 'Closing Price',
+      'closing_price'
+    ]).value);
 
     // Quantity mapping
     // Note: MetaTrader uses `lots` (lot size) — for forex 1 lot ≈ 100,000 units,
     // but for trade-journal purposes we record `lots` directly as the quantity
     // since `original_position_size` is also available and represents units.
-    const quantity = Math.abs(parseNumeric(
-      row.Quantity || row.quantity || row.Qty || row.qty ||
-      row.Shares || row.shares || row['No. of shares'] || row.Size || row.size ||
-      row.Volume || row.volume || row.Amount || row.amount ||
-      row['Fill Qty'] || row['Filled Qty'] || row['Filled quantity'] || row['Filled Quantity'] ||
-      row['Quantity filled'] || row['Quantity Filled'] || row['Closing Quantity'] ||
-      row.original_position_size || row['original_position_size'] ||
-      row.lots || row.Lots
-    ));
+    const quantity = Math.abs(parseNumeric(findGenericColumn(row, [
+      'Quantity', 'Qty', 'Shares', 'No. of shares', 'Size', 'Volume', 'Amount',
+      'Fill Qty', 'Filled Qty', 'Filled quantity', 'Quantity filled',
+      'Closing Quantity', 'original_position_size', 'Lots'
+    ]).value));
 
     // Side mapping - handle more variations
     // MetaTrader uses `type` with values like "buy"/"sell" or "0"/"1" — parseSide
