@@ -35,40 +35,8 @@
       </div>
     </div>
 
-    <!-- Duplicate Entry Modal -->
-    <div v-if="showDuplicateModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
-      <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
-        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-          Entry Already Exists
-        </h3>
-        <p class="text-gray-600 dark:text-gray-400 mb-6">
-          An entry for {{ form.entryDate }} already exists. Would you like to append to the existing entry or overwrite it?
-        </p>
-        <div class="flex flex-col space-y-3">
-          <button
-            @click="handleDuplicateChoice('append')"
-            class="btn-primary"
-          >
-            Append to Existing Entry
-          </button>
-          <button
-            @click="handleDuplicateChoice('overwrite')"
-            class="btn-secondary"
-          >
-            Overwrite Existing Entry
-          </button>
-          <button
-            @click="showDuplicateModal = false"
-            class="btn-secondary"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
-
     <!-- Form -->
-    <div v-else class="space-y-8">
+    <div v-if="!loading && !error" class="space-y-8">
       <form @submit.prevent="saveEntry" class="space-y-6">
         <!-- Template Selector -->
         <div v-if="!isEditing" class="bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 p-4 rounded-lg">
@@ -76,6 +44,12 @@
             <div class="flex items-center">
               <DocumentTextIcon class="w-5 h-5 text-primary-600 dark:text-primary-400 mr-2" />
               <h3 class="text-sm font-medium text-primary-900 dark:text-primary-200">Use a Template</h3>
+              <span
+                v-if="selectedTemplateName"
+                class="ml-2 text-xs text-primary-700 dark:text-primary-300"
+              >
+                {{ selectedTemplateName }} applied
+              </span>
             </div>
             <button
               type="button"
@@ -161,7 +135,7 @@
           <!-- Title -->
           <div class="mt-6">
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Title
+              Title <span v-if="form.entryType === 'diary'" class="font-normal text-gray-500 dark:text-gray-400">(recommended for multiple entries)</span>
               <span v-if="form.entryType === 'playbook'" class="text-red-500">*</span>
             </label>
             <input
@@ -641,6 +615,7 @@ const showTemplates = ref(false)
 const availableTemplates = ref([])
 const templatesLoading = ref(false)
 const templatesLoadedForType = ref(null)
+const selectedTemplateName = ref('')
 const showLinkedTradesSection = ref(false)
 const showAttachmentsSection = ref(false)
 const hasPendingImages = ref(false)
@@ -703,6 +678,7 @@ const toggleTemplates = async () => {
 const applyTemplate = async (template) => {
   try {
     // Apply template fields to form
+    if (template.entry_type) form.value.entryType = template.entry_type
     if (template.title) form.value.title = template.title
     if (template.market_bias) form.value.marketBias = template.market_bias
     if (template.content) form.value.content = template.content
@@ -717,6 +693,7 @@ const applyTemplate = async (template) => {
       form.value.followedPlan = template.followed_plan
     }
     if (template.lessons_learned) form.value.lessonsLearned = template.lessons_learned
+    selectedTemplateName.value = template.name
 
     // Increment use count
     await templateStore.applyTemplate(template.id)
@@ -1042,10 +1019,6 @@ const handlePendingImagesChange = (pendingFiles) => {
   hasPendingImages.value = pendingFiles.length > 0
 }
 
-const showDuplicateModal = ref(false)
-const existingEntry = ref(null)
-const pendingEntryData = ref(null)
-
 const saveEntry = async () => {
   try {
     saving.value = true
@@ -1076,21 +1049,6 @@ const saveEntry = async () => {
 
       router.push('/diary')
     } else {
-      // Check for existing entry on the same date
-      try {
-        const existing = await diaryStore.fetchEntryByDate(form.value.entryDate, form.value.entryType)
-        if (existing) {
-          // Entry exists - show modal
-          existingEntry.value = existing
-          pendingEntryData.value = entryData
-          showDuplicateModal.value = true
-          saving.value = false
-          return
-        }
-      } catch (err) {
-        // No existing entry found - continue with save
-      }
-
       const savedEntry = await diaryStore.saveEntry(entryData)
 
       // Upload pending images if any
@@ -1109,51 +1067,6 @@ const saveEntry = async () => {
   }
 }
 
-const handleDuplicateChoice = async (choice) => {
-  try {
-    saving.value = true
-    showDuplicateModal.value = false
-
-    const targetEntryId = existingEntry.value.id
-
-    if (choice === 'append') {
-      // Append to existing entry
-      const updatedData = {
-        ...pendingEntryData.value,
-        content: existingEntry.value.content
-          ? `${existingEntry.value.content}\n\n---\n\n${pendingEntryData.value.content}`
-          : pendingEntryData.value.content,
-        // Merge watchlists
-        watchlist: [...new Set([...(existingEntry.value.watchlist || []), ...pendingEntryData.value.watchlist])],
-        // Merge tags
-        tags: [...new Set([...(existingEntry.value.tags || []), ...pendingEntryData.value.tags])],
-        // Keep existing key levels if new one is empty
-        keyLevels: pendingEntryData.value.keyLevels || existingEntry.value.key_levels,
-        // Keep existing title if new one is empty
-        title: pendingEntryData.value.title || existingEntry.value.title
-      }
-
-      await diaryStore.updateEntry(targetEntryId, updatedData)
-    } else if (choice === 'overwrite') {
-      // Overwrite existing entry
-      await diaryStore.updateEntry(targetEntryId, pendingEntryData.value)
-    }
-
-    // Upload pending images if any
-    if (imageUploadRef.value?.hasPendingFiles()) {
-      await imageUploadRef.value.uploadPendingImages(targetEntryId)
-    }
-
-    router.push('/diary')
-  } catch (err) {
-    error.value = err.response?.data?.error || 'Failed to save diary entry'
-  } finally {
-    saving.value = false
-    existingEntry.value = null
-    pendingEntryData.value = null
-  }
-}
-
 // Load entry data if editing
 onMounted(async () => {
   if (isEditing.value) {
@@ -1162,6 +1075,15 @@ onMounted(async () => {
     // Keep expensive helpers collapsed on fresh entries.
     showLinkedTradesSection.value = false
     showAttachmentsSection.value = false
+
+    if (route.query.template_id) {
+      try {
+        const template = await templateStore.fetchTemplate(route.query.template_id)
+        await applyTemplate(template)
+      } catch (err) {
+        error.value = err.response?.data?.error || 'Failed to load the selected template'
+      }
+    }
   }
 
   // Adjust textarea height after content is loaded

@@ -7,7 +7,7 @@ const {
   getTodaysEntry,
   getEntry,
   getEntryByDate,
-  createOrUpdateEntry,
+  createEntry,
   updateEntry,
   deleteEntry,
   uploadAttachment,
@@ -64,8 +64,8 @@ router.delete('/general-notes/:id', deleteGeneralNote);
 // Get specific diary entry by ID
 router.get('/:id', getEntry);
 
-// Create or update diary entry (upsert by date and type)
-router.post('/', createOrUpdateEntry);
+// Create an independent diary entry (multiple entries may share a date)
+router.post('/', createEntry);
 
 // Update specific diary entry
 router.put('/:id', updateEntry);

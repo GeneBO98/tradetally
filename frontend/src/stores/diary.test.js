@@ -3,7 +3,8 @@ import { createPinia, setActivePinia } from 'pinia'
 
 const { api } = vi.hoisted(() => ({
   api: {
-    get: vi.fn()
+    get: vi.fn(),
+    post: vi.fn()
   }
 }))
 
@@ -15,6 +16,7 @@ describe('diary store AI analysis recovery', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     api.get.mockReset()
+    api.post.mockReset()
   })
 
   it('polls for the saved result after a gateway timeout', async () => {
@@ -82,5 +84,28 @@ describe('diary store AI analysis recovery', () => {
     )
     expect(api.get).toHaveBeenCalledTimes(2)
     expect(store.error).toBe('Failed to analyze diary entries')
+  })
+})
+
+describe('diary store multiple same-day entries', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    api.get.mockReset()
+    api.post.mockReset()
+  })
+
+  it('keeps all entries returned for today', async () => {
+    const entries = [
+      { id: 'entry-2', entry_date: '2026-08-03', entry_type: 'diary' },
+      { id: 'entry-1', entry_date: '2026-08-03', entry_type: 'diary' }
+    ]
+    api.get.mockResolvedValueOnce({ data: { entries, entry: entries[0] } })
+
+    const store = useDiaryStore()
+    await store.fetchTodaysEntry()
+
+    expect(store.todaysEntries).toEqual(entries)
+    expect(store.todaysEntry.id).toBe('entry-2')
+    expect(store.hasTodaysEntry).toBe(true)
   })
 })

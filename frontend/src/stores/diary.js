@@ -26,6 +26,7 @@ function isRecoverableAnalysisError(err) {
 export const useDiaryStore = defineStore('diary', () => {
   // State
   const entries = ref([])
+  const todaysEntries = ref([])
   const todaysEntry = ref(null)
   const currentEntry = ref(null)
   const loading = ref(false)
@@ -53,7 +54,7 @@ export const useDiaryStore = defineStore('diary', () => {
 
   // Getters
   const hasEntries = computed(() => entries.value.length > 0)
-  const hasTodaysEntry = computed(() => todaysEntry.value !== null)
+  const hasTodaysEntry = computed(() => todaysEntries.value.length > 0)
   const totalEntries = computed(() => pagination.value.total)
 
   // Actions
@@ -108,8 +109,10 @@ export const useDiaryStore = defineStore('diary', () => {
   const fetchTodaysEntry = async () => {
     try {
       const response = await api.get('/diary/today')
-      todaysEntry.value = response.data.entry
-      return response.data.entry
+      const fetchedEntries = response.data.entries || (response.data.entry ? [response.data.entry] : [])
+      todaysEntries.value = fetchedEntries
+      todaysEntry.value = fetchedEntries[0] || null
+      return todaysEntry.value
     } catch (err) {
       console.error('Error fetching today\'s entry:', err)
       // Don't throw error for today's entry as it's optional
@@ -149,7 +152,7 @@ export const useDiaryStore = defineStore('diary', () => {
     }
   }
 
-  // Create or update diary entry
+  // Create a new independent diary entry
   const saveEntry = async (entryData) => {
     try {
       setLoading(true)
@@ -170,6 +173,7 @@ export const useDiaryStore = defineStore('diary', () => {
       const today = getLocalToday()
       const entryDate = savedEntry.entry_date ? savedEntry.entry_date.split('T')[0] : null
       if (entryDate === today && savedEntry.entry_type === 'diary') {
+        todaysEntries.value = [savedEntry, ...todaysEntries.value.filter(entry => entry.id !== savedEntry.id)]
         todaysEntry.value = savedEntry
       }
 
@@ -203,7 +207,18 @@ export const useDiaryStore = defineStore('diary', () => {
       const today = getLocalToday()
       const entryDate = updatedEntry.entry_date ? updatedEntry.entry_date.split('T')[0] : null
       if (entryDate === today && updatedEntry.entry_type === 'diary') {
-        todaysEntry.value = updatedEntry
+        const todayIndex = todaysEntries.value.findIndex(entry => entry.id === id)
+        if (todayIndex === -1) {
+          todaysEntries.value.unshift(updatedEntry)
+        } else {
+          todaysEntries.value[todayIndex] = updatedEntry
+        }
+        if (todaysEntry.value?.id === id || !todaysEntry.value) {
+          todaysEntry.value = updatedEntry
+        }
+      } else if (todaysEntries.value.some(entry => entry.id === id)) {
+        todaysEntries.value = todaysEntries.value.filter(entry => entry.id !== id)
+        todaysEntry.value = todaysEntries.value[0] || null
       }
 
       currentEntry.value = updatedEntry
@@ -228,9 +243,10 @@ export const useDiaryStore = defineStore('diary', () => {
       // Remove from local state
       entries.value = entries.value.filter(e => e.id !== id)
 
-      // Clear today's entry if it was deleted
-      if (todaysEntry.value?.id === id) {
-        todaysEntry.value = null
+      // Remove only the deleted entry; another entry from today may remain.
+      if (todaysEntries.value.some(entry => entry.id === id)) {
+        todaysEntries.value = todaysEntries.value.filter(entry => entry.id !== id)
+        todaysEntry.value = todaysEntries.value[0] || null
       }
 
       // Clear current entry if it was deleted
@@ -435,6 +451,7 @@ export const useDiaryStore = defineStore('diary', () => {
   // Clear all state
   const clearState = () => {
     entries.value = []
+    todaysEntries.value = []
     todaysEntry.value = null
     currentEntry.value = null
     loading.value = false
@@ -524,6 +541,7 @@ export const useDiaryStore = defineStore('diary', () => {
   return {
     // State
     entries,
+    todaysEntries,
     todaysEntry,
     currentEntry,
     loading,
