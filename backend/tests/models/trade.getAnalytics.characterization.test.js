@@ -205,7 +205,7 @@ describe('TradeQueries.getAnalytics characterization', () => {
     expect(dailySql).not.toContain('SUM(r_value)');
   });
 
-  test('dollar-risk users derive R as net P&L over the fixed dollar risk (#345)', async () => {
+  test('dollar defaults fall back only when the stored stop cannot define risk', async () => {
     const User = require('../../src/models/User');
     User.getSettings.mockResolvedValueOnce({
       statistics_calculation: 'average',
@@ -217,10 +217,13 @@ describe('TradeQueries.getAnalytics characterization', () => {
 
     const analyticsSql = db.query.mock.calls[1][0];
     const dailySql = db.query.mock.calls[3][0];
-    // Fixed-dollar risk: divide P&L by the constant dollar amount, with no
-    // stored-stop-loss or per-instrument multiplier in the denominator.
+    // A valid stop uses the normal instrument-aware risk calculation; the
+    // configured dollar amount remains in the SQL as the fallback branch.
+    expect(analyticsSql).toContain('COALESCE(');
+    expect(analyticsSql).toContain("WHEN 'MNQ' THEN 2");
     expect(analyticsSql).toContain('THEN t.pnl / 500');
-    expect(analyticsSql).not.toContain("WHEN 'MNQ' THEN 2");
+    expect(dailySql).toContain('COALESCE(');
+    expect(dailySql).toContain("WHEN 'MNQ' THEN 2");
     expect(dailySql).toContain('THEN t.pnl / 500');
   });
 

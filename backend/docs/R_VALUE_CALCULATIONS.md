@@ -35,15 +35,15 @@ For Management R calculations, both the actual outcome and the ghost scenario (w
 R values use the **current** stop loss, not the original. The `risk_level_history` field tracks historical stop loss moves for display purposes (showing "Saved R" from SL moves), but R calculations always use the current stop loss value.
 
 ### Dollar-Based Default Stops
-When a user's `default_stop_loss_type` is `dollar`, `default_stop_loss_dollars` supplies a default stop price for new and imported trades. In Trade Management, it does **not** override a valid stop stored on an individual trade.
+When a user's `default_stop_loss_type` is `dollar`, `default_stop_loss_dollars` supplies a default stop price for new and imported trades. It does **not** override a valid stop stored on an individual trade.
 
 The setting is used by the R surfaces as follows:
 
-- **Dashboard / analytics aggregate** (`TradeQueries.getAnalytics`): derives R as `pnl / dollar_risk`. Because `pnl` is already in dollars (futures/option multiplier applied), this needs no per-instrument multiplier and reconciles exactly: `SUM(R) = SUM(pnl) / risk`.
+- **Dashboard / analytics aggregate** (`TradeQueries.getAnalytics`): a valid current stop uses `pnl / ((entry − stop) × qty × multiplier)`. If the stop no longer defines positive risk, it falls back to `pnl / default_stop_loss_dollars` so a trailed-stop trade is not dropped.
 - **R-Multiple Analysis & R-Performance chart** (`calculateRMultiples`): a valid current stop uses `(entry − stop) × qty × multiplier`. The configured dollar amount is a fallback only when the current stop no longer defines positive risk, such as after it is trailed through breakeven.
 - **Management R** (`TargetHitAnalysisService.calculateManagementR`): uses the same stop-first, dollar-fallback precedence so planned and management R stay consistent with the analysis card.
 
-The fallback keeps trades whose stops have crossed entry from disappearing from Trade Management, while ensuring imported or manually edited stops control their own analysis. Percent-stop users always use the per-trade `(entry − stop) × qty × multiplier` derivation.
+The fallback keeps trades whose stops have crossed entry from disappearing from analytics, while ensuring imported or manually edited stops control their own analysis. Percent-stop users always use the per-trade `(entry − stop) × qty × multiplier` derivation.
 
 ---
 

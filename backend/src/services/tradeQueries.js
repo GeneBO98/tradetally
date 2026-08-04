@@ -152,21 +152,20 @@ function derivedRValueSql(alias = 't') {
   END`;
 }
 
-// Fixed-dollar-risk traders define R as a constant dollar amount per trade, so
-// every trade's R-multiple is simply net P&L / dollar risk (issue #345). pnl is
-// already stored in dollars with the futures/option multiplier applied, so this
-// needs no per-instrument multiplier and reconciles exactly: SUM(R) = SUM(pnl) /
-// risk. Deriving risk from each stored stop loss instead skewed the aggregate
-// negative — winners trailed to/above breakeven produced a NULL price-based risk
-// and dropped out, while losers with a tight stored stop blew up the denominator.
-// `dollarRisk` is a server-side validated number (never user query input), so
-// interpolating it into the SQL literal is safe.
-function derivedRValueDollarSql(alias, dollarRisk) {
-  return `CASE
-    WHEN ${alias}.pnl IS NOT NULL
-      THEN ${alias}.pnl / ${dollarRisk}
-    ELSE NULL
-  END`;
+// A dollar-based setting supplies a default stop, not an override for a valid
+// trade-specific stop. Prefer the normal stop-derived R calculation and fall
+// back to pnl/default-dollar-risk only when the stored stop cannot define a
+// positive risk (for example, after it is trailed through entry). `dollarRisk`
+// is a server-side validated number, never raw query input.
+function derivedRValueWithDollarFallbackSql(alias, dollarRisk) {
+  return `COALESCE(
+    (${derivedRValueSql(alias)}),
+    CASE
+      WHEN ${alias}.pnl IS NOT NULL
+        THEN ${alias}.pnl / ${dollarRisk}
+      ELSE NULL
+    END
+  )`;
 }
 
 class TradeQueries {
@@ -534,8 +533,8 @@ class TradeQueries {
     // single trade so the headline win rate / counts / profit factor are
     // measured per position. Total P&L is unchanged.
     let groupByPosition = false;
-    // For fixed-dollar-risk users, R is net P&L / dollar risk rather than a
-    // value derived from each stored stop loss (issue #345).
+    // Dollar-based defaults are available as a fallback when a current stop
+    // cannot define positive risk. Valid stops remain trade-specific.
     let dollarRisk = null;
     try {
       const userSettings = await User.getSettings(userId);
@@ -597,7 +596,7 @@ class TradeQueries {
     `;
 
     const derivedRValue = dollarRisk
-      ? derivedRValueDollarSql('t', dollarRisk)
+      ? derivedRValueWithDollarFallbackSql('t', dollarRisk)
       : derivedRValueSql('t');
 
     // Daily P&L is attributed to actual exit executions, not the position's

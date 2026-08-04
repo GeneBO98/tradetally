@@ -7,6 +7,7 @@ const db = require('../config/database');
 const Trade = require('../models/Trade');
 const User = require('../models/User');
 const TradeQueries = require('../services/tradeQueries');
+const AnalyticsCache = require('../services/analyticsCache');
 const logger = require('../utils/logger');
 const TargetHitAnalysisService = require('../services/targetHitAnalysisService');
 const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('../utils/futuresUtils');
@@ -1868,10 +1869,11 @@ const tradeManagementController = {
       const updateResult = await db.query(updateQuery, values);
       const updatedTrade = updateResult.rows[0];
 
-      // Recalculate R-value if we have stop loss and exit price
-      // R-Multiple = Profit / Risk (where Risk = distance from entry to stop loss)
-      if (updatedTrade.stop_loss && updatedTrade.exit_price) {
-        const rValue = Trade.calculateRValue(
+      // Recalculate derived R fields after any level change. Persist null when
+      // the inputs no longer support the calculation so removing a stop does
+      // not leave a stale R value behind.
+      const rValue = updatedTrade.stop_loss && updatedTrade.exit_price
+        ? Trade.calculateRValue(
           parseFloat(updatedTrade.entry_price),
           parseFloat(updatedTrade.stop_loss),
           parseFloat(updatedTrade.exit_price),
@@ -1886,27 +1888,22 @@ const tradeManagementController = {
             symbol: updatedTrade.symbol,
             underlyingAsset: updatedTrade.underlying_asset
           }
-        );
-
-        if (rValue !== null) {
-          await db.query(
-            `UPDATE trades SET r_value = $1 WHERE id = $2`,
-            [rValue, tradeId]
-          );
-          updatedTrade.r_value = rValue;
-        }
-      }
+        )
+        : null;
 
       // Calculate and store management R
       const dollarRisk = await getUserDollarRisk(userId);
       const managementR = TargetHitAnalysisService.calculateManagementR(updatedTrade, { dollarRisk });
-      if (managementR !== null) {
-        await db.query(
-          `UPDATE trades SET management_r = $1 WHERE id = $2`,
-          [managementR, tradeId]
-        );
-        updatedTrade.management_r = managementR;
-      }
+      await db.query(
+        `UPDATE trades
+         SET r_value = $1, management_r = $2
+         WHERE id = $3 AND user_id = $4`,
+        [rValue, managementR, tradeId, userId]
+      );
+      updatedTrade.r_value = rValue;
+      updatedTrade.management_r = managementR;
+
+      await AnalyticsCache.invalidate(userId);
 
       logger.info(`[TRADE-MANAGEMENT] Updated trade ${tradeId} levels for user ${userId}`);
 
@@ -2222,6 +2219,7 @@ const tradeManagementController = {
         `UPDATE trades SET target_hit_analysis = $1 WHERE id = $2`,
         [JSON.stringify(analysisResult), tradeId]
       );
+      await AnalyticsCache.invalidate(userId);
 
       res.json(analysisResult);
     } catch (error) {
@@ -2353,6 +2351,7 @@ const tradeManagementController = {
       const updateResult = await db.query(updateQuery, updateValues);
 
       const updatedTrade = updateResult.rows[0];
+      await AnalyticsCache.invalidate(userId);
       logger.debug('[MANUAL-TARGET] Update successful:', {
         id: updatedTrade.id,
         manual_target_hit_first: updatedTrade.manual_target_hit_first,

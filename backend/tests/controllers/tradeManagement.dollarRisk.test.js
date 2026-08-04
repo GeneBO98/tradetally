@@ -4,6 +4,7 @@
 
 jest.mock('../../src/config/database', () => ({ query: jest.fn() }));
 jest.mock('../../src/services/tradeQueries', () => ({ _buildWhereClause: jest.fn() }));
+jest.mock('../../src/services/analyticsCache', () => ({ invalidate: jest.fn() }));
 jest.mock('../../src/utils/breakeven', () => {
   const actual = jest.requireActual('../../src/utils/breakeven');
   return { ...actual, getBreakevenToleranceConfig: jest.fn() };
@@ -12,6 +13,7 @@ jest.mock('../../src/models/User', () => ({ getSettings: jest.fn() }));
 
 const db = require('../../src/config/database');
 const TradeQueries = require('../../src/services/tradeQueries');
+const AnalyticsCache = require('../../src/services/analyticsCache');
 const { getBreakevenToleranceConfig } = require('../../src/utils/breakeven');
 const User = require('../../src/models/User');
 const controller = require('../../src/controllers/tradeManagement.controller');
@@ -52,6 +54,7 @@ describe('Trade Management dollar-risk defaults', () => {
   beforeEach(() => {
     db.query.mockReset();
     TradeQueries._buildWhereClause.mockReset();
+    AnalyticsCache.invalidate.mockReset();
     getBreakevenToleranceConfig.mockReset();
     User.getSettings.mockReset();
 
@@ -156,5 +159,63 @@ describe('Trade Management dollar-risk defaults', () => {
     expect(analysis.risk_basis).toBe(fixture.expected.risk_basis);
     expect(analysis.actual_r).toBe(fixture.expected.actual_r);
     expect(analysis.target_r).toBe(fixture.expected.target_r);
+  });
+
+  test('level updates persist stop-derived R and invalidate dashboard analytics', async () => {
+    const trade = row(1, { stop_loss: 95, exit_price: 110, pnl: 1000 });
+    db.query
+      .mockResolvedValueOnce({ rows: [trade] })
+      .mockResolvedValueOnce({ rows: [{ ...trade, stop_loss: 99 }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const req = {
+      user: { id: 'user-1' },
+      params: { tradeId: trade.id },
+      body: { stop_loss: 99 }
+    };
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn()
+    };
+
+    await controller.updateTradeLevels(req, res);
+
+    const [, derivedValues] = db.query.mock.calls[2];
+    expect(derivedValues).toEqual([10, null, trade.id, 'user-1']);
+    expect(derivedValues[0]).not.toBe(2); // $500 default would produce 2R.
+    expect(AnalyticsCache.invalidate).toHaveBeenCalledWith('user-1');
+    expect(res.json.mock.calls[0][0].trade.r_value).toBe(10);
+  });
+
+  test('removing a stop clears stale R fields and invalidates analytics', async () => {
+    const trade = {
+      ...row(1, { stop_loss: 95, exit_price: 110, pnl: 1000 }),
+      r_value: 2,
+      management_r: 3
+    };
+    db.query
+      .mockResolvedValueOnce({ rows: [trade] })
+      .mockResolvedValueOnce({ rows: [{ ...trade, stop_loss: null }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const req = {
+      user: { id: 'user-1' },
+      params: { tradeId: trade.id },
+      body: { stop_loss: null }
+    };
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn()
+    };
+
+    await controller.updateTradeLevels(req, res);
+
+    const [, derivedValues] = db.query.mock.calls[2];
+    expect(derivedValues).toEqual([null, null, trade.id, 'user-1']);
+    expect(AnalyticsCache.invalidate).toHaveBeenCalledWith('user-1');
+    expect(res.json.mock.calls[0][0].trade).toEqual(expect.objectContaining({
+      r_value: null,
+      management_r: null
+    }));
   });
 });

@@ -1,25 +1,15 @@
-// Regression test for issue #345: dollar-based stop-loss users were seeing a
-// NEGATIVE aggregate "Net R" on the dashboard even though their net P&L was
-// positive.
-//
-// Root cause: the dashboard derived each trade's R from its stored stop loss
-// (pnl / ((entry-stop) * qty * multiplier)). For a fixed-dollar-risk trader
-// that denominator is supposed to be the same dollars on every trade, but in
-// practice stored stops are inconsistent:
-//   - winners whose stop was trailed to/above breakeven produce a NULL risk
-//     (the SQL requires stop_loss < entry for longs) and drop out entirely,
-//   - losers with a tight/unrepaired stored stop get a tiny denominator and a
-//     huge negative R.
-// The sum then skews negative. A fixed-dollar-risk trader's R is simply
-// net P&L / dollar risk, so the aggregate must reconcile to totalPnL / risk.
+// Regression coverage for dollar-based default stops on dashboard analytics.
+// Valid stored stops define each trade's R; the configured dollar amount is a
+// fallback only when a trailed stop no longer defines positive risk.
 const { randomUUID } = require('crypto');
 
 const db = require('../../src/config/database');
 const TradeQueries = require('../../src/services/tradeQueries');
+const calculationContracts = require('../../../tests/fixtures/trading-calculation-contracts.json');
 
 const DOLLAR_RISK = 500;
 
-async function createDollarRiskUser() {
+async function createDollarRiskUser(defaultDollarRisk = DOLLAR_RISK) {
   const suffix = randomUUID().slice(0, 8);
   const result = await db.query(
     `INSERT INTO users (email, username, password_hash, is_verified, is_active, admin_approved, role)
@@ -35,7 +25,7 @@ async function createDollarRiskUser() {
        SET default_stop_loss_type = 'dollar',
            default_stop_loss_dollars = $2,
            default_stop_loss_percent = 5`,
-    [user.id, DOLLAR_RISK]
+    [user.id, defaultDollarRisk]
   );
   return user;
 }
@@ -74,26 +64,37 @@ async function insertStockTrade(userId, overrides = {}) {
 
 describe('TradeQueries.getAnalytics dollar-risk R (#345)', () => {
   let user;
+  let screenshotUser;
 
   beforeAll(async () => {
     user = await createDollarRiskUser();
 
     // Winner, stop correctly at the $500 default (100 - 5.00).
     await insertStockTrade(user.id, {
-      symbol: 'WIN1', entry_price: 100, stop_loss: 95, exit_price: 110, pnl: 1000,
+      symbol: 'ALPHA', entry_price: 100, stop_loss: 95, exit_price: 110, pnl: 1000,
       trade_date: '2026-01-02', entry_time: '2026-01-02T15:00:00Z', exit_time: '2026-01-02T16:00:00Z'
     });
     // Winner whose stop was trailed ABOVE entry to lock in profit. Price-based
     // risk is NULL here, so the old derivation dropped this winning R entirely.
     await insertStockTrade(user.id, {
-      symbol: 'WIN2', entry_price: 100, stop_loss: 102, exit_price: 115, pnl: 1500,
+      symbol: 'BRAVO', entry_price: 100, stop_loss: 102, exit_price: 115, pnl: 1500,
       trade_date: '2026-01-03', entry_time: '2026-01-03T15:00:00Z', exit_time: '2026-01-03T16:00:00Z'
     });
-    // Loser with a tight/unrepaired stored stop ($50 risk). The old derivation
-    // gave this a -40R denominator blow-up that dominated the sum.
+    // Loser with a tight, valid stored stop ($50 risk). The explicit stop must
+    // take precedence over the user's $500 default.
     await insertStockTrade(user.id, {
-      symbol: 'LOSE1', entry_price: 100, stop_loss: 99.5, exit_price: 80, pnl: -2000,
+      symbol: 'CHARLIE', entry_price: 100, stop_loss: 99.5, exit_price: 80, pnl: -2000,
       trade_date: '2026-01-04', entry_time: '2026-01-04T15:00:00Z', exit_time: '2026-01-04T16:00:00Z'
+    });
+
+    const fixture = calculationContracts.r_value.dollar_default_explicit_stop_example;
+    screenshotUser = await createDollarRiskUser(fixture.default_stop_loss_dollars);
+    await insertStockTrade(screenshotUser.id, {
+      ...fixture.trade,
+      account_identifier: 'SCREENSHOT',
+      trade_date: '2026-07-28',
+      entry_time: '2026-07-28T15:12:00Z',
+      exit_time: '2026-07-28T16:00:00Z'
     });
   });
 
@@ -101,30 +102,43 @@ describe('TradeQueries.getAnalytics dollar-risk R (#345)', () => {
     if (user) {
       await db.query('DELETE FROM users WHERE id = $1', [user.id]);
     }
+    if (screenshotUser) {
+      await db.query('DELETE FROM users WHERE id = $1', [screenshotUser.id]);
+    }
     await db.pool.end();
   });
 
-  test('aggregate Net R reconciles to net P&L / dollar risk and stays positive', async () => {
+  test('aggregate Net R uses valid stops and falls back for a stop beyond entry', async () => {
     const analytics = await TradeQueries.getAnalytics(user.id, {});
 
     // Net P&L = 1000 + 1500 - 2000 = +500 (positive).
     expect(analytics.summary.totalPnL).toBeCloseTo(500, 2);
 
-    // Net R for a fixed-dollar-risk trader = net P&L / dollar risk = 500/500 = +1R.
-    expect(analytics.summary.totalRValue).toBeCloseTo(500 / DOLLAR_RISK, 2);
-    expect(analytics.summary.totalRValue).toBeGreaterThan(0);
+    // ALPHA uses its valid $500 stop risk (+2R), BRAVO falls back to the $500
+    // default because its stop is above entry (+3R), and CHARLIE uses its valid
+    // tight $50 stop risk (-40R).
+    expect(analytics.summary.totalRValue).toBeCloseTo(-35, 2);
 
-    // Average R = average net P&L / dollar risk over the 3 completed trades.
-    expect(analytics.summary.avgRValue).toBeCloseTo((500 / 3) / DOLLAR_RISK, 2);
+    expect(analytics.summary.avgRValue).toBeCloseTo(-35 / 3, 2);
   });
 
-  test('daily cumulative R reconciles to cumulative P&L / dollar risk', async () => {
+  test('daily cumulative R uses the same stop-first precedence', async () => {
     const analytics = await TradeQueries.getAnalytics(user.id, {});
     const daily = analytics.dailyPnL;
 
     const lastDay = daily[daily.length - 1];
-    const cumulativePnl = daily.reduce((sum, d) => sum + parseFloat(d.daily_pnl || 0), 0);
-    expect(parseFloat(lastDay.cumulative_r_value)).toBeCloseTo(cumulativePnl / DOLLAR_RISK, 2);
-    expect(parseFloat(lastDay.cumulative_r_value)).toBeGreaterThan(0);
+    expect(parseFloat(lastDay.cumulative_r_value)).toBeCloseTo(-35, 2);
+  });
+
+  test('dashboard reproduces the reported explicit-stop risk calculation', async () => {
+    const fixture = calculationContracts.r_value.dollar_default_explicit_stop_example;
+    const analytics = await TradeQueries.getAnalytics(screenshotUser.id, {});
+
+    expect(analytics.summary.totalPnL).toBeCloseTo(fixture.trade.pnl, 2);
+    expect(analytics.summary.totalRValue).toBeCloseTo(fixture.expected.dashboard_r, 2);
+    expect(analytics.summary.avgRValue).toBeCloseTo(fixture.expected.dashboard_r, 2);
+
+    const lastDay = analytics.dailyPnL[analytics.dailyPnL.length - 1];
+    expect(parseFloat(lastDay.cumulative_r_value)).toBeCloseTo(fixture.expected.dashboard_r, 2);
   });
 });
