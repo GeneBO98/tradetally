@@ -98,4 +98,28 @@ describe('Yahoo Finance futures fallback', () => {
       entry_time: new Date().toISOString()
     }, '1')).rejects.toThrow(/disabled/);
   });
+
+  it('retries transient DNS failures and fails over to the secondary Yahoo host', async () => {
+    const dnsError = Object.assign(new Error('temporary DNS failure'), { code: 'EAI_AGAIN' });
+    axios.get
+      .mockRejectedValueOnce(dnsError)
+      .mockRejectedValueOnce(dnsError)
+      .mockResolvedValueOnce(yahooResponse());
+
+    await yahooFinance.fetchCandles('ES=F', new Date().toISOString(), null, '5');
+
+    expect(axios.get).toHaveBeenCalledTimes(3);
+    expect(axios.get.mock.calls[0][0]).toContain('query1.finance.yahoo.com');
+    expect(axios.get.mock.calls[2][0]).toContain('query2.finance.yahoo.com');
+  });
+
+  it('marks exhausted network failures as transient provider failures', async () => {
+    const timeout = Object.assign(new Error('timed out'), { code: 'ETIMEDOUT' });
+    axios.get.mockRejectedValue(timeout);
+
+    await expect(yahooFinance.fetchCandles(
+      'ES=F', new Date().toISOString(), null, '5'
+    )).rejects.toMatchObject({ isTransientProviderFailure: true });
+    expect(axios.get).toHaveBeenCalledTimes(4);
+  });
 });

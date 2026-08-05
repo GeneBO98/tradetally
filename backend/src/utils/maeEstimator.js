@@ -1,6 +1,7 @@
 const finnhub = require('./finnhub');
 const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('./futuresUtils');
 const databento = require('./databento');
+const yahooFinance = require('./yahooFinance');
 
 class MAEEstimator {
   /**
@@ -299,14 +300,45 @@ class MAEEstimator {
     return candles;
   }
 
+  static validateFuturesContinuousContract(trade, candles) {
+    const entryPrice = Number(trade.entry_price);
+    const firstPrice = Number(candles[0]?.open ?? candles[0]?.close);
+    if (!Number.isFinite(entryPrice) || !Number.isFinite(firstPrice) || entryPrice <= 0) return;
+
+    // A continuous contract can point at a different delivery month around a
+    // rollover. Reject a materially different series instead of persisting
+    // misleading excursion values.
+    const relativeDifference = Math.abs(firstPrice - entryPrice) / entryPrice;
+    if (relativeDifference > 0.03) {
+      throw new Error(
+        `Yahoo continuous contract price differs from ${trade.symbol} entry price by ${(relativeDifference * 100).toFixed(1)}%`
+      );
+    }
+  }
+
+  static async getYahooFuturesCandles(underlying, trade, startTime, endTime) {
+    if (!yahooFinance.isEnabled()) {
+      throw new Error('Yahoo Finance futures fallback is disabled');
+    }
+
+    const resolution = this.getResolutionForTrade(startTime, endTime);
+    const yahooSymbol = yahooFinance.getContinuousSymbol(underlying);
+    const candles = await yahooFinance.fetchCandles(yahooSymbol, startTime, endTime, resolution);
+    const fromSeconds = Math.floor(new Date(startTime).getTime() / 1000);
+    const toSeconds = Math.floor(new Date(endTime).getTime() / 1000);
+    const filteredCandles = candles.filter(candle => candle.time >= fromSeconds && candle.time <= toSeconds);
+
+    if (!filteredCandles.length) {
+      throw new Error(`No Yahoo Finance candles within the trade window for ${trade.symbol}`);
+    }
+    this.validateFuturesContinuousContract(trade, filteredCandles);
+    return this.normalizeCandles(filteredCandles);
+  }
+
   static async getCandlesForExcursion(trade, startTime, endTime) {
     const instrumentType = trade.instrument_type || trade.instrumentType || 'stock';
 
     if (instrumentType === 'future') {
-      if (!databento.isConfigured()) {
-        throw new Error('Databento API key not configured for futures MAE/MFE calculation');
-      }
-
       const underlying = trade.underlying_asset || trade.underlyingAsset || extractUnderlyingFromFuturesSymbol(trade.symbol);
       if (!underlying) {
         throw new Error(`Cannot resolve futures underlying for ${trade.symbol}`);
@@ -316,11 +348,18 @@ class MAEEstimator {
       const toDate = new Date(endTime);
       const fromSeconds = Math.floor(fromDate.getTime() / 1000);
       const toSeconds = Math.floor(toDate.getTime() / 1000);
-      const candles = await databento.getFuturesCandles(underlying, fromDate, toDate, this.getDatabentoInterval(startTime, endTime));
-      const filteredCandles = candles.filter(candle => candle.time >= fromSeconds && candle.time <= toSeconds);
-      const finalCandles = filteredCandles.length > 0 ? filteredCandles : candles;
+      if (databento.isConfigured()) {
+        try {
+          const candles = await databento.getFuturesCandles(underlying, fromDate, toDate, this.getDatabentoInterval(startTime, endTime));
+          const filteredCandles = candles.filter(candle => candle.time >= fromSeconds && candle.time <= toSeconds);
+          const finalCandles = filteredCandles.length > 0 ? filteredCandles : candles;
+          return this.normalizeCandles(finalCandles);
+        } catch (error) {
+          console.warn(`[MAE/MFE] Databento unavailable for ${trade.symbol}; trying Yahoo Finance: ${error.message}`);
+        }
+      }
 
-      return this.normalizeCandles(finalCandles);
+      return this.getYahooFuturesCandles(underlying, trade, startTime, endTime);
     }
 
     const resolution = this.getResolutionForTrade(startTime, endTime);

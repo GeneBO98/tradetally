@@ -2,6 +2,11 @@ const axios = require('axios');
 const { getFuturesPointValue, getFuturesTickSize } = require('./futuresUtils');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const YAHOO_CHART_HOSTS = ['query1.finance.yahoo.com', 'query2.finance.yahoo.com'];
+const RETRYABLE_NETWORK_CODES = new Set([
+  'EAI_AGAIN', 'ENOTFOUND', 'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'ECONNABORTED'
+]);
+const RETRY_DELAY_MS = 150;
 const RESOLUTIONS = {
   '1': { yahoo_interval: '1m', interval: '1min' },
   '5': { yahoo_interval: '5m', interval: '5min' },
@@ -20,6 +25,15 @@ function asNumber(value) {
   if (value === null || value === undefined || value === '') return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
+}
+
+function isRetryableNetworkError(error) {
+  const code = error?.code || error?.cause?.code;
+  return RETRYABLE_NETWORK_CODES.has(code) || error?.response?.status >= 500;
+}
+
+function delay(milliseconds) {
+  return new Promise(resolve => setTimeout(resolve, milliseconds));
 }
 
 class YahooFinanceClient {
@@ -75,23 +89,43 @@ class YahooFinanceClient {
       throw new Error('Yahoo Finance chart window is not available yet');
     }
 
-    const response = await axios.get(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}`,
-      {
-        timeout: 15000,
-        headers: {
-          Accept: 'application/json',
-          'User-Agent': 'TradeTally/2.8'
-        },
-        params: {
-          interval: config.yahoo_interval,
-          period1: window.period1,
-          period2: window.period2,
-          includePrePost: true,
-          events: 'history'
+    let response;
+    let lastError;
+
+    for (const hostname of YAHOO_CHART_HOSTS) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          response = await axios.get(
+            `https://${hostname}/v8/finance/chart/${encodeURIComponent(yahooSymbol)}`,
+            {
+              timeout: 15000,
+              headers: {
+                Accept: 'application/json',
+                'User-Agent': 'TradeTally/2.8'
+              },
+              params: {
+                interval: config.yahoo_interval,
+                period1: window.period1,
+                period2: window.period2,
+                includePrePost: true,
+                events: 'history'
+              }
+            }
+          );
+          break;
+        } catch (error) {
+          lastError = error;
+          if (!isRetryableNetworkError(error)) throw error;
+          if (attempt === 0) await delay(RETRY_DELAY_MS * (attempt + 1));
         }
       }
-    );
+      if (response) break;
+    }
+
+    if (!response) {
+      lastError.isTransientProviderFailure = true;
+      throw lastError;
+    }
 
     const result = response.data?.chart?.result?.[0];
     const providerError = response.data?.chart?.error;
@@ -163,3 +197,4 @@ class YahooFinanceClient {
 }
 
 module.exports = new YahooFinanceClient();
+module.exports.isRetryableNetworkError = isRetryableNetworkError;

@@ -107,4 +107,16 @@ describe('ChartService futures routing', () => {
 
     expect(replayDataService.getFuturesTradeChartData).not.toHaveBeenCalled();
   });
+
+  it('returns service unavailable when every provider fails because of transient connectivity', async () => {
+    finnhub.isConfigured.mockReturnValue(false);
+    databento.isConfigured.mockReturnValue(false);
+    yahooFinance.getFuturesTradeChartData.mockRejectedValue(
+      Object.assign(new Error('temporary DNS failure'), { isTransientProviderFailure: true })
+    );
+
+    await expect(ChartService.getTradeChartData(
+      'user-1', trade.symbol, trade.entry_time, trade.exit_time, null, '1', trade
+    )).rejects.toMatchObject({ statusCode: 503 });
+  });
 });

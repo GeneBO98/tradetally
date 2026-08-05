@@ -34,6 +34,7 @@ class ChartService {
     }
 
     const providerErrors = [];
+    let transientProviderFailure = false;
 
     // A configured provider always wins. At present FMP exposes an explicit
     // commodities/futures chart method; providers without that capability are
@@ -45,6 +46,7 @@ class ChartService {
         chartData.point_value = chartData.point_value ?? trade.point_value ?? getFuturesPointValue(futuresRoot);
         return chartData;
       } catch (error) {
+        transientProviderFailure ||= error.isTransientProviderFailure === true;
         providerErrors.push(`${finnhub.displayName}: ${error.message}`);
         console.warn(`[CHART] ${finnhub.displayName} futures data unavailable for ${trade.symbol}: ${error.message}`);
       }
@@ -55,6 +57,7 @@ class ChartService {
       try {
         return await replayDataService.getFuturesTradeChartData(trade, resolution);
       } catch (error) {
+        transientProviderFailure ||= error.isTransientProviderFailure === true;
         providerErrors.push(`Databento: ${error.message}`);
         console.warn(`[CHART] Databento futures data unavailable for ${trade.symbol}: ${error.message}`);
       }
@@ -66,6 +69,7 @@ class ChartService {
       try {
         return await yahooFinance.getFuturesTradeChartData(futuresRoot, trade, resolution);
       } catch (error) {
+        transientProviderFailure ||= error.isTransientProviderFailure === true;
         providerErrors.push(`Yahoo Finance: ${error.message}`);
         console.warn(`[CHART] Yahoo Finance futures data unavailable for ${trade.symbol}: ${error.message}`);
       }
@@ -73,7 +77,7 @@ class ChartService {
 
     const detail = providerErrors.length ? ` ${providerErrors.join('; ')}` : '';
     const error = new Error(`No futures chart data provider could serve ${trade.symbol}.${detail}`);
-    error.statusCode = providerErrors.length ? 404 : 503;
+    error.statusCode = transientProviderFailure || !providerErrors.length ? 503 : 404;
     throw error;
   }
 
