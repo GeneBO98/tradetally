@@ -1614,6 +1614,7 @@ const aiForm = ref({
     apiKey: "",
     url: "",
     model: "",
+    apiKeyConfigured: false,
 });
 
 const aiLoading = ref(false);
@@ -1642,6 +1643,7 @@ const cusipAiForm = ref({
     url: "",
     model: "",
     useMainProvider: true,
+    apiKeyConfigured: false,
 });
 
 const cusipAiLoading = ref(false);
@@ -1864,6 +1866,8 @@ const adminAiForm = ref({
     classifierApiKey: "",
     classifierUrl: "",
     classifierModel: "",
+    apiKeyConfigured: false,
+    classifierApiKeyConfigured: false,
 });
 const adminAiLoading = ref(false);
 
@@ -1874,6 +1878,7 @@ const adminCusipAiForm = ref({
     url: "",
     model: "",
     useMainProvider: true,
+    apiKeyConfigured: false,
 });
 const adminCusipAiLoading = ref(false);
 
@@ -1908,9 +1913,10 @@ async function loadAISettings() {
         const response = await api.get("/settings/ai-provider");
         aiForm.value = {
             provider: response.data.aiProvider || "",
-            apiKey: response.data.aiApiKey || "",
+            apiKey: "",
             url: response.data.aiApiUrl || "",
             model: response.data.aiModel || "",
+            apiKeyConfigured: response.data.aiApiKey === "***",
         };
     } catch (error) {
         console.error("Failed to load AI settings:", error);
@@ -1921,12 +1927,16 @@ async function loadAISettings() {
 async function updateAISettings() {
     aiLoading.value = true;
     try {
-        await api.put("/settings/ai-provider", {
+        const response = await api.put("/settings/ai-provider", {
             aiProvider: aiForm.value.provider,
-            aiApiKey: aiForm.value.apiKey,
+            aiApiKey:
+                aiForm.value.apiKey ||
+                (aiForm.value.apiKeyConfigured ? "***" : ""),
             aiApiUrl: aiForm.value.url,
             aiModel: aiForm.value.model,
         });
+        aiForm.value.apiKey = "";
+        aiForm.value.apiKeyConfigured = response.data.aiApiKey === "***";
         showSuccess("Success", "AI provider settings updated successfully");
     } catch (error) {
         console.error("Failed to update AI settings:", error);
@@ -1945,10 +1955,11 @@ async function loadCusipAISettings() {
         const response = await api.get("/settings/cusip-ai-provider");
         cusipAiForm.value = {
             provider: response.data.cusipAiProvider || "",
-            apiKey: response.data.cusipAiApiKey || "",
+            apiKey: "",
             url: response.data.cusipAiApiUrl || "",
             model: response.data.cusipAiModel || "",
             useMainProvider: response.data.useMainProvider !== false,
+            apiKeyConfigured: response.data.cusipAiApiKey === "***",
         };
     } catch (error) {
         console.error("Failed to load CUSIP AI settings:", error);
@@ -1958,13 +1969,18 @@ async function loadCusipAISettings() {
 async function updateCusipAISettings() {
     cusipAiLoading.value = true;
     try {
-        await api.put("/settings/cusip-ai-provider", {
+        const response = await api.put("/settings/cusip-ai-provider", {
             cusipAiProvider: cusipAiForm.value.provider,
-            cusipAiApiKey: cusipAiForm.value.apiKey,
+            cusipAiApiKey:
+                cusipAiForm.value.apiKey ||
+                (cusipAiForm.value.apiKeyConfigured ? "***" : ""),
             cusipAiApiUrl: cusipAiForm.value.url,
             cusipAiModel: cusipAiForm.value.model,
             useMainProvider: cusipAiForm.value.useMainProvider,
         });
+        cusipAiForm.value.apiKey = "";
+        cusipAiForm.value.apiKeyConfigured =
+            response.data.cusipAiApiKey === "***";
         showSuccess(
             "Success",
             "CUSIP AI provider settings updated successfully",
@@ -2400,14 +2416,17 @@ async function fetchAdminAISettings() {
         const response = await api.get("/settings/admin/ai");
         adminAiForm.value = {
             provider: response.data.aiProvider || "",
-            apiKey: response.data.aiApiKey || "",
+            apiKey: "",
             url: response.data.aiApiUrl || "",
             model: response.data.aiModel || "",
             classifierEnabled: response.data.aiClassifierEnabled === true,
             classifierProvider: response.data.aiClassifierProvider || "",
-            classifierApiKey: response.data.aiClassifierApiKey || "",
+            classifierApiKey: "",
             classifierUrl: response.data.aiClassifierApiUrl || "",
             classifierModel: response.data.aiClassifierModel || "",
+            apiKeyConfigured: response.data.aiApiKey === "***",
+            classifierApiKeyConfigured:
+                response.data.aiClassifierApiKey === "***",
         };
     } catch (error) {
         console.error("Failed to fetch admin AI settings:", error);
@@ -2418,17 +2437,26 @@ async function fetchAdminAISettings() {
 async function updateAdminAISettings() {
     adminAiLoading.value = true;
     try {
-        await api.put("/settings/admin/ai", {
+        const response = await api.put("/settings/admin/ai", {
             aiProvider: adminAiForm.value.provider,
-            aiApiKey: adminAiForm.value.apiKey,
+            aiApiKey:
+                adminAiForm.value.apiKey ||
+                (adminAiForm.value.apiKeyConfigured ? "***" : ""),
             aiApiUrl: adminAiForm.value.url,
             aiModel: adminAiForm.value.model,
             aiClassifierEnabled: adminAiForm.value.classifierEnabled,
             aiClassifierProvider: adminAiForm.value.classifierProvider,
-            aiClassifierApiKey: adminAiForm.value.classifierApiKey,
+            aiClassifierApiKey:
+                adminAiForm.value.classifierApiKey ||
+                (adminAiForm.value.classifierApiKeyConfigured ? "***" : ""),
             aiClassifierApiUrl: adminAiForm.value.classifierUrl,
             aiClassifierModel: adminAiForm.value.classifierModel,
         });
+        adminAiForm.value.apiKey = "";
+        adminAiForm.value.classifierApiKey = "";
+        adminAiForm.value.apiKeyConfigured = response.data.aiApiKey === "***";
+        adminAiForm.value.classifierApiKeyConfigured =
+            response.data.aiClassifierApiKey === "***";
         showSuccess(
             "Success",
             "Admin AI provider settings updated successfully",
@@ -2450,10 +2478,11 @@ async function fetchAdminCusipAISettings() {
         const response = await api.get("/settings/admin/cusip-ai");
         adminCusipAiForm.value = {
             provider: response.data.cusipAiProvider || "",
-            apiKey: response.data.cusipAiApiKey || "",
+            apiKey: "",
             url: response.data.cusipAiApiUrl || "",
             model: response.data.cusipAiModel || "",
             useMainProvider: response.data.useMainProvider !== false,
+            apiKeyConfigured: response.data.cusipAiApiKey === "***",
         };
     } catch (error) {
         console.error("Failed to fetch admin CUSIP AI settings:", error);
@@ -2463,13 +2492,18 @@ async function fetchAdminCusipAISettings() {
 async function updateAdminCusipAISettings() {
     adminCusipAiLoading.value = true;
     try {
-        await api.put("/settings/admin/cusip-ai", {
+        const response = await api.put("/settings/admin/cusip-ai", {
             cusipAiProvider: adminCusipAiForm.value.provider,
-            cusipAiApiKey: adminCusipAiForm.value.apiKey,
+            cusipAiApiKey:
+                adminCusipAiForm.value.apiKey ||
+                (adminCusipAiForm.value.apiKeyConfigured ? "***" : ""),
             cusipAiApiUrl: adminCusipAiForm.value.url,
             cusipAiModel: adminCusipAiForm.value.model,
             useMainProvider: adminCusipAiForm.value.useMainProvider,
         });
+        adminCusipAiForm.value.apiKey = "";
+        adminCusipAiForm.value.apiKeyConfigured =
+            response.data.cusipAiApiKey === "***";
         showSuccess(
             "Success",
             "Admin CUSIP AI provider settings updated successfully",

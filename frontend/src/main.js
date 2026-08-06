@@ -16,11 +16,14 @@ app.use(createPinia())
 // navigation fires with the correct auth state. Installing it here would let
 // the router guard fire before the /auth/me response arrives, causing users
 // with a valid token cookie but a missing csrf_token to be sent to /login.
-app.config.errorHandler = (error, instance, info) => {
-  console.error('Vue runtime error:', error, info, instance)
+app.config.errorHandler = (error, _instance, info) => {
+  const message = error?.message || String(error || 'Unexpected application error')
+  const stack = error?.stack || ''
+
+  console.error('Vue runtime error:', message, info, stack)
   window.dispatchEvent(new CustomEvent('app-runtime-error', {
     detail: {
-      message: error?.message || 'Unexpected application error',
+      message,
       info
     }
   }))

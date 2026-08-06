@@ -187,4 +187,111 @@ describe('Custom AI provider settings', () => {
     });
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ cusipAiProvider: 'custom' }));
   });
+
+  test('preserves a user API key when only the model changes', async () => {
+    User.updateSettings.mockResolvedValue({
+      ai_provider: 'openai',
+      ai_api_key: 'stored-key',
+      ai_api_url: '',
+      ai_model: 'new-model'
+    });
+    const req = {
+      user: { id: 'user-1' },
+      body: {
+        aiProvider: 'openai',
+        aiApiKey: '***',
+        aiApiUrl: '',
+        aiModel: 'new-model'
+      }
+    };
+    const res = createResponse();
+
+    await settingsController.updateAIProviderSettings(req, res, jest.fn());
+
+    expect(User.updateSettings).toHaveBeenCalledWith('user-1', {
+      ai_provider: 'openai',
+      ai_api_url: '',
+      ai_model: 'new-model'
+    });
+  });
+
+  test('preserves a user CUSIP API key when only the model changes', async () => {
+    User.updateSettings.mockResolvedValue({
+      cusip_ai_provider: 'openai',
+      cusip_ai_api_key: 'stored-key',
+      cusip_ai_api_url: '',
+      cusip_ai_model: 'new-model'
+    });
+    const req = {
+      user: { id: 'user-1' },
+      body: {
+        cusipAiProvider: 'openai',
+        cusipAiApiKey: '***',
+        cusipAiApiUrl: '',
+        cusipAiModel: 'new-model',
+        useMainProvider: false
+      }
+    };
+    const res = createResponse();
+
+    await settingsController.updateCusipAIProviderSettings(req, res, jest.fn());
+
+    expect(User.updateSettings).toHaveBeenCalledWith('user-1', {
+      cusip_ai_provider: 'openai',
+      cusip_ai_api_url: '',
+      cusip_ai_model: 'new-model'
+    });
+  });
+
+  test('preserves the admin API key when only the model changes', async () => {
+    const req = {
+      user: { role: 'admin' },
+      body: {
+        aiProvider: 'openai',
+        aiApiKey: '***',
+        aiApiUrl: '',
+        aiModel: 'new-model',
+        aiClassifierEnabled: false,
+        aiClassifierProvider: '',
+        aiClassifierApiKey: '',
+        aiClassifierApiUrl: '',
+        aiClassifierModel: ''
+      }
+    };
+    const res = createResponse();
+
+    await settingsController.updateAdminAISettings(req, res, jest.fn());
+
+    expect(adminSettingsService.updateDefaultAISettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'openai',
+        apiKey: undefined,
+        model: 'new-model'
+      })
+    );
+  });
+
+  test('preserves the admin CUSIP API key when only the model changes', async () => {
+    const req = {
+      user: { role: 'admin' },
+      body: {
+        cusipAiProvider: 'openai',
+        cusipAiApiKey: '***',
+        cusipAiApiUrl: '',
+        cusipAiModel: 'new-model',
+        useMainProvider: false
+      }
+    };
+    const res = createResponse();
+
+    await settingsController.updateAdminCusipAISettings(req, res, jest.fn());
+
+    expect(adminSettingsService.updateDefaultCusipAISettings).toHaveBeenCalledWith({
+      provider: 'openai',
+      apiKey: undefined,
+      apiUrl: '',
+      model: 'new-model'
+    });
+  });
+
 });

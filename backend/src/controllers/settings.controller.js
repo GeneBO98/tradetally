@@ -2080,6 +2080,7 @@ const settingsController = {
 
       const { cusipAiProvider, cusipAiApiKey, cusipAiApiUrl, cusipAiModel, useMainProvider } = req.body;
       const normalizedProvider = cusipAiProvider ? String(cusipAiProvider).trim() : '';
+      const apiKeyUpdate = cusipAiApiKey === '***' ? undefined : cusipAiApiKey;
 
       // If useMainProvider is true, clear CUSIP-specific settings
       if (useMainProvider || !normalizedProvider) {
@@ -2131,7 +2132,7 @@ const settingsController = {
 
       const success = await adminSettingsService.updateDefaultCusipAISettings({
         provider: normalizedProvider,
-        apiKey: cusipAiApiKey,
+        apiKey: apiKeyUpdate,
         apiUrl: cusipAiApiUrl,
         model: cusipAiModel
       });
