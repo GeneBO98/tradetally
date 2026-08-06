@@ -130,9 +130,14 @@
                         v-model="form.apiKey"
                         type="password"
                         class="input"
-                        :placeholder="getApiKeyPlaceholder()"
+                        :placeholder="
+                            form.apiKeyConfigured
+                                ? 'API key saved — enter a new key to replace it'
+                                : getApiKeyPlaceholder()
+                        "
                         :required="
                             !!form.provider &&
+                            !form.apiKeyConfigured &&
                             !OPTIONAL_API_KEY_AI_PROVIDERS.includes(form.provider)
                         "
                     />
@@ -270,5 +275,6 @@ function onProviderChange() {
     props.form.url = "";
     props.form.apiKey = "";
     props.form.model = "";
+    props.form.apiKeyConfigured = false;
 }
 </script>
