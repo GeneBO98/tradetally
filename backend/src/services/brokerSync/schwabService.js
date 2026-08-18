@@ -131,6 +131,12 @@ class SchwabService {
     return String(a.orderId || '').localeCompare(String(b.orderId || ''));
   }
 
+  _getPositionKey(tx) {
+    const accountIdentifier = tx.accountIdentifier || 'default';
+    const instrumentIdentifier = tx.matchingSymbol || tx.symbol;
+    return JSON.stringify([accountIdentifier, instrumentIdentifier]);
+  }
+
   _parseSchwabOptionSymbol(symbol) {
     if (!symbol) return null;
 
@@ -521,9 +527,13 @@ class SchwabService {
    */
   matchTransactions(transactions) {
     const rawTrades = [];
-    // Track open positions by symbol: { symbol: [{ qty, price, time, ... }] }
+    // Track open positions by account and instrument. A Schwab login can expose
+    // multiple accounts that hold the same symbol, so symbol-only FIFO matching
+    // can incorrectly consume an IRA lot for a taxable-account sale (or vice
+    // versa).
     const openPositions = {};
-    // Track round-trip IDs per symbol - increments each time position goes flat then re-opens
+    // Track round-trip IDs per account/instrument - increments each time that
+    // specific account position goes flat and then re-opens.
     const roundTripCounters = {};
 
     // Sort all transactions by time
@@ -539,7 +549,7 @@ class SchwabService {
 
     for (const tx of sorted) {
       const symbol = tx.symbol;
-      const positionKey = tx.matchingSymbol || symbol;
+      const positionKey = this._getPositionKey(tx);
 
       // Handle transactions without positionEffect - try to infer from context
       let positionEffect = tx.positionEffect;
