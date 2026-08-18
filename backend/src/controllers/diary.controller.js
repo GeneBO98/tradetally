@@ -65,13 +65,10 @@ const getEntries = async (req, res) => {
 const getTodaysEntry = async (req, res) => {
   try {
     const userId = req.user.id;
-    const entry = await Diary.findTodaysEntry(userId);
+    const entries = await Diary.findTodaysEntries(userId);
 
-    if (!entry) {
-      return res.json({ entry: null });
-    }
-
-    res.json({ entry });
+    // Keep `entry` for older clients while exposing every same-day entry.
+    res.json({ entries, entry: entries[0] || null });
   } catch (error) {
     console.error('Error fetching today\'s diary entry:', error);
     res.status(500).json({ error: 'Failed to fetch today\'s entry' });
@@ -122,8 +119,8 @@ const getEntryByDate = async (req, res) => {
   }
 };
 
-// Create or update diary entry  
-const createOrUpdateEntry = [
+// Create a new independent diary entry.
+const createEntry = [
   validate(schemas.createDiaryEntry),
   async (req, res) => {
     try {
@@ -169,6 +166,7 @@ const updateEntry = [
 
       // Keep data in camelCase format as expected by the Diary model
       const updates = {};
+      if (formData.entryDate !== undefined) updates.entryDate = formData.entryDate;
       if (formData.entryType !== undefined) updates.entryType = formData.entryType;
       if (formData.title !== undefined) updates.title = formData.title;
       if (formData.marketBias !== undefined) updates.marketBias = formData.marketBias;
@@ -940,7 +938,7 @@ module.exports = {
   getTodaysEntry,
   getEntry,
   getEntryByDate,
-  createOrUpdateEntry,
+  createEntry,
   updateEntry,
   deleteEntry,
   uploadAttachment,

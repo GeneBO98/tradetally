@@ -5,6 +5,47 @@ const { buildGenericValidationReason } = require('../diagnostics');
 const { parseDate, parseDateTime, getExecutionTimeBounds, parseSide, parseInstrumentData, parseNumeric } = require('../shared');
 
 
+function hasClockTime(value) {
+  return /(?:^|[^\d])\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:[^\d]|$)/.test(String(value || ''));
+}
+
+function parseCustomMappingDateTime(record, mapping, context) {
+  const rawEntryDate = mapping.entry_date_column
+    ? record[mapping.entry_date_column]
+    : null;
+  const dateParseOptions = context.generic_date_order
+    ? { date_order: context.generic_date_order }
+    : {};
+  const tradeDate = rawEntryDate
+    ? parseDate(rawEntryDate, dateParseOptions)
+    : null;
+  let entryTime = rawEntryDate
+    ? parseDateTime(rawEntryDate, dateParseOptions)
+    : null;
+
+  // Custom mappings only expose an entry-date field. Execution exports often
+  // split the calendar date and fill time into separate columns, so use the
+  // generic parser's recognized time column when the mapped value is date-only.
+  // This is especially important for newest-first exports: assigning every fill
+  // the same fallback time preserves reverse CSV order and flips entries/exits.
+  if (tradeDate && !hasClockTime(rawEntryDate)) {
+    const genericTrade = brokerParsers.generic(record, context);
+    if (
+      genericTrade.entryTime &&
+      hasClockTime(genericTrade.entryTime) &&
+      String(genericTrade.entryTime).startsWith(`${tradeDate}T`)
+    ) {
+      entryTime = genericTrade.entryTime;
+    }
+  }
+
+  return {
+    tradeDate: tradeDate || new Date(),
+    entryTime: entryTime || tradeDate || new Date()
+  };
+}
+
+
 /**
  * Parse generic CSV transactions with position tracking
  * This function properly matches opening and closing trades across imports
@@ -48,10 +89,12 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
             side = rawQuantity < 0 ? 'short' : 'long';
           }
 
+          const { tradeDate, entryTime } = parseCustomMappingDateTime(row, mapping, context);
+
           return {
             symbol: row[mapping.symbol_column] || '',
-            tradeDate: mapping.entry_date_column ? parseDate(row[mapping.entry_date_column]) : new Date(),
-            entryTime: mapping.entry_date_column ? parseDateTime(row[mapping.entry_date_column]) : new Date(),
+            tradeDate,
+            entryTime,
             entryPrice: Math.abs(rawPrice), // Use absolute value for price
             quantity: Math.abs(rawQuantity), // Use absolute value for quantity
             side: side,

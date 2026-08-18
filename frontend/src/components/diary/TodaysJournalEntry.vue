@@ -3,7 +3,13 @@
     <div class="card-body">
       <div class="flex items-center justify-between mb-4">
         <div class="flex items-center">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white">Today's Journal Entry</h3>
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white">Today's Journal Entries</h3>
+          <span
+            v-if="todayEntries.length > 0"
+            class="ml-3 inline-flex items-center rounded-full bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-700 dark:bg-primary-900/20 dark:text-primary-300"
+          >
+            {{ todayEntries.length }} {{ todayEntries.length === 1 ? 'entry' : 'entries' }}
+          </span>
           <div v-if="entry?.market_bias" class="ml-3 flex items-center">
             <span class="text-sm text-gray-500 dark:text-gray-400 mr-2">Market Bias:</span>
             <span 
@@ -17,6 +23,14 @@
         </div>
         
         <div class="flex items-center space-x-2">
+          <button
+            v-if="entry"
+            @click="createFullEntry"
+            class="btn-primary text-sm"
+          >
+            <PlusIcon class="w-4 h-4 mr-1" />
+            New Entry
+          </button>
           <button
             v-if="entry"
             @click="editEntry"
@@ -47,6 +61,9 @@
 
       <!-- Entry Content -->
       <div v-if="entry && (expanded || showPreview)" class="space-y-4">
+        <p v-if="todayEntries.length > 1" class="text-xs text-gray-500 dark:text-gray-400">
+          Showing your most recent entry. Open the journal to view all entries from today.
+        </p>
         <!-- Title -->
         <div v-if="entry.title" class="border-l-4 border-primary-500 pl-3">
           <h4 class="font-medium text-gray-900 dark:text-white">{{ entry.title }}</h4>
@@ -213,6 +230,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDiaryStore } from '@/stores/diary'
+import { getLocalToday } from '@/utils/date'
 import { parseMarkdown, truncateHtml as truncateHtmlUtil } from '@/utils/markdown'
 import {
   PlusIcon,
@@ -242,6 +260,7 @@ const quickEntry = ref({
 
 // Computed properties
 const entry = computed(() => diaryStore.todaysEntry)
+const todayEntries = computed(() => diaryStore.todaysEntries)
 const loading = computed(() => diaryStore.loading)
 
 // Methods
@@ -292,6 +311,10 @@ const createTodaysEntry = () => {
   creating.value = false
 }
 
+const createFullEntry = () => {
+  router.push({ path: '/diary/new', query: { date: getLocalToday() } })
+}
+
 const cancelQuickEntry = () => {
   showQuickForm.value = false
   quickEntry.value = {
@@ -305,7 +328,7 @@ const saveQuickEntry = async () => {
     saving.value = true
 
     const entryData = {
-      entryDate: new Date().toISOString().split('T')[0], // Today's date in YYYY-MM-DD format
+      entryDate: getLocalToday(),
       entryType: 'diary',
       marketBias: quickEntry.value.marketBias || null,
       content: quickEntry.value.content || null

@@ -8,8 +8,7 @@ const logger = require('../utils/logger');
 
 // Per-unit dollar multiplier using the same symbol/instrument heuristic as the
 // commission-adjustment blocks in calculateManagementR. MUST stay in sync with
-// them so that, in dollar-risk mode, risk * totalQty * multiplier === dollarRisk
-// (the fixed dollar risk), keeping commission R and every tR consistent (#345).
+// them so the configured dollar fallback converts to the correct per-share risk.
 function serviceTradeMultiplier(trade) {
   const { symbol, instrument_type, point_value, contract_size } = trade;
   const isFutures = instrument_type === 'future' ||
@@ -26,7 +25,7 @@ function serviceTradeMultiplier(trade) {
   return 1;
 }
 
-// Fixed-dollar-risk per-share risk unit, or null when not in dollar mode (#345).
+// Configured dollar-risk fallback expressed as a per-share risk unit.
 function serviceDollarRiskPerShare(trade, dollarRisk, totalQty) {
   if (!dollarRisk || dollarRisk <= 0) return null;
   const mult = serviceTradeMultiplier(trade);
@@ -686,8 +685,9 @@ class TargetHitAnalysisService {
       contract_size
     } = trade;
 
-    // Fixed-dollar-risk users (#345): risk unit is a constant dollar amount.
-    const dollarRisk = options.dollarRisk && options.dollarRisk > 0 ? options.dollarRisk : null;
+    // The configured dollar risk is a default. A valid current stop remains the
+    // trade-specific source of truth for Management R.
+    const configuredDollarRisk = options.dollarRisk && options.dollarRisk > 0 ? options.dollarRisk : null;
 
     if (!entry_price || !exit_price || !stop_loss) {
       return null;
@@ -706,11 +706,14 @@ class TargetHitAnalysisService {
     // Use current stop loss for R calculations
     const originalStopLoss = parseFloat(stop_loss);
 
-    // Calculate risk (R = 1). In dollar mode the risk unit is the fixed dollar
-    // risk expressed per share, so it propagates through every tR, the commission
-    // riskAmount, and calculatePlannedR -> weighted/hit-target R (#345).
-    const dollarRiskUnit = serviceDollarRiskPerShare(trade, dollarRisk, totalQty);
-    const risk = dollarRiskUnit ?? (isLong ? entryPrice - originalStopLoss : originalStopLoss - entryPrice);
+    // Calculate risk (R = 1) from the current stop. Fall back to the configured
+    // dollar amount only when the stop has been trailed through entry and no
+    // longer defines a positive risk distance.
+    const priceBasedRisk = isLong ? entryPrice - originalStopLoss : originalStopLoss - entryPrice;
+    const dollarRiskUnit = priceBasedRisk > 0
+      ? null
+      : serviceDollarRiskPerShare(trade, configuredDollarRisk, totalQty);
+    const risk = dollarRiskUnit ?? priceBasedRisk;
     if (risk <= 0) return null;
 
     // Check if we have partial exits (multiple targets with shares)

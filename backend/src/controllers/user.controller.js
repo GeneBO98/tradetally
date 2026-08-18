@@ -9,6 +9,7 @@ const path = require('path');
 const fs = require('fs').promises;
 const imageProcessor = require('../utils/imageProcessor');
 const refreshTokenService = require('../services/refreshToken.service');
+const BillingService = require('../services/billingService');
 const { clearAuthUserCache } = require('../middleware/auth');
 
 const PROTECTED_EMAIL = (process.env.DEMO_EMAIL || 'demo@example.com').toLowerCase();
@@ -41,6 +42,16 @@ function getAvatarPathFromUrl(avatarUrl) {
   }
 
   return path.join(getAvatarUploadsDir(), filename);
+}
+
+function handleAccountDeletionError(error, res, next) {
+  if (error?.code === 'ACCOUNT_DELETION_BILLING_CANCELLATION_FAILED') {
+    return res.status(503).json({
+      error: 'Account deletion is temporarily unavailable because billing could not be stopped. Please try again or contact support.'
+    });
+  }
+
+  return next(error);
 }
 
 const userController = {
@@ -504,10 +515,15 @@ const userController = {
         }
       }
 
-      await User.deleteUser(userId, { deletionType: 'admin', deletedByAdminId: req.user.id });
+      await BillingService.cancelSubscriptionForAccountDeletion(userId);
+      const deleted = await User.deleteUser(userId, { deletionType: 'admin', deletedByAdminId: req.user.id });
+      if (!deleted) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      clearAuthUserCache(userId);
       res.json({ message: `User ${targetUser.username} has been permanently deleted` });
     } catch (error) {
-      next(error);
+      handleAccountDeletionError(error, res, next);
     }
   },
 
@@ -923,15 +939,24 @@ const userController = {
         }
       }
 
+      // Stop any Stripe billing before removing the local subscription record.
+      // If Stripe cannot confirm cancellation, fail closed and leave the
+      // account intact so support can still identify the subscription.
+      await BillingService.cancelSubscriptionForAccountDeletion(userId);
+
       // Delete the user account (self-deletion)
-      await User.deleteUser(userId, { deletionType: 'self', deletedByAdminId: null });
+      const deleted = await User.deleteUser(userId, { deletionType: 'self', deletedByAdminId: null });
+      if (!deleted) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      clearAuthUserCache(userId);
 
       console.log(`[INFO] User ${user.username} (ID: ${userId}) deleted their own account`);
 
       res.json({ message: 'Account deleted successfully' });
     } catch (error) {
       console.error('[ERROR] Failed to delete own account:', error.message);
-      next(error);
+      handleAccountDeletionError(error, res, next);
     }
   }
 };

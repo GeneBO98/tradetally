@@ -814,15 +814,25 @@ class User {
       // Delete API keys
       await client.query('DELETE FROM api_keys WHERE user_id = $1', [userId]);
 
-      // Delete trades (if you want to delete them - otherwise comment this out)
-      await client.query('DELETE FROM trades WHERE user_id = $1', [userId]);
-
-      // Delete job queue entries for this user's trades
+      // Delete user-owned jobs before trades. Once trades are gone, the
+      // tradeId subquery cannot identify legacy jobs whose user_id is null.
       await client.query(`
         DELETE FROM job_queue
-        WHERE data->>'userId' = $1
-        OR data->>'tradeId' IN (SELECT id::text FROM trades WHERE user_id = $2)
-      `, [userId, userId]);
+        WHERE user_id = $1
+        OR data->>'userId' = $1
+        OR data->>'tradeId' IN (SELECT id::text FROM trades WHERE user_id = $1)
+        OR (
+          type = ANY($2::text[])
+          AND LOWER(data->>'email') = LOWER($3)
+        )
+      `, [
+        userId,
+        ['verification_email', 'password_reset_email', 'account_lockout_email'],
+        userInfo?.email || ''
+      ]);
+
+      // Delete trades after their queued work has been canceled.
+      await client.query('DELETE FROM trades WHERE user_id = $1', [userId]);
 
       // Finally, delete the user
       // Other tables with ON DELETE CASCADE will be handled automatically

@@ -234,13 +234,21 @@
         <div
           v-for="entry in entries"
           :key="entry.id"
-          class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 hover:shadow-md transition-shadow"
+          :style="getDateCardStyle(entry.entry_date)"
+          class="date-group-card p-6 rounded-lg shadow-sm border hover:shadow-md transition-all"
         >
           <div class="flex items-start justify-between mb-4">
             <div class="flex-1">
               <div class="flex items-center space-x-3 mb-2">
                 <span class="text-sm font-medium text-gray-900 dark:text-white">
                   {{ formatDate(entry.entry_date) }}
+                </span>
+
+                <span
+                  v-if="getEntryCountForDate(entry.entry_date) > 1"
+                  class="text-xs font-medium text-gray-500 dark:text-gray-400"
+                >
+                  {{ getEntryCountForDate(entry.entry_date) }} entries this day
                 </span>
                 
                 <span
@@ -660,6 +668,14 @@ const error = computed(() => diaryStore.error)
 const initialLoading = ref(true)
 const pagination = computed(() => diaryStore.pagination)
 
+const entryCountsByDate = computed(() => {
+  return entries.value.reduce((counts, entry) => {
+    const dateKey = getEntryDateKey(entry.entry_date)
+    counts[dateKey] = (counts[dateKey] || 0) + 1
+    return counts
+  }, {})
+})
+
 const hasActiveFilters = computed(() => {
   return Object.values(filters.value).some(value => value !== '') || searchQuery.value !== ''
 })
@@ -707,6 +723,23 @@ const calendarDays = computed(() => {
 const formatDate = (dateString) => {
   // formatTradeDate parses date-only values locally to avoid timezone shifts
   return formatTradeDate(dateString, 'MMM d, yyyy')
+}
+
+const getEntryDateKey = (dateString) => dateString?.split('T')[0] || ''
+
+const getDateCardStyle = (dateString) => {
+  const pastelHues = [345, 24, 48, 142, 188, 224, 268]
+  const dateKey = getEntryDateKey(dateString)
+  const toneIndex = [...dateKey].reduce(
+    (total, character) => total + character.charCodeAt(0),
+    0
+  ) % pastelHues.length
+
+  return { '--date-pastel-hue': pastelHues[toneIndex] }
+}
+
+const getEntryCountForDate = (dateString) => {
+  return entryCountsByDate.value[getEntryDateKey(dateString)] || 0
 }
 
 const splitContent = (content) => {
@@ -942,8 +975,7 @@ const handleAlertCreated = (symbol) => {
 }
 
 const handleApplyTemplate = (template) => {
-  // Navigate to new entry form (template will be shown there)
-  router.push('/diary/new')
+  router.push({ path: '/diary/new', query: { template_id: template.id } })
 }
 
 // Image handling
@@ -978,6 +1010,24 @@ watch(currentView, (newView) => {
 </script>
 
 <style scoped>
+.date-group-card {
+  background-color: hsl(var(--date-pastel-hue) 78% 91% / 0.28);
+  border-color: hsl(var(--date-pastel-hue) 38% 62% / 0.9);
+}
+
+.date-group-card:hover {
+  border-color: hsl(var(--date-pastel-hue) 42% 52% / 0.95);
+}
+
+:global(.dark) .date-group-card {
+  background-color: hsl(var(--date-pastel-hue) 42% 30% / 0.14);
+  border-color: hsl(var(--date-pastel-hue) 38% 58% / 0.8);
+}
+
+:global(.dark) .date-group-card:hover {
+  border-color: hsl(var(--date-pastel-hue) 46% 68% / 0.9);
+}
+
 .prose {
   max-width: none;
 }

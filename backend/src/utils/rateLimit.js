@@ -14,12 +14,13 @@ function createRateLimiter({
   windowMs,
   max,
   message = 'Too many requests, please try again later.',
-  skip
+  skip,
+  keyGenerator
 }) {
   return rateLimit({
     windowMs,
     max,
-    keyGenerator: (req) => ipKeyGenerator(getClientIp(req)),
+    keyGenerator: keyGenerator || ((req) => ipKeyGenerator(getClientIp(req))),
     standardHeaders: true,
     legacyHeaders: false,
     validate: { trustProxy: false },

@@ -1,10 +1,10 @@
-// Regression tests for issue #345: for users with a dollar-based default stop
-// loss, R's risk unit is the fixed dollar amount, not the stored stop distance.
-// Trade Management (calculateRMultiples via getRPerformance) and Management R
-// must reconcile to net P&L / dollar risk, matching the dashboard aggregate.
+// Regression coverage for dollar-based default stops. A valid stored stop is
+// trade-specific and must take precedence; the configured dollar amount is only
+// a fallback when the current stop no longer defines positive risk.
 
 jest.mock('../../src/config/database', () => ({ query: jest.fn() }));
 jest.mock('../../src/services/tradeQueries', () => ({ _buildWhereClause: jest.fn() }));
+jest.mock('../../src/services/analyticsCache', () => ({ invalidate: jest.fn() }));
 jest.mock('../../src/utils/breakeven', () => {
   const actual = jest.requireActual('../../src/utils/breakeven');
   return { ...actual, getBreakevenToleranceConfig: jest.fn() };
@@ -13,15 +13,16 @@ jest.mock('../../src/models/User', () => ({ getSettings: jest.fn() }));
 
 const db = require('../../src/config/database');
 const TradeQueries = require('../../src/services/tradeQueries');
+const AnalyticsCache = require('../../src/services/analyticsCache');
 const { getBreakevenToleranceConfig } = require('../../src/utils/breakeven');
 const User = require('../../src/models/User');
 const controller = require('../../src/controllers/tradeManagement.controller');
 const TargetHitAnalysisService = require('../../src/services/targetHitAnalysisService');
+const calculationContracts = require('../../../tests/fixtures/trading-calculation-contracts.json');
 
 const DOLLAR_RISK = 500;
 
-// Long stock, qty 100. With a $500 dollar risk, actual_r = pnl / 500 regardless
-// of where the stored stop sits.
+// Long stock, qty 100.
 function row(id, { stop_loss, exit_price, pnl }) {
   return {
     id,
@@ -49,10 +50,11 @@ function row(id, { stop_loss, exit_price, pnl }) {
   };
 }
 
-describe('Trade Management dollar-risk R (#345)', () => {
+describe('Trade Management dollar-risk defaults', () => {
   beforeEach(() => {
     db.query.mockReset();
     TradeQueries._buildWhereClause.mockReset();
+    AnalyticsCache.invalidate.mockReset();
     getBreakevenToleranceConfig.mockReset();
     User.getSettings.mockReset();
 
@@ -68,11 +70,11 @@ describe('Trade Management dollar-risk R (#345)', () => {
     });
   });
 
-  test('R-Performance cumulative Actual R reconciles to net P&L / dollar risk', async () => {
+  test('valid stops take precedence while an invalid trailed stop uses the dollar fallback', async () => {
     const rows = [
       row(1, { stop_loss: 95, exit_price: 110, pnl: 1000 }),   // proper stop: +2R
       row(2, { stop_loss: 102, exit_price: 115, pnl: 1500 }),  // stop trailed ABOVE entry: +3R
-      row(3, { stop_loss: 99.5, exit_price: 80, pnl: -2000 })  // tight stop: -4R
+      row(3, { stop_loss: 99.5, exit_price: 80, pnl: -2000 })  // tight valid stop: -40R
     ];
     db.query.mockResolvedValue({ rows });
 
@@ -83,19 +85,18 @@ describe('Trade Management dollar-risk R (#345)', () => {
 
     const { chart_data, summary } = res.json.mock.calls[0][0];
 
-    // The trailed-stop winner is INCLUDED (price-based risk would have been <= 0
-    // and dropped it); each trade's R is pnl / 500.
+    // The first stop calculates the same $500 risk as the default. The trailed
+    // stop cannot define positive risk, so it falls back to $500. The tight,
+    // valid stop is explicit and therefore defines a $50 risk amount.
     expect(chart_data).toHaveLength(3);
     expect(chart_data[0].actual_r).toBeCloseTo(2, 2);
     expect(chart_data[1].actual_r).toBeCloseTo(3, 2);
-    expect(chart_data[2].actual_r).toBeCloseTo(-4, 2);
+    expect(chart_data[2].actual_r).toBeCloseTo(-40, 2);
 
-    // Net P&L = +500, so total R = 500/500 = +1, positive.
-    expect(summary.total_actual_r).toBeCloseTo(500 / DOLLAR_RISK, 2);
-    expect(summary.total_actual_r).toBeGreaterThan(0);
+    expect(summary.total_actual_r).toBeCloseTo(-35, 2);
   });
 
-  test('Management R uses the fixed dollar risk unit, not the stored stop distance', async () => {
+  test('Management R uses a valid stored stop instead of the dollar default', async () => {
     // Long, entry 100, exit 110, qty 100, stop trailed to 98. SL hit first, no targets.
     const trade = {
       entry_price: 100,
@@ -115,15 +116,106 @@ describe('Trade Management dollar-risk R (#345)', () => {
       risk_level_history: null
     };
 
-    // Dollar mode: risk unit = 500/(100*1) = $5/share. actualR = (110-100)/5 = 2,
-    // plannedR = -1 (full stop out), managementR = 2 - (-1) = 3.
+    // The valid $98 stop defines $2/share risk. actualR = 5, plannedR = -1,
+    // and managementR = 6 even though a $500 default is configured.
     const dollarManagementR = TargetHitAnalysisService.calculateManagementR(trade, { dollarRisk: DOLLAR_RISK });
-    expect(dollarManagementR).toBeCloseTo(3, 2);
+    expect(dollarManagementR).toBeCloseTo(6, 2);
 
-    // Percent mode (no options): risk = entry - stop = 2. actualR = 10/2 = 5,
-    // plannedR = -1, managementR = 6. Confirms the dollar branch is what changed
-    // and the default path is untouched.
+    // The result matches the non-dollar path because both use the stored stop.
     const percentManagementR = TargetHitAnalysisService.calculateManagementR(trade);
     expect(percentManagementR).toBeCloseTo(6, 2);
+  });
+
+  test('Individual Trade Analysis calculates risk from an explicit stop', async () => {
+    const fixture = calculationContracts.r_value.dollar_default_explicit_stop_example;
+    User.getSettings.mockResolvedValue({
+      default_stop_loss_type: 'dollar',
+      default_stop_loss_dollars: fixture.default_stop_loss_dollars
+    });
+    const trade = {
+      ...row(1, fixture.trade),
+      ...fixture.trade
+    };
+    db.query
+      .mockResolvedValueOnce({ rows: [trade] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const req = {
+      user: { id: 'user-1' },
+      params: { tradeId: trade.id },
+      query: {}
+    };
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn()
+    };
+
+    await controller.getRMultipleAnalysis(req, res);
+
+    expect(res.status).not.toHaveBeenCalled();
+    const { analysis } = res.json.mock.calls[0][0];
+    expect(analysis.risk_per_share).toBe(fixture.expected.risk_per_share);
+    expect(analysis.risk_amount).toBe(fixture.expected.risk_amount);
+    expect(analysis.risk_basis).toBe(fixture.expected.risk_basis);
+    expect(analysis.actual_r).toBe(fixture.expected.actual_r);
+    expect(analysis.target_r).toBe(fixture.expected.target_r);
+  });
+
+  test('level updates persist stop-derived R and invalidate dashboard analytics', async () => {
+    const trade = row(1, { stop_loss: 95, exit_price: 110, pnl: 1000 });
+    db.query
+      .mockResolvedValueOnce({ rows: [trade] })
+      .mockResolvedValueOnce({ rows: [{ ...trade, stop_loss: 99 }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const req = {
+      user: { id: 'user-1' },
+      params: { tradeId: trade.id },
+      body: { stop_loss: 99 }
+    };
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn()
+    };
+
+    await controller.updateTradeLevels(req, res);
+
+    const [, derivedValues] = db.query.mock.calls[2];
+    expect(derivedValues).toEqual([10, null, trade.id, 'user-1']);
+    expect(derivedValues[0]).not.toBe(2); // $500 default would produce 2R.
+    expect(AnalyticsCache.invalidate).toHaveBeenCalledWith('user-1');
+    expect(res.json.mock.calls[0][0].trade.r_value).toBe(10);
+  });
+
+  test('removing a stop clears stale R fields and invalidates analytics', async () => {
+    const trade = {
+      ...row(1, { stop_loss: 95, exit_price: 110, pnl: 1000 }),
+      r_value: 2,
+      management_r: 3
+    };
+    db.query
+      .mockResolvedValueOnce({ rows: [trade] })
+      .mockResolvedValueOnce({ rows: [{ ...trade, stop_loss: null }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const req = {
+      user: { id: 'user-1' },
+      params: { tradeId: trade.id },
+      body: { stop_loss: null }
+    };
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn()
+    };
+
+    await controller.updateTradeLevels(req, res);
+
+    const [, derivedValues] = db.query.mock.calls[2];
+    expect(derivedValues).toEqual([null, null, trade.id, 'user-1']);
+    expect(AnalyticsCache.invalidate).toHaveBeenCalledWith('user-1');
+    expect(res.json.mock.calls[0][0].trade).toEqual(expect.objectContaining({
+      r_value: null,
+      management_r: null
+    }));
   });
 });

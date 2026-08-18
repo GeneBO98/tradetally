@@ -1522,9 +1522,15 @@ class Trade {
 
                 // datetime-local inputs only preserve minute precision. If the edited
                 // value still points at the same minute, keep broker-imported seconds.
-                const incomingMinute = String(incoming).slice(0, 16);
-                const existingMinute = String(existing).slice(0, 16);
-                return incomingMinute === existingMinute ? existing : incoming;
+                // Joi converts validated ISO strings to Date objects, so comparing
+                // String(value) slices mixes Date.toString() with ISO formats and
+                // never matches (issue #385). Compare normalized epoch minutes.
+                const incomingTime = new Date(incoming).getTime();
+                const existingTime = new Date(existing).getTime();
+                const timestampsAreValid = Number.isFinite(incomingTime) && Number.isFinite(existingTime);
+                const sameMinute = timestampsAreValid &&
+                  Math.floor(incomingTime / 60000) === Math.floor(existingTime / 60000);
+                return sameMinute ? existing : incoming;
               };
 
               return {

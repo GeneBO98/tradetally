@@ -3,6 +3,20 @@ const router = express.Router();
 const userController = require('../controllers/user.controller');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const upload = require('../middleware/upload');
+const Joi = require('joi');
+const { validate } = require('../middleware/validation');
+const { createRateLimiter } = require('../utils/rateLimit');
+
+const deleteAccountLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: 'Too many account deletion attempts. Please try again later.',
+  keyGenerator: (req) => String(req.user.id)
+});
+
+const deleteAccountSchema = Joi.object({
+  password: Joi.string().min(1).max(256).required()
+}).unknown(false);
 
 /**
  * @swagger
@@ -267,6 +281,7 @@ router.get('/api-usage', authenticate, userController.getApiUsage);
  *             properties:
  *               password:
  *                 type: string
+ *                 maxLength: 256
  *                 description: Current password to confirm deletion
  *     responses:
  *       200:
@@ -275,8 +290,18 @@ router.get('/api-usage', authenticate, userController.getApiUsage);
  *         description: Cannot delete last admin account
  *       401:
  *         description: Incorrect password
+ *       429:
+ *         description: Too many deletion attempts
+ *       503:
+ *         description: Billing could not be stopped safely
  */
-router.delete('/account', authenticate, userController.deleteOwnAccount);
+router.delete(
+  '/account',
+  authenticate,
+  deleteAccountLimiter,
+  validate(deleteAccountSchema),
+  userController.deleteOwnAccount
+);
 
 // Admin-only user management routes
 router.get('/admin/users', requireAdmin, userController.getAllUsers);
