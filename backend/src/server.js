@@ -80,6 +80,7 @@ const brokerSyncScheduler = require('./services/brokerSync/brokerSyncScheduler')
 const plaidFundingScheduler = require('./services/plaid/plaidFundingScheduler');
 const dividendScheduler = require('./services/dividendScheduler');
 const newsScheduler = require('./services/newsScheduler');
+const dashboardCacheWarmer = require('./services/dashboardCacheWarmer');
 const earningsScheduler = require('./services/earningsScheduler');
 const symbolCategoryScheduler = require('./services/symbolCategoryScheduler');
 const portfolioSnapshotScheduler = require('./services/portfolioSnapshotScheduler');
@@ -674,6 +675,18 @@ function scheduleBackgroundServices(backgroundJobsDisabled) {
   }
 
   if (backgroundJobsDisabled) {
+    console.log('Dashboard cache warmer disabled (DISABLE_BACKGROUND_JOBS=true)');
+  } else if (process.env.ENABLE_DASHBOARD_CACHE_WARMER !== 'false') {
+    defer('dashboard-cache-warmer', () => {
+      console.log('Starting dashboard cache warmer...');
+      dashboardCacheWarmer.start();
+      console.log('[SUCCESS] Dashboard cache warmer started');
+    });
+  } else {
+    console.log('Dashboard cache warmer disabled (ENABLE_DASHBOARD_CACHE_WARMER=false)');
+  }
+
+  if (backgroundJobsDisabled) {
     console.log('Earnings scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
   } else if (process.env.ENABLE_EARNINGS_SCHEDULER !== 'false') {
     defer('earnings-scheduler', () => {
@@ -944,6 +957,7 @@ process.on('SIGTERM', async () => {
   brokerSyncScheduler.stop();
   plaidFundingScheduler.stop();
   newsScheduler.stop();
+  dashboardCacheWarmer.stop();
   earningsScheduler.stop();
   symbolCategoryScheduler.stop();
   portfolioSnapshotScheduler.stop();
@@ -970,6 +984,7 @@ process.on('SIGINT', async () => {
   brokerSyncScheduler.stop();
   plaidFundingScheduler.stop();
   newsScheduler.stop();
+  dashboardCacheWarmer.stop();
   earningsScheduler.stop();
   symbolCategoryScheduler.stop();
   portfolioSnapshotScheduler.stop();

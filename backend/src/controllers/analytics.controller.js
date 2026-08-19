@@ -26,6 +26,7 @@ const {
   toleranceCacheKey
 } = require('../utils/breakeven');
 const TradeQueries = require('../services/tradeQueries');
+const AnalyticsCache = require('../services/analyticsCache');
 
 // Helper function to create a short but collision-resistant hash for cache keys
 function createFilterHash(filters) {
@@ -3214,6 +3215,15 @@ const analyticsController = {
       }
 
       const response = await coalesceInFlight(summaryCacheKey, async () => {
+        // Keep the persistent lookup inside the single-flight section so a
+        // cold process receiving several dashboard requests performs one DB
+        // cache read, not one per waiter.
+        const persisted = await AnalyticsCache.get(req.user.id, summaryCacheKey);
+        if (persisted) {
+          cache.set(summaryCacheKey, persisted, 60 * 60 * 1000);
+          return persisted;
+        }
+
         // Pull the analytics we need to derive an insight.
         const completedCte = groupByPosition
           ? `completed AS (
@@ -3266,6 +3276,7 @@ const analyticsController = {
             tradesAnalyzed: totalTrades
           };
           cache.set(summaryCacheKey, response, 60 * 60 * 1000); // 1h
+          await AnalyticsCache.set(req.user.id, summaryCacheKey, response, 60);
           return response;
         }
 
@@ -3408,6 +3419,7 @@ const analyticsController = {
         // recompute, so a shorter TTL keeps the dashboard timely without
         // hammering Finnhub.
         cache.set(summaryCacheKey, response, 60 * 60 * 1000);
+        await AnalyticsCache.set(req.user.id, summaryCacheKey, response, 60);
         return response;
       });
 

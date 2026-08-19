@@ -3276,11 +3276,19 @@ const tradeController = {
         return res.json(cached);
       }
 
+      const persisted = await AnalyticsCache.get(req.user.id, cacheKey);
+      if (persisted) {
+        console.log('[CACHE] Persistent analytics cache hit for user:', req.user.id);
+        cache.set(cacheKey, persisted, 86400000);
+        return res.json(persisted);
+      }
+
       console.log('[CACHE] Analytics cache miss for user:', req.user.id);
       const analytics = await TradeQueries.getAnalytics(req.user.id, filters);
 
       // 24h TTL — AnalyticsCache.invalidate() clears on trade mutations.
       cache.set(cacheKey, analytics, 86400000);
+      await AnalyticsCache.set(req.user.id, cacheKey, analytics, 24 * 60);
 
       res.json(analytics);
     } catch (error) {

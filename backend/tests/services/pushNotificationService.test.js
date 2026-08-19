@@ -141,4 +141,37 @@ describe('pushNotificationService', () => {
       ['rejected-token']
     );
   });
+
+  test('sends a silent background push without alert UI or preference gating', async () => {
+    db.query.mockResolvedValueOnce({
+      rows: [{
+        device_token: 'background-token',
+        platform: 'ios',
+        environment: 'production',
+        bundle_id: 'com.tradetally.ios'
+      }]
+    });
+    productionProvider().send.mockResolvedValue({
+      sent: [{ device: 'background-token' }],
+      failed: []
+    });
+
+    const result = await pushNotificationService.sendBackgroundRefresh('user-1', 'news_updated');
+
+    const [notification] = productionProvider().send.mock.calls[0];
+    expect(notification).toEqual(expect.objectContaining({
+      contentAvailable: 1,
+      priority: 5,
+      pushType: 'background',
+      topic: 'com.tradetally.ios'
+    }));
+    expect(notification.alert).toBeUndefined();
+    expect(notification.sound).toBeUndefined();
+    expect(notification.payload).toEqual(expect.objectContaining({
+      type: 'widget_refresh',
+      reason: 'news_updated'
+    }));
+    expect(db.query.mock.calls[0][0]).not.toContain('np.push_notifications');
+    expect(result.success).toBe(true);
+  });
 });

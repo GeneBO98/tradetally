@@ -61,6 +61,7 @@ class PushNotificationService {
     }
 
     try {
+      const isBackgroundRefresh = notificationData.silent === true;
       // Get user's iOS device tokens and notification preferences
       const devicesQuery = `
         SELECT dt.device_token, dt.platform, dt.environment, dt.bundle_id
@@ -69,7 +70,7 @@ class PushNotificationService {
         WHERE dt.user_id = $1 
         AND dt.platform = 'ios'
         AND dt.active = true 
-        AND (np.push_notifications IS NULL OR np.push_notifications = true)
+        ${isBackgroundRefresh ? '' : 'AND (np.push_notifications IS NULL OR np.push_notifications = true)'}
       `;
       
       const devices = await db.query(devicesQuery, [userId]);
@@ -98,14 +99,21 @@ class PushNotificationService {
 
           const notification = new apn.Notification();
           
-          // Basic notification properties
-          notification.alert = {
-            title: notificationData.title,
-            body: notificationData.body
-          };
-          
-          notification.badge = 1;
-          notification.sound = 'default';
+          if (isBackgroundRefresh) {
+            // APNs background notification: wakes the app briefly so it can
+            // fetch the server-cached payload and refresh WidgetKit.
+            notification.contentAvailable = 1;
+            notification.priority = 5;
+            notification.pushType = 'background';
+            notification.expiry = Math.floor(Date.now() / 1000) + 60 * 60;
+          } else {
+            notification.alert = {
+              title: notificationData.title,
+              body: notificationData.body
+            };
+            notification.badge = 1;
+            notification.sound = 'default';
+          }
           
           // Custom payload data
           notification.payload = {
@@ -113,6 +121,7 @@ class PushNotificationService {
             symbol: notificationData.symbol,
             current_price: notificationData.current_price ?? notificationData.currentPrice,
             target_price: notificationData.target_price ?? notificationData.targetPrice,
+            reason: notificationData.reason,
             timestamp: new Date().toISOString()
           };
           
@@ -248,6 +257,14 @@ class PushNotificationService {
     };
 
     return await this.sendPushNotification(userId, notificationData);
+  }
+
+  async sendBackgroundRefresh(userId, reason = 'content_updated') {
+    return await this.sendPushNotification(userId, {
+      silent: true,
+      type: 'widget_refresh',
+      reason
+    });
   }
 
   async sendEarningsAlert(userId, earningsData) {

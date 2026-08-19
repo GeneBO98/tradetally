@@ -11,6 +11,7 @@
 
 const IntervalScheduler = require('./schedulers/IntervalScheduler');
 const NewsService = require('./newsService');
+const pushNotificationService = require('./pushNotificationService');
 
 const CHECK_INTERVAL = 60 * 60 * 1000; // Run every hour
 const LOG_PREFIX = '[NEWS-SCHEDULER]';
@@ -60,6 +61,28 @@ class NewsScheduler extends IntervalScheduler {
     console.log(`${logPrefix} Found ${symbols.length} tracked symbols (open positions + watchlists)`);
 
     const summary = await NewsService.fetchAndCacheAll(symbols);
+
+    const changedSymbols = summary.changedSymbols || [];
+    if (changedSymbols.length > 0) {
+      const userIds = await NewsService.getUserIdsTrackingSymbols(changedSymbols);
+      let usersNotified = 0;
+
+      // Keep APNs traffic bounded while still allowing accounts with several
+      // devices to refresh promptly.
+      for (let index = 0; index < userIds.length; index += 10) {
+        const batch = userIds.slice(index, index + 10);
+        const results = await Promise.all(
+          batch.map(userId => pushNotificationService.sendBackgroundRefresh(userId, 'news_updated'))
+        );
+        usersNotified += results.filter(result => result.success).length;
+      }
+
+      summary.usersTargeted = userIds.length;
+      summary.usersNotified = usersNotified;
+    } else {
+      summary.usersTargeted = 0;
+      summary.usersNotified = 0;
+    }
 
     this.lastRunDate = new Date().toISOString();
 
