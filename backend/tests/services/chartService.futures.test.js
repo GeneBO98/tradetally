@@ -62,28 +62,33 @@ describe('ChartService futures routing', () => {
     });
   });
 
-  it('prefers the configured provider over Databento and the no-cost fallback', async () => {
+  it('prefers Databento over other configured futures providers', async () => {
     const result = await ChartService.getTradeChartData(
       'user-1', trade.symbol, trade.entry_time, trade.exit_time, null, '15', trade
     );
 
-    expect(finnhub.getFuturesTradeChartData).toHaveBeenCalledWith('MNQ', trade, 'user-1', '15');
-    expect(replayDataService.getFuturesTradeChartData).not.toHaveBeenCalled();
+    expect(replayDataService.getFuturesTradeChartData).toHaveBeenCalledWith(trade, '15');
+    expect(finnhub.getFuturesTradeChartData).not.toHaveBeenCalled();
     expect(yahooFinance.getFuturesTradeChartData).not.toHaveBeenCalled();
     expect(finnhub.getTradeChartData).not.toHaveBeenCalled();
-    expect(result.source).toBe('fmp');
+    expect(result.source).toBe('databento');
   });
 
-  it('uses Databento when the configured provider cannot serve the future', async () => {
-    finnhub.getFuturesTradeChartData.mockRejectedValue(new Error('plan does not include commodities'));
+  it('falls back to the configured market-data provider when Databento cannot serve the future', async () => {
+    replayDataService.getFuturesTradeChartData.mockRejectedValue(new Error('temporary Databento outage'));
 
     const result = await ChartService.getTradeChartData(
       'user-1', trade.symbol, trade.entry_time, trade.exit_time, null, '5', trade
     );
 
     expect(replayDataService.getFuturesTradeChartData).toHaveBeenCalledWith(trade, '5');
+    expect(finnhub.getFuturesTradeChartData).toHaveBeenCalledWith('MNQ', trade, 'user-1', '5');
     expect(yahooFinance.getFuturesTradeChartData).not.toHaveBeenCalled();
-    expect(result.source).toBe('databento');
+    expect(result).toMatchObject({
+      source: 'fmp',
+      fallback: true,
+      fallback_reason: 'Databento: temporary Databento outage'
+    });
   });
 
   it('uses Yahoo only when no configured provider can serve the future', async () => {
@@ -96,6 +101,21 @@ describe('ChartService futures routing', () => {
 
     expect(yahooFinance.getFuturesTradeChartData).toHaveBeenCalledWith('MNQ', trade, '1');
     expect(result.source).toBe('yahoo');
+  });
+
+  it('reports Yahoo as a fallback when configured Databento fails', async () => {
+    finnhub.isConfigured.mockReturnValue(false);
+    replayDataService.getFuturesTradeChartData.mockRejectedValue(new Error('Databento request failed'));
+
+    const result = await ChartService.getTradeChartData(
+      'user-1', trade.symbol, trade.entry_time, trade.exit_time, null, '1', trade
+    );
+
+    expect(result).toMatchObject({
+      source: 'yahoo',
+      fallback: true,
+      fallback_reason: 'Databento: Databento request failed'
+    });
   });
 
   it('preserves the hosted Pro entitlement before requesting futures data', async () => {
