@@ -1079,6 +1079,12 @@ const tradeController = {
         return res.status(404).json({ error: 'Trade not found or access denied' });
       }
 
+      // Trade.findById also permits authenticated users to view public trades.
+      // Destructive mutations must require direct ownership.
+      if (String(trade.user_id) !== String(req.user.id)) {
+        return res.status(404).json({ error: 'Trade not found or access denied' });
+      }
+
       // Delete the trade
       const result = await Trade.delete(req.params.id, req.user.id);
       
@@ -1101,6 +1107,11 @@ const tradeController = {
       const trade = await Trade.findById(req.params.id, req.user.id);
 
       if (!trade) {
+        return res.status(404).json({ error: 'Trade not found or access denied' });
+      }
+
+      // Public visibility grants read access only; splitting requires ownership.
+      if (String(trade.user_id) !== String(req.user.id)) {
         return res.status(404).json({ error: 'Trade not found or access denied' });
       }
 

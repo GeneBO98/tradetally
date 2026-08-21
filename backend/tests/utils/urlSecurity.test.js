@@ -35,6 +35,27 @@ describe('url security validation', () => {
     ).rejects.toThrow(OutboundUrlValidationError);
   });
 
+  test.each([
+    'http://[::ffff:7f00:1]/',
+    'http://[::7f00:1]/',
+    'http://[64:ff9b::7f00:1]/',
+    'http://[2002:7f00:1::]/',
+    'http://[::ffff:a00:5]/',
+    'http://[64:ff9b::a00:5]/'
+  ])('rejects private IPv4 addresses embedded in IPv6: %s', async target => {
+    await expect(ensureValidatedOutboundUrl(target, { mode: 'public' }))
+      .rejects.toThrow(OutboundUrlValidationError);
+  });
+
+  test.each([
+    'https://[::ffff:808:808]/',
+    'https://[64:ff9b::808:808]/',
+    'https://[2002:0808:0808::]/'
+  ])('allows public IPv4 addresses embedded in IPv6: %s', async target => {
+    await expect(ensureValidatedOutboundUrl(target, { mode: 'public' }))
+      .resolves.toBeInstanceOf(URL);
+  });
+
   test('accepts loopback-only AI endpoints', async () => {
     dns.lookup.mockResolvedValue([{ address: '127.0.0.1', family: 4 }]);
 
