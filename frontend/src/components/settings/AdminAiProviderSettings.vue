@@ -133,9 +133,14 @@
                         v-model="form.apiKey"
                         type="password"
                         class="input"
-                        :placeholder="getAdminApiKeyPlaceholder()"
+                        :placeholder="
+                            form.apiKeyConfigured
+                                ? 'API key saved — enter a new key to replace it'
+                                : getAdminApiKeyPlaceholder()
+                        "
                         :required="
                             !!form.provider &&
+                            !form.apiKeyConfigured &&
                             !OPTIONAL_API_KEY_AI_PROVIDERS.includes(form.provider)
                         "
                     />
@@ -273,10 +278,13 @@
                                 type="password"
                                 class="input"
                                 :placeholder="
-                                    getAdminClassifierApiKeyPlaceholder()
+                                    form.classifierApiKeyConfigured
+                                        ? 'API key saved — enter a new key to replace it'
+                                        : getAdminClassifierApiKeyPlaceholder()
                                 "
                                 :required="
                                     !!form.classifierProvider &&
+                                    !form.classifierApiKeyConfigured &&
                                     !OPTIONAL_API_KEY_AI_PROVIDERS.includes(form.classifierProvider)
                                 "
                             />
@@ -329,6 +337,7 @@ function onAdminProviderChange() {
     props.form.apiKey = "";
     props.form.url = "";
     props.form.model = "";
+    props.form.apiKeyConfigured = false;
     if (!props.form.classifierProvider) {
         props.form.classifierApiKey = "";
         props.form.classifierUrl = "";
@@ -342,6 +351,7 @@ function onAdminClassifierEnabledChange() {
         props.form.classifierApiKey = "";
         props.form.classifierUrl = "";
         props.form.classifierModel = "";
+        props.form.classifierApiKeyConfigured = false;
     }
 }
 
@@ -349,6 +359,7 @@ function onAdminClassifierProviderChange() {
     props.form.classifierApiKey = "";
     props.form.classifierUrl = "";
     props.form.classifierModel = "";
+    props.form.classifierApiKeyConfigured = false;
 }
 
 function getEffectiveAdminClassifierProvider() {

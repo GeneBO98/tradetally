@@ -131,10 +131,13 @@
                             type="password"
                             class="input"
                             :placeholder="
-                                getAdminCusipApiKeyPlaceholder()
+                                form.apiKeyConfigured
+                                    ? 'API key saved — enter a new key to replace it'
+                                    : getAdminCusipApiKeyPlaceholder()
                             "
                             :required="
                                 !!form.provider &&
+                                !form.apiKeyConfigured &&
                                 !OPTIONAL_API_KEY_AI_PROVIDERS.includes(form.provider)
                             "
                         />
@@ -187,6 +190,7 @@ function onAdminCusipProviderChange() {
     props.form.apiKey = "";
     props.form.url = "";
     props.form.model = "";
+    props.form.apiKeyConfigured = false;
 }
 
 function onAdminCusipUseMainProviderChange() {
@@ -195,6 +199,7 @@ function onAdminCusipUseMainProviderChange() {
         props.form.url = "";
         props.form.apiKey = "";
         props.form.model = "";
+        props.form.apiKeyConfigured = false;
     }
 }
 
