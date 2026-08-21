@@ -9,7 +9,8 @@ jest.mock('../../src/models/User', () => ({
   getUserCount: jest.fn(),
   create: jest.fn(),
   createSettings: jest.fn(),
-  updateResetToken: jest.fn()
+  updateResetToken: jest.fn(),
+  updateVerificationToken: jest.fn()
 }));
 jest.mock('../../src/services/emailService', () => ({
   isConfigured: jest.fn(() => true)
@@ -44,6 +45,7 @@ const speakeasy = require('speakeasy');
 const { authenticate, generateToken, TOKEN_PURPOSES } = require('../../src/middleware/auth');
 const jwt = require('jsonwebtoken');
 const jobQueue = require('../../src/utils/jobQueue');
+const EmailService = require('../../src/services/emailService');
 
 function flushImmediate() {
   return new Promise((resolve) => setImmediate(resolve));
@@ -387,5 +389,44 @@ describe('auth controller 2FA flow', () => {
     expect(res.payload).toEqual({
       message: 'If the email exists, a reset link has been sent'
     });
+  });
+});
+
+describe('auth controller email verification policy', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env.NODE_ENV = 'test';
+    process.env.REGISTRATION_MODE = 'open';
+    EmailService.isConfigured.mockReturnValue(true);
+  });
+
+  test.each([
+    ['unknown account', null],
+    ['verified account', { id: 'user-1', is_verified: true }],
+    ['unverified account', { id: 'user-1', is_verified: false }]
+  ])('returns the same resend response for %s', async (_label, user) => {
+    User.findByEmail.mockResolvedValue(user);
+    const req = { body: { email: 'user@example.com' } };
+    const res = createResponse();
+
+    await authController.resendVerification(req, res, jest.fn());
+    await flushImmediate();
+
+    expect(res.statusCode).toBe(202);
+    expect(res.payload).toEqual({
+      message: 'If an unverified account exists, a verification email will be sent.'
+    });
+  });
+
+  test('advertises verification as available but advisory', async () => {
+    const res = createResponse();
+
+    await authController.getRegistrationConfig({}, res, jest.fn());
+
+    expect(res.payload).toEqual(expect.objectContaining({
+      email_verification_available: true,
+      email_verification_required: false,
+      emailVerificationEnabled: true
+    }));
   });
 });

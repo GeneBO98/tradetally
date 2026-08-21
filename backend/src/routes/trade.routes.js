@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const tradeController = require('../controllers/trade.controller');
-const { authenticate, optionalAuth } = require('../middleware/auth');
+const { authenticate, optionalAuth, requireAdmin } = require('../middleware/auth');
 const { flexibleAuth, flexibleOptionalAuth, requireApiScope } = require('../middleware/apiKeyAuth');
 const { validate, schemas } = require('../middleware/validation');
 const multer = require('multer');
@@ -604,8 +604,8 @@ router.get('/import/history', authenticate, tradeController.getImportHistory);
  */
 router.delete('/import/bulk', authenticate, importLimiter, tradeController.bulkDeleteImports);
 router.delete('/import/:importId', authenticate, importLimiter, tradeController.deleteImport);
-router.get('/import/logs', authenticate, tradeController.getImportLogs);
-router.get('/import/logs/:filename', authenticate, tradeController.getLogFile);
+router.get('/import/logs', authenticate, requireAdmin, tradeController.getImportLogs);
+router.get('/import/logs/:filename', authenticate, requireAdmin, tradeController.getLogFile);
 router.get('/cusip/resolution-status', authenticate, tradeController.getCusipResolutionStatus);
 router.get('/cusip/:cusip', authenticate, tradeController.lookupCusip);
 router.post('/cusip', authenticate, tradeController.addCusipMapping);

@@ -91,6 +91,29 @@ describe('Trade upload paths reject non-owned public trades', () => {
     expect(Trade.addChart).not.toHaveBeenCalled();
   });
 
+  test('splitTrade returns 404 when trade is public but not owned by caller', async () => {
+    Trade.findById.mockResolvedValue({
+      id: 'trade-1',
+      user_id: 'owner-real',
+      is_public: true,
+      executions: [
+        { action: 'buy', quantity: 1, price: 10 },
+        { action: 'sell', quantity: 1, price: 11 }
+      ]
+    });
+
+    const req = {
+      params: { id: 'trade-1' },
+      user: { id: 'attacker' },
+      body: {}
+    };
+    const res = createRes();
+
+    await tradeController.splitTrade(req, res, jest.fn());
+
+    expect(res.statusCode).toBe(404);
+  });
+
   test('uploadAttachment succeeds when caller owns the trade', async () => {
     Trade.findById.mockResolvedValue({
       id: 'trade-1',

@@ -27,17 +27,6 @@ function getLoginPolicyFailure(user) {
     };
   }
 
-  if (isEmailConfigured() && !user.is_verified) {
-    return {
-      status: 403,
-      body: {
-        error: 'Please verify your email before signing in',
-        requiresVerification: true,
-        email: user.email
-      }
-    };
-  }
-
   return null;
 }
 
@@ -147,9 +136,10 @@ const authV1Controller = {
         }
       }
 
-      // Generate tokens if user is verified or email not configured
+      // Email verification is advisory. Approved users receive a session
+      // immediately while verification remains available as an account signal.
       let tokens = null;
-      if (isVerified && adminApproved) {
+      if (adminApproved) {
         const accessToken = refreshTokenService.generateAccessToken(user);
         const refreshTokenData = await refreshTokenService.generateRefreshToken(user.id, device?.id);
         

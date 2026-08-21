@@ -829,14 +829,17 @@ const authController = {
   async resendVerification(req, res, next) {
     try {
       const { email } = req.body;
+      const genericResponse = {
+        message: 'If an unverified account exists, a verification email will be sent.'
+      };
 
       const user = await User.findByEmail(email);
       if (!user) {
-        return res.json({ message: 'If the email exists, a verification email has been sent.' });
+        return res.status(202).json(genericResponse);
       }
 
       if (user.is_verified) {
-        return res.status(400).json({ error: 'Email is already verified' });
+        return res.status(202).json(genericResponse);
       }
 
       // Generate new verification token
@@ -846,7 +849,7 @@ const authController = {
       await User.updateVerificationToken(user.id, verificationToken, verificationExpires);
       sendVerificationEmailInBackground(email, verificationToken);
 
-      res.json({ message: 'Verification email has been resent.' });
+      return res.status(202).json(genericResponse);
     } catch (error) {
       next(error);
     }
@@ -860,6 +863,8 @@ const authController = {
 
       res.json({
         registrationMode,
+        email_verification_available: emailConfigured,
+        email_verification_required: false,
         emailVerificationEnabled: emailConfigured,
         allowRegistration: registrationMode !== 'disabled',
         billingEnabled

@@ -18,7 +18,7 @@ function isLocalHostname(hostname) {
 
 function classifyIPv4(ip) {
   const octets = ip.split('.').map(Number);
-  if (octets.length !== 4 || octets.some(Number.isNaN)) {
+  if (octets.length !== 4 || octets.some(octet => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
     return { allowedPublic: false, allowedLoopback: false, allowedPrivate: false };
   }
 
@@ -58,23 +58,91 @@ function classifyIPv4(ip) {
   };
 }
 
+function expandIPv6(ip) {
+  let normalized = ip.toLowerCase().split('%')[0];
+  const dottedTail = normalized.match(/(?:^|:)(\d{1,3}(?:\.\d{1,3}){3})$/);
+
+  if (dottedTail) {
+    const octets = dottedTail[1].split('.').map(Number);
+    if (octets.some(octet => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
+      return null;
+    }
+    const replacement = `${((octets[0] << 8) | octets[1]).toString(16)}:${((octets[2] << 8) | octets[3]).toString(16)}`;
+    normalized = `${normalized.slice(0, normalized.length - dottedTail[1].length)}${replacement}`;
+  }
+
+  const halves = normalized.split('::');
+  if (halves.length > 2) return null;
+
+  const parseHalf = (half) => half
+    ? half.split(':').map(part => (/^[0-9a-f]{1,4}$/.test(part) ? parseInt(part, 16) : NaN))
+    : [];
+  const left = parseHalf(halves[0]);
+  const right = parseHalf(halves[1] || '');
+  if ([...left, ...right].some(Number.isNaN)) return null;
+
+  if (halves.length === 1) {
+    return left.length === 8 ? left : null;
+  }
+
+  const omittedCount = 8 - left.length - right.length;
+  if (omittedCount < 1) return null;
+  return [...left, ...Array(omittedCount).fill(0), ...right];
+}
+
+function classifyEmbeddedIPv4(hextets) {
+  const toIPv4 = (high, low) => [
+    high >> 8,
+    high & 0xff,
+    low >> 8,
+    low & 0xff
+  ].join('.');
+
+  const isIpv4Compatible = hextets.slice(0, 6).every(part => part === 0);
+  const isIpv4Mapped = hextets.slice(0, 5).every(part => part === 0) && hextets[5] === 0xffff;
+  const isWellKnownNat64 = hextets[0] === 0x64 && hextets[1] === 0xff9b &&
+    hextets.slice(2, 6).every(part => part === 0);
+
+  if (isIpv4Compatible || isIpv4Mapped || isWellKnownNat64) {
+    return classifyIPv4(toIPv4(hextets[6], hextets[7]));
+  }
+
+  if (hextets[0] === 0x2002) {
+    return classifyIPv4(toIPv4(hextets[1], hextets[2]));
+  }
+
+  return null;
+}
+
 function classifyIPv6(ip) {
   const normalized = ip.toLowerCase().split('%')[0];
 
-  if (normalized.startsWith('::ffff:')) {
-    return classifyIp(normalized.slice(7));
-  }
-
   const isLoopback = normalized === '::1';
   const isUnspecified = normalized === '::';
+  if (isLoopback || isUnspecified) {
+    return {
+      allowedPublic: false,
+      allowedLoopback: isLoopback,
+      allowedPrivate: false
+    };
+  }
+
+  const hextets = expandIPv6(normalized);
+  if (!hextets) {
+    return { allowedPublic: false, allowedLoopback: false, allowedPrivate: false };
+  }
+
+  const embeddedClassification = classifyEmbeddedIPv4(hextets);
+  if (embeddedClassification) return embeddedClassification;
+
   const isLinkLocal = normalized.startsWith('fe8') || normalized.startsWith('fe9') || normalized.startsWith('fea') || normalized.startsWith('feb');
   const isUniqueLocal = normalized.startsWith('fc') || normalized.startsWith('fd');
   const isMulticast = normalized.startsWith('ff');
   const isDocumentation = normalized.startsWith('2001:db8');
 
   return {
-    allowedPublic: !(isLoopback || isUnspecified || isLinkLocal || isUniqueLocal || isMulticast || isDocumentation),
-    allowedLoopback: isLoopback,
+    allowedPublic: !(isLinkLocal || isUniqueLocal || isMulticast || isDocumentation),
+    allowedLoopback: false,
     allowedPrivate: isUniqueLocal
   };
 }

@@ -1,5 +1,6 @@
 jest.mock('../../src/config/database', () => ({
-  query: jest.fn()
+  query: jest.fn(),
+  connect: jest.fn()
 }));
 
 jest.mock('archiver', () => jest.fn());
@@ -19,6 +20,27 @@ const path = require('path');
 const db = require('../../src/config/database');
 const fs = require('fs').promises;
 const backupService = require('../../src/services/backup.service');
+
+function createRestoreClient(columnsByTable = {}) {
+  const client = {
+    release: jest.fn(),
+    query: jest.fn(async (sql, params = []) => {
+      const normalized = String(sql).replace(/\s+/g, ' ').trim();
+      if (normalized.includes('FROM information_schema.columns')) {
+        const columns = columnsByTable[params[0]] || [];
+        return { rows: columns.map(column => ({ column_name: column, data_type: 'text' })) };
+      }
+      if (normalized.includes("tc.constraint_type = 'PRIMARY KEY'")) {
+        return { rows: [{ column_name: 'id' }] };
+      }
+      if (normalized === 'SELECT id FROM users') return { rows: [] };
+      if (normalized.startsWith('INSERT INTO')) return { rows: [{ id: 'restored-id' }] };
+      return { rows: [] };
+    })
+  };
+  db.connect.mockResolvedValue(client);
+  return client;
+}
 
 describe('backup service hardening', () => {
   beforeEach(() => {
@@ -76,5 +98,67 @@ describe('backup service hardening', () => {
     expect(fs.mkdir).toHaveBeenCalledWith(backupService.backupDir, { recursive: true });
     expect(fs.writeFile).toHaveBeenCalledTimes(1);
     expect(fs.mkdir.mock.invocationCallOrder[0]).toBeLessThan(fs.writeFile.mock.invocationCallOrder[0]);
+  });
+
+  test('ignores a malicious backup table key before constructing SQL', async () => {
+    const client = createRestoreClient();
+
+    await backupService.restoreFromBackup({
+      tables: { 'evil); DROP TABLE users;--': [{ id: 'row-1' }] },
+      tableNameMapping: {}
+    });
+
+    const sql = client.query.mock.calls.map(([query]) => String(query)).join('\n');
+    expect(sql).not.toContain('DROP TABLE');
+    expect(sql).not.toContain('evil)');
+  });
+
+  test('rejects a malicious table-name mapping before metadata or inserts', async () => {
+    const client = createRestoreClient();
+
+    await backupService.restoreFromBackup({
+      tables: { activityEvents: [{ id: 'row-1' }] },
+      tableNameMapping: { activityEvents: 'users; DROP TABLE users;--' }
+    });
+
+    const sql = client.query.mock.calls.map(([query]) => String(query)).join('\n');
+    expect(sql).not.toContain('DROP TABLE');
+    expect(sql).not.toContain('INSERT INTO');
+  });
+
+  test('skips a backup table that does not exist in the target schema', async () => {
+    const client = createRestoreClient();
+
+    await backupService.restoreFromBackup({
+      tables: { unknownTable: [{ id: 'row-1' }] },
+      tableNameMapping: { unknownTable: 'unknown_table' }
+    });
+
+    expect(client.query.mock.calls.some(([query]) => String(query).startsWith('INSERT INTO'))).toBe(false);
+  });
+
+  test('skips a row with no recognized target columns', async () => {
+    const client = createRestoreClient({ custom_table: ['id'] });
+
+    const result = await backupService.restoreFromBackup({
+      tables: { customTable: [{ unexpected: 'value' }] },
+      tableNameMapping: { customTable: 'custom_table' }
+    });
+
+    expect(result.tableResults.custom_table.skipped).toBe(1);
+    expect(client.query.mock.calls.some(([query]) => String(query).startsWith('INSERT INTO'))).toBe(false);
+  });
+
+  test('quotes validated table and column identifiers during a valid restore', async () => {
+    const client = createRestoreClient({ custom_table: ['id', 'label'] });
+
+    await backupService.restoreFromBackup({
+      tables: { customTable: [{ id: 'row-1', label: 'Safe' }] },
+      tableNameMapping: { customTable: 'custom_table' }
+    });
+
+    const insert = client.query.mock.calls.find(([query]) => String(query).startsWith('INSERT INTO'));
+    expect(insert[0]).toContain('INSERT INTO "custom_table" ("id", "label")');
+    expect(insert[0]).toContain('RETURNING "id"');
   });
 });

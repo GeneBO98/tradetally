@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { authenticate, optionalAuth } = require('../middleware/auth');
+const { requireCsrf } = require('../middleware/csrf');
 const oauth2Controller = require('../controllers/oauth2.controller');
 
 // Public OAuth2 endpoints (standard OAuth2 spec)
@@ -18,7 +19,7 @@ router.get('/authorize', optionalAuth, oauth2Controller.authorize);
  * User consent endpoint - approves or denies authorization
  * Body: client_id, redirect_uri, scope, state, code_challenge, code_challenge_method, approved
  */
-router.post('/authorize', authenticate, oauth2Controller.authorizeApprove);
+router.post('/authorize', requireCsrf, authenticate, oauth2Controller.authorizeApprove);
 
 /**
  * POST /oauth/token
