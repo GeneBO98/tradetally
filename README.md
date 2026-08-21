@@ -31,7 +31,7 @@ A comprehensive trading journal and analytics platform built with Vue.js fronten
 - **Trade Visualization** - Interactive candlestick charts with entry/exit markers
 
 ### Analytics & Insights
-- **AI-Powered Analytics** - Personalized trading recommendations powered by Google Gemini
+- **AI-Powered Analytics** - Personalized trading recommendations through cloud, local, or authenticated Codex/Claude CLI providers
 - **Advanced Charts** - Performance analysis by hold time, day of week, sector, and more
 - **Behavioral Analytics** - Revenge trading detection and overconfidence tracking (Pro)
 - **Health Tracking** - Correlate sleep, heart rate, and other health metrics with trading performance (Pro)
@@ -72,7 +72,7 @@ Free, open-source deployment with all Pro features included. Perfect for:
 
 **Backend**: Node.js, Express, PostgreSQL
 **Frontend**: Vue.js 3, Tailwind CSS, Pinia
-**APIs**: Finnhub, Alpha Vantage, Google Gemini
+**APIs**: Finnhub, Alpha Vantage, configurable AI providers
 **Infrastructure**: Docker, Nginx
 
 ## Getting Started

@@ -11,8 +11,17 @@ const settingsCache = require('../services/settingsCache');
 const OptionStrategyGroupingService = require('../services/optionStrategyGroupingService');
 const Trade = require('../models/Trade');
 
-const VALID_AI_PROVIDERS = ['gemini', 'claude', 'openai', 'deepseek', 'kimi', 'ollama', 'lmstudio', 'perplexity', 'local', 'custom'];
-const LOCAL_AI_PROVIDERS = ['local', 'ollama', 'lmstudio', 'custom'];
+const VALID_AI_PROVIDERS = ['gemini', 'claude', 'openai', 'deepseek', 'kimi', 'codex_cli', 'claude_cli', 'ollama', 'lmstudio', 'perplexity', 'local', 'custom'];
+const URL_REQUIRED_AI_PROVIDERS = ['local', 'ollama', 'lmstudio', 'custom'];
+const HOST_CLI_AI_PROVIDERS = ['codex_cli', 'claude_cli'];
+
+function providerRequiresApiKey(provider) {
+  return !URL_REQUIRED_AI_PROVIDERS.includes(provider) && !HOST_CLI_AI_PROVIDERS.includes(provider);
+}
+
+function canConfigureHostCliProvider(user) {
+  return ['admin', 'owner'].includes(user?.role);
+}
 
 function recomputeImportedTradePnl(trade, timezone) {
   const executions = trade.executions || trade.executionData || trade.execution_data;
@@ -353,6 +362,12 @@ const settingsController = {
         });
       }
 
+      if (HOST_CLI_AI_PROVIDERS.includes(normalizedProvider) && !canConfigureHostCliProvider(req.user)) {
+        return res.status(403).json({
+          error: 'CLI AI providers use backend host authentication and can only be configured by an admin or owner'
+        });
+      }
+
       if (!normalizedProvider) {
         const settings = await User.updateSettings(req.user.id, {
           ai_provider: null,
@@ -371,13 +386,13 @@ const settingsController = {
       }
 
       // Validate required fields
-      if (!LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !aiApiKey) {
+      if (providerRequiresApiKey(normalizedProvider) && !aiApiKey) {
         return res.status(400).json({ 
           error: 'API key is required for ' + normalizedProvider 
         });
       }
 
-      if (LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !aiApiUrl) {
+      if (URL_REQUIRED_AI_PROVIDERS.includes(normalizedProvider) && !aiApiUrl) {
         return res.status(400).json({ 
           error: 'API URL is required for ' + normalizedProvider 
         });
@@ -478,14 +493,20 @@ const settingsController = {
         });
       }
 
+      if (HOST_CLI_AI_PROVIDERS.includes(normalizedProvider) && !canConfigureHostCliProvider(req.user)) {
+        return res.status(403).json({
+          error: 'CLI AI providers use backend host authentication and can only be configured by an admin or owner'
+        });
+      }
+
       // Validate required fields based on provider type
-      if (!LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !cusipAiApiKey) {
+      if (providerRequiresApiKey(normalizedProvider) && !cusipAiApiKey) {
         return res.status(400).json({
           error: 'API key is required for ' + normalizedProvider
         });
       }
 
-      if (LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !cusipAiApiUrl) {
+      if (URL_REQUIRED_AI_PROVIDERS.includes(normalizedProvider) && !cusipAiApiUrl) {
         return res.status(400).json({
           error: 'API URL is required for ' + normalizedProvider
         });
@@ -1950,13 +1971,13 @@ const settingsController = {
       }
 
       // Validate required fields
-      if (!LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !aiApiKey) {
+      if (providerRequiresApiKey(normalizedProvider) && !aiApiKey) {
         return res.status(400).json({ 
           error: 'API key is required for ' + normalizedProvider 
         });
       }
 
-      if (LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !aiApiUrl) {
+      if (URL_REQUIRED_AI_PROVIDERS.includes(normalizedProvider) && !aiApiUrl) {
         return res.status(400).json({ 
           error: 'API URL is required for ' + normalizedProvider 
         });
@@ -1981,7 +2002,7 @@ const settingsController = {
         const classifierUsesMainProvider = effectiveClassifierProvider === normalizedProvider;
         if (
           !classifierUsesMainProvider &&
-          !LOCAL_AI_PROVIDERS.includes(effectiveClassifierProvider) &&
+          providerRequiresApiKey(effectiveClassifierProvider) &&
           !aiClassifierApiKey
         ) {
           return res.status(400).json({
@@ -1991,7 +2012,7 @@ const settingsController = {
 
         if (
           !classifierUsesMainProvider &&
-          LOCAL_AI_PROVIDERS.includes(effectiveClassifierProvider) &&
+          URL_REQUIRED_AI_PROVIDERS.includes(effectiveClassifierProvider) &&
           !aiClassifierApiUrl
         ) {
           return res.status(400).json({
@@ -2109,13 +2130,13 @@ const settingsController = {
       }
 
       // Validate required fields based on provider type
-      if (!LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !cusipAiApiKey) {
+      if (providerRequiresApiKey(normalizedProvider) && !cusipAiApiKey) {
         return res.status(400).json({
           error: 'API key is required for ' + normalizedProvider
         });
       }
 
-      if (LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !cusipAiApiUrl) {
+      if (URL_REQUIRED_AI_PROVIDERS.includes(normalizedProvider) && !cusipAiApiUrl) {
         return res.status(400).json({
           error: 'API URL is required for ' + normalizedProvider
         });

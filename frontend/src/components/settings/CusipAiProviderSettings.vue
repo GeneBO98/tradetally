@@ -50,7 +50,7 @@
                             >
                             <BaseSelect
                                 v-model="form.provider"
-                                :options="AI_PROVIDER_OPTIONS"
+                                :options="availableAiProviderOptions"
                                 placeholder="No provider"
                                 @change="onCusipProviderChange"
                             />
@@ -71,6 +71,13 @@
                                 :required="form.provider === 'custom'"
                             />
                         </div>
+                    </div>
+
+                    <div
+                        v-if="HOST_CLI_AI_PROVIDERS.includes(form.provider)"
+                        class="rounded-lg border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-primary-800 dark:border-primary-800 dark:bg-primary-900/20 dark:text-primary-200"
+                    >
+                        Runs the authenticated CLI installed on the TradeTally backend host.
                     </div>
 
                     <div
@@ -108,7 +115,7 @@
                     <div
                         v-if="
                             form.provider &&
-                            form.provider !== 'local'
+                            !API_KEY_HIDDEN_AI_PROVIDERS.includes(form.provider)
                         "
                     >
                         <label for="cusipAiApiKey" class="label"
@@ -154,9 +161,13 @@
 </template>
 
 <script setup>
+import { computed } from "vue";
+import { useAuthStore } from "@/stores/auth";
 import BaseSelect from "@/components/common/BaseSelect.vue";
 import {
     AI_PROVIDER_OPTIONS,
+    API_KEY_HIDDEN_AI_PROVIDERS,
+    HOST_CLI_AI_PROVIDERS,
     OPTIONAL_API_KEY_AI_PROVIDERS,
     URL_REQUIRED_AI_PROVIDERS,
 } from "@/utils/aiProviderOptions";
@@ -167,6 +178,15 @@ const props = defineProps({
 });
 
 defineEmits(["submit"]);
+
+const authStore = useAuthStore();
+const availableAiProviderOptions = computed(() =>
+    ["admin", "owner"].includes(authStore.user?.role)
+        ? AI_PROVIDER_OPTIONS
+        : AI_PROVIDER_OPTIONS.filter(
+              ({ value }) => !HOST_CLI_AI_PROVIDERS.includes(value),
+          ),
+);
 
 function getCusipModelPlaceholder() {
     switch (props.form.provider) {
@@ -180,6 +200,9 @@ function getCusipModelPlaceholder() {
             return "e.g., deepseek-chat";
         case "kimi":
             return "e.g., moonshot-v1-8k";
+        case "codex_cli":
+        case "claude_cli":
+            return "Leave blank for CLI default";
         case "ollama":
             return "e.g., llama3.2";
         case "perplexity":

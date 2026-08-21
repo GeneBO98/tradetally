@@ -5,6 +5,7 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { fetchAiProviderUrl } = require('./urlSecurity');
 const { summarizeUrlForLogging } = require('./logSanitizer');
+const AICliProvider = require('./aiCliProvider');
 
 class AIProvider {
   /**
@@ -40,6 +41,10 @@ class AIProvider {
 
       case 'claude':
         return this.generateClaude(prompt, apiKey, modelName, options);
+
+      case 'codex_cli':
+      case 'claude_cli':
+        return AICliProvider.generateResponse(prompt, { provider, modelName });
 
       case 'lmstudio':
       case 'ollama':
@@ -272,6 +277,10 @@ class AIProvider {
     const localProviders = ['lmstudio', 'ollama', 'local'];
     if (localProviders.includes(provider)) {
       return !!apiUrl;
+    }
+
+    if (provider === 'codex_cli' || provider === 'claude_cli') {
+      return true;
     }
 
     if (provider === 'custom') {

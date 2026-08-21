@@ -697,7 +697,7 @@ class FinnhubClient {
           console.log('System AI provider (custom) not configured - no admin model found, skipping AI CUSIP resolution');
           return null;
         }
-      } else {
+      } else if (!['codex_cli', 'claude_cli'].includes(provider)) {
         // Other providers (gemini, claude, openai) require API key
         if (!settings.default_ai_api_key) {
           console.log(`System AI provider (${provider}) not configured - no admin API key found, skipping AI CUSIP resolution`);
@@ -913,6 +913,11 @@ class FinnhubClient {
           console.error('[PERPLEXITY] System AI failed:', error.message);
           throw new Error(`Perplexity system AI failed: ${error.message}`);
         }
+      } else if (settings.default_ai_provider === 'codex_cli' || settings.default_ai_provider === 'claude_cli') {
+        return AIProvider.generateResponse(prompt, {
+          provider: settings.default_ai_provider,
+          modelName: settings.default_ai_model
+        }, { maxTokens: 50, temperature: 0.1 });
       } else if (settings.default_ai_provider === 'custom') {
         return AIProvider.generateResponse(prompt, {
           provider: 'custom',
