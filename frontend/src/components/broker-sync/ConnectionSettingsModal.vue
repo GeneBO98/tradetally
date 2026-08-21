@@ -9,7 +9,7 @@
 
             <!-- Modal -->
             <div
-                class="relative bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg"
+                class="relative bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg max-h-[calc(100vh-2rem)] flex flex-col"
             >
                 <!-- Header -->
                 <div
@@ -41,7 +41,7 @@
                 </div>
 
                 <!-- Body -->
-                <div class="p-6 space-y-6">
+                <div class="p-6 space-y-6 overflow-y-auto">
                     <!-- Connection Info -->
                     <div
                         class="flex items-center space-x-4 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg"
@@ -201,6 +201,82 @@
                         </p>
                     </div>
 
+                    <!-- Schwab Account Scope -->
+                    <div
+                        v-if="connection.brokerType === 'schwab'"
+                        class="pt-4 border-t border-gray-200 dark:border-gray-700"
+                    >
+                        <div class="flex items-start justify-between gap-4">
+                            <div>
+                                <h4 class="text-sm font-medium text-gray-900 dark:text-white">
+                                    Accounts included in sync
+                                </h4>
+                                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                                    Excluded accounts are skipped before Schwab trade history is downloaded.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                class="text-sm font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 disabled:opacity-50"
+                                :disabled="accountsLoading"
+                                @click="emit('refresh-accounts')"
+                            >
+                                Refresh
+                            </button>
+                        </div>
+
+                        <div v-if="accountsLoading && schwabAccounts.length === 0" class="mt-4 space-y-2">
+                            <div
+                                v-for="index in 2"
+                                :key="index"
+                                class="h-12 rounded-lg bg-gray-100 dark:bg-gray-700 animate-pulse"
+                            ></div>
+                        </div>
+
+                        <div
+                            v-else-if="accountsError && schwabAccounts.length === 0"
+                            class="mt-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800"
+                        >
+                            <p class="text-sm text-red-700 dark:text-red-300">{{ accountsError }}</p>
+                        </div>
+
+                        <div v-else-if="schwabAccounts.length > 0" class="mt-4 space-y-2">
+                            <label
+                                v-for="account in schwabAccounts"
+                                :key="account.account_identifier"
+                                class="flex items-center justify-between gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 cursor-pointer hover:border-primary-300 dark:hover:border-primary-700"
+                            >
+                                <div class="flex items-center gap-3 min-w-0">
+                                    <input
+                                        type="checkbox"
+                                        class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                        :checked="!isAccountExcluded(account.account_identifier)"
+                                        @change="setAccountIncluded(account.account_identifier, $event.target.checked)"
+                                    />
+                                    <span class="font-medium text-sm text-gray-900 dark:text-white">
+                                        Schwab {{ account.account_identifier }}
+                                    </span>
+                                </div>
+                                <span
+                                    class="text-xs font-medium"
+                                    :class="isAccountExcluded(account.account_identifier)
+                                        ? 'text-gray-500 dark:text-gray-400'
+                                        : 'text-primary-600 dark:text-primary-400'"
+                                >
+                                    {{ isAccountExcluded(account.account_identifier) ? 'Excluded' : 'Included' }}
+                                </span>
+                            </label>
+                        </div>
+
+                        <p v-else class="mt-4 text-sm text-gray-500 dark:text-gray-400">
+                            No Schwab accounts found. Refresh the connection or reconnect Schwab.
+                        </p>
+
+                        <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                            Changing this setting does not delete trades already imported from an account.
+                        </p>
+                    </div>
+
                     <!-- Status Info -->
                     <div
                         class="pt-4 border-t border-gray-200 dark:border-gray-700"
@@ -298,9 +374,21 @@ const props = defineProps({
         type: Boolean,
         default: false,
     },
+    schwabAccounts: {
+        type: Array,
+        default: () => [],
+    },
+    accountsLoading: {
+        type: Boolean,
+        default: false,
+    },
+    accountsError: {
+        type: String,
+        default: "",
+    },
 });
 
-const emit = defineEmits(["close", "save"]);
+const emit = defineEmits(["close", "save", "refresh-accounts"]);
 const { formatDateTime: formatDateTimeTz } = useUserTimezone();
 
 function initialSyncStartDate(value) {
@@ -314,6 +402,7 @@ const form = ref({
     syncFrequency: props.connection.syncFrequency,
     syncTime: props.connection.syncTime?.substring(0, 5) || "06:00",
     syncStartDate: initialSyncStartDate(props.connection.syncStartDate),
+    excluded_account_identifiers: [...(props.connection.excluded_account_identifiers || [])],
 });
 
 const activePreset = ref(resolveActivePreset(form.value.syncStartDate));
@@ -333,6 +422,7 @@ watch(
             syncFrequency: newConnection.syncFrequency,
             syncTime: newConnection.syncTime?.substring(0, 5) || "06:00",
             syncStartDate: initialSyncStartDate(newConnection.syncStartDate),
+            excluded_account_identifiers: [...(newConnection.excluded_account_identifiers || [])],
         };
         activePreset.value = resolveActivePreset(form.value.syncStartDate);
     },
@@ -393,13 +483,31 @@ function formatDate(date) {
     return formatDateTimeTz(date, { includeSeconds: true });
 }
 
+function isAccountExcluded(accountIdentifier) {
+    return form.value.excluded_account_identifiers.includes(accountIdentifier);
+}
+
+function setAccountIncluded(accountIdentifier, included) {
+    const exclusions = new Set(form.value.excluded_account_identifiers);
+    if (included) {
+        exclusions.delete(accountIdentifier);
+    } else {
+        exclusions.add(accountIdentifier);
+    }
+    form.value.excluded_account_identifiers = [...exclusions];
+}
+
 function handleSave() {
-    emit("save", {
+    const updates = {
         accountLabel: form.value.accountLabel,
         autoSyncEnabled: form.value.autoSyncEnabled,
         syncFrequency: form.value.syncFrequency,
         syncTime: form.value.syncTime + ":00",
         syncStartDate: form.value.syncStartDate,
-    });
+    };
+    if (props.connection.brokerType === "schwab") {
+        updates.excluded_account_identifiers = form.value.excluded_account_identifiers;
+    }
+    emit("save", updates);
 }
 </script>

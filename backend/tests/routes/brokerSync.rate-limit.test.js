@@ -9,6 +9,7 @@ jest.mock('../../src/controllers/brokerSync.controller', () => ({
   getAllSyncLogs: jest.fn(),
   getConnection: jest.fn(),
   getSyncLogs: jest.fn(),
+  getConnectionAccounts: jest.fn(),
   addIBKRConnection: jest.fn(),
   addTrading212Connection: jest.fn(),
   initSchwabOAuth: jest.fn((req, res) => {

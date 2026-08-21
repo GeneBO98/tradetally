@@ -1105,11 +1105,27 @@ class SchwabService {
       throw new Error('No Schwab accounts found');
     }
 
-    console.log(`[SCHWAB] Found ${accounts.length} accounts to sync`);
+    const schwabAccounts = [...new Set(
+      accounts.map(account => this.redactAccountNumber(account.accountNumber)).filter(Boolean)
+    )].map(accountIdentifier => ({ account_identifier: accountIdentifier }));
+    await BrokerConnection.updateBrokerMetadata(connection.id, {
+      schwab_accounts: schwabAccounts
+    });
 
-    // Fetch transactions from ALL accounts, tagging each with the account identifier
+    const excludedAccountIdentifiers = new Set(
+      Array.isArray(connection.excluded_account_identifiers)
+        ? connection.excluded_account_identifiers
+        : []
+    );
+    const includedAccounts = accounts.filter(account =>
+      !excludedAccountIdentifiers.has(this.redactAccountNumber(account.accountNumber))
+    );
+
+    console.log(`[SCHWAB] Found ${accounts.length} accounts; syncing ${includedAccounts.length} and excluding ${accounts.length - includedAccounts.length}`);
+
+    // Fetch transactions only from included accounts, tagging each with the account identifier
     let allTransactions = [];
-    for (const account of accounts) {
+    for (const account of includedAccounts) {
       const redactedAccount = this.redactAccountNumber(account.accountNumber);
       console.log(`[SCHWAB] Fetching transactions for account ${redactedAccount}...`);
       try {

@@ -14,7 +14,8 @@ jest.mock('../../src/models/Trade', () => ({
 jest.mock('../../src/models/BrokerConnection', () => ({
   updateSyncLog: jest.fn(),
   updateSchwabTokens: jest.fn(),
-  updateStatus: jest.fn()
+  updateStatus: jest.fn(),
+  updateBrokerMetadata: jest.fn()
 }));
 
 jest.mock('../../src/services/analyticsCache', () => ({
@@ -36,6 +37,7 @@ jest.mock('../../src/utils/timezone', () => ({
 }));
 
 const Trade = require('../../src/models/Trade');
+const BrokerConnection = require('../../src/models/BrokerConnection');
 const db = require('../../src/config/database');
 const { parseCSV, parseIBKRRecords } = require('../../src/utils/csvParser');
 const { getUserTimezone } = require('../../src/utils/timezone');
@@ -46,6 +48,51 @@ const alpacaService = require('../../src/services/brokerSync/alpacaService');
 describe('broker sync duplicate protection', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  test('Schwab sync never fetches transactions from an excluded account', async () => {
+    const ensureTokenSpy = jest.spyOn(schwabService, 'ensureValidToken')
+      .mockResolvedValue({ accessToken: 'access-token', needsReauth: false });
+    const accountNumbersSpy = jest.spyOn(schwabService, 'getAccountNumbers')
+      .mockResolvedValue([
+        { accountNumber: '11111111', hashValue: 'ira-hash' },
+        { accountNumber: '22222222', hashValue: 'taxable-hash' }
+      ]);
+    const transactionsSpy = jest.spyOn(schwabService, 'getTransactions')
+      .mockResolvedValue([]);
+    const importSpy = jest.spyOn(schwabService, 'importTrades')
+      .mockResolvedValue({ imported: 0, skipped: 0, failed: 0, duplicates: 0 });
+
+    try {
+      await schwabService.syncTrades({
+        id: 'connection-1',
+        userId: 'user-1',
+        excluded_account_identifiers: ['****1111']
+      });
+
+      expect(transactionsSpy).toHaveBeenCalledTimes(1);
+      expect(transactionsSpy).toHaveBeenCalledWith(
+        'access-token',
+        'taxable-hash',
+        undefined,
+        undefined
+      );
+      expect(BrokerConnection.updateBrokerMetadata).toHaveBeenCalledWith(
+        'connection-1',
+        {
+          schwab_accounts: [
+            { account_identifier: '****1111' },
+            { account_identifier: '****2222' }
+          ]
+        }
+      );
+      expect(importSpy).toHaveBeenCalledWith('user-1', 'connection-1', []);
+    } finally {
+      ensureTokenSpy.mockRestore();
+      accountNumbersSpy.mockRestore();
+      transactionsSpy.mockRestore();
+      importSpy.mockRestore();
+    }
   });
 
   test('IBKR importTrades skips a duplicate trade repeated within the same sync batch', async () => {

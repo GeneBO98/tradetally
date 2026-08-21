@@ -342,8 +342,12 @@
     <ConnectionSettingsModal
       v-if="showSettingsModal"
       :connection="selectedConnection"
+      :schwab-accounts="schwabAccounts"
+      :accounts-loading="schwabAccountsLoading"
+      :accounts-error="schwabAccountsError"
       @close="showSettingsModal = false"
       @save="handleSettingsSave"
+      @refresh-accounts="refreshSchwabAccounts"
       :loading="store.loading"
     />
 
@@ -411,6 +415,9 @@ const showIBKRModal = ref(false)
 const showTrading212Modal = ref(false)
 const showSettingsModal = ref(false)
 const selectedConnection = ref(null)
+const schwabAccounts = ref([])
+const schwabAccountsLoading = ref(false)
+const schwabAccountsError = ref('')
 const successMessage = ref('')
 const showManualReviewModal = ref(false)
 const manualReviewItems = ref([])
@@ -594,7 +601,28 @@ function closeTrading212Modal() {
 
 function openSettingsModal(connection) {
   selectedConnection.value = connection
+  schwabAccounts.value = connection.schwab_accounts || []
+  schwabAccountsError.value = ''
   showSettingsModal.value = true
+
+  if (connection.brokerType === 'schwab') {
+    refreshSchwabAccounts()
+  }
+}
+
+async function refreshSchwabAccounts() {
+  if (!selectedConnection.value || selectedConnection.value.brokerType !== 'schwab') return
+
+  schwabAccountsLoading.value = true
+  schwabAccountsError.value = ''
+  try {
+    const result = await store.fetchConnectionAccounts(selectedConnection.value.id)
+    schwabAccounts.value = result.accounts || []
+  } catch (error) {
+    schwabAccountsError.value = error.response?.data?.error || 'Unable to load Schwab accounts'
+  } finally {
+    schwabAccountsLoading.value = false
+  }
 }
 
 async function handleIBKRSave(credentials) {

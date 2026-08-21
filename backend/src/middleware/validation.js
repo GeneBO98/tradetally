@@ -792,7 +792,8 @@ const schemas = {
     autoSyncEnabled: Joi.boolean(),
     syncFrequency: Joi.string().valid('manual', 'hourly', 'every_4_hours', 'every_6_hours', 'every_12_hours', 'daily'),
     syncTime: nullableString(10),
-    syncStartDate: nullableDate
+    syncStartDate: nullableDate,
+    excluded_account_identifiers: Joi.array().items(Joi.string().trim().max(50)).max(50)
   }).min(1),
 
   brokerSyncManualSync: Joi.object({

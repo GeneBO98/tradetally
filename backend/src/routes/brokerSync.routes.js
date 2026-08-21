@@ -37,6 +37,9 @@ router.get('/connections/:id', brokerSyncController.getConnection);
 // Get sync logs for a specific connection
 router.get('/connections/:id/logs', brokerSyncController.getSyncLogs);
 
+// Get broker accounts available for per-account sync settings
+router.get('/connections/:id/accounts', brokerSyncLimiter, brokerSyncController.getConnectionAccounts);
+
 // Add IBKR connection
 router.post('/connections/ibkr', brokerSyncLimiter, validate(schemas.brokerSyncIbkrConnection), brokerSyncController.addIBKRConnection);
 
