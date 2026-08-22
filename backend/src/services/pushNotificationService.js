@@ -106,6 +106,7 @@ class PushNotificationService {
             notification.priority = 5;
             notification.pushType = 'background';
             notification.expiry = Math.floor(Date.now() / 1000) + 60 * 60;
+            notification.collapseId = 'widget-refresh';
           } else {
             notification.alert = {
               title: notificationData.title,

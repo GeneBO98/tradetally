@@ -4,11 +4,16 @@ const cache = require('../utils/cache');
 const AnalyticsCache = require('./analyticsCache');
 const TradeQueries = require('./tradeQueries');
 const analyticsController = require('../controllers/analytics.controller');
+const pushNotificationService = require('./pushNotificationService');
 const { getDateInTimezone, getDayOfWeekInTimezone } = require('../utils/timezone');
 
 const DEFAULT_INTERVAL_MS = 15 * 60 * 1000;
 const DEFAULT_ACTIVE_DAYS = 30;
 const DEFAULT_USER_LIMIT = 100;
+// Background pushes are best-effort and may be throttled by iOS when sent too
+// frequently. Keep warming server caches every 15 minutes, but wake a given
+// user's widget at most twice an hour by default.
+const DEFAULT_WIDGET_REFRESH_PUSH_INTERVAL_MS = 30 * 60 * 1000;
 const DASHBOARD_TTL_MS = 24 * 60 * 60 * 1000;
 const LOG_PREFIX = '[DASHBOARD-CACHE-WARMER]';
 
@@ -78,7 +83,12 @@ class DashboardCacheWarmer extends IntervalScheduler {
 
     this.activeDays = positiveInteger(process.env.DASHBOARD_CACHE_WARM_ACTIVE_DAYS, DEFAULT_ACTIVE_DAYS);
     this.userLimit = positiveInteger(process.env.DASHBOARD_CACHE_WARM_USER_LIMIT, DEFAULT_USER_LIMIT);
+    this.widgetRefreshPushIntervalMs = positiveInteger(
+      process.env.WIDGET_REFRESH_PUSH_INTERVAL_MS,
+      DEFAULT_WIDGET_REFRESH_PUSH_INTERVAL_MS
+    );
     this.userOffset = 0;
+    this.lastWidgetRefreshPushAt = new Map();
     this.lastSummary = null;
   }
 
@@ -115,9 +125,40 @@ class DashboardCacheWarmer extends IntervalScheduler {
     return cacheKey;
   }
 
+  async wakeWidgetIfDue(userId, now = Date.now()) {
+    const lastPushAt = this.lastWidgetRefreshPushAt.get(userId);
+    if (lastPushAt !== undefined && now - lastPushAt < this.widgetRefreshPushIntervalMs) {
+      return { attempted: false, delivered: false };
+    }
+
+    // Record before awaiting APNs so overlapping scheduler invocations cannot
+    // send duplicate background pushes to the same device.
+    this.lastWidgetRefreshPushAt.set(userId, now);
+
+    try {
+      const result = await pushNotificationService.sendBackgroundRefresh(
+        userId,
+        'dashboard_cache_warmed'
+      );
+      return {
+        attempted: true,
+        delivered: result.success === true,
+        reason: result.reason || result.error
+      };
+    } catch (error) {
+      return { attempted: true, delivered: false, reason: error.message };
+    }
+  }
+
   async execute() {
     const users = await this.getActiveUsers();
-    const summary = { users: users.length, warmed: 0, errors: 0 };
+    const summary = {
+      users: users.length,
+      warmed: 0,
+      errors: 0,
+      refreshPushesAttempted: 0,
+      refreshPushesDelivered: 0
+    };
 
     // A small bounded batch prevents a restart from creating a burst of
     // expensive analytics and optional AI calls.
@@ -126,11 +167,21 @@ class DashboardCacheWarmer extends IntervalScheduler {
       const results = await Promise.allSettled(batch.map(async user => {
         await this.warmDashboard(user);
         await getRecommendationSummary(user.id);
+        return this.wakeWidgetIfDue(user.id);
       }));
 
       for (const result of results) {
         if (result.status === 'fulfilled') {
           summary.warmed++;
+          const refresh = await result.value;
+          if (refresh.attempted) {
+            summary.refreshPushesAttempted++;
+            if (refresh.delivered) {
+              summary.refreshPushesDelivered++;
+            } else {
+              console.warn(`${LOG_PREFIX} Widget refresh push not delivered: ${refresh.reason || 'unknown'}`);
+            }
+          }
         } else {
           summary.errors++;
           console.error(`${LOG_PREFIX} User warm failed:`, result.reason?.message || result.reason);
@@ -140,7 +191,10 @@ class DashboardCacheWarmer extends IntervalScheduler {
 
     this.lastRunDate = new Date().toISOString();
     this.lastSummary = summary;
-    console.log(`${LOG_PREFIX} Complete - warmed: ${summary.warmed}, errors: ${summary.errors}`);
+    console.log(
+      `${LOG_PREFIX} Complete - warmed: ${summary.warmed}, errors: ${summary.errors}, ` +
+      `widget pushes: ${summary.refreshPushesDelivered}/${summary.refreshPushesAttempted}`
+    );
     return summary;
   }
 

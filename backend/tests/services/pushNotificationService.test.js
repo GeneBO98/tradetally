@@ -163,6 +163,7 @@ describe('pushNotificationService', () => {
       contentAvailable: 1,
       priority: 5,
       pushType: 'background',
+      collapseId: 'widget-refresh',
       topic: 'com.tradetally.ios'
     }));
     expect(notification.alert).toBeUndefined();
