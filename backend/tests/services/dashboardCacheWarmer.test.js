@@ -1,0 +1,99 @@
+jest.mock('../../src/config/database', () => ({
+  query: jest.fn()
+}));
+
+jest.mock('../../src/utils/cache', () => ({
+  get: jest.fn(),
+  set: jest.fn()
+}));
+
+jest.mock('../../src/services/analyticsCache', () => ({
+  get: jest.fn(),
+  set: jest.fn()
+}));
+
+jest.mock('../../src/services/tradeQueries', () => ({
+  cacheKey: jest.fn(),
+  getAnalytics: jest.fn()
+}));
+
+jest.mock('../../src/controllers/analytics.controller', () => ({
+  getRecommendationSummary: jest.fn()
+}));
+
+jest.mock('../../src/services/pushNotificationService', () => ({
+  sendBackgroundRefresh: jest.fn()
+}));
+
+const db = require('../../src/config/database');
+const cache = require('../../src/utils/cache');
+const AnalyticsCache = require('../../src/services/analyticsCache');
+const TradeQueries = require('../../src/services/tradeQueries');
+const analyticsController = require('../../src/controllers/analytics.controller');
+const pushNotificationService = require('../../src/services/pushNotificationService');
+const dashboardCacheWarmer = require('../../src/services/dashboardCacheWarmer');
+
+describe('dashboardCacheWarmer', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    dashboardCacheWarmer.lastWidgetRefreshPushAt.clear();
+  });
+
+  test('computes the current Monday-through-today range in the user timezone', () => {
+    const range = dashboardCacheWarmer.currentTradingWeekRange(
+      new Date('2026-08-19T15:00:00.000Z'),
+      'America/Chicago'
+    );
+
+    expect(range).toEqual({ startDate: '2026-08-17', endDate: '2026-08-19' });
+  });
+
+  test('warms dashboard analytics and recommendation summaries for active users', async () => {
+    db.query.mockResolvedValue({ rows: [{ id: 'user-1', timezone: 'UTC' }] });
+    cache.get.mockReturnValue(null);
+    AnalyticsCache.get.mockResolvedValue(null);
+    AnalyticsCache.set.mockResolvedValue(undefined);
+    TradeQueries.cacheKey.mockReturnValue('analytics:user_user-1:range');
+    TradeQueries.getAnalytics.mockResolvedValue({ summary: { totalTrades: 3 } });
+    analyticsController.getRecommendationSummary.mockImplementation((_req, res) => (
+      res.json({ summaries: [], tradesAnalyzed: 3 })
+    ));
+    pushNotificationService.sendBackgroundRefresh.mockResolvedValue({ success: true });
+
+    const summary = await dashboardCacheWarmer.execute();
+
+    expect(TradeQueries.getAnalytics).toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({ startDate: expect.any(String), endDate: expect.any(String) })
+    );
+    expect(AnalyticsCache.set).toHaveBeenCalledWith(
+      'user-1',
+      'analytics:user_user-1:range',
+      expect.any(Object),
+      1440
+    );
+    expect(analyticsController.getRecommendationSummary).toHaveBeenCalled();
+    expect(pushNotificationService.sendBackgroundRefresh).toHaveBeenCalledWith(
+      'user-1',
+      'dashboard_cache_warmed'
+    );
+    expect(summary).toEqual({
+      users: 1,
+      warmed: 1,
+      errors: 0,
+      refreshPushesAttempted: 1,
+      refreshPushesDelivered: 1
+    });
+  });
+
+  test('does not wake the same widget more often than the configured interval', async () => {
+    pushNotificationService.sendBackgroundRefresh.mockResolvedValue({ success: true });
+
+    const first = await dashboardCacheWarmer.wakeWidgetIfDue('user-1', 1_000_000);
+    const second = await dashboardCacheWarmer.wakeWidgetIfDue('user-1', 1_000_001);
+
+    expect(first).toEqual({ attempted: true, delivered: true, reason: undefined });
+    expect(second).toEqual({ attempted: false, delivered: false });
+    expect(pushNotificationService.sendBackgroundRefresh).toHaveBeenCalledTimes(1);
+  });
+});

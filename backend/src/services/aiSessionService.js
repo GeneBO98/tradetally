@@ -1507,7 +1507,7 @@ Please provide a helpful, specific response to the user's question. Reference th
     }
 
     // Local and Custom OpenAI-compatible providers may be keyless.
-    const apiKeyOptionalProviders = ['lmstudio', 'ollama', 'local', 'custom'];
+    const apiKeyOptionalProviders = ['lmstudio', 'ollama', 'local', 'custom', 'codex_cli', 'claude_cli'];
     const defaultUrlProviders = ['lmstudio', 'ollama', 'local'];
     const isApiKeyOptional = apiKeyOptionalProviders.includes(provider);
 

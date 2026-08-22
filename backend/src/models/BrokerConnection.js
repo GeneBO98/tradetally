@@ -136,14 +136,15 @@ class BrokerConnection {
         INSERT INTO broker_connections (
           user_id, broker_type, connection_status,
           schwab_access_token, schwab_refresh_token, schwab_token_expires_at, schwab_account_id,
-          account_label, auto_sync_enabled, sync_frequency, sync_time, sync_start_date
+          broker_metadata, account_label, auto_sync_enabled, sync_frequency, sync_time, sync_start_date
         )
-        VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         ON CONFLICT (user_id) WHERE broker_type = 'schwab' DO UPDATE SET
           schwab_access_token = EXCLUDED.schwab_access_token,
           schwab_refresh_token = EXCLUDED.schwab_refresh_token,
           schwab_token_expires_at = EXCLUDED.schwab_token_expires_at,
           schwab_account_id = EXCLUDED.schwab_account_id,
+          broker_metadata = COALESCE(broker_connections.broker_metadata, '{}'::jsonb) || EXCLUDED.broker_metadata,
           account_label = EXCLUDED.account_label,
           auto_sync_enabled = EXCLUDED.auto_sync_enabled,
           sync_frequency = EXCLUDED.sync_frequency,
@@ -156,7 +157,7 @@ class BrokerConnection {
       `;
       params = [
         userId, brokerType, encryptedSchwabAccess, encryptedSchwabRefresh,
-        schwabTokenExpiresAt, schwabAccountId, accountLabel,
+        schwabTokenExpiresAt, schwabAccountId, JSON.stringify(brokerMetadata || {}), accountLabel,
         autoSyncEnabled, syncFrequency, syncTime, syncStartDate
       ];
     } else if (brokerType === 'trading212') {
@@ -472,6 +473,24 @@ class BrokerConnection {
   }
 
   /**
+   * Merge broker-specific public settings into the connection metadata.
+   */
+  static async updateBrokerMetadata(connectionId, metadata) {
+    const query = `
+      UPDATE broker_connections
+      SET broker_metadata = COALESCE(broker_metadata, '{}'::jsonb) || $2::jsonb,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+      RETURNING *
+    `;
+
+    const result = await db.query(query, [connectionId, JSON.stringify(metadata || {})]);
+    if (result.rows.length === 0) return null;
+
+    return this.formatConnection(result.rows[0], false);
+  }
+
+  /**
    * Update Schwab OAuth tokens
    */
   static async updateSchwabTokens(connectionId, accessToken, refreshToken, expiresAt) {
@@ -684,8 +703,15 @@ class BrokerConnection {
         connection.ibkrFlexToken = encryptionService.decrypt(row.ibkr_flex_token);
       }
     } else if (row.broker_type === 'schwab') {
+      const brokerMetadata = row.broker_metadata || {};
       connection.schwabAccountId = row.schwab_account_id;
       connection.schwabTokenExpiresAt = row.schwab_token_expires_at;
+      connection.schwab_accounts = Array.isArray(brokerMetadata.schwab_accounts)
+        ? brokerMetadata.schwab_accounts
+        : [];
+      connection.excluded_account_identifiers = Array.isArray(brokerMetadata.excluded_account_identifiers)
+        ? brokerMetadata.excluded_account_identifiers
+        : [];
       // Only include decrypted tokens if explicitly requested
       if (includeCredentials) {
         if (row.schwab_access_token) {

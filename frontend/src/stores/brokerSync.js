@@ -156,6 +156,16 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     }
   }
 
+  async function fetchConnectionAccounts(connectionId) {
+    try {
+      const response = await api.get(`/broker-sync/connections/${connectionId}/accounts`)
+      return response.data.data
+    } catch (err) {
+      console.error('[BROKER-SYNC] Failed to fetch connection accounts:', err)
+      throw err
+    }
+  }
+
   async function deleteConnection(connectionId) {
     loading.value = true
     error.value = null
@@ -320,6 +330,7 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     initSchwabOAuth,
     initBrokerOAuth,
     updateConnection,
+    fetchConnectionAccounts,
     deleteConnection,
     deleteBrokerTrades,
     triggerSync,

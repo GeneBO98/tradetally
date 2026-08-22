@@ -36,23 +36,9 @@ class ChartService {
     const providerErrors = [];
     let transientProviderFailure = false;
 
-    // A configured provider always wins. At present FMP exposes an explicit
-    // commodities/futures chart method; providers without that capability are
-    // skipped rather than receiving an ambiguous root such as ES or CL.
-    if (finnhub.isConfigured() && typeof finnhub.getFuturesTradeChartData === 'function') {
-      try {
-        const chartData = await finnhub.getFuturesTradeChartData(futuresRoot, trade, userId, resolution);
-        chartData.tick_size = chartData.tick_size ?? trade.tick_size ?? getFuturesTickSize(futuresRoot);
-        chartData.point_value = chartData.point_value ?? trade.point_value ?? getFuturesPointValue(futuresRoot);
-        return chartData;
-      } catch (error) {
-        transientProviderFailure ||= error.isTransientProviderFailure === true;
-        providerErrors.push(`${finnhub.displayName}: ${error.message}`);
-        console.warn(`[CHART] ${finnhub.displayName} futures data unavailable for ${trade.symbol}: ${error.message}`);
-      }
-    }
-
-    // Databento remains the preferred fallback when the operator configured it.
+    // Databento is the authoritative futures chart provider whenever the
+    // operator configured it. Other providers are only fallbacks when the
+    // Databento request cannot serve the trade.
     if (databento.isConfigured()) {
       try {
         return await replayDataService.getFuturesTradeChartData(trade, resolution);
@@ -63,11 +49,36 @@ class ChartService {
       }
     }
 
+    // FMP exposes an explicit commodities/futures chart method. Providers
+    // without that capability are skipped rather than receiving an ambiguous
+    // root such as ES or CL.
+    if (finnhub.isConfigured() && typeof finnhub.getFuturesTradeChartData === 'function') {
+      try {
+        const chartData = await finnhub.getFuturesTradeChartData(futuresRoot, trade, userId, resolution);
+        chartData.tick_size = chartData.tick_size ?? trade.tick_size ?? getFuturesTickSize(futuresRoot);
+        chartData.point_value = chartData.point_value ?? trade.point_value ?? getFuturesPointValue(futuresRoot);
+        if (providerErrors.length) {
+          chartData.fallback = true;
+          chartData.fallback_reason = providerErrors.join('; ');
+        }
+        return chartData;
+      } catch (error) {
+        transientProviderFailure ||= error.isTransientProviderFailure === true;
+        providerErrors.push(`${finnhub.displayName}: ${error.message}`);
+        console.warn(`[CHART] ${finnhub.displayName} futures data unavailable for ${trade.symbol}: ${error.message}`);
+      }
+    }
+
     // Yahoo is deliberately last and self-hosted-only: it provides a no-cost
     // continuous-contract chart without displacing configured paid providers.
     if (!billingEnabled && yahooFinance.isEnabled()) {
       try {
-        return await yahooFinance.getFuturesTradeChartData(futuresRoot, trade, resolution);
+        const chartData = await yahooFinance.getFuturesTradeChartData(futuresRoot, trade, resolution);
+        if (providerErrors.length) {
+          chartData.fallback = true;
+          chartData.fallback_reason = providerErrors.join('; ');
+        }
+        return chartData;
       } catch (error) {
         transientProviderFailure ||= error.isTransientProviderFailure === true;
         providerErrors.push(`Yahoo Finance: ${error.message}`);

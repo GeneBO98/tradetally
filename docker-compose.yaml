@@ -100,6 +100,7 @@ services:
       ALPACA_API_KEY_ID: ${ALPACA_API_KEY_ID:-}
       ALPACA_API_SECRET_KEY: ${ALPACA_API_SECRET_KEY:-}
       DATABENTO_API_KEY: ${DATABENTO_API_KEY:-}
+      YAHOO_FINANCE_ENABLED: ${YAHOO_FINANCE_ENABLED:-true}
       COINGECKO_API_KEY: ${COINGECKO_API_KEY:-}
       ENABLE_AI_CUSIP_RESOLUTION: ${ENABLE_AI_CUSIP_RESOLUTION:-false}
       # Billing and subscriptions
@@ -127,7 +128,9 @@ services:
       ENABLE_PUSH_NOTIFICATIONS: ${ENABLE_PUSH_NOTIFICATIONS:-false}
       APNS_KEY_ID: ${APNS_KEY_ID:-}
       APNS_TEAM_ID: ${APNS_TEAM_ID:-}
-      APNS_KEY_PATH: ${APNS_KEY_PATH:-}
+      # The host key path is mounted below; the container always reads the
+      # stable in-container path.
+      APNS_KEY_PATH: /run/secrets/tradetally-apns-key.p8
       APNS_BUNDLE_ID: ${APNS_BUNDLE_ID:-com.tradetally.ios}
       # Database Configuration
       RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
@@ -147,6 +150,8 @@ services:
       ENABLE_DIVIDEND_SCHEDULER: ${ENABLE_DIVIDEND_SCHEDULER:-true}
       ENABLE_EARNINGS_SCHEDULER: ${ENABLE_EARNINGS_SCHEDULER:-true}
       ENABLE_NEWS_SCHEDULER: ${ENABLE_NEWS_SCHEDULER:-true}
+      ENABLE_DASHBOARD_CACHE_WARMER: ${ENABLE_DASHBOARD_CACHE_WARMER:-true}
+      WIDGET_REFRESH_PUSH_INTERVAL_MS: ${WIDGET_REFRESH_PUSH_INTERVAL_MS:-1800000}
       ENABLE_STOCK_SCANNER: ${ENABLE_STOCK_SCANNER:-true}
       ENABLE_ENRICHMENT_CACHE_CLEANUP: ${ENABLE_ENRICHMENT_CACHE_CLEANUP:-true}
       ENABLE_ACTIVITY_TRACKING: ${ENABLE_ACTIVITY_TRACKING:-true}
@@ -182,6 +187,7 @@ services:
       - ./backend/src/logs:/app/backend/src/logs
       - ./backend/src/data:/app/backend/src/data
       - ./backend/uploads:/app/backend/uploads
+      - ${APNS_KEY_PATH:-/dev/null}:/run/secrets/tradetally-apns-key.p8:ro
     networks:
       - trader-network
     restart: unless-stopped

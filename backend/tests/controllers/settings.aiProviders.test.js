@@ -43,7 +43,7 @@ function createResponse() {
   return res;
 }
 
-describe('Custom AI provider settings', () => {
+describe('AI provider settings', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     validateAiProviderUrl.mockResolvedValue(new URL('https://provider.example/v1'));
@@ -292,6 +292,80 @@ describe('Custom AI provider settings', () => {
       apiUrl: '',
       model: 'new-model'
     });
+  });
+
+  test.each(['codex_cli', 'claude_cli'])('accepts %s admin defaults without a key or URL', async provider => {
+    const req = {
+      user: { role: 'admin' },
+      body: {
+        aiProvider: provider,
+        aiApiKey: '',
+        aiApiUrl: '',
+        aiModel: '',
+        aiClassifierEnabled: true,
+        aiClassifierProvider: provider,
+        aiClassifierApiKey: '',
+        aiClassifierApiUrl: '',
+        aiClassifierModel: ''
+      }
+    };
+    const res = createResponse();
+
+    await settingsController.updateAdminAISettings(req, res, jest.fn());
+
+    expect(adminSettingsService.updateDefaultAISettings).toHaveBeenCalledWith(expect.objectContaining({
+      provider,
+      apiKey: '',
+      apiUrl: '',
+      classifierProvider: provider,
+      classifierApiKey: '',
+      classifierApiUrl: ''
+    }));
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  test('allows an admin to select a CLI provider for personal analysis', async () => {
+    User.updateSettings.mockResolvedValue({
+      ai_provider: 'codex_cli',
+      ai_api_key: null,
+      ai_api_url: null,
+      ai_model: null
+    });
+    const req = {
+      user: { id: 'admin-1', role: 'admin' },
+      body: {
+        aiProvider: 'codex_cli',
+        aiApiKey: '',
+        aiApiUrl: '',
+        aiModel: ''
+      }
+    };
+    const res = createResponse();
+
+    await settingsController.updateAIProviderSettings(req, res, jest.fn());
+
+    expect(User.updateSettings).toHaveBeenCalledWith('admin-1', expect.objectContaining({
+      ai_provider: 'codex_cli'
+    }));
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  test('prevents regular users from selecting backend-host CLI credentials', async () => {
+    const req = {
+      user: { id: 'user-1', role: 'user' },
+      body: {
+        aiProvider: 'claude_cli',
+        aiApiKey: '',
+        aiApiUrl: '',
+        aiModel: ''
+      }
+    };
+    const res = createResponse();
+
+    await settingsController.updateAIProviderSettings(req, res, jest.fn());
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(User.updateSettings).not.toHaveBeenCalled();
   });
 
 });

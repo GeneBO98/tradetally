@@ -75,6 +75,13 @@
                     </div>
 
                     <div
+                        v-if="HOST_CLI_AI_PROVIDERS.includes(form.provider)"
+                        class="rounded-lg border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-primary-800 dark:border-primary-800 dark:bg-primary-900/20 dark:text-primary-200"
+                    >
+                        Runs the authenticated CLI installed on the TradeTally backend host.
+                    </div>
+
+                    <div
                         v-if="URL_REQUIRED_AI_PROVIDERS.includes(form.provider)"
                     >
                         <label for="adminCusipAiUrl" class="label"
@@ -110,7 +117,7 @@
                     <div
                         v-if="
                             form.provider &&
-                            form.provider !== 'local'
+                            !API_KEY_HIDDEN_AI_PROVIDERS.includes(form.provider)
                         "
                     >
                         <label
@@ -166,6 +173,8 @@
 import BaseSelect from "@/components/common/BaseSelect.vue";
 import {
     AI_PROVIDER_OPTIONS,
+    API_KEY_HIDDEN_AI_PROVIDERS,
+    HOST_CLI_AI_PROVIDERS,
     OPTIONAL_API_KEY_AI_PROVIDERS,
     URL_REQUIRED_AI_PROVIDERS,
 } from "@/utils/aiProviderOptions";
@@ -206,6 +215,9 @@ function getAdminCusipModelPlaceholder() {
             return "deepseek-chat";
         case "kimi":
             return "moonshot-v1-8k";
+        case "codex_cli":
+        case "claude_cli":
+            return "Leave blank for CLI default";
         case "ollama":
             return "llama3.1";
         case "lmstudio":

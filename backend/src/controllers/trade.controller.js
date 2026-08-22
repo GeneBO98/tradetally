@@ -1079,6 +1079,12 @@ const tradeController = {
         return res.status(404).json({ error: 'Trade not found or access denied' });
       }
 
+      // Trade.findById also permits authenticated users to view public trades.
+      // Destructive mutations must require direct ownership.
+      if (String(trade.user_id) !== String(req.user.id)) {
+        return res.status(404).json({ error: 'Trade not found or access denied' });
+      }
+
       // Delete the trade
       const result = await Trade.delete(req.params.id, req.user.id);
       
@@ -1101,6 +1107,11 @@ const tradeController = {
       const trade = await Trade.findById(req.params.id, req.user.id);
 
       if (!trade) {
+        return res.status(404).json({ error: 'Trade not found or access denied' });
+      }
+
+      // Public visibility grants read access only; splitting requires ownership.
+      if (String(trade.user_id) !== String(req.user.id)) {
         return res.status(404).json({ error: 'Trade not found or access denied' });
       }
 
@@ -3276,11 +3287,19 @@ const tradeController = {
         return res.json(cached);
       }
 
+      const persisted = await AnalyticsCache.get(req.user.id, cacheKey);
+      if (persisted) {
+        console.log('[CACHE] Persistent analytics cache hit for user:', req.user.id);
+        cache.set(cacheKey, persisted, 86400000);
+        return res.json(persisted);
+      }
+
       console.log('[CACHE] Analytics cache miss for user:', req.user.id);
       const analytics = await TradeQueries.getAnalytics(req.user.id, filters);
 
       // 24h TTL — AnalyticsCache.invalidate() clears on trade mutations.
       cache.set(cacheKey, analytics, 86400000);
+      await AnalyticsCache.set(req.user.id, cacheKey, analytics, 24 * 60);
 
       res.json(analytics);
     } catch (error) {

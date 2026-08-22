@@ -10,6 +10,8 @@ class AIService {
     this.providers = {
       gemini: this.useGemini.bind(this),
       claude: this.useClaude.bind(this),
+      codex_cli: this.useCli.bind(this),
+      claude_cli: this.useCli.bind(this),
       openai: this.useOpenAI.bind(this),
       deepseek: this.useDeepSeek.bind(this),
       kimi: this.useKimi.bind(this),
@@ -157,6 +159,10 @@ class AIService {
         return !!settings.apiKey && settings.apiKey.trim() !== '';
       case 'claude':
         return !!settings.apiKey && settings.apiKey.trim() !== '';
+      case 'codex_cli':
+      case 'claude_cli':
+        // Installation and authentication are checked when the CLI is invoked.
+        return true;
       case 'openai':
         return !!settings.apiKey && settings.apiKey.trim() !== '';
       case 'deepseek':
@@ -289,6 +295,13 @@ Your response:`;
     });
 
     return response.content[0].text;
+  }
+
+  async useCli(prompt, settings, options = {}) {
+    return AIProvider.generateResponse(prompt, {
+      provider: settings.provider,
+      modelName: settings.model
+    }, options);
   }
 
   async useOpenAI(prompt, settings, options = {}) {

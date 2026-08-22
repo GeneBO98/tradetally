@@ -32,6 +32,16 @@ function redactAccountNumber(accountNumber) {
   return `****${value.slice(-4)}`;
 }
 
+function normalizeExcludedAccountIdentifiers(value) {
+  if (!Array.isArray(value)) return [];
+
+  return [...new Set(
+    value
+      .map(identifier => String(identifier || '').trim())
+      .filter(identifier => identifier.length > 0 && identifier.length <= 50)
+  )].slice(0, 50);
+}
+
 // Send a consistent 403 when a free user hits a Pro-only broker-sync action.
 function sendProRequired(res, check) {
   return res.status(403).json({
@@ -445,6 +455,12 @@ const brokerSyncController = {
         schwabRefreshToken: refresh_token,
         schwabTokenExpiresAt: expiresAt,
         schwabAccountId: accountNumber,
+        brokerMetadata: {
+          schwab_accounts: (accountsResponse.data || [])
+            .map(account => redactAccountNumber(account?.securitiesAccount?.accountNumber))
+            .filter(Boolean)
+            .map(accountIdentifier => ({ account_identifier: accountIdentifier }))
+        },
         autoSyncEnabled: false,
         syncFrequency: 'daily'
       });
@@ -588,13 +604,83 @@ const brokerSyncController = {
   },
 
   /**
+   * Refresh the list of Schwab accounts available to this connection.
+   */
+  async getConnectionAccounts(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const { id } = req.params;
+      const connection = await BrokerConnection.findById(id, true);
+
+      if (!connection || connection.userId !== userId) {
+        return res.status(404).json({
+          success: false,
+          error: 'Broker connection not found'
+        });
+      }
+
+      if (connection.brokerType !== 'schwab') {
+        return res.status(400).json({
+          success: false,
+          error: 'Account exclusions are currently available for Schwab connections only'
+        });
+      }
+
+      const { accessToken, needsReauth } = await schwabService.ensureValidToken(connection);
+      if (needsReauth) {
+        return res.status(409).json({
+          success: false,
+          error: 'Schwab authentication expired. Please reconnect your account.'
+        });
+      }
+
+      const accounts = await schwabService.getAccountNumbers(accessToken);
+      const accountIdentifiers = [...new Set(
+        accounts.map(account => redactAccountNumber(account.accountNumber)).filter(Boolean)
+      )];
+      const schwabAccounts = accountIdentifiers.map(accountIdentifier => ({
+        account_identifier: accountIdentifier
+      }));
+
+      await BrokerConnection.updateBrokerMetadata(id, {
+        schwab_accounts: schwabAccounts
+      });
+
+      const excludedAccountIdentifiers = normalizeExcludedAccountIdentifiers(
+        connection.excluded_account_identifiers
+      );
+
+      return res.json({
+        success: true,
+        data: {
+          accounts: schwabAccounts.map(account => ({
+            ...account,
+            excluded: excludedAccountIdentifiers.includes(account.account_identifier)
+          })),
+          excluded_account_identifiers: excludedAccountIdentifiers
+        }
+      });
+    } catch (error) {
+      logger.logError('Error fetching broker connection accounts:', error);
+      next(error);
+    }
+  },
+
+  /**
    * Update broker connection settings
    */
   async updateConnection(req, res, next) {
     try {
       const userId = req.user.id;
       const { id } = req.params;
-      const { accountLabel, autoSyncEnabled, syncFrequency, syncTime, syncStartDate } = req.body;
+      const {
+        accountLabel,
+        autoSyncEnabled,
+        syncFrequency,
+        syncTime,
+        syncStartDate,
+        excluded_account_identifiers: excludedAccountIdentifiers
+      } = req.body;
 
       // Verify ownership
       const connection = await BrokerConnection.findById(id, false);
@@ -605,20 +691,43 @@ const brokerSyncController = {
         });
       }
 
+      if (
+        Object.prototype.hasOwnProperty.call(req.body, 'excluded_account_identifiers') &&
+        connection.brokerType !== 'schwab'
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: 'Account exclusions are currently available for Schwab connections only'
+        });
+      }
+
       // Update settings. syncStartDate and accountLabel may be explicitly null
       // (meaning "all time" / "clear label"), so only forward them when present.
-      const updates = {
-        autoSyncEnabled,
-        syncFrequency,
-        syncTime
-      };
+      const updates = {};
+      if (Object.prototype.hasOwnProperty.call(req.body, 'autoSyncEnabled')) {
+        updates.autoSyncEnabled = autoSyncEnabled;
+      }
+      if (Object.prototype.hasOwnProperty.call(req.body, 'syncFrequency')) {
+        updates.syncFrequency = syncFrequency;
+      }
+      if (Object.prototype.hasOwnProperty.call(req.body, 'syncTime')) {
+        updates.syncTime = syncTime;
+      }
       if (Object.prototype.hasOwnProperty.call(req.body, 'syncStartDate')) {
         updates.syncStartDate = syncStartDate;
       }
       if (Object.prototype.hasOwnProperty.call(req.body, 'accountLabel')) {
         updates.accountLabel = accountLabel;
       }
-      const updated = await BrokerConnection.update(id, updates);
+      if (Object.keys(updates).length > 0) {
+        await BrokerConnection.update(id, updates);
+      }
+
+      if (Object.prototype.hasOwnProperty.call(req.body, 'excluded_account_identifiers')) {
+        await BrokerConnection.updateBrokerMetadata(id, {
+          excluded_account_identifiers: normalizeExcludedAccountIdentifiers(excludedAccountIdentifiers)
+        });
+      }
 
       // Recalculate next sync time
       if (autoSyncEnabled && syncFrequency !== 'manual') {

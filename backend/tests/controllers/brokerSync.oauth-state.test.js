@@ -8,6 +8,7 @@ jest.mock('../../src/config/database', () => ({
 jest.mock('../../src/models/BrokerConnection', () => ({
   create: jest.fn().mockResolvedValue({ id: 'connection-1' }),
   updateStatus: jest.fn().mockResolvedValue(),
+  updateBrokerMetadata: jest.fn().mockResolvedValue(),
   findById: jest.fn().mockResolvedValue({ id: 'connection-1', brokerType: 'tradestation' })
 }));
 jest.mock('axios', () => ({
@@ -19,6 +20,7 @@ const db = require('../../src/config/database');
 const BrokerConnection = require('../../src/models/BrokerConnection');
 const axios = require('axios');
 const brokerSyncController = require('../../src/controllers/brokerSync.controller');
+const schwabService = require('../../src/services/brokerSync/schwabService');
 const tradestationService = require('../../src/services/brokerSync/tradestationService');
 
 function createRes() {
@@ -196,5 +198,89 @@ describe('Schwab OAuth state — server-side binding', () => {
       })
     );
     expect(res.redirectedTo).toBe('tradetally://broker-sync?success=tradestation');
+  });
+});
+
+describe('Schwab account exclusions', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test('returns only redacted account identifiers and marks excluded accounts', async () => {
+    BrokerConnection.findById.mockResolvedValueOnce({
+      id: 'connection-1',
+      userId: 'user-1',
+      brokerType: 'schwab',
+      excluded_account_identifiers: ['****1111']
+    });
+    const ensureTokenSpy = jest.spyOn(schwabService, 'ensureValidToken')
+      .mockResolvedValue({ accessToken: 'access-token', needsReauth: false });
+    const accountsSpy = jest.spyOn(schwabService, 'getAccountNumbers')
+      .mockResolvedValue([
+        { accountNumber: '11111111', hashValue: 'hash-1' },
+        { accountNumber: '22222222', hashValue: 'hash-2' }
+      ]);
+    const req = { user: { id: 'user-1' }, params: { id: 'connection-1' } };
+    const res = createRes();
+    const next = jest.fn();
+
+    try {
+      await brokerSyncController.getConnectionAccounts(req, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.payload.data).toEqual({
+        accounts: [
+          { account_identifier: '****1111', excluded: true },
+          { account_identifier: '****2222', excluded: false }
+        ],
+        excluded_account_identifiers: ['****1111']
+      });
+      expect(JSON.stringify(res.payload)).not.toContain('11111111');
+      expect(JSON.stringify(res.payload)).not.toContain('hash-1');
+      expect(BrokerConnection.updateBrokerMetadata).toHaveBeenCalledWith(
+        'connection-1',
+        {
+          schwab_accounts: [
+            { account_identifier: '****1111' },
+            { account_identifier: '****2222' }
+          ]
+        }
+      );
+    } finally {
+      ensureTokenSpy.mockRestore();
+      accountsSpy.mockRestore();
+    }
+  });
+
+  test('normalizes and saves exclusions without changing unrelated settings', async () => {
+    BrokerConnection.findById
+      .mockResolvedValueOnce({
+        id: 'connection-1',
+        userId: 'user-1',
+        brokerType: 'schwab',
+        excluded_account_identifiers: []
+      })
+      .mockResolvedValueOnce({
+        id: 'connection-1',
+        userId: 'user-1',
+        brokerType: 'schwab',
+        excluded_account_identifiers: ['****1111']
+      });
+    const req = {
+      user: { id: 'user-1' },
+      params: { id: 'connection-1' },
+      body: { excluded_account_identifiers: [' ****1111 ', '****1111', ''] }
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await brokerSyncController.updateConnection(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(BrokerConnection.updateBrokerMetadata).toHaveBeenCalledWith(
+      'connection-1',
+      { excluded_account_identifiers: ['****1111'] }
+    );
+    expect(res.payload.data.excluded_account_identifiers).toEqual(['****1111']);
   });
 });

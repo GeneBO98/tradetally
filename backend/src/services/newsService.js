@@ -19,6 +19,20 @@ const CACHE_MAX_AGE_MS = 60 * 60 * 1000;
 const API_DELAY_MS = 300;
 
 class NewsService {
+  static newsChanged(previousItems, nextItems) {
+    const previous = Array.isArray(previousItems) ? previousItems : [];
+    const next = Array.isArray(nextItems) ? nextItems : [];
+
+    if (previous.length !== next.length) return true;
+
+    return previous.some((item, index) => {
+      const candidate = next[index] || {};
+      return item.id !== candidate.id ||
+        item.datetime !== candidate.datetime ||
+        item.headline !== candidate.headline;
+    });
+  }
+
   static isUnsupportedNewsSymbol(symbol) {
     const normalized = typeof symbol === 'string' ? symbol.trim().toUpperCase() : '';
     if (!normalized) return true;
@@ -48,6 +62,36 @@ class NewsService {
 
     const result = await db.query(query);
     return result.rows.map(row => row.symbol);
+  }
+
+  /**
+   * Find users whose open positions or watchlists contain any supplied symbol.
+   * The scheduler uses this to send one silent refresh per affected account,
+   * rather than one push per headline or symbol.
+   */
+  static async getUserIdsTrackingSymbols(symbols) {
+    const normalized = [...new Set((symbols || [])
+      .map(symbol => String(symbol).trim().toUpperCase())
+      .filter(Boolean))];
+    if (normalized.length === 0) return [];
+
+    const result = await db.query(
+      `SELECT DISTINCT user_id FROM (
+         SELECT t.user_id
+         FROM trades t
+         WHERE t.exit_price IS NULL
+           AND UPPER(t.symbol) = ANY($1::text[])
+         UNION
+         SELECT w.user_id
+         FROM watchlists w
+         JOIN watchlist_items wi ON wi.watchlist_id = w.id
+         WHERE UPPER(wi.symbol) = ANY($1::text[])
+       ) tracked_users
+       WHERE user_id IS NOT NULL`,
+      [normalized]
+    );
+
+    return result.rows.map(row => row.user_id);
   }
 
   /**
@@ -118,11 +162,12 @@ class NewsService {
     let fetched = 0;
     let skipped = 0;
     let errors = 0;
+    const changedSymbols = [];
 
     for (const symbol of symbols) {
       // Check if already cached recently
       const cached = await db.query(
-        `SELECT fetched_at FROM dashboard_news_cache
+        `SELECT fetched_at, news_items FROM dashboard_news_cache
          WHERE symbol = $1 AND fetched_at > NOW() - INTERVAL '1 hour'`,
         [symbol]
       );
@@ -132,9 +177,17 @@ class NewsService {
         continue;
       }
 
+      const previous = await db.query(
+        'SELECT news_items FROM dashboard_news_cache WHERE symbol = $1',
+        [symbol]
+      );
+      const previousItems = previous.rows[0]?.news_items || [];
       const result = await this.fetchAndCacheSymbol(symbol);
       if (result !== null) {
         fetched++;
+        if (this.newsChanged(previousItems, result)) {
+          changedSymbols.push(symbol);
+        }
       } else {
         errors++;
       }
@@ -145,7 +198,7 @@ class NewsService {
       }
     }
 
-    return { fetched, skipped, errors, total: symbols.length };
+    return { fetched, skipped, errors, total: symbols.length, changedSymbols };
   }
 
   /**

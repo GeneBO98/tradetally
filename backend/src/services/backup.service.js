@@ -4,6 +4,15 @@ const path = require('path');
 const { createWriteStream } = require('fs');
 const { toCamelCase, toSnakeCase } = require('../utils/caseConvert');
 
+const SAFE_IDENTIFIER = /^[a-z_][a-z0-9_]*$/;
+
+function quoteIdentifier(identifier) {
+  if (typeof identifier !== 'string' || !SAFE_IDENTIFIER.test(identifier)) {
+    throw new Error('Invalid database identifier in backup');
+  }
+  return `"${identifier}"`;
+}
+
 function recomputeRestoredTradePnl(tradeData, timezone) {
   const { computeTradePnl } = require('./pnlEngine');
   let executions = tradeData.executions;
@@ -435,7 +444,10 @@ class BackupService {
     try {
       await client.query('BEGIN');
 
-      const tables = backupData.tables;
+      const tables = backupData?.tables;
+      if (!tables || typeof tables !== 'object' || Array.isArray(tables)) {
+        throw new Error('Invalid backup tables payload');
+      }
 
       // Helper function to get table data with backward compatibility
       // Handles both camelCase (new format) and snake_case (old format) table names
@@ -453,6 +465,7 @@ class BackupService {
             SELECT column_name, data_type FROM information_schema.columns
             WHERE table_schema = 'public' AND table_name = $1
           `, [tableName]);
+          if (result.rows.length === 0) return null;
           const cols = new Map(result.rows.map(r => [r.column_name, r.data_type]));
           schemaCache[tableName] = cols;
           return cols;
@@ -490,7 +503,7 @@ class BackupService {
         `);
         for (const row of allTablesResult.rows) {
           if (SKIP_CLEAR.has(row.table_name)) continue;
-          await client.query(`TRUNCATE TABLE "${row.table_name}" CASCADE`);
+          await client.query(`TRUNCATE TABLE ${quoteIdentifier(row.table_name)} CASCADE`);
         }
         console.log(`[RESTORE] Cleared ${allTablesResult.rows.length - SKIP_CLEAR.size} tables`);
       }
@@ -503,6 +516,7 @@ class BackupService {
       if (!skipUsers && tables.users && tables.users.length > 0) {
         console.log(`[RESTORE] Processing ${tables.users.length} users...`);
         const validCols = await getValidColumns('users');
+        if (!validCols) throw new Error('Required target table users does not exist');
 
         const usersSavepoint = 'sp_users_restore';
         await client.query(`SAVEPOINT ${usersSavepoint}`);
@@ -517,20 +531,25 @@ class BackupService {
 
             if (existingUser.rows.length === 0) {
               // User doesn't exist - insert new user using dynamic columns
-              const userColumns = Object.keys(user).filter(col => user[col] !== undefined && (!validCols || validCols.has(col)));
+              const userColumns = Object.keys(user).filter(col => user[col] !== undefined && validCols.has(col));
               const userValues = [];
               const userPlaceholders = [];
               let userParamIndex = 1;
 
               for (const col of userColumns) {
-                userValues.push(serializeValue(user[col], validCols && validCols.get(col)));
+                userValues.push(serializeValue(user[col], validCols.get(col)));
                 userPlaceholders.push(`$${userParamIndex}`);
                 userParamIndex++;
               }
 
+              if (userColumns.length === 0) {
+                results.users.skipped++;
+                continue;
+              }
+
               // ON CONFLICT DO NOTHING handles unique constraint collisions (email, username)
               const insertResult = await client.query(
-                `INSERT INTO users (${userColumns.join(', ')}) VALUES (${userPlaceholders.join(', ')})
+                `INSERT INTO "users" (${userColumns.map(quoteIdentifier).join(', ')}) VALUES (${userPlaceholders.join(', ')})
                  ON CONFLICT DO NOTHING
                  RETURNING id`,
                 userValues
@@ -561,15 +580,15 @@ class BackupService {
               if (overwriteUsers) {
                 // Overwrite existing user with backup data using dynamic columns
                 const updateColumns = Object.keys(user).filter(col =>
-                  col !== 'id' && col !== 'created_at' && user[col] !== undefined && (!validCols || validCols.has(col))
+                  col !== 'id' && col !== 'created_at' && user[col] !== undefined && validCols.has(col)
                 );
                 const updateValues = [];
                 const updateSet = [];
                 let updateParamIndex = 1;
 
                 for (const col of updateColumns) {
-                  updateValues.push(serializeValue(user[col], validCols && validCols.get(col)));
-                  updateSet.push(`${col} = $${updateParamIndex}`);
+                  updateValues.push(serializeValue(user[col], validCols.get(col)));
+                  updateSet.push(`${quoteIdentifier(col)} = $${updateParamIndex}`);
                   updateParamIndex++;
                 }
 
@@ -578,7 +597,7 @@ class BackupService {
                 updateValues.push(existingUserId);
 
                 await client.query(
-                  `UPDATE users SET ${updateSet.join(', ')} WHERE id = $${updateParamIndex}`,
+                  `UPDATE "users" SET ${updateSet.join(', ')} WHERE "id" = $${updateParamIndex}`,
                   updateValues
                 );
 
@@ -621,6 +640,7 @@ class BackupService {
 
         const excludeColumns = ['import_id', 'round_trip_id'];
         const validTradeCols = await getValidColumns('trades');
+        if (!validTradeCols) throw new Error('Required target table trades does not exist');
         const tzCache = new Map();
         const { getUserTimezone } = require('../utils/timezone');
 
@@ -649,19 +669,25 @@ class BackupService {
 
           for (const [key, value] of Object.entries(tradeData)) {
             if (excludeColumns.includes(key)) continue;
-            if (validTradeCols && !validTradeCols.has(key)) continue;
+            if (!validTradeCols.has(key)) continue;
 
             columns.push(key);
-            values.push(serializeValue(value, validTradeCols && validTradeCols.get(key)));
+            values.push(serializeValue(value, validTradeCols.get(key)));
             placeholders.push(`$${paramIndex}`);
             paramIndex++;
+          }
+
+
+          if (columns.length === 0) {
+            results.trades.skipped++;
+            continue;
           }
 
           const sp = `sp_t_${Date.now().toString(36)}`;
           try {
             await client.query(`SAVEPOINT ${sp}`);
             const insertResult = await client.query(
-              `INSERT INTO trades (${columns.join(', ')}) VALUES (${placeholders.join(', ')})
+              `INSERT INTO "trades" (${columns.map(quoteIdentifier).join(', ')}) VALUES (${placeholders.join(', ')})
                ON CONFLICT DO NOTHING
                RETURNING id`,
               values
@@ -693,6 +719,7 @@ class BackupService {
       if (diaryEntriesData && diaryEntriesData.length > 0) {
         console.log(`[RESTORE] Processing ${diaryEntriesData.length} diary entries...`);
         const validDiaryCols = await getValidColumns('diary_entries');
+        if (!validDiaryCols) throw new Error('Required target table diary_entries does not exist');
 
         for (const entry of diaryEntriesData) {
           const entryData = { ...entry };
@@ -711,18 +738,24 @@ class BackupService {
           let paramIndex = 1;
 
           for (const [key, value] of Object.entries(entryData)) {
-            if (validDiaryCols && !validDiaryCols.has(key)) continue;
+            if (!validDiaryCols.has(key)) continue;
             columns.push(key);
-            values.push(serializeValue(value, validDiaryCols && validDiaryCols.get(key)));
+            values.push(serializeValue(value, validDiaryCols.get(key)));
             placeholders.push(`$${paramIndex}`);
             paramIndex++;
+          }
+
+
+          if (columns.length === 0) {
+            results.diaryEntries.skipped++;
+            continue;
           }
 
           const sp = `sp_d_${Date.now().toString(36)}`;
           try {
             await client.query(`SAVEPOINT ${sp}`);
             const insertResult = await client.query(
-              `INSERT INTO diary_entries (${columns.join(', ')}) VALUES (${placeholders.join(', ')})
+              `INSERT INTO "diary_entries" (${columns.map(quoteIdentifier).join(', ')}) VALUES (${placeholders.join(', ')})
                ON CONFLICT DO NOTHING
                RETURNING id`,
               values
@@ -779,10 +812,15 @@ class BackupService {
       // One savepoint wraps the entire table - if a non-conflict error occurs,
       // the whole table is rolled back and reported.
       const restoreTable = async (tableName, tableDataKey, resultKey) => {
+        if (!SAFE_IDENTIFIER.test(tableName)) {
+          console.warn('[RESTORE] Ignoring invalid backup table name');
+          return;
+        }
+
         // Get table data, handling both camelCase and snake_case formats
         const tableData = getTableData(tableDataKey, tableName);
 
-        if (!tableData || tableData.length === 0) {
+        if (!Array.isArray(tableData) || tableData.length === 0) {
           return;
         }
 
@@ -807,6 +845,12 @@ class BackupService {
 
         try {
           for (const row of tableData) {
+            if (!row || typeof row !== 'object' || Array.isArray(row)) {
+              results[resultKey].skipped++;
+              tableResults[tableName].skipped++;
+              continue;
+            }
+
             // Map user_id if it exists and we have a mapping
             const rowData = { ...row };
             if (rowData.user_id && userIdMapping.has(rowData.user_id)) {
@@ -838,11 +882,17 @@ class BackupService {
               paramIndex++;
             }
 
+            if (columns.length === 0) {
+              results[resultKey].skipped++;
+              tableResults[tableName].skipped++;
+              continue;
+            }
+
             // ON CONFLICT DO NOTHING (no column target) handles ALL unique constraint violations
             const insertResult = await client.query(
-              `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders.join(', ')})
+              `INSERT INTO ${quoteIdentifier(tableName)} (${columns.map(quoteIdentifier).join(', ')}) VALUES (${placeholders.join(', ')})
                ON CONFLICT DO NOTHING
-               RETURNING ${idField}`,
+               RETURNING ${quoteIdentifier(idField)}`,
               values
             );
 
@@ -896,12 +946,23 @@ class BackupService {
 
       // v3.0 backups include tableNameMapping for precise camelCase -> snake_case conversion
       const tableNameMapping = backupData.tableNameMapping || {};
+      if (typeof tableNameMapping !== 'object' || Array.isArray(tableNameMapping)) {
+        throw new Error('Invalid backup table-name mapping');
+      }
 
       // Resolve snake_case table name from a camelCase key
       const resolveSnakeName = (camelKey) => {
-        if (tableNameMapping[camelKey]) return tableNameMapping[camelKey];
+        const mappedName = tableNameMapping[camelKey];
+        if (mappedName !== undefined) {
+          if (typeof mappedName !== 'string' || !SAFE_IDENTIFIER.test(mappedName) ||
+              (camelKey !== mappedName && toCamelCase(mappedName) !== camelKey)) {
+            return null;
+          }
+          return mappedName;
+        }
         // Fallback: convert camelCase to snake_case
-        return toSnakeCase(camelKey);
+        const fallbackName = toSnakeCase(camelKey);
+        return SAFE_IDENTIFIER.test(fallbackName) ? fallbackName : null;
       };
 
       // Build ordered list: priority tables first, then remaining in backup order
@@ -911,6 +972,10 @@ class BackupService {
 
       for (const key of allBackupKeys) {
         const snakeName = resolveSnakeName(key);
+        if (!snakeName) {
+          console.warn('[RESTORE] Ignoring invalid backup table mapping');
+          continue;
+        }
         if (prioritySet.has(snakeName)) {
           // Will be added in priority order below
         } else {
@@ -936,6 +1001,7 @@ class BackupService {
       const failedTables = [];
       for (const camelKey of orderedKeys) {
         const snakeName = resolveSnakeName(camelKey);
+        if (!snakeName) continue;
         const beforeErrors = results.other.errors;
         await restoreTable(snakeName, camelKey, 'other');
         if (results.other.errors > beforeErrors) {
@@ -948,6 +1014,7 @@ class BackupService {
         console.log(`[RESTORE] Retrying ${failedTables.length} failed tables...`);
         for (const camelKey of failedTables) {
           const snakeName = resolveSnakeName(camelKey);
+          if (!snakeName) continue;
           // Reset error count for this table - re-count from scratch
           const prevErrors = tableResults[snakeName] ? tableResults[snakeName].errors : 0;
           results.other.errors -= prevErrors;

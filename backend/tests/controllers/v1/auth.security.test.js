@@ -79,6 +79,51 @@ describe('v1 auth security policy', () => {
     expect(refreshTokenService.generateAccessToken).not.toHaveBeenCalled();
   });
 
+  test('allows an approved unverified user to log in when email is configured', async () => {
+    process.env.EMAIL_HOST = 'smtp.example.test';
+    process.env.EMAIL_USER = 'mailer';
+    process.env.EMAIL_PASS = 'secret';
+    User.findByEmail.mockResolvedValue({
+      id: 'user-1', email: 'user@example.com', username: 'user', role: 'user',
+      is_active: true, is_verified: false, admin_approved: true, two_factor_enabled: false
+    });
+    User.verifyPassword.mockResolvedValue(true);
+    refreshTokenService.generateAccessToken.mockReturnValue('access-token');
+    refreshTokenService.generateRefreshToken.mockResolvedValue({ token: 'refresh-token' });
+    const res = response();
+
+    await controller.login({ body: { email: 'user@example.com', password: 'password123' } }, res, jest.fn());
+
+    expect(res.statusCode).toBe(200);
+    expect(res.payload.tokens).toEqual(expect.objectContaining({
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token'
+    }));
+  });
+
+  test('automatically signs in an approved unverified registration', async () => {
+    process.env.EMAIL_HOST = 'smtp.example.test';
+    process.env.EMAIL_USER = 'mailer';
+    process.env.EMAIL_PASS = 'secret';
+    User.findByEmail.mockResolvedValue(null);
+    User.getUserCount.mockResolvedValue(1);
+    User.create.mockResolvedValue({
+      id: 'user-2', email: 'new@example.com', username: 'new', role: 'user',
+      full_name: null, avatar_url: null, is_verified: false
+    });
+    refreshTokenService.generateAccessToken.mockReturnValue('access-token');
+    refreshTokenService.generateRefreshToken.mockResolvedValue({ token: 'refresh-token' });
+    const res = response();
+
+    await controller.register({
+      body: { email: 'new@example.com', username: 'new', password: 'password123' }
+    }, res, jest.fn());
+
+    expect(res.statusCode).toBe(201);
+    expect(res.payload.requiresVerification).toBe(true);
+    expect(res.payload.tokens).toEqual(expect.objectContaining({ accessToken: 'access-token' }));
+  });
+
   test('enforces disabled registration mode on v1 registration', async () => {
     process.env.REGISTRATION_MODE = 'disabled';
     const res = response();

@@ -109,7 +109,7 @@ const nullableDate = Joi.alternatives().try(
 );
 const nullableNumber = Joi.alternatives().try(Joi.number(), Joi.valid(null, ''));
 const currencyCode = Joi.string().trim().uppercase().pattern(/^[A-Z]{3}$/).allow(null, '');
-const aiProviderSchema = Joi.string().valid('gemini', 'claude', 'openai', 'deepseek', 'kimi', 'ollama', 'lmstudio', 'perplexity', 'local', 'custom');
+const aiProviderSchema = Joi.string().valid('gemini', 'claude', 'openai', 'deepseek', 'kimi', 'codex_cli', 'claude_cli', 'ollama', 'lmstudio', 'perplexity', 'local', 'custom');
 
 const schemas = {
   register: Joi.object({
@@ -792,7 +792,8 @@ const schemas = {
     autoSyncEnabled: Joi.boolean(),
     syncFrequency: Joi.string().valid('manual', 'hourly', 'every_4_hours', 'every_6_hours', 'every_12_hours', 'daily'),
     syncTime: nullableString(10),
-    syncStartDate: nullableDate
+    syncStartDate: nullableDate,
+    excluded_account_identifiers: Joi.array().items(Joi.string().trim().max(50)).max(50)
   }).min(1),
 
   brokerSyncManualSync: Joi.object({
