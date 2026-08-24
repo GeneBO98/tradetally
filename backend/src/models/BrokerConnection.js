@@ -73,6 +73,7 @@ class BrokerConnection {
       schwabAccessToken,
       schwabRefreshToken,
       schwabTokenExpiresAt,
+      schwabRefreshTokenExpiresAt,
       schwabAccountId,
       trading212ApiKey,
       trading212ApiSecret,
@@ -135,21 +136,19 @@ class BrokerConnection {
       query = `
         INSERT INTO broker_connections (
           user_id, broker_type, connection_status,
-          schwab_access_token, schwab_refresh_token, schwab_token_expires_at, schwab_account_id,
+          schwab_access_token, schwab_refresh_token, schwab_token_expires_at,
+          schwab_refresh_token_expires_at, schwab_account_id,
           broker_metadata, account_label, auto_sync_enabled, sync_frequency, sync_time, sync_start_date
         )
-        VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         ON CONFLICT (user_id) WHERE broker_type = 'schwab' DO UPDATE SET
           schwab_access_token = EXCLUDED.schwab_access_token,
           schwab_refresh_token = EXCLUDED.schwab_refresh_token,
           schwab_token_expires_at = EXCLUDED.schwab_token_expires_at,
+          schwab_refresh_token_expires_at = EXCLUDED.schwab_refresh_token_expires_at,
+          schwab_reauth_reminder_sent_at = NULL,
           schwab_account_id = EXCLUDED.schwab_account_id,
           broker_metadata = COALESCE(broker_connections.broker_metadata, '{}'::jsonb) || EXCLUDED.broker_metadata,
-          account_label = EXCLUDED.account_label,
-          auto_sync_enabled = EXCLUDED.auto_sync_enabled,
-          sync_frequency = EXCLUDED.sync_frequency,
-          sync_time = EXCLUDED.sync_time,
-          sync_start_date = EXCLUDED.sync_start_date,
           connection_status = 'pending',
           consecutive_failures = 0,
           updated_at = CURRENT_TIMESTAMP
@@ -157,7 +156,8 @@ class BrokerConnection {
       `;
       params = [
         userId, brokerType, encryptedSchwabAccess, encryptedSchwabRefresh,
-        schwabTokenExpiresAt, schwabAccountId, JSON.stringify(brokerMetadata || {}), accountLabel,
+        schwabTokenExpiresAt, schwabRefreshTokenExpiresAt, schwabAccountId,
+        JSON.stringify(brokerMetadata || {}), accountLabel,
         autoSyncEnabled, syncFrequency, syncTime, syncStartDate
       ];
     } else if (brokerType === 'trading212') {
@@ -338,6 +338,37 @@ class BrokerConnection {
   }
 
   /**
+   * Atomically claim active Schwab connections entering their final 24 hours.
+   * The claim prevents duplicate reminders across scheduler instances.
+   */
+  static async claimDueSchwabReauthReminders() {
+    const query = `
+      UPDATE broker_connections
+      SET schwab_reauth_reminder_sent_at = CURRENT_TIMESTAMP
+      WHERE broker_type = 'schwab'
+        AND connection_status = 'active'
+        AND schwab_refresh_token_expires_at > CURRENT_TIMESTAMP
+        AND schwab_refresh_token_expires_at <= CURRENT_TIMESTAMP + INTERVAL '24 hours'
+        AND schwab_reauth_reminder_sent_at IS NULL
+      RETURNING *
+    `;
+
+    const result = await db.query(query);
+    return result.rows.map(row => this.formatConnection(row, false));
+  }
+
+  static async releaseSchwabReauthReminder(connectionId) {
+    await db.query(
+      `UPDATE broker_connections
+       SET schwab_reauth_reminder_sent_at = NULL
+       WHERE id = $1
+         AND broker_type = 'schwab'
+         AND connection_status = 'active'`,
+      [connectionId]
+    );
+  }
+
+  /**
    * Update connection status
    */
   static async updateStatus(connectionId, status, message = null, resetFailures = false) {
@@ -354,6 +385,34 @@ class BrokerConnection {
     `;
 
     const result = await db.query(query, [connectionId, status, message, resetFailures]);
+    if (result.rows.length === 0) return null;
+
+    return this.formatConnection(result.rows[0], false);
+  }
+
+  /**
+   * Mark a connection as requiring interactive reauthorization.
+   *
+   * The status predicate makes this an atomic state transition: concurrent
+   * token refresh failures can race, but only the first caller receives a row
+   * and sends user notifications. Reconnecting changes the status back to
+   * active, so a future expiration can notify again.
+   */
+  static async markReauthRequired(connectionId, message) {
+    const query = `
+      UPDATE broker_connections
+      SET connection_status = 'expired',
+          last_sync_status = 'failed',
+          last_sync_message = $2,
+          last_error_at = CURRENT_TIMESTAMP,
+          last_error_message = $2,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+        AND connection_status <> 'expired'
+      RETURNING *
+    `;
+
+    const result = await db.query(query, [connectionId, message]);
     if (result.rows.length === 0) return null;
 
     return this.formatConnection(result.rows[0], false);
@@ -706,6 +765,7 @@ class BrokerConnection {
       const brokerMetadata = row.broker_metadata || {};
       connection.schwabAccountId = row.schwab_account_id;
       connection.schwabTokenExpiresAt = row.schwab_token_expires_at;
+      connection.schwab_refresh_token_expires_at = row.schwab_refresh_token_expires_at;
       connection.schwab_accounts = Array.isArray(brokerMetadata.schwab_accounts)
         ? brokerMetadata.schwab_accounts
         : [];

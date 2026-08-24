@@ -77,6 +77,7 @@
             :connection="connection"
             :sync-disabled="!canSync"
             @sync="handleSync"
+            @reconnect="handleReconnect"
             @test="handleTest"
             @settings="openSettingsModal"
             @delete="handleDelete"
@@ -544,6 +545,11 @@ async function consumeOAuthCallbackState(query) {
 
   if (query.success === 'schwab') {
     scheduleSuccessMessage('Schwab account connected successfully. Ready to sync trades.')
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('notifications-updated', {
+        detail: { unreadDelta: 0 }
+      }))
+    }
   } else if (query.success === 'tradestation') {
     scheduleSuccessMessage('TradeStation account connected successfully. Ready to sync trades.')
   } else if (query.success === 'alpaca') {
@@ -661,6 +667,11 @@ async function handleSchwabConnect() {
     }
     // Error is handled by store
   }
+}
+
+async function handleReconnect(connection) {
+  if (connection.brokerType !== 'schwab') return
+  await handleSchwabConnect()
 }
 
 async function handleBrokerOAuthConnect(broker, options = {}) {

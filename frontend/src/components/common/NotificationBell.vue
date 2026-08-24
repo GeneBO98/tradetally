@@ -102,6 +102,10 @@
                     v-else-if="notification.type === 'web_mention_alert'"
                     class="h-5 w-5 text-primary-500"
                   />
+                  <ArrowPathIcon
+                    v-else-if="['broker_reauth_expiring', 'broker_reauth_required'].includes(notification.type)"
+                    class="h-5 w-5 text-amber-500"
+                  />
                   <BellIcon v-else class="h-5 w-5 text-gray-400" />
                 </div>
 
@@ -172,6 +176,7 @@ import {
   ChatBubbleLeftRightIcon,
   TrophyIcon,
   ArrowTrendingUpIcon,
+  ArrowPathIcon,
   XMarkIcon
 } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
@@ -457,6 +462,8 @@ const handleNotificationClick = async (notification) => {
     router.push({ path: '/analysis', query: { tab: 'holdings' } })
   } else if (notification.type === 'web_mention_alert') {
     router.push('/web-mentions')
+  } else if (['broker_reauth_expiring', 'broker_reauth_required'].includes(notification.type)) {
+    router.push('/broker-sync')
   }
   
   closeDropdown()

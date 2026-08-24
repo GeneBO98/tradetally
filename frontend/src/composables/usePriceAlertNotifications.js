@@ -226,6 +226,14 @@ export function usePriceAlertNotifications() {
       case 'portfolio_alert':
         handlePortfolioAlert(data.data)
         break
+
+      case 'broker_reauth_required':
+        handleBrokerReauthRequired(data.data)
+        break
+
+      case 'broker_reauth_expiring':
+        handleBrokerReauthExpiring(data.data)
+        break
         
       case 'recent_notifications':
         // Handle recent notifications on connection
@@ -316,6 +324,26 @@ export function usePriceAlertNotifications() {
     }
 
     showWarning(`Portfolio Alert: ${alert.symbol}`, alert.message)
+  }
+
+  const handleBrokerReauthRequired = (alert) => {
+    showWarning('Broker reconnect required', alert.message)
+    window.dispatchEvent(new CustomEvent('notifications-updated', {
+      detail: { unreadDelta: 1 }
+    }))
+    window.dispatchEvent(new CustomEvent('broker-reauth-required', {
+      detail: alert
+    }))
+  }
+
+  const handleBrokerReauthExpiring = (alert) => {
+    showWarning('Schwab authorization expires soon', alert.message)
+    window.dispatchEvent(new CustomEvent('notifications-updated', {
+      detail: { unreadDelta: 1 }
+    }))
+    window.dispatchEvent(new CustomEvent('broker-reauth-expiring', {
+      detail: alert
+    }))
   }
 
   const handleCusipResolution = (data) => {

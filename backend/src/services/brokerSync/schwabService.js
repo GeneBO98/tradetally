@@ -19,6 +19,7 @@ const OptionStrategyGroupingService = require('../optionStrategyGroupingService'
 const db = require('../../config/database');
 
 const SCHWAB_API_BASE = 'https://api.schwabapi.com/trader/v1';
+const BrokerReauthNotificationService = require('./brokerReauthNotificationService');
 const TOKEN_REFRESH_BUFFER = 5 * 60 * 1000; // Refresh 5 minutes before expiration
 
 class SchwabService {
@@ -185,7 +186,7 @@ class SchwabService {
         return { accessToken: newTokens.accessToken, needsReauth: false };
       } catch (error) {
         console.error('[SCHWAB] Token refresh failed:', error.message);
-        await BrokerConnection.updateStatus(connection.id, 'expired', 'Refresh token expired - please re-authenticate');
+        await BrokerReauthNotificationService.markRequired(connection, 'Charles Schwab');
         return { accessToken: null, needsReauth: true };
       }
     }
@@ -207,7 +208,7 @@ class SchwabService {
         return { accessToken: newTokens.accessToken, needsReauth: false };
       } catch (error) {
         console.error('[SCHWAB] Token refresh failed:', error.message);
-        await BrokerConnection.updateStatus(connection.id, 'expired', 'Refresh token expired - please re-authenticate');
+        await BrokerReauthNotificationService.markRequired(connection, 'Charles Schwab');
         return { accessToken: null, needsReauth: true };
       }
     }
@@ -231,7 +232,7 @@ class SchwabService {
       } catch (error) {
         // Refresh token likely expired (7 day limit)
         console.error('[SCHWAB] Token refresh failed:', error.message);
-        await BrokerConnection.updateStatus(connection.id, 'expired', 'Refresh token expired - please re-authenticate');
+        await BrokerReauthNotificationService.markRequired(connection, 'Charles Schwab');
         return { accessToken: null, needsReauth: true };
       }
     }

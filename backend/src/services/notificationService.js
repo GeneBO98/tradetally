@@ -218,13 +218,51 @@ class NotificationService {
         `);
       }
       
-      await db.query(`
+      const result = await db.query(`
         INSERT INTO notifications (user_id, type, data)
         VALUES ($1, $2, $3)
+        RETURNING *
       `, [userId, type, data]);
+
+      return result.rows[0] || null;
       
     } catch (error) {
       console.error('Error saving notification:', error);
+      return null;
+    }
+  }
+
+  static async sendBrokerReauthRequiredNotification(userId, data) {
+    try {
+      const saved = await this.saveNotification(userId, 'broker_reauth_required', data);
+      await this.sendSSENotification(userId, {
+        type: 'broker_reauth_required',
+        data: {
+          ...data,
+          notification_id: saved?.id || null
+        }
+      });
+      return saved;
+    } catch (error) {
+      console.error('Error sending broker reauthorization notification:', error);
+      return null;
+    }
+  }
+
+  static async sendBrokerReauthExpiringNotification(userId, data) {
+    try {
+      const saved = await this.saveNotification(userId, 'broker_reauth_expiring', data);
+      await this.sendSSENotification(userId, {
+        type: 'broker_reauth_expiring',
+        data: {
+          ...data,
+          notification_id: saved?.id || null
+        }
+      });
+      return saved;
+    } catch (error) {
+      console.error('Error sending broker reauthorization reminder:', error);
+      return null;
     }
   }
   

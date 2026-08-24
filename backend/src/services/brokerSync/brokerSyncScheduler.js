@@ -7,6 +7,7 @@
 
 const BrokerConnection = require('../../models/BrokerConnection');
 const brokerSyncService = require('./index');
+const BrokerReauthNotificationService = require('./brokerReauthNotificationService');
 const db = require('../../config/database');
 
 const SCHEDULER_INTERVAL = 15 * 60 * 1000; // 15 minutes
@@ -33,6 +34,11 @@ class BrokerSyncScheduler {
 
     try {
       console.log(`${logPrefix} Checking for scheduled syncs...`);
+
+      const reminderResults = await BrokerReauthNotificationService.sendDueReminders();
+      if (reminderResults.claimed > 0) {
+        console.log(`${logPrefix} Sent ${reminderResults.sent} Schwab reauthorization reminder(s)`);
+      }
 
       // Find connections due for sync
       const dueConnections = await BrokerConnection.findDueForSync();

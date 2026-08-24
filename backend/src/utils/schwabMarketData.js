@@ -10,6 +10,7 @@ const axios = require('axios');
 const db = require('../config/database');
 const encryptionService = require('../services/brokerSync/encryptionService');
 const cache = require('./cache');
+const BrokerReauthNotificationService = require('../services/brokerSync/brokerReauthNotificationService');
 
 const SCHWAB_MARKET_DATA_BASE = 'https://api.schwabapi.com/marketdata/v1';
 const TOKEN_REFRESH_BUFFER = 5 * 60 * 1000; // 5 minutes before expiration
@@ -133,13 +134,10 @@ class SchwabMarketData {
     } catch (error) {
       console.error('[SCHWAB-MARKET] Token refresh failed:', error.message);
 
-      // Mark connection as expired
-      await db.query(`
-        UPDATE broker_connections
-        SET connection_status = 'expired',
-            last_error_message = 'Refresh token expired - please re-authenticate'
-        WHERE id = $1
-      `, [connection.id]);
+      await BrokerReauthNotificationService.markRequired({
+        ...connection,
+        brokerType: 'schwab'
+      }, 'Charles Schwab');
 
       return { accessToken: null, needsReauth: true };
     }

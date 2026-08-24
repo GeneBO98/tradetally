@@ -19,6 +19,7 @@ const db = require('../config/database');
 const crypto = require('crypto');
 
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const SCHWAB_REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 const OAUTH_BROKER_SERVICES = {
   tradestation: tradestationService,
@@ -430,6 +431,7 @@ const brokerSyncController = {
 
       // Calculate token expiration
       const expiresAt = new Date(Date.now() + expires_in * 1000);
+      const refreshTokenExpiresAt = new Date(Date.now() + SCHWAB_REFRESH_TOKEN_TTL_MS);
       console.log('[SCHWAB-OAUTH] Token expires at:', expiresAt);
 
       // Get account info
@@ -454,6 +456,7 @@ const brokerSyncController = {
         schwabAccessToken: access_token,
         schwabRefreshToken: refresh_token,
         schwabTokenExpiresAt: expiresAt,
+        schwabRefreshTokenExpiresAt: refreshTokenExpiresAt,
         schwabAccountId: accountNumber,
         brokerMetadata: {
           schwab_accounts: (accountsResponse.data || [])
@@ -466,7 +469,16 @@ const brokerSyncController = {
       });
       console.log('[SCHWAB-OAUTH] Connection created:', connection.id);
 
-      await BrokerConnection.updateStatus(connection.id, 'active', 'OAuth connection successful');
+      await BrokerConnection.updateStatus(connection.id, 'active', 'OAuth connection successful', true);
+      await db.query(
+        `UPDATE notifications
+            SET read = true
+          WHERE user_id = $1
+            AND type IN ('broker_reauth_expiring', 'broker_reauth_required')
+            AND data->>'connection_id' = $2
+            AND COALESCE(read, false) = false`,
+        [userId, connection.id]
+      );
       console.log('[SCHWAB-OAUTH] Connection status updated to active');
 
       console.log(`[BROKER-SYNC] Schwab connection created for user ${userId}`);

@@ -110,8 +110,10 @@ describe('Schwab OAuth state — server-side binding', () => {
     await brokerSyncController.handleSchwabCallback(req, res, next);
 
     expect(BrokerConnection.create).toHaveBeenCalledTimes(1);
-    const [userId] = BrokerConnection.create.mock.calls[0];
+    const [userId, connectionData] = BrokerConnection.create.mock.calls[0];
     expect(userId).toBe('real-user-from-db');
+    expect(connectionData.schwabRefreshTokenExpiresAt).toBeInstanceOf(Date);
+    expect(connectionData.schwabRefreshTokenExpiresAt.getTime()).toBeGreaterThan(Date.now() + (6 * 24 * 60 * 60 * 1000));
   });
 
   test('the state lookup UPDATE requires consumed_at IS NULL (no replay)', async () => {
