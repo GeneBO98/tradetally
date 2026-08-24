@@ -5,6 +5,21 @@ const { validateAiProviderUrl, fetchAiProviderUrl } = require('./urlSecurity');
 const { sanitizeErrorForLogging, summarizeUrlForLogging } = require('./logSanitizer');
 const AIProvider = require('./aiProvider');
 
+const hasOwn = (object, property) => Object.prototype.hasOwnProperty.call(object, property);
+
+const resolveMaxTokens = (options, fallback) => {
+  if (!hasOwn(options, 'maxTokens')) return fallback;
+
+  return Number.isSafeInteger(options.maxTokens) && options.maxTokens > 0
+    ? options.maxTokens
+    : null;
+};
+
+const optionalTokenLimit = (parameter, options, fallback) => {
+  const maxTokens = resolveMaxTokens(options, fallback);
+  return maxTokens ? { [parameter]: maxTokens } : {};
+};
+
 class AIService {
   constructor() {
     this.providers = {
@@ -285,7 +300,9 @@ Your response:`;
 
     const response = await anthropic.messages.create({
       model: settings.model || 'claude-3-5-sonnet-20241022',
-      max_completion_tokens: options.maxTokens || 1000,
+      // Anthropic requires max_tokens. Other providers can omit their token
+      // parameter entirely when journal analysis is configured as uncapped.
+      max_tokens: resolveMaxTokens(options, 1000) || 8192,
       messages: [
         {
           role: 'user',
@@ -356,8 +373,8 @@ Your response:`;
     try {
       // Build request parameters
       const tokenParam = provider === 'openai'
-        ? { max_completion_tokens: options.maxTokens || 1000 }
-        : { max_tokens: options.maxTokens || 1000 };
+        ? optionalTokenLimit('max_completion_tokens', options, 1000)
+        : optionalTokenLimit('max_tokens', options, 1000);
 
       const requestParams = {
         model: model,
@@ -448,7 +465,7 @@ Your response:`;
             }
           ],
           temperature: 0.1,
-          max_tokens: options.maxTokens || 1000,
+          ...optionalTokenLimit('max_tokens', options, 1000),
           stream: false
         })
       });
@@ -494,7 +511,7 @@ Your response:`;
               content: prompt
             }
           ],
-          max_tokens: options.maxTokens || 1000
+          ...optionalTokenLimit('max_tokens', options, 1000)
         })
       });
 
@@ -543,7 +560,7 @@ Your response:`;
       body: JSON.stringify({
         prompt,
         model: settings.model,
-        max_tokens: options.maxTokens || 1000
+        ...optionalTokenLimit('max_tokens', options, 1000)
       })
     });
 

@@ -7,6 +7,16 @@ const { fetchAiProviderUrl } = require('./urlSecurity');
 const { summarizeUrlForLogging } = require('./logSanitizer');
 const AICliProvider = require('./aiCliProvider');
 
+const hasOwn = (object, property) => Object.prototype.hasOwnProperty.call(object, property);
+
+const resolveMaxTokens = (options, fallback) => {
+  if (!hasOwn(options, 'maxTokens')) return fallback;
+
+  return Number.isSafeInteger(options.maxTokens) && options.maxTokens > 0
+    ? options.maxTokens
+    : null;
+};
+
 class AIProvider {
   /**
    * Generate a response from the configured AI provider
@@ -118,7 +128,9 @@ class AIProvider {
         },
         body: JSON.stringify({
           model: modelName,
-          max_tokens: options.maxTokens || 4096,
+          // Anthropic requires a value even when other providers can delegate
+          // the output ceiling to the model.
+          max_tokens: resolveMaxTokens(options, 4096) || 8192,
           messages: [{ role: 'user', content: prompt }]
         })
       });
@@ -190,11 +202,13 @@ class AIProvider {
       // `temperature` — only the default is supported. Keep this regex in sync
       // with aiService.js.
       const isReasoningModel = /^(o\d|gpt-5|deepseek-reasoner)/i.test(modelName);
-      const tokenLimit = options.maxTokens || (isReasoningModel ? 16384 : 4096);
+      const tokenLimit = resolveMaxTokens(options, isReasoningModel ? 16384 : 4096);
 
-      const tokenParam = isOpenAIAPI
-        ? { max_completion_tokens: tokenLimit }
-        : { max_tokens: options.maxTokens || 4096 };
+      const tokenParam = tokenLimit
+        ? (isOpenAIAPI
+            ? { max_completion_tokens: tokenLimit }
+            : { max_tokens: tokenLimit })
+        : {};
 
       // Reasoning models don't support custom temperature
       const supportsTemperature = !isReasoningModel;

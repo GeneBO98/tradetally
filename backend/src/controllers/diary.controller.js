@@ -629,6 +629,24 @@ const formatTrackedJournalAnalysis = analysisRequest => ({
   completed_at: analysisRequest.completed_at
 });
 
+const getJournalAnalysisMaxTokens = () => {
+  const configuredLimit = String(process.env.JOURNAL_AI_MAX_TOKENS || '').trim();
+
+  // Self-hosted deployments are uncapped by default. A value of 0 also means
+  // "use the selected provider/model's own output limit".
+  if (!configuredLimit || configuredLimit === '0') {
+    return null;
+  }
+
+  const parsedLimit = Number(configuredLimit);
+  if (!Number.isSafeInteger(parsedLimit) || parsedLimit < 1) {
+    console.warn('[AI] Ignoring invalid JOURNAL_AI_MAX_TOKENS value; journal analysis will use the provider limit');
+    return null;
+  }
+
+  return parsedLimit;
+};
+
 // AI Analysis of diary entries
 const analyzeEntries = async (req, res) => {
   const userId = req.user.id;
@@ -720,7 +738,7 @@ const analyzeEntries = async (req, res) => {
     // Generate AI analysis
     console.log('[AI] Generating AI analysis for diary entries...');
     const analysis = await aiService.generateResponse(userId, prompt, {
-      maxTokens: 1500,
+      maxTokens: getJournalAnalysisMaxTokens(),
       temperature: 0.7
     });
 

@@ -74,6 +74,19 @@ describe('Custom OpenAI-compatible provider', () => {
     expect(request.headers.Authorization).toBe('Bearer secret-key');
   });
 
+  test('omits the token ceiling when journal generation is uncapped', async () => {
+    await AIProvider.generateResponse('Analyze these journal entries', {
+      provider: 'custom',
+      apiKey: '',
+      apiUrl: 'https://provider.example/v1',
+      modelName: 'gpt-5.6-luna'
+    }, { maxTokens: null, temperature: 0.7 });
+
+    const request = fetchAiProviderUrl.mock.calls[0][2];
+    const body = JSON.parse(request.body);
+    expect(body).not.toHaveProperty('max_tokens');
+  });
+
   test('uses the Ollama v1 chat completions endpoint for a bare server URL', async () => {
     const result = await AIProvider.generateResponse('Analyze these journal entries', {
       provider: 'ollama',

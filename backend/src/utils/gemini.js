@@ -195,7 +195,16 @@ Keep recommendations highly specific and personalized. Use bullet points for cla
     const model = genAI.getGenerativeModel({ model: effectiveModel });
 
     try {
-      const result = await model.generateContent(prompt);
+      const generationConfig = {
+        ...(Number.isSafeInteger(options.maxTokens) && options.maxTokens > 0
+          ? { maxOutputTokens: options.maxTokens }
+          : {}),
+        ...(options.temperature !== undefined ? { temperature: options.temperature } : {})
+      };
+      const result = await model.generateContent({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        ...(Object.keys(generationConfig).length > 0 ? { generationConfig } : {})
+      });
       const response = await result.response;
       return response.text();
     } catch (error) {
