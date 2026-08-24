@@ -1093,6 +1093,8 @@
                     </div>
                 </div>
 
+                <TradeAllocationSettings class="mb-8" />
+
                 <!-- Quality Grading Weights -->
                 <div class="card">
                     <div class="card-body">
@@ -1550,7 +1552,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, defineAsyncComponent } from "vue";
 import { useAuthStore } from "@/stores/auth";
 import { useTradesStore } from "@/stores/trades";
 import { useVersionStore } from "@/stores/version";
@@ -1578,6 +1580,7 @@ import AdminAiProviderSettings from "@/components/settings/AdminAiProviderSettin
 import AdminCusipAiProviderSettings from "@/components/settings/AdminCusipAiProviderSettings.vue";
 import BrokerFeeSettings from "@/components/settings/BrokerFeeSettings.vue";
 import DataExportImport from "@/components/settings/DataExportImport.vue";
+const TradeAllocationSettings = defineAsyncComponent(() => import("@/components/settings/TradeAllocationSettings.vue"));
 
 const authStore = useAuthStore();
 const tradesStore = useTradesStore();

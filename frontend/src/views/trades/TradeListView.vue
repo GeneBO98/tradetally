@@ -267,6 +267,13 @@
                 Add tags
               </button>
               <button
+                v-if="allocationEnabled && allocationGroups.length >= 2"
+                @click="showBulkAllocationModal = true"
+                class="px-3 py-2 text-sm bg-primary-600 text-white rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+              >
+                Allocate
+              </button>
+              <button
                 @click="confirmBulkDelete"
                 class="px-3 py-2 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
               >
@@ -1076,6 +1083,15 @@
         </div>
       </div>
     </div>
+
+    <BulkTradeAllocationModal
+      v-if="allocationEnabled"
+      :open="showBulkAllocationModal"
+      :groups="allocationGroups"
+      :trade-ids="selectedTrades"
+      @close="showBulkAllocationModal = false"
+      @saved="handleBulkAllocationSaved"
+    />
   </div>
 </template>
 
@@ -1090,6 +1106,7 @@ import { DocumentTextIcon, ChatBubbleLeftIcon, FunnelIcon, XMarkIcon, Exclamatio
 // TradeFilters only ever renders inside the filters modal (v-if="showFiltersModal"),
 // so lazy-load it to keep its ~50 KB out of the TradeListView entry chunk.
 const TradeFilters = defineAsyncComponent(() => import('@/components/trades/TradeFilters.vue'))
+const BulkTradeAllocationModal = defineAsyncComponent(() => import('@/components/trades/BulkTradeAllocationModal.vue'))
 import TradeCommentsDialog from '@/components/trades/TradeCommentsDialog.vue'
 import EnrichmentStatus from '@/components/trades/EnrichmentStatus.vue'
 import ColumnCustomizer from '@/components/trades/ColumnCustomizer.vue'
@@ -1214,6 +1231,9 @@ const selectedTrades = ref([])
 const showDeleteConfirm = ref(false)
 const showBulkTagModal = ref(false)
 const bulkTagsToAdd = ref([])
+const allocationEnabled = ref(false)
+const allocationGroups = ref([])
+const showBulkAllocationModal = ref(false)
 
 // Filters modal
 const showFiltersModal = ref(false)
@@ -1489,6 +1509,7 @@ function handleFilter(filters) {
   )
   tradesStore.setFilters(filters)
   tradesStore.fetchTrades() // fetchTrades now includes analytics in parallel
+  loadAllocationFeature()
   // Close the filters modal after applying — but skip the auto-emit fired by
   // TradeFilters' onMounted (issue #327: modal flashed open then closed).
   if (showFiltersModal.value && !ignoreNextFilterClose.value) {
@@ -1591,6 +1612,23 @@ async function executeBulkAddTags() {
     console.error('[ERROR] Failed to add tags:', error)
     alert(error.response?.data?.message || 'Failed to add tags to trades')
   }
+}
+
+async function loadAllocationFeature() {
+  try {
+    const settingsResponse = await api.get('/settings')
+    allocationEnabled.value = settingsResponse.data?.settings?.tradeAllocationsEnabled === true
+    if (!allocationEnabled.value) return
+    const groupsResponse = await api.get('/trade-allocations/groups')
+    allocationGroups.value = groupsResponse.data.groups || []
+  } catch (error) {
+    console.error('[TRADE-LIST] Failed to load allocation feature:', error)
+  }
+}
+
+function handleBulkAllocationSaved() {
+  selectedTrades.value = []
+  showBulkAllocationModal.value = false
 }
 
 // Get news badge classes based on sentiment

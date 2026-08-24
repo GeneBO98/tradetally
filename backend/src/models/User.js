@@ -253,7 +253,8 @@ class User {
       defaultStopLossType: 'default_stop_loss_type',
       defaultStopLossDollars: 'default_stop_loss_dollars',
       timeDisplayFormat: 'time_display_format',
-      displayCurrency: 'display_currency'
+      displayCurrency: 'display_currency',
+      tradeAllocationsEnabled: 'trade_allocations_enabled'
     };
 
     Object.entries(settings).forEach(([key, value]) => {

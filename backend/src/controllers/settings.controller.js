@@ -839,7 +839,8 @@ const settingsController = {
 
       // Fetch additional user-owned tables
       const [watchlists, watchlistItems, priceAlerts, instrumentTemplates,
-             generalNotes, customCsvMappings, behavioralSettings, healthData] = await Promise.all([
+             generalNotes, customCsvMappings, behavioralSettings, healthData,
+             allocationGroups, tradeAllocations] = await Promise.all([
         fetchUserTable('watchlists'),
         // watchlist_items needs a join to get items for the user's watchlists
         (async () => {
@@ -862,7 +863,25 @@ const settingsController = {
         fetchUserTable('general_notes'),
         fetchUserTable('custom_csv_mappings'),
         fetchUserTable('behavioral_settings', 'user_id'),
-        fetchUserTable('health_data', 'date')
+        fetchUserTable('health_data', 'date'),
+        fetchUserTable('allocation_groups', 'sort_order'),
+        (async () => {
+          try {
+            const result = await db.query(
+              `SELECT ta.*
+               FROM trade_allocations ta
+               JOIN trades t ON t.id = ta.trade_id
+               JOIN allocation_groups ag ON ag.id = ta.allocation_group_id
+               WHERE t.user_id = $1 AND ag.user_id = $1
+               ORDER BY ta.created_at`,
+              [userId]
+            );
+            return result.rows;
+          } catch (error) {
+            console.warn('[EXPORT] Unable to fetch trade allocations:', error.message);
+            return [];
+          }
+        })()
       ]);
 
       // Settings: exclude internal fields, convert all remaining dynamically
@@ -901,6 +920,16 @@ const settingsController = {
         delete converted.id;
         return converted;
       });
+
+      const tradeAllocationsExport = tradeAllocations.map(allocation => ({
+        originalTradeId: allocation.trade_id,
+        originalAllocationGroupId: allocation.allocation_group_id,
+        allocationRatio: allocation.allocation_ratio,
+        inputMethod: allocation.input_method,
+        originalQuantitySnapshot: allocation.original_quantity_snapshot,
+        createdAt: allocation.created_at,
+        updatedAt: allocation.updated_at
+      }));
 
       // Create export data - Version 3.0 with dynamic field mapping
       const nameParts = (user.full_name || '').trim().split(/\s+/);
@@ -945,6 +974,8 @@ const settingsController = {
         customCsvMappings: convertRows(customCsvMappings),
         behavioralSettings: convertRows(behavioralSettings),
         healthData: convertRows(healthData),
+        allocationGroups: convertRows(allocationGroups, { addOriginalId: true }),
+        tradeAllocations: tradeAllocationsExport,
         // Admin settings (only included for admin exports)
         adminSettings: adminSettings
       };
@@ -1062,6 +1093,8 @@ const settingsController = {
       const tradeIdMap = new Map();
       // Map old watchlist IDs to new IDs for watchlist_items
       const watchlistIdMap = new Map();
+      // Map old allocation group IDs to restored IDs for trade allocations.
+      const allocationGroupIdMap = new Map();
 
       // ============================================
       // Dynamic insert helper for v3.0+
@@ -1289,6 +1322,86 @@ const settingsController = {
           }
           console.log(`[IMPORT] Trades: ${tradesAdded} added, ${tradesSkipped} skipped`);
           console.log(`[IMPORT] Trade ID mappings created: ${tradeIdMap.size}`);
+        }
+
+        // ============================================
+        // 2a. Import optional allocation groups and proportional splits
+        // ============================================
+        if (isV3 && importData.allocationGroups && importData.allocationGroups.length > 0) {
+          let groupsAdded = 0;
+          for (const group of importData.allocationGroups) {
+            const name = String(group.name || '').trim();
+            if (!name) continue;
+            const existing = await client.query(
+              `SELECT id FROM allocation_groups
+               WHERE user_id = $1 AND LOWER(name) = LOWER($2) AND archived_at IS NULL`,
+              [userId, name]
+            );
+            let newGroupId = existing.rows[0]?.id;
+            if (!newGroupId) {
+              const inserted = await dynamicInsert(client, 'allocation_groups', group, { user_id: userId });
+              newGroupId = inserted?.id;
+              if (newGroupId) groupsAdded++;
+            }
+            if (group.originalId && newGroupId) {
+              allocationGroupIdMap.set(group.originalId, newGroupId);
+            }
+          }
+          additionalTablesImported.allocationGroups = groupsAdded;
+        }
+
+        if (isV3 && importData.tradeAllocations && importData.tradeAllocations.length > 0) {
+          let allocationsAdded = 0;
+          const resolvedByTrade = new Map();
+          for (const allocation of importData.tradeAllocations) {
+            const oldTradeId = allocation.originalTradeId ?? allocation.original_trade_id;
+            const oldGroupId = allocation.originalAllocationGroupId ?? allocation.original_allocation_group_id;
+            const tradeId = tradeIdMap.get(oldTradeId);
+            const groupId = allocationGroupIdMap.get(oldGroupId);
+            const ratio = Number(allocation.allocationRatio ?? allocation.allocation_ratio);
+            if (!tradeId || !groupId || !Number.isFinite(ratio) || ratio <= 0 || ratio > 1) continue;
+
+            if (!resolvedByTrade.has(tradeId)) resolvedByTrade.set(tradeId, []);
+            resolvedByTrade.get(tradeId).push({ allocation, groupId, ratio });
+          }
+
+          for (const [tradeId, resolvedAllocations] of resolvedByTrade) {
+            const uniqueGroupIds = new Set(resolvedAllocations.map((item) => item.groupId));
+            const ratioTotal = resolvedAllocations.reduce((sum, item) => sum + item.ratio, 0);
+            if (
+              resolvedAllocations.length < 2 ||
+              uniqueGroupIds.size !== resolvedAllocations.length ||
+              Math.abs(ratioTotal - 1) > 0.000001
+            ) {
+              console.warn(`[IMPORT] Skipping invalid allocation split for trade ${tradeId}`);
+              continue;
+            }
+
+            for (const { allocation, groupId, ratio } of resolvedAllocations) {
+              await client.query(
+                `INSERT INTO trade_allocations (
+                   trade_id, allocation_group_id, allocation_ratio,
+                   input_method, original_quantity_snapshot, created_at, updated_at
+                 ) VALUES ($1, $2, $3, $4, $5, COALESCE($6, CURRENT_TIMESTAMP), COALESCE($7, CURRENT_TIMESTAMP))
+                 ON CONFLICT (trade_id, allocation_group_id) DO UPDATE SET
+                   allocation_ratio = EXCLUDED.allocation_ratio,
+                   input_method = EXCLUDED.input_method,
+                   original_quantity_snapshot = EXCLUDED.original_quantity_snapshot,
+                   updated_at = CURRENT_TIMESTAMP`,
+                [
+                  tradeId,
+                  groupId,
+                  ratio,
+                  allocation.inputMethod === 'quantity' || allocation.input_method === 'quantity' ? 'quantity' : 'percentage',
+                  allocation.originalQuantitySnapshot ?? allocation.original_quantity_snapshot ?? null,
+                  allocation.createdAt ?? allocation.created_at ?? null,
+                  allocation.updatedAt ?? allocation.updated_at ?? null
+                ]
+              );
+              allocationsAdded++;
+            }
+          }
+          additionalTablesImported.tradeAllocations = allocationsAdded;
         }
 
         // ============================================

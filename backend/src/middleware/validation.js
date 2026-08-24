@@ -505,6 +505,7 @@ const schemas = {
       size: Joi.string().valid('full', 'half').optional()
     })).allow(null),
     displayCurrency: Joi.string().max(10),
+    tradeAllocationsEnabled: Joi.boolean(),
     uiPreferences: Joi.object()
   }).min(1),
 

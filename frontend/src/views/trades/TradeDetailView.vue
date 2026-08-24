@@ -54,6 +54,15 @@
           <router-link :to="`/analysis/trade-management?tradeId=${trade.id}`" class="btn-secondary">
             Manage
           </router-link>
+          <button
+            v-if="allocationEnabled"
+            type="button"
+            class="btn-secondary inline-flex items-center gap-2"
+            @click="showAllocationModal = true"
+          >
+            <ChartPieIcon class="h-4 w-4" />
+            Allocate
+          </button>
           <router-link :to="{ path: `/trades/${trade.id}/edit`, query: { from: 'trade-detail' } }" class="btn-secondary">
             Edit
           </router-link>
@@ -65,6 +74,48 @@
 
       <!-- Shareable trade card generator -->
       <TradeShareCard v-if="trade" v-model="showShareCard" :trade="trade" @made-public="trade.is_public = true" />
+
+      <TradeAllocationModal
+        v-if="allocationEnabled"
+        :open="showAllocationModal"
+        :trade="trade"
+        :groups="allocationModalGroups"
+        @close="showAllocationModal = false"
+        @saved="handleAllocationSaved"
+      />
+
+      <div
+        v-if="allocationEnabled && tradeAllocations.length > 0"
+        class="card"
+      >
+        <div class="card-body">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Trade allocation</h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">A private proportional accounting split. Tags remain unchanged.</p>
+            </div>
+            <router-link to="/metrics/allocations" class="text-sm font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400">
+              View allocation report
+            </router-link>
+          </div>
+          <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div
+              v-for="allocation in tradeAllocations"
+              :key="allocation.allocation_group_id"
+              class="rounded-lg border border-gray-200 px-4 py-3 dark:border-gray-700"
+            >
+              <div class="flex items-center gap-2">
+                <span class="h-2.5 w-2.5 rounded-full" :style="{ backgroundColor: allocation.allocation_group_color }"></span>
+                <span class="truncate text-sm font-medium text-gray-900 dark:text-white">{{ allocation.allocation_group_name }}</span>
+                <span class="ml-auto text-sm text-gray-500 dark:text-gray-400">{{ formatAllocationPercent(allocation.allocation_ratio) }}</span>
+              </div>
+              <div v-if="trade.pnl !== null && trade.pnl !== undefined" class="mt-2 text-sm font-semibold" :class="Number(trade.pnl) >= 0 ? 'text-green-600' : 'text-red-600'">
+                {{ formatTradeCurrency(Number(trade.pnl) * Number(allocation.allocation_ratio)) }} P&amp;L
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <!-- Stored AI Analyses -->
       <div v-if="storedAIResponseCount > 0" class="rounded-lg border border-primary-200 bg-primary-50/60 dark:border-primary-900/50 dark:bg-primary-900/10">
@@ -1605,7 +1656,7 @@ import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { format, formatDistanceToNow, formatDistance } from 'date-fns'
-import { DocumentIcon, ChatBubbleLeftIcon, SparklesIcon, ShareIcon, TrashIcon, PlayIcon } from '@heroicons/vue/24/outline'
+import { ChartPieIcon, DocumentIcon, ChatBubbleLeftIcon, SparklesIcon, ShareIcon, TrashIcon, PlayIcon } from '@heroicons/vue/24/outline'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
@@ -1623,6 +1674,7 @@ import {
 
 // Heavy, conditionally rendered components: load lazily to keep them out of the route chunk
 const TradeShareCard = defineAsyncComponent(() => import('@/components/trades/TradeShareCard.vue'))
+const TradeAllocationModal = defineAsyncComponent(() => import('@/components/trades/TradeAllocationModal.vue'))
 const AIConversationPanel = defineAsyncComponent(() => import('@/components/ai/AIConversationPanel.vue'))
 const AIReportRenderer = defineAsyncComponent(() => import('@/components/ai/AIReportRenderer.vue'))
 
@@ -1707,9 +1759,54 @@ function hasLegacyFuturesExcursionUnits(currentTrade, captured, scale) {
 
 const loading = ref(true)
 const trade = ref(null)
+const allocationEnabled = ref(false)
+const allocationGroups = ref([])
+const tradeAllocations = ref([])
+const showAllocationModal = ref(false)
 // True only for the trade's owner. Guests/other users viewing a public trade get
 // a read-only view: owner actions and owner-only data fetches are skipped.
 const isOwner = computed(() => !!authStore.user && !!trade.value && trade.value.user_id === authStore.user.id)
+const allocationModalGroups = computed(() => {
+  const byId = new Map(allocationGroups.value.map((group) => [group.id, group]))
+  for (const allocation of tradeAllocations.value) {
+    if (!byId.has(allocation.allocation_group_id)) {
+      byId.set(allocation.allocation_group_id, {
+        id: allocation.allocation_group_id,
+        name: `${allocation.allocation_group_name} (archived)`,
+        color: allocation.allocation_group_color,
+        archived: true
+      })
+    }
+  }
+  return Array.from(byId.values())
+})
+
+function formatAllocationPercent(ratio) {
+  return `${(Number(ratio || 0) * 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%`
+}
+
+async function loadTradeAllocationFeature() {
+  if (!isOwner.value) return
+  try {
+    const settingsResponse = await api.get('/settings')
+    allocationEnabled.value = settingsResponse.data?.settings?.tradeAllocationsEnabled === true
+    if (!allocationEnabled.value) return
+
+    const [groupsResponse, allocationsResponse] = await Promise.all([
+      api.get('/trade-allocations/groups'),
+      api.get(`/trade-allocations/trades/${trade.value.id}`)
+    ])
+    allocationGroups.value = groupsResponse.data.groups || []
+    tradeAllocations.value = allocationsResponse.data.allocations || []
+  } catch (error) {
+    console.error('Failed to load trade allocations:', error)
+  }
+}
+
+function handleAllocationSaved(result) {
+  tradeAllocations.value = result.allocations || []
+  showSuccess('Success', tradeAllocations.value.length > 0 ? 'Trade allocation saved' : 'Trade allocation cleared')
+}
 const calculatingQuality = ref(false)
 const splittingTrade = ref(false)
 const splitMode = ref(false)
@@ -2824,6 +2921,7 @@ async function loadTrade() {
       loadComments()
       loadStoredAIAnalyses()
       fetchQualityWeights()
+      loadTradeAllocationFeature()
     }
   } catch (error) {
     // A guest hitting a private/non-existent trade gets a 404; send them to login

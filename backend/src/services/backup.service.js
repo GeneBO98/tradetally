@@ -930,13 +930,14 @@ class BackupService {
       // These are restored first (in order) before all remaining tables
       const PRIORITY_ORDER = [
         'user_settings', 'tags', 'symbol_categories', 'features',
-        'achievements', 'watchlists', 'subscriptions',
+        'achievements', 'watchlists', 'subscriptions', 'allocation_groups',
         'devices', 'oauth_clients', 'broker_connections',
         // Tables that depend on priority tables above
         'subscription_features', 'user_subscription_features',
         'watchlist_items', 'user_achievements',
         'trade_attachments', 'trade_comments', 'trade_charts',
         'round_trip_trades', 'diary_attachments', 'diary_templates',
+        'trade_allocations',
       ];
 
       // Build the list of all camelCase keys in the backup (excluding already-handled tables)

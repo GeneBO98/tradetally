@@ -123,6 +123,12 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/metrics/allocations',
+      name: 'allocation-report',
+      component: () => import('@/views/AllocationReportView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/analysis/prop-firm',
       name: 'prop-firm',
       component: () => import('@/views/PropFirmView.vue'),
