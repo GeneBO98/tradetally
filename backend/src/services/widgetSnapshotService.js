@@ -8,6 +8,8 @@ const { groupTradesIntoPositions } = require('../utils/openPositionGrouping');
 const { getDateInTimezone, getDayOfWeekInTimezone } = require('../utils/timezone');
 
 const DASHBOARD_TTL_MS = 24 * 60 * 60 * 1000;
+const NEWS_STALE_AFTER_MS = 75 * 60 * 1000;
+const RECENT_NEWS_LIMIT = 5;
 
 function currentTradingWeekRange(now, timezone) {
   const endDate = getDateInTimezone(now, timezone || 'UTC', false);
@@ -135,25 +137,60 @@ async function loadOpenPositionMetrics(userId) {
   };
 }
 
-async function loadTopNews(symbols) {
-  if (symbols.length === 0) return null;
+async function loadNewsSnapshot(symbols, now = new Date()) {
+  if (symbols.length === 0) {
+    return { topNews: null, recentNews: [], newsFetchedAt: null };
+  }
+  const normalizedSymbols = [...new Set(symbols.map(symbol => String(symbol).trim().toUpperCase()).filter(Boolean))];
   const rows = await NewsService.getCachedNews(symbols);
-  const newest = rows
+  const cachedSymbols = new Set(rows.map(row => String(row.symbol || '').trim().toUpperCase()));
+  const staleSymbols = normalizedSymbols.filter(symbol => {
+    const row = rows.find(candidate => String(candidate.symbol || '').trim().toUpperCase() === symbol);
+    if (!row?.fetched_at) return true;
+    const fetchedAt = new Date(row.fetched_at);
+    return Number.isNaN(fetchedAt.getTime()) || now.getTime() - fetchedAt.getTime() > NEWS_STALE_AFTER_MS;
+  });
+
+  // Never make the WidgetKit request wait on the market-data provider. The
+  // scheduler/service drain deduplicates this with concurrent widget reads and
+  // with an already-running hourly refresh.
+  if (staleSymbols.length > 0 || cachedSymbols.size < normalizedSymbols.length) {
+    NewsService.requestBackgroundRefresh(staleSymbols, { reason: 'widget_snapshot_stale' });
+  }
+
+  const cacheDates = rows
+    .map(row => new Date(row.fetched_at))
+    .filter(date => !Number.isNaN(date.getTime()));
+  const newsFetchedAt = cacheDates.length > 0
+    ? new Date(Math.max(...cacheDates.map(date => date.getTime()))).toISOString()
+    : null;
+
+  const candidates = rows
     .flatMap(row => {
       const items = Array.isArray(row.news_items) ? row.news_items : [];
       return items.map(item => ({ ...item, symbol: item.symbol || row.symbol }));
     })
     .map(item => ({ item, publishedAt: newsPublishedAt(item) }))
     .filter(candidate => candidate.publishedAt && candidate.item.headline)
-    .sort((a, b) => b.publishedAt.getTime() - a.publishedAt.getTime())[0];
+    .sort((a, b) => b.publishedAt.getTime() - a.publishedAt.getTime());
 
-  if (!newest) return null;
-  return {
-    headline: String(newest.item.headline),
-    source: String(newest.item.source || ''),
-    symbol: newest.item.symbol ? String(newest.item.symbol) : null,
-    publishedAt: newest.publishedAt.toISOString()
-  };
+  const seen = new Set();
+  const recentNews = [];
+  for (const candidate of candidates) {
+    const key = candidate.item.id || candidate.item.url ||
+      `${candidate.item.headline}|${candidate.publishedAt.toISOString()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    recentNews.push({
+      headline: String(candidate.item.headline),
+      source: String(candidate.item.source || ''),
+      symbol: candidate.item.symbol ? String(candidate.item.symbol) : null,
+      publishedAt: candidate.publishedAt.toISOString()
+    });
+    if (recentNews.length === RECENT_NEWS_LIMIT) break;
+  }
+
+  return { topNews: recentNews[0] || null, recentNews, newsFetchedAt };
 }
 
 async function loadTopInsight(userId) {
@@ -186,7 +223,7 @@ async function getSnapshot(user) {
     loadOpenPositionMetrics(user.id),
     loadTopInsight(user.id)
   ]);
-  const topNews = await loadTopNews(positionMetrics.symbols);
+  const news = await loadNewsSnapshot(positionMetrics.symbols);
   const summary = analytics?.summary || {};
 
   return {
@@ -197,7 +234,9 @@ async function getSnapshot(user) {
     openPositionsCount: positionMetrics.openPositionsCount,
     todayPnL: positionMetrics.todayPnL,
     winningOpenPositions: positionMetrics.winningOpenPositions,
-    topNews,
+    topNews: news.topNews,
+    recentNews: news.recentNews,
+    newsFetchedAt: news.newsFetchedAt,
     topInsight,
     updatedAt: new Date().toISOString()
   };
@@ -206,5 +245,6 @@ async function getSnapshot(user) {
 module.exports = {
   currentTradingWeekRange,
   getSnapshot,
-  loadTopNews
+  loadNewsSnapshot,
+  NEWS_STALE_AFTER_MS
 };

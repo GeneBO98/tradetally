@@ -3,7 +3,10 @@ jest.mock('../../src/utils/cache', () => ({ get: jest.fn(), set: jest.fn() }));
 jest.mock('../../src/services/analyticsCache', () => ({ get: jest.fn(), set: jest.fn() }));
 jest.mock('../../src/services/tradeQueries', () => ({ cacheKey: jest.fn(), getAnalytics: jest.fn() }));
 jest.mock('../../src/models/Trade', () => ({ findOpenPositionsByUser: jest.fn() }));
-jest.mock('../../src/services/newsService', () => ({ getCachedNews: jest.fn() }));
+jest.mock('../../src/services/newsService', () => ({
+  getCachedNews: jest.fn(),
+  requestBackgroundRefresh: jest.fn()
+}));
 jest.mock('../../src/utils/timezone', () => ({
   getDateInTimezone: jest.fn(() => '2026-08-26'),
   getDayOfWeekInTimezone: jest.fn(() => 3)
@@ -18,6 +21,8 @@ const NewsService = require('../../src/services/newsService');
 const service = require('../../src/services/widgetSnapshotService');
 
 describe('widgetSnapshotService', () => {
+  let fetchedAt;
+
   beforeEach(() => {
     jest.clearAllMocks();
     TradeQueries.cacheKey.mockReturnValue('analytics:user_user-1:week');
@@ -43,10 +48,12 @@ describe('widgetSnapshotService', () => {
       }
       throw new Error(`Unexpected query: ${query}`);
     });
+    fetchedAt = new Date(Date.now() - 10 * 60 * 1000).toISOString();
     NewsService.getCachedNews.mockResolvedValue([
-      { symbol: 'AAPL', news_items: [{ headline: 'Older', source: 'Wire', datetime: 1787600000 }] },
-      { symbol: 'AAPL', news_items: [{ headline: 'Newest', source: 'Reuters', datetime: 1787700000 }] }
+      { symbol: 'AAPL', fetched_at: fetchedAt, news_items: [{ headline: 'Older', source: 'Wire', datetime: 1787600000 }] },
+      { symbol: 'AAPL', fetched_at: fetchedAt, news_items: [{ headline: 'Newest', source: 'Reuters', datetime: 1787700000 }] }
     ]);
+    NewsService.requestBackgroundRefresh.mockReturnValue({ enqueued: 0, deduplicated: 0 });
   });
 
   test('composes the exact widget snapshot from cached analytics, quotes, insights, and globally newest news', async () => {
@@ -66,6 +73,18 @@ describe('widgetSnapshotService', () => {
         symbol: 'AAPL',
         publishedAt: new Date(1787700000 * 1000).toISOString()
       },
+      recentNews: [{
+        headline: 'Newest',
+        source: 'Reuters',
+        symbol: 'AAPL',
+        publishedAt: new Date(1787700000 * 1000).toISOString()
+      }, {
+        headline: 'Older',
+        source: 'Wire',
+        symbol: 'AAPL',
+        publishedAt: new Date(1787600000 * 1000).toISOString()
+      }],
+      newsFetchedAt: fetchedAt,
       topInsight: {
         headline: 'Stay selective',
         body: 'Your best setups are working.',
@@ -75,6 +94,7 @@ describe('widgetSnapshotService', () => {
     });
     expect(TradeQueries.getAnalytics).not.toHaveBeenCalled();
     expect(NewsService.getCachedNews).toHaveBeenCalledWith(['AAPL']);
+    expect(NewsService.requestBackgroundRefresh).not.toHaveBeenCalled();
   });
 
   test('warms and persists the canonical weekly analytics cache on a first-read miss', async () => {
@@ -115,5 +135,44 @@ describe('widgetSnapshotService', () => {
     expect(snapshot.todayPnL).toBe(0);
     expect(snapshot.winningOpenPositions).toBe(0);
     expect(db.query.mock.calls.some(([query]) => query.includes('price_monitoring'))).toBe(false);
+  });
+
+  test('returns an empty-news cache check time and queues stale refresh without awaiting Finnhub', async () => {
+    const staleFetchedAt = new Date(Date.now() - service.NEWS_STALE_AFTER_MS - 1000).toISOString();
+    NewsService.getCachedNews.mockResolvedValue([{
+      symbol: 'AAPL',
+      fetched_at: staleFetchedAt,
+      news_items: []
+    }]);
+
+    const snapshot = await service.getSnapshot({ id: 'user-1', timezone: 'UTC' });
+
+    expect(snapshot.topNews).toBeNull();
+    expect(snapshot.recentNews).toEqual([]);
+    expect(snapshot.newsFetchedAt).toBe(staleFetchedAt);
+    expect(NewsService.requestBackgroundRefresh).toHaveBeenCalledWith(
+      ['AAPL'],
+      { reason: 'widget_snapshot_stale' }
+    );
+  });
+
+  test('caps recent news at five globally newest unique articles', async () => {
+    NewsService.getCachedNews.mockResolvedValue([{
+      symbol: 'AAPL',
+      fetched_at: fetchedAt,
+      news_items: Array.from({ length: 7 }, (_, index) => ({
+        id: `story-${index}`,
+        headline: `Story ${index}`,
+        source: 'Wire',
+        datetime: 1787700000 - index
+      }))
+    }]);
+
+    const snapshot = await service.getSnapshot({ id: 'user-1', timezone: 'UTC' });
+
+    expect(snapshot.recentNews).toHaveLength(5);
+    expect(snapshot.recentNews.map(item => item.headline)).toEqual([
+      'Story 0', 'Story 1', 'Story 2', 'Story 3', 'Story 4'
+    ]);
   });
 });

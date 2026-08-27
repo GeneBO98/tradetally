@@ -17,6 +17,10 @@ describe('NewsService widget refresh tracking', () => {
     jest.clearAllMocks();
   });
 
+  afterEach(async () => {
+    await NewsService.waitForBackgroundRefreshes();
+  });
+
   test('detects a changed top story', () => {
     expect(NewsService.newsChanged(
       [{ id: 1, datetime: 100, headline: 'Old' }],
@@ -56,5 +60,46 @@ describe('NewsService widget refresh tracking', () => {
 
     expect(users).toEqual(['user-1', 'user-2']);
     expect(db.query.mock.calls[0][1]).toEqual([['AAPL', 'MSFT']]);
+  });
+
+  test('deduplicates non-blocking stale refresh requests', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    db.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+    finnhub.getCompanyNews.mockResolvedValue([
+      { id: 3, datetime: now, headline: 'Fresh', source: 'Reuters' }
+    ]);
+
+    const first = NewsService.requestBackgroundRefresh(['voo'], { reason: 'widget_snapshot_stale' });
+    const second = NewsService.requestBackgroundRefresh(['VOO'], { reason: 'widget_snapshot_stale' });
+
+    expect(first).toEqual({ enqueued: 1, deduplicated: 0 });
+    expect(second).toEqual({ enqueued: 0, deduplicated: 1 });
+    expect(finnhub.getCompanyNews).not.toHaveBeenCalled();
+
+    await NewsService.waitForBackgroundRefreshes();
+
+    expect(finnhub.getCompanyNews).toHaveBeenCalledTimes(1);
+    expect(finnhub.getCompanyNews).toHaveBeenCalledWith('VOO');
+  });
+
+  test('treats VOO as a supported company-news symbol without inventing a market fallback', () => {
+    expect(NewsService.isUnsupportedNewsSymbol('VOO')).toBe(false);
+  });
+
+  test('reports failed symbols for persisted scheduler diagnostics', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+    finnhub.getCompanyNews.mockRejectedValue(new Error('provider unavailable'));
+
+    const summary = await NewsService.fetchAndCacheAll(['VOO']);
+
+    expect(summary).toEqual(expect.objectContaining({
+      errors: 1,
+      failedSymbols: ['VOO']
+    }));
   });
 });

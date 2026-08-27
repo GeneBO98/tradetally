@@ -18,6 +18,12 @@ const CACHE_MAX_AGE_MS = 60 * 60 * 1000;
 // Delay between Finnhub API calls to respect rate limits (300ms)
 const API_DELAY_MS = 300;
 
+function normalizeSymbols(symbols) {
+  return [...new Set((symbols || [])
+    .map(symbol => String(symbol).trim().toUpperCase())
+    .filter(Boolean))];
+}
+
 class NewsService {
   static newsChanged(previousItems, nextItems) {
     const previous = Array.isArray(previousItems) ? previousItems : [];
@@ -98,16 +104,17 @@ class NewsService {
    * Get cached news for a list of symbols
    */
   static async getCachedNews(symbols) {
-    if (!symbols || symbols.length === 0) return [];
+    const normalized = normalizeSymbols(symbols);
+    if (normalized.length === 0) return [];
 
-    const placeholders = symbols.map((_, i) => `$${i + 1}`).join(',');
+    const placeholders = normalized.map((_, i) => `$${i + 1}`).join(',');
     const query = `
-      SELECT symbol, news_items, fetched_at
+      SELECT UPPER(symbol) AS symbol, news_items, fetched_at
       FROM dashboard_news_cache
-      WHERE symbol IN (${placeholders})
+      WHERE UPPER(symbol) IN (${placeholders})
     `;
 
-    const result = await db.query(query, symbols);
+    const result = await db.query(query, normalized);
     return result.rows;
   }
 
@@ -116,6 +123,7 @@ class NewsService {
    */
   static async fetchAndCacheSymbol(symbol) {
     try {
+      symbol = String(symbol || '').trim().toUpperCase();
       if (this.isUnsupportedNewsSymbol(symbol)) {
         await db.query(
           `INSERT INTO dashboard_news_cache (symbol, news_items, fetched_at)
@@ -163,42 +171,129 @@ class NewsService {
     let skipped = 0;
     let errors = 0;
     const changedSymbols = [];
+    const failedSymbols = [];
 
-    for (const symbol of symbols) {
-      // Check if already cached recently
-      const cached = await db.query(
-        `SELECT fetched_at, news_items FROM dashboard_news_cache
-         WHERE symbol = $1 AND fetched_at > NOW() - INTERVAL '1 hour'`,
-        [symbol]
-      );
+    const normalized = normalizeSymbols(symbols);
 
-      if (cached.rows.length > 0) {
-        skipped++;
-        continue;
-      }
-
-      const previous = await db.query(
-        'SELECT news_items FROM dashboard_news_cache WHERE symbol = $1',
-        [symbol]
-      );
-      const previousItems = previous.rows[0]?.news_items || [];
-      const result = await this.fetchAndCacheSymbol(symbol);
-      if (result !== null) {
+    for (const symbol of normalized) {
+      const outcome = await this.refreshSymbolIfStale(symbol);
+      if (outcome.status === 'fetched') {
         fetched++;
-        if (this.newsChanged(previousItems, result)) {
-          changedSymbols.push(symbol);
-        }
+        if (outcome.changed) changedSymbols.push(symbol);
+      } else if (outcome.status === 'skipped' || outcome.status === 'coalesced') {
+        skipped++;
       } else {
         errors++;
+        failedSymbols.push(symbol);
       }
 
       // Rate limit delay between API calls
-      if (symbols.indexOf(symbol) < symbols.length - 1) {
+      if (normalized.indexOf(symbol) < normalized.length - 1) {
         await new Promise(resolve => setTimeout(resolve, API_DELAY_MS));
       }
     }
 
-    return { fetched, skipped, errors, total: symbols.length, changedSymbols };
+    return { fetched, skipped, errors, total: normalized.length, changedSymbols, failedSymbols };
+  }
+
+  static async refreshSymbolIfStale(symbol) {
+    const normalized = String(symbol || '').trim().toUpperCase();
+    const existing = this._inFlightRefreshes.get(normalized);
+    if (existing) {
+      const outcome = await existing;
+      return outcome.status === 'error'
+        ? outcome
+        : { status: 'coalesced', changed: false };
+    }
+
+    const refresh = (async () => {
+      try {
+        const cached = await db.query(
+          `SELECT fetched_at, news_items FROM dashboard_news_cache
+           WHERE UPPER(symbol) = $1
+             AND fetched_at > NOW() - ($2::bigint * INTERVAL '1 millisecond')`,
+          [normalized, CACHE_MAX_AGE_MS]
+        );
+        if (cached.rows.length > 0) return { status: 'skipped', changed: false };
+
+        const previous = await db.query(
+          'SELECT news_items FROM dashboard_news_cache WHERE UPPER(symbol) = $1 ORDER BY fetched_at DESC LIMIT 1',
+          [normalized]
+        );
+        const previousItems = previous.rows[0]?.news_items || [];
+        const result = await this.fetchAndCacheSymbol(normalized);
+        if (result === null) return { status: 'error', changed: false };
+        return {
+          status: 'fetched',
+          changed: this.newsChanged(previousItems, result)
+        };
+      } catch (error) {
+        console.error(`${LOG_PREFIX} Failed background refresh for ${normalized}:`, error.message);
+        return { status: 'error', changed: false, error: error.message };
+      }
+    })();
+
+    this._inFlightRefreshes.set(normalized, refresh);
+    try {
+      return await refresh;
+    } finally {
+      this._inFlightRefreshes.delete(normalized);
+    }
+  }
+
+  /**
+   * Queue stale widget symbols for a best-effort refresh after the current
+   * HTTP response can complete. Requests are deduplicated in-process and the
+   * drain uses fetchAndCacheAll's existing provider pacing.
+   */
+  static requestBackgroundRefresh(symbols, { reason = 'unspecified' } = {}) {
+    const supported = normalizeSymbols(symbols)
+      .filter(symbol => !this.isUnsupportedNewsSymbol(symbol));
+    let enqueued = 0;
+    let deduplicated = 0;
+    for (const symbol of supported) {
+      if (this._pendingBackgroundSymbols.has(symbol) || this._inFlightRefreshes.has(symbol)) {
+        deduplicated++;
+        continue;
+      }
+      this._pendingBackgroundSymbols.add(symbol);
+      enqueued++;
+    }
+
+    if (enqueued > 0) {
+      console.log(`${LOG_PREFIX} Queued ${enqueued} stale symbol(s) for ${reason}`);
+      this._scheduleBackgroundDrain();
+    }
+    return { enqueued, deduplicated };
+  }
+
+  static _scheduleBackgroundDrain() {
+    if (this._backgroundDrainPromise) return;
+    this._backgroundDrainPromise = new Promise(resolve => setImmediate(resolve))
+      .then(async () => {
+        const symbols = [...this._pendingBackgroundSymbols];
+        this._pendingBackgroundSymbols.clear();
+        if (symbols.length === 0) return null;
+        const summary = await this.fetchAndCacheAll(symbols);
+        if (summary.errors > 0) {
+          console.error(`${LOG_PREFIX} On-demand refresh completed with ${summary.errors} error(s)`);
+        }
+        return summary;
+      })
+      .catch(error => {
+        console.error(`${LOG_PREFIX} On-demand refresh failed:`, error.message);
+        return null;
+      })
+      .finally(() => {
+        this._backgroundDrainPromise = null;
+        if (this._pendingBackgroundSymbols.size > 0) this._scheduleBackgroundDrain();
+      });
+  }
+
+  static async waitForBackgroundRefreshes() {
+    while (this._backgroundDrainPromise) {
+      await this._backgroundDrainPromise;
+    }
   }
 
   /**
@@ -272,5 +367,9 @@ class NewsService {
     return allNews;
   }
 }
+
+NewsService._inFlightRefreshes = new Map();
+NewsService._pendingBackgroundSymbols = new Set();
+NewsService._backgroundDrainPromise = null;
 
 module.exports = NewsService;
