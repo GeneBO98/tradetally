@@ -110,6 +110,7 @@ describe('RevenueCat subscription synchronization', () => {
 
   test('authenticates webhook authorization headers without partial matches', () => {
     expect(revenueCatService.isWebhookAuthorized('Bearer webhook-secret')).toBe(true);
+    expect(revenueCatService.isWebhookAuthorized('webhook-secret')).toBe(true);
     expect(revenueCatService.isWebhookAuthorized('Bearer webhook')).toBe(false);
     expect(revenueCatService.isWebhookAuthorized()).toBe(false);
   });

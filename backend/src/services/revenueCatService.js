@@ -31,8 +31,16 @@ function isWebhookAuthorized(authorizationHeader) {
   const expectedHeader = process.env.REVENUECAT_WEBHOOK_AUTHORIZATION;
   if (!expectedHeader || !authorizationHeader) return false;
 
-  const expected = Buffer.from(expectedHeader);
-  const actual = Buffer.from(String(authorizationHeader));
+  // RevenueCat stores the full Authorization header, while deployment tools
+  // commonly store only the token. Accept either representation without
+  // weakening the secret comparison.
+  const normalize = (value) => String(value)
+    .trim()
+    .replace(/^Bearer\s+/i, '')
+    .trim();
+  const expected = Buffer.from(normalize(expectedHeader));
+  const actual = Buffer.from(normalize(authorizationHeader));
+  if (expected.length === 0 || actual.length === 0) return false;
   return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
 }
 
