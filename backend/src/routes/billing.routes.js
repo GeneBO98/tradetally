@@ -18,8 +18,10 @@ const rawBodyMiddleware = express.raw({ type: 'application/json' });
 router.get('/status', billingController.getBillingStatus);
 router.get('/pricing', billingController.getPricingPlans);
 
-// Webhook endpoint (no auth required, raw body)
+// Public billing-provider webhooks. Stripe requires its raw signed body;
+// RevenueCat authenticates with the configured Authorization header.
 router.post('/webhooks/stripe', rawBodyMiddleware, billingController.handleWebhook);
+router.post('/webhooks/revenuecat', billingController.handleRevenueCatWebhook);
 
 // Protected routes (require authentication)
 router.use(authenticate); // Apply auth middleware to all routes below

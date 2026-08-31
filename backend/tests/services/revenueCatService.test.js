@@ -17,7 +17,8 @@ describe('RevenueCat subscription synchronization', () => {
     process.env = {
       ...originalEnv,
       REVENUECAT_SECRET_API_KEY: 'secret-key',
-      REVENUECAT_ENTITLEMENT_ID: 'pro'
+      REVENUECAT_ENTITLEMENT_ID: 'pro',
+      REVENUECAT_WEBHOOK_AUTHORIZATION: 'Bearer webhook-secret'
     };
     client = {
       query: jest.fn().mockResolvedValue({ rows: [] }),
@@ -105,5 +106,60 @@ describe('RevenueCat subscription synchronization', () => {
 
     await expect(revenueCatService.syncUserEntitlement('user-3')).rejects.toThrow('network down');
     expect(db.connect).not.toHaveBeenCalled();
+  });
+
+  test('authenticates webhook authorization headers without partial matches', () => {
+    expect(revenueCatService.isWebhookAuthorized('Bearer webhook-secret')).toBe(true);
+    expect(revenueCatService.isWebhookAuthorized('Bearer webhook')).toBe(false);
+    expect(revenueCatService.isWebhookAuthorized()).toBe(false);
+  });
+
+  test('extracts the TradeTally UUID from RevenueCat aliases', () => {
+    expect(revenueCatService.extractTradeTallyUserIds({
+      app_user_id: '$RCAnonymousID:abc',
+      aliases: [
+        '$RCAnonymousID:abc',
+        '0ab8bd3c-64f2-460c-9f15-6c62b7eed40e',
+        '0ab8bd3c-64f2-460c-9f15-6c62b7eed40e'
+      ]
+    })).toEqual(['0ab8bd3c-64f2-460c-9f15-6c62b7eed40e']);
+  });
+
+  test('reconciles webhook events against current RevenueCat state', async () => {
+    axios.get.mockResolvedValue({
+      data: {
+        subscriber: {
+          entitlements: {
+            pro: {
+              product_identifier: 'monthly-15',
+              expires_date: '2099-09-28T15:53:00Z'
+            }
+          }
+        }
+      }
+    });
+
+    const result = await revenueCatService.processWebhook({
+      api_version: '1.0',
+      event: {
+        type: 'CANCELLATION',
+        app_user_id: '$RCAnonymousID:abc',
+        aliases: ['0ab8bd3c-64f2-460c-9f15-6c62b7eed40e']
+      }
+    });
+
+    expect(result.processedUserIds).toEqual(['0ab8bd3c-64f2-460c-9f15-6c62b7eed40e']);
+    expect(result.results[0]).toEqual(expect.objectContaining({
+      active: true,
+      productId: 'monthly-15'
+    }));
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO tier_overrides'),
+      [
+        '0ab8bd3c-64f2-460c-9f15-6c62b7eed40e',
+        'RevenueCat Subscription',
+        new Date('2099-09-28T15:53:00Z')
+      ]
+    );
   });
 });

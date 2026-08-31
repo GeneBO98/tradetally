@@ -1,4 +1,5 @@
 const axios = require('axios');
+const crypto = require('crypto');
 const db = require('../config/database');
 const tierCache = require('./tierCache');
 const settingsCache = require('./settingsCache');
@@ -24,6 +25,15 @@ function getConfiguration() {
     apiKey,
     entitlementId: process.env.REVENUECAT_ENTITLEMENT_ID || DEFAULT_ENTITLEMENT_ID
   };
+}
+
+function isWebhookAuthorized(authorizationHeader) {
+  const expectedHeader = process.env.REVENUECAT_WEBHOOK_AUTHORIZATION;
+  if (!expectedHeader || !authorizationHeader) return false;
+
+  const expected = Buffer.from(expectedHeader);
+  const actual = Buffer.from(String(authorizationHeader));
+  return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
 }
 
 function parseDate(value) {
@@ -116,8 +126,53 @@ async function syncUserEntitlement(userId) {
   };
 }
 
+function extractTradeTallyUserIds(event) {
+  if (!event || typeof event !== 'object') return [];
+
+  const candidates = [
+    event.app_user_id,
+    ...(Array.isArray(event.aliases) ? event.aliases : []),
+    ...(Array.isArray(event.transferred_from) ? event.transferred_from : []),
+    ...(Array.isArray(event.transferred_to) ? event.transferred_to : [])
+  ];
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+  return [...new Set(candidates.filter((candidate) => (
+    typeof candidate === 'string' && uuidPattern.test(candidate)
+  )))];
+}
+
+async function processWebhook(payload) {
+  const event = payload?.event;
+  if (!event || typeof event !== 'object' || typeof event.type !== 'string') {
+    const error = new Error('Invalid RevenueCat webhook payload');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (event.type === 'TEST') {
+    return { eventType: event.type, processedUserIds: [], test: true };
+  }
+
+  const userIds = extractTradeTallyUserIds(event);
+  const results = [];
+  for (const userId of userIds) {
+    results.push({ userId, ...(await syncUserEntitlement(userId)) });
+  }
+
+  return {
+    eventType: event.type,
+    processedUserIds: userIds,
+    results,
+    test: false
+  };
+}
+
 module.exports = {
   RevenueCatConfigurationError,
+  extractTradeTallyUserIds,
+  isWebhookAuthorized,
+  processWebhook,
   resolveActiveEntitlement,
   syncUserEntitlement
 };

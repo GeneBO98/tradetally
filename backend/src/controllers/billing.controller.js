@@ -785,6 +785,43 @@ const billingController = {
 
       next(error);
     }
+  },
+
+  async handleRevenueCatWebhook(req, res, next) {
+    try {
+      if (!process.env.REVENUECAT_WEBHOOK_AUTHORIZATION) {
+        return res.status(503).json({
+          success: false,
+          error: 'revenuecat_webhook_not_configured'
+        });
+      }
+
+      if (!revenueCatService.isWebhookAuthorized(req.get('authorization'))) {
+        return res.status(401).json({
+          success: false,
+          error: 'invalid_webhook_authorization'
+        });
+      }
+
+      const result = await revenueCatService.processWebhook(req.body);
+      return res.json({
+        success: true,
+        data: {
+          eventType: result.eventType,
+          processedUsers: result.processedUserIds.length,
+          test: result.test
+        }
+      });
+    } catch (error) {
+      if (error.statusCode === 400) {
+        return res.status(400).json({
+          success: false,
+          error: 'invalid_revenuecat_webhook',
+          message: error.message
+        });
+      }
+      next(error);
+    }
   }
 };
 
