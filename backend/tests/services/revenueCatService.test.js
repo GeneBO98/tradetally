@@ -16,7 +16,8 @@ describe('RevenueCat subscription synchronization', () => {
     jest.clearAllMocks();
     process.env = {
       ...originalEnv,
-      REVENUECAT_SECRET_API_KEY: 'secret-key',
+      REVENUECAT_API_V2_KEY: 'secret-key',
+      REVENUECAT_SECRET_API_KEY: undefined,
       REVENUECAT_ENTITLEMENT_ID: 'pro',
       REVENUECAT_WEBHOOK_AUTHORIZATION: 'Bearer webhook-secret'
     };
@@ -63,6 +64,21 @@ describe('RevenueCat subscription synchronization', () => {
       active: true,
       productId: 'tradetallymonthly'
     }));
+  });
+
+  test('keeps the temporary secret-key variable as a compatibility fallback', async () => {
+    delete process.env.REVENUECAT_API_V2_KEY;
+    process.env.REVENUECAT_SECRET_API_KEY = 'fallback-secret-key';
+    axios.get.mockResolvedValue({ data: { subscriber: { entitlements: {} } } });
+
+    await revenueCatService.syncUserEntitlement('user-fallback');
+
+    expect(axios.get).toHaveBeenCalledWith(
+      'https://api.revenuecat.com/v1/subscribers/user-fallback',
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Bearer fallback-secret-key' })
+      })
+    );
   });
 
   test('uses a valid billing grace period when the normal expiration passed', () => {

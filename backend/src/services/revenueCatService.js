@@ -16,9 +16,11 @@ class RevenueCatConfigurationError extends Error {
 }
 
 function getConfiguration() {
-  const apiKey = process.env.REVENUECAT_SECRET_API_KEY;
+  const apiKey = process.env.REVENUECAT_API_V2_KEY || process.env.REVENUECAT_SECRET_API_KEY;
   if (!apiKey) {
-    throw new RevenueCatConfigurationError('RevenueCat server API key is not configured');
+    throw new RevenueCatConfigurationError(
+      'RevenueCat server API key is not configured (expected REVENUECAT_API_V2_KEY)'
+    );
   }
 
   return {

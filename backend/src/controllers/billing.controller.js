@@ -813,6 +813,13 @@ const billingController = {
         }
       });
     } catch (error) {
+      if (error instanceof revenueCatService.RevenueCatConfigurationError) {
+        return res.status(503).json({
+          success: false,
+          error: 'revenuecat_not_configured',
+          message: error.message
+        });
+      }
       if (error.statusCode === 400) {
         return res.status(400).json({
           success: false,
