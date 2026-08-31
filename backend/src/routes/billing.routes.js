@@ -34,6 +34,7 @@ router.get('/checkout/:sessionId', billingController.getCheckoutSession);
 
 // Apple In-App Purchase routes
 router.post('/apple/verify', billingLimiter, validate(schemas.billingAppleReceipt), billingController.verifyAppleReceipt);
+router.post('/revenuecat/sync', billingLimiter, billingController.syncRevenueCatSubscription);
 
 // Debug endpoints (development only)
 router.delete('/debug/reset-trial', billingController.debugResetTrial);

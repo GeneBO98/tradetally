@@ -1,6 +1,6 @@
 jest.mock('../../src/services/billingService', () => ({}));
 jest.mock('../../src/services/tierService', () => ({
-  setUserTier: jest.fn()
+  setUserTierUntil: jest.fn()
 }));
 jest.mock('../../src/models/User', () => ({}));
 jest.mock('../../src/config/database', () => ({
@@ -70,7 +70,7 @@ describe('billing controller Apple verification', () => {
 
     await billingController.verifyAppleReceipt(req, res, next);
 
-    expect(TierService.setUserTier).not.toHaveBeenCalled();
+    expect(TierService.setUserTierUntil).not.toHaveBeenCalled();
     expect(res.statusCode).toBe(400);
     expect(res.payload).toEqual(expect.objectContaining({
       success: false,
@@ -121,10 +121,11 @@ describe('billing controller Apple verification', () => {
       expectedProductId: 'com.tradetally.pro.monthly',
       expectedAppAccountToken: 'user-1'
     });
-    expect(TierService.setUserTier).toHaveBeenCalledWith(
+    expect(TierService.setUserTierUntil).toHaveBeenCalledWith(
       'user-1',
       'pro',
       'Apple In-App Purchase',
+      expect.any(Date),
       client
     );
     expect(client.query).toHaveBeenCalledWith('COMMIT');

@@ -108,6 +108,9 @@ async function verifyAppleSignedTransaction(jws, expectedClaims = {}) {
   if (String(payload.type || '').toLowerCase() !== 'auto-renewable subscription') {
     throw new AppleTransactionVerificationError('Apple transaction is not an auto-renewable subscription');
   }
+  if (!payload.expiresDate) {
+    throw new AppleTransactionVerificationError('Apple subscription transaction is missing an expiration date');
+  }
 
   if (!payload.appAccountToken ||
       String(payload.appAccountToken).toLowerCase() !== String(expectedAppAccountToken).toLowerCase()) {

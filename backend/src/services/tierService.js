@@ -566,6 +566,28 @@ class TierService {
     this.invalidateTierCache(userId);
     console.log(`[SUCCESS] TierService: Set user ${userId} to tier '${tier}' (${reason})`);
   }
+
+  /**
+   * Grant a tier only through a specified entitlement expiration. Unlike an
+   * administrative override, this intentionally does not change users.tier.
+   */
+  static async setUserTierUntil(userId, tier, reason, expiresAt, dbClient = null) {
+    const client = dbClient || db;
+    await client.query(`
+      INSERT INTO tier_overrides (user_id, tier, reason, expires_at, created_by)
+      VALUES ($1, $2, $3, $4, NULL)
+      ON CONFLICT (user_id) DO UPDATE SET
+        tier = EXCLUDED.tier,
+        reason = EXCLUDED.reason,
+        expires_at = EXCLUDED.expires_at,
+        created_by = NULL,
+        updated_at = CURRENT_TIMESTAMP
+    `, [userId, tier, reason, expiresAt]);
+
+    if (!dbClient) {
+      this.invalidateTierCache(userId);
+    }
+  }
 }
 
 module.exports = TierService;

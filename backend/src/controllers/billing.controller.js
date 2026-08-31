@@ -5,6 +5,7 @@ const settingsCache = require('../services/settingsCache');
 const User = require('../models/User');
 const db = require('../config/database');
 const { verifyAppleSignedTransaction, AppleTransactionVerificationError } = require('../utils/appleIapVerification');
+const revenueCatService = require('../services/revenueCatService');
 
 const VALID_CANCELLATION_REASONS = new Set([
   'too_expensive',
@@ -711,7 +712,13 @@ const billingController = {
           ]);
         }
 
-        await TierService.setUserTier(userId, 'pro', 'Apple In-App Purchase', client);
+        await TierService.setUserTierUntil(
+          userId,
+          'pro',
+          'Apple In-App Purchase',
+          expiresDate,
+          client
+        );
         await client.query('COMMIT');
       } catch (error) {
         await client.query('ROLLBACK');
@@ -719,6 +726,9 @@ const billingController = {
       } finally {
         client.release();
       }
+
+      tierCache.invalidate(userId);
+      settingsCache.invalidate(userId);
 
       console.log('[APPLE-IAP] Transaction verified successfully for user:', userId);
 
@@ -741,6 +751,39 @@ const billingController = {
         error: 'verification_failed',
         message: error.message || 'Failed to verify transaction with Apple'
       });
+    }
+  },
+
+  // Reconcile the authenticated user's RevenueCat entitlement with the API tier.
+  // The user ID is taken only from the verified session, never from the client body.
+  async syncRevenueCatSubscription(req, res, next) {
+    try {
+      const result = await revenueCatService.syncUserEntitlement(req.user.id);
+      res.json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      console.error('[REVENUECAT] Subscription synchronization failed:', error.message);
+
+      if (error instanceof revenueCatService.RevenueCatConfigurationError) {
+        return res.status(503).json({
+          success: false,
+          error: 'revenuecat_not_configured',
+          message: 'Subscription verification is temporarily unavailable'
+        });
+      }
+
+      const upstreamStatus = error.response?.status;
+      if (upstreamStatus === 401 || upstreamStatus === 403) {
+        return res.status(502).json({
+          success: false,
+          error: 'revenuecat_authentication_failed',
+          message: 'Subscription verification is temporarily unavailable'
+        });
+      }
+
+      next(error);
     }
   }
 };
