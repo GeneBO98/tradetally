@@ -7,6 +7,18 @@ const settingsCache = require('./settingsCache');
 const REVENUECAT_API_URL = 'https://api.revenuecat.com/v1';
 const DEFAULT_ENTITLEMENT_ID = 'pro';
 const OVERRIDE_REASON = 'RevenueCat Subscription';
+const ACCESS_EVENT_TYPES = new Set([
+  'INITIAL_PURCHASE',
+  'RENEWAL',
+  'CANCELLATION',
+  'UNCANCELLATION',
+  'NON_RENEWING_PURCHASE',
+  'SUBSCRIPTION_PAUSED',
+  'BILLING_ISSUE',
+  'PRODUCT_CHANGE',
+  'SUBSCRIPTION_EXTENDED',
+  'REFUND_REVERSED'
+]);
 
 class RevenueCatConfigurationError extends Error {
   constructor(message) {
@@ -52,6 +64,62 @@ function parseDate(value) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function parseTimestampMs(value) {
+  if (value === null || value === undefined) return null;
+  const timestamp = Number(value);
+  if (!Number.isFinite(timestamp)) return null;
+  return parseDate(timestamp);
+}
+
+function eventIncludesEntitlement(event, entitlementId) {
+  const entitlementIds = Array.isArray(event.entitlement_ids)
+    ? event.entitlement_ids
+    : [];
+
+  return entitlementIds.includes(entitlementId) || event.entitlement_id === entitlementId;
+}
+
+function resolveWebhookAction(event, entitlementId, now = new Date()) {
+  if (!eventIncludesEntitlement(event, entitlementId)) {
+    return { action: 'ignore' };
+  }
+
+  const expiresAt = parseTimestampMs(event.expiration_at_ms);
+
+  if (event.type === 'EXPIRATION') {
+    return { action: 'revoke', expiresAt };
+  }
+
+  if (!ACCESS_EVENT_TYPES.has(event.type)) {
+    return { action: 'ignore' };
+  }
+
+  const gracePeriodEndsAt = parseTimestampMs(event.grace_period_expiration_at_ms);
+  const accessEndsAt = [expiresAt, gracePeriodEndsAt]
+    .filter(Boolean)
+    .sort((left, right) => right.getTime() - left.getTime())[0] || null;
+
+  // Subscription lifecycle events should have a finite paid-through date.
+  // Only non-renewing purchases may legitimately represent lifetime access.
+  if (accessEndsAt === null && event.type !== 'NON_RENEWING_PURCHASE') {
+    return { action: 'ignore' };
+  }
+
+  // RevenueCat sends CANCELLATION when auto-renew is disabled. Access remains
+  // valid until EXPIRATION. Ignore stale access events that are already over.
+  if (accessEndsAt && accessEndsAt <= now) {
+    return { action: 'ignore' };
+  }
+
+  return {
+    action: 'grant',
+    entitlement: {
+      productId: event.product_id || null,
+      expiresAt: accessEndsAt
+    }
+  };
+}
+
 function resolveActiveEntitlement(customerInfo, entitlementId, now = new Date()) {
   const entitlement = customerInfo?.subscriber?.entitlements?.[entitlementId];
   if (!entitlement) return null;
@@ -86,7 +154,7 @@ async function fetchCustomerInfo(userId) {
   return response.data;
 }
 
-async function persistEntitlement(userId, entitlement) {
+async function persistEntitlement(userId, entitlement, options = {}) {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
@@ -98,16 +166,35 @@ async function persistEntitlement(userId, entitlement) {
         ON CONFLICT (user_id) DO UPDATE SET
           tier = 'pro',
           reason = EXCLUDED.reason,
-          expires_at = EXCLUDED.expires_at,
+          expires_at = CASE
+            WHEN tier_overrides.reason = EXCLUDED.reason
+              AND tier_overrides.expires_at IS NULL THEN NULL
+            WHEN tier_overrides.reason = EXCLUDED.reason
+              AND EXCLUDED.expires_at IS NOT NULL
+              THEN GREATEST(tier_overrides.expires_at, EXCLUDED.expires_at)
+            ELSE EXCLUDED.expires_at
+          END,
           created_by = NULL,
           updated_at = CURRENT_TIMESTAMP
       `, [userId, OVERRIDE_REASON, entitlement.expiresAt]);
     } else {
       // Never remove an administrator, trial, or other billing provider's override.
-      await client.query(
-        'DELETE FROM tier_overrides WHERE user_id = $1 AND reason = $2',
-        [userId, OVERRIDE_REASON]
-      );
+      if (options.expiresAt) {
+        // An older EXPIRATION may arrive after a newer RENEWAL. Only remove the
+        // RevenueCat override if it has not already been extended beyond this event.
+        await client.query(`
+          DELETE FROM tier_overrides
+          WHERE user_id = $1
+            AND reason = $2
+            AND expires_at IS NOT NULL
+            AND expires_at <= $3
+        `, [userId, OVERRIDE_REASON, options.expiresAt]);
+      } else {
+        await client.query(
+          'DELETE FROM tier_overrides WHERE user_id = $1 AND reason = $2',
+          [userId, OVERRIDE_REASON]
+        );
+      }
     }
 
     await client.query('COMMIT');
@@ -141,6 +228,7 @@ function extractTradeTallyUserIds(event) {
 
   const candidates = [
     event.app_user_id,
+    event.original_app_user_id,
     ...(Array.isArray(event.aliases) ? event.aliases : []),
     ...(Array.isArray(event.transferred_from) ? event.transferred_from : []),
     ...(Array.isArray(event.transferred_to) ? event.transferred_to : [])
@@ -165,9 +253,36 @@ async function processWebhook(payload) {
   }
 
   const userIds = extractTradeTallyUserIds(event);
+  const entitlementId = process.env.REVENUECAT_ENTITLEMENT_ID || DEFAULT_ENTITLEMENT_ID;
+  const webhookAction = resolveWebhookAction(event, entitlementId);
   const results = [];
   for (const userId of userIds) {
-    results.push({ userId, ...(await syncUserEntitlement(userId)) });
+    if (webhookAction.action === 'grant') {
+      await persistEntitlement(userId, webhookAction.entitlement);
+      results.push({
+        userId,
+        active: true,
+        entitlementId,
+        productId: webhookAction.entitlement.productId,
+        expiresAt: webhookAction.entitlement.expiresAt
+      });
+    } else if (webhookAction.action === 'revoke') {
+      await persistEntitlement(userId, null, { expiresAt: webhookAction.expiresAt });
+      results.push({
+        userId,
+        active: false,
+        entitlementId,
+        productId: event.product_id || null,
+        expiresAt: webhookAction.expiresAt
+      });
+    } else {
+      results.push({
+        userId,
+        active: null,
+        entitlementId,
+        ignored: true
+      });
+    }
   }
 
   return {
@@ -184,5 +299,6 @@ module.exports = {
   isWebhookAuthorized,
   processWebhook,
   resolveActiveEntitlement,
+  resolveWebhookAction,
   syncUserEntitlement
 };

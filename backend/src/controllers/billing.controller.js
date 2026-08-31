@@ -804,6 +804,17 @@ const billingController = {
       }
 
       const result = await revenueCatService.processWebhook(req.body);
+      console.log('[REVENUECAT] Webhook processed', {
+        eventId: req.body?.event?.id || null,
+        eventType: result.eventType,
+        processedUsers: result.processedUserIds.length,
+        results: result.results?.map(({ userId, active, ignored }) => ({
+          userId,
+          active,
+          ignored: ignored === true
+        })) || [],
+        test: result.test
+      });
       return res.json({
         success: true,
         data: {
@@ -827,6 +838,12 @@ const billingController = {
           message: error.message
         });
       }
+      console.error('[REVENUECAT] Webhook processing failed', {
+        eventId: req.body?.event?.id || null,
+        eventType: req.body?.event?.type || null,
+        message: error.message,
+        upstreamStatus: error.response?.status || null
+      });
       next(error);
     }
   }

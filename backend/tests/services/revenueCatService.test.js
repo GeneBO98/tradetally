@@ -131,40 +131,36 @@ describe('RevenueCat subscription synchronization', () => {
     expect(revenueCatService.isWebhookAuthorized()).toBe(false);
   });
 
-  test('extracts the TradeTally UUID from RevenueCat aliases', () => {
+  test('extracts TradeTally UUIDs from RevenueCat identity fields', () => {
     expect(revenueCatService.extractTradeTallyUserIds({
       app_user_id: '$RCAnonymousID:abc',
+      original_app_user_id: 'bf3cb8bb-c3d8-43af-96a9-2b93ccf6708f',
       aliases: [
         '$RCAnonymousID:abc',
         '0ab8bd3c-64f2-460c-9f15-6c62b7eed40e',
         '0ab8bd3c-64f2-460c-9f15-6c62b7eed40e'
       ]
-    })).toEqual(['0ab8bd3c-64f2-460c-9f15-6c62b7eed40e']);
+    })).toEqual([
+      'bf3cb8bb-c3d8-43af-96a9-2b93ccf6708f',
+      '0ab8bd3c-64f2-460c-9f15-6c62b7eed40e'
+    ]);
   });
 
-  test('reconciles webhook events against current RevenueCat state', async () => {
-    axios.get.mockResolvedValue({
-      data: {
-        subscriber: {
-          entitlements: {
-            pro: {
-              product_identifier: 'monthly-15',
-              expires_date: '2099-09-28T15:53:00Z'
-            }
-          }
-        }
-      }
-    });
-
+  test('uses the authenticated webhook payload without a RevenueCat API lookup', async () => {
     const result = await revenueCatService.processWebhook({
       api_version: '1.0',
       event: {
-        type: 'CANCELLATION',
+        id: 'event-1',
+        type: 'INITIAL_PURCHASE',
         app_user_id: '$RCAnonymousID:abc',
-        aliases: ['0ab8bd3c-64f2-460c-9f15-6c62b7eed40e']
+        aliases: ['0ab8bd3c-64f2-460c-9f15-6c62b7eed40e'],
+        entitlement_ids: ['pro'],
+        product_id: 'monthly-15',
+        expiration_at_ms: new Date('2099-09-28T15:53:00Z').getTime()
       }
     });
 
+    expect(axios.get).not.toHaveBeenCalled();
     expect(result.processedUserIds).toEqual(['0ab8bd3c-64f2-460c-9f15-6c62b7eed40e']);
     expect(result.results[0]).toEqual(expect.objectContaining({
       active: true,
@@ -178,5 +174,74 @@ describe('RevenueCat subscription synchronization', () => {
         new Date('2099-09-28T15:53:00Z')
       ]
     );
+  });
+
+  test('keeps access through the paid period when a subscription is canceled', async () => {
+    const result = await revenueCatService.processWebhook({
+      event: {
+        type: 'CANCELLATION',
+        app_user_id: '0ab8bd3c-64f2-460c-9f15-6c62b7eed40e',
+        entitlement_ids: ['pro'],
+        product_id: 'monthly-15',
+        expiration_at_ms: new Date('2099-09-28T15:53:00Z').getTime()
+      }
+    });
+
+    expect(result.results[0]).toEqual(expect.objectContaining({ active: true }));
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO tier_overrides'),
+      expect.arrayContaining(['RevenueCat Subscription'])
+    );
+  });
+
+  test('revokes only an override that was not extended by a newer renewal', async () => {
+    const expiration = new Date('2026-09-28T15:53:00Z');
+    const result = await revenueCatService.processWebhook({
+      event: {
+        type: 'EXPIRATION',
+        app_user_id: '0ab8bd3c-64f2-460c-9f15-6c62b7eed40e',
+        entitlement_ids: ['pro'],
+        product_id: 'monthly-15',
+        expiration_at_ms: expiration.getTime()
+      }
+    });
+
+    expect(result.results[0]).toEqual(expect.objectContaining({ active: false }));
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining('AND expires_at <= $3'),
+      [
+        '0ab8bd3c-64f2-460c-9f15-6c62b7eed40e',
+        'RevenueCat Subscription',
+        expiration
+      ]
+    );
+  });
+
+  test('ignores webhook events for unrelated entitlements', async () => {
+    const result = await revenueCatService.processWebhook({
+      event: {
+        type: 'INITIAL_PURCHASE',
+        app_user_id: '0ab8bd3c-64f2-460c-9f15-6c62b7eed40e',
+        entitlement_ids: ['other'],
+        expiration_at_ms: new Date('2099-09-28T15:53:00Z').getTime()
+      }
+    });
+
+    expect(result.results[0]).toEqual(expect.objectContaining({ ignored: true }));
+    expect(db.connect).not.toHaveBeenCalled();
+  });
+
+  test('does not turn a malformed subscription event into lifetime access', async () => {
+    const result = await revenueCatService.processWebhook({
+      event: {
+        type: 'RENEWAL',
+        app_user_id: '0ab8bd3c-64f2-460c-9f15-6c62b7eed40e',
+        entitlement_ids: ['pro'],
+        expiration_at_ms: 'not-a-timestamp'
+      }
+    });
+
+    expect(result.results[0]).toEqual(expect.objectContaining({ ignored: true }));
+    expect(db.connect).not.toHaveBeenCalled();
   });
 });
