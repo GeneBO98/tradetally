@@ -3160,19 +3160,33 @@ onMounted(async () => {
   // persisted trade filter state before any cached dashboard data is restored.
   hydrateSharedTradeFilters()
 
-  // Try to restore cached data from sessionStorage for instant rendering
+  // Try to restore cached data from sessionStorage for instant rendering.
+  // When a core dataset is not cached, keep the initial loader visible until
+  // its first request settles so the dashboard never renders placeholder or
+  // unavailable states while the initial requests are still in flight.
   const hasCachedAnalytics = loadCachedAnalytics()
   const hasCachedPositions = loadCachedOpenPositions()
 
-  // Fetch settings (fast) - positions may already be restored from cache
+  // Settings affect several dashboard calculations, so load them before the
+  // first core-data request just as we did previously.
   await fetchUserSettings()
 
-  // Dashboard shell is ready - drop the full-page spinner
+  const analyticsRequest = fetchAnalytics()
+  const openTradesRequest = fetchOpenTrades()
+
+  const initialDataRequests = []
+  if (!hasCachedAnalytics) initialDataRequests.push(analyticsRequest)
+  if (!hasCachedPositions) initialDataRequests.push(openTradesRequest)
+
+  if (initialDataRequests.length > 0) {
+    await Promise.allSettled(initialDataRequests)
+  }
+
+  // Core data is now available (from cache or the first request). Child cards
+  // that fetch independently mount below with their own loading skeletons.
   initialLoading.value = false
 
-  // Silently refresh all data in background
-  fetchAnalytics()
-  fetchOpenTrades()
+  // Requests backed by cached data continue as silent background refreshes.
   fetchExpiredOptionsCount()
 
   // New dashboard sections — fire-and-forget; cards show their own loading states.

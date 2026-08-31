@@ -8,7 +8,7 @@ import { createPinia, setActivePinia } from 'pinia'
 // util-level tests on tradeFilterState.js cannot see, so we mount the real
 // DashboardView.
 
-const { apiMock, stub } = vi.hoisted(() => {
+const { apiMock, defaultGetImplementation, stub } = vi.hoisted(() => {
   // __esModule marks the mock as an ES module namespace so Vue's
   // defineAsyncComponent unwraps `.default` (several of these components are now
   // lazy-loaded). Without it, Vitest's mock-namespace proxy throws when Vue
@@ -18,7 +18,7 @@ const { apiMock, stub } = vi.hoisted(() => {
     default: { name, template: `<div data-stub="${name}"></div>` }
   })
 
-  const get = vi.fn((url) => {
+  const defaultGetImplementation = (url) => {
     if (typeof url === 'string') {
       if (url.startsWith('/settings')) {
         return Promise.resolve({ data: { settings: { statisticsCalculation: 'average' } } })
@@ -39,12 +39,13 @@ const { apiMock, stub } = vi.hoisted(() => {
       }
     }
     return Promise.resolve({ data: {} })
-  })
+  }
 
   return {
     stub,
+    defaultGetImplementation,
     apiMock: {
-      get,
+      get: vi.fn(defaultGetImplementation),
       post: vi.fn(() => Promise.resolve({ data: {} })),
       put: vi.fn(() => Promise.resolve({ data: {} })),
       delete: vi.fn(() => Promise.resolve({ data: {} }))
@@ -149,6 +150,8 @@ describe('DashboardView advanced filter wiring (issue #350)', () => {
     // One pinia shared by the mounted view and the test's useXStore() calls.
     pinia = createPinia()
     setActivePinia(pinia)
+    apiMock.get.mockImplementation(defaultGetImplementation)
+    sessionStorage.clear()
   })
 
   afterEach(() => {
@@ -280,5 +283,53 @@ describe('DashboardView advanced filter wiring (issue #350)', () => {
       .map(([url]) => url)
       .filter((url) => typeof url === 'string' && url.startsWith('/trades/analytics'))
     expect(analyticsCalls.at(-1)).toContain('tags=a%2Cb')
+  })
+
+  it('keeps the initial loader visible until uncached dashboard data settles', async () => {
+    let resolveAnalytics
+    let resolveOpenPositions
+
+    apiMock.get.mockImplementation((url) => {
+      if (typeof url === 'string' && url.startsWith('/trades/analytics')) {
+        return new Promise((resolve) => { resolveAnalytics = resolve })
+      }
+      if (url === '/trades/open-positions-quotes') {
+        return new Promise((resolve) => { resolveOpenPositions = resolve })
+      }
+      return defaultGetImplementation(url)
+    })
+
+    wrapper = mount(DashboardView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RouterLink: { template: '<a><slot /></a>' }
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('.animate-spin.h-12.w-12').exists()).toBe(true)
+    expect(wrapper.find('[data-stub="draggable"]').exists()).toBe(false)
+
+    resolveAnalytics({
+      data: {
+        summary: {},
+        performanceBySymbol: [],
+        dailyPnL: [],
+        dailyWinRate: [],
+        topTrades: { best: [], worst: [] }
+      }
+    })
+    resolveOpenPositions({ data: { positions: [] } })
+    await flushPromises()
+
+    // fetchOpenTrades performs a fast request followed by the quote request.
+    resolveOpenPositions({ data: { positions: [] } })
+    await flushPromises()
+
+    expect(wrapper.find('.animate-spin.h-12.w-12').exists()).toBe(false)
+    expect(wrapper.find('[data-stub="draggable"]').exists()).toBe(true)
   })
 })
