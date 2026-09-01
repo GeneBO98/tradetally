@@ -39,6 +39,21 @@ function preloadRouteChunks() {
   }
 }
 
+function associatedDomainsDevelopment() {
+  return {
+    name: 'tradetally-associated-domains-development',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (req.url?.split('?', 1)[0] === '/.well-known/apple-app-site-association') {
+          res.setHeader('Content-Type', 'application/json')
+        }
+        next()
+      })
+    }
+  }
+}
+
 export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const exposeDevServer = env.VITE_DEV_SERVER_EXPOSE === 'true'
@@ -88,6 +103,7 @@ export default defineConfig(({ command, mode }) => {
   plugins: [
     vue(),
     preloadRouteChunks(),
+    associatedDomainsDevelopment(),
   ],
   resolve: {
     alias: {
