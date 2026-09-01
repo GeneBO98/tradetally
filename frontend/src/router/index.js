@@ -17,6 +17,10 @@ const router = createRouter({
       redirect: { name: 'login' }
     },
     {
+      path: '/open-app',
+      redirect: { name: 'login' }
+    },
+    {
       path: '/login',
       name: 'login',
       component: () => import('@/views/auth/LoginView.vue'),
