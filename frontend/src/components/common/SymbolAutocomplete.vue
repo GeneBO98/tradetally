@@ -74,10 +74,13 @@
             </span>
           </div>
           <span
-            v-if="item.source === 'user_trades'"
-            class="text-xs bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300 px-1.5 py-0.5 rounded flex-shrink-0 ml-2"
+            v-if="item.source === 'user_trades' || item.asset_type === 'crypto'"
+            class="text-xs px-1.5 py-0.5 rounded flex-shrink-0 ml-2"
+            :class="item.asset_type === 'crypto'
+              ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+              : 'bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300'"
           >
-            Traded
+            {{ item.asset_type === 'crypto' ? 'Crypto' : 'Traded' }}
           </span>
         </li>
       </ul>

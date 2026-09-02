@@ -5,6 +5,7 @@ const ApiUsageService = require('../services/apiUsageService');
 const TierService = require('../services/tierService');
 const { FinnhubPriority, FinnhubRequestScheduler } = require('./finnhubScheduler');
 const { localToUTC } = require('./timezone');
+const { CRYPTO_SYMBOLS, CRYPTO_TO_COINGECKO } = require('./cryptoAssets');
 
 class UnsupportedMarketDataError extends Error {
   constructor(feature) {
@@ -920,16 +921,8 @@ class FmpClient {
   }
 }
 
-FmpClient.CRYPTO_SYMBOLS = [
-  'BTC', 'ETH', 'XRP', 'LTC', 'BCH', 'ADA', 'DOT', 'LINK', 'XLM', 'DOGE',
-  'UNI', 'USDT', 'USDC', 'BNB', 'SOL', 'AVAX', 'MATIC', 'ATOM', 'FIL', 'TRX',
-  'ETC', 'XMR', 'ALGO', 'VET', 'THETA', 'AAVE', 'EOS', 'MKR', 'COMP',
-  'SHIB', 'CRO', 'DAI', 'WBTC', 'LDO', 'APT', 'ARB', 'OP', 'NEAR', 'ICP',
-  'APE', 'GRT', 'FTM', 'SAND', 'MANA', 'AXS', 'EGLD', 'QNT', 'HBAR', 'CHZ',
-  'FLOW', 'XTZ', 'NEO', 'PEPE', 'SUI'
-];
-
-FmpClient.CRYPTO_TO_COINGECKO = require('./finnhubClient').constructor.CRYPTO_TO_COINGECKO;
+FmpClient.CRYPTO_SYMBOLS = CRYPTO_SYMBOLS;
+FmpClient.CRYPTO_TO_COINGECKO = CRYPTO_TO_COINGECKO;
 FmpClient.prototype.isCryptoSymbol = require('./finnhubClient').isCryptoSymbol.bind(require('./finnhubClient'));
 FmpClient.prototype.getCryptoQuote = require('./finnhubClient').getCryptoQuote.bind(require('./finnhubClient'));
 FmpClient.prototype.getCryptoProfile = require('./finnhubClient').getCryptoProfile.bind(require('./finnhubClient'));

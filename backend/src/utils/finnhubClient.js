@@ -8,6 +8,7 @@ const TierService = require('../services/tierService');
 const { validateAiProviderUrl, fetchAiProviderUrl } = require('./urlSecurity');
 const { FinnhubPriority, FinnhubRequestScheduler } = require('./finnhubScheduler');
 const { getDateInTimezone, localToUTC } = require('./timezone');
+const { CRYPTO_SYMBOLS, CRYPTO_TO_COINGECKO } = require('./cryptoAssets');
 
 class FinnhubClient {
   constructor() {
@@ -292,36 +293,14 @@ class FinnhubClient {
   }
 
   // Common crypto symbols for quick detection
-  static CRYPTO_SYMBOLS = [
-    'BTC', 'ETH', 'XRP', 'LTC', 'BCH', 'ADA', 'DOT', 'LINK', 'XLM', 'DOGE',
-    'UNI', 'USDT', 'USDC', 'BNB', 'SOL', 'AVAX', 'MATIC', 'ATOM', 'FIL', 'TRX',
-    'ETC', 'XMR', 'ALGO', 'VET', 'THETA', 'FTT', 'AAVE', 'EOS', 'MKR', 'COMP',
-    'SHIB', 'CRO', 'DAI', 'LEO', 'WBTC', 'OKB', 'LDO', 'APT', 'ARB', 'OP',
-    'NEAR', 'ICP', 'APE', 'GRT', 'FTM', 'SAND', 'MANA', 'AXS', 'EGLD', 'QNT',
-    'HBAR', 'CHZ', 'FLOW', 'XTZ', 'KAVA', 'NEO', 'RPL', 'GMX', 'PEPE', 'SUI'
-  ];
+  static CRYPTO_SYMBOLS = CRYPTO_SYMBOLS;
 
   isCryptoSymbol(symbol) {
     return FinnhubClient.CRYPTO_SYMBOLS.includes(symbol.toUpperCase());
   }
 
   // Map of crypto symbols to CoinGecko IDs
-  static CRYPTO_TO_COINGECKO = {
-    'BTC': 'bitcoin', 'ETH': 'ethereum', 'XRP': 'ripple', 'LTC': 'litecoin',
-    'BCH': 'bitcoin-cash', 'ADA': 'cardano', 'DOT': 'polkadot', 'LINK': 'chainlink',
-    'XLM': 'stellar', 'DOGE': 'dogecoin', 'UNI': 'uniswap', 'USDT': 'tether',
-    'USDC': 'usd-coin', 'BNB': 'binancecoin', 'SOL': 'solana', 'AVAX': 'avalanche-2',
-    'MATIC': 'matic-network', 'ATOM': 'cosmos', 'FIL': 'filecoin', 'TRX': 'tron',
-    'ETC': 'ethereum-classic', 'XMR': 'monero', 'ALGO': 'algorand', 'VET': 'vechain',
-    'THETA': 'theta-token', 'AAVE': 'aave', 'EOS': 'eos', 'MKR': 'maker',
-    'COMP': 'compound-governance-token', 'SHIB': 'shiba-inu', 'CRO': 'crypto-com-chain',
-    'DAI': 'dai', 'WBTC': 'wrapped-bitcoin', 'LDO': 'lido-dao', 'APT': 'aptos',
-    'ARB': 'arbitrum', 'OP': 'optimism', 'NEAR': 'near', 'ICP': 'internet-computer',
-    'APE': 'apecoin', 'GRT': 'the-graph', 'FTM': 'fantom', 'SAND': 'the-sandbox',
-    'MANA': 'decentraland', 'AXS': 'axie-infinity', 'EGLD': 'elrond-erd-2',
-    'QNT': 'quant-network', 'HBAR': 'hedera-hashgraph', 'CHZ': 'chiliz',
-    'FLOW': 'flow', 'XTZ': 'tezos', 'NEO': 'neo', 'PEPE': 'pepe', 'SUI': 'sui'
-  };
+  static CRYPTO_TO_COINGECKO = CRYPTO_TO_COINGECKO;
 
   /**
    * Get crypto quote using CoinGecko API (free, no API key required)

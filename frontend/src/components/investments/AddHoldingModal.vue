@@ -1,6 +1,6 @@
 <template>
   <div class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[calc(100vh-2rem)] flex flex-col">
       <!-- Header -->
       <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
         <h3 class="text-lg font-medium text-gray-900 dark:text-white">Add Position</h3>
@@ -8,7 +8,7 @@
       </div>
 
       <!-- Form -->
-      <form @submit.prevent="handleSubmit" class="p-6 space-y-4">
+      <form @submit.prevent="handleSubmit" class="p-6 space-y-4 overflow-y-auto">
         <!-- Symbol -->
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -69,15 +69,34 @@
           />
         </div>
 
+        <!-- Account (optional) -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Account (optional)
+          </label>
+          <BaseSelect
+            v-model="form.accountIdentifier"
+            :options="accountOptions"
+            :disabled="accountsStore.loading"
+            placeholder="No account selected"
+            empty-text="No linkable accounts"
+            noun="accounts"
+            @change="handleAccountChange"
+          />
+          <p v-if="accountsWithoutIdentifiers" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {{ accountsWithoutIdentifiers }} account{{ accountsWithoutIdentifiers === 1 ? '' : 's' }} need an account identifier before holdings can be linked.
+          </p>
+        </div>
+
         <!-- Broker (optional) -->
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Broker (optional)
+            Broker or custodian (optional)
           </label>
           <input
             v-model="form.broker"
             type="text"
-            placeholder="e.g., Fidelity, Schwab"
+            placeholder="e.g., Cold storage, Schwab"
             class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
           />
         </div>
@@ -133,9 +152,11 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useInvestmentsStore } from '@/stores/investments'
+import { useAccountsStore } from '@/stores/accounts'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { format } from 'date-fns'
 import SymbolAutocomplete from '@/components/common/SymbolAutocomplete.vue'
+import BaseSelect from '@/components/common/BaseSelect.vue'
 
 const props = defineProps({
   initialSymbol: {
@@ -147,18 +168,21 @@ const props = defineProps({
 const emit = defineEmits(['close', 'created'])
 
 const investmentsStore = useInvestmentsStore()
+const accountsStore = useAccountsStore()
 
 const form = ref({
   symbol: props.initialSymbol || '',
   shares: null,
   costPerShare: null,
   purchaseDate: format(new Date(), 'yyyy-MM-dd'),
+  accountIdentifier: '',
   broker: '',
   notes: ''
 })
 
 const loading = ref(false)
 const error = ref(null)
+const autoFilledBroker = ref('')
 
 const totalCost = computed(() => {
   if (!form.value.shares || !form.value.costPerShare) return null
@@ -174,6 +198,32 @@ const isValid = computed(() => {
   )
 })
 
+const accountOptions = computed(() => accountsStore.accounts
+  .filter(account => account.accountIdentifier)
+  .map(account => ({
+    value: account.accountIdentifier,
+    label: account.accountName && account.accountName !== account.accountIdentifier
+      ? `${account.accountName} (${account.accountIdentifier})`
+      : account.accountIdentifier
+  })))
+
+const accountsWithoutIdentifiers = computed(() => accountsStore.accounts
+  .filter(account => !account.accountIdentifier).length)
+
+function handleAccountChange(accountIdentifier) {
+  const account = accountsStore.accounts.find(item => item.accountIdentifier === accountIdentifier)
+  if (!accountIdentifier && form.value.broker === autoFilledBroker.value) {
+    form.value.broker = ''
+    autoFilledBroker.value = ''
+    return
+  }
+
+  if (account?.broker && (!form.value.broker || form.value.broker === autoFilledBroker.value)) {
+    form.value.broker = account.broker
+    autoFilledBroker.value = account.broker
+  }
+}
+
 async function handleSubmit() {
   if (!isValid.value) return
 
@@ -186,6 +236,7 @@ async function handleSubmit() {
       shares: form.value.shares,
       costPerShare: form.value.costPerShare,
       purchaseDate: form.value.purchaseDate,
+      accountIdentifier: form.value.accountIdentifier || null,
       broker: form.value.broker || null,
       notes: form.value.notes || null
     })
@@ -197,6 +248,12 @@ async function handleSubmit() {
     loading.value = false
   }
 }
+
+onMounted(() => {
+  accountsStore.fetchAccounts().catch(err => {
+    console.warn('[ADD_HOLDING] Failed to load accounts:', err.message)
+  })
+})
 
 const { formatCurrency } = useCurrencyFormatter()
 </script>

@@ -266,6 +266,14 @@
                                             title="Synced automatically from your linked brokerage"
                                             >Plaid</span
                                         >
+                                        <div
+                                            v-if="lot.accountIdentifier || lot.broker"
+                                            class="mt-1 text-xs text-gray-500 dark:text-gray-400"
+                                        >
+                                            {{ lot.accountIdentifier || lot.broker }}<span
+                                                v-if="lot.accountIdentifier && lot.broker"
+                                            > · {{ lot.broker }}</span>
+                                        </div>
                                     </td>
                                     <td
                                         class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900 dark:text-white"

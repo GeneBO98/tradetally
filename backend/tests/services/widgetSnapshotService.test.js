@@ -50,8 +50,8 @@ describe('widgetSnapshotService', () => {
     });
     fetchedAt = new Date(Date.now() - 10 * 60 * 1000).toISOString();
     NewsService.getCachedNews.mockResolvedValue([
-      { symbol: 'AAPL', fetched_at: fetchedAt, news_items: [{ headline: 'Older', source: 'Wire', datetime: 1787600000 }] },
-      { symbol: 'AAPL', fetched_at: fetchedAt, news_items: [{ headline: 'Newest', source: 'Reuters', datetime: 1787700000 }] }
+      { symbol: 'AAPL', fetched_at: fetchedAt, news_items: [{ headline: 'Older', source: 'Wire', datetime: 1787600000, url: 'https://example.com/older' }] },
+      { symbol: 'AAPL', fetched_at: fetchedAt, news_items: [{ headline: 'Newest', source: 'Reuters', datetime: 1787700000, url: 'https://example.com/newest' }] }
     ]);
     NewsService.requestBackgroundRefresh.mockReturnValue({ enqueued: 0, deduplicated: 0 });
   });
@@ -71,18 +71,21 @@ describe('widgetSnapshotService', () => {
         headline: 'Newest',
         source: 'Reuters',
         symbol: 'AAPL',
-        publishedAt: new Date(1787700000 * 1000).toISOString()
+        publishedAt: new Date(1787700000 * 1000).toISOString(),
+        url: 'https://example.com/newest'
       },
       recentNews: [{
         headline: 'Newest',
         source: 'Reuters',
         symbol: 'AAPL',
-        publishedAt: new Date(1787700000 * 1000).toISOString()
+        publishedAt: new Date(1787700000 * 1000).toISOString(),
+        url: 'https://example.com/newest'
       }, {
         headline: 'Older',
         source: 'Wire',
         symbol: 'AAPL',
-        publishedAt: new Date(1787600000 * 1000).toISOString()
+        publishedAt: new Date(1787600000 * 1000).toISOString(),
+        url: 'https://example.com/older'
       }],
       newsFetchedAt: fetchedAt,
       topInsight: {

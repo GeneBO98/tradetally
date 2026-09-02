@@ -185,7 +185,8 @@ async function loadNewsSnapshot(symbols, now = new Date()) {
       headline: String(candidate.item.headline),
       source: String(candidate.item.source || ''),
       symbol: candidate.item.symbol ? String(candidate.item.symbol) : null,
-      publishedAt: candidate.publishedAt.toISOString()
+      publishedAt: candidate.publishedAt.toISOString(),
+      url: candidate.item.url ? String(candidate.item.url) : null
     });
     if (recentNews.length === RECENT_NEWS_LIMIT) break;
   }

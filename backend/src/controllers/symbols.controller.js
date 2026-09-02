@@ -4,6 +4,7 @@ const cache = require('../utils/cache');
 const symbolCategories = require('../utils/symbolCategories');
 const asyncHandler = require('../utils/asyncHandler');
 const AppError = require('../utils/AppError');
+const { getCryptoAsset, searchCryptoAssets } = require('../utils/cryptoAssets');
 
 const CACHE_TTL = 300000; // 5 minutes
 
@@ -138,7 +139,22 @@ async function searchSymbols(req, res) {
       }
     }
 
-    // 2. Search symbol_categories table
+    // 2. Add supported crypto assets before stock-provider results. Crypto
+    // quotes use CoinGecko, so discovery must not depend on Finnhub/FMP search.
+    for (const asset of searchCryptoAssets(query, 15)) {
+      if (results.length >= 15 || seenSymbols.has(asset.symbol)) continue;
+      seenSymbols.add(asset.symbol);
+      results.push({
+        symbol: asset.symbol,
+        company_name: asset.name,
+        exchange: 'Crypto',
+        logo: null,
+        source: 'crypto',
+        asset_type: 'crypto'
+      });
+    }
+
+    // 3. Search symbol_categories table
     if (results.length < 10) {
       const limit = 10 - results.length;
       const localQuery = `
@@ -168,7 +184,7 @@ async function searchSymbols(req, res) {
       }
     }
 
-    // 3. Market data provider fallback - only if few local results and query >= 2 chars
+    // 4. Market data provider fallback - only if few local results and query >= 2 chars
     if (results.length < 5 && query.length >= 2 && finnhub.isConfigured()) {
       try {
         const finnhubResults = await finnhub.symbolSearch(query);
@@ -218,12 +234,16 @@ async function getSymbolMetadata(req, res) {
     }
 
     const metadata = Object.fromEntries(
-      symbols.map(symbol => [symbol, {
-        symbol,
-        companyName: null,
-        exchange: null,
-        logo: null
-      }])
+      symbols.map(symbol => {
+        const crypto_asset = getCryptoAsset(symbol);
+        return [symbol, {
+          symbol,
+          companyName: crypto_asset?.name || null,
+          exchange: crypto_asset ? 'Crypto' : null,
+          logo: null,
+          ...(crypto_asset ? { asset_type: 'crypto' } : {})
+        }];
+      })
     );
 
     const query = `
@@ -251,11 +271,13 @@ async function getSymbolMetadata(req, res) {
     const result = await db.query(query, [symbols]);
 
     for (const row of result.rows) {
+      const crypto_asset = getCryptoAsset(row.symbol);
       metadata[row.symbol] = {
         symbol: row.symbol,
-        companyName: row.company_name || null,
-        exchange: row.exchange || null,
-        logo: row.logo || null
+        companyName: crypto_asset?.name || row.company_name || null,
+        exchange: crypto_asset ? 'Crypto' : row.exchange || null,
+        logo: row.logo || null,
+        ...(crypto_asset ? { asset_type: 'crypto' } : {})
       };
     }
 
@@ -300,7 +322,9 @@ async function getSymbolQuote(req, res) {
     throw new AppError(400, { error: 'Symbol is required' });
   }
 
-  const quote = await finnhub.getQuote(symbol, userId);
+  const quote = finnhub.isCryptoSymbol(symbol)
+    ? await finnhub.getCryptoQuote(symbol)
+    : await finnhub.getQuote(symbol, userId);
   const currentPrice = Number(quote?.c);
 
   if (!Number.isFinite(currentPrice) || currentPrice <= 0) {

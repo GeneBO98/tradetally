@@ -6,6 +6,8 @@ const mockFinnhub = {
   isConfigured: jest.fn(() => true),
   symbolSearch: jest.fn(),
   getQuote: jest.fn(),
+  getCryptoQuote: jest.fn(),
+  isCryptoSymbol: jest.fn(() => false),
   isFinnhub: true,
   providerName: 'finnhub'
 };
@@ -38,6 +40,7 @@ describe('symbols controller', () => {
     jest.clearAllMocks();
     mockCache.get.mockReturnValue(null);
     mockSymbolCategories.getSymbolCategories.mockResolvedValue(new Map());
+    mockFinnhub.isCryptoSymbol.mockReturnValue(false);
   });
 
   test('getSymbolMetadata hydrates missing metadata from symbol categories on demand', async () => {
@@ -147,6 +150,61 @@ describe('symbols controller', () => {
       change: 2.33,
       change_percent: 1.1031,
       timestamp: 1783708200
+    });
+  });
+
+  test('searchSymbols includes supported crypto without relying on stock-provider search', async () => {
+    mockDb.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+    mockFinnhub.symbolSearch.mockResolvedValue({ result: [] });
+
+    const req = {
+      user: { id: 'user-1' },
+      query: { q: 'bitcoin' }
+    };
+    const res = createRes();
+
+    await symbolsController.searchSymbols(req, res);
+
+    const response = res.json.mock.calls[0][0];
+    expect(response.results[0]).toEqual({
+      symbol: 'BTC',
+      company_name: 'Bitcoin',
+      exchange: 'Crypto',
+      logo: null,
+      source: 'crypto',
+      asset_type: 'crypto'
+    });
+  });
+
+  test('getSymbolQuote routes crypto symbols to the crypto quote provider', async () => {
+    mockFinnhub.isCryptoSymbol.mockReturnValue(true);
+    mockFinnhub.getCryptoQuote.mockResolvedValue({
+      c: 118250.25,
+      pc: 116900,
+      d: 1350.25,
+      dp: 1.155,
+      t: 1787778000
+    });
+
+    const req = {
+      user: { id: 'user-1' },
+      query: { symbol: ' btc ' }
+    };
+    const res = createRes();
+
+    await symbolsController.getSymbolQuote(req, res);
+
+    expect(mockFinnhub.getCryptoQuote).toHaveBeenCalledWith('BTC');
+    expect(mockFinnhub.getQuote).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith({
+      symbol: 'BTC',
+      current_price: 118250.25,
+      previous_close: 116900,
+      change: 1350.25,
+      change_percent: 1.155,
+      timestamp: 1787778000
     });
   });
 
