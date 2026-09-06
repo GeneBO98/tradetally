@@ -531,6 +531,7 @@ function buildPaths(baseUrl) {
       post: {
         tags: ['Trades'],
         summary: 'Create a trade',
+        description: 'Exact retries are matched against stored trade economics within the same user, account, broker and contract, independently of Idempotency-Key. A duplicate returns the existing trade with duplicate: true (HTTP 200), without overwriting it. Use PUT to update a trade.',
         security: tradeSecurity,
         parameters: [requestIdHeaderRef, idempotencyHeaderRef],
         requestBody: {
@@ -559,7 +560,7 @@ function buildPaths(baseUrl) {
             }
           },
           200: {
-            description: 'Trade created',
+            description: 'Duplicate trade already exists',
             headers: standardResponseHeaders(),
             content: {
               'application/json': {
@@ -660,6 +661,7 @@ function buildPaths(baseUrl) {
       post: {
         tags: ['Trades'],
         summary: 'Bulk create trades',
+        description: 'Each trade is checked for duplicates independently of batch contents or Idempotency-Key. Duplicates return status: duplicate and the existing trade, count toward duplicates, and do not count as created or failed.',
         security: tradeSecurity,
         parameters: [requestIdHeaderRef, idempotencyHeaderRef],
         requestBody: {
@@ -1479,13 +1481,15 @@ function buildV1OpenApiSpec(origin = '') {
         TradeResponse: {
           type: 'object',
           properties: {
-            trade: { $ref: '#/components/schemas/Trade' }
+            trade: { $ref: '#/components/schemas/Trade' },
+            duplicate: { type: 'boolean', description: 'True when creation returned an existing matching trade.' }
           }
         },
         BulkTradeResult: {
           type: 'object',
           properties: {
             created: { type: 'integer', minimum: 0, nullable: true },
+            duplicates: { type: 'integer', minimum: 0, description: 'Existing matching trades skipped during bulk creation.' },
             updated: { type: 'integer', minimum: 0, nullable: true },
             deleted: { type: 'integer', minimum: 0, nullable: true },
             failed: { type: 'integer', minimum: 0 },

@@ -22,11 +22,14 @@ jest.mock('../../../src/config/database', () => ({
   query: jest.fn()
 }));
 
+jest.mock('../../../src/events/domainEvents', () => ({ publish: jest.fn().mockResolvedValue({}) }));
+
 const tradeController = require('../../../src/controllers/trade.controller');
 const analyticsController = require('../../../src/controllers/analytics.controller');
 const Trade = require('../../../src/models/Trade');
 const TradeQueries = require('../../../src/services/tradeQueries');
 const db = require('../../../src/config/database');
+const { publish } = require('../../../src/events/domainEvents');
 const tradeV1Controller = require('../../../src/controllers/v1/trade.controller');
 
 function createMockRes(requestId = 'req-trade') {
@@ -114,6 +117,7 @@ describe('v1 trade controller', () => {
 
     expect(res.json).toHaveBeenCalledWith({
       created: 1,
+      duplicates: 0,
       failed: 1,
       results: [
         {
@@ -153,6 +157,38 @@ describe('v1 trade controller', () => {
       trade: { id: 't-created', symbol: 'NVDA' }
     });
     expect(next).not.toHaveBeenCalled();
+  });
+
+  test('a duplicate returns the existing trade without a creation event', async () => {
+    tradeController.createTrade.mockImplementation((req, res) => {
+      res.status(200).json({ trade: { id: 'existing' }, duplicate: true });
+    });
+    const req = { body: {}, user: { id: 'u1' }, headers: {} };
+    const res = createMockRes();
+    await tradeV1Controller.createTrade(req, res, jest.fn());
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({ trade: { id: 'existing' }, duplicate: true });
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  test('bulk duplicates count separately from creations and failures', async () => {
+    tradeController.createTrade
+      .mockImplementationOnce((req, res) => res.status(200).json({ trade: { id: 'existing' }, duplicate: true }))
+      .mockImplementationOnce((req, res) => res.status(201).json({ trade: { id: 'new' } }))
+      .mockImplementationOnce((req, res) => res.status(400).json({ error: 'Invalid trade' }));
+    const req = { body: { trades: [{}, {}, {}] }, user: { id: 'u1' }, headers: {} };
+    const res = createMockRes();
+    await tradeV1Controller.bulkCreateTrades(req, res, jest.fn());
+    expect(res.json).toHaveBeenCalledWith({
+      created: 1, duplicates: 1, failed: 1,
+      results: [
+        { index: 0, status: 'duplicate', trade: { id: 'existing' } },
+        { index: 1, status: 'created', trade: { id: 'new' } },
+        { index: 2, status: 'failed', error: 'Invalid trade' }
+      ]
+    });
+    expect(publish).toHaveBeenCalledTimes(1);
+    expect(publish.mock.calls[0][0]).toBe('trade.created');
   });
 
   test('GET /api/v1/trades/recent sorts by descending entry_time and paginates', async () => {

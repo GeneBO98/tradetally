@@ -93,6 +93,8 @@ const { validate, schemas } = require('../../middleware/validation');
  *     description: >
  *       Creates a new trade. Supports idempotency via the Idempotency-Key header
  *       to safely retry requests without creating duplicates.
+ *       Exact per-trade duplicates also return the existing trade with duplicate: true,
+ *       even when the key changes or is omitted. Use PUT to update an existing trade.
  *     tags: [V1 Trades]
  *     security:
  *       - bearerAuth: []
@@ -110,6 +112,8 @@ const { validate, schemas } = require('../../middleware/validation');
  *           schema:
  *             $ref: '#/components/schemas/CreateTrade'
  *     responses:
+ *       200:
+ *         description: Existing duplicate trade returned with duplicate true
  *       201:
  *         description: Trade created
  *       400:
@@ -136,6 +140,8 @@ router.post(
  *     description: >
  *       Creates multiple trades in a single request. Returns per-item results
  *       with partial failure support. Supports idempotency via header.
+ *       Duplicate items return status duplicate and the existing trade; they count
+ *       toward duplicates, not created or failed, even when batches are rearranged.
  *     tags: [V1 Trades]
  *     security:
  *       - bearerAuth: []

@@ -137,7 +137,7 @@ const tradeV1Controller = {
       }
 
       const createdTrade = legacyResult.body?.trade || null;
-      if (createdTrade?.id) {
+      if (createdTrade?.id && !legacyResult.body?.duplicate) {
         publishTradeEvent('trade.created', req, {
           tradeId: createdTrade.id,
           trade: createdTrade
@@ -145,7 +145,8 @@ const tradeV1Controller = {
       }
 
       return res.status(legacyResult.statusCode || 201).json({
-        trade: createdTrade
+        trade: createdTrade,
+        ...(legacyResult.body?.duplicate ? { duplicate: true } : {})
       });
     } catch (error) {
       next(error);
@@ -227,6 +228,7 @@ const tradeV1Controller = {
 
       const results = [];
       let created = 0;
+      let duplicates = 0;
 
       for (let index = 0; index < trades.length; index += 1) {
         const legacyResult = await runLegacy(tradeController.createTrade, req, {
@@ -242,8 +244,14 @@ const tradeV1Controller = {
           continue;
         }
 
-        created += 1;
         const createdTrade = legacyResult.body?.trade || null;
+        if (legacyResult.body?.duplicate) {
+          duplicates += 1;
+          results.push({ index, status: 'duplicate', trade: createdTrade });
+          continue;
+        }
+
+        created += 1;
         if (createdTrade?.id) {
           publishTradeEvent('trade.created', req, {
             tradeId: createdTrade.id,
@@ -262,7 +270,8 @@ const tradeV1Controller = {
 
       return res.json({
         created,
-        failed: trades.length - created,
+        duplicates,
+        failed: trades.length - created - duplicates,
         results
       });
     } catch (error) {

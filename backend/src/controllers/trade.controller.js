@@ -776,7 +776,10 @@ const tradeController = {
       if (normalizedBody.strategy || normalizedBody.setup) {
         console.log(`[TRADE CONTROLLER] Creating trade with strategy="${normalizedBody.strategy || 'null'}", setup="${normalizedBody.setup || 'null'}"`);
       }
-      const trade = await Trade.create(req.user.id, normalizedBody);
+      const { trade, duplicate } = await Trade.create(req.user.id, normalizedBody, { prevent_duplicates: true });
+      if (duplicate) {
+        return res.status(200).json({ trade, duplicate: true });
+      }
       
 
       // Invalidate analytics cache for this user

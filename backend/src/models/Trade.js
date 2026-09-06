@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const { insertRestTrade } = require('../services/restTradeCreation');
 const AchievementService = require('../services/achievementService');
 const { getUserLocalDate, getUserTimezone } = require('../utils/timezone');
 const { getFuturesPointValue, getFuturesTickSize, extractUnderlyingFromFuturesSymbol } = require('../utils/futuresUtils');
@@ -628,8 +629,40 @@ class Trade {
       roundToDbPrecision(finalPostExitMfe)
     ];
 
-    const result = await db.query(query, values);
-    const createdTrade = result.rows[0];
+    let createdTrade;
+    if (options.prevent_duplicates) {
+      const result = await insertRestTrade(query, values, {
+        user_id: userId,
+        symbol: symbol.toUpperCase(),
+        account_identifier: finalAccountIdentifier ? String(finalAccountIdentifier).substring(0, 50) : null,
+        broker: broker || null,
+        instrument_type: instrumentType || 'stock',
+        entry_time: finalEntryTime,
+        exit_time: cleanExitTime,
+        entry_price: roundToDbPrecision(computedEntryPrice),
+        exit_price: roundToDbPrecision(computedExitPrice),
+        quantity: roundToDbPrecision(computedQuantity),
+        side,
+        commission: roundToDbPrecision(computedCommission) || 0,
+        fees: roundToDbPrecision(computedFees) || 0,
+        strike_price: roundToDbPrecision(strikePrice),
+        expiration_date: cleanExpirationDate,
+        option_type: optionType || null,
+        contract_size: contractSize || (instrumentType === 'option' ? 100 : null),
+        contract_month: contractMonth || null,
+        contract_year: contractYear || null,
+        point_value: roundToDbPrecision(finalPointValue),
+        original_currency: String(finalOriginalCurrency).toUpperCase(),
+        conid: conid || null,
+        underlying_symbol: normalizeUnderlyingSymbol(underlyingSymbol),
+        underlying_asset: finalUnderlyingAsset || null
+      });
+      if (result.duplicate) return result;
+      createdTrade = result.trade;
+    } else {
+      const result = await db.query(query, values);
+      createdTrade = result.rows[0];
+    }
 
     // Log the strategy and setup assignment for debugging
     console.log(`[TRADE CREATE] Trade ${createdTrade.id}: strategy="${finalStrategy || 'null'}", setup="${setup || 'null'}", confidence=${strategyConfidence}%, method=${classificationMethod}`);
@@ -722,7 +755,7 @@ class Trade {
       await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'trade creation');
     }
     
-    return createdTrade;
+    return options.prevent_duplicates ? { trade: createdTrade, duplicate: false } : createdTrade;
   }
 
   /**
