@@ -34,6 +34,17 @@ function recomputeRestoredTradePnl(tradeData, timezone) {
     timezone: timezone || 'UTC'
   });
 
+  // A backup may contain a manually closed/adjusted trade whose fills only
+  // describe part of its lifecycle. Do not replace its saved result with an
+  // open or partial aggregate, or mix old closing fields with new P&L.
+  const saved_quantity = Number(tradeData.quantity);
+  const quantity_matches = Number.isFinite(saved_quantity) && saved_quantity > 0 &&
+    Math.abs(result.aggregate.quantity - saved_quantity) < 1e-8;
+  if ((tradeData.exit_time && (!result.aggregate.is_fully_closed || !result.aggregate.exit_time || !quantity_matches)) ||
+      (tradeData.pnl != null && result.aggregate.pnl == null)) {
+    return tradeData;
+  }
+
   return {
     ...tradeData,
     executions: result.annotatedExecutions,
@@ -153,6 +164,7 @@ class BackupService {
     const EXCLUDED_TABLES = new Set([
       'backups',
       'backup_settings',
+      'migrations',
       'schema_migrations',
       'api_cache'
     ]);
@@ -495,7 +507,7 @@ class BackupService {
       // Clear existing data if requested (true snapshot restore)
       if (clearExisting) {
         console.log('[RESTORE] Clearing existing data for snapshot restore...');
-        const SKIP_CLEAR = new Set(['backups', 'backup_settings', 'schema_migrations', 'api_cache']);
+        const SKIP_CLEAR = new Set(['backups', 'backup_settings', 'migrations', 'schema_migrations', 'api_cache']);
         const allTablesResult = await client.query(`
           SELECT table_name FROM information_schema.tables
           WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
@@ -630,155 +642,6 @@ class BackupService {
         validUserIds.add(row.id);
       }
       console.log(`[RESTORE] Valid user IDs for FK validation: ${validUserIds.size}`);
-
-      // Restore trades with per-record fault tolerance
-      // Uses per-record savepoints so one bad trade doesn't roll back all trades
-      // ~3000 savepoints is well within PostgreSQL shared memory limits
-      const restoredUserIds = new Set();
-      if (tables.trades && tables.trades.length > 0) {
-        console.log(`[RESTORE] Processing ${tables.trades.length} trades...`);
-
-        const excludeColumns = ['import_id', 'round_trip_id'];
-        const validTradeCols = await getValidColumns('trades');
-        if (!validTradeCols) throw new Error('Required target table trades does not exist');
-        const tzCache = new Map();
-        const { getUserTimezone } = require('../utils/timezone');
-
-        for (const trade of tables.trades) {
-          let tradeData = { ...trade };
-          if (userIdMapping.has(tradeData.user_id)) {
-            tradeData.user_id = userIdMapping.get(tradeData.user_id);
-          }
-
-          if (tradeData.user_id && !validUserIds.has(tradeData.user_id)) {
-            results.trades.skipped++;
-            continue;
-          }
-
-          let tz = tzCache.get(tradeData.user_id);
-          if (!tz) {
-            tz = await getUserTimezone(tradeData.user_id);
-            tzCache.set(tradeData.user_id, tz);
-          }
-          tradeData = recomputeRestoredTradePnl(tradeData, tz);
-
-          const columns = [];
-          const values = [];
-          const placeholders = [];
-          let paramIndex = 1;
-
-          for (const [key, value] of Object.entries(tradeData)) {
-            if (excludeColumns.includes(key)) continue;
-            if (!validTradeCols.has(key)) continue;
-
-            columns.push(key);
-            values.push(serializeValue(value, validTradeCols.get(key)));
-            placeholders.push(`$${paramIndex}`);
-            paramIndex++;
-          }
-
-
-          if (columns.length === 0) {
-            results.trades.skipped++;
-            continue;
-          }
-
-          const sp = `sp_t_${Date.now().toString(36)}`;
-          try {
-            await client.query(`SAVEPOINT ${sp}`);
-            const insertResult = await client.query(
-              `INSERT INTO "trades" (${columns.map(quoteIdentifier).join(', ')}) VALUES (${placeholders.join(', ')})
-               ON CONFLICT DO NOTHING
-               RETURNING id`,
-              values
-            );
-            await client.query(`RELEASE SAVEPOINT ${sp}`);
-
-            if (insertResult.rows.length > 0) {
-              results.trades.added++;
-              if (tradeData.user_id) restoredUserIds.add(tradeData.user_id);
-            } else {
-              results.trades.skipped++;
-            }
-          } catch (error) {
-            await client.query(`ROLLBACK TO SAVEPOINT ${sp}`);
-            await client.query(`RELEASE SAVEPOINT ${sp}`);
-            if (results.trades.errors < 3) {
-              console.error(`[RESTORE] Trade error (${trade.id}): ${error.message}`);
-            }
-            results.trades.errors++;
-          }
-        }
-
-        console.log(`[RESTORE] Trades: ${results.trades.added} added, ${results.trades.skipped} skipped, ${results.trades.errors} errors`);
-      }
-      this._restoredUserIds = restoredUserIds;
-
-      // Restore diary entries with per-record fault tolerance
-      const diaryEntriesData = getTableData('diaryEntries', 'diary_entries');
-      if (diaryEntriesData && diaryEntriesData.length > 0) {
-        console.log(`[RESTORE] Processing ${diaryEntriesData.length} diary entries...`);
-        const validDiaryCols = await getValidColumns('diary_entries');
-        if (!validDiaryCols) throw new Error('Required target table diary_entries does not exist');
-
-        for (const entry of diaryEntriesData) {
-          const entryData = { ...entry };
-          if (entryData.user_id && userIdMapping.has(entryData.user_id)) {
-            entryData.user_id = userIdMapping.get(entryData.user_id);
-          }
-
-          if (entryData.user_id && !validUserIds.has(entryData.user_id)) {
-            results.diaryEntries.skipped++;
-            continue;
-          }
-
-          const columns = [];
-          const values = [];
-          const placeholders = [];
-          let paramIndex = 1;
-
-          for (const [key, value] of Object.entries(entryData)) {
-            if (!validDiaryCols.has(key)) continue;
-            columns.push(key);
-            values.push(serializeValue(value, validDiaryCols.get(key)));
-            placeholders.push(`$${paramIndex}`);
-            paramIndex++;
-          }
-
-
-          if (columns.length === 0) {
-            results.diaryEntries.skipped++;
-            continue;
-          }
-
-          const sp = `sp_d_${Date.now().toString(36)}`;
-          try {
-            await client.query(`SAVEPOINT ${sp}`);
-            const insertResult = await client.query(
-              `INSERT INTO "diary_entries" (${columns.map(quoteIdentifier).join(', ')}) VALUES (${placeholders.join(', ')})
-               ON CONFLICT DO NOTHING
-               RETURNING id`,
-              values
-            );
-            await client.query(`RELEASE SAVEPOINT ${sp}`);
-
-            if (insertResult.rows.length > 0) {
-              results.diaryEntries.added++;
-            } else {
-              results.diaryEntries.skipped++;
-            }
-          } catch (error) {
-            await client.query(`ROLLBACK TO SAVEPOINT ${sp}`);
-            await client.query(`RELEASE SAVEPOINT ${sp}`);
-            if (results.diaryEntries.errors < 3) {
-              console.error(`[RESTORE] Diary entry error (${entry.id}): ${error.message}`);
-            }
-            results.diaryEntries.errors++;
-          }
-        }
-
-        console.log(`[RESTORE] Diary entries: ${results.diaryEntries.added} added, ${results.diaryEntries.skipped} skipped, ${results.diaryEntries.errors} errors`);
-      }
 
       // Dynamic primary key detection via information_schema (cached per restore session)
       const pkCache = {};
@@ -920,11 +783,171 @@ class BackupService {
         console.log(`[RESTORE] ${tableName}: ${tableResults[tableName].added} added, ${tableResults[tableName].skipped} skipped, ${tableResults[tableName].errors} errors`);
       };
 
+      // Trades reference these rows through immediate foreign keys. Restore
+      // them after users and before trades, including on an empty snapshot.
+      const trade_parent_tables = ['broker_connections', 'trade_position_groups'];
+      for (const table_name of trade_parent_tables) {
+        await restoreTable(table_name, toCamelCase(table_name), 'other');
+      }
+
+      // Restore trades with per-record fault tolerance
+      // Uses per-record savepoints so one bad trade doesn't roll back all trades
+      // ~3000 savepoints is well within PostgreSQL shared memory limits
+      const restoredUserIds = new Set();
+      if (tables.trades && tables.trades.length > 0) {
+        console.log(`[RESTORE] Processing ${tables.trades.length} trades...`);
+
+        const excludeColumns = ['import_id', 'round_trip_id'];
+        const validTradeCols = await getValidColumns('trades');
+        if (!validTradeCols) throw new Error('Required target table trades does not exist');
+        const tzCache = new Map();
+
+        for (const trade of tables.trades) {
+          let tradeData = { ...trade };
+          if (userIdMapping.has(tradeData.user_id)) {
+            tradeData.user_id = userIdMapping.get(tradeData.user_id);
+          }
+
+          if (tradeData.user_id && !validUserIds.has(tradeData.user_id)) {
+            results.trades.skipped++;
+            continue;
+          }
+
+          let tz = tzCache.get(tradeData.user_id);
+          if (!tz) {
+            // Use this transaction: snapshot-restored users are not visible
+            // through the pool until COMMIT (and TRUNCATE holds table locks).
+            const timezone_result = await client.query(
+              'SELECT timezone FROM users WHERE id = $1', [tradeData.user_id]
+            );
+            tz = timezone_result.rows[0]?.timezone || 'UTC';
+            tzCache.set(tradeData.user_id, tz);
+          }
+          tradeData = recomputeRestoredTradePnl(tradeData, tz);
+
+          const columns = [];
+          const values = [];
+          const placeholders = [];
+          let paramIndex = 1;
+
+          for (const [key, value] of Object.entries(tradeData)) {
+            if (excludeColumns.includes(key)) continue;
+            if (!validTradeCols.has(key)) continue;
+
+            columns.push(key);
+            values.push(serializeValue(value, validTradeCols.get(key)));
+            placeholders.push(`$${paramIndex}`);
+            paramIndex++;
+          }
+
+
+          if (columns.length === 0) {
+            results.trades.skipped++;
+            continue;
+          }
+
+          const sp = `sp_t_${Date.now().toString(36)}`;
+          try {
+            await client.query(`SAVEPOINT ${sp}`);
+            const insertResult = await client.query(
+              `INSERT INTO "trades" (${columns.map(quoteIdentifier).join(', ')}) VALUES (${placeholders.join(', ')})
+               ON CONFLICT DO NOTHING
+               RETURNING id`,
+              values
+            );
+            await client.query(`RELEASE SAVEPOINT ${sp}`);
+
+            if (insertResult.rows.length > 0) {
+              results.trades.added++;
+              if (tradeData.user_id) restoredUserIds.add(tradeData.user_id);
+            } else {
+              results.trades.skipped++;
+            }
+          } catch (error) {
+            await client.query(`ROLLBACK TO SAVEPOINT ${sp}`);
+            await client.query(`RELEASE SAVEPOINT ${sp}`);
+            if (results.trades.errors < 3) {
+              console.error(`[RESTORE] Trade error (${trade.id}): ${error.message}`);
+            }
+            results.trades.errors++;
+          }
+        }
+
+        console.log(`[RESTORE] Trades: ${results.trades.added} added, ${results.trades.skipped} skipped, ${results.trades.errors} errors`);
+      }
+
+      // Restore diary entries with per-record fault tolerance
+      const diaryEntriesData = getTableData('diaryEntries', 'diary_entries');
+      if (diaryEntriesData && diaryEntriesData.length > 0) {
+        console.log(`[RESTORE] Processing ${diaryEntriesData.length} diary entries...`);
+        const validDiaryCols = await getValidColumns('diary_entries');
+        if (!validDiaryCols) throw new Error('Required target table diary_entries does not exist');
+
+        for (const entry of diaryEntriesData) {
+          const entryData = { ...entry };
+          if (entryData.user_id && userIdMapping.has(entryData.user_id)) {
+            entryData.user_id = userIdMapping.get(entryData.user_id);
+          }
+
+          if (entryData.user_id && !validUserIds.has(entryData.user_id)) {
+            results.diaryEntries.skipped++;
+            continue;
+          }
+
+          const columns = [];
+          const values = [];
+          const placeholders = [];
+          let paramIndex = 1;
+
+          for (const [key, value] of Object.entries(entryData)) {
+            if (!validDiaryCols.has(key)) continue;
+            columns.push(key);
+            values.push(serializeValue(value, validDiaryCols.get(key)));
+            placeholders.push(`$${paramIndex}`);
+            paramIndex++;
+          }
+
+
+          if (columns.length === 0) {
+            results.diaryEntries.skipped++;
+            continue;
+          }
+
+          const sp = `sp_d_${Date.now().toString(36)}`;
+          try {
+            await client.query(`SAVEPOINT ${sp}`);
+            const insertResult = await client.query(
+              `INSERT INTO "diary_entries" (${columns.map(quoteIdentifier).join(', ')}) VALUES (${placeholders.join(', ')})
+               ON CONFLICT DO NOTHING
+               RETURNING id`,
+              values
+            );
+            await client.query(`RELEASE SAVEPOINT ${sp}`);
+
+            if (insertResult.rows.length > 0) {
+              results.diaryEntries.added++;
+            } else {
+              results.diaryEntries.skipped++;
+            }
+          } catch (error) {
+            await client.query(`ROLLBACK TO SAVEPOINT ${sp}`);
+            await client.query(`RELEASE SAVEPOINT ${sp}`);
+            if (results.diaryEntries.errors < 3) {
+              console.error(`[RESTORE] Diary entry error (${entry.id}): ${error.message}`);
+            }
+            results.diaryEntries.errors++;
+          }
+        }
+
+        console.log(`[RESTORE] Diary entries: ${results.diaryEntries.added} added, ${results.diaryEntries.skipped} skipped, ${results.diaryEntries.errors} errors`);
+      }
+
       // Dynamically restore all remaining tables from the backup
       // Tables already handled: users, trades, diary_entries
-      const ALREADY_RESTORED = new Set(['users', 'trades', 'diaryEntries', 'diary_entries']);
+      const ALREADY_RESTORED = new Set(['users', 'trades', 'diaryEntries', 'diary_entries',
+        ...trade_parent_tables, ...trade_parent_tables.map(toCamelCase)]);
       // Tables that should never be restored (system/meta tables)
-      const SKIP_RESTORE = new Set(['backups', 'backupSettings', 'backup_settings', 'schemaMigrations', 'schema_migrations', 'apiCache', 'api_cache']);
+      const SKIP_RESTORE = new Set(['backups', 'backupSettings', 'backup_settings', 'migrations', 'schemaMigrations', 'schema_migrations', 'apiCache', 'api_cache']);
 
       // Priority order for tables with foreign key dependencies
       // These are restored first (in order) before all remaining tables
@@ -1070,10 +1093,10 @@ class BackupService {
         message += ` [${totalErrors} errors in: ${errorTables}]`;
       }
 
-      if (this._restoredUserIds && this._restoredUserIds.size > 0) {
+      if (restoredUserIds.size > 0) {
         const AnalyticsCache = require('./analyticsCache');
         const OptionStrategyGroupingService = require('./optionStrategyGroupingService');
-        for (const uid of this._restoredUserIds) {
+        for (const uid of restoredUserIds) {
           try {
             await OptionStrategyGroupingService.rebuildUserGroupsSafe(uid, 'backup restore');
             await AnalyticsCache.invalidate(uid);
@@ -1081,7 +1104,6 @@ class BackupService {
             console.warn(`[RESTORE] Post-restore analytics refresh failed for ${uid}: ${cacheErr.message}`);
           }
         }
-        this._restoredUserIds.clear();
       }
 
       return {

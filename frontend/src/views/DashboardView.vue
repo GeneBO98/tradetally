@@ -2482,12 +2482,40 @@ function getAnalyticsCacheKey() {
   return 'dashboard_analytics_' + parts.join('_')
 }
 
+function is_dashboard_record(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function is_dashboard_rows(value) {
+  return Array.isArray(value) && value.every(is_dashboard_record)
+}
+
+// Cached data can outlive a frontend upgrade. Validate the structures used by
+// the section templates before rendering them inside vuedraggable, which turns
+// slot-render exceptions into a visible red stack trace.
+function is_dashboard_analytics(data) {
+  return is_dashboard_record(data) && is_dashboard_record(data.summary) &&
+    is_dashboard_rows(data.performanceBySymbol) && is_dashboard_rows(data.dailyPnL) &&
+    is_dashboard_rows(data.dailyWinRate) && is_dashboard_record(data.topTrades) &&
+    is_dashboard_rows(data.topTrades.best) && is_dashboard_rows(data.topTrades.worst)
+}
+
+function is_dashboard_positions(data) {
+  return is_dashboard_rows(data) && data.every(position =>
+    typeof position.symbol === 'string' && is_dashboard_rows(position.trades)
+  )
+}
+
 function loadCachedAnalytics() {
   try {
     const key = getAnalyticsCacheKey()
     const stored = sessionStorage.getItem(key)
     if (stored) {
       const data = JSON.parse(stored)
+      if (!is_dashboard_analytics(data)) {
+        sessionStorage.removeItem(key)
+        return false
+      }
       analytics.value = data
       analyticsLoading.value = false
       return true
@@ -2517,6 +2545,9 @@ async function fetchAnalytics() {
     appendAdvancedFilterParams(params)
 
     const response = await api.get(`/trades/analytics?${params}`)
+    if (!is_dashboard_analytics(response.data)) {
+      throw new Error('Invalid dashboard analytics response')
+    }
     analytics.value = response.data
 
     // Persist to sessionStorage for instant display on page reload
@@ -2590,6 +2621,10 @@ function loadCachedOpenPositions() {
     const stored = sessionStorage.getItem(key)
     if (stored) {
       const data = JSON.parse(stored)
+      if (!is_dashboard_positions(data)) {
+        sessionStorage.removeItem(key)
+        return false
+      }
       openTrades.value = data
       quotesLoading.value = false
       console.log(`Restored ${data.length} cached open positions`)
@@ -2715,6 +2750,9 @@ async function fetchOpenTrades(options = {}) {
       try {
         const fastResponse = await fetchOpenPositionsRequest({ skipQuotes: true })
         if (requestId !== openPositionsRequestId) return
+        if (!is_dashboard_positions(fastResponse.data?.positions)) {
+          throw new Error('Invalid dashboard positions response')
+        }
 
         const fastPositions = preserveExistingQuoteData(fastResponse.data.positions || [])
         openTrades.value = fastPositions
@@ -2728,6 +2766,9 @@ async function fetchOpenTrades(options = {}) {
 
     const response = await fetchOpenPositionsRequest({ skipQuotes: false })
     if (requestId !== openPositionsRequestId) return
+    if (!is_dashboard_positions(response.data?.positions)) {
+      throw new Error('Invalid dashboard positions response')
+    }
 
     if (response.data.error) {
       console.warn('Real-time quotes not available:', response.data.error)

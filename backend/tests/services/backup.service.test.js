@@ -5,6 +5,11 @@ jest.mock('../../src/config/database', () => ({
 
 jest.mock('archiver', () => jest.fn());
 
+jest.mock('../../src/services/analyticsCache', () => ({ invalidate: jest.fn() }));
+jest.mock('../../src/services/optionStrategyGroupingService', () => ({
+  rebuildUserGroupsSafe: jest.fn()
+}));
+
 jest.mock('fs', () => ({
   promises: {
     mkdir: jest.fn().mockResolvedValue(),
@@ -20,8 +25,9 @@ const path = require('path');
 const db = require('../../src/config/database');
 const fs = require('fs').promises;
 const backupService = require('../../src/services/backup.service');
+const contracts = require('../../../tests/fixtures/trading-calculation-contracts.json');
 
-function createRestoreClient(columnsByTable = {}) {
+function createRestoreClient(columnsByTable = {}, user_ids = []) {
   const client = {
     release: jest.fn(),
     query: jest.fn(async (sql, params = []) => {
@@ -33,7 +39,8 @@ function createRestoreClient(columnsByTable = {}) {
       if (normalized.includes("tc.constraint_type = 'PRIMARY KEY'")) {
         return { rows: [{ column_name: 'id' }] };
       }
-      if (normalized === 'SELECT id FROM users') return { rows: [] };
+      if (normalized === 'SELECT id FROM users') return { rows: user_ids.map(id => ({ id })) };
+      if (normalized.startsWith('SELECT timezone FROM users')) return { rows: [{ timezone: 'UTC' }] };
       if (normalized.startsWith('INSERT INTO')) return { rows: [{ id: 'restored-id' }] };
       return { rows: [] };
     })
@@ -46,6 +53,39 @@ describe('backup service hardening', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     fs.mkdir.mockResolvedValue();
+  });
+
+  test.each(contracts.backup_restore_cases)('restores calculation contract: $id', async ({ trade, expected }) => {
+    const row = { id: 'trade-1', user_id: 'user-1', ...trade };
+    const client = createRestoreClient({ trades: Object.keys(row) }, ['user-1']);
+    const result = await backupService.restoreFromBackup({ tables: { trades: [row] } });
+
+    expect(result.results.trades).toEqual({ added: 1, skipped: 0, errors: 0 });
+    const [sql, values] = client.query.mock.calls.find(([query]) => String(query).startsWith('INSERT INTO "trades"'));
+    const columns = sql.match(/\(([^)]+)\) VALUES/)[1].split(', ').map(column => column.replaceAll('"', ''));
+    const restored = Object.fromEntries(columns.map((column, index) => [column, values[index]]));
+    expect(restored).toMatchObject(expected);
+    expect(db.query).not.toHaveBeenCalledWith('SELECT timezone FROM users WHERE id = $1', expect.anything());
+  });
+
+  test.each(['camel', 'snake'])('restores %s-case trade parents before their trades', async format => {
+    const client = createRestoreClient({
+      trades: ['id', 'user_id', 'broker_connection_id', 'position_group_id'],
+      broker_connections: ['id', 'user_id'],
+      trade_position_groups: ['id', 'user_id']
+    }, ['user-1']);
+    const result = await backupService.restoreFromBackup({ tables: {
+      trades: [{ id: 'trade-1', user_id: 'user-1', broker_connection_id: 'broker-1', position_group_id: 'group-1' }],
+      [format === 'camel' ? 'brokerConnections' : 'broker_connections']: [{ id: 'broker-1', user_id: 'user-1' }],
+      [format === 'camel' ? 'tradePositionGroups' : 'trade_position_groups']: [{ id: 'group-1', user_id: 'user-1' }]
+    } }, { clearExisting: true });
+
+    const inserts = client.query.mock.calls.filter(([query]) => String(query).startsWith('INSERT INTO'));
+    expect(inserts.map(([sql]) => sql.match(/INSERT INTO "([^"]+)"/)[1])).toEqual([
+      'broker_connections', 'trade_position_groups', 'trades'
+    ]);
+    expect(result.results.other).toEqual({ added: 2, skipped: 0, errors: 0 });
+    expect(result.results.trades.errors).toBe(0);
   });
 
   test('deleteOldBackups parameterizes retention and only unlinks safe backup paths', async () => {

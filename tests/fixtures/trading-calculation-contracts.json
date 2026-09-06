@@ -1,4 +1,320 @@
 {
+  "backup_restore_cases": [
+    {
+      "id": "closed_option_opening_only",
+      "description": "Preserve a manually closed short option when only its opening fill was saved.",
+      "trade": {
+        "symbol": "PLTR",
+        "side": "short",
+        "instrument_type": "option",
+        "contract_size": 100,
+        "quantity": 1,
+        "entry_price": 3.5,
+        "exit_price": 0,
+        "entry_time": "2026-08-05T14:00:00Z",
+        "exit_time": "2026-08-29T14:00:00Z",
+        "trade_date": "2026-08-05",
+        "pnl": 350,
+        "pnl_percent": 100,
+        "commission": 0,
+        "fees": 0,
+        "executions": [
+          {
+            "action": "sell",
+            "quantity": 1,
+            "price": 3.5,
+            "datetime": "2026-08-05T14:00:00Z"
+          }
+        ]
+      },
+      "expected": {
+        "symbol": "PLTR",
+        "side": "short",
+        "instrument_type": "option",
+        "contract_size": 100,
+        "quantity": 1,
+        "entry_price": 3.5,
+        "exit_price": 0,
+        "entry_time": "2026-08-05T14:00:00Z",
+        "exit_time": "2026-08-29T14:00:00Z",
+        "trade_date": "2026-08-05",
+        "pnl": 350,
+        "pnl_percent": 100,
+        "commission": 0,
+        "fees": 0
+      }
+    },
+    {
+      "id": "closed_option_partial_exit",
+      "description": "A partial exit cannot replace the saved result of a fully closed trade.",
+      "trade": {
+        "symbol": "PLTR",
+        "side": "short",
+        "instrument_type": "option",
+        "contract_size": 100,
+        "quantity": 1,
+        "entry_price": 3.5,
+        "exit_price": 0,
+        "entry_time": "2026-08-05T14:00:00Z",
+        "exit_time": "2026-08-29T14:00:00Z",
+        "trade_date": "2026-08-05",
+        "pnl": 350,
+        "pnl_percent": 100,
+        "commission": 0,
+        "fees": 0,
+        "executions": [
+          {
+            "action": "sell",
+            "quantity": 1,
+            "price": 3.5,
+            "datetime": "2026-08-05T14:00:00Z"
+          },
+          {
+            "action": "buy",
+            "quantity": 0.5,
+            "price": 1,
+            "datetime": "2026-08-29T14:00:00Z"
+          }
+        ]
+      },
+      "expected": {
+        "symbol": "PLTR",
+        "side": "short",
+        "instrument_type": "option",
+        "contract_size": 100,
+        "quantity": 1,
+        "entry_price": 3.5,
+        "exit_price": 0,
+        "entry_time": "2026-08-05T14:00:00Z",
+        "exit_time": "2026-08-29T14:00:00Z",
+        "trade_date": "2026-08-05",
+        "pnl": 350,
+        "pnl_percent": 100,
+        "commission": 0,
+        "fees": 0
+      }
+    },
+    {
+      "id": "closed_option_incomplete_quantity",
+      "description": "A complete round trip for fewer contracts cannot replace the full position.",
+      "trade": {
+        "symbol": "PLTR",
+        "side": "short",
+        "instrument_type": "option",
+        "contract_size": 100,
+        "quantity": 2,
+        "entry_price": 3.5,
+        "exit_price": 0,
+        "entry_time": "2026-08-05T14:00:00Z",
+        "exit_time": "2026-08-29T14:00:00Z",
+        "trade_date": "2026-08-05",
+        "pnl": 700,
+        "pnl_percent": 100,
+        "commission": 0,
+        "fees": 0,
+        "executions": [
+          {
+            "quantity": 1,
+            "entry_price": 3.5,
+            "exit_price": 0,
+            "entry_time": "2026-08-05T14:00:00Z",
+            "exit_time": "2026-08-29T14:00:00Z"
+          }
+        ]
+      },
+      "expected": {
+        "symbol": "PLTR",
+        "side": "short",
+        "instrument_type": "option",
+        "contract_size": 100,
+        "quantity": 2,
+        "entry_price": 3.5,
+        "exit_price": 0,
+        "entry_time": "2026-08-05T14:00:00Z",
+        "exit_time": "2026-08-29T14:00:00Z",
+        "trade_date": "2026-08-05",
+        "pnl": 700,
+        "pnl_percent": 100,
+        "commission": 0,
+        "fees": 0
+      }
+    },
+    {
+      "id": "closed_option_complete_zero_exit",
+      "description": "Complete executions still recalculate expired option P&L, including zero exit prices.",
+      "trade": {
+        "symbol": "PLTR",
+        "side": "short",
+        "instrument_type": "option",
+        "contract_size": 100,
+        "quantity": 1,
+        "entry_price": 3.5,
+        "exit_price": 0,
+        "entry_time": "2026-08-05T14:00:00Z",
+        "exit_time": "2026-08-29T14:00:00Z",
+        "trade_date": "2026-08-05",
+        "pnl": 999,
+        "pnl_percent": 999,
+        "commission": 0,
+        "fees": 0,
+        "executions": [
+          {
+            "quantity": 1,
+            "entry_price": 3.5,
+            "exit_price": 0,
+            "entry_time": "2026-08-05T14:00:00Z",
+            "exit_time": "2026-08-29T14:00:00Z"
+          }
+        ]
+      },
+      "expected": {
+        "symbol": "PLTR",
+        "side": "short",
+        "instrument_type": "option",
+        "contract_size": 100,
+        "quantity": 1,
+        "entry_price": 3.5,
+        "exit_price": 0,
+        "entry_time": "2026-08-05T14:00:00Z",
+        "exit_time": "2026-08-29T14:00:00Z",
+        "trade_date": "2026-08-05",
+        "pnl": 350,
+        "pnl_percent": 100,
+        "commission": 0,
+        "fees": 0
+      }
+    },
+    {
+      "id": "open_option_partial_realized",
+      "description": "Keep calculating realized P&L on open trades with partial exits.",
+      "trade": {
+        "symbol": "PLTR",
+        "side": "short",
+        "instrument_type": "option",
+        "contract_size": 100,
+        "quantity": 1,
+        "entry_price": 3.5,
+        "exit_price": null,
+        "entry_time": "2026-08-05T14:00:00Z",
+        "exit_time": null,
+        "trade_date": "2026-08-05",
+        "pnl": null,
+        "pnl_percent": null,
+        "commission": 0,
+        "fees": 0,
+        "executions": [
+          {
+            "action": "sell",
+            "quantity": 1,
+            "price": 3.5,
+            "datetime": "2026-08-05T14:00:00Z"
+          },
+          {
+            "action": "buy",
+            "quantity": 0.5,
+            "price": 1,
+            "datetime": "2026-08-27T14:00:00Z"
+          }
+        ]
+      },
+      "expected": {
+        "pnl": 125,
+        "exit_time": null,
+        "exit_price": null,
+        "quantity": 1,
+        "commission": 0,
+        "fees": 0
+      }
+    },
+    {
+      "id": "closed_option_saved_costs",
+      "description": "Incomplete executions must also preserve manually adjusted costs and prices.",
+      "trade": {
+        "symbol": "PLTR",
+        "side": "short",
+        "instrument_type": "option",
+        "contract_size": 100,
+        "quantity": 1,
+        "entry_price": 4,
+        "exit_price": 0,
+        "entry_time": "2026-08-05T14:00:00Z",
+        "exit_time": "2026-08-29T14:00:00Z",
+        "trade_date": "2026-08-05",
+        "pnl": 394,
+        "pnl_percent": 98.5,
+        "commission": 5,
+        "fees": 1,
+        "executions": [
+          {
+            "action": "sell",
+            "quantity": 1,
+            "price": 3.5,
+            "datetime": "2026-08-05T14:00:00Z"
+          }
+        ]
+      },
+      "expected": {
+        "symbol": "PLTR",
+        "side": "short",
+        "instrument_type": "option",
+        "contract_size": 100,
+        "quantity": 1,
+        "entry_price": 4,
+        "exit_price": 0,
+        "entry_time": "2026-08-05T14:00:00Z",
+        "exit_time": "2026-08-29T14:00:00Z",
+        "trade_date": "2026-08-05",
+        "pnl": 394,
+        "pnl_percent": 98.5,
+        "commission": 5,
+        "fees": 1
+      }
+    },
+    {
+      "id": "closed_option_missing_exit_timestamp",
+      "description": "Preserve a saved close time when grouped executions omit their exit timestamp.",
+      "trade": {
+        "symbol": "PLTR",
+        "side": "short",
+        "instrument_type": "option",
+        "contract_size": 100,
+        "quantity": 1,
+        "entry_price": 3.5,
+        "exit_price": 0,
+        "entry_time": "2026-08-05T14:00:00Z",
+        "exit_time": "2026-08-29T14:00:00Z",
+        "trade_date": "2026-08-05",
+        "pnl": 350,
+        "pnl_percent": 100,
+        "commission": 0,
+        "fees": 0,
+        "executions": [
+          {
+            "quantity": 1,
+            "entry_price": 3.5,
+            "exit_price": 0,
+            "entry_time": "2026-08-05T14:00:00Z"
+          }
+        ]
+      },
+      "expected": {
+        "symbol": "PLTR",
+        "side": "short",
+        "instrument_type": "option",
+        "contract_size": 100,
+        "quantity": 1,
+        "entry_price": 3.5,
+        "exit_price": 0,
+        "entry_time": "2026-08-05T14:00:00Z",
+        "exit_time": "2026-08-29T14:00:00Z",
+        "trade_date": "2026-08-05",
+        "pnl": 350,
+        "pnl_percent": 100,
+        "commission": 0,
+        "fees": 0
+      }
+    }
+  ],
   "pnl_engine_cases": [
     {
       "id": "stock_long_round_trip",
