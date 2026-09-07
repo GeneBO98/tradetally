@@ -57,11 +57,11 @@ const { metadataBySymbol, normalizeSymbol } = useSymbolMetadata(computed(() => p
 const normalizedSymbol = computed(() => normalizeSymbol(props.symbol))
 const metadata = computed(() => metadataBySymbol[normalizedSymbol.value] || null)
 
-// Ordered candidates: whatever the provider gave us, then the keyless CDNs.
-// Each failure advances to the next; running out lands on the initials.
+const providedLogo = computed(() => props.logoUrl || metadata.value?.logo || null)
+
+// Provider logo first, then the keyless CDNs; running out lands on the initials.
 const logoCandidates = computed(() => {
-  const provided = props.logoUrl || metadata.value?.logo || null
-  const candidates = provided ? [provided] : []
+  const candidates = providedLogo.value ? [providedLogo.value] : []
   return candidates.concat(fallbackLogoUrls(normalizedSymbol.value))
 })
 
@@ -70,16 +70,16 @@ const resolvedLogo = computed(() => logoCandidates.value[failedCandidates.value]
 function handleImageError() {
   failedCandidates.value += 1
 }
-// The metadata endpoint resolves a name for listings the chart provider does
-// not cover; nothing in the trade views displayed it, so expose it on hover.
+
 const companyName = computed(() => metadata.value?.companyName || metadata.value?.company_name || null)
 const altText = computed(() => props.alt || `${normalizedSymbol.value || 'Stock'} logo`)
 const fallbackText = computed(() => (normalizedSymbol.value || '?').slice(0, 2))
 const imageClasses = computed(() => `${props.sizeClass} ${props.roundedClass} object-contain bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex-shrink-0`)
 const fallbackClasses = computed(() => `${props.sizeClass} ${props.roundedClass} bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 inline-flex items-center justify-center flex-shrink-0`)
 
+// providedLogo resolves after mount, so reset or the late logo is indexed past.
 watch(
-  () => [props.symbol, props.logoUrl],
+  () => [props.symbol, providedLogo.value],
   () => {
     failedCandidates.value = 0
   }

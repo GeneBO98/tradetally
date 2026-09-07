@@ -31,8 +31,6 @@
               {{ trade.symbol }} Trade
             </h1>
             <p class="mt-1 truncate text-sm text-gray-600 dark:text-gray-400">
-              <!-- The company name leads when we have one: the ticker above is
-                   the identifier, this line says what it actually is. -->
               <span v-if="symbolCompanyName">{{ symbolCompanyName }} • </span>{{ formatDate(trade.trade_date) }} • {{ trade.side }}
             </p>
           </div>
@@ -1722,8 +1720,6 @@ function hasLegacyFuturesExcursionUnits(currentTrade, captured, scale) {
 const loading = ref(true)
 const trade = ref(null)
 
-// Company name for the header subtitle. Resolved through the shared metadata
-// store, which backfills non-US listings the chart provider does not cover.
 const { metadataBySymbol, normalizeSymbol } = useSymbolMetadata(computed(() => trade.value?.symbol || ''))
 const symbolCompanyName = computed(() => {
   const symbol = normalizeSymbol(trade.value?.symbol || '')

@@ -2,6 +2,7 @@ const db = require('../config/database');
 const finnhub = require('./finnhub');
 const yahooFinance = require('./yahooFinance');
 const TierService = require('../services/tierService');
+const { isOptionContractSymbol } = require('./optionSymbol');
 const cache = require('./cache');
 
 class SymbolCategoryManager {
@@ -99,8 +100,7 @@ class SymbolCategoryManager {
       
       // If not found or stale, fetch from API
         console.log(`[CHECK] Fetching category for ${symbol} from API...`);
-        // A plan restriction throws rather than returning empty; degrade to
-        // the fallback below rather than abandoning the symbol.
+        // A plan restriction throws rather than returning empty.
         let profile = null;
         try {
           profile = await finnhub.getCompanyProfile(symbolUpper);
@@ -108,10 +108,16 @@ class SymbolCategoryManager {
           console.warn(`[SYMBOLS] ${finnhub.displayName || 'Market data'} profile unavailable for ${symbolUpper}: ${providerError.message}`);
         }
 
-        // Yahoo needs no key and covers listings the configured provider may not.
-        // Self-hosted only, matching the gate the chart fallbacks use.
-        const billingEnabled = await TierService.isBillingEnabled();
+        // Self-hosted only. An unclassified instance is treated as hosted.
+        let billingEnabled = true;
+        try {
+          billingEnabled = await TierService.isBillingEnabled();
+        } catch (tierError) {
+          console.warn(`[SYMBOLS] Billing check failed for ${symbolUpper}, skipping name fallback: ${tierError.message}`);
+        }
+
         if (!billingEnabled
+            && !isOptionContractSymbol(symbolUpper)
             && !this.hasStoredMetadata(this.normalizeCategory(symbolUpper, profile || {}))) {
           const yahooProfile = await yahooFinance.getSymbolProfile(symbolUpper).catch(() => null);
 

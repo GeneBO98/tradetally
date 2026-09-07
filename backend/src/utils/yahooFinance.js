@@ -404,9 +404,7 @@ class YahooFinanceClient {
     }
   }
 
-  // Company profile for a listing the configured provider does not cover.
-  // Uses the search endpoint, which needs no key and no crumb, unlike
-  // quoteSummary. Search is fuzzy, so only an exact ticker match is accepted.
+  // Search needs no crumb, unlike quoteSummary, but is fuzzy.
   async getSymbolProfile(symbol) {
     if (!this.isEnabled()) return null;
 
@@ -426,8 +424,7 @@ class YahooFinanceClient {
         }
       );
 
-      // Search is a fuzzy endpoint: only an exact ticker match may be trusted,
-      // or a mistyped symbol silently adopts a neighbour's industry.
+      // Exact match only, or a symbol adopts a neighbour's industry.
       const match = (response.data?.quotes || []).find(
         (candidate) => String(candidate?.symbol || '').toUpperCase() === yahooSymbol
       );
@@ -439,7 +436,7 @@ class YahooFinanceClient {
       const profile = {
         symbol: yahooSymbol,
         name: match.longname || match.shortname || null,
-        // An ETF legitimately has no industry; null is the right answer, not a gap.
+        // An ETF legitimately has none.
         industry: match.industry || null,
         exchange: match.exchDisp || match.exchange || null,
         quoteType: match.quoteType || null
@@ -458,9 +455,7 @@ class YahooFinanceClient {
     }
   }
 
-  // Company name for a listing the configured provider does not cover. Finnhub's
-  // free tier is US-only, so a European holding otherwise shows no name at all.
-  // The chart endpoint already carries it, so this costs one cached request.
+  // The chart endpoint already carries the name, so this is one cached request.
   async getSymbolName(symbol) {
     if (!this.isEnabled()) return null;
 
@@ -468,7 +463,7 @@ class YahooFinanceClient {
     if (!yahooSymbol) return null;
 
     const cached = await cache.get('yahoo_symbol_name', yahooSymbol);
-    if (cached) return cached;
+    if (cached) return cached.miss ? null : cached;
 
     try {
       const response = await axios.get(
@@ -482,7 +477,7 @@ class YahooFinanceClient {
 
       const meta = response.data?.chart?.result?.[0]?.meta;
       const name = meta?.longName || meta?.shortName || null;
-      if (name) await cache.set('yahoo_symbol_name', yahooSymbol, name);
+      await cache.set('yahoo_symbol_name', yahooSymbol, name || { miss: true });
       return name;
     } catch (error) {
       console.warn(`[SYMBOLS] Yahoo Finance name lookup failed for ${yahooSymbol}: ${error.message}`);

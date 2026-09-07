@@ -49,7 +49,6 @@ describe('Yahoo Finance symbol profiles', () => {
   });
 
   test('ignores a fuzzy match on a different ticker', async () => {
-    // Search is fuzzy; without an exact check a typo adopts a neighbour's sector.
     axios.get.mockResolvedValue(searchResponse([
       { symbol: 'EXCO.F', quoteType: 'EQUITY', sector: 'Consumer Cyclical', shortname: 'Example Co Frankfurt' }
     ]));
@@ -83,6 +82,7 @@ describe('Yahoo Finance profile caching', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    cache.get.mockResolvedValue(null);
     process.env.YAHOO_FINANCE_ENABLED = 'true';
   });
 
@@ -100,6 +100,36 @@ describe('Yahoo Finance profile caching', () => {
 
     expect(await yahooFinance.getSymbolProfile('NOSUCH.L')).toBeNull();
     expect(axios.get).not.toHaveBeenCalled();
+  });
+
+  test('records a miss when the chart carries no name', async () => {
+    axios.get.mockResolvedValue({ data: { chart: { result: [{ meta: {} }] } } });
+
+    expect(await yahooFinance.getSymbolName('NONAME.L')).toBeNull();
+    expect(cache.set).toHaveBeenCalledWith(
+      'yahoo_symbol_name', 'NONAME.L', { miss: true }
+    );
+  });
+
+  test('reads a recorded name miss without calling the provider again', async () => {
+    cache.get.mockResolvedValue({ miss: true });
+
+    expect(await yahooFinance.getSymbolName('NONAME.L')).toBeNull();
+    expect(axios.get).not.toHaveBeenCalled();
+  });
+
+  test('still returns a cached name', async () => {
+    cache.get.mockResolvedValue('Example Company AG');
+
+    expect(await yahooFinance.getSymbolName('EXCO.DE')).toBe('Example Company AG');
+    expect(axios.get).not.toHaveBeenCalled();
+  });
+
+  test('does not cache a transient name lookup failure', async () => {
+    axios.get.mockRejectedValue(new Error('network down'));
+
+    expect(await yahooFinance.getSymbolName('EXCO.DE')).toBeNull();
+    expect(cache.set).not.toHaveBeenCalled();
   });
 
   test('still returns a cached hit', async () => {
