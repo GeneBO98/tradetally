@@ -854,5 +854,206 @@
         "risk_basis": "current_stop"
       }
     }
-  }
+  },
+  "recent_csv_failure_cases": [
+    {
+      "id": "webull_usd_prefix",
+      "csv": "Name,Symbol,Side,Status,Filled Qty,Total Qty,Order Type,Avg Price,Time-in-Force,Placed Time,Filled Time\nExample,AAPL,SELL,FILLED,1,1,MKT,USD$ 1630.06,DAY,2026/08/14 10:50:55 EDT,2026/08/14 10:50:56 EDT\nExample,AAPL,BUY,FILLED,1,1,MKT,USD$ 1628.88,DAY,2026/08/14 10:50:11 EDT,2026/08/14 10:50:11 EDT",
+      "broker": "auto",
+      "expected": [
+        {
+          "symbol": "AAPL",
+          "quantity": 1,
+          "entry_price": 1628.88,
+          "exit_price": 1630.06,
+          "pnl": 1.18
+        }
+      ]
+    },
+    {
+      "id": "webull_statement_title",
+      "csv": "Monthly Statement 2026-08,\nSymbol & Name,Trade Date,Settlement Date,Buy/Sell,Quantity,Traded Price,Gross Amount,Comm/Fee/Tax,VAT,Net Amount\nNTAP NETAPP INC,31/7/2026,3/8/2026,BUY,10,177,1770,-1.77,-0.12,1771.89\nNTAP NETAPP INC,31/7/2026,3/8/2026,SELL,10,175.51,1755.1,-1.81,-0.12,1753.17",
+      "broker": "auto",
+      "expected": [
+        {
+          "symbol": "NTAP",
+          "entry_price": 177,
+          "exit_price": 175.51,
+          "quantity": 10,
+          "pnl": -18.72
+        }
+      ]
+    },
+    {
+      "id": "generic_timestamp_date",
+      "csv": "Symbol,Side,Qty,Price,Timestamp\nAAPL,Buy,100,6.54,2026-08-26 07:11:28\nAAPL,Sell,100,6.52,2026-08-26 07:11:48",
+      "broker": "auto",
+      "expected": [
+        {
+          "symbol": "AAPL",
+          "quantity": 100,
+          "entry_price": 6.54,
+          "exit_price": 6.52,
+          "pnl": -2,
+          "trade_date": "2026-08-26"
+        }
+      ]
+    },
+    {
+      "id": "generic_closing_time_execution",
+      "csv": "Symbol,Side,Qty,Fill Price,Commission,Closing Time\nAAPL,buy,2,100,1,2026-09-04 16:40:00\nAAPL,sell,2,110,1,2026-09-04 16:43:00",
+      "broker": "auto",
+      "expected": [
+        {
+          "quantity": 2,
+          "entry_price": 100,
+          "exit_price": 110,
+          "pnl": 18,
+          "commission": 2
+        }
+      ]
+    },
+    {
+      "id": "ibkr_compact_named_timezone",
+      "csv": "ClientAccountID,Symbol,Buy/Sell,Quantity,Price,Commission,Date/Time,TradeDate,CurrencyPrimary,AssetClass\nTEST-ACCOUNT,AAPL,BUY,15,10.25,-0.4,20260902;095022 EDT,20260902,USD,STK\nTEST-ACCOUNT,AAPL,SELL,15,11.25,-0.4,20260902;095312 EDT,20260902,USD,STK",
+      "broker": "auto",
+      "expected": [
+        {
+          "symbol": "AAPL",
+          "quantity": 15,
+          "entry_price": 10.25,
+          "exit_price": 11.25,
+          "pnl": 14.2
+        }
+      ]
+    },
+    {
+      "id": "schwab_selected_as_etrade",
+      "csv": "Date,Action,Symbol,Description,Quantity,Price,Fees & Comm,Amount\n08/07/2026,Buy,AAPL,APPLE,10,100,1,-1001\n08/07/2026,Sell,AAPL,APPLE,10,110,1,1099",
+      "broker": "etrade",
+      "expected": [
+        {
+          "symbol": "AAPL",
+          "quantity": 10,
+          "entry_price": 100,
+          "exit_price": 110,
+          "pnl": 98
+        }
+      ]
+    },
+    {
+      "id": "tradingview_history_fractional_short",
+      "csv": "Symbol,Trade number,Type,Date and time,Order ID,Signal,Price,Size (qty),Size (value),Net PnL USD,Return %,Commission USD\nBINANCE:BTCUSDT,1,Exit short,\"Sep 3, 2026, 14:22\",exit-1,exit-1,81042.01,0.0616,4993.901528,1.71,0.03,0\nBINANCE:BTCUSDT,1,Entry short,\"Sep 3, 2026, 14:21\",entry-1,entry-1,81069.83,0.0616,4993.901528,1.71,0.03,0",
+      "broker": "auto",
+      "expected": [
+        {
+          "symbol": "BINANCE:BTCUSDT",
+          "quantity": 0.0616,
+          "side": "short",
+          "entry_price": 81069.83,
+          "exit_price": 81042.01,
+          "pnl": 1.71,
+          "commission": 0
+        }
+      ]
+    },
+    {
+      "id": "tradingview_history_repeated_costs",
+      "csv": "Symbol,Trade number,Type,Date and time,Order ID,Signal,Price,Size (qty),Size (value),Net PnL USD,Return %,Commission USD\nNASDAQ:AAPL,1,Exit long,\"Sep 3, 2026, 14:22\",exit-1,exit-1,110,2,200,18,9,2\nNASDAQ:AAPL,1,Entry long,\"Sep 3, 2026, 14:21\",entry-1,entry-1,100,2,200,18,9,2",
+      "broker": "tradingview",
+      "expected": [
+        {
+          "quantity": 2,
+          "side": "long",
+          "entry_price": 100,
+          "exit_price": 110,
+          "pnl": 18,
+          "commission": 2
+        }
+      ]
+    },
+    {
+      "id": "converted_completed_selected_thinkorswim",
+      "csv": "Symbol,Type,Side,EntryDateUTC,ExitDateUTC,EntryPrice,ExitPrice,Quantity,Units,PositionSize,Leverage,LotValue,TickSize,TickValue,Fees\nAAPL,stock,long,8/3/2026 12:21,8/3/2026 12:24,3.48,3.63,10,shares,,,,,,0",
+      "broker": "thinkorswim",
+      "expected": [
+        {
+          "symbol": "AAPL",
+          "entry_price": 3.48,
+          "exit_price": 3.63,
+          "quantity": 10,
+          "entry_time": "2026-08-03T12:21:00Z"
+        }
+      ]
+    },
+    {
+      "id": "generic_selected_webull",
+      "csv": "Date,Time,Symbol,Side,Quantity,Price\n14/8/2026,13:40:40,AAPL,Buy,8,236\n14/8/2026,13:41:11,AAPL,Sell,8,230.23",
+      "broker": "webull",
+      "expected": [
+        {
+          "symbol": "AAPL",
+          "quantity": 8,
+          "pnl": -46.16
+        }
+      ]
+    },
+    {
+      "id": "generic_selected_tradovate",
+      "csv": "Date,Symbol ,Action,quantity ,price,commissions\n8/21/2026 8:55,AAPL, Sell,4,100,3\n8/21/2026 9:08,AAPL, Buy,4,99,3",
+      "broker": "tradovate",
+      "expected": [
+        {
+          "symbol": "AAPL",
+          "quantity": 4,
+          "side": "short",
+          "entry_price": 100,
+          "exit_price": 99,
+          "pnl": -2
+        }
+      ]
+    },
+    {
+      "id": "tradovate_selected_tradingview",
+      "csv": "orderId,B/S,Contract,Product,Fill Time,avgPrice,filledQty,Commission,Status\n1,Buy,MNQU6,MNQ,08/21/2026 08:55:49,29503.5,2,1.5,Filled\n2,Sell,MNQU6,MNQ,08/21/2026 08:57:49,29504.5,2,1.5,Filled",
+      "broker": "tradingview",
+      "expected": [
+        {
+          "quantity": 2,
+          "entry_price": 29503.5,
+          "exit_price": 29504.5,
+          "pnl": 1,
+          "commission": 3
+        }
+      ]
+    },
+    {
+      "id": "tos_history_selected_thinkorswim",
+      "csv": "Account Trade History filtered by AAPL,\n,Exec Time,Spread,Side,Qty,Pos Effect,Symbol,Exp,Strike,Type,Price,Net Price,Order Type\n,9/1/26 12:09:51,STOCK,BUY,+4,TO OPEN,AAPL,,,STOCK,100,100,LMT\n,9/1/26 12:11:51,STOCK,SELL,-4,TO CLOSE,AAPL,,,STOCK,110,110,LMT",
+      "broker": "thinkorswim",
+      "expected": [
+        {
+          "symbol": "AAPL",
+          "quantity": 4,
+          "entry_price": 100,
+          "exit_price": 110,
+          "pnl": 40
+        }
+      ]
+    },
+    {
+      "id": "schwab_lot_details_selected_etrade",
+      "broker": "etrade",
+      "csv": "Realized Gain/Loss - Lot Details for TEST as of Sep 7 2026,\nSymbol,Name,Closed Date,Opened Date,Quantity,Proceeds Per Share,Cost Per Share,Proceeds,Cost Basis (CB),Gain/Loss ($),Gain/Loss (%),Long Term Gain/Loss,Short Term Gain/Loss,Term\nAAPL,APPLE,08/14/2026,08/14/2026,10,$109.90,$100.10,$1099,$1001,$98,9.79,,$98,Short Term",
+      "expected": [
+        {
+          "symbol": "AAPL",
+          "entry_price": 100.1,
+          "exit_price": 109.9,
+          "quantity": 10,
+          "pnl": 98
+        }
+      ]
+    }
+  ]
 }

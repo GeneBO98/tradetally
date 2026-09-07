@@ -59,12 +59,12 @@ const brokerParsers = {
       'Open Date', 'open_date', 'Transaction Date', 'Activity Date', 'Exec Date',
       'Execution Date', 'Date and time', 'Time', 'Close time', 'Entry Time',
       'Exit Time', 'Opening time (UTC-4)', 'Opening Time', 'Open Time',
-      'Opened Time', 'opening_time_utc'
+      'Opened Time', 'opening_time_utc', 'Timestamp', 'Date/Time', 'Closing Time'
     ]);
 
     const entryTimeField = findGenericColumn(row, [
       'Entry Date UTC', 'Entry Time', 'Exec Time', 'Execution Time', 'Fill Time',
-      'Trade Time', 'Timestamp', 'order_execution_time', 'Date and time', 'Time',
+      'Trade Time', 'Timestamp', 'Date/Time', 'Closing Time', 'order_execution_time', 'Date and time', 'Time',
       'Close time', 'Opening time (UTC-4)', 'Opening Time', 'Open Time',
       'Opened Time', 'opening_time_utc', 'Trade Date', 'trade_date', 'Entry Date',
       'Open Date', 'open_date', 'Date', 'Activity Date'

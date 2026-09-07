@@ -52,7 +52,7 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
       ));
       // Support both "Avg Price" (old) and "Filled Avg Price" / "Filled AVG Price" (alternate, may have $ prefix)
       const priceRaw = cleanString(record['Avg Price'] || record['avg price'] || record['Filled Avg Price'] || record['filled avg price'] || record['Filled AVG Price'] || record['Traded Price'] || record['Trade Price'] || record.Price || record.price || '0');
-      const price = parseNumeric(priceRaw, 0);
+      const price = parseNumeric(priceRaw.replace(/^USD\s*\$?\s*/i, ''), 0);
       const rawTradeDateValue = cleanString(record['Trade Date']);
       const internationalDateMatch = rawTradeDateValue.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
       const tradeDateValue = internationalDateMatch && record['Buy/Sell']
@@ -75,9 +75,9 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
         console.log(`Skipping Webull record - not filled or zero quantity:`, { symbol, status, filled });
         if (diag) {
           diag.skippedRows = (diag.skippedRows || 0) + 1;
-          if (!diag.skippedReasons) diag.skippedReasons = {};
+          if (!Array.isArray(diag.skippedReasons)) diag.skippedReasons = [];
           const reason = status.toLowerCase() === 'cancelled' ? 'Cancelled order' : `Status: ${status}, Filled: ${filled}`;
-          diag.skippedReasons[reason] = (diag.skippedReasons[reason] || 0) + 1;
+          diag.skippedReasons.push({ row: rowIndex, reason });
         }
         continue;
       }
@@ -96,8 +96,8 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
         console.log(`Skipping Webull record missing data:`, { symbol, side, filled, price, filledTime });
         if (diag) {
           diag.invalidRows = (diag.invalidRows || 0) + 1;
-          if (!diag.skippedReasons) diag.skippedReasons = {};
-          diag.skippedReasons['Missing essential data'] = (diag.skippedReasons['Missing essential data'] || 0) + 1;
+          if (!Array.isArray(diag.skippedReasons)) diag.skippedReasons = [];
+          diag.skippedReasons.push({ row: rowIndex, reason: 'Missing essential data' });
         }
         continue;
       }
@@ -130,8 +130,8 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
         console.log(`Skipping Webull record with invalid/future date: ${filledTime}`);
         if (diag) {
           diag.invalidRows = (diag.invalidRows || 0) + 1;
-          if (!diag.skippedReasons) diag.skippedReasons = {};
-          diag.skippedReasons['Invalid or future date'] = (diag.skippedReasons['Invalid or future date'] || 0) + 1;
+          if (!Array.isArray(diag.skippedReasons)) diag.skippedReasons = [];
+          diag.skippedReasons.push({ row: rowIndex, reason: 'Invalid or future date' });
         }
         continue;
       }
@@ -140,8 +140,8 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
         console.log(`Skipping Webull record with date too far in past: ${filledTime}`);
         if (diag) {
           diag.invalidRows = (diag.invalidRows || 0) + 1;
-          if (!diag.skippedReasons) diag.skippedReasons = {};
-          diag.skippedReasons['Date too far in past'] = (diag.skippedReasons['Date too far in past'] || 0) + 1;
+          if (!Array.isArray(diag.skippedReasons)) diag.skippedReasons = [];
+          diag.skippedReasons.push({ row: rowIndex, reason: 'Date too far in past' });
         }
         continue;
       }

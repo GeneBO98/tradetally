@@ -298,7 +298,7 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
         action: side === 'buy' ? 'buy' : 'sell',
         quantity,
         price: fillPrice,
-        fees: 0, // Tradovate doesn't include fees in this export
+        fees: Math.abs(parseNumeric(record.Commission || record.commission)), // Optional in fills exports
         orderId,
         isExit,
         orderText,

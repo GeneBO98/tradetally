@@ -16,6 +16,7 @@ const { parseTastytradeTransactions } = require('./parsers/tastytrade');
 const { parseThinkorswimTransactions } = require('./parsers/thinkorswim');
 const { parseTradervueCompletedTrades } = require('./parsers/tradervue');
 const { hasTradingViewOrderHistoryHeaders, parseTradingViewTransactions, parseTradingViewPaperTrades } = require('./parsers/tradingview');
+const { hasTradingViewHistoryHeaders, parseTradingViewHistory } = require('./parsers/tradingviewHistory');
 const { parseTradovatePerformanceReport, parseTradovateTransactions } = require('./parsers/tradovate');
 const { parseWebullTransactions } = require('./parsers/webull');
 const { normalizeSupportedBrokerRows } = require('./parsers/normalizedBrokerRows');
@@ -134,6 +135,35 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       diagnostics.headerAnalysis.recognizedAs = broker;
     }
 
+    // Correct the specific broker-selection mismatches seen in import diagnostics.
+    // Keep saved custom mappings authoritative.
+    if (!context.customMapping && !['auto', 'generic', 'custom'].includes(originalBroker)) {
+      const detected_broker = detectBrokerFormat(fileBuffer);
+      const compatible_routes = {
+        etrade: ['schwab'],
+        thinkorswim: ['papermoney'],
+        tradingview: ['tradovate']
+      };
+      const flat_header = findLikelyDelimitedHeaderLine(fileBuffer.toString('utf-8').split('\n'));
+      const flat_fields = flat_header
+        ? parse(flat_header.line, { delimiter: flat_header.delimiter, trim: true })[0]
+          .map(value => String(value).toLowerCase().replace(/[^a-z0-9]/g, ''))
+        : [];
+      const has_fields = fields => fields.every(field => flat_fields.includes(field));
+      const generic_override = detected_broker === 'generic' && (
+        (originalBroker === 'thinkorswim' && has_fields(['symbol', 'side', 'entrydateutc', 'exitdateutc', 'entryprice', 'exitprice', 'quantity'])) ||
+        (['webull', 'tradovate'].includes(originalBroker) && has_fields(['date', 'symbol', 'price']) &&
+          (flat_fields.includes('side') || flat_fields.includes('action')) &&
+          (flat_fields.includes('quantity') || flat_fields.includes('qty')) && !flat_fields.includes('status'))
+      );
+      if (generic_override || compatible_routes[originalBroker]?.includes(detected_broker)) {
+        diagnostics.warnings.push(`Selected broker was ${originalBroker}, but the CSV matches ${detected_broker}. Used the ${detected_broker} parser.`);
+        broker = detected_broker;
+        diagnostics.detectedBroker = broker;
+        diagnostics.headerAnalysis.recognizedAs = broker;
+      }
+    }
+
     const existingPositions = context.existingPositions || {};
     const userTimezone = context.userTimezone || null;
     const importDateFromFileName = extractDateFromFilename(context.fileName);
@@ -208,11 +238,19 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       broker = 'tradingview';
     }
 
+    if (context.customMapping && hasTradingViewHistoryHeaders(firstHeaders)) {
+      broker = 'generic';
+      diagnostics.detectedBroker = broker;
+      diagnostics.headerAnalysis.recognizedAs = broker;
+    }
+
     // TradingView sub-format detection: inspect CSV headers to route to the correct parser
     // All TradingView formats come in as broker='tradingview', we determine the sub-format here
     if (broker === 'tradingview') {
       const tvHeaders = firstHeaderLine.toLowerCase();
-      if (tvHeaders.includes('buyfillid') && tvHeaders.includes('sellfillid') && tvHeaders.includes('pnl')) {
+      if (hasTradingViewHistoryHeaders(firstHeaders)) {
+        broker = 'tradingview_history';
+      } else if (tvHeaders.includes('buyfillid') && tvHeaders.includes('sellfillid') && tvHeaders.includes('pnl')) {
         broker = 'tradingview_performance';
         console.log('[TRADINGVIEW] Sub-format detected: Performance export');
       } else if (tvHeaders.includes('buyprice') && tvHeaders.includes('sellprice') &&
@@ -411,6 +449,21 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
         console.log(`[ACCOUNT] Will use Schwab account: ${schwabAccountNumber}`);
       } else {
         console.log(`[ACCOUNT] No Schwab account number found in header rows`);
+      }
+    }
+
+    // Detection already locates the real header beneath statement titles. Use
+    // that same row for flat reports instead of treating the title as columns.
+    if (['webull', 'schwab', 'generic'].includes(broker) && !context.customMapping) {
+      const report_lines = csvString.split('\n');
+      const header_info = findLikelyDelimitedHeaderLine(report_lines);
+      if (header_info?.index > 0) {
+        const header_cells = parse(header_info.line, { delimiter: header_info.delimiter, trim: true })[0];
+        const normalized_headers = header_cells.map(value => String(value).toLowerCase());
+        if (normalized_headers.some(value => ['symbol', 'symbol & name', 'ticker'].includes(value)) &&
+            normalized_headers.some(value => ['quantity', 'qty', 'filled', 'filled qty', 'closing quantity'].includes(value))) {
+          csvString = report_lines.slice(header_info.index).join('\n');
+        }
       }
     }
 
@@ -949,6 +1002,10 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       }
 
       return wrapResultWithDiagnostics(finalTrades, diagnostics, [], userTimezone);
+    }
+
+    if (broker === 'tradingview_history') {
+      return wrapResultWithDiagnostics(parseTradingViewHistory(records, context), diagnostics, [], userTimezone);
     }
 
     if (broker === 'tradingview') {

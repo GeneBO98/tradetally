@@ -699,6 +699,10 @@ function detectBrokerFormat(fileBuffer) {
       }
     }
 
+    if (['symbol', 'trade number', 'date and time', 'size (qty)', 'net pnl'].every(field => headers.includes(field))) {
+      return 'tradingview';
+    }
+
     // TradingView detection - covers all 3 sub-formats (futures transactions, performance, paper trading)
     // Performance export: buyFillId, sellFillId, boughtTimestamp, soldTimestamp, pnl
     if (headers.includes('buyfillid') &&

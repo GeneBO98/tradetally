@@ -196,7 +196,7 @@ function parseDate(dateStr, options = {}) {
 
   // Remove leading and trailing quotes/apostrophes (including Unicode curly quotes), then trim
   const cleanDateStr = dateStr.toString().replace(/^[\x27\x22\u2018\u2019\u201C\u201D]|[\x27\x22\u2018\u2019\u201C\u201D]$/g, '').trim();
-  const normalizedDateStr = cleanDateStr.replace(
+  const normalizedDateStr = extractTimezoneSuffix(cleanDateStr).body.replace(
     /^([A-Za-z]+ \d{1,2}, \d{4})(\d{1,2}:\d{2}(?::\d{2})?\s*[AP]M)$/i,
     '$1 $2'
   );
