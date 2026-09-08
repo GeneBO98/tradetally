@@ -21,8 +21,10 @@
           <span
             v-if="chartData.source"
             class="rounded-full bg-primary-100 px-2 py-1 text-xs font-medium text-primary-800 dark:bg-primary-900/40 dark:text-primary-200"
+            :class="{ 'cursor-help': sourceTitle }"
+            :title="sourceTitle"
           >
-            {{ sourceLabel }}
+            {{ sourceLabel }}<template v-if="sourceTitle"> ·  fallback</template>
           </span>
         </div>
       </div>
@@ -87,6 +89,13 @@
           Contract rollover can create differences from the recorded fill price.
         </div>
 
+        <div
+          v-if="degradationNotice"
+          class="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-100"
+        >
+          {{ degradationNotice }}
+        </div>
+
         <KLineTradeChart
           :chart-data="chartData"
           :timezone="userTimezone || 'UTC'"
@@ -100,15 +109,15 @@
         <dl v-if="chartData.trade" class="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
           <div class="rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-800/70">
             <dt class="text-gray-500 dark:text-gray-400">Entry</dt>
-            <dd class="mt-0.5 font-semibold text-gray-900 dark:text-white">{{ formatCurrency(chartData.trade.entryPrice) }}</dd>
+            <dd class="mt-0.5 font-semibold text-gray-900 dark:text-white">{{ formatTradeCurrency(chartData.trade.entryPrice) }}</dd>
           </div>
           <div class="rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-800/70">
             <dt class="text-gray-500 dark:text-gray-400">Exit</dt>
-            <dd class="mt-0.5 font-semibold text-gray-900 dark:text-white">{{ formatCurrency(chartData.trade.exitPrice) }}</dd>
+            <dd class="mt-0.5 font-semibold text-gray-900 dark:text-white">{{ exitLabel }}</dd>
           </div>
           <div class="rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-800/70">
             <dt class="text-gray-500 dark:text-gray-400">P&amp;L</dt>
-            <dd class="mt-0.5 font-semibold" :class="metricClass(chartData.trade.pnl)">{{ formatCurrency(chartData.trade.pnl) }}</dd>
+            <dd class="mt-0.5 font-semibold" :class="metricClass(chartData.trade.pnl)">{{ formatTradeCurrency(chartData.trade.pnl) }}</dd>
           </div>
           <div class="rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-800/70">
             <dt class="text-gray-500 dark:text-gray-400">Return</dt>
@@ -188,6 +197,38 @@ const intervalLabel = computed(() => {
   return labels[chartData.value?.interval] || `${chartData.value?.interval || 'Daily'} candles`
 })
 
+// An open trade has no exit yet; say so rather than formatting a null.
+// Format in the currency the trade was actually executed in, matching the
+// Trade Details panel, rather than the account's display currency.
+const tradeCurrency = computed(() => {
+  const currency = chartData.value?.trade?.currency
+  return currency ? String(currency).toUpperCase() : currencyCode.value
+})
+
+function formatTradeCurrency(value) {
+  return formatCurrency(value, { currency: tradeCurrency.value })
+}
+
+const exitLabel = computed(() => {
+  const exitPrice = chartData.value?.trade?.exitPrice
+  if (exitPrice === null || exitPrice === undefined) return 'Open'
+  return formatTradeCurrency(exitPrice)
+})
+
+// Surface a degraded chart instead of quietly rendering fallback data: a
+// permanently failing primary provider otherwise looks identical to a healthy
+// one, since a chart still appears either way.
+const degradationNotice = computed(() => chartData.value?.intraday_unavailable_reason || null)
+
+// The primary provider failing is often a permanent plan limitation rather than
+// an incident, so it belongs on the source chip rather than in a banner that
+// would nag on every chart.
+// snake_case is the convention the futures paths already use; camelCase is read
+// as well so a response from an older backend still explains itself.
+const sourceTitle = computed(
+  () => chartData.value?.fallback_reason ?? chartData.value?.fallbackReason ?? null
+)
+
 const sourceLabel = computed(() => {
   const labels = {
     finnhub: 'Finnhub',
@@ -208,6 +249,9 @@ function metricClass(value) {
 }
 
 function formatPercent(value) {
+  // Number(null) is 0, so an open trade would otherwise report a confident
+  // +0.00% return instead of admitting it has none yet.
+  if (value === null || value === undefined || value === '') return 'N/A'
   const number = Number(value)
   if (!Number.isFinite(number)) return 'N/A'
   return `${number >= 0 ? '+' : ''}${number.toFixed(2)}%`

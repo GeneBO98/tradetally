@@ -68,6 +68,9 @@ Free, open-source deployment with all Pro features included. Perfect for:
 
 **Note**: For full feature access (real-time quotes, advanced charts, sector analysis), a [Finnhub.io Basic plan](https://finnhub.io/pricing) is required. Free tier available with limitations.
 
+**Logo fallbacks**: the logo fallbacks send ticker requests directly from the
+browser to Parqet and FMP.
+
 ## Technology Stack
 
 **Backend**: Node.js, Express, PostgreSQL

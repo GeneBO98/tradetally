@@ -1,5 +1,8 @@
 const db = require('../config/database');
 const finnhub = require('./finnhub');
+const yahooFinance = require('./yahooFinance');
+const TierService = require('../services/tierService');
+const { isOptionContractSymbol } = require('./optionSymbol');
 const cache = require('./cache');
 
 class SymbolCategoryManager {
@@ -97,8 +100,38 @@ class SymbolCategoryManager {
       
       // If not found or stale, fetch from API
         console.log(`[CHECK] Fetching category for ${symbol} from API...`);
-        const profile = await finnhub.getCompanyProfile(symbolUpper);
-      
+        // A plan restriction throws rather than returning empty.
+        let profile = null;
+        try {
+          profile = await finnhub.getCompanyProfile(symbolUpper);
+        } catch (providerError) {
+          console.warn(`[SYMBOLS] ${finnhub.displayName || 'Market data'} profile unavailable for ${symbolUpper}: ${providerError.message}`);
+        }
+
+        // Self-hosted only. An unclassified instance is treated as hosted.
+        let billingEnabled = true;
+        try {
+          billingEnabled = await TierService.isBillingEnabled();
+        } catch (tierError) {
+          console.warn(`[SYMBOLS] Billing check failed for ${symbolUpper}, skipping name fallback: ${tierError.message}`);
+        }
+
+        if (!billingEnabled
+            && !isOptionContractSymbol(symbolUpper)
+            && !this.hasStoredMetadata(this.normalizeCategory(symbolUpper, profile || {}))) {
+          const yahooProfile = await yahooFinance.getSymbolProfile(symbolUpper).catch(() => null);
+
+          if (yahooProfile && (yahooProfile.name || yahooProfile.industry)) {
+            profile = {
+              ...(profile || {}),
+              name: (profile && profile.name) || yahooProfile.name,
+              finnhubIndustry: (profile && (profile.finnhubIndustry || profile.finnhub_industry))
+                || yahooProfile.industry,
+              exchange: (profile && profile.exchange) || yahooProfile.exchange
+            };
+          }
+        }
+
         if (profile) {
         // Store in permanent storage even if no industry (to avoid repeated API calls)
           await this.saveSymbolCategory(symbolUpper, profile);

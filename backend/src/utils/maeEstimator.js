@@ -365,7 +365,7 @@ class MAEEstimator {
     const resolution = this.getResolutionForTrade(startTime, endTime);
     const from = Math.floor(new Date(startTime).getTime() / 1000);
     const to = Math.floor(new Date(endTime).getTime() / 1000);
-    return finnhub.getCandles(trade.symbol, resolution, from, to);
+    return finnhub.getStockCandles(trade.symbol, resolution, from, to);
   }
 
   /**

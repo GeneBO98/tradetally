@@ -10,9 +10,18 @@ vi.mock('@/stores/auth', () => ({
     user: { tier: 'pro', role: 'user', billingEnabled: false, timezone: 'America/New_York' },
   }),
 }))
-vi.mock('@/composables/useCurrencyFormatter', () => ({
-  useCurrencyFormatter: () => ({ formatCurrency: (value) => `$${Number(value).toFixed(2)}` }),
-}))
+vi.mock('@/composables/useCurrencyFormatter', async () => {
+  const { ref } = await import('vue')
+  // Mirror the real composable, which also exposes currencyCode: the chart
+  // summary formats in the trade's own currency and falls back to this.
+  return {
+    useCurrencyFormatter: () => ({
+      currencyCode: ref('USD'),
+      formatCurrency: (value, options = {}) =>
+        `${options.currency === 'EUR' ? '\u20ac' : '$'}${Number(value).toFixed(2)}`,
+    }),
+  }
+})
 vi.mock('@/composables/useNotification', () => ({
   useNotification: () => ({ showError: vi.fn(), showWarning: vi.fn() }),
 }))
@@ -271,5 +280,89 @@ describe('TradeChartVisualization resolutions', () => {
     await vi.waitFor(() => expect(wrapper.text()).toContain('Yahoo Finance'))
 
     expect(wrapper.text()).toContain('continuous front-month data (ES=F)')
+  })
+})
+
+
+describe('TradeChartVisualization currency', () => {
+  beforeEach(() => {
+    apiGet.mockReset()
+    sessionStorage.clear()
+    localStorage.clear()
+  })
+
+  it('formats the summary in the trade currency, not the account currency', async () => {
+    apiGet.mockResolvedValue({
+      data: {
+        ...baseChartData,
+        interval: 'daily',
+        source: 'yahoo',
+        trade: { ...baseChartData.trade, entryPrice: 100, exitPrice: null, pnl: null, currency: 'EUR' },
+      },
+    })
+
+    const wrapper = mount(TradeChartVisualization, {
+      props: { tradeId: 'trade-eur' },
+      global: {
+        stubs: {
+          KLineTradeChart: true,
+          ProUpgradePrompt: true,
+        },
+      },
+    })
+
+    await wrapper.get('button.btn-primary').trigger('click')
+    await vi.waitFor(() => expect(apiGet).toHaveBeenCalled())
+    await vi.waitFor(() => expect(wrapper.text()).toContain('\u20ac100.00'))
+
+    expect(wrapper.text()).not.toContain('$100.00')
+  })
+
+  it('labels a converted import in the currency its stored values are in', async () => {
+    // A converted import stores USD while original_currency still names the
+    // source, so the API must send the STORED currency. Sending the source
+    // would render a stored $100 as EUR 100.
+    apiGet.mockResolvedValue({
+      data: {
+        ...baseChartData,
+        interval: 'daily',
+        source: 'yahoo',
+        trade: { ...baseChartData.trade, entryPrice: 100, exitPrice: null, pnl: null, currency: 'USD' },
+      },
+    })
+
+    const wrapper = mount(TradeChartVisualization, {
+      props: { tradeId: 'trade-converted' },
+      global: { stubs: { KLineTradeChart: true, ProUpgradePrompt: true } },
+    })
+
+    await wrapper.get('button.btn-primary').trigger('click')
+    await vi.waitFor(() => expect(apiGet).toHaveBeenCalled())
+    await vi.waitFor(() => expect(wrapper.text()).toContain('$100.00'))
+
+    expect(wrapper.text()).not.toContain('\u20ac100.00')
+  })
+
+  it('falls back to the account currency when the trade carries none', async () => {
+    apiGet.mockResolvedValue({
+      data: {
+        ...baseChartData,
+        interval: 'daily',
+        trade: { ...baseChartData.trade, entryPrice: 100, currency: null },
+      },
+    })
+
+    const wrapper = mount(TradeChartVisualization, {
+      props: { tradeId: 'trade-no-currency' },
+      global: {
+        stubs: {
+          KLineTradeChart: true,
+          ProUpgradePrompt: true,
+        },
+      },
+    })
+
+    await wrapper.get('button.btn-primary').trigger('click')
+    await vi.waitFor(() => expect(wrapper.text()).toContain('$100.00'))
   })
 })

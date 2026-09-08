@@ -124,6 +124,7 @@ import {
   formatSignedChartCurrency,
   formatSignedChartPercent,
 } from '@/utils/chartPnlMeasurement'
+import { clipBandToPane } from '@/utils/chartPositionBands'
 
 const props = defineProps({
   chartData: {
@@ -410,12 +411,19 @@ function registerPositionOverlay() {
       const entryY = yAxis.convertToPixel(entryPrice)
       const stopY = yAxis.convertToPixel(stopLoss)
       const targetY = yAxis.convertToPixel(takeProfit)
-      const profitTop = Math.min(entryY, targetY)
-      const riskTop = Math.min(entryY, stopY)
-      return [
-        {
+
+      // At intraday resolutions the visible bars often exclude the stop and the
+      // target, so these pixel positions land far outside the pane. Clip each
+      // band to it instead of drawing an unbounded rectangle.
+      const rewardBand = clipBandToPane(entryY, targetY, bounding.height)
+      const riskBand = clipBandToPane(entryY, stopY, bounding.height)
+
+      const figures = []
+
+      if (rewardBand) {
+        figures.push({
           type: 'rect',
-          attrs: { x: left, y: profitTop, width, height: Math.max(1, Math.abs(targetY - entryY)) },
+          attrs: { x: left, y: rewardBand.y, width, height: rewardBand.height },
           styles: {
             style: 'stroke_fill',
             color: 'rgba(5, 150, 105, 0.14)',
@@ -424,10 +432,13 @@ function registerPositionOverlay() {
             borderStyle: 'solid',
           },
           ignoreEvent: true,
-        },
-        {
+        })
+      }
+
+      if (riskBand) {
+        figures.push({
           type: 'rect',
-          attrs: { x: left, y: riskTop, width, height: Math.max(1, Math.abs(stopY - entryY)) },
+          attrs: { x: left, y: riskBand.y, width, height: riskBand.height },
           styles: {
             style: 'stroke_fill',
             color: 'rgba(220, 38, 38, 0.12)',
@@ -436,14 +447,19 @@ function registerPositionOverlay() {
             borderStyle: 'solid',
           },
           ignoreEvent: true,
-        },
-        {
+        })
+      }
+
+      if (Number.isFinite(entryY) && entryY >= 0 && entryY <= bounding.height) {
+        figures.push({
           type: 'line',
           attrs: { coordinates: [{ x: left, y: entryY }, { x: right, y: entryY }] },
           styles: { style: 'dashed', size: 1, color: '#6b7280', dashedValue: [4, 3] },
           ignoreEvent: true,
-        },
-      ]
+        })
+      }
+
+      return figures
     },
   })
 

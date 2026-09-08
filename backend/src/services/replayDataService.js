@@ -19,6 +19,7 @@ const db = require('../config/database');
 const marketData = require('../utils/finnhub');
 const alphaVantage = require('../utils/alphaVantage');
 const databento = require('../utils/databento');
+const yahooFinance = require('../utils/yahooFinance');
 const { resolvePriceScale, applyPriceScale } = require('../utils/candlePriceScale');
 const {
   getFuturesPointValue,
@@ -365,11 +366,28 @@ function futuresRootForTrade(trade) {
  * (paywalled key, delisted symbol, too-old session).
  */
 async function fetchIntradayBars(symbol, fromTs, toTs, userId) {
-  const rawBars = await marketData.getStockCandles(symbol, '1', fromTs, toTs, userId, { source: 'replay' });
+  let rawBars;
+  let source = marketData.providerName;
+
+  try {
+    rawBars = await marketData.getStockCandles(symbol, '1', fromTs, toTs, userId, { source: 'replay' });
+  } catch (providerError) {
+    // Yahoo serves minute bars without a key for recent sessions.
+    if (!yahooFinance.isEnabled()) throw providerError;
+
+    console.warn(`[REPLAY] ${marketData.displayName || 'Market data'} minute bars unavailable for ${symbol}: ${providerError.message}`);
+    rawBars = await yahooFinance.getCandlesInWindow(symbol, fromTs, toTs, '1');
+    source = 'yahoo';
+  }
+
   const bars = rawBars.map((bar) => ({ ...bar }));
   // Providers are queried by date, so responses can spill past the session
   // window; keep only bars inside it.
-  return dedupeSortBars(bars).filter((bar) => bar.time >= fromTs && bar.time <= toTs);
+  const filtered = dedupeSortBars(bars).filter((bar) => bar.time >= fromTs && bar.time <= toTs);
+
+  // The source travels with the bars so a session is cached under whoever
+  // actually served it.
+  return { bars: filtered, source };
 }
 
 /**
@@ -384,6 +402,15 @@ async function fetchDailyBars(symbol, entryEpochSeconds, exitEpochSeconds, userI
     const bars = await marketData.getStockCandles(symbol, 'D', fromTs, toTs, userId, { source: 'replay' });
     return { bars: dedupeSortBars(bars), source: marketData.providerName };
   } catch (providerError) {
+    if (yahooFinance.isEnabled()) {
+      try {
+        const bars = await yahooFinance.getCandlesInWindow(symbol, fromTs, toTs, 'D');
+        return { bars: dedupeSortBars(bars), source: 'yahoo' };
+      } catch (yahooError) {
+        console.warn(`[REPLAY] Yahoo Finance daily bars unavailable for ${symbol}: ${yahooError.message}`);
+      }
+    }
+
     if (!alphaVantage.isConfigured()) throw providerError;
     const entryIso = new Date(entryEpochSeconds * 1000).toISOString();
     const exitIso = exitEpochSeconds ? new Date(exitEpochSeconds * 1000).toISOString() : null;
@@ -411,17 +438,20 @@ async function loadBarsWithCache(cacheSymbol, session, fetchFn, sourceName) {
     }
   }
 
-  const candles = await fetchFn();
+  const fetched = await fetchFn();
+  // A fetcher may report who answered; otherwise the caller's source stands.
+  const candles = Array.isArray(fetched) ? fetched : (fetched?.bars || fetched?.candles || []);
+  const resolvedSource = (!Array.isArray(fetched) && fetched?.source) || sourceName;
   const nowSeconds = Math.floor(Date.now() / 1000);
   const sessionClosed = session.toTs + SESSION_CLOSE_BUFFER_SECONDS < nowSeconds;
   if (sessionClosed && candles.length > 0) {
     try {
-      await storeBars(cacheSymbol, session.date, session.fromTs, session.toTs, candles, sourceName);
+      await storeBars(cacheSymbol, session.date, session.fromTs, session.toTs, candles, resolvedSource);
     } catch (cacheError) {
       console.warn(`[REPLAY] Failed to cache bars for ${cacheSymbol} ${session.date}: ${cacheError.message}`);
     }
   }
-  return { candles, source: sourceName };
+  return { candles, source: resolvedSource };
 }
 
 /**

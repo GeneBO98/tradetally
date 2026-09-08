@@ -78,7 +78,8 @@
           <strong>Daily mode:</strong> minute-level data isn't available for this trade, so the
           replay steps through daily candles instead.
           <span v-if="!isBillingEnabled">
-            Configure an FMP key (or a paid Finnhub plan) to unlock minute replay.
+            The no-cost fallback keeps roughly a month of minute bars, so older
+            trades replay daily. A paid provider plan covers them further back.
           </span>
         </p>
       </div>

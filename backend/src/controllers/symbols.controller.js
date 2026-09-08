@@ -2,6 +2,9 @@ const db = require('../config/database');
 const finnhub = require('../utils/finnhub');
 const cache = require('../utils/cache');
 const symbolCategories = require('../utils/symbolCategories');
+const yahooFinance = require('../utils/yahooFinance');
+const TierService = require('../services/tierService');
+const { isOptionContractSymbol } = require('../utils/optionSymbol');
 const asyncHandler = require('../utils/asyncHandler');
 const AppError = require('../utils/AppError');
 const { getCryptoAsset, searchCryptoAssets } = require('../utils/cryptoAssets');
@@ -35,11 +38,6 @@ function applyCategoryMetadata(target, category) {
     exchange: target.exchange || category.exchange || null,
     logo: target.logo || category.logo || null
   };
-}
-
-function isOptionContractSymbol(symbol) {
-  const compact = String(symbol || '').toUpperCase().replace(/\s+/g, '');
-  return /^[A-Z]{1,6}\d{6}[CP]\d{8}$/.test(compact);
 }
 
 function isSupportedProviderResult(item) {
@@ -219,6 +217,36 @@ async function searchSymbols(req, res) {
   }
 }
 
+// Self-hosted only, matching the gate the chart fallbacks use.
+async function backfillCompanyNames(metadata, symbols, hostHeader) {
+  if (await TierService.isBillingEnabled(hostHeader)) {
+    return;
+  }
+
+  if (!yahooFinance.isEnabled()) {
+    return;
+  }
+
+  const symbolsMissingName = symbols.filter(
+    symbol => metadata[symbol] && !metadata[symbol].companyName && !isOptionContractSymbol(symbol)
+  );
+
+  // Bounded concurrency: one request per symbol at once would be worse.
+  const chunkSize = 5;
+  for (let i = 0; i < symbolsMissingName.length; i += chunkSize) {
+    const chunk = symbolsMissingName.slice(i, i + chunkSize);
+    const names = await Promise.all(
+      chunk.map(symbol => yahooFinance.getSymbolName(symbol).catch(() => null))
+    );
+
+    chunk.forEach((symbol, index) => {
+      if (names[index]) {
+        metadata[symbol] = { ...metadata[symbol], companyName: names[index] };
+      }
+    });
+  }
+}
+
 async function getSymbolMetadata(req, res) {
   try {
     const symbols = normalizeSymbolsParam(req.query.symbols);
@@ -301,6 +329,13 @@ async function getSymbolMetadata(req, res) {
           logo: metadata[symbol].logo || category.logo || null
         };
       }
+    }
+
+    // Best-effort: a name is a nicety and must not fail the response.
+    try {
+      await backfillCompanyNames(metadata, symbols, req.headers?.host);
+    } catch (fallbackError) {
+      console.warn(`[SYMBOLS] Name fallback skipped: ${fallbackError.message}`);
     }
 
     cache.set(cacheKey, metadata, CACHE_TTL);

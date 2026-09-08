@@ -52,19 +52,43 @@ function enrichOptionMetadata(trade) {
   return trade;
 }
 
+// The currency the stored monetary columns are actually in. An import with
+// currency conversion rewrites entry_price, pnl and fees to USD while keeping
+// the SOURCE currency in original_currency, so original_currency does not name
+// the currency of the stored numbers whenever a conversion ran.
+function storedCurrency(trade) {
+  // Only a conversion writes the pre-conversion value, so its presence is the
+  // marker that the stored columns were rewritten. exchange_rate is NOT one: a
+  // manual, API or OAuth-broker trade can carry a rate beside an unconverted
+  // price, and a null rate coerces to 0, which would then read as converted.
+  const preConversion = trade.original_entry_price_currency;
+  if (preConversion !== null && preConversion !== undefined && preConversion !== '') {
+    return 'USD';
+  }
+
+  const original = trade.original_currency;
+  return original ? String(original).toUpperCase() : null;
+}
+
 function getPositionKey(trade) {
+  // Positions are separated by the currency their stored numbers are in.
+  // Without this, one symbol held in two currencies groups into a single
+  // position whose totalCost and avgPrice add different units together — a
+  // figure that cannot be labelled or converted correctly.
+  const currency = storedCurrency(trade) || 'UNKNOWN';
+
   if (trade.instrument_type === 'option' && trade.underlying_symbol
       && String(trade.underlying_symbol).trim()
       && trade.strike_price && trade.expiration_date && trade.option_type) {
     const underlying = String(trade.underlying_symbol).trim().toUpperCase();
     const strike = parseFloat(trade.strike_price);
     const optionType = String(trade.option_type).toLowerCase();
-    return `${underlying}_${strike}_${normalizeExpDate(trade.expiration_date)}_${optionType}`;
+    return `${underlying}_${strike}_${normalizeExpDate(trade.expiration_date)}_${optionType}|${currency}`;
   }
   if (trade.instrument_type === 'option') {
-    return `${OPTION_FALLBACK_PREFIX}${trade.symbol}`;
+    return `${OPTION_FALLBACK_PREFIX}${trade.symbol}|${currency}`;
   }
-  return trade.symbol;
+  return `${trade.symbol}|${currency}`;
 }
 
 // Calculate net position (signed shares/contracts still held) from executions
@@ -153,7 +177,12 @@ function groupTradesIntoPositions(openTrades) {
         underlying_symbol: trade.underlying_symbol || null,
         expiration_date: trade.expiration_date || null,
         option_type: trade.option_type || null,
-        strike_price: trade.strike_price || null
+        strike_price: trade.strike_price || null,
+        // The currency the position's own numbers are in, so the UI can label
+        // them instead of assuming the account's currency. Null means it could
+        // not be established, which callers must treat as unconvertible rather
+        // than assume.
+        currency: storedCurrency(trade)
       };
     }
 
@@ -196,8 +225,14 @@ function groupTradesIntoPositions(openTrades) {
     // positions share the bare underlying as their symbol, so with multiple
     // contracts open on the same underlying we cannot tell which one the
     // metadata-less trade belongs to.
+    // Never merge across currencies: an EUR fallback folded into a USD
+    // composite would put two units into one position's totalCost, which is
+    // exactly what keying by currency exists to prevent.
+    const sameCurrency = (pos) => pos.currency === fbPosition.currency;
+
     const symbolMatches = Object.entries(positionMap).filter(([key, pos]) => {
       return key !== fbKey && !fallbackKeys.has(key) && pos.instrumentType === 'option'
+        && sameCurrency(pos)
         && String(pos.symbol || '').trim().toUpperCase() === fbSymbol;
     });
     let compositeMatch = symbolMatches.length === 1 ? symbolMatches[0] : null;
@@ -207,6 +242,7 @@ function groupTradesIntoPositions(openTrades) {
     if (!compositeMatch) {
       const underlyingMatches = Object.entries(positionMap).filter(([key, pos]) => {
         return key !== fbKey && !fallbackKeys.has(key) && pos.instrumentType === 'option'
+          && sameCurrency(pos)
           && String(pos.underlying_symbol || '').trim().toUpperCase() === fbSymbol;
       });
       if (underlyingMatches.length === 1) {
@@ -271,6 +307,7 @@ function groupTradesIntoPositions(openTrades) {
 }
 
 module.exports = {
+  storedCurrency,
   OPTION_FALLBACK_PREFIX,
   normalizeExpDate,
   enrichOptionMetadata,

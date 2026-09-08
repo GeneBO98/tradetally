@@ -210,7 +210,24 @@ class ChartService {
         return await finnhub.getTradeChartData(symbol, entryDate, exitDate, userId, resolution);
       }
 
-      // Self-hosted mode: configured provider preferred with Alpha Vantage fallback
+      // Self-hosted no-cost equity fallback, tried before Alpha Vantage because
+      // it needs no key, serves intraday, and has no daily request quota.
+      const yahooStockFallback = async (fallbackReason) => {
+        if (billingEnabled || !yahooFinance.isEnabled()) return null;
+        try {
+          const chartData = await yahooFinance.getStockTradeChartData(symbol, entryDate, exitDate, resolution);
+          if (fallbackReason) {
+            chartData.fallback = true;
+            chartData.fallback_reason = fallbackReason;
+          }
+          return chartData;
+        } catch (error) {
+          console.warn(`[CHART] Yahoo Finance unavailable for ${symbol}: ${error.message}`);
+          return null;
+        }
+      };
+
+      // Self-hosted mode: configured provider preferred with no-cost fallbacks
       if (isProUser && finnhub.isConfigured()) {
         console.log(`Using ${finnhub.displayName} for chart data (self-hosted)`);
         try {
@@ -218,14 +235,20 @@ class ChartService {
         } catch (error) {
           console.warn(`${finnhub.displayName} failed for symbol ${symbol}: ${error.message}`);
 
+          const yahooData = await yahooStockFallback(`${finnhub.displayName} unavailable: ${error.message}`);
+          if (yahooData) return yahooData;
+
           // Fall back to Alpha Vantage if configured
           if (alphaVantage.isConfigured()) {
             console.warn(`Falling back to Alpha Vantage due to ${finnhub.displayName} failure (${error.message})`);
             try {
-              const chartData = await alphaVantage.getTradeChartData(symbol, entryDate, exitDate);
+              const chartData = await alphaVantage.getTradeChartData(symbol, entryDate, exitDate, resolution);
               chartData.source = 'alphavantage';
               chartData.fallback = true;
-              chartData.fallbackReason = `${finnhub.displayName} unavailable`;
+              // Carry the provider's own message. Without it a persistently
+              // broken primary provider is indistinguishable from a healthy
+              // one, because every chart still renders from the fallback.
+              chartData.fallback_reason = `${finnhub.displayName} unavailable: ${error.message}`;
               return chartData;
             } catch (avError) {
               console.error(`Alpha Vantage fallback also failed for ${symbol}: ${avError.message}`);
@@ -240,16 +263,20 @@ class ChartService {
         }
       }
 
+      // Self-hosted: no configured provider — Yahoo first, then Alpha Vantage.
+      const yahooOnly = await yahooStockFallback(null);
+      if (yahooOnly) return yahooOnly;
+
       // Self-hosted: Finnhub not configured, use Alpha Vantage
       if (alphaVantage.isConfigured()) {
         console.log('Using Alpha Vantage for chart data (self-hosted)');
-        const chartData = await alphaVantage.getTradeChartData(symbol, entryDate, exitDate);
+        const chartData = await alphaVantage.getTradeChartData(symbol, entryDate, exitDate, resolution);
         chartData.source = 'alphavantage';
         return chartData;
       }
 
-      // Neither service is configured
-      throw new Error(`No chart data provider is configured. Please configure ${finnhub.providerName === 'fmp' ? 'FMP' : 'Finnhub'} or Alpha Vantage API keys.`);
+      // Nothing could serve the chart
+      throw new Error(`No chart data provider could serve ${symbol}. Configure ${finnhub.providerName === 'fmp' ? 'FMP' : 'Finnhub'} or Alpha Vantage API keys, or enable the Yahoo Finance fallback.`);
 
     } catch (error) {
       console.error(`Failed to get chart data for ${symbol}:`, error);
@@ -276,7 +303,7 @@ class ChartService {
     if (!billingEnabled) {
       status.alphaVantage = {
         configured: alphaVantage.isConfigured(),
-        description: 'Alpha Vantage API - Daily chart data (self-hosted fallback)'
+        description: 'Alpha Vantage API - Daily chart data (self-hosted fallback); intraday requires a premium key and ALPHA_VANTAGE_INTRADAY_ENABLED=true'
       };
       status.databento = {
         configured: databento.isConfigured(),
@@ -284,7 +311,7 @@ class ChartService {
       };
       status.yahoo_finance = {
         configured: yahooFinance.isEnabled(),
-        description: 'Yahoo Finance - no-cost self-hosted futures chart fallback'
+        description: 'Yahoo Finance - no-cost self-hosted chart fallback for equities and futures'
       };
     }
 

@@ -619,7 +619,7 @@
                     <div class="text-lg font-bold" :class="[
                       getOptionPnL(position).unrealizedPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                     ]">
-                      {{ formatSignedCurrency(getOptionPnL(position).unrealizedPnL) }}
+                      {{ formatSignedPositionCurrency(getOptionPnL(position).unrealizedPnL, position) }}
                     </div>
                     <div class="text-xs font-medium" :class="[
                       getOptionPnL(position).unrealizedPnLPercent >= 0 ? 'text-green-500' : 'text-red-500'
@@ -633,7 +633,7 @@
                   <div class="text-lg font-bold" :class="[
                     position.unrealizedPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                   ]">
-                    {{ formatSignedCurrency(position.unrealizedPnL) }}
+                    {{ formatSignedPositionCurrency(position.unrealizedPnL, position) }}
                   </div>
                   <div class="text-xs font-medium" :class="[
                     position.unrealizedPnLPercent >= 0 ? 'text-green-500' : 'text-red-500'
@@ -659,11 +659,11 @@
                 </div>
                 <div class="table-card-row">
                   <span class="table-card-label">Avg Price</span>
-                  <span class="table-card-value">{{ formatCurrency(position.avgPrice) }}</span>
+                  <span class="table-card-value">{{ formatPositionCurrency(position.avgPrice, position) }}</span>
                 </div>
                 <div class="table-card-row">
                   <span class="table-card-label">Total Cost</span>
-                  <span class="table-card-value">{{ formatCurrency(position.totalCost) }}</span>
+                  <span class="table-card-value">{{ formatPositionCurrency(position.totalCost, position) }}</span>
                 </div>
                 <div class="table-card-row">
                   <span class="table-card-label">{{ position.requires_manual_price ? 'Premium' : 'Current Price' }}<span v-if="position.quoteSource === 'alpaca'" class="ml-1 text-gray-400 font-normal">(via Alpaca)</span></span>
@@ -683,7 +683,7 @@
                       </div>
                     </template>
                     <template v-else>
-                      <span v-if="position.currentPrice !== null">{{ formatCurrency(position.currentPrice) }}</span>
+                      <span v-if="position.currentPrice !== null">{{ formatPositionCurrency(position.currentPrice, position) }}</span>
                       <span v-else class="text-xs text-gray-400">-</span>
                     </template>
                   </span>
@@ -709,7 +709,7 @@
                         {{ trade.side }}
                       </span>
                       <span class="text-xs text-gray-600 dark:text-gray-400">
-                        {{ (trade.quantity || 0).toLocaleString() }} @ {{ formatCurrency(trade.entry_price) }}
+                        {{ (trade.quantity || 0).toLocaleString() }} @ {{ formatPositionCurrency(trade.entry_price, position) }}
                       </span>
                     </div>
                     <router-link
@@ -738,12 +738,12 @@
                 <div class="text-sm font-bold text-gray-900 dark:text-white">Total Position</div>
                 <div class="text-right">
                   <div class="text-sm font-bold text-gray-900 dark:text-white">
-                    {{ formatCurrency(totalOpenCost) }}
+                    {{ totalOpenCostLabel }}
                   </div>
-                  <div v-if="totalUnrealizedPnL !== null" class="text-sm font-bold" :class="[
-                    totalUnrealizedPnL >= 0 ? 'text-green-600' : 'text-red-600'
+                  <div v-if="totalUnrealizedPnLAccount !== null" class="text-sm font-bold" :class="[
+                    totalUnrealizedPnLAccount >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
-                    {{ formatSignedCurrency(totalUnrealizedPnL) }}
+                    {{ totalUnrealizedPnLLabel }}
                   </div>
                 </div>
               </div>
@@ -827,10 +827,10 @@
                       {{ position.totalQuantity === 0 ? 'Hedged' : (position.totalQuantity || 0).toLocaleString() }}
                     </td>
                     <td class="px-3 py-2 text-sm font-bold text-gray-900 dark:text-white text-right">
-                      {{ formatCurrency(position.avgPrice) }}
+                      {{ formatPositionCurrency(position.avgPrice, position) }}
                     </td>
                     <td class="px-3 py-2 text-sm font-bold text-gray-900 dark:text-white text-right">
-                      {{ formatCurrency(position.totalCost) }}
+                      {{ formatPositionCurrency(position.totalCost, position) }}
                     </td>
                     <td class="px-3 py-2 text-sm text-right">
                       <!-- Option: manual premium input -->
@@ -851,11 +851,11 @@
                       <!-- Stock/Future: Finnhub price -->
                       <template v-else>
                         <div v-if="position.currentPrice !== null" class="font-bold text-gray-900 dark:text-white">
-                          {{ formatCurrency(position.currentPrice) }}
+                          {{ formatPositionCurrency(position.currentPrice, position) }}
                           <div v-if="position.dayChange !== undefined" class="text-xs" :class="[
                             position.dayChange >= 0 ? 'text-green-600' : 'text-red-600'
                           ]">
-                            {{ formatSignedCurrency(position.dayChange) }}
+                            {{ formatSignedPositionCurrency(position.dayChange, position) }}
                             ({{ position.dayChangePercent >= 0 ? '+' : '' }}{{ formatNumber(position.dayChangePercent) }}%)
                           </div>
                           <div v-if="position.quoteSource === 'alpaca'" class="text-xs text-gray-400">via Alpaca</div>
@@ -866,13 +866,13 @@
                     <td class="px-3 py-2 text-sm font-bold text-right">
                       <template v-if="position.requires_manual_price">
                         <span v-if="getOptionPnL(position).currentValue !== null" class="text-gray-900 dark:text-white">
-                          {{ formatCurrency(getOptionPnL(position).currentValue) }}
+                          {{ formatPositionCurrency(getOptionPnL(position).currentValue, position) }}
                         </span>
                         <span v-else class="text-xs text-gray-400">-</span>
                       </template>
                       <template v-else>
                         <span v-if="position.currentValue !== null" class="text-gray-900 dark:text-white">
-                          {{ formatCurrency(position.currentValue) }}
+                          {{ formatPositionCurrency(position.currentValue, position) }}
                         </span>
                         <span v-else class="text-xs text-gray-400">-</span>
                       </template>
@@ -883,7 +883,7 @@
                           <div :class="[
                             getOptionPnL(position).unrealizedPnL >= 0 ? 'text-green-600' : 'text-red-600'
                           ]">
-                            {{ formatSignedCurrency(getOptionPnL(position).unrealizedPnL) }}
+                            {{ formatSignedPositionCurrency(getOptionPnL(position).unrealizedPnL, position) }}
                           </div>
                           <div class="text-xs" :class="[
                             getOptionPnL(position).unrealizedPnLPercent >= 0 ? 'text-green-500' : 'text-red-500'
@@ -898,7 +898,7 @@
                           <div :class="[
                             position.unrealizedPnL >= 0 ? 'text-green-600' : 'text-red-600'
                           ]">
-                            {{ formatSignedCurrency(position.unrealizedPnL) }}
+                            {{ formatSignedPositionCurrency(position.unrealizedPnL, position) }}
                           </div>
                           <div class="text-xs" :class="[
                             position.unrealizedPnLPercent >= 0 ? 'text-green-500' : 'text-red-500'
@@ -946,10 +946,10 @@
                       <span class="text-xs">-</span>
                     </td>
                     <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 text-right">
-                      {{ formatCurrency(trade.entry_price) }}
+                      {{ formatPositionCurrency(trade.entry_price, position) }}
                     </td>
                     <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 text-right">
-                      {{ formatCurrency(trade.entry_price * trade.quantity) }}
+                      {{ formatPositionCurrency(trade.entry_price * trade.quantity, position) }}
                     </td>
                     <td class="px-3 py-2 text-sm text-gray-400 text-right">
                       <span class="text-xs">-</span>
@@ -978,21 +978,30 @@
                 <tr>
                   <td colspan="5" class="px-3 py-3 text-sm font-bold text-gray-900 dark:text-white text-right">
                     Total:
+                    <span
+                      v-if="hasMixedCurrencies"
+                      class="ml-1 font-normal text-xs text-gray-500 dark:text-gray-400"
+                      :title="totalsArePartial
+                        ? `Converted to ${accountCurrency}; positions with no exchange rate are excluded`
+                        : `Positions converted to ${accountCurrency} at current rates`"
+                    >
+                      (in {{ accountCurrency }}<template v-if="totalsArePartial">, partial</template>)
+                    </span>
                   </td>
                   <td class="px-3 py-3 text-sm font-bold text-gray-900 dark:text-white text-right tabular-nums">
-                    {{ formatCurrency(totalOpenCost) }}
+                    {{ totalOpenCostLabel }}
                   </td>
                   <td class="px-3 py-3"></td>
                   <td class="px-3 py-3 text-sm font-bold text-gray-900 dark:text-white text-right tabular-nums">
-                    <span v-if="totalCurrentValue !== null">{{ formatCurrency(totalCurrentValue) }}</span>
+                    <span v-if="totalCurrentValueLabel">{{ totalCurrentValueLabel }}</span>
                     <span v-else class="text-xs text-gray-400">-</span>
                   </td>
                   <td class="px-3 py-3 text-sm font-bold text-right tabular-nums">
-                    <div v-if="totalUnrealizedPnL !== null">
+                    <div v-if="totalUnrealizedPnLAccount !== null">
                       <div :class="[
-                        totalUnrealizedPnL >= 0 ? 'text-green-600' : 'text-red-600'
+                        totalUnrealizedPnLAccount >= 0 ? 'text-green-600' : 'text-red-600'
                       ]">
-                        {{ formatSignedCurrency(totalUnrealizedPnL) }}
+                        {{ totalUnrealizedPnLLabel }}
                       </div>
                       <div class="text-xs" :class="[
                         totalUnrealizedPnLPercent >= 0 ? 'text-green-500' : 'text-red-500'
@@ -1668,6 +1677,13 @@ import {
   normalizeTradeFiltersForSharedState,
   loadTradeFiltersFromStorage
 } from '@/utils/tradeFilterState'
+import { legacyPositionKey, readManualPrice } from '@/utils/manualPriceKeys'
+import {
+  positionStatedCurrency,
+  positionsMissingRate,
+  needsCurrencyNote,
+  sumInAccountCurrency as sumPositionsInAccountCurrency
+} from '@/utils/positionTotals'
 import draggable from 'vuedraggable'
 
 const authStore = useAuthStore()
@@ -1718,6 +1734,8 @@ const hasMoreOpenTrades = computed(
 const quotesLoading = ref(false) // True while Finnhub quotes are being fetched
 const analyticsLoading = ref(true) // True while analytics data is being fetched
 let openPositionsRequestId = 0
+// Base currency the API normalised the position rates against.
+const openPositionsAccountCurrency = ref(null)
 
 // Manual option price tracking (persisted in localStorage)
 const manualOptionPrices = ref({})
@@ -1746,14 +1764,41 @@ function setManualOptionPrice(position, value) {
   } else {
     manualOptionPrices.value[key] = num
   }
+  const legacy = legacyOpenPositionKey(position)
+  if (legacy !== null && legacy !== key) delete manualOptionPrices.value[legacy]
   if (key !== position.symbol) {
     delete manualOptionPrices.value[position.symbol]
   }
   saveManualOptionPrices()
 }
 
+// Pure: this runs inside computed properties, so it must not write to
+// manualOptionPrices — doing so invalidates the computed that is reading it.
+// Rewriting old keys is done once by migrateManualOptionPriceKeys instead.
 function getManualOptionPrice(position) {
-  return manualOptionPrices.value[getOpenPositionKey(position)] ?? manualOptionPrices.value[position.symbol]
+  return readManualPrice(manualOptionPrices.value, getOpenPositionKey(position), position.symbol)
+}
+
+// Move values saved under a pre-currency-suffix key (or the older bare-symbol
+// form) onto the current key. Called once when positions load, never on read.
+function migrateManualOptionPriceKeys() {
+  let migrated = false
+
+  openTrades.value.filter(p => p.requires_manual_price).forEach(position => {
+    const key = getOpenPositionKey(position)
+    if (manualOptionPrices.value[key] !== undefined) return
+
+    const inherited = readManualPrice(manualOptionPrices.value, key, position.symbol)
+    if (inherited === undefined) return
+
+    manualOptionPrices.value[key] = inherited
+    const legacy = legacyOpenPositionKey(position)
+    if (legacy !== null && legacy !== key) delete manualOptionPrices.value[legacy]
+    if (key !== position.symbol) delete manualOptionPrices.value[position.symbol]
+    migrated = true
+  })
+
+  if (migrated) saveManualOptionPrices()
 }
 
 function getOptionPnL(position) {
@@ -2306,49 +2351,72 @@ watch(
   { immediate: true }
 )
 
-const totalOpenCost = computed(() => {
-  return openTrades.value.reduce((sum, position) => sum + (position.totalCost || 0), 0)
-})
+// For display only: an unlabelled row falls back to the account's currency,
+// which is a guess and must never be used to decide a conversion.
+function positionCurrency(position) {
+  return positionStatedCurrency(position) || currencyCode.value
+}
 
-const totalUnrealizedPnL = computed(() => {
-  let total = 0
-  let hasAny = false
-  openTrades.value.forEach(position => {
-    if (position.requires_manual_price) {
-      const optPnL = getOptionPnL(position)
-      if (optPnL.unrealizedPnL !== null) {
-        total += optPnL.unrealizedPnL
-        hasAny = true
-      }
-    } else if (position.unrealizedPnL !== null) {
-      total += position.unrealizedPnL
-      hasAny = true
-    }
-  })
-  return hasAny ? total : null
-})
+function formatPositionCurrency(value, position) {
+  return formatCurrency(value, { currency: positionCurrency(position) })
+}
 
-const totalCurrentValue = computed(() => {
-  let total = 0
-  let hasAny = false
-  openTrades.value.forEach(position => {
-    if (position.requires_manual_price) {
-      const optPnL = getOptionPnL(position)
-      if (optPnL.currentValue !== null) {
-        total += optPnL.currentValue
-        hasAny = true
-      }
-    } else if (position.currentValue !== null) {
-      total += position.currentValue
-      hasAny = true
-    }
-  })
-  return hasAny ? total : null
-})
+function formatSignedPositionCurrency(value, position) {
+  return formatSignedCurrency(value, { currency: positionCurrency(position) })
+}
+
+// Individual positions display in their own currency; aggregates only mean
+// something once normalised into the account's base currency, which the API
+// supplies a per-position rate for.
+const accountCurrency = computed(() => (openPositionsAccountCurrency.value || currencyCode.value).toUpperCase())
+
+const hasMixedCurrencies = computed(
+  () => needsCurrencyNote(openTrades.value, accountCurrency.value)
+)
+
+const totalsArePartial = computed(
+  () => positionsMissingRate(openTrades.value, accountCurrency.value).length > 0
+)
+
+function sumInAccountCurrency(pick) {
+  return sumPositionsInAccountCurrency(openTrades.value, pick, accountCurrency.value)
+}
+
+const totalOpenCostAccount = computed(() => sumInAccountCurrency(position => position.totalCost || 0))
+
+const totalCurrentValueAccount = computed(() => sumInAccountCurrency(position => (
+  position.requires_manual_price ? getOptionPnL(position).currentValue : position.currentValue
+)))
+
+const totalUnrealizedPnLAccount = computed(() => sumInAccountCurrency(position => (
+  position.requires_manual_price ? getOptionPnL(position).unrealizedPnL : position.unrealizedPnL
+)))
+
+const totalOpenCostLabel = computed(() => (
+  totalOpenCostAccount.value === null
+    ? '\u2014'
+    : formatCurrency(totalOpenCostAccount.value, { currency: accountCurrency.value })
+))
+
+const totalCurrentValueLabel = computed(() => (
+  totalCurrentValueAccount.value === null
+    ? null
+    : formatCurrency(totalCurrentValueAccount.value, { currency: accountCurrency.value })
+))
+
+const totalUnrealizedPnLLabel = computed(() => (
+  totalUnrealizedPnLAccount.value === null
+    ? null
+    : formatSignedCurrency(totalUnrealizedPnLAccount.value, { currency: accountCurrency.value })
+))
 
 const totalUnrealizedPnLPercent = computed(() => {
-  if (totalUnrealizedPnL.value === null || totalOpenCost.value === 0) return 0
-  return (totalUnrealizedPnL.value / totalOpenCost.value) * 100
+  // Both sides are normalised to the account currency, so this ratio is
+  // meaningful even for a book held across several currencies.
+  const pnl = totalUnrealizedPnLAccount.value
+  const cost = totalOpenCostAccount.value
+  if (pnl === null || !cost) return 0
+  return (pnl / cost) * 100
 })
 
 const computedWinRate = computed(() => {
@@ -2645,6 +2713,10 @@ function cacheOpenPositions(positions) {
   }
 }
 
+function legacyOpenPositionKey(position) {
+  return legacyPositionKey(getOpenPositionKey(position))
+}
+
 function getOpenPositionKey(position) {
   // The backend stamps a stable position_key on every position; the composite
   // fallback only covers positions cached in sessionStorage before upgrade.
@@ -2727,6 +2799,9 @@ function cleanupManualOptionPrices() {
   const validKeys = new Set()
   openTrades.value.filter(p => p.requires_manual_price).forEach(p => {
     validKeys.add(getOpenPositionKey(p))
+    // Keep the pre-suffix key alive until it has been migrated on read.
+    const legacy = legacyOpenPositionKey(p)
+    if (legacy !== null) validKeys.add(legacy)
     validKeys.add(p.symbol)
   })
   let cleaned = false
@@ -2755,8 +2830,10 @@ async function fetchOpenTrades(options = {}) {
         }
 
         const fastPositions = preserveExistingQuoteData(fastResponse.data.positions || [])
+        openPositionsAccountCurrency.value = fastResponse.data.account_currency ?? fastResponse.data.accountCurrency ?? openPositionsAccountCurrency.value
         openTrades.value = fastPositions
         cacheOpenPositions(openTrades.value)
+        migrateManualOptionPriceKeys()
         cleanupManualOptionPrices()
         fastRequestSucceeded = true
       } catch (fastError) {
@@ -2774,8 +2851,10 @@ async function fetchOpenTrades(options = {}) {
       console.warn('Real-time quotes not available:', response.data.error)
     }
 
+    openPositionsAccountCurrency.value = response.data.account_currency ?? response.data.accountCurrency ?? openPositionsAccountCurrency.value
     openTrades.value = response.data.positions || []
     cacheOpenPositions(openTrades.value)
+    migrateManualOptionPriceKeys()
     cleanupManualOptionPrices()
   } catch (error) {
     console.error('Failed to fetch open trades:', error)

@@ -45,7 +45,12 @@ const NAMESPACE_TTLS = {
   stock_splits: DAY,
   analyst_estimates: DAY,
   chart_intraday: 15 * MINUTE,
-  chart_daily: HOUR
+  chart_daily: HOUR,
+  yahoo_chart_intraday: 15 * MINUTE,
+  yahoo_chart_daily: HOUR,
+  yahoo_symbol_name: DAY,
+  yahoo_quote: 2 * MINUTE,
+  yahoo_symbol_profile: DAY
 };
 
 const SWEEP_INTERVAL_MS = MINUTE;

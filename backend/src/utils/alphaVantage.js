@@ -6,6 +6,102 @@ const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const TRADE_CHART_CONTEXT_DAYS_BEFORE = 180;
 const TRADE_CHART_CONTEXT_DAYS_AFTER = 30;
 
+const ET_TIME_ZONE = 'America/New_York';
+
+// Resolutions the chart UI can request, mapped to Alpha Vantage intervals.
+const RESOLUTION_TO_INTRADAY_INTERVAL = {
+  '1': '1min',
+  '5': '5min',
+  '15': '15min',
+  '60': '60min'
+};
+
+// The interval labels the frontend understands (see intervalToPeriod).
+const INTRADAY_INTERVAL_LABEL = {
+  '1min': '1min',
+  '5min': '5min',
+  '15min': '15min',
+  '60min': '1hour'
+};
+
+const ALL_RESOLUTIONS = ['1', '5', '15', '60', 'D'];
+const DAILY_ONLY_RESOLUTIONS = ['D'];
+
+// Alpha Vantage serves roughly the trailing month of intraday history without a
+// premium plan, so only recent trades can be charted below daily.
+const INTRADAY_HISTORY_DAYS = 30;
+
+// Context to keep either side of the trade, per interval. A one minute chart
+// padded by whole days would bury the executions in thousands of bars.
+const INTRADAY_CONTEXT_MS = {
+  '1min': 90 * 60 * 1000,
+  '5min': 6 * 60 * 60 * 1000,
+  '15min': ONE_DAY_MS,
+  '60min': 5 * ONE_DAY_MS
+};
+
+// Offset of `timeZone` from UTC at `date`, in milliseconds.
+function zonedOffsetMs(timeZone, date) {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  });
+
+  const parts = {};
+  for (const part of formatter.formatToParts(date)) {
+    if (part.type !== 'literal') parts[part.type] = part.value;
+  }
+
+  const asUTC = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(parts.hour) % 24,
+    Number(parts.minute),
+    Number(parts.second)
+  );
+
+  return asUTC - date.getTime();
+}
+
+// Alpha Vantage returns intraday stamps as US/Eastern wall clock with no offset
+// ("2026-08-17 15:35:00"). Handing that to `new Date()` reinterprets it in the
+// container's own zone, shifting every bar by the UTC offset and pushing the
+// execution markers onto the wrong candles.
+function easternTimestampToEpochSeconds(value) {
+  const match = String(value).trim().match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (!match) {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? Math.floor(parsed / 1000) : null;
+  }
+
+  const [, year, month, day, hour, minute, second] = match;
+  const utcGuess = Date.UTC(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    Number(second || 0)
+  );
+
+  // Resolve the offset twice. The first lookup uses the wall-clock reading as
+  // if it were UTC, which lands on the wrong side of a DST transition during
+  // the switch; re-resolving at the candidate instant corrects it.
+  const firstOffset = zonedOffsetMs(ET_TIME_ZONE, new Date(utcGuess));
+  const candidate = utcGuess - firstOffset;
+  const secondOffset = zonedOffsetMs(ET_TIME_ZONE, new Date(candidate));
+  const epochMs = secondOffset === firstOffset ? candidate : utcGuess - secondOffset;
+
+  return Math.floor(epochMs / 1000);
+}
+
 function candleRangeCoversDate(candles, targetDate) {
   if (!Array.isArray(candles) || candles.length === 0 || Number.isNaN(targetDate.getTime())) {
     return false;
@@ -130,7 +226,9 @@ class AlphaVantageClient {
 
   async getIntradayData(symbol, interval = '5min') {
     const symbolUpper = symbol.toUpperCase();
-    const cacheKey = `${symbolUpper}_${interval}`;
+    // v2: timestamps below are parsed as US/Eastern rather than container-local,
+    // so entries cached by an older build must not be reused.
+    const cacheKey = `${symbolUpper}_${interval}_v2`;
     
     // Check cache first
     const cached = await cache.get('chart_intraday', cacheKey);
@@ -160,13 +258,15 @@ class AlphaVantageClient {
 
       // Convert to array format for easier processing
       const candles = Object.entries(timeSeries).map(([time, values]) => ({
-        time: new Date(time).getTime() / 1000, // Convert to Unix timestamp
+        time: easternTimestampToEpochSeconds(time),
         open: parseFloat(values['1. open']),
         high: parseFloat(values['2. high']),
         low: parseFloat(values['3. low']),
         close: parseFloat(values['4. close']),
         volume: parseInt(values['5. volume'])
-      })).reverse(); // Reverse to get chronological order
+      }))
+        .filter((candle) => Number.isFinite(candle.time))
+        .sort((left, right) => left.time - right.time);
 
       // Cache the result
       await cache.set('chart_intraday', cacheKey, candles);
@@ -233,12 +333,91 @@ class AlphaVantageClient {
     }
   }
 
-  // Get chart data using daily data only (free tier compatible)
-  // Note: Intraday data (TIME_SERIES_INTRADAY) requires Alpha Vantage premium subscription
-  async getTradeChartData(symbol, entryDate, exitDate = null) {
+  // Intraday is opt-in because the endpoint is premium. Off by default, a free
+  // key never spends two tracked calls (a doomed intraday attempt, which is not
+  // cached, then the daily fallback) on a single chart load.
+  intradayEnabled() {
+    return String(process.env.ALPHA_VANTAGE_INTRADAY_ENABLED || '').trim().toLowerCase() === 'true';
+  }
+
+  // True when Alpha Vantage's trailing intraday history can still reach the trade.
+  intradayCoversTrade(entryTime) {
+    return Date.now() - entryTime.getTime() <= INTRADAY_HISTORY_DAYS * ONE_DAY_MS;
+  }
+
+  // Intraday chart data around a trade. TIME_SERIES_INTRADAY is a PREMIUM
+  // endpoint: a free key answers it with an "Information" notice rather than a
+  // series, and the attempt still counts against the tracked daily allowance.
+  // Reaching this method therefore requires ALPHA_VANTAGE_INTRADAY_ENABLED.
+  async getIntradayTradeChartData(symbol, entryTime, exitTime, interval) {
+    const candles = await this.getIntradayData(symbol, interval);
+
+    if (!Array.isArray(candles) || candles.length === 0) {
+      throw new Error(`No Alpha Vantage ${interval} candles were returned for ${symbol}.`);
+    }
+
+    const entrySeconds = Math.floor(entryTime.getTime() / 1000);
+    if (entrySeconds < candles[0].time) {
+      throw new Error(
+        `Alpha Vantage ${interval} history for ${symbol} begins after this trade's entry. ` +
+        'Intraday candles are only retained for about a month.'
+      );
+    }
+
+    const context = INTRADAY_CONTEXT_MS[interval] ?? ONE_DAY_MS;
+    const windowStart = Math.floor((entryTime.getTime() - context) / 1000);
+    const windowEnd = Math.floor((exitTime.getTime() + context) / 1000);
+    const filteredCandles = candles.filter((candle) => candle.time >= windowStart && candle.time <= windowEnd);
+
+    if (filteredCandles.length === 0) {
+      throw new Error(`No Alpha Vantage ${interval} candles fall inside the ${symbol} trade window.`);
+    }
+
+    console.log(`Filtered ${interval} candles: ${filteredCandles.length} of ${candles.length} within trade window`);
+
+    return {
+      type: 'intraday',
+      interval: INTRADAY_INTERVAL_LABEL[interval] || interval,
+      candles: filteredCandles,
+      source: 'alphavantage',
+      available_resolutions: ALL_RESOLUTIONS
+    };
+  }
+
+  // Get chart data for a trade at the requested resolution, falling back to
+  // daily candles when intraday history cannot reach the trade.
+  async getTradeChartData(symbol, entryDate, exitDate = null, resolution = 'D') {
     const entryTime = new Date(entryDate);
     const exitTime = exitDate ? new Date(exitDate) : new Date();
     const tradeDuration = exitTime - entryTime;
+    const intradayInterval = RESOLUTION_TO_INTRADAY_INTERVAL[String(resolution)];
+    let intradayUnavailableReason = null;
+
+    if (intradayInterval && !this.intradayEnabled()) {
+      intradayUnavailableReason =
+        'Alpha Vantage intraday is a premium endpoint and is disabled; ' +
+        'set ALPHA_VANTAGE_INTRADAY_ENABLED=true if your key includes it.';
+    } else if (intradayInterval) {
+      if (this.intradayCoversTrade(entryTime)) {
+        try {
+          return await this.getIntradayTradeChartData(symbol, entryTime, exitTime, intradayInterval);
+        } catch (error) {
+          intradayUnavailableReason = error.message;
+          console.warn(`Alpha Vantage intraday unavailable for ${symbol} (${intradayInterval}): ${error.message}`);
+        }
+      } else {
+        intradayUnavailableReason =
+          `Alpha Vantage keeps about ${INTRADAY_HISTORY_DAYS} days of intraday history; ` +
+          'this trade is older than that, so only daily candles are available.';
+      }
+    }
+
+    // Advertise intraday only when it could actually be served, so the chart's
+    // resolution buttons never silently do nothing.
+    const availableResolutions =
+      this.intradayEnabled() && intradayUnavailableReason === null && this.intradayCoversTrade(entryTime)
+        ? ALL_RESOLUTIONS
+        : DAILY_ONLY_RESOLUTIONS;
 
     console.log(`Alpha Vantage chart request - Symbol: ${symbol}, Entry: ${entryTime.toISOString()}, Exit: ${exitTime.toISOString()}, Duration: ${Math.ceil(tradeDuration / ONE_DAY_MS)} days`);
 
@@ -264,7 +443,9 @@ class AlphaVantageClient {
               type: 'daily',
               interval: 'daily',
               candles: cachedCandles,
-              source: 'alphavantage_cache'
+              source: 'alphavantage_cache',
+              available_resolutions: availableResolutions,
+              intraday_unavailable_reason: intradayUnavailableReason
             };
           }
         }
@@ -305,7 +486,9 @@ class AlphaVantageClient {
         type: 'daily',
         interval: 'daily',
         candles: filteredCandles,
-        source: 'alphavantage'
+        source: 'alphavantage',
+        available_resolutions: availableResolutions,
+        intraday_unavailable_reason: intradayUnavailableReason
       };
     } catch (error) {
       console.error(`Error fetching Alpha Vantage chart data for ${symbol}:`, error);

@@ -20,13 +20,20 @@
     <div v-else-if="trade" class="space-y-8">
       <!-- Header -->
       <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 class="heading-page">
-            {{ trade.symbol }} Trade
-          </h1>
-          <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-            {{ formatDate(trade.trade_date) }} • {{ trade.side }}
-          </p>
+        <div class="flex items-center gap-3">
+          <StockLogo
+            :symbol="trade.symbol"
+            size-class="w-11 h-11"
+            fallback-text-class="text-sm font-semibold"
+          />
+          <div class="min-w-0">
+            <h1 class="heading-page">
+              {{ trade.symbol }} Trade
+            </h1>
+            <p class="mt-1 truncate text-sm text-gray-600 dark:text-gray-400">
+              <span v-if="symbolCompanyName">{{ symbolCompanyName }} • </span>{{ formatDate(trade.trade_date) }} • {{ trade.side }}
+            </p>
+          </div>
         </div>
         <div v-if="isOwner" class="flex flex-wrap gap-3 sm:justify-end">
           <button
@@ -1293,7 +1300,10 @@
           </div>
 
           <!-- Trade Chart Visualization (Collapsible) -->
-          <div v-if="trade.exit_price && trade.exit_time" class="card">
+          <!-- Open trades chart too: the endpoint returns candles up to the
+               present for them, and KLineTradeChart already renders an entry
+               marker with no exit. -->
+          <div v-if="trade.entry_time || trade.trade_date" class="card">
             <div class="card-body">
               <button
                 @click="toggleChartSection"
@@ -1660,6 +1670,8 @@ import { ChartPieIcon, DocumentIcon, ChatBubbleLeftIcon, SparklesIcon, ShareIcon
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
+import StockLogo from '@/components/common/StockLogo.vue'
+import { useSymbolMetadata } from '@/composables/useSymbolMetadata'
 import TradeChartVisualization from '@/components/trades/TradeChartVisualization.vue'
 import TradeImages from '@/components/trades/TradeImages.vue'
 import TradeCharts from '@/components/trades/TradeCharts.vue'
@@ -1763,6 +1775,13 @@ const allocationEnabled = ref(false)
 const allocationGroups = ref([])
 const tradeAllocations = ref([])
 const showAllocationModal = ref(false)
+
+const { metadataBySymbol, normalizeSymbol } = useSymbolMetadata(computed(() => trade.value?.symbol || ''))
+const symbolCompanyName = computed(() => {
+  const symbol = normalizeSymbol(trade.value?.symbol || '')
+  return symbol ? (metadataBySymbol[symbol]?.companyName || null) : null
+})
+
 // True only for the trade's owner. Guests/other users viewing a public trade get
 // a read-only view: owner actions and owner-only data fetches are skipped.
 const isOwner = computed(() => !!authStore.user && !!trade.value && trade.value.user_id === authStore.user.id)

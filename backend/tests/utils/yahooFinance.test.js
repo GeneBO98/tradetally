@@ -2,6 +2,13 @@ jest.mock('axios', () => ({
   get: jest.fn()
 }));
 
+// Chart responses are cached, so these network-behaviour tests have to opt out
+// or a previous test's candles would satisfy the request under test.
+jest.mock('../../src/utils/cache', () => ({
+  get: jest.fn(async () => null),
+  set: jest.fn(async () => true)
+}));
+
 const axios = require('axios');
 const yahooFinance = require('../../src/utils/yahooFinance');
 

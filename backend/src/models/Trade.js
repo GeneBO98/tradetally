@@ -1189,7 +1189,15 @@ class Trade {
         t.option_type,
         t.strike_price,
         t.trade_date,
-        t.entry_time
+        t.entry_time,
+        -- Positions can be held in a currency other than the account's. Note
+        -- original_currency names the SOURCE currency, not the currency the
+        -- monetary columns are stored in: an import that converts leaves the
+        -- stored values in USD, and exchange_rate is 1 exactly when it did not.
+        t.original_currency,
+        -- Written only when an import converted the monetary columns to USD;
+        -- that is the marker openPositionGrouping uses, not exchange_rate.
+        t.original_entry_price_currency
       FROM trades t
       ${whereClause}
       ORDER BY t.trade_date DESC, t.entry_time DESC

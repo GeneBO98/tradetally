@@ -26,7 +26,10 @@ const instrumentType = computed(() => String(
 
 const session = computed(() => {
   if (!['stock', 'option'].includes(instrumentType.value)) return null
-  return getTradeMarketSession(props.trade.entry_time ?? props.trade.entryTime)
+  return getTradeMarketSession(
+    props.trade.entry_time ?? props.trade.entryTime,
+    props.trade.symbol
+  )
 })
 
 const sessionClasses = computed(() => ({

@@ -9,7 +9,9 @@ const finnhub = require('../utils/finnhub');
 const cache = require('../utils/cache');
 const AnalyticsCache = require('../services/analyticsCache');
 const { computeTradePnl } = require('../services/pnlEngine');
-const { groupTradesIntoPositions } = require('../utils/openPositionGrouping');
+const { groupTradesIntoPositions, storedCurrency } = require('../utils/openPositionGrouping');
+const yahooFinance = require('../utils/yahooFinance');
+const { convertQuoteCurrency } = require('../utils/quoteCurrency');
 const symbolCategories = require('../utils/symbolCategories');
 const imageProcessor = require('../utils/imageProcessor');
 const ensureString = require('../utils/ensureString');
@@ -2971,6 +2973,90 @@ const tradeController = {
         console.log('Finnhub not configured, skipping stock quotes');
       }
 
+      // Aggregates across currencies are only meaningful once normalised, so
+      // resolve the account's display currency and a rate per position. Rows
+      // stay in their native currency; the UI converts only the totals.
+      let accountCurrency = 'USD';
+      try {
+        const settings = await User.getSettings(req.user.id);
+        accountCurrency = (settings?.display_currency || 'USD').toUpperCase();
+      } catch (settingsError) {
+        console.warn(`[CURRENCY] Could not read display currency, assuming USD: ${settingsError.message}`);
+      }
+
+      const positionCurrencies = [...new Set(
+        Object.values(positionMap)
+          .map(position => (position.currency || accountCurrency).toUpperCase())
+          .filter(currency => currency !== accountCurrency)
+      )];
+
+      const fxRates = { [accountCurrency]: 1 };
+      if (positionCurrencies.length > 0) {
+        await Promise.all(positionCurrencies.map(async (currency) => {
+          try {
+            fxRates[currency] = await currencyConverter.getForexRate(currency, accountCurrency);
+          } catch (rateError) {
+            // No rate means the UI must not fabricate a converted total.
+            console.warn(`[CURRENCY] No ${currency}/${accountCurrency} rate: ${rateError.message}`);
+            fxRates[currency] = null;
+          }
+        }));
+      }
+
+      // Anything the configured provider could not price falls to Yahoo, which
+      // needs no key and covers the non-US listings Finnhub's free tier
+      // refuses. Without this a European position shows no price at all.
+      //
+      // A converted quote belongs to a position, not a symbol: two positions on
+      // one symbol can be booked in different currencies.
+      const convertedQuotesByPosition = {};
+
+      // Self-hosted only, matching the gate the chart fallbacks already use: a
+      // hosted instance must never reach this provider.
+      const billingEnabled = await TierService.isBillingEnabled(req.headers.host);
+      const unquotedSymbols = billingEnabled
+        ? []
+        : symbols.filter(symbol => !quotes[symbol] && !pendingStockSymbols.has(symbol));
+      if (unquotedSymbols.length > 0 && yahooFinance.isEnabled()) {
+        // A quote arrives in the instrument's own currency, which is NOT
+        // necessarily the currency the position is booked in: a broker may book
+        // a EUR-quoted listing in USD. Comparing those directly invents P&L,
+        // so convert first.
+        // One raw quote per symbol, converted once PER POSITION. Positions are
+        // split by stored currency, so the same symbol can appear twice with
+        // different targets; keying the converted quote by symbol would give
+        // both positions whichever conversion ran last.
+        const unquoted = new Set(unquotedSymbols);
+        const rawQuotes = new Map();
+        await Promise.all(
+          unquotedSymbols.map(async (symbol) => {
+            const quote = await yahooFinance.getQuote(symbol).catch(() => null);
+            if (quote) rawQuotes.set(symbol, quote);
+          })
+        );
+
+        await Promise.all(
+          Object.entries(positionMap).map(async ([posKey, position]) => {
+            if (!unquoted.has(position.symbol)) return;
+            const quote = rawQuotes.get(position.symbol);
+            if (!quote) return;
+
+            // A position with no established currency has no target to convert
+            // into; assuming the account's would invent the comparison this
+            // exists to prevent.
+            const target = position.currency ? String(position.currency).toUpperCase() : null;
+            if (!target) return;
+
+            try {
+              convertedQuotesByPosition[posKey] = await convertQuoteCurrency(quote, target);
+            } catch (conversionError) {
+              // Never show a number we cannot state the currency of.
+              console.warn(`[QUOTES] Dropping ${position.symbol} quote: cannot convert ${quote.currency} to ${target}: ${conversionError.message}`);
+            }
+          })
+        );
+      }
+
       // Enhance positions with real-time data
       const enhancedPositions = Object.entries(positionMap).map(([posKey, position]) => {
         // Options: use Alpaca quotes keyed by position key
@@ -3010,7 +3096,7 @@ const tradeController = {
           };
         }
 
-        const quote = quotes[position.symbol];
+        const quote = convertedQuotesByPosition[posKey] || quotes[position.symbol];
 
         if (quote) {
           const currentPrice = quote.c; // Current price
@@ -3066,10 +3152,33 @@ const tradeController = {
 
       console.log('[PERF] getOpenPositionsWithQuotes total time:', Date.now() - requestStartedAt, 'ms');
 
+      // fx_rate converts this position's own currency into the account's. null
+      // means no usable rate, which the UI must surface rather than quietly
+      // dropping the position from a total or counting it at zero. A position
+      // with no established currency never gets a rate.
+      const usableRate = (value) => {
+        const rate = Number(value);
+        return Number.isFinite(rate) && rate > 0 ? rate : null;
+      };
+      const normalisedPositions = enhancedPositions.map(position => {
+        const currency = position.currency ? String(position.currency).toUpperCase() : null;
+        return {
+          ...position,
+          currency,
+          account_currency: accountCurrency,
+          fx_rate: currency ? usableRate(fxRates[currency]) : null
+        };
+      });
+
       res.json({
-        positions: enhancedPositions,
-        quotesAvailable: Object.keys(quotes).length + Object.keys(alpacaQuotes).length,
-        totalPositions: enhancedPositions.length,
+        positions: normalisedPositions,
+        account_currency: accountCurrency,
+        // Fallback quotes are keyed per position rather than per symbol, so they
+        // have to be counted alongside the provider's own.
+        quotesAvailable: Object.keys(quotes).length
+          + Object.keys(alpacaQuotes).length
+          + Object.keys(convertedQuotesByPosition).length,
+        totalPositions: normalisedPositions.length,
         quotePending,
         quoteFetchedAt: new Date().toISOString()
       });
@@ -4008,6 +4117,11 @@ const tradeController = {
         // Trade details
         entryPrice: trade.price || trade.entry_price,
         exitPrice: trade.exit_price,
+        // The chart's summary row formats entryPrice/exitPrice/pnl above, so it
+        // must be told the currency those STORED values are in. That is not
+        // original_currency: a converted import holds USD there while
+        // original_currency still names the source it came from.
+        currency: storedCurrency(trade) || trade.currency || null,
         quantity: trade.quantity,
         side: trade.side,
         pnl: trade.pnl,
