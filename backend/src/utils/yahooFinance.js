@@ -404,6 +404,87 @@ class YahooFinanceClient {
     }
   }
 
+  // Search needs no crumb, unlike quoteSummary, but is fuzzy.
+  async getSymbolProfile(symbol) {
+    if (!this.isEnabled()) return null;
+
+    const yahooSymbol = this.getYahooSymbol(symbol);
+    if (!yahooSymbol) return null;
+
+    const cached = await cache.get('yahoo_symbol_profile', yahooSymbol);
+    if (cached) return cached.miss ? null : cached;
+
+    try {
+      const response = await axios.get(
+        `https://${YAHOO_CHART_HOSTS[1]}/v1/finance/search`,
+        {
+          timeout: 8000,
+          headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
+          params: { q: yahooSymbol, quotesCount: 5, newsCount: 0, enableFuzzyQuery: false }
+        }
+      );
+
+      // Exact match only, or a symbol adopts a neighbour's industry.
+      const match = (response.data?.quotes || []).find(
+        (candidate) => String(candidate?.symbol || '').toUpperCase() === yahooSymbol
+      );
+      if (!match) {
+        await cache.set('yahoo_symbol_profile', yahooSymbol, { miss: true });
+        return null;
+      }
+
+      const profile = {
+        symbol: yahooSymbol,
+        name: match.longname || match.shortname || null,
+        // An ETF legitimately has none.
+        industry: match.industry || null,
+        exchange: match.exchDisp || match.exchange || null,
+        quoteType: match.quoteType || null
+      };
+
+      if (profile.name || profile.industry) {
+        await cache.set('yahoo_symbol_profile', yahooSymbol, profile);
+      } else {
+        await cache.set('yahoo_symbol_profile', yahooSymbol, { miss: true });
+      }
+
+      return profile;
+    } catch (error) {
+      console.warn(`[SYMBOLS] Yahoo Finance profile lookup failed for ${yahooSymbol}: ${error.message}`);
+      return null;
+    }
+  }
+
+  // The chart endpoint already carries the name, so this is one cached request.
+  async getSymbolName(symbol) {
+    if (!this.isEnabled()) return null;
+
+    const yahooSymbol = this.getYahooSymbol(symbol);
+    if (!yahooSymbol) return null;
+
+    const cached = await cache.get('yahoo_symbol_name', yahooSymbol);
+    if (cached) return cached.miss ? null : cached;
+
+    try {
+      const response = await axios.get(
+        `https://${YAHOO_CHART_HOSTS[0]}/v8/finance/chart/${encodeURIComponent(yahooSymbol)}`,
+        {
+          timeout: 8000,
+          headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
+          params: { interval: '1d', range: '1d' }
+        }
+      );
+
+      const meta = response.data?.chart?.result?.[0]?.meta;
+      const name = meta?.longName || meta?.shortName || null;
+      await cache.set('yahoo_symbol_name', yahooSymbol, name || { miss: true });
+      return name;
+    } catch (error) {
+      console.warn(`[SYMBOLS] Yahoo Finance name lookup failed for ${yahooSymbol}: ${error.message}`);
+      return null;
+    }
+  }
+
   async getStockTradeChartData(symbol, entryDate, exitDate = null, requestedResolution = 'D') {
     if (!this.isEnabled()) {
       throw new Error('Yahoo Finance fallback is disabled');
