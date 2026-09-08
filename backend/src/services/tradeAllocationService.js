@@ -103,7 +103,7 @@ function normalizeAllocations(allocations) {
   return normalized;
 }
 
-async function assertOwnedTrade(client, userId, tradeId) {
+async function assertOwnedTrade(client, userId, tradeId, for_update = false) {
   if (!UUID_PATTERN.test(String(tradeId || ''))) {
     const error = new Error('Trade not found');
     error.statusCode = 404;
@@ -112,7 +112,8 @@ async function assertOwnedTrade(client, userId, tradeId) {
   const result = await client.query(
     `SELECT id, quantity, side, executions
      FROM trades
-     WHERE id = $1 AND user_id = $2`,
+     WHERE id = $1 AND user_id = $2
+     ${for_update ? 'FOR UPDATE' : ''}`,
     [tradeId, userId]
   );
   if (result.rows.length === 0) {
@@ -318,7 +319,8 @@ async function replaceTradeAllocations(userId, tradeId, allocations) {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
-    const trade = await assertOwnedTrade(client, userId, tradeId);
+    // Serialize replacement with single, bulk and clear operations on this trade.
+    const trade = await assertOwnedTrade(client, userId, tradeId, true);
     await assertOwnedGroups(
       client,
       userId,
@@ -356,8 +358,18 @@ async function replaceTradeAllocations(userId, tradeId, allocations) {
 }
 
 async function clearTradeAllocations(userId, tradeId) {
-  await assertOwnedTrade(db, userId, tradeId);
-  await db.query('DELETE FROM trade_allocations WHERE trade_id = $1', [tradeId]);
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    await assertOwnedTrade(client, userId, tradeId, true);
+    await client.query('DELETE FROM trade_allocations WHERE trade_id = $1', [tradeId]);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
   await AnalyticsCache.invalidate(userId);
 }
 
@@ -383,6 +395,7 @@ async function replaceBulkTradeAllocations(userId, tradeIds, allocations) {
       `SELECT id, quantity, side, executions
        FROM trades
        WHERE user_id = $1 AND id = ANY($2::uuid[])
+       ORDER BY id
        FOR UPDATE`,
       [userId, normalizedIds]
     );

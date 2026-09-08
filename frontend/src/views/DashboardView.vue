@@ -1688,7 +1688,7 @@ import draggable from 'vuedraggable'
 
 const authStore = useAuthStore()
 const { formatTime: formatTimeTz } = useUserTimezone()
-const { formatCurrency, currencySymbol, formatSignedCurrency } = useCurrencyFormatter()
+const { formatCurrency, currencySymbol, currencyCode, formatSignedCurrency } = useCurrencyFormatter()
 const { selectedAccount, selectedAccountLabel } = useGlobalAccountFilter()
 const yearWrappedStore = useYearWrappedStore()
 const uiPreferencesStore = useUiPreferencesStore()
