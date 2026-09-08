@@ -9,6 +9,18 @@ const { validateAiProviderUrl, fetchAiProviderUrl } = require('./urlSecurity');
 const { FinnhubPriority, FinnhubRequestScheduler } = require('./finnhubScheduler');
 const { getDateInTimezone, localToUTC } = require('./timezone');
 
+// Daily chart window settings. A negative reverses the window and a
+// non-finite one yields an invalid date, so anything that is not a bounded
+// positive integer falls back to the default.
+const DAILY_WINDOW_MAX_DAYS = 1825;
+
+function dailyWindowDays(value, fallback) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 && parsed <= DAILY_WINDOW_MAX_DAYS
+    ? parsed
+    : fallback;
+}
+
 class FinnhubClient {
   constructor() {
     this.apiKey = process.env.FINNHUB_API_KEY;
@@ -1567,8 +1579,8 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
     if (resolution === 'D') {
       // Widen these where the provider serves more history than the free
       // tiers these defaults were sized for.
-      const lookbackDays = Number(process.env.CHART_DAILY_LOOKBACK_DAYS) || 30;
-      const lookaheadDays = Number(process.env.CHART_DAILY_LOOKAHEAD_DAYS) || 10;
+      const lookbackDays = dailyWindowDays(process.env.CHART_DAILY_LOOKBACK_DAYS, 30);
+      const lookaheadDays = dailyWindowDays(process.env.CHART_DAILY_LOOKAHEAD_DAYS, 10);
       chartFromTime = new Date(entryTime.getTime() - lookbackDays * oneDayMs);
       chartToTime = new Date(Math.max(entryTime.getTime(), exitTime.getTime()) + lookaheadDays * oneDayMs);
     }
