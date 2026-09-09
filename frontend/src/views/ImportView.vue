@@ -4,7 +4,7 @@
       <div>
         <h1 class="heading-page">Import Trades</h1>
         <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-          Import your trades from CSV files exported from major brokers.
+          Import your trades from files exported from major brokers.
         </p>
       </div>
       <router-link to="/broker-sync" class="mt-1 btn-secondary inline-flex items-center gap-2">
@@ -42,7 +42,7 @@
                 ]"
                 tabindex="0"
                 role="button"
-                aria-label="Upload a broker CSV file"
+                aria-label="Upload a broker trade export file"
                 @dragover.prevent="handleDragOver"
                 @dragleave.prevent="handleDragLeave"
                 @drop.prevent="handleDrop"
@@ -56,7 +56,7 @@
                 </div>
                 <div v-else class="space-y-2 text-center">
                   <ArrowUpTrayIcon class="mx-auto h-16 w-16 text-gray-400" />
-                  <p class="text-base font-medium text-gray-900 dark:text-white">Drop your broker CSV here</p>
+                  <p class="text-base font-medium text-gray-900 dark:text-white">Drop your broker export here</p>
                   <div class="flex text-sm text-gray-600 dark:text-gray-400">
                     <label
                       for="file-upload"
@@ -69,13 +69,14 @@
                         ref="fileInput"
                         name="file-upload"
                         type="file"
+                        accept=".csv,.txt,.data,text/csv,text/plain,application/octet-stream"
                         class="sr-only"
                         @change="handleFileSelect"
                       />
                     </label>
                     <p class="pl-1">or drag and drop</p>
                   </div>
-                  <p class="text-xs text-gray-500 dark:text-gray-400">CSV files only (up to 50MB)</p>
+                  <p class="text-xs text-gray-500 dark:text-gray-400">CSV, TXT, or Sierra Chart DATA files (up to 50MB)</p>
                 </div>
               </div>
               <div v-if="selectedFile" class="mt-2 flex items-center justify-between">
@@ -771,6 +772,20 @@
             </div>
 
             <div>
+              <h4 class="font-medium text-gray-900 dark:text-white">Sierra Chart</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                Export Trade Activity Log with File &gt; Export, or upload its raw UTC .data file. Fill executions are reconstructed into flat-to-flat futures trades.
+              </p>
+              <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
+                ActivityType, DateTime, Symbol, Quantity, BuySell, FillPrice, TradeAccount<br>
+                Fills, 2026-09-08 14:02:58, MESU6.CME, 1, Buy, 768850, Sim1
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                <strong>Important:</strong> Do not use Save Log As; that format uses the display timezone. Configure Sierra Chart under Broker Fees if commissions are not present in the activity log.
+              </p>
+            </div>
+
+            <div>
               <h4 class="font-medium text-gray-900 dark:text-white">Questrade</h4>
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
                 Export trade executions from Questrade. Supports stocks and options with automatic option symbol parsing.
@@ -1390,6 +1405,7 @@ const brokerFormatOptions = computed(() => {
         { value: 'tradingview', label: 'TradingView' },
         { value: 'avatrade', label: 'AvaTrade' },
         { value: 'tradovate', label: 'Tradovate' },
+        { value: 'sierrachart', label: 'Sierra Chart' },
         { value: 'ninjatrader', label: 'NinjaTrader' },
         { value: 'questrade', label: 'Questrade' },
         { value: 'tradestation', label: 'TradeStation' },
@@ -1524,6 +1540,16 @@ const brokerGuides = {
       'Upload the raw CSV and review the pre-import check before starting.'
     ],
     warning: 'Position summaries are not enough. Use fills or execution history so each trade can be reconstructed.'
+  },
+  sierrachart: {
+    title: 'Sierra Chart',
+    badge: 'Supported',
+    steps: [
+      'Open Trade Activity Log and choose File > Export for a tab-delimited text file.',
+      'You can also upload the raw UTC .data file from the TradeActivityLogs folder.',
+      'Keep the original ActivityType, FillPrice, FilledQuantity, and TradeAccount fields.'
+    ],
+    warning: 'Use File > Export, not Save Log As. Save Log As uses the display timezone and cannot be imported reliably.'
   },
   ninjatrader: {
     title: 'NinjaTrader',
@@ -1686,7 +1712,7 @@ const accountOptions = computed(() => {
 })
 
 const fileReadinessMessage = computed(() => {
-  if (!selectedFile.value) return 'Upload a CSV file to start.'
+  if (!selectedFile.value) return 'Upload a broker export file to start.'
   if (isAnalyzingFile.value) return 'Analyzing your file before import.'
   if (!fileAnalysis.value.headers.length) return 'We could not read headers from this file yet.'
   if (!fileAnalysis.value.formatDetected) return 'This file may need Generic CSV or column mapping.'
@@ -1794,6 +1820,7 @@ function formatBrokerName(broker) {
     tradervue: 'TraderVue',
     avatrade: 'AvaTrade',
     tradovate: 'Tradovate',
+    sierrachart: 'Sierra Chart',
     ninjatrader: 'NinjaTrader',
     questrade: 'Questrade',
     tradestation: 'TradeStation',
@@ -1899,6 +1926,8 @@ function getStatusText(status) {
 
 // Count CSV rows (excluding header)
 async function countCSVRows(file) {
+  if (file?.name?.toLowerCase().endsWith('.data')) return 0
+
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = (e) => {
@@ -1922,6 +1951,13 @@ function detectBrokerFromHeaders(headers) {
 
   const lowerHeaders = headers.map(h => h.toLowerCase())
   const headersStr = lowerHeaders.join(',')
+
+  if (headersStr.includes('activitytype') && headersStr.includes('datetime') &&
+      headersStr.includes('transdatetime') && headersStr.includes('fillprice') &&
+      headersStr.includes('filledquantity') && headersStr.includes('fillexecutionserviceid') &&
+      headersStr.includes('positionquantity')) {
+    return 'sierrachart'
+  }
 
   // ThinkorSwim detection
   if (headersStr.includes('date') && headersStr.includes('time') && headersStr.includes('type') &&
@@ -2107,6 +2143,16 @@ async function analyzeSelectedFile(file) {
   isAnalyzingFile.value = true
 
   try {
+    if (file.name.toLowerCase().endsWith('.data')) {
+      fileAnalysis.value = {
+        rowCount: 0,
+        headers: ['Binary Trade Activity Log'],
+        formatDetected: true,
+        detectedBroker: 'sierrachart'
+      }
+      return
+    }
+
     const [rowCount, headers] = await Promise.all([
       countCSVRows(file),
       parseCSVHeaders(file)
@@ -2154,7 +2200,8 @@ function clearSelectedFile() {
 }
 
 async function setSelectedFile(file, source = 'picker') {
-  if (file && (file.type === 'text/csv' || file.type === 'application/csv' || file.name.toLowerCase().endsWith('.csv'))) {
+  const supportedExtension = file && /\.(csv|txt|data)$/i.test(file.name)
+  if (file && (file.type === 'text/csv' || file.type === 'application/csv' || supportedExtension)) {
     selectedFile.value = file
     error.value = null
     console.log('File accepted:', file.name)
@@ -2165,10 +2212,10 @@ async function setSelectedFile(file, source = 'picker') {
     })
     await analyzeSelectedFile(file)
   } else {
-    error.value = 'Please select a valid CSV file'
+    error.value = 'Please select a valid CSV, TXT, or Sierra Chart DATA file'
     selectedFile.value = null
     resetFileAnalysis()
-    console.log('File rejected - not CSV')
+    console.log('File rejected - unsupported trade export')
     trackImportValidationFailed('invalid_file_type', {
       file_name: file?.name || '',
       file_size: file?.size || 0
@@ -3269,7 +3316,7 @@ function pollImportStatus(importId) {
               ? `Try using Auto-Detect instead of the "${brokerName}" format`
               : 'Try selecting your specific broker format instead of Auto-Detect',
             'Make sure your file contains actual trade data, not just an account summary or positions',
-            'Verify the file is a .csv file (not .xlsx or .xls)',
+            'Verify the file is CSV, TXT, or a Sierra Chart DATA export (not .xlsx or .xls)',
             'Check that the file was exported from the correct section of your broker platform'
           ]
           showImportantWarning(

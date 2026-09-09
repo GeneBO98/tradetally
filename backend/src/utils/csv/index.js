@@ -12,6 +12,7 @@ const { parseMetaTrader5History } = require('./parsers/metatrader');
 const { parsePaperMoneyTransactions } = require('./parsers/papermoney');
 const { parseQuestradeTransactions } = require('./parsers/questrade');
 const { parseSchwabTrades } = require('./parsers/schwab');
+const { decodeSierraChartActivityData, hasSierraChartExportPriceScale, isSierraChartBinary, parseSierraChartTransactions } = require('./parsers/sierraChart');
 const { parseTastytradeTransactions } = require('./parsers/tastytrade');
 const { parseThinkorswimTransactions } = require('./parsers/thinkorswim');
 const { parseTradervueCompletedTrades } = require('./parsers/tradervue');
@@ -181,6 +182,15 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     context.importDate = context.importDate || importDateFromFileName;
 
     let csvString = fileBuffer.toString('utf-8');
+
+    if (broker === 'sierrachart' && isSierraChartBinary(fileBuffer)) {
+      const records = decodeSierraChartActivityData(fileBuffer).map(normalizeRecord);
+      diagnostics.totalRows = records.length;
+      diagnostics.headerAnalysis.foundHeaders = records[0] ? Object.keys(records[0]) : [];
+      context.diagnostics = diagnostics;
+      const result = parseSierraChartTransactions(records, context, { pricesAreScaled: false });
+      return wrapResultWithDiagnostics(result, diagnostics, [], context.userTimezone || 'UTC');
+    }
 
     // Remove BOM (Byte Order Mark) if present - this can cause parsing issues
     if (csvString.charCodeAt(0) === 0xFEFF) {
@@ -381,6 +391,11 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
         escape: '"'
       };
       console.log('Using special parsing options for Tradovate CSV');
+    }
+
+    if (broker === 'sierrachart') {
+      parseOptions.delimiter = '\t';
+      console.log('Using tab-delimited parsing for Sierra Chart Trade Activity Log');
     }
 
     if (broker === 'schwab') {
@@ -903,6 +918,16 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
 
       console.log(`Finished normalized ${broker} transaction parsing`);
       return wrapResultWithDiagnostics(finalTrades, diagnostics, [], userTimezone);
+    }
+
+    if (broker === 'sierrachart') {
+      console.log('Starting Sierra Chart Trade Activity Log parsing');
+      if (!hasSierraChartExportPriceScale(records)) {
+        throw new Error('Sierra Chart Save Log As files are not supported because they use display prices and local display times. Use Trade Activity Log > File > Export, or upload the raw UTC .data file.');
+      }
+      const result = parseSierraChartTransactions(records, context, { pricesAreScaled: true });
+      console.log('Finished Sierra Chart Trade Activity Log parsing');
+      return wrapResultWithDiagnostics(result, diagnostics, [], userTimezone);
     }
 
     if (broker === 'lightspeed') {

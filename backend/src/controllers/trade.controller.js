@@ -2245,7 +2245,8 @@ const tradeController = {
                 etrade: 'E*TRADE',
                 tradingview: 'TradingView',
                 tradovate: 'Tradovate',
-                ninjatrader: 'NinjaTrader'
+                ninjatrader: 'NinjaTrader',
+                sierrachart: 'Sierra Chart'
               };
               const accountBroker = broker === 'auto'
                 ? parseDiagnostics?.detectedBroker

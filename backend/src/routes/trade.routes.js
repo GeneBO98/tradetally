@@ -27,14 +27,14 @@ const upload = multer({
     });
 
     const name = file.originalname.toLowerCase();
-    // Trust the .csv extension — browsers/OSes report CSVs with many mimetypes
-    // (text/csv, application/csv, application/vnd.ms-excel, text/plain, application/octet-stream).
-    const isCsv = name.endsWith('.csv');
+    // Trust supported export extensions — browsers/OSes report delimited and
+    // Sierra Chart files with many different mimetypes.
+    const isTradeExport = /\.(csv|txt|data)$/.test(name);
     const isImage = /\.(jpe?g|png|gif)$/.test(name) && /^image\//.test(file.mimetype);
 
-    console.log('File validation:', { isCsv, isImage, actualMimetype: file.mimetype });
+    console.log('File validation:', { isTradeExport, isImage, actualMimetype: file.mimetype });
 
-    if (isCsv || isImage) {
+    if (isTradeExport || isImage) {
       return cb(null, true);
     }
     console.log('File rejected - invalid type');
@@ -481,7 +481,7 @@ router.get('/accounts', authenticate, tradeController.getAccountList);
  *               file:
  *                 type: string
  *                 format: binary
- *                 description: CSV file containing trades
+ *                 description: Broker trade export file containing trades
  *     responses:
  *       200:
  *         description: Import started successfully
@@ -506,7 +506,7 @@ router.get('/import/requirements', authenticate, tradeController.checkImportRequ
  * /api/trades/import/validate:
  *   post:
  *     summary: Validate import file before importing
- *     description: Pre-validates a CSV file to detect broker format mismatch and provide file analysis
+ *     description: Pre-validates a broker export file to detect format mismatch and provide file analysis
  *     tags: [Trades]
  *     security:
  *       - bearerAuth: []
@@ -520,7 +520,7 @@ router.get('/import/requirements', authenticate, tradeController.checkImportRequ
  *               file:
  *                 type: string
  *                 format: binary
- *                 description: CSV file to validate
+ *                 description: Broker trade export file to validate
  *               broker:
  *                 type: string
  *                 description: User-selected broker format

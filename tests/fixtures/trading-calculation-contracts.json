@@ -801,6 +801,24 @@
         "mae": 63.75,
         "mfe": 13.75
       }
+    },
+    {
+      "id": "sierra_chart_activity_export_round_trip",
+      "csv": "ActivityType\tDateTime\tTransDateTime\tSymbol\tQuantity\tBuySell\tFillPrice\tFilledQuantity\tTradeAccount\tOpenClose\tPositionQuantity\tFillExecutionServiceID\tNote\nFills\t2026-09-08  14:02:58.329559\t2026-09-08  14:02:58.000000\tMESU6.CME\t1\tBuy\t768850.0000000\t1\tRTSL00000000000\tOpen\t1\t1030650\tTest setup\nFills\t2026-09-08  14:03:02.094209\t2026-09-08  14:03:02.000000\tMESU6.CME\t1\tSell\t768800.0000000\t1\tRTSL00000000000\tClose\t\t1031928\tTest setup",
+      "expected": {
+        "detected_broker": "sierrachart",
+        "symbol": "MESU6",
+        "broker": "sierrachart",
+        "side": "long",
+        "quantity": 1,
+        "entry_price": 7688.5,
+        "exit_price": 7688,
+        "trade_date": "2026-09-08",
+        "instrument_type": "future",
+        "pnl": -2.5,
+        "execution_count": 2,
+        "account_identifier": "RTSL00000000000"
+      }
     }
   ],
   "r_value": {

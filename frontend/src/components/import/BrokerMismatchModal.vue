@@ -168,6 +168,7 @@ const brokerNames = {
   avatrade: 'AvaTrade',
   tradingview: 'TradingView',
   tradovate: 'Tradovate',
+  sierrachart: 'Sierra Chart',
   ninjatrader: 'NinjaTrader',
   questrade: 'Questrade',
   projectx: 'ProjectX',

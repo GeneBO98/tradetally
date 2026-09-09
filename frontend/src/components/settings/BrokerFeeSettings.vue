@@ -188,6 +188,7 @@
                                 :options="[
                                     { value: 'avatrade', label: 'AvaTrade' },
                                     { value: 'tradovate', label: 'Tradovate' },
+                                    { value: 'sierrachart', label: 'Sierra Chart' },
                                     { value: 'ninjatrader', label: 'NinjaTrader' },
                                     { value: 'thinkorswim', label: 'ThinkorSwim' },
                                     { value: 'ibkr', label: 'Interactive Brokers' },

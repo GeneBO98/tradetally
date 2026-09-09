@@ -407,6 +407,7 @@ const brokerNames = {
   tradingview_performance: 'TradingView',
   tradingview_paper: 'TradingView',
   tradovate: 'Tradovate',
+  sierrachart: 'Sierra Chart',
   ninjatrader: 'NinjaTrader',
   questrade: 'Questrade',
   projectx: 'ProjectX',

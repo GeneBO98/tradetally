@@ -565,6 +565,15 @@ function extractIBKRActivityStatementSection(csvString) {
 
 function detectBrokerFormat(fileBuffer) {
   try {
+    // Sierra Chart's raw daily Trade Activity Log is a binary field stream.
+    // Its fixed version prefix is safe to inspect before decoding as UTF-8.
+    if (Buffer.isBuffer(fileBuffer) && fileBuffer.length >= 16 &&
+        fileBuffer.readUInt32LE(0) === 1 && fileBuffer.readUInt32LE(4) === 8 &&
+        fileBuffer.readBigInt64LE(8) === 2n) {
+      console.log('[AUTO-DETECT] Detected: Sierra Chart binary Trade Activity Log');
+      return 'sierrachart';
+    }
+
     let csvString = fileBuffer.toString('utf-8');
     // Remove BOM if present
     if (csvString.charCodeAt(0) === 0xFEFF) {
@@ -661,6 +670,17 @@ function detectBrokerFormat(fileBuffer) {
 
     const headers = headerLine.toLowerCase();
     console.log(`[AUTO-DETECT] Analyzing headers (line ${headerLineIndex + 1}): ${headerLine.substring(0, 200)}...`);
+
+    // Sierra Chart Trade Activity Log > File > Export. The distinctive
+    // activity/fill/position columns keep this ahead of the generic IBKR
+    // DateTime/Symbol/Quantity/Price signature.
+    if (headers.includes('activitytype') && headers.includes('datetime') &&
+        headers.includes('transdatetime') &&
+        headers.includes('fillprice') && headers.includes('filledquantity') &&
+        headers.includes('fillexecutionserviceid') && headers.includes('positionquantity')) {
+      console.log('[AUTO-DETECT] Detected: Sierra Chart Trade Activity Log export');
+      return 'sierrachart';
+    }
 
     // ThinkorSwim detection - look for DATE, TIME, TYPE, REF #, DESCRIPTION pattern
     if (headers.includes('date') && headers.includes('time') && headers.includes('type') &&

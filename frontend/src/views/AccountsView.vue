@@ -83,6 +83,7 @@
                     { value: 'avatrade', label: 'AvaTrade' },
                     { value: 'tradingview', label: 'TradingView' },
                     { value: 'tradovate', label: 'Tradovate' },
+                    { value: 'sierrachart', label: 'Sierra Chart' },
                     { value: 'ninjatrader', label: 'NinjaTrader' },
                     { value: 'other', label: 'Other' }
                   ]"
@@ -331,6 +332,7 @@ const brokerLabels = {
   avatrade: 'AvaTrade',
   tradingview: 'TradingView',
   tradovate: 'Tradovate',
+  sierrachart: 'Sierra Chart',
   ninjatrader: 'NinjaTrader',
   other: 'Other'
 }
