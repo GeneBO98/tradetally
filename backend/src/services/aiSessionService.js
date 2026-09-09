@@ -1,7 +1,7 @@
 const db = require('../config/database');
 const Trade = require('../models/Trade');
 const TradeQueries = require('./tradeQueries');
-const { isPositionGroupingEnabled } = require('../utils/positionGrouping');
+const { isPositionGroupingEnabled, hasBrokerageOrder } = require('../utils/positionGrouping');
 const AICreditService = require('./aiCreditService');
 const AIProvider = require('../utils/aiProvider');
 const TierService = require('./tierService');
@@ -191,6 +191,7 @@ ${clippedMessage}`;
   // for ungrouped legacy rows.
   static positionGroupKey(trade) {
     if (trade.position_group_id) return String(trade.position_group_id);
+    if (hasBrokerageOrder(trade)) return String(trade.id);
     const underlying = (trade.underlying_symbol && String(trade.underlying_symbol).trim() !== '')
       ? trade.underlying_symbol
       : trade.symbol;

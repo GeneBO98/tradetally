@@ -81,6 +81,7 @@ function canonicalTradeRecord(attributes) {
     Code: get('notes', 'code'),
     Notes: get('notes', 'code'),
     OrderID: get('ibOrderID', 'orderID', 'orderId'),
+    BrokerageOrderID: get('brokerageOrderID', 'brokerageOrderId', 'BrokerageOrderID'),
     TradeID: get('tradeID', 'tradeId'),
     IBExecID: get('ibExecID', 'executionID', 'executionId'),
     ExtExecID: get('extExecID'),

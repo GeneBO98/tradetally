@@ -32,6 +32,7 @@
               <li>Under "Activity Flex Query", click the <strong>+</strong> button to create a new query</li>
               <li>Name your query, set its period to <strong>Last N Calendar Days: 365</strong>, select <strong>Trades</strong> and <strong>Open Positions</strong>, and choose <strong>CSV or XML</strong></li>
               <li>In the Trades section options, make sure <strong>Executions</strong> is selected — order-only or summary data cannot be imported</li>
+              <li>For multi-leg options, include <strong>BrokerageOrderID</strong> in the Trades fields so TradeTally can identify legs from the same order</li>
               <li>Save the query and note the <strong>Query ID</strong> shown next to it</li>
               <li>Open <strong>Flex Web Service Configuration</strong> (gear icon), enable <strong>Flex Web Service Status</strong>, and save</li>
               <li>Set <strong>Should Expire After</strong> to <strong>1 Year</strong> — IBKR tokens expire after 6 hours by default, which breaks sync the same day</li>

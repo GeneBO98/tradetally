@@ -112,6 +112,7 @@ function buildIBKRAmbiguousSellReviewItem({ transaction, symbol, conid, instrume
     symbol,
     conid: conid || transaction.conid || null,
     order_id: transaction.orderId || null,
+    brokerage_order_id: transaction.brokerage_order_id || null,
     action: transaction.action,
     quantity,
     price,
@@ -287,7 +288,8 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       }
 
       const orderId = cleanString(read('Order ID', 'OrderID', 'OrderId', 'IBOrderID', 'IB Order ID', 'Trade ID', 'TradeID'));
-      const executionId = cleanString(read('IBExecID', 'IB Exec ID', 'ExecutionID', 'Execution ID', 'execution_id'));
+      const brokerage_order_id = cleanString(read('BrokerageOrderID', 'Brokerage Order ID', 'brokerageOrderID', 'brokerage_order_id'));
+      const executionId = cleanString(read('IBExecID', 'IB Exec ID', 'ExecID', 'ExecutionID', 'Execution ID', 'execution_id'));
       const tradeId = cleanString(read('TradeID', 'Trade ID', 'trade_id'));
       const currency = cleanString(read('Currency', 'CurrencyPrimary', 'Currency Primary') || 'USD') || 'USD';
 
@@ -295,6 +297,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         symbol,
         conid, // Contract ID for reliable options grouping
         orderId,
+        brokerage_order_id,
         executionId,
         tradeId,
         currency,
@@ -642,6 +645,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
             conid: transaction.conid,
             orderId: transaction.orderId || null,
             order_id: transaction.orderId || null,
+            brokerage_order_id: transaction.brokerage_order_id || null,
             execution_id: transaction.executionId || null,
             trade_id: transaction.tradeId || null
           };
@@ -742,6 +746,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
           conid: transaction.conid, // Include Conid for duplicate detection
           orderId: transaction.orderId || null,
           order_id: transaction.orderId || null,
+          brokerage_order_id: transaction.brokerage_order_id || null,
           execution_id: transaction.executionId || null,
           trade_id: transaction.tradeId || null,
           sourceIndex: transaction.sourceIndex

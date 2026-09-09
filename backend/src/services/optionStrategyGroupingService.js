@@ -50,6 +50,24 @@ function tradeIdsKey(ids) {
 }
 
 class OptionStrategyGroupingService {
+  // Only opening fills identify the strategy. Closing orders can combine legs
+  // from different positions, and synthetic opens do not establish provenance.
+  static openingOrderIds(raw) {
+    let executions = raw.executions || raw.executionData || [];
+    if (typeof executions === 'string') {
+      try { executions = JSON.parse(executions); } catch { return []; }
+    }
+    if (!Array.isArray(executions)) return [];
+    const opening_action = raw.side === 'short' ? 'sell' : 'buy';
+    const order_ids = [...new Set(executions
+      .filter(execution => execution && !execution.synthetic &&
+        String(execution.action || '').toLowerCase() === opening_action)
+      .map(execution => String(execution.brokerage_order_id ?? execution.brokerageOrderId ?? '').trim()))];
+    // Keep the empty value when some opening fills have IDs and others do
+    // not: incomplete provenance must not assign the whole trade to one order.
+    return order_ids.some(Boolean) ? order_ids : [];
+  }
+
   static normalizeLeg(raw) {
     const entryTime = toTime(raw.entry_time || raw.entryTime);
     const expirationDate = toDateOnly(raw.expiration_date || raw.expirationDate);
@@ -70,6 +88,8 @@ class OptionStrategyGroupingService {
 
     return {
       id: raw.id,
+      broker: raw.broker || '',
+      opening_order_ids: this.openingOrderIds(raw),
       account_identifier: raw.account_identifier || raw.accountIdentifier || null,
       symbol: raw.symbol,
       underlying_symbol: underlying,
@@ -255,8 +275,38 @@ class OptionStrategyGroupingService {
       .map(trade => this.normalizeLeg(trade))
       .filter(leg => leg && leg.instrument_type === 'option');
 
+    const groups = [];
+    const order_buckets = new Map();
+    for (const leg of candidates) {
+      // A trade aggregated across several opening orders cannot safely be
+      // assigned to just one strategy without splitting its executions.
+      if (leg.opening_order_ids.length !== 1) continue;
+      const key = JSON.stringify([leg.broker, leg.account_identifier,
+        leg.underlying_symbol, leg.opening_order_ids[0]]);
+      if (!order_buckets.has(key)) order_buckets.set(key, []);
+      order_buckets.get(key).push(leg);
+    }
+    for (const legs of order_buckets.values()) {
+      if (legs.length < 2) continue;
+      const classification = this.classifyOptionStrategy(legs, { timeWindowMinutes });
+      // Ratio quantities still belong to one order, but equal-ratio strategy
+      // names would misrepresent their risk/payoff structure.
+      if (!allSame(legs.map(leg => leg.quantity))) {
+        classification.strategy = 'multi_leg_option';
+        classification.confidence = FALLBACK_STRATEGY_CONFIDENCE;
+        delete classification.metadata.variant;
+      }
+      classification.method = 'brokerage_order_id';
+      classification.metadata.brokerage_order_id = legs[0].opening_order_ids[0];
+      delete classification.metadata.time_window_minutes;
+      groups.push(this.buildDetectedGroup(legs, classification));
+    }
+
     const buckets = new Map();
     for (const leg of candidates) {
+      // Known order boundaries take precedence even when only one leg was
+      // imported. Never merge a different order or an ambiguous trade by time.
+      if (leg.opening_order_ids.length > 0) continue;
       const key = [
         leg.account_identifier || '',
         leg.underlying_symbol,
@@ -268,7 +318,6 @@ class OptionStrategyGroupingService {
       buckets.get(key).push(leg);
     }
 
-    const groups = [];
     for (const bucketLegs of buckets.values()) {
       bucketLegs.sort((a, b) =>
         (toTime(a.entry_time).getTime() - toTime(b.entry_time).getTime()) ||
@@ -440,7 +489,7 @@ class OptionStrategyGroupingService {
       SELECT
         id, symbol, account_identifier, underlying_symbol, instrument_type,
         expiration_date, option_type, strike_price, side, quantity,
-        entry_time, exit_time, trade_date, pnl, commission, fees
+        entry_time, exit_time, trade_date, pnl, commission, fees, broker, executions
       FROM trades
       WHERE user_id = $1
         AND instrument_type = 'option'

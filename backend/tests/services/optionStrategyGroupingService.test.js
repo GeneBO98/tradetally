@@ -388,3 +388,83 @@ describe('OptionStrategyGroupingService.classifyOptionStrategy robustness', () =
     expect(classification.strategy).toBe('multi_leg_option');
   });
 });
+
+describe('brokerage order boundaries', () => {
+  function ordered(id, order_id, overrides = {}) {
+    const trade = leg({ id, ...overrides });
+    return { ...trade, broker: 'ibkr', executions: [
+      { action: trade.side === 'short' ? 'sell' : 'buy', brokerage_order_id: order_id }
+    ] };
+  }
+
+  test('different orders at the same time remain separate, including unmatched single legs', () => {
+    const trades = [
+      ordered('a', 'first', { strike_price: 400 }),
+      ordered('b', 'second', { side: 'long', strike_price: 395 }),
+      ordered('c', 'first', { side: 'long', strike_price: 390 }),
+      ordered('d', 'second', { strike_price: 405 }),
+      ordered('e', 'third', { strike_price: 410 })
+    ];
+    expect(OptionStrategyGroupingService.detectGroups(trades).map(group => group.tradeIds)).toEqual([
+      ['a', 'c'], ['b', 'd']
+    ]);
+  });
+
+  test('same order groups delayed fills beyond five minutes and across expirations', () => {
+    const groups = OptionStrategyGroupingService.detectGroups([
+      ordered('a', 'combo'),
+      ordered('b', 'combo', { side: 'long', expiration_date: '2026-02-20', entry_time: '2026-01-02T15:12:00Z' })
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({ detected_strategy: 'calendar_spread', classification_method: 'brokerage_order_id' });
+  });
+
+  test('order IDs are scoped to account, broker and underlying', () => {
+    const trades = [ordered('a', 'combo'),
+      ordered('b', 'combo', { side: 'long', strike_price: 395, account_identifier: 'OTHER' }),
+      { ...ordered('c', 'combo', { side: 'long', strike_price: 395 }), broker: 'other' },
+      ordered('d', 'combo', { side: 'long', strike_price: 395, underlying_symbol: 'QQQ' })];
+    expect(OptionStrategyGroupingService.detectGroups(trades)).toEqual([]);
+  });
+
+  test('repeated partial-fill IDs are deduplicated and closing IDs do not merge opening orders', () => {
+    const a = ordered('a', 'open-a');
+    a.executions.push({ ...a.executions[0] }, { action: 'buy', brokerage_order_id: 'close-both' });
+    const b = ordered('b', 'open-b', { side: 'long', strike_price: 395 });
+    b.executions.push({ action: 'sell', brokerage_order_id: 'close-both' });
+    expect(OptionStrategyGroupingService.openingOrderIds(a)).toEqual(['open-a']);
+    expect(OptionStrategyGroupingService.detectGroups([a, b])).toEqual([]);
+  });
+
+  test('trades spanning several opening orders are not guessed into one group', () => {
+    const a = ordered('a', 'first');
+    a.executions.push({ action: 'sell', brokerage_order_id: 'second' });
+    expect(OptionStrategyGroupingService.detectGroups([a,
+      ordered('b', 'first', { side: 'long', strike_price: 395 })])).toEqual([]);
+  });
+
+  test('opening fills with missing provenance are not attributed to the known order', () => {
+    const a = ordered('a', 'first');
+    a.executions.push({ action: 'sell' });
+    expect(OptionStrategyGroupingService.detectGroups([a,
+      ordered('b', 'first', { side: 'long', strike_price: 395 })])).toEqual([]);
+  });
+
+  test('ratio quantities preserve the whole order without an equal-ratio strategy label', () => {
+    const groups = OptionStrategyGroupingService.detectGroups([
+      ordered('a', 'combo'), ordered('b', 'combo', { side: 'long', strike_price: 395, quantity: 2 })
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].detected_strategy).toBe('multi_leg_option');
+  });
+
+  test('legacy executions retain time-based grouping and synthetic opens supply no order evidence', () => {
+    const a = ordered('a', null);
+    const b = ordered('b', 'closing-only', { side: 'long', strike_price: 395 });
+    b.executions[0].synthetic = true;
+    const groups = OptionStrategyGroupingService.detectGroups([a, b]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].classification_method).toBe('option_strategy_rules');
+    expect(OptionStrategyGroupingService.openingOrderIds({ ...a, executions: 'invalid' })).toEqual([]);
+  });
+});

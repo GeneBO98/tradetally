@@ -14,7 +14,7 @@ const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('..
 const { parseTradeFilters, tradeFilterProfiles } = require('../utils/tradeFilters');
 const { uuidv4 } = require('../utils/uuid');
 const { getBreakevenToleranceConfig, breakevenPredicate, isBreakevenGrossPnl } = require('../utils/breakeven');
-const { POSITION_GROUP_KEY } = require('../utils/positionGrouping');
+const { POSITION_GROUP_KEY, brokerageOrderSql, hasBrokerageOrder } = require('../utils/positionGrouping');
 
 /**
  * Parse a Trade Management request's query params into a filter spec for
@@ -1475,10 +1475,11 @@ const tradeManagementController = {
         if (trade.position_group_id) {
           groupCondition = (idx) => `t.position_group_id = $${idx}`;
           groupParams.push(trade.position_group_id);
-        } else if (trade.entry_time) {
+        } else if (trade.entry_time && !hasBrokerageOrder(trade)) {
           // Mirrors POSITION_GROUP_KEY's fallback key. A trade with no group id
           // and no entry_time keys on its own id and can never have siblings.
           groupCondition = (idx) => `t.position_group_id IS NULL
+             AND NOT ${brokerageOrderSql('t')}
              AND COALESCE(t.account_identifier, '') = $${idx}
              AND COALESCE(NULLIF(t.underlying_symbol, ''), t.symbol) = $${idx + 1}
              AND t.entry_time = $${idx + 2}`;

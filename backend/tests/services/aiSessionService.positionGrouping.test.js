@@ -16,6 +16,7 @@ jest.mock('../../src/models/Playbook', () => ({
 }));
 
 jest.mock('../../src/utils/positionGrouping', () => ({
+  ...jest.requireActual('../../src/utils/positionGrouping'),
   isPositionGroupingEnabled: jest.fn()
 }));
 
@@ -509,4 +510,12 @@ describe('AISessionService.getUserSessions recovery metadata', () => {
       })
     ]);
   });
+});
+
+
+test('AI summaries do not recombine ungrouped trades with known brokerage orders', () => {
+  const trades = [leg({ id: 'a', executions: [{ brokerage_order_id: 'first' }] }),
+    leg({ id: 'b', executions: [{ brokerage_order_id: 'second' }] }),
+    leg({ id: 'c' })];
+  expect(AISessionService.collapsePositionGroups(trades)).toHaveLength(3);
 });
