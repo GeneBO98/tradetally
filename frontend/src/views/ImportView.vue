@@ -1278,7 +1278,7 @@ import BaseModal from '@/components/common/BaseModal.vue'
 import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotifications'
 import { useStrategyOrder } from '@/composables/useStrategyOrder'
 import { useVisibilityPolling } from '@/composables/useVisibilityPolling'
-import { parseCSVHeaders, parseCSVSampleRows } from '@/utils/csvImportParse'
+import { isSierraChartBinaryFile, parseCSVHeaders, parseCSVSampleRows } from '@/utils/csvImportParse'
 
 const tradesStore = useTradesStore()
 const authStore = useAuthStore()
@@ -1926,7 +1926,7 @@ function getStatusText(status) {
 
 // Count CSV rows (excluding header)
 async function countCSVRows(file) {
-  if (file?.name?.toLowerCase().endsWith('.data')) return 0
+  if (isSierraChartBinaryFile(file)) return 0
 
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -2143,7 +2143,7 @@ async function analyzeSelectedFile(file) {
   isAnalyzingFile.value = true
 
   try {
-    if (file.name.toLowerCase().endsWith('.data')) {
+    if (isSierraChartBinaryFile(file)) {
       fileAnalysis.value = {
         rowCount: 0,
         headers: ['Binary Trade Activity Log'],
@@ -2333,7 +2333,10 @@ async function handleImport() {
     }
 
     // Pre-check: Try to detect format if using auto-detect or generic (and no custom mapping)
-    if ((selectedBroker.value === 'auto' || selectedBroker.value === 'generic') && !mappingId) {
+    // Sierra Chart .data files are binary. They are recognized during file
+    // analysis and decoded by the backend, so CSV header mapping does not apply.
+    if ((selectedBroker.value === 'auto' || selectedBroker.value === 'generic') &&
+        !mappingId && !isSierraChartBinaryFile(selectedFile.value)) {
       const headers = await parseCSVHeaders(selectedFile.value)
       console.log(`[IMPORT] Parsed headers:`, headers)
 

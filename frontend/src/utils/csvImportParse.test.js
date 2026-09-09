@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   detectBestDelimiter,
   findHeaderLineInfo,
+  isSierraChartBinaryFile,
   splitCSVLine,
   parseCSVFilePreview
 } from './csvImportParse.js'
@@ -12,6 +13,12 @@ const NINJA_ROW =
   'MES JUN26;Sell;1;7200,75;27/04/2026 6:05:02;601743f828ce41728b67d8c9ba4a56ab;Entry;1 S;0fc4852339a74a8f891d0627f37df2a6;Entry;0,62 $;1;Playback101;Playback;'
 
 describe('csvImportParse', () => {
+  it('identifies Sierra Chart binary trade activity logs by extension', () => {
+    expect(isSierraChartBinaryFile({ name: 'TradeActivity.simulated.DATA' })).toBe(true)
+    expect(isSierraChartBinaryFile({ name: 'TradeActivity.txt' })).toBe(false)
+    expect(isSierraChartBinaryFile(null)).toBe(false)
+  })
+
   it('detects semicolon delimiter on NinjaTrader header', () => {
     expect(detectBestDelimiter(NINJA_HEADER)).toBe(';')
   })

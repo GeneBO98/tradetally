@@ -6,6 +6,10 @@
 
 export const CSV_DELIMITERS = [',', ';', '\t', '|']
 
+export function isSierraChartBinaryFile(file) {
+  return Boolean(file?.name && file.name.toLowerCase().endsWith('.data'))
+}
+
 const HEADER_KEYWORDS = [
   'date', 'time', 'symbol', 'side', 'type', 'action', 'price', 'qty', 'quantity',
   'commission', 'description', 'order', 'profit', 'pnl', 'fill', 'entry', 'exit',
