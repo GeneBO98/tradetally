@@ -486,6 +486,10 @@ const tradeController = {
 
       const filters = {
         ...parseTradeFilters(req.query, tradeFilterProfiles.tradeList),
+        // History links from the Accounts page can intentionally show trades
+        // belonging to archived/non-reporting accounts. The flag is opt-in so
+        // normal list and analytics requests retain the reporting defaults.
+        includeArchived: req.query.includeArchived === 'true' || req.query.includeArchived === '1',
         // Pagination
         limit: parsedLimit,
         offset: parsedOffset
@@ -3399,7 +3403,10 @@ const tradeController = {
 
       const { minHoldTime, maxHoldTime } = req.query;
 
-      const filters = parseTradeFilters(req.query, tradeFilterProfiles.analytics);
+      const filters = {
+        ...parseTradeFilters(req.query, tradeFilterProfiles.analytics),
+        includeArchived: req.query.includeArchived === 'true' || req.query.includeArchived === '1'
+      };
 
       console.log('[ANALYTICS] Raw query:', req.query);
       console.log('[ANALYTICS] Parsed filters:', JSON.stringify(filters, null, 2));
@@ -3448,7 +3455,10 @@ const tradeController = {
     try {
       console.log('[PARTIAL-EXIT] Endpoint called, query:', req.query);
 
-      const filters = parseTradeFilters(req.query, tradeFilterProfiles.partialExit);
+      const filters = {
+        ...parseTradeFilters(req.query, tradeFilterProfiles.partialExit),
+        includeArchived: req.query.includeArchived === 'true' || req.query.includeArchived === '1'
+      };
 
       const cacheKey = `partial_exit_analytics:user_${req.user.id}:${JSON.stringify(filters)}`;
       const cached = cache.get(cacheKey);
@@ -3481,7 +3491,8 @@ const tradeController = {
 
       const data = await Trade.getMonthlyPerformance(req.user.id, year, accountsArray, {
         tags: tagsArray,
-        strategies: strategiesArray
+        strategies: strategiesArray,
+        includeArchived: req.query.includeArchived === 'true' || req.query.includeArchived === '1'
       });
 
       res.json({

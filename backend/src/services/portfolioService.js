@@ -256,8 +256,10 @@ class PortfolioService {
     const row = result.rows[0];
     return {
       defaultBenchmarkSymbol: row.default_benchmark_symbol || DEFAULT_PREFERENCES.defaultBenchmarkSymbol,
-      driftThresholdPercent: parseFloat(row.drift_threshold_percent) || DEFAULT_PREFERENCES.driftThresholdPercent,
-      drawdownThresholdPercent: parseFloat(row.drawdown_threshold_percent) || DEFAULT_PREFERENCES.drawdownThresholdPercent,
+      driftThresholdPercent: Number.isFinite(parseFloat(row.drift_threshold_percent))
+        ? parseFloat(row.drift_threshold_percent) : DEFAULT_PREFERENCES.driftThresholdPercent,
+      drawdownThresholdPercent: Number.isFinite(parseFloat(row.drawdown_threshold_percent))
+        ? parseFloat(row.drawdown_threshold_percent) : DEFAULT_PREFERENCES.drawdownThresholdPercent,
       alertsEnabled: row.alerts_enabled ?? DEFAULT_PREFERENCES.alertsEnabled
     };
   }

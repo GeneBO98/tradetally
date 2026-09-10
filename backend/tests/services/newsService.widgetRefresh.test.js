@@ -2,6 +2,10 @@ jest.mock('../../src/config/database', () => ({
   query: jest.fn()
 }));
 
+jest.mock('../../src/services/newsNotificationService', () => ({
+  publishForSymbol: jest.fn().mockResolvedValue(0)
+}));
+
 jest.mock('../../src/utils/finnhub', () => ({
   getCompanyNews: jest.fn(),
   isCryptoSymbol: jest.fn().mockReturnValue(false),
@@ -11,6 +15,7 @@ jest.mock('../../src/utils/finnhub', () => ({
 const db = require('../../src/config/database');
 const finnhub = require('../../src/utils/finnhub');
 const NewsService = require('../../src/services/newsService');
+const NewsNotificationService = require('../../src/services/newsNotificationService');
 
 describe('NewsService widget refresh tracking', () => {
   beforeEach(() => {
@@ -51,6 +56,20 @@ describe('NewsService widget refresh tracking', () => {
       errors: 0,
       changedSymbols: ['AAPL']
     }));
+    expect(NewsNotificationService.publishForSymbol).toHaveBeenCalledWith('AAPL', [
+      expect.objectContaining({ id: 2, symbol: 'AAPL', headline: 'New' })
+    ]);
+  });
+
+  test('keeps fetched news available when notification delivery fails', async () => {
+    const article = { id: 4, datetime: Math.floor(Date.now() / 1000), headline: 'Latest' };
+    db.query.mockResolvedValueOnce({ rows: [] });
+    finnhub.getCompanyNews.mockResolvedValueOnce([article]);
+    NewsNotificationService.publishForSymbol.mockRejectedValueOnce(new Error('storage unavailable'));
+
+    expect(await NewsService.refreshNewsForSymbols(['AAPL'])).toEqual([
+      { ...article, symbol: 'AAPL' }
+    ]);
   });
 
   test('coalesces users tracking changed symbols across positions and watchlists', async () => {

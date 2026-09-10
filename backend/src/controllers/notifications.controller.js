@@ -286,6 +286,7 @@ const notificationsController = {
               WHEN n.type = 'leaderboard_ranking' THEN COALESCE(n.data->>'leaderboard', 'Leaderboard')
               WHEN n.type = 'behavioral_alert' THEN 'Behavioral Alert'
               WHEN n.type = 'portfolio_alert' THEN COALESCE(n.data->>'symbol', 'Portfolio')
+              WHEN n.type = 'news_alert' THEN COALESCE(n.data->>'symbol', 'News')
               WHEN n.type IN ('broker_reauth_expiring', 'broker_reauth_required') THEN COALESCE(n.data->>'broker_name', 'Broker Sync')
               ELSE 'Notification'
             END AS symbol,
@@ -297,6 +298,7 @@ const notificationsController = {
               WHEN n.type = 'leaderboard_ranking' THEN CONCAT('Leaderboard update: ', COALESCE(n.data->>'leaderboard', 'Leaderboard'))
               WHEN n.type = 'behavioral_alert' THEN COALESCE(n.data->>'message', 'Behavioral alert')
               WHEN n.type = 'portfolio_alert' THEN COALESCE(n.data->>'message', 'Portfolio alert')
+              WHEN n.type = 'news_alert' THEN COALESCE(n.data->>'headline', n.data->>'message', 'News article')
               WHEN n.type = 'broker_reauth_expiring' THEN COALESCE(n.data->>'message', 'Reauthorize your broker before syncing is interrupted')
               WHEN n.type = 'broker_reauth_required' THEN COALESCE(n.data->>'message', 'Reconnect your broker to resume syncing')
               ELSE COALESCE(n.data->>'message', 'Notification')

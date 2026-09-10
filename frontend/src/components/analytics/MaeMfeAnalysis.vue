@@ -185,6 +185,39 @@ let histogramChartInstance = null
 const scatterChart = ref(null)
 const histogramChart = ref(null)
 
+const perfectExitReferencePlugin = {
+  id: 'maeMfePerfectExitReference',
+  beforeDatasetsDraw(chart) {
+    const lineDatasetIndex = chart.data.datasets.findIndex(dataset => dataset.label === 'Perfect exit')
+    if (lineDatasetIndex === -1 || !chart.isDatasetVisible(lineDatasetIndex)) return
+
+    const { chartArea, ctx, scales } = chart
+    const xScale = scales.x
+    const yScale = scales.y
+    if (!chartArea || !xScale || !yScale) return
+
+    // Draw y = x only inside the already-calculated plot bounds. Keeping this
+    // out of dataset data prevents a large MFE outlier from expanding the
+    // result axis and compressing the actual trade points near zero.
+    const startValue = Math.max(0, xScale.min, yScale.min)
+    const endValue = Math.min(xScale.max, yScale.max)
+    if (!Number.isFinite(startValue) || !Number.isFinite(endValue) || endValue <= startValue) return
+
+    ctx.save()
+    ctx.beginPath()
+    ctx.rect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, chartArea.bottom - chartArea.top)
+    ctx.clip()
+    ctx.beginPath()
+    ctx.moveTo(xScale.getPixelForValue(startValue), yScale.getPixelForValue(startValue))
+    ctx.lineTo(xScale.getPixelForValue(endValue), yScale.getPixelForValue(endValue))
+    ctx.setLineDash([6, 4])
+    ctx.lineWidth = 1.5
+    ctx.strokeStyle = 'rgba(156, 163, 175, 0.5)'
+    ctx.stroke()
+    ctx.restore()
+  }
+}
+
 // ---- formatting ----
 const { formatCurrency } = useCurrencyFormatter()
 
@@ -390,9 +423,6 @@ function renderScatter() {
   })
   const validPoint = point => point.x != null && point.y != null
 
-  // Perfect-exit reference line: max MFE across all trades
-  const allMfe = trades.value.flatMap(t => [getTradeValue(t, 'mfe'), getTradeValue(t, 'post_exit_mfe')]).filter(value => value != null)
-  const maxMfe = Math.max(...allMfe, 0)
   const postExitTrades = trades.value.filter(t => getTradeValue(t, 'post_exit_mfe') != null)
   const connectors = postExitTrades.map(t => ([
     { x: getTradeValue(t, 'mfe'), y: getTradeValue(t, 'pnl') },
@@ -456,7 +486,9 @@ function renderScatter() {
         },
         {
           label: 'Perfect exit',
-          data: [{ x: 0, y: 0 }, { x: maxMfe, y: maxMfe }],
+          // The reference is rendered by perfectExitReferencePlugin so it
+          // does not participate in axis bounds.
+          data: [],
           type: 'line',
           borderColor: 'rgba(156, 163, 175, 0.5)',
           borderWidth: 1.5,
@@ -467,6 +499,7 @@ function renderScatter() {
         }
       ]
     },
+    plugins: [perfectExitReferencePlugin],
     options: {
       responsive: true,
       maintainAspectRatio: false,

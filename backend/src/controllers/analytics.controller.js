@@ -279,7 +279,8 @@ function convertQueryToTradeFilters(query) {
     optionTypes: toArray(query.optionTypes),
     holdTime: validHoldTimes.includes(holdTimeVal) ? holdTimeVal : undefined,
     hasRValue: query.hasRValue,
-    accounts: toArray(query.accounts)
+    accounts: toArray(query.accounts),
+    includeArchived: query.includeArchived === 'true' || query.includeArchived === '1'
   };
 }
 

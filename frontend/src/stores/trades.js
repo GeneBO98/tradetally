@@ -54,6 +54,7 @@ export const useTradesStore = defineStore('trades', () => {
     brokers: [],
     importId: '',
     accounts: [],
+    includeArchived: false,
     daysOfWeek: [],
     market_sessions: [],
     instrumentTypes: []
@@ -550,6 +551,7 @@ export const useTradesStore = defineStore('trades', () => {
         brokers: [],
         importId: '',
         accounts: globalAccount || '', // Preserve global account filter (string format)
+        includeArchived: false,
         daysOfWeek: [],
         instrumentTypes: []
       }
@@ -573,6 +575,7 @@ export const useTradesStore = defineStore('trades', () => {
         brokers: [],
         importId: '',
         accounts: '',
+        includeArchived: false,
         daysOfWeek: [],
         instrumentTypes: [],
         ...newFilters
@@ -609,6 +612,7 @@ export const useTradesStore = defineStore('trades', () => {
       brokers: [],
       importId: '',
       accounts: globalAccount || '', // Preserve global account filter (string format)
+      includeArchived: false,
       daysOfWeek: [],
       instrumentTypes: []
     }

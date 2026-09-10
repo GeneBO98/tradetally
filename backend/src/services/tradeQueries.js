@@ -186,6 +186,22 @@ class TradeQueries {
     let whereClause = `WHERE t.user_id = $1`;
     let needsSectorOuterJoin = false;
 
+    // Account reporting is opt-out. Managed accounts with
+    // include_in_reports = false stay in the database and can be requested
+    // explicitly for history, but do not affect default lists, metrics, or
+    // charts. Unmanaged/unsorted trades remain part of the default population.
+    if (filters.includeArchived !== true) {
+      whereClause += ` AND NOT EXISTS (
+        SELECT 1
+        FROM user_accounts reporting_account
+        WHERE reporting_account.user_id = t.user_id
+          AND reporting_account.account_identifier IS NOT NULL
+          AND reporting_account.account_identifier != ''
+          AND reporting_account.account_identifier = t.account_identifier
+          AND reporting_account.include_in_reports = false
+      )`;
+    }
+
     if (filters.symbol) {
       if (filters.symbolExact) {
         whereClause += ` AND (

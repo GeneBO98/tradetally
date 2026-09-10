@@ -9,6 +9,7 @@
 
 const db = require('../config/database');
 const finnhub = require('../utils/finnhub');
+const NewsNotificationService = require('./newsNotificationService');
 
 const LOG_PREFIX = '[NEWS-SERVICE]';
 
@@ -155,6 +156,14 @@ class NewsService {
          DO UPDATE SET news_items = $2, fetched_at = NOW()`,
         [symbol, JSON.stringify(filtered)]
       );
+
+      try {
+        await NewsNotificationService.publishForSymbol(symbol, filtered);
+      } catch (error) {
+        // News remains available if notification storage is temporarily down.
+        // Delivery receipts let the next fetch safely retry these articles.
+        console.error(`${LOG_PREFIX} Failed to publish news notifications for ${symbol}:`, error.message);
+      }
 
       return filtered;
     } catch (error) {

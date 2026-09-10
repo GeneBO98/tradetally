@@ -1166,6 +1166,18 @@ class Trade {
     let paramCount = 2;
     let whereClause = 'WHERE t.user_id = $1 AND t.entry_price IS NOT NULL AND t.exit_price IS NULL';
 
+    if (filters.includeArchived !== true) {
+      whereClause += ` AND NOT EXISTS (
+        SELECT 1
+        FROM user_accounts reporting_account
+        WHERE reporting_account.user_id = t.user_id
+          AND reporting_account.account_identifier IS NOT NULL
+          AND reporting_account.account_identifier != ''
+          AND reporting_account.account_identifier = t.account_identifier
+          AND reporting_account.include_in_reports = false
+      )`;
+    }
+
     if (filters.accounts && filters.accounts.length > 0) {
       console.log('[OPEN_POSITIONS] Applying account filter:', filters.accounts);
       if (filters.accounts.includes('__unsorted__')) {
@@ -2759,6 +2771,18 @@ class Trade {
     const values = [userId];
     let paramCount = 2;
 
+    if (filters.includeArchived !== true) {
+      whereClause += ` AND NOT EXISTS (
+        SELECT 1
+        FROM user_accounts reporting_account
+        WHERE reporting_account.user_id = t.user_id
+          AND reporting_account.account_identifier IS NOT NULL
+          AND reporting_account.account_identifier != ''
+          AND reporting_account.account_identifier = t.account_identifier
+          AND reporting_account.include_in_reports = false
+      )`;
+    }
+
     // Date filtering (shared with the canonical builder)
     const dateRange = buildTradeDateRangeClause(filters, paramCount);
     if (dateRange.clause) {
@@ -3076,11 +3100,22 @@ class Trade {
       params.push(...filters.strategies);
     }
 
+    const reportingAccountCondition = filters.includeArchived === true ? '' : `
+          AND NOT EXISTS (
+            SELECT 1
+            FROM user_accounts reporting_account
+            WHERE reporting_account.user_id = trades.user_id
+              AND reporting_account.account_identifier IS NOT NULL
+              AND reporting_account.account_identifier != ''
+              AND reporting_account.account_identifier = trades.account_identifier
+              AND reporting_account.include_in_reports = false
+          )`;
+
     const whereBody = `
         WHERE user_id = $1
           AND EXTRACT(YEAR FROM trade_date) = $2
           AND exit_price IS NOT NULL
-          AND pnl IS NOT NULL${extraFilter}`;
+          AND pnl IS NOT NULL${reportingAccountCondition}${extraFilter}`;
 
     // Grouped mode aggregates legs to positions first; r-value stats then read
     // the position-level sum, gated on any leg having a stop (has_stop).
@@ -3323,16 +3358,31 @@ class Trade {
     const query = `
       SELECT DISTINCT account_identifier FROM (
         SELECT account_identifier
-        FROM trades
-        WHERE user_id = $1 AND account_identifier IS NOT NULL AND account_identifier != ''
+        FROM trades t
+        WHERE t.user_id = $1 AND t.account_identifier IS NOT NULL AND t.account_identifier != ''
+          AND NOT EXISTS (
+            SELECT 1
+            FROM user_accounts archived_account
+            WHERE archived_account.user_id = t.user_id
+              AND archived_account.account_identifier = t.account_identifier
+              AND archived_account.is_archived = true
+          )
         UNION
         SELECT account_identifier
         FROM user_accounts
         WHERE user_id = $1 AND account_identifier IS NOT NULL AND account_identifier != ''
+          AND is_archived = false
         UNION
-        SELECT account_identifier
-        FROM investment_lots
-        WHERE user_id = $1 AND account_identifier IS NOT NULL AND account_identifier != ''
+        SELECT l.account_identifier
+        FROM investment_lots l
+        WHERE l.user_id = $1 AND l.account_identifier IS NOT NULL AND l.account_identifier != ''
+          AND NOT EXISTS (
+            SELECT 1
+            FROM user_accounts archived_account
+            WHERE archived_account.user_id = l.user_id
+              AND archived_account.account_identifier = l.account_identifier
+              AND archived_account.is_archived = true
+          )
       ) combined
       ORDER BY account_identifier
     `;

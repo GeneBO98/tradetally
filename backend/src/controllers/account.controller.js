@@ -9,6 +9,24 @@ const plaidFundingService = require('../services/plaid/plaidFundingService');
 const OptionStrategyGroupingService = require('../services/optionStrategyGroupingService');
 const AnalyticsCache = require('../services/analyticsCache');
 
+function formatAccount(account, { includeTradeCount = false } = {}) {
+  return {
+    id: account.id,
+    accountName: account.account_name,
+    accountIdentifier: account.account_identifier,
+    broker: account.broker,
+    initialBalance: parseFloat(account.initial_balance),
+    initialBalanceDate: account.initial_balance_date,
+    isPrimary: account.is_primary,
+    isArchived: account.is_archived === true,
+    includeInReports: account.include_in_reports !== false,
+    notes: account.notes,
+    ...(includeTradeCount ? { tradeCount: parseInt(account.trade_count) || 0 } : {}),
+    createdAt: account.created_at,
+    updatedAt: account.updated_at
+  };
+}
+
 const accountController = {
   /**
    * Get all accounts for the authenticated user
@@ -16,22 +34,11 @@ const accountController = {
    */
   async getAccounts(req, res) {
     try {
-      const accounts = await Account.findByUser(req.user.id);
+      const includeArchived = req.query.includeArchived === 'true' || req.query.includeArchived === '1';
+      const accounts = await Account.findByUser(req.user.id, { includeArchived });
 
       // Convert to camelCase for frontend
-      const formattedAccounts = accounts.map(account => ({
-        id: account.id,
-        accountName: account.account_name,
-        accountIdentifier: account.account_identifier,
-        broker: account.broker,
-        initialBalance: parseFloat(account.initial_balance),
-        initialBalanceDate: account.initial_balance_date,
-        isPrimary: account.is_primary,
-        notes: account.notes,
-        tradeCount: parseInt(account.trade_count) || 0,
-        createdAt: account.created_at,
-        updatedAt: account.updated_at
-      }));
+      const formattedAccounts = accounts.map(account => formatAccount(account, { includeTradeCount: true }));
 
       res.json({
         success: true,
@@ -63,18 +70,7 @@ const accountController = {
 
       res.json({
         success: true,
-        data: {
-          id: account.id,
-          accountName: account.account_name,
-          accountIdentifier: account.account_identifier,
-          broker: account.broker,
-          initialBalance: parseFloat(account.initial_balance),
-          initialBalanceDate: account.initial_balance_date,
-          isPrimary: account.is_primary,
-          notes: account.notes,
-          createdAt: account.created_at,
-          updatedAt: account.updated_at
-        }
+        data: formatAccount(account)
       });
     } catch (error) {
       console.error('[ACCOUNTS] Error fetching account:', error);
@@ -102,16 +98,7 @@ const accountController = {
 
       res.json({
         success: true,
-        data: {
-          id: account.id,
-          accountName: account.account_name,
-          accountIdentifier: account.account_identifier,
-          broker: account.broker,
-          initialBalance: parseFloat(account.initial_balance),
-          initialBalanceDate: account.initial_balance_date,
-          isPrimary: account.is_primary,
-          notes: account.notes
-        }
+        data: formatAccount(account)
       });
     } catch (error) {
       console.error('[ACCOUNTS] Error fetching primary account:', error);
@@ -160,7 +147,9 @@ const accountController = {
         initialBalance,
         initialBalanceDate,
         isPrimary,
-        notes
+        notes,
+        isArchived,
+        includeInReports
       } = req.body;
 
       // Validation
@@ -198,22 +187,16 @@ const accountController = {
         initialBalance: parseFloat(initialBalance) || 0,
         initialBalanceDate: effectiveBalanceDate,
         isPrimary: isPrimary || false,
-        notes: notes || null
+        notes: notes || null,
+        isArchived: isArchived || false,
+        includeInReports: includeInReports !== false
       });
+
+      await AnalyticsCache.invalidate(req.user.id);
 
       res.status(201).json({
         success: true,
-        data: {
-          id: account.id,
-          accountName: account.account_name,
-          accountIdentifier: account.account_identifier,
-          broker: account.broker,
-          initialBalance: parseFloat(account.initial_balance),
-          initialBalanceDate: account.initial_balance_date,
-          isPrimary: account.is_primary,
-          notes: account.notes,
-          createdAt: account.created_at
-        }
+        data: formatAccount(account)
       });
     } catch (error) {
       console.error('[ACCOUNTS] Error creating account:', error);
@@ -248,19 +231,11 @@ const accountController = {
         });
       }
 
+      await AnalyticsCache.invalidate(req.user.id);
+
       res.json({
         success: true,
-        data: {
-          id: account.id,
-          accountName: account.account_name,
-          accountIdentifier: account.account_identifier,
-          broker: account.broker,
-          initialBalance: parseFloat(account.initial_balance),
-          initialBalanceDate: account.initial_balance_date,
-          isPrimary: account.is_primary,
-          notes: account.notes,
-          updatedAt: account.updated_at
-        }
+        data: formatAccount(account)
       });
     } catch (error) {
       console.error('[ACCOUNTS] Error updating account:', error);
@@ -285,6 +260,10 @@ const accountController = {
           message: 'Account not found'
         });
       }
+
+      // Deleting a managed account orphans its trades. Invalidate analytics so
+      // the next report reflects the changed account association immediately.
+      await AnalyticsCache.invalidate(req.user.id);
 
       res.json({
         success: true,

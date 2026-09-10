@@ -127,7 +127,22 @@
                   <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Set as primary account</span>
                 </label>
               </div>
+
+              <div class="flex items-center">
+                <label class="flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    v-model="form.includeInReports"
+                    class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  />
+                  <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Include in reports</span>
+                </label>
+              </div>
             </div>
+
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              Turn this off to keep the account's history without including its trades in P&L, win rate, or analytics charts.
+            </p>
 
             <div>
               <label for="notes" class="label">Notes</label>
@@ -155,15 +170,25 @@
       <!-- Accounts List -->
       <div class="card">
         <div class="card-body">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">Your Accounts</h3>
+          <div class="flex items-start justify-between gap-4 mb-6">
+            <div>
+              <h3 class="text-lg font-medium text-gray-900 dark:text-white">Your Accounts</h3>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Archived accounts stay available here and retain all linked trades.
+              </p>
+            </div>
+            <span class="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+              {{ activeAccounts.length }} active / {{ archivedAccounts.length }} archived
+            </span>
+          </div>
 
           <div v-if="accounts.length === 0" class="text-center py-8 text-gray-500 dark:text-gray-400">
             <p>No accounts yet. Add your first trading account above.</p>
           </div>
 
-          <div v-else class="space-y-4">
+          <div v-else-if="activeAccounts.length > 0" class="space-y-4">
             <div
-              v-for="account in accounts"
+              v-for="account in activeAccounts"
               :key="account.id"
               class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg"
             >
@@ -175,6 +200,9 @@
                   </span>
                   <span v-if="account.broker" class="px-2 py-0.5 text-xs font-medium rounded bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
                     {{ formatBroker(account.broker) }}
+                  </span>
+                  <span v-if="!account.includeInReports" class="px-2 py-0.5 text-xs font-medium rounded bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                    Excluded from reports
                   </span>
                 </div>
                 <div class="mt-1 text-sm text-gray-600 dark:text-gray-400">
@@ -195,6 +223,13 @@
                   </svg>
                 </button>
                 <button
+                  @click="confirmArchive(account)"
+                  class="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-md hover:border-primary-500 hover:text-primary-600 dark:hover:text-primary-400"
+                  title="Archive account"
+                >
+                  Archive
+                </button>
+                <button
                   @click="confirmDelete(account)"
                   class="p-2 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400"
                   title="Delete"
@@ -203,6 +238,62 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                   </svg>
                 </button>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="archivedAccounts.length > 0" class="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700">
+            <div class="flex items-center justify-between mb-3">
+              <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Archived accounts</h4>
+              <span class="text-xs text-gray-500 dark:text-gray-400">Excluded from active selectors</span>
+            </div>
+            <div class="space-y-3">
+              <div
+                v-for="account in archivedAccounts"
+                :key="account.id"
+                class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 bg-gray-50/70 dark:bg-gray-800/60"
+              >
+                <div class="min-w-0">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="font-medium text-gray-900 dark:text-white">{{ account.accountName }}</span>
+                    <span class="px-2 py-0.5 text-xs font-medium rounded bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300">Archived</span>
+                    <span
+                      class="px-2 py-0.5 text-xs font-medium rounded"
+                      :class="account.includeInReports ? 'bg-primary-100 text-primary-700 dark:bg-primary-900 dark:text-primary-300' : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'"
+                    >
+                      {{ account.includeInReports ? 'Included in reports' : 'Excluded from reports' }}
+                    </span>
+                  </div>
+                  <div class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                    <span v-if="account.accountIdentifier">ID: {{ redactAccountId(account.accountIdentifier) }}</span>
+                    <span v-if="account.accountIdentifier && account.tradeCount"> | </span>
+                    <span v-if="account.tradeCount">{{ account.tradeCount }} trades</span>
+                  </div>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <button
+                    v-if="account.accountIdentifier"
+                    @click="viewAccountHistory(account)"
+                    class="px-3 py-1.5 text-sm text-primary-600 dark:text-primary-400 border border-primary-200 dark:border-primary-700 rounded-md hover:bg-primary-50 dark:hover:bg-primary-900/20"
+                  >
+                    View history
+                  </button>
+                  <button
+                    @click="confirmArchive(account)"
+                    class="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-md hover:border-primary-500 hover:text-primary-600 dark:hover:text-primary-400"
+                  >
+                    Restore
+                  </button>
+                  <button
+                    @click="confirmDelete(account)"
+                    class="p-2 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400"
+                    title="Delete"
+                  >
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -239,6 +330,46 @@
         </div>
       </div>
     </template>
+
+    <!-- Archive / restore confirmation modal -->
+    <div v-if="showArchiveModal" class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="archive-modal-title" role="dialog" aria-modal="true">
+      <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" @click="showArchiveModal = false"></div>
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
+        <div class="inline-block align-bottom bg-white dark:bg-gray-900 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+          <div class="px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+            <h3 id="archive-modal-title" class="text-lg leading-6 font-medium text-gray-900 dark:text-white">
+              {{ accountToArchive?.isArchived ? 'Restore account' : 'Archive account' }}
+            </h3>
+            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+              <template v-if="accountToArchive?.isArchived">
+                Restore “{{ accountToArchive?.accountName }}” to the active account lists. Its current reporting preference will be preserved.
+              </template>
+              <template v-else>
+                Archive “{{ accountToArchive?.accountName }}”? Its trades and cashflow will be retained, but it will be hidden from active selectors and excluded from reports.
+              </template>
+            </p>
+          </div>
+          <div class="bg-gray-50 dark:bg-gray-800 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+            <button
+              type="button"
+              @click="updateArchiveState"
+              :disabled="saving"
+              class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary-600 text-base font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
+            >
+              {{ saving ? 'Saving...' : (accountToArchive?.isArchived ? 'Restore' : 'Archive') }}
+            </button>
+            <button
+              type="button"
+              @click="showArchiveModal = false"
+              class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-700 text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- Delete Confirmation Modal -->
     <div v-if="showDeleteModal" class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
@@ -289,15 +420,19 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { useRouter } from 'vue-router'
 import api from '@/services/api'
 import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
 import BaseSelect from '@/components/common/BaseSelect.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useAccountsStore } from '@/stores/accounts'
+import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 
 const authStore = useAuthStore()
 const accountsStore = useAccountsStore()
+const router = useRouter()
+const { selectedAccount, clearAccount, fetchAccounts: refreshGlobalAccounts } = useGlobalAccountFilter()
 
 const loading = ref(true)
 // Full-page spinner only on first load (CLAUDE.md pattern)
@@ -310,6 +445,8 @@ const unlinkedIdentifiers = ref([])
 const editingAccount = ref(null)
 const showDeleteModal = ref(false)
 const accountToDelete = ref(null)
+const showArchiveModal = ref(false)
+const accountToArchive = ref(null)
 
 const form = ref({
   accountName: '',
@@ -318,8 +455,13 @@ const form = ref({
   initialBalance: 0,
   initialBalanceDate: new Date().toISOString().split('T')[0],
   isPrimary: false,
+  isArchived: false,
+  includeInReports: true,
   notes: ''
 })
+
+const activeAccounts = computed(() => accounts.value.filter(account => !account.isArchived))
+const archivedAccounts = computed(() => accounts.value.filter(account => account.isArchived))
 
 const brokerLabels = {
   schwab: 'Charles Schwab',
@@ -386,11 +528,14 @@ async function fetchAccounts() {
   try {
     // Force-fetch through the shared store so other consumers (global account
     // selector, cashflow, trade form) see fresh data after mutations here
-    const [storeAccounts, unlinkedRes] = await Promise.all([
+    const [storeAccounts, allAccountsRes, unlinkedRes] = await Promise.all([
       accountsStore.fetchAccounts({ force: true }),
+      api.get('/accounts', { params: { includeArchived: true } }),
       api.get('/accounts/unlinked-identifiers')
     ])
-    accounts.value = storeAccounts || []
+    // Keep the shared store scoped to active accounts for selectors/imports;
+    // this page explicitly loads archived records for account management.
+    accounts.value = allAccountsRes.data.data || storeAccounts || []
     unlinkedIdentifiers.value = unlinkedRes.data.data || []
   } catch (err) {
     console.error('Failed to fetch accounts:', err)
@@ -409,6 +554,8 @@ function createFromUnlinked(item) {
     initialBalance: 0,
     initialBalanceDate: item.earliestTradeDate || new Date().toISOString().split('T')[0],
     isPrimary: false,
+    isArchived: false,
+    includeInReports: true,
     notes: ''
   }
   editingAccount.value = null
@@ -423,6 +570,8 @@ function resetForm() {
     initialBalance: 0,
     initialBalanceDate: new Date().toISOString().split('T')[0],
     isPrimary: false,
+    isArchived: false,
+    includeInReports: true,
     notes: ''
   }
   editingAccount.value = null
@@ -437,6 +586,8 @@ function editAccount(account) {
     initialBalance: parseFloat(account.initialBalance) || 0,
     initialBalanceDate: account.initialBalanceDate?.split('T')[0] || new Date().toISOString().split('T')[0],
     isPrimary: account.isPrimary || false,
+    isArchived: account.isArchived || false,
+    includeInReports: account.includeInReports !== false,
     notes: account.notes || ''
   }
   // Scroll to form
@@ -459,6 +610,8 @@ async function saveAccount() {
       initialBalance: form.value.initialBalance || 0,
       initialBalanceDate: form.value.initialBalanceDate,
       isPrimary: form.value.isPrimary,
+      isArchived: form.value.isArchived,
+      includeInReports: form.value.includeInReports,
       notes: form.value.notes || null
     }
 
@@ -481,6 +634,52 @@ async function saveAccount() {
 function confirmDelete(account) {
   accountToDelete.value = account
   showDeleteModal.value = true
+}
+
+function confirmArchive(account) {
+  accountToArchive.value = account
+  showArchiveModal.value = true
+}
+
+function viewAccountHistory(account) {
+  if (!account.accountIdentifier) return
+
+  router.push({
+    name: 'trades',
+    query: {
+      accounts: account.accountIdentifier,
+      includeArchived: 'true'
+    }
+  })
+}
+
+async function updateArchiveState() {
+  if (!accountToArchive.value) return
+
+  const account = accountToArchive.value
+  saving.value = true
+  error.value = null
+
+  try {
+    const isRestoring = account.isArchived
+    await api.put(`/accounts/${account.id}`, isRestoring
+      ? { isArchived: false }
+      : { isArchived: true, includeInReports: false })
+
+    if (!isRestoring && selectedAccount.value === account.accountIdentifier) {
+      clearAccount()
+    }
+
+    showArchiveModal.value = false
+    accountToArchive.value = null
+    await fetchAccounts()
+    await refreshGlobalAccounts({ force: true })
+  } catch (err) {
+    console.error('Failed to update account archive state:', err)
+    error.value = err.response?.data?.message || 'Failed to update account'
+  } finally {
+    saving.value = false
+  }
 }
 
 async function deleteAccount() {
@@ -509,6 +708,9 @@ async function deleteAccount() {
 function handleEscape(e) {
   if (e.key === 'Escape' && showDeleteModal.value) {
     showDeleteModal.value = false
+  }
+  if (e.key === 'Escape' && showArchiveModal.value) {
+    showArchiveModal.value = false
   }
 }
 

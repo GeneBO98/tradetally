@@ -18,11 +18,16 @@ class Account {
       initialBalance,
       initialBalanceDate,
       isPrimary,
-      notes
+      notes,
+      isArchived = false,
+      includeInReports = true
     } = accountData;
 
+    const effectiveIsArchived = isArchived === true;
+    const effectiveIsPrimary = isPrimary === true && !effectiveIsArchived;
+
     // If setting as primary, unset existing primary first
-    if (isPrimary) {
+    if (effectiveIsPrimary) {
       await db.query(
         'UPDATE user_accounts SET is_primary = false WHERE user_id = $1',
         [userId]
@@ -32,9 +37,10 @@ class Account {
     const query = `
       INSERT INTO user_accounts (
         user_id, account_name, account_identifier, broker,
-        initial_balance, initial_balance_date, is_primary, notes
+        initial_balance, initial_balance_date, is_primary, notes,
+        is_archived, include_in_reports
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *
     `;
 
@@ -45,8 +51,10 @@ class Account {
       broker || null,
       initialBalance || 0,
       initialBalanceDate,
-      isPrimary || false,
-      notes || null
+      effectiveIsPrimary,
+      notes || null,
+      effectiveIsArchived,
+      includeInReports !== false
     ]);
 
     console.log(`[ACCOUNTS] Created account "${accountName}" for user ${userId}`);
@@ -56,7 +64,8 @@ class Account {
   /**
    * Get all accounts for a user
    */
-  static async findByUser(userId) {
+  static async findByUser(userId, options = {}) {
+    const { includeArchived = false } = options;
     const query = `
       SELECT
         ua.*,
@@ -69,6 +78,7 @@ class Account {
         ) as trade_count
       FROM user_accounts ua
       WHERE ua.user_id = $1
+        ${includeArchived ? '' : 'AND ua.is_archived = false'}
       ORDER BY ua.is_primary DESC, ua.account_name ASC
     `;
 
@@ -95,7 +105,7 @@ class Account {
   static async getPrimary(userId) {
     const query = `
       SELECT * FROM user_accounts
-      WHERE user_id = $1 AND is_primary = true
+      WHERE user_id = $1 AND is_primary = true AND is_archived = false
     `;
 
     const result = await db.query(query, [userId]);
@@ -163,8 +173,21 @@ class Account {
    * Update an account
    */
   static async update(accountId, userId, updates) {
+    const normalizedUpdates = { ...updates };
+
+    // Archiving an account removes it from the active default and from
+    // reports unless the caller explicitly opts it back in. This makes the
+    // archive action safe for historical/demo accounts while still allowing
+    // users to keep an archived account in reports intentionally.
+    if (normalizedUpdates.isArchived === true) {
+      normalizedUpdates.isPrimary = false;
+      if (normalizedUpdates.includeInReports === undefined) {
+        normalizedUpdates.includeInReports = false;
+      }
+    }
+
     // Handle primary account toggle
-    if (updates.isPrimary) {
+    if (normalizedUpdates.isPrimary) {
       await db.query(
         'UPDATE user_accounts SET is_primary = false WHERE user_id = $1 AND id != $2',
         [userId, accountId]
@@ -182,10 +205,12 @@ class Account {
       initialBalance: 'initial_balance',
       initialBalanceDate: 'initial_balance_date',
       isPrimary: 'is_primary',
-      notes: 'notes'
+      notes: 'notes',
+      isArchived: 'is_archived',
+      includeInReports: 'include_in_reports'
     };
 
-    Object.entries(updates).forEach(([key, value]) => {
+    Object.entries(normalizedUpdates).forEach(([key, value]) => {
       if (fieldMap[key] !== undefined && value !== undefined) {
         fields.push(`${fieldMap[key]} = $${paramCount}`);
         values.push(value);

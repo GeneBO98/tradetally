@@ -1676,6 +1676,7 @@ function buildFiltersFromQuery(query) {
   if (query.optionTypes) f.optionTypes = String(query.optionTypes).split(',').filter(Boolean)
   if (query.qualityGrades) f.qualityGrades = String(query.qualityGrades).split(',').filter(Boolean)
   if (query.importId) f.importId = query.importId
+  if (query.includeArchived === 'true' || query.includeArchived === true) f.includeArchived = true
   return f
 }
 
@@ -1717,8 +1718,8 @@ onMounted(() => {
     const storeAccount = Array.isArray(tradesStore.filters.accounts)
       ? tradesStore.filters.accounts.filter(Boolean).join(',')
       : (tradesStore.filters.accounts || '')
-    if (globalAccount !== storeAccount) {
-      tradesStore.setFilters({ ...tradesStore.filters, accounts: globalAccount })
+    if (globalAccount !== storeAccount || tradesStore.filters.includeArchived) {
+      tradesStore.setFilters({ ...tradesStore.filters, accounts: globalAccount, includeArchived: false })
     }
   }
   tradesStore.fetchTrades() // fetchTrades now includes analytics in parallel
