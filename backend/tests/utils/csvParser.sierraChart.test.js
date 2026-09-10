@@ -120,6 +120,30 @@ describe('Sierra Chart parser', () => {
     expect(result.trades[0].executions.map(execution => execution.execution_id)).toEqual(['1030650', '1031928']);
   });
 
+  test('combines identical fills while retaining every Sierra execution ID', async () => {
+    const text = [
+      HEADER,
+      row({ datetime: '2026-09-08 16:03:00.000000', symbol: 'MESU6.CME', side: 'Buy', price: 7688.75, executionId: 'entry-1', orderId: '101' }),
+      row({ datetime: '2026-09-08 16:03:00.000000', symbol: 'MESU6.CME', side: 'Buy', price: 7688.75, executionId: 'entry-2', orderId: '102' }),
+      row({ datetime: '2026-09-08 16:03:00.000000', symbol: 'MESU6.CME', side: 'Buy', price: 7688.75, executionId: 'entry-3', orderId: '103' }),
+      row({ datetime: '2026-09-08 16:04:00.000000', symbol: 'MESU6.CME', side: 'Sell', price: 7688.25, quantity: 3, executionId: 'exit-1', orderId: '104' })
+    ].join('\n');
+
+    const result = await parseCSV(Buffer.from(text), 'auto', { userTimezone: 'UTC' });
+
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0].executions).toHaveLength(2);
+    expect(result.trades[0].executions[0]).toEqual(expect.objectContaining({
+      action: 'buy',
+      quantity: 3,
+      price: 7688.75,
+      execution_id: 'entry-1',
+      execution_ids: ['entry-1', 'entry-2', 'entry-3'],
+      order_ids: ['101', '102', '103']
+    }));
+    expect(result.trades[0].pnl).toBe(-7.5);
+  });
+
   test('rejects Save Log As text because it contains display-local timestamps', async () => {
     const saveLogAs = [
       HEADER,

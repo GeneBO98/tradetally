@@ -168,18 +168,31 @@
             </div>
 
             <div>
-              <label for="import-strategy" class="label">Strategy (optional)</label>
+              <label for="import-strategy" class="label">Strategy handling</label>
               <BaseSelect
                 id="import-strategy"
                 v-model="selectedImportStrategy"
                 noun="strategies"
-                placeholder="Auto-detect from trade data"
                 :options="importStrategyOptions"
               />
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Leave unset to classify each trade automatically. Choose a strategy to apply it to every trade in this import.
+                Automatically classify, intentionally leave blank, or apply one strategy to every imported trade.
               </p>
             </div>
+
+            <label class="flex items-start gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800">
+              <input
+                v-model="includeImportedNotes"
+                type="checkbox"
+                class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-700"
+              />
+              <span>
+                <span class="block text-sm font-medium text-gray-900 dark:text-white">Import notes and descriptions</span>
+                <span class="mt-0.5 block text-sm text-gray-500 dark:text-gray-400">
+                  Leave off to keep journal notes empty. Existing notes are never erased when an import updates a trade.
+                </span>
+              </span>
+            </label>
 
             <div v-if="selectedFile" class="rounded-2xl border border-gray-200 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-gray-900/50">
               <div class="flex flex-col gap-1">
@@ -1313,7 +1326,8 @@ const startingTrial = ref(false)
 const accounts = ref([])
 const requiresAccountSelection = ref(false)
 const selectedAccountId = ref(null)
-const selectedImportStrategy = ref('')
+const selectedImportStrategy = ref('__auto__')
+const includeImportedNotes = ref(false)
 const importStrategiesList = ref([])
 const { orderNames: orderImportStrategyNames, refresh: refreshStrategyOrder } = useStrategyOrder()
 const currencyProMessage = ref('')
@@ -1719,16 +1733,25 @@ const fileReadinessMessage = computed(() => {
   return `This file looks import-ready${fileAnalysis.value.detectedBroker ? ` for ${formatBrokerName(fileAnalysis.value.detectedBroker)}` : ''}.`
 })
 
-const importStrategyOptions = computed(() =>
-  orderImportStrategyNames(importStrategiesList.value).map((strategy) => ({
+const importStrategyOptions = computed(() => [
+  { value: '__auto__', label: 'Automatically classify' },
+  { value: '__blank__', label: 'Leave blank' },
+  ...orderImportStrategyNames(importStrategiesList.value).map((strategy) => ({
     value: strategy,
     label: strategy.replace(/_/g, ' ')
   }))
-)
+])
 
 function resolveImportStrategyParam() {
   const value = selectedImportStrategy.value?.trim()
-  return value || null
+  return value && !value.startsWith('__') ? value : null
+}
+
+function resolveImportOptions() {
+  return {
+    strategy_mode: selectedImportStrategy.value === '__blank__' ? 'blank' : 'auto',
+    include_notes: includeImportedNotes.value
+  }
 }
 
 async function fetchImportStrategies() {
@@ -2377,7 +2400,8 @@ async function handleImport() {
       broker,
       mappingId,
       accountIdToSend,
-      resolveImportStrategyParam()
+      resolveImportStrategyParam(),
+      resolveImportOptions()
     )
     console.log('Import result:', result)
     importStage.value = 'Processing trades...'
@@ -2538,7 +2562,8 @@ async function handleKeepBrokerSelected(selectedBrokerValue) {
       broker,
       mappingId,
       accountIdToSend,
-      resolveImportStrategyParam()
+      resolveImportStrategyParam(),
+      resolveImportOptions()
     )
     console.log('Import result:', result)
     importStage.value = 'Processing trades...'
@@ -3542,7 +3567,8 @@ async function handleMappingSaved(mapping) {
       'generic',
       mapping.id,
       accountIdToSend,
-      resolveImportStrategyParam()
+      resolveImportStrategyParam(),
+      resolveImportOptions()
     )
     console.log('Import result:', result)
     importStage.value = 'Processing trades...'

@@ -455,7 +455,7 @@ export const useTradesStore = defineStore('trades', () => {
     }
   }
 
-  async function importTrades(file, broker, mappingId = null, accountId = null, strategy = null) {
+  async function importTrades(file, broker, mappingId = null, accountId = null, strategy = null, importOptions = {}) {
     loading.value = true
     error.value = null
 
@@ -473,6 +473,8 @@ export const useTradesStore = defineStore('trades', () => {
       if (strategy && String(strategy).trim()) {
         formData.append('strategy', String(strategy).trim())
       }
+      formData.append('strategy_mode', importOptions.strategy_mode || 'auto')
+      formData.append('include_notes', importOptions.include_notes ? 'true' : 'false')
 
       console.log('FormData contents:')
       for (let [key, value] of formData.entries()) {

@@ -268,8 +268,12 @@ class Trade {
     let shouldQueueClassification = false;
 
     if (!strategy || strategy.trim() === '') {
+      if (options.skipStrategyClassification) {
+        finalStrategy = '';
+        classificationMethod = 'none';
+        classificationMetadata = { intentionallyLeftBlank: true };
       // Check if we should skip API calls (e.g., during import)
-      if (options.skipApiCalls) {
+      } else if (options.skipApiCalls) {
         // Use basic time-based classification and queue full classification for later
         const tempTrade = {
           symbol: symbol.toUpperCase(),

@@ -1864,10 +1864,19 @@ const tradeController = {
       }
 
       const importId = uuidv4();
-      const { broker = 'generic', mappingId = null, accountId = null, strategy: importStrategy = null } = req.body;
+      const {
+        broker = 'generic',
+        mappingId = null,
+        accountId = null,
+        strategy: importStrategy = null,
+        strategy_mode: strategyMode = 'auto',
+        include_notes: includeNotes = 'true'
+      } = req.body;
       const defaultImportStrategy = importStrategy && String(importStrategy).trim()
         ? String(importStrategy).trim()
         : null;
+      const leaveImportedStrategyBlank = strategyMode === 'blank';
+      const includeImportedNotes = String(includeNotes).toLowerCase() === 'true';
 
       console.log('Selected broker:', broker);
       console.log('Mapping ID:', mappingId);
@@ -2515,6 +2524,12 @@ const tradeController = {
                   cleanTradeData.executions = executionData;
                 }
 
+                // Omitting imported notes must not erase notes the user has
+                // already written on an existing trade.
+                if (!includeImportedNotes) {
+                  delete cleanTradeData.notes;
+                }
+
                 await Trade.update(tradeData.existingTradeId, req.user.id, cleanTradeData, { skipAchievements: true, skipApiCalls: true, skipOptionGrouping: true });
               } else {
                 // Add import ID to track which import this trade came from
@@ -2522,7 +2537,15 @@ const tradeController = {
                 if (defaultImportStrategy) {
                   tradeData.strategy = defaultImportStrategy;
                 }
-                await Trade.create(req.user.id, tradeData, { skipAchievements: true, skipApiCalls: true, skipOptionGrouping: true });
+                if (!includeImportedNotes) {
+                  tradeData.notes = '';
+                }
+                await Trade.create(req.user.id, tradeData, {
+                  skipAchievements: true,
+                  skipApiCalls: true,
+                  skipOptionGrouping: true,
+                  skipStrategyClassification: leaveImportedStrategyBlank
+                });
               }
               imported++;
             } catch (error) {

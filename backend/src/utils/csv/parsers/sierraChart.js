@@ -177,6 +177,25 @@ function createTrade(transaction) {
 }
 
 function appendExecution(trade, transaction, quantity) {
+  const previous = trade.executions[trade.executions.length - 1];
+  const canAggregate = previous &&
+    previous.action === transaction.action &&
+    previous.datetime === transaction.datetime &&
+    Math.abs(Number(previous.price) - Number(transaction.price)) < 1e-9;
+
+  if (canAggregate) {
+    previous.quantity += quantity;
+    previous.execution_ids = [
+      ...(previous.execution_ids || [previous.execution_id].filter(Boolean)),
+      transaction.executionId
+    ].filter(Boolean);
+    previous.order_ids = [
+      ...(previous.order_ids || [previous.order_id].filter(Boolean)),
+      transaction.orderId
+    ].filter(Boolean);
+    return;
+  }
+
   trade.executions.push({
     action: transaction.action,
     side: transaction.action,
@@ -186,6 +205,8 @@ function appendExecution(trade, transaction, quantity) {
     orderId: transaction.orderId || null,
     order_id: transaction.orderId || null,
     execution_id: transaction.executionId || null,
+    execution_ids: transaction.executionId ? [transaction.executionId] : [],
+    order_ids: transaction.orderId ? [transaction.orderId] : [],
     commission: 0,
     fees: 0
   });
