@@ -374,7 +374,7 @@
     <!-- Delete Confirmation Modal -->
     <div v-if="showDeleteModal" class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
       <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" @click="showDeleteModal = false"></div>
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" @click="closeDeleteModal()"></div>
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
         <div class="inline-block align-bottom bg-white dark:bg-gray-900 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
           <div class="bg-white dark:bg-gray-900 px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
@@ -390,7 +390,19 @@
                 </h3>
                 <div class="mt-2">
                   <p class="text-sm text-gray-500 dark:text-gray-400">
-                    Are you sure you want to delete "{{ accountToDelete?.accountName }}"? This will not delete any trades associated with this account.
+                    Are you sure you want to delete "{{ accountToDelete?.accountName }}"? The account configuration and cashflow transactions will be removed. Investment holdings will remain.
+                  </p>
+                  <label v-if="accountToDelete?.accountIdentifier" class="mt-4 flex items-start gap-2 text-sm text-gray-600 dark:text-gray-300">
+                    <input
+                      v-model="deleteTrades"
+                      type="checkbox"
+                      class="mt-0.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                      :disabled="deleting"
+                    />
+                    <span>Also permanently delete all trades associated with this account.</span>
+                  </label>
+                  <p v-if="deleteTrades" class="mt-2 text-xs text-red-600 dark:text-red-400">
+                    This cannot be undone. Trades may be imported again if broker auto-sync remains enabled.
                   </p>
                 </div>
               </div>
@@ -403,11 +415,12 @@
               :disabled="deleting"
               class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
             >
-              {{ deleting ? 'Deleting...' : 'Delete' }}
+              {{ deleting ? 'Deleting...' : (deleteTrades ? 'Delete Account and Trades' : 'Delete Account') }}
             </button>
             <button
               type="button"
-              @click="showDeleteModal = false"
+              @click="closeDeleteModal()"
+              :disabled="deleting"
               class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-700 text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
             >
               Cancel
@@ -428,10 +441,14 @@ import BaseSelect from '@/components/common/BaseSelect.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useAccountsStore } from '@/stores/accounts'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
+import { useTradesStore } from '@/stores/trades'
+import { useNotification } from '@/composables/useNotification'
 
 const authStore = useAuthStore()
 const accountsStore = useAccountsStore()
+const tradesStore = useTradesStore()
 const router = useRouter()
+const { showSuccess, showWarning } = useNotification()
 const { selectedAccount, clearAccount, fetchAccounts: refreshGlobalAccounts } = useGlobalAccountFilter()
 
 const loading = ref(true)
@@ -445,6 +462,7 @@ const unlinkedIdentifiers = ref([])
 const editingAccount = ref(null)
 const showDeleteModal = ref(false)
 const accountToDelete = ref(null)
+const deleteTrades = ref(false)
 const showArchiveModal = ref(false)
 const accountToArchive = ref(null)
 
@@ -522,9 +540,12 @@ function redactAccountId(accountId) {
   return str
 }
 
-async function fetchAccounts() {
+async function fetchAccounts(options = {}) {
+  const suppressError = options?.suppressError === true
   loading.value = true
-  error.value = null
+  if (!suppressError) {
+    error.value = null
+  }
   try {
     // Force-fetch through the shared store so other consumers (global account
     // selector, cashflow, trade form) see fresh data after mutations here
@@ -539,7 +560,12 @@ async function fetchAccounts() {
     unlinkedIdentifiers.value = unlinkedRes.data.data || []
   } catch (err) {
     console.error('Failed to fetch accounts:', err)
-    error.value = err.response?.data?.error || err.response?.data?.message || 'Failed to load accounts'
+    if (!suppressError) {
+      error.value = err.response?.data?.error || err.response?.data?.message || 'Failed to load accounts'
+    }
+    if (options?.throwOnError === true) {
+      throw err
+    }
   } finally {
     loading.value = false
     initialLoading.value = false
@@ -633,7 +659,15 @@ async function saveAccount() {
 
 function confirmDelete(account) {
   accountToDelete.value = account
+  deleteTrades.value = false
   showDeleteModal.value = true
+}
+
+function closeDeleteModal(force = false) {
+  if (deleting.value && !force) return
+  showDeleteModal.value = false
+  accountToDelete.value = null
+  deleteTrades.value = false
 }
 
 function confirmArchive(account) {
@@ -685,29 +719,65 @@ async function updateArchiveState() {
 async function deleteAccount() {
   if (!accountToDelete.value) return
 
+  const account = accountToDelete.value
   deleting.value = true
   try {
-    await api.delete(`/accounts/${accountToDelete.value.id}`)
-
-    // If we were editing the deleted account, reset the form
-    if (editingAccount.value?.id === accountToDelete.value.id) {
-      resetForm()
-    }
-
-    showDeleteModal.value = false
-    accountToDelete.value = null
-    await fetchAccounts()
+    await api.delete(`/accounts/${account.id}`, {
+      data: { delete_trades: deleteTrades.value }
+    })
   } catch (err) {
     console.error('Failed to delete account:', err)
-    error.value = err.response?.data?.error || 'Failed to delete account'
-  } finally {
+    error.value = err.response?.data?.error || err.response?.data?.message || 'Failed to delete account'
     deleting.value = false
+    return
   }
+
+  // Deletion succeeded from here on; refresh failures are non-fatal and must
+  // not be reported as a deletion failure.
+  if (editingAccount.value?.id === account.id) {
+    resetForm()
+  }
+  if (selectedAccount.value === account.accountIdentifier) {
+    clearAccount()
+  }
+
+  closeDeleteModal(true)
+  deleting.value = false
+  showSuccess('Success', 'Account deleted successfully')
+
+  await refreshAfterAccountDelete(account)
+}
+
+async function refreshAfterAccountDelete(account) {
+  const results = await Promise.allSettled([
+    fetchAccounts({ suppressError: true, throwOnError: true }),
+    refreshGlobalAccounts({ force: true }),
+    tradesStore.fetchTrades(),
+    tradesStore.fetchAnalytics()
+  ])
+
+  if (results.some(result => result.status === 'rejected')) {
+    offerDataRefresh(account)
+  }
+}
+
+function offerDataRefresh(account) {
+  showWarning('Account deleted', 'Some related data could not be refreshed.', {
+    actions: [
+      {
+        label: 'Refresh',
+        style: 'primary',
+        onClick: () => {
+          refreshAfterAccountDelete(account).catch(() => offerDataRefresh(account))
+        }
+      }
+    ]
+  })
 }
 
 function handleEscape(e) {
   if (e.key === 'Escape' && showDeleteModal.value) {
-    showDeleteModal.value = false
+    closeDeleteModal()
   }
   if (e.key === 'Escape' && showArchiveModal.value) {
     showArchiveModal.value = false

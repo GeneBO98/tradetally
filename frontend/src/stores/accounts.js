@@ -153,24 +153,40 @@ export const useAccountsStore = defineStore('accounts', () => {
     }
   }
 
-  async function deleteAccount(accountId) {
+  async function deleteAccount(accountId, options = {}) {
     loading.value = true
     error.value = null
 
     try {
-      await api.delete(`/accounts/${accountId}`)
-      await fetchAccounts({ force: true })
-      // Clear cashflow if we deleted the current account
-      if (currentAccount.value?.id === accountId) {
-        currentAccount.value = null
-        cashflow.value = null
-      }
+      await api.delete(`/accounts/${accountId}`, {
+        data: {
+          delete_trades: options.delete_trades === true
+        }
+      })
     } catch (err) {
       error.value = err.response?.data?.message || 'Failed to delete account'
       throw err
     } finally {
       loading.value = false
     }
+
+    // The delete succeeded. Clear stale local state and refresh the account
+    // list, but a refresh failure must never be reported as a delete failure.
+    if (currentAccount.value?.id === accountId) {
+      currentAccount.value = null
+      cashflow.value = null
+    }
+
+    let refreshFailed = false
+    try {
+      await fetchAccounts({ force: true })
+    } catch (err) {
+      refreshFailed = true
+      error.value = null
+      console.error('Account deleted, but refreshing the account list failed:', err)
+    }
+
+    return { refreshFailed }
   }
 
   // ========================================

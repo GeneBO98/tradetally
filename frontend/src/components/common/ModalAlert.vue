@@ -52,6 +52,18 @@
                         >
                             {{ modalAlert.message }}
                         </p>
+                        <label
+                            v-if="modalAlert.checkboxLabel"
+                            class="flex items-start gap-2 text-left text-sm text-gray-600 dark:text-gray-300 mb-6"
+                        >
+                            <input
+                                v-model="modalAlert.checkboxChecked"
+                                type="checkbox"
+                                :disabled="modalAlert.isSubmitting"
+                                class="mt-0.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                            />
+                            <span>{{ modalAlert.checkboxLabel }}</span>
+                        </label>
                     </div>
 
                     <!-- Buttons -->
@@ -60,6 +72,7 @@
                         <button
                             v-if="modalAlert.cancelText"
                             @click="handleCancel"
+                            :disabled="modalAlert.isSubmitting"
                             class="w-full sm:w-auto px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-600"
                         >
                             {{ modalAlert.cancelText }}
@@ -79,10 +92,11 @@
                         <!-- Primary/Confirm Button -->
                         <button
                             @click="handleConfirm"
+                            :disabled="modalAlert.isSubmitting"
                             class="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2"
                             :class="confirmButtonClass"
                         >
-                            {{ modalAlert.confirmText }}
+                            {{ modalAlert.isSubmitting ? modalAlert.pendingText : modalAlert.confirmText }}
                         </button>
                     </div>
                 </div>
@@ -158,6 +172,7 @@ function handleConfirm() {
 }
 
 function handleCancel() {
+    if (modalAlert.value?.isSubmitting) return;
     if (modalAlert.value?.onCancel) {
         modalAlert.value.onCancel();
     } else {
@@ -167,7 +182,7 @@ function handleCancel() {
 
 function handleOverlayClick(event) {
     // Only close if clicking the overlay itself, not the modal content
-    if (event.target === event.currentTarget) {
+    if (event.target === event.currentTarget && !modalAlert.value?.isSubmitting) {
         handleCancel();
     }
 }

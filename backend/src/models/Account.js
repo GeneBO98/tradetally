@@ -236,15 +236,65 @@ class Account {
   /**
    * Delete an account
    */
-  static async delete(accountId, userId) {
-    const query = `
-      DELETE FROM user_accounts
-      WHERE id = $1 AND user_id = $2
-      RETURNING id
-    `;
+  static async delete(accountId, userId, options = {}) {
+    const { deleteTrades = false } = options;
 
-    const result = await db.query(query, [accountId, userId]);
-    return result.rows[0];
+    return db.withTransaction(async (client) => {
+      const accountResult = await client.query(
+        `SELECT id, account_identifier
+         FROM user_accounts
+         WHERE id = $1 AND user_id = $2
+         FOR UPDATE`,
+        [accountId, userId]
+      );
+
+      const account = accountResult.rows[0];
+      if (!account) return null;
+
+      let deletedTradesCount = 0;
+      const accountIdentifier = account.account_identifier?.trim() || null;
+
+      // Account identifiers are shared by imported trades, so only delete
+      // trades when the caller explicitly opts in and the account has one.
+      if (deleteTrades && accountIdentifier) {
+        const tradeIdsResult = await client.query(
+          `SELECT id
+           FROM trades
+           WHERE user_id = $1 AND account_identifier = $2`,
+          [userId, accountIdentifier]
+        );
+        const tradeIds = tradeIdsResult.rows.map(row => row.id);
+
+        if (tradeIds.length > 0) {
+          await client.query(
+            `DELETE FROM job_queue
+             WHERE data->>'tradeId' = ANY($1::text[])
+                OR (data->'tradeIds' ?| $1::text[])`,
+            [tradeIds]
+          );
+
+          const deletedTradesResult = await client.query(
+            `DELETE FROM trades
+             WHERE id = ANY($1::uuid[]) AND user_id = $2
+             RETURNING id`,
+            [tradeIds, userId]
+          );
+          deletedTradesCount = deletedTradesResult.rowCount;
+        }
+      }
+
+      await client.query(
+        `DELETE FROM user_accounts
+         WHERE id = $1 AND user_id = $2`,
+        [accountId, userId]
+      );
+
+      return {
+        id: account.id,
+        accountIdentifier,
+        deletedTradesCount
+      };
+    });
   }
 
   /**

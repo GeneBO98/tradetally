@@ -252,7 +252,17 @@ const accountController = {
    */
   async deleteAccount(req, res) {
     try {
-      const result = await Account.delete(req.params.id, req.user.id);
+      const { delete_trades } = req.body || {};
+      if (delete_trades !== undefined && typeof delete_trades !== 'boolean') {
+        return res.status(400).json({
+          success: false,
+          message: 'delete_trades must be a boolean'
+        });
+      }
+
+      const result = await Account.delete(req.params.id, req.user.id, {
+        deleteTrades: delete_trades === true
+      });
 
       if (!result) {
         return res.status(404).json({
@@ -261,13 +271,17 @@ const accountController = {
         });
       }
 
-      // Deleting a managed account orphans its trades. Invalidate analytics so
-      // the next report reflects the changed account association immediately.
+      if (result.deletedTradesCount > 0) {
+        await OptionStrategyGroupingService.rebuildUserGroupsSafe(req.user.id, 'account trade deletion');
+      }
+
+      // Account and trade changes must invalidate derived analytics immediately.
       await AnalyticsCache.invalidate(req.user.id);
 
       res.json({
         success: true,
-        message: 'Account deleted successfully'
+        message: 'Account deleted successfully',
+        deleted_trades_count: result.deletedTradesCount
       });
     } catch (error) {
       console.error('[ACCOUNTS] Error deleting account:', error);
