@@ -9,6 +9,7 @@ jest.mock('../../src/utils/currencyConverter', () => ({
 }));
 
 const { parseCSV } = require('../../src/utils/csvParser');
+const { extractSierraChartAccountFromFilename } = require('../../src/utils/csv/parsers/sierraChart');
 const { applyBrokerFeeSettingsToTrades } = require('../../src/services/brokerFeeApplicationService');
 
 const HEADER = [
@@ -56,7 +57,7 @@ function scDateTime(iso) {
 }
 
 function binaryFill({ datetime, symbol, side, price, executionId, orderId, account = 'Sim1' }) {
-  return Buffer.concat([
+  const fields = [
     binaryField(101, int32(2)),
     binaryField(102, scDateTime(datetime)),
     binaryField(103, Buffer.from(symbol)),
@@ -65,12 +66,15 @@ function binaryFill({ datetime, symbol, side, price, executionId, orderId, accou
     binaryField(109, Buffer.from([side === 'Buy' ? 1 : 2])),
     binaryField(113, float64(price * 100)),
     binaryField(114, float64(1)),
-    binaryField(118, Buffer.from(account)),
     binaryField(120, Buffer.from([side === 'Buy' ? 1 : 2])),
     binaryField(124, Buffer.from(executionId)),
     binaryField(160, scDateTime(datetime)),
     binaryField(199, Buffer.alloc(0))
-  ]);
+  ];
+  if (account) {
+    fields.splice(8, 0, binaryField(118, Buffer.from(account)));
+  }
+  return Buffer.concat(fields);
 }
 
 describe('Sierra Chart parser', () => {
@@ -118,6 +122,44 @@ describe('Sierra Chart parser', () => {
       accountIdentifier: 'Sim1'
     }));
     expect(result.trades[0].executions.map(execution => execution.execution_id)).toEqual(['1030650', '1031928']);
+  });
+
+  test('falls back to the daily-log filename when a record has no TradeAccount', async () => {
+    const file = Buffer.concat([
+      binaryField(1, int64(2)),
+      binaryFill({ datetime: '2026-09-08T14:02:58.329Z', symbol: 'MESU6.CME', side: 'Buy', price: 7688.5, executionId: '1', orderId: 1, account: null }),
+      binaryFill({ datetime: '2026-09-08T14:03:02.094Z', symbol: 'MESU6.CME', side: 'Sell', price: 7688, executionId: '2', orderId: 2, account: null })
+    ]);
+
+    const result = await parseCSV(file, 'auto', {
+      userTimezone: 'UTC',
+      fileName: 'TradeActivityLog_20260908_UTC.RTSL00000000000.data'
+    });
+
+    expect(result.trades[0].accountIdentifier).toBe('RTSL00000000000');
+  });
+
+  test('an explicit account selection overrides the record and filename accounts', async () => {
+    const file = Buffer.concat([
+      binaryField(1, int64(2)),
+      binaryFill({ datetime: '2026-09-08T14:02:58.329Z', symbol: 'MESU6.CME', side: 'Buy', price: 7688.5, executionId: '1', orderId: 1, account: 'Sim1' }),
+      binaryFill({ datetime: '2026-09-08T14:03:02.094Z', symbol: 'MESU6.CME', side: 'Sell', price: 7688, executionId: '2', orderId: 2, account: 'Sim1' })
+    ]);
+
+    const result = await parseCSV(file, 'auto', {
+      userTimezone: 'UTC',
+      selectedAccountId: 'MANUAL000000001',
+      fileName: 'TradeActivityLog_20260908_UTC.RTSL00000000000.data'
+    });
+
+    expect(result.trades[0].accountIdentifier).toBe('MANUAL000000001');
+  });
+
+  test('extracts the account from Sierra daily-log filenames only', () => {
+    expect(extractSierraChartAccountFromFilename('TradeActivityLog_20260908_UTC.RTSL00000000000.data')).toBe('RTSL00000000000');
+    expect(extractSierraChartAccountFromFilename('TradeActivityLog_20260903_UTC.Sim1.simulated.data')).toBe('Sim1');
+    expect(extractSierraChartAccountFromFilename('TradeActivityLog_20260908_activity_export.txt')).toBeNull();
+    expect(extractSierraChartAccountFromFilename('trades.csv')).toBeNull();
   });
 
   test('combines identical fills while retaining every Sierra execution ID', async () => {

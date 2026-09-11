@@ -31,6 +31,7 @@ const TierService = require('../services/tierService');
 const { verifyJwtToken, TOKEN_PURPOSES, isTokenSessionValid } = require('../middleware/auth');
 const { escapeCsv } = require('../utils/csvEscape');
 const { buildExistingTradeIndex, classifyImportTrade } = require('../utils/importDuplicateDetection');
+const { detectImportAccounts } = require('../utils/importAccountDetection');
 const { sanitizePublicTrade } = require('../utils/publicTrade');
 const {
   applyBrokerFeeSettingsToTrades,
@@ -1785,6 +1786,20 @@ const tradeController = {
     }
   },
 
+  async analyzeImportAccounts(req, res, next) {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+
+      const result = detectImportAccounts(req.file.buffer, req.file.originalname);
+      res.json(result);
+    } catch (error) {
+      console.error('Import account analysis error:', error);
+      next(error);
+    }
+  },
+
   /**
    * Pre-validate import file to detect broker format mismatch
    * Lightweight validation - does NOT import, just analyzes the file
@@ -2414,7 +2429,7 @@ const tradeController = {
           const existingTradesParams = [req.user.id];
           let existingTradesQuery = `
             SELECT id, symbol, entry_time, entry_price, exit_price, pnl, quantity, side, executions,
-                   instrument_type, conid
+                   instrument_type, conid, account_identifier
             FROM trades
             WHERE user_id = $1
           `;

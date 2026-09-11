@@ -162,7 +162,7 @@
               <label for="account" class="label">Trading Account</label>
               <BaseSelect id="account" v-model="selectedAccountId" :options="accountOptions" />
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Select a trading account to associate with this import, or choose "None" if importing from a different broker.
+                Leave on "Automatically detect from file" to use the account embedded in the export, or pick a specific account to override it.
                 <router-link to="/accounts" class="text-primary-600 hover:text-primary-500">Manage accounts</router-link>
               </p>
             </div>
@@ -231,6 +231,7 @@
                   <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Account</p>
                   <p class="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{{ accountReadinessLabel }}</p>
                   <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ accountReadinessMessage }}</p>
+                  <p v-if="accountDetectionWarning" class="mt-1 text-xs text-yellow-600 dark:text-yellow-400">{{ accountDetectionWarning }}</p>
                 </div>
               </div>
 
@@ -1293,6 +1294,7 @@ import { useStrategyOrder } from '@/composables/useStrategyOrder'
 import { useImportPreferences } from '@/composables/useImportPreferences'
 import { useVisibilityPolling } from '@/composables/useVisibilityPolling'
 import { isSierraChartBinaryFile, parseCSVHeaders, parseCSVSampleRows } from '@/utils/csvImportParse'
+import { collectAccountIdentifiersFromSamples, extractFilenameAccount } from '@/utils/importAccountDetection'
 
 const tradesStore = useTradesStore()
 const authStore = useAuthStore()
@@ -1314,7 +1316,9 @@ const fileAnalysis = ref({
   rowCount: null,
   headers: [],
   formatDetected: false,
-  detectedBroker: ''
+  detectedBroker: '',
+  accountIdentifiers: [],
+  accountSource: null
 })
 const showCurrencyProModal = ref(false)
 
@@ -1326,7 +1330,7 @@ const startingTrial = ref(false)
 // Account selection for imports
 const accounts = ref([])
 const requiresAccountSelection = ref(false)
-const selectedAccountId = ref(null)
+const selectedAccountId = ref('auto')
 const {
   strategy: selectedImportStrategy,
   includeNotes: includeImportedNotes,
@@ -1705,22 +1709,59 @@ const brokerRecommendation = computed(() => {
   return 'Selected format matches the file we inspected.'
 })
 
+const detectedAccountIdentifiers = computed(() => fileAnalysis.value.accountIdentifiers || [])
+
+const matchedDetectedAccounts = computed(() => {
+  const byIdentifier = new Map()
+  for (const account of accounts.value) {
+    if (account.identifier) byIdentifier.set(String(account.identifier).trim(), account)
+  }
+  return detectedAccountIdentifiers.value.map(identifier => ({
+    identifier,
+    account: byIdentifier.get(String(identifier).trim()) || null
+  }))
+})
+
+const unmatchedDetectedAccounts = computed(() => matchedDetectedAccounts.value.filter(match => !match.account))
+
+const detectedAccountSummary = computed(() => {
+  const detected = matchedDetectedAccounts.value
+  if (detected.length === 0) return 'No account identifier found in the file.'
+  const labels = detected.map(({ identifier, account }) =>
+    account ? `${account.name} (${redactAccountId(identifier)})` : redactAccountId(identifier)
+  )
+  if (detected.length === 1) return `Detected from file: ${labels[0]}.`
+  return `Detected ${detected.length} accounts in the file: ${labels.join(', ')}.`
+})
+
+const accountDetectionWarning = computed(() => {
+  if (selectedAccountId.value !== 'auto') return ''
+  const unmatched = unmatchedDetectedAccounts.value
+  if (unmatched.length === 0) return ''
+  const list = unmatched.map(match => redactAccountId(match.identifier)).join(', ')
+  return `${list} not found in your accounts. New account(s) will be created automatically for those identifiers.`
+})
+
 const accountReadinessLabel = computed(() => {
-  if (!requiresAccountSelection.value) return 'Optional'
+  if (selectedAccountId.value === 'auto') {
+    return detectedAccountIdentifiers.value.length > 0 ? 'Auto-detected' : 'Auto-detect'
+  }
   if (selectedAccountId.value === 'none') return 'No account'
   if (selectedAccountId.value !== null) return 'Assigned'
+  if (!requiresAccountSelection.value) return 'Optional'
   return 'Needs selection'
 })
 
 const accountReadinessMessage = computed(() => {
-  if (!requiresAccountSelection.value) return 'This import can continue without selecting an account.'
+  if (selectedAccountId.value === 'auto') return detectedAccountSummary.value
   if (selectedAccountId.value === 'none') return 'Trades will be imported without linking to an existing account.'
   if (selectedAccountId.value !== null) return 'Trades will be attached to your selected account.'
+  if (!requiresAccountSelection.value) return 'This import can continue without selecting an account.'
   return 'Pick an account before starting import.'
 })
 
 const accountOptions = computed(() => {
-  const opts = [{ value: null, label: 'Select account...' }]
+  const opts = [{ value: 'auto', label: 'Automatically detect from file' }]
   for (const account of accounts.value) {
     const identifier = account.identifier ? ` (${redactAccountId(account.identifier)})` : ''
     const broker = account.broker ? ` - ${formatBrokerName(account.broker)}` : ''
@@ -1757,6 +1798,12 @@ function resolveImportOptions() {
     strategy_mode: selectedImportStrategy.value === '__blank__' ? 'blank' : 'auto',
     include_notes: includeImportedNotes.value
   }
+}
+
+function resolveAccountIdToSend() {
+  const value = selectedAccountId.value
+  if (!value || value === 'none' || value === 'auto') return null
+  return value
 }
 
 async function fetchImportStrategies() {
@@ -1870,7 +1917,9 @@ function resetFileAnalysis() {
     rowCount: null,
     headers: [],
     formatDetected: false,
-    detectedBroker: ''
+    detectedBroker: '',
+    accountIdentifiers: [],
+    accountSource: null
   }
 }
 
@@ -2161,6 +2210,34 @@ function detectKnownFormat(headers) {
   return !!detectBrokerFromHeaders(headers)
 }
 
+async function detectFileAccounts(file, headers) {
+  if (isSierraChartBinaryFile(file)) {
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const response = await api.post('/trades/import/analyze-accounts', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      const identifiers = Array.isArray(response.data?.accountIdentifiers)
+        ? response.data.accountIdentifiers
+        : []
+      return { accountIdentifiers: identifiers, accountSource: response.data?.source || null }
+    } catch (err) {
+      console.warn('[IMPORT] Account analysis failed, using filename fallback:', err?.message)
+      const fromName = extractFilenameAccount(file.name)
+      return { accountIdentifiers: fromName ? [fromName] : [], accountSource: fromName ? 'filename' : null }
+    }
+  }
+
+  const sampleRows = await parseCSVSampleRows(file, headers, { sampleCount: 50 })
+  const identifiers = collectAccountIdentifiersFromSamples(headers, sampleRows)
+  if (identifiers.length > 0) {
+    return { accountIdentifiers: identifiers, accountSource: 'record' }
+  }
+  const fromName = extractFilenameAccount(file.name)
+  return { accountIdentifiers: fromName ? [fromName] : [], accountSource: fromName ? 'filename' : null }
+}
+
 async function analyzeSelectedFile(file) {
   if (!file) {
     resetFileAnalysis()
@@ -2172,12 +2249,23 @@ async function analyzeSelectedFile(file) {
 
   try {
     if (isSierraChartBinaryFile(file)) {
+      const accountInfo = await detectFileAccounts(file, ['Binary Trade Activity Log'])
+      if (analysisId !== activeFileAnalysisId) {
+        return
+      }
       fileAnalysis.value = {
         rowCount: 0,
         headers: ['Binary Trade Activity Log'],
         formatDetected: true,
-        detectedBroker: 'sierrachart'
+        detectedBroker: 'sierrachart',
+        ...accountInfo
       }
+      track('import_file_analyzed', {
+        broker_selected: selectedBroker.value,
+        detected_broker: 'sierrachart',
+        row_count: 0,
+        header_count: 1
+      })
       return
     }
 
@@ -2186,6 +2274,7 @@ async function analyzeSelectedFile(file) {
       parseCSVHeaders(file)
     ])
     const detectedBroker = detectBrokerFromHeaders(headers)
+    const accountInfo = await detectFileAccounts(file, headers)
 
     if (analysisId !== activeFileAnalysisId) {
       return
@@ -2195,7 +2284,8 @@ async function analyzeSelectedFile(file) {
       rowCount,
       headers,
       formatDetected: !!detectedBroker,
-      detectedBroker
+      detectedBroker,
+      ...accountInfo
     }
 
     track('import_file_analyzed', {
@@ -2268,8 +2358,8 @@ async function handleImport() {
     return
   }
 
-  // Convert "none" to null for the API
-  const accountIdToSend = selectedAccountId.value === 'none' ? null : selectedAccountId.value
+  // "auto" and "none" both send no override so each record's account wins.
+  const accountIdToSend = resolveAccountIdToSend()
 
   console.log('Starting import with:', {
     fileName: selectedFile.value.name,
@@ -2558,11 +2648,8 @@ async function handleKeepBrokerSelected(selectedBrokerValue) {
       broker = 'generic'
     }
 
-    // Get account to send
-    let accountIdToSend = null
-    if (requiresAccountSelection.value && selectedAccountId.value !== null && selectedAccountId.value !== 'none') {
-      accountIdToSend = selectedAccountId.value
-    }
+    // Get account to send ("auto" and "none" send no override)
+    const accountIdToSend = resolveAccountIdToSend()
 
     const result = await tradesStore.importTrades(
       selectedFile.value,
@@ -3470,11 +3557,6 @@ async function fetchImportRequirements() {
       requiresAccountSelection: requiresAccountSelection.value,
       accountCount: accounts.value.length
     })
-    // Pre-select primary account if exists
-    const primary = accounts.value.find(a => a.isPrimary)
-    if (primary) {
-      selectedAccountId.value = primary.id
-    }
   } catch (err) {
     console.error('Error fetching import requirements:', err)
   }
@@ -3569,8 +3651,8 @@ async function handleMappingSaved(mapping) {
   importStage.value = 'Uploading and processing with custom mapping...'
 
   try {
-    // Import with the mapping ID (convert "none" to null)
-    const accountIdToSend = selectedAccountId.value === 'none' ? null : selectedAccountId.value
+    // Import with the mapping ID ("auto" and "none" send no override)
+    const accountIdToSend = resolveAccountIdToSend()
     const result = await tradesStore.importTrades(
       currentMappingFile.value,
       'generic',

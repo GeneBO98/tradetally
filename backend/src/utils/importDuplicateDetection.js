@@ -39,6 +39,12 @@ function newTradeInstrumentType(tradeData) {
   return tradeData.instrumentType || tradeData.instrument_type || 'stock';
 }
 
+function normalizeAccount(value) {
+  if (value === undefined || value === null) return null;
+  const str = String(value).trim();
+  return str === '' ? null : str;
+}
+
 /**
  * Pre-process the existing-trades query rows into a lookup index.
  * Executions are parsed exactly once per row.
@@ -64,7 +70,13 @@ function buildExistingTradeIndex(rows) {
       if (time !== null) execTimes.push(time);
     }
 
-    const entry = { row, row_index: rowIndex, executions, exec_times: execTimes };
+    const entry = {
+      row,
+      row_index: rowIndex,
+      executions,
+      exec_times: execTimes,
+      account: normalizeAccount(row.account_identifier ?? row.accountIdentifier)
+    };
 
     const instrumentType = row.instrument_type || 'stock';
     let typeMap = bySymbol.get(row.symbol);
@@ -100,10 +112,21 @@ function buildExistingTradeIndex(rows) {
 function getCandidates(index, tradeData) {
   const instrumentType = newTradeInstrumentType(tradeData);
   const typeMap = index.by_symbol.get(tradeData.symbol);
-  const symbolCandidates = (typeMap && typeMap.get(instrumentType)) || [];
+  let symbolCandidates = (typeMap && typeMap.get(instrumentType)) || [];
 
   const conid = tradeData.conid;
-  const conidCandidates = conid ? (index.by_conid.get(conid) || []) : [];
+  let conidCandidates = conid ? (index.by_conid.get(conid) || []) : [];
+
+  // When the imported trade carries an account identifier, duplicates must be
+  // scoped to the same account so identical executions in different accounts
+  // are never collapsed. Trades without an account keep the legacy
+  // cross-account behavior.
+  const requiredAccount = normalizeAccount(tradeData.accountIdentifier);
+  if (requiredAccount !== null) {
+    symbolCandidates = symbolCandidates.filter(entry => entry.account === requiredAccount);
+    conidCandidates = conidCandidates.filter(entry => entry.account === requiredAccount);
+  }
+
   if (conidCandidates.length === 0) return symbolCandidates;
 
   const seen = new Set(symbolCandidates.map(entry => entry.row_index));

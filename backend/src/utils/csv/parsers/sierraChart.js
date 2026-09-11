@@ -132,6 +132,22 @@ function normalizeSierraSymbol(rawSymbol) {
   return cleanString(rawSymbol).toUpperCase().replace(/\.[A-Z0-9_-]+$/, '');
 }
 
+// Sierra's daily log files are named like
+// `TradeActivityLog_20260908_UTC.<account>.data` and simulated days add a
+// `.simulated` marker (`TradeActivityLog_20260903_UTC.Sim1.simulated.data`).
+// The account token is the last dot-segment after stripping those markers.
+// Only `.data` daily logs carry the account in the name, so other exports
+// (e.g. Trade Activity `.txt`) return null.
+function extractSierraChartAccountFromFilename(fileName) {
+  const raw = cleanString(fileName);
+  if (!raw || !/\.data$/i.test(raw)) return null;
+  const base = raw.replace(/\.data$/i, '').replace(/\.simulated$/i, '');
+  const segments = base.split('.');
+  if (segments.length < 2) return null;
+  const account = segments[segments.length - 1];
+  return account && account.trim() ? account.trim() : null;
+}
+
 function hasSierraChartExportPriceScale(records) {
   const fillPrices = records
     .filter(record => cleanString(getField(record, 'ActivityType')) === 'Fills')
@@ -286,7 +302,10 @@ function parseSierraChartTransactions(records, context = {}, options = {}) {
       datetime,
       orderId: cleanString(getField(record, 'InternalOrderID')),
       executionId: cleanString(getField(record, 'FillExecutionServiceID')),
-      accountIdentifier: context.selectedAccountId || cleanString(getField(record, 'TradeAccount')) || null,
+      accountIdentifier: context.selectedAccountId
+        || cleanString(getField(record, 'TradeAccount'))
+        || extractSierraChartAccountFromFilename(context.fileName)
+        || null,
       note: cleanString(getField(record, 'Note')),
       rowIndex: index
     });
@@ -358,6 +377,7 @@ function parseSierraChartTransactions(records, context = {}, options = {}) {
 
 module.exports = {
   decodeSierraChartActivityData,
+  extractSierraChartAccountFromFilename,
   hasSierraChartExportPriceScale,
   isSierraChartBinary,
   normalizeSierraSymbol,

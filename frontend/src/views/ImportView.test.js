@@ -76,6 +76,7 @@ vi.mock('vue-router', async (importOriginal) => ({
 }))
 
 import ImportView from '@/views/ImportView.vue'
+import { parseCSVHeaders, parseCSVSampleRows } from '@/utils/csvImportParse'
 
 const BaseSelectStub = {
   name: 'BaseSelect',
@@ -113,39 +114,43 @@ async function attachCsv(wrapper, content = 'Date,Time,Type,Ref #,Description\n1
 }
 
 describe('ImportView remembered import preferences', () => {
+  function apiGet(url) {
+    if (url === '/settings') {
+      return Promise.resolve({ data: { settings: { uiPreferences: {} } } })
+    }
+    if (url === '/trades/import/requirements') {
+      return Promise.resolve({ data: { requiresAccountSelection: false, accounts: [] } })
+    }
+    if (url === '/trades/import/history') {
+      return Promise.resolve({ data: { imports: [], pagination: { page: 1, limit: 5, total: 0, totalPages: 0, hasMore: false } } })
+    }
+    if (url === '/trades/strategies') {
+      return Promise.resolve({ data: { strategies: [] } })
+    }
+    if (url === '/csv-mappings') {
+      return Promise.resolve({ data: { success: false, data: [] } })
+    }
+    if (typeof url === 'string' && url.startsWith('/trades/import/status/')) {
+      return Promise.resolve({ data: { importLog: { status: 'completed', trades_imported: 1, error_details: {} } } })
+    }
+    if (url === '/notifications') {
+      return Promise.resolve({ data: { notifications: [] } })
+    }
+    if (url === '/billing/subscription') {
+      return Promise.resolve({ data: { data: {} } })
+    }
+    return Promise.resolve({ data: {} })
+  }
+
   beforeEach(() => {
     setActivePinia(createPinia())
     localStorage.clear()
     mocks.tradesStore.importTrades.mockReset()
     mocks.tradesStore.fetchTrades.mockReset()
     mocks.tradesStore.fetchAnalytics.mockReset()
-    mocks.api.get.mockImplementation((url) => {
-      if (url === '/settings') {
-        return Promise.resolve({ data: { settings: { uiPreferences: {} } } })
-      }
-      if (url === '/trades/import/requirements') {
-        return Promise.resolve({ data: { requiresAccountSelection: false, accounts: [] } })
-      }
-      if (url === '/trades/import/history') {
-        return Promise.resolve({ data: { imports: [], pagination: { page: 1, limit: 5, total: 0, totalPages: 0, hasMore: false } } })
-      }
-      if (url === '/trades/strategies') {
-        return Promise.resolve({ data: { strategies: [] } })
-      }
-      if (url === '/csv-mappings') {
-        return Promise.resolve({ data: { success: false, data: [] } })
-      }
-      if (typeof url === 'string' && url.startsWith('/trades/import/status/')) {
-        return Promise.resolve({ data: { importLog: { status: 'completed', trades_imported: 1, error_details: {} } } })
-      }
-      if (url === '/notifications') {
-        return Promise.resolve({ data: { notifications: [] } })
-      }
-      if (url === '/billing/subscription') {
-        return Promise.resolve({ data: { data: {} } })
-      }
-      return Promise.resolve({ data: {} })
-    })
+    mocks.api.get.mockImplementation(apiGet)
+    parseCSVHeaders.mockResolvedValue(['Date', 'Time', 'Type', 'Ref #', 'Description'])
+    parseCSVSampleRows.mockResolvedValue({})
   })
 
   it('defaults to automatic classification with notes off', async () => {
@@ -200,6 +205,57 @@ describe('ImportView remembered import preferences', () => {
     await vi.waitFor(() => expect(mocks.tradesStore.importTrades).toHaveBeenCalled())
     expect(localStorage.getItem('import_strategy_handling')).toBeNull()
     expect(localStorage.getItem('import_notes_and_descriptions')).toBeNull()
+    wrapper.unmount()
+  })
+
+  it('defaults the account to auto-detect and surfaces the detected account', async () => {
+    parseCSVHeaders.mockResolvedValue(['Date', 'Symbol', 'TradeAccount', 'Price'])
+    parseCSVSampleRows.mockResolvedValue({ TradeAccount: ['RTSL00000000000', 'RTSL00000000000'] })
+    mocks.api.get.mockImplementation((url) => {
+      if (url === '/trades/import/requirements') {
+        return Promise.resolve({
+          data: {
+            requiresAccountSelection: true,
+            accounts: [{
+              id: 'acct-1',
+              name: 'Tradeify (Rithmic)',
+              identifier: 'RTSL00000000000',
+              broker: 'sierrachart',
+              isPrimary: true
+            }]
+          }
+        })
+      }
+      return apiGet(url)
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+    await attachCsv(wrapper)
+    await flushPromises()
+
+    expect(wrapper.get('#account').element.value).toBe('auto')
+    expect(wrapper.text()).toContain('Tradeify (Rithmic)')
+    wrapper.unmount()
+  })
+
+  it('never auto-selects the primary account', async () => {
+    mocks.api.get.mockImplementation((url) => {
+      if (url === '/trades/import/requirements') {
+        return Promise.resolve({
+          data: {
+            requiresAccountSelection: true,
+            accounts: [{ id: 'acct-primary', name: 'Primary', identifier: 'PRIMARY1', broker: 'schwab', isPrimary: true }]
+          }
+        })
+      }
+      return apiGet(url)
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.get('#account').element.value).toBe('auto')
     wrapper.unmount()
   })
 })
