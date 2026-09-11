@@ -258,4 +258,46 @@ describe('ImportView remembered import preferences', () => {
     expect(wrapper.get('#account').element.value).toBe('auto')
     wrapper.unmount()
   })
+
+  it('sends account_mode auto by default', async () => {
+    mocks.tradesStore.importTrades.mockResolvedValue({ importId: 'imp-auto' })
+
+    const wrapper = mountView()
+    await flushPromises()
+    await attachCsv(wrapper)
+    await wrapper.get('form').trigger('submit')
+
+    await vi.waitFor(() => expect(mocks.tradesStore.importTrades).toHaveBeenCalled())
+    const call = mocks.tradesStore.importTrades.mock.calls.at(-1)
+    expect(call[3]).toBeNull()
+    expect(call[5]).toEqual(expect.objectContaining({ account_mode: 'auto' }))
+    wrapper.unmount()
+  })
+
+  it('sends account_mode none when the user chooses None', async () => {
+    mocks.tradesStore.importTrades.mockResolvedValue({ importId: 'imp-none' })
+    mocks.api.get.mockImplementation((url) => {
+      if (url === '/trades/import/requirements') {
+        return Promise.resolve({
+          data: {
+            requiresAccountSelection: true,
+            accounts: [{ id: 'acct-1', name: 'Primary', identifier: 'PRIMARY1', broker: 'schwab', isPrimary: true }]
+          }
+        })
+      }
+      return apiGet(url)
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('#account').setValue('none')
+    await attachCsv(wrapper)
+    await wrapper.get('form').trigger('submit')
+
+    await vi.waitFor(() => expect(mocks.tradesStore.importTrades).toHaveBeenCalled())
+    const call = mocks.tradesStore.importTrades.mock.calls.at(-1)
+    expect(call[3]).toBeNull()
+    expect(call[5]).toEqual(expect.objectContaining({ account_mode: 'none' }))
+    wrapper.unmount()
+  })
 })

@@ -1796,8 +1796,16 @@ function resolveImportStrategyParam() {
 function resolveImportOptions() {
   return {
     strategy_mode: selectedImportStrategy.value === '__blank__' ? 'blank' : 'auto',
-    include_notes: includeImportedNotes.value
+    include_notes: includeImportedNotes.value,
+    account_mode: resolveAccountMode()
   }
+}
+
+function resolveAccountMode() {
+  const value = selectedAccountId.value
+  if (value === 'none') return 'none'
+  if (value === 'auto' || !value) return 'auto'
+  return 'override'
 }
 
 function resolveAccountIdToSend() {

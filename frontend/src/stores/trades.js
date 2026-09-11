@@ -476,6 +476,9 @@ export const useTradesStore = defineStore('trades', () => {
       }
       formData.append('strategy_mode', importOptions.strategy_mode || 'auto')
       formData.append('include_notes', importOptions.include_notes ? 'true' : 'false')
+      if (importOptions.account_mode) {
+        formData.append('account_mode', importOptions.account_mode)
+      }
 
       console.log('FormData contents:')
       for (let [key, value] of formData.entries()) {

@@ -28,10 +28,16 @@ const Playbook = require('../models/Playbook');
 const PlaybookAdherenceService = require('../services/playbookAdherence.service');
 const MAEEstimator = require('../utils/maeEstimator');
 const TierService = require('../services/tierService');
+const Account = require('../models/Account');
 const { verifyJwtToken, TOKEN_PURPOSES, isTokenSessionValid } = require('../middleware/auth');
 const { escapeCsv } = require('../utils/csvEscape');
 const { buildExistingTradeIndex, classifyImportTrade } = require('../utils/importDuplicateDetection');
-const { detectImportAccounts } = require('../utils/importAccountDetection');
+const {
+  detectImportAccounts,
+  resolveAccountMode,
+  applyAccountModeToTrades,
+  buildImportAccountScope
+} = require('../utils/importAccountDetection');
 const { sanitizePublicTrade } = require('../utils/publicTrade');
 const {
   applyBrokerFeeSettingsToTrades,
@@ -1768,7 +1774,6 @@ const tradeController = {
   async checkImportRequirements(req, res, next) {
     try {
       // Get user's trading accounts
-      const Account = require('../models/Account');
       const accounts = await Account.findByUser(req.user.id);
 
       res.json({
@@ -1887,6 +1892,7 @@ const tradeController = {
         broker = 'generic',
         mappingId = null,
         accountId = null,
+        account_mode: accountModeInput = null,
         strategy: importStrategy = null,
         strategy_mode: strategyMode = 'auto',
         include_notes: includeNotes = 'true'
@@ -1896,10 +1902,37 @@ const tradeController = {
         : null;
       const leaveImportedStrategyBlank = strategyMode === 'blank';
       const includeImportedNotes = String(includeNotes).toLowerCase() === 'true';
+      const accountMode = resolveAccountMode(accountModeInput, accountId);
+      let selectedImportAccountIdentifier = null;
+
+      if (accountMode === 'override') {
+        if (!accountId || !isUuid(String(accountId))) {
+          return res.status(400).json({ error: 'A valid account is required when account_mode is override' });
+        }
+
+        const selectedAccount = await Account.findById(accountId, req.user.id);
+        if (!selectedAccount) {
+          return res.status(400).json({ error: 'Selected account was not found' });
+        }
+
+        selectedImportAccountIdentifier = selectedAccount.account_identifier || selectedAccount.account_name?.trim() || null;
+        if (!selectedImportAccountIdentifier) {
+          return res.status(400).json({ error: 'Selected account does not have a usable identifier or name' });
+        }
+
+        // Trades are keyed by account_identifier throughout analytics and filtering.
+        // Persist a stable name-based fallback for older managed accounts that lack one.
+        if (!selectedAccount.account_identifier) {
+          await Account.update(accountId, req.user.id, {
+            accountIdentifier: selectedImportAccountIdentifier
+          });
+        }
+      }
 
       console.log('Selected broker:', broker);
       console.log('Mapping ID:', mappingId);
       console.log('Account ID:', accountId);
+      console.log('Account mode:', accountMode);
       console.log('Import ID:', importId);
 
       const insertQuery = `
@@ -1936,25 +1969,9 @@ const tradeController = {
           logger.logImport(`Starting import for user ${fileUserId}, broker: ${broker}, file: ${fileName}`);
 
           // Resolve selected account identifier early so we can scope duplicate detection per account
-          let selectedAccountId = null;
-          if (accountId) {
-            const Account = require('../models/Account');
-            const selectedAccount = await Account.findById(accountId, req.user.id);
-            if (selectedAccount) {
-              selectedAccountId = selectedAccount.account_identifier || selectedAccount.account_name?.trim() || null;
-
-              // Trades are keyed by account_identifier throughout analytics and filtering.
-              // If a managed account exists without an identifier, persist a stable fallback
-              // based on the account name so imports remain filterable.
-              if (!selectedAccount.account_identifier && selectedAccountId) {
-                await Account.update(accountId, req.user.id, {
-                  accountIdentifier: selectedAccountId
-                });
-                logger.logImport(`Backfilled missing account identifier for selected account: ${selectedAccountId}`);
-              }
-
-              logger.logImport(`Using selected account: ${selectedAccount.account_name} (${selectedAccountId})`);
-            }
+          const selectedAccountId = selectedImportAccountIdentifier;
+          if (selectedAccountId) {
+            logger.logImport(`Using selected account identifier: ${selectedAccountId}`);
           }
 
           // Fetch existing open positions for context-aware parsing
@@ -1970,10 +1987,9 @@ const tradeController = {
             AND exit_price IS NULL
             AND exit_time IS NULL
           `;
-          if (selectedAccountId) {
-            openPositionsQuery += ` AND account_identifier = $2`;
-            openPositionsParams.push(selectedAccountId);
-          }
+          const openPositionsAccountScope = buildImportAccountScope(accountMode, selectedAccountId, 2);
+          openPositionsQuery += openPositionsAccountScope.clause;
+          openPositionsParams.push(...openPositionsAccountScope.params);
           openPositionsQuery += ` ORDER BY symbol, entry_time`;
           const openPositionsResult = await db.query(openPositionsQuery, openPositionsParams);
           logger.logImport(`Found ${openPositionsResult.rows.length} existing open positions${selectedAccountId ? ` for account ${selectedAccountId}` : ''}`);
@@ -1989,10 +2005,9 @@ const tradeController = {
             AND exit_price IS NOT NULL
             AND executions IS NOT NULL
           `;
-          if (selectedAccountId) {
-            completedTradesQuery += ` AND account_identifier = $2`;
-            completedTradesParams.push(selectedAccountId);
-          }
+          const completedTradesAccountScope = buildImportAccountScope(accountMode, selectedAccountId, 2);
+          completedTradesQuery += completedTradesAccountScope.clause;
+          completedTradesParams.push(...completedTradesAccountScope.params);
           completedTradesQuery += ` ORDER BY symbol, entry_time`;
           const completedTradesResult = await db.query(completedTradesQuery, completedTradesParams);
           logger.logImport(`Found ${completedTradesResult.rows.length} completed trades for duplicate checking${selectedAccountId ? ` for account ${selectedAccountId}` : ''}`);
@@ -2167,6 +2182,10 @@ const tradeController = {
             ? parseResult.manualReviewItems
             : (Array.isArray(parseDiagnostics?.manual_review_items) ? parseDiagnostics.manual_review_items : []);
 
+          // "None" must import without an account: clear any identifiers the
+          // parser read from the file so no account is linked or auto-created.
+          applyAccountModeToTrades(trades, accountMode);
+
           // Track additional scenarios for unknown_csv_headers
           if (parseDiagnostics) {
             const headerLine = getCsvHeaderLine(fileBuffer);
@@ -2236,10 +2255,9 @@ const tradeController = {
             logger.logImport(`[DIAGNOSTICS] Total rows: ${parseDiagnostics.totalRows}, Skipped: ${parseDiagnostics.skippedRows}, Invalid: ${parseDiagnostics.invalidRows}`);
           }
 
-          // Auto-create accounts for new account identifiers found in the import
-          try {
-            const Account = require('../models/Account');
-
+          // Auto-create accounts for new account identifiers found in the import.
+          // Skipped entirely for "none" so no account is created.
+          if (accountMode !== 'none') try {
             // Collect unique account identifiers from parsed trades
             const accountIdentifiers = new Set();
             logger.logImport(`[ACCOUNTS] Checking ${trades.length} trades for account identifiers`);
@@ -2442,10 +2460,9 @@ const tradeController = {
           existingTradesParams.push(minDate.toISOString().split('T')[0], maxDate.toISOString().split('T')[0]);
           existingTradesQuery += ` AND trade_date >= $2 AND trade_date <= $3`;
 
-          if (selectedAccountId) {
-            existingTradesQuery += ` AND account_identifier = $4`;
-            existingTradesParams.push(selectedAccountId);
-          }
+          const existingTradesAccountScope = buildImportAccountScope(accountMode, selectedAccountId, 4);
+          existingTradesQuery += existingTradesAccountScope.clause;
+          existingTradesParams.push(...existingTradesAccountScope.params);
 
           const existingTrades = await db.query(existingTradesQuery, existingTradesParams);
 

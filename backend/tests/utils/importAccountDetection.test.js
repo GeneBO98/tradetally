@@ -1,7 +1,10 @@
 const {
   detectImportAccounts,
   scanCsvAccountIdentifiers,
-  findAccountColumnIndex
+  findAccountColumnIndex,
+  resolveAccountMode,
+  applyAccountModeToTrades,
+  buildImportAccountScope
 } = require('../../src/utils/importAccountDetection');
 
 function binaryField(id, value) {
@@ -99,5 +102,54 @@ describe('importAccountDetection', () => {
     const result = detectImportAccounts(Buffer.from(csv), 'TradeActivityLog_20260903_UTC.Sim1.simulated.data');
 
     expect(result.accountIdentifiers).toEqual(['Sim1']);
+  });
+
+  describe('account mode', () => {
+    test('resolves explicit modes and keeps legacy clients on override/auto', () => {
+      expect(resolveAccountMode('none', 'acct-1')).toBe('none');
+      expect(resolveAccountMode('auto', 'acct-1')).toBe('auto');
+      expect(resolveAccountMode('override', 'acct-1')).toBe('override');
+      expect(resolveAccountMode('override', null)).toBe('override');
+      expect(resolveAccountMode(undefined, 'acct-1')).toBe('override');
+      expect(resolveAccountMode(undefined, null)).toBe('auto');
+    });
+
+    test('None clears imported account identifiers so no account is linked or created', () => {
+      const trades = [
+        { symbol: 'MES', account_identifier: 'SNAKE_ONLY' },
+        { symbol: 'MES', accountIdentifier: 'Sim1', account_identifier: 'Sim1' }
+      ];
+
+      applyAccountModeToTrades(trades, 'none');
+
+      expect(trades.map(trade => trade.accountIdentifier)).toEqual([null, null]);
+      expect(trades.map(trade => trade.account_identifier)).toEqual([null, null]);
+      const identifiers = new Set(trades.flatMap(trade => [trade.account_identifier, trade.accountIdentifier]).filter(Boolean));
+      expect(identifiers.size).toBe(0);
+    });
+
+    test('Auto preserves the identifiers parsed from the file', () => {
+      const trades = [{ symbol: 'MES', accountIdentifier: 'RTSL00000000000' }];
+      applyAccountModeToTrades(trades, 'auto');
+      expect(trades[0].accountIdentifier).toBe('RTSL00000000000');
+    });
+
+    test('None scopes all existing-trade lookups to unassigned trades', () => {
+      expect(buildImportAccountScope('none', null, 4)).toEqual({
+        clause: ` AND (account_identifier IS NULL OR account_identifier = '')`,
+        params: []
+      });
+    });
+
+    test('Override scopes existing-trade lookups to the selected account', () => {
+      expect(buildImportAccountScope('override', 'ACCOUNT-A', 4)).toEqual({
+        clause: ' AND account_identifier = $4',
+        params: ['ACCOUNT-A']
+      });
+    });
+
+    test('Auto leaves existing-trade lookups unscoped until parsed accounts are known', () => {
+      expect(buildImportAccountScope('auto', null, 2)).toEqual({ clause: '', params: [] });
+    });
   });
 });

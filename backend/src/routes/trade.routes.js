@@ -546,7 +546,7 @@ router.get('/import/requirements', authenticate, tradeController.checkImportRequ
  *                   type: integer
  */
 router.post('/import/validate', authenticate, importLimiter, upload.single('file'), tradeController.validateImportFile);
-router.post('/import/analyze-accounts', authenticate, upload.single('file'), tradeController.analyzeImportAccounts);
+router.post('/import/analyze-accounts', authenticate, importLimiter, upload.single('file'), tradeController.analyzeImportAccounts);
 
 router.post('/import', authenticate, importLimiter, upload.single('file'), tradeController.importTrades);
 router.post('/import/manual-review', authenticate, importLimiter, tradeController.resolveManualReviewTrades);

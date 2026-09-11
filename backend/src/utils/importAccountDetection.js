@@ -100,8 +100,47 @@ function detectImportAccounts(fileBuffer, fileName, options = {}) {
   };
 }
 
+const ACCOUNT_MODES = ['auto', 'none', 'override'];
+
+function resolveAccountMode(accountMode, accountId) {
+  const normalized = typeof accountMode === 'string' ? accountMode.trim().toLowerCase() : '';
+  if (ACCOUNT_MODES.includes(normalized)) return normalized;
+  return accountId ? 'override' : 'auto';
+}
+
+function applyAccountModeToTrades(trades, accountMode) {
+  if (!Array.isArray(trades)) return trades;
+  if (accountMode !== 'none') return trades;
+  for (const trade of trades) {
+    trade.account_identifier = null;
+    trade.accountIdentifier = null;
+  }
+  return trades;
+}
+
+function buildImportAccountScope(accountMode, selectedAccountIdentifier, parameterPosition) {
+  if (accountMode === 'none') {
+    return {
+      clause: ` AND (account_identifier IS NULL OR account_identifier = '')`,
+      params: []
+    };
+  }
+
+  if (selectedAccountIdentifier) {
+    return {
+      clause: ` AND account_identifier = $${parameterPosition}`,
+      params: [selectedAccountIdentifier]
+    };
+  }
+
+  return { clause: '', params: [] };
+}
+
 module.exports = {
   detectImportAccounts,
   scanCsvAccountIdentifiers,
-  findAccountColumnIndex
+  findAccountColumnIndex,
+  resolveAccountMode,
+  applyAccountModeToTrades,
+  buildImportAccountScope
 };

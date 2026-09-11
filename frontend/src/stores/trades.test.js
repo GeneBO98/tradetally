@@ -7,7 +7,8 @@ import { createPinia, setActivePinia } from 'pinia'
 
 const { api } = vi.hoisted(() => ({
   api: {
-    get: vi.fn()
+    get: vi.fn(),
+    post: vi.fn()
   }
 }))
 
@@ -25,6 +26,7 @@ describe('trades store request params', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     api.get.mockReset()
+    api.post.mockReset()
     localStorage.clear()
   })
 
@@ -58,5 +60,17 @@ describe('trades store request params', () => {
     const [, config] = api.get.mock.calls[0]
     expect('tags' in config.params).toBe(false)
     expect(config.params.strategies).toBe('breakout')
+  })
+
+  it('sends the account mode on import so None can mean no account', async () => {
+    const store = await loadStore()
+    api.post.mockResolvedValue({ data: { importId: 'imp-1' } })
+    const file = new File(['a,b'], 'trades.csv', { type: 'text/csv' })
+
+    await store.importTrades(file, 'sierrachart', null, null, null, { account_mode: 'none' })
+
+    const [url, formData] = api.post.mock.calls[0]
+    expect(url).toBe('/trades/import')
+    expect(formData.get('account_mode')).toBe('none')
   })
 })
