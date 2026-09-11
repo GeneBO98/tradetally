@@ -1290,6 +1290,7 @@ import BaseSelect from '@/components/common/BaseSelect.vue'
 import BaseModal from '@/components/common/BaseModal.vue'
 import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotifications'
 import { useStrategyOrder } from '@/composables/useStrategyOrder'
+import { useImportPreferences } from '@/composables/useImportPreferences'
 import { useVisibilityPolling } from '@/composables/useVisibilityPolling'
 import { isSierraChartBinaryFile, parseCSVHeaders, parseCSVSampleRows } from '@/utils/csvImportParse'
 
@@ -1326,8 +1327,12 @@ const startingTrial = ref(false)
 const accounts = ref([])
 const requiresAccountSelection = ref(false)
 const selectedAccountId = ref(null)
-const selectedImportStrategy = ref('__auto__')
-const includeImportedNotes = ref(false)
+const {
+  strategy: selectedImportStrategy,
+  includeNotes: includeImportedNotes,
+  refresh: refreshImportPreferences,
+  persist: persistImportPreferences
+} = useImportPreferences()
 const importStrategiesList = ref([])
 const { orderNames: orderImportStrategyNames, refresh: refreshStrategyOrder } = useStrategyOrder()
 const currencyProMessage = ref('')
@@ -2418,6 +2423,8 @@ async function handleImport() {
     localStorage.setItem('lastSelectedBroker', selectedBroker.value)
     uiPreferencesStore.notifyChanged('lastSelectedBroker', selectedBroker.value)
 
+    persistImportPreferences()
+
     // Reset form (but keep broker selection)
     selectedFile.value = null
     // Don't reset selectedBroker - keep it for next import
@@ -2579,6 +2586,8 @@ async function handleKeepBrokerSelected(selectedBrokerValue) {
     // Save broker preference to localStorage
     localStorage.setItem('lastSelectedBroker', selectedBroker.value)
     uiPreferencesStore.notifyChanged('lastSelectedBroker', selectedBroker.value)
+
+    persistImportPreferences()
 
     // Reset form (but keep broker selection)
     selectedFile.value = null
@@ -3584,6 +3593,8 @@ async function handleMappingSaved(mapping) {
     localStorage.setItem('lastSelectedBroker', 'generic')
     uiPreferencesStore.notifyChanged('lastSelectedBroker', 'generic')
 
+    persistImportPreferences()
+
     // Clear the file reference
     currentMappingFile.value = null
     csvHeaders.value = []
@@ -3686,7 +3697,7 @@ watch(selectedImportIds, (ids) => {
   }
 }, { deep: true })
 
-onMounted(() => {
+onMounted(async () => {
   track('import_page_viewed', {
     onboarding_step: authStore.onboardingStep || null,
     has_existing_imports: importHistory.value.length > 0
@@ -3694,6 +3705,9 @@ onMounted(() => {
 
   refreshStrategyOrder()
   runWhenIdle(() => fetchImportStrategies())
+
+  await uiPreferencesStore.init()
+  refreshImportPreferences()
 
   // Load saved broker preference
   const savedBroker = localStorage.getItem('lastSelectedBroker')

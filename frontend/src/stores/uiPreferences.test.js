@@ -86,4 +86,24 @@ describe('ui preferences store', () => {
       }
     })
   })
+
+  it('hydrates remembered import preferences from the server', async () => {
+    const { useUiPreferencesStore } = await import('./uiPreferences')
+    api.get.mockResolvedValueOnce({
+      data: {
+        settings: {
+          uiPreferences: {
+            import_strategy_handling: 'Breakout',
+            import_notes_and_descriptions: true
+          }
+        }
+      }
+    })
+
+    const store = useUiPreferencesStore()
+    await store.init()
+
+    expect(localStorage.getItem('import_strategy_handling')).toBe('Breakout')
+    expect(localStorage.getItem('import_notes_and_descriptions')).toBe('true')
+  })
 })
