@@ -467,6 +467,16 @@
             </div>
 
             <!-- Revenge Trading Analysis -->
+            <SessionActivityTimeline
+                v-if="activeBehavioralTab === 'patterns'"
+                :timeline="sessionTimeline"
+                :loading="sessionTimelineLoading"
+                :error="sessionTimelineError"
+                @date-change="loadSessionTimeline"
+                @retry="loadSessionTimeline(sessionTimelineDate)"
+                @open-trade="openTrade"
+            />
+
             <BehavioralRevengeTrading
                 v-if="activeBehavioralTab === 'patterns'"
                 :revenge-analysis="revengeAnalysis"
@@ -1684,6 +1694,7 @@ import MdiIcon from "@/components/MdiIcon.vue";
 import TradeFilters from "@/components/trades/TradeFilters.vue";
 import BaseSelect from "@/components/common/BaseSelect.vue";
 import BehavioralRevengeTrading from "@/components/behavioral/BehavioralRevengeTrading.vue";
+import SessionActivityTimeline from "@/components/behavioral/SessionActivityTimeline.vue";
 import BehavioralPersonality from "@/components/behavioral/BehavioralPersonality.vue";
 import BehavioralLossAversion from "@/components/behavioral/BehavioralLossAversion.vue";
 import BehavioralOverconfidence from "@/components/behavioral/BehavioralOverconfidence.vue";
@@ -1715,6 +1726,11 @@ const loadingTopMissedTrades = ref(false);
 const hasAccess = ref(false);
 const overview = ref(null);
 const revengeAnalysis = ref(null);
+const sessionTimeline = ref(null);
+const sessionTimelineLoading = ref(false);
+const sessionTimelineError = ref("");
+const sessionTimelineDate = ref("");
+let sessionTimelineRequestId = 0;
 const insights = ref(null);
 const activeAlerts = ref([]);
 const lossAversionData = ref(null);
@@ -1809,6 +1825,37 @@ const buildBehavioralQueryParams = () => {
     return queryParams;
 };
 
+const buildSessionTimelineQueryParams = (sessionDate = "") => {
+    const queryParams = new URLSearchParams();
+    if (sessionDate) queryParams.append("session_date", sessionDate);
+    if (filters.value.startDate) queryParams.append("start_date", filters.value.startDate);
+    if (filters.value.endDate) queryParams.append("end_date", filters.value.endDate);
+    const accounts = getAccountFilterParam();
+    if (accounts) queryParams.append("accounts", accounts);
+    return queryParams;
+};
+
+const loadSessionTimeline = async (sessionDate = "") => {
+    if (!hasAccess.value) return;
+    const requestId = ++sessionTimelineRequestId;
+    sessionTimelineLoading.value = true;
+    sessionTimelineError.value = "";
+    if (sessionDate !== undefined) sessionTimelineDate.value = sessionDate || "";
+    const requestedDate = sessionDate || sessionTimelineDate.value;
+    try {
+        const response = await api.get(`/behavioral-analytics/session-timeline?${buildSessionTimelineQueryParams(requestedDate)}`);
+        if (requestId !== sessionTimelineRequestId) return;
+        sessionTimeline.value = response.data.data;
+        sessionTimelineDate.value = response.data.data.session_date || "";
+    } catch (error) {
+        if (requestId !== sessionTimelineRequestId) return;
+        if (error.response?.status === 403) hasAccess.value = false;
+        sessionTimelineError.value = error.response?.data?.error || "Failed to load session activity";
+    } finally {
+        if (requestId === sessionTimelineRequestId) sessionTimelineLoading.value = false;
+    }
+};
+
 // Load behavioral analytics data
 const loadData = async () => {
     if (!hasAccess.value) return;
@@ -1840,6 +1887,8 @@ const loadData = async () => {
         activeAlerts.value = alertsRes.data.data;
         settings.value = { ...settings.value, ...settingsRes.data.data };
 
+        await loadSessionTimeline(sessionTimelineDate.value);
+
         // Update pagination info
         if (revengeRes.data.data.pagination) {
             pagination.value = revengeRes.data.data.pagination;
@@ -1860,6 +1909,7 @@ const loadData = async () => {
 const applyFilters = async () => {
     // Reset pagination when applying filters
     pagination.value.page = 1;
+    sessionTimelineDate.value = "";
     // Save filters to localStorage
     saveFilters();
 

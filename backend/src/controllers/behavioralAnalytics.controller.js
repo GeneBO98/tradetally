@@ -6,6 +6,7 @@ const TradingPersonalityService = require('../services/tradingPersonalityService
 const RevengeTradeDetector = require('../services/revengeTradeDetector');
 const TierService = require('../services/tierService');
 const TickDataService = require('../services/tickDataService');
+const SessionTimelineService = require('../services/sessionTimelineService');
 const db = require('../config/database');
 const ensureString = require('../utils/ensureString');
 
@@ -72,6 +73,26 @@ const behavioralAnalyticsController = {
         data: analysis
       });
     } catch (error) {
+      return handleAnalyticsError(error, res, next);
+    }
+  },
+
+  // Get a personal session activity timeline for behavioral review.
+  async getSessionTimeline(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const accounts = req.query.accounts
+        ? ensureString(req.query.accounts).split(',').filter(Boolean)
+        : [];
+      const timeline = await SessionTimelineService.getSessionTimeline(userId, {
+        session_date: req.query.session_date,
+        start_date: req.query.start_date,
+        end_date: req.query.end_date,
+        accounts
+      });
+      res.json({ success: true, data: timeline });
+    } catch (error) {
+      if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
       return handleAnalyticsError(error, res, next);
     }
   },

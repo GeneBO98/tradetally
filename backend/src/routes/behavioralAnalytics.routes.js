@@ -23,6 +23,9 @@ router.get('/overview', behavioralAnalyticsController.getOverview);
 // Get revenge trading analysis
 router.get('/revenge-trading', behavioralAnalyticsController.getRevengeTradeAnalysis);
 
+// Personal session activity review; detection and alert behavior are unchanged.
+router.get('/session-timeline', behavioralAnalyticsController.getSessionTimeline);
+
 // Get user behavioral settings
 router.get('/settings', behavioralAnalyticsController.getSettings);
 
