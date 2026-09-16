@@ -52,7 +52,7 @@ describe('analyticsController.getStrategyStats', () => {
     await analyticsController.getStrategyStats(req, res, next);
 
     expect(next).not.toHaveBeenCalled();
-    expect(res.json).toHaveBeenCalledWith({ strategies: rows });
+    expect(res.json).toHaveBeenCalledWith({ strategies: rows, display_currency: 'USD' });
     expect(db.query).toHaveBeenCalledTimes(1);
 
     const [query, params] = db.query.mock.calls[0];
@@ -78,7 +78,7 @@ describe('analyticsController.getStrategyStats', () => {
 
     expect(next).not.toHaveBeenCalled();
     const [query] = db.query.mock.calls[0];
-    expect(query).toContain('SUM(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0)) as gross_pnl');
+    expect(query).toContain('SUM(trade_amount_usd(t.pnl, t.original_currency, t.exchange_rate, t.original_entry_price_currency) + COALESCE(trade_amount_usd(t.commission, t.original_currency, t.exchange_rate, t.original_entry_price_currency), 0) + COALESCE(trade_amount_usd(t.fees, t.original_currency, t.exchange_rate, t.original_entry_price_currency), 0)) as gross_pnl');
     expect(query).toContain('ABS(gross_pnl) <= (10)');
   });
 });

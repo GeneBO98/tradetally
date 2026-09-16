@@ -75,23 +75,6 @@
                   <span v-if="isRequiredColumn(column.key)" class="text-xs text-gray-400 ml-1">(required)</span>
                 </label>
               </div>
-
-              <!-- Column Width Selector (for visible columns) -->
-              <div v-if="column.visible && !isRequiredColumn(column.key)" class="flex items-center space-x-2">
-                <div class="w-28">
-                  <BaseSelect
-                    v-model="column.width"
-                    @change="updateColumns"
-                    :searchable="false"
-                    :options="[
-                      { value: 'auto', label: 'Auto' },
-                      { value: 'sm', label: 'Small' },
-                      { value: 'md', label: 'Medium' },
-                      { value: 'lg', label: 'Large' }
-                    ]"
-                  />
-                </div>
-              </div>
             </div>
             </div>
           </div>
@@ -110,6 +93,13 @@
                 class="text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
               >
                 Deselect all
+              </button>
+              <button
+                @click="resetWidths"
+                title="Clear the widths you dragged on the column edges"
+                class="text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+              >
+                Reset widths
               </button>
             </div>
 
@@ -140,7 +130,6 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { AdjustmentsHorizontalIcon } from '@heroicons/vue/24/outline'
 import { Bars3Icon } from '@heroicons/vue/24/solid'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
-import BaseSelect from '@/components/common/BaseSelect.vue'
 
 const uiPreferencesStore = useUiPreferencesStore()
 
@@ -151,7 +140,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['update:columns'])
+const emit = defineEmits(['update:columns', 'reset-widths'])
 
 // Refs
 const buttonRef = ref(null)
@@ -160,48 +149,48 @@ const dropdownStyle = ref({})
 
 // Default column configuration
 const defaultColumns = [
-  { key: 'checkbox', label: 'Select', visible: true, width: 'auto', required: true },
-  { key: 'symbol', label: 'Symbol', visible: true, width: 'auto', required: true },
-  { key: 'entryDate', label: 'Entry Date', visible: true, width: 'auto' },
-  { key: 'exitDate', label: 'Exit Date', visible: true, width: 'auto' },
-  { key: 'entryTime', label: 'Entry Time', visible: false, width: 'auto' },
-  { key: 'side', label: 'Side', visible: true, width: 'auto' },
-  { key: 'entry', label: 'Entry', visible: true, width: 'auto' },
-  { key: 'exit', label: 'Exit', visible: true, width: 'auto' },
-  { key: 'pnl', label: 'Net P&L', visible: true, width: 'auto' },
-  { key: 'grossPnl', label: 'Gross P&L', visible: true, width: 'auto' },
-  { key: 'unrealizedPnl', label: 'Unrealized', visible: true, width: 'auto' },
-  { key: 'confidence', label: 'Confidence', visible: true, width: 'auto' },
-  { key: 'quality', label: 'Quality', visible: true, width: 'auto' },
-  { key: 'sector', label: 'Sector', visible: true, width: 'auto' },
-  { key: 'status', label: 'Status', visible: true, width: 'auto' },
-  { key: 'comments', label: 'Comments', visible: true, width: 'auto' },
-  { key: 'quantity', label: 'Quantity', visible: false, width: 'auto' },
-  { key: 'commission', label: 'Commission', visible: false, width: 'auto' },
-  { key: 'fees', label: 'Fees', visible: false, width: 'auto' },
-  { key: 'strategy', label: 'Strategy', visible: true, width: 'auto' },
-  { key: 'setup', label: 'Setup', visible: false, width: 'auto' },
-  { key: 'broker', label: 'Broker', visible: false, width: 'auto' },
-  { key: 'account', label: 'Account', visible: false, width: 'auto' },
-  { key: 'tags', label: 'Tags', visible: false, width: 'auto' },
-  { key: 'notes', label: 'Notes', visible: false, width: 'auto' },
-  { key: 'holdTime', label: 'Hold Time', visible: false, width: 'auto' },
-  { key: 'roi', label: 'ROI %', visible: false, width: 'auto' },
-  { key: 'stopLoss', label: 'Stop Loss', visible: false, width: 'auto' },
-  { key: 'takeProfit', label: 'Take Profit', visible: false, width: 'auto' },
-  { key: 'rValue', label: 'R-Multiple', visible: false, width: 'auto' },
-  { key: 'mae', label: 'MAE', visible: false, width: 'auto' },
-  { key: 'mfe', label: 'MFE', visible: false, width: 'auto' },
-  { key: 'instrumentType', label: 'Instrument Type', visible: false, width: 'auto' },
-  { key: 'underlyingSymbol', label: 'Underlying Symbol', visible: false, width: 'auto' },
-  { key: 'optionType', label: 'Option Type', visible: false, width: 'auto' },
-  { key: 'strikePrice', label: 'Strike Price', visible: false, width: 'auto' },
-  { key: 'expirationDate', label: 'Expiration Date', visible: false, width: 'auto' },
-  { key: 'contractSize', label: 'Contract Size', visible: false, width: 'auto' },
-  { key: 'heartRate', label: 'Heart Rate', visible: false, width: 'auto' },
-  { key: 'sleepHours', label: 'Sleep Hours', visible: false, width: 'auto' },
-  { key: 'sleepScore', label: 'Sleep Score', visible: false, width: 'auto' },
-  { key: 'tradingviewLink', label: 'TradingView', visible: false, width: 'auto' }
+  { key: 'checkbox', label: 'Select', visible: true, required: true },
+  { key: 'symbol', label: 'Symbol', visible: true, required: true },
+  { key: 'entryDate', label: 'Entry Date', visible: true },
+  { key: 'exitDate', label: 'Exit Date', visible: true },
+  { key: 'entryTime', label: 'Entry Time', visible: false },
+  { key: 'side', label: 'Side', visible: true },
+  { key: 'entry', label: 'Entry', visible: true },
+  { key: 'exit', label: 'Exit', visible: true },
+  { key: 'pnl', label: 'Net P&L', visible: true },
+  { key: 'grossPnl', label: 'Gross P&L', visible: true },
+  { key: 'unrealizedPnl', label: 'Unrealized', visible: true },
+  { key: 'confidence', label: 'Confidence', visible: true },
+  { key: 'quality', label: 'Quality', visible: true },
+  { key: 'sector', label: 'Sector', visible: true },
+  { key: 'status', label: 'Status', visible: true },
+  { key: 'comments', label: 'Comments', visible: true },
+  { key: 'quantity', label: 'Quantity', visible: false },
+  { key: 'commission', label: 'Commission', visible: false },
+  { key: 'fees', label: 'Fees', visible: false },
+  { key: 'strategy', label: 'Strategy', visible: true },
+  { key: 'setup', label: 'Setup', visible: false },
+  { key: 'broker', label: 'Broker', visible: false },
+  { key: 'account', label: 'Account', visible: false },
+  { key: 'tags', label: 'Tags', visible: false },
+  { key: 'notes', label: 'Notes', visible: false },
+  { key: 'holdTime', label: 'Hold Time', visible: false },
+  { key: 'roi', label: 'ROI %', visible: false },
+  { key: 'stopLoss', label: 'Stop Loss', visible: false },
+  { key: 'takeProfit', label: 'Take Profit', visible: false },
+  { key: 'rValue', label: 'R-Multiple', visible: false },
+  { key: 'mae', label: 'MAE', visible: false },
+  { key: 'mfe', label: 'MFE', visible: false },
+  { key: 'instrumentType', label: 'Instrument Type', visible: false },
+  { key: 'underlyingSymbol', label: 'Underlying Symbol', visible: false },
+  { key: 'optionType', label: 'Option Type', visible: false },
+  { key: 'strikePrice', label: 'Strike Price', visible: false },
+  { key: 'expirationDate', label: 'Expiration Date', visible: false },
+  { key: 'contractSize', label: 'Contract Size', visible: false },
+  { key: 'heartRate', label: 'Heart Rate', visible: false },
+  { key: 'sleepHours', label: 'Sleep Hours', visible: false },
+  { key: 'sleepScore', label: 'Sleep Score', visible: false },
+  { key: 'tradingviewLink', label: 'TradingView', visible: false }
 ]
 
 const showMenu = ref(false)
@@ -231,8 +220,8 @@ const loadSavedColumns = () => {
         const oldCol = savedColumns[dateIndex]
         // Replace old date with entryDate, insert exitDate after it
         savedColumns.splice(dateIndex, 1,
-          { key: 'entryDate', label: 'Entry Date', visible: oldCol.visible, width: oldCol.width || 'auto' },
-          { key: 'exitDate', label: 'Exit Date', visible: oldCol.visible, width: oldCol.width || 'auto' }
+          { key: 'entryDate', label: 'Entry Date', visible: oldCol.visible },
+          { key: 'exitDate', label: 'Exit Date', visible: oldCol.visible }
         )
         localStorage.setItem('tradeListColumns', JSON.stringify(savedColumns))
         console.log('[COLUMNS] MIGRATION: date -> entryDate + exitDate complete')
@@ -250,16 +239,14 @@ const loadSavedColumns = () => {
           savedColumns.splice(confidenceIndex + 1, 0, {
             key: 'quality',
             label: 'Quality',
-            visible: true,
-            width: 'auto'
+            visible: true
           })
         } else {
           // If confidence not found, just add at a reasonable position
           savedColumns.push({
             key: 'quality',
             label: 'Quality',
-            visible: true,
-            width: 'auto'
+            visible: true
           })
         }
         // Save the updated columns back to localStorage
@@ -278,8 +265,7 @@ const loadSavedColumns = () => {
         const grossPnlColumn = {
           key: 'grossPnl',
           label: 'Gross P&L',
-          visible: true,
-          width: 'auto'
+          visible: true
         }
 
         if (pnlIndex !== -1) {
@@ -304,8 +290,7 @@ const loadSavedColumns = () => {
           // Column still exists in defaults, merge saved settings with default properties
           return {
             ...defaultCol,
-            visible: savedCol.visible,
-            width: savedCol.width || defaultCol.width
+            visible: savedCol.visible
           }
         } else {
           // Column was removed from defaults (rare), keep it anyway
@@ -350,7 +335,6 @@ const saveColumns = () => {
     key: col.key,
     label: col.label,
     visible: col.visible,
-    width: col.width,
     required: col.required
   }))
   localStorage.setItem('tradeListColumns', JSON.stringify(columnsToSave))
@@ -462,6 +446,13 @@ const resetToDefault = () => {
   localColumns.value = [...defaultColumns]
   localStorage.removeItem('tradeListColumns')
   uiPreferencesStore.notifyChanged('tradeListColumns', null)
+  emit('reset-widths')
+}
+
+// Column widths are dragged on the header itself and owned by the table, so
+// the panel only asks for them to be cleared.
+const resetWidths = () => {
+  emit('reset-widths')
 }
 
 const updateColumns = () => {

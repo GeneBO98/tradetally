@@ -3,6 +3,15 @@ function normalizeBrokerName(name) {
   const brokerAliases = {
     tradeovate: 'tradovate',
     'trade ovate': 'tradovate',
+    'sierra chart': 'sierrachart',
+    sierra_chart: 'sierrachart',
+    sierrachart: 'sierrachart',
+    'charles schwab': 'schwab',
+    'td ameritrade': 'tdameritrade',
+    'trade station': 'tradestation',
+    'e*trade': 'etrade',
+    'tasty trade': 'tastytrade',
+    fidelity: 'fidelity',
     thinkorswim: 'thinkorswim',
     tos: 'thinkorswim',
     'interactive brokers': 'ibkr',
@@ -42,6 +51,23 @@ function buildBrokerFeeMap(rows = [], logger = null) {
   });
 
   return brokerFeeMap;
+}
+
+function buildProfileFeeMaps(rows = [], logger = null) {
+  const profileMaps = new Map();
+
+  rows.forEach(row => {
+    const profileId = row.profile_id || row.fee_profile_id;
+    if (!profileId) return;
+    if (!profileMaps.has(profileId)) profileMaps.set(profileId, []);
+    profileMaps.get(profileId).push(row);
+  });
+
+  for (const [profileId, profileRows] of profileMaps) {
+    profileMaps.set(profileId, buildBrokerFeeMap(profileRows, logger));
+  }
+
+  return profileMaps;
 }
 
 function getBrokerLookupNames(broker, trades = []) {
@@ -101,7 +127,15 @@ function hasNonZeroCost(value) {
   return value !== undefined && value !== null && Number(value) !== 0;
 }
 
-function applyBrokerFeeSettingsToTrades({ trades = [], broker = '', feeRows = [], logger = null }) {
+function applyBrokerFeeSettingsToTrades({
+  trades = [],
+  broker = '',
+  feeRows = [],
+  feeProfileRows = [],
+  feeProfileAssignments = [],
+  feeSummary = null,
+  logger = null
+}) {
   const normalizedBroker = normalizeBrokerName(broker);
   const getEffectiveBroker = (trade) => {
     if (normalizedBroker === 'auto' && trade.broker) {
@@ -111,6 +145,28 @@ function applyBrokerFeeSettingsToTrades({ trades = [], broker = '', feeRows = []
   };
 
   const brokerFeeMap = buildBrokerFeeMap(feeRows, logger);
+  const profileFeeMaps = buildProfileFeeMaps(feeProfileRows, logger);
+  const profileAssignments = new Map(
+    feeProfileAssignments
+      .filter(assignment => assignment?.account_identifier)
+      .map(assignment => [String(assignment.account_identifier), assignment])
+  );
+
+  const recordUnknownFee = (trade, assignment, effectiveBroker, symbol) => {
+    if (!feeSummary) return;
+    const accountIdentifier = trade.accountIdentifier || trade.account_identifier || '__no_account__';
+    const key = String(accountIdentifier);
+    if (!feeSummary.unknownAccounts) feeSummary.unknownAccounts = new Map();
+    const current = feeSummary.unknownAccounts.get(key) || {
+      account_identifier: accountIdentifier === '__no_account__' ? null : accountIdentifier,
+      fee_profile_name: assignment?.fee_profile_name || null,
+      broker: effectiveBroker,
+      trade_count: 0
+    };
+    current.trade_count++;
+    feeSummary.unknownAccounts.set(key, current);
+    logger?.logImport?.(`[BROKER FEES] Fees unknown for ${accountIdentifier === '__no_account__' ? 'trades without an account' : `account ${accountIdentifier}`} (broker: ${effectiveBroker}, symbol: ${symbol}). Imported with zero configured fees.`);
+  };
 
   return trades.map(trade => {
     const hasCommission = hasNonZeroCost(trade.commission);
@@ -123,15 +179,32 @@ function applyBrokerFeeSettingsToTrades({ trades = [], broker = '', feeRows = []
     const symbol = (trade.symbol || '').toUpperCase();
     const quantity = Number(trade.quantity || trade.totalQuantity || 1);
     const effectiveBroker = getEffectiveBroker(trade);
-    const brokerSettings = brokerFeeMap.get(effectiveBroker);
+    const accountIdentifier = trade.accountIdentifier || trade.account_identifier;
+    const assignment = accountIdentifier ? profileAssignments.get(String(accountIdentifier)) : null;
+    const profileMap = assignment?.fee_profile_id ? profileFeeMaps.get(assignment.fee_profile_id) : null;
+
+    // An assigned profile is authoritative, including an empty or zero-fee
+    // profile. Only accounts without a profile use legacy broker settings.
+    if (assignment?.is_zero_fee === true) {
+      if (feeSummary?.knownZeroAccounts) {
+        feeSummary.knownZeroAccounts.add(String(accountIdentifier));
+      }
+      return trade;
+    }
+
+    const brokerSettings = assignment
+      ? profileMap?.get(effectiveBroker)
+      : brokerFeeMap.get(effectiveBroker);
 
     if (!brokerSettings) {
+      recordUnknownFee(trade, assignment, effectiveBroker, symbol);
       logger?.logImport?.(`[BROKER FEES] No fee settings found for broker '${effectiveBroker}' (symbol: ${symbol}). Available brokers: ${[...brokerFeeMap.keys()].join(', ')}`);
       return trade;
     }
 
     const feeSettings = resolveFeeSettings(symbol, brokerSettings, logger);
     if (!feeSettings) {
+      recordUnknownFee(trade, assignment, effectiveBroker, symbol);
       logger?.logImport?.(`[BROKER FEES] No fee settings found for ${symbol} (broker: ${effectiveBroker}). No instrument match and no broker default configured.`);
       return trade;
     }
@@ -171,6 +244,7 @@ function applyBrokerFeeSettingsToTrades({ trades = [], broker = '', feeRows = []
 module.exports = {
   applyBrokerFeeSettingsToTrades,
   buildBrokerFeeMap,
+  buildProfileFeeMaps,
   getBrokerLookupNames,
   normalizeBrokerName
 };

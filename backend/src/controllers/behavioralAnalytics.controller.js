@@ -9,6 +9,39 @@ const TickDataService = require('../services/tickDataService');
 const SessionTimelineService = require('../services/sessionTimelineService');
 const db = require('../config/database');
 const ensureString = require('../utils/ensureString');
+const { fxUsd } = require('../utils/tradeFx');
+const { resolveDisplayCurrency, getRatesToDisplay } = require('../utils/displayCurrency');
+
+/**
+ * Convert one USD amount into the user's display currency. Used where an
+ * amount ends up inside a rendered sentence rather than as a JSON number,
+ * which is the one place the response-level money walker cannot reach.
+ */
+async function toDisplayAmount(userId, usdAmount) {
+  try {
+    const currency = await resolveDisplayCurrency(userId);
+    if (currency === 'USD') return { amount: usdAmount, currency };
+    const rates = await getRatesToDisplay(['USD'], currency);
+    return rates.USD
+      ? { amount: usdAmount * rates.USD, currency }
+      : { amount: usdAmount, currency: 'USD' };
+  } catch (error) {
+    console.warn(`[BEHAVIORAL] Display conversion unavailable, reporting USD: ${error.message}`);
+    return { amount: usdAmount, currency: 'USD' };
+  }
+}
+
+function formatDisplayAmount(amount, currency) {
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 0
+    }).format(amount);
+  } catch {
+    return `${currency} ${Math.round(amount)}`;
+  }
+}
 
 // Shared catch-block handler: Pro-tier feature errors surface as a 403
 // upgrade prompt; everything else goes to the standard error middleware.
@@ -438,14 +471,19 @@ const behavioralAnalyticsController = {
     const ctx = await db.query(`
       WITH closed AS (
         SELECT
-          t.id, t.trade_date, t.entry_time, t.exit_time, t.pnl, t.quantity, t.side,
+          -- Amounts are normalized to USD here, once, so every signal below
+          -- (streak P&L, average loss, notional sizing) compares like with
+          -- like even when some rows are still in their original currency.
+          t.id, t.trade_date, t.entry_time, t.exit_time,
+          ${fxUsd('pnl', 't')} AS pnl,
+          t.quantity, t.side,
           t.symbol, t.strategy,
           -- Notional size proxy: weight raw quantity by contract multiplier so
           -- comparisons stay coherent across instrument types. Futures use
           -- point_value (ES=50, MES=5), stocks/options fall back to entry_price.
           -- Without this, 1 ES contract reads as a "sizing down" vs 7 MES even
           -- though ES is 10x the notional. See GitHub issue #330.
-          (t.quantity * COALESCE(NULLIF(t.point_value, 0), t.entry_price, 1))::numeric AS notional
+          (t.quantity * COALESCE(NULLIF(t.point_value, 0), ${fxUsd('entry_price', 't')}, 1))::numeric AS notional
         FROM trades t
         ${userWhere}
           AND t.exit_price IS NOT NULL
@@ -719,8 +757,12 @@ const behavioralAnalyticsController = {
     if (snapshotCount > 0) {
       const wr = snapshotCount > 0 ? (snapshotWins / snapshotCount) * 100 : null;
       const wrLabel = wr !== null ? `${wr.toFixed(0)}% win rate` : '';
-      const pnlSign = snapshotPnl >= 0 ? '+' : '';
-      const pnlLabel = `${pnlSign}$${snapshotPnl.toFixed(0)}`;
+      // The amount is baked into display text, so it has to be converted and
+      // symbolled here - the response walker cannot reach inside a string.
+      const { amount: snapshotAmount, currency: snapshotCurrency } =
+        await toDisplayAmount(userId, snapshotPnl);
+      const pnlSign = snapshotAmount >= 0 ? '+' : '';
+      const pnlLabel = `${pnlSign}${formatDisplayAmount(snapshotAmount, snapshotCurrency)}`;
       const streakLabel = streakKind === 'W' && streak > 0 ? `, ${streak}W streak`
         : streakKind === 'L' && streak > 0 ? `, ${streak}L streak`
         : '';

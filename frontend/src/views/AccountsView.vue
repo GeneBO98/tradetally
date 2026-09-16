@@ -201,6 +201,9 @@
                   <span v-if="account.broker" class="px-2 py-0.5 text-xs font-medium rounded bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
                     {{ formatBroker(account.broker) }}
                   </span>
+                  <span v-if="account.feeProfileName" class="px-2 py-0.5 text-xs font-medium rounded bg-primary-100 text-primary-700 dark:bg-primary-900 dark:text-primary-300">
+                    Fees: {{ account.feeProfileName }}
+                  </span>
                   <span v-if="!account.includeInReports" class="px-2 py-0.5 text-xs font-medium rounded bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
                     Excluded from reports
                   </span>
@@ -483,6 +486,8 @@ const archivedAccounts = computed(() => accounts.value.filter(account => account
 
 const brokerLabels = {
   schwab: 'Charles Schwab',
+  'charles schwab': 'Charles Schwab',
+  tdameritrade: 'TD Ameritrade',
   thinkorswim: 'thinkorswim',
   ibkr: 'Interactive Brokers',
   captrader: 'CapTrader',
@@ -492,6 +497,9 @@ const brokerLabels = {
   avatrade: 'AvaTrade',
   tradingview: 'TradingView',
   tradovate: 'Tradovate',
+  tradestation: 'TradeStation',
+  tastytrade: 'Tastytrade',
+  fidelity: 'Fidelity',
   sierrachart: 'Sierra Chart',
   ninjatrader: 'NinjaTrader',
   other: 'Other'

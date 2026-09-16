@@ -449,7 +449,12 @@ class JobQueue {
           trade = await Trade.findById(tradeData.tradeId);
         }
         
-        if (trade && (!trade.strategy || trade.strategy === 'day_trading' || 
+        // Current-state check: never reclassify trades the user manually
+        // controls. Jobs carrying stale trade snapshots (built before a
+        // manual bulk edit) lack manual_override, so they fall through to
+        // the UPDATE below, whose `manual_override = false` write condition
+        // is the authoritative guard.
+        if (trade && !trade.manual_override && (!trade.strategy || trade.strategy === 'day_trading' ||
             (trade.classification_metadata && JSON.parse(trade.classification_metadata).needsFullClassification))) {
           
           const classification = await Trade.classifyTradeStrategyWithAnalysis(trade);
@@ -458,7 +463,7 @@ class JobQueue {
             await db.query(`
               UPDATE trades 
               SET strategy = $1, strategy_confidence = $2, classification_method = $3, classification_metadata = $4
-              WHERE id = $5
+              WHERE id = $5 AND manual_override = false
             `, [
               classification.strategy,
               Math.round((classification.confidence || 0.5) * 100),

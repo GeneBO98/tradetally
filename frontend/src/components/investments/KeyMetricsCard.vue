@@ -35,6 +35,7 @@
 <script setup>
 import { computed } from 'vue'
 import { formatPercent as formatPercentBase } from '@/utils/formatters'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 
 const props = defineProps({
   metrics: {
@@ -43,12 +44,17 @@ const props = defineProps({
   }
 })
 
+const { symbolFor } = useCurrencyFormatter()
+// The DCF metrics response declares the currency its monetary values are in
+// (converted to the user's display currency server-side)
+const displayCurrency = computed(() => props.metrics?.currency || '')
+
 function formatLargeNumber(value, withCurrency = true) {
   if (value === null || value === undefined || !Number.isFinite(Number(value))) return 'N/A'
   const num = Number(value)
   const abs = Math.abs(num)
   const sign = num < 0 ? '-' : ''
-  const prefix = withCurrency ? '$' : ''
+  const prefix = withCurrency ? symbolFor(displayCurrency.value) : ''
   if (abs >= 1e12) return `${sign}${prefix}${(abs / 1e12).toFixed(2)}T`
   if (abs >= 1e9) return `${sign}${prefix}${(abs / 1e9).toFixed(2)}B`
   if (abs >= 1e6) return `${sign}${prefix}${(abs / 1e6).toFixed(2)}M`
@@ -62,7 +68,7 @@ function formatLargeCurrency(value) {
 
 function formatPrice(value) {
   if (value === null || value === undefined || !Number.isFinite(Number(value))) return 'N/A'
-  return `$${Number(value).toFixed(2)}`
+  return `${symbolFor(displayCurrency.value)}${Number(value).toFixed(2)}`
 }
 
 function formatPercent(decimal, digits = 2) {

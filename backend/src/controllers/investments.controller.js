@@ -10,6 +10,133 @@ const PortfolioService = require('../services/portfolioService');
 const DCFValuationService = require('../services/dcfValuationService');
 const plaidIncomeService = require('../services/plaid/plaidIncomeService');
 const db = require('../config/database');
+const { resolveDisplayCurrency, getRatesToDisplay, scaleMoneyFields, FINANCIAL_MONEY_KEYS } = require('../utils/displayCurrency');
+
+// Monetary fields (in a company's REPORTING currency) per statement shape.
+// Share counts, years, dates and ratios must never appear here - scaling
+// them would corrupt derived per-share math in the UI.
+const STATEMENT_MONEY_KEYS = {
+  'balance-sheet': [
+    'totalAssets', 'cashAndEquivalents', 'currentAssets',
+    'totalLiabilities', 'currentLiabilities', 'longTermDebt', 'shortTermDebt',
+    'totalDebt', 'totalEquity', 'retainedEarnings'
+  ],
+  'income-statement': [
+    'revenue', 'costOfRevenue', 'grossProfit', 'operatingExpenses', 'operatingIncome',
+    'ebit', 'ebitda', 'interestExpense', 'netIncome', 'eps', 'epsBasic', 'epsDiluted'
+  ],
+  'cash-flow': [
+    'operatingCashFlow', 'depreciationAmortization', 'capitalExpenditures',
+    'investingCashFlow', 'financingCashFlow', 'dividendsPaid', 'stockRepurchases', 'freeCashFlow'
+  ]
+};
+
+// Finnhub /stock/metric values are quoted in the profile's TRADING currency
+const TRADING_METRIC_MONEY_KEYS = [
+  'marketCapitalization', 'eps', 'epsTTM', '10AverageEPS_', 'totalCashPerShare',
+  'totalDebtPerShare', 'revenuePerShare', 'revenuePerShareTTM', 'bookValuePerShare',
+  'dividendPerShare', '52WeekHigh', '52WeekLow'
+];
+const METRIC_SERIES_MONEY_NAMES = [
+  'eps', 'revenue', 'netIncome', 'freeCashFlow', 'operatingCashFlow', 'grossProfit',
+  'totalCash', 'totalDebt', 'totalAssets', 'totalLiabilities', 'totalEquity',
+  'dividendPerShare', 'bookValuePerShare'
+];
+
+function scaleMetricSeries(series, rate) {
+  if (!series || typeof series !== 'object') return;
+  for (const [name, block] of Object.entries(series)) {
+    if (!METRIC_SERIES_MONEY_NAMES.includes(name)) continue;
+    const points = Array.isArray(block) ? block : (Array.isArray(block?.series) ? block.series : null);
+    if (!points) continue;
+    for (const point of points) {
+      if (point && typeof point.v === 'number' && Number.isFinite(point.v)) {
+        point.v *= rate;
+      }
+    }
+  }
+}
+
+/**
+ * Convert statement/financial rows from their reporting currency to the
+ * user's display currency using the daily FX store. Best-effort: rows whose
+ * currency has no rate stay unconverted and are listed in
+ * unconverted_currencies so the UI can label them honestly.
+ */
+async function convertForDisplayCurrency(req, rows, sourceCurrencies, moneyKeys) {
+  const displayCurrency = await resolveDisplayCurrency(req.user.id);
+  const currencies = sourceCurrencies.map(c => String(c || 'USD').toUpperCase());
+  const rateMap = await getRatesToDisplay(currencies, displayCurrency);
+
+  const converted = rows.map((row, i) => {
+    const rate = rateMap[currencies[i]];
+    if (rate === null || rate === undefined) return row;
+    return scaleMoneyFields(row, rate, moneyKeys, { copy: true });
+  });
+
+  const effective = [...new Set(currencies.map(c => (rateMap[c] === null ? c : displayCurrency)))];
+  const unconverted = [...new Set(currencies.filter(c => rateMap[c] === null))];
+
+  return {
+    converted,
+    currency: effective.length === 1 ? effective[0] : null,
+    reportingCurrencies: [...new Set(currencies)],
+    rates: rateMap,
+    unconverted
+  };
+}
+
+// Pillar `data` money keys by currency basis: pillar amounts other than
+// pillar1 price rows and pillar8 are REPORTING-currency; marketCap /
+// currentPrice / pillar1 prices / pillar8 (normalized at compute time) are
+// TRADING-currency. Ratios (pe, roic, growth %) and share counts are never
+// scaled.
+const PILLAR_REPORTING_KEYS = {
+  pillar2: ['investedCapital', 'priorInvestedCapital', 'avgInvestedCapital', 'equity', 'debt', 'accountsPayable', 'cash', 'operatingIncome', 'incomeBeforeTax', 'netIncome'],
+  pillar4: ['currentFCF', 'priorFCF'],
+  pillar5: ['currentIncome', 'priorIncome'],
+  pillar6: ['currentRevenue', 'priorRevenue'],
+  pillar7: ['longTermDebt', 'avgFCF']
+};
+const PILLAR8_TRADING_KEYS = ['marketCap', 'fiveYearFCF', 'avgAnnualFCF'];
+
+async function convertAnalysisForDisplay(req, analysis) {
+  if (!analysis || typeof analysis !== 'object') return analysis;
+
+  const displayCurrency = await resolveDisplayCurrency(req.user.id);
+  const reporting = String(analysis.reportingCurrency || analysis.reporting_currency || 'USD').toUpperCase();
+  const trading = String(analysis.tradingCurrency || analysis.trading_currency || reporting).toUpperCase();
+  const rates = await getRatesToDisplay([reporting, trading], displayCurrency);
+  const out = JSON.parse(JSON.stringify(analysis));
+
+  const apply = (obj, keys, rate) => {
+    if (obj && rate) scaleMoneyFields(obj, rate, keys);
+  };
+  const tradingRate = rates[trading];
+  const reportingRate = rates[reporting];
+
+  apply(out, ['marketCap', 'currentPrice', 'current_price', 'priceChange24h', 'ath', 'atl', 'market_cap'], tradingRate);
+
+  const annualPEs = out.pillars?.pillar1?.data?.annualPEs;
+  if (Array.isArray(annualPEs)) {
+    for (const row of annualPEs) {
+      if (row && typeof row.price === 'number') row.price *= (tradingRate || 1);
+      if (row && typeof row.eps === 'number') row.eps *= (reportingRate || 1);
+    }
+  }
+  for (const [pillarName, keys] of Object.entries(PILLAR_REPORTING_KEYS)) {
+    apply(out.pillars?.[pillarName]?.data, keys, reportingRate);
+    apply(out.pillars?.[pillarName]?.displayData, keys, reportingRate);
+  }
+  apply(out.pillars?.pillar8?.data, PILLAR8_TRADING_KEYS, tradingRate);
+
+  const reportingOk = displayCurrency === reporting || !!reportingRate;
+  const tradingOk = displayCurrency === trading || !!tradingRate;
+  out.currency = reportingOk && tradingOk ? displayCurrency : null;
+  out.reporting_currency = reporting;
+  out.trading_currency = trading;
+  return out;
+}
 
 // Map service-layer errors to accurate HTTP responses. Without this every
 // thrown Error from a service becomes a generic 500 with no client-actionable
@@ -127,7 +254,9 @@ const analyzeStock = async (req, res) => {
         // Record search history
         await recordSearch(req.user.id, symbol, coin.name);
 
-        return res.json(analysis);
+        // CoinGecko crypto payloads are USD-based
+        res.json(await convertAnalysisForDisplay(req, { ...analysis, type: 'crypto', reportingCurrency: 'USD' }));
+        return;
       } catch (error) {
         console.error(`[INVESTMENTS] CoinGecko error for ${symbol}:`, error.message);
         return res.status(500).json({ error: `Failed to fetch crypto data for ${symbol}` });
@@ -140,7 +269,7 @@ const analyzeStock = async (req, res) => {
     // Record search history
     await recordSearch(req.user.id, symbol, analysis.companyName);
 
-    res.json({ ...analysis, type: 'stock' });
+    res.json(await convertAnalysisForDisplay(req, { ...analysis, type: 'stock' }));
   } catch (error) {
     console.error('[INVESTMENTS] Analysis error:', error);
     sendServiceError(res, error, 'Failed to analyze stock');
@@ -163,7 +292,7 @@ const refreshAnalysis = async (req, res) => {
 
     const analysis = await EightPillarsService.analyzeStock(symbol, true);
 
-    res.json(analysis);
+    res.json(await convertAnalysisForDisplay(req, { ...analysis, type: 'stock' }));
   } catch (error) {
     console.error('[INVESTMENTS] Refresh error:', error);
     sendServiceError(res, error, 'Failed to refresh analysis');
@@ -185,10 +314,23 @@ const getFinancials = async (req, res) => {
 
     const financials = await FundamentalDataService.getFinancials(symbol, years);
 
+    const {
+      converted, currency, reportingCurrencies, rates, unconverted
+    } = await convertForDisplayCurrency(
+      req,
+      financials,
+      financials.map(f => f.currency),
+      FINANCIAL_MONEY_KEYS
+    );
+
     res.json({
       symbol: symbol.toUpperCase(),
-      periods: financials.length,
-      data: financials
+      currency,
+      reporting_currencies: reportingCurrencies,
+      fx_rates: rates,
+      unconverted_currencies: unconverted,
+      periods: converted.length,
+      data: converted
     });
   } catch (error) {
     console.error('[INVESTMENTS] Financials error:', error);
@@ -317,12 +459,25 @@ const getStatement = async (req, res) => {
         break;
     }
 
+    const {
+      converted, currency, reportingCurrencies, rates, unconverted
+    } = await convertForDisplayCurrency(
+      req,
+      statementData,
+      financials.map(f => f.currency),
+      STATEMENT_MONEY_KEYS[type]
+    );
+
     res.json({
       symbol: symbol.toUpperCase(),
       statementType: type,
       frequency,
-      periods: statementData.length,
-      data: statementData
+      currency,
+      reporting_currencies: reportingCurrencies,
+      fx_rates: rates,
+      unconverted_currencies: unconverted,
+      periods: converted.length,
+      data: converted
     });
   } catch (error) {
     console.error('[INVESTMENTS] Statement error:', error);
@@ -430,11 +585,55 @@ const getMetrics = async (req, res) => {
     const { symbol } = req.params;
 
     const metrics = await FundamentalDataService.getMetrics(symbol);
+    let metricMap = metrics?.metric || null;
+    let series = metrics?.series || null;
+
+    // Finnhub metrics/series are quoted in the listing's trading currency
+    let tradingCurrency = String(metricMap?.currencySymbol || '').toUpperCase() || null;
+    if (!tradingCurrency) {
+      const profile = await FundamentalDataService.getProfile(symbol).catch(() => null);
+      tradingCurrency = String(profile?.currency || 'USD').toUpperCase();
+    }
+
+    const displayCurrency = await resolveDisplayCurrency(req.user.id);
+    let rate = 1;
+    let currency = tradingCurrency;
+    if (tradingCurrency !== displayCurrency) {
+      const rateMap = await getRatesToDisplay([tradingCurrency], displayCurrency);
+      rate = rateMap[tradingCurrency];
+      if (rate === null) {
+        rate = 1; // no rate: keep values in trading currency and say so
+      } else {
+        currency = displayCurrency;
+      }
+    }
+
+    if (rate !== 1) {
+      // The provider caches the metrics object across requests/users -
+      // deep-copy before scaling or every request would compound the rate.
+      const clonePlain = (obj) => {
+        try { return structuredClone(obj); } catch { return JSON.parse(JSON.stringify(obj)); }
+      };
+      const metricCopy = metricMap ? clonePlain(metricMap) : null;
+      const seriesCopy = series ? clonePlain(series) : null;
+      if (metricCopy) {
+        scaleMoneyFields(metricCopy, rate, TRADING_METRIC_MONEY_KEYS);
+        delete metricCopy.currencySymbol; // no longer the original basis
+      }
+      if (seriesCopy) {
+        scaleMetricSeries(seriesCopy.annual, rate);
+        scaleMetricSeries(seriesCopy.quarterly, rate);
+      }
+      metricMap = metricCopy;
+      series = seriesCopy;
+    }
 
     res.json({
       symbol: symbol.toUpperCase(),
-      metrics: metrics?.metric || null,
-      series: metrics?.series || null
+      currency,
+      trading_currency: tradingCurrency,
+      metrics: metricMap,
+      series
     });
   } catch (error) {
     console.error('[INVESTMENTS] Metrics error:', error);
@@ -745,8 +944,15 @@ const getPortfolioOverview = async (req, res) => {
   try {
     const options = buildPortfolioOptions(req.query);
     const overview = await PortfolioService.getOverview(req.user.id, options);
-    await PortfolioService.evaluateAlerts(req.user.id, options);
     res.json(overview);
+
+    // Alert persistence is ancillary to the overview payload. Running it after
+    // the response removes an otherwise invisible rebalance/performance wait
+    // from the first paint; the dedicated alerts endpoint still returns the
+    // current summary when the user opens that panel.
+    PortfolioService.evaluateAlerts(req.user.id, options).catch(error => {
+      console.warn('[INVESTMENTS] Background portfolio alert evaluation failed:', error.message);
+    });
   } catch (error) {
     console.error('[INVESTMENTS] Portfolio overview error:', error);
     res.status(500).json({ error: error.message || 'Failed to get portfolio overview' });
@@ -1169,6 +1375,32 @@ const getChartData = async (req, res) => {
  * Get historical metrics for DCF valuation
  * GET /api/investments/dcf/:symbol
  */
+const DCF_METRICS_MONEY_KEYS = [
+  'current_price', 'market_cap', 'current_fcf', 'current_revenue', 'current_net_income',
+  'forward_eps', 'avg_net_income_5yr', 'avg_fcf_5yr', 'dividends_paid_ttm',
+  'enterprise_value', 'total_debt', 'cash_and_equivalents', 'current_dividend_per_share',
+  'week_52_high', 'week_52_low'
+];
+const DCF_RESULT_MONEY_KEYS = [
+  'fair_value_low', 'fair_value_medium', 'fair_value_high',
+  'future_price_low', 'future_price_medium', 'future_price_high'
+];
+const DCF_INPUT_MONEY_KEYS = ['current_fcf', 'current_revenue', 'current_net_income', 'current_price'];
+
+async function convertTradingToDisplay(req, payload, moneyKeys) {
+  const displayCurrency = await resolveDisplayCurrency(req.user.id);
+  const tradingCurrency = String(payload.trading_currency || 'USD').toUpperCase();
+  if (tradingCurrency === displayCurrency) {
+    return { converted: payload, currency: displayCurrency };
+  }
+  const rateMap = await getRatesToDisplay([tradingCurrency], displayCurrency);
+  const rate = rateMap[tradingCurrency];
+  if (!rate) {
+    return { converted: payload, currency: tradingCurrency };
+  }
+  return { converted: scaleMoneyFields(payload, rate, moneyKeys, { copy: true }), currency: displayCurrency };
+}
+
 const getDCFMetrics = async (req, res) => {
   try {
     const { symbol } = req.params;
@@ -1181,7 +1413,9 @@ const getDCFMetrics = async (req, res) => {
 
     const metrics = await DCFValuationService.getHistoricalMetrics(symbol);
 
-    res.json(metrics);
+    const { converted, currency } = await convertTradingToDisplay(req, metrics, DCF_METRICS_MONEY_KEYS);
+
+    res.json({ ...converted, currency });
   } catch (error) {
     console.error('[INVESTMENTS] DCF metrics error:', error);
     res.status(500).json({ error: error.message || 'Failed to get DCF metrics' });
@@ -1267,8 +1501,27 @@ const calculateDCF = async (req, res) => {
       projection_years: userInputs.projection_years || 10
     });
 
+    // Engine runs in the symbol's trading currency; convert per-share/
+    // dollar outputs to the user's display currency for presentation.
+    const displayCurrency = await resolveDisplayCurrency(req.user.id);
+    const tradingCurrency = String(metrics.trading_currency || 'USD').toUpperCase();
+    let outRate = 1;
+    if (tradingCurrency !== displayCurrency) {
+      const rateMap = await getRatesToDisplay([tradingCurrency], displayCurrency);
+      if (rateMap[tradingCurrency]) {
+        outRate = rateMap[tradingCurrency];
+        scaleMoneyFields(results, outRate, DCF_RESULT_MONEY_KEYS);
+        if (results.inputs) {
+          scaleMoneyFields(results.inputs, outRate, DCF_INPUT_MONEY_KEYS);
+        }
+      }
+    }
+
     res.json({
       symbol: symbol.toUpperCase(),
+      currency: outRate !== 1 ? displayCurrency : tradingCurrency,
+      trading_currency: tradingCurrency,
+      reporting_currency: metrics.reporting_currency || null,
       ...results
     });
   } catch (error) {

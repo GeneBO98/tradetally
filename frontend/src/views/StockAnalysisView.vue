@@ -162,48 +162,56 @@
                     <PillarRow
                         pillar-number="1"
                         :pillar="analysis.pillars.pillar1"
+                        :currency="analysis.currency || ''"
                     />
 
                     <!-- Pillar 2 -->
                     <PillarRow
                         pillar-number="2"
                         :pillar="analysis.pillars.pillar2"
+                        :currency="analysis.currency || ''"
                     />
 
                     <!-- Pillar 3 -->
                     <PillarRow
                         pillar-number="3"
                         :pillar="analysis.pillars.pillar3"
+                        :currency="analysis.currency || ''"
                     />
 
                     <!-- Pillar 4 -->
                     <PillarRow
                         pillar-number="4"
                         :pillar="analysis.pillars.pillar4"
+                        :currency="analysis.currency || ''"
                     />
 
                     <!-- Pillar 5 -->
                     <PillarRow
                         pillar-number="5"
                         :pillar="analysis.pillars.pillar5"
+                        :currency="analysis.currency || ''"
                     />
 
                     <!-- Pillar 6 -->
                     <PillarRow
                         pillar-number="6"
                         :pillar="analysis.pillars.pillar6"
+                        :currency="analysis.currency || ''"
                     />
 
                     <!-- Pillar 7 -->
                     <PillarRow
                         pillar-number="7"
                         :pillar="analysis.pillars.pillar7"
+                        :currency="analysis.currency || ''"
                     />
 
                     <!-- Pillar 8 -->
                     <PillarRow
                         pillar-number="8"
                         :pillar="analysis.pillars.pillar8"
+                        :currency="analysis.currency || ''"
                     />
                 </div>
 

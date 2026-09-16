@@ -9,6 +9,7 @@
 // All report fields use snake_case (project standard for stored/API data).
 
 const db = require('../config/database');
+const { fxUsd } = require('../utils/tradeFx');
 const TradeQueries = require('./tradeQueries');
 const AIService = require('../utils/aiService');
 const EmailService = require('./emailService');
@@ -90,7 +91,7 @@ class EdgeReportService {
       db.query(`
         SELECT COALESCE(NULLIF(TRIM(t.strategy), ''), 'unspecified') AS name,
                COUNT(*)::integer AS trades,
-               SUM(t.pnl) AS total_pnl,
+               SUM(${fxUsd('pnl', 't')}) AS total_pnl,
                COUNT(*) FILTER (WHERE t.pnl > 0)::integer AS wins
         FROM trades t
         ${baseWhere}
@@ -99,7 +100,7 @@ class EdgeReportService {
       db.query(`
         SELECT t.symbol AS name,
                COUNT(*)::integer AS trades,
-               SUM(t.pnl) AS total_pnl,
+               SUM(${fxUsd('pnl', 't')}) AS total_pnl,
                COUNT(*) FILTER (WHERE t.pnl > 0)::integer AS wins
         FROM trades t
         ${baseWhere}
@@ -108,7 +109,7 @@ class EdgeReportService {
       db.query(`
         SELECT EXTRACT(HOUR FROM t.entry_time)::integer AS name,
                COUNT(*)::integer AS trades,
-               SUM(t.pnl) AS total_pnl,
+               SUM(${fxUsd('pnl', 't')}) AS total_pnl,
                COUNT(*) FILTER (WHERE t.pnl > 0)::integer AS wins
         FROM trades t
         ${baseWhere}

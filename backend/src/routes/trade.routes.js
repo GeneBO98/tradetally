@@ -660,6 +660,7 @@ router.post('/cusip/resolve-unresolved', authenticate, tradeController.resolveUn
  *                         type: string
  */
 router.delete('/bulk', authenticate, tradeController.bulkDeleteTrades);
+router.patch('/bulk', authenticate, tradeController.bulkUpdateMetadata);
 
 /**
  * @swagger

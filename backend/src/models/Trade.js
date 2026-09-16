@@ -3061,6 +3061,7 @@ class Trade {
 
     const { getBreakevenToleranceConfig, breakevenPredicate, groupedBreakevenPredicate } = require('../utils/breakeven');
     const { POSITION_GROUP_KEY, isPositionGroupingEnabled } = require('../utils/positionGrouping');
+const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
     const breakevenConfig = await getBreakevenToleranceConfig(userId);
     // Whole-trade win rate (issue #339): when enabled, collapse multi-leg
     // positions before the monthly aggregation so counts and win rate match
@@ -3123,8 +3124,8 @@ class Trade {
         SELECT
           MIN(trade_date) as trade_date,
           MIN(COALESCE(NULLIF(underlying_symbol, ''), symbol)) as symbol,
-          SUM(pnl) as pnl,
-          SUM(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0)) as gross_pnl,
+          SUM(${fxUsdTrade('pnl', '')}) as pnl,
+          SUM(COALESCE(${fxUsdTrade('pnl', '')}, 0) + COALESCE(${fxUsdTrade('commission', '')}, 0) + COALESCE(${fxUsdTrade('fees', '')}, 0)) as gross_pnl,
           SUM(r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL) as r_value,
           BOOL_OR(stop_loss IS NOT NULL) as has_stop
         FROM trades
@@ -3142,6 +3143,10 @@ class Trade {
       ? 'r_value IS NOT NULL AND has_stop'
       : 'r_value IS NOT NULL AND stop_loss IS NOT NULL';
 
+    // Grouped mode reads USD-normalized pnl from position_trades (wrapped in
+    // the CTE); leg mode reads raw trades rows and must wrap here.
+    const monthlyPnlRef = groupByPosition ? 'pnl' : fxUsdTrade('pnl', '');
+
     const monthlyQuery = `
       WITH ${sourceCte}monthly_trades AS (
         SELECT
@@ -3151,12 +3156,12 @@ class Trade {
           COUNT(*) FILTER (WHERE ${be.isNot} AND pnl > 0)::integer as winning_trades,
           COUNT(*) FILTER (WHERE ${be.isNot} AND pnl < 0)::integer as losing_trades,
           COUNT(*) FILTER (WHERE ${be.is})::integer as breakeven_trades,
-          COALESCE(SUM(pnl), 0)::numeric as total_pnl,
-          COALESCE(AVG(pnl), 0)::numeric as avg_pnl,
-          COALESCE(AVG(pnl) FILTER (WHERE ${be.isNot} AND pnl > 0), 0)::numeric as avg_win,
-          COALESCE(AVG(pnl) FILTER (WHERE ${be.isNot} AND pnl < 0), 0)::numeric as avg_loss,
-          COALESCE(MAX(pnl), 0)::numeric as best_trade,
-          COALESCE(MIN(pnl), 0)::numeric as worst_trade,
+          COALESCE(SUM(${monthlyPnlRef}), 0)::numeric as total_pnl,
+          COALESCE(AVG(${monthlyPnlRef}), 0)::numeric as avg_pnl,
+          COALESCE(AVG(${monthlyPnlRef}) FILTER (WHERE ${be.isNot} AND pnl > 0), 0)::numeric as avg_win,
+          COALESCE(AVG(${monthlyPnlRef}) FILTER (WHERE ${be.isNot} AND pnl < 0), 0)::numeric as avg_loss,
+          COALESCE(MAX(${monthlyPnlRef}), 0)::numeric as best_trade,
+          COALESCE(MIN(${monthlyPnlRef}), 0)::numeric as worst_trade,
           COALESCE(AVG(r_value) FILTER (WHERE ${rValueFilter}), 0)::numeric as avg_r_value,
           COALESCE(SUM(r_value) FILTER (WHERE ${rValueFilter}), 0)::numeric as total_r_value,
           COUNT(DISTINCT symbol)::integer as symbols_traded,

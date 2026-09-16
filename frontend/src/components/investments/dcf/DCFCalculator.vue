@@ -256,6 +256,7 @@
         scenario="Bear"
         :fair-value="results.fair_value_low"
         :current-price="currentPrice"
+        :currency="currency"
         :margin-of-safety="results.margin_of_safety_low"
         :current-price-return="results.current_price_return_low"
       />
@@ -263,6 +264,7 @@
         scenario="Base"
         :fair-value="results.fair_value_medium"
         :current-price="currentPrice"
+        :currency="currency"
         :margin-of-safety="results.margin_of_safety_medium"
         :current-price-return="results.current_price_return_medium"
       />
@@ -270,6 +272,7 @@
         scenario="Bull"
         :fair-value="results.fair_value_high"
         :current-price="currentPrice"
+        :currency="currency"
         :margin-of-safety="results.margin_of_safety_high"
         :current-price-return="results.current_price_return_high"
       />
@@ -336,6 +339,10 @@ const props = defineProps({
   autoSave: {
     type: Boolean,
     default: false
+  },
+  currency: {
+    type: String,
+    default: ''
   }
 })
 

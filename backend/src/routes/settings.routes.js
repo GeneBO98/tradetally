@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const settingsController = require('../controllers/settings.controller');
+const manualFxService = require('../services/manualFxService');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const { validate, schemas } = require('../middleware/validation');
 
@@ -27,6 +28,18 @@ const upload = multer({
 
 router.get('/', authenticate, settingsController.getSettings);
 router.put('/', authenticate, validate(schemas.updateSettings), settingsController.updateSettings);
+router.get('/fx-rates', requireAdmin, async (req, res, next) => {
+  try { res.json({ rates: await manualFxService.listRates() }); } catch (error) { next(error); }
+});
+router.put('/fx-rates/:code', requireAdmin, async (req, res, next) => {
+  try {
+    const rate = await manualFxService.saveRate(req.params.code, req.body?.per_usd);
+    res.json({ rate });
+  } catch (error) { next(error); }
+});
+router.delete('/fx-rates/:code', requireAdmin, async (req, res, next) => {
+  try { res.json({ deleted: await manualFxService.deleteRate(req.params.code) }); } catch (error) { next(error); }
+});
 router.get('/tags', authenticate, settingsController.getTags);
 router.post('/tags', authenticate, settingsController.createTag);
 router.put('/tags/:id', authenticate, settingsController.updateTag);
@@ -48,6 +61,11 @@ router.put('/admin/cusip-ai', requireAdmin, settingsController.updateAdminCusipA
 router.get('/admin/all', authenticate, settingsController.getAllAdminSettings);
 
 // Broker Fee Settings Routes
+router.get('/fee-profiles', authenticate, settingsController.getFeeProfiles);
+router.post('/fee-profiles', authenticate, settingsController.createFeeProfile);
+router.put('/fee-profiles/:id', authenticate, settingsController.updateFeeProfile);
+router.delete('/fee-profiles/:id', authenticate, settingsController.deleteFeeProfile);
+router.put('/fee-profiles/:id/accounts', authenticate, settingsController.setFeeProfileAccounts);
 router.get('/broker-fees', authenticate, settingsController.getBrokerFeeSettings);
 router.get('/broker-fees/:broker', authenticate, settingsController.getBrokerFeeSettingByBroker);
 router.post('/broker-fees', authenticate, settingsController.upsertBrokerFeeSetting);

@@ -114,6 +114,7 @@
 import { computed, ref, watch } from 'vue'
 import { PlusIcon, TrashIcon, XMarkIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
+import { useTradesStore } from '@/stores/trades'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -121,6 +122,8 @@ const props = defineProps({
   groups: { type: Array, default: () => [] }
 })
 const emit = defineEmits(['close', 'saved'])
+
+const tradesStore = useTradesStore()
 
 const loading = ref(false)
 const saving = ref(false)
@@ -165,7 +168,13 @@ function formatQuantity(value) {
 }
 
 function formatMoney(value) {
-  const requestedCurrency = String(props.trade?.original_currency ?? props.trade?.originalCurrency ?? 'USD').toUpperCase()
+  // The trade arrives already converted to the user's display currency, so
+  // original_currency is the wrong label - it names the source the amounts
+  // came FROM, not the units they are in now. Rows the server could not
+  // convert carry their own effective_currency.
+  const requestedCurrency = String(
+    props.trade?.effective_currency ?? tradesStore.tradesCurrency ?? 'USD'
+  ).toUpperCase()
   const currency = /^[A-Z]{3}$/.test(requestedCurrency) ? requestedCurrency : 'USD'
   return Number(value || 0).toLocaleString(undefined, { style: 'currency', currency, maximumFractionDigits: 2 })
 }

@@ -35,6 +35,7 @@
       <HistoricalMetricsTable
         :metrics="dcfMetrics"
         :loading="dcfLoading"
+        :currency="dcfMetrics?.currency || ''"
       />
 
       <!-- DCF Calculator -->
@@ -44,6 +45,7 @@
         :current-price="currentPrice"
         :calculating="dcfLoading"
         :results="dcfResults"
+        :currency="dcfMetrics?.currency || ''"
         @calculate="handleCalculate"
         @save="handleSave"
       />

@@ -1107,5 +1107,157 @@
         }
       ]
     }
+  ],
+  "chart_currency_cases": [
+    {
+      "id": "jpy_quote_usd_trade",
+      "source_currency": "JPY",
+      "display_currency": "USD",
+      "rates": {
+        "JPY": 0.006666666666666667
+      },
+      "chart_data": {
+        "candles": [
+          {
+            "time": 1788264000,
+            "open": 15000,
+            "high": 15000,
+            "low": 15000,
+            "close": 15000,
+            "volume": 1000
+          }
+        ],
+        "trade": {
+          "id": "jpy_quote_usd_trade",
+          "symbol": "TEST",
+          "instrumentType": "stock",
+          "original_currency": "USD",
+          "currency": "USD",
+          "entryPrice": 100,
+          "entryTime": "2026-09-01T12:00:00Z",
+          "quantity": 1
+        }
+      },
+      "expected": {
+        "close": 100,
+        "volume": 1000,
+        "candles_currency": "USD",
+        "effective_currency": "USD",
+        "price_scale": 1,
+        "entry_price": 100
+      }
+    },
+    {
+      "id": "jpy_quote_genuine_split",
+      "source_currency": "JPY",
+      "display_currency": "USD",
+      "rates": {
+        "JPY": 0.006666666666666667
+      },
+      "chart_data": {
+        "candles": [
+          {
+            "time": 1788264000,
+            "open": 7500,
+            "high": 7500,
+            "low": 7500,
+            "close": 7500,
+            "volume": 1000
+          }
+        ],
+        "trade": {
+          "id": "jpy_quote_genuine_split",
+          "symbol": "TEST",
+          "instrumentType": "stock",
+          "original_currency": "USD",
+          "currency": "USD",
+          "entryPrice": 100,
+          "entryTime": "2026-09-01T12:00:00Z",
+          "quantity": 1
+        }
+      },
+      "expected": {
+        "close": 100,
+        "volume": 500,
+        "candles_currency": "USD",
+        "effective_currency": "USD",
+        "price_scale": 0.5,
+        "entry_price": 100
+      }
+    },
+    {
+      "id": "missing_candle_rate",
+      "source_currency": "JPY",
+      "display_currency": "EUR",
+      "rates": {
+        "USD": 0.8
+      },
+      "chart_data": {
+        "candles": [
+          {
+            "time": 1788264000,
+            "open": 15000,
+            "high": 15000,
+            "low": 15000,
+            "close": 15000,
+            "volume": 1000
+          }
+        ],
+        "trade": {
+          "id": "missing_candle_rate",
+          "symbol": "TEST",
+          "instrumentType": "stock",
+          "original_currency": "USD",
+          "currency": "USD",
+          "entryPrice": 100,
+          "entryTime": "2026-09-01T12:00:00Z",
+          "quantity": 1
+        }
+      },
+      "expected": {
+        "close": 15000,
+        "volume": 1000,
+        "candles_currency": "JPY",
+        "effective_currency": "EUR",
+        "price_scale": 1,
+        "entry_price": 80
+      }
+    },
+    {
+      "id": "usd_outage_native_eur",
+      "source_currency": "EUR",
+      "display_currency": "EUR",
+      "rates": {},
+      "chart_data": {
+        "candles": [
+          {
+            "time": 1788264000,
+            "open": 100,
+            "high": 100,
+            "low": 100,
+            "close": 100,
+            "volume": 1000
+          }
+        ],
+        "trade": {
+          "id": "usd_outage_native_eur",
+          "symbol": "TEST",
+          "instrumentType": "stock",
+          "original_currency": "EUR",
+          "currency": "EUR",
+          "entryPrice": 100,
+          "entryTime": "2026-09-01T12:00:00Z",
+          "quantity": 1
+        }
+      },
+      "expected": {
+        "close": 100,
+        "volume": 1000,
+        "candles_currency": "EUR",
+        "effective_currency": "EUR",
+        "price_scale": 1,
+        "entry_price": 100
+      }
+    }
   ]
 }

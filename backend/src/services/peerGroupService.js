@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const { fxUsd } = require('../utils/tradeFx');
 
 class PeerGroupService {
   
@@ -38,15 +39,15 @@ class PeerGroupService {
             WHEN COUNT(*) > 0 THEN COUNT(CASE WHEN side = 'buy' THEN 1 END)::float / COUNT(*) * 100 
             ELSE 0 
           END as long_bias_pct,
-          AVG(ABS(pnl)) as avg_trade_size,
-          STDDEV(pnl) as volatility,
+          AVG(ABS(${fxUsd('pnl', '')})) as avg_trade_size,
+          STDDEV(${fxUsd('pnl', '')}) as volatility,
           CASE 
             WHEN COUNT(*) > 0 THEN COUNT(CASE WHEN pnl > 0 THEN 1 END)::float / COUNT(*) * 100 
             ELSE 0 
           END as win_rate,
           COUNT(DISTINCT symbol) as symbols_traded,
           COUNT(DISTINCT DATE(entry_time)) as trading_days,
-          AVG(quantity * entry_price) as avg_position_size
+          AVG(quantity * ${fxUsd('entry_price', '')}) as avg_position_size
         FROM trades
         WHERE user_id = $1 
           AND exit_time IS NOT NULL

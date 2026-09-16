@@ -16,9 +16,12 @@
 const db = require('../config/database');
 const FundamentalDataService = require('./fundamentalDataService');
 const marketData = require('../utils/finnhub');
+const currencyConverter = require('../utils/currencyConverter');
 
 class EightPillarsService {
-  static CALCULATION_VERSION = 7;
+  // v8: caches reporting/trading currency per analysis and normalizes
+  // pillar 8's FCF inputs into the trading currency before the ratio.
+  static CALCULATION_VERSION = 8;
 
   // Thresholds for pass/fail
   static THRESHOLDS = {
@@ -113,6 +116,26 @@ class EightPillarsService {
       marketCap = profile.marketCapitalization * 1000000; // Finnhub returns in millions
     }
 
+    // Financial aggregates are in the company's reporting currency while
+    // price/market cap are in the listing's trading currency. Pillar 8
+    // (market cap / FCF) mixes the two, so normalize FCF to the trading
+    // currency with the stored daily rate before the ratio. Pillar 8's
+    // stored data is therefore trading-currency based; all other pillar
+    // amounts stay in reporting currency. The controller converts for
+    // display using the per-analysis currency metadata below.
+    const reportingCurrency = String(aggregates.currency || 'USD').toUpperCase();
+    const tradingCurrency = String(profile?.currency || 'USD').toUpperCase();
+    let fxReportingToTrading = 1;
+    if (reportingCurrency !== tradingCurrency) {
+      try {
+        fxReportingToTrading = await currencyConverter.getDailyCrossRate(reportingCurrency, tradingCurrency);
+        console.log(`[8PILLARS] Normalizing ${symbolUpper} pillar-8 FCF ${reportingCurrency}->${tradingCurrency} at ${fxReportingToTrading}`);
+      } catch (rateError) {
+        console.warn(`[8PILLARS] No ${reportingCurrency}/${tradingCurrency} rate - pillar 8 comparison stays approximate: ${rateError.message}`);
+        fxReportingToTrading = 1;
+      }
+    }
+
     const annualData = aggregates.annualData || [];
     const fiscalYears = annualData.map(d => d.fiscalYear);
     const yearEndPrices = await FundamentalDataService.getYearEndPrices(symbolUpper, fiscalYears);
@@ -201,7 +224,7 @@ class EightPillarsService {
       annualData
         .slice(0, 5)
         .filter(period => period.freeCashFlow !== null && period.freeCashFlow !== undefined)
-        .map(period => period.freeCashFlow)
+        .map(period => period.freeCashFlow * fxReportingToTrading)
     );
 
     // Count passed pillars
@@ -214,6 +237,8 @@ class EightPillarsService {
       marketCap,
       currentPrice,
       sharesOutstanding,
+      reportingCurrency,
+      tradingCurrency,
       periodsAnalyzed: aggregates.periodsAnalyzed,
       yearsSpan: aggregates.yearsSpan,
       pillars: {
@@ -905,7 +930,8 @@ class EightPillarsService {
         pillar7_lt_liabilities, pillar7_avg_fcf, pillar7_ratio, pillar7_threshold, pillar7_passed, pillar7_data,
         pillar8_value, pillar8_threshold, pillar8_passed, pillar8_data,
         pillars_passed,
-        company_name, industry, logo
+        company_name, industry, logo,
+        reporting_currency, trading_currency
       )
       VALUES (
         $1, NOW(), $2, $3, $4,
@@ -918,7 +944,7 @@ class EightPillarsService {
         $30, $31, $32, $33, $34, $35,
         $36, $37, $38, $39,
         $40,
-        $41, $42, $43
+        $41, $42, $43, $44, $45
       )
       ON CONFLICT (symbol, (analysis_date::date))
       DO UPDATE SET
@@ -961,6 +987,8 @@ class EightPillarsService {
         company_name = EXCLUDED.company_name,
         industry = EXCLUDED.industry,
         logo = EXCLUDED.logo,
+        reporting_currency = EXCLUDED.reporting_currency,
+        trading_currency = EXCLUDED.trading_currency,
         analysis_date = NOW()
     `;
 
@@ -983,7 +1011,9 @@ class EightPillarsService {
         analysis.pillarsPassed,
         analysis.companyName,
         analysis.industry,
-        analysis.logo
+        analysis.logo,
+        analysis.reportingCurrency || null,
+        analysis.tradingCurrency || null
       ]);
 
       console.log(`[8PILLARS] Cached analysis for ${analysis.symbol}`);
@@ -1136,7 +1166,9 @@ class EightPillarsService {
       pillarsPassed: row.pillars_passed,
       companyName: row.company_name || null,
       industry: row.industry || null,
-      logo: row.logo || null
+      logo: row.logo || null,
+      reportingCurrency: row.reporting_currency || null,
+      tradingCurrency: row.trading_currency || null
     };
   }
 

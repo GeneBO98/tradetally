@@ -22,6 +22,7 @@
 jest.mock('../../src/config/database', () => ({
   query: jest.fn()
 }));
+jest.mock('../../src/services/manualFxService', () => ({ getRateMap: jest.fn().mockResolvedValue({}) }));
 
 jest.mock('../../src/utils/timezone', () => ({
   getUserTimezone: jest.fn().mockResolvedValue('America/New_York'),
@@ -94,7 +95,7 @@ describe('TradeQueries.getAnalytics characterization', () => {
     await TradeQueries.getAnalytics('user-1', {});
 
     const analyticsSql = db.query.mock.calls[1][0];
-    expect(analyticsSql).toContain('(COALESCE(commission, 0) + COALESCE(fees, 0)) as trade_costs');
+    expect(analyticsSql).toContain('(COALESCE(trade_amount_usd(t.commission, t.original_currency, t.exchange_rate, t.original_entry_price_currency), 0) + COALESCE(trade_amount_usd(t.fees, t.original_currency, t.exchange_rate, t.original_entry_price_currency), 0)) as trade_costs');
   });
 
   test('summary returns total R value computed by trade_stats', async () => {

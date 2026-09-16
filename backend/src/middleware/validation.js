@@ -811,7 +811,8 @@ const schemas = {
     isPrimary: Joi.boolean().default(false),
     notes: nullableString(2000),
     isArchived: Joi.boolean().default(false),
-    includeInReports: Joi.boolean().default(true)
+    includeInReports: Joi.boolean().default(true),
+    feeProfileId: Joi.string().uuid().allow(null, '')
   }),
 
   accountUpdate: Joi.object({
@@ -823,7 +824,8 @@ const schemas = {
     isPrimary: Joi.boolean(),
     notes: nullableString(2000),
     isArchived: Joi.boolean(),
-    includeInReports: Joi.boolean()
+    includeInReports: Joi.boolean(),
+    feeProfileId: Joi.string().uuid().allow(null, '')
   }).min(1),
 
   accountTransaction: Joi.object({

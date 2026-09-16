@@ -1,4 +1,5 @@
 const db = require('../../config/database');
+const { fxUsd } = require('../../utils/tradeFx');
 
 const THRESHOLDS = {
   // Fraction of total losses concentrated in a single symbol to call it "dominant".
@@ -18,7 +19,9 @@ async function fetchWeeklyAggregates(startDate, endDate, { bypassMarketingConsen
       SELECT
         t.user_id,
         t.symbol,
-        t.pnl,
+        -- Normalized once here; every total, streak and per-symbol ranking
+        -- below reads this CTE, and a digest can span currencies.
+        ${fxUsd('pnl', 't')} AS pnl,
         t.entry_time,
         t.exit_time,
         u.email,

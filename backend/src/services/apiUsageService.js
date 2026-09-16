@@ -122,7 +122,26 @@ class ApiUsageService {
         RETURNING call_count, reset_at
       `;
 
-      const result = await db.query(query, [userId, endpointType, today, tomorrow]);
+      let result;
+      try {
+        result = await db.query(query, [userId, endpointType, today, tomorrow]);
+      } catch (error) {
+        // A backup restore can leave the SERIAL sequence behind existing ids;
+        // resync and retry once instead of failing the request.
+        if (error.code === '23505' && error.constraint === 'api_usage_tracking_pkey') {
+          console.warn('[API USAGE] id sequence drift detected, resyncing api_usage_tracking sequence');
+          await db.query(`
+            SELECT setval(
+              pg_get_serial_sequence('api_usage_tracking', 'id'),
+              (SELECT MAX(id) FROM api_usage_tracking),
+              true
+            )
+          `);
+          result = await db.query(query, [userId, endpointType, today, tomorrow]);
+        } else {
+          throw error;
+        }
+      }
       const { call_count, reset_at } = result.rows[0];
 
       // Get user tier to calculate remaining

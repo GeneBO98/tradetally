@@ -716,6 +716,7 @@ class FmpClient {
       ebit: asNumber(row.ebit),
       ebitda: asNumber(row.ebitda),
       eps: asNumber(row.eps),
+      currency: (row.reportedCurrency || 'USD').toUpperCase(),
       sharesOutstanding: asNumber(row.weightedAverageShsOut ?? row.weightedAverageSharesOutstanding),
       sharesBasic: asNumber(row.weightedAverageShsOut),
       sharesDiluted: asNumber(row.weightedAverageShsOutDil)

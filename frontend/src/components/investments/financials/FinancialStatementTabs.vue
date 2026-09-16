@@ -79,18 +79,21 @@
         <BalanceSheetTable
           v-if="activeTab === 'balance-sheet' && balanceSheetData"
           :data="balanceSheetData"
+          :currency="statementCurrency"
         />
 
         <!-- Income Statement -->
         <IncomeStatementTable
           v-else-if="activeTab === 'income-statement' && incomeStatementData"
           :data="incomeStatementData"
+          :currency="statementCurrency"
         />
 
         <!-- Cash Flow -->
         <CashFlowTable
           v-else-if="activeTab === 'cash-flow' && cashFlowData"
           :data="cashFlowData"
+          :currency="statementCurrency"
         />
 
         <!-- SEC Filings -->
@@ -148,6 +151,7 @@ const balanceSheetData = ref(null)
 const incomeStatementData = ref(null)
 const cashFlowData = ref(null)
 const filingsData = ref(null)
+const statementCurrency = ref('')
 
 onMounted(() => {
   loadData()
@@ -191,16 +195,19 @@ async function loadData() {
       case 'balance-sheet':
         const bsResponse = await investmentsStore.getBalanceSheet(props.symbol, frequency.value)
         balanceSheetData.value = bsResponse?.data || []
+        statementCurrency.value = bsResponse?.currency || ''
         break
 
       case 'income-statement':
         const isResponse = await investmentsStore.getIncomeStatement(props.symbol, frequency.value)
         incomeStatementData.value = isResponse?.data || []
+        statementCurrency.value = isResponse?.currency || ''
         break
 
       case 'cash-flow':
         const cfResponse = await investmentsStore.getCashFlow(props.symbol, frequency.value)
         cashFlowData.value = cfResponse?.data || []
+        statementCurrency.value = cfResponse?.currency || ''
         break
 
       case 'filings':

@@ -5,6 +5,7 @@
  */
 
 const db = require('../config/database');
+const { normalizeBrokerName } = require('../services/brokerFeeApplicationService');
 
 class Account {
   /**
@@ -20,11 +21,34 @@ class Account {
       isPrimary,
       notes,
       isArchived = false,
-      includeInReports = true
+      includeInReports = true,
+      feeProfileId,
+      fee_profile_id
     } = accountData;
 
     const effectiveIsArchived = isArchived === true;
     const effectiveIsPrimary = isPrimary === true && !effectiveIsArchived;
+    const effectiveBroker = broker ? normalizeBrokerName(broker) : null;
+    let effectiveFeeProfileId = feeProfileId ?? fee_profile_id ?? null;
+
+    if (effectiveFeeProfileId) {
+      const profileResult = await db.query(
+        'SELECT id FROM fee_profiles WHERE id = $1 AND user_id = $2',
+        [effectiveFeeProfileId, userId]
+      );
+      if (profileResult.rows.length === 0) {
+        throw new Error('Fee profile not found');
+      }
+    } else if (/\b(?:sim(?:ulated)?\d*)\b/i.test(`${accountName || ''} ${accountIdentifier || ''} ${broker || ''}`)) {
+      const zeroProfileResult = await db.query(
+        `INSERT INTO fee_profiles (user_id, name, is_zero_fee)
+         VALUES ($1, 'Simulated', true)
+         ON CONFLICT (user_id, name) DO UPDATE SET is_zero_fee = true
+         RETURNING id`,
+        [userId]
+      );
+      effectiveFeeProfileId = zeroProfileResult.rows[0]?.id || null;
+    }
 
     // If setting as primary, unset existing primary first
     if (effectiveIsPrimary) {
@@ -38,9 +62,9 @@ class Account {
       INSERT INTO user_accounts (
         user_id, account_name, account_identifier, broker,
         initial_balance, initial_balance_date, is_primary, notes,
-        is_archived, include_in_reports
+        is_archived, include_in_reports, fee_profile_id
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING *
     `;
 
@@ -48,13 +72,14 @@ class Account {
       userId,
       accountName,
       accountIdentifier || null,
-      broker || null,
+      effectiveBroker,
       initialBalance || 0,
       initialBalanceDate,
       effectiveIsPrimary,
       notes || null,
       effectiveIsArchived,
-      includeInReports !== false
+      includeInReports !== false,
+      effectiveFeeProfileId
     ]);
 
     console.log(`[ACCOUNTS] Created account "${accountName}" for user ${userId}`);
@@ -69,6 +94,7 @@ class Account {
     const query = `
       SELECT
         ua.*,
+        fp.name AS fee_profile_name,
         (
           SELECT COUNT(*)
           FROM trades t
@@ -77,6 +103,7 @@ class Account {
             AND ua.account_identifier IS NOT NULL
         ) as trade_count
       FROM user_accounts ua
+      LEFT JOIN fee_profiles fp ON fp.id = ua.fee_profile_id AND fp.user_id = ua.user_id
       WHERE ua.user_id = $1
         ${includeArchived ? '' : 'AND ua.is_archived = false'}
       ORDER BY ua.is_primary DESC, ua.account_name ASC
@@ -91,8 +118,10 @@ class Account {
    */
   static async findById(accountId, userId) {
     const query = `
-      SELECT * FROM user_accounts
-      WHERE id = $1 AND user_id = $2
+      SELECT ua.*, fp.name AS fee_profile_name
+      FROM user_accounts ua
+      LEFT JOIN fee_profiles fp ON fp.id = ua.fee_profile_id AND fp.user_id = ua.user_id
+      WHERE ua.id = $1 AND ua.user_id = $2
     `;
 
     const result = await db.query(query, [accountId, userId]);
@@ -175,6 +204,24 @@ class Account {
   static async update(accountId, userId, updates) {
     const normalizedUpdates = { ...updates };
 
+    if (normalizedUpdates.broker !== undefined) {
+      normalizedUpdates.broker = normalizedUpdates.broker
+        ? normalizeBrokerName(normalizedUpdates.broker)
+        : null;
+    }
+
+    if (normalizedUpdates.feeProfileId !== undefined || normalizedUpdates.fee_profile_id !== undefined) {
+      const requestedProfileId = normalizedUpdates.feeProfileId ?? normalizedUpdates.fee_profile_id;
+      normalizedUpdates.feeProfileId = requestedProfileId || null;
+      if (requestedProfileId) {
+        const profileResult = await db.query(
+          'SELECT id FROM fee_profiles WHERE id = $1 AND user_id = $2',
+          [requestedProfileId, userId]
+        );
+        if (profileResult.rows.length === 0) throw new Error('Fee profile not found');
+      }
+    }
+
     // Archiving an account removes it from the active default and from
     // reports unless the caller explicitly opts it back in. This makes the
     // archive action safe for historical/demo accounts while still allowing
@@ -207,7 +254,8 @@ class Account {
       isPrimary: 'is_primary',
       notes: 'notes',
       isArchived: 'is_archived',
-      includeInReports: 'include_in_reports'
+      includeInReports: 'include_in_reports',
+      feeProfileId: 'fee_profile_id'
     };
 
     Object.entries(normalizedUpdates).forEach(([key, value]) => {

@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const { fxUsd } = require('../utils/tradeFx');
 const NotificationService = require('./notificationService');
 const logger = require('../utils/logger');
 
@@ -8,10 +9,12 @@ const logger = require('../utils/logger');
 // queries exactly (DB session timezone, CURRENT_TIMESTAMP, ILIKE on NULL).
 const TRADES_SNAPSHOT_QUERY = `
   SELECT
-    t.pnl::float8 AS pnl,
+    -- Achievement criteria compare against dollar thresholds, so amounts are
+    -- normalized to USD here rather than taken as stored.
+    ${fxUsd('pnl', 't')}::float8 AS pnl,
     t.side,
-    t.entry_price::float8 AS entry_price,
-    t.exit_price::float8 AS exit_price,
+    ${fxUsd('entry_price', 't')}::float8 AS entry_price,
+    ${fxUsd('exit_price', 't')}::float8 AS exit_price,
     t.quantity::float8 AS quantity,
     t.symbol,
     t.entry_time,

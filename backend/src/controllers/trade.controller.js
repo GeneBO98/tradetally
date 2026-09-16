@@ -9,6 +9,7 @@ const finnhub = require('../utils/finnhub');
 const cache = require('../utils/cache');
 const AnalyticsCache = require('../services/analyticsCache');
 const { computeTradePnl } = require('../services/pnlEngine');
+const { convertForDisplay } = require('../utils/displayCurrency');
 const { groupTradesIntoPositions, storedCurrency } = require('../utils/openPositionGrouping');
 const yahooFinance = require('../utils/yahooFinance');
 const { convertQuoteCurrency } = require('../utils/quoteCurrency');
@@ -45,6 +46,22 @@ const {
 } = require('../services/brokerFeeApplicationService');
 const OptionStrategyGroupingService = require('../services/optionStrategyGroupingService');
 const AmbiguousTradeReviewService = require('../services/ambiguousTradeReviewService');
+const BulkTradeMetadataService = require('../services/bulkTradeMetadataService');
+const FeeProfileService = require('../services/feeProfileService');
+
+// Analytics requests can arrive in parallel from the dashboard, trade list,
+// and mobile clients after a mutation. Share one expensive aggregate query per
+// process and clear the latch on success or failure.
+const inFlightAnalyticsComputations = new Map();
+function coalesceInFlight(key, compute) {
+  const existing = inFlightAnalyticsComputations.get(key);
+  if (existing) return existing;
+  const promise = Promise.resolve()
+    .then(compute)
+    .finally(() => inFlightAnalyticsComputations.delete(key));
+  inFlightAnalyticsComputations.set(key, promise);
+  return promise;
+}
 
 function marketDataApiKeyName() {
   return finnhub.providerName === 'fmp' ? 'FMP_API_KEY' : 'FINNHUB_API_KEY';
@@ -340,6 +357,10 @@ function enrichOpenTradePnL(trade) {
 }
 
 const TRADE_DETAIL_QUOTE_TIMEOUT_MS = OPEN_POSITIONS_FINNHUB_TIMEOUT_MS;
+// Keep the trade table responsive when the market-data queue is cooling down.
+// The provider promise continues in the background and warms price_monitoring;
+// a later refresh will pick up the quote without holding the initial response.
+const TRADE_LIST_QUOTE_BUDGET_MS = 500;
 
 function isOpenTradeForQuoteHydration(trade) {
   const isOpen = !trade.exit_price && !trade.exit_time;
@@ -531,7 +552,18 @@ const tradeController = {
       const trades = await TradeQueries.findByUser(req.user.id, filters);
       console.log('[PERF] TradeQueries.findByUser completed, elapsed:', Date.now() - requestStartTime, 'ms');
 
-      await hydrateOpenTradePrices(trades, req.user.id);
+      const hydrationPromise = hydrateOpenTradePrices(trades, req.user.id);
+      await withTimeout(
+        hydrationPromise,
+        TRADE_LIST_QUOTE_BUDGET_MS,
+        'Trade list quote hydration'
+      ).catch(error => {
+        // The provider promise continues warming the shared cache after the
+        // response budget expires; only unexpected errors need logging here.
+        if (error.code !== 'ETIMEOUT') {
+          console.warn('[TRADE-LIST] Quote hydration wait failed:', error.message);
+        }
+      });
 
       // Map snake_case database fields to camelCase for API response
       trades.forEach(trade => {
@@ -591,7 +623,7 @@ const tradeController = {
       }
 
       console.log('[PERF] getUserTrades total time:', Date.now() - requestStartTime, 'ms');
-      res.json(response);
+      res.json(await convertForDisplay(req, response, { clone: false, rowCurrency: true }));
     } catch (error) {
       next(error);
     }
@@ -719,14 +751,14 @@ const tradeController = {
       
       const total = await Trade.getRoundTripTradeCount(req.user.id, totalCountFilters);
       
-      res.json({
+      res.json(await convertForDisplay(req, {
         trades,
         count: trades.length,
         total: total,
         limit: filters.limit,
         offset: filters.offset,
         totalPages: Math.ceil(total / filters.limit)
-      });
+      }, { clone: false, rowCurrency: true }));
     } catch (error) {
       next(error);
     }
@@ -998,7 +1030,13 @@ const tradeController = {
       }
       enrichOpenTradePnL(trade);
 
-      res.json({ trade });
+      // raw_currency=1 keeps USD values for the edit-form prefill so a
+      // display-converted number can never be saved back as USD.
+      res.json(await convertForDisplay(req, { trade }, {
+        clone: false,
+        raw: req.query.raw_currency === '1',
+        rowCurrency: true
+      }));
     } catch (error) {
       next(error);
     }
@@ -1521,6 +1559,19 @@ const tradeController = {
         totalRequested: tradeIds.length,
         errors
       });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async bulkUpdateMetadata(req, res, next) {
+    try {
+      const result = await BulkTradeMetadataService.bulkUpdateMetadata(
+        req.user.id,
+        req.body?.trade_ids,
+        req.body?.updates
+      );
+      res.json(result);
     } catch (error) {
       next(error);
     }
@@ -2177,7 +2228,7 @@ const tradeController = {
           // Handle both old format (array) and new format (object with trades, unresolvedCusips, diagnostics)
           let trades = Array.isArray(parseResult) ? parseResult : parseResult.trades;
           const unresolvedCusips = parseResult.unresolvedCusips || [];
-          const parseDiagnostics = parseResult.diagnostics || null;
+          let parseDiagnostics = parseResult.diagnostics || null;
           const manualReviewItems = Array.isArray(parseResult.manualReviewItems)
             ? parseResult.manualReviewItems
             : (Array.isArray(parseDiagnostics?.manual_review_items) ? parseDiagnostics.manual_review_items : []);
@@ -2396,11 +2447,30 @@ const tradeController = {
             logger.logImport(`[CURRENCY] Completed currency conversion for ${trades.length} trades`);
           }
 
-          // Apply broker fee settings if available
+          // Apply named account fee profiles first, with the legacy broker fee
+          // table retained as a fallback for accounts without a profile.
           // Supports per-instrument fees with fallback to broker-wide default
           // When broker is 'auto', we need to look up fees per-trade based on each trade's detected broker
           try {
             const { brokersToLookup, expandedBrokersToLookup } = getBrokerLookupNames(broker, trades);
+
+            const accountIdentifiersForFees = [...new Set(
+              trades
+                .map(trade => trade.accountIdentifier || trade.account_identifier)
+                .filter(Boolean)
+                .map(identifier => String(identifier).trim())
+            )];
+            let feeProfileConfig = { assignments: [], feeRows: [] };
+            try {
+              feeProfileConfig = await FeeProfileService.getImportFeeConfiguration(fileUserId, accountIdentifiersForFees);
+            } catch (profileError) {
+              logger.logWarn(`[BROKER FEES] Fee profiles unavailable; using legacy broker settings: ${profileError.message}`);
+            }
+
+            const feeSummary = {
+              unknownAccounts: new Map(),
+              knownZeroAccounts: new Set()
+            };
 
             logger.logImport(`[BROKER FEES] Looking up fees for brokers: ${expandedBrokersToLookup.join(', ')}`);
 
@@ -2415,17 +2485,46 @@ const tradeController = {
             `;
             const brokerFeeResult = await db.query(brokerFeeQuery, [fileUserId, expandedBrokersToLookup]);
 
-            if (brokerFeeResult.rows.length > 0) {
+            if (trades.length > 0) {
               trades = applyBrokerFeeSettingsToTrades({
                 trades,
                 broker,
                 feeRows: brokerFeeResult.rows,
+                feeProfileRows: feeProfileConfig.feeRows,
+                feeProfileAssignments: feeProfileConfig.assignments,
+                feeSummary,
                 logger
               });
 
               logger.logImport(`[BROKER FEES] Completed fee application for ${trades.length} trades`);
             } else {
               logger.logImport(`[BROKER FEES] No fee settings found for broker(s): ${brokersToLookup.join(', ')}`);
+            }
+
+            const unknownFeeAccounts = [...feeSummary.unknownAccounts.values()];
+            if (unknownFeeAccounts.length > 0) {
+              const accountLabels = unknownFeeAccounts.map(item => item.account_identifier || 'trades without an account');
+              const accountSummary = accountLabels.length > 3
+                ? `${accountLabels.slice(0, 3).join(', ')} and ${accountLabels.length - 3} more`
+                : accountLabels.join(', ');
+              const feeWarning = `Fees unknown for ${accountSummary}. These trades were imported with $0 configured fees; assign a fee profile in Settings before your next import.`;
+              if (!parseDiagnostics) {
+                parseDiagnostics = {
+                  totalRows: trades.length,
+                  parsedRows: trades.length,
+                  skippedRows: 0,
+                  invalidRows: 0,
+                  skippedReasons: [],
+                  warnings: []
+                };
+              }
+              parseDiagnostics.warnings = [...(parseDiagnostics.warnings || []), feeWarning];
+              parseDiagnostics.fee_status = {
+                status: 'unknown',
+                unknown_accounts: unknownFeeAccounts,
+                known_zero_accounts: [...feeSummary.knownZeroAccounts]
+              };
+              logger.logWarn(`[BROKER FEES] ${feeWarning}`);
             }
           } catch (feeError) {
             logger.logWarn(`[BROKER FEES] Error applying broker fees: ${feeError.message}`);
@@ -2631,7 +2730,8 @@ const tradeController = {
               reason_breakdown: parseDiagnostics.reason_breakdown || [],
               manual_review_count: parseDiagnostics.manual_review_count || manualReviewItems.length,
               manual_review_items: manualReviewItems,
-              user_summary: parseDiagnostics.user_summary || null
+              user_summary: parseDiagnostics.user_summary || null,
+              fee_status: parseDiagnostics.fee_status || null
             } : null
           };
 
@@ -3459,24 +3559,32 @@ const tradeController = {
       const cached = cache.get(cacheKey);
       if (cached) {
         console.log('[CACHE] Analytics cache hit for user:', req.user.id);
-        return res.json(cached);
-      }
-
-      const persisted = await AnalyticsCache.get(req.user.id, cacheKey);
-      if (persisted) {
-        console.log('[CACHE] Persistent analytics cache hit for user:', req.user.id);
-        cache.set(cacheKey, persisted, 86400000);
-        return res.json(persisted);
+        return res.json(await convertForDisplay(req, cached));
       }
 
       console.log('[CACHE] Analytics cache miss for user:', req.user.id);
-      const analytics = await TradeQueries.getAnalytics(req.user.id, filters);
+      // Analytics fans out to eight database queries. The dashboard, trade
+      // list, calendar, and iOS client can all ask for the same aggregate at
+      // once after an invalidation, so share one computation per process.
+      const analytics = await coalesceInFlight(`trades_analytics:${cacheKey}`, async () => {
+        const inProcess = cache.get(cacheKey);
+        if (inProcess) return inProcess;
 
-      // 24h TTL — AnalyticsCache.invalidate() clears on trade mutations.
-      cache.set(cacheKey, analytics, 86400000);
-      await AnalyticsCache.set(req.user.id, cacheKey, analytics, 24 * 60);
+        const persistedInFlight = await AnalyticsCache.get(req.user.id, cacheKey);
+        if (persistedInFlight) {
+          console.log('[CACHE] Persistent analytics cache hit for user:', req.user.id);
+          cache.set(cacheKey, persistedInFlight, 86400000);
+          return persistedInFlight;
+        }
 
-      res.json(analytics);
+        const computed = await TradeQueries.getAnalytics(req.user.id, filters);
+        // 24h TTL — AnalyticsCache.invalidate() clears on trade mutations.
+        cache.set(cacheKey, computed, 86400000);
+        await AnalyticsCache.set(req.user.id, cacheKey, computed, 24 * 60);
+        return computed;
+      });
+
+      res.json(await convertForDisplay(req, analytics));
     } catch (error) {
       console.error('Analytics error:', error);
       next(error);
@@ -3496,13 +3604,13 @@ const tradeController = {
       const cached = cache.get(cacheKey);
       if (cached) {
         console.log('[CACHE] Partial exit analytics cache hit');
-        return res.json(cached);
+        return res.json(await convertForDisplay(req, cached));
       }
 
       const analytics = await Trade.getPartialExitAnalytics(req.user.id, filters);
       cache.set(cacheKey, analytics, 86400000);
 
-      res.json(analytics);
+      res.json(await convertForDisplay(req, analytics));
     } catch (error) {
       console.error('[ERROR] Partial exit analytics error:', error);
       next(error);
@@ -3527,10 +3635,10 @@ const tradeController = {
         includeArchived: req.query.includeArchived === 'true' || req.query.includeArchived === '1'
       });
 
-      res.json({
+      res.json(await convertForDisplay(req, {
         year,
         ...data
-      });
+      }, { clone: false }));
     } catch (error) {
       console.error('[ERROR] Monthly performance error:', error);
       next(error);
@@ -4165,7 +4273,6 @@ const tradeController = {
         resolution,
         trade
       );
-      ChartService.alignCandlesToTradePrices(chartData, trade);
 
       // Add trade information to the response
       chartData.trade = {
@@ -4189,6 +4296,9 @@ const tradeController = {
         // original_currency: a converted import holds USD there while
         // original_currency still names the source it came from.
         currency: storedCurrency(trade) || trade.currency || null,
+        // The display walker scales this row by its stored base currency and
+        // relabels `currency`, so the chart summary never shows a stale $.
+        original_currency: storedCurrency(trade) || trade.currency || 'USD',
         quantity: trade.quantity,
         side: trade.side,
         pnl: trade.pnl,
@@ -4222,7 +4332,18 @@ const tradeController = {
         ) ? ['1', '5', '15', '60', 'D'] : ['D'];
       }
 
-      res.json(chartData);
+      // Candles are quoted in the SYMBOL's trading currency (provider data) -
+      // a different source than the stored trade row's base currency. Scale
+      // candles from that source and skip them in the row walker so price
+      // bars and entry/exit markers land in the same display currency.
+      let candlesSource = 'USD';
+      try {
+        const FundamentalDataService = require('../services/fundamentalDataService');
+        const profile = await FundamentalDataService.getProfile(symbol);
+        candlesSource = String(profile?.currency || 'USD').toUpperCase();
+      } catch { /* provider currency unavailable - assume USD quotes */ }
+      const convertedChart = await ChartService.convertTradeChartForDisplay(req, chartData, candlesSource);
+      res.json(convertedChart);
     } catch (error) {
       console.error('Error fetching trade chart data:', error);
       

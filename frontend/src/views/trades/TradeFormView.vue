@@ -718,7 +718,7 @@
             </div>
           </div>
 
-          <div class="relative">
+          <div class="relative" data-trade-account-field>
             <label for="account_identifier" class="label">Account</label>
             <div class="relative">
               <input
@@ -1246,6 +1246,17 @@
           </ul>
         </div>
 
+        <p
+          v-if="!form.account_identifier?.trim()"
+          role="status"
+          class="text-sm text-gray-600 dark:text-gray-400"
+        >
+          This trade will be saved without an account. It will appear under All Accounts and Unsorted, but not in an individual account's trades or P&amp;L.
+          <button type="button" class="text-primary-600 hover:text-primary-700 dark:text-primary-400 underline" @click="showAccountField">
+            Select an account
+          </button>
+        </p>
+
         <div class="flex justify-end space-x-3">
           <button type="button" @click="handleCancel" class="btn-secondary">
             Cancel
@@ -1509,6 +1520,7 @@ import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useAccountsStore } from '@/stores/accounts'
+import { useGlobalAccountFilter, UNSORTED_ACCOUNT } from '@/composables/useGlobalAccountFilter'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
 import { useAnalytics } from '@/composables/useAnalytics'
@@ -1615,6 +1627,7 @@ const route = useRoute()
 const router = useRouter()
 const tradesStore = useTradesStore()
 const authStore = useAuthStore()
+const { selectedAccount } = useGlobalAccountFilter()
 const { showSuccess, showError, showConfirmation } = useNotification()
 const { trackTradeAction } = useAnalytics()
 const { toLocalInput, toUTC, getCurrentTimeLocal, timezoneLabel } = useUserTimezone()
@@ -1840,7 +1853,10 @@ const form = ref({
   postExitMfe: null,
   postExitWindowOverrideMinutes: null,
   broker: '',
-  account_identifier: '',
+  // Snapshot the filter on creation; later filter changes must not reassign a draft.
+  account_identifier: !isEdit.value && selectedAccount.value !== UNSORTED_ACCOUNT
+    ? selectedAccount.value || ''
+    : '',
   strategy: '',
   setup: '',
   notes: '',
@@ -2030,7 +2046,7 @@ async function loadTrade() {
 
   try {
     loading.value = true
-    trade.value = await tradesStore.fetchTrade(route.params.id)
+    trade.value = await tradesStore.fetchTrade(route.params.id, { raw: true })
 
     // Create local reference for easier access
     const tradeData = trade.value
@@ -3055,6 +3071,13 @@ function handleBrokerInputBlur() {
     }
   }
   showBrokerInput.value = false
+}
+
+async function showAccountField() {
+  showAdditionalFields.value = true
+  await nextTick()
+  document.querySelector('[data-trade-account-field]')?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  document.querySelector('[data-trade-account-field] button, [data-trade-account-field] input')?.focus({ preventScroll: true })
 }
 
 function startAddAccount() {

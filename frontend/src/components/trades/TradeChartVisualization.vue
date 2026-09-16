@@ -102,7 +102,7 @@
           :selected-resolution="selectedResolution"
           :available-resolutions="availableResolutions"
           :resolution-loading="loading"
-          :currency-code="currencyCode"
+          :currency-code="candles_currency"
           @resolution-change="selectResolution"
         />
 
@@ -130,10 +130,9 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, h, markRaw, onMounted, ref, shallowRef, watch } from 'vue'
 import { PresentationChartLineIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
-import KLineTradeChart from '@/components/trades/KLineTradeChart.vue'
 import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
@@ -143,6 +142,37 @@ import {
   isTradeChartResolution,
   readTradeChartDefaultResolution,
 } from '@/utils/tradeChartPreferences'
+
+// KLineCharts is a large optional dependency. Keep it out of the trade-detail
+// route until the user explicitly opens the interactive chart. A small named
+// proxy keeps the public component contract stable while the implementation
+// is fetched on demand.
+const KLineTradeChart = {
+  name: 'KLineTradeChart',
+  props: {
+    chartData: { type: Object, required: true },
+    timezone: { type: String, default: 'UTC' },
+    selectedResolution: { type: String, default: '1' },
+    availableResolutions: { type: Array, default: () => ['1', '5', '15', '60', 'D'] },
+    resolutionLoading: { type: Boolean, default: false },
+    currencyCode: { type: String, default: 'USD' },
+  },
+  emits: ['resolution-change'],
+  setup(props, { emit }) {
+    const implementation = shallowRef(null)
+    onMounted(async () => {
+      const module = await import('@/components/trades/KLineTradeChart.vue')
+      implementation.value = markRaw(module.default)
+    })
+
+    return () => implementation.value
+      ? h(implementation.value, {
+          ...props,
+          onResolutionChange: (resolution) => emit('resolution-change', resolution),
+        })
+      : h('div', { class: 'flex min-h-64 items-center justify-center text-sm text-gray-500 dark:text-gray-400' }, 'Preparing chart...')
+  },
+}
 
 const props = defineProps({
   tradeId: {
@@ -201,9 +231,12 @@ const intervalLabel = computed(() => {
 // Format in the currency the trade was actually executed in, matching the
 // Trade Details panel, rather than the account's display currency.
 const tradeCurrency = computed(() => {
-  const currency = chartData.value?.trade?.currency
+  const currency = chartData.value?.trade?.effective_currency || chartData.value?.trade?.currency
   return currency ? String(currency).toUpperCase() : currencyCode.value
 })
+const candles_currency = computed(() => (
+  chartData.value?.candles_currency || chartData.value?.display_currency || currencyCode.value
+))
 
 function formatTradeCurrency(value) {
   return formatCurrency(value, { currency: tradeCurrency.value })

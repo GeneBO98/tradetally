@@ -160,7 +160,7 @@
             :key="period.year + '-bvps'"
             class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap"
           >
-            {{ formatCurrency(period.totalEquity / period.sharesOutstanding) }}
+            {{ formatCurrency(period.totalEquity / period.sharesOutstanding, { currency }) }}
           </td>
         </tr>
       </tbody>
@@ -171,20 +171,24 @@
 <script setup>
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 
-defineProps({
+const props = defineProps({
   data: {
     type: Array,
     required: true
+  },
+  currency: {
+    type: String,
+    default: ''
   }
 })
 
-const { formatCurrency, currencySymbol } = useCurrencyFormatter()
+const { formatCurrency, symbolFor } = useCurrencyFormatter()
 
 function formatLargeNumber(value) {
   if (value === null || value === undefined) return '-'
   const absValue = Math.abs(value)
   const isNegative = value < 0
-  const sym = currencySymbol.value
+  const sym = symbolFor(props.currency)
   const prefix = isNegative ? '-' : ''
 
   if (absValue >= 1e12) return `${prefix}${sym}${(absValue / 1e12).toFixed(2)}T`

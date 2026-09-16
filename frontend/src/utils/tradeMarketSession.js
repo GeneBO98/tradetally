@@ -65,6 +65,7 @@ export function getTradeMarketSession(value, symbol = null) {
     return {
       key: 'pre_market',
       label: 'Pre-market',
+      short: 'Pre',
       title: `Entered at ${timeLabel}, before ${hours}`,
     }
   }
@@ -73,6 +74,7 @@ export function getTradeMarketSession(value, symbol = null) {
     return {
       key: 'regular',
       label: 'Market',
+      short: 'RTH',
       title: `Entered at ${timeLabel}, during ${hours}`,
     }
   }
@@ -80,6 +82,29 @@ export function getTradeMarketSession(value, symbol = null) {
   return {
     key: 'post_market',
     label: 'Post-market',
+    short: 'Post',
     title: `Entered at ${timeLabel}, after ${hours}`,
   }
+}
+
+const BADGED_INSTRUMENTS = new Set(['stock', 'option'])
+
+/**
+ * The session worth badging on a trade row. Futures and anything else that is
+ * not bound to equity hours get nothing, and neither does a regular-hours
+ * fill: that is the case for almost every row, so a badge saying so costs a
+ * line of screen and tells the reader nothing. Only the exceptions - filled
+ * before the open or after the close - earn a marker.
+ */
+export function getTradeSessionBadge(trade) {
+  const instrumentType = String(
+    trade?.instrument_type ?? trade?.instrumentType ?? 'stock'
+  ).toLowerCase()
+  if (!BADGED_INSTRUMENTS.has(instrumentType)) return null
+
+  const session = getTradeMarketSession(
+    trade?.entry_time ?? trade?.entryTime,
+    trade?.symbol
+  )
+  return session && session.key !== 'regular' ? session : null
 }

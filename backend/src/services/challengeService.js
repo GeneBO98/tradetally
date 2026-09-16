@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const { fxUsd } = require('../utils/tradeFx');
 const AchievementService = require('./achievementService');
 const NotificationService = require('./notificationService');
 
@@ -334,7 +335,7 @@ class ChallengeService {
       WITH daily_pnl AS (
         SELECT 
           DATE(exit_time) as trade_date,
-          SUM(pnl) as daily_pnl
+          SUM(${fxUsd('pnl', '')}) as daily_pnl
         FROM trades
         WHERE user_id = $1
           AND exit_time >= $2

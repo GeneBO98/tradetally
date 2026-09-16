@@ -169,7 +169,7 @@
             class="px-4 py-3 text-sm text-right whitespace-nowrap"
             :class="getEpsValue(period) >= 0 ? 'text-gray-700 dark:text-gray-300' : 'text-red-600 dark:text-red-400'"
           >
-            {{ formatCurrency(getEpsValue(period)) }}
+            {{ formatCurrency(getEpsValue(period), { currency }) }}
           </td>
         </tr>
         <tr v-if="hasEpsDiluted">
@@ -181,7 +181,7 @@
             :key="period.year + '-epsdiluted'"
             class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap"
           >
-            {{ formatCurrency(period.epsDiluted) }}
+            {{ formatCurrency(period.epsDiluted, { currency }) }}
           </td>
         </tr>
       </tbody>
@@ -193,12 +193,16 @@
 import { computed } from 'vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 
-const { formatCurrency, currencySymbol } = useCurrencyFormatter()
+const { formatCurrency, symbolFor } = useCurrencyFormatter()
 
 const props = defineProps({
   data: {
     type: Array,
     required: true
+  },
+  currency: {
+    type: String,
+    default: ''
   }
 })
 
@@ -216,7 +220,7 @@ function formatLargeNumber(value) {
   const isNegative = value < 0
   const prefix = isNegative ? '(' : ''
   const suffix = isNegative ? ')' : ''
-  const sym = currencySymbol.value
+  const sym = symbolFor(props.currency)
 
   if (absValue >= 1e12) return `${prefix}${sym}${(absValue / 1e12).toFixed(2)}T${suffix}`
   if (absValue >= 1e9) return `${prefix}${sym}${(absValue / 1e9).toFixed(2)}B${suffix}`

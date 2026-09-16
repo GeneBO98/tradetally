@@ -10,6 +10,8 @@ const AnalyticsCache = require('../services/analyticsCache');
 const settingsCache = require('../services/settingsCache');
 const OptionStrategyGroupingService = require('../services/optionStrategyGroupingService');
 const Trade = require('../models/Trade');
+const FeeProfileService = require('../services/feeProfileService');
+const { restoreAccountAssignments } = require('../services/feeProfileBackupService');
 
 const VALID_AI_PROVIDERS = ['gemini', 'claude', 'openai', 'deepseek', 'kimi', 'codex_cli', 'claude_cli', 'ollama', 'lmstudio', 'perplexity', 'local', 'custom'];
 const URL_REQUIRED_AI_PROVIDERS = ['local', 'ollama', 'lmstudio', 'custom'];
@@ -772,6 +774,14 @@ const settingsController = {
         console.warn('[EXPORT] Unable to fetch broker fee settings:', error.message);
       }
 
+      let feeProfiles = [];
+      try {
+        feeProfiles = await FeeProfileService.getProfiles(userId);
+        console.log(`[EXPORT] Exporting ${feeProfiles.length} fee profiles`);
+      } catch (error) {
+        console.warn('[EXPORT] Unable to fetch fee profiles:', error.message);
+      }
+
       // Get trade charts (TradingView links)
       let tradeCharts = [];
       try {
@@ -963,6 +973,15 @@ const settingsController = {
         diaryTemplates: convertRows(diaryTemplates),
         // Broker fee settings: auto-convert
         brokerFeeSettings: convertRows(brokerFeeSettings),
+        // Named fee profiles use account identifiers instead of database IDs
+        // so assignments remain portable across installations.
+        feeProfiles: feeProfiles.map(profile => ({
+          name: profile.name,
+          notes: profile.notes,
+          isZeroFee: profile.isZeroFee,
+          rates: profile.rates,
+          accountIdentifiers: profile.accounts.map(account => account.accountIdentifier).filter(Boolean)
+        })),
         // Trade charts with originalTradeId for remapping
         tradeCharts: tradeChartsExport,
         // Additional user-owned tables (NEW in v3.0)
@@ -984,6 +1003,7 @@ const settingsController = {
                   'Diary entries:', diaryEntries.length,
                   'Templates:', diaryTemplates.length,
                   'Broker fees:', brokerFeeSettings.length,
+                  'Fee profiles:', feeProfiles.length,
                   'Trade charts:', tradeCharts.length,
                   'Watchlists:', watchlists.length,
                   'Admin settings:', adminSettings ? Object.keys(adminSettings).length : 0);
@@ -1021,6 +1041,7 @@ const settingsController = {
         console.log('[IMPORT] Number of diary entries in file:', importData.diaryEntries?.length || 0);
         console.log('[IMPORT] Number of templates in file:', importData.diaryTemplates?.length || 0);
         console.log('[IMPORT] Number of broker fees in file:', importData.brokerFeeSettings?.length || 0);
+        console.log('[IMPORT] Number of fee profiles in file:', importData.feeProfiles?.length || 0);
       } catch (error) {
         console.error('[IMPORT] JSON parse error:', error);
         return res.status(400).json({ error: 'Invalid JSON file' });
@@ -1087,6 +1108,8 @@ const settingsController = {
       let templatesSkipped = 0;
       let brokerFeesAdded = 0;
       let brokerFeesSkipped = 0;
+      let feeProfilesAdded = 0;
+      let feeProfilesSkipped = 0;
       let additionalTablesImported = {};
 
       // Map old trade IDs to new trade IDs for diary entry linked_trades
@@ -1666,7 +1689,66 @@ const settingsController = {
         }
 
         // ============================================
-        // 5. Import diary templates
+        // 5. Import named fee profiles and portable account assignments
+        // ============================================
+        if (Array.isArray(importData.feeProfiles) && importData.feeProfiles.length > 0) {
+          console.log(`[IMPORT] Processing ${importData.feeProfiles.length} fee profiles...`);
+          for (const profile of importData.feeProfiles) {
+            await client.query('SAVEPOINT restore_fee_profile');
+            try {
+              const normalized = FeeProfileService.normalizeProfilePayload({
+                name: profile.name,
+                notes: profile.notes,
+                is_zero_fee: profile.is_zero_fee ?? profile.isZeroFee,
+                rates: profile.rates || []
+              });
+              const profileResult = await client.query(
+                `INSERT INTO fee_profiles (user_id, name, notes, is_zero_fee)
+                 VALUES ($1, $2, $3, $4)
+                 ON CONFLICT (user_id, name) DO UPDATE SET
+                   notes = EXCLUDED.notes,
+                   is_zero_fee = EXCLUDED.is_zero_fee,
+                   updated_at = CURRENT_TIMESTAMP
+                 RETURNING id`,
+                [userId, normalized.name, normalized.notes, normalized.is_zero_fee]
+              );
+              const profileId = profileResult.rows[0].id;
+
+              await client.query('DELETE FROM fee_profile_rates WHERE fee_profile_id = $1', [profileId]);
+              for (const rate of normalized.rates) {
+                await client.query(
+                  `INSERT INTO fee_profile_rates (
+                    fee_profile_id, broker, instrument,
+                    commission_per_contract, commission_per_side,
+                    exchange_fee_per_contract, nfa_fee_per_contract,
+                    clearing_fee_per_contract, platform_fee_per_contract, notes
+                  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+                  [
+                    profileId, rate.broker, rate.instrument,
+                    rate.commission_per_contract, rate.commission_per_side,
+                    rate.exchange_fee_per_contract, rate.nfa_fee_per_contract,
+                    rate.clearing_fee_per_contract, rate.platform_fee_per_contract,
+                    rate.notes
+                  ]
+                );
+              }
+
+              await restoreAccountAssignments(client, userId, profileId,
+                profile.account_identifiers ?? profile.accountIdentifiers ?? []);
+              await client.query('RELEASE SAVEPOINT restore_fee_profile');
+              feeProfilesAdded++;
+            } catch (profileError) {
+              await client.query('ROLLBACK TO SAVEPOINT restore_fee_profile');
+              await client.query('RELEASE SAVEPOINT restore_fee_profile');
+              feeProfilesSkipped++;
+              console.error('[IMPORT] Error processing fee profile:', profileError.message);
+            }
+          }
+          console.log(`[IMPORT] Fee profiles: ${feeProfilesAdded} imported, ${feeProfilesSkipped} skipped`);
+        }
+
+        // ============================================
+        // 6. Import diary templates
         // ============================================
         if (importData.diaryTemplates && importData.diaryTemplates.length > 0) {
           console.log(`[IMPORT] Processing ${importData.diaryTemplates.length} diary templates...`);
@@ -1969,11 +2051,13 @@ const settingsController = {
           templatesSkipped,
           brokerFeesAdded,
           brokerFeesSkipped,
+          feeProfilesAdded,
+          feeProfilesSkipped,
           chartsAdded,
           chartsSkipped,
           adminSettingsUpdated,
           additionalTablesImported,
-          message: `Successfully imported: ${tradesAdded} trades, ${tagsAdded} tags, ${equityAdded} equity records, ${diaryAdded} diary entries, ${templatesAdded} templates, ${brokerFeesAdded} broker fee settings, ${chartsAdded} trade charts, ${adminSettingsUpdated} admin settings${additionalMsg ? ', ' + additionalMsg : ''}. Skipped: ${tradesSkipped} trades, ${diarySkipped} diary entries, ${templatesSkipped} templates, ${brokerFeesSkipped} broker fees, ${chartsSkipped} charts.`
+          message: `Successfully imported: ${tradesAdded} trades, ${tagsAdded} tags, ${equityAdded} equity records, ${diaryAdded} diary entries, ${templatesAdded} templates, ${brokerFeesAdded} broker fee settings, ${feeProfilesAdded} fee profiles, ${chartsAdded} trade charts, ${adminSettingsUpdated} admin settings${additionalMsg ? ', ' + additionalMsg : ''}. Skipped: ${tradesSkipped} trades, ${diarySkipped} diary entries, ${templatesSkipped} templates, ${brokerFeesSkipped} broker fees, ${feeProfilesSkipped} fee profiles, ${chartsSkipped} charts.`
         });
       } catch (error) {
         await client.query('ROLLBACK');
@@ -2315,7 +2399,55 @@ const settingsController = {
     }
   },
 
-  // Broker Fee Settings
+  // Named fee profiles
+  async getFeeProfiles(req, res, next) {
+    try {
+      res.json({ success: true, data: await FeeProfileService.getProfiles(req.user.id) });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async createFeeProfile(req, res, next) {
+    try {
+      const profile = await FeeProfileService.createProfile(req.user.id, req.body || {});
+      res.status(201).json({ success: true, data: profile });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async updateFeeProfile(req, res, next) {
+    try {
+      const profile = await FeeProfileService.updateProfile(req.user.id, req.params.id, req.body || {});
+      res.json({ success: true, data: profile });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async deleteFeeProfile(req, res, next) {
+    try {
+      await FeeProfileService.deleteProfile(req.user.id, req.params.id);
+      res.json({ success: true, message: 'Fee profile deleted' });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async setFeeProfileAccounts(req, res, next) {
+    try {
+      const accountIds = req.body?.account_ids ?? req.body?.accountIds;
+      const result = await FeeProfileService.setProfileAccounts(req.user.id, req.params.id, accountIds);
+      await AnalyticsCache.invalidate(req.user.id);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // Legacy Broker Fee Settings. Kept for existing API clients and import
+  // fallback compatibility while named profiles become the preferred UI.
   async getBrokerFeeSettings(req, res, next) {
     try {
       const query = `

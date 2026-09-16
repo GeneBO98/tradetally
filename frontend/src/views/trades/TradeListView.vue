@@ -249,11 +249,11 @@
       <div v-else>
         <!-- Bulk Actions Bar -->
         <div v-if="selectedTrades.length > 0" class="mb-6 p-4 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg">
-          <div class="flex items-center justify-between">
+          <div class="flex flex-wrap items-center justify-between gap-3">
             <span class="text-sm text-primary-800 dark:text-primary-200">
               {{ selectedTrades.length }} trade{{ selectedTrades.length === 1 ? '' : 's' }} selected
             </span>
-            <div class="flex items-center space-x-2">
+            <div class="flex flex-wrap items-center gap-2">
               <button
                 @click="clearSelection"
                 class="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
@@ -265,6 +265,12 @@
                 class="px-3 py-2 text-sm bg-primary-600 text-white rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
               >
                 Add tags
+              </button>
+              <button
+                @click="showBulkEditModal = true"
+                class="px-3 py-2 text-sm bg-primary-600 text-white rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+              >
+                Edit selected
               </button>
               <button
                 v-if="allocationEnabled && allocationGroups.length >= 2"
@@ -285,7 +291,11 @@
 
         <!-- Mobile Column Customizer -->
         <div class="block md:hidden mb-4 flex justify-end">
-          <ColumnCustomizer :columns="tableColumns" @update:columns="handleColumnsUpdate" />
+          <ColumnCustomizer
+            :columns="tableColumns"
+            @update:columns="handleColumnsUpdate"
+            @reset-widths="resetColumnWidths"
+          />
         </div>
 
         <!-- Mobile view (cards) -->
@@ -458,11 +468,19 @@
         </div>
         <!-- Main table wrapper -->
         <div ref="bottomScroll" class="overflow-x-auto relative" @scroll="syncTopScroll">
-          <table class="w-full divide-y divide-gray-300 dark:divide-gray-700" :style="tableLayoutStyle">
+          <table class="trade-list-table w-full divide-y divide-gray-300 dark:divide-gray-700" :style="tableLayoutStyle">
+          <!-- Widths live on the colgroup so a drag on one header moves that
+               column only, the way a spreadsheet behaves. -->
+          <colgroup>
+            <col v-if="isCheckboxColumnVisible" style="width: 30px;" />
+            <col style="width: 30px;" />
+            <col v-for="column in visibleDataColumns" :key="`col-${column.key}`" :style="columnWidthStyle(column.key)" />
+            <col v-if="hasCustomColumnWidths" />
+          </colgroup>
           <thead class="bg-gray-50 dark:bg-gray-800">
-            <tr>
+            <tr ref="headerRow">
               <!-- Checkbox Column -->
-              <th v-if="tableColumns.find(c => c.key === 'checkbox')?.visible" :class="[getCheckboxPadding, 'text-left']" style="width: 30px;">
+              <th v-if="isCheckboxColumnVisible" :class="[getCheckboxPadding, 'text-left']">
                 <input
                   type="checkbox"
                   :checked="isAllSelected"
@@ -471,23 +489,46 @@
                 />
               </th>
               <!-- Column Customizer immediately after checkbox -->
-              <th class="pl-0 pr-2 py-3 text-center relative" style="width: 30px;">
-                <ColumnCustomizer :columns="tableColumns" @update:columns="handleColumnsUpdate" />
+              <th class="pl-0 pr-2 py-3 text-center relative">
+                <ColumnCustomizer
+                  :columns="tableColumns"
+                  @update:columns="handleColumnsUpdate"
+                  @reset-widths="resetColumnWidths"
+                />
               </th>
               <!-- All other columns -->
-              <template v-for="column in tableColumns" :key="column.key">
-                <th v-if="column.visible && column.key !== 'checkbox'"
-                    :class="[column.key === 'symbol' ? 'pl-0 pr-2 py-3' : getHeaderPadding, 'text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider', { 'text-center': column.key === 'comments' || column.key === 'quality' }]">
-                  {{ column.label }}
-                </th>
-              </template>
+              <th v-for="column in visibleDataColumns"
+                  :key="column.key"
+                  :data-column-key="column.key"
+                  :class="[column.key === 'symbol' ? 'pl-0 pr-2 py-3' : getHeaderPadding, 'group relative text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider', { 'text-center': column.key === 'comments' || column.key === 'quality' }]">
+                <span class="block truncate">{{ column.label }}</span>
+                <span
+                  class="absolute inset-y-0 right-0 z-10 flex w-2 cursor-col-resize touch-none items-stretch justify-end focus:outline-none"
+                  role="separator"
+                  aria-orientation="vertical"
+                  tabindex="0"
+                  :aria-label="`Resize ${column.label} column`"
+                  title="Drag to resize. Double-click to auto-fit."
+                  @mousedown.stop.prevent="startColumnResize(column.key, $event)"
+                  @dblclick.stop.prevent="clearColumnWidth(column.key)"
+                  @click.stop
+                  @keydown.left.prevent="nudgeColumnWidth(column.key, -16)"
+                  @keydown.right.prevent="nudgeColumnWidth(column.key, 16)"
+                >
+                  <span
+                    class="my-2 w-px bg-gray-300 opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-600"
+                    :class="{ 'opacity-100 bg-primary-500 dark:bg-primary-500': resizingColumn === column.key }"
+                  ></span>
+                </span>
+              </th>
+              <th v-if="hasCustomColumnWidths"></th>
             </tr>
           </thead>
           <tbody class="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
             <tr v-for="trade in tradesStore.trades" :key="trade.id"
                 class="hover:bg-gray-50 dark:hover:bg-gray-800">
               <!-- Checkbox Column -->
-              <td v-if="tableColumns.find(c => c.key === 'checkbox')?.visible" :class="[getCheckboxPadding, 'whitespace-nowrap']" style="width: 30px;">
+              <td v-if="isCheckboxColumnVisible" :class="[getCheckboxPadding, 'whitespace-nowrap']">
                 <input
                   type="checkbox"
                   :value="trade.id"
@@ -496,7 +537,7 @@
                 />
               </td>
               <!-- Empty cell to align with column customizer -->
-              <td class="pl-0 pr-2 py-4" style="width: 30px;"></td>
+              <td class="pl-0 pr-2 py-4"></td>
 
               <template v-for="column in tableColumns.filter(c => c.key !== 'checkbox')" :key="`${trade.id}-${column.key}`">
 
@@ -504,40 +545,43 @@
                 <td v-if="column.visible && column.key === 'symbol'"
                     :class="[getSymbolPadding, 'cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  <div class="flex items-center gap-1.5 flex-wrap max-w-xs">
+                  <div class="flex items-center gap-2">
                     <StockLogo
                       :symbol="trade.symbol"
                       size-class="w-8 h-8"
                     />
-                    <div class="text-sm font-medium text-gray-900 dark:text-white truncate max-w-[200px]" :title="trade.symbol">
-                      {{ trade.symbol }}
+                    <div class="min-w-0 flex-1">
+                      <div class="truncate text-sm font-medium text-gray-900 dark:text-white" :title="trade.symbol">
+                        {{ trade.symbol }}
+                      </div>
+                      <div v-if="hasSymbolBadgeRow(trade)" class="mt-0.5 flex flex-wrap items-center gap-1">
+                        <!-- Instrument type badge -->
+                        <span v-if="getInstrumentType(trade) === 'option'"
+                          :class="tradeBadgeClass('option')"
+                          :title="`${trade.option_type?.toUpperCase()} - Strike: ${formatTradeCurrency(trade.strike_price, trade)} - Exp: ${trade.expiration_date}`">
+                          OPT
+                        </span>
+                        <span v-else-if="getInstrumentType(trade) === 'future'"
+                          :class="tradeBadgeClass('future')"
+                          :title="`Futures contract`">
+                          FUT
+                        </span>
+                        <TradeMarketSessionBadge :trade="trade" />
+                        <!-- Position group strategy badge -->
+                        <span v-if="trade.group_detected_strategy"
+                          :class="tradeBadgeClass('strategy')"
+                          :title="`Auto-detected strategy: ${formatGroupStrategy(trade.group_detected_strategy)} (${trade.group_leg_count}-leg position)`">
+                          <span class="truncate">{{ formatGroupStrategy(trade.group_detected_strategy) }}</span>
+                        </span>
+                        <!-- News badge -->
+                        <span v-if="trade.has_news"
+                          :class="tradeBadgeClass(newsBadgeTone(trade.news_sentiment))"
+                          :title="`${trade.news_event_count ?? trade.news_events?.length ?? 0} news article(s) - ${trade.news_sentiment || 'neutral'} sentiment`">
+                          <MdiIcon :icon="newspaperIcon" :size="11" />
+                          <span>{{ trade.news_event_count ?? trade.news_events?.length ?? 0 }}</span>
+                        </span>
+                      </div>
                     </div>
-                    <!-- Instrument type badge -->
-                    <span v-if="trade.instrument_type === 'option'"
-                      class="px-1.5 py-0.5 text-xs font-semibold rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400 whitespace-nowrap flex-shrink-0"
-                      :title="`${trade.option_type?.toUpperCase()} - Strike: ${formatTradeCurrency(trade.strike_price, trade)} - Exp: ${trade.expiration_date}`">
-                      OPT
-                    </span>
-                    <span v-else-if="trade.instrument_type === 'future'"
-                      class="px-1.5 py-0.5 text-xs font-semibold rounded-full bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400 whitespace-nowrap flex-shrink-0"
-                      :title="`Futures contract`">
-                      FUT
-                    </span>
-                    <TradeMarketSessionBadge :trade="trade" />
-                    <!-- Position group strategy badge -->
-                    <span v-if="trade.group_detected_strategy"
-                      class="px-1.5 py-0.5 text-xs font-semibold rounded-full bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400 whitespace-nowrap flex-shrink-0"
-                      :title="`Auto-detected strategy: ${formatGroupStrategy(trade.group_detected_strategy)} (${trade.group_leg_count}-leg position)`">
-                      {{ formatGroupStrategy(trade.group_detected_strategy) }}
-                    </span>
-                    <!-- News badge -->
-                    <span v-if="trade.has_news"
-                      :class="getNewsBadgeClasses(trade.news_sentiment)"
-                      class="px-1.5 py-0.5 text-xs font-semibold rounded-full flex items-center whitespace-nowrap flex-shrink-0"
-                      :title="`${trade.news_event_count ?? trade.news_events?.length ?? 0} news article(s) - ${trade.news_sentiment || 'neutral'} sentiment`">
-                      <MdiIcon :icon="newspaperIcon" :size="12" class="mr-0.5" />
-                      <span>{{ trade.news_event_count ?? trade.news_events?.length ?? 0 }}</span>
-                    </span>
                   </div>
                 </td>
 
@@ -604,15 +648,22 @@
                 <td v-else-if="column.visible && column.key === 'pnl'" 
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']" 
                     @click="$router.push(`/trades/${trade.id}`)">
-                  <div v-if="!isTradeOpen(trade)" class="text-sm font-medium" :class="[
+                  <div v-if="!isTradeOpen(trade) && trade.pnl_percent" class="relative min-h-14">
+                    <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 text-sm font-medium" :class="[
+                      trade.pnl >= 0 ? 'text-green-600' : 'text-red-600'
+                    ]">
+                      {{ formatTradeSignedCurrency(trade.pnl, trade) }}
+                    </div>
+                    <div class="absolute inset-x-0 bottom-0 text-xs text-gray-500 dark:text-gray-400">
+                      {{ trade.pnl_percent > 0 ? '+' : '' }}{{ formatNumber(trade.pnl_percent) }}%
+                    </div>
+                  </div>
+                  <div v-else-if="!isTradeOpen(trade)" class="text-sm font-medium" :class="[
                     trade.pnl >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
                     {{ formatTradeSignedCurrency(trade.pnl, trade) }}
                   </div>
-                  <div v-if="!isTradeOpen(trade) && trade.pnl_percent" class="text-xs text-gray-500 dark:text-gray-400">
-                    {{ trade.pnl_percent > 0 ? '+' : '' }}{{ formatNumber(trade.pnl_percent) }}%
-                  </div>
-                  <div v-if="isTradeOpen(trade)" class="text-sm text-gray-400 dark:text-gray-500">-</div>
+                  <div v-else class="text-sm text-gray-400 dark:text-gray-500">-</div>
                 </td>
 
                 <!-- Gross P&L Column -->
@@ -631,14 +682,21 @@
                 <td v-else-if="column.visible && column.key === 'unrealizedPnl'"
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  <div v-if="trade.unrealizedPnl !== null && trade.unrealizedPnl !== undefined">
-                    <div class="text-sm font-medium" :class="[
+                  <div v-if="trade.unrealizedPnl !== null && trade.unrealizedPnl !== undefined && trade.unrealizedPnlPercent !== null && trade.unrealizedPnlPercent !== undefined" class="relative min-h-14">
+                    <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 text-sm font-medium" :class="[
                       trade.unrealizedPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
                     ]">
                       {{ formatTradeSignedCurrency(trade.unrealizedPnl, trade) }}
                     </div>
-                    <div v-if="trade.unrealizedPnlPercent !== null && trade.unrealizedPnlPercent !== undefined" class="text-xs text-gray-500 dark:text-gray-400">
+                    <div class="absolute inset-x-0 bottom-0 text-xs text-gray-500 dark:text-gray-400">
                       {{ trade.unrealizedPnlPercent > 0 ? '+' : '' }}{{ formatNumber(trade.unrealizedPnlPercent) }}%
+                    </div>
+                  </div>
+                  <div v-else-if="trade.unrealizedPnl !== null && trade.unrealizedPnl !== undefined">
+                    <div class="text-sm font-medium" :class="[
+                      trade.unrealizedPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
+                    ]">
+                      {{ formatTradeSignedCurrency(trade.unrealizedPnl, trade) }}
                     </div>
                   </div>
                   <div v-else class="text-sm text-gray-400 dark:text-gray-500">-</div>
@@ -923,6 +981,7 @@
                   <span v-else class="text-sm text-gray-500 dark:text-gray-400">-</span>
                 </td>
               </template>
+              <td v-if="hasCustomColumnWidths"></td>
             </tr>
           </tbody>
           </table>
@@ -1092,21 +1151,29 @@
       @close="showBulkAllocationModal = false"
       @saved="handleBulkAllocationSaved"
     />
+    <BulkTradeEditModal
+      :open="showBulkEditModal"
+      :trade-ids="selectedTrades"
+      @close="showBulkEditModal = false"
+      @saved="handleBulkEditSaved"
+    />
   </div>
 </template>
 
 <script setup>
-import { onMounted, computed, watch, ref, defineAsyncComponent } from 'vue'
+import { onMounted, onUnmounted, computed, watch, ref, nextTick, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { useUserTimezone } from '@/composables/useUserTimezone'
+import { useNotification } from '@/composables/useNotification'
 import { DocumentTextIcon, ChatBubbleLeftIcon, FunnelIcon, XMarkIcon, ExclamationTriangleIcon } from '@heroicons/vue/24/outline'
 // TradeFilters only ever renders inside the filters modal (v-if="showFiltersModal"),
 // so lazy-load it to keep its ~50 KB out of the TradeListView entry chunk.
 const TradeFilters = defineAsyncComponent(() => import('@/components/trades/TradeFilters.vue'))
 const BulkTradeAllocationModal = defineAsyncComponent(() => import('@/components/trades/BulkTradeAllocationModal.vue'))
+const BulkTradeEditModal = defineAsyncComponent(() => import('@/components/trades/BulkTradeEditModal.vue'))
 import TradeCommentsDialog from '@/components/trades/TradeCommentsDialog.vue'
 import EnrichmentStatus from '@/components/trades/EnrichmentStatus.vue'
 import ColumnCustomizer from '@/components/trades/ColumnCustomizer.vue'
@@ -1119,9 +1186,12 @@ import api from '@/services/api'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { getTradeDateOnlyParts } from '@/utils/date'
 import { getTradeGrossPnl, isTradeOpen } from '@/utils/tradePnl'
+import { getTradeSessionBadge } from '@/utils/tradeMarketSession'
+import { newsBadgeTone, tradeBadgeClass } from '@/utils/tradeBadges'
 
 const tradesStore = useTradesStore()
 const uiPreferencesStore = useUiPreferencesStore()
+const { showSuccess, showWarning } = useNotification()
 const { selectedAccount } = useGlobalAccountFilter()
 const { formatCurrency, currencySymbol, formatSignedCurrency } = useCurrencyFormatter()
 const { formatTime: formatTimeTz, userTimezone } = useUserTimezone()
@@ -1129,7 +1199,11 @@ const route = useRoute()
 const router = useRouter()
 
 function getTradeCurrency(trade) {
-  return (trade?.original_currency || trade?.originalCurrency || 'USD').toUpperCase()
+  // Amounts are USD-normalized at import; the server converts responses to
+  // the user's display currency and labels them (display_currency). Rows it
+  // could not convert (e.g. native currency with no available rate) carry
+  // their own effective_currency - honor it per row.
+  return (trade?.effective_currency || tradesStore.tradesCurrency || 'USD').toUpperCase()
 }
 
 function formatTradeCurrency(value, trade, options = {}) {
@@ -1138,6 +1212,18 @@ function formatTradeCurrency(value, trade, options = {}) {
 
 function formatTradeSignedCurrency(value, trade, options = {}) {
   return formatSignedCurrency(value, { ...options, currency: getTradeCurrency(trade) })
+}
+
+function getInstrumentType(trade) {
+  return String(trade?.instrument_type ?? trade?.instrumentType ?? 'stock').toLowerCase()
+}
+
+function hasSymbolBadgeRow(trade) {
+  const instrumentType = getInstrumentType(trade)
+  if (instrumentType === 'option' || instrumentType === 'future') return true
+  if (trade?.group_detected_strategy || trade?.has_news) return true
+
+  return Boolean(getTradeSessionBadge(trade))
 }
 
 function formatExcursionValue(trade, value) {
@@ -1234,6 +1320,7 @@ const bulkTagsToAdd = ref([])
 const allocationEnabled = ref(false)
 const allocationGroups = ref([])
 const showBulkAllocationModal = ref(false)
+const showBulkEditModal = ref(false)
 
 // Filters modal
 const showFiltersModal = ref(false)
@@ -1278,8 +1365,167 @@ const visibleColumnCount = computed(() => {
   return count
 })
 
+const isCheckboxColumnVisible = computed(
+  () => tableColumns.value.find(c => c.key === 'checkbox')?.visible ?? false
+)
+
+// The columns the table actually renders, in order - the colgroup, the header
+// row and the resize maths all have to walk the same list.
+const visibleDataColumns = computed(
+  () => tableColumns.value.filter(c => c.visible && c.key !== 'checkbox')
+)
+
+// Column resizing -----------------------------------------------------------
+// Widths the user dragged, keyed by column key and measured in pixels.
+const COLUMN_WIDTHS_KEY = 'tradeListColumnWidths'
+const MIN_COLUMN_WIDTH = 48
+const LEADING_COLUMNS_WIDTH = 60 // checkbox + column customizer, 30px each
+
+const columnWidths = ref({})
+const resizingColumn = ref(null)
+const headerRow = ref(null)
+let resizeState = null
+
+const hasCustomColumnWidths = computed(() => Object.keys(columnWidths.value).length > 0)
+
+// Total of the pinned widths, or null while any visible column is still
+// auto-sized - the browser has to keep distributing space in that case.
+const pinnedTableWidth = computed(() => {
+  const columns = visibleDataColumns.value
+  if (!columns.length || !hasCustomColumnWidths.value) return null
+
+  let total = isCheckboxColumnVisible.value ? LEADING_COLUMNS_WIDTH : LEADING_COLUMNS_WIDTH - 30
+  for (const column of columns) {
+    const width = columnWidths.value[column.key]
+    if (!width) return null
+    total += width
+  }
+  return total
+})
+
+function columnWidthStyle(key) {
+  const width = columnWidths.value[key]
+  return width ? { width: `${width}px` } : {}
+}
+
+function loadColumnWidths() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(COLUMN_WIDTHS_KEY) || '{}')
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return
+    const widths = {}
+    for (const [key, value] of Object.entries(parsed)) {
+      const width = Number(value)
+      if (Number.isFinite(width) && width >= MIN_COLUMN_WIDTH) widths[key] = Math.round(width)
+    }
+    columnWidths.value = widths
+  } catch (e) {
+    console.warn('[COLUMNS] Ignoring unreadable column widths:', e?.message)
+  }
+}
+
+function persistColumnWidths() {
+  const widths = columnWidths.value
+  if (Object.keys(widths).length === 0) {
+    localStorage.removeItem(COLUMN_WIDTHS_KEY)
+    uiPreferencesStore.notifyChanged(COLUMN_WIDTHS_KEY, null)
+  } else {
+    localStorage.setItem(COLUMN_WIDTHS_KEY, JSON.stringify(widths))
+    uiPreferencesStore.notifyChanged(COLUMN_WIDTHS_KEY, widths)
+  }
+  nextTick(() => updateTableScrollWidth())
+}
+
+// Pin every column at its current rendered width before the first drag,
+// otherwise switching to a fixed layout would reshuffle all the others.
+function pinRenderedWidths() {
+  const row = headerRow.value
+  if (!row) return
+
+  const widths = { ...columnWidths.value }
+  for (const cell of row.querySelectorAll('th[data-column-key]')) {
+    const key = cell.dataset.columnKey
+    if (!key || widths[key]) continue
+    const measured = Math.round(cell.getBoundingClientRect().width)
+    if (measured > 0) widths[key] = Math.max(MIN_COLUMN_WIDTH, measured)
+  }
+  columnWidths.value = widths
+}
+
+function setColumnWidth(key, width) {
+  columnWidths.value = { ...columnWidths.value, [key]: Math.max(MIN_COLUMN_WIDTH, Math.round(width)) }
+}
+
+function startColumnResize(key, event) {
+  const previousWidths = columnWidths.value
+  pinRenderedWidths()
+  resizeState = {
+    key,
+    previousWidths,
+    moved: false,
+    startX: event.clientX,
+    startWidth: columnWidths.value[key] ?? MIN_COLUMN_WIDTH
+  }
+  resizingColumn.value = key
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+  window.addEventListener('mousemove', handleColumnResize)
+  window.addEventListener('mouseup', stopColumnResize)
+}
+
+function handleColumnResize(event) {
+  if (!resizeState) return
+  resizeState.moved = true
+  setColumnWidth(resizeState.key, resizeState.startWidth + (event.clientX - resizeState.startX))
+}
+
+function stopColumnResize() {
+  if (!resizeState) return
+  const { moved, previousWidths } = resizeState
+  resizeState = null
+  resizingColumn.value = null
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+  window.removeEventListener('mousemove', handleColumnResize)
+  window.removeEventListener('mouseup', stopColumnResize)
+
+  // A click that never moved shouldn't quietly pin every column.
+  if (!moved) {
+    columnWidths.value = previousWidths
+    return
+  }
+  persistColumnWidths()
+}
+
+function nudgeColumnWidth(key, delta) {
+  pinRenderedWidths()
+  setColumnWidth(key, (columnWidths.value[key] ?? MIN_COLUMN_WIDTH) + delta)
+  persistColumnWidths()
+}
+
+// Double-click hands one column back to the browser to size on its own.
+function clearColumnWidth(key) {
+  const { [key]: _dropped, ...rest } = columnWidths.value
+  columnWidths.value = rest
+  persistColumnWidths()
+}
+
+function resetColumnWidths() {
+  columnWidths.value = {}
+  persistColumnWidths()
+}
+
 // Dynamic table layout based on visible columns
 const tableLayoutStyle = computed(() => {
+  // Dragged widths only hold under a fixed layout. The table still spans the
+  // card; the trailing filler column soaks up whatever the pinned columns
+  // leave over, so a column the user narrowed stays narrow.
+  if (hasCustomColumnWidths.value) {
+    const pinned = pinnedTableWidth.value
+    return pinned
+      ? { tableLayout: 'fixed', width: '100%', minWidth: `${pinned}px` }
+      : { tableLayout: 'fixed', minWidth: '100%' }
+  }
+
   const count = visibleColumnCount.value
 
   // Use auto layout for better scaling, only force fixed when there are many columns
@@ -1631,6 +1877,36 @@ function handleBulkAllocationSaved() {
   showBulkAllocationModal.value = false
 }
 
+function handleBulkEditSaved(result) {
+  // Capture the ids before clearing selection so a refresh retry can still
+  // refresh an open trade detail if needed.
+  const editedIds = [...selectedTrades.value]
+  const count = result?.updated_trade_count
+  selectedTrades.value = []
+  showBulkEditModal.value = false
+
+  if (result?.refresh_failed) {
+    // The edit itself succeeded; only the list refresh failed. Offer a
+    // retry that refreshes without submitting the edit again.
+    showWarning('Trades updated', `Updated ${count ?? editedIds.length} trade${count === 1 ? '' : 's'}, but the list could not be refreshed.`, {
+      duration: 15000,
+      actions: [
+        {
+          label: 'Retry refresh',
+          style: 'primary',
+          onClick: () => {
+            tradesStore.refreshAfterBulkUpdate(editedIds).catch(() => {
+              showWarning('Refresh failed', 'The list could not be refreshed. Try reloading the page.', { duration: 15000 })
+            })
+          }
+        }
+      ]
+    })
+  } else {
+    showSuccess('Trades updated', `Updated ${count ?? editedIds.length} trade${count === 1 ? '' : 's'}.`)
+  }
+}
+
 // Get news badge classes based on sentiment
 function getNewsBadgeClasses(sentiment) {
   const baseClasses = 'px-2 py-1 text-xs font-semibold rounded-full flex items-center'
@@ -1683,6 +1959,7 @@ function buildFiltersFromQuery(query) {
 onMounted(() => {
   // Load fullwidth preference
   loadFullWidthPreference()
+  loadColumnWidths()
 
   // Add debug function to window for testing
   window.debugSymbol = async (symbol) => {
@@ -1727,4 +2004,30 @@ onMounted(() => {
   // Initialize table scroll width after component is mounted
   setTimeout(() => updateTableScrollWidth(), 200)
 })
+
+onUnmounted(() => {
+  // A drag that outlives the view would leave the listeners and the body
+  // cursor behind.
+  stopColumnResize()
+})
 </script>
+
+<style scoped>
+.trade-list-table th,
+.trade-list-table td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trade-list-table td > * {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.trade-list-table td > span {
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+</style>

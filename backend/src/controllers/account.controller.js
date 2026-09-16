@@ -20,6 +20,8 @@ function formatAccount(account, { includeTradeCount = false } = {}) {
     isPrimary: account.is_primary,
     isArchived: account.is_archived === true,
     includeInReports: account.include_in_reports !== false,
+    feeProfileId: account.fee_profile_id || null,
+    feeProfileName: account.fee_profile_name || null,
     notes: account.notes,
     ...(includeTradeCount ? { tradeCount: parseInt(account.trade_count) || 0 } : {}),
     createdAt: account.created_at,
@@ -149,7 +151,8 @@ const accountController = {
         isPrimary,
         notes,
         isArchived,
-        includeInReports
+        includeInReports,
+        feeProfileId
       } = req.body;
 
       // Validation
@@ -189,7 +192,8 @@ const accountController = {
         isPrimary: isPrimary || false,
         notes: notes || null,
         isArchived: isArchived || false,
-        includeInReports: includeInReports !== false
+        includeInReports: includeInReports !== false,
+        feeProfileId: feeProfileId || null
       });
 
       await AnalyticsCache.invalidate(req.user.id);
@@ -200,6 +204,13 @@ const accountController = {
       });
     } catch (error) {
       console.error('[ACCOUNTS] Error creating account:', error);
+
+      if (error.message === 'Fee profile not found') {
+        return res.status(400).json({
+          success: false,
+          message: error.message
+        });
+      }
 
       // Handle unique constraint violation for primary account
       if (error.code === '23505') {
@@ -239,6 +250,14 @@ const accountController = {
       });
     } catch (error) {
       console.error('[ACCOUNTS] Error updating account:', error);
+
+      if (error.message === 'Fee profile not found') {
+        return res.status(400).json({
+          success: false,
+          message: error.message
+        });
+      }
+
       res.status(500).json({
         success: false,
         message: 'Failed to update account'

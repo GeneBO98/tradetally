@@ -642,6 +642,19 @@ function scheduleBackgroundServices(backgroundJobsDisabled) {
     console.log('Broker sync scheduler disabled (ENABLE_BROKER_SYNC_SCHEDULER=false)');
   }
 
+  // FX rate warm-up is a cache prefetch (persisted to fx_daily_rates), not a
+  // background job - run it even when workers are disabled so display
+  // currency conversion never blocks on the FX API.
+  defer('fx-rates-warm', async () => {
+    const currencyConverter = require('./utils/currencyConverter');
+    try {
+      const summary = await currencyConverter.refreshCurrentRates();
+      console.log(`[SUCCESS] Warmed FX daily rates for ${summary.rateDate} (${summary.currencies} currencies)`);
+    } catch (error) {
+      console.warn(`[WARNING] FX rate warm-up failed (will fetch lazily): ${error.message}`);
+    }
+  });
+
   if (backgroundJobsDisabled) {
     console.log('Plaid funding scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
   } else if (process.env.ENABLE_PLAID_SYNC_SCHEDULER !== 'false') {

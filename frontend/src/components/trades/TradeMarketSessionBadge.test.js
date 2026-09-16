@@ -13,8 +13,21 @@ describe('TradeMarketSessionBadge', () => {
       },
     })
 
-    expect(wrapper.text()).toBe('Pre-market')
+    expect(wrapper.text()).toBe('Pre')
     expect(wrapper.get('span').attributes('title')).toContain('8:00 AM ET')
+  })
+
+  it('does not badge a regular-hours entry', () => {
+    const wrapper = mount(TradeMarketSessionBadge, {
+      props: {
+        trade: {
+          instrument_type: 'stock',
+          entry_time: '2025-01-02T16:00:00.000Z',
+        },
+      },
+    })
+
+    expect(wrapper.html()).toBe('<!--v-if-->')
   })
 
   it('does not apply US equity sessions to futures', () => {

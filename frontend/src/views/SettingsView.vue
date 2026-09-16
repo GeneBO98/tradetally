@@ -336,13 +336,35 @@
                                 <p
                                     class="mt-2 text-sm text-gray-500 dark:text-gray-400"
                                 >
-                                    Changes the currency symbol displayed for
-                                    P&L, prices, and commissions. This is a
-                                    cosmetic setting only — values are not
-                                    converted using a foreign exchange rate.
-                                    Market data (watchlist prices, stock
-                                    quotes) remains in USD.
+                                    Converts trade amounts to your display currency when a rate is available.
+                                    Admin manual rates below apply to everyone on this server.
                                 </p>
+                            </div>
+
+                            <div v-if="['admin', 'owner'].includes(authStore.user?.role)" class="py-6">
+                                <h4 class="font-medium text-gray-900 dark:text-white">Manual exchange rates</h4>
+                                <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                                    Set how much one USD buys. These server-wide rates override provider rates for trade calculations, imports, charts, and analytics. Remove a rate to use the provider again.
+                                </p>
+                                <div class="mt-4 flex flex-wrap items-end gap-3">
+                                    <div class="w-44">
+                                        <label for="manualFxCurrency" class="label">Currency</label>
+                                        <BaseSelect v-model="manualFxCode" :options="manualFxOptions" />
+                                    </div>
+                                    <div class="w-44">
+                                        <label for="manualFxRate" class="label">Units per 1 USD</label>
+                                        <input id="manualFxRate" v-model="manualFxRate" class="input" type="number" min="0" step="any" placeholder="0.85" />
+                                    </div>
+                                    <button type="button" class="btn-primary" :disabled="manualFxSaving" @click="saveManualFxRate">Save rate</button>
+                                </div>
+                                <p v-if="manualFxLoading" class="mt-3 text-sm text-gray-500">Loading rates...</p>
+                                <p v-else-if="manualFxRates.length === 0" class="mt-3 text-sm text-gray-500">No manual rates configured.</p>
+                                <ul v-else class="mt-4 divide-y divide-gray-200 dark:divide-gray-700">
+                                    <li v-for="rate in manualFxRates" :key="rate.quote_code" class="flex items-center justify-between gap-4 py-2 text-sm">
+                                        <span>1 USD = {{ Number(rate.per_usd) }} {{ rate.quote_code }}</span>
+                                        <button type="button" class="text-primary-600 hover:text-primary-700 dark:text-primary-400" :disabled="manualFxSaving" @click="removeManualFxRate(rate.quote_code)">Remove</button>
+                                    </li>
+                                </ul>
                             </div>
 
                             <div class="py-6">
@@ -1394,15 +1416,13 @@
                     </div>
                 </div>
 
-                <BrokerFeeSettings
-                    :settings="brokerFeeSettings"
-                    :form="brokerFeeForm"
-                    :loading="brokerFeeLoading"
-                    :editing="editingBrokerFee"
-                    @submit="saveBrokerFee"
-                    @edit="editBrokerFee"
-                    @delete="deleteBrokerFee"
-                    @cancel-edit="cancelEditBrokerFee"
+                <FeeProfileSettings
+                    :profiles="feeProfiles"
+                    :accounts="feeProfileAccounts"
+                    :loading="feeProfilesLoading"
+                    @save="saveFeeProfile"
+                    @delete="deleteFeeProfile"
+                    @assign="assignFeeProfile"
                 />
 
                 <!-- Trade Enrichment -->
@@ -1555,6 +1575,7 @@
 import { ref, computed, onMounted, defineAsyncComponent } from "vue";
 import { useAuthStore } from "@/stores/auth";
 import { useTradesStore } from "@/stores/trades";
+import { useAccountsStore } from "@/stores/accounts";
 import { useVersionStore } from "@/stores/version";
 import { useUiPreferencesStore } from "@/stores/uiPreferences";
 import { useNotification } from "@/composables/useNotification";
@@ -1578,12 +1599,13 @@ import AiProviderSettings from "@/components/settings/AiProviderSettings.vue";
 import CusipAiProviderSettings from "@/components/settings/CusipAiProviderSettings.vue";
 import AdminAiProviderSettings from "@/components/settings/AdminAiProviderSettings.vue";
 import AdminCusipAiProviderSettings from "@/components/settings/AdminCusipAiProviderSettings.vue";
-import BrokerFeeSettings from "@/components/settings/BrokerFeeSettings.vue";
+import FeeProfileSettings from "@/components/settings/FeeProfileSettings.vue";
 import DataExportImport from "@/components/settings/DataExportImport.vue";
 const TradeAllocationSettings = defineAsyncComponent(() => import("@/components/settings/TradeAllocationSettings.vue"));
 
 const authStore = useAuthStore();
 const tradesStore = useTradesStore();
+const accountsStore = useAccountsStore();
 const versionStore = useVersionStore();
 const uiPreferencesStore = useUiPreferencesStore();
 const { showSuccess, showError, showDangerConfirmation } = useNotification();
@@ -1626,6 +1648,65 @@ const currencyOptions = CURRENCY_OPTIONS;
 const currencySelectOptions = computed(() =>
     currencyOptions.map((c) => ({ value: c.code, label: `${c.code} - ${c.name}` }))
 );
+const manualFxOptions = computed(() => currencySelectOptions.value.filter(option => option.value !== 'USD'));
+const manualFxCode = ref('EUR');
+const manualFxRate = ref('');
+const manualFxRates = ref([]);
+const manualFxLoading = ref(false);
+const manualFxSaving = ref(false);
+
+async function loadManualFxRates() {
+    manualFxLoading.value = true;
+    try {
+        const response = await api.get('/settings/fx-rates');
+        manualFxRates.value = response.data.rates || [];
+    } catch (error) {
+        showError('Exchange rates unavailable', error.response?.data?.error || 'Could not load manual rates');
+    } finally {
+        manualFxLoading.value = false;
+    }
+}
+
+async function saveManualFxRate() {
+    const per_usd = Number(manualFxRate.value);
+    if (!Number.isFinite(per_usd) || per_usd <= 0) {
+        showError('Invalid exchange rate', 'Enter a number greater than zero');
+        return;
+    }
+    manualFxSaving.value = true;
+    try {
+        await api.put(`/settings/fx-rates/${manualFxCode.value}`, { per_usd });
+        showSuccess('Rate saved', `1 USD = ${per_usd} ${manualFxCode.value}`);
+        await loadManualFxRates();
+        try {
+            await Promise.all([tradesStore.fetchTrades(), tradesStore.fetchAnalytics()]);
+        } catch {
+            showError('Trades could not refresh', 'The rate was saved. Refresh the page to see updated totals.');
+        }
+    } catch (error) {
+        showError('Rate not saved', error.response?.data?.details || error.response?.data?.error || 'Could not save rate');
+    } finally {
+        manualFxSaving.value = false;
+    }
+}
+
+async function removeManualFxRate(code) {
+    manualFxSaving.value = true;
+    try {
+        await api.delete(`/settings/fx-rates/${code}`);
+        showSuccess('Rate removed', `${code} will use provider rates when available`);
+        await loadManualFxRates();
+        try {
+            await Promise.all([tradesStore.fetchTrades(), tradesStore.fetchAnalytics()]);
+        } catch {
+            showError('Trades could not refresh', 'The rate was removed. Refresh the page to see updated totals.');
+        }
+    } catch (error) {
+        showError('Rate not removed', error.response?.data?.error || 'Could not remove rate');
+    } finally {
+        manualFxSaving.value = false;
+    }
+}
 
 const tradeChartResolutionOptions = TRADE_CHART_RESOLUTION_OPTIONS;
 
@@ -1743,21 +1824,10 @@ const tradeImportForm = ref({
 });
 const tradeImportLoading = ref(false);
 
-// Broker Fee Settings
-const brokerFeeSettings = ref([]);
-const brokerFeeForm = ref({
-    broker: "",
-    instrument: "",
-    commissionPerContract: 0,
-    commissionPerSide: 0,
-    exchangeFeePerContract: 0,
-    nfaFeePerContract: 0.02,
-    clearingFeePerContract: 0,
-    platformFeePerContract: 0,
-    notes: "",
-});
-const brokerFeeLoading = ref(false);
-const editingBrokerFee = ref(null);
+// Named fee profiles
+const feeProfiles = ref([]);
+const feeProfileAccounts = ref([]);
+const feeProfilesLoading = ref(false);
 
 // Quality Weights Settings - per instrument profile (stock, option)
 const qualityWeightsLoading = ref(false);
@@ -2238,99 +2308,75 @@ async function loadAllSettings() {
     ]);
 }
 
-// Broker Fee Settings Functions
-async function loadBrokerFeeSettings() {
+// Named fee profile functions
+async function loadFeeProfiles() {
+    feeProfilesLoading.value = true;
     try {
-        const response = await api.get("/settings/broker-fees");
-        if (response.data.success) {
-            brokerFeeSettings.value = response.data.data;
+        const [profilesResponse, accounts] = await Promise.all([
+            api.get("/settings/fee-profiles"),
+            accountsStore.fetchAccounts()
+        ]);
+        if (profilesResponse.data.success) {
+            feeProfiles.value = profilesResponse.data.data || [];
         }
+        feeProfileAccounts.value = accounts || accountsStore.accounts || [];
     } catch (error) {
-        console.error("Failed to load broker fee settings:", error);
-    }
-}
-
-function editBrokerFee(setting) {
-    editingBrokerFee.value = setting.id;
-    // Use nullish coalescing (??) instead of || to preserve 0 values
-    // This ensures that if user explicitly set a fee to 0, it stays 0
-    brokerFeeForm.value = {
-        broker: setting.broker,
-        instrument: setting.instrument || "",
-        commissionPerContract: setting.commissionPerContract ?? 0,
-        commissionPerSide: setting.commissionPerSide ?? 0,
-        exchangeFeePerContract: setting.exchangeFeePerContract ?? 0,
-        nfaFeePerContract: setting.nfaFeePerContract ?? 0,
-        clearingFeePerContract: setting.clearingFeePerContract ?? 0,
-        platformFeePerContract: setting.platformFeePerContract ?? 0,
-        notes: setting.notes || "",
-    };
-}
-
-function cancelEditBrokerFee() {
-    editingBrokerFee.value = null;
-    resetBrokerFeeForm();
-}
-
-function resetBrokerFeeForm() {
-    brokerFeeForm.value = {
-        broker: "",
-        instrument: "",
-        commissionPerContract: 0,
-        commissionPerSide: 0,
-        exchangeFeePerContract: 0,
-        nfaFeePerContract: 0.02,
-        clearingFeePerContract: 0,
-        platformFeePerContract: 0,
-        notes: "",
-    };
-}
-
-async function saveBrokerFee() {
-    if (!brokerFeeForm.value.broker) {
-        showError("Error", "Please select a broker");
-        return;
-    }
-
-    brokerFeeLoading.value = true;
-    try {
-        await api.post("/settings/broker-fees", brokerFeeForm.value);
-        showSuccess(
-            "Success",
-            `Broker fee settings for ${brokerFeeForm.value.broker} saved successfully`,
-        );
-        await loadBrokerFeeSettings();
-        cancelEditBrokerFee();
-    } catch (error) {
-        console.error("Failed to save broker fee settings:", error);
-        showError(
-            "Error",
-            error.response?.data?.error || "Failed to save broker fee settings",
-        );
+        console.error("Failed to load fee profiles:", error);
+        showError("Fee profiles unavailable", "Fee profiles could not be loaded. Existing legacy broker defaults remain available during the transition.");
     } finally {
-        brokerFeeLoading.value = false;
+        feeProfilesLoading.value = false;
     }
 }
 
-function deleteBrokerFee(id) {
+async function saveFeeProfile(profile, on_saved) {
+    feeProfilesLoading.value = true;
+    try {
+        const method = profile.id ? "put" : "post";
+        const url = profile.id ? `/settings/fee-profiles/${profile.id}` : "/settings/fee-profiles";
+        await api[method](url, profile);
+        on_saved?.();
+        showSuccess("Fee profile saved", `${profile.name} is ready to assign to trading accounts.`);
+        await loadFeeProfiles();
+    } catch (error) {
+        console.error("Failed to save fee profile:", error);
+        showError("Fee profile not saved", error.response?.data?.error || "Failed to save fee profile");
+    } finally {
+        feeProfilesLoading.value = false;
+    }
+}
+
+function deleteFeeProfile(profile) {
     showDangerConfirmation(
-        "Delete Broker Fee",
-        "Are you sure you want to delete this broker fee configuration?",
+        "Delete Fee Profile",
+        `Delete ${profile.name}? Assigned accounts will become unmapped and imports will no longer use this profile.`,
         async () => {
+            feeProfilesLoading.value = true;
             try {
-                await api.delete(`/settings/broker-fees/${id}`);
-                showSuccess("Success", "Broker fee settings deleted");
-                await loadBrokerFeeSettings();
+                await api.delete(`/settings/fee-profiles/${profile.id}`);
+                showSuccess("Fee profile deleted", `${profile.name} was deleted.`);
+                await loadFeeProfiles();
             } catch (error) {
-                console.error("Failed to delete broker fee settings:", error);
-                showError(
-                    "Error",
-                    error.response?.data?.error ||
-                        "Failed to delete broker fee settings",
-                );
+                console.error("Failed to delete fee profile:", error);
+                showError("Fee profile not deleted", error.response?.data?.error || "Failed to delete fee profile");
+            } finally {
+                feeProfilesLoading.value = false;
             }
         },
     );
+}
+
+async function assignFeeProfile({ profileId, accountIds }) {
+    feeProfilesLoading.value = true;
+    try {
+        await api.put(`/settings/fee-profiles/${profileId}/accounts`, { account_ids: accountIds });
+        await loadFeeProfiles();
+        feeProfileAccounts.value = await accountsStore.fetchAccounts({ force: true });
+    } catch (error) {
+        console.error("Failed to assign fee profile:", error);
+        showError("Assignment not saved", error.response?.data?.error || "Failed to assign fee profile");
+    } finally {
+        feeProfilesLoading.value = false;
+    }
 }
 
 // Quality Weights Functions
@@ -2717,7 +2763,7 @@ onMounted(() => {
     loadAISettings();
     loadCusipAISettings();
     loadAllSettings();
-    loadBrokerFeeSettings();
+    loadFeeProfiles();
     fetchQualityWeights();
 
     // Load admin AI settings if user is admin
@@ -2725,5 +2771,6 @@ onMounted(() => {
         fetchAdminAISettings();
         fetchAdminCusipAISettings();
     }
+    if (['admin', 'owner'].includes(authStore.user?.role)) loadManualFxRates();
 });
 </script>

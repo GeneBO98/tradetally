@@ -63,7 +63,10 @@
 
     <div class="flex flex-wrap items-center gap-3 border-t border-gray-200 px-3 py-2 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
       <div class="min-w-0 flex-1">
-        <span v-if="hasPriceMismatch" class="font-medium text-amber-700 dark:text-amber-300">
+        <span v-if="currency_mismatch">
+          Candle and trade currencies differ. Trade markers and P&L measurement are unavailable.
+        </span>
+        <span v-else-if="hasPriceMismatch" class="font-medium text-amber-700 dark:text-amber-300">
           Recorded fill is outside the provider candle range. Marker is pinned to execution time.
         </span>
         <span v-else-if="activeTool === 'pnl'" class="font-medium text-primary-600 dark:text-primary-400">
@@ -482,6 +485,12 @@ const isUnderlyingOptionChart = computed(() => {
   const trade = props.chartData?.trade || {}
   return String(trade.instrument_type ?? trade.instrumentType).toLowerCase() === 'option'
 })
+const currency_mismatch = computed(() => {
+  const trade = props.chartData?.trade || {}
+  const trade_currency = trade.effective_currency || trade.currency || props.chartData?.display_currency || props.currencyCode
+  const candles_currency = props.chartData?.candles_currency || props.currencyCode
+  return String(trade_currency).toUpperCase() !== String(candles_currency).toUpperCase()
+})
 
 let chart = null
 let resizeObserver = null
@@ -544,10 +553,13 @@ const drawingTools = [
 ]
 
 function drawingToolDisabled(tool) {
-  return tool.id === 'pnl' && isUnderlyingOptionChart.value
+  return tool.id === 'pnl' && (isUnderlyingOptionChart.value || currency_mismatch.value)
 }
 
 function drawingToolTitle(tool) {
+  if (tool.id === 'pnl' && currency_mismatch.value) {
+    return 'P&L measurement is unavailable because candle and trade currencies differ'
+  }
   if (drawingToolDisabled(tool)) {
     return 'P&L measurement is unavailable because this chart shows the option underlying, not its premium'
   }
@@ -756,6 +768,7 @@ function restoreDrawings() {
 
     for (const drawing of drawings) {
       if (!drawing?.name || !Array.isArray(drawing.points)) continue
+      if (drawing.name === PNL_OVERLAY && drawingToolDisabled({ id: 'pnl' })) continue
       const extend_data = drawing.name === PNL_OVERLAY
         ? { ...(drawing.extendData || {}), ...pnlMeasurementExtendData() }
         : drawing.extendData
@@ -805,6 +818,7 @@ function isEntryAction(action, side) {
 }
 
 function executionEvents() {
+  if (currency_mismatch.value) return []
   const trade = props.chartData?.trade || {}
   const events = []
   const executions = Array.isArray(trade.executions) ? trade.executions : []
@@ -867,6 +881,7 @@ function closestBar(timestamp) {
 }
 
 function plannedPosition() {
+  if (currency_mismatch.value) return null
   const trade = props.chartData?.trade || {}
   const instrumentType = String(trade.instrumentType ?? trade.instrument_type).toLowerCase()
   if (instrumentType === 'option') return null

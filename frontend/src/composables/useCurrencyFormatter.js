@@ -127,11 +127,29 @@ export function useCurrencyFormatter() {
     return Math.abs(value).toLocaleString('en-US', digits)
   }
 
+  /**
+   * Resolve the display symbol for an explicit currency code, falling back
+   * to the user's configured display currency when none is given.
+   */
+  function symbolFor(code) {
+    const c = String(code || currencyCode.value || 'USD').toUpperCase()
+    const match = CURRENCY_OPTIONS.find(x => x.code === c)
+    if (match) return match.symbol
+    try {
+      const parts = new Intl.NumberFormat('en-US', { style: 'currency', currency: c }).formatToParts(0)
+      const symbolPart = parts.find(p => p.type === 'currency')
+      return symbolPart ? symbolPart.value : c
+    } catch {
+      return '$'
+    }
+  }
+
   return {
     currencyCode,
     currencySymbol,
     formatCurrency,
     formatSignedCurrency,
-    formatNumber
+    formatNumber,
+    symbolFor
   }
 }

@@ -50,6 +50,24 @@ describe('TradeChartVisualization resolutions', () => {
     localStorage.clear()
   })
 
+  it('uses candle currency for the chart and effective trade currency for the summary', async () => {
+    apiGet.mockResolvedValue({ data: {
+      ...baseChartData,
+      candles_currency: 'JPY',
+      display_currency: 'USD',
+      trade: { ...baseChartData.trade, currency: 'USD', effective_currency: 'EUR' },
+    } })
+    const wrapper = mount(TradeChartVisualization, {
+      props: { tradeId: 'currency-fallback' },
+      global: { stubs: { KLineTradeChart: true, ProUpgradePrompt: true } },
+    })
+    await wrapper.get('button.btn-primary').trigger('click')
+    await vi.waitFor(() => expect(wrapper.findComponent({ name: 'KLineTradeChart' }).exists()).toBe(true))
+    expect(wrapper.findComponent({ name: 'KLineTradeChart' }).props('currencyCode')).toBe('JPY')
+    expect(wrapper.text()).toContain('€100.00')
+    wrapper.unmount()
+  })
+
   it('uses the user default resolution for a newly opened chart', async () => {
     localStorage.setItem('trade_chart_default_resolution', '5')
     apiGet.mockResolvedValue({

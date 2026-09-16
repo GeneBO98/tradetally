@@ -1,4 +1,6 @@
 const db = require('../config/database');
+const { fxUsd } = require('../utils/tradeFx');
+const { convertForDisplay } = require('../utils/displayCurrency');
 const logger = require('../utils/logger');
 const aiService = require('../utils/aiService');
 
@@ -301,9 +303,9 @@ class HealthController {
       const tradesQuery = `
         SELECT 
           DATE(trade_date) as trade_date,
-          SUM(pnl) as total_pnl,
+          SUM(${fxUsd('pnl', '')}) as total_pnl,
           COUNT(*) as total_trades,
-          AVG(pnl) as avg_pnl,
+          AVG(${fxUsd('pnl', '')}) as avg_pnl,
           COUNT(CASE WHEN pnl > 0 THEN 1 END) as wins
         FROM trades 
         WHERE user_id = $1 AND trade_date >= $2 AND trade_date <= $3
@@ -323,7 +325,7 @@ class HealthController {
       // Generate insights
       const insights = await this.generateInsights(userId, correlations);
 
-      res.status(200).json({
+      res.status(200).json(await convertForDisplay(req, {
         success: true,
         data: {
           correlations,
@@ -334,7 +336,7 @@ class HealthController {
             tradingDays: tradeData.rows.length
           }
         }
-      });
+      }, { clone: false }));
 
     } catch (error) {
       logger.error(`Error analyzing health correlations: ${error.message}`, 'health');

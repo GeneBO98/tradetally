@@ -17,6 +17,20 @@ const PRICE_FRESH_MS = 10 * 60 * 1000;
 // fire at once on page load) don't each kick off duplicate Finnhub calls for
 // the same symbol.
 const inFlightPriceSymbols = new Set();
+// The investments page requests overview, positions, rebalance, and alerts in
+// parallel. These endpoints all derive from the same position snapshot, so a
+// per-process single-flight latch prevents duplicate DB scans and quote work.
+const inFlightPortfolioComputations = new Map();
+
+function coalescePortfolio(key, compute) {
+  const existing = inFlightPortfolioComputations.get(key);
+  if (existing) return existing;
+  const promise = Promise.resolve()
+    .then(compute)
+    .finally(() => inFlightPortfolioComputations.delete(key));
+  inFlightPortfolioComputations.set(key, promise);
+  return promise;
+}
 const DEFAULT_PREFERENCES = {
   defaultBenchmarkSymbol: DEFAULT_BENCHMARK,
   driftThresholdPercent: 5,
@@ -335,6 +349,12 @@ class PortfolioService {
 
   static async getPositions(userId, options = {}) {
     const accounts = normalizeAccounts(options.accounts);
+    const key = `positions:${userId}:${JSON.stringify(accounts)}`;
+    return coalescePortfolio(key, () => this._getPositions(userId, options));
+  }
+
+  static async _getPositions(userId, options = {}) {
+    const accounts = normalizeAccounts(options.accounts);
     const [manualPositions, tradePositions, tradeDividendsBySymbol] = await Promise.all([
       this._getManualPositions(userId, accounts),
       this._getTradePositions(userId, accounts),
@@ -455,6 +475,16 @@ class PortfolioService {
   }
 
   static async getPerformance(userId, options = {}) {
+    const accounts = normalizeAccounts(options.accounts);
+    const key = `performance:${userId}:${JSON.stringify({
+      accounts,
+      benchmark: options.benchmark ? normalizeSymbol(options.benchmark) : 'default',
+      period: String(options.period || DEFAULT_PERIOD).toUpperCase()
+    })}`;
+    return coalescePortfolio(key, () => this._getPerformance(userId, options));
+  }
+
+  static async _getPerformance(userId, options = {}) {
     const preferences = await this.getPreferences(userId);
     const benchmark = normalizeSymbol(options.benchmark || preferences.defaultBenchmarkSymbol);
     const accounts = normalizeAccounts(options.accounts);

@@ -101,8 +101,8 @@
             <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
               <tr v-for="row in pillar.data.annualPEs" :key="row.year" class="bg-white dark:bg-gray-800">
                 <td class="px-3 py-2 text-gray-900 dark:text-white">{{ row.year }}</td>
-                <td class="px-3 py-2 text-right text-gray-900 dark:text-white">${{ row.price?.toFixed(2) }}</td>
-                <td class="px-3 py-2 text-right text-gray-900 dark:text-white">${{ row.eps?.toFixed(2) }}</td>
+                <td class="px-3 py-2 text-right text-gray-900 dark:text-white">{{ formatPrice(row.price) }}</td>
+                <td class="px-3 py-2 text-right text-gray-900 dark:text-white">{{ formatPrice(row.eps) }}</td>
                 <td class="px-3 py-2 text-right font-medium text-gray-900 dark:text-white">{{ row.pe?.toFixed(2) }}</td>
               </tr>
             </tbody>
@@ -160,7 +160,7 @@ import { useRoute } from 'vue-router'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 
 const route = useRoute()
-const { currencySymbol } = useCurrencyFormatter()
+const { symbolFor } = useCurrencyFormatter()
 
 const props = defineProps({
   pillarNumber: {
@@ -170,6 +170,10 @@ const props = defineProps({
   pillar: {
     type: Object,
     required: true
+  },
+  currency: {
+    type: String,
+    default: ''
   }
 })
 
@@ -339,9 +343,14 @@ function formatLabel(key) {
   return labels[key] || key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())
 }
 
+function formatPrice(value) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return 'N/A'
+  return `${symbolFor(props.currency)}${Number(value).toFixed(2)}`
+}
+
 function formatCurrency(value) {
   if (value === null || value === undefined) return 'N/A'
-  const sym = currencySymbol.value
+  const sym = symbolFor(props.currency)
   if (Math.abs(value) >= 1e12) {
     return `${sym}${(value / 1e12).toFixed(2)}T`
   } else if (Math.abs(value) >= 1e9) {

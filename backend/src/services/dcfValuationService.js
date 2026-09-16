@@ -6,6 +6,8 @@
 
 const db = require('../config/database');
 const FundamentalDataService = require('./fundamentalDataService');
+const currencyConverter = require('../utils/currencyConverter');
+const { scaleMoneyFields, FINANCIAL_MONEY_KEYS } = require('../utils/displayCurrency');
 
 class DCFValuationService {
   /**
@@ -85,6 +87,29 @@ class DCFValuationService {
     // as the most recent period. Without this, e.g. NVDA's 10-for-1 split
     // in 2024 makes pre-2024 share counts look 10× smaller than they should.
     const sorted = this.splitAdjustFinancials(cleaned);
+
+    // Financials arrive in the company's REPORTING currency while prices,
+    // market cap and dividend data are in the listing's TRADING currency.
+    // Every price-vs-financials computation below (P/E, P/FCF, EV, margin of
+    // safety, target price) is only meaningful after normalizing the periods
+    // into the trading currency using the daily FX rate.
+    const reportingCurrency = String(sorted[0]?.currency || sorted[0]?.reportedCurrency || 'USD').toUpperCase();
+    const tradingCurrency = String(quote?.currency || profile?.currency || 'USD').toUpperCase();
+    let fxToTrading = 1;
+    if (reportingCurrency !== tradingCurrency) {
+      try {
+        fxToTrading = await currencyConverter.getDailyCrossRate(reportingCurrency, tradingCurrency);
+        console.log(`[DCF] Normalizing ${symbolUpper} financials ${reportingCurrency}->${tradingCurrency} at ${fxToTrading}`);
+      } catch (rateError) {
+        console.warn(`[DCF] No ${reportingCurrency}/${tradingCurrency} rate - ratios mixing currencies will be approximate: ${rateError.message}`);
+        fxToTrading = 1;
+      }
+    }
+    if (fxToTrading !== 1) {
+      for (const period of sorted) {
+        scaleMoneyFields(period, fxToTrading, FINANCIAL_MONEY_KEYS);
+      }
+    }
 
     console.log(`[DCF] Got ${sorted.length} years of data for ${symbolUpper}`);
 
@@ -169,6 +194,9 @@ class DCFValuationService {
     // Calculate metrics for each available period
     const metrics = {
       symbol: symbolUpper,
+      reporting_currency: reportingCurrency,
+      trading_currency: tradingCurrency,
+      fx_rate_reporting_to_trading: fxToTrading,
       current_price: currentPrice,
       shares_outstanding: sharesOutstanding,
       market_cap: marketCap,

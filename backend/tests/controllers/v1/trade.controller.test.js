@@ -273,7 +273,10 @@ describe('v1 trade controller', () => {
         monthPnL: 1180.75,
         winRate: 60,
         avgWin: 120.5,
-        avgLoss: -45.75
+        avgLoss: -45.75,
+        // The period totals and the overview fields are merged here, so the
+        // response names the one currency they are both in.
+        currency: 'USD'
       }
     });
     expect(next).not.toHaveBeenCalled();

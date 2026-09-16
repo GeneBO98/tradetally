@@ -61,6 +61,10 @@ const props = defineProps({
   currentPriceReturn: {
     type: Number,
     default: null
+  },
+  currency: {
+    type: String,
+    default: ''
   }
 })
 
@@ -135,7 +139,7 @@ const statusText = computed(() => {
 
 function formatCurrency(value) {
   if (value === null || value === undefined) return 'N/A'
-  return formatCurrencyBase(value)
+  return formatCurrencyBase(value, { currency: props.currency || undefined })
 }
 
 function formatPercent(value) {

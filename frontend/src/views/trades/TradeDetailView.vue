@@ -1723,7 +1723,9 @@ async function restoreTradeDetailScroll(scroll_y) {
 }
 
 function getTradeCurrency() {
-  return (trade.value?.original_currency || trade.value?.originalCurrency || 'USD').toUpperCase()
+  // Server converts detail amounts to the display currency (see list view);
+  // rows it could not convert keep their own effective_currency.
+  return (trade.value?.effective_currency || tradesStore.tradesCurrency || 'USD').toUpperCase()
 }
 
 function formatTradeCurrency(value, options = {}) {

@@ -181,7 +181,14 @@ class ParallelJobQueue {
    * Process job based on its type with timeout protection
    */
   async processJobByType(job, workerInfo) {
-    const JOB_TIMEOUT = 30000; // 30 seconds max per job
+    // Provider calls can legitimately take longer than a single 30-second
+    // window when a scheduler is cooling down after a 429. A short timeout
+    // caused retries to overlap the original promise and amplified API load.
+    // Keep a bounded timeout, configurable for self-hosted deployments.
+    const configuredTimeout = Number(process.env.PARALLEL_JOB_TIMEOUT_MS || 120000);
+    const JOB_TIMEOUT = Number.isFinite(configuredTimeout)
+      ? Math.max(1000, configuredTimeout)
+      : 120000;
     let timeoutId;
     
     try {

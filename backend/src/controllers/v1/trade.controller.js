@@ -1,4 +1,6 @@
 const db = require('../../config/database');
+const { fxUsd } = require('../../utils/tradeFx');
+const { convertForDisplay } = require('../../utils/displayCurrency');
 const Trade = require('../../models/Trade');
 const TradeQueries = require('../../services/tradeQueries');
 const tradeController = require('../trade.controller');
@@ -63,7 +65,10 @@ async function queryQuickSummary(userId, timezone = 'UTC') {
   const result = await db.query(
     `
       WITH completed AS (
-        SELECT *
+        -- Normalized to USD before summing; the caller converts the totals
+        -- to the user's display currency so they match the overview fields
+        -- it merges them with.
+        SELECT trade_date, ${fxUsd('pnl', 'trades')} AS pnl
         FROM trades
         WHERE user_id = $1
           AND pnl IS NOT NULL
@@ -407,16 +412,27 @@ const tradeV1Controller = {
 
       const overview = overviewResult.body?.overview || {};
 
+      // getOverview already returned its amounts in the user's display
+      // currency. These period totals are still USD, so convert them the same
+      // way before the two are merged - otherwise one summary object would
+      // carry two currencies.
+      const periodTotals = await convertForDisplay(req, {
+        todayPnL: parseFloat(summaryRow.today_pnl) || 0,
+        weekPnL: parseFloat(summaryRow.week_pnl) || 0,
+        monthPnL: parseFloat(summaryRow.month_pnl) || 0
+      }, { clone: false });
+
       return res.json({
         summary: {
           totalTrades: parseInt(summaryRow.total_trades, 10) || overview.total_trades || 0,
           openTrades: parseInt(summaryRow.open_trades, 10) || 0,
-          todayPnL: parseFloat(summaryRow.today_pnl) || 0,
-          weekPnL: parseFloat(summaryRow.week_pnl) || 0,
-          monthPnL: parseFloat(summaryRow.month_pnl) || 0,
+          todayPnL: periodTotals.todayPnL,
+          weekPnL: periodTotals.weekPnL,
+          monthPnL: periodTotals.monthPnL,
           winRate: parseFloat(overview.win_rate) || 0,
           avgWin: parseFloat(overview.avg_win) || 0,
-          avgLoss: parseFloat(overview.avg_loss) || 0
+          avgLoss: parseFloat(overview.avg_loss) || 0,
+          currency: overviewResult.body?.display_currency || periodTotals.display_currency || 'USD'
         }
       });
     } catch (error) {

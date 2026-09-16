@@ -1,6 +1,7 @@
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import KLineTradeChart from './KLineTradeChart.vue'
+import contracts from '../../../../tests/fixtures/trading-calculation-contracts.json'
 
 const { registeredOverlays } = vi.hoisted(() => ({ registeredOverlays: new Map() }))
 
@@ -67,6 +68,41 @@ describe('KLineTradeChart', () => {
       return 1
     }
     localStorage.clear()
+  })
+
+  it.each(contracts.chart_currency_cases)('allows trade overlays only with compatible currencies: $id', async (fixture) => {
+    const compatible = fixture.expected.candles_currency === fixture.expected.effective_currency
+    if (!compatible) {
+      localStorage.setItem(`trade_chart_drawings:${fixture.chart_data.trade.id}`, JSON.stringify([{
+        name: 'tradePnlMeasurement',
+        points: [{ timestamp: 1788264000000, value: 80 }, { timestamp: 1788264060000, value: 90 }],
+      }]))
+    }
+    const wrapper = mount(KLineTradeChart, {
+      props: {
+        currencyCode: fixture.expected.candles_currency,
+        chartData: {
+          ...fixture.chart_data,
+          candles_currency: fixture.expected.candles_currency,
+          candles: fixture.chart_data.candles.map(bar => ({ ...bar, close: fixture.expected.close })),
+          trade: { ...fixture.chart_data.trade, entryPrice: fixture.expected.entry_price, effective_currency: fixture.expected.effective_currency, side: 'long', stop_loss: 70, take_profit: 120 },
+        },
+      },
+    })
+    await vi.waitFor(() => expect(chartMock.setDataLoader).toHaveBeenCalledOnce())
+    const pnl_button = wrapper.findAll('button').find(button => button.text() === 'P&L')
+    expect(pnl_button.element.disabled).toBe(!compatible)
+    const markers = chartMock.createOverlay.mock.calls.map(([overlay]) => overlay)
+      .filter(overlay => overlay.groupId === 'trade-executions')
+    if (!compatible) {
+      expect(markers).toEqual([])
+      expect(chartMock.createOverlay.mock.calls.some(([overlay]) => (
+        overlay.name === 'tradePnlMeasurement' || overlay.groupId === 'trade-planned-position'
+      ))).toBe(false)
+    } else {
+      expect(chartMock.createOverlay.mock.calls.length).toBeGreaterThan(0)
+    }
+    wrapper.unmount()
   })
 
   it('loads API candles into KLineChart and adds trade context', async () => {

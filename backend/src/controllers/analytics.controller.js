@@ -11,6 +11,24 @@ const { sendV1NotImplemented } = require('../utils/apiResponse');
 const ensureString = require('../utils/ensureString');
 const { getUserTimezone } = require('../utils/timezone');
 const { POSITION_GROUP_KEY, isPositionGroupingEnabled } = require('../utils/positionGrouping');
+const { convertForDisplay } = require('../utils/displayCurrency');
+const { fxUsd } = require('../utils/tradeFx');
+
+// Materialized trade rows feeding JS computations (estimators, calendar
+// builders) must be USD-normalized first - executions JSONB amounts are not
+// reachable from SQL. No-op for USD-base rows and when rates are unavailable.
+async function normalizeTradeRowsToUsd(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return rows;
+  const { getUsdRateMap, normalizeRowToUsd } = require('../utils/tradeFx');
+  const rates = await getUsdRateMap();
+  if (rates) {
+    for (const row of rows) {
+      if (row && typeof row === 'object') normalizeRowToUsd(row, rates);
+    }
+  }
+  return rows;
+}
+
 const { buildExcursionMetrics } = require('../utils/excursionMetrics');
 const {
   buildCalendarOverviewRows,
@@ -73,12 +91,24 @@ function coalesceInFlight(key, compute) {
 // fallback, matching getOverview.
 const ANALYTICS_AGG_TTL_MS = 24 * 60 * 60 * 1000;
 
+// Chart series that hold USD P&L under names the money heuristics don't
+// catch (performanceByVolume stores dollars, not share volume). Counts and
+// R-value siblings are deliberately absent.
+const CHART_MONEY_ARRAYS = new Set([
+  'performanceByPrice', 'performanceByVolume', 'performanceByPositionSize', 'performanceByHoldTime'
+]);
+
+// Bucket labels whose boundaries are dollar amounts ('$5-9.99'). Converting
+// the bars but not their axis would pair euro values with dollar buckets.
+// Share-count and hold-time buckets are deliberately absent.
+const CHART_MONEY_LABELS = new Set(['price', 'positionSize']);
+
 async function sendCachedAnalytics(req, res, name, keyParts, compute) {
   const cacheKey = `analytics_agg_${req.user.id}_${name}_${createFilterHash(keyParts)}`;
 
   const cached = cache.get(cacheKey);
   if (cached) {
-    return res.json(cached);
+    return res.json(await convertForDisplay(req, cached));
   }
 
   const payload = await coalesceInFlight(cacheKey, async () => {
@@ -87,7 +117,7 @@ async function sendCachedAnalytics(req, res, name, keyParts, compute) {
     return computed;
   });
 
-  return res.json(payload);
+  return res.json(await convertForDisplay(req, payload));
 }
 
 // Lightweight keyword-based tone classifier for news headlines. NOT a real
@@ -140,8 +170,8 @@ async function calculateMAEMFEAsync(userId, filterConditions, params) {
     // First try to get actual MAE/MFE if available
     const actualMaeQuery = `
       SELECT
-        COALESCE(AVG(mae), 0) as avg_mae,
-        COALESCE(AVG(mfe), 0) as avg_mfe,
+        COALESCE(AVG(${fxUsd('mae', 't')}), 0) as avg_mae,
+        COALESCE(AVG(${fxUsd('mfe', 't')}), 0) as avg_mfe,
         COUNT(mae) as mae_count,
         COUNT(mfe) as mfe_count
       FROM trades t
@@ -179,7 +209,10 @@ async function calculateMAEMFEAsync(userId, filterConditions, params) {
           instrument_type,
           point_value,
           underlying_asset,
-          contract_size
+          contract_size,
+          t.original_currency,
+          t.exchange_rate,
+          t.original_entry_price_currency
         FROM trades t
         WHERE t.user_id = $1 ${filterConditions}
           AND entry_price IS NOT NULL
@@ -191,6 +224,7 @@ async function calculateMAEMFEAsync(userId, filterConditions, params) {
       `;
 
       const tradesResult = await db.query(estimateQuery, params);
+      await normalizeTradeRowsToUsd(tradesResult.rows);
       const trades = tradesResult.rows.map(trade => ({
         ...trade,
         quantity: parseFloat(trade.quantity)
@@ -521,7 +555,7 @@ const analyticsController = {
       const cachedData = cache.get(cacheKey);
       if (cachedData) {
         console.log(`[CACHE HIT] Analytics overview returned from cache for user ${req.user.id}`);
-        return res.json(cachedData);
+        return res.json(await convertForDisplay(req, cachedData));
       }
       console.log(`[CACHE MISS] Computing analytics overview for user ${req.user.id}`);
 
@@ -539,9 +573,9 @@ const analyticsController = {
         const completedTradesCte = groupByPosition
           ? `completed_trades AS (
               SELECT
-                  SUM(pnl) as pnl,
-                  SUM(COALESCE(commission, 0)) as commission,
-                  SUM(COALESCE(fees, 0)) as fees,
+                  SUM(${fxUsd('pnl', 't')}) as pnl,
+                  SUM(${fxUsd('commission', 't')}) as commission,
+                  SUM(${fxUsd('fees', 't')}) as fees,
                   SUM(r_value) as r_value,
                   MIN(stop_loss) as stop_loss,
                   MIN(trade_date) as trade_date,
@@ -564,13 +598,20 @@ const analyticsController = {
                   AND pnl IS NOT NULL
           )`;
 
+                // Ungrouped mode feeds raw trades rows into completed_trades (SELECT *);
+        // normalize every aggregation input to USD before summing. Grouped
+        // mode already normalized inside the position CTE.
+        const ovPnlRef = groupByPosition ? 'pnl' : fxUsd('pnl', '');
+        const ovCommissionRef = groupByPosition ? 'commission' : fxUsd('commission', '');
+        const ovFeesRef = groupByPosition ? 'fees' : fxUsd('fees', '');
+
         const overviewQuery = `
           WITH ${completedTradesCte},
           individual_trades AS (
               -- Get best/worst individual executions
               SELECT
-                  COALESCE(MAX(pnl), 0) as individual_best_trade,
-                  COALESCE(MIN(pnl), 0) as individual_worst_trade
+                  COALESCE(MAX(${ovPnlRef}), 0) as individual_best_trade,
+                  COALESCE(MIN(${ovPnlRef}), 0) as individual_worst_trade
               FROM completed_trades
           )
           SELECT
@@ -580,18 +621,18 @@ const analyticsController = {
             (SELECT COUNT(*) FROM completed_trades WHERE ${be.isNot} AND pnl > 0)::integer as winning_trades,
             (SELECT COUNT(*) FROM completed_trades WHERE ${be.isNot} AND pnl < 0)::integer as losing_trades,
             (SELECT COUNT(*) FROM completed_trades WHERE ${be.is})::integer as breakeven_trades,
-            COALESCE(SUM(pnl), 0)::numeric as total_pnl,
+            COALESCE(SUM(${ovPnlRef}), 0)::numeric as total_pnl,
             ${useMedian
-              ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl), 0)::numeric as avg_pnl'
-              : 'COALESCE(AVG(pnl), 0)::numeric as avg_pnl'
+              ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ${ovPnlRef}), 0)::numeric as avg_pnl`
+              : `COALESCE(AVG(${ovPnlRef}), 0)::numeric as avg_pnl`
             },
             ${useMedian
-              ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE ${be.isNot} AND pnl > 0), 0)::numeric as avg_win`
-              : `COALESCE(AVG(pnl) FILTER (WHERE ${be.isNot} AND pnl > 0), 0)::numeric as avg_win`
+              ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ${ovPnlRef}) FILTER (WHERE ${be.isNot} AND pnl > 0), 0)::numeric as avg_win`
+              : `COALESCE(AVG(${ovPnlRef}) FILTER (WHERE ${be.isNot} AND pnl > 0), 0)::numeric as avg_win`
             },
             ${useMedian
-              ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE ${be.isNot} AND pnl < 0), 0)::numeric as avg_loss`
-              : `COALESCE(AVG(pnl) FILTER (WHERE ${be.isNot} AND pnl < 0), 0)::numeric as avg_loss`
+              ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ${ovPnlRef}) FILTER (WHERE ${be.isNot} AND pnl < 0), 0)::numeric as avg_loss`
+              : `COALESCE(AVG(${ovPnlRef}) FILTER (WHERE ${be.isNot} AND pnl < 0), 0)::numeric as avg_loss`
             },
             ${useMedian
               ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL), 0)::numeric as avg_r_value'
@@ -603,28 +644,28 @@ const analyticsController = {
             (SELECT COUNT(*) FROM completed_trades WHERE ${be.isNot} AND pnl > 0 AND stop_loss IS NOT NULL)::integer as r_winning_trades,
             (SELECT COUNT(*) FROM completed_trades WHERE ${be.isNot} AND pnl < 0 AND stop_loss IS NOT NULL)::integer as r_losing_trades,
             (SELECT COUNT(*) FROM completed_trades WHERE ${be.is} AND stop_loss IS NOT NULL)::integer as r_breakeven_trades,
-            COALESCE(SUM(pnl) FILTER (WHERE stop_loss IS NOT NULL), 0)::numeric as r_total_pnl,
+            COALESCE(SUM(${ovPnlRef}) FILTER (WHERE stop_loss IS NOT NULL), 0)::numeric as r_total_pnl,
             ${useMedian
-              ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE stop_loss IS NOT NULL), 0)::numeric as r_avg_pnl'
-              : 'COALESCE(AVG(pnl) FILTER (WHERE stop_loss IS NOT NULL), 0)::numeric as r_avg_pnl'
+              ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ${ovPnlRef}) FILTER (WHERE stop_loss IS NOT NULL), 0)::numeric as r_avg_pnl`
+              : `COALESCE(AVG(${ovPnlRef}) FILTER (WHERE stop_loss IS NOT NULL), 0)::numeric as r_avg_pnl`
             },
             ${useMedian
-              ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE ${be.isNot} AND pnl > 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_win`
-              : `COALESCE(AVG(pnl) FILTER (WHERE ${be.isNot} AND pnl > 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_win`
+              ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ${ovPnlRef}) FILTER (WHERE ${be.isNot} AND pnl > 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_win`
+              : `COALESCE(AVG(${ovPnlRef}) FILTER (WHERE ${be.isNot} AND pnl > 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_win`
             },
             ${useMedian
-              ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE ${be.isNot} AND pnl < 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_loss`
-              : `COALESCE(AVG(pnl) FILTER (WHERE ${be.isNot} AND pnl < 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_loss`
+              ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ${ovPnlRef}) FILTER (WHERE ${be.isNot} AND pnl < 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_loss`
+              : `COALESCE(AVG(${ovPnlRef}) FILTER (WHERE ${be.isNot} AND pnl < 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_loss`
             },
             -- Best/worst trades
             (SELECT individual_best_trade FROM individual_trades) as best_trade,
             (SELECT individual_worst_trade FROM individual_trades) as worst_trade,
             (SELECT COUNT(*) FROM completed_trades)::integer as total_executions,
-            COALESCE(SUM(pnl) FILTER (WHERE pnl > 0), 0) as total_gross_wins,
-            COALESCE(ABS(SUM(pnl) FILTER (WHERE pnl < 0)), 0) as total_gross_losses,
-            COALESCE(SUM(commission), 0) as total_commissions,
-            COALESCE(SUM(fees), 0) as total_fees,
-            COALESCE(STDDEV(pnl), 0) as pnl_stddev,
+            COALESCE(SUM(${ovPnlRef}) FILTER (WHERE pnl > 0), 0) as total_gross_wins,
+            COALESCE(ABS(SUM(${ovPnlRef}) FILTER (WHERE pnl < 0)), 0) as total_gross_losses,
+            COALESCE(SUM(${ovCommissionRef}), 0) as total_commissions,
+            COALESCE(SUM(${ovFeesRef}), 0) as total_fees,
+            COALESCE(STDDEV(${ovPnlRef}), 0) as pnl_stddev,
             COALESCE(SUM(quantity), 0)::numeric as total_volume,
             -- Average hold time (minutes) split by outcome, for the stats table
             COALESCE(AVG(EXTRACT(EPOCH FROM (exit_time - entry_time)) / 60.0)
@@ -890,7 +931,7 @@ const analyticsController = {
             WITH daily AS (
               SELECT
                 trade_date,
-                COALESCE(SUM(pnl), 0)::numeric AS day_pnl,
+                COALESCE(SUM(${fxUsd('pnl', 't')}), 0)::numeric AS day_pnl,
                 COUNT(*)::integer AS day_trades
               FROM trades t
               WHERE t.user_id = $1 ${filterConditions}
@@ -1000,7 +1041,7 @@ const analyticsController = {
         return { overview };
       });
 
-      res.json(payload);
+      res.json(await convertForDisplay(req, payload));
     } catch (error) {
       console.error('Analytics overview error:', error);
       next(error);
@@ -1026,10 +1067,10 @@ const analyticsController = {
 
       const estimates = await calculateMAEMFEAsync(req.user.id, dateFilter, params);
 
-      res.json({
+      res.json(await convertForDisplay(req, {
         success: true,
         data: estimates
-      });
+      }));
     } catch (error) {
       console.error('Error getting MAE/MFE:', error);
       res.status(500).json({
@@ -1069,7 +1110,10 @@ const analyticsController = {
           contract_size,
           point_value,
           tick_size,
-          underlying_asset
+          underlying_asset,
+          t.original_currency,
+          t.exchange_rate,
+          t.original_entry_price_currency
         FROM trades t
         WHERE t.user_id = $1 ${filterConditions}
           AND exit_time IS NOT NULL
@@ -1080,6 +1124,7 @@ const analyticsController = {
       `;
 
       const result = await db.query(query, params);
+      await normalizeTradeRowsToUsd(result.rows);
       const trades = result.rows.map(t => {
         const riskAmount = Trade.calculateRiskAmount(
           t.entry_price,
@@ -1172,7 +1217,7 @@ const analyticsController = {
         ? avg(winners.filter(t => t.exit_efficiency != null), 'exit_efficiency')
         : null;
 
-      res.json({
+      res.json(await convertForDisplay(req, {
         success: true,
         trades,
         stats: {
@@ -1187,7 +1232,7 @@ const analyticsController = {
           avg_missed_after_exit: avgMissedAfterExit != null ? parseFloat(avgMissedAfterExit.toFixed(2)) : null,
           avg_exit_efficiency: avgExitEfficiency != null ? parseFloat(avgExitEfficiency.toFixed(2)) : null
         }
-      });
+      }));
     } catch (error) {
       next(error);
     }
@@ -1230,7 +1275,7 @@ const analyticsController = {
           WITH positions AS (
             SELECT
               MIN(trade_date) as trade_date,
-              SUM(pnl) as pnl,
+              SUM(${fxUsd('pnl', 't')}) as pnl,
               SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL) as r_value,
               BOOL_OR(stop_loss IS NOT NULL) as has_stop
             FROM trades t
@@ -1252,8 +1297,8 @@ const analyticsController = {
           SELECT
             ${groupBy} as period,
             COUNT(*) as trades,
-            COALESCE(SUM(pnl), 0) as pnl,
-            COALESCE(SUM(SUM(pnl)) OVER (ORDER BY ${groupBy}), 0) as cumulative_pnl,
+            COALESCE(SUM(${fxUsd('pnl', 't')}), 0) as pnl,
+            COALESCE(SUM(SUM(${fxUsd('pnl', 't')})) OVER (ORDER BY ${groupBy}), 0) as cumulative_pnl,
             COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as r_value,
             COALESCE(SUM(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL)) OVER (ORDER BY ${groupBy}), 0) as cumulative_r_value,
             COUNT(CASE WHEN stop_loss IS NOT NULL THEN 1 END) as trades_with_r
@@ -1304,8 +1349,8 @@ const analyticsController = {
           WITH positions AS (
             SELECT
               COALESCE(NULLIF(underlying_symbol, ''), symbol) as symbol,
-              SUM(pnl) as pnl,
-              SUM(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0)) as gross_pnl,
+              SUM(${fxUsd('pnl', 't')}) as pnl,
+              SUM(${fxUsd('pnl', 't')} + COALESCE(${fxUsd('commission', 't')}, 0) + COALESCE(${fxUsd('fees', 't')}, 0)) as gross_pnl,
               COALESCE(AVG(pnl_percent), 0) as pnl_percent
             FROM trades t
             WHERE t.user_id = $1 ${filterConditions}
@@ -1332,8 +1377,8 @@ const analyticsController = {
             COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
             COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
             COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
-            COALESCE(SUM(pnl), 0) as total_pnl,
-            COALESCE(AVG(pnl), 0) as avg_pnl,
+            COALESCE(SUM(${fxUsd('pnl', 't')}), 0) as total_pnl,
+            COALESCE(AVG(${fxUsd('pnl', 't')}), 0) as avg_pnl,
             COALESCE(AVG(pnl_percent), 0) as avg_pnl_percent
           FROM trades t
           WHERE t.user_id = $1 ${filterConditions}
@@ -1378,8 +1423,8 @@ const analyticsController = {
               position_group_id,
               entry_time,
               id,
-              pnl,
-              COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0) as gross_pnl,
+              ${fxUsd('pnl', 't')} as pnl,
+              ${fxUsd('pnl', 't')} + COALESCE(${fxUsd('commission', 't')}, 0) + COALESCE(${fxUsd('fees', 't')}, 0) as gross_pnl,
               r_value,
               stop_loss
             FROM trades t
@@ -1417,8 +1462,8 @@ const analyticsController = {
             COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
             COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
             COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
-            COALESCE(SUM(pnl), 0) as total_pnl,
-            COALESCE(AVG(pnl), 0) as avg_pnl,
+            COALESCE(SUM(${fxUsd('pnl', 't')}), 0) as total_pnl,
+            COALESCE(AVG(${fxUsd('pnl', 't')}), 0) as avg_pnl,
             COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
             COALESCE(AVG(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as avg_r_value,
             COUNT(CASE WHEN stop_loss IS NOT NULL THEN 1 END) as trades_with_r
@@ -1459,8 +1504,8 @@ const analyticsController = {
             SELECT
               position_group_id,
               MIN(NULLIF(strategy, '')) as leg_strategy,
-              SUM(pnl) as pnl,
-              SUM(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0)) as gross_pnl,
+              SUM(${fxUsd('pnl', 't')}) as pnl,
+              SUM(${fxUsd('pnl', 't')} + COALESCE(${fxUsd('commission', 't')}, 0) + COALESCE(${fxUsd('fees', 't')}, 0)) as gross_pnl,
               SUM(r_value) as r_value,
               MIN(stop_loss) as stop_loss
             FROM trades t
@@ -1502,8 +1547,8 @@ const analyticsController = {
             COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
             COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
             COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
-            COALESCE(SUM(pnl), 0) as total_pnl,
-            COALESCE(AVG(pnl), 0) as avg_pnl,
+            COALESCE(SUM(${fxUsd('pnl', 't')}), 0) as total_pnl,
+            COALESCE(AVG(${fxUsd('pnl', 't')}), 0) as avg_pnl,
             COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
             COALESCE(AVG(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as avg_r_value,
             COUNT(CASE WHEN stop_loss IS NOT NULL THEN 1 END) as trades_with_r
@@ -1552,8 +1597,8 @@ const analyticsController = {
           WITH positions AS (
             SELECT
               EXTRACT(HOUR FROM (MIN(entry_time) AT TIME ZONE $${tzParam})) as hour,
-              SUM(pnl) as pnl,
-              SUM(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0)) as gross_pnl,
+              SUM(${fxUsd('pnl', 't')}) as pnl,
+              SUM(${fxUsd('pnl', 't')} + COALESCE(${fxUsd('commission', 't')}, 0) + COALESCE(${fxUsd('fees', 't')}, 0)) as gross_pnl,
               SUM(r_value) as r_value,
               MIN(stop_loss) as stop_loss
             FROM trades t
@@ -1583,8 +1628,8 @@ const analyticsController = {
             COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
             COUNT(CASE WHEN ${be.isNot} AND pnl < 0 THEN 1 END) as losing_trades,
             COUNT(CASE WHEN ${be.is} THEN 1 END) as breakeven_trades,
-            COALESCE(SUM(pnl), 0) as total_pnl,
-            COALESCE(AVG(pnl), 0) as avg_pnl,
+            COALESCE(SUM(${fxUsd('pnl', 't')}), 0) as total_pnl,
+            COALESCE(AVG(${fxUsd('pnl', 't')}), 0) as avg_pnl,
             COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
             COALESCE(AVG(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as avg_r_value,
             COUNT(CASE WHEN stop_loss IS NOT NULL THEN 1 END) as trades_with_r
@@ -1666,7 +1711,10 @@ const analyticsController = {
             ${tableAlias}.point_value,
             ${tableAlias}.underlying_asset,
             ${tableAlias}.exit_time,
-            ${tableAlias}.executions
+            ${tableAlias}.executions,
+            ${tableAlias}.original_currency,
+            ${tableAlias}.exchange_rate,
+            ${tableAlias}.original_entry_price_currency
           FROM trades ${tableAlias}
           WHERE ${tableAlias}.user_id = $1
             AND (
@@ -1720,7 +1768,10 @@ const analyticsController = {
             ${tableAlias}.contract_size,
             ${tableAlias}.point_value,
             ${tableAlias}.symbol,
-            ${tableAlias}.underlying_asset
+            ${tableAlias}.underlying_asset,
+            ${tableAlias}.original_currency,
+            ${tableAlias}.exchange_rate,
+            ${tableAlias}.original_entry_price_currency
           FROM trades ${tableAlias}
           WHERE ${tableAlias}.user_id = $1
             AND ${tableAlias}.exit_time IS NOT NULL
@@ -1736,6 +1787,8 @@ const analyticsController = {
           db.query(riskMetricsQuery, finalParams)
         ]);
 
+        await normalizeTradeRowsToUsd(calendarTradesResult.rows);
+        await normalizeTradeRowsToUsd(riskMetricsResult.rows);
         const calendarResultRows = buildCalendarOverviewRows(
           calendarTradesResult.rows,
           startDate,
@@ -1813,7 +1866,10 @@ const analyticsController = {
           t.point_value,
           t.underlying_asset,
           t.exit_time,
-          t.executions
+          t.executions,
+          t.original_currency,
+          t.exchange_rate,
+          t.original_entry_price_currency
         FROM trades t
         WHERE t.user_id = $1
           AND (
@@ -1850,8 +1906,9 @@ const analyticsController = {
         ORDER BY t.id
       `;
       const tradeResult = await db.query(dayQuery, params);
+      await normalizeTradeRowsToUsd(tradeResult.rows);
       const contributions = buildCalendarDayContributions(tradeResult.rows, dateStr, userTz);
-      res.json({ date: dateStr, contributions });
+      res.json(await convertForDisplay(req, { date: dateStr, contributions }));
     } catch (error) {
       console.error('Calendar day detail error:', error);
       next(error);
@@ -1899,7 +1956,10 @@ const analyticsController = {
       const cachedData = cache.get(cacheKey);
 
       if (cachedData) {
-        return res.json(cachedData);
+        return res.json(await convertForDisplay(req, cachedData, {
+          moneyArrayKeys: CHART_MONEY_ARRAYS,
+          moneyLabelKeys: CHART_MONEY_LABELS
+        }));
       }
 
       const responseData = await coalesceInFlight(cacheKey, async () => {
@@ -1911,23 +1971,23 @@ const analyticsController = {
           WITH price_ranges AS (
             SELECT
               CASE
-                WHEN entry_price < 2 THEN '< $2'
-                WHEN entry_price < 5 THEN '$2-4.99'
-                WHEN entry_price < 10 THEN '$5-9.99'
-                WHEN entry_price < 20 THEN '$10-19.99'
-                WHEN entry_price < 50 THEN '$20-49.99'
-                WHEN entry_price < 100 THEN '$50-99.99'
-                WHEN entry_price < 200 THEN '$100-199.99'
+                WHEN ${fxUsd('entry_price', 't')} < 2 THEN '< $2'
+                WHEN ${fxUsd('entry_price', 't')} < 5 THEN '$2-4.99'
+                WHEN ${fxUsd('entry_price', 't')} < 10 THEN '$5-9.99'
+                WHEN ${fxUsd('entry_price', 't')} < 20 THEN '$10-19.99'
+                WHEN ${fxUsd('entry_price', 't')} < 50 THEN '$20-49.99'
+                WHEN ${fxUsd('entry_price', 't')} < 100 THEN '$50-99.99'
+                WHEN ${fxUsd('entry_price', 't')} < 200 THEN '$100-199.99'
                 ELSE '$200+'
               END as price_range,
               CASE
-                WHEN entry_price < 2 THEN 1
-                WHEN entry_price < 5 THEN 2
-                WHEN entry_price < 10 THEN 3
-                WHEN entry_price < 20 THEN 4
-                WHEN entry_price < 50 THEN 5
-                WHEN entry_price < 100 THEN 6
-                WHEN entry_price < 200 THEN 7
+                WHEN ${fxUsd('entry_price', 't')} < 2 THEN 1
+                WHEN ${fxUsd('entry_price', 't')} < 5 THEN 2
+                WHEN ${fxUsd('entry_price', 't')} < 10 THEN 3
+                WHEN ${fxUsd('entry_price', 't')} < 20 THEN 4
+                WHEN ${fxUsd('entry_price', 't')} < 50 THEN 5
+                WHEN ${fxUsd('entry_price', 't')} < 100 THEN 6
+                WHEN ${fxUsd('entry_price', 't')} < 200 THEN 7
                 ELSE 8
               END as range_order
             FROM trades t
@@ -1944,29 +2004,29 @@ const analyticsController = {
           WITH price_ranges AS (
             SELECT
               CASE
-                WHEN entry_price < 2 THEN '< $2'
-                WHEN entry_price < 5 THEN '$2-4.99'
-                WHEN entry_price < 10 THEN '$5-9.99'
-                WHEN entry_price < 20 THEN '$10-19.99'
-                WHEN entry_price < 50 THEN '$20-49.99'
-                WHEN entry_price < 100 THEN '$50-99.99'
-                WHEN entry_price < 200 THEN '$100-199.99'
+                WHEN ${fxUsd('entry_price', 't')} < 2 THEN '< $2'
+                WHEN ${fxUsd('entry_price', 't')} < 5 THEN '$2-4.99'
+                WHEN ${fxUsd('entry_price', 't')} < 10 THEN '$5-9.99'
+                WHEN ${fxUsd('entry_price', 't')} < 20 THEN '$10-19.99'
+                WHEN ${fxUsd('entry_price', 't')} < 50 THEN '$20-49.99'
+                WHEN ${fxUsd('entry_price', 't')} < 100 THEN '$50-99.99'
+                WHEN ${fxUsd('entry_price', 't')} < 200 THEN '$100-199.99'
                 ELSE '$200+'
               END as price_range,
               CASE
-                WHEN entry_price < 2 THEN 1
-                WHEN entry_price < 5 THEN 2
-                WHEN entry_price < 10 THEN 3
-                WHEN entry_price < 20 THEN 4
-                WHEN entry_price < 50 THEN 5
-                WHEN entry_price < 100 THEN 6
-                WHEN entry_price < 200 THEN 7
+                WHEN ${fxUsd('entry_price', 't')} < 2 THEN 1
+                WHEN ${fxUsd('entry_price', 't')} < 5 THEN 2
+                WHEN ${fxUsd('entry_price', 't')} < 10 THEN 3
+                WHEN ${fxUsd('entry_price', 't')} < 20 THEN 4
+                WHEN ${fxUsd('entry_price', 't')} < 50 THEN 5
+                WHEN ${fxUsd('entry_price', 't')} < 100 THEN 6
+                WHEN ${fxUsd('entry_price', 't')} < 200 THEN 7
                 ELSE 8
               END as range_order,
-              pnl,
+              ${fxUsd('pnl', 't')} as pnl,
               r_value,
               stop_loss
-            FROM trades t
+              FROM trades t
             WHERE t.user_id = $1 ${filterConditions}
           )
           SELECT
@@ -1990,10 +2050,10 @@ const analyticsController = {
                   )
                 ELSE quantity  -- Fractional quantities (crypto) require numeric, not integer
               END as total_volume,
-              pnl,
+              ${fxUsd('pnl', 't')} as pnl,
               r_value,
               stop_loss
-            FROM trades t
+              FROM trades t
             WHERE t.user_id = $1 ${filterConditions}
           ),
           volume_ranges AS (
@@ -2049,11 +2109,11 @@ const analyticsController = {
         const performanceByPositionSizeQuery = `
           WITH position_sizes AS (
             SELECT
-              (entry_price * quantity) as position_size,
-              pnl,
+              (${fxUsd('entry_price', 't')} * quantity) as position_size,
+              ${fxUsd('pnl', 't')} as pnl,
               r_value,
               stop_loss
-            FROM trades t
+              FROM trades t
             WHERE t.user_id = $1 ${filterConditions}
           ),
           stats AS (
@@ -2139,7 +2199,7 @@ const analyticsController = {
                 WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 2592000 THEN 10
                 ELSE 11
               END as range_order,
-              pnl,
+              ${fxUsd('pnl', 't')} as pnl,
               r_value,
               stop_loss,
               CASE WHEN pnl > 0 THEN 1 ELSE 0 END as is_winner
@@ -2303,7 +2363,7 @@ const analyticsController = {
           SELECT
             EXTRACT(DOW FROM (entry_time AT TIME ZONE $${dowTzParam})) as day_of_week,
             COUNT(*) as trade_count,
-            COALESCE(SUM(pnl), 0) as total_pnl,
+            COALESCE(SUM(${fxUsd('pnl', 't')}), 0) as total_pnl,
             COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value
           FROM trades t
           WHERE t.user_id = $1 ${filterConditions}
@@ -2385,7 +2445,10 @@ const analyticsController = {
         return responseData;
       });
 
-      res.json(responseData);
+      res.json(await convertForDisplay(req, responseData, {
+        moneyArrayKeys: CHART_MONEY_ARRAYS,
+        moneyLabelKeys: CHART_MONEY_LABELS
+      }));
     } catch (error) {
       next(error);
     }
@@ -2460,7 +2523,7 @@ const analyticsController = {
           WITH daily_pnl AS (
             SELECT
               trade_date,
-              COALESCE(SUM(pnl), 0) as daily_pnl
+              COALESCE(SUM(${fxUsd('pnl', 't')}), 0) as daily_pnl
             FROM trades t
             WHERE t.user_id = $1 ${filterConditions}
             GROUP BY trade_date
@@ -2577,11 +2640,11 @@ const analyticsController = {
         ? `
         WITH positions AS (
           SELECT
-            SUM(pnl) as pnl,
-            SUM(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0)) as gross_pnl,
+            SUM(${fxUsd('pnl', 't')}) as pnl,
+            SUM(${fxUsd('pnl', 't')} + COALESCE(${fxUsd('commission', 't')}, 0) + COALESCE(${fxUsd('fees', 't')}, 0)) as gross_pnl,
             COALESCE(AVG(pnl_percent), 0) as pnl_percent,
-            SUM(COALESCE(commission, 0)) as commission,
-            SUM(COALESCE(fees, 0)) as fees
+            SUM(${fxUsd('commission', 't')}) as commission,
+            SUM(${fxUsd('fees', 't')}) as fees
           FROM trades t
           WHERE t.user_id = $1 ${filterConditions}
           GROUP BY ${POSITION_GROUP_KEY}
@@ -2601,12 +2664,12 @@ const analyticsController = {
         SELECT
           COUNT(*) as total_trades,
           COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades,
-          COALESCE(SUM(pnl), 0) as total_pnl,
-          COALESCE(AVG(pnl), 0) as avg_pnl,
+          COALESCE(SUM(${fxUsd('pnl', 't')}), 0) as total_pnl,
+          COALESCE(AVG(${fxUsd('pnl', 't')}), 0) as avg_pnl,
           COALESCE(AVG(CASE WHEN ${be.isNot} AND pnl > 0 THEN pnl END), 0) as avg_win,
           COALESCE(AVG(CASE WHEN ${be.isNot} AND pnl < 0 THEN pnl END), 0) as avg_loss,
-          COALESCE(MAX(pnl), 0) as best_trade,
-          COALESCE(MIN(pnl), 0) as worst_trade
+          COALESCE(MAX(${fxUsd('pnl', 't')}), 0) as best_trade,
+          COALESCE(MIN(${fxUsd('pnl', 't')}), 0) as worst_trade
         FROM trades t
         WHERE t.user_id = $1 ${filterConditions}
       `;
@@ -2637,6 +2700,7 @@ const analyticsController = {
       `;
 
       const tradesResult = await db.query(tradesQuery, params);
+      await normalizeTradeRowsToUsd(tradesResult.rows);
       const trades = tradesResult.rows;
 
       // Get user's trading profile for personalized recommendations
@@ -2678,8 +2742,8 @@ const analyticsController = {
           WITH positions AS (
             SELECT
               COALESCE(NULLIF(underlying_symbol, ''), symbol) as symbol,
-              SUM(pnl) as pnl,
-              SUM(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0)) as gross_pnl
+              SUM(${fxUsd('pnl', 't')}) as pnl,
+              SUM(${fxUsd('pnl', 't')} + COALESCE(${fxUsd('commission', 't')}, 0) + COALESCE(${fxUsd('fees', 't')}, 0)) as gross_pnl
             FROM trades t
             WHERE t.user_id = $1 ${filterConditions}
             GROUP BY COALESCE(NULLIF(underlying_symbol, ''), symbol), ${POSITION_GROUP_KEY}
@@ -2699,7 +2763,7 @@ const analyticsController = {
           SELECT
             symbol,
             COUNT(*) as total_trades,
-            COALESCE(SUM(pnl), 0) as total_pnl,
+            COALESCE(SUM(${fxUsd('pnl', 't')}), 0) as total_pnl,
             COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades
           FROM trades t
           WHERE t.user_id = $1 ${filterConditions}
@@ -2820,8 +2884,8 @@ const analyticsController = {
         WITH positions AS (
             SELECT
             COALESCE(NULLIF(underlying_symbol, ''), symbol) as symbol,
-            SUM(pnl) as pnl,
-            SUM(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0)) as gross_pnl
+            SUM(${fxUsd('pnl', 't')}) as pnl,
+            SUM(${fxUsd('pnl', 't')} + COALESCE(${fxUsd('commission', 't')}, 0) + COALESCE(${fxUsd('fees', 't')}, 0)) as gross_pnl
           FROM trades t
           WHERE t.user_id = $1 ${filterConditions}
           GROUP BY COALESCE(NULLIF(underlying_symbol, ''), symbol), ${POSITION_GROUP_KEY}
@@ -2841,8 +2905,8 @@ const analyticsController = {
         SELECT
           symbol,
           COUNT(*) as total_trades,
-          COALESCE(SUM(pnl), 0) as total_pnl,
-          COALESCE(AVG(pnl), 0) as avg_pnl,
+          COALESCE(SUM(${fxUsd('pnl', 't')}), 0) as total_pnl,
+          COALESCE(AVG(${fxUsd('pnl', 't')}), 0) as avg_pnl,
           COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades
         FROM trades t
         WHERE t.user_id = $1 ${filterConditions}
@@ -2958,7 +3022,7 @@ const analyticsController = {
         console.log(`[INFO] ${uncategorizedSymbols.length} uncategorized symbols will be processed by the category scheduler`);
       }
 
-      res.json(resultData);
+      res.json(await convertForDisplay(req, resultData));
 
     } catch (error) {
       console.error('Error generating sector performance:', error);
@@ -3066,8 +3130,8 @@ const analyticsController = {
         WITH positions AS (
             SELECT
             COALESCE(NULLIF(underlying_symbol, ''), symbol) as symbol,
-            SUM(pnl) as pnl,
-            SUM(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0)) as gross_pnl
+            SUM(${fxUsd('pnl', 't')}) as pnl,
+            SUM(${fxUsd('pnl', 't')} + COALESCE(${fxUsd('commission', 't')}, 0) + COALESCE(${fxUsd('fees', 't')}, 0)) as gross_pnl
           FROM trades t
           WHERE t.user_id = $1 ${filterConditions}
           GROUP BY COALESCE(NULLIF(underlying_symbol, ''), symbol), ${POSITION_GROUP_KEY}
@@ -3087,8 +3151,8 @@ const analyticsController = {
         SELECT
           symbol,
           COUNT(*) as total_trades,
-          COALESCE(SUM(pnl), 0) as total_pnl,
-          COALESCE(AVG(pnl), 0) as avg_pnl,
+          COALESCE(SUM(${fxUsd('pnl', 't')}), 0) as total_pnl,
+          COALESCE(AVG(${fxUsd('pnl', 't')}), 0) as avg_pnl,
           COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades
         FROM trades t
         WHERE t.user_id = $1 ${filterConditions}
@@ -3189,7 +3253,7 @@ const analyticsController = {
         }
       };
 
-      res.json(resultData);
+      res.json(await convertForDisplay(req, resultData));
 
     } catch (error) {
       console.error('Error refreshing sector performance:', error);
@@ -3229,15 +3293,15 @@ const analyticsController = {
         const completedCte = groupByPosition
           ? `completed AS (
               SELECT
-                SUM(pnl) as pnl,
-                SUM(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0)) as gross_pnl
+                SUM(${fxUsd('pnl', 't')}) as pnl,
+                SUM(${fxUsd('pnl', 't')} + COALESCE(${fxUsd('commission', 't')}, 0) + COALESCE(${fxUsd('fees', 't')}, 0)) as gross_pnl
               FROM trades t
               WHERE t.user_id = $1 ${filterConditions}
                 AND exit_price IS NOT NULL AND pnl IS NOT NULL
               GROUP BY ${POSITION_GROUP_KEY}
             )`
           : `completed AS (
-              SELECT pnl, commission, fees, quantity, tick_size, point_value, underlying_asset
+              SELECT ${fxUsd('pnl', 't')} as pnl, ${fxUsd('commission', 't')} as commission, ${fxUsd('fees', 't')} as fees, quantity, tick_size, point_value, underlying_asset
               FROM trades t
               WHERE t.user_id = $1 ${filterConditions}
                 AND exit_price IS NOT NULL AND pnl IS NOT NULL
@@ -3285,8 +3349,8 @@ const analyticsController = {
         const edgeQuery = `
           WITH completed AS (
             SELECT
-              symbol, strategy, pnl, commission, fees, quantity, tick_size, point_value, underlying_asset,
-              COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0) as gross_pnl
+              symbol, strategy, ${fxUsd('pnl', 't')} as pnl, ${fxUsd('commission', 't')} as commission, ${fxUsd('fees', 't')} as fees, quantity, tick_size, point_value, underlying_asset,
+              COALESCE(${fxUsd('pnl', 't')}, 0) + COALESCE(${fxUsd('commission', 't')}, 0) + COALESCE(${fxUsd('fees', 't')}, 0) as gross_pnl
             FROM trades t
             WHERE t.user_id = $1 ${filterConditions}
               AND exit_price IS NOT NULL AND pnl IS NOT NULL
@@ -3445,7 +3509,7 @@ const analyticsController = {
     const openQuery = `
       SELECT symbol,
              SUM(quantity)::numeric AS total_qty,
-             AVG(entry_price)::numeric AS avg_entry,
+             AVG(${fxUsd('entry_price', '')})::numeric AS avg_entry,
              COALESCE(MIN(side), 'long') AS side
       FROM trades
       WHERE user_id = $1
@@ -3481,8 +3545,8 @@ const analyticsController = {
           COUNT(*)::integer AS trade_count,
           COUNT(*) FILTER (WHERE ${be.isNot} AND pnl > 0)::integer AS wins,
           COUNT(*) FILTER (WHERE ${be.isNot} AND pnl < 0)::integer AS losses,
-          COALESCE(AVG(pnl), 0)::numeric AS avg_pnl,
-          COALESCE(SUM(pnl), 0)::numeric AS total_pnl
+          COALESCE(AVG(${fxUsd('pnl', '')}), 0)::numeric AS avg_pnl,
+          COALESCE(SUM(${fxUsd('pnl', '')}), 0)::numeric AS total_pnl
         FROM trades
         WHERE user_id = $1
           AND symbol = ANY($2::text[])

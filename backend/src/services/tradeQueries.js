@@ -14,6 +14,7 @@ const Trade = require('../models/Trade');
 const { getUserTimezone } = require('../utils/timezone');
 const { buildTradeDateRangeClause } = require('../utils/tradeDateFilter');
 const { buildExecutionDailyPnlRows } = require('../utils/executionPnlByDate');
+const { fxUsd } = require('../utils/tradeFx');
 
 async function timedDbQuery(label, query, values = []) {
   const startedAt = Date.now();
@@ -685,8 +686,8 @@ class TradeQueries {
         SELECT
           MIN(symbol) as symbol,
           MIN(id::text) as trade_group,
-          SUM(pnl) as trade_pnl,
-          SUM(COALESCE(commission, 0) + COALESCE(fees, 0)) as trade_costs,
+          SUM(${fxUsd('pnl')}) as trade_pnl,
+          SUM(COALESCE(${fxUsd('commission')}, 0) + COALESCE(${fxUsd('fees')}, 0)) as trade_costs,
           COUNT(*) as execution_count,
           AVG(pnl_percent) as avg_return_pct,
           MIN(trade_date) as first_trade_date,
@@ -703,8 +704,8 @@ class TradeQueries {
         SELECT
           symbol,
           id as trade_group,
-          pnl as trade_pnl,
-          (COALESCE(commission, 0) + COALESCE(fees, 0)) as trade_costs,
+          ${fxUsd('pnl')} as trade_pnl,
+          (COALESCE(${fxUsd('commission')}, 0) + COALESCE(${fxUsd('fees')}, 0)) as trade_costs,
           tick_size,
           point_value,
           quantity,
@@ -858,7 +859,7 @@ class TradeQueries {
         WITH positions AS (
           SELECT
             COALESCE(NULLIF(underlying_symbol, ''), symbol) as symbol,
-            SUM(pnl) as pnl,
+            SUM(${fxUsd('pnl')}) as pnl,
             SUM(quantity) as volume
           FROM trades t
           ${whereClause}
@@ -886,8 +887,8 @@ class TradeQueries {
         SELECT
           symbol,
           COUNT(*) as trades,
-          SUM(pnl) as total_pnl,
-          AVG(pnl) as avg_pnl,
+          SUM(${fxUsd('pnl')}) as total_pnl,
+          AVG(${fxUsd('pnl')}) as avg_pnl,
           COUNT(*) FILTER (WHERE pnl > 0) as wins,
           SUM(quantity) as total_volume
         FROM trades t
@@ -914,6 +915,9 @@ class TradeQueries {
           t.underlying_asset,
           t.exit_time,
           t.executions,
+          t.original_currency,
+          t.exchange_rate,
+          t.original_entry_price_currency,
           ${derivedRValue} AS derived_r_value,
           (${POSITION_GROUP_KEY}) AS position_key
         FROM trades t
@@ -929,8 +933,8 @@ class TradeQueries {
         WITH positions AS (
           SELECT
             MIN(trade_date) as trade_date,
-            SUM(COALESCE(pnl, 0)) as pnl,
-            SUM(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(fees, 0)) as gross_pnl
+            SUM(COALESCE(${fxUsd('pnl')}, 0)) as pnl,
+            SUM(COALESCE(${fxUsd('pnl')}, 0) + COALESCE(${fxUsd('commission')}, 0) + COALESCE(${fxUsd('fees')}, 0)) as gross_pnl
           FROM trades t
           ${whereClause}
           GROUP BY ${POSITION_GROUP_KEY}
@@ -966,9 +970,9 @@ class TradeQueries {
             ELSE 0
           END as win_rate,
           CASE
-            WHEN AVG(pnl) FILTER (WHERE ${beDaily.isNot} AND pnl < 0) IS NULL THEN
-              CASE WHEN AVG(pnl) FILTER (WHERE ${beDaily.isNot} AND pnl > 0) IS NOT NULL THEN 999.99 ELSE 0 END
-            ELSE ROUND(ABS(AVG(pnl) FILTER (WHERE ${beDaily.isNot} AND pnl > 0) / AVG(pnl) FILTER (WHERE ${beDaily.isNot} AND pnl < 0))::numeric, 2)
+            WHEN AVG(${fxUsd('pnl')}) FILTER (WHERE ${beDaily.isNot} AND pnl < 0) IS NULL THEN
+              CASE WHEN AVG(${fxUsd('pnl')}) FILTER (WHERE ${beDaily.isNot} AND pnl > 0) IS NOT NULL THEN 999.99 ELSE 0 END
+            ELSE ROUND(ABS(AVG(${fxUsd('pnl')}) FILTER (WHERE ${beDaily.isNot} AND pnl > 0) / AVG(${fxUsd('pnl')}) FILTER (WHERE ${beDaily.isNot} AND pnl < 0))::numeric, 2)
           END as pl_ratio
         FROM trades t
         ${whereClause}
@@ -988,10 +992,10 @@ class TradeQueries {
           SELECT
             MIN(id::text) as id,
             MIN(COALESCE(NULLIF(underlying_symbol, ''), symbol)) as symbol,
-            MIN(entry_price) as entry_price,
-            MAX(exit_price) as exit_price,
+            MIN(${fxUsd('entry_price')}) as entry_price,
+            MAX(${fxUsd('exit_price')}) as exit_price,
             SUM(quantity) as quantity,
-            SUM(pnl) as pnl,
+            SUM(${fxUsd('pnl')}) as pnl,
             MIN(trade_date) as trade_date,
             MIN(position_group_id::text) as position_group_id,
             COUNT(*) as actual_leg_count
@@ -1028,20 +1032,20 @@ class TradeQueries {
         )
       ` : `
         (
-          SELECT 'best' as type, id, symbol, entry_price, exit_price,
-                 quantity, pnl, trade_date
+          SELECT 'best' as type, id, symbol, ${fxUsd('entry_price')} as entry_price, ${fxUsd('exit_price')} as exit_price,
+                 quantity, ${fxUsd('pnl')} as pnl, trade_date
           FROM trades t
           ${whereClause} AND pnl IS NOT NULL AND pnl > 0
-          ORDER BY pnl DESC
+          ORDER BY ${fxUsd('pnl')} DESC
           LIMIT 5
         )
         UNION ALL
         (
-          SELECT 'worst' as type, id, symbol, entry_price, exit_price,
-                 quantity, pnl, trade_date
+          SELECT 'worst' as type, id, symbol, ${fxUsd('entry_price')} as entry_price, ${fxUsd('exit_price')} as exit_price,
+                 quantity, ${fxUsd('pnl')} as pnl, trade_date
           FROM trades t
           ${whereClause} AND pnl IS NOT NULL AND pnl < 0
-          ORDER BY pnl ASC
+          ORDER BY ${fxUsd('pnl')} ASC
           LIMIT 5
         )
       `, values),
@@ -1051,7 +1055,7 @@ class TradeQueries {
           SELECT
             MIN(id::text) as id,
             MIN(COALESCE(NULLIF(underlying_symbol, ''), symbol)) as symbol,
-            SUM(pnl) as pnl,
+            SUM(${fxUsd('pnl')}) as pnl,
             MIN(trade_date) as trade_date
           FROM trades t
           ${whereClause}
@@ -1076,18 +1080,18 @@ class TradeQueries {
         )
       ` : `
         (
-          SELECT 'best' as type, id, symbol, pnl, trade_date
+          SELECT 'best' as type, id, symbol, ${fxUsd('pnl')} as pnl, trade_date
           FROM trades t
           ${whereClause} AND pnl IS NOT NULL AND pnl > 0
-          ORDER BY pnl DESC
+          ORDER BY ${fxUsd('pnl')} DESC
           LIMIT 1
         )
         UNION ALL
         (
-          SELECT 'worst' as type, id, symbol, pnl, trade_date
+          SELECT 'worst' as type, id, symbol, ${fxUsd('pnl')} as pnl, trade_date
           FROM trades t
           ${whereClause} AND pnl IS NOT NULL AND pnl < 0
-          ORDER BY pnl ASC
+          ORDER BY ${fxUsd('pnl')} ASC
           LIMIT 1
         )
       `, values),
@@ -1097,7 +1101,7 @@ class TradeQueries {
       timedDbQuery('analytics.recentTradePnlsQuery', `
         SELECT pnl, trade_date, exit_time
         FROM (
-          SELECT pnl, trade_date, entry_time, exit_time
+          SELECT ${fxUsd('pnl')} as pnl, trade_date, entry_time, exit_time
           FROM trades t
           ${whereClause}
             AND pnl IS NOT NULL
@@ -1115,6 +1119,15 @@ class TradeQueries {
 
     const executionCount = parseInt(executionResult.rows[0].execution_count) || 0;
     const analytics = analyticsResult.rows[0];
+    // Manual/API trades can store amounts in their original currency (import
+    // conversion is best-effort); buildExecutionDailyPnlRows also reads money
+    // out of the executions JSONB, so normalize those rows to USD in JS
+    // before attribution. SQL aggregates above normalize via trade_amount_usd.
+    const { getUsdRateMap, normalizeRowToUsd } = require('../utils/tradeFx');
+    const usdRates = await getUsdRateMap();
+    if (usdRates) {
+      for (const row of dailyPnLResult.rows) normalizeRowToUsd(row, usdRates);
+    }
     const dailyPnlRows = buildExecutionDailyPnlRows(
       dailyPnLResult.rows,
       userTimezone,

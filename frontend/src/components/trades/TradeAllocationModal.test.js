@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 
 const { apiMock } = vi.hoisted(() => ({
   apiMock: {
@@ -24,6 +25,8 @@ function buttonByText(wrapper, label) {
 
 describe('TradeAllocationModal', () => {
   beforeEach(() => {
+    // The modal labels amounts with the trades store's display currency
+    setActivePinia(createPinia())
     vi.clearAllMocks()
     apiMock.get.mockResolvedValue({
       data: { trade_id: 'trade-1', basis_quantity: 100, allocations: [] }
@@ -70,6 +73,29 @@ describe('TradeAllocationModal', () => {
       ]
     })
     expect(apiMock.put.mock.calls.flat().join(' ')).not.toContain('/tags')
+  })
+
+  it('labels amounts with the currency the trade was converted into', async () => {
+    // original_currency names where the amounts came FROM; effective_currency
+    // is the unit they are in after the server converted them.
+    const wrapper = mount(TradeAllocationModal, {
+      props: {
+        open: true,
+        trade: {
+          id: 'trade-1',
+          symbol: 'AAPL',
+          quantity: 100,
+          pnl: 500,
+          original_currency: 'USD',
+          effective_currency: 'EUR'
+        },
+        groups
+      }
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('€500.00')
+    expect(wrapper.text()).not.toContain('$500.00')
   })
 
   it('does not allow saving until the split totals 100 percent', async () => {

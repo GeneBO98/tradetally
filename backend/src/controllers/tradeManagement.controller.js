@@ -4,6 +4,8 @@
  */
 
 const db = require('../config/database');
+const { fxUsd } = require('../utils/tradeFx');
+const { convertForDisplay } = require('../utils/displayCurrency');
 const Trade = require('../models/Trade');
 const User = require('../models/User');
 const TradeQueries = require('../services/tradeQueries');
@@ -1277,9 +1279,16 @@ const tradeManagementController = {
         const groupedQuery = `
           WITH base AS (
             SELECT
-              t.id, t.symbol, t.trade_date, t.entry_time, t.exit_time, t.entry_price, t.exit_price,
-              t.quantity, t.side, t.pnl, t.pnl_percent,
-              t.stop_loss, t.take_profit, t.r_value,
+              t.id, t.symbol, t.trade_date, t.entry_time, t.exit_time,
+              ${fxUsd('entry_price', 't')} AS entry_price,
+              ${fxUsd('exit_price', 't')} AS exit_price,
+              t.quantity, t.side,
+              -- Legs of one position can be summed below, so normalize first.
+              ${fxUsd('pnl', 't')} AS pnl,
+              t.pnl_percent,
+              ${fxUsd('stop_loss', 't')} AS stop_loss,
+              ${fxUsd('take_profit', 't')} AS take_profit,
+              t.r_value,
               t.strategy, t.broker, t.instrument_type,
               t.manual_target_hit_first, t.target_hit_analysis,
               ${POSITION_GROUP_KEY} AS position_group_key,
@@ -1360,7 +1369,7 @@ const tradeManagementController = {
 
         const total = parseInt(countResult.rows[0].total);
 
-        return res.json({
+        return res.json(await convertForDisplay(req, {
           trades,
           position_grouping: true,
           pagination: {
@@ -1369,7 +1378,7 @@ const tradeManagementController = {
             offset,
             has_more: offset + trades.length < total
           }
-        });
+        }, { clone: false }));
       }
 
       // numbered_trades numbers the SAME filtered set the R-Performance chart
@@ -1424,7 +1433,7 @@ const tradeManagementController = {
       const countResult = await db.query(countQuery, values);
       const total = parseInt(countResult.rows[0].total);
 
-      res.json({
+      res.json(await convertForDisplay(req, {
         trades,
         position_grouping: false,
         pagination: {
@@ -1433,7 +1442,7 @@ const tradeManagementController = {
           offset,
           has_more: offset + trades.length < total
         }
-      });
+      }, { clone: false }));
     } catch (error) {
       logger.error('Error fetching trades for selection:', error);
       res.status(500).json({ error: 'Failed to fetch trades' });
