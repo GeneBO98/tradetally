@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS trades (
     exit_time TIMESTAMP WITH TIME ZONE,
     entry_price NUMERIC(10,2),
     exit_price NUMERIC(10,2),
-    quantity NUMERIC(10,4),
+    quantity NUMERIC(20,8),
     side VARCHAR(10) NOT NULL CHECK (side IN ('long', 'short')),
     commission NUMERIC(10,2) DEFAULT 0,
     fees NUMERIC(10,2) DEFAULT 0,

@@ -729,6 +729,18 @@ describe('TradingView parser', () => {
     expect(result.trades.length).toBeGreaterThanOrEqual(1);
   });
 
+  test('preserves forex quantities above one million units from TradingView order history', async () => {
+    const csv = [
+      'Symbol,Side,Type,Quantity,Limit price,Stop price,Fill price,Commission,Placing time,Closing time,Order ID,Level ID,Leverage,Margin',
+      'TEST:EURUSD,Buy,Market,2235309,,,1.10000,,2026-01-01 09:00:00,2026-01-01 09:00:00,1001,,100x,',
+      'TEST:EURUSD,Sell,Stop Loss,2235309,,1.09900,1.09900,,2026-01-01 09:00:00,2026-01-01 09:10:00,1002,,,'
+    ].join('\n');
+    const result = await parseCSV(buf(csv), 'tradingview', {});
+    expectValidResult(result);
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0].quantity).toBe(2235309);
+  });
+
   test('parses performance export format', async () => {
     const perfCSV = [
       'buyFillId,sellFillId,symbol,qty,buyPrice,sellPrice,boughtTimestamp,soldTimestamp,pnl',
