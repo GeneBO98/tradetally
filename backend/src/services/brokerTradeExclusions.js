@@ -13,6 +13,15 @@ function executionId(execution) {
   return execution.execution_id ?? execution.executionId ?? execution.ibExecID ?? execution.IBExecID;
 }
 
+function isSynthetic(execution) {
+  return execution?.synthetic === true;
+}
+
+function conidOf(executions) {
+  const conid = executions.find(execution => execution?.conid)?.conid;
+  return conid ? String(conid) : null;
+}
+
 function matches(exclusion, trade) {
   const account = trade.account_identifier ?? trade.accountIdentifier ?? null;
   if (String(exclusion.symbol).toUpperCase() !== String(trade.symbol).toUpperCase()) return false;
@@ -27,6 +36,17 @@ function matches(exclusion, trade) {
     const ids = new Set(excludedExecutions.map(executionId).filter(Boolean).map(String));
     if (!incomingExecutions.some(execution => ids.has(String(executionId(execution))))) return false;
   }
+  // Trades synthesized from IBKR Open Positions take their entry time from
+  // each report date, so time never matches again. Identify them by contract,
+  // quantity and cost basis instead.
+  if (excludedExecutions.some(isSynthetic) && incomingExecutions.some(isSynthetic)) {
+    const excludedConid = conidOf(excludedExecutions);
+    const incomingConid = trade.conid ? String(trade.conid) : conidOf(incomingExecutions);
+    if (excludedConid && incomingConid && excludedConid !== incomingConid) return false;
+    return Math.abs(Number(exclusion.quantity) - Number(trade.quantity)) < 0.0001
+      && Math.abs(Number(exclusion.entry_price) - Number(trade.entry_price ?? trade.entryPrice)) < 0.01;
+  }
+
   if (excludedExecutions.length && incomingExecutions.length) {
     return incomingExecutions.some(incoming =>
       excludedExecutions.some(excluded => executionIdentityMatches(incoming, excluded)));

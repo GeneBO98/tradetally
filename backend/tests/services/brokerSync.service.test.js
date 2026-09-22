@@ -19,6 +19,9 @@ jest.mock('../../src/models/BrokerConnection', () => ({
   updateBrokerMetadata: jest.fn()
 }));
 
+jest.mock('../../src/services/tierService', () => ({
+  hasBrokerSyncBetaAccess: jest.fn(async () => false)
+}));
 jest.mock('../../src/services/analyticsCache', () => ({
   invalidateUserCache: jest.fn(),
   invalidate: jest.fn()
@@ -953,6 +956,24 @@ describe('broker sync duplicate protection', () => {
     expect(result.trades).toEqual([
       expect.objectContaining({ symbol: 'AAPL', side: 'long', quantity: 100, entryPrice: 300 })
     ]);
+  });
+
+  test('IBKR Open Positions counts every stored row of a split position', () => {
+    // Regression: existingPositions keeps only the last row per symbol/conid,
+    // so a 0.856 + 0.1062 position alternately re-created each half per sync.
+    const stored = [
+      { id: 't1', symbol: 'IBKR', side: 'long', quantity: 0.856, conid: '43645865', accountIdentifier: 'U1', instrumentType: 'stock' },
+      { id: 't2', symbol: 'IBKR', side: 'long', quantity: 0.1062, conid: '43645865', accountIdentifier: 'U1', instrumentType: 'stock' }
+    ];
+    const result = ibkrService.extractOpenPositionTradesFromRecords([
+      { Account: 'U1', AssetClass: 'STK', Symbol: 'IBKR', Conid: '43645865', Position: '0.9622', CostBasisPrice: '92.018291' }
+    ], { id: 'conn-1', brokerType: 'ibkr' }, {
+      existingPositions: { IBKR: stored[1], conid_43645865: stored[1] },
+      existingOpenPositions: stored
+    }, { endDate: '2026-09-21', parsedTrades: [] });
+
+    expect(result.trades).toEqual([]);
+    expect(result.warnings).toEqual([]);
   });
 
   test.each([

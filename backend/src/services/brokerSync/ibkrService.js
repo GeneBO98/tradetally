@@ -1166,7 +1166,7 @@ class IBKRService {
       return parsedMatches.reduce((sum, trade) => sum + signedQuantity(trade), 0);
     }
 
-    const uniqueExistingPositions = new Set(Object.values(existingContext.existingPositions || {}));
+    const uniqueExistingPositions = this.getAllExistingOpenPositions(existingContext);
     let quantity = 0;
     for (const existingPosition of uniqueExistingPositions) {
       if (this.tradesRepresentSameStockPosition(openTrade, existingPosition)) {
@@ -1386,6 +1386,16 @@ class IBKRService {
     return dates.length > 0 ? dates[dates.length - 1] : null;
   }
 
+  // existingPositions holds only the latest open row per symbol/conid, so a
+  // position split across rows (e.g. a dividend reinvestment added later) was
+  // undercounted and a duplicate synthetic trade was created on every sync.
+  getAllExistingOpenPositions(existingContext = {}) {
+    if (Array.isArray(existingContext.existingOpenPositions)) {
+      return existingContext.existingOpenPositions;
+    }
+    return [...new Set(Object.values(existingContext.existingPositions || {}))];
+  }
+
   openPositionAlreadyRepresented(openTrade, parsedTrades = [], existingContext = {}) {
     const parsedOpenTrade = parsedTrades.some(trade => {
       const isOpen = !trade.exitPrice && !trade.exit_time && !trade.exitTime && !trade.exit_price;
@@ -1393,7 +1403,7 @@ class IBKRService {
     });
     if (parsedOpenTrade) return true;
 
-    const uniqueExistingPositions = new Set(Object.values(existingContext.existingPositions || {}));
+    const uniqueExistingPositions = this.getAllExistingOpenPositions(existingContext);
     for (const existingPosition of uniqueExistingPositions) {
       if (this.tradesRepresentSameStockPosition(openTrade, existingPosition)) {
         return true;
@@ -1470,8 +1480,11 @@ class IBKRService {
     `;
     const completedTradesResult = await db.query(completedTradesQuery, [userId]);
 
-    // Build existing positions map with composite keys for options
+    // Build existing positions map with composite keys for options. The map
+    // keeps one row per key; existingOpenPositions keeps every open row so
+    // quantity reconciliation sees positions split across several trades.
     const existingPositions = {};
+    const existingOpenPositions = [];
     openPositionsResult.rows.forEach(row => {
       let parsedExecutions = [];
       if (row.executions) {
@@ -1507,6 +1520,8 @@ class IBKRService {
         accountIdentifier: row.account_identifier || null,
         account_identifier: row.account_identifier || null
       };
+
+      existingOpenPositions.push({ positionKey, positionData });
 
       // Store by composite key (primary)
       existingPositions[positionKey] = positionData;
@@ -1548,15 +1563,24 @@ class IBKRService {
       }
     });
 
-    // Add open position executions (using the same keys as existingPositions)
-    Object.entries(existingPositions).forEach(([key, pos]) => {
-      if (!existingExecutions[key]) {
-        existingExecutions[key] = [];
+    // Add open position executions (using the same keys as existingPositions),
+    // from every open row rather than only the last one stored per key.
+    existingOpenPositions.forEach(({ positionKey, positionData }) => {
+      const keys = positionData.conid ? [positionKey, `conid_${positionData.conid}`] : [positionKey];
+      for (const key of keys) {
+        if (!existingExecutions[key]) {
+          existingExecutions[key] = [];
+        }
+        existingExecutions[key].push(...positionData.executions);
       }
-      existingExecutions[key].push(...pos.executions);
     });
 
-    return { existingPositions, existingExecutions, userId };
+    return {
+      existingPositions,
+      existingOpenPositions: existingOpenPositions.map(entry => entry.positionData),
+      existingExecutions,
+      userId
+    };
   }
 
   /**

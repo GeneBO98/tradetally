@@ -23,6 +23,26 @@ describe('IBKR deleted-trade exclusions', () => {
     })).toBe(true);
   });
 
+  it('keeps a deleted IBKR Open Positions trade excluded when the report date moves', () => {
+    const synthetic = (datetime, quantity = 0.856, price = 92.018291) => ({
+      action: 'buy', quantity, price, datetime, conid: '43645865', synthetic: true
+    });
+    const deleted = {
+      account_identifier: 'U1', symbol: 'IBKR', side: 'long',
+      entry_time: '2026-09-18T09:30:00Z', entry_price: 92.018291, quantity: 0.856,
+      executions: [synthetic('2026-09-18T09:30:00')]
+    };
+    const incoming = (overrides = {}) => ({
+      accountIdentifier: 'U1', symbol: 'IBKR', side: 'long', conid: '43645865',
+      entryTime: '2026-09-21T09:30:00', entryPrice: 92.018291, quantity: 0.856,
+      executions: [synthetic('2026-09-21T09:30:00')], ...overrides
+    });
+
+    expect(BrokerTradeExclusions.matches(deleted, incoming())).toBe(true);
+    expect(BrokerTradeExclusions.matches(deleted, incoming({ quantity: 0.1062 }))).toBe(false);
+    expect(BrokerTradeExclusions.matches(deleted, incoming({ conid: '999' }))).toBe(false);
+  });
+
   it('does not exclude a different account or independent trade', () => {
     const incoming = {
       accountIdentifier: 'U123', symbol: 'AAPL', side: 'long',
