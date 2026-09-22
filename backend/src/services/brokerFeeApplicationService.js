@@ -153,7 +153,9 @@ function applyBrokerFeeSettingsToTrades({
   );
 
   const recordUnknownFee = (trade, assignment, effectiveBroker, symbol) => {
-    if (!feeSummary) return;
+    // A file-provided cost is retained even without a configured fee profile.
+    // Do not describe that trade as having unknown/zero imported costs.
+    if (!feeSummary || hasNonZeroCost(trade.commission) || hasNonZeroCost(trade.fees)) return;
     const accountIdentifier = trade.accountIdentifier || trade.account_identifier || '__no_account__';
     const key = String(accountIdentifier);
     if (!feeSummary.unknownAccounts) feeSummary.unknownAccounts = new Map();

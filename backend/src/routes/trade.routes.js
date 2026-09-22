@@ -213,7 +213,7 @@ router.post('/', flexibleAuth, requireApiScope('trades:write'), validate(schemas
  *                 enum: [long, short]
  *               instrumentType:
  *                 type: string
- *                 enum: [stock, option, future, crypto]
+ *                 enum: [stock, option, future, crypto, forex]
  *                 default: stock
  *               broker:
  *                 type: string

@@ -3,6 +3,38 @@ const { isExecutionDuplicate } = require('../dedup');
 const { extractAccountFromRecord } = require('../detect');
 const { parseDate, parseDateTime, getExecutionTimeBounds, normalizePositionQuantity, cleanString, parseNumeric, parseInteger } = require('../shared');
 
+const FOREX_CURRENCIES = new Set([
+  'AUD', 'BRL', 'CAD', 'CHF', 'CNH', 'CNY', 'CZK', 'DKK', 'EUR', 'GBP',
+  'HKD', 'HUF', 'ILS', 'INR', 'JPY', 'MXN', 'NOK', 'NZD', 'PLN', 'RUB',
+  'SEK', 'SGD', 'THB', 'TRY', 'USD', 'XAG', 'XAU', 'ZAR'
+]);
+
+function getTradingViewForexInstrumentData(symbol) {
+  const normalizedSymbol = String(symbol || '').toUpperCase().trim();
+  const contractSymbol = normalizedSymbol.includes(':')
+    ? normalizedSymbol.slice(normalizedSymbol.lastIndexOf(':') + 1)
+    : normalizedSymbol;
+  const match = contractSymbol.match(/^([A-Z]{3})([A-Z]{3})$/);
+  if (!match || !FOREX_CURRENCIES.has(match[1]) || !FOREX_CURRENCIES.has(match[2]) || match[1] === match[2]) {
+    return null;
+  }
+
+  const [, baseCurrency, quoteCurrency] = match;
+  return {
+    instrumentType: 'forex',
+    contractSize: null,
+    underlyingAsset: baseCurrency,
+    underlyingSymbol: baseCurrency,
+    quoteCurrency,
+    originalCurrency: quoteCurrency,
+    currencyConversionRequired: quoteCurrency !== 'USD',
+    contractMonth: null,
+    contractYear: null,
+    tickSize: null,
+    pointValue: null
+  };
+}
+
 
 function getTradingViewFuturesInstrumentData(symbol) {
   if (!symbol) {
@@ -20,6 +52,9 @@ function getTradingViewFuturesInstrumentData(symbol) {
   const normalizedSymbol = symbol.toString().toUpperCase().trim();
   const exchangeMatch = normalizedSymbol.match(/^([^:]+):(.+)$/);
   const contractSymbol = exchangeMatch ? exchangeMatch[2] : normalizedSymbol;
+
+  const forexInstrument = getTradingViewForexInstrumentData(normalizedSymbol);
+  if (forexInstrument) return forexInstrument;
 
   const standardMatch = contractSymbol.match(/^([A-Z][A-Z0-9]*?)([FGHJKMNQUVXZ])(\d{1,4})$/);
   if (standardMatch) {
@@ -719,6 +754,7 @@ async function parseTradingViewPaperTrades(records, context = {}) {
 }
 
 module.exports = {
+  getTradingViewForexInstrumentData,
   getTradingViewFuturesInstrumentData,
   hasTradingViewOrderHistoryHeaders,
   parseTradingViewTransactions,

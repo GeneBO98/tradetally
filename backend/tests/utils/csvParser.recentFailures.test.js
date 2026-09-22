@@ -82,3 +82,58 @@ test('TradingView history pairs source accounts independently and honors destina
   expect(result.trades).toHaveLength(2);
   expect(result.trades.every(trade => trade.account_identifier === 'DESTINATION')).toBe(true);
 });
+
+describe('IBKR Activity Statement options regressions (September 18)', () => {
+  const header = 'Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,Proceeds,Comm/Fee,Basis,Realized P/L,MTM P/L,Code';
+  const statement = (symbol, exitPrice = 7) => [
+    'Statement,Header,Field Name,Field Value',
+    'Statement,Data,Title,Activity Statement',
+    header,
+    `Trades,Data,Order,Equity and Index Options,USD,${symbol},"2026-09-16, 09:30:00",2,5,5,-1000,-1,1001,0,0,O`,
+    `Trades,Data,Order,Equity and Index Options,USD,${symbol},"2026-09-17, 10:00:00",-2,${exitPrice},${exitPrice},1400,-1,-1001,398,0,C`,
+    'Trades,SubTotal,,Equity and Index Options,USD,AAPL,,0,,,400,-2,0,398,0,',
+    'Trades,Total,,Equity and Index Options,USD,,,,,,400,-2,0,398,0,',
+    `Trades,Data,Total,Equity and Index Options,USD,${symbol},"2026-09-17, 10:00:00",-2,7,7,1400,-1,-1001,398,0,C`,
+    'Trades,Notes,This is not an execution',
+    'Other Section,Data,Order,Stocks,USD,FAKE,"2026-09-17, 10:00:00",10,100'
+  ].join('\n');
+
+  test.each(['AAPL 18SEP26 200 C', 'AAPL 18SEP26 200 CALL', 'AAPL  260918C00200000'])(
+    'imports %s with contract quantity, costs, and P&L', async symbol => {
+      const result = await parseCSV(Buffer.from(statement(symbol)), 'ibkr', { tradeGroupingSettings: { enabled: false } });
+      expect(result.trades).toHaveLength(1);
+      expect(result.trades[0]).toMatchObject({ instrumentType: 'option', optionType: 'call', quantity: 2, entryPrice: 5, exitPrice: 7, commission: 2, pnl: 398 });
+      expect(result.diagnostics.totalRows).toBe(2);
+      expect(result.diagnostics.skippedRows).toBe(0);
+    }
+  );
+
+  test('accepts a zero-price option close', async () => {
+    const result = await parseCSV(Buffer.from(statement('AAPL 18SEP26 200 P', 0)), 'auto');
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0]).toMatchObject({ instrumentType: 'option', optionType: 'put', exitPrice: 0, pnl: -1002 });
+  });
+
+  test('reports unidentified option contracts instead of importing them as stock', async () => {
+    const result = await parseCSV(Buffer.from(statement('UNRECOGNIZED')), 'ibkr');
+    expect(result.trades).toHaveLength(0);
+    expect(result.diagnostics.skippedRows).toBe(2);
+    expect(result.diagnostics.skippedReasons[0].reason).toContain('Option contract could not be identified');
+  });
+});
+
+// The retained filled-orders samples report paid fees as "-0.75 USD".
+test('filled-orders CSV includes signed execution fees in net P&L', async () => {
+  const csv = [
+    'Date/Time;Symbol;Side;Quantity;Price;Execution fee;Net P/L;Trading exchange;Symb. type;',
+    '9/17/2026 10:00:00 AM;AMD;Sell;5;105;-0.75 USD;23.50 USD;US;Equities;',
+    '9/17/2026 9:30:00 AM;AMD;Buy;5;100;-0.75 USD;;US;Equities;'
+  ].join('\n');
+  const result = await parseCSV(Buffer.from(csv), 'auto');
+  expect(result.trades).toHaveLength(1);
+  expect(result.trades[0]).toMatchObject({ quantity: 5, commission: 1.5, pnl: 23.5 });
+  const { computeTradePnl } = require('../../src/services/pnlEngine');
+  const stored = computeTradePnl({ side: 'long', instrumentType: 'stock', executions: result.trades[0].executions, fallbackCommission: result.trades[0].commission });
+  expect(stored.aggregate.pnl).toBeCloseTo(23.5);
+  expect(stored.aggregate.commission + stored.aggregate.fees).toBeCloseTo(1.5);
+});

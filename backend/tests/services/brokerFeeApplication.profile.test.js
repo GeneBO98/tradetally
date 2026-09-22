@@ -60,3 +60,33 @@ describe('account fee profile resolution', () => {
     });
   });
 });
+
+test('retains file-provided costs without warning that imported costs are unknown', () => {
+  const feeSummary = { unknownAccounts: new Map(), knownZeroAccounts: new Set() };
+  const [trade] = applyBrokerFeeSettingsToTrades({
+    broker: 'auto',
+    trades: [{ symbol: 'AMD', broker: 'ibkr', quantity: 5, entryPrice: 100, exitPrice: 105, commission: 1.5, fees: 0, pnl: 23.5 }],
+    feeSummary
+  });
+  expect(trade.commission).toBe(1.5);
+  expect(trade.pnl).toBe(23.5);
+  expect(feeSummary.unknownAccounts.size).toBe(0);
+});
+
+test('Sierra Chart profile costs survive the same P&L recalculation used for persistence', () => {
+  const { computeTradePnl } = require('../../src/services/pnlEngine');
+  const [trade] = applyBrokerFeeSettingsToTrades({
+    broker: 'auto',
+    trades: [{ symbol: 'MESU6', broker: 'sierrachart', accountIdentifier: 'SIM', quantity: 2, entryPrice: 100, exitPrice: 101, pnl: 10, commission: 0, fees: 0,
+      executions: [
+        { action: 'buy', quantity: 2, price: 100, datetime: '2026-09-17T14:00:00Z', commission: 0, fees: 0 },
+        { action: 'sell', quantity: 2, price: 101, datetime: '2026-09-17T14:01:00Z', commission: 0, fees: 0 }
+      ] }],
+    feeProfileAssignments: [{ account_identifier: 'SIM', fee_profile_id: 'profile' }],
+    feeProfileRows: [{ profile_id: 'profile', broker: 'sierrachart', instrument: 'MES', commission_per_contract: 0.91 }]
+  });
+  const stored = computeTradePnl({ side: 'long', instrumentType: 'future', pointValue: 5, executions: trade.executions, fallbackCommission: trade.commission, fallbackFees: trade.fees });
+  expect(trade.pnl).toBeCloseTo(6.36);
+  expect(stored.aggregate.pnl).toBeCloseTo(6.36);
+  expect(stored.aggregate.commission).toBeCloseTo(3.64);
+});

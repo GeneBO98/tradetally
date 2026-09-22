@@ -180,7 +180,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       const absQuantity = Math.abs(quantity);
       const price = parseNumeric(read('Price', 'TradePrice', 'Trade Price', 'T. Price', 'T.Price'), NaN);
       // IBKR commission: negative = fee paid, positive = rebate received.
-      const commission = -(parseNumeric(read('Commission', 'IBCommission', 'IB Commission', 'Comm/Fee') || 0, 0));
+      const commission = -(parseNumeric(read('Commission', 'IBCommission', 'IB Commission', 'Comm/Fee', 'Execution fee') || 0, 0));
       const rawDateTime = read('DateTime', 'Date/Time', 'TradeDate', 'Trade Date', 'Date', 'Datum').toString();
       const dateTime = rawDateTime.replace(/^[\x27\x22\u2018\u2019\u201C\u201D]|[\x27\x22\u2018\u2019\u201C\u201D]$/g, '').trim();
       const explicitAction = read('Buy/Sell', 'BuySell', 'Transaction Type', 'Action', 'Side');
@@ -221,7 +221,8 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       }
 
       const assetClass = cleanString(read('AssetClass', 'Asset Class', 'AssetCategory', 'Asset Category')).toUpperCase();
-      const supportedAssetClasses = new Set(['', 'STK', 'STOCK', 'STOCKS', 'OPT', 'OPTION', 'OPTIONS', 'FUT', 'FUTURE', 'FUTURES']);
+      const optionAssetClasses = ['OPT', 'OPTION', 'OPTIONS', 'EQUITY AND INDEX OPTIONS'];
+      const supportedAssetClasses = new Set(['', 'STK', 'STOCK', 'STOCKS', ...optionAssetClasses, 'FUT', 'FUTURE', 'FUTURES']);
       if (!supportedAssetClasses.has(assetClass)) {
         noteSkippedRow(rowIndex, `Unsupported IBKR asset class: ${assetClass}`);
         continue;
@@ -230,7 +231,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       // Skip if missing essential data
       // Note: price === 0 is valid for expired options (Code contains "Ep" or "Ex" or "A" or "C")
       // Also valid when Code is 'C' (close) for options with price=0 (worthless expiration)
-      const isOptionAssetClass = ['OPT', 'OPTION', 'OPTIONS'].includes(assetClass);
+      const isOptionAssetClass = optionAssetClasses.includes(assetClass);
       const isOptionSymbol = symbol && (isOptionAssetClass || symbol.includes(' ') || /\d{6}[PC]\d{8}/.test(symbol));
       const isExpirationCode = code && (code.includes('EP') || code.includes('EX') || code.includes('A'));
       const isOptionClose = code && code.includes('C') && isOptionSymbol;
@@ -258,6 +259,10 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       const instrumentData = isOptionAssetClass
         ? parseIBKRTradeConfirmationInstrumentData(record, symbol)
         : parseInstrumentData(symbol);
+      if (isOptionAssetClass && instrumentData.instrumentType !== 'option') {
+        noteSkippedRow(rowIndex, 'Option contract could not be identified; export Symbol, UnderlyingSymbol, Strike, Expiry, Put/Call, and Multiplier.');
+        continue;
+      }
       if (instrumentData.instrumentType === 'option') {
         // IBKR reports options quantity in contracts already (not shares)
         // So we don't need to divide by 100

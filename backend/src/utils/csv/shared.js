@@ -869,7 +869,7 @@ function parseInstrumentData(symbol) {
   const symbolNoSpaces = normalizedSymbol.replace(/\s+/g, '');
 
   // Readable IBKR options format: "DIA 10OCT25 466 PUT" (underlying + date + strike + type)
-  const readableOptionMatch = normalizedSymbol.match(/^([A-Z]+)\s+(\d{1,2})([A-Z]{3})(\d{2})\s+(\d+(?:\.\d+)?)\s+(PUT|CALL)$/i);
+  const readableOptionMatch = normalizedSymbol.match(/^([A-Z]+)\s+(\d{1,2})([A-Z]{3})(\d{2})\s+(\d+(?:\.\d+)?)\s+(PUT|CALL|P|C)$/i);
   if (readableOptionMatch) {
     const [, underlying, day, monthStr, year, strike, type] = readableOptionMatch;
 
@@ -886,7 +886,7 @@ function parseInstrumentData(symbol) {
       underlyingSymbol: underlying,
       strikePrice: parseFloat(strike),
       expirationDate: `${fullYear}-${month}-${day.padStart(2, '0')}`,
-      optionType: type.toLowerCase(),
+      optionType: type.toUpperCase().startsWith('P') ? 'put' : 'call',
       contractSize: 100
     };
   }

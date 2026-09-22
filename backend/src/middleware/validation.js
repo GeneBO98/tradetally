@@ -199,8 +199,8 @@ const schemas = {
     exitPrice: Joi.number().min(0).allow(null, ''),
     quantity: Joi.number().positive().required(),
     side: Joi.string().valid('long', 'short').required(),
-    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto').default('stock'),
-    instrument_type: Joi.string().valid('stock', 'option', 'future', 'crypto').optional(), // Accept snake_case for API compatibility
+    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto', 'forex').default('stock'),
+    instrument_type: Joi.string().valid('stock', 'option', 'future', 'crypto', 'forex').optional(), // Accept snake_case for API compatibility
     commission: Joi.number().default(0),  // Can be negative for rebates
     entryCommission: Joi.number().default(0),  // Can be negative for rebates
     exitCommission: Joi.number().default(0),  // Can be negative for rebates
@@ -304,8 +304,8 @@ const schemas = {
   createShellTrade: Joi.object({
     symbol: Joi.string().max(20).required(),
     side: Joi.string().valid('long', 'short').required(),
-    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto').default('stock'),
-    instrument_type: Joi.string().valid('stock', 'option', 'future', 'crypto').optional(),
+    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto', 'forex').default('stock'),
+    instrument_type: Joi.string().valid('stock', 'option', 'future', 'crypto', 'forex').optional(),
     broker: Joi.string().max(50).allow(''),
     account_identifier: Joi.string().max(50).allow(''),
     strategy: Joi.string().max(100).allow(''),
@@ -358,7 +358,7 @@ const schemas = {
     exitPrice: Joi.number().min(0).allow(null, ''),
     quantity: Joi.number().positive(),
     side: Joi.string().valid('long', 'short'),
-    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto'),
+    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto', 'forex'),
     commission: Joi.number(),  // Can be negative for rebates
     entryCommission: Joi.number(),  // Can be negative for rebates
     exitCommission: Joi.number(),  // Can be negative for rebates

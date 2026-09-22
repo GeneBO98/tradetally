@@ -239,6 +239,7 @@ function decodeCsvReport(content) {
   const open_position_records = [];
   let active = null;
   let headers = null;
+  let prefixedSection = null;
   let hasTradesSection = false;
   let hasOpenPositionsSection = false;
 
@@ -253,13 +254,19 @@ function decodeCsvReport(content) {
       const type = classifyHeaders(candidateHeaders, fields[0]);
       active = type;
       headers = type ? candidateHeaders : null;
+      prefixedSection = normalizeHeader(fields[0]);
       if (type === 'trades') hasTradesSection = true;
       if (type === 'open_positions') hasOpenPositionsSection = true;
       continue;
     }
 
-    if (rowType === 'data' && active && headers) {
+    if (prefixedSection) {
+      // Statement totals and notes have different layouts from executions.
+      // Never reinterpret them as unprefixed Flex records.
+      if (rowType !== 'data' || normalizeHeader(fields[0]) !== prefixedSection || !active || !headers) continue;
       const record = recordFromFields(headers, fields.slice(2));
+      const discriminatorIndex = headers.findIndex(header => normalizeHeader(header) === 'datadiscriminator');
+      if (active === 'trades' && discriminatorIndex >= 0 && normalizeHeader(fields[discriminatorIndex + 2]) !== 'order') continue;
       if (active === 'trades') trade_records.push(record);
       if (active === 'open_positions') open_position_records.push(record);
       continue;

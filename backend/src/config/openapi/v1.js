@@ -1460,7 +1460,7 @@ function buildV1OpenApiSpec(origin = '') {
             exitPrice: { type: 'number', nullable: true, example: 155.75 },
             quantity: { type: 'number', example: 100 },
             side: { type: 'string', enum: ['long', 'short'] },
-            instrumentType: { type: 'string', enum: ['stock', 'option', 'future', 'crypto'] },
+            instrumentType: { type: 'string', enum: ['stock', 'option', 'future', 'crypto', 'forex'] },
             notes: { type: 'string' },
             tags: { type: 'array', items: { type: 'string' } },
             strategy: { type: 'string' },

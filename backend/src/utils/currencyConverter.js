@@ -451,26 +451,64 @@ async function convertTradeToUSD(trade, currency, date) {
     // Get exchange rate for the trade date (with Frankfurter fallback)
     const exchangeRate = await getForexRate(currency, 'USD', date);
 
-    // Store original values in currency-specific fields
+    const scale = value => {
+      if (value === null || value === undefined || value === '') return value;
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? numeric * exchangeRate : value;
+    };
+    const scaleFields = (value, fields) => {
+      if (!value || typeof value !== 'object') return value;
+      const converted = { ...value };
+      for (const field of fields) {
+        if (Object.prototype.hasOwnProperty.call(converted, field)) {
+          converted[field] = scale(converted[field]);
+        }
+      }
+      return converted;
+    };
+    const convertExecutions = executions => Array.isArray(executions)
+      ? executions.map(execution => scaleFields(execution, [
+        'price', 'entryPrice', 'entry_price', 'exitPrice', 'exit_price',
+        'pnl', 'p_l', 'profit_loss', 'realized_pnl', 'gross_realized_pnl',
+        'commission', 'fees'
+      ]))
+      : executions;
+
+    // Store original values in currency-specific fields. Execution prices and
+    // costs must move with the aggregate fields because Trade.create rebuilds
+    // P&L from executions before persistence.
     const convertedTrade = {
       ...trade,
       originalCurrency: currency.toUpperCase(),
       exchangeRate: exchangeRate,
 
       // Store original values before conversion
-      originalEntryPriceCurrency: trade.entryPrice || null,
-      originalExitPriceCurrency: trade.exitPrice || null,
-      originalPnlCurrency: trade.pnl || null,
-      originalCommissionCurrency: trade.commission || null,
-      originalFeesCurrency: trade.fees || null,
+      originalEntryPriceCurrency: trade.entryPrice ?? null,
+      originalExitPriceCurrency: trade.exitPrice ?? null,
+      originalPnlCurrency: trade.pnl ?? null,
+      originalCommissionCurrency: trade.commission ?? null,
+      originalFeesCurrency: trade.fees ?? null,
 
       // Convert to USD
-      entryPrice: trade.entryPrice ? trade.entryPrice * exchangeRate : null,
-      exitPrice: trade.exitPrice ? trade.exitPrice * exchangeRate : null,
-      pnl: trade.pnl ? trade.pnl * exchangeRate : null,
-      commission: trade.commission ? trade.commission * exchangeRate : null,
-      fees: trade.fees ? trade.fees * exchangeRate : null
+      entryPrice: scale(trade.entryPrice),
+      exitPrice: scale(trade.exitPrice),
+      pnl: scale(trade.pnl),
+      commission: scale(trade.commission),
+      entryCommission: scale(trade.entryCommission),
+      exitCommission: scale(trade.exitCommission),
+      fees: scale(trade.fees),
+      mae: scale(trade.mae),
+      mfe: scale(trade.mfe),
+      stopLoss: scale(trade.stopLoss),
+      takeProfit: scale(trade.takeProfit)
     };
+
+    if (Array.isArray(trade.executions)) {
+      convertedTrade.executions = convertExecutions(trade.executions);
+    }
+    if (Array.isArray(trade.executionData)) {
+      convertedTrade.executionData = convertExecutions(trade.executionData);
+    }
 
     console.log(`[CURRENCY] Converted trade to USD:`, {
       currency: currency.toUpperCase(),
