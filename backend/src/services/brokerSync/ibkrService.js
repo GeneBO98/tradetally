@@ -17,6 +17,7 @@ const { computeTradePnl } = require('../pnlEngine');
 const { getUserTimezone } = require('../../utils/timezone');
 const AnalyticsCache = require('../analyticsCache');
 const OptionStrategyGroupingService = require('../optionStrategyGroupingService');
+const BrokerTradeExclusions = require('../brokerTradeExclusions');
 const { version: APP_VERSION } = require('../../../package.json');
 
 const FLEX_BASE_URL = 'https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService';
@@ -816,7 +817,8 @@ class IBKRService {
     result.openPositionRows = rawOpenPositionRows;
 
     if (tradeRecords.length > 0 &&
-        result.imported === 0 && (result.updated || 0) === 0 && result.duplicates === 0 && manualReviewItems.length === 0) {
+        result.imported === 0 && (result.updated || 0) === 0 && result.duplicates === 0 &&
+        result.excluded === 0 && manualReviewItems.length === 0) {
       const message = 'IBKR returned trade rows, but none could be imported or matched as duplicates.';
       result.warnings.push(message);
       result.warningDetails.push({ code: 'NONEMPTY_REPORT_NOT_IMPORTED', message });
@@ -849,13 +851,19 @@ class IBKRService {
     let imported = 0;
     let updated = 0;
     let skipped = 0;
+    let excluded = 0;
     let failed = 0;
     let duplicates = 0;
 
     const existingTrades = await this.getExistingTradesForDuplicateCheck(userId, trades);
+    const exclusions = await BrokerTradeExclusions.list(userId);
 
     for (const tradeData of trades) {
       try {
+        if (exclusions.some(exclusion => BrokerTradeExclusions.matches(exclusion, tradeData))) {
+          excluded++;
+          continue;
+        }
         // Check for duplicates (may set isUpdate flag if trade has more executions)
         const isDuplicate = this.isDuplicateTrade(tradeData, existingTrades, existingContext);
 
@@ -886,6 +894,19 @@ class IBKRService {
           });
           const annotatedExecs = engineResult.annotatedExecutions;
           const agg = engineResult.aggregate;
+          const existingTrade = existingTrades.find(trade => trade.id === tradeData.existingTradeId);
+          const rValue = existingTrade?.stop_loss != null && agg.is_fully_closed && agg.exit_price != null
+            ? Trade.calculateRValue(agg.entry_price, existingTrade.stop_loss, agg.exit_price, preparedTrade.side, {
+              quantity: agg.quantity || preparedTrade.quantity,
+              commission: agg.commission,
+              fees: agg.fees,
+              instrumentType: existingTrade.instrument_type || preparedTrade.instrumentType,
+              contractSize: existingTrade.contract_size || preparedTrade.contractSize,
+              pointValue: existingTrade.point_value || preparedTrade.pointValue,
+              symbol: preparedTrade.symbol,
+              underlyingAsset: existingTrade.underlying_asset || preparedTrade.underlyingAsset
+            })
+            : null;
 
           const updateQuery = `
             UPDATE trades
@@ -902,8 +923,9 @@ class IBKRService {
                 fees = $11,
                 entry_commission = $12,
                 exit_commission = $13,
+                r_value = $14,
                 updated_at = NOW()
-            WHERE id = $14 AND user_id = $15
+            WHERE id = $15 AND user_id = $16
           `;
           await db.query(updateQuery, [
             JSON.stringify(annotatedExecs),
@@ -919,17 +941,18 @@ class IBKRService {
             agg.fees,
             preparedTrade.entryCommission || 0,
             preparedTrade.exitCommission || 0,
+            rValue,
             tradeData.existingTradeId,
             userId
           ]);
 
-          const existingTrade = existingTrades.find(trade => trade.id === tradeData.existingTradeId);
           if (existingTrade) {
             existingTrade.executions = annotatedExecs;
             existingTrade.exit_time = agg.is_fully_closed ? agg.exit_time : (preparedTrade.exitTime || null);
             existingTrade.exit_price = agg.exit_price;
             existingTrade.pnl = agg.pnl;
             existingTrade.quantity = agg.quantity || preparedTrade.quantity;
+            existingTrade.r_value = rValue;
           }
 
           updated++;
@@ -985,7 +1008,7 @@ class IBKRService {
       });
     }
 
-    return { imported, updated, skipped, failed, duplicates };
+    return { imported, updated, skipped, excluded, failed, duplicates };
   }
 
   /**
@@ -1550,7 +1573,8 @@ class IBKRService {
     let query = `
       SELECT id, symbol, side, quantity, entry_price, exit_price, entry_time, exit_time,
              pnl, executions, trade_date, instrument_type, strike_price,
-             expiration_date, option_type, conid, account_identifier
+             expiration_date, option_type, conid, account_identifier,
+             stop_loss, contract_size, point_value, underlying_asset
       FROM trades
       WHERE user_id = $1
     `;

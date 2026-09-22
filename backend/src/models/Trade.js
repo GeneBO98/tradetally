@@ -9,6 +9,7 @@ const { toSnakeCase } = require('../utils/caseConvert');
 const { buildTradeDateRangeClause } = require('../utils/tradeDateFilter');
 const OptionStrategyGroupingService = require('../services/optionStrategyGroupingService');
 const { getPublicTradeSqlColumns } = require('../utils/publicTrade');
+const BrokerTradeExclusions = require('../services/brokerTradeExclusions');
 /**
  * Round a numeric value to fit database precision
  * DECIMAL(20, 8) allows up to 12 integer digits and 8 decimal places
@@ -496,6 +497,11 @@ class Trade {
           } else {
             console.log(`[DEFAULTS] No default stop loss applied: stopLossType=${stopLossType}, default_stop_loss_percent=${userSettings?.default_stop_loss_percent}`);
           }
+        }
+
+        if (!stopLoss && finalStopLoss != null && !this.isValidStopForEntry(finalStopLoss, entryPrice, side)) {
+          console.warn(`[STOP LOSS] Default stop for ${symbol} does not define a valid price and was omitted`);
+          finalStopLoss = null;
         }
 
         // Apply the active take-profit default after stop loss calculation so
@@ -1431,6 +1437,12 @@ class Trade {
           }
         }
 
+        if (needsStopLossDefault && updates.stopLoss != null &&
+            !this.isValidStopForEntry(updates.stopLoss, entryPrice, side)) {
+          console.warn(`[STOP LOSS UPDATE] Default stop for ${symbol} does not define a valid price and was omitted`);
+          delete updates.stopLoss;
+        }
+
         // Apply the active take-profit default after any stop-loss default.
         if (needsTakeProfitDefault) {
           updates.takeProfit = this.calculateDefaultTakeProfitFromSettings({
@@ -1923,6 +1935,7 @@ class Trade {
       // Run both deletes in a single transaction on one dedicated client so
       // the trade and its associated jobs are removed together.
       const deletedTrade = await db.withTransaction(async (client) => {
+        await BrokerTradeExclusions.recordDeleted(client, userId, [id]);
         // First, delete associated jobs to prevent orphaned jobs
         const jobDeleteQuery = `
           DELETE FROM job_queue
@@ -2490,9 +2503,18 @@ class Trade {
       }
     }
 
-    return stopLoss != null && isFinite(stopLoss)
-      ? Math.round(stopLoss * 10000) / 10000
-      : null;
+    if (stopLoss == null || !isFinite(stopLoss)) return null;
+    const roundedStop = Math.round(stopLoss * 10000) / 10000;
+    return this.isValidStopForEntry(roundedStop, entryPrice, side) ? roundedStop : null;
+  }
+
+  static isValidStopForEntry(stopLoss, entryPrice, side) {
+    const stop = Number(stopLoss);
+    const entry = Number(entryPrice);
+    if (!Number.isFinite(stop) || stop <= 0 || !Number.isFinite(entry) || entry <= 0) return false;
+    if (side === 'long' || side === 'buy') return stop < entry;
+    if (side === 'short' || side === 'sell') return stop > entry;
+    return false;
   }
 
   static stopLossMatches(actualStopLoss, expectedStopLoss) {

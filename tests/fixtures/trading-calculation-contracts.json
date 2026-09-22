@@ -822,6 +822,26 @@
     }
   ],
   "r_value": {
+    "unaffordable_dollar_stop_example": {
+      "trade": { "symbol": "BULL", "entry_price": 7.07, "quantity": 1, "side": "long", "instrument_type": "stock" },
+      "default_stop_loss_dollars": 100,
+      "expected_stop_loss": null
+    },
+    "bulk_stop_preview_example": {
+      "trade": {
+        "entry_price": 100,
+        "exit_price": 110,
+        "quantity": 10,
+        "commission": 2,
+        "fees": 1,
+        "side": "long",
+        "instrument_type": "stock"
+      },
+      "default_stop_loss_percent": 5,
+      "expected_stop_loss": 95,
+      "expected_risk_amount": 50,
+      "expected_r_value": 1.94
+    },
     "documented_weighted_target_example": {
       "trade": {
         "entry_price": 6902.75,

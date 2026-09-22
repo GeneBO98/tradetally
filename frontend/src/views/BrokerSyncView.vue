@@ -234,6 +234,22 @@
         description="Broker sync is a Pro feature. Connect Interactive Brokers, Schwab, Trading 212, TradeStation, or Alpaca to import your trades automatically. Free accounts can still import via CSV (up to 100 trades per import)."
       />
 
+      <div class="card" v-if="excludedTrades.length">
+        <div class="card-body">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white">Trades excluded from IBKR sync</h3>
+          <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">Deleted trades stay excluded from future syncs. Restore eligibility to import one again on the next sync.</p>
+          <div class="mt-4 max-h-64 overflow-auto divide-y divide-gray-200 dark:divide-gray-700">
+            <div v-for="entry in excludedTrades" :key="entry.id" class="flex items-center justify-between gap-3 py-2 text-sm">
+              <span class="text-gray-800 dark:text-gray-200">{{ entry.symbol }} · {{ entry.side }}<template v-if="entry.account_identifier"> · {{ entry.account_identifier }}</template> · {{ formatDate(entry.entry_time) }}</span>
+              <button type="button" class="text-primary-600 hover:text-primary-700 dark:text-primary-400"
+                :disabled="restoringExclusion === entry.id" @click="restoreExclusion(entry.id)">
+                {{ restoringExclusion === entry.id ? 'Restoring…' : 'Allow future import' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Sync History -->
       <div class="card">
         <div class="card-body">
@@ -295,6 +311,9 @@
                   </td>
                   <td class="px-4 py-3 whitespace-nowrap text-gray-900 dark:text-white">
                     {{ log.tradesImported || 0 }}
+                    <span v-if="log.syncDetails?.excluded_trade_count" class="block text-xs text-gray-500 dark:text-gray-400">
+                      {{ log.syncDetails.excluded_trade_count }} excluded by you
+                    </span>
                   </td>
                   <td class="px-4 py-3 whitespace-nowrap text-gray-500 dark:text-gray-400">
                     {{ log.duplicatesDetected || 0 }}
@@ -371,6 +390,7 @@ import { useBrokerSyncStore } from '@/stores/brokerSync'
 import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
 import { useUserTimezone } from '@/composables/useUserTimezone'
+import api from '@/services/api'
 import BrokerConnectionCard from '@/components/broker-sync/BrokerConnectionCard.vue'
 import IBKRConnectionModal from '@/components/broker-sync/IBKRConnectionModal.vue'
 import Trading212ConnectionModal from '@/components/broker-sync/Trading212ConnectionModal.vue'
@@ -383,6 +403,8 @@ const { formatDateTime: formatDateTimeTz } = useUserTimezone()
 
 const store = useBrokerSyncStore()
 const tradesStore = useTradesStore()
+const excludedTrades = ref([])
+const restoringExclusion = ref(null)
 const route = useRoute()
 const router = useRouter()
 const { showConfirmation, showDangerConfirmation } = useNotification()
@@ -571,7 +593,8 @@ async function consumeOAuthCallbackState(query) {
 onMounted(async () => {
   await Promise.all([
     store.fetchConnections(),
-    store.fetchSyncLogs()
+    store.fetchSyncLogs(),
+    fetchExcludedTrades()
   ])
   await consumeOAuthCallbackState(route.query)
 })
@@ -729,7 +752,8 @@ async function handleSync(connection) {
         // Sync finished - refresh trades data to update P&L and counts
         await Promise.all([
           tradesStore.fetchTrades(),
-          tradesStore.fetchAnalytics()
+          tradesStore.fetchAnalytics(),
+          fetchExcludedTrades()
         ])
       }
     }
@@ -830,7 +854,8 @@ async function handleDeleteTrades(connection) {
         console.log('[BROKER-SYNC] Refreshing trades store after delete...')
         await Promise.all([
           tradesStore.fetchTrades(),
-          tradesStore.fetchAnalytics()
+          tradesStore.fetchAnalytics(),
+          fetchExcludedTrades()
         ])
         console.log('[BROKER-SYNC] Trades store refreshed. Total P&L:', tradesStore.totalPnL, 'Total trades:', tradesStore.totalTrades)
       } catch (error) {
@@ -844,6 +869,27 @@ async function handleDeleteTrades(connection) {
 
 async function refreshLogs() {
   await store.fetchSyncLogs()
+}
+
+async function fetchExcludedTrades() {
+  try {
+    const response = await api.get('/broker-sync/excluded-trades')
+    excludedTrades.value = response.data?.exclusions || []
+  } catch (error) {
+    console.error('[BROKER-SYNC] Failed to load exclusions:', error)
+  }
+}
+
+async function restoreExclusion(id) {
+  restoringExclusion.value = id
+  try {
+    await api.delete(`/broker-sync/excluded-trades/${id}`)
+    await fetchExcludedTrades()
+  } catch (error) {
+    store.error = error?.response?.data?.error || 'Unable to restore trade import eligibility'
+  } finally {
+    restoringExclusion.value = null
+  }
 }
 
 function formatDate(date) {

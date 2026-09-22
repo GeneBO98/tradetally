@@ -146,6 +146,7 @@ class BrokerSyncService {
           latest_window_retrieved: result.latestWindowRetrieved !== false,
           latest_retrieved_end_date: result.latestRetrievedEndDate || null,
           trade_rows: result.tradeRows || 0,
+          excluded_trade_count: result.excluded || 0,
           open_position_rows: result.openPositionRows || 0,
           open_positions_parsed: result.openPositionsParsed || 0,
           manual_review_count: result.manualReviewCount || 0,

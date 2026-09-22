@@ -8,7 +8,8 @@ jest.mock('../../src/utils/csvParser', () => ({
 }));
 
 jest.mock('../../src/models/Trade', () => ({
-  create: jest.fn()
+  create: jest.fn(),
+  calculateRValue: jest.fn().mockReturnValue(2)
 }));
 
 jest.mock('../../src/models/BrokerConnection', () => ({
@@ -31,6 +32,10 @@ jest.mock('../../src/utils/cache', () => ({
 jest.mock('../../src/config/database', () => ({
   query: jest.fn()
 }));
+jest.mock('../../src/services/brokerTradeExclusions', () => ({
+  list: jest.fn().mockResolvedValue([]),
+  matches: jest.fn().mockReturnValue(false)
+}));
 
 jest.mock('../../src/utils/timezone', () => ({
   getUserTimezone: jest.fn().mockResolvedValue('UTC')
@@ -42,12 +47,58 @@ const db = require('../../src/config/database');
 const { parseCSV, parseIBKRRecords } = require('../../src/utils/csvParser');
 const { getUserTimezone } = require('../../src/utils/timezone');
 const ibkrService = require('../../src/services/brokerSync/ibkrService');
+const BrokerTradeExclusions = require('../../src/services/brokerTradeExclusions');
 const schwabService = require('../../src/services/brokerSync/schwabService');
 const alpacaService = require('../../src/services/brokerSync/alpacaService');
 
 describe('broker sync duplicate protection', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  test('IBKR importTrades skips a deleted trade before duplicate or create handling', async () => {
+    db.query.mockResolvedValueOnce({ rows: [] });
+    BrokerTradeExclusions.list.mockResolvedValueOnce([{ id: 'excluded-1' }]);
+    BrokerTradeExclusions.matches.mockReturnValueOnce(true);
+
+    const result = await ibkrService.importTrades('user-1', [{ symbol: 'AAPL', side: 'long' }], {});
+
+    expect(result).toMatchObject({ excluded: 1, skipped: 0, imported: 0, failed: 0 });
+    expect(Trade.create).not.toHaveBeenCalled();
+    expect(BrokerTradeExclusions.matches).toHaveBeenCalledTimes(1);
+  });
+
+  test('IBKR fill updates recompute stored R from the existing stop', async () => {
+    const achievements = jest.spyOn(require('../../src/services/achievementService'), 'checkAndAwardAchievements')
+      .mockResolvedValue();
+    const lookup = jest.spyOn(ibkrService, 'getExistingTradesForDuplicateCheck').mockResolvedValue([{
+      id: 'trade-1', stop_loss: 95, instrument_type: 'stock'
+    }]);
+    const duplicate = jest.spyOn(ibkrService, 'isDuplicateTrade').mockImplementation(trade => {
+      trade.isUpdate = true;
+      trade.existingTradeId = 'trade-1';
+      return false;
+    });
+    db.query.mockResolvedValue({ rowCount: 1 });
+    try {
+      const result = await ibkrService.importTrades('user-1', [{
+        symbol: 'AAPL', side: 'long', quantity: 10, entryPrice: 100,
+        executionData: [
+          { datetime: '2026-09-01T14:00:00Z', type: 'entry', action: 'buy', price: 100, quantity: 10 },
+          { datetime: '2026-09-01T15:00:00Z', type: 'exit', action: 'sell', price: 110, quantity: 10 }
+        ]
+      }], {});
+
+      expect(result).toMatchObject({ updated: 1, failed: 0 });
+      expect(Trade.calculateRValue).toHaveBeenCalledWith(100, 95, 110, 'long', expect.objectContaining({ quantity: 10 }));
+      const update = db.query.mock.calls.find(([sql]) => sql.includes('UPDATE trades'));
+      expect(update[0]).toContain('r_value = $14');
+      expect(update[1][13]).toBe(2);
+    } finally {
+      lookup.mockRestore();
+      duplicate.mockRestore();
+      achievements.mockRestore();
+    }
   });
 
   test('Schwab sync never fetches transactions from an excluded account', async () => {

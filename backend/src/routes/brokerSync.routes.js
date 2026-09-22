@@ -72,6 +72,8 @@ router.post('/connections/:id/test', brokerSyncLimiter, brokerSyncController.tes
 
 // Delete all trades from a broker connection
 router.delete('/connections/:id/trades', brokerSyncController.deleteBrokerTrades);
+router.get('/excluded-trades', brokerSyncController.listExcludedTrades);
+router.delete('/excluded-trades/:id', brokerSyncController.restoreExcludedTrade);
 
 // Get sync status
 router.get('/sync/:syncId/status', brokerSyncController.getSyncStatus);

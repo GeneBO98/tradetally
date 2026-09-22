@@ -48,6 +48,8 @@ const OptionStrategyGroupingService = require('../services/optionStrategyGroupin
 const AmbiguousTradeReviewService = require('../services/ambiguousTradeReviewService');
 const BulkTradeMetadataService = require('../services/bulkTradeMetadataService');
 const FeeProfileService = require('../services/feeProfileService');
+const BulkTradeStopsService = require('../services/bulkTradeStopsService');
+const BrokerTradeExclusions = require('../services/brokerTradeExclusions');
 
 // Analytics requests can arrive in parallel from the dashboard, trade list,
 // and mobile clients after a mutation. Share one expensive aggregate query per
@@ -1419,6 +1421,7 @@ const tradeController = {
           // Delete associated jobs and trades together in one transaction
           // (same job cleanup predicate as Trade.delete, batched)
           const deletedRows = await db.withTransaction(async (client) => {
+            await BrokerTradeExclusions.recordDeleted(client, req.user.id, idsToDelete);
             const deletedJobs = await client.query(
               `DELETE FROM job_queue
                WHERE data->>'tradeId' = ANY($1::text[])
@@ -1575,6 +1578,28 @@ const tradeController = {
     } catch (error) {
       next(error);
     }
+  },
+
+  async bulkUpdateStops(req, res, next) {
+    try {
+      res.json(await BulkTradeStopsService.update(
+        req.user.id,
+        req.body?.trade_ids,
+        req.body?.stops,
+        req.body?.apply_default_to_missing
+      ));
+    } catch (error) { next(error); }
+  },
+
+  async previewBulkStops(req, res, next) {
+    try {
+      res.json(await BulkTradeStopsService.preview(
+        req.user.id,
+        req.body?.trade_ids,
+        req.body?.stops,
+        req.body?.apply_default_to_missing
+      ));
+    } catch (error) { next(error); }
   },
 
   async getPublicTrades(req, res, next) {

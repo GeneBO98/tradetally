@@ -1,4 +1,22 @@
 const Trade = require('../../src/models/Trade');
+const contracts = require('../../../tests/fixtures/trading-calculation-contracts.json').r_value;
+
+describe('Trade.calculateDefaultStopLossFromSettings', () => {
+  it('does not store a nonpositive stop when dollar risk exceeds a long position value', () => {
+    const example = contracts.unaffordable_dollar_stop_example;
+    expect(Trade.calculateDefaultStopLossFromSettings(example.trade, {
+      default_stop_loss_type: 'dollar',
+      default_stop_loss_dollars: example.default_stop_loss_dollars
+    })).toBe(example.expected_stop_loss);
+  });
+
+  it('rejects impossible default stop prices for new and updated trades', () => {
+    expect(Trade.isValidStopForEntry(-92.93, 7.07, 'long')).toBe(false);
+    expect(Trade.isValidStopForEntry(0, 7.07, 'long')).toBe(false);
+    expect(Trade.isValidStopForEntry(8, 7.07, 'long')).toBe(false);
+    expect(Trade.isValidStopForEntry(8, 7.07, 'short')).toBe(true);
+  });
+});
 
 describe('Trade.calculateRiskAmount', () => {
   it('calculates stock risk for long trades', () => {

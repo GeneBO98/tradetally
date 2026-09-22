@@ -17,6 +17,7 @@ const logger = require('../utils/logger');
 const { getUserTimezone } = require('../utils/timezone');
 const db = require('../config/database');
 const crypto = require('crypto');
+const BrokerTradeExclusions = require('../services/brokerTradeExclusions');
 
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const SCHWAB_REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -1029,25 +1030,33 @@ const brokerSyncController = {
       // Delete trades synced from this specific broker connection. IBKR legacy
       // sync rows can be missing broker_connection_id, so fall back by broker.
       const db = require('../config/database');
-      const result = await db.query(
-        `DELETE FROM trades WHERE user_id = $1 AND broker_connection_id = $2 RETURNING id`,
-        [userId, id]
-      );
-
-      let legacyDeletedCount = 0;
-      if (String(connection.brokerType).toLowerCase() === 'ibkr') {
-        const legacyResult = await db.query(
-          `DELETE FROM trades
-           WHERE user_id = $1
-             AND broker_connection_id IS NULL
-             AND LOWER(broker) = LOWER($2)
-           RETURNING id`,
-          [userId, connection.brokerType]
+      const { deletedCount, legacyDeletedCount } = await db.withTransaction(async client => {
+        const current = await client.query(
+          'SELECT id FROM trades WHERE user_id = $1 AND broker_connection_id = $2',
+          [userId, id]
         );
-        legacyDeletedCount = legacyResult.rowCount;
-      }
-
-      const deletedCount = result.rowCount + legacyDeletedCount;
+        await BrokerTradeExclusions.recordDeleted(client, userId, current.rows.map(row => row.id));
+        const result = await client.query(
+          'DELETE FROM trades WHERE user_id = $1 AND broker_connection_id = $2 RETURNING id',
+          [userId, id]
+        );
+        let legacyCount = 0;
+        if (String(connection.brokerType).toLowerCase() === 'ibkr') {
+          const legacy = await client.query(
+            `SELECT id FROM trades WHERE user_id = $1
+              AND broker_connection_id IS NULL AND LOWER(broker) = LOWER($2)
+              AND import_id IS NULL`, [userId, connection.brokerType]
+          );
+          await BrokerTradeExclusions.recordDeleted(client, userId, legacy.rows.map(row => row.id));
+          const deletedLegacy = await client.query(
+            `DELETE FROM trades WHERE user_id = $1
+              AND broker_connection_id IS NULL AND LOWER(broker) = LOWER($2)
+              AND import_id IS NULL RETURNING id`, [userId, connection.brokerType]
+          );
+          legacyCount = deletedLegacy.rowCount;
+        }
+        return { deletedCount: result.rowCount + legacyCount, legacyDeletedCount: legacyCount };
+      });
       console.log(`[BROKER-SYNC] Deleted ${deletedCount} synced trades for connection ${id} (user ${userId}); legacy=${legacyDeletedCount}`);
 
       if (deletedCount > 0) {
@@ -1066,6 +1075,25 @@ const brokerSyncController = {
       logger.logError('Error deleting broker trades:', error);
       next(error);
     }
+  },
+
+  async listExcludedTrades(req, res, next) {
+    try {
+      const exclusions = await BrokerTradeExclusions.list(req.user.id);
+      res.json({ exclusions: exclusions.map(({ executions, ...entry }) => entry) });
+    } catch (error) { next(error); }
+  },
+
+  async restoreExcludedTrade(req, res, next) {
+    try {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) {
+        return res.status(400).json({ error: 'Invalid excluded trade ID' });
+      }
+      if (!await BrokerTradeExclusions.restore(req.user.id, req.params.id)) {
+        return res.status(404).json({ error: 'Excluded trade not found' });
+      }
+      res.json({ success: true });
+    } catch (error) { next(error); }
   }
 };
 

@@ -359,6 +359,9 @@ class JobQueue {
         case 'mae_recalc':
           result = await this.processMAERecalc(data);
           break;
+        case 'r_value_backfill':
+          result = await this.processRValueBackfill(data);
+          break;
         case 'leaderboard_update':
           result = await this.processLeaderboardUpdate(data);
           break;
@@ -743,6 +746,24 @@ class JobQueue {
 
     logger.logImport(`Quality backfill completed: ${graded} graded, ${skipped} skipped`);
     return { message: `Quality backfill completed: ${graded} graded, ${skipped} skipped` };
+  }
+
+  /**
+   * Restore missing persisted R values using the same net calculation as a
+   * normal trade update. A cursor ensures invalid rows cannot cause retries
+   * to loop on the same batch.
+   */
+  async processRValueBackfill(data) {
+    if (!data?.userId) throw new Error('R-value backfill requires a user ID');
+    const result = await require('../services/rValueBackfillService')
+      .runBatch(data.userId, data.afterId);
+    if (result.next_after) {
+      await this.addJob('r_value_backfill', {
+        userId: data.userId,
+        afterId: result.next_after
+      }, 4, data.userId);
+    }
+    return result;
   }
 
   /**

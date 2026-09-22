@@ -23,6 +23,8 @@ jest.mock('../../src/controllers/brokerSync.controller', () => ({
   triggerSync: jest.fn(),
   testConnection: jest.fn(),
   deleteBrokerTrades: jest.fn(),
+  listExcludedTrades: jest.fn(),
+  restoreExcludedTrade: jest.fn(),
   getSyncStatus: jest.fn()
 }));
 
