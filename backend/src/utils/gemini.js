@@ -1,5 +1,6 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { sanitizeErrorForLogging } = require('./logSanitizer');
+const { resolveGeminiModel } = require('./geminiModels');
 
 class GeminiRecommendations {
   constructor() {
@@ -22,7 +23,7 @@ class GeminiRecommendations {
     }
 
     // Use provided model name or fallback to default
-    const effectiveModel = modelName || 'gemini-1.5-flash';
+    const effectiveModel = await resolveGeminiModel(effectiveApiKey, modelName);
     console.log(`[GEMINI] Using model: ${effectiveModel}`);
 
     // Initialize client with the provided API key
@@ -187,7 +188,7 @@ Keep recommendations highly specific and personalized. Use bullet points for cla
     }
 
     // Use provided model name from options or fallback to default
-    const effectiveModel = options.model || 'gemini-1.5-flash';
+    const effectiveModel = await resolveGeminiModel(effectiveApiKey, options.model);
     console.log(`[GEMINI] Using model: ${effectiveModel}`);
 
     // Initialize client with the provided API key

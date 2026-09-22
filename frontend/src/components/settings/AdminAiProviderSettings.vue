@@ -45,6 +45,8 @@
                         <input
                             id="adminAiModel"
                             v-model="form.model"
+                            autocomplete="off"
+                            spellcheck="false"
                             type="text"
                             class="input"
                             :placeholder="
@@ -369,7 +371,7 @@ function getEffectiveAdminClassifierProvider() {
 function getAdminClassifierModelPlaceholder() {
     switch (getEffectiveAdminClassifierProvider()) {
         case "gemini":
-            return "gemini-1.5-flash";
+            return "gemini-flash-latest";
         case "claude":
             return "claude-3-haiku-20240307";
         case "openai":
@@ -437,7 +439,7 @@ function getAdminClassifierApiKeyPlaceholder() {
 function getAdminModelPlaceholder() {
     switch (props.form.provider) {
         case "gemini":
-            return "gemini-1.5-flash";
+            return "gemini-flash-latest";
         case "claude":
             return "claude-3-5-sonnet-20241022";
         case "openai":

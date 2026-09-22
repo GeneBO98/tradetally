@@ -64,6 +64,8 @@
                             <input
                                 id="adminCusipAiModel"
                                 v-model="form.model"
+                                autocomplete="off"
+                                spellcheck="false"
                                 type="text"
                                 class="input"
                                 :placeholder="
@@ -206,7 +208,7 @@ function onAdminCusipUseMainProviderChange() {
 function getAdminCusipModelPlaceholder() {
     switch (props.form.provider) {
         case "gemini":
-            return "gemini-1.5-flash";
+            return "gemini-flash-latest";
         case "claude":
             return "claude-3-5-sonnet-20241022";
         case "openai":

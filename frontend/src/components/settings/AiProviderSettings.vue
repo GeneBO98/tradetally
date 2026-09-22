@@ -58,6 +58,8 @@
                         <input
                             id="aiModel"
                             v-model="form.model"
+                            autocomplete="off"
+                            spellcheck="false"
                             type="text"
                             class="input"
                             :placeholder="getModelPlaceholder()"
@@ -214,7 +216,7 @@ const availableAiProviderOptions = computed(() =>
 function getModelPlaceholder() {
     switch (props.form.provider) {
         case "gemini":
-            return "e.g., gemini-1.5-pro";
+            return "e.g., gemini-2.5-flash";
         case "claude":
             return "e.g., claude-3-5-sonnet";
         case "openai":

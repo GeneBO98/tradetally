@@ -6,6 +6,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { fetchAiProviderUrl } = require('./urlSecurity');
 const { summarizeUrlForLogging } = require('./logSanitizer');
 const AICliProvider = require('./aiCliProvider');
+const { resolveGeminiModel } = require('./geminiModels');
 
 const hasOwn = (object, property) => Object.prototype.hasOwnProperty.call(object, property);
 
@@ -74,13 +75,13 @@ class AIProvider {
   /**
    * Generate using Gemini API
    */
-  static async generateGemini(prompt, apiKey, modelName = 'gemini-1.5-flash', options = {}) {
+  static async generateGemini(prompt, apiKey, modelName = null, options = {}) {
     if (!apiKey) {
       throw new Error('Gemini API key not configured');
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: modelName });
+    const model = genAI.getGenerativeModel({ model: await resolveGeminiModel(apiKey, modelName) });
 
     try {
       const result = await model.generateContent({
