@@ -344,7 +344,11 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
 
     // Get the base product for point value lookup
     const baseProduct = symbolTransactions[0]?.product || symbol.replace(/[A-Z]?\d+$/, '');
-    const pointValue = getFuturesPointValue(baseProduct);
+    // Broker sync passes the API's valuePerPoint per product; CSV imports fall
+    // back to the static futures table.
+    const pointValue = Number(context.pointValueByProduct?.[baseProduct]) > 0
+      ? Number(context.pointValueByProduct[baseProduct])
+      : getFuturesPointValue(baseProduct);
 
     // For futures, the value multiplier is the point value
     const valueMultiplier = pointValue;
@@ -361,7 +365,9 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
       expirationDate: null,
       contractMonth: null,
       contractYear: null,
-      tickSize: null
+      tickSize: Number(context.tickSizeByProduct?.[baseProduct]) > 0
+        ? Number(context.tickSizeByProduct[baseProduct])
+        : null
     };
 
     // Parse contract month/year from symbol (e.g., MESZ5 -> Z = December, 5 = 2025)

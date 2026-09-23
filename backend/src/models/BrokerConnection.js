@@ -220,6 +220,34 @@ class BrokerConnection {
         RETURNING *
       `;
 
+      if (brokerType === 'tradovate') {
+        // One connection per Tradovate login; reconnecting refreshes tokens.
+        query = `
+          INSERT INTO broker_connections (
+            user_id, broker_type, connection_status,
+            oauth_access_token, oauth_refresh_token, oauth_token_expires_at,
+            oauth_refresh_token_expires_at, oauth_scopes, external_account_id,
+            external_user_id, broker_environment, broker_metadata, account_label,
+            auto_sync_enabled, sync_frequency, sync_time
+          )
+          VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+          ON CONFLICT (user_id, (COALESCE(external_user_id, ''))) WHERE broker_type = 'tradovate' DO UPDATE SET
+            oauth_access_token = EXCLUDED.oauth_access_token,
+            oauth_refresh_token = EXCLUDED.oauth_refresh_token,
+            oauth_token_expires_at = EXCLUDED.oauth_token_expires_at,
+            oauth_refresh_token_expires_at = EXCLUDED.oauth_refresh_token_expires_at,
+            oauth_scopes = EXCLUDED.oauth_scopes,
+            external_account_id = EXCLUDED.external_account_id,
+            broker_environment = EXCLUDED.broker_environment,
+            broker_metadata = EXCLUDED.broker_metadata,
+            account_label = EXCLUDED.account_label,
+            connection_status = 'pending',
+            consecutive_failures = 0,
+            updated_at = CURRENT_TIMESTAMP
+          RETURNING *
+        `;
+      }
+
       if (brokerType === 'alpaca') {
         query = `
           INSERT INTO broker_connections (
