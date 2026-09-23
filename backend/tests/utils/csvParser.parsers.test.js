@@ -1460,8 +1460,8 @@ describe('Generic parser', () => {
     expect(result.trades[0]).toEqual(expect.objectContaining({
       symbol: 'TSLA',
       tradeDate: '2026-04-15',
-      entryTime: '2026-04-15T15:09:58',
-      exitTime: '2026-04-17T15:53:04',
+      entryTime: '2026-04-15T15:09:58-04:00',
+      exitTime: '2026-04-17T15:53:04-04:00',
       entryPrice: 392.06,
       exitPrice: 400.24,
       quantity: 2,

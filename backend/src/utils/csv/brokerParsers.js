@@ -1,10 +1,29 @@
 const { parseIBKRTradeConfirmationInstrumentData } = require('./parsers/ibkr');
+const { buildOccOptionSymbol } = require('./parsers/normalizedBrokerRows');
 const { parseLightspeedDateTime, parseLightspeedSide, calculateLightspeedFees } = require('./parsers/lightspeed');
 const { parseDate, parseTimeOnly, parseDateTime, parseSide, parseTradervueSide, cleanString, parseTagList, parseInstrumentData, parseNumeric, parseInteger, hasExplicitTimezone } = require('./shared');
 
 
 function normalizeGenericHeader(header) {
   return String(header || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+// Matches a timezone qualifier in a header such as "Closing Time (UTC-6)",
+// "Entry time (UTC+5:30)" or "Fill Time (GMT)".
+const HEADER_TIMEZONE_PATTERN = /\s*[\(\[]?\s*(?:UTC|GMT)\s*(?:([+-])\s*(\d{1,2})(?::?(\d{2}))?)?\s*[\)\]]?\s*$/i;
+
+function stripHeaderTimezone(header) {
+  return String(header || '').replace(HEADER_TIMEZONE_PATTERN, '');
+}
+
+function getHeaderTimezoneOffset(header) {
+  const match = String(header || '').match(HEADER_TIMEZONE_PATTERN);
+  if (!match || !/(utc|gmt)/i.test(match[0])) return null;
+  if (!match[1]) return 'Z';
+  const hours = Number(match[2]);
+  const minutes = Number(match[3] || 0);
+  if (hours > 14 || minutes > 59) return null;
+  return `${match[1]}${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 }
 
 function findGenericColumn(row, aliases) {
@@ -19,7 +38,8 @@ function findGenericColumn(row, aliases) {
   for (const header of Object.keys(row || {})) {
     const value = row[header];
     if (
-      normalizedAliases.has(normalizeGenericHeader(header)) &&
+      (normalizedAliases.has(normalizeGenericHeader(header)) ||
+        normalizedAliases.has(normalizeGenericHeader(stripHeaderTimezone(header)))) &&
       value !== undefined &&
       value !== null &&
       String(value).trim() !== ''
@@ -36,7 +56,10 @@ function parseGenericDateTime(field, options = {}) {
   if (!parsed || hasExplicitTimezone(parsed)) return parsed;
 
   // A UTC suffix in a header is meaningful even when the cell contains a
-  // timezone-less timestamp (for example EntryDateUTC=2026-07-06 16:50:47).
+  // timezone-less timestamp (for example EntryDateUTC=2026-07-06 16:50:47 or
+  // "Closing Time (UTC-6)").
+  const headerOffset = getHeaderTimezoneOffset(field.header);
+  if (headerOffset && parsed.includes('T')) return `${parsed}${headerOffset}`;
   return normalizeGenericHeader(field.header).endsWith('utc') ? `${parsed}Z` : parsed;
 }
 
@@ -50,16 +73,39 @@ const brokerParsers = {
       : {};
 
     // Symbol mapping
-    const symbol = findGenericColumn(row, [
-      'Symbol', 'Ticker', 'Stock', 'Underlying Symbol', 'Instrument'
+    let symbol = findGenericColumn(row, [
+      'Symbol', 'Ticker', 'Stock', 'Underlying Symbol', 'Instrument',
+      'Contract', 'Symbol/Contract', 'trading_symbol', 'Instrument Symbol',
+      'Security Symbol'
     ]).value;
+
+    // Exports that split options into underlying + type/strike/expiration
+    // columns (including TradeTally's own export) are rebuilt as OCC symbols.
+    const instrumentTypeValue = String(findGenericColumn(row, ['Instrument Type', 'Asset Type', 'Security Type']).value || '').toLowerCase();
+    const optionTypeValue = findGenericColumn(row, ['Option Type', 'Put/Call', 'Call/Put']).value;
+    const strikeValue = findGenericColumn(row, ['Strike Price', 'Strike']).value;
+    const expirationValue = findGenericColumn(row, ['Expiration Date', 'Expiration', 'Expiry', 'Exp']).value;
+    if (
+      symbol && optionTypeValue && strikeValue && expirationValue &&
+      (!instrumentTypeValue || instrumentTypeValue.includes('option')) &&
+      !/\d{6}[CP]\d{8}$/i.test(String(symbol).replace(/\s+/g, ''))
+    ) {
+      const expirationDate = parseDate(expirationValue);
+      if (expirationDate) {
+        const occSymbol = buildOccOptionSymbol(symbol, expirationDate.slice(2).replace(/-/g, ''), optionTypeValue, strikeValue);
+        if (occSymbol) symbol = occSymbol;
+      }
+    }
 
     const tradeDateField = findGenericColumn(row, [
       'Trade Date', 'T/D', 'Date', 'trade_date', 'Entry Date UTC', 'Entry Date',
       'Open Date', 'open_date', 'Transaction Date', 'Activity Date', 'Exec Date',
       'Execution Date', 'Date and time', 'Time', 'Close time', 'Entry Time',
       'Exit Time', 'Opening time (UTC-4)', 'Opening Time', 'Open Time',
-      'Opened Time', 'opening_time_utc', 'Timestamp', 'Date/Time', 'Closing Time'
+      'Opened Time', 'opening_time_utc', 'Timestamp', 'Date/Time', 'Closing Time',
+      'Fill Time', 'Filled Time', 'Exec Time', 'Execution Time', 'Trade Time',
+      'Placed Time', 'Place Time', 'Placing Time', 'Run Date', 'effective_date',
+      'order_date', 'transaction_date', 'Settlement Date'
     ]);
 
     const entryTimeField = findGenericColumn(row, [
@@ -67,7 +113,9 @@ const brokerParsers = {
       'Trade Time', 'Timestamp', 'Date/Time', 'Closing Time', 'order_execution_time', 'Date and time', 'Time',
       'Close time', 'Opening time (UTC-4)', 'Opening Time', 'Open Time',
       'Opened Time', 'opening_time_utc', 'Trade Date', 'trade_date', 'Entry Date',
-      'Open Date', 'open_date', 'Date', 'Activity Date'
+      'Open Date', 'open_date', 'Date', 'Activity Date', 'Filled Time',
+      'Placed Time', 'Place Time', 'Placing Time', 'Run Date', 'effective_date',
+      'order_date', 'transaction_date'
     ]);
 
     // Date/Time mapping - support more formats
@@ -93,7 +141,10 @@ const brokerParsers = {
     const entryPrice = parseNumeric(findGenericColumn(row, [
       'Entry Price', 'Buy Price', 'Price', 'Price / share', 'Trade Price',
       'Fill Price', 'Avg Price', 'Average Price', 'Avg fill price', 'Open Price',
-      'Opening Price', 'Purchase Price', 'opening_price'
+      'Opening Price', 'Purchase Price', 'opening_price', 'Avg. price',
+      'Filled Avg Price', 'Filled AVG Price', 'Avg Fill Price', 'Average Fill Price',
+      'Execution Price', 'Exec Price', 'unit_price', 'Price ($)', 'Price $',
+      'Price USD'
     ]).value);
 
     const exitPrice = parseNumeric(findGenericColumn(row, [
@@ -108,7 +159,9 @@ const brokerParsers = {
     const quantity = Math.abs(parseNumeric(findGenericColumn(row, [
       'Quantity', 'Qty', 'Shares', 'No. of shares', 'Size', 'Volume', 'Amount',
       'Fill Qty', 'Filled Qty', 'Filled quantity', 'Quantity filled',
-      'Closing Quantity', 'original_position_size', 'Lots'
+      'Closing Quantity', 'original_position_size', 'Lots', 'Fill Size',
+      'Fill Quantity', 'Filled Quantity', 'Exec Qty', 'Executed Qty',
+      'quantity_fp', 'Filled'
     ]).value));
 
     // Side mapping - handle more variations
@@ -128,19 +181,21 @@ const brokerParsers = {
     );
 
     // Commission and fees mapping
-    const commission = parseNumeric(
+    // Brokers report costs as negative cash amounts; store them as positive.
+    const commission = Math.abs(parseNumeric(
       row.Commission || row.commission || row.Comm || row.comm ||
       row.Commissions || row.commissions || row['Commission Amount'] ||
       row['Commission fee'] || row['Commission Fee'] ||
       row['Comm']
-    ) || 0;
+    ) || 0);
 
-    const fees = parseNumeric(
+    const fees = Math.abs(parseNumeric(
       row.Fees || row.fees || row.Fee || row.fee ||
       row['Total Fees'] || row['Fee Amount'] ||
       row['Route fee'] || row['Route Fee'] ||
+      row['Execution fee'] || row['Execution Fee'] || row['Trading fee'] ||
       row.SEC || row.TAF || row.NSCC
-    ) || 0;
+    ) || 0);
 
     // Currency mapping
     const currency = (
@@ -180,7 +235,11 @@ const brokerParsers = {
       stopLoss: stopLoss,
       takeProfit: takeProfit,
       notes: notes,
-      pnl: parseNumeric(row['Net $'] || row.Net || row.PnL || row.pnl || row['P&L'] || row.Profit, null),
+      pnl: parseNumeric(findGenericColumn(row, [
+        'Net $', 'Net', 'PnL', 'pnl', 'P&L', 'Profit', 'Net USD', 'Net P/L',
+        'Net P&L', 'Realized P&L', 'Realized PnL', 'Realized Profit', 'Profit (value)',
+        'Gain/Loss', 'Total Gain/Loss ($)'
+      ]).value, null),
       orderId: cleanString(row['Order ID'] || row.order_id || row.orderId),
       broker: cleanString(row.Broker || row.broker) || 'generic'
     };

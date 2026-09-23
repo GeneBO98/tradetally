@@ -100,9 +100,9 @@ function normalizeFidelityRecord(record) {
     'Trade Date': normalizeFidelityRunDate(record['Run Date']),
     Side: side,
     Quantity: Math.abs(parseNumeric(record.Quantity, 0)),
-    Price: parseNumeric(record['Price ($)'], 0),
-    Commission: Math.abs(parseNumeric(record['Commission ($)'], 0)),
-    Fees: Math.abs(parseNumeric(record['Fees ($)'], 0)),
+    Price: parseNumeric(record['Price ($)'] ?? record.Price, 0),
+    Commission: Math.abs(parseNumeric(record['Commission ($)'] ?? record.Commission, 0)),
+    Fees: Math.abs(parseNumeric(record['Fees ($)'] ?? record.Fees, 0)),
     Description: record.Description || action,
     Account: record['Account Number'] || record.Account,
     Broker: 'fidelity'
@@ -165,10 +165,46 @@ function getIgnoredProjectXOrderReason(record) {
   return 'Missing executed symbol, side, quantity, price, or fill time';
 }
 
+// Wealthsimple activities export. `direction` is the position direction
+// (LONG/SHORT), not the fill side; the fill side lives in activity_sub_type.
+// Option unit_price is quoted per contract, so convert it to per-share.
+function normalizeWealthsimpleRecord(record) {
+  const activityType = cleanString(record.activity_type).toLowerCase();
+  if (activityType !== 'trade') return null;
+
+  const subType = cleanString(record.activity_sub_type).toUpperCase();
+  const side = subType.startsWith('BUY') ? 'Buy' : subType.startsWith('SELL') ? 'Sell' : null;
+  if (!side) return null;
+
+  const rawSymbol = cleanString(record.symbol);
+  const occMatch = rawSymbol.replace(/\s+/g, ' ').match(/^([A-Z0-9.]+)\s*(\d{6})([CP])(\d{8})$/i);
+  const isOption = Boolean(occMatch);
+  const symbol = isOption
+    ? `${occMatch[1].toUpperCase()}${occMatch[2]}${occMatch[3].toUpperCase()}${occMatch[4]}`
+    : rawSymbol;
+  const unitPrice = parseNumeric(record.unit_price, 0);
+  const date = cleanString(record.effective_date || record.transaction_date);
+  const time = cleanString(record.effective_time);
+
+  return {
+    Symbol: symbol,
+    'Trade Date': time ? `${date} ${time}` : date,
+    Side: side,
+    Quantity: Math.abs(parseNumeric(record.quantity, 0)),
+    Price: isOption ? unitPrice / 100 : unitPrice,
+    Commission: Math.abs(parseNumeric(record.commission, 0)),
+    Fees: 0,
+    Currency: cleanString(record.currency) || 'USD',
+    Description: record.description || '',
+    Broker: 'wealthsimple'
+  };
+}
+
 function normalizeSupportedBrokerRows(records, broker) {
   const normalizers = {
     etrade: normalizeEtradeRecord,
     fidelity: normalizeFidelityRecord,
+    wealthsimple: normalizeWealthsimpleRecord,
     projectx_orders: normalizeProjectXOrderRecord
   };
   const normalizer = normalizers[broker];
@@ -197,5 +233,6 @@ module.exports = {
   normalizeFidelityRecord,
   normalizeFidelityRunDate,
   normalizeProjectXOrderRecord,
-  normalizeSupportedBrokerRows
+  normalizeSupportedBrokerRows,
+  normalizeWealthsimpleRecord
 };
