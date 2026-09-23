@@ -1,7 +1,7 @@
 {
   "name": "tradetally-frontend",
   "version": "2.11.0",
-  "packageManager": "pnpm@10.13.1",
+  "packageManager": "pnpm@10.34.5",
   "private": true,
   "type": "module",
   "engines": {

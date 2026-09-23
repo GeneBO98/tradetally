@@ -51,17 +51,17 @@ class TierService {
     // Auto-disable billing for non-tradetally.io domains (self-hosted)
     const frontendUrl = process.env.FRONTEND_URL || '';
 
-    // Check host header if provided (for runtime domain detection)
+    // The configured frontend URL decides first. The Host header is client
+    // controlled, so it is only consulted when FRONTEND_URL is not set;
+    // otherwise a spoofed Host could switch billing off on tradetally.io.
     // Only ENABLE for tradetally.io, disable for everything else (including localhost for self-hosted)
-    if (hostHeader && !hostHeader.includes('tradetally.io')) {
+    if (frontendUrl) {
+      if (!frontendUrl.includes('tradetally.io')) {
+        console.log(`[BILLING] Disabled for frontend URL: ${frontendUrl} (not tradetally.io)`);
+        return false;
+      }
+    } else if (hostHeader && !hostHeader.includes('tradetally.io')) {
       console.log(`[BILLING] Disabled for host: ${hostHeader} (not tradetally.io)`);
-      return false;
-    }
-
-    // Check frontend URL if no host header provided
-    // Only ENABLE for tradetally.io, disable for everything else
-    if (!hostHeader && frontendUrl && !frontendUrl.includes('tradetally.io')) {
-      console.log(`[BILLING] Disabled for frontend URL: ${frontendUrl} (not tradetally.io)`);
       return false;
     }
 

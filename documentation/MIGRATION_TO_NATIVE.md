@@ -75,7 +75,7 @@ npm --version
 TradeTally uses pnpm for dependency installation.
 
 ```bash
-sudo npm install -g pnpm@10.13.1
+sudo npm install -g pnpm@10.34.5
 sudo npm install -g pm2
 ```
 

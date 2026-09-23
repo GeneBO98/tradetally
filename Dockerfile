@@ -10,7 +10,7 @@ ENV NPM_CONFIG_REGISTRY=https://registry.npmjs.org/ \
     NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=20000 \
     NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=120000
 
-RUN npm install -g pnpm@10.13.1
+RUN npm install -g pnpm@10.34.5
 
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY frontend/package.json ./frontend/package.json
@@ -52,7 +52,7 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY backend/package.json ./backend/package.json
 
 # Install pnpm and node-gyp globally for native module builds.
-RUN npm install -g pnpm@10.13.1 node-gyp
+RUN npm install -g pnpm@10.34.5 node-gyp
 
 # Install dependencies
 # Sharp will automatically download prebuilt binaries for Alpine Linux

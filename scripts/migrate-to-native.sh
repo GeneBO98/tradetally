@@ -158,7 +158,7 @@ if [ ${#MISSING_SERVICES[@]} -gt 0 ]; then
 
         if ! command -v pnpm &> /dev/null; then
             echo "Installing pnpm..."
-            sudo npm install -g pnpm@10.13.1
+            sudo npm install -g pnpm@10.34.5
         fi
     else
         print_error "Required services are not installed. Please install them manually and run this script again."

@@ -87,7 +87,7 @@ For detailed installation and setup instructions, visit the [documentation site]
 TradeTally uses pnpm for dependency management. Install pnpm, then install dependencies from the repository root:
 
 ```bash
-npm install -g pnpm@10.13.1
+npm install -g pnpm@10.34.5
 pnpm install
 pnpm --dir backend run dev
 pnpm --dir frontend run dev
