@@ -85,13 +85,6 @@
                     <time :datetime="item.datetime">{{ formatNewsDate(item.datetime) }}</time>
                   </div>
                 </div>
-                <img
-                  v-if="item.image"
-                  :src="item.image"
-                  :alt="item.headline"
-                  class="ml-3 w-16 h-16 object-cover rounded-md flex-shrink-0"
-                  @error="handleImageError"
-                />
               </div>
             </article>
           </div>
@@ -152,10 +145,6 @@ const formatNewsDate = (timestamp) => {
   } else {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   }
-}
-
-const handleImageError = (event) => {
-  event.target.style.display = 'none'
 }
 
 const toggleExpanded = (symbol) => {
