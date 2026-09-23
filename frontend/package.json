@@ -22,13 +22,13 @@
     "axios": "^1.18.1",
     "chart.js": "^4.5.1",
     "date-fns": "^4.4.0",
-    "dompurify": "^3.4.12",
+    "dompurify": "^3.4.13",
     "klinecharts": "10.0.0",
     "lightweight-charts": "^5.2.0",
     "marked": "^18.0.6",
     "papaparse": "^5.5.4",
     "pinia": "^3.0.4",
-    "vue": "^3.5.39",
+    "vue": "^3.5.42",
     "vue-chartjs": "^5.3.4",
     "vue-router": "^5.1.0",
     "vuedraggable": "^4.1.0"
@@ -39,10 +39,10 @@
     "@vue/test-utils": "^2.4.11",
     "autoprefixer": "^10.5.2",
     "jsdom": "^29.1.1",
-    "postcss": "^8.5.16",
+    "postcss": "^8.5.23",
     "tailwindcss": "^3.4.19",
     "vite": "^8.1.4",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "overrides": {
     "minimatch": "^10.2.1",

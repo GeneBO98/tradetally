@@ -56,27 +56,27 @@ jobs:
     steps:
       - name: Check out manually selected release tag
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ inputs.release_tag }}
 
       - name: Check out release tag
         if: github.event_name == 'release'
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ github.event.release.tag_name }}
 
       - name: Check out branch
         if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
         with:
           version: 10.13.1
 
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: '20.19.5'
           cache: 'pnpm'
@@ -101,39 +101,47 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
 
     steps:
       - name: Check out manually selected release tag
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ inputs.release_tag }}
 
       - name: Check out release tag
         if: github.event_name == 'release'
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ github.event.release.tag_name }}
 
       - name: Check out branch
         if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Login to Docker Hub
-        uses: docker/login-action@v4
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Determine tags
         id: tags
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GIT_REF: ${{ github.ref }}
+          GIT_REF_NAME: ${{ github.ref_name }}
+          RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
+          RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+          INPUT_PRERELEASE: ${{ inputs.prerelease }}
         run: |
           build_release_tags() {
             local release_tag="$1"
@@ -158,25 +166,25 @@ jobs:
             echo "tags=${tags}" >> "$GITHUB_OUTPUT"
           }
 
-          if [[ "${{ github.event_name }}" == "release" ]]; then
-            build_release_tags "${{ github.event.release.tag_name }}" "${{ github.event.release.prerelease }}"
-          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            build_release_tags "${{ inputs.release_tag }}" "${{ inputs.prerelease }}"
-          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            build_release_tags "${{ github.ref_name }}" "false"
-          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          if [[ "$EVENT_NAME" == "release" ]]; then
+            build_release_tags "$RELEASE_TAG_NAME" "$RELEASE_PRERELEASE"
+          elif [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            build_release_tags "$INPUT_RELEASE_TAG" "$INPUT_PRERELEASE"
+          elif [[ "$GIT_REF" == refs/tags/v* ]]; then
+            build_release_tags "$GIT_REF_NAME" "false"
+          elif [[ "$GIT_REF" == "refs/heads/main" ]]; then
             echo "tags=potentialmidas/tradetally:latest" >> "$GITHUB_OUTPUT"
-          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+          elif [[ "$GIT_REF" == "refs/heads/develop" ]]; then
             echo "tags=potentialmidas/tradetally:nightly" >> "$GITHUB_OUTPUT"
-          elif [[ "${{ github.ref }}" == "refs/heads/fix/pnl-canonical-engine" ]]; then
+          elif [[ "$GIT_REF" == "refs/heads/fix/pnl-canonical-engine" ]]; then
             echo "tags=potentialmidas/tradetally:pnl-engine" >> "$GITHUB_OUTPUT"
           else
-            echo "Unsupported ref: ${{ github.ref }}"
+            echo "Unsupported ref: $GIT_REF"
             exit 1
           fi
 
       - name: Build and push
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -197,30 +205,41 @@ jobs:
     steps:
       - name: Check out manually selected release tag
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ inputs.release_tag }}
 
       - name: Check out release tag
         if: github.event_name == 'release'
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ github.event.release.tag_name }}
 
       - name: Resolve release tag
         id: rel
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          if [[ "${{ github.event_name }}" == "release" ]]; then
-            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          if [[ "$EVENT_NAME" == "release" ]]; then
+            tag="$RELEASE_TAG_NAME"
           else
-            echo "tag=${{ inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+            tag="$INPUT_RELEASE_TAG"
           fi
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Release tag must match vX.Y.Z, got: $tag"
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
       - name: Verify APK is present
+        env:
+          RELEASE_TAG: ${{ steps.rel.outputs.tag }}
         run: |
           apk="release-assets/android/tradetally-android.apk"
           if [[ ! -f "$apk" ]]; then
-            echo "::error::Android APK not found at $apk for ${{ steps.rel.outputs.tag }}. Build and commit the APK before releasing."
+            echo "::error::Android APK not found at $apk for $RELEASE_TAG. Build and commit the APK before releasing."
             exit 1
           fi
           ls -lh "$apk"
@@ -228,7 +247,8 @@ jobs:
       - name: Upload Android APK release asset
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.rel.outputs.tag }}
         run: |
-          gh release upload "${{ steps.rel.outputs.tag }}" \
-            release-assets/android/tradetally-android.apk#TradeTally-Android-${{ steps.rel.outputs.tag }}.apk \
+          gh release upload "$RELEASE_TAG" \
+            "release-assets/android/tradetally-android.apk#TradeTally-Android-${RELEASE_TAG}.apk" \
             --clobber

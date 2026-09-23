@@ -671,6 +671,7 @@ class JobQueue {
     const tradeQualityService = require('../services/tradeQuality.service');
     const { userId, batchSize = 10, maxTrades = null } = data;
     const staleQualityCondition = tradeQualityService.getStaleQualityCondition();
+    const tradeLimit = parseInt(maxTrades, 10);
 
     logger.logImport(`Starting quality backfill for user ${userId}`);
 
@@ -683,7 +684,7 @@ class JobQueue {
         AND ${staleQualityCondition}
         AND (instrument_type IS NULL OR instrument_type != 'future')
       ORDER BY trade_date DESC
-      ${maxTrades ? `LIMIT ${maxTrades}` : ''}
+      ${Number.isInteger(tradeLimit) && tradeLimit > 0 ? `LIMIT ${tradeLimit}` : ''}
     `;
 
     const result = await db.query(tradesQuery, [userId]);

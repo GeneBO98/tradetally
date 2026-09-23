@@ -7,7 +7,7 @@ This backend has been configured to optionally send logs to PostHog using their 
 1. **Configure Environment Variables**:
    Ensure your `.env` file contains:
    ```
-   VITE_POSTHOG_KEY=phc_45FhZD0bI110gyeQp5rf9eADyVKen6DE1bdU5LJTfML
+   VITE_POSTHOG_KEY=phc_your_project_api_key
    VITE_POSTHOG_HOST=https://us.i.posthog.com
    ```
 

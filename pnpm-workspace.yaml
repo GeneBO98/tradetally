@@ -4,17 +4,32 @@ packages:
 
 minimumReleaseAge: 20160
 
+# Security patches (Aikido, Sep 2026) exempted from the release-age gate.
+# Pinned to exact versions so later releases are still gated.
+minimumReleaseAgeExclude:
+  - proxy-addr@2.0.8
+  - compression@1.8.2
+  - nodemailer@10.0.10
+
 overrides:
   yaml: ^2.8.3
   form-data: ^4.0.6
   protobufjs: ^8.6.0
-  qs: ^6.15.2
+  qs: ^6.16.0
   '@opentelemetry/core': ^2.8.0
-  undici: ^7.28.0
+  undici: ^7.29.0
   js-cookie: ^3.0.7
-  'brace-expansion@^5.0.1': 5.0.6
-  js-yaml: ^3.15.0
+  'brace-expansion@^5.0.1': ^5.0.9
+  js-yaml: ^3.15.2
   '@babel/core': ^7.29.6
+  proxy-addr: ^2.0.8
+  ip-address: ^10.3.1
+  postcss: ^8.5.23
+  'nanoid@^3': ^3.3.18
+  'brace-expansion@^1': ^1.1.18
+  'brace-expansion@^2': ^2.1.4
+  browserslist: ^4.28.7
+  baseline-browser-mapping: ^2.11.0
 
 onlyBuiltDependencies:
   - '@scarf/scarf'

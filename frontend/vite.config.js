@@ -55,7 +55,7 @@ function associatedDomainsDevelopment() {
 }
 
 export default defineConfig(({ command, mode }) => {
-  const env = loadEnv(mode, process.cwd(), '')
+  const env = loadEnv(mode, process.cwd(), 'VITE_')
   const exposeDevServer = env.VITE_DEV_SERVER_EXPOSE === 'true'
   const devHost = exposeDevServer ? true : (env.VITE_DEV_HOST || '127.0.0.1')
   const configuredAllowedHosts = env.VITE_DEV_ALLOWED_HOSTS

@@ -14,9 +14,15 @@ function num(value) {
 }
 
 function baseUrl(req) {
-  const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
-  const host = req.headers['x-forwarded-host'] || req.headers.host;
-  return `${proto}://${host}`;
+  // Prefer the configured public URL. These URLs land in cached HTML (canonical,
+  // og:url, meta refresh), so never build them from a client-supplied
+  // X-Forwarded-Host, which nginx passes through untouched.
+  if (process.env.INSTANCE_URL) {
+    return process.env.INSTANCE_URL.replace(/\/+$/, '');
+  }
+  const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
+  const proto = forwardedProto === 'http' || forwardedProto === 'https' ? forwardedProto : (req.protocol || 'https');
+  return `${proto}://${req.get('host')}`;
 }
 
 function escapeHtml(value) {

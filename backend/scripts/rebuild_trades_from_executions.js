@@ -352,7 +352,8 @@ async function backupTrades(user, currentTrades) {
   await fs.mkdir(backupDir, { recursive: true });
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const backupPath = path.join(backupDir, `${user.username || user.id}-${timestamp}.json`);
+  const safeName = String(user.username || user.id).replace(/[^A-Za-z0-9_-]/g, '_');
+  const backupPath = path.join(backupDir, `${safeName}-${timestamp}.json`);
 
   await fs.writeFile(backupPath, JSON.stringify({
     user,

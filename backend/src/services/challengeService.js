@@ -363,14 +363,23 @@ class ChallengeService {
   
   // Calculate community improvement (aggregate metric)
   static async calculateCommunityImprovement(criteria) {
+    // criteria.metric comes from admin-authored challenge JSON and is used as a
+    // column identifier, so it must be whitelisted rather than interpolated.
+    const allowedMetrics = ['discipline_score', 'revenge_trading_rate'];
+    const metric = allowedMetrics.includes(criteria?.metric) ? criteria.metric : null;
+    if (!metric) {
+      console.warn(`[WARNING] Unsupported community improvement metric: ${criteria?.metric}`);
+      return 0;
+    }
+
     const query = `
       WITH baseline AS (
-        SELECT AVG(${criteria.metric}) as baseline_value
+        SELECT AVG(${metric}) as baseline_value
         FROM behavioral_analytics_aggregate
         WHERE date = $1
       ),
       current AS (
-        SELECT AVG(${criteria.metric}) as current_value
+        SELECT AVG(${metric}) as current_value
         FROM behavioral_analytics_aggregate
         WHERE date = CURRENT_DATE
       )
