@@ -3,6 +3,15 @@ const db = require('../config/database');
 const { uuidv4 } = require('../utils/uuid');
 
 const LEGACY_NOTIFICATION_TYPES = new Set(['price_alert', 'trade_comment']);
+const NOTIFICATION_CATEGORY_TYPES = {
+  alerts: ['price_alert', 'portfolio_alert', 'behavioral_alert', 'earnings_announcement'],
+  trades: ['trade_comment'],
+  achievements: ['achievement_earned', 'level_up', 'challenge_joined', 'challenge_completed', 'leaderboard_ranking'],
+  mentions: ['web_mention_alert'],
+  account: ['broker_reauth_expiring', 'broker_reauth_required'],
+  news: ['news_alert']
+};
+const KNOWN_NOTIFICATION_TYPES = Object.values(NOTIFICATION_CATEGORY_TYPES).flat();
 
 // Memoized: once the table exists it exists for the process lifetime, and the
 // polled unread-count endpoint was paying an information_schema round-trip per
@@ -271,6 +280,17 @@ const notificationsController = {
       const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
       const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
       const unreadOnly = req.query.unread_only === 'true';
+      const category = req.query.category || null;
+      if (category && category !== 'other' && !Object.hasOwn(NOTIFICATION_CATEGORY_TYPES, category)) {
+        return res.status(400).json({ success: false, error: 'Invalid notification category' });
+      }
+      const categoryTypes = category === 'other' ? KNOWN_NOTIFICATION_TYPES : NOTIFICATION_CATEGORY_TYPES[category];
+      const notificationFilter = !category ? '' : category === 'other'
+        ? 'WHERE type <> ALL($4::text[])'
+        : 'WHERE type = ANY($4::text[])';
+      const generalCountFilter = !category ? '' : category === 'other'
+        ? 'AND n.type <> ALL($2::text[])'
+        : 'AND n.type = ANY($2::text[])';
       const offset = (page - 1) * limit;
       const hasNotificationsTable = await notificationsTableExists();
 
@@ -371,13 +391,12 @@ const notificationsController = {
         )
         SELECT *
         FROM combined_notifications
-        ORDER BY created_at DESC
+        ${notificationFilter}
+        ORDER BY created_at DESC, id DESC
         LIMIT $2 OFFSET $3
       `;
 
-      const countQuery = `
-        SELECT
-          (SELECT COUNT(*)
+      const priceAlertCount = !category || category === 'alerts' ? `(SELECT COUNT(*)
            FROM alert_notifications an
            LEFT JOIN notification_read_status nrs ON (
              nrs.user_id = $1 AND nrs.notification_type = 'price_alert' AND nrs.notification_id = an.id
@@ -385,8 +404,8 @@ const notificationsController = {
            WHERE an.user_id = $1
              AND an.deleted_at IS NULL
              ${unreadOnly ? 'AND nrs.id IS NULL' : ''}
-          ) +
-          (SELECT COUNT(*)
+          )` : '0';
+      const tradeCommentCount = !category || category === 'trades' ? `(SELECT COUNT(*)
            FROM trade_comments tc
            JOIN trades t ON tc.trade_id = t.id
            LEFT JOIN notification_read_status nrs ON (
@@ -397,18 +416,23 @@ const notificationsController = {
              AND t.is_public = true
              AND tc.deleted_at IS NULL
              ${unreadOnly ? 'AND nrs.id IS NULL' : ''}
-          ) +
+          )` : '0';
+      const countQuery = `
+        SELECT
+          ${priceAlertCount} +
+          ${tradeCommentCount} +
           ${hasNotificationsTable ? `(SELECT COUNT(*)
              FROM notifications n
              WHERE n.user_id = $1
                AND n.created_at > NOW() - INTERVAL '30 days'
                ${unreadOnly ? 'AND COALESCE(n.read, false) = false' : ''}
+               ${generalCountFilter}
           )` : '0'} AS total
       `;
 
       const [notificationsResult, countResult] = await Promise.all([
-        db.query(notificationsQuery, [userId, limit, offset]),
-        db.query(countQuery, [userId])
+        db.query(notificationsQuery, category ? [userId, limit, offset, categoryTypes] : [userId, limit, offset]),
+        db.query(countQuery, category && hasNotificationsTable ? [userId, categoryTypes] : [userId])
       ]);
       const total = parseInt(countResult.rows[0].total);
 
@@ -419,7 +443,8 @@ const notificationsController = {
           page,
           limit,
           total,
-          totalPages: Math.ceil(total / limit)
+          totalPages: Math.ceil(total / limit),
+          category
         }
       });
     } catch (error) {
