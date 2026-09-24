@@ -1279,5 +1279,15 @@
         "entry_price": 100
       }
     }
-  ]
+  ],
+  "widget_quote_freshness": {
+    "symbol": "AAPL",
+    "quantity": 2,
+    "entry_price": 100,
+    "stale_price_change": -32,
+    "provider_price": 123,
+    "provider_day_change": 23,
+    "expected_today_pnl": 46,
+    "expected_open_pnl": 46
+  }
 }

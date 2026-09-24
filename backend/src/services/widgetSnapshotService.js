@@ -4,12 +4,17 @@ const AnalyticsCache = require('./analyticsCache');
 const TradeQueries = require('./tradeQueries');
 const Trade = require('../models/Trade');
 const NewsService = require('./newsService');
+const finnhub = require('../utils/finnhub');
 const { groupTradesIntoPositions } = require('../utils/openPositionGrouping');
 const { getDateInTimezone, getDayOfWeekInTimezone } = require('../utils/timezone');
 
 const DASHBOARD_TTL_MS = 24 * 60 * 60 * 1000;
 const NEWS_STALE_AFTER_MS = 75 * 60 * 1000;
 const RECENT_NEWS_LIMIT = 5;
+const configuredQuoteTimeoutMs = parseInt(process.env.OPEN_POSITIONS_FINNHUB_TIMEOUT_MS || '', 10);
+const QUOTE_TIMEOUT_MS = Number.isFinite(configuredQuoteTimeoutMs) && configuredQuoteTimeoutMs > 0
+  ? configuredQuoteTimeoutMs
+  : 3000;
 
 function currentTradingWeekRange(now, timezone) {
   const endDate = getDateInTimezone(now, timezone || 'UTC', false);
@@ -89,15 +94,47 @@ async function loadOpenPositionMetrics(userId) {
     .filter(position => position.instrumentType !== 'option')
     .map(position => String(position.symbol || '').trim().toUpperCase())
     .filter(Boolean))];
-  const quoteResult = quoteSymbols.length > 0
+  // Match the dashboard's two-minute price_monitoring window. An old row can
+  // belong to a previous trading session and must not replace a newer quote
+  // already shown by the app when WidgetKit refreshes independently.
+  const quoteResult = quoteSymbols.length > 0 && finnhub.isConfigured()
     ? await db.query(
         `SELECT UPPER(symbol) AS symbol, current_price, price_change
          FROM price_monitoring
-         WHERE UPPER(symbol) = ANY($1::text[])`,
+         WHERE UPPER(symbol) = ANY($1::text[])
+           AND last_updated > NOW() - INTERVAL '2 minutes'`,
         [quoteSymbols]
       )
     : { rows: [] };
   const quotes = new Map(quoteResult.rows.map(row => [row.symbol, row]));
+
+  const uncachedSymbols = quoteSymbols.filter(symbol => !quotes.has(symbol));
+  if (uncachedSymbols.length > 0 && finnhub.isConfigured()) {
+    let timeoutId;
+    try {
+      const freshQuotes = await Promise.race([
+        finnhub.getBatchQuotes(uncachedSymbols, {
+          source: 'open_positions',
+          priority: 0,
+          userId,
+          maxQueueWaitMs: QUOTE_TIMEOUT_MS
+        }),
+        new Promise((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('Widget quote fetch timed out')), QUOTE_TIMEOUT_MS);
+        })
+      ]);
+      for (const symbol of uncachedSymbols) {
+        const quote = freshQuotes?.[symbol];
+        if (quote) quotes.set(symbol, { current_price: quote.c, price_change: quote.d });
+      }
+    } catch (error) {
+      // Keep any fresh cache rows while treating unresolved positions as
+      // unquoted, just as the dashboard does when its provider call fails.
+      console.warn('[WIDGET] Open-position quote refresh unavailable:', error.message);
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
 
   let openUnrealizedPnL = 0;
   let todayPnL = 0;

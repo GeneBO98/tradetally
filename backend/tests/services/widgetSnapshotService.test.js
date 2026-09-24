@@ -7,6 +7,10 @@ jest.mock('../../src/services/newsService', () => ({
   getCachedNews: jest.fn(),
   requestBackgroundRefresh: jest.fn()
 }));
+jest.mock('../../src/utils/finnhub', () => ({
+  isConfigured: jest.fn(),
+  getBatchQuotes: jest.fn()
+}));
 jest.mock('../../src/utils/timezone', () => ({
   getDateInTimezone: jest.fn(() => '2026-08-26'),
   getDayOfWeekInTimezone: jest.fn(() => 3)
@@ -18,6 +22,8 @@ const AnalyticsCache = require('../../src/services/analyticsCache');
 const TradeQueries = require('../../src/services/tradeQueries');
 const Trade = require('../../src/models/Trade');
 const NewsService = require('../../src/services/newsService');
+const finnhub = require('../../src/utils/finnhub');
+const contracts = require('../../../tests/fixtures/trading-calculation-contracts.json');
 const service = require('../../src/services/widgetSnapshotService');
 
 describe('widgetSnapshotService', () => {
@@ -25,6 +31,7 @@ describe('widgetSnapshotService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    finnhub.isConfigured.mockReturnValue(true);
     TradeQueries.cacheKey.mockReturnValue('analytics:user_user-1:week');
     cache.get.mockReturnValue({ summary: { totalPnL: 425.5, winRate: 60, totalTrades: 5 } });
     AnalyticsCache.get.mockResolvedValue(null);
@@ -96,8 +103,46 @@ describe('widgetSnapshotService', () => {
       updatedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/)
     });
     expect(TradeQueries.getAnalytics).not.toHaveBeenCalled();
+    expect(finnhub.getBatchQuotes).not.toHaveBeenCalled();
     expect(NewsService.getCachedNews).toHaveBeenCalledWith(['AAPL']);
     expect(NewsService.requestBackgroundRefresh).not.toHaveBeenCalled();
+  });
+
+  test('ignores an old after-hours cache row and uses the dashboard quote source', async () => {
+    const fixture = contracts.widget_quote_freshness;
+    Trade.findOpenPositionsByUser.mockResolvedValue([{
+      id: 'trade-1',
+      symbol: fixture.symbol,
+      side: 'long',
+      quantity: fixture.quantity,
+      entry_price: fixture.entry_price,
+      executions: [],
+      instrument_type: 'stock'
+    }]);
+    db.query.mockImplementation(query => {
+      if (query.includes('price_monitoring')) {
+        expect(query).toContain("last_updated > NOW() - INTERVAL '2 minutes'");
+        // The stale row would have produced a loss if the freshness filter
+        // were omitted, while the dashboard's current quote shows a gain.
+        return Promise.resolve({ rows: query.includes("last_updated > NOW() - INTERVAL '2 minutes'")
+          ? []
+          : [{ symbol: fixture.symbol, current_price: fixture.provider_price, price_change: fixture.stale_price_change }] });
+      }
+      if (query.includes('analytics_cache')) return Promise.resolve({ rows: [] });
+      throw new Error(`Unexpected query: ${query}`);
+    });
+    finnhub.getBatchQuotes.mockResolvedValue({
+      [fixture.symbol]: { c: fixture.provider_price, d: fixture.provider_day_change }
+    });
+
+    const snapshot = await service.getSnapshot({ id: 'user-1', timezone: 'America/Chicago' });
+
+    expect(finnhub.getBatchQuotes).toHaveBeenCalledWith([fixture.symbol], expect.objectContaining({
+      source: 'open_positions',
+      userId: 'user-1'
+    }));
+    expect(snapshot.todayPnL).toBe(fixture.expected_today_pnl);
+    expect(snapshot.openUnrealizedPnL).toBe(fixture.expected_open_pnl);
   });
 
   test('warms and persists the canonical weekly analytics cache on a first-read miss', async () => {
